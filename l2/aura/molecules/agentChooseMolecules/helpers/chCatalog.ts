@@ -3,18 +3,34 @@
 // Reading the catalog, and the l4 paths of a run. The ONLY module here that touches the disk — every
 // gate and the report renderer are pure and are fed from what this one reads.
 //
-// ⚠️ THE GESTURE IS agentImproveMolecule2's readGroupSkill (imResolve.ts:261): `await import(reference)`
-// and take the exported string. Validating that this works for the catalog of §10 is half of what the
-// pilot is for, so it is used exactly as it stands rather than reinvented — what is added here is the
-// STRUCTURED part of the module (groups, molecules, scenarios), which the gates need and a skill string
-// cannot give.
+// ⚠️ THE STOR IS READ FIRST, and the published module is the fallback. Inverted on 2026-08-19 after the
+// first Studio run, for a reason that outlives the pilot: `await import(reference)` — the gesture of
+// imResolve.readGroupSkill, which the pilot plan asked for — is served by the PUBLISHED project, so a
+// catalog that exists in the editor and was never published is unreadable by it, and a published one that
+// has unsaved edits is read STALE without saying so. Every other agent of this family reads the stor
+// (nmFs), which is how agentNewMolecule2 writes a molecule and reads it back in the same run;
+// readGroupSkill is the exception because it reads 102020's own published skills.
+//
+// The import stays as the second rung: it is the only one a consumer outside the editor has, and it needs
+// no parser. Which rung answered is recorded per level (`via`).
 //
 // ⚠️ THE CATALOG BELONGS TO THE ACTIVE PROJECT, never to a hardcoded 102040. `mls.actualProject` is what
 // nmDestProject() returns, so the probe reads whichever project it runs in — which is also why the
 // pilot's mls-102040-temp needs no special case: uploaded to the Studio it IS the active project.
+//
+// ⚠️ AND THE FINDING BEHIND THAT ORDER IS ABOUT THE §10 DESIGN, not about this agent: a generated
+// `index.defs.ts` is unreadable by any consumer until it is published. Publishing is part of generating a
+// catalog, and the report says which rung answered so a run can never pass that off silently.
 
 import { nmDestProject, nmFileExists, readStorText, type NmFileInfo } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
-import { CH_AGENT_FOLDER, CH_AGENT_PROJECT, chGroupFolder } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import {
+  CH_AGENT_FOLDER,
+  CH_AGENT_PROJECT,
+  ChCatalogVia,
+  chFileRefFromImport,
+  chGroupFolder,
+} from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import { chExtractCatalogModule } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chExtract.js';
 
 // ---- agent-owned files (prompt.md, schemas) in the 102020 agent folder ----
 
@@ -64,6 +80,7 @@ export interface ChLevel1 {
   groups: ChCatalogGroup[];
   skill: string;
   theme: string | null;
+  via: ChCatalogVia;
 }
 
 export function chLevel1FileInfo(): NmFileInfo {
@@ -76,21 +93,18 @@ export function chLevel1Reference(): string {
 
 export async function readChLevel1(): Promise<{ level1: ChLevel1 | null; error: string }> {
   const reference = chLevel1Reference();
-  // Checked before importing: a missing catalog must reach the user as one readable line, not as a
-  // module-resolution exception thrown from inside a hook.
-  if (!nmFileExists(chLevel1FileInfo())) {
-    return { level1: null, error: `the project has no molecule catalog: l2/molecules/skill.ts not found (expected at ${reference})` };
-  }
-  try {
-    const mod = await import(reference) as { groups?: unknown; skill?: unknown; theme?: unknown };
-    const groups = normalizeGroups(mod.groups);
-    const skill = typeof mod.skill === 'string' ? mod.skill : '';
-    if (!groups.length) return { level1: null, error: `${reference} publishes no group — nothing can be chosen from it` };
-    if (!skill.trim()) return { level1: null, error: `${reference} exports no 'skill' text — level 1 is what the first call reads` };
-    return { level1: { reference, groups, skill, theme: typeof mod.theme === 'string' ? mod.theme : null }, error: '' };
-  } catch (error) {
-    return { level1: null, error: `could not read ${reference}: ${error instanceof Error ? error.message : String(error)}` };
-  }
+  const imported = await loadCatalogModule(reference);
+  if (!imported.mod || !imported.via) return { level1: null, error: imported.error };
+
+  const mod = imported.mod as { groups?: unknown; skill?: unknown; theme?: unknown };
+  const groups = normalizeGroups(mod.groups);
+  const skill = typeof mod.skill === 'string' ? mod.skill : '';
+  if (!groups.length) return { level1: null, error: `${reference} publishes no group — nothing can be chosen from it` };
+  if (!skill.trim()) return { level1: null, error: `${reference} exports no 'skill' text — level 1 is what the first call reads` };
+  return {
+    level1: { reference, groups, skill, theme: typeof mod.theme === 'string' ? mod.theme : null, via: imported.via },
+    error: '',
+  };
 }
 
 // ---- level 2: which molecules one group has ----
@@ -109,6 +123,7 @@ export interface ChScenario {
 
 export interface ChGroupCatalog {
   reference: string;
+  via: ChCatalogVia;
   group: string;
   usageContract: string;
   molecules: ChMoleculeEntry[];
@@ -118,38 +133,84 @@ export interface ChGroupCatalog {
 
 export async function readChGroupCatalog(reference: string): Promise<{ catalog: ChGroupCatalog | null; error: string }> {
   if (!reference) return { catalog: null, error: 'the group has no index.defs reference in level 1' };
-  try {
-    const mod = await import(reference) as {
-      group?: unknown;
-      usageContract?: unknown;
-      molecules?: unknown;
-      scenarios?: unknown;
-      skill?: unknown;
-    };
-    const molecules = normalizeMolecules(mod.molecules);
-    const skill = typeof mod.skill === 'string' ? mod.skill : '';
-    // The 26 groups outside the pilot are seeded as one-line stubs: they resolve, and they publish
-    // nothing. Saying so beats "cannot read", which would point at the wrong problem.
-    if (!molecules.length || !skill.trim()) {
-      return { catalog: null, error: `${reference} has no catalog yet (no molecules or no 'skill' text) — this group is not part of the published catalog` };
-    }
-    return {
-      catalog: {
-        reference,
-        group: typeof mod.group === 'string' ? mod.group : '',
-        usageContract: typeof mod.usageContract === 'string' ? mod.usageContract : '',
-        molecules,
-        scenarios: normalizeScenarios(mod.scenarios),
-        skill,
-      },
-      error: '',
-    };
-  } catch (error) {
-    return { catalog: null, error: `could not read ${reference}: ${error instanceof Error ? error.message : String(error)}` };
+
+  const imported = await loadCatalogModule(reference);
+  if (!imported.mod || !imported.via) return { catalog: null, error: imported.error };
+
+  const mod = imported.mod as {
+    group?: unknown;
+    usageContract?: unknown;
+    molecules?: unknown;
+    scenarios?: unknown;
+    skill?: unknown;
+  };
+  const molecules = normalizeMolecules(mod.molecules);
+  const skill = typeof mod.skill === 'string' ? mod.skill : '';
+  // The 26 groups outside the pilot are one-line stubs: the file is there and says nothing. Saying that
+  // beats "cannot read", which would point at the wrong problem.
+  if (!molecules.length || !skill.trim()) {
+    return { catalog: null, error: `${reference} has no catalog yet (no molecules or no 'skill' text) — this group is not part of the catalog of this project` };
   }
+  return {
+    catalog: {
+      reference,
+      via: imported.via,
+      group: typeof mod.group === 'string' ? mod.group : '',
+      usageContract: typeof mod.usageContract === 'string' ? mod.usageContract : '',
+      molecules,
+      scenarios: normalizeScenarios(mod.scenarios),
+      skill,
+    },
+    error: '',
+  };
+}
+
+// ---- the ladder: the stor first, the published module second ----
+
+interface ChLoaded {
+  mod: Record<string, unknown> | null;
+  via: ChCatalogVia | null;
+  error: string;
+}
+
+/**
+ * Rung 1 is the STOR: the source of truth inside the editor, including content that was never published.
+ * Its text is turned into values by the pure chExtract, which parses only what the gates need and
+ * evaluates nothing.
+ *
+ * Rung 2 is `await import(reference)`, the published module — the only rung available to a consumer that
+ * is not the editor, and the one that needs no parser.
+ *
+ * Failing both, the message says which rung failed how: a file absent from the project is a different
+ * problem from a file that is present, unparseable and unpublished.
+ */
+async function loadCatalogModule(reference: string): Promise<ChLoaded> {
+  const trace: string[] = [];
+  const ref = chFileRefFromImport(reference);
+
+  if (!ref) {
+    trace.push(`'${reference}' is not a project reference`);
+  } else if (!nmFileExists(ref)) {
+    trace.push('it is not in this project');
+  } else {
+    const extracted = chExtractCatalogModule(await readStorText(ref, false));
+    if (extracted.module) return { mod: extracted.module as Record<string, unknown>, via: 'stor', error: '' };
+    trace.push(`the file in this project could not be read as a catalog (${extracted.error})`);
+  }
+
+  try {
+    return { mod: await import(reference) as Record<string, unknown>, via: 'published', error: '' };
+  } catch (error) {
+    trace.push(`the published project does not serve it (${error instanceof Error ? error.message : String(error)})`);
+  }
+
+  return { mod: null, via: null, error: `${reference} could not be read: ${trace.join('; ')}.` };
 }
 
 // ---- normalizers: the catalog is generated code, so shape is checked and never assumed ----
+//
+// Both rungs pass through them. chExtract already returns typed arrays, so on the stor path they are a
+// second guard; on the published path they are the only one, since a module can export anything.
 
 function normalizeGroups(value: unknown): ChCatalogGroup[] {
   if (!Array.isArray(value)) return [];

@@ -33,6 +33,16 @@ export interface GenerateHeaderRequest {
   requestId?: string;
   /** Header profile of l5/config.json to take over; `defaultAura` by default. */
   profileName?: string;
+  /**
+   * What to do about the brand mark: `keep` (default) leaves whatever the profile has, `generate`
+   * queues agentGenerateLogo as a child step right after the header is written, `none` drops the
+   * mark from the profile.
+   */
+  logo?: 'keep' | 'generate' | 'none';
+  /** Style hint forwarded to agentGenerateLogo (it normalizes an unknown value to monogram). */
+  logoStyle?: string;
+  /** Brief forwarded to agentGenerateLogo; falls back to the header brief. */
+  logoBrief?: string;
   /** true = write the header file + point the config profile at it; false/absent = draft only. */
   commit?: boolean;
 }
@@ -110,6 +120,8 @@ export interface HeaderProfileOptions {
   actions?: AppHeaderAction[];
   /** Profile to take over; the master's own `defaultAura` by default. */
   profileName?: string;
+  /** Drop the mark the profile already had instead of carrying it over. */
+  dropLogo?: boolean;
 }
 
 /**
@@ -144,9 +156,16 @@ export function pointHeaderProfileAtProject(config: unknown, options: HeaderProf
   };
 
   // Brand and actions are config, not code: absent in the request means absent in the profile,
-  // otherwise a regeneration would keep a stale brand around.
+  // otherwise a regeneration would keep a stale brand around. The MARK is the exception — it is
+  // agentGenerateLogo's artifact, not the header request's, so regenerating the header carries it
+  // over instead of wiping it (`dropLogo` is the explicit way out).
+  const previousLogoSvg = readString((isRecord(previous?.brand) ? previous.brand.logoSvg : undefined));
   if (options.brand) profile.brand = { ...options.brand };
   else delete profile.brand;
+  if (!options.dropLogo && previousLogoSvg) {
+    const brand = (isRecord(profile.brand) ? profile.brand : (profile.brand = {})) as Record<string, unknown>;
+    if (!readString(brand.logoSvg)) brand.logoSvg = previousLogoSvg;
+  }
   if (options.actions?.length) profile.props = { ...(isRecord(previous?.props) ? previous.props : {}), actions: [...options.actions] };
   else if (isRecord(profile.props)) delete (profile.props as Record<string, unknown>).actions;
 
@@ -202,6 +221,9 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
     tokens: tokens?.length ? tokens : undefined,
     requestId: readString(raw.requestId) || undefined,
     profileName: readString(raw.profileName) || undefined,
+    logo: raw.logo === 'generate' || raw.logo === 'none' ? raw.logo : 'keep',
+    logoStyle: readString(raw.logoStyle) || undefined,
+    logoBrief: readString(raw.logoBrief) || undefined,
     commit: raw.commit === true,
   };
 }
@@ -250,7 +272,22 @@ function hasLiteralColor(text: string): boolean {
  * Mechanical checks of the header contract (skills/headerContract.ts). Returns the violations;
  * an empty array means the parts can be assembled.
  */
-export function validateHeaderParts(parts: GeneratedHeaderParts): string[] {
+export interface ValidateHeaderOptions {
+  /** Routes the header may link to: the project's navigation entries. Anything else is invented. */
+  allowedHrefs?: string[];
+}
+
+/** Literal routes the band navigates to (href="/x" or navigateTo('/x')), minus the allowed ones. */
+export function findInventedRoutes(bandHtml: string, allowedHrefs: readonly string[] = []): string[] {
+  const allowed = new Set(allowedHrefs);
+  const found = new Set<string>();
+  for (const match of bandHtml.matchAll(/(?:href=|navigateTo\(\s*)['"](\/[^'"]*)['"]/gu)) {
+    if (!allowed.has(match[1])) found.add(match[1]);
+  }
+  return [...found];
+}
+
+export function validateHeaderParts(parts: GeneratedHeaderParts, options: ValidateHeaderOptions = {}): string[] {
   const errors: string[] = [];
   const bandHtml = readString(parts.bandHtml);
   const bandCss = readString(parts.bandCss);
@@ -280,6 +317,12 @@ export function validateHeaderParts(parts: GeneratedHeaderParts): string[] {
   }
   if (bandHtml.includes('window.location')) {
     errors.push('bandHtml must not touch window.location (use this.navigateTo)');
+  }
+
+  // The model has no way to know which routes exist, so it must not name one: an action with no
+  // destination (user, search) goes through this.emitHeaderAction, never a made-up path.
+  for (const route of findInventedRoutes(bandHtml, options.allowedHrefs)) {
+    errors.push(`bandHtml navigates to "${route}", which is not one of the project's routes — link only the provided navigation entries, or use this.emitHeaderAction('<action>') for an action with no route`);
   }
 
   // The fragments are inlined into template literals — unbalanced backticks break the file.
@@ -437,7 +480,9 @@ export function sanitizeGeneratedHeader(
     notes: readString(result.notes) || undefined,
   };
 
-  const errors = validateHeaderParts(parts);
+  const errors = validateHeaderParts(parts, {
+    allowedHrefs: (request.navigation ?? []).map((entry) => entry.href),
+  });
   if (errors.length > 0) return { ok: false, error: errors.join('; ') };
 
   return {
@@ -466,7 +511,10 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
     request.brand?.title ? `Brand title: ${request.brand.title} (read it as this.brand.title — never hardcode)` : '',
     request.brand?.logoUrl ? `Brand logo: ${request.brand.logoUrl} (rendered by this.renderBrand())` : '',
     baseHandled.length ? `Actions provided by the base (call this.renderActions()): ${baseHandled.join(', ')}` : '',
-    ownHandled.length ? `Actions YOU must render in the band: ${ownHandled.join(', ')}` : '',
+    ownHandled.length
+      ? `Actions YOU must render in the band: ${ownHandled.join(', ')}. They have NO route: render a `
+        + `<button> whose @click calls this.emitHeaderAction('<action>') — never this.navigateTo and never an href.`
+      : '',
     request.navigation?.length
       ? `Navigation entries available (render with this.renderNavLinks()): ${request.navigation.map((entry) => entry.label).join(', ')}`
       : 'No navigation entries: do not invent links.',

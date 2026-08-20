@@ -54,11 +54,12 @@ flow.json  spec.md  README.md          the design record — spec first
 agentChooseMolecules.ts                root: entry, phase-1 planting, and the fan-out
 helpers/chTypes.ts                     pure: anchors, sentinel, prompt measurement
 helpers/chCatalog.ts                   the only module that reads disk: catalog + l4 paths
+helpers/chExtract.ts                   pure: a catalog level parsed from its source text
 helpers/chRootPlan.ts                  the c0-classify answer, as the steps read it
 schemas/                               the two tool schemas
 steps/c1-groups/  steps/c2-molecules/  steps/c3-report/
 ```
 
-Tests: `gate.test.ts` in both LLM steps, `report.test.ts`, `helpers/chTypes.test.ts` and
-`helpers/chPrompts.test.ts` (the `modelType` marker check `skills/modelTypes.md` makes mandatory, plus
-the invariant that no prompt of this agent may contain a molecule tag). All pure, all in CI, 44 in total.
+Tests: `gate.test.ts` in both LLM steps, `report.test.ts`, `helpers/chTypes.test.ts`,
+`helpers/chExtract.test.ts` and `helpers/chPrompts.test.ts` (the `modelType` marker check `skills/modelTypes.md` makes mandatory, plus
+the invariant that no prompt of this agent may contain a molecule tag). All pure, all in CI, 56 in total.

@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   buildGenerateHeaderHumanPrompt,
   buildHeaderSource,
+  findInventedRoutes,
   headerPaths,
   normalizeHeaderRequest,
   pointHeaderProfileAtProject,
@@ -14,7 +15,9 @@ import {
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
 
-const PROJECT = 102051;
+// Fictitious project/module: the fixtures must not depend on a real project in the workspace
+// (a reference project can be renamed, republished or dropped at any time).
+const PROJECT = 999999;
 
 const validParts: GeneratedHeaderParts = {
   bandHtml: [
@@ -40,11 +43,11 @@ function withBandHtml(bandHtml: string): GeneratedHeaderParts {
 
 test('paths and tag follow the convertFileToTag rule', () => {
   const paths = headerPaths(PROJECT);
-  assert.equal(paths.fileReference, '_102051_/l2/layout/appHeader.ts');
+  assert.equal(paths.fileReference, '_999999_/l2/layout/appHeader.ts');
   assert.equal(paths.source, 'l2/layout/appHeader.ts');
-  assert.equal(paths.entrypoint, '/_102051_/l2/layout/appHeader.js');
-  assert.equal(paths.tag, 'layout--app-header-102051');
-  assert.equal(paths.className, 'AppHeader102051');
+  assert.equal(paths.entrypoint, '/_999999_/l2/layout/appHeader.js');
+  assert.equal(paths.tag, 'layout--app-header-999999');
+  assert.equal(paths.className, 'AppHeader999999');
 });
 
 // ── request ────────────────────────────────────────────────────────────────
@@ -53,7 +56,7 @@ test('the entry needs a project and something to design from', () => {
   assert.throws(() => normalizeHeaderRequest('nope'), /JSON object/);
   assert.throws(() => normalizeHeaderRequest({ brief: 'x' }), /projectId/);
   assert.throws(() => normalizeHeaderRequest({ projectId: PROJECT }), /brief and\/or a brand.title/);
-  assert.ok(normalizeHeaderRequest({ projectId: PROJECT, brand: { title: 'Cafe Flow' } }));
+  assert.ok(normalizeHeaderRequest({ projectId: PROJECT, brand: { title: 'Sample App' } }));
 });
 
 test('unknown actions and tokens are dropped, the canonical order is kept', () => {
@@ -62,23 +65,23 @@ test('unknown actions and tokens are dropped, the canonical order is kept', () =
     brief: 'clean and warm',
     actions: ['user', 'language', 'teleport'],
     tokens: ['--ds-color-nav-bg', 'nav-bg'],
-    navigation: [{ label: 'Pedidos', href: '/cafeFlow/pedidos' }, { label: '', href: '/x' }],
+    navigation: [{ label: 'Items', href: '/sampleModule/items' }, { label: '', href: '/x' }],
   });
   assert.deepEqual(req.actions, ['language', 'user']);
   assert.deepEqual(req.tokens, ['--ds-color-nav-bg']);
-  assert.deepEqual(req.navigation, [{ label: 'Pedidos', href: '/cafeFlow/pedidos' }]);
+  assert.deepEqual(req.navigation, [{ label: 'Items', href: '/sampleModule/items' }]);
   assert.equal(req.commit, false);
 });
 
 test('the prompt says which actions the base covers and which the model must render', () => {
   const prompt = buildGenerateHeaderHumanPrompt(normalizeHeaderRequest({
     projectId: PROJECT,
-    brand: { title: 'Cafe Flow' },
+    brand: { title: 'Sample App' },
     actions: ['language', 'user'],
   }));
   assert.match(prompt, /Actions provided by the base[^\n]*language/);
   assert.match(prompt, /Actions YOU must render[^\n]*user/);
-  assert.match(prompt, /layout--app-header-102051/);
+  assert.match(prompt, /layout--app-header-999999/);
 });
 
 // ── validation ─────────────────────────────────────────────────────────────
@@ -104,16 +107,40 @@ test('the element plumbing is off limits', () => {
 });
 
 test('navigation must go through the shell protocol', () => {
-  const rawHref = validateHeaderParts(withBandHtml('${this.renderAsideToggle()}<a href="/cafeFlow/pedidos">Pedidos</a>'));
+  const rawHref = validateHeaderParts(withBandHtml('${this.renderAsideToggle()}<a href="/sampleModule/items">Items</a>'));
   assert.ok(rawHref.some((error) => error.includes('handleNavigate')), rawHref.join('; '));
 
   const location = validateHeaderParts(withBandHtml('${this.renderAsideToggle()}<button @click=${() => window.location.assign("/x")}>x</button>'));
   assert.ok(location.some((error) => error.includes('window.location')), location.join('; '));
 
   assert.deepEqual(
-    validateHeaderParts(withBandHtml('${this.renderAsideToggle()}<a href="/cafeFlow" @click=${this.handleNavigate}>Home</a>')),
+    validateHeaderParts(
+      withBandHtml('${this.renderAsideToggle()}<a href="/sampleModule" @click=${this.handleNavigate}>Home</a>'),
+      { allowedHrefs: ['/sampleModule'] },
+    ),
     [],
   );
+});
+
+test('a route the model invented is rejected (the /profile button that shipped once)', () => {
+  const invented = validateHeaderParts(withBandHtml(
+    "${this.renderAsideToggle()}<button @click=${() => this.navigateTo('/profile')}>Perfil</button>",
+  ), { allowedHrefs: ['/sampleModule'] });
+  assert.ok(invented.some((error) => error.includes('"/profile"')), invented.join('; '));
+
+  // An action with no route goes through the event instead.
+  assert.deepEqual(
+    validateHeaderParts(withBandHtml(
+      "${this.renderAsideToggle()}${this.hasAction('user') ? html`<button @click=${() => this.emitHeaderAction('user')}>x</button>` : nothing}",
+    )),
+    [],
+  );
+});
+
+test('invented routes are found in hrefs and in navigateTo alike', () => {
+  assert.deepEqual(findInventedRoutes('<a href="/a">a</a> ${this.navigateTo("/b")}', ['/a']), ['/b']);
+  assert.deepEqual(findInventedRoutes('<a href=${entry.href}>x</a>'), [], 'a binding is not a literal route');
+  assert.deepEqual(findInventedRoutes('<a href="https://x.dev/y">x</a>'), [], 'external links are not routes');
 });
 
 test('colors must go through a DS role token', () => {
@@ -173,11 +200,11 @@ test('the i18n block must be complete and actually used', () => {
 
 test('the assembled source carries the skeleton the model never writes', () => {
   const source = buildHeaderSource(PROJECT, validParts);
-  assert.match(source, /^\/\/\/ <mls fileReference="_102051_\/l2\/layout\/appHeader\.ts"/u);
+  assert.match(source, /^\/\/\/ <mls fileReference="_999999_\/l2\/layout\/appHeader\.ts"/u);
   assert.match(source, /import \{ html \} from 'lit';/u);
   assert.match(source, /import \{ AuraHeaderBase \} from '\/_102033_\/l2\/shared\/layout\/aura-header-base\.js';/u);
-  assert.match(source, /export class AppHeader102051 extends AuraHeaderBase \{/u);
-  assert.match(source, /customElements\.define\('layout--app-header-102051', AppHeader102051\);/u);
+  assert.match(source, /export class AppHeader999999 extends AuraHeaderBase \{/u);
+  assert.match(source, /customElements\.define\('layout--app-header-999999', AppHeader999999\);/u);
   assert.match(source, /protected renderBand\(\) \{/u);
   assert.match(source, /protected bandCss\(\): string \{\n {4}const tag = this\.localName;/u);
   assert.match(source, /\/\/\/ \*\*collab_i18n_start\*\*/u);
@@ -202,15 +229,15 @@ test('markdown fences around the fragments are stripped', () => {
 
   assert.ok(sanitized.ok, sanitized.error);
   assert.equal(sanitized.value?.source.includes('```'), false);
-  assert.equal(sanitized.value?.paths.tag, 'layout--app-header-102051');
+  assert.equal(sanitized.value?.paths.tag, 'layout--app-header-999999');
 });
 
 // ── l5/config.json ─────────────────────────────────────────────────────────
 
-/** Shape of a real client config (mls-102051): defaultAura + studio, and a custom aside. */
+/** Shape a client config has in practice: defaultAura + studio, plus a project-owned aside. */
 function clientConfig() {
   return {
-    defaultProjectId: '102051',
+    defaultProjectId: '999999',
     clientShell: {
       mode: 'spa',
       activeProfile: 'production',
@@ -243,7 +270,7 @@ test('defaultAura is repointed at the project header, and nothing else moves', (
   const config = clientConfig();
   const written = pointHeaderProfileAtProject(config, {
     paths: headerPaths(PROJECT),
-    brand: { title: 'Cafe Flow' },
+    brand: { title: 'Sample App' },
     actions: ['language'],
   });
 
@@ -252,12 +279,12 @@ test('defaultAura is repointed at the project header, and nothing else moves', (
   assert.equal(written.previousTag, 'collab-aura-header');
   assert.equal(header.activeProfile, 'defaultAura');
   assert.deepEqual(header.profiles.defaultAura.renderer, {
-    entrypoint: '/_102051_/l2/layout/appHeader.js',
+    entrypoint: '/_999999_/l2/layout/appHeader.js',
     source: 'l2/layout/appHeader.ts',
-    tag: 'layout--app-header-102051',
+    tag: 'layout--app-header-999999',
   });
   assert.equal(header.profiles.defaultAura.heightPx, AURA_HEADER_HEIGHT_PX);
-  assert.deepEqual(header.profiles.defaultAura.brand, { title: 'Cafe Flow' });
+  assert.deepEqual(header.profiles.defaultAura.brand, { title: 'Sample App' });
   assert.deepEqual(header.profiles.defaultAura.props, { actions: ['language'] });
 
   // The studio profile and the aside are untouched (Ctrl+Alt+S keeps working).
@@ -273,7 +300,7 @@ test('the input config document is not mutated', () => {
 });
 
 test('regenerating without a brand clears the stale one', () => {
-  const first = pointHeaderProfileAtProject(clientConfig(), { paths: headerPaths(PROJECT), brand: { title: 'Cafe Flow' }, actions: ['language'] });
+  const first = pointHeaderProfileAtProject(clientConfig(), { paths: headerPaths(PROJECT), brand: { title: 'Sample App' }, actions: ['language'] });
   const second = pointHeaderProfileAtProject(first.config, { paths: headerPaths(PROJECT) });
   const profile = (second.config as any).clientShell.regions.header.profiles.defaultAura;
   assert.equal(profile.brand, undefined);
@@ -293,7 +320,7 @@ test('a config with no header region gets one', () => {
   const written = pointHeaderProfileAtProject({ clientShell: { mode: 'spa', regions: {} } }, { paths: headerPaths(PROJECT) });
   const header = (written.config as any).clientShell.regions.header;
   assert.equal(header.activeProfile, 'defaultAura');
-  assert.equal(header.profiles.defaultAura.renderer.tag, 'layout--app-header-102051');
+  assert.equal(header.profiles.defaultAura.renderer.tag, 'layout--app-header-999999');
   assert.equal(header.profiles.defaultAura.heightPx, AURA_HEADER_HEIGHT_PX);
 });
 
@@ -302,10 +329,54 @@ test('a missing config.json is an error, not a silent no-op', () => {
 });
 
 test('pointing twice is idempotent', () => {
-  const options = { paths: headerPaths(PROJECT), brand: { title: 'Cafe Flow' }, actions: ['language' as const] };
+  const options = { paths: headerPaths(PROJECT), brand: { title: 'Sample App' }, actions: ['language' as const] };
   const first = pointHeaderProfileAtProject(clientConfig(), options);
   const second = pointHeaderProfileAtProject(first.config, options);
   assert.deepEqual(second.config, first.config);
+});
+
+test('the logo intent defaults to keep, and only accepts the two explicit modes', () => {
+  const base = { projectId: PROJECT, brand: { title: 'Sample App' } };
+  assert.equal(normalizeHeaderRequest(base).logo, 'keep');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'draw it' }).logo, 'keep');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'generate', logoStyle: 'mark', logoBrief: 'cup' }).logo, 'generate');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'none' }).logo, 'none');
+  const req = normalizeHeaderRequest({ ...base, logo: 'generate', logoStyle: 'mark', logoBrief: 'cup and bean' });
+  assert.equal(req.logoStyle, 'mark');
+  assert.equal(req.logoBrief, 'cup and bean');
+});
+
+test('regenerating the header keeps the mark the logo agent drew', () => {
+  const svg = '<svg viewBox="0 0 32 32"><rect fill="currentColor" width="8" height="8"/></svg>';
+  const withMark = clientConfig();
+  (withMark as any).clientShell.regions.header.profiles.defaultAura.brand = { title: 'Sample App', logoSvg: svg };
+
+  const again = pointHeaderProfileAtProject(withMark, {
+    paths: headerPaths(PROJECT),
+    brand: { title: 'Sample App', subtitle: 'Operations' },
+  });
+  const brand = (again.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.logoSvg, svg, 'the mark belongs to the logo agent, not to the header request');
+  assert.equal(brand.subtitle, 'Operations', 'the rest of the brand still comes from the request');
+
+  // dropLogo is the explicit way out.
+  const dropped = pointHeaderProfileAtProject(withMark, {
+    paths: headerPaths(PROJECT),
+    brand: { title: 'Sample App' },
+    dropLogo: true,
+  });
+  assert.equal((dropped.config as any).clientShell.regions.header.profiles.defaultAura.brand.logoSvg, undefined);
+});
+
+test('a brand-less regeneration still keeps the mark', () => {
+  const svg = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="8" fill="currentColor"/></svg>';
+  const withMark = clientConfig();
+  (withMark as any).clientShell.regions.header.profiles.defaultAura.brand = { title: 'Sample App', logoSvg: svg };
+
+  const again = pointHeaderProfileAtProject(withMark, { paths: headerPaths(PROJECT) });
+  const brand = (again.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.logoSvg, svg);
+  assert.equal(brand.title, undefined, 'a brand the request omits is not invented');
 });
 
 test('a contract violation is reported instead of written', () => {

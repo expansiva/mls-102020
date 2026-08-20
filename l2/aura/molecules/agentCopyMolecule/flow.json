@@ -1,0 +1,249 @@
+{
+  "flowId": "agentCopyMolecule",
+  "schemaVersion": "2026-08-19-copy-v1",
+  "specFirst": "This file was written BEFORE the code, and THIS FILE plus spec.md and the step CHANGELOG.md are the design record — there is no other document to look for. The code is validated against it. Maintenance changes the spec FIRST, then the code. Two decisions of 2026-08-18/19 are the ones a maintainer has to know, and both are stated in spec.md: the base libraries stay English-only and the translation lives in the copy, and the copy keeps the origin name because tag resolution searches the current project first.",
+  "description": "Standalone agent that COPIES the real code of a molecule from a dependency project into the CURRENT project, so the client owns it and can translate it. It exists because of the team decision of 2026-08-18: the base molecule libraries (102040, 102054, 102055) stay English-only and the translation lives in the copy, inside the client project. The copy keeps the SAME name and tag as the origin — tag resolution searches the current project before its dependencies (resolveNewTag in mls-102033/l2/utils.ts), so the copy shadows the base. Bodies are copied VERBATIM: only the mls header changes, plus one copiedFrom provenance line. ZERO generation LLM calls — the only LLM calls are the cheap rootPlan (language + step titles) and the final summary.",
+  "principles": [
+    "Verbatim is the rule, not an optimization. The molecule body is never rewritten, because the collab_i18n block IS the reason for the copy: any regeneration risks the very thing the client asked for. The only edits are the mls header fileReference and the inserted copiedFrom line.",
+    "Deterministic to the limit: names, paths, shell chain, collision detection, group expansion and every file write are code. The single judgment call in the pipeline is the human-facing summary.",
+    "The ORIGIN is never touched. Not the file, not the index of its group, not its .defs. Every write lands in mls.actualProject.",
+    "Fail early, fail complete: admission validates the ENTIRE item list before any write, and reports ALL errors at once. Half-written batches are the diagnostic cost we refuse to pay again.",
+    "A collision is a human decision, never a silent overwrite and never a hard failure: the run stops at a checkpoint and the user chooses. Cancel writes nothing; 'ignore existing ones' is an explicit, reported partial result.",
+    "Freezing is registered, because it cannot be reconstituted later. A real copy stops receiving base fixes; the copiedFrom line is what lets a future Improve report drift.",
+    "Step is the maintenance unit: one folder per step (hook, gate + test, readme, CHANGELOG; prompt.md only where there is an LLM).",
+    "Own helpers, nothing promoted to shared/: the Variant is not touched by this agent's existence (control item 0.4). From shared/ this agent only CONSUMES what is already generic there: mentionEntry, widgetDecisionClarification(+Logic), llmTool."
+  ],
+  "conventions": {
+    "input": "Three formats, one own parser (helpers/cOrigin, pure + tested), reached through TWO doors: (a) the preview payload { fullName, page, prompt, position }, like agentNewMoleculeVariant; (b) prose typed in collab-messages, like agentImproveMolecule2 — both agents declare the same scope ['l2_preview'], so the doors differ only in the parser. The three formats: ONE molecule ('@@agentCopyMolecule copie o componente _102040_/l2/molecules/groupviewtable/ml-inline-edit-table'), a WHOLE GROUP (ref without the molecule segment: '_102040_/l2/molecules/groupviewtable'), or a LIST of refs (one per line, prose around them ignored). The parser extracts EVERY '_<project>_/l2/molecules/<group>[/<molecule>]' occurrence; surrounding prose becomes notes. A mention carrying NO complete ref fails readable naming the expected format — resolving a molecule by bare shortName is v2. Test mode receives JSON { fileReference | refs[], prompt }.",
+    "destinationProject": "mls.actualProject, always, dynamically — there is no configured destination. The origin project must be a declared dependency of it; in practice the check is readability through mls.stor (same proxy the Variant uses), because a project that is not a dependency has no readable molecules to copy.",
+    "noTheme": "THE central difference from agentNewMoleculeVariant: this agent must NOT require l2/skills/theme.ts in the destination. A client who only wants Portuguese should not have to declare a theme contract to get it.",
+    "naming": "The copy keeps the origin identity: same shortName, same tag, same class name, same group folder — in the destination project. Nothing is suffixed. Consequence: the .less copies verbatim (its root selector already IS the right tag), the .html copies verbatim, and the .defs TagName line stays. Only the mls header changes. The rename machinery exists but is reachable ONLY through the collision checkpoint (single-molecule mode).",
+    "noIndex": "No index step, by decision (control decision 3): the group index of this codebase is an LLM-generated showcase page, and copying its side-effect imports is exactly how a duplicate customElements.define would be created. It is not needed either — the preview resolves each tag found in the page through resolveTagToFile and generates the import from there (aura/services/preview/buildFile.ts), current project first, so the copy loads by being used. Regenerating the destination group page is agentUpdateIndexGroupPage's job, invoked separately.",
+    "shellFlattening": "When the origin is a SHELL (extends something other than MoleculeAuraElement — the 84 molecules of 102054/102055), copying the shell would copy nothing translatable: a shell inherits the parent's collab_i18n. So the copy is FLATTENED: the body comes from the PARENT (the real code, with the i18n block) while the IDENTITY stays the shell's (filename, tag, class) — otherwise the copy would shadow the base molecule instead of the themed one the client actually uses. Inheritance depth is assumed to be 1 (today every base molecule extends MoleculeAuraElement directly); a shell of a shell fails readable.",
+    "flattenedSources": "In the flattened path each artifact has a defined source, measured 2026-08-19: .ts = the PARENT (identity swapped to the shell's tag + class); .less = the SHELL, always (it is the appearance the client chose — never the parent sheet); .html = the SHELL; .defs.ts = the SHELL when it exists, else the PARENT with the TagName line swapped to the shell tag. The branch is not hypothetical: all 42 shells of 102055 own a .defs.ts, while 102054 owns exactly 1 of 42.",
+    "collision": "A destination item collides when ANY of its 4 files already exists (the Variant's criterion, v1-bootstrap/gate.ts). A collision is recorded by c1, never fails it, and is resolved by c2. Policies: ONE molecule => replace (warning: discards local changes INCLUDING translations) | cancel | rename (new shortName, validated against a fresh collision). BATCH (group or list) => global policy: replace all | ignore existing ones (copies only what does not exist locally) | cancel the operation. Rename is single-molecule only, and the widget says so.",
+    "copiedFrom": "Provenance line inserted right after the mls header of the copied .ts and .defs.ts: '// copiedFrom: _<originProject>_/l2/molecules/<group>/<shortName> @ <YYYY-MM-DD>'. In the flattened path it names the SHELL that was asked for and the PARENT the body came from. It is written in v1 even though nothing reads it yet, because it cannot be reconstituted later — a drift report in Improve is v2.",
+    "contextArtifact": "l4/agentCopy/<runKey>/context.json in the destination project. Top level: destination project, entry mode (single | group | list), userLanguage, userNotes, copiedFrom date. items[]: origin { ref, project, group, shortName, tag, className, chain { isShell, parentRef, parentClassName } }, destination { files { ts, defs, less, html } }, collision { files[], copiedFrom of the existing copy when readable }, rename (null by default), skip (false by default). Written ONCE by c1; every later step reads it from disk and never re-derives. Documented exception: c2 writes back the rename and the skip flags — the only step that mutates the context.",
+    "runKey": "The batch has no single shortName to name its work folder, so the run key names it, following the IM2 precedent: planted by the root, recovered by the steps (getImRunKey in agentImproveMolecule2/helpers/imRootPlan.ts is the pattern), with artifacts under l4/agentCopy/<runKey>/.",
+    "answers": "l4/agentCopy/<runKey>/answers.json — the collision checkpoint answer, written by c2 (t2-clarify pattern).",
+    "trace": "l4/agentCopy/<runKey>/trace-<planId>-<attempt>.json.",
+    "gates": "1 gate = 1 file = 1 .test.ts inside the step folder. Every writing step here is deterministic, so there is NO retry anywhere: a gate failure is a readable immediate failure. The only non-blocking step is c5-demo.",
+    "doneAnchors": "Every step emits a completed result step with planId 'cN-done'; downstream depends only on anchors. This includes the paths where nothing happens: c2 with zero collisions auto-completes and emits c2-done. A path that writes nothing and emits no anchor is how a run goes green and hangs (agentImproveMolecule2/steps/i4-inherit, 2026-08-10).",
+    "testsNotCopied": "The origin .test.ts never travels with the copy. Copying it would give a fast red when the client edits the copy, but it also copies a suite the client did not ask to own.",
+    "i18n": "Step titles come localized from the root plan (userLanguage read from the user's prose). No hardcoded language strings in step code.",
+    "v2ExplicitlyOut": "No translation at copy time (reading the project languages is the natural evolution — control backlog); no index generation; no rebase/re-copy with diff; no drift report; no routing from New/Improve; no molecule lookup by bare shortName; no 'skip invalid items and report' variant of admission."
+  },
+  "modelAliases": {
+    "rootPlan": "classifier",
+    "summary": "general"
+  },
+  "folderLayout": {
+    "agentCopyMolecule.ts": "root: parses the mention through both doors, runs the cheap rootPlan (userLanguage + localized step titles + runKey), plants the step tree",
+    "flow.json": "this spec",
+    "spec.md": "human-readable rationale (pt-BR); links the analysis and the control",
+    "README.md": "overview + how to invoke/test",
+    "helpers/": "cFs.ts (paths + stor mechanics + atomic write + trace; ADAPTED COPY of vFs.ts, keeping the re-run resurrection lesson), cOrigin.ts (ref parsing for the 3 formats, group expansion, shell chain detection), cTemplates.ts (header swap, copiedFrom insertion, identity swap for the flattened and renamed paths), cContext.ts (the context.json contract), cSteps.ts (intents, done anchors)",
+    "schemas/": "only if c6-summary ends up needing a tool schema; the deterministic steps have none",
+    "steps/c1-bootstrap/": "readme.md, agentCopyBootstrap.ts (no LLM), gate.ts, gate.test.ts, CHANGELOG.md",
+    "steps/c2-clarify/": "readme.md, agentCopyClarify.ts (checkpoint, no generation LLM), gate.ts, gate.test.ts, CHANGELOG.md",
+    "steps/c3-copy/": "readme.md, agentCopyFiles.ts (no LLM), gate.ts, gate.test.ts, CHANGELOG.md",
+    "steps/c4-less/": "readme.md, agentCopyLess.ts (no LLM), gate.ts, gate.test.ts, CHANGELOG.md",
+    "steps/c5-demo/": "readme.md, agentCopyDemo.ts (no LLM, non-blocking), gate.ts, gate.test.ts, CHANGELOG.md",
+    "steps/c6-summary/": "readme.md, agentCopySummary.ts, prompt.md (modelType general), CHANGELOG.md"
+  },
+  "treeOverview": [
+    "root (rootPlan, cheap LLM: language + titles + runKey) -> c1-bootstrap -> c2-clarify -> c3-copy -> c4-less -> c5-demo -> c6-summary",
+    "strictly sequential; each arrow is a cN-done anchor dependency",
+    "the batch does NOT fan out: c3, c4 and c5 iterate over context.items inside the same step — a deterministic step writing N files is the same mechanism as writing 2"
+  ],
+  "steps": [
+    {
+      "planId": "c1-bootstrap",
+      "agentName": "agentCopyBootstrap",
+      "type": "agent",
+      "noLlm": true,
+      "dependsOn": [],
+      "goal": "Deterministic admission + context assembly, for the WHOLE item list before anything is written. Parse the mention into refs (single | group | list); expand a group-only ref by scanning mls.stor for the origin project's group folder (extension '.ts', excluding 'index' and '.test.ts' explicitly — '.defs.ts' is its own extension in the stor and already falls out); for each item read the origin .ts and detect the shell chain (extends != MoleculeAuraElement => resolve the parent through its import); derive the destination paths (same names, destination project); detect collisions. Write context.json. NOTHING is written into l2 by this step.",
+      "input": [
+        "the mention (preview payload or prose) + the rootPlan output"
+      ],
+      "output": {
+        "result": "one line per item: origin -> destination, plus the collision count",
+        "savedArtifact": [
+          "l4/agentCopy/<runKey>/context.json"
+        ]
+      },
+      "gate": {
+        "file": "steps/c1-bootstrap/gate.ts",
+        "checks": [
+          "at least one complete ref was parsed (otherwise: readable failure naming the expected format '_<project>_/l2/molecules/<group>[/<molecule>]')",
+          "every ref parses, and a group-only ref expanded to at least one molecule",
+          "every origin .ts is readable (else: the origin project must be a declared dependency of the current project)",
+          "every shell chain resolves: the parent ref is readable and the parent is NOT itself a shell (depth 1; deeper fails readable)",
+          "the class name could be extracted from every origin .ts",
+          "group folder slugs are valid",
+          "the assembled context is complete: every item has its 4 destination paths and a copiedFrom ref",
+          "ALL errors are reported at once — fail-fast on the list, not on the first item"
+        ],
+        "onFail": "NO retry (deterministic): fail readable immediately, before any write"
+      },
+      "doneAnchor": "c1-done"
+    },
+    {
+      "planId": "c2-clarify",
+      "agentName": "agentCopyClarify",
+      "type": "agent",
+      "dependsOn": [
+        "c1-done"
+      ],
+      "goal": "The pipeline's ONLY human stop, and it only stops when there is something to decide. ALWAYS planted: with zero collisions it auto-completes and emits c2-done without asking anything. With collisions it mounts the shared widget-decision-clarification-102020 (checkpoint mechanics of agentNewTheme/steps/t2-clarify: the clarification payload is kept by afterPromptStep, the widget is mounted in beforeClarificationStep, the answer is written to answers.json, the anchor lands before the update-status). ONE molecule: replace | cancel | rename (the new shortName arrives through the widget's free-text field). BATCH: replace all | ignore existing ones | cancel the operation — no rename, and the widget says renaming means running item by item. The consequences are WRITTEN in the widget, including that replacing discards local changes INCLUDING translations, with the existing copy's copiedFrom date when it is readable. Cancel fails the step: the pipeline stops with nothing written. The answer is written back into context.json (the documented exception): rename on the single item, skip on each colliding item.",
+      "input": [
+        "context.json",
+        "the collision list per item"
+      ],
+      "output": {
+        "result": "the chosen policy, plus the list of items that will be skipped",
+        "savedArtifact": [
+          "l4/agentCopy/<runKey>/answers.json",
+          "context.json (rename/skip written back)"
+        ]
+      },
+      "gate": {
+        "file": "steps/c2-clarify/gate.ts",
+        "checks": [
+          "the answer envelope is valid and the chosen option is one of the offered ones for THIS mode",
+          "rename: only in single mode, a valid ml-* shortName, and it must not collide in turn",
+          "the written-back context is coherent: skip flags exactly on the colliding items, rename only on the single item",
+          "zero collisions => auto-complete emitted the anchor and touched nothing"
+        ],
+        "onFail": "NO retry: fail readable. Cancel is NOT a gate failure — it is a readable stop with nothing written."
+      },
+      "doneAnchor": "c2-done"
+    },
+    {
+      "planId": "c3-copy",
+      "agentName": "agentCopyFiles",
+      "type": "agent",
+      "noLlm": true,
+      "dependsOn": [
+        "c2-done"
+      ],
+      "goal": "FOR EACH item not skipped: write the copy's .ts and .defs.ts. Standard path: body verbatim, only the mls header fileReference swapped to the destination file and the copiedFrom line inserted after it; the .defs.ts likewise, with the TagName line left ALONE (same tag). Flattened path: the .ts body comes from the PARENT with the SHELL's identity applied (tag in @customElement, exported class name) and the .defs.ts comes from the shell when it exists, else from the parent with the TagName line swapped. Renamed path (single mode only): the identity swap applies with the new shortName. The .test.ts is never copied. Atomic write + trace.",
+      "input": [
+        "context.json",
+        "origin (and parent) .ts and .defs.ts read from mls.stor"
+      ],
+      "output": {
+        "result": "written file refs per item",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.ts",
+          "l2/molecules/<group>/<shortName>.defs.ts"
+        ]
+      },
+      "gate": {
+        "file": "steps/c3-copy/gate.ts",
+        "checks": [
+          "the header of each written file references the DESTINATION project and file (M2 lesson: a wrong project in the header breaks file identity)",
+          "the copiedFrom line is present, and names the shell AND the parent in the flattened path",
+          "the collab_i18n block is byte-for-byte identical to the source block — this is the whole point of the agent",
+          "tag and class in the written .ts match the context (origin identity by default, shell identity when flattened, new identity when renamed), and no occurrence of the parent tag survives a flatten",
+          ".defs.ts TagName equals the copy's tag",
+          "skipped items wrote NOTHING"
+        ],
+        "onFail": "NO retry (deterministic): fail readable"
+      },
+      "doneAnchor": "c3-done"
+    },
+    {
+      "planId": "c4-less",
+      "agentName": "agentCopyLess",
+      "type": "agent",
+      "noLlm": true,
+      "dependsOn": [
+        "c3-done"
+      ],
+      "goal": "FOR EACH item not skipped: copy the .less. Standard path: verbatim, header swapped — the root selector already IS the copy's tag, because the copy keeps the origin name. Flattened path: the source is the SHELL's sheet, never the parent's — it is the appearance the client chose. Renamed path: the root selector is re-scoped to the new tag.",
+      "input": [
+        "context.json",
+        "origin (or shell) .less"
+      ],
+      "output": {
+        "result": "written file refs per item",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.less"
+        ]
+      },
+      "gate": {
+        "file": "steps/c4-less/gate.ts",
+        "checks": [
+          "the sheet's root selector equals the copy's tag",
+          "in the flattened path, the content came from the shell sheet (and not from the parent's)",
+          "header references the destination file",
+          "skipped items wrote NOTHING"
+        ],
+        "onFail": "NO retry: fail readable"
+      },
+      "doneAnchor": "c4-done"
+    },
+    {
+      "planId": "c5-demo",
+      "agentName": "agentCopyDemo",
+      "type": "agent",
+      "noLlm": true,
+      "dependsOn": [
+        "c4-done"
+      ],
+      "goal": "FOR EACH item not skipped: copy the origin .html (the molecule's sibling .html IS its demo page). Verbatim, with NO header swap — measured 2026-08-19: 0 of 153 molecule .html files carry an mls header. Flattened path: the shell's .html. Renamed path: every occurrence of the tag is substituted. A failure here NEVER blocks the summary: the anchor lands with ok:false and c6 reports it.",
+      "input": [
+        "context.json",
+        "origin (or shell) .html"
+      ],
+      "output": {
+        "result": "written file refs per item, or the failure notice",
+        "savedArtifact": [
+          "l2/molecules/<group>/<shortName>.html"
+        ]
+      },
+      "gate": {
+        "file": "steps/c5-demo/gate.ts",
+        "checks": [
+          "the written .html is non-empty and contains the copy's tag",
+          "in the renamed path, no occurrence of the old tag survives",
+          "skipped items wrote NOTHING"
+        ],
+        "onFail": "NO retry; the anchor is emitted with ok:false so c6-summary still runs and reports the demo failure"
+      },
+      "doneAnchor": "c5-done"
+    },
+    {
+      "planId": "c6-summary",
+      "agentName": "agentCopySummary",
+      "type": "agent",
+      "model": "summary",
+      "dependsOn": [
+        "c5-done"
+      ],
+      "goal": "The only judgment call of the pipeline, and it is a cheap one: the closing message in the user's language. It carries, for the batch, a per-item table of what was copied and what was ignored for already existing; where each copy came from (copiedFrom); the FREEZING warning (the copy no longer receives base fixes); the SHADOWING warning (an explicit import of the base module — including through the base group's index.ts, which side-effect-imports the whole group — loads both modules and breaks on the duplicate customElements.define); and, above all, the POINTER TO THE collab_i18n BLOCK of the copy, which is the reason the agent exists: tell the user exactly where to put the pt. It does NOT talk about the group index (decision 3).",
+      "input": [
+        "context.json",
+        "the outcome of each step"
+      ],
+      "output": {
+        "result": "human summary",
+        "savedArtifact": []
+      }
+    }
+  ],
+  "acceptance": {
+    "regression": "zero: no file changed outside this folder (implementation) and outside the destination project (execution); agentNewMoleculeVariant is not touched at all, since nothing was promoted to shared/ (control 0.4). The ORIGIN is never written.",
+    "environment": "The destination is the user's current project, so the acceptance run needs that project to (a) declare the origin project as a dependency and (b) offer 'pt' in the preview language menu — which comes from the module (l4/<module>/module.defs.ts via readModuleLanguages), not from l5/project.json.",
+    "test1": "THE test of the premise: copy ml-indeterminate-spinner (one i18n key, 'loading'), add a pt block to the copy's collab_i18n, switch the runtime to pt and see Portuguese — with NO index anywhere.",
+    "test2": "Flattened shell: copy ml-button-standard-brutal (102054). The copy carries ButtonStandardMolecule's real code under the brutal identity, plus the brutal .less; the demo looks identical to the shell's.",
+    "test3": "Collision, single mode: re-run test1 and exercise replace (with the loss warning), cancel (nothing written) and rename (files, tag, class, root selector and TagName all coherent).",
+    "test4": "Readable failures: origin that is not a dependency; origin that does not exist; shell of a shell (fabricated); mention with no complete ref.",
+    "test5": "Shadowing in practice: the client page resolves the tag to the copy; then, deliberately, import the base module explicitly and record the duplicate-define error — it is what gives the c6 warning its exact wording.",
+    "test6": "Whole group: groupviewtable (12 molecules) => 48 files, no index.",
+    "test7": "Mixed list of 3 groups => 3 copies; and the variant with one invalid ref in the middle => fail-fast listing every error at once.",
+    "test8": "Collision in batch: the 3 global policies (replace all / ignore existing ones / cancel the operation)."
+  }
+}

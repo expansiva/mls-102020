@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   CH_CHARS_PER_TOKEN,
   chCanonicalGroup,
+  chFileRefFromImport,
   chDoneAnchor,
   chEstTokens,
   chGroupArg,
@@ -76,4 +77,29 @@ void test('the group travels in the step args, and a step planted without one sa
   assert.equal(chGroupArg(JSON.stringify({ planId: 'c1-groups' })), '');
   assert.equal(chGroupArg('not json'), '');
   assert.equal(chGroupArg(undefined), '');
+});
+
+void test('an import reference maps to the stor file behind it — .defs is an extension, not a name', () => {
+  assert.deepEqual(chFileRefFromImport('/_102040_/l2/molecules/groupenterdate/index.defs'), {
+    project: 102040,
+    level: 2,
+    folder: 'molecules/groupenterdate',
+    shortName: 'index',
+    extension: '.defs.ts',
+  });
+  assert.deepEqual(chFileRefFromImport('/_102040_/l2/molecules/skill'), {
+    project: 102040,
+    level: 2,
+    folder: 'molecules',
+    shortName: 'skill',
+    extension: '.ts',
+  });
+  // The trailing .ts is tolerated: the same reference is written both ways across the codebase.
+  assert.equal(chFileRefFromImport('_102040_/l2/molecules/skill.ts')?.shortName, 'skill');
+});
+
+void test('anything that is not a project reference is refused instead of guessed', () => {
+  for (const bad of ['', 'https://on.collab.codes/x.js', '/_abc_/l2/x', '/_102040_/molecules/x', '/_102040_/l2/']) {
+    assert.equal(chFileRefFromImport(bad), null, bad);
+  }
 });

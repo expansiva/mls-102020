@@ -14,6 +14,10 @@
 //   * commit: writes `_<proj>_/l2/layout/appHeader.ts` and points the `defaultAura` header profile
 //     of `l5/config.json` at it (renderer entrypoint/source/tag), which is what the shell boots, or
 //   * draft: parks everything in `config.headerDraft` (one-shot, by requestId) for a reviewer.
+//
+// With `logo: 'generate'` the commit also queues agentGenerateLogo as a CHILD step of the current
+// one, so a single call produces header + mark. That agent writes into the same profile's `brand`,
+// and a later header regeneration carries the mark over (it is not the header's to lose).
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
@@ -69,7 +73,8 @@ async function beforePromptImplicit(
   req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
   req.tokens = req.tokens ?? HEADER_ROLES.map((role) => `--ds-color-${role}`);
 
-  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" actions=[${(req.actions ?? []).join(',') || '—'}] commit=${String(req.commit)}`);
+  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] routes=${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
+  if (!req.navigation?.length) console.warn('[agentGenerateHeader] no navigation entries: the header will have no links (and any route it names is rejected)');
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -90,19 +95,37 @@ async function beforePromptImplicit(
   return [addMessageAI];
 }
 
-/** Navigation entries of the project's modules, so the header can offer real links. */
+/** The composed client config (l5/config.json) — the document the runtime actually boots from. */
+async function readClientConfig(projectId: number): Promise<{ storFile: any; config: unknown }> {
+  const fileInfo = { project: projectId, level: 5, folder: '', shortName: 'config', extension: '.json' };
+  const key = mls.stor.getKeyToFile(fileInfo as any);
+  const storFile = mls.stor.files[key];
+  if (!storFile) throw new Error(`l5/config.json not found for project ${projectId}`);
+  const raw = await storFile.getContent();
+  return { storFile, config: typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : undefined };
+}
+
+/**
+ * Real routes of the project, from `l5/config.json > projects[id].modules[].navigation` — the same
+ * list the shell hands the aside. This is also the allow-list the validation checks the generated
+ * band against: a header must never name a route that does not exist.
+ */
 async function readProjectNavigation(projectId: number): Promise<Array<{ label: string; href: string }>> {
   try {
-    const config = await getConfigProject(projectId) as { navigation?: unknown; modules?: unknown } | undefined;
-    const modules = Array.isArray(config?.modules) ? config.modules : [];
+    const { config } = await readClientConfig(projectId);
+    const projects = (config as { projects?: Record<string, { modules?: unknown }> } | undefined)?.projects ?? {};
+    const owner = projects[String(projectId)] ? [projects[String(projectId)]] : Object.values(projects);
     const entries: Array<{ label: string; href: string }> = [];
-    for (const module of modules) {
-      const navigation = (module as { navigation?: unknown }).navigation;
-      if (!Array.isArray(navigation)) continue;
-      for (const entry of navigation) {
-        const label = typeof (entry as { label?: unknown }).label === 'string' ? (entry as { label: string }).label : '';
-        const href = typeof (entry as { href?: unknown }).href === 'string' ? (entry as { href: string }).href : '';
-        if (label && href) entries.push({ label, href });
+    for (const project of owner) {
+      const modules = Array.isArray(project?.modules) ? project.modules : [];
+      for (const module of modules) {
+        const navigation = (module as { navigation?: unknown }).navigation;
+        if (!Array.isArray(navigation)) continue;
+        for (const entry of navigation) {
+          const label = typeof (entry as { label?: unknown }).label === 'string' ? (entry as { label: string }).label : '';
+          const href = typeof (entry as { href?: unknown }).href === 'string' ? (entry as { href: string }).href : '';
+          if (label && href) entries.push({ label, href });
+        }
       }
     }
     return entries;
@@ -134,17 +157,27 @@ async function afterPromptStep(
     if (!sanitized.ok || !sanitized.value) throw new Error(`LLM output rejected: ${sanitized.error || 'invalid result'}`);
 
     const { source, paths, parts } = sanitized.value;
+    let profileName = req.profileName;
     if (!context.isTest) {
       if (req.commit) {
         await saveFile(paths.fileReference, source);
-        await pointConfigAtHeader(req, paths);
+        profileName = await pointConfigAtHeader(req, paths);
       } else {
         await persistDraft(req, source, parts.notes);
       }
     }
 
     console.info(`[agentGenerateHeader] ✓ ${req.commit ? 'wrote' : 'drafted'} ${paths.fileReference} (${source.split('\n').length} lines, tag ${paths.tag})`);
-    return [mkCompleted(context, parentStep, step, hookSequential)];
+    const intents: mls.msg.AgentIntent[] = [];
+    // The mark is drawn by agentGenerateLogo, parented to the CURRENT step (an already-completed
+    // ancestor cannot be modified). Only after a commit: that agent writes into a header profile,
+    // which a draft run has not created yet.
+    if (req.logo === 'generate') {
+      if (req.commit) intents.push(logoStepIntent(context, step, req, profileName));
+      else console.warn('[agentGenerateHeader] logo:"generate" ignored on a draft run — the mark needs a written header profile');
+    }
+    intents.push(mkCompleted(context, parentStep, step, hookSequential));
+    return intents;
   } catch (error) {
     const msg = `[agentGenerateHeader] ${error instanceof Error ? error.message : String(error)}`;
     console.error('✗', msg);
@@ -157,19 +190,14 @@ async function afterPromptStep(
  * the profile the shell boots with, so the project header IS the app's header with nothing in
  * between. The other profiles (e.g. `studio`) stay as they are.
  */
-async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPaths): Promise<void> {
-  const fileInfo = { project: req.projectId, level: 5, folder: '', shortName: 'config', extension: '.json' };
-  const key = mls.stor.getKeyToFile(fileInfo as any);
-  const storFile = mls.stor.files[key];
-  if (!storFile) throw new Error(`l5/config.json not found for project ${req.projectId}`);
-
-  const raw = await storFile.getContent();
-  const current = typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : undefined;
+async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPaths): Promise<string> {
+  const { storFile, config: current } = await readClientConfig(req.projectId);
   const written = pointHeaderProfileAtProject(current, {
     paths,
     brand: req.brand,
     actions: req.actions,
     profileName: req.profileName,
+    dropLogo: req.logo === 'none',
   });
 
   if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
@@ -179,6 +207,55 @@ async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPath
     content: `${JSON.stringify(written.config, null, 2)}\n`,
   });
   console.info(`[agentGenerateHeader] header profile "${written.profileName}" now points at ${paths.tag}${written.previousTag ? ` (was ${written.previousTag})` : ''}`);
+  return written.profileName;
+}
+
+/**
+ * Child step that draws the brand mark.
+ *
+ * Shape follows `mkAgentStep` (agentImplementGenome/planning.ts), which is the working convention for
+ * an agent step: `interaction: null` and a status the planner understands. With no `dependsOn`, that
+ * status is `waiting_human_input` — the same one the genome orchestrator gives its entry group — NOT
+ * `pending`, which means "already prepared" and makes the runtime refuse the step
+ * ("Step not prepared for continueBeforePrompt ... interaction:null").
+ *
+ * Brief and style default to the header's own, so one call needs no extra input.
+ */
+export function logoStepIntent(
+  context: mls.msg.ExecutionContext,
+  step: mls.msg.AIAgentStep,
+  req: GenerateHeaderRequest,
+  profileName?: string,
+): mls.msg.AgentIntentAddStep {
+  const prompt = {
+    projectId: req.projectId,
+    brandTitle: req.brand?.title,
+    brief: req.logoBrief ?? req.brief,
+    style: req.logoStyle ?? 'monogram',
+    profileName,
+    commit: true,
+    requestId: req.requestId ? `${req.requestId}-logo` : undefined,
+  };
+
+  return {
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: step.stepId,
+    step: {
+      type: 'agent',
+      stepId: 0,
+      interaction: null,
+      stepTitle: req.brand?.title ? `Generate logo · ${req.brand.title}` : 'Generate logo',
+      status: 'waiting_human_input',
+      nextSteps: [],
+      agentName: 'agentGenerateLogo',
+      prompt: JSON.stringify(prompt),
+      rags: [],
+      planning: { planId: 'header-logo', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+    } as mls.msg.AIAgentStep,
+  };
 }
 
 /** One-shot channel to a reviewer: config.headerDraft (never composed into config.json). */
@@ -221,7 +298,7 @@ export type Output = {
   result: {
     /** Body of renderBand(): a lit template without the enclosing html tag/backticks. */
     bandHtml: string;
-    /** Extra CSS, every selector scoped with ${tag}. */
+    /** Extra CSS, every selector scoped with tag*/
     bandCss?: string;
     /** locale -> key -> text, for the fixed copy the band renders. */
     messages?: Record<string, Record<string, string>>;
