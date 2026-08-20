@@ -7,8 +7,11 @@
 // ("more geometric", "just the initials") without regenerating the header, because the header reads
 // the brand from the CONFIG — it never inlines the identity into its own source.
 //
-// beforePromptImplicit → reads the brand title from the header profile when absent, sends ONE prompt.
-// afterPromptStep      → validates the SVG (the runtime's own sanitizer has the last word) and either
+// beforePromptImplicit → direct call: reads the brand title from the header profile when absent and
+//   opens a task with ONE generation prompt.
+// beforePromptStep     → same prompt, but for the CHILD STEP agentGenerateHeader queues with
+//   `logo: 'generate'`: a queued step feeds its own prompt (prompt_ready), it does not open a task.
+// afterPromptStep      → validates the SVG (the runtime sanitizer has the last word) and either
 //   * commit: writes `brand.logoSvg` into the header profile of l5/config.json, or
 //   * draft: parks it in `config.logoDraft` (one-shot, by requestId) for a reviewer.
 
@@ -32,7 +35,10 @@ export function createAgent(): IAgentAsync {
     agentFolder: 'aura/agentManageHeader',
     agentDescription: "Draw the project's brand mark as inline SVG for the header profile",
     visibility: 'private',
+    // Two entry points: beforePromptImplicit for a direct call, beforePromptStep for the child step
+    // agentGenerateHeader queues (`logo: 'generate'`). The orchestrator calls one or the other.
     beforePromptImplicit,
+    beforePromptStep,
     afterPromptStep,
   };
 }
@@ -47,7 +53,61 @@ async function readClientConfig(projectId: number): Promise<{ storFile: any; con
   return { storFile, config: typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : undefined };
 }
 
-// ─── before: resolve the brand + one generation prompt ───────────────────────
+/**
+ * The request, whichever door it came through: a queued step carries it in `step.prompt` (or the
+ * parallel `args`), a direct call in the task's longMemory.
+ */
+function resolveRequest(context: mls.msg.ExecutionContext, step?: mls.msg.AIAgentStep, args?: string): GenerateLogoRequest {
+  const raw = args ?? step?.prompt
+    ?? (context.task?.iaCompressed?.longMemory as Record<string, string> | undefined)?.['request'];
+  if (!raw) throw new Error('no request found in the step prompt nor in longMemory');
+  return normalizeLogoRequest(JSON.parse(raw));
+}
+
+/** Fills the brand title from the header profile when the caller did not pass one. */
+async function withBrandTitle(agentName: string, req: GenerateLogoRequest): Promise<GenerateLogoRequest> {
+  if (!req.brandTitle) {
+    try {
+      const { config } = await readClientConfig(req.projectId);
+      req.brandTitle = readBrandTitle(config, req.profileName) || undefined;
+    } catch (error) {
+      console.warn('[agentGenerateLogo] could not read the configured brand title', error);
+    }
+  }
+  if (!req.brandTitle && !req.brief) {
+    throw new Error(`(${agentName}) no brandTitle in the request nor in the header profile — pass { brandTitle } or a brief`);
+  }
+  console.info(`[agentGenerateLogo] ▶ project=${req.projectId} brand="${req.brandTitle ?? '—'}" style=${req.style} commit=${String(req.commit)}`);
+  return req;
+}
+
+// ─── before (step): feed the prompt of the step the header queued ────────────
+
+async function beforePromptStep(
+  agent: IAgentMeta,
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args?: string,
+): Promise<mls.msg.AgentIntent[]> {
+
+  const req = await withBrandTitle(agent.agentName, resolveRequest(context, step, args));
+  const promptReady: mls.msg.AgentIntentPromptReady = {
+    type: 'prompt_ready',
+    args: args ?? step.prompt ?? '',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    hookSequential,
+    parentStepId: parentStep.stepId,
+    systemPrompt: system1,
+    humanPrompt: buildGenerateLogoHumanPrompt(req),
+  };
+  return [promptReady];
+}
+
+// ─── before (direct): resolve the brand + one generation prompt ──────────────
 
 async function beforePromptImplicit(
   agent: IAgentMeta,
@@ -61,20 +121,7 @@ async function beforePromptImplicit(
   } catch (error) {
     throw new Error(`(${agent.agentName}) ${error instanceof Error ? error.message : String(error)}`);
   }
-
-  if (!req.brandTitle) {
-    try {
-      const { config } = await readClientConfig(req.projectId);
-      req.brandTitle = readBrandTitle(config, req.profileName) || undefined;
-    } catch (error) {
-      console.warn('[agentGenerateLogo] could not read the configured brand title', error);
-    }
-  }
-  if (!req.brandTitle && !req.brief) {
-    throw new Error(`(${agent.agentName}) no brandTitle in the request nor in the header profile — pass { brandTitle } or a brief`);
-  }
-
-  console.info(`[agentGenerateLogo] ▶ project=${req.projectId} brand="${req.brandTitle ?? '—'}" style=${req.style} commit=${String(req.commit)}`);
+  req = await withBrandTitle(agent.agentName, req);
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -109,9 +156,8 @@ async function afterPromptStep(
     const payload = step.interaction?.payload?.[0] as any;
     if (payload?.type !== 'flexible' || !payload.result) throw new Error(`invalid payload: ${JSON.stringify(payload)}`);
 
-    const lm = (context.task?.iaCompressed?.longMemory || {}) as Record<string, string>;
-    const req = JSON.parse(lm['request'] || '{}') as GenerateLogoRequest;
-    if (!req.projectId) throw new Error('missing request in longMemory');
+    const req = resolveRequest(context, step);
+    if (!req.projectId) throw new Error('missing request in the step prompt and in longMemory');
 
     const sanitized = sanitizeGeneratedLogo(payload.result);
     if (!sanitized.ok || !sanitized.value) throw new Error(`LLM output rejected: ${sanitized.error || 'invalid result'}`);
