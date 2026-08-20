@@ -214,6 +214,7 @@ async function afterPromptStep(
     runKey,
     group,
     indexDefsReference: catalog.reference,
+    catalogVia: catalog.via,
     choices,
     ok: gate.ok,
     gateHits: attempt - 1,

@@ -110,6 +110,7 @@ async function beforePromptStep(
       definition,
       userLanguage: plan.userLanguage,
       level1Reference: level1.reference,
+      level1Via: level1.via,
       publishedGroups: level1.groups.map(group => ({ name: group.name, molecules: group.molecules })),
     });
     await appendLongTermMemory(context, { runKey });

@@ -1,5 +1,26 @@
 # CHANGELOG — c2-molecules
 
+## 2026-08-19 (b) — o `import()` não lê catálogo não publicado
+
+**Primeiro run no Studio.** O c1 passou; os c2 morreram em
+`Failed to fetch dynamically imported module: https://on.collab.codes/_102040_/l2/molecules/groupenterdate/index.defs`.
+Causa: **import dinâmico é servido pelo projeto PUBLICADO**, e os `index.defs.ts` dos grupos existiam só
+no editor (o nível 1 importou porque já estava publicado).
+
+Correção em `helpers/chCatalog.ts` — a leitura virou escada, e **qual degrau respondeu fica registrado**
+(`catalogVia` no artefato do grupo, `catalog.groupsViaLocalCache` no `run.json`, observação no resumo):
+
+1. `await import(reference)` — o gesto do `readGroupSkill`, e o único degrau que um consumidor fora do
+   editor tem;
+2. o mesmo arquivo compilado para o cache do browser (`compileAndPostProcess(model, false, true)` +
+   `mls.stor.cache.AddMfileIfNeed`) e importado de lá;
+3. falha legível que **nomeia o conserto** ("salve e publique o arquivo"), distinguindo três casos: não
+   existe no projeto, existe e não compila, existe e não é servido.
+
+⚠️ Não é só conserto de infra: é achado sobre o desenho da §10. Um `index.defs.ts` escrito pelos passos de
+índice é **ilegível para qualquer consumidor até ser publicado** — publicar faz parte de gerar catálogo, e
+o `page12` vai ter só o degrau 1.
+
 ## 2026-08-19 — nascimento
 
 Primeira versão. O que já veio decidido:
