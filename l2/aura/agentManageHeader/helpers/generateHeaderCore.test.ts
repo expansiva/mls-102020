@@ -168,6 +168,27 @@ test('every CSS rule is scoped by the tag placeholder', () => {
   assert.ok(nestedUnscoped.some((error) => error.includes('must be scoped')), nestedUnscoped.join('; '));
 });
 
+test('animation is allowed: keyframe steps are not selectors', () => {
+  const css = [
+    '${tag} .app-header-hint {',
+    '  animation: app-header-pulse 2s ease-in-out infinite;',
+    '}',
+    '@keyframes app-header-pulse {',
+    '  from { opacity: 0.6; }',
+    '  50% { opacity: 1; }',
+    '  to { opacity: 0.6; }',
+    '}',
+    '@media (prefers-reduced-motion: reduce) {',
+    '  ${tag} .app-header-hint { animation: none; }',
+    '}',
+  ].join('\n');
+  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: css }), []);
+
+  // A real selector next to the keyframes still needs the tag.
+  const loose = ['@keyframes x {', '  from { opacity: 0; }', '}', '.loose { opacity: 1; }'].join('\n');
+  assert.match(validateHeaderParts({ ...validParts, bandCss: loose }).join('; '), /must be scoped/);
+});
+
 test('the band height and fixed positioning belong to the shell', () => {
   const hostHeight = validateHeaderParts({ ...validParts, bandCss: '${tag} {\n  height: 80px;\n}' });
   assert.ok(hostHeight.some((error) => error.includes('height on the host rule')), hostHeight.join('; '));

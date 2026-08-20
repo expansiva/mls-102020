@@ -351,6 +351,9 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
 
     for (const selector of cssSelectors(bandCss)) {
       if (selector.startsWith('@')) continue;
+      // Keyframe steps (`0%`, `50%`, `from`, `to`) live inside @keyframes and are not selectors —
+      // requiring the tag on them would make animation impossible.
+      if (/^(from|to|-?\d+(\.\d+)?%)(\s*,\s*(from|to|-?\d+(\.\d+)?%))*$/u.test(selector)) continue;
       if (!selector.includes(TAG_TOKEN)) {
         errors.push(`bandCss selector "${unmask(selector)}" must be scoped with ${TAG_PLACEHOLDER}`);
       }

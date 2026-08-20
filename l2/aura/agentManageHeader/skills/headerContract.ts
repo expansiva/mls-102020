@@ -54,7 +54,13 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
    handed to you.
 6. Put every fixed word in \`messages\` and read it with \`this.localized(messages)\`. A label the user
    can see is never a literal in the markup.
-7. Layout with flex/grid inside the band; the band is a flex row already (left group / right group).
+7. Layout freely INSIDE the band with flex/grid — the base gives you a flex row (left group / right
+   group), but you may regroup, stack, center, or build a 3-column grid. What you may not do is grow
+   taller: the shell clips the region to the fixed band height, so anything outside it is cut off.
+8. Motion is welcome when it is subtle and scoped: CSS \`transition\` on your own parts, and
+   \`@keyframes\` you define in \`bandCss\` (the keyframe steps do not need the tag; every real selector
+   does). Wrap anything continuous in \`@media (prefers-reduced-motion: reduce)\` to stop it. Animate
+   \`transform\`/\`opacity\` — animating layout properties on a 66px band costs a reflow per frame.
 
 ## NEVER
 1. No \`createRenderRoot\`, no \`attachShadow\`, no \`static styles\`, no \`<style>\` or \`<script>\` tag,
@@ -67,8 +73,11 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
    (\`/profile\`, \`/settings\`, \`/account\`, …) — not in an \`href\`, not in \`navigateTo\`.
 6. No dependency on a molecule/web component from another project: the header must render with the
    base and plain HTML only.
-7. No overflow-driven layout: the band is one line high, so keep the content to a single row and let
-   long text ellipsize (\`aura-header-subtitle\` already does).
+7. No layout that needs more than the band's height, and no dropdown/menu that opens outside it: the
+   shell sets \`overflow: hidden\` on the header region, so it would be clipped, not shown. Long text
+   ellipsizes (\`aura-header-subtitle\` already does).
+8. No animation on the mobile aside toggle's visibility, and nothing that moves on every render — a
+   header that pulses forever is noise in a workspace people keep open all day.
 
 ## Example (format reference)
 {"type":"flexible","result":{
