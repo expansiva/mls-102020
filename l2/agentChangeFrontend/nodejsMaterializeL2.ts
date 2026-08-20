@@ -88,7 +88,6 @@ function writePagePreviewHtml(item: PipelineItem): string | null {
 
 /**
  * Split plan of a page, read from trace/frontend-page-split/<genome>/<page>.json
- * (todo/changeFrontend/paginaDividida.md §5).
  *
  * It lives OUTSIDE the defs on purpose: `savePageLayoutDefs` rebuilds the pipeline from scratch on every
  * create run, so a split recorded in the defs would be wiped by the next @@changeFrontend — exactly the

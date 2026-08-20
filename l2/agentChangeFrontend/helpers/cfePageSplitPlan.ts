@@ -2,7 +2,6 @@
 
 /**
  * Split plan of a page: which organisms it has, and which bindings each one owns
- * (todo/changeFrontend/paginaDividida.md §5).
  *
  * There is NO judgement here, and that is the point. The l4 v2 workspace already declares the page's
  * sections and, inside each, the organisms with the `dataSource`/`action`/`attachTo` that tie them to a

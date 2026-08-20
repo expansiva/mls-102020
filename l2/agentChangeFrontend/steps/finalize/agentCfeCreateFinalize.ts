@@ -24,7 +24,7 @@ import { orderModuleCompile } from '/_102020_/l2/agentChangeFrontend/helpers/cfe
  *
  * CAVEAT: in the Studio this runs on the browser's Monaco worker, whose compilerOptions come from the
  * client's localStorage — a host without `strict` will not report TS7053 here (gap E of
- * todo/changeFrontend/bug_typescript.md, owned elsewhere). The CLI/publish tsc always does.
+ *, owned elsewhere). The CLI/publish tsc always does.
  */
 async function compileModuleClosure(moduleName: string): Promise<{ checked: number; errors: string[]; released: number }> {
   const project = mls.actualProject || 0;

@@ -12,7 +12,12 @@ import {
   ns4WorkflowFile, ns4WorkflowIndexFile, ns4WorkspaceFile, readNs4DefsJson, readNs4L5Config,
   readNs4Module, readNs4Pipeline, writeNs4E10ValidationReport, writeNs4L5Config, writeNs4Module, writeNs4Pipeline,
   writeNs4Process, writeNs4TodoBackend, writeNs4TodoFrontend,
+  readNs4L5Project, writeNs4L5Project, writeNs4L5PublishExample,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
+import {
+  PUBLISH_CONF_EXAMPLES, applyPlatformBlockDefaults, buildProjectsBlock, buildWorkspaceDependencies,
+  collectProjectJsonIssues, collectPublishableConfigIssues, ensureProjectAppEnv,
+} from '/_102020_/l2/agentNewSolution/steps/e10/publishable.js';
 import type { Ns4JourneyIndex } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import type { Ns4AccessMatrixArtifact } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
 import type { Ns4OntologyIndexArtifact } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
@@ -52,7 +57,36 @@ export async function beforeNs4E10PromptStep(
     artifactPaths.push(await writeNs4TodoFrontend(moduleName, delivery.todoFrontend));
     artifactPaths.push(await writeNs4TodoBackend(moduleName, delivery.todoBackend));
     artifactPaths.push(await writeNs4Process(moduleName, delivery.process));
-    artifactPaths.push(await writeNs4L5Config(delivery.config));
+
+    // THE PUBLISHABLE l5. Everything below is derived or validated — never invented: the blocks that were
+    // typed in by hand the first time a module went live (dependencies, projects, the platform blocks and
+    // the publish confs) are exactly what is filled or NAMED here, at delivery time, instead of failing
+    // later inside the publish with nothing pointing at the cause.
+    const projectId = mls.actualProject || 0;
+    const dependencies = mls.l5.getProjectDependencies(projectId, false);
+    const publishIssues: string[] = [];
+    const config = { ...delivery.config };
+    config.workspaceDependencies = buildWorkspaceDependencies(dependencies);
+    const projectsBlock = buildProjectsBlock(config.projects, projectId, dependencies);
+    config.projects = projectsBlock.projects;
+    publishIssues.push(...projectsBlock.issues);
+    if (!config.defaultProjectId) config.defaultProjectId = String(projectId);
+    const withBlocks = applyPlatformBlockDefaults(config);
+    publishIssues.push(...withBlocks.issues);
+    artifactPaths.push(await writeNs4L5Config(withBlocks.config));
+    publishIssues.push(...collectPublishableConfigIssues(withBlocks.config, moduleName, dependencies));
+
+    // l5/project.json belongs to the STUDIO/organization: E10 never rewrites it, it only adds the appEnv
+    // when the field does not exist (a project already moved to homologation keeps it).
+    const projectJson = await readNs4L5Project();
+    publishIssues.push(...collectProjectJsonIssues(projectJson, moduleName));
+    const withAppEnv = ensureProjectAppEnv(projectJson);
+    if (withAppEnv.changed && projectJson) artifactPaths.push(await writeNs4L5Project(withAppEnv.projectJson));
+
+    // The real `.conf` are environment (hosts, keys) and never come out of a generator; the examples do.
+    for (const [name, content] of Object.entries(PUBLISH_CONF_EXAMPLES)) {
+      artifactPaths.push(await writeNs4L5PublishExample(name.replace(/\.example$/u, ''), content));
+    }
     const module = await readNs4Module(moduleName); if (!module) throw new Error(`Module artifact not found for ${moduleName}.`);
     const approvedAt = new Date().toISOString();
     await writeNs4Module(moduleName, markNs4ModuleE10Approved(module, 'auto', approvedAt));
@@ -62,7 +96,9 @@ export async function beforeNs4E10PromptStep(
     return [...(already ? [] : [result(context, mutationParent, moduleName)]),
       status(context, mutationParent, step, hookSequential, 'completed', already
         ? 'E10 automatic completion was already recorded.'
-        : `E10 validation passed; ${artifactPaths.length - 1} L5 delivery artifacts were written and the solution was completed automatically.`, 'input_output')];
+        : `E10 validation passed; ${artifactPaths.length - 1} L5 delivery artifacts were written and the solution was completed automatically.${
+          publishIssues.length ? ` PUBLISH CHECKLIST (${publishIssues.length}): ${publishIssues.slice(0, 8).join('; ')}` : ' Publish checklist clean.'
+        }`, 'input_output')];
   } catch (error) {
     const message = errorMessage(error); if (moduleName) await runtimeFail(moduleName, message, reportPath);
     return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];

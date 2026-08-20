@@ -576,7 +576,7 @@ function mkFailureStatus(
   // ceiling. Say so in the trace, with the file to write, so the run is not read as a flaky failure.
   // KNOWN LIMIT: the verify still spends its repair rounds on this item, because it reads the artifact
   // from disk and never sees this reason (paginaDividida.md §4.1).
-  const hint = isSplitWorthyFailure(detail) ? ' -> does not fit in one call: SPLIT this page (todo/changeFrontend/paginaDividida.md); a repair cannot help.' : '';
+  const hint = isSplitWorthyFailure(detail) ? ' -> does not fit in one call: SPLIT this page; a repair cannot help.' : '';
   return mkStatus(context, parentStep, step, hookSequential, 'completed', `MATERIALIZE-FAILED: ${detail}${hint}`, 'input_output');
 }
 

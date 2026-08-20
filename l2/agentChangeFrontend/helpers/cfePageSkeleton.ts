@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfePageSkeleton.ts" enhancement="_blank"/>
 
 /**
- * Deterministic page skeleton (todo/changeFrontend/i18n.md §4 and paginaDividida.md §3).
+ * Deterministic page skeleton§3).
  *
  * The page LLM used to write the whole file from scratch and re-derive the mechanical parts every time —
  * and got them wrong: relative imports (run18), module-prefixed DTO names, `nothing` used without being

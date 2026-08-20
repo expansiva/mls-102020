@@ -115,7 +115,7 @@ export async function callCollabLlm(cfg: LlmConfig, input: LlmCallInput): Promis
     // Kept at 200s ON PURPOSE, matching what collab-llm allows the Studio agent. Raising it here would
     // make a page "work" in the CLI and fail only in the agent, where the timeout is not ours to raise —
     // the CLI would stop being a faithful preview. A page that does not fit in 200s must be SPLIT
-    // (todo/changeFrontend/paginaDividida.md), not waited on.
+    //, not waited on.
     res = await postJson(endpoint, headers, payload, cfg.timeoutMs ?? 200000);
   } catch (e) {
     return { ok: false, raw: '', usage: undefined, httpStatus: 0, error: e instanceof Error ? e.message : String(e) };

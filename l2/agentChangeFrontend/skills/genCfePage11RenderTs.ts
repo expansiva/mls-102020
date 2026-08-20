@@ -175,7 +175,7 @@ Always set alt from the row's own name/title field (empty string when there is n
 loading="lazy" inside lists/grids. Give the img a bounded size with layout utilities (never a raw width
 attribute) so one asset cannot blow up the grid. Observed failure this rule fixes: listMenuItems and
 queryMenuItems both returned imageUrl for every row and NO generated page contained an img tag, so the
-seeded photos were invisible in the app (todo/runtime/bugimage.md).
+seeded photos were invisible in the app.
   - ctaLink: a navigation link/button. Bind it to the shared navigation action if one exists (JSDoc 'handler for action ...'); otherwise render an <a href> to the target route when the layout provides one, else a disabled button. Never fabricate a route.
 - for every command action, render a textual feedback region driven by its action status: success uses the success feedback key from the action's JSDoc ('feedback keys'); error uses the AppError text from the error state when present, otherwise the error feedback key. It must be dismissible and must never be only an icon or glyph.
 - represent loading consistently: query/list intentions show a placeholder or skeleton while their query state is loading; command buttons show a spinner/progress label and are disabled while their action is loading.

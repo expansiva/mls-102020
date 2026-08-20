@@ -1119,7 +1119,7 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
       // An operation that MUST NOT succeed does not get a success case — the case becomes the PROOF that
       // it fails, and fails readably. Master data is referenced by other records (and by other modules),
       // so deleting it breaks those references: the policy is deactivate, never delete
-      // (todo/newSolution/ajustesMDM.md §3b). The backend answers CONFLICT; a case expecting `ok` here
+      //. The backend answers CONFLICT; a case expecting `ok` here
       // reported a POLICY working correctly as a defect — 8 of the 22 failures of the production suite.
       cases.push({
         id: `${commandName}.notDeletable`,
@@ -3534,7 +3534,7 @@ function commandFieldRecords(value: unknown): { name: string; required?: boolean
     source: readString(item.source),
     // sourceRef is WHERE the value comes from, and without it `source` is an unusable label: `selection`
     // names the query the picker reads, `derived` names `<bffId>.<field>`, `actorDirectory` names the role
-    // (todo/changeFrontend/ajuste_actors.md). It was dropped here, so the page could not render any of them.
+    //. It was dropped here, so the page could not render any of them.
     sourceRef: readString(item.sourceRef),
     presentation: readString(item.presentation) || 'form',
     // type (TS) / l4Type (raw declared) / enum carry the resolved shape of the field; the page-test

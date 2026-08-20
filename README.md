@@ -35,3 +35,11 @@ Example:
 
 “Aura Agent: prepare the sidebar for ERP navigation.”
 “Aura Agent: refresh topbar branding and company context.”
+
+## What a generated module inherits
+
+A generated module is born with `appEnv: "presentation"` in its `l5/project.json` (test database, curated
+seeds, full test suite, PRESENTATION badge), and publishing it registers its authority catalogue — the
+actors of E3 as `<moduleId>:<actorId>` roles — so they can be assigned from a list. The canonical
+definition of the modes, of the authentication of `/execBff` and of the authority format lives in
+`mls-102034/docs/appEnvAndAuth.md`.
