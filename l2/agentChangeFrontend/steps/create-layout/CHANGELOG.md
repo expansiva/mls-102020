@@ -3,7 +3,7 @@
 # Changelog
 
 - 2026-07-31 (3 slots por workspace + defs reduzido + skill de experiencia) — item A de
-  `todo/changeFrontend/ajustesTemplates.md`. Evidencia: teste real dos slots em 102045/clientManagement
+. Evidencia: teste real dos slots em 102045/clientManagement
   (31/jul) rankeou page31 > page21 > page11 e mostrou que **defs reduzido + skill vence defs completo +
   skill** (os organisms do defs completo afogam o skill). Mudancas:
   (1) `buildLayoutVariantPlan` passa a planejar TRES slots (MAX_UX_VARIANTS 2 -> 3): page11 bespoke (so a

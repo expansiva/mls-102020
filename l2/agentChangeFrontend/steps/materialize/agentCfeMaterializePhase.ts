@@ -22,6 +22,7 @@ import {
   isL4LookupGap,
   collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
+  collectContractFieldIssues,
   contractTsPathOf,
   countPage11Items,
   countSharedItems,
@@ -428,6 +429,12 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     // the defs-level UX rules below can see it. This is a pure .ts defect that rewriting the .ts fixes,
     // so it belongs in `errors` (repairable, fed back to the page generator), not in `warnings`.
     errors.push(...collectPageTemplateHygieneIssues(content), ...collectChartEventIssues(content));
+    // Second line under the compiler: a field the contract does not declare. `tsc` catches it where the
+    // row is genuinely typed, and only with the module loaded — which is how one reached production and
+    // was fixed by hand in the module. Repairable: rewriting the .ts is exactly the fix.
+    const contractPath = contractTsPathOf(sharedDefs);
+    const contractSource = contractPath ? await getContentByMlsPath(contractPath) : null;
+    if (contractSource) errors.push(...collectContractFieldIssues(content, contractSource));
     // A background token used as a text color renders invisible text once the theme applies (the
     // hardcoded var() fallback hides it in one theme only) — mls-102045 shipped exactly that. It is a
     // pure .ts defect a rewrite fixes, and the check is deterministic (role suffix, no judgement), so it

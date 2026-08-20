@@ -26,13 +26,29 @@ export interface GenerateHeaderRequest {
   actions?: AppHeaderAction[];
   /** Language of the copy the header renders (i18n block + notes). */
   language?: string;
-  /** Navigation entries available to the header (label + href), for reference only. */
+  /**
+   * Render the module's navigation as links in the band. Default FALSE: navigation is the aside's
+   * job, and a header that duplicates it shows the same menu twice on screen. When false the model
+   * gets no routes at all, so it cannot link anything.
+   */
+  navLinks?: boolean;
+  /** Navigation entries available to the header (label + href); only read when navLinks is true. */
   navigation?: Array<{ label: string; href: string }>;
   /** DS role tokens the project's design system exposes. */
   tokens?: string[];
   requestId?: string;
   /** Header profile of l5/config.json to take over; `defaultAura` by default. */
   profileName?: string;
+  /**
+   * What to do about the brand mark: `keep` (default) leaves whatever the profile has, `generate`
+   * queues agentGenerateLogo as a child step right after the header is written, `none` drops the
+   * mark from the profile.
+   */
+  logo?: 'keep' | 'generate' | 'none';
+  /** Style hint forwarded to agentGenerateLogo (it normalizes an unknown value to monogram). */
+  logoStyle?: string;
+  /** Brief forwarded to agentGenerateLogo; falls back to the header brief. */
+  logoBrief?: string;
   /** true = write the header file + point the config profile at it; false/absent = draft only. */
   commit?: boolean;
 }
@@ -110,6 +126,8 @@ export interface HeaderProfileOptions {
   actions?: AppHeaderAction[];
   /** Profile to take over; the master's own `defaultAura` by default. */
   profileName?: string;
+  /** Drop the mark the profile already had instead of carrying it over. */
+  dropLogo?: boolean;
 }
 
 /**
@@ -144,9 +162,16 @@ export function pointHeaderProfileAtProject(config: unknown, options: HeaderProf
   };
 
   // Brand and actions are config, not code: absent in the request means absent in the profile,
-  // otherwise a regeneration would keep a stale brand around.
+  // otherwise a regeneration would keep a stale brand around. The MARK is the exception — it is
+  // agentGenerateLogo's artifact, not the header request's, so regenerating the header carries it
+  // over instead of wiping it (`dropLogo` is the explicit way out).
+  const previousLogoSvg = readString((isRecord(previous?.brand) ? previous.brand.logoSvg : undefined));
   if (options.brand) profile.brand = { ...options.brand };
   else delete profile.brand;
+  if (!options.dropLogo && previousLogoSvg) {
+    const brand = (isRecord(profile.brand) ? profile.brand : (profile.brand = {})) as Record<string, unknown>;
+    if (!readString(brand.logoSvg)) brand.logoSvg = previousLogoSvg;
+  }
   if (options.actions?.length) profile.props = { ...(isRecord(previous?.props) ? previous.props : {}), actions: [...options.actions] };
   else if (isRecord(profile.props)) delete (profile.props as Record<string, unknown>).actions;
 
@@ -202,6 +227,10 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
     tokens: tokens?.length ? tokens : undefined,
     requestId: readString(raw.requestId) || undefined,
     profileName: readString(raw.profileName) || undefined,
+    navLinks: raw.navLinks === true,
+    logo: raw.logo === 'generate' || raw.logo === 'none' ? raw.logo : 'keep',
+    logoStyle: readString(raw.logoStyle) || undefined,
+    logoBrief: readString(raw.logoBrief) || undefined,
     commit: raw.commit === true,
   };
 }
@@ -253,6 +282,8 @@ function hasLiteralColor(text: string): boolean {
 export interface ValidateHeaderOptions {
   /** Routes the header may link to: the project's navigation entries. Anything else is invented. */
   allowedHrefs?: string[];
+  /** Whether the band may render navigation links at all (request.navLinks). */
+  allowNavLinks?: boolean;
 }
 
 /** Literal routes the band navigates to (href="/x" or navigateTo('/x')), minus the allowed ones. */
@@ -295,6 +326,11 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
   }
   if (bandHtml.includes('window.location')) {
     errors.push('bandHtml must not touch window.location (use this.navigateTo)');
+  }
+
+  // Navigation in the header is opt-in: the aside already owns the menu.
+  if (options.allowNavLinks !== true && /this\.render(NavLinks|ModuleLinks)\s*\(/u.test(bandHtml)) {
+    errors.push('bandHtml renders navigation links but navLinks is off — drop this.renderNavLinks() (pass navLinks:true to allow it)');
   }
 
   // The model has no way to know which routes exist, so it must not name one: an action with no
@@ -459,7 +495,8 @@ export function sanitizeGeneratedHeader(
   };
 
   const errors = validateHeaderParts(parts, {
-    allowedHrefs: (request.navigation ?? []).map((entry) => entry.href),
+    allowedHrefs: request.navLinks ? (request.navigation ?? []).map((entry) => entry.href) : [],
+    allowNavLinks: request.navLinks,
   });
   if (errors.length > 0) return { ok: false, error: errors.join('; ') };
 
@@ -493,9 +530,11 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
       ? `Actions YOU must render in the band: ${ownHandled.join(', ')}. They have NO route: render a `
         + `<button> whose @click calls this.emitHeaderAction('<action>') — never this.navigateTo and never an href.`
       : '',
-    request.navigation?.length
-      ? `Navigation entries available (render with this.renderNavLinks()): ${request.navigation.map((entry) => entry.label).join(', ')}`
-      : 'No navigation entries: do not invent links.',
+    request.navLinks
+      ? (request.navigation?.length
+        ? `Navigation entries available (render them with this.renderNavLinks()): ${request.navigation.map((entry) => entry.label).join(', ')}`
+        : 'Navigation links were requested but the project declares none: render no links.')
+      : 'NO navigation links in this header: the aside owns the menu. Do not call this.renderNavLinks() and do not write any route.',
     request.tokens?.length
       ? `DS role tokens available: ${request.tokens.join(', ')}`
       : 'DS role tokens follow the --ds-color-<role>[-bg|-text] convention (nav-bg, nav-text, nav-active-bg, border-default, text-muted, surface-bg, button-primary-bg/text).',

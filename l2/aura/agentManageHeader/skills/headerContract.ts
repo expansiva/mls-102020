@@ -26,6 +26,9 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
   writing the brand name: \`this.brand.title\`, \`this.brand.logoUrl\`, \`this.brand.subtitle\` are
   available if you need a custom arrangement.
 - \`this.renderNavLinks()\` — the module's navigation entries as links, with the active one marked.
+  **Only when the request says navigation links are wanted.** By default they are NOT: the aside owns
+  the menu, and a header repeating it shows the same list twice. If the request does not offer routes,
+  do not call this and do not write a path anywhere.
 - \`this.renderActions()\` — the optional actions the profile enabled (language / design system /
   module links). Render it once, on the right.
 - \`this.hasAction('search' | 'user')\` — true when the profile asked for an action the base does not

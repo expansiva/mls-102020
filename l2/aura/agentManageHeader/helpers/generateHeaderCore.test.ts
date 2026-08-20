@@ -26,7 +26,6 @@ const validParts: GeneratedHeaderParts = {
     '  ${this.renderBrand()}',
     '</div>',
     '<div class="aura-header-side app-header-right">',
-    '  ${this.renderNavLinks()}',
     '  <span class="app-header-hint">${this.localized(messages).hint}</span>',
     '  ${this.renderActions()}',
     '</div>',
@@ -333,6 +332,97 @@ test('pointing twice is idempotent', () => {
   const first = pointHeaderProfileAtProject(clientConfig(), options);
   const second = pointHeaderProfileAtProject(first.config, options);
   assert.deepEqual(second.config, first.config);
+});
+
+test('navigation links are opt-in, and off by default', () => {
+  const base = { projectId: PROJECT, brand: { title: 'Sample App' } };
+  assert.equal(normalizeHeaderRequest(base).navLinks, false);
+  assert.equal(normalizeHeaderRequest({ ...base, navLinks: true }).navLinks, true);
+  assert.equal(normalizeHeaderRequest({ ...base, navLinks: 'yes' }).navLinks, false);
+
+  const withLinks = withBandHtml('${this.renderAsideToggle()}${this.renderNavLinks()}');
+  assert.match(validateHeaderParts(withLinks).join('; '), /navLinks is off/);
+  assert.deepEqual(validateHeaderParts(withLinks, { allowNavLinks: true }), []);
+
+  // renderActions() may carry module links, so it is gated the same way.
+  const withModuleLinks = withBandHtml('${this.renderAsideToggle()}${this.renderModuleLinks()}');
+  assert.match(validateHeaderParts(withModuleLinks).join('; '), /navLinks is off/);
+});
+
+test('with links off the model is told so, and gets no routes to link', () => {
+  const off = buildGenerateHeaderHumanPrompt(normalizeHeaderRequest({
+    projectId: PROJECT,
+    brand: { title: 'Sample App' },
+    navigation: [{ label: 'Items', href: '/sampleModule/items' }],
+  }));
+  assert.match(off, /NO navigation links/);
+  assert.equal(off.includes('/sampleModule/items'), false);
+
+  const on = buildGenerateHeaderHumanPrompt(normalizeHeaderRequest({
+    projectId: PROJECT,
+    brand: { title: 'Sample App' },
+    navLinks: true,
+    navigation: [{ label: 'Items', href: '/sampleModule/items' }],
+  }));
+  assert.match(on, /render them with this\.renderNavLinks\(\)/);
+  assert.match(on, /Items/);
+});
+
+test('with links off, a route in the band is refused even if the project has it', () => {
+  const request = normalizeHeaderRequest({
+    projectId: PROJECT,
+    brand: { title: 'Sample App' },
+    navigation: [{ label: 'Items', href: '/sampleModule/items' }],
+  });
+  const sanitized = sanitizeGeneratedHeader({
+    bandHtml: '${this.renderAsideToggle()}<a href="/sampleModule/items" @click=${this.handleNavigate}>Items</a>',
+  }, request);
+  assert.equal(sanitized.ok, false);
+  assert.match(sanitized.error ?? '', /not one of the project/);
+});
+
+test('the logo intent defaults to keep, and only accepts the two explicit modes', () => {
+  const base = { projectId: PROJECT, brand: { title: 'Sample App' } };
+  assert.equal(normalizeHeaderRequest(base).logo, 'keep');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'draw it' }).logo, 'keep');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'generate', logoStyle: 'mark', logoBrief: 'cup' }).logo, 'generate');
+  assert.equal(normalizeHeaderRequest({ ...base, logo: 'none' }).logo, 'none');
+  const req = normalizeHeaderRequest({ ...base, logo: 'generate', logoStyle: 'mark', logoBrief: 'cup and bean' });
+  assert.equal(req.logoStyle, 'mark');
+  assert.equal(req.logoBrief, 'cup and bean');
+});
+
+test('regenerating the header keeps the mark the logo agent drew', () => {
+  const svg = '<svg viewBox="0 0 32 32"><rect fill="currentColor" width="8" height="8"/></svg>';
+  const withMark = clientConfig();
+  (withMark as any).clientShell.regions.header.profiles.defaultAura.brand = { title: 'Sample App', logoSvg: svg };
+
+  const again = pointHeaderProfileAtProject(withMark, {
+    paths: headerPaths(PROJECT),
+    brand: { title: 'Sample App', subtitle: 'Operations' },
+  });
+  const brand = (again.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.logoSvg, svg, 'the mark belongs to the logo agent, not to the header request');
+  assert.equal(brand.subtitle, 'Operations', 'the rest of the brand still comes from the request');
+
+  // dropLogo is the explicit way out.
+  const dropped = pointHeaderProfileAtProject(withMark, {
+    paths: headerPaths(PROJECT),
+    brand: { title: 'Sample App' },
+    dropLogo: true,
+  });
+  assert.equal((dropped.config as any).clientShell.regions.header.profiles.defaultAura.brand.logoSvg, undefined);
+});
+
+test('a brand-less regeneration still keeps the mark', () => {
+  const svg = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="8" fill="currentColor"/></svg>';
+  const withMark = clientConfig();
+  (withMark as any).clientShell.regions.header.profiles.defaultAura.brand = { title: 'Sample App', logoSvg: svg };
+
+  const again = pointHeaderProfileAtProject(withMark, { paths: headerPaths(PROJECT) });
+  const brand = (again.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.logoSvg, svg);
+  assert.equal(brand.title, undefined, 'a brand the request omits is not invented');
 });
 
 test('a contract violation is reported instead of written', () => {

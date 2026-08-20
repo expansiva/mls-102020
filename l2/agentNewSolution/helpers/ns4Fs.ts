@@ -393,6 +393,34 @@ export async function writeNs4WorkflowIndex(moduleName: string, artifact: Ns4Wor
 export async function writeNs4E10ValidationReport(moduleName: string, report: Ns4E10ValidationReport): Promise<string> {
   const fileInfo = ns4E10ValidationReportFile(moduleName); await writeNs4Text(fileInfo, `${JSON.stringify(report, null, 2)}\n`); return displayPath(fileInfo);
 }
+export function ns4L5ProjectFile(): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 5, folder: '', shortName: 'project', extension: '.json' };
+}
+
+export function ns4L5PublishConfFile(shortName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 5, folder: '', shortName, extension: '.example' };
+}
+
+/** l5/project.json — organization-level, owned by the studio. E10 reads it and only ADDS what is absent. */
+export async function readNs4L5Project(): Promise<Record<string, unknown> | null> {
+  const raw = await readNs4Text(ns4L5ProjectFile(), false); if (!raw.trim()) return null;
+  try {
+    const value = JSON.parse(raw);
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('root must be an object');
+    return value as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(`[agentNewSolution] existing l5/project.json is invalid and was preserved: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+export async function writeNs4L5Project(projectJson: Record<string, unknown>): Promise<string> {
+  const fileInfo = ns4L5ProjectFile(); await writeNs4Text(fileInfo, `${JSON.stringify(projectJson, null, 2)}\n`); return displayPath(fileInfo);
+}
+
+export async function writeNs4L5PublishExample(shortName: string, content: string): Promise<string> {
+  const fileInfo = ns4L5PublishConfFile(shortName); await writeNs4Text(fileInfo, content); return displayPath(fileInfo);
+}
+
 export async function readNs4L5Config(): Promise<Record<string, unknown> | null> {
   const raw = await readNs4Text(ns4L5ConfigFile(), false); if (!raw.trim()) return null;
   try {

@@ -114,6 +114,30 @@ test('two roots, empty markup and oversized markup are refused', () => {
   assert.match(validateLogoSvg(huge).join('; '), /over the .* limit/);
 });
 
+test('the black-blob failure mode is refused', () => {
+  // What actually shipped once: a container rect filling the whole box, painted because the CSS
+  // fill overrode the markup. Even with that CSS fixed, a FILLED full-bleed rect is a black square.
+  const fullBleed = '<svg viewBox="0 0 32 32"><rect x="0" y="0" width="32" height="32" rx="8" fill="currentColor"/>'
+    + '<path d="M20 10a8 8 0 1 0 0 12" fill="none" stroke="currentColor" stroke-width="3"/></svg>';
+  assert.match(validateLogoSvg(fullBleed).join('; '), /solid square/);
+
+  const fullCircle = '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="currentColor"/></svg>';
+  assert.match(validateLogoSvg(fullCircle).join('; '), /solid blob/);
+
+  // A shape with no fill of its own, under a root that does not declare fill="none", inherits black.
+  const inherited = '<svg viewBox="0 0 32 32"><rect x="4" y="4" width="10" height="10" stroke="currentColor"/></svg>';
+  assert.match(validateLogoSvg(inherited).join('; '), /inherits solid black/);
+
+  // The same drawing as an outline is fine.
+  const outlined = '<svg viewBox="0 0 32 32"><rect x="1.75" y="1.75" width="28.5" height="28.5" rx="8" fill="none" stroke="currentColor" stroke-width="2.5"/>'
+    + '<path d="M20 10a8 8 0 1 0 0 12" fill="none" stroke="currentColor" stroke-width="3"/></svg>';
+  assert.deepEqual(validateLogoSvg(outlined), []);
+
+  // Inheriting from a root that DOES declare fill="none" is legitimate.
+  const inheritedNone = '<svg viewBox="0 0 32 32" fill="none"><rect x="4" y="4" width="10" height="10" stroke="currentColor"/></svg>';
+  assert.deepEqual(validateLogoSvg(inheritedNone), []);
+});
+
 test('markdown fences around the svg are stripped', () => {
   const sanitized = sanitizeGeneratedLogo({ svg: '```svg\n' + VALID_SVG + '\n```', notes: 'ok' });
   assert.ok(sanitized.ok, sanitized.error);

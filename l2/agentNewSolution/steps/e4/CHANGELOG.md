@@ -1,6 +1,6 @@
 # E4 changelog
 
-- 2026-08-18 (party policy, `todo/newSolution4/ajustesMDM.md`): every entity now declares
+- 2026-08-18 (party policy,: every entity now declares
   `party: 'person' | 'organization' | 'none'`, and the gate makes the storage decision mechanical instead
   of a prompt the model may skip: `party !== 'none'` must use `storage.target: 'mdm'`
   (`NS4_E4_PARTY_STORAGE`), an undeclared or out-of-vocabulary party is named
@@ -17,7 +17,7 @@
   (`org.Person`, `org.Organization`, or `org.Client`/`org.Worker`) versus keeping the module-scoped type
   plus a catalogue of equivalences. Canonical gives reuse immediately but needs governance of a shared
   schema; module-scoped keeps autonomy and defers unification. Two facts from the backend side
-  (`todo/changeBackend/ajustes_ns4.md` §15) belong in this decision: 102034's `MdmSubtype` is a CLOSED
+ belong in this decision: 102034's `MdmSubtype` is a CLOSED
   union of 13 values, so every MDM entity has to map onto one of them and a construction project has no
   natural subtype (the heuristic falls back to `Product`); and MDM writes have no per-module
   authorization, so shared master data written by several modules is a platform governance question, not

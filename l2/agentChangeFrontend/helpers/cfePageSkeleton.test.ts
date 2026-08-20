@@ -89,7 +89,7 @@ test('bails instead of guessing when the inputs cannot produce a valid page', ()
 
 
 // ---------------------------------------------------------------------------
-// Página dividida (todo/changeFrontend/paginaDividida.md): organismo = função exportada.
+// Página dividida: organismo = função exportada.
 
 const ORGANISMS = [
   { n: 1, organism: 'overview', bindings: ['getProjectDetail'] },

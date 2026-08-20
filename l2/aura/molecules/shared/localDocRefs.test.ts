@@ -28,8 +28,12 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** `shared/` → the molecules root, which is what gets published. */
-const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+/**
+ * The whole PROJECT, not just the molecules: the rule is the same everywhere this repo ships from, and
+ * on 2026-08-18 a second sweep found the same dead paths in agentChangeFrontend, agentNewSolution and
+ * aura (42 files). `shared/` → molecules → aura → l2.
+ */
+const ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const SELF = fileURLToPath(import.meta.url);
 
 const EXTENSIONS = ['.ts', '.json', '.md'];

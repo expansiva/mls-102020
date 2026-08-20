@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues } from './cfeMaterializeCore.js';
 
 // bugpage21: the EXACT shape generated into
 // mls-102051/l2/cafeFlow/web/desktop/page21/shiftWorkspace.ts — `: nothing` in the template with a
@@ -336,7 +336,7 @@ test('a page with no chart is never inspected', () => {
 });
 
 // ---------------------------------------------------------------------------
-// `source` como instrucao de renderizacao (todo/changeFrontend/ajuste_actors.md).
+// `source` como instrucao de renderizacao.
 // O gate ja proibia id nao-decidido em campo editavel; agora a mensagem NOMEIA a origem do contrato,
 // que e o que diz ao modelo o que renderizar no lugar.
 
@@ -402,4 +402,59 @@ test('orderModuleCompile puts contracts before shared before pages', () => {
   const copy = [...original];
   assert.equal(orderModuleCompile(original)[0], '_102046_/l2/buildFlowFsm/web/contracts/a.ts');
   assert.deepEqual(original, copy);
+});
+
+// A field the contract does not declare. `${project.clientName}` shipped in a real page whose list output
+// has `name`; it was fixed by hand in the module. Validated against the 102 pages of that module: zero
+// findings there, and the historical defect caught when reintroduced.
+const CONTRACT = [
+  'export interface QryListProjectOutput {',
+  '  projectId: string;',
+  '  clientId: string;',
+  '  name: string;',
+  '}',
+  "export const qryListProjectRoute = 'buildFlowFsm.projectCatalogue.qryListProject' as const;",
+  'export interface QryClientPickerOutput {',
+  '  clientId: string;',
+  '  clientName: string;',
+  '}',
+].join('\n');
+
+const page = (row: string) => [
+  'export class P extends Base {',
+  '  render() {',
+  '    const projects = this.qryListProjectData ?? [];',
+  '    return html`<table>${projects.map((project) => html`<tr><td>' + row + '</td></tr>`)}</table>`;',
+  '  }',
+  '}',
+].join('\n');
+
+test('a page interpolating a field outside the contract is rejected, naming field and contract', () => {
+  const issues = collectContractFieldIssues(page('${project.clientName ?? project.clientId}'), CONTRACT);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /`project\.clientName` is not declared by qryListProject/u);
+  assert.match(issues[0], /its output is clientId, name, projectId/u);
+
+  // A declared field says nothing.
+  assert.deepEqual(collectContractFieldIssues(page('${project.name}'), CONTRACT), []);
+});
+
+test('the gate stays silent where it cannot know — the shapes that produced false findings on real pages', () => {
+  // 1. An i18n KEY reads exactly like a property access.
+  assert.deepEqual(collectContractFieldIssues(page("${msg['project.start']}"), CONTRACT), []);
+  // 2. A nested read: the shape of `project.owner` is not this function's business.
+  assert.deepEqual(collectContractFieldIssues(page('${project.owner.name}'), CONTRACT), []);
+  // 3. A row name bound to TWO different queries is ambiguous (pages reuse `item` for every grid).
+  // Both queries are declared by the contract, so `items` genuinely could be either.
+  const twoLists = [
+    'const items = this.qryListProjectData ?? [];',
+    'const items = this.qryClientPickerData ?? [];',
+    '${items.map((item) => html`${item.whatever}`)}',
+  ].join('\n');
+  assert.deepEqual(collectContractFieldIssues(twoLists, CONTRACT), []);
+  // 4. No contract, or a contract with no Output interface: nothing to compare against.
+  assert.deepEqual(collectContractFieldIssues(page('${project.clientName}'), ''), []);
+  assert.deepEqual(collectContractFieldIssues(page('${project.clientName}'), 'export const x = 1;'), []);
+  // 5. Array built-ins are not contract fields.
+  assert.deepEqual(collectContractFieldIssues(page('${projects.length}'), CONTRACT), []);
 });

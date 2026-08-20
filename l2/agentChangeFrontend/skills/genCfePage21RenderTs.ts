@@ -154,7 +154,7 @@ Always set alt from the row's own name/title field (empty string when there is n
 inside lists/grids. Give the img a bounded size with layout utilities (never a raw width attribute) so one
 asset cannot blow up the grid. Observed failure this rule fixes: listMenuItems and queryMenuItems both
 returned imageUrl for every row and NO generated page contained an img tag, so the seeded photos were
-invisible in the app (todo/runtime/bugimage.md).
+invisible in the app.
 
 Respect pageObjective.antiPatterns: if it lists "separate transition form" or "status select", you
 must not emit them. Order organisms by pageObjective.informationHierarchy / primaryDecision.

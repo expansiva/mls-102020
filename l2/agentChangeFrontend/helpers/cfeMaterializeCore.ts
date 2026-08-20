@@ -186,7 +186,7 @@ const COLLECTION_WIRING_INPUTS = new Set(['page', 'pagesize', 'sortby', 'sortord
 
 /**
  * An l4 input source the USER decides by typing into a form. Everything else has an origin the contract
- * names, and must be rendered from it (todo/changeFrontend/ajuste_actors.md).
+ * names, and must be rendered from it.
  *
  * TWO VOCABULARIES are in play and both are honoured here: e5/older (`userInput`, `selectedEntity`,
  * `routeParam`, …) and e6/current (`userDecision`, `selection`, `pageInput`, `derived`, `actorSession`,
@@ -248,7 +248,7 @@ function isBoundToEditableControl(pageCode: string, property: string): boolean {
 /**
  * Marks an issue no page rewrite can fix: the l4 workspace does not offer the lookup query the
  * picker would consume. The materialization phase reports these as warnings so the run finishes and
- * the gap is fixed where it lives (agentNewSolution E8 — see todo/newSolution4/bug_from_backend.md).
+ * the gap is fixed where it lives (agentNewSolution E8 —.
  */
 export const L4_LOOKUP_GAP = 'L4-LOOKUP-GAP' as const;
 
@@ -792,11 +792,11 @@ export function trimSharedI18nForPageContext(source: string): string {
  * The output cap was hit — the model was cut mid-file, so the artifact is truncated or missing.
  *
  * collab-llm reports it as the literal marker in the error/trace text (`MAX_TOKENS_REACHED) llmTime: …`,
- * ref. todo/changeFrontend/bugMaxTokens_01.json), not as a `finish_reason` field.
+ * ref., not as a `finish_reason` field.
  *
  * This must be TERMINAL, never repaired: the repair sends the same prompt and hits the same ceiling, so a
  * retry burns time and budget to fail identically. The answer is to SPLIT the page
- * (todo/changeFrontend/paginaDividida.md), which is a change to the plan, not to the attempt.
+ *, which is a change to the plan, not to the attempt.
  */
 export function isMaxTokensFailure(detail: string): boolean {
   return /MAX_TOKENS_REACHED|max_tokens_reached/u.test(detail || '');
@@ -942,6 +942,115 @@ export function buildCompileRepairHint(outputPath: string, errors: string[]): st
     `Return the COMPLETE corrected TypeScript file through the ${GEN_TOOL_NAME} tool.`,
     'Fix exactly these syntax/type errors while preserving the .defs.ts contract and the existing context.',
   ].join('\n');
+}
+
+/**
+ * A page interpolating a field the contract does not declare.
+ *
+ * `${project.clientName}` shipped in a real page whose list output has `name` and no `clientName`; it was
+ * fixed by hand in the module. The compiler does catch it — but only where the row is genuinely typed,
+ * and only after the whole module is loaded, which is why it once reached production. This is the second
+ * line, and it answers in the verify, naming page, field and contract.
+ *
+ * DELIBERATELY CONSERVATIVE, because a false positive here blocks a correct page: it follows only the
+ * deterministic skeleton chain — `const rows = this.<bff>Data ?? []` then `rows.map((row) => …)` — checks
+ * only DIRECT property reads on that row (`row.a.b` is skipped: the shape of `a` is not this function's
+ * business), and stays silent for any bffCall whose defs declares no output fields.
+ */
+export function collectContractFieldIssues(pageCode: string, contractSource: string): string[] {
+  if (!pageCode || !contractSource) return [];
+  const fieldsByBff = contractOutputFields(contractSource);
+  if (!fieldsByBff.size) return [];
+
+  // `const projects = this.qryListProjectData ?? []` -> projects belongs to qryListProject. A name bound
+  // to more than one query (pages reuse `const rows = …` across sibling render helpers) is ambiguous and
+  // dropped: guessing which contract it meant reported a finding for every field of the other list.
+  const arrayBindings = new Map<string, Set<string>>();
+  for (const match of pageCode.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*this\.([A-Za-z_$][\w$]*)Data\b/gu)) {
+    if (!fieldsByBff.has(match[2])) continue;
+    const bound = arrayBindings.get(match[1]) ?? new Set<string>();
+    bound.add(match[2]);
+    arrayBindings.set(match[1], bound);
+  }
+
+  const issues: string[] = [];
+  const seen = new Set<string>();
+  // SCOPED to the callback of each `<array>.map((row) => … )`: the row name only means this contract
+  // INSIDE that block. Concatenating the whole file instead attributed a row of one grid to the query of
+  // another, because pages reuse `item`/`row` in every helper.
+  for (const [arrayName, bffs] of arrayBindings) {
+    if (bffs.size !== 1) continue;
+    const bff = [...bffs][0];
+    const declared = fieldsByBff.get(bff)!;
+    const mapRe = new RegExp(`\\b${escapeForRegExp(arrayName)}\\s*\\.\\s*map\\s*\\(\\s*(?:async\\s*)?\\(?\\s*([A-Za-z_$][\\w$]*)`, 'gu');
+    for (const match of pageCode.matchAll(mapRe)) {
+      const rowName = match[1];
+      // From the `(` of `map(`, not from the end of the match: the arrow params may themselves be
+      // parenthesized (`map((row) =>`), and starting after them closed the block on their own `)` — the
+      // callback then looked 27 characters long and the check silently saw nothing.
+      const mapParen = pageCode.indexOf('(', pageCode.indexOf('map', match.index));
+      const body = mapParen < 0 ? '' : balancedCallbackBody(pageCode, mapParen + 1);
+      if (!body) continue;
+      // Only what the template interpolates: outside `${…}` the same text is data (an i18n key like
+      // `'project.title'` reads exactly like a property access).
+      const interpolations = [...body.matchAll(/\$\{([^}]*)\}/gu)]
+        // A quoted string inside the interpolation is DATA, not a property read: `${msg['project.start']}`
+        // is an i18n key that reads exactly like `project.start`. Blank the literals, keep the code.
+        .map(m => m[1].replace(/'[^']*'/gu, "''").replace(/"[^"]*"/gu, '""'))
+        .join('\n');
+      if (!interpolations) continue;
+      // Direct property only: `(?![\w$]*\s*[.(])` drops `row.a.b` and `row.f()`.
+      const accessRe = new RegExp(`\\b${escapeForRegExp(rowName)}\\.([A-Za-z_$][\\w$]*)\\b(?!\\s*[.(])`, 'gu');
+      for (const access of interpolations.matchAll(accessRe)) {
+        const field = access[1];
+        if (declared.has(field) || ROW_BUILTINS.has(field)) continue;
+        const key = `${bff}.${rowName}.${field}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        issues.push(`contract field missing -> \`${rowName}.${field}\` is not declared by ${bff}: its output is ${[...declared].sort().join(', ')}. Render a declared field, or the l4 has to add it to that query`);
+      }
+    }
+  }
+  return issues;
+}
+
+/** From just after `map((row`, the balanced text of the callback — or '' when the parens do not close. */
+function balancedCallbackBody(source: string, from: number): string {
+  let depth = 1;
+  for (let index = from; index < source.length; index++) {
+    const char = source[index];
+    if (char === '(') depth++;
+    else if (char === ')') {
+      depth--;
+      if (depth === 0) return source.slice(from, index);
+    }
+  }
+  return '';
+}
+
+/**
+ * bffId -> the field names its Output interface declares, read from the CONTRACT `.ts`.
+ *
+ * The contract is the byte-copy of the l4 wire shape and the very thing the compiler checks against, so it
+ * is the one source that cannot disagree with `tsc` (the shared `.defs.ts` carries states and actions, not
+ * the output field list). `QryListProjectOutput` -> `qryListProject`.
+ */
+function contractOutputFields(contractSource: string): Map<string, Set<string>> {
+  const byBff = new Map<string, Set<string>>();
+  for (const match of contractSource.matchAll(/export\s+interface\s+([A-Za-z_$][\w$]*)Output\s*\{([^}]*)\}/gu)) {
+    const bff = match[1].charAt(0).toLowerCase() + match[1].slice(1);
+    const names = new Set<string>();
+    for (const field of match[2].matchAll(/^\s*([A-Za-z_$][\w$]*)\??\s*:/gmu)) names.add(field[1]);
+    if (names.size) byBff.set(bff, names);
+  }
+  return byBff;
+}
+
+/** Properties every row-ish value has, whatever the contract says. */
+const ROW_BUILTINS = new Set(['length', 'constructor', 'toString', 'valueOf', 'hasOwnProperty']);
+
+function escapeForRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 /**
