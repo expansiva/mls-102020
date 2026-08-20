@@ -9,6 +9,7 @@
 // executable surface — `isSafeLogoSvg`, shared with the runtime, is what keeps it honest.
 
 import { isSafeLogoSvg, MAX_LOGO_SVG_BYTES } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
+import { boxDiagonal, markGeometry } from '/_102020_/l2/aura/agentManageHeader/helpers/logoGeometry.js';
 import { DEFAULT_HEADER_PROFILE } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import type {
   AppHeaderBrand,
@@ -124,6 +125,54 @@ function findBlobRisks(svg: string): string[] {
   return errors;
 }
 
+/** Legibility budget of a mark rendered 28px tall. Every number here is enforced, not advisory. */
+export const MARK_LIMITS = {
+  /** More shapes than this stop reading as one idea at 28px. */
+  maxShapes: 4,
+  /** A shape smaller than this (box diagonal, viewBox units of 32) is a speck on screen. */
+  minShapeDiagonal: 6,
+  /** The drawing must own the box: below this the mark floats, small, in a corner. */
+  minCoverage: 0.6,
+} as const;
+
+/** Scales a limit expressed in a 32-unit viewBox to the viewBox actually used. */
+function scaled(value: number, boxSize: number): number {
+  return boxSize > 0 ? (value * boxSize) / 32 : value;
+}
+
+/**
+ * Geometric legibility, measured. These are the three failure modes the first real marks had:
+ * more than one stroke width in the same drawing, a detail a few pixels wide, and a motif that
+ * uses a third of the box.
+ */
+function findLegibilityIssues(svg: string): string[] {
+  const errors: string[] = [];
+  const geometry = markGeometry(svg);
+
+  if (geometry.strokeWidths.length > 1) {
+    errors.push(`the mark mixes stroke widths [${geometry.strokeWidths.join(', ')}] — use ONE stroke width for the whole drawing`);
+  }
+  if (geometry.shapes.length > MARK_LIMITS.maxShapes) {
+    errors.push(`${geometry.shapes.length} shapes is too many for 28px — keep at most ${MARK_LIMITS.maxShapes} and draw ONE idea`);
+  }
+
+  const minDiagonal = scaled(MARK_LIMITS.minShapeDiagonal, geometry.boxWidth || 32);
+  const speck = geometry.shapes.find((shape) => boxDiagonal(shape) < minDiagonal);
+  if (speck) {
+    errors.push(`a <${speck.name}> spans only ${boxDiagonal(speck).toFixed(1)} units — anything under ${minDiagonal.toFixed(1)} disappears at 28px; drop it or make it part of a bigger shape`);
+  }
+
+  if (geometry.union && geometry.boxWidth > 0 && geometry.boxHeight > 0) {
+    const coverX = (geometry.union.maxX - geometry.union.minX) / geometry.boxWidth;
+    const coverY = (geometry.union.maxY - geometry.union.minY) / geometry.boxHeight;
+    if (Math.max(coverX, coverY) < MARK_LIMITS.minCoverage) {
+      errors.push(`the drawing covers only ${Math.round(coverX * 100)}%x${Math.round(coverY * 100)}% of the viewBox — fill at least ${Math.round(MARK_LIMITS.minCoverage * 100)}% on one axis`);
+    }
+  }
+
+  return errors;
+}
+
 /** Why a returned mark was refused, in terms the prompt can act on. Empty = accepted. */
 export function validateLogoSvg(markup: string): string[] {
   const svg = readString(markup);
@@ -164,6 +213,7 @@ export function validateLogoSvg(markup: string): string[] {
 
   // Legibility, not safety: a mark that renders as a solid block is worse than no mark.
   if (errors.length === 0) errors.push(...findBlobRisks(svg));
+  if (errors.length === 0) errors.push(...findLegibilityIssues(svg));
 
   // Last word to the runtime's own predicate, so a mark accepted here always renders there.
   if (errors.length === 0 && !isSafeLogoSvg(svg)) errors.push('svg was refused by the runtime sanitizer');
@@ -256,7 +306,9 @@ export function buildGenerateLogoHumanPrompt(request: GenerateLogoRequest): stri
     `Brand: ${request.brandTitle || '(unnamed)'}`,
     `Style: ${style} — ${STYLE_GUIDE[style]}`,
     request.brief ? `What it should evoke: ${request.brief}` : '',
-    'It renders 28px tall in an app header band, so it must read at that size: few shapes, no hairlines,'
-      + ' and nothing thinner than 1 unit in a 32-unit viewBox.',
+    'It renders 28px tall in an app header band. Budget, enforced: at most 4 shapes, ONE stroke width'
+      + ' (2 to 3.5 in a 32-unit viewBox), every shape at least 6 units across, and the drawing filling'
+      + ' at least 60% of the viewBox on one axis. One idea, drawn big — a container plus two letters'
+      + ' does not fit and will be refused.',
   ].filter(Boolean).join('\n');
 }
