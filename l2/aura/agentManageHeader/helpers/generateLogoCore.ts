@@ -63,6 +63,67 @@ export function normalizeLogoRequest(raw: unknown): GenerateLogoRequest {
 
 // ─── validation ──────────────────────────────────────────────────────────────
 
+
+function attr(tag: string, name: string): string | undefined {
+  const match = new RegExp(`\\s${name}\\s*=\\s*"([^"]*)"`, 'u').exec(tag);
+  return match ? match[1].trim() : undefined;
+}
+
+/**
+ * The "black blob" failure mode, mechanically.
+ *
+ * Two ways a mark comes out as a solid square at 28px: a shape that fills the whole viewBox, or a
+ * shape with no paint of its own while the root does not declare fill="none" (SVG's default fill is
+ * black, so it inherits a solid). Both are cheap to detect and both are fatal to legibility.
+ */
+function findBlobRisks(svg: string): string[] {
+  const errors: string[] = [];
+  const rootTag = svg.slice(0, svg.indexOf('>') + 1);
+  const viewBox = (attr(rootTag, 'viewBox') ?? '').split(/[\s,]+/u).map(Number);
+  const [, , boxWidth, boxHeight] = viewBox.length === 4 && viewBox.every((n) => Number.isFinite(n))
+    ? viewBox
+    : [0, 0, 0, 0];
+  const rootFill = attr(rootTag, 'fill');
+
+  for (const shape of svg.matchAll(/<(rect|circle|ellipse|path|polygon|polyline|line)\b[^>]*>/gu)) {
+    const [tag, name] = [shape[0], shape[1]];
+    const fill = attr(tag, 'fill');
+    const stroke = attr(tag, 'stroke');
+
+    // Inheriting a non-"none" fill means inheriting black.
+    if (!fill && name !== 'line' && name !== 'polyline' && rootFill !== 'none') {
+      errors.push(`<${name}> declares no fill and the root does not set fill="none" — it inherits solid black; state fill="none" or fill="currentColor" on every shape`);
+      break;
+    }
+    if (!fill && !stroke && (name === 'line' || name === 'polyline')) {
+      errors.push(`<${name}> has neither fill nor stroke — it draws nothing`);
+      break;
+    }
+
+    const painted = (fill ?? rootFill ?? 'black') !== 'none';
+    if (!painted || !boxWidth || !boxHeight) continue;
+
+    if (name === 'rect') {
+      const width = Number(attr(tag, 'width') ?? 0);
+      const height = Number(attr(tag, 'height') ?? 0);
+      if (width >= boxWidth * 0.9 && height >= boxHeight * 0.9) {
+        errors.push('a filled <rect> covering the whole viewBox reads as a solid square at 28px — make the container an outline (fill="none" + stroke)');
+        break;
+      }
+    }
+    if (name === 'circle' || name === 'ellipse') {
+      const radiusX = Number(attr(tag, name === 'circle' ? 'r' : 'rx') ?? 0);
+      const radiusY = Number(attr(tag, name === 'circle' ? 'r' : 'ry') ?? 0);
+      if (radiusX >= boxWidth * 0.45 && radiusY >= boxHeight * 0.45) {
+        errors.push(`a filled <${name}> covering the whole viewBox reads as a solid blob at 28px — make the container an outline (fill="none" + stroke)`);
+        break;
+      }
+    }
+  }
+
+  return errors;
+}
+
 /** Why a returned mark was refused, in terms the prompt can act on. Empty = accepted. */
 export function validateLogoSvg(markup: string): string[] {
   const svg = readString(markup);
@@ -100,6 +161,9 @@ export function validateLogoSvg(markup: string): string[] {
       break;
     }
   }
+
+  // Legibility, not safety: a mark that renders as a solid block is worse than no mark.
+  if (errors.length === 0) errors.push(...findBlobRisks(svg));
 
   // Last word to the runtime's own predicate, so a mark accepted here always renders there.
   if (errors.length === 0 && !isSafeLogoSvg(svg)) errors.push('svg was refused by the runtime sanitizer');

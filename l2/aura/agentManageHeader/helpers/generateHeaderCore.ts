@@ -26,7 +26,13 @@ export interface GenerateHeaderRequest {
   actions?: AppHeaderAction[];
   /** Language of the copy the header renders (i18n block + notes). */
   language?: string;
-  /** Navigation entries available to the header (label + href), for reference only. */
+  /**
+   * Render the module's navigation as links in the band. Default FALSE: navigation is the aside's
+   * job, and a header that duplicates it shows the same menu twice on screen. When false the model
+   * gets no routes at all, so it cannot link anything.
+   */
+  navLinks?: boolean;
+  /** Navigation entries available to the header (label + href); only read when navLinks is true. */
   navigation?: Array<{ label: string; href: string }>;
   /** DS role tokens the project's design system exposes. */
   tokens?: string[];
@@ -221,6 +227,7 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
     tokens: tokens?.length ? tokens : undefined,
     requestId: readString(raw.requestId) || undefined,
     profileName: readString(raw.profileName) || undefined,
+    navLinks: raw.navLinks === true,
     logo: raw.logo === 'generate' || raw.logo === 'none' ? raw.logo : 'keep',
     logoStyle: readString(raw.logoStyle) || undefined,
     logoBrief: readString(raw.logoBrief) || undefined,
@@ -275,6 +282,8 @@ function hasLiteralColor(text: string): boolean {
 export interface ValidateHeaderOptions {
   /** Routes the header may link to: the project's navigation entries. Anything else is invented. */
   allowedHrefs?: string[];
+  /** Whether the band may render navigation links at all (request.navLinks). */
+  allowNavLinks?: boolean;
 }
 
 /** Literal routes the band navigates to (href="/x" or navigateTo('/x')), minus the allowed ones. */
@@ -317,6 +326,11 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
   }
   if (bandHtml.includes('window.location')) {
     errors.push('bandHtml must not touch window.location (use this.navigateTo)');
+  }
+
+  // Navigation in the header is opt-in: the aside already owns the menu.
+  if (options.allowNavLinks !== true && /this\.render(NavLinks|ModuleLinks)\s*\(/u.test(bandHtml)) {
+    errors.push('bandHtml renders navigation links but navLinks is off — drop this.renderNavLinks() (pass navLinks:true to allow it)');
   }
 
   // The model has no way to know which routes exist, so it must not name one: an action with no
@@ -481,7 +495,8 @@ export function sanitizeGeneratedHeader(
   };
 
   const errors = validateHeaderParts(parts, {
-    allowedHrefs: (request.navigation ?? []).map((entry) => entry.href),
+    allowedHrefs: request.navLinks ? (request.navigation ?? []).map((entry) => entry.href) : [],
+    allowNavLinks: request.navLinks,
   });
   if (errors.length > 0) return { ok: false, error: errors.join('; ') };
 
@@ -515,9 +530,11 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
       ? `Actions YOU must render in the band: ${ownHandled.join(', ')}. They have NO route: render a `
         + `<button> whose @click calls this.emitHeaderAction('<action>') — never this.navigateTo and never an href.`
       : '',
-    request.navigation?.length
-      ? `Navigation entries available (render with this.renderNavLinks()): ${request.navigation.map((entry) => entry.label).join(', ')}`
-      : 'No navigation entries: do not invent links.',
+    request.navLinks
+      ? (request.navigation?.length
+        ? `Navigation entries available (render them with this.renderNavLinks()): ${request.navigation.map((entry) => entry.label).join(', ')}`
+        : 'Navigation links were requested but the project declares none: render no links.')
+      : 'NO navigation links in this header: the aside owns the menu. Do not call this.renderNavLinks() and do not write any route.',
     request.tokens?.length
       ? `DS role tokens available: ${request.tokens.join(', ')}`
       : 'DS role tokens follow the --ds-color-<role>[-bg|-text] convention (nav-bg, nav-text, nav-active-bg, border-default, text-muted, surface-bg, button-primary-bg/text).',

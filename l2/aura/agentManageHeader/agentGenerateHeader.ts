@@ -70,11 +70,12 @@ async function beforePromptImplicit(
     throw new Error(`(${agent.agentName}) ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
+  // Only fetch routes when the header may link them — otherwise the model gets none, by design.
+  if (req.navLinks) req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
   req.tokens = req.tokens ?? HEADER_ROLES.map((role) => `--ds-color-${role}`);
 
-  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] routes=${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
-  if (!req.navigation?.length) console.warn('[agentGenerateHeader] no navigation entries: the header will have no links (and any route it names is rejected)');
+  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] navLinks=${String(req.navLinks)} routes=${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
+  if (req.navLinks && !req.navigation?.length) console.warn('[agentGenerateHeader] navLinks is on but the project declares no navigation: the header will have no links');
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',

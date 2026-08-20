@@ -26,7 +26,6 @@ const validParts: GeneratedHeaderParts = {
     '  ${this.renderBrand()}',
     '</div>',
     '<div class="aura-header-side app-header-right">',
-    '  ${this.renderNavLinks()}',
     '  <span class="app-header-hint">${this.localized(messages).hint}</span>',
     '  ${this.renderActions()}',
     '</div>',
@@ -333,6 +332,53 @@ test('pointing twice is idempotent', () => {
   const first = pointHeaderProfileAtProject(clientConfig(), options);
   const second = pointHeaderProfileAtProject(first.config, options);
   assert.deepEqual(second.config, first.config);
+});
+
+test('navigation links are opt-in, and off by default', () => {
+  const base = { projectId: PROJECT, brand: { title: 'Sample App' } };
+  assert.equal(normalizeHeaderRequest(base).navLinks, false);
+  assert.equal(normalizeHeaderRequest({ ...base, navLinks: true }).navLinks, true);
+  assert.equal(normalizeHeaderRequest({ ...base, navLinks: 'yes' }).navLinks, false);
+
+  const withLinks = withBandHtml('${this.renderAsideToggle()}${this.renderNavLinks()}');
+  assert.match(validateHeaderParts(withLinks).join('; '), /navLinks is off/);
+  assert.deepEqual(validateHeaderParts(withLinks, { allowNavLinks: true }), []);
+
+  // renderActions() may carry module links, so it is gated the same way.
+  const withModuleLinks = withBandHtml('${this.renderAsideToggle()}${this.renderModuleLinks()}');
+  assert.match(validateHeaderParts(withModuleLinks).join('; '), /navLinks is off/);
+});
+
+test('with links off the model is told so, and gets no routes to link', () => {
+  const off = buildGenerateHeaderHumanPrompt(normalizeHeaderRequest({
+    projectId: PROJECT,
+    brand: { title: 'Sample App' },
+    navigation: [{ label: 'Items', href: '/sampleModule/items' }],
+  }));
+  assert.match(off, /NO navigation links/);
+  assert.equal(off.includes('/sampleModule/items'), false);
+
+  const on = buildGenerateHeaderHumanPrompt(normalizeHeaderRequest({
+    projectId: PROJECT,
+    brand: { title: 'Sample App' },
+    navLinks: true,
+    navigation: [{ label: 'Items', href: '/sampleModule/items' }],
+  }));
+  assert.match(on, /render them with this\.renderNavLinks\(\)/);
+  assert.match(on, /Items/);
+});
+
+test('with links off, a route in the band is refused even if the project has it', () => {
+  const request = normalizeHeaderRequest({
+    projectId: PROJECT,
+    brand: { title: 'Sample App' },
+    navigation: [{ label: 'Items', href: '/sampleModule/items' }],
+  });
+  const sanitized = sanitizeGeneratedHeader({
+    bandHtml: '${this.renderAsideToggle()}<a href="/sampleModule/items" @click=${this.handleNavigate}>Items</a>',
+  }, request);
+  assert.equal(sanitized.ok, false);
+  assert.match(sanitized.error ?? '', /not one of the project/);
 });
 
 test('the logo intent defaults to keep, and only accepts the two explicit modes', () => {
