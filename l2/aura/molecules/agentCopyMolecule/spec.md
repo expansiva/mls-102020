@@ -135,8 +135,10 @@ fan-out** — `c3`, `c4` e `c5` iteram sobre `context.items` dentro do mesmo ste
 
 ## Aceite (controle Fase 5)
 
-1. **O teste da premissa**: copiar `ml-indeterminate-spinner`, acrescentar `pt` ao
-   `collab_i18n` da cópia e ver o português com o runtime em `pt` — sem index nenhum.
+1. **O teste da premissa**: copiar `ml-upload-file-list` (só `en`, e as chaves `addFiles`,
+   `dropHere` e `noFiles` são TEXTO VISÍVEL no estado padrão), acrescentar `pt` ao `collab_i18n`
+   da cópia e ver o português com o runtime em `pt` — sem index nenhum. Não usar
+   `ml-indeterminate-spinner` para isto: a única chave dela vira `aria-label`, invisível na tela.
 2. Casca achatada (`ml-button-standard-brutal`): código real do pai sob a identidade
    brutal, com o `.less` brutal.
 3. Colisão single: substituir / cancelar / renomear.

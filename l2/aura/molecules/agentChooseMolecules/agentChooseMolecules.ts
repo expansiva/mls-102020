@@ -258,7 +258,11 @@ This is a cheap classification. You do not choose anything: which groups and whi
 ⚠️ Do NOT name a group, a component or a tag, not even as a suggestion. The probe exists to measure whether the CATALOG carries that decision; anything you name here would corrupt the measurement.
 
 Tasks:
-1. validInput: false ONLY when the text is clearly not a definition of a page, screen or system (e.g. it is a question about the codebase, a request to change an existing component, or unintelligible). When it asks to create or change a component, say so in reason and name @@agentNewMolecule2 or @@agentImproveMolecule2. Everything else is validated by deterministic code — do NOT over-reject.
+1. validInput: false ONLY when the text is clearly not describing something a UI has to do (e.g. it is a question about the codebase, a request to change an existing component, or unintelligible). When it asks to create or change a component, say so in reason and name @@agentNewMolecule2 or @@agentImproveMolecule2. Everything else is validated by deterministic code — do NOT over-reject.
+
+   ⚠️ ONE REGION IS ENOUGH, and this is the rejection that has to stop. "A country selector for checkout, with the flag next to the name" is valid input: it is a single region of a page, and this probe answers one region as readily as twenty. Never refuse for being small, terse, a noun phrase with no verb, or short of detail the author did not have — the later steps decide what they can and answer "none" for what they cannot, which is the honest failure. Refusing here produces no measurement at all.
+
+   Measured on 2026-08-20: this exact input came back refused as "an isolated element, not a definition of a page", and 6 of the 10 cases of the pilot battery are phrased the same way.
 2. runKey: a short kebab-case slug naming the page (e.g. 'cadastro-cliente', 'tela-assinatura'). It names a work folder. Max 40 characters, ascii lowercase letters, digits and dashes.
 3. userLanguage: detect from the text ('pt' | 'en' | ...); default 'pt' when ambiguous.
 4. title: a SHORT task title in the detected language.
