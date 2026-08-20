@@ -29,7 +29,9 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
 - \`this.renderActions()\` — the optional actions the profile enabled (language / design system /
   module links). Render it once, on the right.
 - \`this.hasAction('search' | 'user')\` — true when the profile asked for an action the base does not
-  implement; those you render yourself.
+  implement; those you render yourself, as a \`<button>\` that calls
+  \`this.emitHeaderAction('<action>')\`. They have NO route: the app listens to the event and decides.
+  Inventing a path like \`/profile\` produces a dead link and is rejected.
 - \`this.navigateTo(href)\` / \`@click=\\\${this.handleNavigate}\` — SPA navigation.
 - \`this.localized(messages).<key>\` — the copy for the current language.
 
@@ -44,7 +46,9 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
    \`@media\` blocks too.
 4. Colors, only through DS role tokens with a fallback: \`var(--ds-color-nav-bg, #fff)\`. The same for
    any inline style.
-5. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`.
+5. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
+   navigation entries. You cannot know which routes exist — so never write a path that was not
+   handed to you.
 6. Put every fixed word in \`messages\` and read it with \`this.localized(messages)\`. A label the user
    can see is never a literal in the markup.
 7. Layout with flex/grid inside the band; the band is a flex row already (left group / right group).
@@ -56,7 +60,8 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
    the band height and a header that disagrees shifts the whole page.
 3. No \`position: fixed\` — it escapes the band.
 4. No literal colors (\`#hex\`, \`rgb()\`, \`hsl()\`) except as the fallback INSIDE a \`var()\`.
-5. No \`window.location\`, no bare \`href\` navigation for in-app routes.
+5. No \`window.location\`, no bare \`href\` navigation for in-app routes, and no invented route
+   (\`/profile\`, \`/settings\`, \`/account\`, …) — not in an \`href\`, not in \`navigateTo\`.
 6. No dependency on a molecule/web component from another project: the header must render with the
    base and plain HTML only.
 7. No overflow-driven layout: the band is one line high, so keep the content to a single row and let

@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   buildGenerateHeaderHumanPrompt,
   buildHeaderSource,
+  findInventedRoutes,
   headerPaths,
   normalizeHeaderRequest,
   pointHeaderProfileAtProject,
@@ -113,9 +114,33 @@ test('navigation must go through the shell protocol', () => {
   assert.ok(location.some((error) => error.includes('window.location')), location.join('; '));
 
   assert.deepEqual(
-    validateHeaderParts(withBandHtml('${this.renderAsideToggle()}<a href="/sampleModule" @click=${this.handleNavigate}>Home</a>')),
+    validateHeaderParts(
+      withBandHtml('${this.renderAsideToggle()}<a href="/sampleModule" @click=${this.handleNavigate}>Home</a>'),
+      { allowedHrefs: ['/sampleModule'] },
+    ),
     [],
   );
+});
+
+test('a route the model invented is rejected (the /profile button that shipped once)', () => {
+  const invented = validateHeaderParts(withBandHtml(
+    "${this.renderAsideToggle()}<button @click=${() => this.navigateTo('/profile')}>Perfil</button>",
+  ), { allowedHrefs: ['/sampleModule'] });
+  assert.ok(invented.some((error) => error.includes('"/profile"')), invented.join('; '));
+
+  // An action with no route goes through the event instead.
+  assert.deepEqual(
+    validateHeaderParts(withBandHtml(
+      "${this.renderAsideToggle()}${this.hasAction('user') ? html`<button @click=${() => this.emitHeaderAction('user')}>x</button>` : nothing}",
+    )),
+    [],
+  );
+});
+
+test('invented routes are found in hrefs and in navigateTo alike', () => {
+  assert.deepEqual(findInventedRoutes('<a href="/a">a</a> ${this.navigateTo("/b")}', ['/a']), ['/b']);
+  assert.deepEqual(findInventedRoutes('<a href=${entry.href}>x</a>'), [], 'a binding is not a literal route');
+  assert.deepEqual(findInventedRoutes('<a href="https://x.dev/y">x</a>'), [], 'external links are not routes');
 });
 
 test('colors must go through a DS role token', () => {

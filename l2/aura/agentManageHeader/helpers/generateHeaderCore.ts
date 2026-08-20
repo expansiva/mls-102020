@@ -250,7 +250,22 @@ function hasLiteralColor(text: string): boolean {
  * Mechanical checks of the header contract (skills/headerContract.ts). Returns the violations;
  * an empty array means the parts can be assembled.
  */
-export function validateHeaderParts(parts: GeneratedHeaderParts): string[] {
+export interface ValidateHeaderOptions {
+  /** Routes the header may link to: the project's navigation entries. Anything else is invented. */
+  allowedHrefs?: string[];
+}
+
+/** Literal routes the band navigates to (href="/x" or navigateTo('/x')), minus the allowed ones. */
+export function findInventedRoutes(bandHtml: string, allowedHrefs: readonly string[] = []): string[] {
+  const allowed = new Set(allowedHrefs);
+  const found = new Set<string>();
+  for (const match of bandHtml.matchAll(/(?:href=|navigateTo\(\s*)['"](\/[^'"]*)['"]/gu)) {
+    if (!allowed.has(match[1])) found.add(match[1]);
+  }
+  return [...found];
+}
+
+export function validateHeaderParts(parts: GeneratedHeaderParts, options: ValidateHeaderOptions = {}): string[] {
   const errors: string[] = [];
   const bandHtml = readString(parts.bandHtml);
   const bandCss = readString(parts.bandCss);
@@ -280,6 +295,12 @@ export function validateHeaderParts(parts: GeneratedHeaderParts): string[] {
   }
   if (bandHtml.includes('window.location')) {
     errors.push('bandHtml must not touch window.location (use this.navigateTo)');
+  }
+
+  // The model has no way to know which routes exist, so it must not name one: an action with no
+  // destination (user, search) goes through this.emitHeaderAction, never a made-up path.
+  for (const route of findInventedRoutes(bandHtml, options.allowedHrefs)) {
+    errors.push(`bandHtml navigates to "${route}", which is not one of the project's routes — link only the provided navigation entries, or use this.emitHeaderAction('<action>') for an action with no route`);
   }
 
   // The fragments are inlined into template literals — unbalanced backticks break the file.
@@ -437,7 +458,9 @@ export function sanitizeGeneratedHeader(
     notes: readString(result.notes) || undefined,
   };
 
-  const errors = validateHeaderParts(parts);
+  const errors = validateHeaderParts(parts, {
+    allowedHrefs: (request.navigation ?? []).map((entry) => entry.href),
+  });
   if (errors.length > 0) return { ok: false, error: errors.join('; ') };
 
   return {
@@ -466,7 +489,10 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
     request.brand?.title ? `Brand title: ${request.brand.title} (read it as this.brand.title — never hardcode)` : '',
     request.brand?.logoUrl ? `Brand logo: ${request.brand.logoUrl} (rendered by this.renderBrand())` : '',
     baseHandled.length ? `Actions provided by the base (call this.renderActions()): ${baseHandled.join(', ')}` : '',
-    ownHandled.length ? `Actions YOU must render in the band: ${ownHandled.join(', ')}` : '',
+    ownHandled.length
+      ? `Actions YOU must render in the band: ${ownHandled.join(', ')}. They have NO route: render a `
+        + `<button> whose @click calls this.emitHeaderAction('<action>') — never this.navigateTo and never an href.`
+      : '',
     request.navigation?.length
       ? `Navigation entries available (render with this.renderNavLinks()): ${request.navigation.map((entry) => entry.label).join(', ')}`
       : 'No navigation entries: do not invent links.',
