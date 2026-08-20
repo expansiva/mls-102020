@@ -4,8 +4,9 @@
 // collects the issues of every item before failing, so a bad batch reports once.
 //
 // The check that matters most is `i18n_changed`: the collab_i18n block must cross the copy
-// BYTE FOR BYTE. It is the reason the agent exists — a copy that "improves" the i18n block on
-// the way is worse than no copy at all.
+// BYTE FOR BYTE. Since 2026-08-20 it is not only "the reason the copy exists" — it is the HANDOFF
+// CONTRACT: another Studio agent adds the languages afterwards, working on this very block. A copy
+// that "improves" it on the way is a copy that agent cannot trust.
 
 import type { CopyItem } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
 import { copyClassName, copyShortName, copyTag } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
