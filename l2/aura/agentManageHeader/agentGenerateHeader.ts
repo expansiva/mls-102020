@@ -69,7 +69,8 @@ async function beforePromptImplicit(
   req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
   req.tokens = req.tokens ?? HEADER_ROLES.map((role) => `--ds-color-${role}`);
 
-  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" actions=[${(req.actions ?? []).join(',') || '—'}] commit=${String(req.commit)}`);
+  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] routes=${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
+  if (!req.navigation?.length) console.warn('[agentGenerateHeader] no navigation entries: the header will have no links (and any route it names is rejected)');
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -90,19 +91,37 @@ async function beforePromptImplicit(
   return [addMessageAI];
 }
 
-/** Navigation entries of the project's modules, so the header can offer real links. */
+/** The composed client config (l5/config.json) — the document the runtime actually boots from. */
+async function readClientConfig(projectId: number): Promise<{ storFile: any; config: unknown }> {
+  const fileInfo = { project: projectId, level: 5, folder: '', shortName: 'config', extension: '.json' };
+  const key = mls.stor.getKeyToFile(fileInfo as any);
+  const storFile = mls.stor.files[key];
+  if (!storFile) throw new Error(`l5/config.json not found for project ${projectId}`);
+  const raw = await storFile.getContent();
+  return { storFile, config: typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : undefined };
+}
+
+/**
+ * Real routes of the project, from `l5/config.json > projects[id].modules[].navigation` — the same
+ * list the shell hands the aside. This is also the allow-list the validation checks the generated
+ * band against: a header must never name a route that does not exist.
+ */
 async function readProjectNavigation(projectId: number): Promise<Array<{ label: string; href: string }>> {
   try {
-    const config = await getConfigProject(projectId) as { navigation?: unknown; modules?: unknown } | undefined;
-    const modules = Array.isArray(config?.modules) ? config.modules : [];
+    const { config } = await readClientConfig(projectId);
+    const projects = (config as { projects?: Record<string, { modules?: unknown }> } | undefined)?.projects ?? {};
+    const owner = projects[String(projectId)] ? [projects[String(projectId)]] : Object.values(projects);
     const entries: Array<{ label: string; href: string }> = [];
-    for (const module of modules) {
-      const navigation = (module as { navigation?: unknown }).navigation;
-      if (!Array.isArray(navigation)) continue;
-      for (const entry of navigation) {
-        const label = typeof (entry as { label?: unknown }).label === 'string' ? (entry as { label: string }).label : '';
-        const href = typeof (entry as { href?: unknown }).href === 'string' ? (entry as { href: string }).href : '';
-        if (label && href) entries.push({ label, href });
+    for (const project of owner) {
+      const modules = Array.isArray(project?.modules) ? project.modules : [];
+      for (const module of modules) {
+        const navigation = (module as { navigation?: unknown }).navigation;
+        if (!Array.isArray(navigation)) continue;
+        for (const entry of navigation) {
+          const label = typeof (entry as { label?: unknown }).label === 'string' ? (entry as { label: string }).label : '';
+          const href = typeof (entry as { href?: unknown }).href === 'string' ? (entry as { href: string }).href : '';
+          if (label && href) entries.push({ label, href });
+        }
       }
     }
     return entries;
@@ -158,13 +177,7 @@ async function afterPromptStep(
  * between. The other profiles (e.g. `studio`) stay as they are.
  */
 async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPaths): Promise<void> {
-  const fileInfo = { project: req.projectId, level: 5, folder: '', shortName: 'config', extension: '.json' };
-  const key = mls.stor.getKeyToFile(fileInfo as any);
-  const storFile = mls.stor.files[key];
-  if (!storFile) throw new Error(`l5/config.json not found for project ${req.projectId}`);
-
-  const raw = await storFile.getContent();
-  const current = typeof raw === 'string' && raw.trim() ? JSON.parse(raw) : undefined;
+  const { storFile, config: current } = await readClientConfig(req.projectId);
   const written = pointHeaderProfileAtProject(current, {
     paths,
     brand: req.brand,
@@ -221,7 +234,7 @@ export type Output = {
   result: {
     /** Body of renderBand(): a lit template without the enclosing html tag/backticks. */
     bandHtml: string;
-    /** Extra CSS, every selector scoped with ${tag}. */
+    /** Extra CSS, every selector scoped with tag*/
     bandCss?: string;
     /** locale -> key -> text, for the fixed copy the band renders. */
     messages?: Record<string, Record<string, string>>;
