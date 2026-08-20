@@ -211,10 +211,17 @@ async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPath
 }
 
 /**
- * Child step that draws the brand mark. Sequential and `pending`, so it runs as soon as this step
- * completes; brief and style default to the header's own, so one call needs no extra input.
+ * Child step that draws the brand mark.
+ *
+ * Shape follows `mkAgentStep` (agentImplementGenome/planning.ts), which is the working convention for
+ * an agent step: `interaction: null` and a status the planner understands. With no `dependsOn`, that
+ * status is `waiting_human_input` — the same one the genome orchestrator gives its entry group — NOT
+ * `pending`, which means "already prepared" and makes the runtime refuse the step
+ * ("Step not prepared for continueBeforePrompt ... interaction:null").
+ *
+ * Brief and style default to the header's own, so one call needs no extra input.
  */
-function logoStepIntent(
+export function logoStepIntent(
   context: mls.msg.ExecutionContext,
   step: mls.msg.AIAgentStep,
   req: GenerateHeaderRequest,
@@ -241,7 +248,7 @@ function logoStepIntent(
       stepId: 0,
       interaction: null,
       stepTitle: req.brand?.title ? `Generate logo · ${req.brand.title}` : 'Generate logo',
-      status: 'pending',
+      status: 'waiting_human_input',
       nextSteps: [],
       agentName: 'agentGenerateLogo',
       prompt: JSON.stringify(prompt),
