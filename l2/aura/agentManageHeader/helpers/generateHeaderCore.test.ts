@@ -12,7 +12,7 @@ import {
   validateHeaderParts,
   type GeneratedHeaderParts,
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
-import { AURA_HEADER_HEIGHT_PX } from '/_102029_/l2/contracts/shellLayout.js';
+import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
 
 const PROJECT = 102051;
 

@@ -46,7 +46,12 @@ type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'short
 type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
 
 interface CfeFieldDef { fieldId: string; type: string; required?: boolean; description?: string; enum?: string[] }
-interface CfeEntityDef { entityId: string; title: string; fields: CfeFieldDef[]; rulesApplied: string[]; statusEnum: string[]; lifecycleStates: string[] }
+interface CfeEntityDef {
+  entityId: string; title: string; fields: CfeFieldDef[]; rulesApplied: string[];
+  statusEnum: string[]; lifecycleStates: string[];
+  /** l4 `storage.target` — where the record LIVES (`mdm` | `moduleDatabase` | `external` | …). */
+  storageTarget: string;
+}
 
 interface CfeOperationDef {
   operationId: string;
@@ -185,6 +190,19 @@ export interface CfePreparedPage {
   presentation: { categoryRef: string; experienceRef?: string } | null;
   i18nMeta: { defaultLocale: string; activeLocales: string[] };
   entityFields: Record<string, string[]>;
+  /**
+   * Entities of this page whose l4 declares `storage.target: 'mdm'` — shared master data. A record other
+   * modules reference is not deletable (ajustesMDM §3b: deactivate, never delete), and the page tests
+   * have to expect that instead of a successful delete.
+   */
+  mdmEntityIds: string[];
+  /**
+   * Entities of this page whose l4 declares `storage.target: 'external'` — an identity that lives
+   * OUTSIDE this module (a platform user). Pre-MDM-rebuild the backend still keeps a local copy of those
+   * people, so anything reading them fails against the REAL platform user a production run executes as.
+   * That failure is owned by the MDM wave, and the cases say so instead of counting as new breakage.
+   */
+  externalEntityIds: string[];
   variantPlan: CfeLayoutVariantPlan[];
   userJourney: Record<string, unknown>;
 }
@@ -701,12 +719,15 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
   const baseDefinition = pageDefinition(page, operations, workspace?.purpose);
   const visualStyle = createContext.moduleVisualStyle[page.moduleName];
   const i18nMeta = createContext.moduleI18n[page.moduleName] || { defaultLocale: 'en', activeLocales: ['en'] };
+  const pageEntityIds = unique([...page.entityIds, ...operations.flatMap(operationEntities)]);
   const entityFields = Object.fromEntries(
-    unique([...page.entityIds, ...operations.flatMap(operationEntities)]).map(entityId => [
+    pageEntityIds.map(entityId => [
       entityId,
       (createContext.entities.get(entityId)?.fields || []).map(field => field.fieldId).filter(Boolean),
     ]),
   );
+  const mdmEntityIds = pageEntityIds.filter(entityId => createContext.entities.get(entityId)?.storageTarget === 'mdm');
+  const externalEntityIds = pageEntityIds.filter(entityId => createContext.entities.get(entityId)?.storageTarget === 'external');
   const contractCopies = workspace && workspace.bffCalls.length > 0 ? buildContractCopies(createContext, page, workspace) : [];
   const variantPlan = buildLayoutVariantPlan(createContext, page, operations, commands);
   const userJourney = buildPageUserJourney(createContext, page, operations, commands);
@@ -715,7 +736,7 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
   const presentation = workspace && workspace.categoryRef
     ? { categoryRef: workspace.categoryRef, ...(workspace.experienceRef ? { experienceRef: workspace.experienceRef } : {}) }
     : null;
-  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, presentation, i18nMeta, entityFields, variantPlan, userJourney };
+  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, presentation, i18nMeta, entityFields, mdmEntityIds, externalEntityIds, variantPlan, userJourney };
 }
 
 // F3: GENERATE ONE l2 contract .ts per WORKSPACE from the workspace defs (l4 holds only .defs.ts; we never
@@ -965,6 +986,8 @@ interface PageTestCase {
   // DECLARED key instead of assuming "items". Emitted only for shape 'paginated'.
   expect: { ok: boolean; errorCode?: string; minItems?: number; shape?: 'object' | 'array' | 'paginated'; itemsKey?: string };
   mutating?: boolean;
+  /** A failure already owned by a named wave of work; the runner counts it apart from `failed`. */
+  expectedFail?: string;
 }
 
 // A fixed instant for date/datetime literals: the same .test.ts must produce the same result on two runs,
@@ -1044,9 +1067,14 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
     return names;
   };
 
+  // The wave that owns the failures of the entities that still live outside MDM. Named, not boolean, so
+  // the day it lands the marks are found by one grep — and a marked case that PASSES reports the mark as
+  // stale (the runner does that), which is how the wave gets proved in production.
+  const MDM_REBUILD = 'mdm-rebuild';
   for (const command of prepared.commands) {
     const commandName = readString(command.commandName);
     if (!commandName) continue;
+    const knownIssue = touchesExternalIdentity(prepared, commandName) ? MDM_REBUILD : '';
     const kind = readString(command.kind) === 'query' ? 'query' : 'command';
     const routine = readString(command.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`;
     const harvestable = harvestableFor(commandName);
@@ -1067,7 +1095,7 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
     // activeLifecycleInstance, systemDefault…) are NOT client-supplied — the backend derives them — so
     // they never disqualify a case; testParams simply omits them.
     const unresolvableIds = requiredFields
-      .filter(field => isEntityIdField(field.name) && !harvestable.has(field.name) && !isRuntimeResolvedInputSource(field.source))
+      .filter(field => isEntityReferenceField(field) && !harvestable.has(field.name) && !isRuntimeResolvedInputSource(field.source))
       .map(field => field.name);
     if (unresolvableIds.length > 0) {
       recordCreateWarning(`${prepared.page.pageId}: skipped test case(s) for ${commandName} — required id(s) ${unresolvableIds.join(', ')} are not produced by any read routine of this page`);
@@ -1086,20 +1114,70 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
       const expect = isList
         ? { ok: true, shape, minItems: 1, ...(itemsKey ? { itemsKey } : {}) }
         : { ok: true, shape };
-      cases.push({ id: `${commandName}.ok`, routine, params: testParams(requiredFields, harvestable), expect });
+      cases.push({ id: `${commandName}.ok`, routine, params: testParams(requiredFields, harvestable), expect, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+    } else if (deletesMasterData(prepared, command, commandName)) {
+      // An operation that MUST NOT succeed does not get a success case — the case becomes the PROOF that
+      // it fails, and fails readably. Master data is referenced by other records (and by other modules),
+      // so deleting it breaks those references: the policy is deactivate, never delete
+      // (todo/newSolution/ajustesMDM.md §3b). The backend answers CONFLICT; a case expecting `ok` here
+      // reported a POLICY working correctly as a defect — 8 of the 22 failures of the production suite.
+      cases.push({
+        id: `${commandName}.notDeletable`,
+        routine,
+        params: testParams(requiredFields, harvestable),
+        expect: { ok: false, errorCode: 'CONFLICT' },
+        mutating: true,
+        ...(knownIssue ? { expectedFail: knownIssue } : {}),
+      });
     } else {
       // Command "ok" case writes -> mutating (runner isolates it in a rolled-back transaction).
       // A command returns its result object.
-      cases.push({ id: `${commandName}.ok`, routine, params: testParams(requiredFields, harvestable), expect: { ok: true, shape: 'object' }, mutating: true });
+      cases.push({ id: `${commandName}.ok`, routine, params: testParams(requiredFields, harvestable), expect: { ok: true, shape: 'object' }, mutating: true, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
       for (const field of requiredFormFields) {
-        cases.push({ id: `${commandName}.${field}.required`, routine, params: testParams(requiredFields.filter(other => other.name !== field), harvestable), expect: { ok: false, errorCode: 'VALIDATION_ERROR' } });
+        cases.push({ id: `${commandName}.${field}.required`, routine, params: testParams(requiredFields.filter(other => other.name !== field), harvestable), expect: { ok: false, errorCode: 'VALIDATION_ERROR' }, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
       }
     }
   }
   return cases;
 }
 
-type PageTestField = { name: string; type?: string; l4Type?: string; enum?: string[]; source?: string };
+/**
+ * Does this command read or write an entity that still lives OUTSIDE this module's store?
+ *
+ * Those are the people the module duplicates in a local table until the MDM rebuild lands. A production
+ * run executes as a REAL platform user, which that local copy has never heard of, so the command dies in
+ * `PlatformUser not found: <real uuid>` — 4 of the 22 failures. Seeding the duplicated person to "fix" it
+ * would reinforce the very defect the rebuild removes, so the case is marked instead.
+ */
+function touchesExternalIdentity(prepared: CfePreparedPage, commandName: string): boolean {
+  // Tolerant reads: this is also called with hand-built prepared pages (tests) and with pages prepared
+  // before these classifications existed — an absent list means "nothing classified", never a crash.
+  if (!prepared.externalEntityIds?.length) return false;
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  if (!operation) return false;
+  return [operation.entity, ...operation.reads, ...operation.writes]
+    .filter(Boolean)
+    .some(entityId => prepared.externalEntityIds.includes(entityId));
+}
+
+/**
+ * Does this command delete a MASTER-DATA record? Then it cannot succeed, and its case is a negative one.
+ *
+ * Deliberately narrow: only a DELETE (by the operation's kind, falling back to the `cmdDelete…`
+ * convention when the command has no operation of its own) over an entity the l4 marks
+ * `storage.target: 'mdm'`. A module-local entity keeps its positive delete case — nothing references it
+ * across modules, so deleting it is legitimate and the test must keep proving it works.
+ */
+function deletesMasterData(prepared: CfePreparedPage, command: Record<string, unknown>, commandName: string): boolean {
+  if (!prepared.mdmEntityIds?.length) return false;
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  const isDelete = operation ? /delete|remove/i.test(operation.kind) || /^cmdDelete/.test(commandName) : /^cmdDelete/.test(commandName);
+  if (!isDelete) return false;
+  const entity = operation?.entity || readString(command.entity);
+  return !!entity && prepared.mdmEntityIds.includes(entity);
+}
+
+type PageTestField = { name: string; type?: string; l4Type?: string; enum?: string[]; source?: string; presentation?: string };
 
 /**
  * Params for one generated case. `<seedRef>` is emitted ONLY for an entity id the page itself reads
@@ -1116,16 +1194,32 @@ function testParams(fields: PageTestField[], harvestable: Set<string>): Record<s
     // Runtime-resolved inputs (session actor, business context, active lifecycle instance, clock) are
     // derived by the backend, never sent by a client — a fake literal id here would only break a lookup.
     if (isRuntimeResolvedInputSource(field.source)) continue;
-    params[field.name] = isEntityIdField(field.name) && harvestable.has(field.name)
+    params[field.name] = isEntityReferenceField(field) && harvestable.has(field.name)
       ? SEED_REF_MARKER
       : testLiteralForField(field);
   }
   return params;
 }
 
-/** An entity-identifier field name (`stockItemId`, `id`) — the only kind `<seedRef>` can stand in for. */
+/** An entity-identifier field name (`stockItemId`, `id`). */
 function isEntityIdField(name: string): boolean {
   return /(^|[a-z0-9])Id$/.test(name) || name === 'id';
+}
+
+/**
+ * Is this input an ENTITY REFERENCE — the only kind `<seedRef>` can stand in for?
+ *
+ * The name suffix alone was the test, and l4 does not always add `Id`: the buildFlowFsm decision command
+ * declares its foreign key as `changeOrder` (source `selectedEntity`, presentation `selection`), so the
+ * generator treated it as a domain field, emitted the literal `"teste"`, and every run answered
+ * `NOT_FOUND: ChangeOrder not found: teste` without ever exercising the command. What the field IS shows
+ * in how the page fills it: a value the user PICKS from a list is a reference, whatever it is called.
+ */
+function isEntityReferenceField(field: PageTestField): boolean {
+  return isEntityIdField(field.name)
+    || field.source === 'selectedEntity'
+    || field.source === 'selection'
+    || field.presentation === 'selection';
 }
 
 /**
@@ -2956,9 +3050,14 @@ function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinitio
     defaultValue: '',
   });
 
+  // The wave that owns the failures of the entities that still live outside MDM. Named, not boolean, so
+  // the day it lands the marks are found by one grep — and a marked case that PASSES reports the mark as
+  // stale (the runner does that), which is how the wave gets proved in production.
+  const MDM_REBUILD = 'mdm-rebuild';
   for (const command of prepared.commands) {
     const commandName = readString(command.commandName);
     if (!commandName) continue;
+    const knownIssue = touchesExternalIdentity(prepared, commandName) ? MDM_REBUILD : '';
     const kind = readString(command.kind) === 'query' ? 'query' : 'command';
     addState(states, {
       stateKey: actionStatusStateKey(prepared.page.pageId, commandName),
@@ -3035,9 +3134,14 @@ function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown
     .filter(command => readString(command.kind) === 'query')
     .map(command => readString(command.commandName))
     .filter(Boolean);
+  // The wave that owns the failures of the entities that still live outside MDM. Named, not boolean, so
+  // the day it lands the marks are found by one grep — and a marked case that PASSES reports the mark as
+  // stale (the runner does that), which is how the wave gets proved in production.
+  const MDM_REBUILD = 'mdm-rebuild';
   for (const command of prepared.commands) {
     const commandName = readString(command.commandName);
     if (!commandName) continue;
+    const knownIssue = touchesExternalIdentity(prepared, commandName) ? MDM_REBUILD : '';
     const kind = readString(command.kind) === 'query' ? 'query' : 'command';
     const commandOutputState = commandOutputStateKey(prepared.page.pageId, commandName);
     const refreshActionIds = kind === 'command' ? queryActionIds.filter(actionId => actionId !== commandName) : [];
@@ -4430,7 +4534,8 @@ function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeE
   const entityId = readString(data.entityId) || fallbackId;
   if (!entityId) return null;
   const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => ({ fieldId: readString(field.fieldId), type: readString(field.type), required: field.required === true, description: readString(field.description), enum: fieldEnumValues(field) })).filter(field => field.fieldId) : [];
-  return { entityId, title: readString(data.title) || humanizeId(entityId), fields, rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum), lifecycleStates: readStringArray(data.lifecycleStates) };
+  const storage = isRecord(data.storage) ? data.storage : {};
+  return { entityId, title: readString(data.title) || humanizeId(entityId), fields, rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum), lifecycleStates: readStringArray(data.lifecycleStates), storageTarget: readString(storage.target) };
 }
 
 /**
