@@ -20,6 +20,7 @@ import {
   CH_PLAN_C1,
   CH_PLAN_C3,
   ChGroupArtifact,
+  ChCatalogVia,
   ChGroupsArtifact,
   ChPromptSize,
   chDoneAnchor,
@@ -44,6 +45,7 @@ interface ChInputArtifact {
   definition: string;
   userLanguage: string;
   level1Reference: string;
+  level1Via?: ChCatalogVia;
   publishedGroups: Array<{ name: string }>;
 }
 
@@ -90,6 +92,7 @@ async function beforePromptStep(
       runKey,
       group,
       indexDefsReference: '',
+      catalogVia: 'published',
       choices: [],
       ok: false,
       gateHits: 0,
@@ -108,6 +111,7 @@ async function beforePromptStep(
     definition: input.definition,
     userLanguage: input.userLanguage,
     level1Reference: input.level1Reference || groupsArtifact.level1Reference,
+    level1Via: input.level1Via || 'published',
     publishedGroups: (input.publishedGroups || []).map(group => group.name),
     regions: groupsArtifact.regions,
     groups,

@@ -10,7 +10,7 @@
 // ⚠️ THE LABELS ARE IN PORTUGUESE on purpose. The audience of this summary is the team running the
 // battery, and the control it is scored against is in Portuguese. The parts the model wrote — the reasons — stay in whatever language the user wrote in.
 
-import { ChGroupArtifact, ChPromptSize, ChRegion } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import { ChCatalogVia, ChGroupArtifact, ChPromptSize, ChRegion } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 
 export interface ChTagIssues {
   invented: number;
@@ -24,6 +24,8 @@ export interface ChRunFacts {
   definition: string;
   userLanguage: string;
   level1Reference: string;
+  /** Which rung of the read ladder answered for level 1. */
+  level1Via: ChCatalogVia;
   publishedGroups: string[];
   regions: ChRegion[];
   /** One per group c1 chose. A group whose step never accepted an answer is here with ok: false. */
@@ -51,7 +53,7 @@ export interface ChRunReport {
   runKey: string;
   definition: string;
   userLanguage: string;
-  catalog: { level1Reference: string; publishedGroups: string[] };
+  catalog: { level1Reference: string; publishedGroups: string[]; level1Via: ChCatalogVia; groupsViaLocalCache: string[] };
   rows: ChRunRow[];
   totals: {
     regions: number;
@@ -99,6 +101,15 @@ export function buildChRunReport(facts: ChRunFacts, charsPerToken: number): ChRu
   });
 
   const notes: string[] = [];
+  // The catalog read from the local cache is a finding, not a detail: the measurement is valid, but a
+  // consumer outside the editor has only the published URL and would have read nothing.
+  const viaCache = [
+    ...(facts.level1Via === 'local-cache' ? ['nível 1'] : []),
+    ...facts.groups.filter(artifact => artifact.catalogVia === 'local-cache').map(artifact => artifact.group),
+  ];
+  if (viaCache.length) {
+    notes.push(`catálogo lido do CACHE LOCAL (não do projeto publicado): ${viaCache.join(', ')} — a escolha vale, mas um consumidor fora do editor não conseguiria ler; publicar o arquivo`);
+  }
   for (const artifact of facts.groups) {
     if (!artifact.ok) {
       notes.push(`${artifact.group}: nenhuma resposta aceita pelo gate — ${artifact.errors.join(' | ') || 'sem detalhe'}`);
@@ -121,7 +132,12 @@ export function buildChRunReport(facts: ChRunFacts, charsPerToken: number): ChRu
     runKey: facts.runKey,
     definition: facts.definition,
     userLanguage: facts.userLanguage,
-    catalog: { level1Reference: facts.level1Reference, publishedGroups: facts.publishedGroups },
+    catalog: {
+      level1Reference: facts.level1Reference,
+      publishedGroups: facts.publishedGroups,
+      level1Via: facts.level1Via,
+      groupsViaLocalCache: facts.groups.filter(artifact => artifact.catalogVia === 'local-cache').map(artifact => artifact.group),
+    },
     rows,
     totals: {
       regions: facts.regions.length,

@@ -70,6 +70,25 @@ whether they hurt:
   sources. If the probe misses case #4 consistently, the registered fallback is a contrastive
   sentence in the source objectives — never a new keywords field.
 
+## What the first Studio run measured (2026-08-19)
+
+The first run (`cadastro-cliente`, battery case #1) got through c1 and died in c2, and both halves are
+data:
+
+- **c1 answered well and cheaply.** Five regions, four to `groupEnterText` and one to `groupEnterDate`,
+  with a reason each. The prompt: 792 estimated tokens of instructions, **387 of catalog**, 24 of input —
+  1.203 in total, where the analysis had estimated ~1k for level 1 alone.
+- **`await import()` alone cannot read a catalog.** Every level 2 failed with *Failed to fetch
+  dynamically imported module*: a dynamic import is served from the PUBLISHED project
+  (`https://on.collab.codes/_102040_/...`), and the group catalogs existed only in the editor. Level 1
+  imported fine because it had been published.
+
+The second half is a finding about the design of §10, not an incident, and it outlives the pilot: an
+`index.defs.ts` written by the index steps (n7/i6/v4) is **unreadable by any consumer until it is
+published**. The read is now a ladder — published module, then the same file compiled into the browser
+cache, then a failure that names the fix — and which rung answered is recorded in `run.json`. A consumer
+that is not the editor has only the first rung, so publishing is part of generating a catalog.
+
 ## How to run the battery
 
 Six preconditions are already met (102020 published, the seeded catalog uploaded as the active

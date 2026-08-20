@@ -112,6 +112,8 @@ export interface ChGroupArtifact {
   runKey: string;
   group: string;
   indexDefsReference: string;
+  /** Which rung of the read ladder answered — a finding of the first Studio run, not a detail. */
+  catalogVia: ChCatalogVia;
   choices: ChChoice[];
   /** false = the gate never accepted an answer for this group. The run still reports. */
   ok: boolean;
@@ -229,3 +231,53 @@ export function chGroupArg(value: unknown): string {
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
+// ---- import references, and the file behind them ----
+
+/**
+ * The five fields the stor identifies a file by. Structurally the same as nmFs.NmFileInfo, declared here
+ * so this module keeps importing nothing and stays node-testable.
+ */
+export interface ChFileRef {
+  project: number;
+  level: number;
+  folder: string;
+  shortName: string;
+  extension: string;
+}
+
+/**
+ * The stor file behind an import reference: '/_102040_/l2/molecules/groupenterdate/index.defs' ->
+ * { project: 102040, level: 2, folder: 'molecules/groupenterdate', shortName: 'index', extension: '.defs.ts' }.
+ *
+ * ⚠️ MEASURED ON THE FIRST STUDIO RUN (2026-08-19): a dynamic import is served from the PUBLISHED project
+ * (`https://on.collab.codes/_102040_/...`), so a catalog file that exists in the editor and was never
+ * published fails with 'Failed to fetch dynamically imported module'. Reading it needs the stor, and the
+ * stor is addressed by these five fields — hence this parse. Derived from the reference and never from a
+ * second assumption about where a group's catalog lives, so the two cannot drift.
+ *
+ * `.defs` is an EXTENSION and not part of the shortName (the rule nmFs documents at length): 'index.defs'
+ * is shortName 'index' + extension '.defs.ts', and getting it wrong files the model under a phantom group
+ * where nothing finds it.
+ */
+export function chFileRefFromImport(reference: string): ChFileRef | null {
+  const match = /^\/?_(\d+)_\/l(\d+)\/(.+)$/.exec((reference || '').trim());
+  if (!match) return null;
+  const project = Number(match[1]);
+  const level = Number(match[2]);
+  const rest = match[3].replace(/\.ts$/, '');
+  const parts = rest.split('/');
+  const last = parts.pop() || '';
+  if (!project || !level || !last) return null;
+  const defs = last.endsWith('.defs');
+  return {
+    project,
+    level,
+    folder: parts.join('/'),
+    shortName: defs ? last.slice(0, -'.defs'.length) : last,
+    extension: defs ? '.defs.ts' : '.ts',
+  };
+}
+
+/** How a catalog level was actually read. Recorded per run: the first Studio run turned it into a finding. */
+export type ChCatalogVia = 'published' | 'local-cache';

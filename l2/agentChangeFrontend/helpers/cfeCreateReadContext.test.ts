@@ -223,6 +223,86 @@ test('buildPageTestCases (F7) derives cases from the bffCall route const + outpu
   assert.equal(detail.expect.shape, 'object');
 });
 
+// bugTests.md F1.1/F4.1/F2. A minimal prepared page — buildPageTestCases only reads commands,
+// operations and the two entity classifications — so each rule is pinned without touching the petShop
+// fixture.
+function preparedForTests(overrides: Record<string, unknown> = {}): any {
+  return {
+    project: 102046,
+    page: { moduleName: 'buildFlowFsm', pageId: 'changeOrderDecisionCatalogue' },
+    workspace: { actor: 'projectManager' },
+    mdmEntityIds: [],
+    externalEntityIds: [],
+    operations: [],
+    commands: [],
+    ...overrides,
+  };
+}
+
+test('F4.1: a selected-entity input is a <seedRef>, whatever its name ends with', async () => {
+  const { buildPageTestCases } = await loadModule();
+  // Verbatim from the buildFlowFsm run: the FK is named `changeOrder` (no Id suffix) and is filled by
+  // picking from a list. It used to receive the literal "teste" and every run answered
+  // `NOT_FOUND: ChangeOrder not found: teste` without ever exercising the command.
+  const prepared = preparedForTests({
+    commands: [
+      { commandName: 'qryListChangeOrderDecision', kind: 'query', routeKey: 'buildFlowFsm.x.qryListChangeOrderDecision', outputShape: 'array', producedFields: ['changeOrderDecisionId', 'changeOrder'], input: [], output: [] },
+      { commandName: 'cmdCreateChangeOrderDecision', kind: 'command', routeKey: 'buildFlowFsm.x.cmdCreateChangeOrderDecision', input: [
+        { name: 'changeOrder', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string' },
+        { name: 'madeByPlatformUser', required: true, source: 'actorSession', presentation: 'form', type: 'string' },
+        { name: 'decision', required: true, source: 'userInput', presentation: 'form', type: 'string' },
+      ], output: [] },
+    ],
+  });
+  const created = buildPageTestCases(prepared).find((c: any) => c.id === 'cmdCreateChangeOrderDecision.ok');
+  assert.equal(created.params.changeOrder, '<seedRef>');
+  // Runtime-resolved input is still omitted, and a domain field still gets a literal.
+  assert.equal('madeByPlatformUser' in created.params, false);
+  assert.equal(created.params.decision, 'teste');
+});
+
+test('F1.1: deleting master data is proved to FAIL, not expected to succeed', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const commands = [
+    // The list is what makes the ids harvestable — a delete whose id no read produces is skipped as
+    // unsatisfiable, before any of this.
+    { commandName: 'qryListClient', kind: 'query', routeKey: 'buildFlowFsm.x.qryListClient', outputShape: 'array', producedFields: ['clientId', 'clientPortalAccessId'], input: [], output: [] },
+    { commandName: 'cmdDeleteClient', kind: 'command', routeKey: 'buildFlowFsm.x.cmdDeleteClient', input: [{ name: 'clientId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string' }], output: [] },
+    { commandName: 'cmdDeleteClientPortalAccess', kind: 'command', routeKey: 'buildFlowFsm.x.cmdDeleteClientPortalAccess', input: [{ name: 'clientPortalAccessId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string' }], output: [] },
+  ];
+  const operations = [
+    { commandName: 'cmdDeleteClient', operationId: 'deleteClient', kind: 'delete', entity: 'Client', reads: [], writes: ['Client'] },
+    { commandName: 'cmdDeleteClientPortalAccess', operationId: 'deleteClientPortalAccess', kind: 'delete', entity: 'ClientPortalAccess', reads: [], writes: ['ClientPortalAccess'] },
+  ];
+  const cases = buildPageTestCases(preparedForTests({ commands, operations, mdmEntityIds: ['Client'] }));
+  // Client is master data (storage.target: mdm) -> the case proves the policy instead of expecting ok.
+  const client = cases.find((c: any) => c.id === 'cmdDeleteClient.notDeletable');
+  assert.ok(client, cases.map((c: any) => c.id).join(', '));
+  assert.deepEqual(client.expect, { ok: false, errorCode: 'CONFLICT' });
+  assert.ok(!cases.some((c: any) => c.id === 'cmdDeleteClient.ok'), 'no success case for an operation that must not succeed');
+  // A module-local entity keeps its positive delete: nothing else references it.
+  assert.ok(cases.some((c: any) => c.id === 'cmdDeleteClientPortalAccess.ok'));
+});
+
+test('F2: a command touching an identity that still lives outside MDM is marked, not counted as new breakage', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const cases = buildPageTestCases(preparedForTests({
+    commands: [
+      { commandName: 'qryListTimeLog', kind: 'query', routeKey: 'buildFlowFsm.x.qryListTimeLog', outputShape: 'array', producedFields: ['timeLogId', 'invoiceId'], input: [], output: [] },
+      { commandName: 'cmdUpdateTimeLog', kind: 'command', routeKey: 'buildFlowFsm.x.cmdUpdateTimeLog', input: [{ name: 'timeLogId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string' }], output: [] },
+      { commandName: 'cmdUpdateInvoice', kind: 'command', routeKey: 'buildFlowFsm.x.cmdUpdateInvoice', input: [{ name: 'invoiceId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string' }], output: [] },
+    ],
+    operations: [
+      { commandName: 'cmdUpdateTimeLog', operationId: 'updateTimeLog', kind: 'update', entity: 'TimeLog', reads: ['FieldWorker'], writes: ['TimeLog'] },
+      { commandName: 'cmdUpdateInvoice', operationId: 'updateInvoice', kind: 'update', entity: 'Invoice', reads: [], writes: ['Invoice'] },
+    ],
+    externalEntityIds: ['FieldWorker'],
+  }));
+  assert.equal(cases.find((c: any) => c.id === 'cmdUpdateTimeLog.ok').expectedFail, 'mdm-rebuild');
+  // A command that touches no external identity carries no mark.
+  assert.equal('expectedFail' in cases.find((c: any) => c.id === 'cmdUpdateInvoice.ok'), false);
+});
+
 test('validatePageLayout accepts a v2 layout keyed by bffCall ids (bffId != operationId) — regression', async () => {
   // Repro of the Lima failure: workspace bffId 'catalogList' wraps operationId 'browseCatalog'. The
   // coverage check must count the bffCall id (the layout's action), NOT demand the underlying operationId.
