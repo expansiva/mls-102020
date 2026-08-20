@@ -31,3 +31,24 @@ Teria rejeitado **toda** molécula portal da base.
 Corrigido no helper (separa as partes da vírgula) mais um `isTagScopedSelector` que reconhece as duas
 formas legítimas de escopo: a tag (com pseudo/classe/descendente) e `div[data-widget="<tag>"]`. O
 `replaceTag` já cuidava do renomear nas duas formas, porque a tag entre aspas tem fronteira.
+
+## 2026-08-20 (2ª) — folha sem regras + o step deixa de bloquear (falha no Studio, grupo de 12)
+
+Copiar o grupo `groupviewtable` inteiro morreu em `less_scope` no `ml-data-table`, com
+"encontrados: (nenhum)". Motivo: o `.less` dessa molécula tem **só o header** — ela não tem aparência
+própria. É **1 de 154** na base, e o gate tratava isso como erro de escopo. A cópia estava correta.
+
+Duas correções, e a segunda é a que importa mais:
+
+1. **folha sem regras é estado legítimo**: sem seletor raiz não há escopo a conferir. O gate emite
+   `less_no_rules` (informativo, na lista `C_LESS_NON_BLOCKING`) e não reclama de escopo;
+2. **o step passou a ser POR ITEM e não bloqueia** — padrão do `c5-demo`. O que ensinou isso foi o
+   estado que o run deixou: o `c3` já havia escrito **24 arquivos** (12 moléculas × `.ts` + `.defs`)
+   quando o `c4` falhou por causa de UMA folha, e não escreveu nenhuma — 12 moléculas ficaram sem
+   estilo. Falhar aqui não desfaz o `c3`; só enterra a molécula meio-copiada. Agora item ruim é
+   reportado e pulado, os bons são escritos, e a âncora leva `ok:false` para o summary contar a
+   verdade.
+
+Consequência de desenho, registrada de propósito: **o fail-fast do pipeline é por step, não
+transacional entre steps.** Os steps que decidem se a molécula existe (c1, c3) falham cedo e sem
+escrever; os que completam uma molécula já escrita (c4, c5) reportam em vez de bloquear.

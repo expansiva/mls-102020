@@ -4,6 +4,12 @@
 // Two things are worth checking and nothing else: the sheet is scoped to the COPY's tag, and
 // when the origin was a shell the sheet came from the SHELL (the appearance the client chose),
 // never from the parent.
+//
+// A sheet with NO RULES AT ALL (header only) is a legitimate state, not a defect: 1 of the 154
+// molecules of the base is exactly that (groupviewtable/ml-data-table). Copying it faithfully means
+// copying a sheet with no rules, and there is no root selector to check — so the scope check is
+// SKIPPED and an informational `less_no_rules` is emitted for the trace. Failing there is what
+// aborted a 12-molecule group copy in the Studio on 2026-08-20.
 
 import type { CopyItem } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
 import { copyShortName, copyTag } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
@@ -13,6 +19,9 @@ export interface CGateIssue {
   code: string;
   message: string;
 }
+
+// Codes the step must NOT treat as blocking (same convention as c3's `defs_missing`).
+export const C_LESS_NON_BLOCKING = ['less_no_rules'];
 
 export interface CLessGateInputs {
   item: CopyItem;
@@ -41,6 +50,11 @@ export function runLessGate(inputs: CLessGateInputs): CGateIssue[] {
   // The root selector IS the tag. On the default path the sheet already carries the right one
   // (same name); on a rename it was re-scoped.
   const roots = extractLessRootSelectors(writtenLess);
+  if (!roots.length) {
+    // Faithful copy of a molecule that has no appearance of its own. Nothing to scope.
+    issues.push({ code: 'less_no_rules', message: `${ref}: a folha da origem não tem regras (só header) — a cópia saiu igual, sem aparência própria` });
+    return issues;
+  }
   if (!roots.some(selector => isTagScopedSelector(selector, tag))) {
     issues.push({
       code: 'less_scope',
