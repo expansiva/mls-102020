@@ -19,3 +19,17 @@ chegou como está na base.
 
 O prompt passou a **proibir** explicitamente ensinar i18n, mostrar snippet ou nomear idioma: se as duas
 mensagens ensinarem, elas competem — e a que chega primeiro (esta) é a que sabe menos sobre tradução.
+
+## 2026-08-20 — o aviso de shadowing estava ERRADO (verificação de código, sem teste no Studio)
+
+O aviso dizia que um import explícito do módulo da base "quebra com define duplicado". Verificando
+antes de pedir o teste manual (o 5.5b do controle), o preview **não quebra**: o iframe injeta um shim
+que troca `customElements.define` por uma versão com guarda —
+`aura/services/preview/previewModeAura.ts:293`, dentro de `strRuntimeShim` — então o SEGUNDO registro
+é **ignorado em silêncio** e vale o módulo que carregou primeiro.
+
+O sintoma real é pior de diagnosticar que um erro: se o módulo da BASE carregar primeiro, o cliente vê
+a molécula da biblioteca **em vez da própria cópia**, sem nenhuma mensagem. O aviso foi reescrito para
+falar disso — "só o primeiro a carregar conta, e pode ser o da biblioteca" — em vez de prometer um erro
+que o preview não dá. Fora do shim, o registro duplicado é erro de DOM; o aviso não cita texto de erro
+específico porque o comportamento depende do ambiente.

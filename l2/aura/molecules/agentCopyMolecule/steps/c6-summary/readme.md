@@ -17,9 +17,14 @@ language (`modelType: general`).
    is another Studio agent's job, and a recipe here would compete with it;
 3. **freezing** — the copy no longer receives library fixes; the `copiedFrom` line records where
    and when it came from;
-4. **shadowing** — same tag, wins resolution in this project, so pages keep working; but an
-   explicit import of the library module (including through the library group's `index.ts`) loads
-   both and breaks with a duplicate `customElements.define`;
+4. **shadowing** — same tag, wins resolution in this project, so pages keep working; what to avoid is
+   an explicit import of the library module (including through the library group's `index.ts`), which
+   loads both versions of the tag. ⚠️ **The symptom is not a crash in the preview**: the preview
+   iframe patches `customElements.define` with a guard (`previewModeAura.ts:293`, inside
+   `strRuntimeShim`), so the SECOND registration is silently ignored and whichever module loaded
+   FIRST wins — possibly the library one, which means the client silently sees the base molecule
+   instead of their own copy. Outside that shim the duplicate registration is a DOM error. The
+   message warns about the import, not about a specific error text;
 5. **demo pending**, only when some demo failed.
 
 ## What the message must NOT do

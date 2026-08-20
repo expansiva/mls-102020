@@ -121,6 +121,14 @@ destino; na prática o teste é a legibilidade pelo `mls.stor`, porque um projet
   ⚠️ Duplicar plumbing é seguro; duplicar **lição** não. O `cFs.ts` preserva a *re-run
   resurrection* do `vFs.ts` (arquivo apagado localmente fica no stor com
   `status: 'deleted'` e **nunca persistiria** em silêncio).
+- **O sombreamento tem um sintoma silencioso, e o summary avisa disso.** A cópia mantém a tag da
+  origem e vence a resolução (`resolveNewTag`), então as páginas seguem funcionando. O risco é um
+  **import explícito** do módulo da base — inclusive via o `index.ts` de grupo da base, que
+  side-effect-importa o grupo inteiro: aí os dois módulos carregam. No preview isso **não quebra**,
+  porque o iframe injeta uma guarda em `customElements.define`
+  (`aura/services/preview/previewModeAura.ts:293`, em `strRuntimeShim`) e o segundo registro é
+  ignorado — vale o que carregou primeiro, que pode ser o da biblioteca. Ou seja: o cliente pode ver a
+  molécula base **em vez da cópia dele**, sem mensagem nenhuma. Fora do shim, é erro de DOM.
 - **Toda saída emite âncora**, inclusive as que não escrevem nada: o `c2` sem colisão
   auto-completa e emite `c2-done`. Caminho que não escreve e não ancora é como um run
   fica verde e pendurado (`agentImproveMolecule2/steps/i4-inherit`, 2026-08-10).
