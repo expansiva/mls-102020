@@ -34,8 +34,10 @@ export interface GenerateHeaderRequest {
   navLinks?: boolean;
   /** Navigation entries available to the header (label + href); only read when navLinks is true. */
   navigation?: Array<{ label: string; href: string }>;
-  /** DS role tokens the project's design system exposes. */
+  /** Every custom property the project's design system defines (color + global + typography). */
   tokens?: string[];
+  /** The COLOR subset of `tokens` — what the nav-family rule applies to. */
+  colorTokens?: string[];
   requestId?: string;
   /** Header profile of l5/config.json to take over; `defaultAura` by default. */
   profileName?: string;
@@ -206,7 +208,7 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
     : undefined;
 
   const tokens = Array.isArray(raw.tokens)
-    ? raw.tokens.filter((token): token is string => typeof token === 'string' && token.startsWith('--ds-'))
+    ? raw.tokens.filter((token): token is string => typeof token === 'string' && token.startsWith('--'))
     : undefined;
 
   return {
@@ -225,6 +227,9 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
     language: readString(raw.language) || undefined,
     navigation: navigation?.length ? navigation : undefined,
     tokens: tokens?.length ? tokens : undefined,
+    colorTokens: Array.isArray(raw.colorTokens)
+      ? raw.colorTokens.filter((token): token is string => typeof token === 'string' && token.startsWith('--'))
+      : undefined,
     requestId: readString(raw.requestId) || undefined,
     profileName: readString(raw.profileName) || undefined,
     navLinks: raw.navLinks === true,
@@ -284,6 +289,15 @@ export interface ValidateHeaderOptions {
   allowedHrefs?: string[];
   /** Whether the band may render navigation links at all (request.navLinks). */
   allowNavLinks?: boolean;
+  /** DS custom properties the project actually defines (request.tokens). */
+  allowedTokens?: string[];
+  /** Which of those are COLORS (request.colorTokens) — the band may only use the nav family. */
+  colorTokens?: string[];
+}
+
+/** Custom properties referenced with var(). */
+export function findCssVars(text: string): string[] {
+  return [...new Set([...text.matchAll(/var\(\s*(--[a-z0-9-]+)/giu)].map((match) => match[1]))];
 }
 
 /** Literal routes the band navigates to (href="/x" or navigateTo('/x')), minus the allowed ones. */
@@ -315,6 +329,25 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
     if (bandHtml.includes(forbidden)) errors.push(`bandHtml must not contain a "${forbidden}" tag (use bandCss)`);
   }
 
+  // Injecting markup from a string never works in a lit template (it interpolates TEXT), and the
+  // fragment cannot import a directive — the base already does it, sanitized, in renderLogo().
+  if (/(?:^|[^.\w])svg`/u.test(bandHtml) || /unsafe(HTML|SVG)/u.test(bandHtml)) {
+    errors.push('bandHtml cannot inline markup from a string (svg`...` / unsafeHTML) — use this.renderLogo() or this.renderBrand()');
+  }
+  if (/this\.brand\.logoSvg/u.test(bandHtml)) {
+    errors.push('bandHtml must not touch this.brand.logoSvg — this.renderLogo() renders the mark safely');
+  }
+
+  // The user affordance is the base's: it carries the photo -> initials -> silhouette fallback and the
+  // identity panel (email + sign out). A hand-rolled button loses both — a real generation shipped an
+  // EMPTY span (the initial of a name the session had not answered yet) and a click that did nothing.
+  if (/emitHeaderAction\(\s*['"]user['"]/u.test(bandHtml)) {
+    errors.push("bandHtml must not build its own user button — call this.renderUserAvatar() (photo/initials/silhouette + identity menu); it is already included by this.renderActions()");
+  }
+  if (/this\.(userFirstName|userName)/u.test(bandHtml) && /(slice\(|charAt\(|\[0\])/u.test(bandHtml)) {
+    errors.push('bandHtml must not derive an avatar initial by hand — this.renderUserAvatar() does it, with a fallback for the empty case');
+  }
+
   // Without the toggle, a mobile user has no way to open the aside.
   if (!bandHtml.includes('this.renderAsideToggle()')) {
     errors.push('bandHtml must render this.renderAsideToggle()');
@@ -344,7 +377,33 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
     if ((text.match(/`/gu)?.length ?? 0) % 2 !== 0) errors.push(`${name} has an unbalanced backtick`);
   }
 
-  if (hasLiteralColor(bandHtml)) errors.push('bandHtml has a literal color; use var(--ds-*, fallback)');
+  if (hasLiteralColor(bandHtml)) errors.push('bandHtml has a literal color; use a DS token with a fallback');
+
+  // A token that does not exist in the project's design system resolves to the fallback and the
+  // theme stops applying — silently. The DS names tokens by ROLE with no prefix (`--nav-text`), so
+  // an invented `--ds-color-nav-text` looks right and does nothing.
+  const usedVars = [...findCssVars(bandHtml), ...findCssVars(bandCss)];
+  if (options.allowedTokens?.length) {
+    const allowed = new Set(options.allowedTokens);
+    for (const name of usedVars) {
+      // `--aura-*` belongs to the shell/base, not to the design system.
+      if (name.startsWith('--aura-') || allowed.has(name)) continue;
+      errors.push(`${name} is not a token of this project's design system — use one of: ${options.allowedTokens.join(', ')}`);
+      break;
+    }
+  }
+
+  // The band IS the nav surface. A color token that exists but belongs to another role (text-default,
+  // surface-bg, button-primary-*) paints a page control on the nav strip — and on a dark nav it is a
+  // bright box. Non-color scales (radius/space/shadow/font) are free.
+  if (options.colorTokens?.length) {
+    const colors = new Set(options.colorTokens);
+    const offender = usedVars.find((name) => colors.has(name) && !name.startsWith('--nav-'));
+    if (offender) {
+      const navFamily = options.colorTokens.filter((name) => name.startsWith('--nav-'));
+      errors.push(`${offender} is a color of another role — inside the band paint with the nav family${navFamily.length ? ` (${navFamily.join(', ')})` : ''}`);
+    }
+  }
 
   if (bandCss) {
     if (hasLiteralColor(bandCss)) errors.push('bandCss has a literal color outside a var(--ds-*, fallback)');
@@ -385,6 +444,13 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
       if (!bandHtml.includes('this.localized(messages)')) {
         errors.push('a messages block was returned but bandHtml never reads this.localized(messages)');
       }
+      for (const locale of locales) {
+        const bad = Object.keys(parts.messages[locale] ?? {}).find((key) => !isIdentifier(key));
+        if (bad) {
+          errors.push(`messages.${locale} has the key "${bad}", which is not a plain identifier — it is read as this.localized(messages).<key>`);
+          break;
+        }
+      }
     }
   }
 
@@ -410,19 +476,37 @@ function indentTail(text: string, spaces: number): string {
   return indentBlock(text, spaces).trimStart();
 }
 
+/**
+ * Identifier-safe suffix for a locale: `pt-BR` -> `pt_BR`.
+ *
+ * A locale is not an identifier — `const message_pt-BR` is a syntax error, and so is an unquoted
+ * `pt-BR:` object key. Both shipped once in a generated header. Same rule cfePageSkeleton uses.
+ */
+function constSuffix(locale: string): string {
+  return locale.replace(/[^a-zA-Z0-9]+/gu, '_');
+}
+
+/** A message key must be a plain identifier — it is read as `this.localized(messages).<key>`. */
+function isIdentifier(name: string): boolean {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(name);
+}
+
 function messagesBlock(messages: Record<string, Record<string, string>>): string {
   const locales = Object.keys(messages);
   const first = locales[0];
-  const literal = (locale: string) => `{\n${Object.entries(messages[locale])
+  const literal = (locale: string) => `{
+${Object.entries(messages[locale])
     .map(([key, text]) => `  ${key}: ${JSON.stringify(text)},`)
-    .join('\n')}\n}`;
+    .join('\n')}
+}`;
 
   const lines = [
     '/// **collab_i18n_start**',
-    `const message_${first} = ${literal(first)};`,
-    `type MessageType = typeof message_${first};`,
+    `const message_${constSuffix(first)} = ${literal(first)};`,
+    `type MessageType = typeof message_${constSuffix(first)};`,
     `const messages: Record<string, MessageType> = {`,
-    ...locales.map((locale) => `  ${locale}: ${locale === first ? `message_${first}` : indentTail(literal(locale), 2)},`),
+    // The KEY stays the locale as written (quoted, so 'pt-BR' is legal); the identifier is sanitized.
+    ...locales.map((locale) => `  ${JSON.stringify(locale)}: ${locale === first ? `message_${constSuffix(first)}` : indentTail(literal(locale), 2)},`),
     '};',
     '/// **collab_i18n_end**',
   ];
@@ -500,6 +584,8 @@ export function sanitizeGeneratedHeader(
   const errors = validateHeaderParts(parts, {
     allowedHrefs: request.navLinks ? (request.navigation ?? []).map((entry) => entry.href) : [],
     allowNavLinks: request.navLinks,
+    allowedTokens: request.tokens,
+    colorTokens: request.colorTokens,
   });
   if (errors.length > 0) return { ok: false, error: errors.join('; ') };
 
@@ -539,8 +625,12 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
         : 'Navigation links were requested but the project declares none: render no links.')
       : 'NO navigation links in this header: the aside owns the menu. Do not call this.renderNavLinks() and do not write any route.',
     request.tokens?.length
-      ? `DS role tokens available: ${request.tokens.join(', ')}`
-      : 'DS role tokens follow the --ds-color-<role>[-bg|-text] convention (nav-bg, nav-text, nav-active-bg, border-default, text-muted, surface-bg, button-primary-bg/text).',
+      ? `Design system tokens THIS project defines — use only these, exactly as written: ${request.tokens.join(', ')}`
+      : 'No token list was provided: do not invent one, paint with plain CSS values.',
+    request.colorTokens?.some((name) => name.startsWith('--nav-'))
+      ? `COLOR inside the band comes from the nav family only: ${request.colorTokens.filter((name) => name.startsWith('--nav-')).join(', ')}.`
+        + ' Every other color token (text-*, surface-*, button-*, input-*) belongs to the page, not to the header.'
+      : '',
     request.language ? `Write any fixed copy in: ${request.language}` : '',
   ].filter(Boolean);
 

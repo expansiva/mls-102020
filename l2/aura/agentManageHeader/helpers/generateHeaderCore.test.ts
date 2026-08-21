@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   buildGenerateHeaderHumanPrompt,
   buildHeaderSource,
+  findCssVars,
   findInventedRoutes,
   headerPaths,
   normalizeHeaderRequest,
@@ -30,7 +31,7 @@ const validParts: GeneratedHeaderParts = {
     '  ${this.renderActions()}',
     '</div>',
   ].join('\n'),
-  bandCss: '${tag} .app-header-hint {\n  color: var(--ds-color-text-muted, #52606d);\n}',
+  bandCss: '${tag} .app-header-hint {\n  color: var(--text-muted, #52606d);\n}',
   messages: { en: { hint: 'Shift open' }, pt: { hint: 'Turno aberto' } },
 };
 
@@ -63,11 +64,11 @@ test('unknown actions and tokens are dropped, the canonical order is kept', () =
     projectId: PROJECT,
     brief: 'clean and warm',
     actions: ['user', 'language', 'teleport'],
-    tokens: ['--ds-color-nav-bg', 'nav-bg'],
+    tokens: ['--nav-bg', 'nav-bg'],
     navigation: [{ label: 'Items', href: '/sampleModule/items' }, { label: '', href: '/x' }],
   });
   assert.deepEqual(req.actions, ['language', 'user']);
-  assert.deepEqual(req.tokens, ['--ds-color-nav-bg']);
+  assert.deepEqual(req.tokens, ['--nav-bg']);
   assert.deepEqual(req.navigation, [{ label: 'Items', href: '/sampleModule/items' }]);
   assert.equal(req.commit, false);
 });
@@ -127,10 +128,11 @@ test('a route the model invented is rejected (the /profile button that shipped o
   ), { allowedHrefs: ['/sampleModule'] });
   assert.ok(invented.some((error) => error.includes('"/profile"')), invented.join('; '));
 
-  // An action with no route goes through the event instead.
+  // An action with no route goes through the event instead ('user' is the base's avatar, so the
+  // example is 'search' — the one action a header still renders itself).
   assert.deepEqual(
     validateHeaderParts(withBandHtml(
-      "${this.renderAsideToggle()}${this.hasAction('user') ? html`<button @click=${() => this.emitHeaderAction('user')}>x</button>` : nothing}",
+      "${this.renderAsideToggle()}${this.hasAction('search') ? html`<button @click=${() => this.emitHeaderAction('search')}>s</button>` : nothing}",
     )),
     [],
   );
@@ -149,7 +151,7 @@ test('colors must go through a DS role token', () => {
   const inCss = validateHeaderParts({ ...validParts, bandCss: '${tag} .x { color: #ff0000; }' });
   assert.ok(inCss.some((error) => error.includes('literal color')), inCss.join('; '));
 
-  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: '${tag} .x { color: var(--ds-color-nav-text, #102a43); }' }), []);
+  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: '${tag} .x { color: var(--nav-text, #102a43); }' }), []);
 });
 
 test('every CSS rule is scoped by the tag placeholder', () => {
@@ -451,4 +453,125 @@ test('a contract violation is reported instead of written', () => {
   assert.equal(sanitized.ok, false);
   assert.match(sanitized.error ?? '', /renderAsideToggle/);
   assert.equal(sanitized.value, undefined);
+});
+
+test('inlining the mark by hand is refused with the working alternative', () => {
+  // What a real generation produced: svg`${this.brand.logoSvg}` renders nothing, because a lit
+  // template interpolates a string as TEXT and the fragment cannot import a directive.
+  const byHand = withBandHtml('${this.renderAsideToggle()}${this.brand.logoSvg ? svg`${this.brand.logoSvg}` : \'\'}');
+  const errors = validateHeaderParts(byHand);
+  assert.match(errors.join('; '), /this\.renderLogo\(\)/);
+  assert.match(errors.join('; '), /logoSvg/);
+
+  // The supported way passes.
+  assert.deepEqual(validateHeaderParts(withBandHtml('${this.renderAsideToggle()}${this.renderLogo()}')), []);
+});
+
+test('inside the band, color comes from the nav family only', () => {
+  // Exactly what the last real generation did: text-default and text-strong EXIST in the project's
+  // design system, so the "token exists" check passed — but they are page roles, and on a dark nav
+  // they paint unreadable text.
+  const colorTokens = ['--nav-bg', '--nav-text', '--nav-active-bg', '--text-default', '--text-strong'];
+  const allowedTokens = [...colorTokens, '--radius-medium', '--space-16'];
+  const options = { allowedTokens, colorTokens };
+  const css = (decl: string) => ({ ...validParts, bandCss: '${tag} .x { ' + decl + ' }' });
+
+  for (const wrong of ['color: var(--text-default, #102a43);', 'color: var(--text-strong, #0b1b2b);']) {
+    const errors = validateHeaderParts(css(wrong), options).join('; ');
+    assert.match(errors, /color of another role/);
+    assert.match(errors, /--nav-text/, 'the message must name the family to use');
+  }
+
+  assert.deepEqual(validateHeaderParts(css('color: var(--nav-text, #102a43);'), options), []);
+  // Non-color scales are free — a radius or a spacing is not a palette decision.
+  assert.deepEqual(validateHeaderParts(css('border-radius: var(--radius-medium, 10px);'), options), []);
+  // Without the color list the rule does not run (the caller did not say which tokens are colors).
+  assert.deepEqual(validateHeaderParts(css('color: var(--text-default, #102a43);'), { allowedTokens }), []);
+});
+
+test('the prompt hands the nav family over, and says the rest belongs to the page', () => {
+  const prompt = buildGenerateHeaderHumanPrompt(normalizeHeaderRequest({
+    projectId: PROJECT,
+    brand: { title: 'Sample App' },
+    tokens: ['--nav-bg', '--nav-text', '--text-default'],
+    colorTokens: ['--nav-bg', '--nav-text', '--text-default'],
+  }));
+  assert.match(prompt, /COLOR inside the band comes from the nav family only: --nav-bg, --nav-text/);
+  assert.match(prompt, /belongs to the page/);
+});
+
+test('a locale with a region builds a valid i18n block (pt-BR shipped broken once)', () => {
+  const source = buildHeaderSource(PROJECT, {
+    bandHtml: '${this.renderAsideToggle()}<span>${this.localized(messages).welcome}</span>',
+    messages: { 'pt-BR': { welcome: 'Bem-vindo' }, en: { welcome: 'Welcome' } },
+  });
+
+  // `const message_pt-BR` and an unquoted `pt-BR:` key are both syntax errors.
+  assert.equal(source.includes('message_pt-BR'), false);
+  assert.match(source, /const message_pt_BR = \{/u);
+  assert.match(source, /type MessageType = typeof message_pt_BR;/u);
+  assert.match(source, /"pt-BR": message_pt_BR,/u);
+  assert.match(source, /"en": \{/u);
+});
+
+test('a message key that is not an identifier is refused', () => {
+  const parts = {
+    bandHtml: '${this.renderAsideToggle()}<span>${this.localized(messages).welcome}</span>',
+    messages: { en: { 'welcome-user': 'Welcome' } },
+  };
+  assert.match(validateHeaderParts(parts).join('; '), /not a plain identifier/);
+});
+
+test('a token the project does not define is refused', () => {
+  const allowedTokens = ['--nav-bg', '--nav-text', '--text-muted'];
+  const css = (name: string) => '${tag} .x { color: var(' + name + ', #52606d); }';
+
+  // The real slip: the design system names tokens by ROLE with no prefix, so an invented
+  // `--ds-color-text-muted` resolves to the fallback and the theme silently stops applying.
+  const invented = validateHeaderParts({ ...validParts, bandCss: css('--ds-color-text-muted') }, { allowedTokens });
+  assert.match(invented.join('; '), /not a token of this project/);
+
+  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: css('--text-muted') }, { allowedTokens }), []);
+  // The shell/base own the --aura-* namespace.
+  assert.deepEqual(
+    validateHeaderParts({ ...validParts, bandCss: '${tag} .x { height: var(--aura-header-height, 66px); }' }, { allowedTokens }),
+    [],
+  );
+  // With no list, the check does not run (the caller did not say what exists).
+  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: css('--whatever') }), []);
+});
+
+test('css vars are found in the markup too, not only in the css', () => {
+  assert.deepEqual(findCssVars('<span style="color: var(--text-muted, #999)">x</span>'), ['--text-muted']);
+  assert.deepEqual(findCssVars('color: var( --nav-bg )'), ['--nav-bg']);
+  assert.deepEqual(findCssVars('no vars here'), []);
+});
+
+test('a hand-rolled user button is refused (it loses the fallback and the menu)', () => {
+  // What a real generation shipped: an empty span while the session had not answered, and a click
+  // that only fired the event — no silhouette, no identity panel.
+  const handRolled = withBandHtml(
+    '${this.renderAsideToggle()}'
+    + "<button @click=${() => this.emitHeaderAction('user')}>"
+    + "<span>${(this.userFirstName || this.userName || '').slice(0, 1).toUpperCase()}</span></button>",
+  );
+  const errors = validateHeaderParts(handRolled).join('; ');
+  assert.match(errors, /renderUserAvatar/);
+  assert.match(errors, /avatar initial by hand/);
+
+  // The supported way, and a greeting that reads fine while the session loads.
+  assert.deepEqual(
+    validateHeaderParts(withBandHtml(
+      '${this.renderAsideToggle()}'
+      + '<span>${this.userFirstName ? this.userFirstName : nothing}</span>'
+      + '${this.renderUserAvatar()}',
+    )),
+    [],
+  );
+
+  // Another action with no runtime still goes through the event.
+  assert.deepEqual(
+    validateHeaderParts(withBandHtml("${this.renderAsideToggle()}<button @click=${() => this.emitHeaderAction('search')}>s</button>")),
+    [],
+  );
 });

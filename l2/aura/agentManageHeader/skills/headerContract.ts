@@ -22,6 +22,11 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
 ## The base already does this — call it, never reimplement it
 - \`this.renderAsideToggle()\` — the mobile hamburger that opens the aside. **Mandatory**: it is the
   only way to reach the menu on mobile. Put it first in the left group.
+- \`this.renderLogo()\` — the mark ALONE, from the config profile: it inlines \`brand.logoSvg\` (already
+  sanitized) or renders the \`<img>\` of \`brand.logoUrl\`, and nothing when there is neither. Use this
+  whenever you want the mark and the text arranged your own way. You CANNOT inline the markup
+  yourself: a lit template interpolates a string as TEXT, never as markup, so
+  \`svg\`\${this.brand.logoSvg}\`\` renders nothing — and \`bandHtml\` may not import a directive.
 - \`this.renderBrand()\` — logo + title + subtitle, taken from the CONFIG profile. Use it instead of
   writing the brand name: \`this.brand.title\`, \`this.brand.logoUrl\`, \`this.brand.subtitle\` are
   available if you need a custom arrangement.
@@ -32,14 +37,21 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
 - \`this.renderActions()\` — the optional actions the profile enabled (language / design system /
   module links). Render it once, on the right.
 - \`this.renderUserAvatar()\` — the logged user as a round avatar: the IdP photo when there is one,
-  otherwise the initials on a brand-colored circle. Clicking announces the \`user\` action; the app
-  decides what opens. \`this.renderActions()\` already includes it when the profile asked for \`user\`;
-  call it directly only if you want it somewhere else in the band.
+  else the initials on a brand-colored circle, else a neutral silhouette (a photo that fails to load
+  falls back too). Clicking opens the identity panel the base owns — name, email and sign out — and
+  also announces the \`user\` action so the app can react. \`this.renderActions()\` already includes it
+  when the profile asked for \`user\`; call it directly only to place it elsewhere in the band.
+  Override \`userMenuLabels\` to translate the panel ("Sair" / "Não autenticado").
 - \`this.hasAction('search')\` — true when the profile asked for an action the base does not implement;
   render it yourself as a \`<button>\` that calls \`this.emitHeaderAction('search')\`. It has NO route:
   the app listens to the event and decides. Inventing a path like \`/profile\` is rejected.
 - \`this.navigateTo(href)\` / \`@click=\\\${this.handleNavigate}\` — SPA navigation.
 - \`this.localized(messages).<key>\` — the copy for the current language.
+- \`this.userName\` / \`this.userFirstName\` / \`this.userEmail\` — the logged user, for a greeting
+  ("Bem-vindo, \${this.userFirstName}"). Reading them starts the session probe by itself, so a header
+  that greets the user does NOT have to ask for the avatar. They are EMPTY on the first paint (the
+  session is asked over the network) and fill in when it answers — so write markup that reads fine
+  empty, e.g. render the greeting only when \`this.userName\` is truthy.
 
 Ready-made classes from the base's CSS (use them and you inherit the band's spacing and tokens):
 \`aura-header-side\`, \`aura-header-brand\`, \`aura-header-title\`, \`aura-header-subtitle\`,
@@ -47,20 +59,33 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
 
 ## MUST
 1. Call \`this.renderAsideToggle()\` exactly once.
-2. Take the brand from the config (\`this.renderBrand()\` or \`this.brand.*\`) — never a literal name.
-3. Scope EVERY \`bandCss\` selector with \`\\\${tag}\` (e.g. \`\\\${tag} .my-part { … }\`). Rules inside
+2. For the user, call \`this.renderUserAvatar()\` — NEVER build your own user button. The base's avatar
+   has the photo -> initials -> silhouette fallback (yours would render an empty box while the session
+   is still loading) and opens the identity panel with email and sign out. \`this.renderActions()\`
+   already includes it when the profile asked for \`user\`, so calling both renders it twice.
+3. Take the brand from the config (\`this.renderBrand()\` or \`this.brand.*\`) — never a literal name.
+4. Scope EVERY \`bandCss\` selector with \`\\\${tag}\` (e.g. \`\\\${tag} .my-part { … }\`). Rules inside
    \`@media\` blocks too.
-4. Colors, only through DS role tokens with a fallback: \`var(--ds-color-nav-bg, #fff)\`. The same for
-   any inline style.
-5. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
+5. The band IS the nav surface, so paint YOUR parts with the \`nav-*\` family too: \`--nav-bg\`,
+   \`--nav-text\` (plus \`-hover\`/\`-focus\`), and \`--nav-active-bg\`/\`--nav-active-text\` for a control
+   that stands out (a chip, a button, a pill). A project may have a DARK nav — 102051 pairs
+   \`nav-bg: #1c2430\` with a light \`nav-text\` — where a \`surface-bg\`/\`input-bg\`/\`button-primary-bg\`
+   would paint a bright box on a dark strip. Those roles belong to cards and forms on the page, not
+   to the header.
+6. Colors, only through the design-system tokens LISTED IN THE REQUEST, with a fallback:
+   \`var(--nav-bg, #fff)\`. Same for any inline style. The list is read from the project's own design
+   system — a token that is not in it does not exist, resolves to the fallback and silently drops the
+   theme, so never invent a name or a prefix (there is no \`ds-\`/\`color-\` prefix: the token is the
+   role, e.g. \`--nav-text\`, \`--text-muted\`, \`--border-default\`).
+7. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
    navigation entries. You cannot know which routes exist — so never write a path that was not
    handed to you.
-6. Put every fixed word in \`messages\` and read it with \`this.localized(messages)\`. A label the user
+8. Put every fixed word in \`messages\` and read it with \`this.localized(messages)\`. A label the user
    can see is never a literal in the markup.
-7. Layout freely INSIDE the band with flex/grid — the base gives you a flex row (left group / right
+9. Layout freely INSIDE the band with flex/grid — the base gives you a flex row (left group / right
    group), but you may regroup, stack, center, or build a 3-column grid. What you may not do is grow
    taller: the shell clips the region to the fixed band height, so anything outside it is cut off.
-8. Motion is welcome when it is subtle and scoped: CSS \`transition\` on your own parts, and
+10. Motion is welcome when it is subtle and scoped: CSS \`transition\` on your own parts, and
    \`@keyframes\` you define in \`bandCss\` (the keyframe steps do not need the tag; every real selector
    does). Wrap anything continuous in \`@media (prefers-reduced-motion: reduce)\` to stop it. Animate
    \`transform\`/\`opacity\` — animating layout properties on a 66px band costs a reflow per frame.
@@ -72,20 +97,25 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
    the band height and a header that disagrees shifts the whole page.
 3. No \`position: fixed\` — it escapes the band.
 4. No literal colors (\`#hex\`, \`rgb()\`, \`hsl()\`) except as the fallback INSIDE a \`var()\`.
-5. No \`window.location\`, no bare \`href\` navigation for in-app routes, and no invented route
+5. No color token from another role inside the band — not \`--text-default\`, \`--text-strong\`,
+   \`--surface-bg\`, \`--input-bg\`, \`--button-primary-*\`. They exist in the design system (so they
+   look valid) but they belong to the PAGE; the band is the nav surface and only \`nav-*\` reads right
+   on it, dark nav included. Non-color scales (\`--radius-*\`, \`--space-*\`, \`--shadow-*\`, \`--font-*\`)
+   are free.
+6. No \`window.location\`, no bare \`href\` navigation for in-app routes, and no invented route
    (\`/profile\`, \`/settings\`, \`/account\`, …) — not in an \`href\`, not in \`navigateTo\`.
-6. No dependency on a molecule/web component from another project: the header must render with the
+7. No dependency on a molecule/web component from another project: the header must render with the
    base and plain HTML only.
-7. No layout that needs more than the band's height, and no dropdown/menu that opens outside it: the
+8. No layout that needs more than the band's height, and no dropdown/menu that opens outside it: the
    shell sets \`overflow: hidden\` on the header region, so it would be clipped, not shown. Long text
    ellipsizes (\`aura-header-subtitle\` already does).
-8. No animation on the mobile aside toggle's visibility, and nothing that moves on every render — a
+9. No animation on the mobile aside toggle's visibility, and nothing that moves on every render — a
    header that pulses forever is noise in a workspace people keep open all day.
 
 ## Example (format reference)
 {"type":"flexible","result":{
 "bandHtml":"<div class=\\"aura-header-side\\">\\n  \\\${this.renderAsideToggle()}\\n  \\\${this.renderBrand()}\\n</div>\\n<div class=\\"aura-header-side app-header-right\\">\\n  \\\${this.renderNavLinks()}\\n  <span class=\\"app-header-hint\\">\\\${this.localized(messages).hint}</span>\\n  \\\${this.renderActions()}\\n</div>",
-"bandCss":"\\\${tag} .app-header-right {\\n  gap: 16px;\\n}\\n\\n\\\${tag} .app-header-hint {\\n  color: var(--ds-color-text-muted, #52606d);\\n  font-size: 0.85rem;\\n}",
+"bandCss":"\\\${tag} .app-header-right {\\n  gap: 16px;\\n}\\n\\n\\\${tag} .app-header-hint {\\n  color: var(--text-muted, #52606d);\\n  font-size: 0.85rem;\\n}",
 "messages":{"en":{"hint":"Shift open"},"pt":{"hint":"Turno aberto"}}
 }}
 `;
