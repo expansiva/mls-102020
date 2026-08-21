@@ -31,10 +31,13 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
   do not call this and do not write a path anywhere.
 - \`this.renderActions()\` — the optional actions the profile enabled (language / design system /
   module links). Render it once, on the right.
-- \`this.hasAction('search' | 'user')\` — true when the profile asked for an action the base does not
-  implement; those you render yourself, as a \`<button>\` that calls
-  \`this.emitHeaderAction('<action>')\`. They have NO route: the app listens to the event and decides.
-  Inventing a path like \`/profile\` produces a dead link and is rejected.
+- \`this.renderUserAvatar()\` — the logged user as a round avatar: the IdP photo when there is one,
+  otherwise the initials on a brand-colored circle. Clicking announces the \`user\` action; the app
+  decides what opens. \`this.renderActions()\` already includes it when the profile asked for \`user\`;
+  call it directly only if you want it somewhere else in the band.
+- \`this.hasAction('search')\` — true when the profile asked for an action the base does not implement;
+  render it yourself as a \`<button>\` that calls \`this.emitHeaderAction('search')\`. It has NO route:
+  the app listens to the event and decides. Inventing a path like \`/profile\` is rejected.
 - \`this.navigateTo(href)\` / \`@click=\\\${this.handleNavigate}\` — SPA navigation.
 - \`this.localized(messages).<key>\` — the copy for the current language.
 
