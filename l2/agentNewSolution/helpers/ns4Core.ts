@@ -417,6 +417,27 @@ export function createNs4E3Step(
   );
 }
 
+/**
+ * One bounded structural repair for E3, mirroring the E2 gate repair: the model
+ * sees the numbered gate findings plus the persisted invalid draft and returns a
+ * complete corrected matrix through the same gate.
+ */
+export function createNs4E3GateRepairStep(
+  moduleName: string,
+  reviewRound: number,
+  gateRepairAttempt: number,
+  gateFeedback: string,
+  stepTitle = NS4_DEFAULT_TITLES['e3-access-matrix'],
+): mls.msg.AIAgentStep {
+  return createNs4AgentStep(
+    `e3-access-matrix-round-${reviewRound}-gate-repair-${gateRepairAttempt}`,
+    `${plainNs4StepTitle(stepTitle)} · G${gateRepairAttempt}`,
+    [],
+    'waiting_human_input',
+    { planId: 'e3-access-matrix', moduleName, reviewRound, gateRepairAttempt, gateFeedback },
+  );
+}
+
 export function createNs4E4Step(
   moduleName = '',
   reviewRound = 1,

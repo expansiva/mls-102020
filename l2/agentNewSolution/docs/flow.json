@@ -260,6 +260,9 @@
         "The /fast path validates and approves the same E3 contract without opening the widget.",
         "The e3-result handoff carries the approved review, approval metadata and permanent artifact path for the immediately unlocked E4 hook.",
         "Late or duplicate callbacks cannot regress an approved E3 pipeline state to running, waitingHuman or failed.",
+        "A deterministic gate failure persists the invalid draft and may schedule one bounded structural repair for the current proposal cycle; the repair reads the persisted draft plus the numbered findings and returns a complete corrected matrix through the same gate. Exhausting the single attempt keeps the original terminal failure.",
+        "The gate repair round never merges duplicate grants deterministically: overlapping scope modes have no total order, so resolving them is a model decision taken under gate feedback.",
+        "Each profile x authority pair appears in at most one grant. Different scope needs for the same profile are resolved by one covering grant that details its facets in disclosure, or by distinct authorities.",
         "Terminal failures are persisted in pipeline.steps.e3.error and failedAt.",
         "Grant rule references are stored only in grants[].useRules; descriptions remain owned by E5."
       ]

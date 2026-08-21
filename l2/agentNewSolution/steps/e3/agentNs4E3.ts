@@ -10,6 +10,7 @@ import {
   readNs4ApprovedAccess, readNs4ApprovedJourneys,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4ApprovedArtifacts.js';
 import {
+  createNs4E3GateRepairStep,
   createNs4E3Step,
   isNs4Pipeline,
   markNs4E3Approved,
@@ -21,9 +22,11 @@ import {
   Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import {
+  ns4E3DraftFile,
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
+  readNs4Text,
   writeNs4AccessMatrix,
   writeNs4E3Draft,
   writeNs4Module,
@@ -44,7 +47,13 @@ interface Ns4E3Args {
   moduleName?: string;
   adjustment?: string;
   reviewRound?: number;
+  gateFeedback?: string;
+  gateRepairAttempt?: number;
 }
+
+// One structural repair per proposal cycle, the same budget E2 uses. Exhausting
+// it restores the terminal failure this step had before the repair round.
+const MAX_E3_GATE_REPAIRS = 1;
 
 interface Ns4PersistedE3 {
   moduleName: string;
@@ -82,6 +91,27 @@ export async function beforeNs4E3PromptStep(
       throw new Error(`E2 approved artifacts not found for ${moduleName}.`);
     }
     const reviewRound = parsed.reviewRound || pipeline.steps.e3?.reviewRound || 1;
+    if (parsed.gateFeedback) {
+      // The rejected draft is on disk, not in the approved artifact: on a first
+      // round there is no approved access matrix to read.
+      const rejectedDraft = await readDraftFromStorage(moduleName);
+      if (!rejectedDraft) throw new Error(`E3 draft not found for gate repair in ${moduleName}.`);
+      const repairPrompt = await readNs4AgentText('steps/e3', 'gateRepair');
+      return [{
+        type: 'prompt_ready', args: hookArgs, messageId: context.message.orderAt,
+        threadId: context.message.threadId, taskId: context.task.PK, hookSequential,
+        parentStepId: parentStep.stepId,
+        systemPrompt: repairPrompt.replace('{{platformSkill}}', platform),
+        humanPrompt: [
+          '## Approved module contract', JSON.stringify(moduleArtifact), '',
+          '## Approved E2 journeys', JSON.stringify(journeys), '',
+          `## Required review round\n${reviewRound}`, '',
+          '## Rejected E3 access matrix (correct this one)',
+          JSON.stringify(rejectedDraft, null, 2), '',
+          `## Deterministic gate findings to resolve\n${numberGateFindings(parsed.gateFeedback)}`,
+        ].join('\n'),
+      } as mls.msg.AgentIntentPromptReady];
+    }
     const previousDraft = parsed.adjustment ? await readNs4ApprovedAccess(moduleName) : null;
     const humanPrompt = [
       '## Approved module contract', JSON.stringify(moduleArtifact), '',
@@ -129,6 +159,25 @@ export async function afterNs4E3PromptStep(
     const gate = validateNs4E3Review(review, journeys);
     if (!gate.ok) {
       const message = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
+      const gateRepairAttempt = args.gateRepairAttempt || 0;
+      if (gateRepairAttempt < MAX_E3_GATE_REPAIRS) {
+        // The rejected draft is what the repair round reads back.
+        await writeNs4E3Draft(moduleName, review);
+        const repairStep = createNs4E3GateRepairStep(
+          moduleName, review.reviewRound, gateRepairAttempt + 1, message,
+        );
+        return [
+          addStep(context, mutationParent, repairStep),
+          gateRepairResultStep(context, mutationParent, moduleName, review.reviewRound, gateRepairAttempt + 1, message),
+          // cleaner input_output drops interaction.payload, which is where the
+          // rejected clarification child lives: without it the invalid matrix
+          // widget could open next to the pending repair.
+          updateStatus(
+            context, mutationParent, step, hookSequential, 'completed',
+            `E3 gate requested structural repair ${gateRepairAttempt + 1}.`, 'input_output',
+          ),
+        ];
+      }
       await recordNs4E3Failure(moduleName, message);
       return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
     }
@@ -263,6 +312,29 @@ function resultStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAge
   } as mls.msg.AIResultStep);
 }
 
+function gateRepairResultStep(
+  context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, moduleName: string,
+  round: number, gateRepairAttempt: number, gateFeedback: string,
+): mls.msg.AgentIntentAddStep {
+  return addStep(context, parentStep, {
+    type: 'result', stepId: 0, interaction: null, stepTitle: `E3 structural repair ${gateRepairAttempt} requested`,
+    status: 'completed', nextSteps: [],
+    result: JSON.stringify({ moduleName, reviewRound: round, gateRepairAttempt, gateFeedback }, null, 2),
+    planning: { planId: `e3-gate-repair-${round}-${gateRepairAttempt}`, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+  } as mls.msg.AIResultStep);
+}
+
+/** Numbered findings: the model must resolve every one, not only the first. */
+function numberGateFindings(gateFeedback: string): string {
+  return gateFeedback.split('\n').map(line => line.trim()).filter(Boolean)
+    .map((line, index) => `${index + 1}. ${line}`).join('\n');
+}
+
+async function readDraftFromStorage(moduleName: string): Promise<unknown> {
+  const raw = await readNs4Text(ns4E3DraftFile(moduleName), false);
+  try { return raw.trim() ? JSON.parse(raw) : null; } catch { return null; }
+}
+
 function adjustmentResultStep(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, moduleName: string, round: number, adjustment: string): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'result', stepId: 0, interaction: null, stepTitle: `E3 changes requested after round ${round}`,
@@ -296,6 +368,10 @@ function parseE3Args(value: unknown): Ns4E3Args {
     ...(typeof parsed.moduleName === 'string' && parsed.moduleName.trim() ? { moduleName: parsed.moduleName.trim() } : {}),
     ...(typeof parsed.adjustment === 'string' && parsed.adjustment.trim() ? { adjustment: parsed.adjustment.trim() } : {}),
     ...(typeof parsed.reviewRound === 'number' ? { reviewRound: parsed.reviewRound } : {}),
+    // Without these two the repair step would lose its feedback and its attempt
+    // counter, and the bounded round would silently become an endless one.
+    ...(typeof parsed.gateFeedback === 'string' && parsed.gateFeedback.trim() ? { gateFeedback: parsed.gateFeedback.trim() } : {}),
+    ...(typeof parsed.gateRepairAttempt === 'number' ? { gateRepairAttempt: parsed.gateRepairAttempt } : {}),
   };
 }
 

@@ -20,6 +20,22 @@ APIs. Authentication, JWT issuance and runtime authority assignment belong to co
 - A JWT may contain many authorities. Grants are many-to-many between profiles and authorities.
 - Authorities protect journey steps or a declared read-only `informationNeeds` capability.
 
+## One grant per pair
+
+Each `profileRef` x `authorityRef` pair appears in AT MOST ONE grant. Never emit two grants for the
+same pair. When one profile needs different record scopes for different steps, choose one of two
+sanctioned outputs:
+
+- ONE grant whose `dataScope` covers every step that profile performs, with the per-facet limits
+  spelled out in `disclosure.allowedInformation`, `disclosure.deniedInformation` and `useRules`; or
+- DISTINCT authorities when the scopes are genuinely different capabilities. This is the same split
+  already described above for "a client may see the budget but not the whole project": a limited
+  information authority next to a related-record grant, each with its own single grant.
+
+Splitting one pair into a public grant, an own grant and a related grant is not an option: the
+contract carries a single scope decision per pair, and downstream phases compile one projection from
+it.
+
 ## Access and disclosure
 
 - Every grant declares why it exists, its record scope and its disclosure boundary.
