@@ -66,20 +66,26 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
 3. Take the brand from the config (\`this.renderBrand()\` or \`this.brand.*\`) — never a literal name.
 4. Scope EVERY \`bandCss\` selector with \`\\\${tag}\` (e.g. \`\\\${tag} .my-part { … }\`). Rules inside
    \`@media\` blocks too.
-5. Colors, only through the design-system tokens LISTED IN THE REQUEST, with a fallback:
+5. The band IS the nav surface, so paint YOUR parts with the \`nav-*\` family too: \`--nav-bg\`,
+   \`--nav-text\` (plus \`-hover\`/\`-focus\`), and \`--nav-active-bg\`/\`--nav-active-text\` for a control
+   that stands out (a chip, a button, a pill). A project may have a DARK nav — 102051 pairs
+   \`nav-bg: #1c2430\` with a light \`nav-text\` — where a \`surface-bg\`/\`input-bg\`/\`button-primary-bg\`
+   would paint a bright box on a dark strip. Those roles belong to cards and forms on the page, not
+   to the header.
+6. Colors, only through the design-system tokens LISTED IN THE REQUEST, with a fallback:
    \`var(--nav-bg, #fff)\`. Same for any inline style. The list is read from the project's own design
    system — a token that is not in it does not exist, resolves to the fallback and silently drops the
    theme, so never invent a name or a prefix (there is no \`ds-\`/\`color-\` prefix: the token is the
    role, e.g. \`--nav-text\`, \`--text-muted\`, \`--border-default\`).
-6. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
+7. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
    navigation entries. You cannot know which routes exist — so never write a path that was not
    handed to you.
-7. Put every fixed word in \`messages\` and read it with \`this.localized(messages)\`. A label the user
+8. Put every fixed word in \`messages\` and read it with \`this.localized(messages)\`. A label the user
    can see is never a literal in the markup.
-8. Layout freely INSIDE the band with flex/grid — the base gives you a flex row (left group / right
+9. Layout freely INSIDE the band with flex/grid — the base gives you a flex row (left group / right
    group), but you may regroup, stack, center, or build a 3-column grid. What you may not do is grow
    taller: the shell clips the region to the fixed band height, so anything outside it is cut off.
-9. Motion is welcome when it is subtle and scoped: CSS \`transition\` on your own parts, and
+10. Motion is welcome when it is subtle and scoped: CSS \`transition\` on your own parts, and
    \`@keyframes\` you define in \`bandCss\` (the keyframe steps do not need the tag; every real selector
    does). Wrap anything continuous in \`@media (prefers-reduced-motion: reduce)\` to stop it. Animate
    \`transform\`/\`opacity\` — animating layout properties on a 66px band costs a reflow per frame.
@@ -91,14 +97,19 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
    the band height and a header that disagrees shifts the whole page.
 3. No \`position: fixed\` — it escapes the band.
 4. No literal colors (\`#hex\`, \`rgb()\`, \`hsl()\`) except as the fallback INSIDE a \`var()\`.
-5. No \`window.location\`, no bare \`href\` navigation for in-app routes, and no invented route
+5. No color token from another role inside the band — not \`--text-default\`, \`--text-strong\`,
+   \`--surface-bg\`, \`--input-bg\`, \`--button-primary-*\`. They exist in the design system (so they
+   look valid) but they belong to the PAGE; the band is the nav surface and only \`nav-*\` reads right
+   on it, dark nav included. Non-color scales (\`--radius-*\`, \`--space-*\`, \`--shadow-*\`, \`--font-*\`)
+   are free.
+6. No \`window.location\`, no bare \`href\` navigation for in-app routes, and no invented route
    (\`/profile\`, \`/settings\`, \`/account\`, …) — not in an \`href\`, not in \`navigateTo\`.
-6. No dependency on a molecule/web component from another project: the header must render with the
+7. No dependency on a molecule/web component from another project: the header must render with the
    base and plain HTML only.
-7. No layout that needs more than the band's height, and no dropdown/menu that opens outside it: the
+8. No layout that needs more than the band's height, and no dropdown/menu that opens outside it: the
    shell sets \`overflow: hidden\` on the header region, so it would be clipped, not shown. Long text
    ellipsizes (\`aura-header-subtitle\` already does).
-8. No animation on the mobile aside toggle's visibility, and nothing that moves on every render — a
+9. No animation on the mobile aside toggle's visibility, and nothing that moves on every render — a
    header that pulses forever is noise in a workspace people keep open all day.
 
 ## Example (format reference)

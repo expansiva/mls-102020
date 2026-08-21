@@ -42,7 +42,7 @@ import {
  * (designSystemBase.getCssVars), so an invented name silently resolves to the CSS fallback and the
  * theme stops applying. Every group becomes a variable — color, global and typography alike.
  */
-async function readProjectTokens(projectId: number): Promise<string[]> {
+async function readProjectTokens(projectId: number): Promise<{ all: string[]; colors: string[] }> {
   try {
     const mod = await collabImport({ project: projectId, folder: '', shortName: 'designSystem', extension: '.ts' }) as {
       tokens?: Array<Record<string, unknown>>;
@@ -50,21 +50,24 @@ async function readProjectTokens(projectId: number): Promise<string[]> {
     const entry = mod?.tokens?.[0];
     if (!entry) throw new Error('designSystem.ts exports no tokens entry');
 
-    const names = new Set<string>();
+    const all = new Set<string>();
+    const colors = new Set<string>();
     for (const group of ['color', 'global', 'typography']) {
       const map = entry[group];
       if (!map || typeof map !== 'object') continue;
       for (const key of Object.keys(map as Record<string, unknown>)) {
         // `_dark-<name>` is the night twin of the same variable, not another token.
         if (key.startsWith('_dark-')) continue;
-        names.add(`--${key}`);
+        all.add(`--${key}`);
+        if (group === 'color') colors.add(`--${key}`);
       }
     }
-    if (names.size === 0) throw new Error('designSystem.ts declares no token');
-    return [...names];
+    if (all.size === 0) throw new Error('designSystem.ts declares no token');
+    return { all: [...all], colors: [...colors] };
   } catch (error) {
     console.warn(`[agentGenerateHeader] could not read the project design system: ${error instanceof Error ? error.message : String(error)} — falling back to the mandatory baseline`);
-    return (MANDATORY_COLOR_ROLES as readonly string[]).map((role) => `--${role}`);
+    const baseline = (MANDATORY_COLOR_ROLES as readonly string[]).map((role) => `--${role}`);
+    return { all: baseline, colors: baseline };
   }
 }
 
@@ -97,7 +100,11 @@ async function beforePromptImplicit(
 
   // Only fetch routes when the header may link them — otherwise the model gets none, by design.
   if (req.navLinks) req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
-  req.tokens = req.tokens ?? await readProjectTokens(req.projectId);
+  if (!req.tokens || !req.colorTokens) {
+    const ds = await readProjectTokens(req.projectId);
+    req.tokens = req.tokens ?? ds.all;
+    req.colorTokens = req.colorTokens ?? ds.colors;
+  }
 
   console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] tokens=${req.tokens?.length ?? 0} navLinks=${String(req.navLinks)} routes=${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
   if (req.navLinks && !req.navigation?.length) console.warn('[agentGenerateHeader] navLinks is on but the project declares no navigation: the header will have no links');

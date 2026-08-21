@@ -467,6 +467,61 @@ test('inlining the mark by hand is refused with the working alternative', () => 
   assert.deepEqual(validateHeaderParts(withBandHtml('${this.renderAsideToggle()}${this.renderLogo()}')), []);
 });
 
+test('inside the band, color comes from the nav family only', () => {
+  // Exactly what the last real generation did: text-default and text-strong EXIST in the project's
+  // design system, so the "token exists" check passed — but they are page roles, and on a dark nav
+  // they paint unreadable text.
+  const colorTokens = ['--nav-bg', '--nav-text', '--nav-active-bg', '--text-default', '--text-strong'];
+  const allowedTokens = [...colorTokens, '--radius-medium', '--space-16'];
+  const options = { allowedTokens, colorTokens };
+  const css = (decl: string) => ({ ...validParts, bandCss: '${tag} .x { ' + decl + ' }' });
+
+  for (const wrong of ['color: var(--text-default, #102a43);', 'color: var(--text-strong, #0b1b2b);']) {
+    const errors = validateHeaderParts(css(wrong), options).join('; ');
+    assert.match(errors, /color of another role/);
+    assert.match(errors, /--nav-text/, 'the message must name the family to use');
+  }
+
+  assert.deepEqual(validateHeaderParts(css('color: var(--nav-text, #102a43);'), options), []);
+  // Non-color scales are free — a radius or a spacing is not a palette decision.
+  assert.deepEqual(validateHeaderParts(css('border-radius: var(--radius-medium, 10px);'), options), []);
+  // Without the color list the rule does not run (the caller did not say which tokens are colors).
+  assert.deepEqual(validateHeaderParts(css('color: var(--text-default, #102a43);'), { allowedTokens }), []);
+});
+
+test('the prompt hands the nav family over, and says the rest belongs to the page', () => {
+  const prompt = buildGenerateHeaderHumanPrompt(normalizeHeaderRequest({
+    projectId: PROJECT,
+    brand: { title: 'Sample App' },
+    tokens: ['--nav-bg', '--nav-text', '--text-default'],
+    colorTokens: ['--nav-bg', '--nav-text', '--text-default'],
+  }));
+  assert.match(prompt, /COLOR inside the band comes from the nav family only: --nav-bg, --nav-text/);
+  assert.match(prompt, /belongs to the page/);
+});
+
+test('a locale with a region builds a valid i18n block (pt-BR shipped broken once)', () => {
+  const source = buildHeaderSource(PROJECT, {
+    bandHtml: '${this.renderAsideToggle()}<span>${this.localized(messages).welcome}</span>',
+    messages: { 'pt-BR': { welcome: 'Bem-vindo' }, en: { welcome: 'Welcome' } },
+  });
+
+  // `const message_pt-BR` and an unquoted `pt-BR:` key are both syntax errors.
+  assert.equal(source.includes('message_pt-BR'), false);
+  assert.match(source, /const message_pt_BR = \{/u);
+  assert.match(source, /type MessageType = typeof message_pt_BR;/u);
+  assert.match(source, /"pt-BR": message_pt_BR,/u);
+  assert.match(source, /"en": \{/u);
+});
+
+test('a message key that is not an identifier is refused', () => {
+  const parts = {
+    bandHtml: '${this.renderAsideToggle()}<span>${this.localized(messages).welcome}</span>',
+    messages: { en: { 'welcome-user': 'Welcome' } },
+  };
+  assert.match(validateHeaderParts(parts).join('; '), /not a plain identifier/);
+});
+
 test('a token the project does not define is refused', () => {
   const allowedTokens = ['--nav-bg', '--nav-text', '--text-muted'];
   const css = (name: string) => '${tag} .x { color: var(' + name + ', #52606d); }';
