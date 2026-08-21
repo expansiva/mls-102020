@@ -127,10 +127,11 @@ test('a route the model invented is rejected (the /profile button that shipped o
   ), { allowedHrefs: ['/sampleModule'] });
   assert.ok(invented.some((error) => error.includes('"/profile"')), invented.join('; '));
 
-  // An action with no route goes through the event instead.
+  // An action with no route goes through the event instead ('user' is the base's avatar, so the
+  // example is 'search' — the one action a header still renders itself).
   assert.deepEqual(
     validateHeaderParts(withBandHtml(
-      "${this.renderAsideToggle()}${this.hasAction('user') ? html`<button @click=${() => this.emitHeaderAction('user')}>x</button>` : nothing}",
+      "${this.renderAsideToggle()}${this.hasAction('search') ? html`<button @click=${() => this.emitHeaderAction('search')}>s</button>` : nothing}",
     )),
     [],
   );
@@ -451,4 +452,45 @@ test('a contract violation is reported instead of written', () => {
   assert.equal(sanitized.ok, false);
   assert.match(sanitized.error ?? '', /renderAsideToggle/);
   assert.equal(sanitized.value, undefined);
+});
+
+test('inlining the mark by hand is refused with the working alternative', () => {
+  // What a real generation produced: svg`${this.brand.logoSvg}` renders nothing, because a lit
+  // template interpolates a string as TEXT and the fragment cannot import a directive.
+  const byHand = withBandHtml('${this.renderAsideToggle()}${this.brand.logoSvg ? svg`${this.brand.logoSvg}` : \'\'}');
+  const errors = validateHeaderParts(byHand);
+  assert.match(errors.join('; '), /this\.renderLogo\(\)/);
+  assert.match(errors.join('; '), /logoSvg/);
+
+  // The supported way passes.
+  assert.deepEqual(validateHeaderParts(withBandHtml('${this.renderAsideToggle()}${this.renderLogo()}')), []);
+});
+
+test('a hand-rolled user button is refused (it loses the fallback and the menu)', () => {
+  // What a real generation shipped: an empty span while the session had not answered, and a click
+  // that only fired the event — no silhouette, no identity panel.
+  const handRolled = withBandHtml(
+    '${this.renderAsideToggle()}'
+    + "<button @click=${() => this.emitHeaderAction('user')}>"
+    + "<span>${(this.userFirstName || this.userName || '').slice(0, 1).toUpperCase()}</span></button>",
+  );
+  const errors = validateHeaderParts(handRolled).join('; ');
+  assert.match(errors, /renderUserAvatar/);
+  assert.match(errors, /avatar initial by hand/);
+
+  // The supported way, and a greeting that reads fine while the session loads.
+  assert.deepEqual(
+    validateHeaderParts(withBandHtml(
+      '${this.renderAsideToggle()}'
+      + '<span>${this.userFirstName ? this.userFirstName : nothing}</span>'
+      + '${this.renderUserAvatar()}',
+    )),
+    [],
+  );
+
+  // Another action with no runtime still goes through the event.
+  assert.deepEqual(
+    validateHeaderParts(withBandHtml("${this.renderAsideToggle()}<button @click=${() => this.emitHeaderAction('search')}>s</button>")),
+    [],
+  );
 });

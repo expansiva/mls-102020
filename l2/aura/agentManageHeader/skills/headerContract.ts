@@ -22,6 +22,11 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
 ## The base already does this — call it, never reimplement it
 - \`this.renderAsideToggle()\` — the mobile hamburger that opens the aside. **Mandatory**: it is the
   only way to reach the menu on mobile. Put it first in the left group.
+- \`this.renderLogo()\` — the mark ALONE, from the config profile: it inlines \`brand.logoSvg\` (already
+  sanitized) or renders the \`<img>\` of \`brand.logoUrl\`, and nothing when there is neither. Use this
+  whenever you want the mark and the text arranged your own way. You CANNOT inline the markup
+  yourself: a lit template interpolates a string as TEXT, never as markup, so
+  \`svg\`\${this.brand.logoSvg}\`\` renders nothing — and \`bandHtml\` may not import a directive.
 - \`this.renderBrand()\` — logo + title + subtitle, taken from the CONFIG profile. Use it instead of
   writing the brand name: \`this.brand.title\`, \`this.brand.logoUrl\`, \`this.brand.subtitle\` are
   available if you need a custom arrangement.
@@ -54,20 +59,24 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
 
 ## MUST
 1. Call \`this.renderAsideToggle()\` exactly once.
-2. Take the brand from the config (\`this.renderBrand()\` or \`this.brand.*\`) — never a literal name.
-3. Scope EVERY \`bandCss\` selector with \`\\\${tag}\` (e.g. \`\\\${tag} .my-part { … }\`). Rules inside
+2. For the user, call \`this.renderUserAvatar()\` — NEVER build your own user button. The base's avatar
+   has the photo -> initials -> silhouette fallback (yours would render an empty box while the session
+   is still loading) and opens the identity panel with email and sign out. \`this.renderActions()\`
+   already includes it when the profile asked for \`user\`, so calling both renders it twice.
+3. Take the brand from the config (\`this.renderBrand()\` or \`this.brand.*\`) — never a literal name.
+4. Scope EVERY \`bandCss\` selector with \`\\\${tag}\` (e.g. \`\\\${tag} .my-part { … }\`). Rules inside
    \`@media\` blocks too.
-4. Colors, only through DS role tokens with a fallback: \`var(--ds-color-nav-bg, #fff)\`. The same for
+5. Colors, only through DS role tokens with a fallback: \`var(--ds-color-nav-bg, #fff)\`. The same for
    any inline style.
-5. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
+6. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
    navigation entries. You cannot know which routes exist — so never write a path that was not
    handed to you.
-6. Put every fixed word in \`messages\` and read it with \`this.localized(messages)\`. A label the user
+7. Put every fixed word in \`messages\` and read it with \`this.localized(messages)\`. A label the user
    can see is never a literal in the markup.
-7. Layout freely INSIDE the band with flex/grid — the base gives you a flex row (left group / right
+8. Layout freely INSIDE the band with flex/grid — the base gives you a flex row (left group / right
    group), but you may regroup, stack, center, or build a 3-column grid. What you may not do is grow
    taller: the shell clips the region to the fixed band height, so anything outside it is cut off.
-8. Motion is welcome when it is subtle and scoped: CSS \`transition\` on your own parts, and
+9. Motion is welcome when it is subtle and scoped: CSS \`transition\` on your own parts, and
    \`@keyframes\` you define in \`bandCss\` (the keyframe steps do not need the tag; every real selector
    does). Wrap anything continuous in \`@media (prefers-reduced-motion: reduce)\` to stop it. Animate
    \`transform\`/\`opacity\` — animating layout properties on a 66px band costs a reflow per frame.

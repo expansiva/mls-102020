@@ -315,6 +315,25 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
     if (bandHtml.includes(forbidden)) errors.push(`bandHtml must not contain a "${forbidden}" tag (use bandCss)`);
   }
 
+  // Injecting markup from a string never works in a lit template (it interpolates TEXT), and the
+  // fragment cannot import a directive — the base already does it, sanitized, in renderLogo().
+  if (/(?:^|[^.\w])svg`/u.test(bandHtml) || /unsafe(HTML|SVG)/u.test(bandHtml)) {
+    errors.push('bandHtml cannot inline markup from a string (svg`...` / unsafeHTML) — use this.renderLogo() or this.renderBrand()');
+  }
+  if (/this\.brand\.logoSvg/u.test(bandHtml)) {
+    errors.push('bandHtml must not touch this.brand.logoSvg — this.renderLogo() renders the mark safely');
+  }
+
+  // The user affordance is the base's: it carries the photo -> initials -> silhouette fallback and the
+  // identity panel (email + sign out). A hand-rolled button loses both — a real generation shipped an
+  // EMPTY span (the initial of a name the session had not answered yet) and a click that did nothing.
+  if (/emitHeaderAction\(\s*['"]user['"]/u.test(bandHtml)) {
+    errors.push("bandHtml must not build its own user button — call this.renderUserAvatar() (photo/initials/silhouette + identity menu); it is already included by this.renderActions()");
+  }
+  if (/this\.(userFirstName|userName)/u.test(bandHtml) && /(slice\(|charAt\(|\[0\])/u.test(bandHtml)) {
+    errors.push('bandHtml must not derive an avatar initial by hand — this.renderUserAvatar() does it, with a fallback for the empty case');
+  }
+
   // Without the toggle, a mobile user has no way to open the aside.
   if (!bandHtml.includes('this.renderAsideToggle()')) {
     errors.push('bandHtml must render this.renderAsideToggle()');
