@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   buildGenerateHeaderHumanPrompt,
   buildHeaderSource,
+  findCssVars,
   findInventedRoutes,
   headerPaths,
   normalizeHeaderRequest,
@@ -30,7 +31,7 @@ const validParts: GeneratedHeaderParts = {
     '  ${this.renderActions()}',
     '</div>',
   ].join('\n'),
-  bandCss: '${tag} .app-header-hint {\n  color: var(--ds-color-text-muted, #52606d);\n}',
+  bandCss: '${tag} .app-header-hint {\n  color: var(--text-muted, #52606d);\n}',
   messages: { en: { hint: 'Shift open' }, pt: { hint: 'Turno aberto' } },
 };
 
@@ -63,11 +64,11 @@ test('unknown actions and tokens are dropped, the canonical order is kept', () =
     projectId: PROJECT,
     brief: 'clean and warm',
     actions: ['user', 'language', 'teleport'],
-    tokens: ['--ds-color-nav-bg', 'nav-bg'],
+    tokens: ['--nav-bg', 'nav-bg'],
     navigation: [{ label: 'Items', href: '/sampleModule/items' }, { label: '', href: '/x' }],
   });
   assert.deepEqual(req.actions, ['language', 'user']);
-  assert.deepEqual(req.tokens, ['--ds-color-nav-bg']);
+  assert.deepEqual(req.tokens, ['--nav-bg']);
   assert.deepEqual(req.navigation, [{ label: 'Items', href: '/sampleModule/items' }]);
   assert.equal(req.commit, false);
 });
@@ -150,7 +151,7 @@ test('colors must go through a DS role token', () => {
   const inCss = validateHeaderParts({ ...validParts, bandCss: '${tag} .x { color: #ff0000; }' });
   assert.ok(inCss.some((error) => error.includes('literal color')), inCss.join('; '));
 
-  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: '${tag} .x { color: var(--ds-color-nav-text, #102a43); }' }), []);
+  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: '${tag} .x { color: var(--nav-text, #102a43); }' }), []);
 });
 
 test('every CSS rule is scoped by the tag placeholder', () => {
@@ -464,6 +465,31 @@ test('inlining the mark by hand is refused with the working alternative', () => 
 
   // The supported way passes.
   assert.deepEqual(validateHeaderParts(withBandHtml('${this.renderAsideToggle()}${this.renderLogo()}')), []);
+});
+
+test('a token the project does not define is refused', () => {
+  const allowedTokens = ['--nav-bg', '--nav-text', '--text-muted'];
+  const css = (name: string) => '${tag} .x { color: var(' + name + ', #52606d); }';
+
+  // The real slip: the design system names tokens by ROLE with no prefix, so an invented
+  // `--ds-color-text-muted` resolves to the fallback and the theme silently stops applying.
+  const invented = validateHeaderParts({ ...validParts, bandCss: css('--ds-color-text-muted') }, { allowedTokens });
+  assert.match(invented.join('; '), /not a token of this project/);
+
+  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: css('--text-muted') }, { allowedTokens }), []);
+  // The shell/base own the --aura-* namespace.
+  assert.deepEqual(
+    validateHeaderParts({ ...validParts, bandCss: '${tag} .x { height: var(--aura-header-height, 66px); }' }, { allowedTokens }),
+    [],
+  );
+  // With no list, the check does not run (the caller did not say what exists).
+  assert.deepEqual(validateHeaderParts({ ...validParts, bandCss: css('--whatever') }), []);
+});
+
+test('css vars are found in the markup too, not only in the css', () => {
+  assert.deepEqual(findCssVars('<span style="color: var(--text-muted, #999)">x</span>'), ['--text-muted']);
+  assert.deepEqual(findCssVars('color: var( --nav-bg )'), ['--nav-bg']);
+  assert.deepEqual(findCssVars('no vars here'), []);
 });
 
 test('a hand-rolled user button is refused (it loses the fallback and the menu)', () => {

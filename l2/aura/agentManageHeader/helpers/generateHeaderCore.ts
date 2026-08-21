@@ -206,7 +206,7 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
     : undefined;
 
   const tokens = Array.isArray(raw.tokens)
-    ? raw.tokens.filter((token): token is string => typeof token === 'string' && token.startsWith('--ds-'))
+    ? raw.tokens.filter((token): token is string => typeof token === 'string' && token.startsWith('--'))
     : undefined;
 
   return {
@@ -284,6 +284,13 @@ export interface ValidateHeaderOptions {
   allowedHrefs?: string[];
   /** Whether the band may render navigation links at all (request.navLinks). */
   allowNavLinks?: boolean;
+  /** DS custom properties the project actually defines (request.tokens). */
+  allowedTokens?: string[];
+}
+
+/** Custom properties referenced with var(). */
+export function findCssVars(text: string): string[] {
+  return [...new Set([...text.matchAll(/var\(\s*(--[a-z0-9-]+)/giu)].map((match) => match[1]))];
 }
 
 /** Literal routes the band navigates to (href="/x" or navigateTo('/x')), minus the allowed ones. */
@@ -363,7 +370,20 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
     if ((text.match(/`/gu)?.length ?? 0) % 2 !== 0) errors.push(`${name} has an unbalanced backtick`);
   }
 
-  if (hasLiteralColor(bandHtml)) errors.push('bandHtml has a literal color; use var(--ds-*, fallback)');
+  if (hasLiteralColor(bandHtml)) errors.push('bandHtml has a literal color; use a DS token with a fallback');
+
+  // A token that does not exist in the project's design system resolves to the fallback and the
+  // theme stops applying — silently. The DS names tokens by ROLE with no prefix (`--nav-text`), so
+  // an invented `--ds-color-nav-text` looks right and does nothing.
+  if (options.allowedTokens?.length) {
+    const allowed = new Set(options.allowedTokens);
+    for (const name of [...findCssVars(bandHtml), ...findCssVars(bandCss)]) {
+      // `--aura-*` belongs to the shell/base, not to the design system.
+      if (name.startsWith('--aura-') || allowed.has(name)) continue;
+      errors.push(`${name} is not a token of this project's design system — use one of: ${options.allowedTokens.join(', ')}`);
+      break;
+    }
+  }
 
   if (bandCss) {
     if (hasLiteralColor(bandCss)) errors.push('bandCss has a literal color outside a var(--ds-*, fallback)');
@@ -519,6 +539,7 @@ export function sanitizeGeneratedHeader(
   const errors = validateHeaderParts(parts, {
     allowedHrefs: request.navLinks ? (request.navigation ?? []).map((entry) => entry.href) : [],
     allowNavLinks: request.navLinks,
+    allowedTokens: request.tokens,
   });
   if (errors.length > 0) return { ok: false, error: errors.join('; ') };
 
@@ -558,8 +579,8 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
         : 'Navigation links were requested but the project declares none: render no links.')
       : 'NO navigation links in this header: the aside owns the menu. Do not call this.renderNavLinks() and do not write any route.',
     request.tokens?.length
-      ? `DS role tokens available: ${request.tokens.join(', ')}`
-      : 'DS role tokens follow the --ds-color-<role>[-bg|-text] convention (nav-bg, nav-text, nav-active-bg, border-default, text-muted, surface-bg, button-primary-bg/text).',
+      ? `Design system tokens THIS project defines — use only these, exactly as written: ${request.tokens.join(', ')}`
+      : 'No token list was provided: do not invent one, paint with plain CSS values.',
     request.language ? `Write any fixed copy in: ${request.language}` : '',
   ].filter(Boolean);
 

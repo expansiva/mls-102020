@@ -66,8 +66,11 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
 3. Take the brand from the config (\`this.renderBrand()\` or \`this.brand.*\`) — never a literal name.
 4. Scope EVERY \`bandCss\` selector with \`\\\${tag}\` (e.g. \`\\\${tag} .my-part { … }\`). Rules inside
    \`@media\` blocks too.
-5. Colors, only through DS role tokens with a fallback: \`var(--ds-color-nav-bg, #fff)\`. The same for
-   any inline style.
+5. Colors, only through the design-system tokens LISTED IN THE REQUEST, with a fallback:
+   \`var(--nav-bg, #fff)\`. Same for any inline style. The list is read from the project's own design
+   system — a token that is not in it does not exist, resolves to the fallback and silently drops the
+   theme, so never invent a name or a prefix (there is no \`ds-\`/\`color-\` prefix: the token is the
+   role, e.g. \`--nav-text\`, \`--text-muted\`, \`--border-default\`).
 6. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
    navigation entries. You cannot know which routes exist — so never write a path that was not
    handed to you.
@@ -101,7 +104,7 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
 ## Example (format reference)
 {"type":"flexible","result":{
 "bandHtml":"<div class=\\"aura-header-side\\">\\n  \\\${this.renderAsideToggle()}\\n  \\\${this.renderBrand()}\\n</div>\\n<div class=\\"aura-header-side app-header-right\\">\\n  \\\${this.renderNavLinks()}\\n  <span class=\\"app-header-hint\\">\\\${this.localized(messages).hint}</span>\\n  \\\${this.renderActions()}\\n</div>",
-"bandCss":"\\\${tag} .app-header-right {\\n  gap: 16px;\\n}\\n\\n\\\${tag} .app-header-hint {\\n  color: var(--ds-color-text-muted, #52606d);\\n  font-size: 0.85rem;\\n}",
+"bandCss":"\\\${tag} .app-header-right {\\n  gap: 16px;\\n}\\n\\n\\\${tag} .app-header-hint {\\n  color: var(--text-muted, #52606d);\\n  font-size: 0.85rem;\\n}",
 "messages":{"en":{"hint":"Shift open"},"pt":{"hint":"Turno aberto"}}
 }}
 `;
