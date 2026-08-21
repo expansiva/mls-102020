@@ -2,7 +2,11 @@
 
 // c1-groups — the first LLM call: the definition of the page in, the regions and their groups out.
 //
-// It sees LEVEL 1 and nothing else: the ~1.5 KB list of groups the active project publishes. Not the
+// It also DISCOVERS the catalog: the active project plus its direct dependencies, one of which answers the
+// run (helpers/chEntry). Which one, and how it was chosen, is recorded in input.json — from 2026-08-20 the
+// probe is meant to run from the client project, where the catalog is a dependency.
+//
+// It sees LEVEL 1 and nothing else: the ~1.5 KB list of groups that catalog publishes. Not the
 // molecules of any group, which is the next call's input, and not the usage contracts, which nothing in
 // this probe reads. One level per prompt is the design being measured (flow.json.principles).
 //
@@ -12,7 +16,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { appendLongTermMemory } from '/_102027_/l2/aiAgentHelper.js';
-import { isRecord, parseMaybeJson, toDisplayPath, writeJsonArtifact } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { isRecord, parseMaybeJson, readJsonArtifact, toDisplayPath, writeJsonArtifact } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import {
   buildVToolInstruction,
   createVToolSchema,
@@ -29,16 +33,18 @@ import {
   ChGroupsArtifact,
   chDoneAnchor,
   chMeasurePrompt,
+  chParseUsage,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import {
   chGroupsFileInfo,
   chInputFileInfo,
   chPromptSizeFileInfo,
   chTraceFileInfo,
+  discoverChCatalog,
   readChAgentText,
   readChLevel1,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chCatalog.js';
-import { getChDefinition, getChRootPlan, getChRunKey } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chRootPlan.js';
+import { getChCatalogArg, getChDefinition, getChRootPlan, getChRunKey } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chRootPlan.js';
 import {
   ChGroupsOutput,
   buildChRegions,
@@ -78,7 +84,11 @@ async function beforePromptStep(
   const plan = getChRootPlan(context);
   const definition = getChDefinition(context);
 
-  const { level1, error } = await readChLevel1();
+  const discovery = await discoverChCatalog(getChCatalogArg(context));
+  if (!discovery.project) {
+    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', discovery.error)];
+  }
+  const { level1, error } = await readChLevel1(discovery.project);
   if (!level1) {
     return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', error)];
   }
@@ -109,6 +119,17 @@ async function beforePromptStep(
       runKey,
       definition,
       userLanguage: plan.userLanguage,
+      catalogProject: discovery.project,
+      catalogSelectedBy: discovery.selectedBy,
+      catalogWarnings: discovery.warnings,
+      // The search itself is recorded, not just its answer: the two dependency lists tell us whether the
+      // platform's resolver is transitive, which nothing here could check offline.
+      discovery: {
+        activeProject: discovery.activeProject,
+        directDeps: discovery.directDeps,
+        resolvedDeps: discovery.resolvedDeps,
+        candidates: discovery.candidates,
+      },
       level1Reference: level1.reference,
       level1Via: level1.via,
       publishedGroups: level1.groups.map(group => ({ name: group.name, molecules: group.molecules })),
@@ -148,7 +169,14 @@ async function afterPromptStep(
   const attempt = parsedArgs.retryAttempt || 1;
   const runKey = getChRunKey(context, parsedArgs.runKey);
 
-  const { level1, error: catalogError } = await readChLevel1();
+  // The catalog project comes from input.json, written by the attempt before this one: re-discovering here
+  // could land on a different catalog than the one the model just answered from.
+  const input = await readJsonArtifact<{ catalogProject?: number }>(chInputFileInfo(runKey), false);
+  const catalogProject = input?.catalogProject;
+  if (!catalogProject) {
+    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `[${AGENT_NAME}] input.json has no catalogProject for ${runKey}`)];
+  }
+  const { level1, error: catalogError } = await readChLevel1(catalogProject);
   if (!level1) {
     return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', catalogError)];
   }
@@ -174,6 +202,9 @@ async function afterPromptStep(
     planId: PLAN_ID,
     attempt,
     ok: gate.ok,
+    // What the CALL cost, read from the runtime's own trace line. null when the line is not there —
+    // the report says "not measured" rather than zero.
+    usage: chParseUsage(step.interaction?.trace),
     // The trace keeps what the MODEL said; the artifact below keeps what will be used.
     ...(gate.ok ? {} : { errors: gate.errors, output }),
   });
@@ -185,9 +216,14 @@ async function afterPromptStep(
       schemaVersion: 1,
       savedAt: new Date().toISOString(),
       runKey,
+      catalogProject,
       level1Reference: level1.reference,
       regions,
       groups,
+      groupRefs: groups.map(group => ({
+        group,
+        indexDefs: level1.groups.find(item => item.name === group)?.indexDefs || '',
+      })),
     };
     await writeJsonArtifact(chGroupsFileInfo(runKey), artifact);
 

@@ -48,10 +48,15 @@ function facts(over: Partial<ChRunFacts>): ChRunFacts {
     userLanguage: 'pt',
     level1Reference: '/_102040_/l2/molecules/skill',
     level1Via: 'published',
+    catalogProject: 102040,
+    catalogSelectedBy: 'dependency',
+    candidates: [102040],
+    catalogWarnings: [],
     publishedGroups: ['groupEnterText'],
     regions: [],
     groups: [],
     sizes: [],
+    usage: [],
     tagIssues: { invented: 0, short: 0, case: 0 },
     attemptsRefused: 0,
     ...over,
@@ -163,4 +168,66 @@ void test('a catalog served by the published module leaves no such note', () => 
   const report = buildChRunReport(facts({ regions: [REGIONS[0]], groups: [groupArtifact({})] }), 4);
   assert.deepEqual(report.catalog.groupsReadFromEditor, []);
   assert.equal(report.notes.some(note => note.includes('EDITOR')), false);
+});
+
+void test('the catalog that answered is named in the report and in the summary', () => {
+  const report = buildChRunReport(facts({ regions: [REGIONS[0]], groups: [groupArtifact({})] }), 4);
+  assert.equal(report.catalog.project, 102040);
+  assert.equal(report.catalog.selectedBy, 'dependency');
+  assert.match(renderChRunSummary(report), /catálogo do projeto \*\*102040\*\* \(dependency\)/);
+});
+
+void test('a catalog outside the dependencies is warned about ABOVE the per-region notes', () => {
+  const report = buildChRunReport(facts({
+    regions: [REGIONS[0]],
+    groups: [groupArtifact({})],
+    catalogWarnings: ['102054 is not a direct dependency of 102053: a page in 102053 cannot import the molecules that were chosen'],
+  }), 4);
+  assert.match(report.notes[0], /cannot import/);
+});
+
+void test('more than one reachable catalog is recorded even when one was named', () => {
+  const report = buildChRunReport(facts({
+    regions: [REGIONS[0]],
+    groups: [groupArtifact({})],
+    catalogSelectedBy: 'arg',
+    candidates: [102040, 102054],
+  }), 4);
+  assert.match(report.notes.join('\n'), /mais de um catálogo alcançável \(102040, 102054\)/);
+});
+
+void test('the real cost of the run is carried, and the platform overhead is the gap to the estimate', () => {
+  const report = buildChRunReport(facts({
+    regions: [REGIONS[0]],
+    groups: [groupArtifact({})],
+    sizes: [size('c1-groups', 387, 1200), size('c2-groupentertext', 928, 1800)],
+    usage: [
+      { planId: 'c1-groups', attempt: 1, inputTokens: 7727, outputTokens: 649, costUsd: 0.0239, calls: 1, models: ['x'] },
+      { planId: 'c2-groupentertext', attempt: 1, inputTokens: 9273, outputTokens: 400, costUsd: 0.03, calls: 1, models: ['x'] },
+    ],
+  }), 4);
+
+  assert.equal(report.usage.inputTokensTotal, 17000);
+  assert.equal(report.usage.outputTokensTotal, 1049);
+  assert.equal(report.usage.costUsdTotal, 0.0539);
+  // 17000 real against 3000 assembled.
+  assert.equal(report.usage.overheadFactor, 5.67);
+  assert.deepEqual(report.usage.stepsNotMeasured, []);
+  const text = renderChRunSummary(report);
+  assert.match(text, /7727/);
+  assert.match(text, /5\.67×/);
+});
+
+void test('a step whose trace carried no provider line is named, never counted as zero', () => {
+  const report = buildChRunReport(facts({
+    regions: [REGIONS[0]],
+    groups: [groupArtifact({})],
+    sizes: [size('c1-groups', 387, 1200), size('c2-groupentertext', 928, 1800)],
+    usage: [{ planId: 'c1-groups', attempt: 1, inputTokens: 7727, outputTokens: 649, costUsd: 0.0239, calls: 1, models: ['x'] }],
+  }), 4);
+
+  assert.deepEqual(report.usage.stepsNotMeasured, ['c2-groupentertext (tent. 1)']);
+  // The factor compares only what was measured: 7727 against c1's 1200.
+  assert.equal(report.usage.overheadFactor, 6.44);
+  assert.match(renderChRunSummary(report), /não medido/);
 });

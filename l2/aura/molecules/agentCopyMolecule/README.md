@@ -2,8 +2,8 @@
 
 Copia o **código real** de uma molécula de um projeto de dependência (tipicamente o
 `mls-102040`, `mls-102054` ou `mls-102055`) para o **projeto atual**, para o cliente
-fazer o i18n — e o que mais quiser — na cópia. É o veículo da decisão de reunião de
-2026-08-18: as bases ficam só em inglês, a tradução mora na cópia.
+ser dono dela. É o veículo da decisão de reunião de 2026-08-18: as bases ficam só em inglês, e a
+tradução mora na cópia — feita por **outro** agente (decisão de 2026-08-20).
 
 A cópia **mantém o nome e a tag da origem** e sombreia a base na resolução da tag
 (`resolveNewTag` procura no projeto atual antes das dependências). Nunca é uma casca: se
@@ -36,8 +36,9 @@ Destino = `mls.actualProject`. A origem precisa ser dependência declarada do de
 `.test.ts` não acompanha, e **nenhum `index.ts` é gerado ou atualizado** (para a página
 showcase do grupo, rode o `agentUpdateIndexGroupPage`).
 
-Depois da cópia, o `pt` vai no bloco `collab_i18n` do `.ts` copiado — o summary aponta
-onde.
+Depois da cópia, a molécula é do projeto. **Acrescentar idiomas não é deste agente** (decisão de
+2026-08-20): quem faz isso é outro agente do Studio, trabalhando sobre a cópia. O que este garante é
+que o bloco `collab_i18n` chega **byte a byte** como estava na base — é o contrato de entrega.
 
 ## Spec
 

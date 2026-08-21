@@ -34,6 +34,7 @@ import {
   chGroupFolder,
   chGroupPlanId,
   chMeasurePrompt,
+  chParseUsage,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import {
   ChGroupCatalog,
@@ -43,7 +44,6 @@ import {
   chTraceFileInfo,
   readChAgentText,
   readChGroupCatalog,
-  readChLevel1,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chCatalog.js';
 import { getChRootPlan, getChRunKey } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chRootPlan.js';
 import {
@@ -182,7 +182,7 @@ async function afterPromptStep(
     : { ok: false, errors: [`extract: ${extractError}`] };
   const errorText = gate.errors.join('\n');
 
-  // The per-attempt trace carries the tag-issue breakdown, which is what run.json counts: an invented
+  // The per-attempt trace carries the tag-issue breakdown, which is what report.json counts: an invented
   // tag and a dropped prefix are different findings and the acceptance criterion is about the first.
   await writeJsonArtifact(chTraceFileInfo(runKey, planId, attempt), {
     savedAt: new Date().toISOString(),
@@ -190,6 +190,7 @@ async function afterPromptStep(
     group,
     attempt,
     ok: gate.ok,
+    usage: chParseUsage(step.interaction?.trace),
     tagIssues: chTagIssueCodes(gate.errors),
     ...(gate.ok ? {} : { errors: gate.errors, output }),
   });
@@ -249,22 +250,29 @@ async function afterPromptStep(
 
 // ---- helpers ----
 
-/** The step's group, its level 2 and its regions — or one readable line saying what is missing. */
+/**
+ * The step's group, its level 2 and its regions — or one readable line saying what is missing.
+ *
+ * ⚠️ EVERYTHING COMES FROM c1's ARTIFACT, including the level-2 reference. Looking level 1 up again would
+ * re-run the discovery, and a run must measure ONE catalog: with two reachable catalogs the second lookup
+ * could answer differently from the one c1 read.
+ */
 async function resolveStepContext(runKey: string, groupArg: string): Promise<ChStepContext | string> {
   if (!groupArg) return `[${AGENT_NAME}] this step was planted without a group — the root plants one c2 per group and names it in the step args`;
 
-  const { level1, error } = await readChLevel1();
-  if (!level1) return error;
+  const artifact = await readJsonArtifact<ChGroupsArtifact>(chGroupsFileInfo(runKey), true);
+  if (!artifact) return `[${AGENT_NAME}] c1-groups.json is missing for ${runKey}`;
 
-  const group = chCanonicalGroup(groupArg, level1.groups.map(item => item.name));
-  if (!group) return `[${AGENT_NAME}] the project no longer publishes the group '${groupArg}'`;
-  const entry = level1.groups.find(item => item.name === group);
+  const group = chCanonicalGroup(groupArg, artifact.groups);
+  if (!group) return `[${AGENT_NAME}] c1 did not choose the group '${groupArg}' in run ${runKey} — it chose ${artifact.groups.join(', ') || 'none'}`;
 
-  const { catalog, error: catalogError } = await readChGroupCatalog(entry?.indexDefs || '');
+  const reference = (artifact.groupRefs || []).find(item => item.group === group)?.indexDefs || '';
+  if (!reference) return `[${AGENT_NAME}] c1 pinned no level-2 reference for ${group} — the catalog of project ${artifact.catalogProject} may have changed mid-run`;
+
+  const { catalog, error: catalogError } = await readChGroupCatalog(reference);
   if (!catalog) return catalogError;
 
-  const groups = await readJsonArtifact<ChGroupsArtifact>(chGroupsFileInfo(runKey), true);
-  const regions = (groups?.regions || []).filter(region => region.group === group);
+  const regions = artifact.regions.filter(region => region.group === group);
   if (!regions.length) return `[${AGENT_NAME}] c1 assigned no region to ${group} in run ${runKey}`;
 
   return { runKey, group, catalog, regions };

@@ -23,6 +23,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { mkCompleted, mkFail, saveFile } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
 import { MANDATORY_COLOR_ROLES } from '/_102029_/l2/designSystemBase.js';
+import { collabImport } from '/_102027_/l2/collabImport.js';
 import { skill as headerContract } from '/_102020_/l2/aura/agentManageHeader/skills/headerContract.js';
 import {
   buildGenerateHeaderHumanPrompt,
@@ -33,15 +34,42 @@ import {
   type HeaderPaths,
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 
-/** DS roles a header actually paints with, kept honest against the mandatory role list. */
-const HEADER_ROLES = [
-  'nav-bg', 'nav-text', 'nav-active-bg', 'nav-active-text',
-  'surface-bg', 'surface-alt-bg', 'border-default', 'border-subtle',
-  'text-strong', 'text-default', 'text-muted', 'input-bg',
-  'button-primary-bg', 'button-primary-text',
-  'button-secondary-bg', 'button-secondary-border', 'button-secondary-text',
-  'selected-bg', 'selected-text', 'tooltip-bg', 'tooltip-text',
-].filter((role) => (MANDATORY_COLOR_ROLES as readonly string[]).includes(role));
+/**
+ * The tokens THIS project defines, read from its own design system (`_<proj>_/l2/designSystem.ts`).
+ *
+ * Guessing this vocabulary is how the header ended up painted with `var(--ds-color-nav-text)`: the DS
+ * names tokens by ROLE with no prefix, the emitted custom property is `--<key>` verbatim
+ * (designSystemBase.getCssVars), so an invented name silently resolves to the CSS fallback and the
+ * theme stops applying. Every group becomes a variable — color, global and typography alike.
+ */
+async function readProjectTokens(projectId: number): Promise<{ all: string[]; colors: string[] }> {
+  try {
+    const mod = await collabImport({ project: projectId, folder: '', shortName: 'designSystem', extension: '.ts' }) as {
+      tokens?: Array<Record<string, unknown>>;
+    };
+    const entry = mod?.tokens?.[0];
+    if (!entry) throw new Error('designSystem.ts exports no tokens entry');
+
+    const all = new Set<string>();
+    const colors = new Set<string>();
+    for (const group of ['color', 'global', 'typography']) {
+      const map = entry[group];
+      if (!map || typeof map !== 'object') continue;
+      for (const key of Object.keys(map as Record<string, unknown>)) {
+        // `_dark-<name>` is the night twin of the same variable, not another token.
+        if (key.startsWith('_dark-')) continue;
+        all.add(`--${key}`);
+        if (group === 'color') colors.add(`--${key}`);
+      }
+    }
+    if (all.size === 0) throw new Error('designSystem.ts declares no token');
+    return { all: [...all], colors: [...colors] };
+  } catch (error) {
+    console.warn(`[agentGenerateHeader] could not read the project design system: ${error instanceof Error ? error.message : String(error)} — falling back to the mandatory baseline`);
+    const baseline = (MANDATORY_COLOR_ROLES as readonly string[]).map((role) => `--${role}`);
+    return { all: baseline, colors: baseline };
+  }
+}
 
 export function createAgent(): IAgentAsync {
   return {
@@ -70,11 +98,16 @@ async function beforePromptImplicit(
     throw new Error(`(${agent.agentName}) ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
-  req.tokens = req.tokens ?? HEADER_ROLES.map((role) => `--ds-color-${role}`);
+  // Only fetch routes when the header may link them — otherwise the model gets none, by design.
+  if (req.navLinks) req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
+  if (!req.tokens || !req.colorTokens) {
+    const ds = await readProjectTokens(req.projectId);
+    req.tokens = req.tokens ?? ds.all;
+    req.colorTokens = req.colorTokens ?? ds.colors;
+  }
 
-  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] routes=${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
-  if (!req.navigation?.length) console.warn('[agentGenerateHeader] no navigation entries: the header will have no links (and any route it names is rejected)');
+  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] tokens=${req.tokens?.length ?? 0} navLinks=${String(req.navLinks)} routes=${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
+  if (req.navLinks && !req.navigation?.length) console.warn('[agentGenerateHeader] navLinks is on but the project declares no navigation: the header will have no links');
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',

@@ -26,3 +26,10 @@ Agora toda substituição e toda checagem de tag passa por `cTemplates.replaceTa
 
 Achado pelo teste de aceite do achatamento, escrito antes de rodar o agente — que é o argumento para
 o gate ter teste próprio.
+
+## 2026-08-20 — o gate do i18n virou contrato de entrega
+
+Nada mudou no código: mudou o PESO. Com a tradução passando para outro agente do Studio, o
+`i18n_changed`/`i18n_lost` deixou de proteger apenas "o motivo da cópia" e passou a ser o contrato
+entre os dois agentes — o bloco que o próximo agente vai editar tem de chegar idêntico ao da base.
+Registrado para que ninguém relaxe essa checagem achando que é zelo estético.

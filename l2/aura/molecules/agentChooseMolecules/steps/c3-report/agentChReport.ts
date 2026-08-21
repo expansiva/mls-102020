@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentChooseMolecules/steps/c3-report/agentChReport.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
-// c3-report (NO LLM): reads what the run recorded, writes run.json and renders the summary.
+// c3-report (NO LLM): reads what the run recorded, writes report.json and renders the summary.
 //
 // Deterministic on purpose, and the aggregation lives in the pure report.ts beside it. Two reasons, both
 // in flow.json: a model writing this summary would be a fourth call polluting the token measurement the
@@ -23,6 +23,7 @@ import {
   ChCatalogVia,
   ChGroupsArtifact,
   ChPromptSize,
+  ChStepUsage,
   chDoneAnchor,
   chGroupPlanId,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
@@ -46,12 +47,17 @@ interface ChInputArtifact {
   userLanguage: string;
   level1Reference: string;
   level1Via?: ChCatalogVia;
+  catalogProject?: number;
+  catalogSelectedBy?: string;
+  catalogWarnings?: string[];
+  discovery?: { candidates?: number[] };
   publishedGroups: Array<{ name: string }>;
 }
 
 interface ChTraceArtifact {
   ok?: boolean;
   tagIssues?: Partial<ChTagIssues>;
+  usage?: ChStepUsage | null;
 }
 
 export function createAgent(): IAgentAsync {
@@ -59,7 +65,7 @@ export function createAgent(): IAgentAsync {
     agentName: AGENT_NAME,
     agentProject: 102020,
     agentFolder: `${CH_AGENT_FOLDER}/steps/c3-report`,
-    agentDescription: 'c3-report — consolidates the run into run.json and renders the readable summary',
+    agentDescription: 'c3-report — consolidates the run into report.json and renders the readable summary',
     visibility: 'private',
     beforePromptStep,
   };
@@ -103,7 +109,7 @@ async function beforePromptStep(
 
   const planIds = [CH_PLAN_C1, ...groupsArtifact.groups.map(group => chGroupPlanId(group))];
   const sizes = await readSizes(runKey, planIds);
-  const { tagIssues, attemptsRefused } = await readTraceTotals(runKey, planIds);
+  const { tagIssues, attemptsRefused, usage } = await readTraceTotals(runKey, planIds);
 
   const facts: ChRunFacts = {
     savedAt: new Date().toISOString(),
@@ -111,11 +117,16 @@ async function beforePromptStep(
     definition: input.definition,
     userLanguage: input.userLanguage,
     level1Reference: input.level1Reference || groupsArtifact.level1Reference,
-    level1Via: input.level1Via || 'published',
+    level1Via: input.level1Via || 'stor',
+    catalogProject: input.catalogProject || groupsArtifact.catalogProject,
+    catalogSelectedBy: input.catalogSelectedBy || 'local',
+    candidates: input.discovery?.candidates || [],
+    catalogWarnings: input.catalogWarnings || [],
     publishedGroups: (input.publishedGroups || []).map(group => group.name),
     regions: groupsArtifact.regions,
     groups,
     sizes,
+    usage,
     tagIssues,
     attemptsRefused,
   };
@@ -131,13 +142,15 @@ async function beforePromptStep(
       stepTitle: `run ${runKey}: ${report.totals.regions} região(ões), ${report.totals.groupsChosen} grupo(s)`,
       result: {
         runKey,
-        runFile: toDisplayPath(chRunFileInfo(runKey)),
+        reportFile: toDisplayPath(chRunFileInfo(runKey)),
         regions: report.totals.regions,
         regionsWithoutGroup: report.totals.regionsWithoutGroup,
         regionsWithoutMolecule: report.totals.regionsWithoutMolecule,
         attemptsRefused: report.gates.attemptsRefused,
         tagIssues: report.gates.tagIssues,
         totalTokensEst: report.sizes.totalTokensEstTotal,
+        inputTokensReal: report.usage.inputTokensTotal,
+        costUsd: report.usage.costUsdTotal,
       },
     }),
     nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', summary, 'input_output'),
@@ -162,9 +175,19 @@ async function readSizes(runKey: string, planIds: string[]): Promise<ChPromptSiz
   return out;
 }
 
-/** The gate history of the run: how many attempts were refused, and how the tags were wrong. */
-async function readTraceTotals(runKey: string, planIds: string[]): Promise<{ tagIssues: ChTagIssues; attemptsRefused: number }> {
+/**
+ * The gate history of the run and what each call cost.
+ *
+ * The usage of an attempt that was RETRIED counts too: the run paid for it. That is also why the report
+ * compares the real total against the estimate of the same attempts, and not against the last one only.
+ */
+async function readTraceTotals(runKey: string, planIds: string[]): Promise<{
+  tagIssues: ChTagIssues;
+  attemptsRefused: number;
+  usage: Array<{ planId: string; attempt: number } & ChStepUsage>;
+}> {
   const tagIssues: ChTagIssues = { invented: 0, short: 0, case: 0 };
+  const usage: Array<{ planId: string; attempt: number } & ChStepUsage> = [];
   let attemptsRefused = 0;
   for (const planId of planIds) {
     for (let attempt = 1; attempt <= CH_MAX_ATTEMPTS; attempt += 1) {
@@ -174,7 +197,8 @@ async function readTraceTotals(runKey: string, planIds: string[]): Promise<{ tag
       tagIssues.invented += trace.tagIssues?.invented || 0;
       tagIssues.short += trace.tagIssues?.short || 0;
       tagIssues.case += trace.tagIssues?.case || 0;
+      if (trace.usage) usage.push({ planId, attempt, ...trace.usage });
     }
   }
-  return { tagIssues, attemptsRefused };
+  return { tagIssues, attemptsRefused, usage };
 }

@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CopyItem } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
 import { renderCopiedLess } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cTemplates.js';
-import { runLessGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c4-less/gate.js';
+import { C_LESS_NON_BLOCKING, runLessGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c4-less/gate.js';
 
 const DEST = 102053;
 
@@ -145,4 +145,27 @@ test('molécula portal renomeada: as DUAS formas do escopo são re-escopadas', (
   const written = renderCopiedLess(target, PORTAL_LESS, DEST);
   assert.deepEqual(runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true }), []);
   assert.match(written, /div\[data-widget="groupenterdatetime--ml-datetime-picker-app"\]/);
+});
+
+// Regressão do Studio (2026-08-20): 1 das 154 moléculas da base tem `.less` só com header
+// (groupviewtable/ml-data-table). Tratar isso como erro de escopo abortou a cópia de um grupo de 12
+// DEPOIS de o c3 já ter escrito 24 arquivos.
+const HEADER_ONLY_LESS = `/// <mls fileReference="_102040_/l2/molecules/groupviewtable/ml-data-table.less" enhancement="_102020_/l2/enhancementStyleAura"/>
+`;
+
+test('folha só com header: informativa, não bloqueia, e o escopo não é checado', () => {
+  const target = item();
+  const written = renderCopiedLess(target, HEADER_ONLY_LESS, DEST);
+  const issues = runLessGate({ item: target, destProject: DEST, writtenLess: written, sourceIsShellSheet: true });
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, 'less_no_rules');
+  assert.ok(C_LESS_NON_BLOCKING.includes(issues[0].code), 'less_no_rules tem de ser não-bloqueante');
+  assert.ok(!issues.some(issue => issue.code === 'less_scope'), 'sem regras não há escopo a conferir');
+});
+
+test('folha só com header numa casca: nem less_scope nem less_from_parent atrapalham', () => {
+  const shell = item({ origin: { ...item().origin, chain: { isShell: true, parentRef: '_102040_/l2/molecules/g/ml-p' } } });
+  const written = renderCopiedLess(shell, HEADER_ONLY_LESS, DEST);
+  const issues = runLessGate({ item: shell, destProject: DEST, writtenLess: written, sourceIsShellSheet: true });
+  assert.deepEqual(issues.map(issue => issue.code), ['less_no_rules']);
 });

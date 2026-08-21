@@ -15,13 +15,14 @@
     "modelType": "reasoning + x-tool-strict on both LLM steps, per skills/modelTypes.md ('planning, comparing alternatives, multi-step decisions') and the family precedent (i2-triage, n2-plan). No reasoningEffort: c2 is a fan-out of small items. classifier stays as a second-round experiment.",
     "fanOut": "One c2 step per chosen group, planted in a second phase by the root, because the number of groups is unknown until c1 answers.",
     "tagSpelling": "The FULL prefixed tag ('groupselectone--ml-card-selector') is required. The gate refuses a bare short name instead of completing it: copying the tag exactly is part of what the pilot measures.",
-    "scoring": "Manual. The agent never sees the battery's expected answers — a probe that knew them would be measuring itself. The scoring input is run.json.",
-    "tokens": "There is no token telemetry on this platform: nothing in the step contract carries provider usage. So 'tokens per step' is measured as the ASSEMBLED PROMPT — chars, with tokens estimated at 4 chars/token, and the catalog block measured apart from the instructions and the input. Approved on 2026-08-19 as the reading of the §11.4 criterion."
+    "scoring": "Manual. The agent never sees the battery's expected answers — a probe that knew them would be measuring itself. The scoring input is report.json.",
+    "tokens": "TWO numbers, and they answer different questions. (1) The ASSEMBLED PROMPT, in chars with tokens estimated at 4 chars/token and the catalog block measured apart: that is what the three-level design is about, and it was the approved reading of the §11.4 criterion on 2026-08-19. (2) The REAL usage of the call, corrected on 2026-08-21: the platform does expose it, not in the step contract but as a line the runtime appends to interaction.trace (inputTokens / outputTokens / cost), so it is parsed and recorded per attempt. The gap is the point: c1 assembled 1.203 estimated tokens and the provider counted 7.727 of input, so the platform adds ~6x on its own (Content Memory, tool schema, thread context) and the real consumer pays that, not the estimate."
   },
   "conventions": {
-    "input": "Prose from the mention: '@@agentChooseMolecules <definition of the page or system>'. Never an object literal — mls.common.safeParseArgs throws on anything that is not one.",
-    "catalogProject": "The catalog is read from the ACTIVE project (mls.actualProject), never from a hardcoded 102040: level 1 at l2/molecules/skill.ts, and every level 2 at the path level 1 publishes in groups[].indexDefs. The agent therefore reads whichever project it is run in, and the pilot's mls-102040-temp needs no special case.",
-    "catalogRead": "THE STOR FIRST, the published module second — inverted on 2026-08-19 after the first Studio run. Rung 1 reads the file from the stor and turns its text into values with the pure helpers/chExtract (it parses only what the gates need and evaluates nothing): that is the source of truth inside the editor, and it is how every other agent of this family reads a file. Rung 2 is await import(reference), the gesture of readGroupSkill, which is served by the PUBLISHED project — the only rung a consumer that is not the editor has, and the one that needs no parser. Reasons for the order, both measured: an unpublished catalog is invisible to the import (level 2 died on Failed to fetch on the first run), and a published catalog with unsaved edits is read STALE by it without saying so. Which rung answered is recorded per level and surfaced in run.json.",
+    "input": "Prose from the mention: '@@agentChooseMolecules <definition of the page, screen or region>', optionally preceded by '{ catalogProject: N }'. Parsed by helpers/chEntry, never by mls.common.safeParseArgs, which throws on anything that is not an object literal — here the object is optional and the prose follows it.",
+    "catalogProject": "EXACTLY ONE catalog answers a run, and which one is discovered: the search set is the ACTIVE project plus its DIRECT dependencies (prj_dependencies from the project settings, never the transitive list — a client that depends on a theme must not be offered the base library through it), and a project qualifies by having l2/molecules/skill.ts. One candidate is used; none, or more than one, is a readable refusal naming what it looked at. An optional '{ catalogProject: N }' before the prose overrides the search, which is what makes probing a theme catalog from outside it possible. Level 2 is never looked up: c1 pins each chosen group's indexDefs reference in its artifact, so the c2 steps read the same catalog c1 answered from. Recorded per run: the chosen project, how it was chosen, the candidates and both dependency lists.",
+    "catalogOneNotMany": "Refusing on two reachable catalogs is deliberate. Molecules of two themes do not belong in the same page, so picking one in silence would answer with the wrong aesthetic and the run would still look correct. The refusal carries the argument that resolves it. A clarification with checkboxes and a UNION of catalogs is the agreed phase 2, triggered by the day a theme project gets a catalog of its own — today only one project has one, so a selection widget would show a single checkbox in every run.",
+    "catalogRead": "THE STOR FIRST, the published module second — inverted on 2026-08-19 after the first Studio run. Rung 1 reads the file from the stor and turns its text into values with the pure helpers/chExtract (it parses only what the gates need and evaluates nothing): that is the source of truth inside the editor, and it is how every other agent of this family reads a file. Rung 2 is await import(reference), the gesture of readGroupSkill, which is served by the PUBLISHED project — the only rung a consumer that is not the editor has, and the one that needs no parser. Reasons for the order, both measured: an unpublished catalog is invisible to the import (level 2 died on Failed to fetch on the first run), and a published catalog with unsaved edits is read STALE by it without saying so. Which rung answered is recorded per level and surfaced in report.json.",
     "writesNothing": "No source artifact is written or edited. Not the molecule, not the usage.ts/creation.ts (manual by decision of 2026-08-17), not the group index, not the page. Only l4 measurement artifacts.",
     "regionJoin": "The region NAME is the join key between the two steps: c1 names the regions, c2 echoes them verbatim. A choice for an unknown region is a gate failure, because it cannot be joined.",
     "retry": "One retry with the gate errors in the prompt (CH_MAX_ATTEMPTS = 2). A c2 that still fails records ok: false and COMPLETES — the run's product is the measurement, and 'the model insisted on an invented tag' is a result, not a crash."
@@ -31,7 +32,7 @@
     "  c1-groups            level 1 -> regions and their groups",
     "  c1r-fanout           the root again: plants one c2 per chosen group, plus c3",
     "    c2-<group>         level 2 of that group -> the molecule per region",
-    "  c3-report            mechanical: run.json + the readable summary"
+    "  c3-report            mechanical: report.json + the readable summary"
   ],
   "steps": [
     {
@@ -39,7 +40,7 @@
       "agentName": "agentChooseMolecules (the root itself — no separate step agent)",
       "model": "classifier",
       "dependsOn": [],
-      "goal": "Cheap classifier over the prose: is this a definition of a page or system? Propose the runKey slug, detect userLanguage and localize the step titles. It must NOT name a group, a molecule or a tag — the whole point of the probe is that those come from the catalog, one level at a time.",
+      "goal": "Cheap classifier over the prose: does it describe something a UI has to do? Propose the runKey slug, detect userLanguage and localize the step titles. It must NOT name a group, a molecule or a tag — the whole point of the probe is that those come from the catalog, one level at a time. A SINGLE region is valid input (measured on 2026-08-20: it was being refused, and 6 of the 10 battery cases are phrased that way) — refusing produces no measurement, while a region nothing covers is answered honestly with none.",
       "output": { "result": "{ validInput, reason, runKey, userLanguage, title, titles }" },
       "gate": { "file": "helpers/chRootPlan.ts", "checks": ["validInput true", "runKey is a slug"], "onFail": "no retry: readable failure" },
       "doneAnchor": "none (the root plants the tree directly)"
@@ -87,8 +88,8 @@
       "agentName": "agentChReport",
       "model": "none (deterministic)",
       "dependsOn": ["every c2-<groupfolder>-done"],
-      "goal": "Aggregate the run: entry, both steps' outputs, prompt sizes per step (with the catalog block apart), gate verdicts and how many times the anti-invention gate fired. Write run.json and render the readable summary.",
-      "output": { "artifact": "l4/agentChooseMolecules/<runKey>/run.json", "result": "the summary, in the step trace" },
+      "goal": "Aggregate the run: entry, both steps' outputs, prompt sizes per step (with the catalog block apart), gate verdicts and how many times the anti-invention gate fired. Write report.json and render the readable summary.",
+      "output": { "artifact": "l4/agentChooseMolecules/<runKey>/report.json", "result": "the summary, in the step trace" },
       "doneAnchor": "c3-done"
     }
   ],
@@ -98,13 +99,13 @@
     "l4/agentChooseMolecules/<runKey>/c2-<groupfolder>.json": "the choices of one group, with ok and the gate history",
     "l4/agentChooseMolecules/<runKey>/prompt-<planId>-NN.json": "the size of the prompt assembled on attempt NN, split into instructions / catalog / input",
     "l4/agentChooseMolecules/<runKey>/trace-<planId>-NN.json": "the gate verdict of attempt NN",
-    "l4/agentChooseMolecules/<runKey>/run.json": "the consolidated run — this is the file the battery is scored from"
+    "l4/agentChooseMolecules/<runKey>/report.json": "the consolidated run — this is the file the battery is scored from. NOT named run.json: a file by that name in this folder was found holding a TaskData dump written by something else"
   },
   "acceptance": {
     "battery": "the 10 page definitions of the pilot control, one run each, scored by hand against its gabarito",
     "groupHitRate": ">= 9/10 on the battery (c1)",
     "moleculeHitRate": "a clear majority (c2), each miss analysed: the agent's fault or the catalog's?",
-    "inventedTags": "ZERO reaches an artifact. Every time the gate fires is recorded in run.json — the gate holding is not the same as the model getting it right.",
+    "inventedTags": "ZERO reaches an artifact. Every time the gate fires is recorded in report.json — the gate holding is not the same as the model getting it right.",
     "honesty": "case #10 answers group: null on both regions, with no plausible neighbour invented",
     "tie": "case #4 (combobox × autocomplete): if it misses consistently, the registered fallback is a contrastive sentence in the source # Objective of the tied molecules — never a new keywords field (decision of 2026-08-19)",
     "promptSize": "level 1 ~387 estimated tokens and level 2 between 505 and 1452 per group, measured on the seeded files on 2026-08-19; the run confirms the assembled prompt stays in that order of magnitude"

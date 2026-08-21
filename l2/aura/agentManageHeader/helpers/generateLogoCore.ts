@@ -54,7 +54,8 @@ export function normalizeLogoRequest(raw: unknown): GenerateLogoRequest {
     projectId,
     brandTitle: readString(raw.brandTitle) || undefined,
     brief: readString(raw.brief) || undefined,
-    style: style ?? 'monogram',
+    // No default: forcing a style is how a 'cup and bean' brief came back as the letter C.
+    style,
     profileName: readString(raw.profileName) || undefined,
     requestId: readString(raw.requestId) || undefined,
     commit: raw.commit === true,
@@ -62,6 +63,12 @@ export function normalizeLogoRequest(raw: unknown): GenerateLogoRequest {
 }
 
 // ─── validation ──────────────────────────────────────────────────────────────
+
+
+function attr(tag: string, name: string): string | undefined {
+  const match = new RegExp(`\\s${name}\\s*=\\s*"([^"]*)"`, 'u').exec(tag);
+  return match ? match[1].trim() : undefined;
+}
 
 /** Why a returned mark was refused, in terms the prompt can act on. Empty = accepted. */
 export function validateLogoSvg(markup: string): string[] {
@@ -83,23 +90,13 @@ export function validateLogoSvg(markup: string): string[] {
   if (/\son[a-z]+\s*=/u.test(lower) || lower.includes('javascript:')) {
     errors.push('svg must carry no event handler or javascript: URL');
   }
-  if (lower.includes('href=') || lower.includes('xlink:') || lower.includes('url(')) {
-    errors.push('svg must not reference anything external');
+  // Internal url(#id) is fine (a gradient the markup carries); anything else leaves the page.
+  if (/(?:href|src)\s*=/u.test(lower) || lower.includes('xlink:') || /url\(\s*(?!#)/u.test(lower)) {
+    errors.push('svg must not reference anything external (url(#id) for an inline gradient is fine)');
   }
 
   const root = lower.slice(0, lower.indexOf('>') + 1);
   if (/\s(width|height)\s*=/u.test(root)) errors.push('the <svg> root must not declare width/height — the band sizes it');
-
-  if (/#[0-9a-f]{3,8}/u.test(lower) || /(rgb|rgba|hsl|hsla)\(/u.test(lower)) {
-    errors.push('the mark must be monochrome: no literal color, paint with currentColor');
-  }
-  for (const paint of lower.matchAll(/(?:fill|stroke)\s*=\s*"([^"]*)"/gu)) {
-    const value = paint[1].trim();
-    if (value && value !== 'currentcolor' && value !== 'none') {
-      errors.push(`fill/stroke "${paint[1]}" is not allowed — use currentColor or none`);
-      break;
-    }
-  }
 
   // Last word to the runtime's own predicate, so a mark accepted here always renders there.
   if (errors.length === 0 && !isSafeLogoSvg(svg)) errors.push('svg was refused by the runtime sanitizer');
@@ -181,18 +178,20 @@ export function readBrandTitle(config: unknown, profileName?: string): string {
 // ─── prompt ──────────────────────────────────────────────────────────────────
 
 const STYLE_GUIDE: Record<LogoStyle, string> = {
-  monogram: 'a monogram: the initial(s) of the name as geometry, inside or against a simple container shape',
-  mark: 'an abstract mark: 2 to 4 geometric shapes evoking the activity, with no letters',
-  wordmark: 'a compact wordmark: the name drawn as paths, no wider than 12 characters',
+  monogram: 'a monogram built from the initial(s) of the name',
+  mark: 'an object/symbol mark — draw the thing, not the letters',
+  wordmark: 'the name drawn as letterforms',
 };
 
+/**
+ * The brief IS the prompt. Style is a hint and only when the caller asked for one; the brand name is
+ * context (the header already prints it in text, so the mark does not have to spell it).
+ */
 export function buildGenerateLogoHumanPrompt(request: GenerateLogoRequest): string {
-  const style = request.style ?? 'monogram';
-  return [
-    `Brand: ${request.brandTitle || '(unnamed)'}`,
-    `Style: ${style} — ${STYLE_GUIDE[style]}`,
-    request.brief ? `What it should evoke: ${request.brief}` : '',
-    'It renders 28px tall in an app header band, so it must read at that size: few shapes, no hairlines,'
-      + ' and nothing thinner than 1 unit in a 32-unit viewBox.',
-  ].filter(Boolean).join('\n');
+  const lines = [
+    request.brief ? `Draw: ${request.brief}` : '',
+    request.brandTitle ? `For the app "${request.brandTitle}" (its name is already written next to the mark).` : '',
+    request.style ? `Preferred form: ${STYLE_GUIDE[request.style]}.` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
 }

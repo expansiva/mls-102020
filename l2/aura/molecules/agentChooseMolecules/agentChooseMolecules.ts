@@ -21,6 +21,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { isBareMention, stripAgentMention } from '/_102020_/l2/aura/molecules/shared/mentionEntry.js';
+import { chParseEntry } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chEntry.js';
 import { isRecord, parseMaybeJson } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmRunKey } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmParseStepArgs, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
@@ -70,17 +71,23 @@ async function beforePromptImplicit(
   context: mls.msg.ExecutionContext,
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  let definition: string;
+  let raw: string;
   if (context.isTest) {
     const testData = JSON.parse(userPrompt || '{}') as IDataPrompt;
-    definition = (testData.prompt || '').trim();
+    raw = (testData.prompt || '').trim();
   } else {
     const text = stripAgentMention(userPrompt, agent.agentName);
-    definition = isBareMention(text) ? '' : text;
+    raw = isBareMention(text) ? '' : text;
   }
+
+  // An optional '{ catalogProject: N }' before the prose says WHICH catalog to read; with nothing, the
+  // catalog is looked up in this project and its direct dependencies. See helpers/chEntry.
+  const entry = chParseEntry(raw);
+  if (entry.error) throw new Error(`[${AGENT_NAME}] ${entry.error}`);
+  const definition = entry.definition;
   if (definition.length < MIN_DEFINITION) {
     throw new Error(
-      `[${AGENT_NAME}] describe the page or system, e.g. '@@${AGENT_NAME} Cadastro de cliente: nome completo, CPF, telefone, e-mail e data de nascimento'`,
+      `[${AGENT_NAME}] describe the page, the screen or the region, e.g. '@@${AGENT_NAME} Cadastro de cliente: nome completo, CPF, telefone, e-mail e data de nascimento'. To read the catalog of another project, put '{ catalogProject: 102040 }' before it`,
     );
   }
 
@@ -97,8 +104,9 @@ async function beforePromptImplicit(
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // The definition travels in task memory, verbatim: it is the input of c1 and it is recorded in
-      // input.json for whoever scores the battery.
-      longTermMemory: { flowName: AGENT_NAME, definition },
+      // input.json for whoever scores the battery. The catalog project rides along — it is part of what
+      // was asked, and the classifier below never sees it.
+      longTermMemory: { flowName: AGENT_NAME, definition, ...(entry.catalogProject ? { catalogProject: String(entry.catalogProject) } : {}) },
     },
   };
   return [addMessageAI];
@@ -258,7 +266,11 @@ This is a cheap classification. You do not choose anything: which groups and whi
 ⚠️ Do NOT name a group, a component or a tag, not even as a suggestion. The probe exists to measure whether the CATALOG carries that decision; anything you name here would corrupt the measurement.
 
 Tasks:
-1. validInput: false ONLY when the text is clearly not a definition of a page, screen or system (e.g. it is a question about the codebase, a request to change an existing component, or unintelligible). When it asks to create or change a component, say so in reason and name @@agentNewMolecule2 or @@agentImproveMolecule2. Everything else is validated by deterministic code — do NOT over-reject.
+1. validInput: false ONLY when the text is clearly not describing something a UI has to do (e.g. it is a question about the codebase, a request to change an existing component, or unintelligible). When it asks to create or change a component, say so in reason and name @@agentNewMolecule2 or @@agentImproveMolecule2. Everything else is validated by deterministic code — do NOT over-reject.
+
+   ⚠️ ONE REGION IS ENOUGH, and this is the rejection that has to stop. "A country selector for checkout, with the flag next to the name" is valid input: it is a single region of a page, and this probe answers one region as readily as twenty. Never refuse for being small, terse, a noun phrase with no verb, or short of detail the author did not have — the later steps decide what they can and answer "none" for what they cannot, which is the honest failure. Refusing here produces no measurement at all.
+
+   Measured on 2026-08-20: this exact input came back refused as "an isolated element, not a definition of a page", and 6 of the 10 cases of the pilot battery are phrased the same way.
 2. runKey: a short kebab-case slug naming the page (e.g. 'cadastro-cliente', 'tela-assinatura'). It names a work folder. Max 40 characters, ascii lowercase letters, digits and dashes.
 3. userLanguage: detect from the text ('pt' | 'en' | ...); default 'pt' when ambiguous.
 4. title: a SHORT task title in the detected language.

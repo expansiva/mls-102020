@@ -15,8 +15,8 @@ import { AURA_HEADER_HEIGHT_PX, isSafeLogoSvg } from '/_102033_/l2/shared/layout
 const PROJECT = 999999;
 
 const VALID_SVG = '<svg viewBox="0 0 32 32" fill="none">'
-  + '<rect x="1.5" y="1.5" width="29" height="29" rx="8" stroke="currentColor" stroke-width="2.5"/>'
-  + '<path d="M22 11.5a7.5 7.5 0 1 0 0 9" stroke="currentColor" stroke-width="3"/></svg>';
+  + '<rect x="1.75" y="1.75" width="28.5" height="28.5" rx="8" stroke="currentColor" stroke-width="2.5"/>'
+  + '<path d="M21 11a8 8 0 1 0 0 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>';
 
 /** A client config with a header profile whose brand already has a title. */
 function clientConfig(brand: Record<string, unknown> = { title: 'Sample App' }) {
@@ -42,25 +42,32 @@ function clientConfig(brand: Record<string, unknown> = { title: 'Sample App' }) 
 
 // ── request ────────────────────────────────────────────────────────────────
 
-test('the entry needs a project, and the style falls back to monogram', () => {
+test('the entry needs a project, and no style is imposed', () => {
   assert.throws(() => normalizeLogoRequest('nope'), /JSON object/);
   assert.throws(() => normalizeLogoRequest({}), /projectId/);
-  assert.equal(normalizeLogoRequest({ projectId: PROJECT }).style, 'monogram');
-  assert.equal(normalizeLogoRequest({ projectId: PROJECT, style: 'teleport' }).style, 'monogram');
+  // No default style: forcing 'monogram' is how a "cup and bean" brief came back as the letter C.
+  assert.equal(normalizeLogoRequest({ projectId: PROJECT }).style, undefined);
+  assert.equal(normalizeLogoRequest({ projectId: PROJECT, style: 'teleport' }).style, undefined);
   assert.equal(normalizeLogoRequest({ projectId: PROJECT, style: 'wordmark' }).style, 'wordmark');
 });
 
-test('the prompt carries the brand, the style and the size it must survive', () => {
-  const prompt = buildGenerateLogoHumanPrompt(normalizeLogoRequest({
+test('the brief leads the prompt; the style only appears when asked for', () => {
+  const withStyle = buildGenerateLogoHumanPrompt(normalizeLogoRequest({
     projectId: PROJECT,
     brandTitle: 'Sample App',
-    brief: 'warm and geometric',
+    brief: 'cup and bean, warm and geometric',
     style: 'mark',
   }));
-  assert.match(prompt, /Brand: Sample App/);
-  assert.match(prompt, /Style: mark/);
-  assert.match(prompt, /warm and geometric/);
-  assert.match(prompt, /28px/);
+  assert.match(withStyle, /^Draw: cup and bean, warm and geometric/);
+  assert.match(withStyle, /Sample App/);
+  assert.match(withStyle, /draw the thing, not the letters/);
+
+  const briefOnly = buildGenerateLogoHumanPrompt(normalizeLogoRequest({
+    projectId: PROJECT,
+    brief: 'cup and bean',
+  }));
+  assert.match(briefOnly, /^Draw: cup and bean/);
+  assert.equal(/Preferred form/u.test(briefOnly), false, 'no style is imposed');
 });
 
 // ── svg validation ─────────────────────────────────────────────────────────
@@ -76,7 +83,7 @@ test('anything that fetches, scripts or embeds is refused', () => {
     ['<svg viewBox="0 0 32 32"><image href="http://x/y.png"/></svg>', /plain shapes|external/],
     ['<svg viewBox="0 0 32 32"><use xlink:href="#a"/></svg>', /plain shapes|external/],
     ['<svg viewBox="0 0 32 32"><rect onload="alert(1)" fill="currentColor"/></svg>', /event handler/],
-    ['<svg viewBox="0 0 32 32"><rect fill="url(#g)"/></svg>', /external|not allowed/],
+    ['<svg viewBox="0 0 32 32"><rect fill="url(http://x/y.svg#g)"/></svg>', /external/],
     ['<svg viewBox="0 0 32 32"><style>rect{fill:red}</style></svg>', /plain shapes/],
   ];
   for (const [svg, expected] of cases) {
@@ -95,24 +102,34 @@ test('the mark must scale into the band', () => {
   );
   // width/height on an inner shape is legitimate — that is how a rect is drawn.
   assert.deepEqual(
-    validateLogoSvg('<svg viewBox="0 0 32 32"><rect width="10" height="10" fill="currentColor"/></svg>'),
+    validateLogoSvg('<svg viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="7" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>'),
     [],
   );
 });
 
-test('the mark must be monochrome, so it survives the dark theme', () => {
-  assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="#ff0000"/></svg>').join('; '), /monochrome/);
-  assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="rgb(1,2,3)"/></svg>').join('; '), /monochrome/);
-  assert.match(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="red"/></svg>').join('; '), /not allowed/);
-  assert.deepEqual(validateLogoSvg('<svg viewBox="0 0 32 32"><rect fill="currentColor"/></svg>'), []);
+
+test('a rich mark is accepted: many shapes, fixed colors, an inline gradient', () => {
+  const rich = '<svg viewBox="0 0 512 512">'
+    + '<defs><linearGradient id="g"><stop offset="0" stop-color="#c85a2a"/><stop offset="1" stop-color="#e0723f"/></linearGradient></defs>'
+    + '<circle cx="256" cy="256" r="240" fill="url(#g)"/>'
+    + '<path d="M140 200h200v90a100 100 0 0 1-200 0z" fill="#fffdfa"/>'
+    + '<path d="M340 220h30a45 45 0 0 1 0 90h-30" fill="none" stroke="#fffdfa" stroke-width="20"/>'
+    + '<ellipse cx="256" cy="150" rx="30" ry="45" fill="#3b2f2f"/></svg>';
+  assert.deepEqual(validateLogoSvg(rich), [], 'the frame is safety + scaling, not taste');
+  assert.ok(isSafeLogoSvg(rich));
+  // Monochrome is available as an OPT-IN for a mark that must follow the design system.
+  assert.equal(isSafeLogoSvg(rich, { monochrome: true }), false);
 });
 
 test('two roots, empty markup and oversized markup are refused', () => {
   assert.match(validateLogoSvg('<svg viewBox="0 0 8 8"></svg><svg viewBox="0 0 8 8"></svg>').join('; '), /single <svg> root|exactly one/);
   assert.deepEqual(validateLogoSvg('   '), ['no svg was returned']);
-  const huge = `<svg viewBox="0 0 32 32">${'<rect fill="currentColor"/>'.repeat(400)}</svg>`;
+  const huge = `<svg viewBox="0 0 32 32">${'<rect fill="currentColor"/>'.repeat(600)}</svg>`;
   assert.match(validateLogoSvg(huge).join('; '), /over the .* limit/);
 });
+
+
+
 
 test('markdown fences around the svg are stripped', () => {
   const sanitized = sanitizeGeneratedLogo({ svg: '```svg\n' + VALID_SVG + '\n```', notes: 'ok' });
@@ -122,9 +139,9 @@ test('markdown fences around the svg are stripped', () => {
 });
 
 test('a refused mark reports why instead of being written', () => {
-  const sanitized = sanitizeGeneratedLogo({ svg: '<svg viewBox="0 0 32 32"><rect fill="#000"/></svg>' });
+  const sanitized = sanitizeGeneratedLogo({ svg: '<svg viewBox="0 0 32 32"><script>alert(1)</script></svg>' });
   assert.equal(sanitized.ok, false);
-  assert.match(sanitized.error ?? '', /monochrome/);
+  assert.match(sanitized.error ?? '', /plain shapes/);
 });
 
 // ── config write ───────────────────────────────────────────────────────────
@@ -157,7 +174,7 @@ test('a brand with no title yet gets the one from the request', () => {
 
 test('writing an invalid mark is refused before it reaches the config', () => {
   assert.throws(
-    () => applyLogoToBrand(clientConfig(), { svg: '<svg viewBox="0 0 32 32"><rect fill="#000"/></svg>' }),
+    () => applyLogoToBrand(clientConfig(), { svg: '<svg viewBox="0 0 32 32" width="32"><rect fill="#000"/></svg>' }),
     /refusing to write an invalid mark/,
   );
 });

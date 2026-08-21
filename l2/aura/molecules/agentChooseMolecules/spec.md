@@ -19,6 +19,25 @@ author's machine, so whatever a maintainer needs in order to change this agent i
 Level 3 is referenced by level 2 (`usageContract`) and deliberately never read here: this probe
 chooses, it does not compose. Reading it would also make the prompt-size measurement meaningless.
 
+## Which catalog answers the run
+
+The probe is run from the CLIENT project, where the molecules live in a dependency — the base library, a
+theme project, or the client itself once a molecule is copied into it. So:
+
+- the search set is the **active project plus its DIRECT dependencies** (`prj_dependencies`), and a project
+  qualifies by having `l2/molecules/skill.ts`. The transitive list is deliberately not used: a client that
+  depends on a theme must not be offered the base library's molecules through it;
+- **exactly one catalog answers a run.** One candidate is used; none, or more than one, is a readable
+  refusal that names what it looked at and the argument that resolves it;
+- `@@agentChooseMolecules { catalogProject: 102054 } <definition>` overrides the search — which is how a
+  theme's catalog gets probed from outside it. A project that is not a direct dependency is allowed and
+  warned about: what it chose could not be imported by a page here.
+
+Refusing on two catalogs rather than picking is the point: molecules of two themes do not belong in the
+same page, so a silent pick would answer with the wrong aesthetic and still look correct. A clarification
+with one checkbox per catalog, and the union that goes with it, is phase 2 — due when a theme project gets
+a catalog of its own, since today only one project has one.
+
 ## The funnel, and why it is a funnel
 
 Two calls instead of one, because the whole catalog does not fit a prompt and should not have to.
@@ -30,13 +49,18 @@ step count and would stop measuring what the design claims.
 
 ## What it measures
 
-Every run leaves `l4/agentChooseMolecules/<runKey>/run.json` with:
+Every run leaves `l4/agentChooseMolecules/<runKey>/report.json` with:
 
 - the regions c1 found, and the group it gave each one (or `null`);
 - the molecule c2 chose per region, the quick-reference scenario it used, and its reasoning;
 - **the size of every prompt assembled**, split into instructions / catalog / input, in chars and in
-  estimated tokens (4 chars/token). There is no token telemetry on this platform — nothing in the step
-  contract carries provider usage — so the estimate IS the metric, approved as such on 2026-08-19;
+  estimated tokens (4 chars/token) — that is what sizes the catalog block, which is what the design is
+  about;
+- **what each call really cost**: `inputTokens`, `outputTokens` and dollars, parsed from the line the
+  runtime appends to the step's `interaction.trace`. I had recorded that this platform exposes no usage;
+  it does, just not in the step contract (corrected 2026-08-21). The gap between the two numbers is itself
+  a finding — c1 assembled ~1.2k estimated tokens and the provider counted 7.7k of input, so the platform
+  adds ~6× on its own, and that is what a real consumer pays;
 - **how many times the anti-invention gate fired.** A run where the gate fired twice and the second
   attempt was right is not the same as a run that was right the first time, and the file says which.
 
@@ -70,7 +94,7 @@ whether they hurt:
   sources. If the probe misses case #4 consistently, the registered fallback is a contrastive
   sentence in the source objectives — never a new keywords field.
 
-## What the first Studio run measured (2026-08-19)
+## What the Studio runs measured
 
 The first run (`cadastro-cliente`, battery case #1) got through c1 and died in c2, and both halves are
 data:
@@ -87,12 +111,18 @@ The second half is a finding about the design of §10, not an incident, and it o
 `index.defs.ts` written by the index steps (n7/i6/v4) is **unreadable by any consumer until it is
 published**, and publishing is therefore part of generating a catalog.
 
-It also decided the read order. The import came from the pilot plan — it is `readGroupSkill`'s gesture —
+A later run (2026-08-20) fixed a second one, in the classifier: *"a country selector for checkout, with the
+flag next to the name"* came back refused as *"an isolated element, not a definition of a page"*. **One
+region is valid input** — 6 of the 10 cases of the battery are phrased exactly that way, and refusing
+produces no measurement at all, while a region no group covers is already answered honestly with `none`.
+The rejection criterion is now "does it describe something a UI has to do", not "is it a whole page".
+
+The import finding also decided the read order. The import came from the pilot plan — it is `readGroupSkill`'s gesture —
 but the rest of this family reads the **stor**, which is how `agentNewMolecule2` writes a molecule and
 reads it back in the same run. So the stor is now rung 1 (its text parsed by the pure `helpers/chExtract`,
 which evaluates nothing) and the published module is rung 2, the only rung a consumer that is not the
 editor has. The order matters twice over: the import cannot see an unpublished catalog, and on a published
-one with unsaved edits it silently reads the old content. Which rung answered is recorded in `run.json`.
+one with unsaved edits it silently reads the old content. Which rung answered is recorded in `report.json`.
 
 ## How to run the battery
 
@@ -103,5 +133,5 @@ project). For each of the 10 definitions in the control's §3:
 @@agentChooseMolecules <the definition, verbatim>
 ```
 
-Then read `run.json` and fill in the score by hand. Cases #4 and #5 run three times each — LLM
+Then read `report.json` and fill in the score by hand. Cases #4 and #5 run three times each — LLM
 content failures are intermittent, and one roll proves nothing about a tie.

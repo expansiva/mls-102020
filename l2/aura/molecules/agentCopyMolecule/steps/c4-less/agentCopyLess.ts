@@ -16,10 +16,10 @@ import {
   writeJsonArtifact,
   writeStorTextAtomic,
 } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cFs.js';
-import { CopyContext, CopyItem, copyShortName, itemsToWrite } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
+import { CopyContext, copyShortName, itemsToWrite } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cContext.js';
 import { renderCopiedLess } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cTemplates.js';
 import { cDoneAnchor, cParseStepArgs, cResultStepIntent, cUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentCopyMolecule/helpers/cSteps.js';
-import { CGateIssue, runLessGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c4-less/gate.js';
+import { C_LESS_NON_BLOCKING, CGateIssue, runLessGate } from '/_102020_/l2/aura/molecules/agentCopyMolecule/steps/c4-less/gate.js';
 import { getCRunKey } from '/_102020_/l2/aura/molecules/agentCopyMolecule/agentCopyMolecule.js';
 
 const AGENT_NAME = 'agentCopyLess';
@@ -64,44 +64,44 @@ async function beforePromptStep(
     ];
   }
 
-  const pending = itemsToWrite(ctx);
-  const prepared: { item: CopyItem; less: string }[] = [];
+  // PER ITEM, and NEVER blocking the pipeline — same shape as c5-demo, and for a hard reason
+  // learned in the Studio on 2026-08-20: c3 had already written 24 files when this step failed on
+  // ONE sheet, leaving 12 molecules without stylesheets. Failing here does not undo c3; it just
+  // buries the molecule half-copied. So a bad item is reported and skipped, the good ones are
+  // written, and the anchor carries ok:false for the summary to tell the truth.
+  const written: string[] = [];
   const issues: CGateIssue[] = [];
 
-  for (const item of pending) {
+  for (const item of itemsToWrite(ctx)) {
     // ALWAYS the sheet of the molecule that was asked for — for a shell, its own sheet is the
     // appearance the client chose; the parent's would undo the theme.
     const source = await readStorText(cMoleculeFile(item.origin.project, item.origin.group, item.origin.shortName, '.less'));
     if (!source.trim()) {
-      issues.push({ code: 'source_less', message: `${item.origin.ref}: .less de origem ilegível` });
+      issues.push({ code: 'source_less', message: `${item.origin.ref}: sem .less legível na origem — a cópia fica sem folha de estilo` });
       continue;
     }
     const less = renderCopiedLess(item, source, ctx.destProject);
-    prepared.push({ item, less });
-    issues.push(...runLessGate({ item, destProject: ctx.destProject, writtenLess: less, sourceIsShellSheet: true }));
+    const itemIssues = runLessGate({ item, destProject: ctx.destProject, writtenLess: less, sourceIsShellSheet: true });
+    const blocking = itemIssues.filter(issue => !C_LESS_NON_BLOCKING.includes(issue.code));
+    issues.push(...itemIssues);
+    if (blocking.length) continue;   // this item's sheet is skipped; the others still get theirs
+    await writeStorTextAtomic(cDestMoleculeFile(item.destination.group, copyShortName(item), '.less'), less, true);
+    written.push(item.destination.files.less);
   }
 
-  if (issues.length) {
-    const message = issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
-    await writeJsonArtifact(cTraceFileInfo(runKey, PLAN_ID, 1), { savedAt: new Date().toISOString(), planId: PLAN_ID, issues });
-    return [cUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
-  }
+  await writeJsonArtifact(cTraceFileInfo(runKey, PLAN_ID, 1), { savedAt: new Date().toISOString(), planId: PLAN_ID, written, issues });
 
-  const written: string[] = [];
-  for (const entry of prepared) {
-    await writeStorTextAtomic(cDestMoleculeFile(entry.item.destination.group, copyShortName(entry.item), '.less'), entry.less, true);
-    written.push(entry.item.destination.files.less);
-  }
-
-  await writeJsonArtifact(cTraceFileInfo(runKey, PLAN_ID, 1), { savedAt: new Date().toISOString(), planId: PLAN_ID, written });
+  const blockingIssues = issues.filter(issue => !C_LESS_NON_BLOCKING.includes(issue.code));
+  const ok = blockingIssues.length === 0;
+  const trace = ok ? `${written.length} .less escrito(s)` : blockingIssues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
 
   return [
     cResultStepIntent(context, parentStep, {
       planId: cDoneAnchor(PLAN_ID),
       dependsOn: [],
-      stepTitle: !written.length ? 'nada a copiar' : written.length === 1 ? written[0] : `${written.length} folhas de estilo`,
-      result: { written },
+      stepTitle: !ok ? 'folhas com pendências' : !written.length ? 'nada a copiar' : written.length === 1 ? written[0] : `${written.length} folhas de estilo`,
+      result: { ok, written, issues },
     }),
-    cUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${written.length} .less escrito(s)`, 'input_output'),
+    cUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace, 'input_output'),
   ];
 }
