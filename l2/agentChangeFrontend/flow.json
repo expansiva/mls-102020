@@ -109,7 +109,12 @@
     "Fan-out progress titles must expose completed, total and failed counters.",
     "Dynamic child args stay compact and unique.",
     "A worker should prefer completed-with-trace plus downstream verification when one item can be repaired without failing the whole pipeline.",
-    "PlanIds must be unique; runtime-generated planIds are documented by pattern below."
+    "PlanIds must be unique; runtime-generated planIds are documented by pattern below.",
+    "The i18n catalogue lives in the PAGE files only. A shared .ts emits no message_* consts, no MessageType and no messages export; the page (and each organism of a split page) emits its own complete pageMessage_<locale> catalogue.",
+    "The page catalogue is emitted DETERMINISTICALLY from the shared .defs.ts i18n map — the same map that used to feed the shared .ts. The model never copies a literal into it: a literal is what produced hardcoded English text in files that compiled clean.",
+    "Text already translated in the previous PAGE file is carried over per key, exactly as the shared did. Regenerating a page must never drop a hand-made translation. For an organism the previous file is the organism file, not the page.",
+    "Non-default locales stay annotated with the page message type, so a forgotten key is a compile error (TS2741) and a typo is TS2353 — locale parity is enforced by the compiler, not by a gate.",
+    "Consequence accepted with the decision: the same key now lives in every page of a shared (about 3), so translation cost and drift risk move from one catalogue per workspace to one per screen."
   ],
   "steps": [
     {

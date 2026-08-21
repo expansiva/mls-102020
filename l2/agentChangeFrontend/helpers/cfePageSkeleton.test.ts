@@ -5,19 +5,20 @@ import assert from 'node:assert/strict';
 
 import { buildPageSkeleton, localesOf, organismRenderName, organismShortName, sharedI18nKeys } from './cfePageSkeleton.js';
 
+// The shared .ts no longer carries an i18n block: the catalogue is PLANNED in the shared defs and
+// EMITTED in the page, so the skeleton reads the defs.
+const SHARED_DEFS_DATA = {
+  baseClassName: 'BuildFlowFsmBillingSummaryWorkspaceBase',
+  i18nMeta: { defaultLocale: 'en', runtimeLocales: ['en', 'pt-br'] },
+  i18n: {
+    'intent.billingSummaryWorkspace.list.empty': 'No summaries yet',
+    'action.createBillingSummaryCmd.success': 'Created',
+  },
+};
+
 const SHARED_SOURCE = [
-  '/// **collab_i18n_start**',
-  'const message_en = {',
-  `  'intent.billingSummaryWorkspace.list.empty': 'No summaries yet',`,
-  `  'action.createBillingSummaryCmd.success': 'Created',`,
-  '};',
-  'export type MessageType = typeof message_en;',
-  `const message_pt_br: MessageType = {`,
-  `  'intent.billingSummaryWorkspace.list.empty': 'Nenhum resumo ainda',`,
-  `  'action.createBillingSummaryCmd.success': 'Criado',`,
-  '};',
-  `export const messages: { [key: string]: MessageType } = { 'en': message_en, 'pt-br': message_pt_br };`,
-  '/// **collab_i18n_end**',
+  'export class BuildFlowFsmBillingSummaryWorkspaceBase extends CollabLitElement {',
+  '}',
 ].join('\n');
 
 const INPUT = {
@@ -25,15 +26,22 @@ const INPUT = {
   data: { pageId: 'billingSummaryWorkspace', baseClassName: 'BuildFlowFsmBillingSummaryWorkspaceBase' },
   sharedTsRef: '_102045_/l2/buildFlowFsm/web/shared/billingSummaryWorkspace.ts',
   sharedSource: SHARED_SOURCE,
+  sharedDefsData: SHARED_DEFS_DATA,
 };
 
+const ORGANISMS = [
+  { n: 1, organism: 'overview', bindings: ['getProjectDetail'] },
+  { n: 2, organism: 'delayRisk', bindings: ['triggerDelayRiskSuggestions', 'listDelayRiskSuggestions'] },
+];
+
 test('localesOf keeps the region and the declaration order (default first)', () => {
-  assert.deepEqual(localesOf(SHARED_SOURCE), ['en', 'pt-br']);
-  assert.deepEqual(localesOf('no block here'), []);
+  assert.deepEqual(localesOf(SHARED_DEFS_DATA), ['en', 'pt-br']);
+  assert.deepEqual(localesOf({ i18n: {} }), []);
+  assert.deepEqual(localesOf(undefined), []);
 });
 
-test('sharedI18nKeys lists the vocabulary the page can reference', () => {
-  assert.deepEqual(sharedI18nKeys(SHARED_SOURCE), [
+test('sharedI18nKeys lists the vocabulary the page catalogue is built from', () => {
+  assert.deepEqual(sharedI18nKeys(SHARED_DEFS_DATA), [
     'intent.billingSummaryWorkspace.list.empty',
     'action.createBillingSummaryCmd.success',
   ]);
@@ -45,23 +53,49 @@ test('skeleton derives the tag and the class name exactly as the generated pages
   assert.match(code, /export class BuildFlowFsmDesktopPage11BillingSummaryWorkspacePage extends BuildFlowFsmBillingSummaryWorkspaceBase \{/u);
 });
 
-test('skeleton emits one i18n const per shared locale, non-default annotated for parity', () => {
+test('the page owns the COMPLETE catalogue: every key, every locale, no shared indirection', () => {
   const code = buildPageSkeleton(INPUT).code ?? '';
-  // The shared mapping is written ONCE with the locale as a parameter — writing it per locale cost 48
-  // near-identical lines in a single organism (16 keys x 3 locales).
-  assert.match(code, /const fromShared = \(m: MessageType\) => \(\{/u);
-  assert.equal(code.match(/\.\.\.fromShared\(sharedMessages\['[\w-]+'\] \?\? sharedFallback\),/gu)?.length, 2);
-  assert.match(code, /const pageMessage_en = \{/u);
+  // Emitted, not mapped: the model never sees a `fromShared` to fill, so it cannot miss a key and
+  // cannot copy a literal — copying is what produced hardcoded English in files that compiled clean.
+  assert.ok(!code.includes('fromShared'), 'the shared indirection is gone');
+  assert.ok(!code.includes('sharedMessages'), 'the page does not read a shared catalogue');
+  assert.match(code, /const pageMessage_en = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': 'No summaries yet',\n  'action\.createBillingSummaryCmd\.success': 'Created',/u);
   // The annotation is what makes a forgotten translation a compile error (TS2741) instead of a hole.
   assert.match(code, /const pageMessage_pt_br: PageMessageType = \{/u);
+  // With no previous file the non-default locale starts as the default text, which @@addLanguage translates.
+  assert.match(code, /const pageMessage_pt_br: PageMessageType = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': 'No summaries yet',/u);
   assert.match(code, /const pageMessages: \{ \[key: string\]: PageMessageType \} = \{ 'en': pageMessage_en, 'pt-br': pageMessage_pt_br \};/u);
+});
+
+test('regenerating a page carries its translations forward instead of resetting them', () => {
+  const previous = buildPageSkeleton(INPUT).code ?? '';
+  const translated = previous.replace(
+    /(const pageMessage_pt_br: PageMessageType = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': )'No summaries yet'/u,
+    "$1'Nenhum resumo ainda'",
+  );
+  assert.notEqual(translated, previous, 'the fixture must actually contain the translated line');
+
+  const again = buildPageSkeleton({ ...INPUT, previousSource: translated }).code ?? '';
+  assert.match(again, /'intent\.billingSummaryWorkspace\.list\.empty': 'Nenhum resumo ainda',/u);
+  // The default locale is never carried over: it is the plan's own text.
+  assert.match(again, /const pageMessage_en = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': 'No summaries yet',/u);
+});
+
+test('an organism carries over from ITS OWN previous file, not from the page', () => {
+  const organismPrevious = (buildPageSkeleton({ ...INPUT, organisms: ORGANISMS, current: 2 }).code ?? '')
+    .replace(
+      /(const o2Message_pt_br: O2Msg = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': )'No summaries yet'/u,
+      "$1'Traduzido no organismo'",
+    );
+  const again = buildPageSkeleton({ ...INPUT, organisms: ORGANISMS, current: 2, previousSource: organismPrevious }).code ?? '';
+  assert.match(again, /'intent\.billingSummaryWorkspace\.list\.empty': 'Traduzido no organismo',/u);
 });
 
 test('skeleton marks every place the model has to write — i18n included', () => {
   const code = buildPageSkeleton(INPUT).code ?? '';
-  // fromShared (the shared mapping) + one per locale (the invented copy, translated) + render() + the
-  // render<Name> slot.
-  assert.equal(code.split('/* to implement').length - 1, 5);
+  // One per locale (the keys the page invents) + render() + the render<Name> slot. The shared mapping
+  // marker is gone: that block is emitted, not written.
+  assert.equal(code.split('/* to implement').length - 1, 4);
 });
 
 test('skeleton ships the language-cached getter, not a per-reference lookup', () => {
@@ -71,19 +105,22 @@ test('skeleton ships the language-cached getter, not a per-reference lookup', ()
   assert.match(code, /this\.getMessageKey\(pageMessages\)/u);
 });
 
-test('skeleton imports the base class and the shared catalog from the .js ref', () => {
+test('skeleton imports the base class from the .js ref — and nothing else from the shared', () => {
   const code = buildPageSkeleton(INPUT).code ?? '';
   // The leading slash is the whole point: without it the module is unresolvable at runtime and tsc
 
   // reports TS2307 -> TS1238 on the decorator -> TS2339 on every member.
-  assert.match(code, /import \{ BuildFlowFsmBillingSummaryWorkspaceBase, messages as sharedMessages, type MessageType \} from '\/_102045_\/l2\/buildFlowFsm\/web\/shared\/billingSummaryWorkspace\.js';/u);
+  assert.match(code, /import \{ BuildFlowFsmBillingSummaryWorkspaceBase \} from '\/_102045_\/l2\/buildFlowFsm\/web\/shared\/billingSummaryWorkspace\.js';/u);
   assert.ok(!code.includes("from '../"), 'never a relative import (run18)');
   assert.ok(!/from '_\d+_\//u.test(code), 'every mls import is rooted with a leading slash');
 });
 
 test('bails instead of guessing when the inputs cannot produce a valid page', () => {
   assert.match(buildPageSkeleton({ ...INPUT, data: {} }).reason ?? '', /baseClassName/u);
-  assert.match(buildPageSkeleton({ ...INPUT, sharedSource: '' }).reason ?? '', /no i18n block/u);
+  // The bail is on the DEFS now: reading the locale list from the .ts would silently fall through to
+  // "the model writes the whole file", i18n included.
+  assert.match(buildPageSkeleton({ ...INPUT, sharedDefsData: undefined }).reason ?? '', /no i18n catalogue/u);
+  assert.match(buildPageSkeleton({ ...INPUT, sharedDefsData: { i18n: {} } }).reason ?? '', /no i18n catalogue/u);
   assert.match(buildPageSkeleton({ ...INPUT, outputPath: '_102045_/l2/m/web/shared/x.ts' }).reason ?? '', /not an l2 page/u);
 });
 
@@ -91,10 +128,6 @@ test('bails instead of guessing when the inputs cannot produce a valid page', ()
 // ---------------------------------------------------------------------------
 // Página dividida: organismo = função exportada.
 
-const ORGANISMS = [
-  { n: 1, organism: 'overview', bindings: ['getProjectDetail'] },
-  { n: 2, organism: 'delayRisk', bindings: ['triggerDelayRiskSuggestions', 'listDelayRiskSuggestions'] },
-];
 const split = (current?: number) => buildPageSkeleton({ ...INPUT, organisms: ORGANISMS, current }).code ?? '';
 
 test('organism file and render name are DERIVED, so the page never has to read the generated file', () => {

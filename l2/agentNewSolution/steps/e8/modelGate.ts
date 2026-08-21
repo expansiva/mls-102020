@@ -37,6 +37,10 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
   const parentIndex = buildNs4ParentIndex(sources.ontology.relationships);
   const fields = new Set(sources.ontology.entities.flatMap(entity => entity.fields.map(field => `${entity.entityId}.${field.fieldId}`)));
   const entities = new Set(sources.ontology.entities.map(entity => entity.entityId));
+  // Master data is referenced by other records: removing the row breaks those
+  // references, so the catalogue deactivates instead of deleting.
+  const masterDataEntities = new Set(sources.ontology.entities
+    .filter(entity => entity.storage.target === 'mdm').map(entity => entity.entityId));
   const profiles = new Set(sources.access.profiles.map(profile => profile.profileId));
   const useCases = new Set(sources.useCases.map(useCase => useCase.useCaseId));
   const workspaceIds = new Set<string>();
@@ -53,6 +57,13 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
         add('NS4_E8_INPUT_FIELD', `${path}.inputs.${input.inputId}`, `Input ${input.inputId} has no resolvable ontology field (${input.fieldRef.entityId}.${input.fieldRef.fieldId}).`);
       }
     });
+    // Backstop, not the rule: the catalogue compiler already emits inactivate and
+    // reactivate for master data, so this never fires from that path. It guards
+    // against a regression there and against a future path that skips it.
+    if (operation.accessPattern.kind === 'delete' && masterDataEntities.has(operation.entityRef)) {
+      add('NS4_E8_MDM_DELETE', `${path}.accessPattern.kind`,
+        `Operation ${operation.operationId} deletes master data entity ${operation.entityRef}: master data is referenced by other records and must be deactivated instead.`);
+    }
   });
 
   model.workspaces.forEach((workspace, index) => {

@@ -45,7 +45,7 @@ import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/a
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
 
-interface CfeFieldDef { fieldId: string; type: string; required?: boolean; description?: string; enum?: string[] }
+interface CfeFieldDef { fieldId: string; title?: string; type: string; required?: boolean; description?: string; enum?: string[] }
 interface CfeEntityDef {
   entityId: string; title: string; fields: CfeFieldDef[]; rulesApplied: string[];
   statusEnum: string[]; lifecycleStates: string[];
@@ -190,6 +190,13 @@ export interface CfePreparedPage {
   presentation: { categoryRef: string; experienceRef?: string } | null;
   i18nMeta: { defaultLocale: string; activeLocales: string[] };
   entityFields: Record<string, string[]>;
+  /**
+   * fieldId -> the l4 ontology `title` of that field, already in the module's language. It is what a
+   * column label falls back to: `humanizeId(fieldId)` produced ENGLISH text ('Name', 'Address') in a
+   * Portuguese catalogue, and the carryover per key then perpetuated it through every regenerate.
+   * Flat by fieldId because a layout column names a field, not an entity; the first title wins.
+   */
+  fieldTitles: Record<string, string>;
   /**
    * Entities of this page whose l4 declares `storage.target: 'mdm'` — shared master data. A record other
    * modules reference is not deletable (ajustesMDM §3b: deactivate, never delete), and the page tests
@@ -726,6 +733,12 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
       (createContext.entities.get(entityId)?.fields || []).map(field => field.fieldId).filter(Boolean),
     ]),
   );
+  const fieldTitles: Record<string, string> = {};
+  for (const entityId of pageEntityIds) {
+    for (const field of createContext.entities.get(entityId)?.fields || []) {
+      if (field.fieldId && field.title && !fieldTitles[field.fieldId]) fieldTitles[field.fieldId] = field.title;
+    }
+  }
   const mdmEntityIds = pageEntityIds.filter(entityId => createContext.entities.get(entityId)?.storageTarget === 'mdm');
   const externalEntityIds = pageEntityIds.filter(entityId => createContext.entities.get(entityId)?.storageTarget === 'external');
   const contractCopies = workspace && workspace.bffCalls.length > 0 ? buildContractCopies(createContext, page, workspace) : [];
@@ -736,7 +749,7 @@ export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateCo
   const presentation = workspace && workspace.categoryRef
     ? { categoryRef: workspace.categoryRef, ...(workspace.experienceRef ? { experienceRef: workspace.experienceRef } : {}) }
     : null;
-  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, presentation, i18nMeta, entityFields, mdmEntityIds, externalEntityIds, variantPlan, userJourney };
+  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, presentation, i18nMeta, entityFields, fieldTitles, mdmEntityIds, externalEntityIds, variantPlan, userJourney };
 }
 
 // F3: GENERATE ONE l2 contract .ts per WORKSPACE from the workspace defs (l4 holds only .defs.ts; we never
@@ -2442,9 +2455,11 @@ function repairDuplicateLayoutIds(pageId: string, layout: CfePageLayoutDefinitio
 function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
   const i18n: Record<string, string> = { ...layout.i18n };
   const added: string[] = [];
-  const ensure = (key: string | undefined, fallback: string, kind: 'title' | 'label' | 'empty'): void => {
+  // `exact` is text that is already business copy in the module's language (an l4 field title): it is
+  // used verbatim, because humanizeId would only mangle a real sentence.
+  const ensure = (key: string | undefined, fallback: string, kind: 'title' | 'label' | 'empty', exact?: string): void => {
     if (!key || i18n[key]) return;
-    i18n[key] = fallbackI18nText(key, fallback, kind);
+    i18n[key] = exact || fallbackI18nText(key, fallback, kind);
     added.push(key);
   };
 
@@ -2455,7 +2470,11 @@ function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayou
       for (const intent of organism.intentions) {
         ensure(intent.titleKey, intent.intent || intent.id, 'title');
         ensure(intent.emptyKey, intent.intent || intent.id, 'empty');
-        for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) ensure(field.labelKey, field.field || field.id, 'label');
+        for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) {
+          // The l4 title first: it is already in the module's language. humanizeId is the last resort,
+          // and it is what put 'Name' and 'Address' in a Portuguese catalogue.
+          ensure(field.labelKey, field.field || field.id, 'label', prepared.fieldTitles[field.field]);
+        }
         for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) ensure(action.labelKey, action.action || action.id, 'label');
       }
     }
@@ -4533,7 +4552,7 @@ function readRecordArray(value: unknown): Record<string, unknown>[] {
 function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeEntityDef | null {
   const entityId = readString(data.entityId) || fallbackId;
   if (!entityId) return null;
-  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => ({ fieldId: readString(field.fieldId), type: readString(field.type), required: field.required === true, description: readString(field.description), enum: fieldEnumValues(field) })).filter(field => field.fieldId) : [];
+  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => ({ fieldId: readString(field.fieldId), title: readString(field.title), type: readString(field.type), required: field.required === true, description: readString(field.description), enum: fieldEnumValues(field) })).filter(field => field.fieldId) : [];
   const storage = isRecord(data.storage) ? data.storage : {};
   return { entityId, title: readString(data.title) || humanizeId(entityId), fields, rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum), lifecycleStates: readStringArray(data.lifecycleStates), storageTarget: readString(storage.target) };
 }

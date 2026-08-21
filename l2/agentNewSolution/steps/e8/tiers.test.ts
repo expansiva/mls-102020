@@ -344,3 +344,92 @@ test('nothing is invented when the module cannot list the parent', () => {
   assert.equal(picker.every(issue => issue.severity === 'warning'), true);
   assert.equal(validateNs4E8Model(stripped, input).ok, true);
 });
+
+// ── Master data is never deleted: it is deactivated ──────────────────────────
+// An mdm entity is referenced by other records, so a hard delete breaks those
+// references. Evidence that made this a rule: the first petShop module shipped
+// deleteCustomerProfile / deletePet / deleteServiceOffering / deleteServiceHours,
+// all four over storage.target 'mdm'.
+
+test('a catalogue of an mdm entity replaces delete with inactivate and reactivate', () => {
+  const model = deriveNs4E8Model(sources());
+  const mdmEntities = sources().ontology.entities
+    .filter((entity: any) => entity.storage.target === 'mdm').map((entity: any) => entity.entityId);
+  assert.deepEqual(mdmEntities, ['Client', 'Project', 'Material'], 'the fixture must keep covering mdm entities');
+
+  mdmEntities.forEach((entityId: string) => {
+    const ids = model.operations.map(operation => operation.operationId);
+    assert.equal(ids.includes(`delete${entityId}`), false, `${entityId} must not expose a delete`);
+    assert.equal(ids.includes(`inactivate${entityId}`), true);
+    assert.equal(ids.includes(`reactivate${entityId}`), true);
+
+    const inactivate = model.operations.find(operation => operation.operationId === `inactivate${entityId}`)!;
+    const reactivate = model.operations.find(operation => operation.operationId === `reactivate${entityId}`)!;
+    // The consumer's enum is closed, so the pair keeps a kind it already understands
+    // and carries its meaning in the mdm block.
+    assert.equal(inactivate.accessPattern.kind, 'update');
+    assert.equal(reactivate.accessPattern.kind, 'update');
+    assert.equal(inactivate.mdm?.lifecycle, 'inactivate');
+    assert.equal(reactivate.mdm?.lifecycle, 'reactivate');
+    assert.equal(inactivate.kind, 'command');
+    // Both act on one identified record and ask for nothing else.
+    const identity = inactivate.inputs.map(input => input.inputId);
+    assert.equal(identity.length, 1);
+    assert.deepEqual(reactivate.inputs.map(input => input.inputId), identity);
+
+    const catalogue = model.workspaces.find(workspace => workspace.entity === entityId && workspace.tier === 'recordCatalogue')!;
+    const bffIds = catalogue.bffCalls.map(call => call.bffId);
+    assert.equal(bffIds.includes(`cmdDelete${entityId}`), false);
+    assert.ok(bffIds.includes(`cmdInactivate${entityId}`));
+    assert.ok(bffIds.includes(`cmdReactivate${entityId}`));
+
+    const recordList = catalogue.sections.find(section => section.sectionId === 'recordList')!;
+    const actions = recordList.organisms.filter(organism => organism.role === 'contextualAction').map(organism => organism.action);
+    assert.deepEqual(actions, [`cmdInactivate${entityId}`, `cmdReactivate${entityId}`]);
+  });
+});
+
+test('an mdm list is active-only by default and carries the derived situation', () => {
+  const model = deriveNs4E8Model(sources());
+  const list = model.operations.find(operation => operation.operationId === 'listClient')!;
+  // Optional request flag: absent means active only, so a foreign-key picker that
+  // reuses this shared list becomes active-only with no picker change.
+  assert.equal(list.mdm?.activeFilterInput, 'includeInactive');
+  // Derived from the MDM record lifecycle: the ontology declares no active field,
+  // and the model does not fake an ontology field ref for it.
+  assert.equal(list.mdm?.situationOutput, 'active');
+  const ontologyFields = sources().ontology.entities.find((entity: any) => entity.entityId === 'Client')!
+    .fields.map((field: any) => field.fieldId);
+  assert.equal(ontologyFields.includes('active'), false, 'the situation is derived, never an ontology field');
+  assert.equal(list.inputs.length, 0, 'the filter is not an entity-field input');
+});
+
+test('a catalogue of a moduleDatabase entity keeps the delete it always had', () => {
+  const model = deriveNs4E8Model(sources());
+  const remove = model.operations.find(operation => operation.operationId === 'deleteChangeOrder')!;
+  assert.equal(remove.accessPattern.kind, 'delete');
+  assert.equal(remove.mdm, undefined, 'the mdm block is absent outside master data');
+  assert.equal(model.operations.some(operation => operation.operationId === 'inactivateChangeOrder'), false);
+  const list = model.operations.find(operation => operation.operationId === 'listChangeOrder')!;
+  assert.equal(list.mdm, undefined);
+});
+
+test('a delete over an mdm entity is a blocking finding even if it arrives from elsewhere', () => {
+  const input = sources();
+  const model = deriveNs4E8Model(input);
+  // Backstop: with the catalogue rule in place this never fires, so the regression
+  // has to be injected to be observed.
+  const smuggled = structuredClone(model);
+  const update = smuggled.operations.find(operation => operation.operationId === 'updateClient')!;
+  update.operationId = 'deleteClient';
+  update.accessPattern = { kind: 'delete' };
+  delete (update as { mdm?: unknown }).mdm;
+  const gate = validateNs4E8Model(smuggled, input);
+  const finding = gate.issues.find(issue => issue.code === 'NS4_E8_MDM_DELETE');
+  assert.ok(finding, 'a delete over master data must be reported');
+  assert.match(finding!.message, /Client/);
+  assert.match(finding!.message, /deleteClient/);
+  assert.notEqual(finding!.severity, 'warning', 'it blocks: a broken reference is not a product');
+  // And the untouched model stays clean.
+  assert.equal(validateNs4E8Model(model, input).issues.some(issue => issue.code === 'NS4_E8_MDM_DELETE'), false);
+});

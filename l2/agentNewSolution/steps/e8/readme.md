@@ -25,3 +25,15 @@ durable system decisions; the backend remains responsible for enforcing the E3 p
 A review or a form backed by a command with declared `contexts.requires` still needs a frozen slice,
 workspace path or scenario context. A recognized context-free command, including a cold-start creation, may render a
 form from user-entered values; E8 does not invent a pre-existing record solely to satisfy the gate.
+
+## Master data is deactivated, never deleted
+
+A record catalogue of an entity whose `storage.target` is `mdm` emits `inactivate`/`reactivate`
+instead of `delete`, and its list returns only active records unless the caller passes the optional
+`includeInactive` request flag. A lookup by id still resolves an inactive record, so history stays
+readable. The situation flag is derived from the MDM record lifecycle: the ontology declares no
+`active` field and the model declares the derived response member in the operation's `mdm` block.
+
+The lifecycle pair keeps `accessPattern.kind: 'update'` because the consumer's accessPattern
+vocabulary is a closed set; the meaning travels in `mdm.lifecycle`. `NS4_E8_MDM_DELETE` is the
+deterministic backstop for a delete over master data arriving from any other path.

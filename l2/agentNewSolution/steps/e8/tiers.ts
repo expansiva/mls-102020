@@ -260,6 +260,11 @@ function buildRecordCatalogue(
       accessPattern: { kind: 'list', pagination: 'optional' }, inputs: [],
       outputRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
       useRules: [], transitionRefs: [], story: [label(context, 'Encontrar o registro.', 'Find the record.')],
+      // Master data lists hide deactivated records unless the caller asks for them,
+      // which is what makes every foreign-key picker active-only for free.
+      ...(isMdmEntity(entity)
+        ? { mdm: { activeFilterInput: 'includeInactive' as const, situationOutput: 'active' as const } }
+        : {}),
     },
     {
       operationId: `create${entity.entityId}`, title: label(context, `Criar ${entity.title}`, `Create ${entity.title}`),
@@ -275,23 +280,21 @@ function buildRecordCatalogue(
       outputRefs: [`${entity.entityId}.${idField}`], useRules: entity.useRules, transitionRefs: [],
       story: [label(context, 'Corrigir os dados do registro escolhido.', 'Correct the chosen record.')],
     },
-    {
-      operationId: `delete${entity.entityId}`, title: label(context, `Excluir ${entity.title}`, `Delete ${entity.title}`),
-      kind: 'command', entityRef: entity.entityId, entityRefs: [entity.entityId],
-      accessPattern: { kind: 'delete' }, inputs: catalogueInputs(entity, context, 'delete'),
-      outputRefs: [`${entity.entityId}.${idField}`], useRules: [], transitionRefs: [],
-      story: [label(context, 'Remover o registro escolhido.', 'Remove the chosen record.')],
-    },
+    ...removalOperations(entity, context),
   ];
   const bffCalls: Ns4E8BffCall[] = [
     { bffId: `qryList${entity.entityId}`, kind: 'query', operationId: `list${entity.entityId}`, outputKind: 'paginated', entityRef: entity.entityId },
     { bffId: `cmdCreate${entity.entityId}`, kind: 'command', operationId: `create${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
     { bffId: `cmdUpdate${entity.entityId}`, kind: 'command', operationId: `update${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
-    { bffId: `cmdDelete${entity.entityId}`, kind: 'command', operationId: `delete${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
+    ...removalOperations(entity, context).map(operation => ({
+      bffId: `cmd${upperFirst(operation.operationId)}`, kind: 'command' as const,
+      operationId: operation.operationId, outputKind: 'object' as const, entityRef: entity.entityId,
+    })),
   ];
+  const removalActions = bffCalls.slice(3).map(call => ({ role: 'contextualAction' as const, action: call.bffId }));
   const sections: Ns4E8Section[] = [
     { sectionId: 'recordList', intent: label(context, `Localizar ${entity.title}.`, `Find ${entity.title}.`),
-      organisms: [{ role: 'primarySurface', dataSource: bffCalls[0].bffId }, { role: 'contextualAction', action: bffCalls[3].bffId }] },
+      organisms: [{ role: 'primarySurface', dataSource: bffCalls[0].bffId }, ...removalActions] },
     { sectionId: 'recordForm', intent: label(context, `Criar ou corrigir ${entity.title}.`, `Create or correct ${entity.title}.`),
       organisms: [{ role: 'primarySurface', action: bffCalls[1].bffId }, { role: 'contextualAction', action: bffCalls[2].bffId }] },
   ];
@@ -304,6 +307,56 @@ function buildRecordCatalogue(
       hostedStepRefs: [], categoryRef: CATEGORY_RECORD_CATALOGUE, bffCalls, sections,
     },
   };
+}
+
+function isMdmEntity(entity: Ns4OntologyEntity): boolean {
+  return entity.storage.target === 'mdm';
+}
+
+function upperFirst(value: string): string {
+  return value ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
+}
+
+/**
+ * How a catalogue retires a record. Master data is referenced by other records, so
+ * removing the row would break those references: an mdm entity is deactivated and
+ * can be reactivated, and never gains a delete. Every other storage target keeps
+ * the delete it always had.
+ */
+function removalOperations(entity: Ns4OntologyEntity, context: Ns4E8TierContext): Ns4E8Operation[] {
+  const idField = identityFieldOf(entity);
+  const base = {
+    kind: 'command' as const, entityRef: entity.entityId, entityRefs: [entity.entityId],
+    inputs: catalogueInputs(entity, context, 'identityOnly'),
+    outputRefs: [`${entity.entityId}.${idField}`], useRules: [], transitionRefs: [],
+  };
+  if (!isMdmEntity(entity)) {
+    return [{
+      ...base,
+      operationId: `delete${entity.entityId}`, title: label(context, `Excluir ${entity.title}`, `Delete ${entity.title}`),
+      accessPattern: { kind: 'delete' },
+      story: [label(context, 'Remover o registro escolhido.', 'Remove the chosen record.')],
+    }];
+  }
+  return [
+    {
+      ...base,
+      operationId: `inactivate${entity.entityId}`, title: label(context, `Desativar ${entity.title}`, `Deactivate ${entity.title}`),
+      // A closed accessPattern vocabulary on the consumer side: the pair keeps the
+      // kind that already means "mutate one identified record" and the meaning
+      // travels in the mdm block.
+      accessPattern: { kind: 'update' }, mdm: { lifecycle: 'inactivate' },
+      story: [label(context,
+        'Desativar o registro (preserva o histórico e as referências).',
+        'Deactivate the record (history and references are preserved).')],
+    },
+    {
+      ...base,
+      operationId: `reactivate${entity.entityId}`, title: label(context, `Reativar ${entity.title}`, `Reactivate ${entity.title}`),
+      accessPattern: { kind: 'update' }, mdm: { lifecycle: 'reactivate' },
+      story: [label(context, 'Reativar um registro desativado.', 'Reactivate a deactivated record.')],
+    },
+  ];
 }
 
 /**
@@ -345,7 +398,9 @@ function catalogueEntityRefs(entity: Ns4OntologyEntity, context: Ns4E8TierContex
  * timestamp are set by the server, and everything else is typed by the user. A state transition is
  * never here — it belongs to the journey that operates it.
  */
-function catalogueInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContext, mode: 'create' | 'update' | 'delete'): Ns4E8Input[] {
+function catalogueInputs(
+  entity: Ns4OntologyEntity, context: Ns4E8TierContext, mode: 'create' | 'update' | 'identityOnly',
+): Ns4E8Input[] {
   const idField = identityFieldOf(entity);
   const parents = new Map((context.parentsOf.get(entity.entityId) || []).map(parent => [parent.fieldId, parent]));
   const statusFields = new Set(entity.lifecycleStates.length
@@ -358,7 +413,8 @@ function catalogueInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContext, m
       if (mode !== 'create') inputs.push({ ...base, source: 'selectedEntity', required: true });
       continue;
     }
-    if (mode === 'delete') continue;
+    // delete, inactivate and reactivate act on one identified record and nothing else.
+    if (mode === 'identityOnly') continue;
     if (statusFields.has(field.fieldId) || TIMESTAMP_FIELD.test(field.fieldId)) {
       inputs.push({ ...base, source: 'systemDefault', required: field.required });
       continue;

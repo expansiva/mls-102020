@@ -44,6 +44,29 @@ export interface Ns4E8Input {
  * record catalogue synthesizes its four operations from the ontology, because E7 only compiles
  * journeys and a catalogue is not a journey.
  */
+/**
+ * Master-data semantics of one operation. Master data is referenced by other
+ * records, so an mdm catalogue deactivates instead of deleting.
+ *
+ * It is ONE optional block on purpose. The backend generator reads this artifact
+ * as JSON and its accessPattern vocabulary is a closed set, so the lifecycle pair
+ * keeps `kind: 'update'` — a command that mutates one identified record, which the
+ * consumer already understands — and the meaning travels here. A consumer that
+ * ignores the block behaves exactly as before.
+ */
+export interface Ns4E8MdmSemantics {
+  /** The command replaces a hard delete: route it to the MDM record lifecycle. */
+  lifecycle?: 'inactivate' | 'reactivate';
+  /** Optional request flag on a list: absent means only active records. */
+  activeFilterInput?: 'includeInactive';
+  /**
+   * Response member carrying the situation. Derived from the MDM record lifecycle,
+   * so it is NOT an ontology field and deliberately has no field ref: the ontology
+   * declares no `active` field and the model must not invent one.
+   */
+  situationOutput?: 'active';
+}
+
 export interface Ns4E8Operation {
   operationId: string;
   title: string;
@@ -58,6 +81,8 @@ export interface Ns4E8Operation {
   story: string[];
   /** Present when the operation is an approved E7 use case; absent when the catalogue derived it. */
   useCaseId?: string;
+  /** Present only on a catalogue operation of an entity whose storage.target is mdm. */
+  mdm?: Ns4E8MdmSemantics;
 }
 
 export interface Ns4E8BffCall {

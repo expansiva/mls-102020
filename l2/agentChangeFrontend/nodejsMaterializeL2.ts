@@ -354,8 +354,8 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
  * model writes the file from scratch exactly as before, so a shared this scaffold does not model never
  * blocks the run.
  *
- * Always reads the RAW shared .ts, never the compiled .d.ts the context may carry: the locale list lives in
- * the `message_<locale>` consts, which the .d.ts does not have.
+ * Always reads the RAW shared .ts, never the compiled .d.ts the context may carry: the page imports DTO
+ * types from it. The i18n catalogue comes from the shared .defs.ts, which is where it is planned.
  */
 function pageSkeletonFor(item: PipelineItem, data: unknown): string | undefined {
   if (item.type !== 'l2_page' && item.type !== 'l2_page_organism') return undefined;
@@ -363,12 +363,17 @@ function pageSkeletonFor(item: PipelineItem, data: unknown): string | undefined 
   if (!sharedRef) return undefined;
   const shared = readIfExists(mlsToFs(sharedRef));
   if (shared == null) return undefined;
+  const sharedDefsSource = readIfExists(mlsToFs(sharedRef.replace(/\.ts$/u, '.defs.ts')));
+  const sharedDefsData = sharedDefsSource ? parseDefs(sharedDefsSource).data : undefined;
   // A split page passes its organisms: the page then imports and composes their exported render
   // functions, and an organism builds only its own file (paginaDividida.md §3).
   const split = SPLIT_BY_OUTPUT.get(item.outputPath);
   const pagePath = split?.current ? item.outputPath.replace(/_O\d+\.ts$/u, '.ts') : item.outputPath;
+  // The previous content of THIS file — the organism's own .ts when building an organism, so a split
+  // page does not lose the translations that live in its organisms.
+  const previousSource = readIfExists(mlsToFs(item.outputPath)) ?? undefined;
   const built = buildPageSkeleton({
-    outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource: shared,
+    outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource: shared, sharedDefsData, previousSource,
     organisms: split?.organisms, current: split?.current,
   });
   if (!built.code) console.warn(`  skeleton skipped for ${item.outputPath}: ${built.reason}`);

@@ -21,7 +21,7 @@
  * the skeleton verifiable before touching an agent.
  */
 
-import { parsePreviousI18n } from './cfeSharedScaffold.js';
+import { parsePreviousI18n, parseSharedI18nCatalogue } from './cfeSharedScaffold.js';
 
 /** One organism of a split page. The FILE is `<page>_O<n>.ts`; the name lives here, not in the file name. */
 export interface PageOrganism {
@@ -40,8 +40,21 @@ export interface PageSkeletonInput {
   data: unknown;
   /** mls ref of the shared .ts this page extends. */
   sharedTsRef: string;
-  /** Content of the shared .ts — read for its locale list. */
+  /** Content of the shared .ts — read for the DTO types the page imports from it. */
   sharedSource: string;
+  /**
+   * The shared `.defs.ts` `definition` object. The i18n catalogue lives in the pages
+   * now, but it is still PLANNED in the shared defs, so this is where the locales and
+   * the default-language text come from. Without it the skeleton cannot be built:
+   * inventing the text is what put hardcoded English in files that compiled clean.
+   */
+  sharedDefsData?: unknown;
+  /**
+   * Content of the file being overwritten — the PAGE's own `.ts`, or the ORGANISM's
+   * `.ts` when building an organism. Translations already made are carried over per
+   * key from it; regenerating must never drop a hand-made translation.
+   */
+  previousSource?: string;
   /** Set when the page was split; every organism, in order. */
   organisms?: PageOrganism[];
   /** Build the skeleton for THIS organism instead of for the page. */
@@ -78,8 +91,13 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   const baseClassName = stringOf(data.baseClassName);
   if (!baseClassName) return { code: null, reason: 'defs has no baseClassName' };
 
-  const locales = localesOf(input.sharedSource);
-  if (locales.length === 0) return { code: null, reason: `shared ${input.sharedTsRef} has no i18n block` };
+  // The catalogue is planned in the shared DEFS and emitted here: the shared .ts no
+  // longer carries an i18n block, so reading the locale list from it would silently
+  // fall through to "model writes the whole file", i18n included.
+  const catalogue = parseSharedI18nCatalogue(input.sharedDefsData);
+  if (!catalogue) return { code: null, reason: `shared defs of ${input.sharedTsRef} has no i18n catalogue` };
+  const locales = catalogue.runtimeLocales;
+  if (locales.length === 0) return { code: null, reason: `shared defs of ${input.sharedTsRef} declares no locale` };
 
   const organisms = input.organisms ?? [];
   const current = input.current ? organisms.find(item => item.n === input.current) : undefined;
@@ -104,8 +122,8 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   // An organism takes the page as `host`: every shared member it needs (@property fields, handlers) is
   // public, so a plain function reaches them and no class — and no inheritance — is required.
   lines.push(current
-    ? `import { type ${baseClassName} as Host, messages as sharedMessages, type MessageType } from '${sharedImport}';`
-    : `import { ${baseClassName}, messages as sharedMessages, type MessageType } from '${sharedImport}';`);
+    ? `import { type ${baseClassName} as Host } from '${sharedImport}';`
+    : `import { ${baseClassName} } from '${sharedImport}';`);
   for (const organism of current ? [] : organisms) {
     lines.push(`import { ${organismRenderName(organism.organism)} } from '/_${parsed.project}_/l2/${parsed.folder}/${organismShortName(parsed.shortName, organism.n)}.js';`);
   }
@@ -114,23 +132,24 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   // the whole lifecycle (init, resize, dispose), which is what lets a render-only page draw one at all.
   lines.push(`// to implement (only if this file charts something): \`import { chart } from '/_102033_/l2/shared/chartRuntime.js';\``);
   lines.push('');
-  lines.push('const sharedFallback = sharedMessages[Object.keys(sharedMessages)[0]];');
-  lines.push('');
   lines.push('/// **collab_i18n_start**');
-  // Shared text is mapped ONCE with the locale as a parameter. Writing the mapping per locale cost 48
-  // near-identical lines in a single organism (16 keys x 3 locales) — mechanical text paid for three times.
-  lines.push('// Text from the shared catalog, mapped ONCE — the locale is the parameter. Reference it, never');
-  lines.push('// inline the string: the reference is what keeps this file translated. Use SHORT keys:');
-  lines.push(`//   'orders.empty': m['intent.<page>.<bff>.list.empty'],`);
-  lines.push('const fromShared = (m: MessageType) => ({');
-  lines.push(`  ${MARKER}`);
-  lines.push('});');
-
+  // The whole catalogue is emitted here, one const per locale, straight from the shared defs. The model
+  // adds only the keys it invents: a literal it copies is text that stops being translated.
+  lines.push('// The catalogue of this page. The keys below come from the module plan — do NOT edit their');
+  lines.push('// text and do NOT inline a string in the template: reference a key, or add your own SHORT');
+  lines.push(`//   key here (in EVERY locale) — 'orders.empty': 'No orders yet',`);
+  const previousText = parsePreviousI18n(input.previousSource, `${prefix}Message`);
   locales.forEach((locale, index) => {
     const isDefault = index === 0;
     const suffix = constSuffix(locale);
+    // Carried over per key: a translation already made in this file survives the regenerate. A key with
+    // no prior translation starts as the default-locale text, which @@addLanguage then translates.
+    const previous = previousText.get(locale) || {};
     lines.push(`const ${prefix}Message_${suffix}${isDefault ? '' : `: ${msgType}`} = {`);
-    lines.push(`  ...fromShared(sharedMessages['${locale}'] ?? sharedFallback),`);
+    for (const [key, text] of Object.entries(catalogue.i18n)) {
+      const value = isDefault ? text : (previous[key] ?? text);
+      lines.push(`  '${escapeSingle(key)}': '${escapeSingle(value)}',`);
+    }
     lines.push(isDefault
       ? '  // The copy you invent, with short keys. Only this part repeats per language.'
       : `  // The SAME invented keys as ${prefix}Message_${constSuffix(locales[0])}, translated to ${locale}.`);
@@ -202,16 +221,20 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   return { code: lines.join('\n') };
 }
 
-/** Locales declared by the shared i18n block, default first (its `message_*` consts are emitted in order). */
-export function localesOf(sharedSource: string): string[] {
-  return Array.from(parsePreviousI18n(sharedSource).keys());
+/** Locales the module declares, default first — read from the shared DEFS, which is where they are planned. */
+export function localesOf(sharedDefsData: unknown): string[] {
+  return parseSharedI18nCatalogue(sharedDefsData)?.runtimeLocales ?? [];
 }
 
-/** The i18n keys the shared offers, for the prompt to list as the menu the page picks from. */
-export function sharedI18nKeys(sharedSource: string): string[] {
-  const byLocale = parsePreviousI18n(sharedSource);
-  const first = byLocale.values().next();
-  return first.done ? [] : Object.keys(first.value);
+/** The i18n keys the page catalogue is built from, for the prompt to list as the vocabulary it references. */
+export function sharedI18nKeys(sharedDefsData: unknown): string[] {
+  const catalogue = parseSharedI18nCatalogue(sharedDefsData);
+  return catalogue ? Object.keys(catalogue.i18n) : [];
+}
+
+/** Single quotes are the emission's own delimiter, so only they (and the escape) need escaping. */
+function escapeSingle(value: string): string {
+  return value.replace(/\\/gu, '\\\\').replace(/'/gu, "\\'");
 }
 
 interface ParsedPagePath { project: number; folder: string; shortName: string; genome: string }

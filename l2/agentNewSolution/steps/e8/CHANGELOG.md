@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-08-21 — dado mestre não deleta: desativar e reativar
+
+O catálogo de uma entidade com `storage.target: 'mdm'` deixa de emitir `delete`. Dado mestre é
+referenciado por outros registros, então remover a linha quebra essas referências. No lugar entram
+`inactivate<Entity>` e `reactivate<Entity>` (bffCalls `cmdInactivate`/`cmdReactivate`), e o
+`recordList` oferece as duas como ação contextual. Entidade `moduleDatabase`, `derived` ou
+`external` continua exatamente como antes — o escopo desta onda é só `mdm`.
+
+A `list` de catálogo mdm passa a devolver **só ativos** por default, com um flag de requisição
+opcional `includeInactive`; isso torna todo picker de chave estrangeira que reusa a operação de list
+compartilhada active-only sem tocar em picker nenhum. Busca por id continua resolvendo registro
+inativo: integridade de histórico nunca depende de o registro estar ativo.
+
+A situação é **derivada** do ciclo de vida do registro MDM: a ontologia não ganha campo `active`, e o
+modelo não inventa um field ref para ela — declara o membro derivado de resposta no bloco `mdm`.
+
+O par de comandos mantém `accessPattern.kind: 'update'` e carrega o significado no bloco `mdm` novo
+(um campo opcional só). O vocabulário de accessPattern do consumidor é fechado, então um kind novo
+seria invisível para o gerador de backend; o marcador é aditivo e não quebra consumidor que o ignora.
+
+Backstop determinístico: `NS4_E8_MDM_DELETE` reporta operação `delete` sobre entidade mdm. Com a
+regra do catálogo no lugar ele nunca dispara — existe contra regressão e contra caminho futuro que
+não passe pelo compilador de catálogos.
+
+Evidência que virou regra: o primeiro petShop entregou `deleteCustomerProfile`, `deletePet`,
+`deleteServiceOffering` e `deleteServiceHours` — as quatro sobre `storage.target: 'mdm'`.
+
 ## 2026-08-16 — a chave estrangeira ganha de onde escolher (bug_from_backend)
 
 - **O check estava cego.** O `NS4_E8_PICKER_SOURCE` lia o alvo da FK do prefixo de `input.fieldRef`,

@@ -1,5 +1,16 @@
 # E9 changelog
 
+## 2026-08-21 — o bloco `mdm` atravessa para o formato clássico
+
+`Ns4ClassicOperation` ganha `mdm?` opcional, copiado verbatim do modelo quando a operação é de
+catálogo de dado mestre. É o que permite ao gerador de backend rotear `cmdInactivate`/`cmdReactivate`
+para a fachada de ciclo de vida do MDM e honrar a list active-only.
+
+Diferente de `pagination` — emitido deliberadamente como `none` porque o módulo nunca projeta meta de
+página — este filtro é real e **precisa** sobreviver até o consumidor. O campo é opcional, então
+consumidor que o ignora não muda de comportamento: `classic.test.ts` prova isso rodando os parsers
+PRÓPRIOS do agentChangeBackend e do agentChangeFrontend sobre a emissão nova.
+
 ## 2026-08-14 — Parte C: transpilador do formato clássico
 
 - `classic.ts` transpõe o modelo aprovado do E8 para o formato clássico: `workspaces/*.defs.ts`,

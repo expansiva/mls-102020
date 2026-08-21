@@ -13,7 +13,7 @@
 
 import type { Ns4E4Review, Ns4OntologyEntity, Ns4OntologyField } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import type {
-  Ns4E8BffCall, Ns4E8Input, Ns4E8Model, Ns4E8ModelWorkspace, Ns4E8Operation,
+  Ns4E8BffCall, Ns4E8Input, Ns4E8MdmSemantics, Ns4E8Model, Ns4E8ModelWorkspace, Ns4E8Operation,
 } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 
 export const NS4_CLASSIC_WORKSPACE_VERSION = '2026-08-14-ns4-classic-workspace-v6' as const;
@@ -57,6 +57,14 @@ export interface Ns4ClassicOperation {
   pageId: string;
   commandName: string;
   bffName: string;
+  /**
+   * Carried verbatim from the model when the operation is a master-data catalogue
+   * operation. Unlike `pagination` — emitted as `none` because the module never
+   * projects page meta — this one must survive to the consumer: it is what lets the
+   * backend generator route the lifecycle pair to the MDM facade and keep the list
+   * active-only. Optional, so a consumer that ignores it is unaffected.
+   */
+  mdm?: Ns4E8MdmSemantics;
 }
 export interface Ns4ClassicSiteMap {
   moduleName: string;
@@ -115,6 +123,7 @@ export function transposeNs4ClassicOperation(
       source: input.source,
       description: input.description,
     })),
+    ...(operation.mdm ? { mdm: operation.mdm } : {}),
     pageId: owner?.workspaceId || '',
     commandName: call?.bffId || operation.operationId,
     bffName: call?.bffId || operation.operationId,

@@ -193,3 +193,41 @@ test('what E9 writes is what E10 reads back: the defs round trip, not an in-memo
   // A contract file is raw TypeScript source, read as text and never parsed as defs data.
   assert.equal(parseNs4ClassicDefsSource(l4.contracts[0].source), null);
 });
+
+test('the mdm block survives to the classic operation without breaking either consumer parser', async () => {
+  const { model, l4 } = await compile();
+  const classicOf = (operationId: string) => l4.operations.find(operation => operation.operationId === operationId)!;
+
+  // The lifecycle pair keeps a kind the consumer already understands; the meaning
+  // rides in the mdm block.
+  const inactivate = classicOf('inactivateClient');
+  assert.equal(inactivate.accessPattern.kind, 'update');
+  assert.equal(inactivate.kind, 'update');
+  assert.deepEqual(inactivate.mdm, { lifecycle: 'inactivate' });
+  assert.deepEqual(classicOf('reactivateClient').mdm, { lifecycle: 'reactivate' });
+  assert.deepEqual(classicOf('listClient').mdm, { activeFilterInput: 'includeInactive', situationOutput: 'active' });
+
+  // No delete of master data reaches the emission at all.
+  assert.equal(l4.operations.some(operation => operation.operationId === 'deleteClient'), false);
+  // And an entity outside master data emits no block.
+  assert.equal(classicOf('deleteChangeOrder').mdm, undefined);
+  assert.equal(classicOf('listChangeOrder').mdm, undefined);
+
+  // The block survives the write/read round trip, which is how the consumers
+  // actually receive it — not an in-memory shortcut.
+  const fileInfo = { project: 102046, level: 4 as const, folder: 'buildFlowFsm44/operations', shortName: 'x', extension: '.defs.ts' };
+  const source = ns4ClassicDefsSource({ ...fileInfo, shortName: inactivate.operationId }, `operation${inactivate.operationId}`, inactivate);
+  assert.deepEqual(parseNs4ClassicDefsSource(source), inactivate);
+
+  // The consumers' OWN parsers still read the emission: an optional field they do
+  // not know about must not change what they resolve.
+  const workspace = l4.workspaces.find(item => item.workspaceId === 'clientCatalogue')!;
+  const parsed = parseWorkspaceDefs(workspace as unknown as Record<string, unknown>, model.moduleName);
+  assert.ok(parsed, 'the backend parser still reads the master-data catalogue');
+  assert.equal(parsed!.bffCalls.length, workspace.bffCalls.length);
+  const calls = parseWorkspaceBffCalls(workspace as never);
+  assert.ok(calls.some(call => call.bffId === 'cmdInactivateClient'), 'the frontend parser sees the new command');
+  assert.equal(calls.some(call => call.bffId === 'cmdDeleteClient'), false);
+  assert.ok(parseWorkspaceSections(workspace as never).length, 'the frontend parser still reads the sections');
+  assert.equal(l4OperationInputs(inactivate as never).length, 1, 'the lifecycle command takes the identity only');
+});

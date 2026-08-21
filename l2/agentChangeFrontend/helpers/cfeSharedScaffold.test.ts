@@ -95,8 +95,6 @@ test('generateSharedScaffold renders the full base class', () => {
   assert.match(code, /^\/\/\/ <mls fileReference="_102045_\/l2\/demo\/web\/shared\/things.ts" enhancement="_102020_\/l2\/enhancementAura"\/>/);
   assert.match(code, /import { runBlockingUiAction } from '\/_102029_\/l2\/interactionRuntime.js';/);
   assert.match(code, /export type {\n  ListThingsInput,/);
-  // i18n escaped
-  assert.match(code, /'intent.things.title': 'All \\'things\\'',/);
   // paginated default derives from the CONTRACT output (things/total), not from defs defaultValue (items)
   assert.match(code, /const LIST_THINGS_DATA_DEFAULT: ListThingsOutput = { things: \[\], total: 0 };/);
   // properties
@@ -138,34 +136,42 @@ function multiLocaleDefinition(): Record<string, unknown> {
   return { ...definition(), i18nMeta: { defaultLocale: 'en', runtimeLocales: ['en', 'pt-br', 'es'] } };
 }
 
-test('generateSharedScaffold emits one catalog per declared locale, default first', () => {
+test('the shared emits NO i18n block: the catalogue lives in the pages', () => {
   const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', multiLocaleDefinition(), CONTRACT).code!;
-  assert.match(code, /const message_en = \{/);
-  // Non-default locales are annotated so a forgotten key is TS2741 rather than a silent hole.
-  assert.match(code, /const message_pt_br: MessageType = \{/);
-  assert.match(code, /const message_es: MessageType = \{/);
-  assert.match(code, /export type MessageType = typeof message_en;/);
-  assert.match(code, /export const messages: \{ \[key: string\]: MessageType \} = \{ 'en': message_en, 'pt-br': message_pt_br, 'es': message_es \};/);
+  // One catalogue per workspace became one per screen. What the shared stops carrying is the block
+  // itself — the pages emit it from the same defs i18n map, so no text is lost, only the indirection.
+  assert.ok(!code.includes('collab_i18n_start'), 'no i18n block');
+  assert.ok(!/^const message_/mu.test(code), 'no message_<locale> const');
+  assert.ok(!code.includes('export type MessageType'), 'MessageType is local to the page now');
+  assert.ok(!code.includes('export const messages'), 'nothing exports a catalogue');
+  // And the class itself is untouched: it never referenced the catalogue (verified across the 34
+  // generated shared of the reference module — the export was the only use).
+  assert.match(code, /export class DemoThingsBase extends CollabLitElement \{/u);
+  assert.ok(!code.includes('this.msg'), 'the shared reads no message');
 });
 
-test('regenerating carries translations forward instead of resetting every language', () => {
-  const previous = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', multiLocaleDefinition(), CONTRACT).code!
-    .replace("'intent.things.title': 'All \\'things\\'',\n};\nexport type", "'intent.things.title': 'TRADUZIDO',\n};\nexport type")
-    // only the pt-br copy is translated by hand
-    .replace(/(const message_pt_br: MessageType = \{\n  'intent.things.title': )'All \\'things\\''/, "$1'TRADUZIDO'");
-  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', multiLocaleDefinition(), CONTRACT, previous).code!;
-  assert.match(code, /const message_pt_br: MessageType = \{\n  'intent.things.title': 'TRADUZIDO',/);
-  // the default locale is always rebuilt from the defs — it is the source of truth
-  assert.match(code, /const message_en = \{\n  'intent.things.title': 'All \\'things\\'',/);
-  // a locale with no prior text starts from the default text for agentAddLanguage to translate
-  assert.match(code, /const message_es: MessageType = \{\n  'intent.things.title': 'All \\'things\\'',/);
+test('parsePreviousI18n still reads a shared catalogue written by the previous generator', () => {
+  // Format compatibility matters after the cut too: a module regenerated later must still be able to
+  // read the translations sitting in the file it is replacing.
+  const legacy = generateSharedScaffoldLegacyCatalogue();
+  const byLocale = parsePreviousI18n(legacy);
+  assert.deepEqual([...byLocale.keys()], ['en', 'pt-br']);
+  assert.equal(byLocale.get('pt-br')!['intent.things.title'], 'TRADUZIDO');
 });
 
-test('a single-locale module still emits exactly one catalog', () => {
-  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', definition(), CONTRACT).code!;
-  assert.equal(code.match(/^const message_/gmu)?.length, 1);
-  assert.match(code, /export const messages: \{ \[key: string\]: MessageType \} = \{ 'en': message_en \};/);
-});
+function generateSharedScaffoldLegacyCatalogue(): string {
+  return [
+    '/// **collab_i18n_start**',
+    'const message_en = {',
+    `  'intent.things.title': 'All things',`,
+    '};',
+    'export type MessageType = typeof message_en;',
+    'const message_pt_br: MessageType = {',
+    `  'intent.things.title': 'TRADUZIDO',`,
+    '};',
+    '/// **collab_i18n_end**',
+  ].join('\n');
+}
 
 // A catalog written by an earlier generator uses double quotes and no indentation. Reading only the
 // renderer's own single-quoted form made those files look like they had no i18n block at all, which cost
@@ -207,18 +213,22 @@ test('parsePreviousI18n keeps a quote of the other style inside the text', () =>
   assert.equal(entries['intent.things.esc'], "a 'b' c");
 });
 
-test('a previous catalog in double quotes still carries its translations forward', () => {
-  const previous = [
+test('the page catalogue prefix is what the reader is told to look for', () => {
+  // The page writes pageMessage_<locale> and an organism o<n>Message_<locale>. A reader hardcoded to
+  // the shared's `message_` prefix would find nothing and silently drop every translation.
+  const pageCatalogue = [
     '/// **collab_i18n_start**',
-    'const message_en = {',
-    `"intent.things.title": "All 'things'",`,
+    'const pageMessage_en = {',
+    `  'intent.things.title': 'All things',`,
     '};',
-    'export type MessageType = typeof message_en;',
-    'const message_pt_br: MessageType = {',
-    '"intent.things.title": "TRADUZIDO",',
+    'type PageMessageType = typeof pageMessage_en;',
+    'const pageMessage_pt_br: PageMessageType = {',
+    `  'intent.things.title': 'TRADUZIDO',`,
     '};',
     '/// **collab_i18n_end**',
   ].join('\n');
-  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', multiLocaleDefinition(), CONTRACT, previous).code!;
-  assert.match(code, /const message_pt_br: MessageType = \{\n  'intent.things.title': 'TRADUZIDO',/);
+  assert.deepEqual([...parsePreviousI18n(pageCatalogue, 'pageMessage').keys()], ['en', 'pt-br']);
+  assert.equal(parsePreviousI18n(pageCatalogue, 'pageMessage').get('pt-br')!['intent.things.title'], 'TRADUZIDO');
+  // The default prefix keeps reading the shared's own form.
+  assert.equal(parsePreviousI18n(pageCatalogue).size, 0, 'pageMessage_ is not message_');
 });
