@@ -32,14 +32,21 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
 - \`this.renderActions()\` — the optional actions the profile enabled (language / design system /
   module links). Render it once, on the right.
 - \`this.renderUserAvatar()\` — the logged user as a round avatar: the IdP photo when there is one,
-  otherwise the initials on a brand-colored circle. Clicking announces the \`user\` action; the app
-  decides what opens. \`this.renderActions()\` already includes it when the profile asked for \`user\`;
-  call it directly only if you want it somewhere else in the band.
+  else the initials on a brand-colored circle, else a neutral silhouette (a photo that fails to load
+  falls back too). Clicking opens the identity panel the base owns — name, email and sign out — and
+  also announces the \`user\` action so the app can react. \`this.renderActions()\` already includes it
+  when the profile asked for \`user\`; call it directly only to place it elsewhere in the band.
+  Override \`userMenuLabels\` to translate the panel ("Sair" / "Não autenticado").
 - \`this.hasAction('search')\` — true when the profile asked for an action the base does not implement;
   render it yourself as a \`<button>\` that calls \`this.emitHeaderAction('search')\`. It has NO route:
   the app listens to the event and decides. Inventing a path like \`/profile\` is rejected.
 - \`this.navigateTo(href)\` / \`@click=\\\${this.handleNavigate}\` — SPA navigation.
 - \`this.localized(messages).<key>\` — the copy for the current language.
+- \`this.userName\` / \`this.userFirstName\` / \`this.userEmail\` — the logged user, for a greeting
+  ("Bem-vindo, \${this.userFirstName}"). Reading them starts the session probe by itself, so a header
+  that greets the user does NOT have to ask for the avatar. They are EMPTY on the first paint (the
+  session is asked over the network) and fill in when it answers — so write markup that reads fine
+  empty, e.g. render the greeting only when \`this.userName\` is truthy.
 
 Ready-made classes from the base's CSS (use them and you inherit the band's spacing and tokens):
 \`aura-header-side\`, \`aura-header-brand\`, \`aura-header-title\`, \`aura-header-subtitle\`,
