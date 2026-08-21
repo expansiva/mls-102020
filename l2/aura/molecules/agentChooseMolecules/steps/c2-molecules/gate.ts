@@ -160,7 +160,7 @@ export function buildChChoices(output: ChMoleculesOutput, inputs: { group: strin
   }));
 }
 
-/** Gate codes that mean "a tag that does not exist was produced" — what run.json counts. */
+/** Gate codes that mean "a tag that does not exist was produced" — what report.json counts. */
 export function chTagIssueCodes(errors: string[]): { invented: number; short: number; case: number } {
   const count = (code: string): number => errors.filter(error => error.startsWith(`${code}:`)).length;
   return { invented: count('tag_invented'), short: count('tag_short'), case: count('tag_case') };

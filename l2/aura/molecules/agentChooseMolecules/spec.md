@@ -49,13 +49,18 @@ step count and would stop measuring what the design claims.
 
 ## What it measures
 
-Every run leaves `l4/agentChooseMolecules/<runKey>/run.json` with:
+Every run leaves `l4/agentChooseMolecules/<runKey>/report.json` with:
 
 - the regions c1 found, and the group it gave each one (or `null`);
 - the molecule c2 chose per region, the quick-reference scenario it used, and its reasoning;
 - **the size of every prompt assembled**, split into instructions / catalog / input, in chars and in
-  estimated tokens (4 chars/token). There is no token telemetry on this platform — nothing in the step
-  contract carries provider usage — so the estimate IS the metric, approved as such on 2026-08-19;
+  estimated tokens (4 chars/token) — that is what sizes the catalog block, which is what the design is
+  about;
+- **what each call really cost**: `inputTokens`, `outputTokens` and dollars, parsed from the line the
+  runtime appends to the step's `interaction.trace`. I had recorded that this platform exposes no usage;
+  it does, just not in the step contract (corrected 2026-08-21). The gap between the two numbers is itself
+  a finding — c1 assembled ~1.2k estimated tokens and the provider counted 7.7k of input, so the platform
+  adds ~6× on its own, and that is what a real consumer pays;
 - **how many times the anti-invention gate fired.** A run where the gate fired twice and the second
   attempt was right is not the same as a run that was right the first time, and the file says which.
 
@@ -117,7 +122,7 @@ but the rest of this family reads the **stor**, which is how `agentNewMolecule2`
 reads it back in the same run. So the stor is now rung 1 (its text parsed by the pure `helpers/chExtract`,
 which evaluates nothing) and the published module is rung 2, the only rung a consumer that is not the
 editor has. The order matters twice over: the import cannot see an unpublished catalog, and on a published
-one with unsaved edits it silently reads the old content. Which rung answered is recorded in `run.json`.
+one with unsaved edits it silently reads the old content. Which rung answered is recorded in `report.json`.
 
 ## How to run the battery
 
@@ -128,5 +133,5 @@ project). For each of the 10 definitions in the control's §3:
 @@agentChooseMolecules <the definition, verbatim>
 ```
 
-Then read `run.json` and fill in the score by hand. Cases #4 and #5 run three times each — LLM
+Then read `report.json` and fill in the score by hand. Cases #4 and #5 run three times each — LLM
 content failures are intermittent, and one roll proves nothing about a tie.

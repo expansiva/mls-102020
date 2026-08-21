@@ -34,6 +34,7 @@ import {
   chGroupFolder,
   chGroupPlanId,
   chMeasurePrompt,
+  chParseUsage,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import {
   ChGroupCatalog,
@@ -181,7 +182,7 @@ async function afterPromptStep(
     : { ok: false, errors: [`extract: ${extractError}`] };
   const errorText = gate.errors.join('\n');
 
-  // The per-attempt trace carries the tag-issue breakdown, which is what run.json counts: an invented
+  // The per-attempt trace carries the tag-issue breakdown, which is what report.json counts: an invented
   // tag and a dropped prefix are different findings and the acceptance criterion is about the first.
   await writeJsonArtifact(chTraceFileInfo(runKey, planId, attempt), {
     savedAt: new Date().toISOString(),
@@ -189,6 +190,7 @@ async function afterPromptStep(
     group,
     attempt,
     ok: gate.ok,
+    usage: chParseUsage(step.interaction?.trace),
     tagIssues: chTagIssueCodes(gate.errors),
     ...(gate.ok ? {} : { errors: gate.errors, output }),
   });

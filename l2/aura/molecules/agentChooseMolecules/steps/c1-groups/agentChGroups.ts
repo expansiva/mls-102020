@@ -33,6 +33,7 @@ import {
   ChGroupsArtifact,
   chDoneAnchor,
   chMeasurePrompt,
+  chParseUsage,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import {
   chGroupsFileInfo,
@@ -201,6 +202,9 @@ async function afterPromptStep(
     planId: PLAN_ID,
     attempt,
     ok: gate.ok,
+    // What the CALL cost, read from the runtime's own trace line. null when the line is not there —
+    // the report says "not measured" rather than zero.
+    usage: chParseUsage(step.interaction?.trace),
     // The trace keeps what the MODEL said; the artifact below keeps what will be used.
     ...(gate.ok ? {} : { errors: gate.errors, output }),
   });

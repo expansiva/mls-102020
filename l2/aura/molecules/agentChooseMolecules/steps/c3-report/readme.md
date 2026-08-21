@@ -11,8 +11,9 @@ rather than by listing the folder.
 
 ## Output
 
-- `run.json` — **the file the battery is scored from**: the joined table (one row per region, with the
-  group, the molecule, the scenario and both reasons), the totals, the gate history and the prompt sizes;
+- `report.json` — **the file the battery is scored from**: the joined table (one row per region, with the
+  group, the molecule, the scenario and both reasons), the totals, the gate history, the prompt sizes and
+  the real cost of each call;
 - the readable summary, in the step trace.
 
 ## Why it spends no call
@@ -31,6 +32,11 @@ the reasons — IS the result being measured (battery case #10).
 
 **Nothing is dropped silently.** A group whose step died without writing its artifact is reported as
 unanswered; `agentsBestPractices` calls silent truncation reading as coverage.
+
+**Two token numbers, never one.** The estimate sizes what the agent assembles (the catalog block is the
+part the design is about); `usage` is what the provider counted, read from each attempt's trace. The
+report also carries the ratio, because the platform adds ~6× on its own and only the real number is what a
+consumer pays. A step whose trace carried no provider line is listed as **not measured**, never as zero.
 
 **`inventedTagsInArtifacts` is zero by construction** — the gate is what makes it zero. The number worth
 reading beside it is `attemptsRefused`: a gate that fired is a model that tried.

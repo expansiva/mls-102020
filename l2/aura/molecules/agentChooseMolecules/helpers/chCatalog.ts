@@ -58,7 +58,14 @@ export function chWorkFile(runKey: string, shortName: string): NmFileInfo {
 
 export const chInputFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'input');
 export const chGroupsFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'c1-groups');
-export const chRunFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'run');
+/**
+ * The consolidated report of a run.
+ *
+ * ⚠️ NAMED report.json, NOT run.json (2026-08-21). A file called run.json in this folder was found holding a
+ * TaskData dump — the platform's task, not this report, and not even of the same run as its folder. Whatever
+ * writes it, the name is contested and this artifact is the one thing a run must not lose.
+ */
+export const chRunFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'report');
 
 export function chGroupArtifactFileInfo(runKey: string, groupName: string): NmFileInfo {
   return chWorkFile(runKey, `c2-${chGroupFolder(groupName)}`);

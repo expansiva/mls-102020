@@ -239,7 +239,7 @@
   "acceptance": {
     "regression": "zero: no file changed outside this folder (implementation) and outside the destination project (execution); agentNewMoleculeVariant is not touched at all, since nothing was promoted to shared/ (control 0.4). The ORIGIN is never written.",
     "environment": "The destination is the user's current project, so the acceptance run needs that project to (a) declare the origin project as a dependency and (b) offer 'pt' in the preview language menu — which comes from the module (l4/<module>/module.defs.ts via readModuleLanguages), not from l5/project.json.",
-    "test1": "THE test of the premise: copy ml-indeterminate-spinner (one i18n key, 'loading'), add a pt block to the copy's collab_i18n, switch the runtime to pt and see Portuguese — with NO index anywhere.",
+    "test1": "THE test of the premise (validates the 2026-08-18 architecture, not this agent): copy groupselectfileforupload/ml-upload-file-list — do NOT use ml-indeterminate-spinner, whose only key is an aria-label and would need DevTools to read — add a pt block to the copy's collab_i18n, switch the runtime to pt and see Portuguese — with NO index anywhere.",
     "test2": "Flattened shell: copy ml-button-standard-brutal (102054). The copy carries ButtonStandardMolecule's real code under the brutal identity, plus the brutal .less; the demo looks identical to the shell's.",
     "test3": "Collision, single mode: re-run test1 and exercise replace (with the loss warning), cancel (nothing written) and rename (files, tag, class, root selector and TagName all coherent).",
     "test4": "Readable failures: origin that is not a dependency; origin that does not exist; shell of a shell (fabricated); mention with no complete ref.",

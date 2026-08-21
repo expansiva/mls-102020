@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CH_CHARS_PER_TOKEN,
+  chParseUsage,
   chCanonicalGroup,
   chFileRefFromImport,
   chDoneAnchor,
@@ -102,4 +103,34 @@ void test('anything that is not a project reference is refused instead of guesse
   for (const bad of ['', 'https://on.collab.codes/x.js', '/_abc_/l2/x', '/_102040_/molecules/x', '/_102040_/l2/']) {
     assert.equal(chFileRefFromImport(bad), null, bad);
   }
+});
+
+// The line the runtime appends after a call, verbatim from the run of 2026-08-21.
+const PROVIDER_LINE = "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'lucasexpansiva@gmail.com' inputTokens:7727 outputTokens:649 cost:$0.0239 llmTime: 00:00:07.895";
+
+void test('the real usage is read from the step trace — the platform does expose it', () => {
+  const usage = chParseUsage(['starting at 2026-08-21T12:26:21.104Z', PROVIDER_LINE, 'finished at ...']);
+  assert.deepEqual(usage, {
+    inputTokens: 7727,
+    outputTokens: 649,
+    costUsd: 0.0239,
+    calls: 1,
+    models: ['openai/gpt-5.6-terra-pro'],
+  });
+});
+
+void test('a fallback stage inside one call is summed and counted', () => {
+  const second = PROVIDER_LINE.replace('inputTokens:7727', 'inputTokens:100').replace('outputTokens:649', 'outputTokens:20').replace('cost:$0.0239', 'cost:$0.0011').replace('terra-pro', 'luna');
+  const usage = chParseUsage([PROVIDER_LINE, second]);
+  assert.equal(usage?.calls, 2);
+  assert.equal(usage?.inputTokens, 7827);
+  assert.equal(usage?.outputTokens, 669);
+  assert.equal(usage?.costUsd, 0.025);
+  assert.deepEqual(usage?.models, ['openai/gpt-5.6-terra-pro', 'openai/gpt-5.6-luna']);
+});
+
+void test('no provider line means NOT MEASURED, never zero', () => {
+  assert.equal(chParseUsage(['starting at x', 'finished at y']), null);
+  assert.equal(chParseUsage(undefined), null);
+  assert.equal(chParseUsage('provider: inputTokens:1'), null);
 });

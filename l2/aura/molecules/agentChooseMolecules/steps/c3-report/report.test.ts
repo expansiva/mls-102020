@@ -56,6 +56,7 @@ function facts(over: Partial<ChRunFacts>): ChRunFacts {
     regions: [],
     groups: [],
     sizes: [],
+    usage: [],
     tagIssues: { invented: 0, short: 0, case: 0 },
     attemptsRefused: 0,
     ...over,
@@ -193,4 +194,40 @@ void test('more than one reachable catalog is recorded even when one was named',
     candidates: [102040, 102054],
   }), 4);
   assert.match(report.notes.join('\n'), /mais de um catálogo alcançável \(102040, 102054\)/);
+});
+
+void test('the real cost of the run is carried, and the platform overhead is the gap to the estimate', () => {
+  const report = buildChRunReport(facts({
+    regions: [REGIONS[0]],
+    groups: [groupArtifact({})],
+    sizes: [size('c1-groups', 387, 1200), size('c2-groupentertext', 928, 1800)],
+    usage: [
+      { planId: 'c1-groups', attempt: 1, inputTokens: 7727, outputTokens: 649, costUsd: 0.0239, calls: 1, models: ['x'] },
+      { planId: 'c2-groupentertext', attempt: 1, inputTokens: 9273, outputTokens: 400, costUsd: 0.03, calls: 1, models: ['x'] },
+    ],
+  }), 4);
+
+  assert.equal(report.usage.inputTokensTotal, 17000);
+  assert.equal(report.usage.outputTokensTotal, 1049);
+  assert.equal(report.usage.costUsdTotal, 0.0539);
+  // 17000 real against 3000 assembled.
+  assert.equal(report.usage.overheadFactor, 5.67);
+  assert.deepEqual(report.usage.stepsNotMeasured, []);
+  const text = renderChRunSummary(report);
+  assert.match(text, /7727/);
+  assert.match(text, /5\.67×/);
+});
+
+void test('a step whose trace carried no provider line is named, never counted as zero', () => {
+  const report = buildChRunReport(facts({
+    regions: [REGIONS[0]],
+    groups: [groupArtifact({})],
+    sizes: [size('c1-groups', 387, 1200), size('c2-groupentertext', 928, 1800)],
+    usage: [{ planId: 'c1-groups', attempt: 1, inputTokens: 7727, outputTokens: 649, costUsd: 0.0239, calls: 1, models: ['x'] }],
+  }), 4);
+
+  assert.deepEqual(report.usage.stepsNotMeasured, ['c2-groupentertext (tent. 1)']);
+  // The factor compares only what was measured: 7727 against c1's 1200.
+  assert.equal(report.usage.overheadFactor, 6.44);
+  assert.match(renderChRunSummary(report), /não medido/);
 });

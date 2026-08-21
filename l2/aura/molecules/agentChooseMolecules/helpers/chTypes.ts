@@ -194,6 +194,56 @@ export function chMeasurePrompt(args: {
   };
 }
 
+// ---- what the CALL actually cost, from the step's own trace ----
+
+/**
+ * ⚠️ THE PLATFORM DOES EXPOSE USAGE, and I said it did not (2026-08-19). It is not in the step contract —
+ * no field carries it — but the runtime appends a line to `interaction.trace` after the call:
+ *
+ *   provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'…'
+ *   inputTokens:7727 outputTokens:649 cost:$0.0239 llmTime: 00:00:07.895
+ *
+ * Measured on the run of 2026-08-21 and it changes the reading of §11.4: the c1 prompt this agent
+ * ASSEMBLES was 1.203 estimated tokens, and the provider counted 7.727 of input — 6.4×. The difference is
+ * the platform's own additions (the Content Memory block it appends, the tool schema, thread context). Both
+ * numbers matter and they answer different questions: the estimate says how big the CATALOG block is, which
+ * is what the design is about; this says what the call costs, which is what the real consumer pays.
+ *
+ * It is parsed defensively because the format is a platform string, not a contract: no line, no usage, and
+ * the report says "not measured" rather than zero.
+ */
+export interface ChStepUsage {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  /** Provider lines summed. More than one means a fallback stage or a retry inside the same call. */
+  calls: number;
+  models: string[];
+}
+
+export function chParseUsage(trace: unknown): ChStepUsage | null {
+  const lines = Array.isArray(trace) ? trace.filter((line): line is string => typeof line === 'string') : [];
+  const usage: ChStepUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0, calls: 0, models: [] };
+
+  for (const line of lines) {
+    const input = /inputTokens:\s*(\d+)/.exec(line);
+    const output = /outputTokens:\s*(\d+)/.exec(line);
+    if (!input && !output) continue;
+    usage.calls += 1;
+    usage.inputTokens += input ? Number(input[1]) : 0;
+    usage.outputTokens += output ? Number(output[1]) : 0;
+    const cost = /cost:\s*\$?([\d.]+)/.exec(line);
+    if (cost) usage.costUsd += Number(cost[1]);
+    const model = /\bmodel:\s*(\S+)/.exec(line);
+    if (model && !usage.models.includes(model[1])) usage.models.push(model[1]);
+  }
+
+  if (!usage.calls) return null;
+  // Float addition of dollar amounts drifts; the cost is reported to the cent-of-a-cent it came in at.
+  usage.costUsd = Math.round(usage.costUsd * 1e6) / 1e6;
+  return usage;
+}
+
 /** The marker skills/modelTypes.md makes mandatory. Reported, so the run says which model type ran. */
 export function chParseModelType(prompt: string): string {
   const match = /<!--\s*modelType:\s*([a-zA-Z]+)\s*-->/.exec(prompt || '');

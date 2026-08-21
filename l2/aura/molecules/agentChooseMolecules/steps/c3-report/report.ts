@@ -10,7 +10,7 @@
 // ⚠️ THE LABELS ARE IN PORTUGUESE on purpose. The audience of this summary is the team running the
 // battery, and the control it is scored against is in Portuguese. The parts the model wrote — the reasons — stay in whatever language the user wrote in.
 
-import { ChCatalogVia, ChGroupArtifact, ChPromptSize, ChRegion } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import { ChCatalogVia, ChGroupArtifact, ChPromptSize, ChRegion, ChStepUsage } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 
 export interface ChTagIssues {
   invented: number;
@@ -36,6 +36,8 @@ export interface ChRunFacts {
   /** One per group c1 chose. A group whose step never accepted an answer is here with ok: false. */
   groups: ChGroupArtifact[];
   sizes: ChPromptSize[];
+  /** What each call actually cost, from the runtime trace. Absent for a step whose line was not there. */
+  usage: Array<{ planId: string; attempt: number } & ChStepUsage>;
   /** Summed over every attempt's trace, including the attempts that were retried. */
   tagIssues: ChTagIssues;
   /** How many attempts a gate refused, across every step of the run. */
@@ -87,6 +89,22 @@ export interface ChRunReport {
     catalogTokensEstTotal: number;
     totalTokensEstTotal: number;
     charsPerTokenAssumed: number;
+  };
+  /**
+   * What the calls cost, as the provider counted them — and the gap to what this agent assembled.
+   *
+   * The two numbers answer different questions and both belong here: the estimate sizes the CATALOG block,
+   * which is what the three-level design is about; `inputTokensTotal` is what the run cost, and
+   * `overheadFactor` is how much of it the platform adds on its own (Content Memory, tool schema, thread).
+   */
+  usage: {
+    perStep: Array<{ planId: string; attempt: number } & ChStepUsage>;
+    inputTokensTotal: number;
+    outputTokensTotal: number;
+    costUsdTotal: number;
+    /** real input / estimated total, over the steps that reported usage. null when nothing reported. */
+    overheadFactor: number | null;
+    stepsNotMeasured: string[];
   };
 }
 
@@ -182,6 +200,27 @@ export function buildChRunReport(facts: ChRunFacts, charsPerToken: number): ChRu
       totalTokensEstTotal: facts.sizes.reduce((sum, size) => sum + size.totalTokensEst, 0),
       charsPerTokenAssumed: charsPerToken,
     },
+    usage: buildUsage(facts),
+  };
+}
+
+/** The real cost of the run, and the gap to the estimate. Only steps that reported usage are compared. */
+function buildUsage(facts: ChRunFacts): ChRunReport['usage'] {
+  const measured = new Set(facts.usage.map(item => `${item.planId}#${item.attempt}`));
+  const estimatedForMeasured = facts.sizes
+    .filter(size => measured.has(`${size.planId}#${size.attempt}`))
+    .reduce((sum, size) => sum + size.totalTokensEst, 0);
+  const inputTokensTotal = facts.usage.reduce((sum, item) => sum + item.inputTokens, 0);
+
+  return {
+    perStep: facts.usage,
+    inputTokensTotal,
+    outputTokensTotal: facts.usage.reduce((sum, item) => sum + item.outputTokens, 0),
+    costUsdTotal: Math.round(facts.usage.reduce((sum, item) => sum + item.costUsd, 0) * 1e6) / 1e6,
+    overheadFactor: estimatedForMeasured ? Math.round((inputTokensTotal / estimatedForMeasured) * 100) / 100 : null,
+    stepsNotMeasured: facts.sizes
+      .filter(size => !measured.has(`${size.planId}#${size.attempt}`))
+      .map(size => `${size.planId} (tent. ${size.attempt})`),
   };
 }
 
@@ -207,16 +246,18 @@ export function renderChRunSummary(report: ChRunReport): string {
   }
 
   lines.push('');
-  lines.push('### Tamanho dos prompts (tokens estimados)');
-  lines.push('| passo | modelType | catálogo | total |');
-  lines.push('|---|---|---|---|');
+  lines.push('### Prompts: o que a sonda monta × o que a chamada custou');
+  lines.push('| passo | modelType | catálogo (est.) | montado (est.) | entrada (real) | US$ |');
+  lines.push('|---|---|---|---|---|---|');
   for (const size of report.sizes.perStep) {
     const attempt = size.attempt > 1 ? ` (tent. ${size.attempt})` : '';
-    lines.push(`| ${size.planId}${attempt} | ${size.modelType || '—'} | ${size.catalogTokensEst} | ${size.totalTokensEst} |`);
+    const usage = report.usage.perStep.find(item => item.planId === size.planId && item.attempt === size.attempt);
+    lines.push(`| ${size.planId}${attempt} | ${size.modelType || '—'} | ${size.catalogTokensEst} | ${size.totalTokensEst} | ${usage ? usage.inputTokens : '— não medido'} | ${usage ? usage.costUsd.toFixed(4) : '—'} |`);
   }
-  lines.push(`| **soma** | | **${report.sizes.catalogTokensEstTotal}** | **${report.sizes.totalTokensEstTotal}** |`);
+  lines.push(`| **soma** | | **${report.sizes.catalogTokensEstTotal}** | **${report.sizes.totalTokensEstTotal}** | **${report.usage.inputTokensTotal || '—'}** | **${report.usage.costUsdTotal ? report.usage.costUsdTotal.toFixed(4) : '—'}** |`);
   lines.push('');
-  lines.push(`Estimativa a ${report.sizes.charsPerTokenAssumed} chars/token — a plataforma não expõe o consumo real.`);
+  lines.push(`Estimativa a ${report.sizes.charsPerTokenAssumed} chars/token mede o que a sonda monta; a coluna real vem do trace do passo.` +
+    (report.usage.overheadFactor ? ` A plataforma acrescenta o resto: **${report.usage.overheadFactor}×** o montado (Content Memory, schema da tool, contexto da thread).` : ''));
 
   if (report.notes.length) {
     lines.push('');
@@ -225,6 +266,6 @@ export function renderChRunSummary(report: ChRunReport): string {
   }
 
   lines.push('');
-  lines.push('A pontuação contra o gabarito é manual: `run.json` tem a tabela completa com as justificativas.');
+  lines.push('A pontuação contra o gabarito é manual: `report.json` tem a tabela completa com as justificativas.');
   return lines.join('\n');
 }
