@@ -68,6 +68,31 @@ export interface PageSkeletonResult {
 
 const MARKER = '/* to implement */';
 
+/**
+ * Marks a locale const whose text is still the default language. `@@addLanguage` queues a file when a
+ * requested locale is missing OR carries this marker, and REMOVES the marker when it writes the
+ * translated block back — the translation is what consumes it.
+ *
+ * The skeleton only ever PROPAGATES it. It cannot recompute it: after the first generation every key
+ * exists in every locale const, so "the key was not carried over" is only ever true once. And comparing
+ * the text to the default would misread a legitimately identical translation ('Status' in pt).
+ */
+export const I18N_UNTRANSLATED_MARKER = 'collab_untranslated';
+
+/** Locales whose const in `source` still carries the untranslated marker. */
+export function untranslatedLocales(source: string | undefined, constPrefix: string): Set<string> {
+  const out = new Set<string>();
+  if (!source) return out;
+  const start = source.indexOf('/// **collab_i18n_start**');
+  const end = source.indexOf('/// **collab_i18n_end**');
+  if (start < 0 || end < 0 || end < start) return out;
+  const re = new RegExp(`const\\s+${constPrefix}_([A-Za-z0-9_]+)[^\\n]*${I18N_UNTRANSLATED_MARKER}`, 'gu');
+  for (const match of source.slice(start, end).matchAll(re)) {
+    out.add(match[1].replace(/_/gu, '-').toLowerCase());
+  }
+  return out;
+}
+
 /** `<page>_O<n>` — the file name carries the position only; the organism name lives in the pipeline item. */
 export function organismShortName(pageShortName: string, n: number): string {
   return `${pageShortName}_O${n}`;
@@ -139,17 +164,30 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   lines.push('// text and do NOT inline a string in the template: reference a key, or add your own SHORT');
   lines.push(`//   key here (in EVERY locale) — 'orders.empty': 'No orders yet',`);
   const previousText = parsePreviousI18n(input.previousSource, `${prefix}Message`);
+  const stillUntranslated = untranslatedLocales(input.previousSource, `${prefix}Message`);
   locales.forEach((locale, index) => {
     const isDefault = index === 0;
     const suffix = constSuffix(locale);
     // Carried over per key: a translation already made in this file survives the regenerate. A key with
     // no prior translation starts as the default-locale text, which @@addLanguage then translates.
     const previous = previousText.get(locale) || {};
-    lines.push(`const ${prefix}Message_${suffix}${isDefault ? '' : `: ${msgType}`} = {`);
+    const body: string[] = [];
+    // A key with no prior text starts as the default-locale text; a locale with NO prior catalogue at all
+    // is untranslated by construction. Otherwise the marker is whatever the previous file said: only
+    // @@addLanguage clears it, because only it knows a translation actually happened.
+    let untranslated = !isDefault && (Object.keys(previous).length === 0 || stillUntranslated.has(locale));
     for (const [key, text] of Object.entries(catalogue.i18n)) {
-      const value = isDefault ? text : (previous[key] ?? text);
-      lines.push(`  '${escapeSingle(key)}': '${escapeSingle(value)}',`);
+      const carried = isDefault ? undefined : previous[key];
+      if (!isDefault && carried === undefined) untranslated = true;
+      body.push(`  '${escapeSingle(key)}': '${escapeSingle(carried ?? text)}',`);
     }
+    // The marker is how @@addLanguage knows this locale still holds default-language text. Detecting it
+    // by "the const is missing" cannot work: every locale is emitted from birth, so a half-translated
+    // catalogue looked complete and was skipped whole — that is why a Portuguese catalogue kept English
+    // column labels.
+    const marker = untranslated ? ` // ${I18N_UNTRANSLATED_MARKER}` : '';
+    lines.push(`const ${prefix}Message_${suffix}${isDefault ? '' : `: ${msgType}`} = {${marker}`);
+    lines.push(...body);
     lines.push(isDefault
       ? '  // The copy you invent, with short keys. Only this part repeats per language.'
       : `  // The SAME invented keys as ${prefix}Message_${constSuffix(locales[0])}, translated to ${locale}.`);

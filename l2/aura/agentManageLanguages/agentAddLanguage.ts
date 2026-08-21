@@ -3,6 +3,10 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as skilli18n } from '/_102020_/l2/skills/aura/language.js';
 import { waitModelIdle } from '/_102027_/l2/libModel.js';
+import {
+    applyTranslatedI18nBlock, decideQueue, extractI18nBlock,
+    isPageCatalogueFileName, isPageCatalogueFolder,
+} from '/_102020_/l2/aura/agentManageLanguages/helpers/addLanguageCore.js';
 
 export function createAgent(): IAgentAsync {
     return {
@@ -23,8 +27,8 @@ async function beforePromptImplicit(
     userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
 
-    const [dataUser] = JSON.parse(userPrompt) as { languages: { code: string, name: string }[], projectId: number, moduleName: string }[];
-    const paths: { languages: string[], fileReference: string }[] = await getPaths(dataUser.languages, dataUser.projectId, dataUser.moduleName);
+    const [dataUser] = JSON.parse(userPrompt) as { languages: { code: string, name: string }[], projectId: number, moduleName: string, force?: boolean }[];
+    const paths: { languages: string[], fileReference: string }[] = await getPaths(dataUser.languages, dataUser.projectId, dataUser.moduleName, dataUser.force === true);
     if (paths.length === 0) throw new Error('No find files to add language');
 
     const inputs: mls.msg.IAMessageInputType[] = [{ type: "system", content: system1.replace('{{ skillLanguage }}', skilli18n) }];
@@ -122,67 +126,50 @@ async function afterPromptStep(
 
 }
 
-async function getPaths(languages: { code: string, name: string }[], project: number, moduleName: string): Promise<{ languages: string[], fileReference: string }[]> {
+async function getPaths(
+    languages: { code: string, name: string }[],
+    project: number,
+    moduleName: string,
+    force = false,
+): Promise<{ languages: string[], fileReference: string }[]> {
     if (!project) throw new Error(`[getPaths] invalid project`);
     // Languages are per module — never translate the whole project by accident.
     if (!moduleName) throw new Error(`[getPaths] moduleName is required`);
 
-    const sharedFolder = await getSharedFolder(project, moduleName);
     const result: { languages: string[], fileReference: string }[] = [];
+    const requested = languages.map(lang => lang.code);
+    const counters = { scanned: 0, queued: 0, complete: 0, noCatalogue: 0 };
 
-    const sharedFiles = Object.values(mls.stor.files).filter((f: mls.stor.IFileInfo) =>
+    // The catalogue lives in the PAGES now (and in the organisms of a split page, which share the page
+    // folders). The shared no longer emits one, so scanning it would queue nothing at all.
+    const pageFiles = Object.values(mls.stor.files).filter((f: mls.stor.IFileInfo) =>
         f.project === project &&
-        f.folder === sharedFolder &&
-        f.extension === '.ts'
+        isPageCatalogueFolder(f.folder, moduleName) &&
+        isPageCatalogueFileName(f.shortName, f.extension)
     );
-    for (const storFile of sharedFiles as mls.stor.IFileInfo[]) {
-        const model = await storFile.getOrCreateModel();
-        if (!model) continue;
-        const source: string = model.model.getValue();
 
-        const missingLangs = languages
-            .filter(lang => !_hasLanguageInI18nBlock(source, lang.code))
-            .map(lang => lang.code);
+    for (const storFile of pageFiles as mls.stor.IFileInfo[]) {
+        // getContent, not getOrCreateModel: this walks ~100 files per module and a model per file is a
+        // Monaco resource nobody releases. Translation needs the text, never a compile.
+        const content = await storFile.getContent('');
+        const source = typeof content === 'string' ? content : '';
+        if (!source) continue;
+        counters.scanned += 1;
 
-        if (missingLangs.length === 0) continue;
+        const decision = decideQueue(source, requested, force);
+        if (decision.languages.length === 0) {
+            if (decision.reason === 'noCatalogue') counters.noCatalogue += 1; else counters.complete += 1;
+            continue;
+        }
+        counters.queued += 1;
         const fileReference = mls.stor.convertFileToFileReference(storFile);
-        result.push({ languages: missingLangs, fileReference });
+        result.push({ languages: decision.languages, fileReference });
     }
 
+    console.info(`[agentAddLanguage] ${moduleName}: scanned ${counters.scanned}, queued ${counters.queued}, already translated ${counters.complete}, without catalogue ${counters.noCatalogue}${force ? ' (force)' : ''}`);
     return result;
 }
 
-// Legacy modules declare skills.web.sharedPath in l2/<module>/module.js; NS2 modules have
-// no module.js and follow the l2/<module>/web/shared convention (see cfeCreateShared).
-async function getSharedFolder(project: number, moduleName: string): Promise<string> {
-    try {
-        const moduleConfig = await import(`/_${project}_/l2/${moduleName}/module.js`);
-        const sharedPath = moduleConfig?.skills?.web?.sharedPath;
-        if (sharedPath) {
-            return `${sharedPath}`
-                .replace(/^\/?_\d+_\/l2\//, '')
-                .replace(/^\/|\/$/g, '');
-        }
-    } catch { /* no module.js — NS2 module */ }
-    return `${moduleName}/web/shared`;
-}
-
-function _hasLanguageInI18nBlock(source: string, lang: string): boolean {
-    const startMarker = '/// **collab_i18n_start**';
-    const endMarker = '/// **collab_i18n_end**';
-    const startIdx = source.indexOf(startMarker);
-    const endIdx = source.indexOf(endMarker);
-    if (startIdx === -1 || endIdx === -1) return false;
-
-    const i18nBlock = source.substring(startIdx, endIdx);
-
-    const keyPatterns = [
-        new RegExp(`\\b${lang}\\s*:`, 'm'),
-        new RegExp(`['"]${lang}['"]\\s*:`, 'm'),
-    ];
-
-    return keyPatterns.some(pattern => pattern.test(i18nBlock));
-}
 
 async function getPagei18nBlock(fileReference: string) {
 
@@ -194,16 +181,10 @@ async function getPagei18nBlock(fileReference: string) {
 }
 
 async function geti18nByFile(stor: mls.stor.IFileInfo) {
-    const modelTS = await stor.getOrCreateModel();
-    if (!modelTS) throw new Error(`[geti18nByFile] invalid models`);
-    const source = modelTS.model.getValue();
-    const startMarker = '/// **collab_i18n_start**';
-    const endMarker = '/// **collab_i18n_end**';
-    const startIdx = source.indexOf(startMarker);
-    const endIdx = source.indexOf(endMarker);
-    if (startIdx === -1 || endIdx === -1) return '';
-    const i18nBlock = source.substring(startIdx, endIdx);
-    return i18nBlock + '/// **collab_i18n_end**';
+    // Reading the text, not creating a model: same reason as getPaths.
+    const content = await stor.getContent('');
+    const source = typeof content === 'string' ? content : '';
+    return extractI18nBlock(source) || '';
 }
 
 async function processOutput(context: mls.msg.ExecutionContext, newi18n: string, fileReference: string) {
@@ -216,20 +197,16 @@ async function processOutput(context: mls.msg.ExecutionContext, newi18n: string,
     const files = await mls.stor.getFiles({ ...path, loadContent: false });
     if (!files.ts) throw new Error(`[processOutput] invalid file: ${fileReference}`);
     const modelTS = await files.ts.getOrCreateModel();
-    if (!modelTS) throw new Error(`[geti18nByFile] invalid models`);
+    if (!modelTS) throw new Error(`[processOutput] invalid models`);
     const source = modelTS.model.getValue();
-    const newValue = replaceI18nBlock(source, newi18n);
+    // Guarded: a block that lost a locale const or its parity annotation is rejected instead of written
+    // over a good file, and the untranslated markers are consumed here — the translation is what clears
+    // them, so this file stops being queued on the next run.
+    const newValue = applyTranslatedI18nBlock(source, newi18n);
     const paramsTs = { ...fileInfo, content: newValue, versionRef: new Date().toISOString(), extension: ".ts" };
     await updateStorFile(paramsTs);
     return [];
 
-}
-
-function replaceI18nBlock(content: string, newBlock: string): string {
-    const regex =
-        /\/\/\/\s\*\*collab_i18n_start\*\*[\s\S]*?\/\/\/\s\*\*collab_i18n_end\*\*/g;
-
-    return content.replace(regex, newBlock);
 }
 
 async function updateStorFile(params: { project: number, shortName: string, level: number, folder: string, content: string, extension: string, versionRef: string }): Promise<mls.editor.IModelBase> {

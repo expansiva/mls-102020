@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildPageSkeleton, localesOf, organismRenderName, organismShortName, sharedI18nKeys } from './cfePageSkeleton.js';
+import { buildPageSkeleton, I18N_UNTRANSLATED_MARKER, localesOf, organismRenderName, organismShortName, sharedI18nKeys } from './cfePageSkeleton.js';
 
 // The shared .ts no longer carries an i18n block: the catalogue is PLANNED in the shared defs and
 // EMITTED in the page, so the skeleton reads the defs.
@@ -61,18 +61,25 @@ test('the page owns the COMPLETE catalogue: every key, every locale, no shared i
   assert.ok(!code.includes('sharedMessages'), 'the page does not read a shared catalogue');
   assert.match(code, /const pageMessage_en = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': 'No summaries yet',\n  'action\.createBillingSummaryCmd\.success': 'Created',/u);
   // The annotation is what makes a forgotten translation a compile error (TS2741) instead of a hole.
-  assert.match(code, /const pageMessage_pt_br: PageMessageType = \{/u);
-  // With no previous file the non-default locale starts as the default text, which @@addLanguage translates.
-  assert.match(code, /const pageMessage_pt_br: PageMessageType = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': 'No summaries yet',/u);
+  assert.match(code, /const pageMessage_pt_br: PageMessageType = \{ \/\/ collab_untranslated\n/u);
+  // With no previous file the non-default locale starts as the default text, which @@addLanguage
+  // translates — and the marker is what tells it this locale still needs translating. Detecting that by
+  // "the const is missing" cannot work: every locale is emitted from birth.
+  assert.match(code, /const pageMessage_pt_br: PageMessageType = \{ \/\/ collab_untranslated\n  'intent\.billingSummaryWorkspace\.list\.empty': 'No summaries yet',/u);
+  assert.ok(!/const pageMessage_en[^\n]*collab_untranslated/u.test(code), 'the default locale is never marked');
   assert.match(code, /const pageMessages: \{ \[key: string\]: PageMessageType \} = \{ 'en': pageMessage_en, 'pt-br': pageMessage_pt_br \};/u);
 });
 
+function translatePtBr(code: string, entries: Array<[string, string]>): string {
+  return entries.reduce((acc, [key, text]) => acc.replace(
+    new RegExp(`(const pageMessage_pt_br[^\\n]*\\n(?:  '[^']+': '[^']*',\\n)*?  '${key.replace(/\./gu, '\\.')}': )'[^']*'`, 'u'),
+    `$1'${text}'`,
+  ), code);
+}
+
 test('regenerating a page carries its translations forward instead of resetting them', () => {
   const previous = buildPageSkeleton(INPUT).code ?? '';
-  const translated = previous.replace(
-    /(const pageMessage_pt_br: PageMessageType = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': )'No summaries yet'/u,
-    "$1'Nenhum resumo ainda'",
-  );
+  const translated = translatePtBr(previous, [['intent.billingSummaryWorkspace.list.empty', 'Nenhum resumo ainda']]);
   assert.notEqual(translated, previous, 'the fixture must actually contain the translated line');
 
   const again = buildPageSkeleton({ ...INPUT, previousSource: translated }).code ?? '';
@@ -81,10 +88,33 @@ test('regenerating a page carries its translations forward instead of resetting 
   assert.match(again, /const pageMessage_en = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': 'No summaries yet',/u);
 });
 
+test('the untranslated marker survives a PARTIAL translation and clears on a complete one', () => {
+  const first = buildPageSkeleton(INPUT).code ?? '';
+
+  // One of the two keys translated: the locale still holds default text, so it must stay queued. This is
+  // exactly the shape that shipped English column labels inside a Portuguese catalogue.
+  const partial = buildPageSkeleton({
+    ...INPUT,
+    previousSource: translatePtBr(first, [['intent.billingSummaryWorkspace.list.empty', 'Nenhum resumo ainda']]),
+  }).code ?? '';
+  assert.match(partial, new RegExp(`const pageMessage_pt_br[^\\n]*${I18N_UNTRANSLATED_MARKER}`, 'u'));
+
+  // Only @@addLanguage clears the marker — it is the only actor that knows a translation happened. The
+  // skeleton propagates it, so a translated file WITHOUT the marker regenerates without it.
+  const translatedByAddLanguage = translatePtBr(first, [
+    ['intent.billingSummaryWorkspace.list.empty', 'Nenhum resumo ainda'],
+    ['action.createBillingSummaryCmd.success', 'Criado'],
+  ]).replace(` // ${I18N_UNTRANSLATED_MARKER}`, '');
+  const complete = buildPageSkeleton({ ...INPUT, previousSource: translatedByAddLanguage }).code ?? '';
+  assert.ok(!complete.includes(I18N_UNTRANSLATED_MARKER), 'a translated locale is not re-marked');
+  assert.match(complete, /const pageMessage_pt_br: PageMessageType = \{\n/u);
+  assert.match(complete, /'action\.createBillingSummaryCmd\.success': 'Criado',/u);
+});
+
 test('an organism carries over from ITS OWN previous file, not from the page', () => {
   const organismPrevious = (buildPageSkeleton({ ...INPUT, organisms: ORGANISMS, current: 2 }).code ?? '')
     .replace(
-      /(const o2Message_pt_br: O2Msg = \{\n  'intent\.billingSummaryWorkspace\.list\.empty': )'No summaries yet'/u,
+      /(const o2Message_pt_br: O2Msg = \{ \/\/ collab_untranslated\n  'intent\.billingSummaryWorkspace\.list\.empty': )'No summaries yet'/u,
       "$1'Traduzido no organismo'",
     );
   const again = buildPageSkeleton({ ...INPUT, organisms: ORGANISMS, current: 2, previousSource: organismPrevious }).code ?? '';
