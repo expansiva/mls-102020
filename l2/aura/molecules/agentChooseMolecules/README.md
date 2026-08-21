@@ -6,7 +6,11 @@ product of a run is the measurement.
 
 ```
 @@agentChooseMolecules Cadastro de cliente: nome completo, CPF, telefone, e-mail e data de nascimento
+@@agentChooseMolecules { catalogProject: 102054 } Tela de checkout com seleção de país
 ```
+
+The catalog is looked up in this project and its direct dependencies; the optional argument says which
+project to read instead. Exactly one catalog answers a run — see `spec.md`.
 
 It answers a question about the CATALOG, not about the page: is the three-level catalog good enough for an
 LLM to choose from without inventing a component? The pilot's decisions and its acceptance criteria ship
@@ -55,11 +59,12 @@ agentChooseMolecules.ts                root: entry, phase-1 planting, and the fa
 helpers/chTypes.ts                     pure: anchors, sentinel, prompt measurement
 helpers/chCatalog.ts                   the only module that reads disk: catalog + l4 paths
 helpers/chExtract.ts                   pure: a catalog level parsed from its source text
+helpers/chEntry.ts                     pure: the mention's argument, and which catalog answers
 helpers/chRootPlan.ts                  the c0-classify answer, as the steps read it
 schemas/                               the two tool schemas
 steps/c1-groups/  steps/c2-molecules/  steps/c3-report/
 ```
 
 Tests: `gate.test.ts` in both LLM steps, `report.test.ts`, `helpers/chTypes.test.ts`,
-`helpers/chExtract.test.ts` and `helpers/chPrompts.test.ts` (the `modelType` marker check `skills/modelTypes.md` makes mandatory, plus
-the invariant that no prompt of this agent may contain a molecule tag). All pure, all in CI, 56 in total.
+`helpers/chExtract.test.ts`, `helpers/chEntry.test.ts` and `helpers/chPrompts.test.ts` (the `modelType` marker check `skills/modelTypes.md` makes mandatory, plus
+the invariant that no prompt of this agent may contain a molecule tag). All pure, all in CI, 71 in total.

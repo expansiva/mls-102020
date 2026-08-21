@@ -48,6 +48,10 @@ function facts(over: Partial<ChRunFacts>): ChRunFacts {
     userLanguage: 'pt',
     level1Reference: '/_102040_/l2/molecules/skill',
     level1Via: 'published',
+    catalogProject: 102040,
+    catalogSelectedBy: 'dependency',
+    candidates: [102040],
+    catalogWarnings: [],
     publishedGroups: ['groupEnterText'],
     regions: [],
     groups: [],
@@ -163,4 +167,30 @@ void test('a catalog served by the published module leaves no such note', () => 
   const report = buildChRunReport(facts({ regions: [REGIONS[0]], groups: [groupArtifact({})] }), 4);
   assert.deepEqual(report.catalog.groupsReadFromEditor, []);
   assert.equal(report.notes.some(note => note.includes('EDITOR')), false);
+});
+
+void test('the catalog that answered is named in the report and in the summary', () => {
+  const report = buildChRunReport(facts({ regions: [REGIONS[0]], groups: [groupArtifact({})] }), 4);
+  assert.equal(report.catalog.project, 102040);
+  assert.equal(report.catalog.selectedBy, 'dependency');
+  assert.match(renderChRunSummary(report), /catálogo do projeto \*\*102040\*\* \(dependency\)/);
+});
+
+void test('a catalog outside the dependencies is warned about ABOVE the per-region notes', () => {
+  const report = buildChRunReport(facts({
+    regions: [REGIONS[0]],
+    groups: [groupArtifact({})],
+    catalogWarnings: ['102054 is not a direct dependency of 102053: a page in 102053 cannot import the molecules that were chosen'],
+  }), 4);
+  assert.match(report.notes[0], /cannot import/);
+});
+
+void test('more than one reachable catalog is recorded even when one was named', () => {
+  const report = buildChRunReport(facts({
+    regions: [REGIONS[0]],
+    groups: [groupArtifact({})],
+    catalogSelectedBy: 'arg',
+    candidates: [102040, 102054],
+  }), 4);
+  assert.match(report.notes.join('\n'), /mais de um catálogo alcançável \(102040, 102054\)/);
 });

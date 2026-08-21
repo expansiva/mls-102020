@@ -26,6 +26,11 @@ export interface ChRunFacts {
   level1Reference: string;
   /** Which rung of the read ladder answered for level 1. */
   level1Via: ChCatalogVia;
+  /** Which project's catalog answered the run, how it was chosen, and what else was reachable. */
+  catalogProject: number;
+  catalogSelectedBy: string;
+  candidates: number[];
+  catalogWarnings: string[];
   publishedGroups: string[];
   regions: ChRegion[];
   /** One per group c1 chose. A group whose step never accepted an answer is here with ok: false. */
@@ -53,7 +58,15 @@ export interface ChRunReport {
   runKey: string;
   definition: string;
   userLanguage: string;
-  catalog: { level1Reference: string; publishedGroups: string[]; level1Via: ChCatalogVia; groupsReadFromEditor: string[] };
+  catalog: {
+    project: number;
+    selectedBy: string;
+    candidates: number[];
+    level1Reference: string;
+    publishedGroups: string[];
+    level1Via: ChCatalogVia;
+    groupsReadFromEditor: string[];
+  };
   rows: ChRunRow[];
   totals: {
     regions: number;
@@ -101,6 +114,12 @@ export function buildChRunReport(facts: ChRunFacts, charsPerToken: number): ChRu
   });
 
   const notes: string[] = [];
+  // The discovery's warnings come first: "the chosen project is not a dependency" changes how every row
+  // below should be read, so it cannot sit under the per-region notes.
+  for (const warning of facts.catalogWarnings) notes.push(warning);
+  if (facts.candidates.length > 1) {
+    notes.push(`havia mais de um catálogo alcançável (${facts.candidates.join(', ')}) e este run usou o ${facts.catalogProject}`);
+  }
   // Reading from the editor is a finding, not a detail: the choice is valid, but a consumer that is not
   // the editor sees only the published module and would have read nothing.
   const fromEditor = [
@@ -133,6 +152,9 @@ export function buildChRunReport(facts: ChRunFacts, charsPerToken: number): ChRu
     definition: facts.definition,
     userLanguage: facts.userLanguage,
     catalog: {
+      project: facts.catalogProject,
+      selectedBy: facts.catalogSelectedBy,
+      candidates: facts.candidates,
       level1Reference: facts.level1Reference,
       publishedGroups: facts.publishedGroups,
       level1Via: facts.level1Via,
@@ -167,7 +189,7 @@ export function buildChRunReport(facts: ChRunFacts, charsPerToken: number): ChRu
 export function renderChRunSummary(report: ChRunReport): string {
   const lines: string[] = [];
 
-  lines.push(`**Sonda do catálogo** · run \`${report.runKey}\` · ${report.totals.regions} região(ões), ${report.totals.groupsChosen} grupo(s)`);
+  lines.push(`**Sonda do catálogo** · run \`${report.runKey}\` · catálogo do projeto **${report.catalog.project}** (${report.catalog.selectedBy}) · ${report.totals.regions} região(ões), ${report.totals.groupsChosen} grupo(s)`);
   lines.push('');
   lines.push('| região | grupo | molécula | cenário |');
   lines.push('|---|---|---|---|');

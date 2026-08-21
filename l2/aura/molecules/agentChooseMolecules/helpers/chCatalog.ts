@@ -14,9 +14,11 @@
 // The import stays as the second rung: it is the only one a consumer outside the editor has, and it needs
 // no parser. Which rung answered is recorded per level (`via`).
 //
-// ⚠️ THE CATALOG BELONGS TO THE ACTIVE PROJECT, never to a hardcoded 102040. `mls.actualProject` is what
-// nmDestProject() returns, so the probe reads whichever project it runs in — which is also why the
-// pilot's mls-102040-temp needs no special case: uploaded to the Studio it IS the active project.
+// ⚠️ THE CATALOG IS NOT NECESSARILY IN THE ACTIVE PROJECT, and from 2026-08-20 it is looked up. The probe
+// runs from the CLIENT project while the molecules live in a dependency: the base library, a theme project,
+// or — after a molecule is copied — the client itself. So the search set is the active project plus its
+// DIRECT dependencies, and exactly one catalog answers a run (helpers/chEntry.chChooseCatalog). Never a
+// hardcoded 102040.
 //
 // ⚠️ AND THE FINDING BEHIND THAT ORDER IS ABOUT THE §10 DESIGN, not about this agent: a generated
 // `index.defs.ts` is unreadable by any consumer until it is published. Publishing is part of generating a
@@ -31,6 +33,11 @@ import {
   chGroupFolder,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import { chExtractCatalogModule } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chExtract.js';
+import {
+  ChCatalogChoice,
+  ChCatalogSelectedBy,
+  chChooseCatalog,
+} from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chEntry.js';
 
 // ---- agent-owned files (prompt.md, schemas) in the 102020 agent folder ----
 
@@ -76,6 +83,7 @@ export interface ChCatalogGroup {
 }
 
 export interface ChLevel1 {
+  project: number;
   reference: string;
   groups: ChCatalogGroup[];
   skill: string;
@@ -83,16 +91,16 @@ export interface ChLevel1 {
   via: ChCatalogVia;
 }
 
-export function chLevel1FileInfo(): NmFileInfo {
-  return { project: nmDestProject(), level: 2, folder: 'molecules', shortName: 'skill', extension: '.ts' };
+export function chLevel1FileInfo(project: number): NmFileInfo {
+  return { project, level: 2, folder: 'molecules', shortName: 'skill', extension: '.ts' };
 }
 
-export function chLevel1Reference(): string {
-  return `/_${nmDestProject()}_/l2/molecules/skill`;
+export function chLevel1Reference(project: number): string {
+  return `/_${project}_/l2/molecules/skill`;
 }
 
-export async function readChLevel1(): Promise<{ level1: ChLevel1 | null; error: string }> {
-  const reference = chLevel1Reference();
+export async function readChLevel1(project: number): Promise<{ level1: ChLevel1 | null; error: string }> {
+  const reference = chLevel1Reference(project);
   const imported = await loadCatalogModule(reference);
   if (!imported.mod || !imported.via) return { level1: null, error: imported.error };
 
@@ -102,9 +110,55 @@ export async function readChLevel1(): Promise<{ level1: ChLevel1 | null; error: 
   if (!groups.length) return { level1: null, error: `${reference} publishes no group — nothing can be chosen from it` };
   if (!skill.trim()) return { level1: null, error: `${reference} exports no 'skill' text — level 1 is what the first call reads` };
   return {
-    level1: { reference, groups, skill, theme: typeof mod.theme === 'string' ? mod.theme : null, via: imported.via },
+    level1: { project, reference, groups, skill, theme: typeof mod.theme === 'string' ? mod.theme : null, via: imported.via },
     error: '',
   };
+}
+
+// ---- discovery: which project's catalog answers this run ----
+
+export interface ChDiscovery extends ChCatalogChoice {
+  activeProject: number;
+  /** Declared dependencies of the active project: what its pages may import from. */
+  directDeps: number[];
+  /**
+   * What mls.l5.getProjectDependencies resolves, recorded but NOT used to search.
+   *
+   * ⚠️ Two lists, on purpose. The docs of that API say "all unique project dependencies" and offer a
+   * forceUpdate that "recalculates", which reads like the transitive closure — and transitive is wrong here:
+   * a client that depends on a theme would be offered the base library's molecules through it. So the search
+   * uses the DECLARED list (prj_dependencies, the same source libCommom.loadModuleFromProjectOrDependency
+   * uses) and the resolved one is recorded so the difference is measured instead of assumed.
+   */
+  resolvedDeps: number[];
+  /** Projects that have l2/molecules/skill.ts, in search order. */
+  candidates: number[];
+}
+
+/**
+ * The search set is [active project, ...direct dependencies] and the rule that picks one of them is pure
+ * (chChooseCatalog). Scanning is a filter over mls.stor.files, the same gesture utils.resolveNewTag uses to
+ * resolve a molecule tag across projects — no fetch.
+ */
+export async function discoverChCatalog(argProject: number | null): Promise<ChDiscovery> {
+  const activeProject = nmDestProject();
+  // A cold session may not have the dependencies' file index in memory yet, and without it every candidate
+  // would look absent.
+  try {
+    await mls.stor.loadProjectdependenciesInfoIfNeed(activeProject);
+  } catch {
+    // Best effort: if it fails, the scan below simply sees whatever is loaded and the error names it.
+  }
+
+  const declared = mls.l5.getProjectDetails(activeProject)?.prj_dependencies;
+  const resolvedDeps = mls.l5.getProjectDependencies(activeProject, false) || [];
+  const directDeps = Array.isArray(declared) ? declared.filter(project => project !== activeProject) : resolvedDeps;
+
+  const searchOrder = [activeProject, ...directDeps];
+  const candidates = searchOrder.filter(project => nmFileExists(chLevel1FileInfo(project)));
+  const choice = chChooseCatalog({ activeProject, argProject, candidates, directDeps });
+
+  return { ...choice, activeProject, directDeps, resolvedDeps, candidates };
 }
 
 // ---- level 2: which molecules one group has ----

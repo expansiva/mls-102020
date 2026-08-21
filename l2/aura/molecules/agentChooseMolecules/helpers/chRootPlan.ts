@@ -87,6 +87,21 @@ export function getChRootPlan(context: mls.msg.ExecutionContext): ChRootPlan {
   return root ? normalizeChRootPlan(root.interaction?.payload?.[0]) : EMPTY;
 }
 
+/**
+ * The catalog project named at the entry, or null when the mention carried only prose.
+ *
+ * It travels in task memory next to the definition, because it is part of what was ASKED — a later step
+ * re-reading the mention would have to parse it again, and the c0 classifier must never see it (it would
+ * start naming projects, and the probe measures the catalog, not the classifier's memory).
+ */
+export function getChCatalogArg(context: mls.msg.ExecutionContext): number | null {
+  const memory = context.task?.iaCompressed?.longMemory || {};
+  // Task memory is Record<string, string>, so the project id travels as text and is read back as a number.
+  const raw = memory.catalogProject;
+  const project = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(project) && project > 0 ? project : null;
+}
+
 /** The definition of the page, verbatim as the user wrote it — published to task memory by the root. */
 export function getChDefinition(context: mls.msg.ExecutionContext): string {
   const memory = context.task?.iaCompressed?.longMemory || {};

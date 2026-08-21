@@ -19,6 +19,25 @@ author's machine, so whatever a maintainer needs in order to change this agent i
 Level 3 is referenced by level 2 (`usageContract`) and deliberately never read here: this probe
 chooses, it does not compose. Reading it would also make the prompt-size measurement meaningless.
 
+## Which catalog answers the run
+
+The probe is run from the CLIENT project, where the molecules live in a dependency — the base library, a
+theme project, or the client itself once a molecule is copied into it. So:
+
+- the search set is the **active project plus its DIRECT dependencies** (`prj_dependencies`), and a project
+  qualifies by having `l2/molecules/skill.ts`. The transitive list is deliberately not used: a client that
+  depends on a theme must not be offered the base library's molecules through it;
+- **exactly one catalog answers a run.** One candidate is used; none, or more than one, is a readable
+  refusal that names what it looked at and the argument that resolves it;
+- `@@agentChooseMolecules { catalogProject: 102054 } <definition>` overrides the search — which is how a
+  theme's catalog gets probed from outside it. A project that is not a direct dependency is allowed and
+  warned about: what it chose could not be imported by a page here.
+
+Refusing on two catalogs rather than picking is the point: molecules of two themes do not belong in the
+same page, so a silent pick would answer with the wrong aesthetic and still look correct. A clarification
+with one checkbox per catalog, and the union that goes with it, is phase 2 — due when a theme project gets
+a catalog of its own, since today only one project has one.
+
 ## The funnel, and why it is a funnel
 
 Two calls instead of one, because the whole catalog does not fit a prompt and should not have to.

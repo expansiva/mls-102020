@@ -90,10 +90,19 @@ export interface ChGroupsArtifact {
   schemaVersion: 1;
   savedAt: string;
   runKey: string;
+  /** The project whose catalog answered this run — not necessarily the project the run belongs to. */
+  catalogProject: number;
   level1Reference: string;
   regions: ChRegion[];
   /** Distinct groups, in the catalog's spelling — what the fan-out plants from. */
   groups: string[];
+  /**
+   * Each chosen group's level-2 reference, as level 1 published it.
+   *
+   * Pinned here so the c2 steps never look level 1 up again: re-discovering could land on a different
+   * catalog than the one c1 answered from, and a run must measure ONE catalog.
+   */
+  groupRefs: Array<{ group: string; indexDefs: string }>;
 }
 
 export interface ChChoice {

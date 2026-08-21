@@ -21,6 +21,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { isBareMention, stripAgentMention } from '/_102020_/l2/aura/molecules/shared/mentionEntry.js';
+import { chParseEntry } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chEntry.js';
 import { isRecord, parseMaybeJson } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmRunKey } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmParseStepArgs, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
@@ -70,17 +71,23 @@ async function beforePromptImplicit(
   context: mls.msg.ExecutionContext,
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
-  let definition: string;
+  let raw: string;
   if (context.isTest) {
     const testData = JSON.parse(userPrompt || '{}') as IDataPrompt;
-    definition = (testData.prompt || '').trim();
+    raw = (testData.prompt || '').trim();
   } else {
     const text = stripAgentMention(userPrompt, agent.agentName);
-    definition = isBareMention(text) ? '' : text;
+    raw = isBareMention(text) ? '' : text;
   }
+
+  // An optional '{ catalogProject: N }' before the prose says WHICH catalog to read; with nothing, the
+  // catalog is looked up in this project and its direct dependencies. See helpers/chEntry.
+  const entry = chParseEntry(raw);
+  if (entry.error) throw new Error(`[${AGENT_NAME}] ${entry.error}`);
+  const definition = entry.definition;
   if (definition.length < MIN_DEFINITION) {
     throw new Error(
-      `[${AGENT_NAME}] describe the page or system, e.g. '@@${AGENT_NAME} Cadastro de cliente: nome completo, CPF, telefone, e-mail e data de nascimento'`,
+      `[${AGENT_NAME}] describe the page, the screen or the region, e.g. '@@${AGENT_NAME} Cadastro de cliente: nome completo, CPF, telefone, e-mail e data de nascimento'. To read the catalog of another project, put '{ catalogProject: 102040 }' before it`,
     );
   }
 
@@ -97,8 +104,9 @@ async function beforePromptImplicit(
       threadId: context.message.threadId,
       userMessage: context.message.content,
       // The definition travels in task memory, verbatim: it is the input of c1 and it is recorded in
-      // input.json for whoever scores the battery.
-      longTermMemory: { flowName: AGENT_NAME, definition },
+      // input.json for whoever scores the battery. The catalog project rides along — it is part of what
+      // was asked, and the classifier below never sees it.
+      longTermMemory: { flowName: AGENT_NAME, definition, ...(entry.catalogProject ? { catalogProject: String(entry.catalogProject) } : {}) },
     },
   };
   return [addMessageAI];

@@ -46,6 +46,10 @@ interface ChInputArtifact {
   userLanguage: string;
   level1Reference: string;
   level1Via?: ChCatalogVia;
+  catalogProject?: number;
+  catalogSelectedBy?: string;
+  catalogWarnings?: string[];
+  discovery?: { candidates?: number[] };
   publishedGroups: Array<{ name: string }>;
 }
 
@@ -111,7 +115,11 @@ async function beforePromptStep(
     definition: input.definition,
     userLanguage: input.userLanguage,
     level1Reference: input.level1Reference || groupsArtifact.level1Reference,
-    level1Via: input.level1Via || 'published',
+    level1Via: input.level1Via || 'stor',
+    catalogProject: input.catalogProject || groupsArtifact.catalogProject,
+    catalogSelectedBy: input.catalogSelectedBy || 'local',
+    candidates: input.discovery?.candidates || [],
+    catalogWarnings: input.catalogWarnings || [],
     publishedGroups: (input.publishedGroups || []).map(group => group.name),
     regions: groupsArtifact.regions,
     groups,
