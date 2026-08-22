@@ -1910,7 +1910,15 @@ export function createPromptReadyIntent(
   };
 }
 
-export function createAgentStepPayload(planId: string, agentName: string, stepTitle: string, prompt: unknown, dependsOn: string[], executionMode: 'sequential' | 'parallel_dynamic' = 'sequential', status: mls.msg.AIStepStatus = 'waiting_dependency'): mls.msg.AIAgentStep {
+/**
+ * @param onFailure policy for a step whose LLM call fails. OMITTED unless the caller asks for it: a
+ *        sequential step (phase, verify, register, finalize) is unique and mandatory, and failing the
+ *        task there is the correct outcome. Only a fan-out HOST whose slots call an LLM passes
+ *        'wait_after_prompt' — the children inherit it (addParallelChildStep) and a provider failure
+ *        then reaches the agent's afterPromptStep instead of killing the task (see flow.json
+ *        engineInvariants).
+ */
+export function createAgentStepPayload(planId: string, agentName: string, stepTitle: string, prompt: unknown, dependsOn: string[], executionMode: 'sequential' | 'parallel_dynamic' = 'sequential', status: mls.msg.AIStepStatus = 'waiting_dependency', onFailure?: mls.msg.AIAgentStep['onFailure']): mls.msg.AIAgentStep {
   return {
     type: 'agent',
     stepId: 0,
@@ -1921,6 +1929,7 @@ export function createAgentStepPayload(planId: string, agentName: string, stepTi
     agentName,
     prompt: JSON.stringify(prompt),
     rags: [],
+    ...(onFailure ? { onFailure } : {}),
     planning: { planId, dependsOn, executionMode, executionHost: 'client' },
   } as any;
 }

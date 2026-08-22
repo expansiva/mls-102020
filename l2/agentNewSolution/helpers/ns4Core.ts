@@ -166,6 +166,9 @@ export interface Ns4PipelineState {
   sourcePrompt: string;
   presentation: Ns4Presentation;
   status: 'inProgress' | 'complete' | 'failed';
+  /** Audit of the last explicit regeneration: which step it restarted from, and when. */
+  rebuiltFrom?: Ns4RebuildFrom;
+  rebuiltAt?: string;
   steps: {
     e1: {
       status: Ns4E1Status;
@@ -280,11 +283,57 @@ export interface Ns4PipelineState {
 
 export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-e4' | 'resume-e5' | 'resume-e6' | 'resume-e7' | 'resume-e8' | 'resume-e9' | 'resume-e10' | 'resume-next' | 'collision';
 
-export function parseNs4Invocation(value: string): { fast: boolean; prompt: string } {
+/** Steps a partial rebuild can start from. e1 is not one of them: restarting at e1 IS a total rebuild. */
+export type Ns4RebuildFrom = 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'e7' | 'e8' | 'e9' | 'e10';
+
+const NS4_REBUILD_RE = /(^|\s)\/rebuild(?:\s+(e[2-9]|e10))?(?=\s|$)/i;
+
+export interface Ns4Invocation {
+  fast: boolean;
+  /** Explicit regeneration intent. Never inferred from prose — prose only produces a graceful stop. */
+  rebuild: boolean;
+  /** Set only by `/rebuild <eN>`; empty means the whole module. */
+  rebuildFrom: Ns4RebuildFrom | '';
+  prompt: string;
+}
+
+export function parseNs4Invocation(value: string): Ns4Invocation {
   const raw = String(value || '');
   const fast = /(^|\s)\/fast(?=\s|$)/i.test(raw);
-  const prompt = raw.replace(/(^|\s)\/fast(?=\s|$)/gi, '$1').replace(/\s+/g, ' ').trim();
-  return { fast, prompt };
+  const rebuildMatch = NS4_REBUILD_RE.exec(raw);
+  const rebuildFrom = (rebuildMatch?.[2] || '').toLowerCase() as Ns4RebuildFrom | '';
+  // The flag AND its argument leave the prompt: a leftover bare `e10` would end up in the business
+  // description the planner reads.
+  const prompt = raw
+    .replace(/(^|\s)\/fast(?=\s|$)/gi, '$1')
+    .replace(new RegExp(NS4_REBUILD_RE.source, 'gi'), '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { fast, rebuild: !!rebuildMatch, rebuildFrom, prompt };
+}
+
+/**
+ * A prompt that ASKS for a rebuild in prose and names an existing module.
+ *
+ * The incident this exists for: `rebuild all criar um site chamado petShop , em …`. The module name sits
+ * mid-sentence, so `resolveNs4ExistingModuleToken` (which requires the WHOLE prompt to be one token) read
+ * it as a new module, E1 ran, and the existence backstop killed the task — the user asked to rebuild and
+ * got a terminal error.
+ *
+ * BOTH signals are required. Scanning tokens for an existing module name on its own would hijack an
+ * ordinary creation prompt that happens to mention one ("um módulo de agenda para o petShop"); demanding
+ * an explicit rebuild word keeps every prompt without one canonicalized exactly as before. The outcome is
+ * only ever a message teaching the flag — nothing is written or deleted on this path.
+ */
+export function detectNs4RebuildIntentModule(value: string, existingModules: ReadonlySet<string>): string {
+  const raw = String(value || '');
+  if (!/(^|\s)(rebuild|regenerar|regerar|reconstruir)(\s|$)/i.test(raw)) return '';
+  for (const token of raw.split(/[^A-Za-z0-9]+/).filter(Boolean)) {
+    if (!isNs4ModuleToken(token)) continue;
+    const normalized = normalizeNs4ModuleName(token);
+    if (existingModules.has(normalized)) return normalized;
+  }
+  return '';
 }
 
 export function createNs4E2Step(
@@ -1658,6 +1707,95 @@ export function resolveNs4ExistingAction(
   if (pipeline.steps.e2?.status === 'approved' && moduleArtifactExists) return 'resume-e3';
   if (pipeline.steps.e1.status === 'approved' && moduleArtifactExists) return 'resume-e2';
   return 'resume-e1';
+}
+
+/**
+ * Everything a TOTAL rebuild archives: the module's whole l4 and l5 trees.
+ *
+ * The whole folder, not a list of known artifacts — that is the point. A previous run leaves drafts,
+ * pipeline traces (`pipeline/msgtask*.json`) and per-entity defs whose names came from ITS ontology; a
+ * selective delete keeps whatever the new run happens not to overwrite, and the module ends up a mix of
+ * two generations. l2 is NOT touched: it belongs to agentChangeFrontend, which has its own rebuild.
+ *
+ * PURE over a `mls.stor.files`-shaped map so the selection is testable without the platform.
+ */
+export function listNs4RebuildDeletionKeys(
+  files: Record<string, { project?: number; level?: number; folder?: string; status?: string } | undefined>,
+  project: number,
+  moduleName: string,
+): string[] {
+  const normalized = normalizeNs4ModuleName(moduleName);
+  const keys: string[] = [];
+  for (const [key, file] of Object.entries(files)) {
+    if (!file || file.project !== project || file.status === 'deleted' || !file.folder) continue;
+    // l4 is this flow's own output; l5 is the delivery contract E10 emits for the same module.
+    if (file.level !== 4 && file.level !== 5) continue;
+    const first = file.folder.split('/')[0];
+    // A project-level file (l5/config.json lives at the root) has no module segment and stays.
+    if (!first || normalizeNs4ModuleName(first) !== normalized) continue;
+    keys.push(key);
+  }
+  return keys;
+}
+
+const NS4_REBUILD_ORDER: Ns4RebuildFrom[] = ['e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8', 'e9', 'e10'];
+
+const NS4_COMPLETED_STEP_BY_KEY: Record<Ns4RebuildFrom, Ns4CompletedStepId & Ns4NextStep> = {
+  e2: 'e2-journeys', e3: 'e3-access-matrix', e4: 'e4-ontology', e5: 'e5-rules', e6: 'e6-behaviors',
+  e7: 'e7-realization', e8: 'e8-workspaces', e9: 'e9-navigation-compiler', e10: 'e10-validation',
+};
+
+/** eN and every step after it. */
+export function ns4RebuildRange(from: Ns4RebuildFrom): Ns4RebuildFrom[] {
+  return NS4_REBUILD_ORDER.slice(NS4_REBUILD_ORDER.indexOf(from));
+}
+
+/**
+ * Resets eN..e10 for a partial rebuild.
+ *
+ * The reset is EXPLICIT and stamped (`rebuiltFrom`/`rebuiltAt`), which is what keeps rule 11 intact: an
+ * approved state is never regressed by a late callback, only by an intent the user typed. The step entries
+ * are dropped rather than set to a status, because e2..e10 are optional and "absent" is exactly what
+ * "not done yet" means in this pipeline.
+ */
+export function resetNs4PipelineForRebuild(
+  pipeline: Ns4PipelineState,
+  from: Ns4RebuildFrom,
+  rebuiltAt = new Date().toISOString(),
+): Ns4PipelineState {
+  const steps = { ...pipeline.steps } as Record<string, unknown>;
+  for (const key of ns4RebuildRange(from)) delete steps[key];
+  return {
+    ...pipeline,
+    status: 'inProgress',
+    steps: steps as Ns4PipelineState['steps'],
+    rebuiltFrom: from,
+    rebuiltAt,
+  };
+}
+
+/**
+ * Drops the rebuilt range from the permanent artifact's completedSteps.
+ *
+ * Without this the reset is undone silently: the invocation reconciles the pipeline from
+ * `specStatus.completedSteps` whenever the artifact says approved and the file still exists, so the very
+ * next invocation would re-mark e10 approved and answer "pipeline encerrado" to a second /rebuild e10.
+ */
+export function clearNs4ModuleCompletedStepsFrom(
+  artifact: Ns4ModuleArtifact,
+  from: Ns4RebuildFrom,
+): Ns4ModuleArtifact {
+  const removed = new Set<Ns4CompletedStepId>(ns4RebuildRange(from).map(key => NS4_COMPLETED_STEP_BY_KEY[key]));
+  return {
+    ...artifact,
+    specStatus: {
+      ...artifact.specStatus,
+      state: 'inProgress',
+      artifactCompleteness: 'partial',
+      completedSteps: artifact.specStatus.completedSteps.filter(completed => !removed.has(completed.stepId)),
+      nextStep: NS4_COMPLETED_STEP_BY_KEY[from],
+    },
+  };
 }
 
 export function isNs4Pipeline(value: unknown): value is Ns4PipelineState {

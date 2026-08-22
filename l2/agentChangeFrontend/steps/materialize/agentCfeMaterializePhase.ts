@@ -573,6 +573,16 @@ function createFanoutStep(planId: string, title: string, total: number, dependsO
   return {
     type: 'agent',
     stepId: 0,
+    // A provider/transport failure in ONE slot must not kill the task. Without this, the default branch
+    // of runLLMStepParallel marks the slot failed WITH newTaskStatus 'failed' and the whole
+    // changeFrontend dies mid-fan-out (msgtask_fe1, petShop: an HTTP 402 on the fallback model threw
+    // away 14 finished pages and orphaned 8 slots). With 'wait_after_prompt' the slot goes to
+    // waiting_after_prompt_with_error, afterPromptStep still runs and completes it with
+    // 'MATERIALIZE-FAILED: missing generated code', and the phase verify lists the item as broken and
+    // repairs it — the path this fan-out was designed around. Children inherit it via
+    // addParallelChildStep. NOT 'skip': that marks the slot failed, which fails the task while the
+    // siblings are still active and fails this host once they drain.
+    onFailure: 'wait_after_prompt',
     interaction: {
       input: [{ type: 'system', content: '<!-- modelType: code -->' }],
       cost: 0,

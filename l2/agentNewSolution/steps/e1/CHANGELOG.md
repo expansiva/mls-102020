@@ -1,5 +1,11 @@
 # E1 changelog
 
+- 2026-08-21: The existence backstop accepts a `/rebuild` run (`rebuildModule` memory, the analogue of
+  `resumeModule`) and its message now teaches the flag. It has to be the memory and not the archive:
+  the archive is a soft-delete and the module keeps `l2` files this flow does not own, so
+  `listNs4ModuleFolders` still reports the folder. Every other collision is refused exactly as before —
+  rule 7 is intact, regeneration is an explicit intent.
+
 - 2026-08-08 — Build 29 canonicalizes single-token module names before the root planner, so an
   initial-capital command such as `BuildFlowFsm23` resumes `buildFlowFsm23` directly instead of
   executing a fresh E1 and discovering the collision only during compilation.

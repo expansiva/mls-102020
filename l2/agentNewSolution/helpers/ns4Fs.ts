@@ -2,7 +2,7 @@
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { extractNs4ClassicJsonObject, ns4ClassicDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
-import { normalizeNs4ModuleName } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
+import { listNs4RebuildDeletionKeys, normalizeNs4ModuleName } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import { readNs4AvailableContent } from '/_102020_/l2/agentNewSolution/helpers/ns4ContentRead.js';
 import { renderNs4TypedDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4TypedDefs.js';
 import type {
@@ -564,4 +564,25 @@ function displayPath(fileInfo: Ns4FileInfo): string {
 
 function isGlobalFolder(level: number, folder: string): boolean {
   return level === 4 && ['actors', 'operations', 'rules', 'trace', 'workflows'].includes(folder);
+}
+
+/**
+ * Archives the module's whole l4/l5 through the platform channel (`libStor.deleteFile`): a persisted file
+ * becomes `status: 'deleted'` and a never-saved one is removed. Nothing is unlinked outside that channel.
+ */
+export async function archiveNs4ModuleForRebuild(moduleName: string): Promise<string[]> {
+  const project = mls.actualProject || 0;
+  // Snapshot first: deleteFile mutates mls.stor.files while we iterate.
+  const keys = listNs4RebuildDeletionKeys(mls.stor.files, project, moduleName);
+  const archived: string[] = [];
+  // Imported lazily: libStor touches the editor at module load, and ns4Fs must stay importable by the
+  // node tests that exercise the pure selection.
+  const { deleteFile } = await import('/_102027_/l2/libStor.js');
+  for (const key of keys) {
+    const file = mls.stor.files[key];
+    if (!file) continue;
+    await deleteFile(file);
+    archived.push(key);
+  }
+  return archived;
 }

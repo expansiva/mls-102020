@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   buildNs4PlannedSteps,
+  clearNs4ModuleCompletedStepsFrom,
   createNs4E2Step,
   createNs4E3Step,
   createNs4E4Step,
@@ -12,6 +13,7 @@ import {
   createNs4E8Step,
   createNs4E9Step,
   createNs4E10Step,
+  detectNs4RebuildIntentModule,
   isNs4Pipeline,
   markNs4E3Approved,
   markNs4E4Approved,
@@ -25,6 +27,7 @@ import {
   Ns4RootPlan,
   parseNs4Invocation,
   resolveNs4DynamicWorkerRequest,
+  resetNs4PipelineForRebuild,
   resolveNs4ExistingAction,
   resolveNs4ExistingModuleToken,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
@@ -32,6 +35,7 @@ import {
   listNs4ModuleFolders,
   ns4AccessMatrixFile,
   ns4FileExists,
+  archiveNs4ModuleForRebuild,
   ns4ModuleFile,
   ns4OntologyIndexFile,
   ns4RulesFile,
@@ -41,6 +45,7 @@ import {
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
+  writeNs4Module,
   writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
 import {
@@ -123,8 +128,40 @@ async function beforePromptImplicit(
   let resumeModule = '';
   let resumeTarget = '';
   let resumeRound = '';
+  let rebuildModule = '';
   let taskTitle = 'new Solution';
-  const existingModule = resolveNs4ExistingModuleToken(invocation.prompt, listNs4ModuleFolders());
+  const existingModules = listNs4ModuleFolders();
+  const existingModule = resolveNs4ExistingModuleToken(invocation.prompt, existingModules);
+
+  if (invocation.rebuild && !existingModule) {
+    // Never create silently from a rebuild intent: the user believes the module is there.
+    const intended = detectNs4RebuildIntentModule(invocation.prompt, existingModules);
+    return [await statusTask(
+      agent,
+      context,
+      intended
+        ? `Para regenerar, informe apenas o módulo: "@@newSolution ${intended} /rebuild${invocation.rebuildFrom ? ` ${invocation.rebuildFrom}` : ''}".`
+        : `Não existe módulo com esse nome para regenerar. Use "@@newSolution <módulo> /rebuild" com o nome de um módulo já gerado.`,
+      'new Solution',
+      true,
+    )];
+  }
+
+  if (!existingModule && !invocation.rebuild) {
+    // The prompt ASKS for a rebuild in prose and names a module that exists: teach the flag instead of
+    // reading it as a new module and dying in the E1 existence backstop (the msgtask3 incident).
+    const intended = detectNs4RebuildIntentModule(invocation.prompt, existingModules);
+    if (intended) {
+      return [await statusTask(
+        agent,
+        context,
+        `Módulo "${intended}" já existe. Para regenerar, use "@@newSolution ${intended} /rebuild" (tudo) ou "@@newSolution ${intended} /rebuild e10" (a partir de um step). Nada foi alterado.`,
+        `plan ${intended}`,
+        true,
+      )];
+    }
+  }
+
   if (existingModule) {
     let pipeline = await readNs4Pipeline(existingModule);
     if (isNs4Pipeline(pipeline)) {
@@ -200,14 +237,51 @@ async function beforePromptImplicit(
         true,
       )];
     }
-    if (action === 'resume-next' && pipeline?.steps.e10?.status === 'approved') {
+    if (invocation.rebuild) {
+      // Explicit intent, and only for a module this flow owns: `collision` above already refused the rest.
+      if (!invocation.rebuildFrom) {
+        // TOTAL: archive the module's whole l4/l5 so no draft, trace or per-entity defs from the previous
+        // ontology survives into the new generation, then generate again from E1.
+        const archived = await archiveNs4ModuleForRebuild(existingModule);
+        console.info(`[agentNewSolution] /rebuild ${existingModule}: archived ${archived.length} l4/l5 files`);
+        rebuildModule = existingModule;
+        sourcePrompt = pipeline?.sourcePrompt || invocation.prompt;
+        // A prompt typed alongside the flag replaces the stored one; the bare module name does not.
+        if (invocation.prompt && invocation.prompt !== existingModule) sourcePrompt = invocation.prompt;
+        taskTitle = `plan ${existingModule}`;
+      } else if (!isNs4Pipeline(pipeline)) {
+        return [await statusTask(
+          agent,
+          context,
+          `Módulo "${existingModule}" não possui pipeline do agentNewSolution para regenerar a partir de ${invocation.rebuildFrom}.`,
+          `plan ${existingModule}`,
+          true,
+        )];
+      } else {
+        // PARTIAL: reuse the resume machinery, after resetting eN..e10 EXPLICITLY. The artifact's
+        // completedSteps are cleared too, or the reconciliation above would re-approve them on the next
+        // invocation and answer "pipeline encerrado" to a second /rebuild.
+        const rebuiltAt = new Date().toISOString();
+        await writeNs4Pipeline(resetNs4PipelineForRebuild(pipeline, invocation.rebuildFrom, rebuiltAt));
+        const moduleArtifact = await readNs4Module(existingModule);
+        if (moduleArtifact) {
+          await writeNs4Module(existingModule, clearNs4ModuleCompletedStepsFrom(moduleArtifact, invocation.rebuildFrom));
+        }
+        resumeModule = existingModule;
+        resumeTarget = invocation.rebuildFrom;
+        resumeRound = '1';
+        sourcePrompt = pipeline.sourcePrompt || invocation.prompt;
+        taskTitle = `plan ${existingModule}`;
+        console.info(`[agentNewSolution] /rebuild ${existingModule} from ${invocation.rebuildFrom} at ${rebuiltAt}`);
+      }
+    } else if (action === 'resume-next' && pipeline?.steps.e10?.status === 'approved') {
       return [await statusTask(
         agent,
         context,
-        `Módulo "${existingModule}": especificação completa aprovada e pipeline encerrado.`,
+        `Módulo "${existingModule}": especificação completa aprovada e pipeline encerrado. Para regenerar, use "@@newSolution ${existingModule} /rebuild" (tudo) ou "@@newSolution ${existingModule} /rebuild e10" (a partir de um step).`,
         `plan ${existingModule}`,
       )];
-    }
+    } else {
     resumeModule = existingModule;
     resumeTarget = action === 'resume-e1' ? 'e1' : action === 'resume-e10' ? 'e10' : action === 'resume-e9' ? 'e9' : action === 'resume-e8' ? 'e8' : action === 'resume-e7' ? 'e7' : action === 'resume-e6' ? 'e6' : action === 'resume-e5' ? 'e5' : action === 'resume-e4' ? 'e4' : action === 'resume-e3' ? 'e3' : 'e2';
     resumeRound = resumeTarget === 'e7' ? '' : resumeTarget === 'e8' ? String(Math.max(1, pipeline?.steps.e8?.reviewRound || 1)) : resumeTarget === 'e6'
@@ -221,6 +295,7 @@ async function beforePromptImplicit(
       : resumeTarget === 'e2' ? String(Math.max(1, pipeline?.steps.e2?.reviewRound || 1)) : '';
     sourcePrompt = pipeline?.sourcePrompt || invocation.prompt;
     taskTitle = `plan ${existingModule}`;
+    }
   }
 
   const planPrompt = await readNs4AgentText('', 'promptPlan');
@@ -242,6 +317,7 @@ async function beforePromptImplicit(
         sourcePrompt,
         ...(invocation.fast ? { fastMode: 'true' } : {}),
         ...(resumeModule ? { resumeModule } : {}),
+        ...(rebuildModule ? { rebuildModule } : {}),
         ...(resumeTarget ? { resumeTarget } : {}),
         ...(resumeRound ? { resumeRound } : {}),
       },

@@ -2,6 +2,15 @@
 
 # Changelog
 
+- 2026-08-21 (rodada 7: falha de LLM em 1 slot matava a task) — `createFanoutStep` passou a nascer com
+  `onFailure: 'wait_after_prompt'`, e com isso os 4 hosts deste agente (materialize, repair, split de
+  organismos, composicao da pagina). Evidencia: `msgtask_fe1` do petShop — um HTTP 402 no modelo de
+  fallback derrubou a task com 14/57 paginas prontas e 8 slots orfaos em `in_progress`. O comentario
+  "fan-out slots NEVER return 'failed'" cobria os RETORNOS do agente; a falha de LLM acontece no
+  harness, ANTES do `afterPromptStep`, e caia no default que passa `newTaskStatus: 'failed'`.
+  `'skip'` NAO resolveria: marca o slot como failed, o que derruba a task enquanto os irmaos estao
+  ativos e derruba o host quando eles drenam.
+
 - 2026-07-31 (item B + B.1 do supervisor: 4 defeitos transversais como REGRA e como CHECK) —
 . Cada defeito virou regra nas DUAS skills de render e check
   deterministico no verify; regra sozinha nao segura (a disciplina de titulos ja reincidiu 3x).

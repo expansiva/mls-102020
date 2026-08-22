@@ -187,3 +187,16 @@ void test('the verify reports released models in the step trace, never in the co
   assert.match(src, /released \$\{released\} borrowed model\(s\)/u);
   assert.match(finalize, /released \$\{closure\.released\} borrowed model\(s\)/u);
 });
+
+// ── uma falha de LLM num slot não pode matar a task (rodada 7) ────────────────
+// createFanoutStep monta os QUATRO hosts deste agente (materialize, rodada de repair, split de
+// organismos e composição da página), então a política vive nele — um lugar só.
+void test('todo host de fan-out do materialize nasce com onFailure wait_after_prompt', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /function createFanoutStep\([\s\S]{0,1400}onFailure: 'wait_after_prompt',/);
+  // NÃO é 'skip': marcar o slot como failed derruba a task enquanto os irmãos estão ativos
+  // (updateStepStatus) e derruba o host quando eles drenam (updateParentStep).
+  assert.doesNotMatch(src, /onFailure: 'skip'/);
+  // Os 4 call sites continuam passando pelo helper (nenhum host montado à mão).
+  assert.equal((src.match(/createFanoutStep\(/g) || []).length, 5); // 4 chamadas + a declaração
+});

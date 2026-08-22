@@ -17,7 +17,14 @@ import {
   NS4_FLOW_VERSION,
   NS4_PIPELINE_SCHEMA_VERSION,
   Ns4PipelineState,
+  clearNs4ModuleCompletedStepsFrom,
+  listNs4RebuildDeletionKeys,
+  markNs4E2Approved,
+  markNs4E10Approved,
+  detectNs4RebuildIntentModule,
+  ns4RebuildRange,
   parseNs4Invocation,
+  resetNs4PipelineForRebuild,
   plainNs4StepTitle,
   resolveNs4DynamicWorker,
   resolveNs4DynamicWorkerRequest,
@@ -90,8 +97,75 @@ test('product languages are normalized, ordered and deduplicated independently o
 });
 
 test('/fast is a standalone flag and is removed from the business prompt', () => {
-  assert.deepEqual(parseNs4Invocation('petShop /fast'), { fast: true, prompt: 'petShop' });
-  assert.deepEqual(parseNs4Invocation('/fastlane petShop'), { fast: false, prompt: '/fastlane petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /fast'), { fast: true, rebuild: false, rebuildFrom: '', prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('/fastlane petShop'), { fast: false, rebuild: false, rebuildFrom: '', prompt: '/fastlane petShop' });
+});
+
+test('/rebuild is an explicit flag, and its step argument leaves the prompt with it', () => {
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild'), { fast: false, rebuild: true, rebuildFrom: '', prompt: 'petShop' });
+  // The argument must not survive in the prompt: the planner would read `e10` as business description.
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild e10'), { fast: false, rebuild: true, rebuildFrom: 'e10', prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild e2 /fast'), { fast: true, rebuild: true, rebuildFrom: 'e2', prompt: 'petShop' });
+  // e1 is not a partial target: restarting at e1 IS a total rebuild, so the token stays in the prompt.
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild e1'), { fast: false, rebuild: true, rebuildFrom: '', prompt: 'petShop e1' });
+  assert.deepEqual(parseNs4Invocation('/rebuilder petShop'), { fast: false, rebuild: false, rebuildFrom: '', prompt: '/rebuilder petShop' });
+});
+
+test('a prose rebuild naming an existing module is recognized — the msgtask3 incident', () => {
+  const modules = new Set(['petShop', 'buildFlowFsm']);
+  // The real prompt of the failed run. The module name sits MID-SENTENCE, so the token resolver reads it
+  // as a new module, E1 runs, and the existence backstop kills the task.
+  const incident = 'rebuild all criar um site chamado petShop , em portugues';
+  assert.equal(resolveNs4ExistingModuleToken(incident, modules), '', 'the token resolver cannot see it');
+  assert.equal(detectNs4RebuildIntentModule(incident, modules), 'petShop');
+
+  // BOTH signals are required: an ordinary creation prompt that merely mentions an existing module is
+  // NOT hijacked into a rebuild.
+  assert.equal(detectNs4RebuildIntentModule('quero um modulo de agenda para o petShop', modules), '');
+  // And a rebuild word naming nothing that exists stays empty.
+  assert.equal(detectNs4RebuildIntentModule('rebuild all do modulo agenda', modules), '');
+  assert.equal(detectNs4RebuildIntentModule('regenerar o buildFlowFsm inteiro', modules), 'buildFlowFsm');
+});
+
+test('a partial rebuild resets the interval EXPLICITLY, in the pipeline and in the artifact', () => {
+  let pipeline = createNs4Pipeline('petShop', 'petShop', '2026-08-20T10:00:00.000Z');
+  pipeline = markNs4E1Approved(pipeline, 'human', 'l4/petShop/module.defs.ts', '2026-08-20T10:01:00.000Z');
+  pipeline = markNs4E2Approved(pipeline, 'human', ['l4/petShop/journeys/index.defs.ts'], '2026-08-20T10:02:00.000Z');
+  pipeline = markNs4E10Approved(pipeline, 'human', '2026-08-20T10:03:00.000Z');
+  assert.equal(pipeline.status, 'complete');
+
+  const reset = resetNs4PipelineForRebuild(pipeline, 'e10', '2026-08-21T09:00:00.000Z');
+  // e1..e9 keep their approval, timestamps included: a partial rebuild is not a new module.
+  assert.equal(reset.steps.e1.status, 'approved');
+  assert.equal(reset.steps.e1.approvedAt, '2026-08-20T10:01:00.000Z');
+  assert.equal(reset.steps.e2?.status, 'approved');
+  assert.equal(reset.steps.e2?.approvedAt, '2026-08-20T10:02:00.000Z');
+  // And the rebuilt interval is gone, audited, never silently regressed (rule 11).
+  assert.equal(reset.steps.e10, undefined);
+  assert.equal(reset.status, 'inProgress');
+  assert.equal(reset.rebuiltFrom, 'e10');
+  assert.equal(reset.rebuiltAt, '2026-08-21T09:00:00.000Z');
+  assert.deepEqual(ns4RebuildRange('e8'), ['e8', 'e9', 'e10']);
+
+  // The artifact has to be cleared too: the invocation re-marks a pipeline step approved from
+  // completedSteps whenever the file still exists, so leaving them would undo this reset on the next run.
+  const artifact = buildNs4ModuleArtifact('petShop', clarification, 'human', '2026-08-20T10:01:00.000Z');
+  const withE10 = {
+    ...artifact,
+    specStatus: {
+      ...artifact.specStatus,
+      state: 'complete' as const,
+      completedSteps: [
+        ...artifact.specStatus.completedSteps,
+        { stepId: 'e9-navigation-compiler' as const, status: 'approved' as const, approvedBy: 'human' as const, approvedAt: '2026-08-20T10:02:00.000Z' },
+        { stepId: 'e10-validation' as const, status: 'approved' as const, approvedBy: 'human' as const, approvedAt: '2026-08-20T10:03:00.000Z' },
+      ],
+    },
+  };
+  const cleared = clearNs4ModuleCompletedStepsFrom(withE10, 'e10');
+  assert.deepEqual(cleared.specStatus.completedSteps.map(item => item.stepId), ['e1', 'e9-navigation-compiler']);
+  assert.equal(cleared.specStatus.state, 'inProgress');
+  assert.equal(cleared.specStatus.nextStep, 'e10-validation');
 });
 
 test('root plan localizes and creates the complete visible roadmap before E1 starts', () => {
@@ -252,4 +326,28 @@ test('resume is allowed only for a pipeline owned by agentNewSolution', () => {
   assert.equal(resolveNs4ExistingAction(true, running, false), 'resume-e1');
   assert.equal(resolveNs4ExistingAction(true, approved, true), 'resume-e2');
   assert.equal(resolveNs4ExistingAction(true, approved, false), 'resume-e1');
+});
+
+test('a total rebuild archives the module whole l4 and l5, and nothing else', () => {
+  // The whole folder, not a list of known artifacts: a previous run leaves drafts, pipeline traces and
+  // per-entity defs named after ITS ontology, and a selective delete would mix two generations.
+  const files: Record<string, { project?: number; level?: number; folder?: string; status?: string }> = {
+    'a': { project: 102047, level: 4, folder: 'petShop' },
+    'b': { project: 102047, level: 4, folder: 'petShop/pipeline' },
+    'c': { project: 102047, level: 4, folder: 'petShop/ontology' },
+    'd': { project: 102047, level: 4, folder: 'petShop/pipeline/e4-entities' },
+    'e': { project: 102047, level: 5, folder: 'petShop' },
+    // l2 is agentChangeFrontend's output and has its own rebuild: never nuked from here.
+    'f': { project: 102047, level: 2, folder: 'petShop/web/shared' },
+    // Another module, another project, and an already archived file stay untouched.
+    'g': { project: 102047, level: 4, folder: 'otherModule' },
+    'h': { project: 102046, level: 4, folder: 'petShop' },
+    'i': { project: 102047, level: 4, folder: 'petShop/rules', status: 'deleted' },
+    // A project-level file has no module segment: l5/config.json must survive a module rebuild.
+    'j': { project: 102047, level: 5, folder: 'config' },
+  };
+  assert.deepEqual(listNs4RebuildDeletionKeys(files, 102047, 'petShop').sort(), ['a', 'b', 'c', 'd', 'e']);
+  // The module name is canonicalized the same way everywhere else it is read.
+  assert.deepEqual(listNs4RebuildDeletionKeys(files, 102047, 'PetShop').sort(), ['a', 'b', 'c', 'd', 'e']);
+  assert.deepEqual(listNs4RebuildDeletionKeys(files, 102047, 'unknownModule'), []);
 });

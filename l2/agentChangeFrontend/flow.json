@@ -109,6 +109,8 @@
     "Fan-out progress titles must expose completed, total and failed counters.",
     "Dynamic child args stay compact and unique.",
     "A worker should prefer completed-with-trace plus downstream verification when one item can be repaired without failing the whole pipeline.",
+    "Every fan-out host whose slots call an LLM sets onFailure: 'wait_after_prompt' (children inherit it via addParallelChildStep). A transport/provider failure then puts the slot in waiting_after_prompt_with_error, the agent's afterPromptStep still runs, completes the slot with its '*-FAILED: ' trace, and the fan-out counter reclassifies the provisional failure as completed (recoverParallelCompletion). WITHOUT it the default branch of runLLMStepParallel fails the STEP with newTaskStatus 'failed' and kills the whole task - msgtask_fe1 (petShop, 2026-08-21): one LLM 402 on the fallback threw away 14 finished pages and left 8 slots orphaned in in_progress. onFailure: 'skip' does NOT solve it: it marks the slot failed, updateStepStatus fails the task anyway while siblings are active, and updateParentStep later fails the host. Deterministic fan-outs (no afterPromptStep) must NOT set it - the engine would enqueue a hook that does not exist and the slot would stay active forever.",
+    "Sequential steps (phase, verify, register, finalize) carry NO onFailure: they are unique and mandatory, and failing the task is the correct outcome there. createAgentStepPayload therefore omits the field unless a caller asks for it.",
     "PlanIds must be unique; runtime-generated planIds are documented by pattern below.",
     "The i18n catalogue lives in the PAGE files only. A shared .ts emits no message_* consts, no MessageType and no messages export; the page (and each organism of a split page) emits its own complete pageMessage_<locale> catalogue.",
     "The page catalogue is emitted DETERMINISTICALLY from the shared .defs.ts i18n map — the same map that used to feed the shared .ts. The model never copies a literal into it: a literal is what produced hardcoded English text in files that compiled clean.",
@@ -197,6 +199,7 @@
         "create-contract-shared-fanout"
       ],
       "maxParallel": 10,
+      "onFailure": "wait_after_prompt",
       "progressTitle": "Criar layouts {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
@@ -300,6 +303,8 @@
         "materialize-phase-{phase}"
       ],
       "maxParallel": 10,
+      "onFailure": "wait_after_prompt",
+      "onFailureCovers": "createFanoutStep builds all four hosts of this agent (materialize, repair round, split organisms, split page), so they share the policy.",
       "modelAlias": "code",
       "goal": "Generate one materialized runtime file from one pipeline item.",
       "deterministicShared": {

@@ -16,6 +16,14 @@ Invocation:
 
 - `@@newSolution petShop` — create a module or resume its next incomplete v19 step;
 - `@@newSolution petShop /fast` — auto-accept valid E1 through E6 proposals;
+- `@@newSolution petShop /rebuild` — regenerate the module WHOLE: archives `l4/petShop` and
+  `l5/petShop` through the platform soft-delete and generates again from E1. The whole folder on
+  purpose — a previous run leaves drafts, pipeline traces and per-entity defs named after ITS
+  ontology, and keeping any of them mixes two generations. `l2` is not touched: it belongs to
+  agentChangeFrontend, which has its own rebuild;
+- `@@newSolution petShop /rebuild e10` — regenerate FROM a step (e2..e10): e1..e9 keep their
+  approval and timestamps, e10 runs again. Use it to re-emit only the l5 contracts without paying
+  E1-E9. Both forms stamp `rebuiltFrom`/`rebuiltAt` on the pipeline;
 - an existing module without an `agentNewSolution` pipeline is rejected.
 
 For a one-token module invocation, lookup is canonicalized before the root planner. For example,
