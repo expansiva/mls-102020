@@ -36,6 +36,17 @@ function isLandingWithoutPriorSelection(
   return journey?.business.entry.mode === 'coldStart';
 }
 
+function identityEntityOfInput(
+  input: Ns4E8Model['operations'][number]['inputs'][number], sources: Ns4E8Sources,
+): { entityId: string; fieldId: string } | null {
+  const entity = sources.ontology.entities.find(item => item.entityId === input.fieldRef.entityId);
+  const idField = entity?.storage.idField
+    || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId
+    || '';
+  if (!idField || input.fieldRef.fieldId !== idField) return null;
+  return { entityId: input.fieldRef.entityId, fieldId: idField };
+}
+
 function primaryReadBffIds(workspace: Ns4E8ModelWorkspace): string[] {
   const fromOrganisms = workspace.sections.flatMap(section => section.organisms)
     .filter(organism => organism.dataSource && (organism.role === 'primarySurface' || organism.role === 'detailPanel'))
@@ -158,6 +169,51 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
         if (pickerEntities.has(parent) || parent === workspace.entity) return;
         add('NS4_E8_PICKER_SOURCE', `${path}.bffCalls.${call.bffId}.${input.inputId}`,
           `A tela ${workspace.title} escolhe ${parent} sem uma consulta que o liste; nesta versão o registro vem de fora da tela. Revisar?`, 'warning');
+      });
+    });
+
+    // A command that requires the KEY of entity X needs a way for THIS page to obtain X.
+    // PICKER_SOURCE is silent when workspace.entity === X (it assumes the page already holds
+    // that record). recordInStoreServiceAttendance is of ServiceExecution and still has no
+    // read that returns serviceExecutionId — five commands demand it, the only query is of
+    // ServiceAppointment. The CF then invents the field on the appointment row.
+    //
+    // Warning/registrar, same as LANDING_REQUIRED_INPUT: a blocking A would fail E10 on any
+    // module that compiled this shape (sequential create-then-act without a declared feeder).
+    // Legitimate paths: a query whose output carries the key, a query of X, or inputSources
+    // pointing at a command that produces it (then the screen only operates after that command).
+    workspace.bffCalls.filter(call => call.kind === 'command').forEach(call => {
+      const operation = operations.get(call.operationId);
+      if (!operation) return;
+      (operation.inputs || []).forEach(input => {
+        if (!input.required) return;
+        if (input.source !== 'selectedEntity') return;
+        const keyEntity = identityEntityOfInput(input, sources);
+        if (!keyEntity) return;
+        const keyRef = `${keyEntity.entityId}.${keyEntity.fieldId}`;
+        const queryHasKey = workspace.bffCalls.some(item => {
+          if (item.kind !== 'query') return false;
+          if (item.entityRef === keyEntity.entityId) return true;
+          const queryOp = operations.get(item.operationId);
+          return Boolean(queryOp && (queryOp.entityRef === keyEntity.entityId || queryOp.outputRefs.includes(keyRef)));
+        });
+        if (queryHasKey) return;
+        const feeder = (call.inputSources || []).find(link => {
+          if (link.inputId !== input.inputId) return false;
+          const sourceCall = workspace.bffCalls.find(item => item.bffId === link.bffId);
+          if (!sourceCall || sourceCall.kind !== 'command') return false;
+          const sourceOp = operations.get(sourceCall.operationId);
+          return Boolean(sourceOp && (sourceOp.entityRef === keyEntity.entityId || sourceOp.outputRefs.includes(keyRef)));
+        });
+        if (feeder) {
+          add('NS4_E8_COMMAND_KEY_AFTER_COMMAND', `${path}.bffCalls.${call.bffId}.${input.inputId}`,
+            `A tela ${workspace.workspaceId} só opera ${call.bffId} depois de ${feeder.bffId}, que produz ${keyRef}.`,
+            'warning');
+          return;
+        }
+        add('NS4_E8_COMMAND_KEY_WITHOUT_SOURCE', `${path}.bffCalls.${call.bffId}.${input.inputId}`,
+          `Command ${call.bffId} requires ${keyRef} and no read on ${workspace.workspaceId} provides that key (output of a page query, a query of ${keyEntity.entityId}, or inputSources from a command that produces it).`,
+          'warning');
       });
     });
 

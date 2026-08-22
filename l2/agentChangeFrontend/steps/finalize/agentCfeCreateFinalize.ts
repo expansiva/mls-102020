@@ -15,6 +15,7 @@ import { orderModuleCompile } from '/_102020_/l2/agentChangeFrontend/helpers/cfe
 import { agentBuildTrace, readAgentProvenance } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
 import { describeCompilerFidelity } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileFidelity.js';
 import { saveCfRunReport } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunDossier.js';
+import { buildCfRunReport } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunReport.js';
 import { collectRunStepRecords } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunSteps.js';
 
 const AGENT_NAME = 'agentCfeCreateFinalize';
@@ -184,8 +185,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const shown = closure.errors.slice(0, 12).join('\n');
       const more = closure.errors.length > 12 ? `\n…(+${closure.errors.length - 12} more)` : '';
       const fidelity = describeCompilerFidelity();
-      const writeFailDossier = async (summary: string, repairing: boolean): Promise<string | null> => saveCfRunReport(result.moduleName, {
+      const writeDossier = async (summary: string, repairing: boolean): Promise<string | null> => saveCfRunReport(result.moduleName, buildCfRunReport({
         moduleName: result.moduleName,
+        attempt,
+        final: !repairing,
         pagesDone: result.pagesDone,
         ownersDone: result.ownersDone,
         skippedPages: result.skippedPages,
@@ -194,10 +197,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         agentBuild: await readAgentProvenance(),
         steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
         summary,
-      });
+      }));
       if (attempt <= MAX_MODULE_COMPILE_REPAIRS && plan.slots.length > 0) {
         const failTrace = `MODULE-COMPILE-FAILED (${closure.errors.length} error(s) across ${closure.checked} .ts of ${result.moduleName}) -> ${describeCompileRepairPlan(plan, attempt)}. ${fidelity}\n${shown}${more}\n${base}`;
-        const reportRef = await writeFailDossier(failTrace, true);
+        const reportRef = await writeDossier(failTrace, true);
         return [
           ...buildCompileRepairRound(context, parentStep, plan.slots, attempt),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
@@ -207,7 +210,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const why = plan.slots.length === 0
         ? 'no broken file has a defs on disk, so no repair slot can be built'
         : `repair budget exhausted after ${MAX_MODULE_COMPILE_REPAIRS} round(s)`;
-      const reportRef = await writeFailDossier(
+      const reportRef = await writeDossier(
         `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (${why}). ${fidelity}`,
         false,
       );
@@ -224,8 +227,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // Repeat the build stamp at the end: a post-mortem reads the LAST trace of the run first.
     // Do NOT claim tsc-equivalence: the gate is Monaco; declare the difference (F2).
     const trace = `${base}${addLanguage}; moduleCompile=${closure.checked} file(s) with no Monaco errors${repaired}; ${fidelity}; released ${closure.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
-    const reportRef = await saveCfRunReport(result.moduleName, {
+    const reportRef = await saveCfRunReport(result.moduleName, buildCfRunReport({
       moduleName: result.moduleName,
+      attempt,
+      final: true,
       pagesDone: result.pagesDone,
       ownersDone: result.ownersDone,
       skippedPages: result.skippedPages,
@@ -238,7 +243,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       agentBuild,
       steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
       summary: trace,
-    });
+    }));
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
       reportRef ? `${trace} Run report: ${reportRef}.` : trace)];
   } catch (error) {

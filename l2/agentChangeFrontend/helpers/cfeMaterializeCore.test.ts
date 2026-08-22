@@ -575,6 +575,33 @@ const choose = (row: QryLocateConfirmedServiceAppointmentOutput): void => {
   assert.ok(issues.every(i => !/`row\.serviceAppointmentId`/.test(i)));
 });
 
+// fe4: the THIRD form — type inferred from the list, not `QryXOutput` and not `selected.`.
+const FE4_PAGE21_TYPEOF_ROW = `
+const rows = this.qryLocateConfirmedServiceAppointmentData ?? [];
+const selectedId = this.cmdRegisterPetArrivalServiceAppointmentServiceAppointmentId ||
+  this.cmdRegisterServiceStartServiceAppointmentServiceAppointmentId;
+const selected = rows.find((row) => row.serviceAppointmentId === selectedId);
+const status = selected?.status ?? '';
+const selectAppointment = (row: (typeof rows)[number]): void => {
+  this.setCmdRegisterPetArrivalServiceAppointmentServiceAppointmentId(row.serviceAppointmentId);
+  this.setCmdRegisterServiceStartServiceAppointmentServiceAppointmentId(row.serviceAppointmentId);
+  if (row.serviceExecutionId) {
+    this.setCmdRegisterServiceStartServiceExecutionServiceExecutionId(row.serviceExecutionId);
+    this.setCmdRegisterServiceCompletionServiceExecutionServiceExecutionId(row.serviceExecutionId);
+    this.setCmdRegisterInStorePaymentServiceExecutionServiceExecutionId(row.serviceExecutionId);
+    this.setCmdRegisterPetPickupServiceExecutionServiceExecutionId(row.serviceExecutionId);
+    this.setCmdHandoffCompletedServiceServiceExecutionServiceExecutionId(row.serviceExecutionId);
+  }
+};
+`;
+
+void test('collectContractFieldIssues acusa campo lido de (typeof rows)[number] — origem, não forma (fe4)', () => {
+  const issues = collectContractFieldIssues(FE4_PAGE21_TYPEOF_ROW, FE2_CONTRACT);
+  assert.ok(issues.some(i => /`row\.serviceExecutionId` is not declared by qryLocateConfirmedServiceAppointment/.test(i)), JSON.stringify(issues));
+  assert.ok(issues.every(i => !/`row\.serviceAppointmentId`/.test(i)), JSON.stringify(issues));
+  assert.ok(issues.every(i => /output of a COMMAND is read from that command's state/.test(i)));
+});
+
 void test('fe3 recortes: family B is now visible to the guard; C and D stay as compile/i18n evidence', () => {
   const issues = collectContractFieldIssues(FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT);
   assert.ok(issues.some(i => /serviceExecutionId/.test(i)), JSON.stringify(issues));

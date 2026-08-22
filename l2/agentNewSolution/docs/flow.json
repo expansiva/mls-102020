@@ -501,7 +501,8 @@
         "Blocking validation persists the report, marks its earliest owning step stale and does not write or update L5 files.",
         "The L5 config merger updates only the current module navigation/headerLinks in an existing client project or top-level module seed. Unrelated keys and modules are preserved; identical inputs produce byte-identical config JSON.",
         "Decision coherence compares the journey index against itself — decisions and selections are two fields of the same permanent artifact, never a draft of the pipeline.",
-        "An index that answers decisions it does not carry is a defect of the pipeline, not of the product: E10 fails without a repair step and without marking any step stale, because no step can repair a source that was written wrong."
+        "An index that answers decisions it does not carry is a defect of the pipeline, not of the product: E10 fails without a repair step and without marking any step stale, because no step can repair a source that was written wrong.",
+        "When assembling config.projects, E10 reads `projectType` from each dependency's l5/project.json (`lib` | `master frontend` | `master backend` | `client`). A type already in config.projects is preserved; a type from project.json is next; otherwise the module's own project is `client` and an untyped dependency is `lib` plus a finding. E10 never guesses master frontend/backend. On the current project's project.json it writes `projectType: client` only when the field is absent, same as appEnv."
       ]
     }
   ]

@@ -393,8 +393,8 @@ export async function writeNs4WorkflowIndex(moduleName: string, artifact: Ns4Wor
 export async function writeNs4E10ValidationReport(moduleName: string, report: Ns4E10ValidationReport): Promise<string> {
   const fileInfo = ns4E10ValidationReportFile(moduleName); await writeNs4Text(fileInfo, `${JSON.stringify(report, null, 2)}\n`); return displayPath(fileInfo);
 }
-export function ns4L5ProjectFile(): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 5, folder: '', shortName: 'project', extension: '.json' };
+export function ns4L5ProjectFile(projectId?: number): Ns4FileInfo {
+  return { project: projectId ?? (mls.actualProject || 0), level: 5, folder: '', shortName: 'project', extension: '.json' };
 }
 
 export function ns4L5PublishConfFile(shortName: string): Ns4FileInfo {
@@ -402,8 +402,8 @@ export function ns4L5PublishConfFile(shortName: string): Ns4FileInfo {
 }
 
 /** l5/project.json — organization-level, owned by the studio. E10 reads it and only ADDS what is absent. */
-export async function readNs4L5Project(): Promise<Record<string, unknown> | null> {
-  const raw = await readNs4Text(ns4L5ProjectFile(), false); if (!raw.trim()) return null;
+export async function readNs4L5Project(projectId?: number): Promise<Record<string, unknown> | null> {
+  const raw = await readNs4Text(ns4L5ProjectFile(projectId), false); if (!raw.trim()) return null;
   try {
     const value = JSON.parse(raw);
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('root must be an object');

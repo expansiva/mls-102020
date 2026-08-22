@@ -21,6 +21,10 @@ void test('the finalize gate declares Monaco vs tsc fidelity and writes a cf-run
   const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
   assert.match(src, /describeCompilerFidelity/);
   assert.match(src, /saveCfRunReport/);
+  assert.match(src, /buildCfRunReport/);
+  assert.match(src, /cfeRunReport/);
+  assert.match(src, /final: true/);
+  assert.match(src, /final: !repairing/);
   assert.match(src, /collectRunStepRecords/);
   assert.match(src, /cfeRunSteps/);
   assert.match(src, /no Monaco errors/);

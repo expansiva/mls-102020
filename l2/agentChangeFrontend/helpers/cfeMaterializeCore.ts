@@ -1061,6 +1061,72 @@ export function collectContractFieldIssues(pageCode: string, contractSource: str
   }
   issues.push(...collectSelectedRecordFieldIssues(pageCode, fieldsByBff, arrayBindings, seen));
   issues.push(...collectTypedOutputParamFieldIssues(pageCode, fieldsByBff, seen));
+  issues.push(...collectOriginBoundFieldIssues(pageCode, fieldsByBff, arrayBindings, seen));
+  return issues;
+}
+
+/**
+ * Close the field check by ORIGIN of the data, not by the syntactic form of the read.
+ *
+ * `selected.<campo>` (find/[0]/at) and `(row: QryXOutput) =>` were two forms. The third that
+ * escaped — run fe4, page21/recordInStoreServiceAttendance.ts:55–74 — is a parameter whose type is
+ * INFERRED from the list: `(row: (typeof rows)[number]) => row.serviceExecutionId`. Chasing forms
+ * is a losing race. Any identifier whose value derives from `this.<bffId>Data` (direct assignment,
+ * find/at/[0], map/forEach/filter callback, or `(typeof <list>)[number]`) may only read fields
+ * that bff declares.
+ */
+function collectOriginBoundFieldIssues(
+  pageCode: string,
+  fieldsByBff: Map<string, Set<string>>,
+  arrayBindings: Map<string, Set<string>>,
+  seen: Set<string>,
+): string[] {
+  const origin = new Map<string, Set<string>>();
+  const add = (name: string, bffs: Iterable<string>): void => {
+    const bound = origin.get(name) ?? new Set<string>();
+    for (const bff of bffs) bound.add(bff);
+    origin.set(name, bound);
+  };
+  for (const [name, bffs] of arrayBindings) add(name, bffs);
+
+  let grew = true;
+  while (grew) {
+    grew = false;
+    const pickRe = /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*(?:\.\s*find\s*\(|\.\s*at\s*\(\s*0\s*\)|\[\s*0\s*\])/gu;
+    for (const match of pageCode.matchAll(pickRe)) {
+      const source = origin.get(match[2]);
+      if (!source) continue;
+      const before = origin.get(match[1])?.size ?? 0;
+      add(match[1], source);
+      if ((origin.get(match[1])?.size ?? 0) > before) grew = true;
+    }
+    const callbackRe = /\b([A-Za-z_$][\w$]*)\s*\.\s*(?:map|forEach|filter|find)\s*\(\s*(?:async\s*)?\(?\s*([A-Za-z_$][\w$]*)/gu;
+    for (const match of pageCode.matchAll(callbackRe)) {
+      const source = origin.get(match[1]);
+      if (!source) continue;
+      const before = origin.get(match[2])?.size ?? 0;
+      add(match[2], source);
+      if ((origin.get(match[2])?.size ?? 0) > before) grew = true;
+    }
+    const typeofRe = /\(\s*([A-Za-z_$][\w$]*)\s*:\s*\(\s*typeof\s+([A-Za-z_$][\w$]*)\s*\)\s*\[\s*number\s*\]/gu;
+    for (const match of pageCode.matchAll(typeofRe)) {
+      const source = origin.get(match[2]);
+      if (!source) continue;
+      const before = origin.get(match[1])?.size ?? 0;
+      add(match[1], source);
+      if ((origin.get(match[1])?.size ?? 0) > before) grew = true;
+    }
+  }
+
+  const issues: string[] = [];
+  const commandRemedy = 'A field that only exists in the output of a COMMAND is read from that command\'s state, never from the query record';
+  for (const [name, bffs] of origin) {
+    if (bffs.size !== 1) continue;
+    const bff = [...bffs][0];
+    const declared = fieldsByBff.get(bff);
+    if (!declared) continue;
+    collectDirectFieldAccessIssues(pageCode, name, bff, declared, seen, issues, commandRemedy);
+  }
   return issues;
 }
 

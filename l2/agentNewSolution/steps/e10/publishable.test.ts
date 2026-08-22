@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_PROJECT_APP_ENV, PLATFORM_BLOCK_DEFAULTS, PUBLISH_CONF_EXAMPLES, applyPlatformBlockDefaults,
   buildProjectsBlock, buildWorkspaceDependencies, collectProjectJsonIssues, collectPublishableConfigIssues,
-  ensureProjectAppEnv,
+  ensureProjectAppEnv, ensureProjectType, readProjectTypeFromProjectJson,
 } from './publishable.js';
 
 test('workspaceDependencies is exactly what the platform reports, deduped and never filtered', () => {
@@ -27,8 +27,41 @@ test('projects covers every dependency; a declared type is preserved and an unkn
   // guessing 'master backend' silently would put a wrong root in the build.
   assert.deepEqual(result.projects['102029'], { root: '../mls-102029', type: 'lib' });
   assert.equal(result.issues.length, 1, result.issues.join(' | '));
-  assert.match(result.issues[0], /projects\.102029: no type declared anywhere/u);
+  assert.match(result.issues[0], /projects\.102029: no type in config.projects nor in mls-102029\/l5\/project.json projectType/u);
   assert.match(result.issues[0], /assumed 'lib'/u);
+});
+
+test('projectType on a dependency project.json supplies the type and silences the finding', () => {
+  const result = buildProjectsBlock({}, 102046, [102033, 102029], {
+    '102033': 'master frontend',
+    '102029': 'lib',
+  });
+  assert.deepEqual(result.projects['102033'], { root: '../mls-102033', type: 'master frontend' });
+  assert.deepEqual(result.projects['102029'], { root: '../mls-102029', type: 'lib' });
+  assert.deepEqual(result.issues, []);
+  // Config wins over project.json — a publisher who already typed the block keeps it.
+  const preserved = buildProjectsBlock(
+    { 102033: { root: '../mls-102033', type: 'lib' } },
+    102046, [102033], { '102033': 'master frontend' },
+  );
+  assert.equal((preserved.projects['102033'] as { type: string }).type, 'lib');
+  assert.deepEqual(preserved.issues, []);
+  // Junk in typeById is ignored (same as missing).
+  const junk = buildProjectsBlock({}, 102046, [102034], { '102034': 'backend' });
+  assert.equal((junk.projects['102034'] as { type: string }).type, 'lib');
+  assert.equal(junk.issues.length, 1);
+});
+
+test('projectType is read from project.json and written only when absent', () => {
+  assert.equal(readProjectTypeFromProjectJson({ projectType: 'master backend' }), 'master backend');
+  assert.equal(readProjectTypeFromProjectJson({ projectType: 'nope' }), '');
+  assert.equal(readProjectTypeFromProjectJson({}), '');
+  assert.deepEqual(ensureProjectType({ orgName: 'x' }, 'client'), {
+    projectJson: { orgName: 'x', projectType: 'client' }, changed: true,
+  });
+  assert.deepEqual(ensureProjectType({ projectType: 'lib' }, 'client'), {
+    projectJson: { projectType: 'lib' }, changed: false,
+  });
 });
 
 test('a platform block is filled from ONE source only when absent, and says so', () => {

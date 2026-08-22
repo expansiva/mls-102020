@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-08-22 — comando exige chave que nenhuma leitura da página fornece
+
+`recordInStoreServiceAttendance` é um workspace de `ServiceExecution` com cinco comandos que
+exigem `serviceExecutionId` e uma única leitura, de `ServiceAppointment`. O `NS4_E8_PICKER_SOURCE`
+cala quando `workspace.entity` é o dono da chave — assume que a tela já tem o registro. Não tem.
+
+Gate `NS4_E8_COMMAND_KEY_WITHOUT_SOURCE` (registrar, irmão do `LANDING_REQUIRED_INPUT`): input
+obrigatório `selectedEntity` cuja `fieldRef` é a identidade de X, e a página não tem (1) query cujo
+`outputRefs`/entidade exponha essa chave, (2) query de X, nem (3) `inputSources` apontando a um
+comando que a produz. (3) vira `NS4_E8_COMMAND_KEY_AFTER_COMMAND` — a tela só opera depois daquele
+comando. Warning, não A: o mesmo compile existe em fluxos seqüenciais sem feeder declarado e um A
+derrubaria o E10. Caminho legítimo no próximo ns: incluir a leitura de X (como `attachPetServiceImage`
+já faz com `qryLocateServiceExecution`) ou fiar `inputSources` no comando que cria a chave.
+
 ## 2026-08-22 — landing sem entidade selecionada não lê por id obrigatório
 
 A home institucional do petShop (`consultInstitutionalHome`) era um journey `coldStart` cuja

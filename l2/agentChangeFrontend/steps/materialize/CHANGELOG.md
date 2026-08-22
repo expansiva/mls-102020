@@ -2,6 +2,13 @@
 
 # Changelog
 
+- 2026-08-22 (guard por ORIGEM do dado, fe4) — `collectContractFieldIssues` cobria `selected.campo`
+  (find/[0]/at) e `(row: QryXOutput) =>`. A terceira forma — `(row: (typeof rows)[number]) =>
+  row.serviceExecutionId` nas linhas 55–74 de `recordInStoreServiceAttendance` — escapou. Perseguir
+  formas perde. O guard agora rastreia identificadores que derivam de `this.<bffId>Data` (atribuição,
+  find/at/[0], callback de map/forEach/filter/find, parâmetro `(typeof list)[number]`) e só permite
+  campos declarados naquele bff. As duas formas anteriores continuam cobertas (mesmo `seen`).
+
 - 2026-08-22 (run fe2 do petShop: 15 erros de tsc em 5 arquivos mataram a task no gate final) — 4 causas,
   4 fixes, nenhum afrouxamento de gate:
   * **locale fantasma**: `i18nMeta.defaultLocale` vem COLAPSADO (`pt`) e `runtimeLocales` PRESERVA a
