@@ -9,7 +9,7 @@ import { buildNs4ParentIndex, ns4FkParentOf } from '/_102020_/l2/agentNewSolutio
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
-import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
+import type { Ns4E8Model, Ns4E8ModelWorkspace } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 
 /**
  * How a broken organism reference can be repaired without an LLM. The gate DETECTS as strictly as
@@ -24,6 +24,25 @@ export interface Ns4E8ModelIssue { code: string; path: string; message: string; 
 export interface Ns4E8ModelResult { ok: boolean; issues: Ns4E8ModelIssue[]; }
 
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
+
+function isLandingWithoutPriorSelection(
+  workspace: Ns4E8ModelWorkspace, _model: Ns4E8Model, sources: Ns4E8Sources,
+): boolean {
+  // E8 `kind: 'landing'` is also used for hub projections that open WITH a selected
+  // record (route/hub context). The empty-home defect is a coldStart journey: no
+  // entity is selected before the primary read runs.
+  if (!workspace.journeyRef) return false;
+  const journey = sources.journeys.journeys.find(item => item.journeyId === workspace.journeyRef);
+  return journey?.business.entry.mode === 'coldStart';
+}
+
+function primaryReadBffIds(workspace: Ns4E8ModelWorkspace): string[] {
+  const fromOrganisms = workspace.sections.flatMap(section => section.organisms)
+    .filter(organism => organism.dataSource && (organism.role === 'primarySurface' || organism.role === 'detailPanel'))
+    .map(organism => organism.dataSource as string);
+  if (fromOrganisms.length) return [...new Set(fromOrganisms)];
+  return workspace.bffCalls.filter(call => call.kind === 'query').map(call => call.bffId);
+}
 
 export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns4E8ModelResult {
   const issues: Ns4E8ModelIssue[] = [];
@@ -141,6 +160,25 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
           `A tela ${workspace.title} escolhe ${parent} sem uma consulta que o liste; nesta versão o registro vem de fora da tela. Revisar?`, 'warning');
       });
     });
+
+    // A landing (site landing, kind=landing, or a coldStart journey) has no selected entity yet.
+    // Its primary read cannot be getById/inspect with a required input — that is how
+    // consultInstitutionalHome opened empty (VALIDATION_ERROR: id is required).
+    if (isLandingWithoutPriorSelection(workspace, model, sources)) {
+      const hasListQuery = workspace.bffCalls.some(call =>
+        call.kind === 'query' && operations.get(call.operationId)?.accessPattern.kind === 'list');
+      if (!hasListQuery) {
+        for (const bffId of primaryReadBffIds(workspace)) {
+          const call = workspace.bffCalls.find(item => item.bffId === bffId);
+          const operation = call ? operations.get(call.operationId) : undefined;
+          const required = (operation?.inputs || []).filter(input => input.required);
+          if (!operation || !required.length) continue;
+          add('NS4_E8_LANDING_REQUIRED_INPUT', `${path}.bffCalls.${bffId}`,
+            `Landing ${workspace.workspaceId} primary read ${bffId} (${operation.operationId}) requires ${required.map(input => input.inputId).join(', ')}; a page with no selected entity must read without a required input (list or first record).`,
+            'warning');
+        }
+      }
+    }
   });
 
   const hostedSteps = new Set(model.workspaces.flatMap(workspace => workspace.hostedStepRefs));

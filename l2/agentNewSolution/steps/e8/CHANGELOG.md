@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-22 — landing sem entidade selecionada não lê por id obrigatório
+
+A home institucional do petShop (`consultInstitutionalHome`) era um journey `coldStart` cuja
+única leitura era `inspect`/`getById` com `selectedEntity` obrigatório. Sem id na URL nem picker
+na página, a BFF respondia `VALIDATION_ERROR` e a landing nascia vazia.
+
+O defeito é a **escolha da operação** (inspect onde precisava list/primeiro registro), não um
+`accessPattern` mal copiado: o inspect compilou `getById` corretamente para um passo inspect.
+
+Gate `NS4_E8_LANDING_REQUIRED_INPUT` (registrar, como o picker): journey `entry.mode: coldStart`
+cuja leitura primária tem input obrigatório e **não** há query `list` irmã. O check não se
+cala; não é A-terminal porque o mesmo compile (inspect-only coldStart) existe em módulos
+válidos (ex. viewProjectPortfolio no run44) e um A derrubaria o E10 inteiro. Caminho
+legítimo no próximo ns: list/primeiro registro, ou locate+inspect. (`kind: landing` no E8
+nomeia também projeção do hub — não entra.)
+
 ## 2026-08-21 — dado mestre não deleta: desativar e reativar
 
 O catálogo de uma entidade com `storage.target: 'mdm'` deixa de emitir `delete`. Dado mestre é
