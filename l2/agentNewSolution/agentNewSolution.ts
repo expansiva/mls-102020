@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/agentNewSolution.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { readAgentProvenance, describeProvenance } from '/_102020_/l2/agentNewSolution/helpers/ns4BuildStamp.js';
 import {
   buildNs4PlannedSteps,
   clearNs4ModuleCompletedStepsFrom,
@@ -118,6 +119,11 @@ async function beforePromptImplicit(
   context: mls.msg.ExecutionContext,
   userPrompt: string,
 ): Promise<mls.msg.AgentIntent[]> {
+  // WHICH VERSION of this agent is about to run, as an identity a human matches with git (see
+  // ns4BuildStamp). Informational: a source edited locally is normal, and work never pushed is
+  // invisible to the platform — so there is nothing here to warn about, only something to record.
+  const provenance = describeProvenance(await readAgentProvenance());
+  if (provenance) console.info(`[${agent.agentName}]${provenance}`);
   const invocation = parseNs4Invocation(userPrompt || '');
   if (!invocation.prompt) {
     // error, i18n

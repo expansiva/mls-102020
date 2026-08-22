@@ -300,7 +300,7 @@ function buildModel(outputPath: string, data: unknown, contractSource: string, p
   // document.documentElement.lang carries. The default always comes first: getMessageKey falls back to
   // keys[0] when the language is unknown.
   const declared = Array.isArray(i18nMeta.runtimeLocales) ? i18nMeta.runtimeLocales.map(item => normalizeLocaleKey(stringOf(item))) : [];
-  const runtimeLocales = [defaultLocale, ...declared.filter(locale => locale && locale !== defaultLocale)];
+  const runtimeLocales = catalogueLocales(defaultLocale, declared);
 
   const model: ScaffoldModel = {
     outputPath, baseClassName, routePattern, states, actions, initialLoads,
@@ -598,8 +598,32 @@ export function parseSharedI18nCatalogue(data: unknown): SharedI18nCatalogue | n
   const declared = Array.isArray(i18nMeta.runtimeLocales)
     ? i18nMeta.runtimeLocales.map(item => normalizeLocaleKey(stringOf(item)))
     : [];
-  const runtimeLocales = [defaultLocale, ...declared.filter(locale => locale && locale !== defaultLocale)];
+  const runtimeLocales = catalogueLocales(defaultLocale, declared);
   return { defaultLocale, runtimeLocales, i18n };
+}
+
+/**
+ * The locales a catalogue is keyed by. `i18nMeta` carries the default COLLAPSED (`pt`, no region — it
+ * comes from `languageKey`) while `runtimeLocales` PRESERVES it (`pt-br`), so the old
+ * `[defaultLocale, ...declared.filter(l => l !== defaultLocale)]` let both in: `'pt' !== 'pt-br'`.
+ * Every module whose default language has a region got two IDENTICAL catalogues — measured on the
+ * petShop (`defaultLocale: 'pt'`, `runtimeLocales: ['pt-br']` -> `pageMessage_pt` + `pageMessage_pt_br`)
+ * and on the 102046, where 3 declared languages became 4.
+ *
+ * The duplicate is not only noise: the FIRST const defines the catalogue type, so a key the model adds
+ * to the second copy and not the first is a TS2353 on a locale that should not exist at all.
+ *
+ * The rule: `runtimeLocales` IS the set (region preserved, default already first — that is how
+ * `moduleI18n` builds it). The collapsed default only joins when NO declared locale shares its primary
+ * language. Never dedupe by primary language AMONG declared ones: a module may legitimately declare
+ * `en` and `en-AU` together, and both are real catalogues.
+ */
+export function catalogueLocales(defaultLocale: string, declared: readonly string[]): string[] {
+  const clean = [...new Set(declared.filter(Boolean))];
+  const primaryOf = (locale: string): string => locale.split('-')[0];
+  if (!defaultLocale) return clean;
+  const realizedByDeclared = clean.some(locale => primaryOf(locale) === primaryOf(defaultLocale));
+  return realizedByDeclared ? clean : [defaultLocale, ...clean];
 }
 
 // Lowercase, '_' -> '-' — the SAME normalization the runtime applies to the config language list

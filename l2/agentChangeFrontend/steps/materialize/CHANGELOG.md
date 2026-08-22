@@ -2,6 +2,28 @@
 
 # Changelog
 
+- 2026-08-22 (run fe2 do petShop: 15 erros de tsc em 5 arquivos mataram a task no gate final) — 4 causas,
+  4 fixes, nenhum afrouxamento de gate:
+  * **locale fantasma**: `i18nMeta.defaultLocale` vem COLAPSADO (`pt`) e `runtimeLocales` PRESERVA a
+    região (`pt-br`), então `[default, ...declared.filter(l => l !== default)]` deixava os dois entrarem
+    e a página saía com dois catálogos idênticos. Agora `catalogueLocales` (cfeSharedScaffold) — o default
+    colapsado só entra quando NENHUM declarado realiza a mesma língua primária, e `en` + `en-AU` seguem
+    sendo dois catálogos. Isto elimina por construção o TS2353 do page11 (a chave só existia na cópia
+    que não define o tipo).
+  * **catálogo reescrito à mão**: as skills mandavam manter "o bloco `collab_i18n_*` (seus consts, seu
+    tipo, seu mapa)" enquanto o esqueleto emite `pageMessage_<locale>`/`PageMessageType`/`pageMessages`.
+    7 de 19 arquivos page21 reconstruíram o token que a skill nomeava — 3 idiomas `as const` para um
+    módulo de UM idioma = 6× TS2322. Skills corrigidas para nomear o que o esqueleto emite, proibir
+    `as const` em catálogo e fixar o conjunto de locales; guard textual novo
+    `collectPageCatalogueIssues` pega o residual no mesmo loop que salvou o arquivo.
+  * **campo de comando lido da query**: `collectContractFieldIssues` só seguia `<array>.map(row => …)`;
+    uma página que seleciona UM registro (`rows.find(…)`, `rows[0]`) escapava inteira — 7× TS2339 em
+    `selected.inStorePaymentId`/`serviceStartedAt`/… , campos que são saída dos COMANDOS. Guard estendido
+    ao registro selecionado, com o remédio certo na mensagem, + regra nas duas skills.
+  * **helper recursivo**: a skill dizia "nunca anote retorno de render, a inferência é sempre correta" —
+    e para um helper recursivo não existe inferência (TS7023/7024). Exceção estreita adicionada.
+
+
 - 2026-08-21 (rodada 7: falha de LLM em 1 slot matava a task) — `createFanoutStep` passou a nascer com
   `onFailure: 'wait_after_prompt'`, e com isso os 4 hosts deste agente (materialize, repair, split de
   organismos, composicao da pagina). Evidencia: `msgtask_fe1` do petShop — um HTTP 402 no modelo de

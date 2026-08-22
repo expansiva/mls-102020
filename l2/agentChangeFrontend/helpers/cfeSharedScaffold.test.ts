@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { generateSharedScaffold, parseContractInterfaces, parsePreviousI18n } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+import { catalogueLocales, generateSharedScaffold, parseContractInterfaces, parsePreviousI18n } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
 
 const CONTRACT = `
 // bffCall listThings (query) — Output kind=paginated
@@ -231,4 +231,29 @@ test('the page catalogue prefix is what the reader is told to look for', () => {
   assert.equal(parsePreviousI18n(pageCatalogue, 'pageMessage').get('pt-br')!['intent.things.title'], 'TRADUZIDO');
   // The default prefix keeps reading the shared's own form.
   assert.equal(parsePreviousI18n(pageCatalogue).size, 0, 'pageMessage_ is not message_');
+});
+
+// ── locale fantasma: 'pt' colapsado + 'pt-br' declarado (incidente 22/08) ─────
+// i18nMeta REAL do petShop (web/shared/consultInstitutionalHome.defs.ts): o default vem sem região e
+// os runtimeLocales com região, então a regra antiga (`l !== defaultLocale`) deixava os DOIS entrarem
+// e a página saía com pageMessage_pt e pageMessage_pt_br idênticos.
+void test('catalogueLocales: default colapsado não entra quando um declarado realiza a mesma língua', () => {
+  assert.deepEqual(catalogueLocales('pt', ['pt-br']), ['pt-br']);
+  // 102046: 3 idiomas pedidos viravam 4 com o 'pt' fantasma na frente.
+  assert.deepEqual(catalogueLocales('pt', ['pt-br', 'en', 'es']), ['pt-br', 'en', 'es']);
+});
+
+void test('catalogueLocales: en + en-AU continuam DOIS catálogos (o dedupe não é por língua primária)', () => {
+  // Caso legítimo documentado no próprio código: variante regional ao lado da língua simples.
+  assert.deepEqual(catalogueLocales('en', ['en', 'en-au']), ['en', 'en-au']);
+  assert.deepEqual(catalogueLocales('en-au', ['en-au', 'en']), ['en-au', 'en']);
+});
+
+void test('catalogueLocales: sem declarados o default é o catálogo; sem default a lista manda', () => {
+  assert.deepEqual(catalogueLocales('pt', []), ['pt']);
+  assert.deepEqual(catalogueLocales('', ['pt-br', 'en']), ['pt-br', 'en']);
+  // Um default de outra língua entra na frente (a ordem é load-bearing: o runtime cai no keys[0]).
+  assert.deepEqual(catalogueLocales('en', ['pt-br']), ['en', 'pt-br']);
+  // Duplicata declarada nunca vira dois catálogos.
+  assert.deepEqual(catalogueLocales('pt', ['pt-br', 'pt-br']), ['pt-br']);
 });

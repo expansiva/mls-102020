@@ -29,6 +29,7 @@ import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/model.js
 import type { Ns4ClassicOperation, Ns4ClassicSiteMap, Ns4ClassicWorkspace } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
 import { compileNs4E10Delivery, type Ns4E10Sources, type Ns4E10ValidationReport } from '/_102020_/l2/agentNewSolution/steps/e10/contracts.js';
 import { validateNs4E10 } from '/_102020_/l2/agentNewSolution/steps/e10/gate.js';
+import { agentBuildTrace } from '/_102020_/l2/agentNewSolution/helpers/ns4BuildStamp.js';
 
 interface Ns4E10Args { planId: 'e10-validation'; moduleName: string; }
 
@@ -98,7 +99,7 @@ export async function beforeNs4E10PromptStep(
         ? 'E10 automatic completion was already recorded.'
         : `E10 validation passed; ${artifactPaths.length - 1} L5 delivery artifacts were written and the solution was completed automatically.${
           publishIssues.length ? ` PUBLISH CHECKLIST (${publishIssues.length}): ${publishIssues.slice(0, 8).join('; ')}` : ' Publish checklist clean.'
-        }`, 'input_output')];
+        }${await agentBuildTrace('[agentNs4E10]')}`, 'input_output')];
   } catch (error) {
     const message = errorMessage(error); if (moduleName) await runtimeFail(moduleName, message, reportPath);
     return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];

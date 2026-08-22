@@ -358,7 +358,13 @@
         "register-frontend"
       ],
       "modelAlias": "deterministic",
-      "goal": "Validate create/register markers and mark processed L5 todoFrontend owners as done."
+      "goal": "Validate create/register markers, mark processed L5 todoFrontend owners as done, and run the CLOSING GATE: compile every generated .ts of the module. On errors the gate does NOT loosen — it opens ONE repair round per broken file (max 2 rounds) and a fresh finalize that recompiles; only a module that compiles hands off to agentAddLanguage. A broken file whose defs is not on disk has no pipeline item to regenerate it, so it is named and still fails the gate.",
+      "moduleCompileRepair": {
+        "planIds": "finalize-create-repair-r{attempt} (parallel_dynamic fan-out of agentCfeMaterializeGen, one slot per broken FILE) + finalize-create-r{attempt+1} (sequential recompile). Unique per round: unlockWaitingDependencySteps only releases on a COMPLETED step per planId.",
+        "budget": "MAX_MODULE_COMPILE_REPAIRS = 2 (helpers/cfeCompileRepair.ts); past it the gate fails with the same count/severity as before.",
+        "slotArgs": "{planId, defPath, itemId?, attempt} — compact BY CONTRACT: agentCfeMaterializeGen recomputes the tsc errors from disk when attempt >= 2, so no error text travels in a step prompt (16/jul lesson: repair in fan-out, raw data never in the parent prompt).",
+        "addLanguageOrder": "The addLanguage handoff moved to AFTER the gate: it spawns an independent task, so dispatching it before a failing gate translated code about to be regenerated — and once per repair round."
+      }
     }
   ],
   "removedLegacy": [

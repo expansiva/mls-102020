@@ -1,7 +1,10 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/finalize/agentCfeCreateFinalize.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createUpdateStatusIntent, finalizeGeneratedPages } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, finalizeGeneratedPages } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import {
+  MAX_MODULE_COMPILE_REPAIRS, compileRepairSlotArgs, describeCompileRepairPlan, planModuleCompileRepair,
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileRepair.js';
 // `addMessage('@@agent …')` posts a message that spawns a NEW task through the target agent's own
 // beforePromptImplicit (no coupling to its internals) — the same handoff agentNewSolution uses to start
 // @@changeBackend/@@changeFrontend. The runtime strips the mention before the agent sees the payload
@@ -9,6 +12,9 @@ import { createUpdateStatusIntent, finalizeGeneratedPages } from '/_102020_/l2/a
 import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
 import { compileMlsPathAndGetErrors, releaseBorrowedModelScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import { orderModuleCompile } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { agentBuildTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
+
+const AGENT_NAME = 'agentCfeCreateFinalize';
 
 /**
  * Whole-module compile — the closing gate the frontend lacked.
@@ -63,7 +69,7 @@ async function compileModuleClosure(moduleName: string): Promise<{ checked: numb
 
 export function createAgent(): IAgentAsync {
   return {
-    agentName: 'agentCfeCreateFinalize',
+    agentName: AGENT_NAME,
     agentProject: 102020,
     agentFolder: 'agentChangeFrontend/steps/finalize',
     agentDescription: 'Mark created frontend owners done after materialization and frontend registration',
@@ -88,26 +94,114 @@ async function dispatchAddLanguage(agent: IAgentMeta, context: mls.msg.Execution
   }
 }
 
+/** Which round this finalize is. 1 on the first pass; a repair round enqueues the next one with attempt+1. */
+function readFinalizeAttempt(prompt: string | undefined): number {
+  try {
+    const parsed = prompt ? JSON.parse(prompt) : null;
+    const attempt = parsed && typeof parsed === 'object' ? Number((parsed as Record<string, unknown>).attempt) : NaN;
+    return Number.isFinite(attempt) && attempt >= 1 ? Math.floor(attempt) : 1;
+  } catch {
+    return 1;
+  }
+}
+
+/** Is there a defs on disk for this ref? A file with no defs has no pipeline item to repair it. */
+function defsIsPresent(defPath: string): boolean {
+  const match = /^_(\d+)_\/l(\d+)\/(.+)\/([^/]+)\.defs\.ts$/su.exec(defPath);
+  if (!match) return false;
+  const fileInfo = { project: Number(match[1]), level: Number(match[2]), folder: match[3], shortName: match[4], extension: '.defs.ts' };
+  const file = (mls.stor.files as Record<string, { status?: string } | undefined>)[mls.stor.getKeyToFile(fileInfo)];
+  return Boolean(file) && file!.status !== 'deleted';
+}
+
+/**
+ * The repair round of the closing gate: one slot per broken FILE, then a fresh finalize that recompiles.
+ *
+ * Mirrors the materialize verify -> repair -> verify loop (same agent, same compact args), so nothing new
+ * is invented: `agentCfeMaterializeGen` recomputes the compiler errors from disk when `attempt >= 2`,
+ * which is why no error text travels in a step prompt.
+ */
+function buildCompileRepairRound(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  slots: ReturnType<typeof planModuleCompileRepair>['slots'],
+  attempt: number,
+): mls.msg.AgentIntent[] {
+  // Dynamic planIds, unique per round: unlockWaitingDependencySteps only releases on a COMPLETED step
+  // per planId, so reusing 'finalize-create' would make the second round wait on the first forever.
+  const repairPlanId = `finalize-create-repair-r${attempt}`;
+  const nextPlanId = `finalize-create-r${attempt + 1}`;
+  const fanout = createAgentStepPayload(
+    repairPlanId,
+    'agentCfeMaterializeGen',
+    `Reparar compile do módulo (rodada ${attempt}): {{completed}}/{{total}}, falhas {{failed}}`,
+    { planId: repairPlanId },
+    [],
+    'parallel_dynamic',
+    'in_progress',
+    // A provider failure in one slot must not kill the task (flow.json engineInvariants): the slot lands
+    // in waiting_after_prompt_with_error, its afterPromptStep completes it with MATERIALIZE-FAILED, and
+    // the recompile below is what decides.
+    'wait_after_prompt',
+  );
+  // A parallel_dynamic parent needs its interaction.input initialized before runLLMStepParallel touches it.
+  fanout.interaction = {
+    input: [{ type: 'system', content: '<!-- modelType: code -->' }],
+    cost: 0,
+    trace: [`queued ${slots.length} module-compile repair item(s)`],
+    payload: null,
+  };
+  const nextFinalize = createAgentStepPayload(
+    nextPlanId,
+    AGENT_NAME,
+    'Fechar frontend (após repair)',
+    { planId: nextPlanId, attempt: attempt + 1 },
+    [repairPlanId],
+    'sequential',
+    'waiting_dependency',
+  );
+  // Intent ORDER matters (parent auto-completion sweep): open steps first, the completed status last.
+  return [
+    createAddStepIntent(context, parentStep, fanout, slots.map(slot => compileRepairSlotArgs(slot, repairPlanId, attempt + 1))),
+    createAddStepIntent(context, parentStep, nextFinalize),
+  ];
+}
+
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
+    const attempt = readFinalizeAttempt(step.prompt);
     const result = await finalizeGeneratedPages();
-    // Last step of the task: when the module declares more than one language, hand off to agentAddLanguage
-    // as an INDEPENDENT task. It translates only the i18n block of each generated shared file (cheap
-    // translate model), so nothing here is regenerated. Null when the module is single-language — then no
-    // extra task is created at all.
-    const addLanguage = await dispatchAddLanguage(agent, context, result.addLanguageMessage);
-    // Closing gate: compile the WHOLE module, not just what this run touched (see compileModuleClosure).
+    // Closing gate FIRST: compile the WHOLE module, not just what this run touched (compileModuleClosure).
     const closure = await compileModuleClosure(result.moduleName);
-    const base = `pagesDone=${result.pagesDone.length}; ownersDone=${result.ownersDone.length}; skippedPages=${result.skippedPages.length}; ${result.configMsg}${addLanguage}`;
+    const base = `pagesDone=${result.pagesDone.length}; ownersDone=${result.ownersDone.length}; skippedPages=${result.skippedPages.length}; ${result.configMsg}`;
     if (closure.errors.length > 0) {
-      // FAIL the run. A green task with broken .ts on disk is exactly the defect this gate exists for:
-      // the file is not stale, so no later run would look at it either.
+      // The gate does not loosen — it gets a repair with a budget. A file whose defs is not on disk has no
+      // item to regenerate it, so it can only fail, and it is named.
+      const plan = planModuleCompileRepair(closure.errors, defsIsPresent);
       const shown = closure.errors.slice(0, 12).join('\n');
       const more = closure.errors.length > 12 ? `\n…(+${closure.errors.length - 12} more)` : '';
+      if (attempt <= MAX_MODULE_COMPILE_REPAIRS && plan.slots.length > 0) {
+        return [
+          ...buildCompileRepairRound(context, parentStep, plan.slots, attempt),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+            `MODULE-COMPILE-FAILED (${closure.errors.length} error(s) across ${closure.checked} .ts of ${result.moduleName}) -> ${describeCompileRepairPlan(plan, attempt)}.\n${shown}${more}\n${base}`),
+        ];
+      }
+      // Budget exhausted, or nothing repairable: FAIL exactly as before. A green task with broken .ts on
+      // disk is the defect this gate exists for — the file is not stale, so no later run would see it.
+      const why = plan.slots.length === 0
+        ? 'no broken file has a defs on disk, so no repair slot can be built'
+        : `repair budget exhausted after ${MAX_MODULE_COMPILE_REPAIRS} round(s)`;
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed',
-        `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them).\n${shown}${more}\n${base}`)];
+        `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them; ${why}).\n${shown}${more}\n${base}`)];
     }
-    const trace = `${base}; moduleCompile=${closure.checked} file(s) clean; released ${closure.released} borrowed model(s)`;
+    // Only a CLEAN module hands off to agentAddLanguage — it translates the i18n block of the generated
+    // files, and translating a module that did not compile spends a task on code about to be regenerated.
+    // (It also must not be dispatched once per repair round: the handoff spawns an independent task.)
+    const addLanguage = await dispatchAddLanguage(agent, context, result.addLanguageMessage);
+    const repaired = attempt > 1 ? `; repaired in ${attempt - 1} round(s)` : '';
+    // Repeat the build stamp at the end: a post-mortem reads the LAST trace of the run first.
+    const trace = `${base}${addLanguage}; moduleCompile=${closure.checked} file(s) clean${repaired}; released ${closure.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -2,7 +2,10 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues } from './cfeMaterializeCore.js';
+import {
+  FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
+} from '../steps/materialize/fixtures/fe2PetShopCatalogue.fixture.js';
 
 // bugpage21: the EXACT shape generated into
 // mls-102051/l2/cafeFlow/web/desktop/page21/shiftWorkspace.ts — `: nothing` in the template with a
@@ -457,4 +460,97 @@ test('the gate stays silent where it cannot know — the shapes that produced fa
   assert.deepEqual(collectContractFieldIssues(page('${project.clientName}'), 'export const x = 1;'), []);
   // 5. Array built-ins are not contract fields.
   assert.deepEqual(collectContractFieldIssues(page('${projects.length}'), CONTRACT), []);
+});
+
+// ── catálogo reescrito à mão (famílias A e D do run fe2, 22/08) ───────────────
+void test('collectPageCatalogueIssues acusa o catálogo reescrito à mão, com nome e remédio', () => {
+  const issues = collectPageCatalogueIssues(FE2_PAGE21_HANDWRITTEN_CATALOGUE);
+  // O defeito é nomeado no loop que salvou o arquivo, não como diagnóstico do gate do módulo.
+  const rebuilt = issues.find(issue => issue.startsWith('catalogue rebuilt by hand'));
+  assert.ok(rebuilt, `esperava o finding de catálogo reescrito, veio: ${JSON.stringify(issues)}`);
+  assert.match(rebuilt!, /collab_i18n_en, collab_i18n_pt, collab_i18n_es/);
+  assert.match(rebuilt!, /pageMessage_<locale>/);
+  // E o `as const`, que é o que transforma 3 idiomas em 6× TS2322.
+  assert.ok(issues.some(issue => /frozen with `as const`/.test(issue)), JSON.stringify(issues));
+});
+
+void test('collectPageCatalogueIssues NÃO acusa o bloco que o esqueleto emite', () => {
+  assert.deepEqual(collectPageCatalogueIssues(FE2_SKELETON_CATALOGUE), []);
+  assert.deepEqual(collectPageCatalogueIssues(''), []);
+  // Dois idiomas de verdade (en + en-AU) são legítimos: um const por locale, nenhum duplicado.
+  const twoLocales = `
+const pageMessage_en = { 'a.b': 'A' };
+type PageMessageType = typeof pageMessage_en;
+const pageMessage_en_au: PageMessageType = { 'a.b': 'A' };
+const pageMessages: { [key: string]: PageMessageType } = { 'en': pageMessage_en, 'en-au': pageMessage_en_au };
+`;
+  assert.deepEqual(collectPageCatalogueIssues(twoLocales), []);
+});
+
+void test('collectPageCatalogueIssues acusa o MESMO locale duas vezes — e só isso', () => {
+  // Duplicata literal do mesmo locale: a segunda cópia é o que diverge e produz o TS2353.
+  const duplicated = `
+const pageMessage_pt_br = { 'a.b': 'A' };
+type PageMessageType = typeof pageMessage_pt_br;
+const pageMessage_pt_br: PageMessageType = { 'a.b': 'A', 'c.d': 'C' };
+`;
+  const issues = collectPageCatalogueIssues(duplicated);
+  assert.equal(issues.length, 1);
+  assert.match(issues[0], /locale 'pt-br' has 2 catalogues/);
+  // O fantasma 'pt' + 'pt-br' NÃO é acusado aqui de propósito: textualmente ele é indistinguível do
+  // caso legítimo 'en' + 'en-AU'. Quem o elimina é catalogueLocales (T5), na fonte do conjunto.
+  assert.deepEqual(collectPageCatalogueIssues(FE2_PHANTOM_LOCALE_CATALOGUE), []);
+});
+
+// ── família B do run fe2: campo lido do registro SELECIONADO ─────────────────
+// page21/recordInStoreServiceAttendance.ts: `const selected = rows.find(…)` e depois
+// `selected.inStorePaymentId` — 7× TS2339. Os campos existem, mas na saída dos COMANDOS
+// registerPetArrival/registerServiceStart, não no outputShape da query.
+const FE2_CONTRACT = `
+export interface QryLocateConfirmedServiceAppointmentOutput {
+  serviceAppointmentId: string;
+  petId: string;
+  status: string;
+}
+`;
+
+void test('collectContractFieldIssues acusa campo de COMANDO lido do registro selecionado', () => {
+  const page = `
+const rows = this.qryLocateConfirmedServiceAppointmentData ?? [];
+const selected = rows.find((row: QryLocateConfirmedServiceAppointmentOutput) => row.serviceAppointmentId === selectedId);
+render() {
+  return html\`
+    <dd>\${selected.status}</dd>
+    \${!selected.inStorePaymentId ? html\`<button>pay</button>\` : nothing}
+    <dd>\${selected?.completedAt}</dd>
+  \`;
+}`;
+  const issues = collectContractFieldIssues(page, FE2_CONTRACT);
+  // `status` é declarado: não acusa. Os dois de comando, sim.
+  assert.equal(issues.length, 2, JSON.stringify(issues));
+  assert.ok(issues.some(i => /`selected\.inStorePaymentId` is not declared by qryLocateConfirmedServiceAppointment/.test(i)));
+  assert.ok(issues.some(i => /`selected\.completedAt` is not declared/.test(i)));
+  // O remédio nomeia o caminho certo, senão o repair inventa o campo na query.
+  assert.ok(issues.every(i => /output of a COMMAND is read from that command's state/.test(i)));
+});
+
+void test('collectContractFieldIssues: seleção por [0]/at(0) conta, e nome ambíguo é descartado', () => {
+  const byIndex = `
+const rows = this.qryLocateConfirmedServiceAppointmentData ?? [];
+const first = rows[0];
+render() { return html\`<dd>\${first.pickedUpAt}</dd>\`; }`;
+  assert.match(collectContractFieldIssues(byIndex, FE2_CONTRACT)[0] || '', /`first\.pickedUpAt` is not declared/);
+  // Duas queries no mesmo nome: adivinhar qual delas era reportaria campo de uma como falta da outra.
+  const ambiguous = `
+const rows = this.qryLocateConfirmedServiceAppointmentData ?? [];
+const rows = this.qryOtherData ?? [];
+const selected = rows.find(r => r.x);
+render() { return html\`<dd>\${selected.whatever}</dd>\`; }`;
+  assert.deepEqual(collectContractFieldIssues(ambiguous, `${FE2_CONTRACT}\nexport interface QryOtherOutput { x: string; }\n`), []);
+  // Fora de interpolação o mesmo texto pode ser chave de i18n: não acusa.
+  const outsideTemplate = `
+const rows = this.qryLocateConfirmedServiceAppointmentData ?? [];
+const selected = rows.find(r => r.serviceAppointmentId === id);
+const x = selected.completedAt;`;
+  assert.deepEqual(collectContractFieldIssues(outsideTemplate, FE2_CONTRACT), []);
 });

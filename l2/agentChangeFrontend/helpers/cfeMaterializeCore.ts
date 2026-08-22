@@ -458,7 +458,55 @@ export function collectPageTemplateHygieneIssues(pageCode: string): string[] {
       ? '`this.msg` is used but this file defines no `get msg()`: the i18n block of the skeleton (/// **collab_i18n_start** … the messages consts … `protected get msg()`) was deleted — the shared base class does NOT provide `msg`. Restore the block with the keys this render references.'
       : '`this.msg` is used in a render FUNCTION, which has no `this`: an organism reads its own catalog — `const msg = o<N>Messages[host.getMessageKey(o<N>Messages)] || o<N>Fallback` — and takes everything else from `host`.');
   }
+  issues.push(...collectPageCatalogueIssues(pageCode));
   return issues;
+}
+
+/**
+ * The catalogue block belongs to the SKELETON, and the model rebuilding it is a compile error every time.
+ *
+ * Run fe2 of the petShop (22/08): 7 of 19 page21 files replaced the emitted
+ * `pageMessage_<locale>`/`PageMessageType` block with a hand-written `collab_i18n_<lang>` one — three
+ * locales for a module that declares ONE, each `as const`, typed `type CollabI18n = typeof
+ * collab_i18n_pt`. Since `as const` pins the values as literal types, the other two locales cannot
+ * satisfy that type: 6× TS2322 in 2 files, and the module gate was the only thing that saw them (the
+ * per-file verify does not close types over the module).
+ *
+ * Textual on purpose, same precedent as the helper-interpolation checks above: the defect is named in the
+ * loop that just saved the file, where a repair slot already exists, instead of arriving as a module-wide
+ * compiler diagnostic that says nothing about the cause.
+ */
+export function collectPageCatalogueIssues(pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues: string[] = [];
+  const handWritten = [...pageCode.matchAll(/^\s*(?:const|let)\s+(collab_i18n_[A-Za-z0-9_$]+)\s*[=:]/gmu)]
+    .map(match => match[1]);
+  if (handWritten.length > 0) {
+    issues.push(`catalogue rebuilt by hand: ${[...new Set(handWritten)].join(', ')} — the skeleton emits `
+      + '`pageMessage_<locale>` (or `o<N>Message_<locale>`) with the type `PageMessageType` (`O<N>Msg`) '
+      + 'and the map `pageMessages`; keep that block between the /// **collab_i18n_start** markers verbatim '
+      + 'and never introduce a `collab_i18n_*` const');
+  }
+  // A catalogue const frozen with `as const` makes its values LITERAL types, so no other locale can be
+  // typed from it. The skeleton never emits it.
+  for (const match of pageCode.matchAll(/^\s*(?:const|let)\s+((?:pageMessage|o\d+Message|collab_i18n)_[A-Za-z0-9_$]+)[^=]*=\s*\{[\s\S]*?^\s*\}\s*as const\s*;/gmu)) {
+    issues.push(`catalogue '${match[1]}' is frozen with \`as const\`: its values become literal types and `
+      + 'every other locale then fails TS2322 — drop `as const` (the default locale is inferred, the others '
+      + 'carry `: PageMessageType`)');
+  }
+  // More than one catalogue for the SAME locale: the duplicate is what diverges and produces a TS2353 on
+  // a key present in one copy and missing from the one that defines the type.
+  const byLocale = new Map<string, string[]>();
+  for (const match of pageCode.matchAll(/^\s*(?:const|let)\s+((?:pageMessage|o\d+Message)_([A-Za-z0-9_$]+))\s*[=:]/gmu)) {
+    const locale = match[2].replace(/_/gu, '-').toLowerCase();
+    byLocale.set(locale, [...(byLocale.get(locale) ?? []), match[1]]);
+  }
+  for (const [locale, consts] of byLocale) {
+    if (consts.length > 1) {
+      issues.push(`locale '${locale}' has ${consts.length} catalogues (${consts.join(', ')}): one locale, one const`);
+    }
+  }
+  return [...new Set(issues)];
 }
 
 /** Field names that carry an image URL from the BFF (bugimage.md). */
@@ -1009,6 +1057,64 @@ export function collectContractFieldIssues(pageCode: string, contractSource: str
         seen.add(key);
         issues.push(`contract field missing -> \`${rowName}.${field}\` is not declared by ${bff}: its output is ${[...declared].sort().join(', ')}. Render a declared field, or the l4 has to add it to that query`);
       }
+    }
+  }
+  issues.push(...collectSelectedRecordFieldIssues(pageCode, fieldsByBff, arrayBindings, seen));
+  return issues;
+}
+
+/**
+ * The SINGLE record picked out of a list — `const selected = rows.find(…)` — read for a field the query
+ * does not return.
+ *
+ * The row check above only follows `<array>.map((row) => …)`, so a page that selects one record escaped
+ * it entirely. Run fe2 of the petShop, `page21/recordInStoreServiceAttendance.ts`: `const selected =
+ * rows.find(…)` and then `selected.inStorePaymentId`, `selected.serviceStartedAt`, `selected.completedAt`,
+ * `selected.pickedUpAt` — 7× TS2339. The fields are REAL, just not here: they are outputs of the
+ * `registerPetArrival`/`registerServiceStart` COMMANDS, while
+ * `qryLocateConfirmedServiceAppointment.outputShape` carries only the appointment's own fields. A field
+ * that exists only in a command's output is read from that command's state, never from the query row.
+ *
+ * Same scoping discipline as the row check: a name bound to more than one query is ambiguous and dropped,
+ * and only template interpolations count (outside `${…}` the same text can be an i18n key).
+ */
+function collectSelectedRecordFieldIssues(
+  pageCode: string,
+  fieldsByBff: Map<string, Set<string>>,
+  arrayBindings: Map<string, Set<string>>,
+  seen: Set<string>,
+): string[] {
+  const issues: string[] = [];
+  const singles = new Map<string, Set<string>>();
+  // `const selected = rows.find(…)`, `rows[0]`, `rows.at(0)` — the three ways a page picks one record out
+  // of a list it already bound to a query.
+  const pickRe = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*(?:\.\s*find\s*\(|\.\s*at\s*\(\s*0\s*\)|\[\s*0\s*\])/gu;
+  for (const match of pageCode.matchAll(pickRe)) {
+    const bffs = arrayBindings.get(match[2]);
+    if (!bffs || bffs.size !== 1) continue;
+    const bound = singles.get(match[1]) ?? new Set<string>();
+    bound.add([...bffs][0]);
+    singles.set(match[1], bound);
+  }
+  const interpolations = [...pageCode.matchAll(/\$\{([^}]*)\}/gu)]
+    .map(m => m[1].replace(/'[^']*'/gu, "''").replace(/"[^"]*"/gu, '""'))
+    .join('\n');
+  if (!interpolations) return issues;
+  for (const [name, bffs] of singles) {
+    if (bffs.size !== 1) continue;
+    const bff = [...bffs][0];
+    const declared = fieldsByBff.get(bff);
+    if (!declared) continue;
+    // `selected.f` and `selected?.f`, direct property only (drops `selected.a.b` and `selected.f()`).
+    const accessRe = new RegExp(`\\b${escapeForRegExp(name)}\\??\\.([A-Za-z_$][\\w$]*)\\b(?!\\s*[.(])`, 'gu');
+    for (const access of interpolations.matchAll(accessRe)) {
+      const field = access[1];
+      if (declared.has(field) || ROW_BUILTINS.has(field)) continue;
+      const key = `${bff}.${name}.${field}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      issues.push(`contract field missing -> \`${name}.${field}\` is not declared by ${bff}: its output is ${[...declared].sort().join(', ')}. `
+        + 'A field that only exists in the output of a COMMAND is read from that command\'s state, never from the query record');
     }
   }
   return issues;
