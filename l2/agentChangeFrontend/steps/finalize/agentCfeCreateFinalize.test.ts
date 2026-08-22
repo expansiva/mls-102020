@@ -16,3 +16,13 @@ void test('agentCfeCreateFinalize declares the finalize step agent contract', ()
   assert.match(src, /beforePromptStep/);
   assert.match(flow, /"agentName": "agentCfeCreateFinalize"/);
 });
+
+void test('the finalize gate declares Monaco vs tsc fidelity and writes a cf-run dossier', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
+  assert.match(src, /describeCompilerFidelity/);
+  assert.match(src, /saveCfRunReport/);
+  assert.match(src, /collectRunStepRecords/);
+  assert.match(src, /cfeRunSteps/);
+  assert.match(src, /no Monaco errors/);
+  assert.doesNotMatch(src, /file\(s\) clean/);
+});

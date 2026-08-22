@@ -1060,6 +1060,7 @@ export function collectContractFieldIssues(pageCode: string, contractSource: str
     }
   }
   issues.push(...collectSelectedRecordFieldIssues(pageCode, fieldsByBff, arrayBindings, seen));
+  issues.push(...collectTypedOutputParamFieldIssues(pageCode, fieldsByBff, seen));
   return issues;
 }
 
@@ -1096,28 +1097,92 @@ function collectSelectedRecordFieldIssues(
     bound.add([...bffs][0]);
     singles.set(match[1], bound);
   }
-  const interpolations = [...pageCode.matchAll(/\$\{([^}]*)\}/gu)]
-    .map(m => m[1].replace(/'[^']*'/gu, "''").replace(/"[^"]*"/gu, '""'))
-    .join('\n');
-  if (!interpolations) return issues;
+  const commandRemedy = 'A field that only exists in the output of a COMMAND is read from that command\'s state, never from the query record';
   for (const [name, bffs] of singles) {
     if (bffs.size !== 1) continue;
     const bff = [...bffs][0];
     const declared = fieldsByBff.get(bff);
     if (!declared) continue;
-    // `selected.f` and `selected?.f`, direct property only (drops `selected.a.b` and `selected.f()`).
-    const accessRe = new RegExp(`\\b${escapeForRegExp(name)}\\??\\.([A-Za-z_$][\\w$]*)\\b(?!\\s*[.(])`, 'gu');
-    for (const access of interpolations.matchAll(accessRe)) {
-      const field = access[1];
-      if (declared.has(field) || ROW_BUILTINS.has(field)) continue;
-      const key = `${bff}.${name}.${field}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      issues.push(`contract field missing -> \`${name}.${field}\` is not declared by ${bff}: its output is ${[...declared].sort().join(', ')}. `
-        + 'A field that only exists in the output of a COMMAND is read from that command\'s state, never from the query record');
-    }
+    collectDirectFieldAccessIssues(pageCode, name, bff, declared, seen, issues, commandRemedy);
   }
   return issues;
+}
+
+/**
+ * Run fe3, `page21/recordInStoreServiceAttendance.ts`: the invented field is NOT in a template.
+ * `choose = (row: QryLocateConfirmedServiceAppointmentOutput) => { this.setX(row.serviceExecutionId) }`
+ * — a parameter typed as the query Output, read as a function argument. The interpolation-only check
+ * never saw it, and the repair loop regenerated the page 4× with the same invent.
+ */
+function collectTypedOutputParamFieldIssues(
+  pageCode: string,
+  fieldsByBff: Map<string, Set<string>>,
+  seen: Set<string>,
+): string[] {
+  const issues: string[] = [];
+  const paramRe = /\(\s*([A-Za-z_$][\w$]*)\s*:\s*([A-Za-z_$][\w$]*)Output\s*\)/gu;
+  const commandRemedy = 'A field that only exists in the output of a COMMAND is read from that command\'s state, never from the query record';
+  for (const match of pageCode.matchAll(paramRe)) {
+    const param = match[1];
+    const bff = match[2].charAt(0).toLowerCase() + match[2].slice(1);
+    const declared = fieldsByBff.get(bff);
+    if (!declared) continue;
+    const after = pageCode.slice(match.index! + match[0].length);
+    const body = typedParamBody(after);
+    if (!body) continue;
+    collectDirectFieldAccessIssues(body, param, bff, declared, seen, issues, commandRemedy);
+  }
+  return issues;
+}
+
+function typedParamBody(after: string): string {
+  const brace = after.indexOf('{');
+  const arrow = after.indexOf('=>');
+  if (arrow >= 0 && (brace < 0 || arrow < brace)) {
+    const rest = after.slice(arrow + 2);
+    const inner = rest.indexOf('{');
+    if (inner >= 0 && inner < 40 && !rest.slice(0, inner).includes(';')) {
+      return balancedBraceBody(rest, inner + 1);
+    }
+    const semi = rest.indexOf(';');
+    return semi >= 0 ? rest.slice(0, semi) : rest.slice(0, 400);
+  }
+  if (brace >= 0) return balancedBraceBody(after, brace + 1);
+  return '';
+}
+
+function collectDirectFieldAccessIssues(
+  source: string,
+  ident: string,
+  bff: string,
+  declared: Set<string>,
+  seen: Set<string>,
+  issues: string[],
+  remedy: string,
+): void {
+  const stripped = source.replace(/'[^']*'/gu, "''").replace(/"[^"]*"/gu, '""');
+  const accessRe = new RegExp(`\\b${escapeForRegExp(ident)}\\??\\.([A-Za-z_$][\\w$]*)\\b(?!\\s*[.(])`, 'gu');
+  for (const access of stripped.matchAll(accessRe)) {
+    const field = access[1];
+    if (declared.has(field) || ROW_BUILTINS.has(field)) continue;
+    const key = `${bff}.${ident}.${field}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    issues.push(`contract field missing -> \`${ident}.${field}\` is not declared by ${bff}: its output is ${[...declared].sort().join(', ')}. ${remedy}`);
+  }
+}
+
+function balancedBraceBody(source: string, from: number): string {
+  let depth = 1;
+  for (let index = from; index < source.length; index++) {
+    const char = source[index];
+    if (char === '{') depth++;
+    else if (char === '}') {
+      depth--;
+      if (depth === 0) return source.slice(from, index);
+    }
+  }
+  return source.slice(from);
 }
 
 /** From just after `map((row`, the balanced text of the callback — or '' when the parens do not close. */

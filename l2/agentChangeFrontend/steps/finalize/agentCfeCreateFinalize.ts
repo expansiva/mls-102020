@@ -12,7 +12,10 @@ import {
 import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
 import { compileMlsPathAndGetErrors, releaseBorrowedModelScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import { orderModuleCompile } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
-import { agentBuildTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
+import { agentBuildTrace, readAgentProvenance } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
+import { describeCompilerFidelity } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileFidelity.js';
+import { saveCfRunReport } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunDossier.js';
+import { collectRunStepRecords } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunSteps.js';
 
 const AGENT_NAME = 'agentCfeCreateFinalize';
 
@@ -180,29 +183,64 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const plan = planModuleCompileRepair(closure.errors, defsIsPresent);
       const shown = closure.errors.slice(0, 12).join('\n');
       const more = closure.errors.length > 12 ? `\n…(+${closure.errors.length - 12} more)` : '';
+      const fidelity = describeCompilerFidelity();
+      const writeFailDossier = async (summary: string, repairing: boolean): Promise<string | null> => saveCfRunReport(result.moduleName, {
+        moduleName: result.moduleName,
+        pagesDone: result.pagesDone,
+        ownersDone: result.ownersDone,
+        skippedPages: result.skippedPages,
+        repairRounds: attempt - 1,
+        gate: { checked: closure.checked, errors: closure.errors, fidelity, repairing },
+        agentBuild: await readAgentProvenance(),
+        steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
+        summary,
+      });
       if (attempt <= MAX_MODULE_COMPILE_REPAIRS && plan.slots.length > 0) {
+        const failTrace = `MODULE-COMPILE-FAILED (${closure.errors.length} error(s) across ${closure.checked} .ts of ${result.moduleName}) -> ${describeCompileRepairPlan(plan, attempt)}. ${fidelity}\n${shown}${more}\n${base}`;
+        const reportRef = await writeFailDossier(failTrace, true);
         return [
           ...buildCompileRepairRound(context, parentStep, plan.slots, attempt),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
-            `MODULE-COMPILE-FAILED (${closure.errors.length} error(s) across ${closure.checked} .ts of ${result.moduleName}) -> ${describeCompileRepairPlan(plan, attempt)}.\n${shown}${more}\n${base}`),
+            reportRef ? `${failTrace} Run report: ${reportRef}.` : failTrace),
         ];
       }
-      // Budget exhausted, or nothing repairable: FAIL exactly as before. A green task with broken .ts on
-      // disk is the defect this gate exists for — the file is not stale, so no later run would see it.
       const why = plan.slots.length === 0
         ? 'no broken file has a defs on disk, so no repair slot can be built'
         : `repair budget exhausted after ${MAX_MODULE_COMPILE_REPAIRS} round(s)`;
+      const reportRef = await writeFailDossier(
+        `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (${why}). ${fidelity}`,
+        false,
+      );
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed',
-        `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them; ${why}).\n${shown}${more}\n${base}`)];
+        `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them; ${why}). ${fidelity}\n${shown}${more}\n${base}${reportRef ? ` Run report: ${reportRef}.` : ''}`)];
     }
     // Only a CLEAN module hands off to agentAddLanguage — it translates the i18n block of the generated
     // files, and translating a module that did not compile spends a task on code about to be regenerated.
     // (It also must not be dispatched once per repair round: the handoff spawns an independent task.)
     const addLanguage = await dispatchAddLanguage(agent, context, result.addLanguageMessage);
     const repaired = attempt > 1 ? `; repaired in ${attempt - 1} round(s)` : '';
+    const fidelity = describeCompilerFidelity();
+    const agentBuild = await readAgentProvenance();
     // Repeat the build stamp at the end: a post-mortem reads the LAST trace of the run first.
-    const trace = `${base}${addLanguage}; moduleCompile=${closure.checked} file(s) clean${repaired}; released ${closure.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
+    // Do NOT claim tsc-equivalence: the gate is Monaco; declare the difference (F2).
+    const trace = `${base}${addLanguage}; moduleCompile=${closure.checked} file(s) with no Monaco errors${repaired}; ${fidelity}; released ${closure.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
+    const reportRef = await saveCfRunReport(result.moduleName, {
+      moduleName: result.moduleName,
+      pagesDone: result.pagesDone,
+      ownersDone: result.ownersDone,
+      skippedPages: result.skippedPages,
+      repairRounds: attempt - 1,
+      gate: {
+        checked: closure.checked,
+        errors: closure.errors,
+        fidelity,
+      },
+      agentBuild,
+      steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
+      summary: trace,
+    });
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+      reportRef ? `${trace} Run report: ${reportRef}.` : trace)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);

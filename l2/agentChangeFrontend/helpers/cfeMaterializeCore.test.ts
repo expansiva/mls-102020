@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues } from './cfeMaterializeCore.js';
+import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
 } from '../steps/materialize/fixtures/fe2PetShopCatalogue.fixture.js';
@@ -547,10 +548,37 @@ const rows = this.qryOtherData ?? [];
 const selected = rows.find(r => r.x);
 render() { return html\`<dd>\${selected.whatever}</dd>\`; }`;
   assert.deepEqual(collectContractFieldIssues(ambiguous, `${FE2_CONTRACT}\nexport interface QryOtherOutput { x: string; }\n`), []);
-  // Fora de interpolação o mesmo texto pode ser chave de i18n: não acusa.
+  // Quoted i18n-looking text is still ignored; a real property read outside a template is not.
+  const quoted = `
+const rows = this.qryLocateConfirmedServiceAppointmentData ?? [];
+const selected = rows.find(r => r.serviceAppointmentId === id);
+const key = 'selected.completedAt';`;
+  assert.deepEqual(collectContractFieldIssues(quoted, FE2_CONTRACT), []);
   const outsideTemplate = `
 const rows = this.qryLocateConfirmedServiceAppointmentData ?? [];
 const selected = rows.find(r => r.serviceAppointmentId === id);
 const x = selected.completedAt;`;
-  assert.deepEqual(collectContractFieldIssues(outsideTemplate, FE2_CONTRACT), []);
+  assert.match(collectContractFieldIssues(outsideTemplate, FE2_CONTRACT)[0] || '', /`selected\.completedAt` is not declared/);
+});
+
+void test('collectContractFieldIssues acusa campo inventado lido num parâmetro tipado como Output (fe3 choose)', () => {
+  const page = `
+const rows: QryLocateConfirmedServiceAppointmentOutput[] = this.qryLocateConfirmedServiceAppointmentData ?? [];
+const selected = rows.find((row: QryLocateConfirmedServiceAppointmentOutput) => row.serviceAppointmentId === selectedId) ?? rows[0];
+const choose = (row: QryLocateConfirmedServiceAppointmentOutput): void => {
+  this.setCmdRegisterPetArrivalServiceAppointmentServiceAppointmentId(row.serviceAppointmentId);
+  this.setCmdRegisterServiceStartServiceExecutionServiceExecutionId(row.serviceExecutionId);
+};
+`;
+  const issues = collectContractFieldIssues(page, FE2_CONTRACT);
+  assert.ok(issues.some(i => /`row\.serviceExecutionId` is not declared by qryLocateConfirmedServiceAppointment/.test(i)), JSON.stringify(issues));
+  assert.ok(issues.every(i => !/`row\.serviceAppointmentId`/.test(i)));
+});
+
+void test('fe3 recortes: family B is now visible to the guard; C and D stay as compile/i18n evidence', () => {
+  const issues = collectContractFieldIssues(FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT);
+  assert.ok(issues.some(i => /serviceExecutionId/.test(i)), JSON.stringify(issues));
+  assert.match(FE3_PAGE11_RECURSIVE_RENDER_RECORD, /function renderRecord\(value: unknown, imageAlt: string\) \{/);
+  assert.match(FE3_PAGE11_RECURSIVE_RENDER_RECORD, /return renderRecord\(entry, imageAlt\)/);
+  assert.equal(FE3_PAGE11_ORPHAN_I18N_KEY, 'intent.consultPetHistoryAndPendingServices.qryInspectPetHistoryAndPendingServices.list.column.serviceImages.label');
 });
