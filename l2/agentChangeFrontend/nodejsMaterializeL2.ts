@@ -15,6 +15,7 @@ import {
   buildMaterializeTypecheckTest,
   buildMissingCodeRepairHint,
   collectChartEventIssues,
+  collectPageCustomElementTagIssues,
   collectPageTemplateHygieneIssues,
   buildSharedDtsSection,
   buildSystemPrompt,
@@ -757,9 +758,16 @@ async function materializeOne(
     // bugpage21: reject a page that renders an invented module-level helper by NAME (`: nothing` plus
     // `function nothing()`), which paints the function's own source on screen. It compiles, so the final
     // `tsc` this CLI relies on cannot catch it — check BEFORE writing and retry with the findings as the
-    // repair hint (same mechanism as a missing-code retry). Studio has the equivalent gate in
-    // agentCfeMaterializePhase; both share collectPageTemplateHygieneIssues so they cannot drift.
-    const hygiene = r.ok && code && (p.item.type === 'l2_page' || p.item.type === 'l2_page_organism') ? [...collectPageTemplateHygieneIssues(code), ...collectChartEventIssues(code)] : [];
+    // repair hint (same mechanism as a missing-code retry). Studio has the equivalent gates in
+    // agentCfeMaterializePhase; both share collectPageTemplateHygieneIssues / collectPageCustomElementTagIssues
+    // so they cannot drift.
+    const hygiene = r.ok && code && (p.item.type === 'l2_page' || p.item.type === 'l2_page_organism')
+      ? [
+          ...collectPageTemplateHygieneIssues(code),
+          ...collectChartEventIssues(code),
+          ...(p.item.type === 'l2_page' ? collectPageCustomElementTagIssues(code, p.item.outputPath) : []),
+        ]
+      : [];
     if (hygiene.length) {
       const detail = `template hygiene: ${hygiene.join('; ')}`;
       appendTrace(tracePath, p.item, modelType, failedLlmResult(detail), '', skillReport, depReport, isRepair);

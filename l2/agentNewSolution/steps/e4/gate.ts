@@ -253,6 +253,19 @@ export function validateNs4E4Review(
     });
   }
 
+  if (options.requireRelationshipRealization !== false) {
+    review.entities.forEach((entity, entityIndex) => {
+      const ownershipRules = entity.useRules.filter(ruleRequiresOwnerRelation);
+      if (!ownershipRules.length) return;
+      if (entityDeclaresOwnerHandle(entity, review.relationships)) return;
+      add(
+        'NS4_E4_OWNER_RELATION',
+        `entities[${entityIndex}].useRules`,
+        `Rule ${ownershipRules.join(', ')} requires an owner relation on ${entity.entityId} (a customerId/ownerId field, or a relationship to Customer/Client/Owner realized by such a field) — without it the generated usecase cannot verify ownership.`,
+      );
+    });
+  }
+
   return { ok: issues.length === 0, issues };
 }
 
@@ -399,7 +412,30 @@ export function validateNs4E4EntityDraft(
     { ...plan, entities: plan.entities.filter(entity => entity.entityId === detail.entityId), relationships: [] },
     [detail],
   );
-  return validateNs4E4Review(review);
+  return validateNs4E4Review(review, undefined, undefined, { requireRelationshipRealization: false });
+}
+
+/** `customerCanViewOnlyOwnPets` and kin: the rule is only evaluable if the entity names its owner. */
+function ruleRequiresOwnerRelation(ruleId: string): boolean {
+  return /own(?:er|pets?)/i.test(ruleId);
+}
+
+function entityDeclaresOwnerHandle(entity: { entityId: string; fields: Ns4OntologyField[]; storage: { idField?: string } }, relationships: Ns4OntologyRelationship[]): boolean {
+  const idField = entity.storage.idField || `${entity.entityId.slice(0, 1).toLowerCase()}${entity.entityId.slice(1)}Id`;
+  if (entity.fields.some(field => /^(owner|customer|client)Id$/i.test(field.fieldId) || /OwnerId$/u.test(field.fieldId))) {
+    return true;
+  }
+  return relationships.some((rel) => {
+    if (rel.fromEntity !== entity.entityId && rel.toEntity !== entity.entityId) return false;
+    const other = rel.fromEntity === entity.entityId ? rel.toEntity : rel.fromEntity;
+    if (!/^(Customer|Client|Owner)$/u.test(other)) return false;
+    const realization = rel.realization;
+    if (!realization) return false;
+    const ownFields = realization.from.entityId === entity.entityId
+      ? realization.from.fieldIds
+      : realization.to.entityId === entity.entityId ? realization.to.fieldIds : [];
+    return ownFields.some(fieldId => fieldId !== idField && /Id$/u.test(fieldId));
+  });
 }
 
 function placeholderFields(entityId: string, idField: string | undefined, needsStatus: boolean): Ns4OntologyField[] {

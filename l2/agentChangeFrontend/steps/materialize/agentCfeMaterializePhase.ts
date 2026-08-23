@@ -23,6 +23,7 @@ import {
   collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
   collectContractFieldIssues,
+  collectPageCustomElementTagIssues,
   contractTsPathOf,
   countPage11Items,
   countSharedItems,
@@ -435,6 +436,7 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     const contractPath = contractTsPathOf(sharedDefs);
     const contractSource = contractPath ? await getContentByMlsPath(contractPath) : null;
     if (contractSource) errors.push(...collectContractFieldIssues(content, contractSource));
+    errors.push(...collectPageCustomElementTagIssues(content, outputPath));
     // A background token used as a text color renders invisible text once the theme applies (the
     // hardcoded var() fallback hides it in one theme only) — mls-102045 shipped exactly that. It is a
     // pure .ts defect a rewrite fixes, and the check is deterministic (role suffix, no judgement), so it

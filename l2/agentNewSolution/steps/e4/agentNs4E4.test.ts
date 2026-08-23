@@ -394,6 +394,24 @@ test('E4 rejects kind core with ownership external — the combination the polic
   assert.match(issue!.message, /external-reference field \(platformUserId\)/u);
 });
 
+test('E4 flags an ownership rule when the entity has no owner field (petShop customerCanViewOnlyOwnPets)', () => {
+  const broken = structuredClone(reviewInput) as any;
+  broken.entities[0].useRules = ['customerCanViewOnlyOwnPets'];
+  const gate = validateNs4E4Review(normalizeNs4E4Review(broken), journeys, access);
+  const issue = gate.issues.find(item => item.code === 'NS4_E4_OWNER_RELATION');
+  assert.ok(issue, JSON.stringify(gate.issues));
+  assert.match(issue!.message, /customerCanViewOnlyOwnPets/);
+  assert.match(issue!.message, /Project/);
+
+  const withField = structuredClone(reviewInput) as any;
+  withField.entities[0].useRules = ['customerCanViewOnlyOwnPets'];
+  withField.entities[0].fields.push({
+    fieldId: 'customerId', title: 'Customer', type: 'uuid', required: true, description: 'Owner of the record.', constraints: [],
+  });
+  const ok = validateNs4E4Review(normalizeNs4E4Review(withField), journeys, access);
+  assert.ok(!ok.issues.some(item => item.code === 'NS4_E4_OWNER_RELATION'), JSON.stringify(ok.issues));
+});
+
 test('E4 carries the party declaration into the entity artifact', async () => {
   const input = structuredClone(reviewInput) as any;
   input.entities[0].kind = 'mdm';

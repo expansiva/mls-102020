@@ -2,7 +2,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues } from './cfeMaterializeCore.js';
+import { readFileSync } from 'node:fs';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -600,6 +601,21 @@ void test('collectContractFieldIssues acusa campo lido de (typeof rows)[number] 
   assert.ok(issues.some(i => /`row\.serviceExecutionId` is not declared by qryLocateConfirmedServiceAppointment/.test(i)), JSON.stringify(issues));
   assert.ok(issues.every(i => !/`row\.serviceAppointmentId`/.test(i)), JSON.stringify(issues));
   assert.ok(issues.every(i => /output of a COMMAND is read from that command's state/.test(i)));
+});
+
+void test('page customElement tags use the project id; variants differ only by --pageNN--', () => {
+  const path21 = '_102047_/l2/petShop/web/desktop/page21/businessHoursCatalogue.ts';
+  const path31 = '_102047_/l2/petShop/web/desktop/page31/businessHoursCatalogue.ts';
+  assert.equal(expectedPageCustomElementTag(path21), 'pet-shop--web--desktop--page21--business-hours-catalogue-102047');
+  assert.equal(expectedPageCustomElementTag(path31), 'pet-shop--web--desktop--page31--business-hours-catalogue-102047');
+  const ok = `@customElement('pet-shop--web--desktop--page21--business-hours-catalogue-102047')\nexport class X {}`;
+  assert.deepEqual(collectPageCustomElementTagIssues(ok, path21), []);
+  const drifted = `@customElement('pet-shop--web--desktop--page21--business-hours-catalogue')\nexport class X {}`;
+  assert.match(collectPageCustomElementTagIssues(drifted, path21)[0] || '', /must be 'pet-shop--web--desktop--page21--business-hours-catalogue-102047'/);
+  const moduleSuffix = `@customElement('pet-shop--web--desktop--page31--business-hours-catalogue-petShop')\nexport class X {}`;
+  assert.match(collectPageCustomElementTagIssues(moduleSuffix, path31)[0] || '', /102047/);
+  const cli = readFileSync(new URL('../nodejsMaterializeL2.ts', import.meta.url), 'utf8');
+  assert.match(cli, /collectPageCustomElementTagIssues\(code, p\.item\.outputPath\)/);
 });
 
 void test('fe3 recortes: family B is now visible to the guard; C and D stay as compile/i18n evidence', () => {

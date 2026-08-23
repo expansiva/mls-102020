@@ -1689,3 +1689,28 @@ function stringValue(value: unknown): string {
 function arrayRecords(value: unknown): Record<string, any>[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
 }
+
+/** Legacy page tag: kebab(folder) with `/` → `--`, then kebab(shortName)-<projectId>.
+ * Variants of one page must differ ONLY by `--pageNN--`; the suffix is always the project id. */
+export function expectedPageCustomElementTag(outputPath: string): string | null {
+  const match = /^_(\d+)_\/l2\/(.+)\/([A-Za-z0-9_]+)\.ts$/u.exec(outputPath);
+  if (!match) return null;
+  const [, project, folder, shortName] = match;
+  const genome = folder.split('/').pop() || '';
+  if (!/^page\d+$/u.test(genome)) return null;
+  return `${toKebabFolder(folder).replace(/\//gu, '--')}--${toKebabFolder(shortName)}-${project}`;
+}
+
+function toKebabFolder(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase();
+}
+
+/** The LLM-emitted `@customElement` must match the path, or `mls.sites.setPage` cannot swap variants. */
+export function collectPageCustomElementTagIssues(pageCode: string, outputPath: string): string[] {
+  const expected = expectedPageCustomElementTag(outputPath);
+  if (!expected) return [];
+  const match = /@customElement\(\s*['"]([^'"]+)['"]\s*\)/u.exec(pageCode);
+  if (!match) return [`@customElement tag missing; expected '${expected}'`];
+  if (match[1] === expected) return [];
+  return [`@customElement '${match[1]}' must be '${expected}' (project id suffix; variants of a page differ only by --pageNN--)`];
+}
