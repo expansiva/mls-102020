@@ -14,7 +14,7 @@ PRÓPRIOS do agentChangeBackend e do agentChangeFrontend sobre a emissão nova.
 ## 2026-08-14 — Parte C: transpilador do formato clássico
 
 - `classic.ts` transpõe o modelo aprovado do E8 para o formato clássico: `workspaces/*.defs.ts`,
-  `operations/*.defs.ts`, `contracts/<ws>.<bff>.defs.ts` e `siteMap.defs.ts`. Zero decisão de tela.
+  `operations/*.defs.ts`, `contracts/<ws>--<bff>.defs.ts` e `siteMap.defs.ts`. Zero decisão de tela.
 - O caminho `"<operationId>.<inputId>"` é a única coisa que precisa estar exata: os DOIS consumidores
   rastreiam a origem de um input e a união literal de um campo por ele.
 - A origem que a tela renderiza sai em `operations[].inputs[].source`, no vocabulário de fronteira

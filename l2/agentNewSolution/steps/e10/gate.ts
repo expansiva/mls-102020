@@ -88,7 +88,7 @@ async function validateEmissionFreshness(sources: Ns4E10Sources, add: Add): Prom
     (id, reason) => stale('NS4_E10_WORKSPACE_STALE', `workspaces.${id}`, reason));
   compare(expected.operations, sources.saved.operations, item => item.operationId, 'operation',
     (id, reason) => stale('NS4_E10_OPERATION_STALE', `operations.${id}`, reason));
-  compare(expected.contracts, sources.saved.contracts, item => `${item.workspaceId}.${item.bffId}`, 'contract',
+  compare(expected.contracts, sources.saved.contracts, item => `${item.workspaceId}--${item.bffId}`, 'contract',
     (id, reason) => stale('NS4_E10_CONTRACT_STALE', `contracts.${id}`, reason));
   if (stableStringify(expected.siteMap) !== stableStringify(sources.saved.siteMap)) {
     stale('NS4_E10_SITEMAP_STALE', 'siteMap', 'The saved site map differs from the one the approved model compiles.');

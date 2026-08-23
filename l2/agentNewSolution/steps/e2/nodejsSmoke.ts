@@ -52,7 +52,7 @@ async function main(): Promise<void> {
     buildNs4PolicyDecisionSelections(review, [], 'auto', approvedAt),
   );
   const running = markNs4E2Running(pipeline, review.reviewRound, approvedAt);
-  const draftPath = `l4/${review.moduleName}/pipeline/e2-journeys.draft.json`;
+  const draftPath = `l4/${review.moduleName}/pipeline/e2-journeys-draft.json`;
   const waiting = markNs4E2WaitingHuman(running, review.reviewRound, draftPath, approvedAt);
   const approvedPipeline = markNs4E2Approved(waiting, 'auto', [...artifactPaths, indexPath], approvedAt);
   const approvedModule = markNs4ModuleE2Approved(moduleArtifact, 'auto', approvedAt);
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
   const pipelineDir = path.join(moduleDir, 'pipeline');
   await mkdir(journeyDir, { recursive: true });
   await mkdir(pipelineDir, { recursive: true });
-  await writeFile(path.join(pipelineDir, 'e2-journeys.draft.json'), `${JSON.stringify(review, null, 2)}\n`);
+  await writeFile(path.join(pipelineDir, 'e2-journeys-draft.json'), `${JSON.stringify(review, null, 2)}\n`);
   for (const artifact of artifacts) {
     await writeFile(
       path.join(journeyDir, `${artifact.journeyId}.defs.ts`),

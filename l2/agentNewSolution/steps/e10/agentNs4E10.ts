@@ -136,7 +136,7 @@ async function loadSources(moduleName: string): Promise<Ns4E10Sources> {
     operations: await Promise.all(model.operations.map(operation => readRequired<Ns4ClassicOperation>(ns4OperationFile(moduleName, operation.operationId), `operation ${operation.operationId}`))),
     contracts: await Promise.all(model.workspaces.flatMap(workspace => workspace.bffCalls.map(async call => ({
       workspaceId: workspace.workspaceId, bffId: call.bffId, route: `${moduleName}.${workspace.workspaceId}.${call.bffId}`,
-      source: await readRequiredText(ns4ClassicContractFile(moduleName, workspace.workspaceId, call.bffId), `contract ${workspace.workspaceId}.${call.bffId}`),
+      source: await readRequiredText(ns4ClassicContractFile(moduleName, workspace.workspaceId, call.bffId), `contract ${workspace.workspaceId}--${call.bffId}`),
     })))),
     siteMap: await readRequired<Ns4ClassicSiteMap>(ns4SiteMapFile(moduleName), 'site map'),
   };

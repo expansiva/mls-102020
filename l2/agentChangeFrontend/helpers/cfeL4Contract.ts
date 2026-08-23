@@ -115,7 +115,7 @@ export function l4OperationOutputRefs(operationData: unknown): string[] {
 // ---- L4 v2: workspace bffCalls (the wire contract of a page) ----
 // A workspace declares bffCalls[] (projected views over 1..N operations) and sections[].organisms[]
 // (roles that reference a bffId via dataSource/action/attachTo). One bffCall => one page "command".
-// The precise TS types are the byte-copied l4 contract (l4/<module>/contracts/<ws>.<bffId>.ts); the
+// The precise TS types are the byte-copied l4 contract (l4/<module>/contracts/<ws>--<bffId>.defs.ts); the
 // shapes below carry only what the deterministic pipeline needs (names, kind, required, presentation).
 
 export interface CfeBffCallField {

@@ -116,7 +116,7 @@ rejects invalid or duplicate ids and allows one bounded repair. There is no rule
 policy object or independent semantic judge. Approval writes:
 
 - `l4/<module>/rules/rules.defs.ts` — the single permanent source of truth for all module rules;
-- `l4/<module>/pipeline/e5-rules.approved.json` — the approved maintenance snapshot;
+- `l4/<module>/pipeline/e5-rules-approved.json` — the approved maintenance snapshot;
 - updated module and pipeline status with `e6-behaviors` as the next step.
 
 Future pages, use cases, tables and behaviors scan the complete L4 and attach only `useRules` ids.
@@ -130,7 +130,7 @@ and an empty recommendation list is a valid positive outcome. The screen is inte
 summary, recommendations, approve, request another proposal, or cancel. Approval writes:
 
 - `l4/<module>/composition/additional-capabilities.defs.ts` — permanent composition decision;
-- `l4/<module>/pipeline/e6-composition.approved.json` — approved maintenance snapshot;
+- `l4/<module>/pipeline/e6-composition-approved.json` — approved maintenance snapshot;
 - updated module and pipeline status with `e7-realization` as the next step.
 
 The runtime keeps the historical `e6-behaviors` plan id as a stable internal identifier. The generated

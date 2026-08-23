@@ -11,7 +11,7 @@ generated/selected pair to the journey index and emits `pipeline/e2-impact-repor
 new or removed journeys mark their E3/E4/E5/E7 derived pipeline states stale. The same report records
 the complete module histogram for `locate`, `inspect`, `act`, `decide` and `handoff` steps.
 
-Before approval it writes only `l4/{module}/pipeline/e2-journeys.draft.json`. A deterministic gate
+Before approval it writes only `l4/{module}/pipeline/e2-journeys-draft.json`. A deterministic gate
 first validates internal structure and context flow. An independent `🔎` reasoning-model judge then
 compares the complete E1 contract with the draft. It may request one semantic repair. A stable
 remaining business bifurcation is recorded as a system decision using the behavior already implicit
@@ -94,4 +94,4 @@ Without flags it calls the LLM and validates without writing. `--write` saves
 `pipeline/e2-live-review.json` and `pipeline/e2-live-llm-response.json` but does not change the pipeline.
 `--approve` additionally invokes the guarded smoke writer and therefore refuses an already approved E2.
 `--judge-existing` performs a read-only coverage judgment of the module's existing
-`pipeline/e2-journeys.draft.json`; it never rewrites or approves the run.
+`pipeline/e2-journeys-draft.json`; it never rewrites or approves the run.

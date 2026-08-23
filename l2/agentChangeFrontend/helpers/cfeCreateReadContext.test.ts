@@ -31,7 +31,7 @@ function operationDefs(operationId: string, kind: string, extra: Record<string, 
 }
 
 const CATALOG_CONTRACT = [
-  `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/catalog.catalogList.ts" enhancement="_blank"/>`,
+  `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/catalog--catalogList.ts" enhancement="_blank"/>`,
   '',
   '// GENERATED MECHANICALLY from _' + PROJECT + '_/l4/petShop/workspaces/catalog.defs.ts — DO NOT EDIT.',
   'export interface CatalogListInput { searchTerm?: string; page?: number; }',
@@ -41,7 +41,7 @@ const CATALOG_CONTRACT = [
 ].join('\n');
 
 const DETAIL_CONTRACT = [
-  `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/catalog.productDetail.ts" enhancement="_blank"/>`,
+  `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/catalog--productDetail.ts" enhancement="_blank"/>`,
   '',
   'export interface ProductDetailInput { productId: string; }',
   'export interface ProductDetailOutput { productId: string; name: string; }',
@@ -88,15 +88,15 @@ function installPetShopStor(opts: { contracts?: boolean } = {}): void {
       sections: [{ sectionId: 'home', intent: 'Descobrir', organisms: [{ role: 'hero' }, { role: 'showcase', dataSource: 'featuredProducts' }, { role: 'ctaLink' }] }],
       operationIds: ['browseCatalog'],
     }))),
-    file(4, 'petShop/contracts', 'home.featuredProducts', '.ts', [
-      `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/home.featuredProducts.ts" enhancement="_blank"/>`,
+    file(4, 'petShop/contracts', 'home--featuredProducts', '.ts', [
+      `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/home--featuredProducts.ts" enhancement="_blank"/>`,
       'export interface FeaturedProductsInput { page?: number; }',
       'export interface FeaturedProductsOutput { productId: string; name: string; }',
       "export const featuredProductsRoute = 'petShop.home.featuredProducts' as const;",
       '',
     ].join('\n')),
-    file(4, 'petShop/contracts', 'catalog.catalogList', '.ts', CATALOG_CONTRACT),
-    file(4, 'petShop/contracts', 'catalog.productDetail', '.ts', DETAIL_CONTRACT),
+    file(4, 'petShop/contracts', 'catalog--catalogList', '.ts', CATALOG_CONTRACT),
+    file(4, 'petShop/contracts', 'catalog--productDetail', '.ts', DETAIL_CONTRACT),
     file(5, 'petShop', 'todoFrontend', '.defs.ts', defs('petShopTodoFrontend', JSON.stringify({
       moduleName: 'petShop', layer: 'frontend', owners: [
         { ownerType: 'operation', ownerId: 'browseCatalog', status: 'toCreate' },

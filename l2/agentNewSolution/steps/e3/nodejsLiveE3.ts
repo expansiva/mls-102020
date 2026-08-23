@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   const pipelineDir = path.join(moduleDir, 'pipeline');
   const [moduleSource, journeysSource, promptTemplate, platformSkill] = await Promise.all([
     readFile(path.join(moduleDir, 'module.defs.ts'), 'utf8'),
-    readFile(path.join(pipelineDir, 'e2-journeys.draft.json'), 'utf8'),
+    readFile(path.join(pipelineDir, 'e2-journeys-draft.json'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution/steps/e3/prompt.md'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution/skills/platform.md'), 'utf8'),
   ]);

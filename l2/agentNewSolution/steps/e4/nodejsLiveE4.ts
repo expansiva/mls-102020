@@ -41,8 +41,8 @@ async function main(): Promise<void> {
   const pipelineDir = path.join(moduleDir, 'pipeline');
   const [moduleSource, journeysSource, accessSource, promptTemplate, entityPrompt, relationshipPrompt, platformSkill] = await Promise.all([
     readFile(path.join(moduleDir, 'module.defs.ts'), 'utf8'),
-    readFile(path.join(pipelineDir, 'e2-journeys.draft.json'), 'utf8'),
-    readFile(path.join(pipelineDir, 'e3-access-matrix.draft.json'), 'utf8'),
+    readFile(path.join(pipelineDir, 'e2-journeys-draft.json'), 'utf8'),
+    readFile(path.join(pipelineDir, 'e3-access-matrix-draft.json'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution/steps/e4/prompt.md'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution/steps/e4/promptEntity.md'), 'utf8'),
     readFile(path.join(ROOT, 'mls-102020/l2/agentNewSolution/steps/e4/promptRelationships.md'), 'utf8'),

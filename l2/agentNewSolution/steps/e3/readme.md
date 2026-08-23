@@ -6,7 +6,7 @@ authentication. Those runtime concerns remain in collab-auth.
 The LLM emits a `clarification` payload containing access profiles, `domain:code` authorities,
 profile-authority grants, data scopes and disclosure boundaries. The gate validates the proposal
 against the approved E2 draft. Before approval only
-`l4/{module}/pipeline/e3-access-matrix.draft.json` is written.
+`l4/{module}/pipeline/e3-access-matrix-draft.json` is written.
 
 The widget is read-only except for the adjustment prompt. A change request adds the next open E3
 agent step first, records the request second and completes the current clarification last. The new LLM

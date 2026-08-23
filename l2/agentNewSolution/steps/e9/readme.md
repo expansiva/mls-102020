@@ -17,7 +17,7 @@ The workspace index is authoritative for the module name, workspace set, menu gr
 - `navigation/index.defs.ts`: canonical routes and actor-traversable navigation edges;
 - `navigation/store.defs.ts`: tab-scoped hydration cache schema with URL-first identity;
 - `navigation/notifications.defs.ts`: handoff/event-driven delivery contracts;
-- `contracts/<workspace>.<function>.defs.ts`: one composed view contract per workspace and one command contract per declared command;
+- `contracts/<workspace>--<function>.defs.ts`: one composed view contract per workspace and one command contract per declared command;
 - a V4 access matrix with operation-to-authority realization.
 
 All artifacts carry their source hashes and omit timestamps. Recompiling unchanged inputs therefore produces byte-identical payloads.

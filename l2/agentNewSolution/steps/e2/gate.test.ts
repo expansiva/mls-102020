@@ -231,7 +231,7 @@ test('E2 approval advances both pipeline and module to the E3 access matrix', ()
 
   const e1Pipeline = markNs4E1Approved(createNs4Pipeline('buildFlowFsm', 'prompt'), 'human', 'l4/buildFlowFsm/module.defs.ts');
   const running = markNs4E2Running(e1Pipeline, 1);
-  const waiting = markNs4E2WaitingHuman(running, 1, 'l4/buildFlowFsm/pipeline/e2-journeys.draft.json');
+  const waiting = markNs4E2WaitingHuman(running, 1, 'l4/buildFlowFsm/pipeline/e2-journeys-draft.json');
   const approved = markNs4E2Approved(waiting, 'human', ['l4/buildFlowFsm/journeys/manageProjects.defs.ts']);
   assert.equal(approved.steps.e2?.status, 'approved');
   assert.equal(approved.nextStep, 'e3-access-matrix');

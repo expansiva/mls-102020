@@ -142,7 +142,7 @@ test('E3 lifecycle persists rounds, failures and advances module and pipeline to
   const e2 = markNs4E2Approved(markNs4E2WaitingHuman(markNs4E2Running(e1, 1), 1, 'e2.json'), 'human', ['journey.ts']);
   assert.equal(resolveNs4ExistingAction(true, e2, true), 'resume-e3');
   const running = markNs4E3Running(e2, 2);
-  const waiting = markNs4E3WaitingHuman(running, 2, 'l4/buildFlowFsm/pipeline/e3-access-matrix.draft.json');
+  const waiting = markNs4E3WaitingHuman(running, 2, 'l4/buildFlowFsm/pipeline/e3-access-matrix-draft.json');
   assert.equal(waiting.steps.e3?.status, 'waitingHuman');
   const failed = markNs4E3Failed(waiting, 'provider timeout', '2026-08-05T10:03:00.000Z');
   assert.equal(failed.steps.e3?.error, 'provider timeout');

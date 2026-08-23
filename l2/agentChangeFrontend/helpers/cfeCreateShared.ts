@@ -902,7 +902,7 @@ function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace,
   const primaryOperation = operations.find(op => op.operationId === bffCall.uses[0]);
   const purpose = primaryOperation?.title || humanizeId(bffCall.bffId);
   const rulesApplied = unique(bffCall.uses.flatMap(id => operations.find(op => op.operationId === id)?.rulesApplied || []));
-  const contractKey = `${workspace.workspaceId}.${bffCall.bffId}`;
+  const contractKey = `${workspace.workspaceId}--${bffCall.bffId}`;
   // The l4 shape of each input, keyed by name: the wire `type` (bffCallCommandShape only keeps
   // name/required/presentation/source) and the declared enum when the field maps to an enum'd entity
   // field. Consumed by the page-test generator to emit valid literals for domain fields.

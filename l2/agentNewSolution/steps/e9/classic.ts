@@ -300,7 +300,7 @@ export async function compileNs4ClassicL4(model: Ns4E8Model, ontology: Ns4E4Revi
     workspaceId: workspace.workspaceId, bffId: call.bffId, route: call.route,
     source: buildNs4ClassicContractSource({
       moduleName: model.moduleName, workspaceId: workspace.workspaceId, call,
-      fileRef: `_${'{project}'}_/l4/${model.moduleName}/contracts/${workspace.workspaceId}.${call.bffId}.defs.ts`,
+      fileRef: `_${'{project}'}_/l4/${model.moduleName}/contracts/${workspace.workspaceId}--${call.bffId}.defs.ts`,
       sourceRef: `l4/${model.moduleName}/workspaces/${workspace.workspaceId}.defs.ts`,
     }),
   })));
