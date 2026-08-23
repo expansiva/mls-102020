@@ -1110,9 +1110,16 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
     const unresolvableIds = requiredFields
       .filter(field => isEntityReferenceField(field) && !harvestable.has(field.name) && !isRuntimeResolvedInputSource(field.source))
       .map(field => field.name);
-    if (unresolvableIds.length > 0) {
+    if (unresolvableIds.length > 0 && kind !== 'query') {
       recordCreateWarning(`${prepared.page.pageId}: skipped test case(s) for ${commandName} — required id(s) ${unresolvableIds.join(', ')} are not produced by any read routine of this page`);
       continue;
+    }
+    if (unresolvableIds.length > 0 && kind === 'query') {
+      // Inspect-only pages (consultInstitutionalHome, petServiceOverviewView, planScheduleAvailability)
+      // have no sibling read on the same page. The runner harvests <seedRef> from every page of the
+      // run; omitting the case made those screens look untested. A seed that never resolves is
+      // inconclusive, not silent.
+      recordCreateWarning(`${prepared.page.pageId}: ${commandName} required id(s) ${unresolvableIds.join(', ')} will use <seedRef> harvested from other pages / seeds`);
     }
 
     if (kind === 'query') {
@@ -1207,7 +1214,7 @@ function testParams(fields: PageTestField[], harvestable: Set<string>): Record<s
     // Runtime-resolved inputs (session actor, business context, active lifecycle instance, clock) are
     // derived by the backend, never sent by a client — a fake literal id here would only break a lookup.
     if (isRuntimeResolvedInputSource(field.source)) continue;
-    params[field.name] = isEntityReferenceField(field) && harvestable.has(field.name)
+    params[field.name] = isEntityReferenceField(field)
       ? SEED_REF_MARKER
       : testLiteralForField(field);
   }

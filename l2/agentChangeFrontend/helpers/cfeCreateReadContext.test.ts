@@ -488,14 +488,16 @@ test('page tests: paginated query declares the real collection key (itemsKey)', 
   assert.ok(!('itemsKey' in noKey.expect));
 });
 
-test('page tests: a required id no read of the page produces yields NO case (unsatisfiable)', async () => {
-  // 102051 D4: getShiftClosingReport required shiftClosingReportId, which no page routine returns — the
-  // case could never pass under any runner, so it is permanent panel noise.
+test('page tests: a required id no read of the page produces still emits a query with <seedRef>', async () => {
+  // Inspect-only screens (consultInstitutionalHome, petServiceOverviewView, planScheduleAvailability)
+  // used to skip silently. The runner harvests <seedRef> from every page of the run / from seeds.
   const { buildPageTestCases } = await loadModule();
   const orphan = { commandName: 'readOrphan', kind: 'query', routeKey: 'r', outputShape: 'object', input: [{ name: 'otherThingId', required: true, presentation: 'form', type: 'string' }], output: [] };
   const cases = buildPageTestCases(preparedFor([queryCommand(), orphan]));
-  assert.equal(cases.some((c: any) => c.id.startsWith('readOrphan')), false, 'unsatisfiable case not emitted');
-  assert.equal(cases.some((c: any) => c.id === 'readThings.ok'), true, 'the satisfiable case is still emitted');
+  const inspect = cases.find((c: any) => c.id === 'readOrphan.ok');
+  assert.ok(inspect, 'inspect query is emitted');
+  assert.equal(inspect.params.otherThingId, '<seedRef>');
+  assert.equal(cases.some((c: any) => c.id === 'readThings.ok'), true, 'the list case is still emitted');
 });
 
 test('page tests are deterministic (same input -> byte-identical cases)', async () => {
@@ -543,8 +545,12 @@ test('page tests: a read cannot satisfy its OWN required id (no self-harvest)', 
     input: [{ name: 'reportId', required: true, presentation: 'form', type: 'string', source: 'routeParam' }],
     output: [{ name: 'reportId' }], producedFields: ['reportId', 'label'],
   };
-  // Alone on the page: only its own output could supply reportId -> unsatisfiable, no case.
-  assert.equal(buildPageTestCases(preparedFor([selfFed])).length, 0);
+  // Alone on the page: still emit the inspect case with <seedRef> (harvested from other pages /
+  // seeds of the run). Silent skip made consultInstitutionalHome / petServiceOverviewView /
+  // planScheduleAvailability look untested.
+  const alone = buildPageTestCases(preparedFor([selfFed]));
+  assert.equal(alone.length, 1);
+  assert.equal(alone[0].params.reportId, '<seedRef>');
   // With ANOTHER read that produces reportId, the seedRef resolves and the case is emitted.
   const other = queryCommand({ commandName: 'readReports', producedFields: ['reportId', 'label'], collectionField: 'reports' });
   const withPeer = buildPageTestCases(preparedFor([other, selfFed]));
