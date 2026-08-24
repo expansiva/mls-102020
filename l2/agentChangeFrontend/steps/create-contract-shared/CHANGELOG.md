@@ -1,5 +1,9 @@
 <!-- mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-contract-shared/CHANGELOG.md" enhancement="_blank" -->
 
+- 2026-08-24: Consume l4 `enumLabels` / `lifecycleLabels` for display. Command/contract fields carry
+  `{ code, label }[]` next to `enum`; the page catalog exposes them as `enumFields`. Wire values stay
+  the English codes. Fallback when labels are absent: show the code. Helper `enumDisplayLabel`.
+
 - 2026-07-29 (page tests: emit the page actor + module-wide seedRef reach) — MEASURED on 102045/buildFlowFsm
   with the monitor runner (3 runs, same app/seeds): 4 pass / 1 fail / 9 inconclusive -> **12 pass / 0 fail /
   2 inconclusive**, the 2 remaining being the documented chicken-and-egg case (submitChangeOrderDecision

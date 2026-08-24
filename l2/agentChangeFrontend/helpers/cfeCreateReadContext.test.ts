@@ -9,7 +9,7 @@ const g = globalThis as unknown as Record<string, any>;
 // later test file in the same process doesn't inherit it.
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
-async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string }> {
+async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string; createLayoutPromptContext: (prepared: any, genome: string, templateId: string) => any }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   // libModel.ts runs init() -> mls.events.addEventListener at import time; the setup-l2 stub omits
@@ -700,7 +700,7 @@ const NS4_WORKSPACE = {
   entity: 'Project', purpose: 'Catálogo de projetos',
   bffCalls: [
     { bffId: 'qryListProject', kind: 'query', uses: [{ operationId: 'listProject' }], input: [], output: { kind: 'list', fields: [{ name: 'projectId', from: 'listProject.$items.projectId', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.qryListProject` },
-    { bffId: 'cmdCreateProject', kind: 'command', uses: [{ operationId: 'createProject' }], input: [{ name: 'name', from: 'createProject.name', type: 'string', required: true }], output: { kind: 'object', fields: [{ name: 'projectId', from: 'createProject.projectId', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.cmdCreateProject` },
+    { bffId: 'cmdCreateProject', kind: 'command', uses: [{ operationId: 'createProject' }], input: [{ name: 'name', from: 'createProject.name', type: 'string', required: true }, { name: 'phase', from: 'createProject.phase', type: 'string', required: true }], output: { kind: 'object', fields: [{ name: 'projectId', from: 'createProject.projectId', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.cmdCreateProject` },
   ],
   sections: [{ sectionId: 'recordCatalogue', intent: 'Listar', organisms: [{ role: 'primarySurface', dataSource: 'qryListProject' }, { role: 'contextualAction', action: 'cmdCreateProject' }] }],
   operationIds: ['listProject', 'createProject'],
@@ -730,7 +730,8 @@ function installNs4Stor(withLegacyModule = false): void {
         { fieldId: 'projectId', type: 'string', required: true },
         { fieldId: 'name', type: 'string', required: true },
         // The literal union states itself as a constraint now, not as `enum`.
-        { fieldId: 'phase', type: 'string', required: true, constraints: [{ kind: 'enum', value: '["planned","active","closed"]' }] },
+        { fieldId: 'phase', type: 'string', required: true, constraints: [{ kind: 'enum', value: '["planned","active","closed"]' }],
+          enumLabels: [{ code: 'planned', label: 'Planejado' }, { code: 'active', label: 'Ativo' }, { code: 'closed', label: 'Encerrado' }] },
       ],
     })),
     file(4, `${NS4}/ontology`, 'index', '.defs.ts', ns4Defs(`${NS4}OntologyIndex`, 'Ns4OntologyIndexArtifact', {
@@ -742,7 +743,10 @@ function installNs4Stor(withLegacyModule = false): void {
     })),
     file(4, `${NS4}/operations`, 'createProject', '.defs.ts', operation('createProject', 'create', {
       accessPattern: { kind: 'create' },
-      inputs: [{ inputId: 'name', fieldRef: 'Project.name', required: true, source: 'userInput' }],
+      inputs: [
+        { inputId: 'name', fieldRef: 'Project.name', required: true, source: 'userInput' },
+        { inputId: 'phase', fieldRef: 'Project.phase', required: true, source: 'userInput' },
+      ],
       outputShape: { kind: 'object', fields: [{ name: 'projectId', type: 'string', required: true }] },
     })),
     file(4, `${NS4}/workspaces`, 'projectCatalogue', '.defs.ts', defs('projectCatalogueWorkspace', JSON.stringify(NS4_WORKSPACE))),
@@ -835,6 +839,38 @@ test('ns4: the default language is the one the product was written in, and enums
   assert.deepEqual(ctx.entities.get('Project')?.fields.find((field: any) => field.fieldId === 'phase')?.enum, ['planned', 'active', 'closed']);
   // The audience comes from the access matrix profiles.
   assert.deepEqual((ctx.actorsByModule[NS4] || []).map((actor: any) => actor.actorId), ['projectManager']);
+});
+
+test('CF prefers enumLabels for display and falls back to the code', async () => {
+  const { readCreateContext, preparePageCreate, createLayoutPromptContext, buildPageTestCases } = await loadModule();
+  installNs4Stor();
+  if (typeof g.mls.stor.getKeyToFile !== 'function') {
+    g.mls.stor.getKeyToFile = (info: { project: number; level: number; folder: string; shortName: string; extension: string }) =>
+      `${info.project}/${info.level}/${info.folder}/${info.shortName}${info.extension}`;
+  }
+  const ctx = await readCreateContext();
+  const phase = ctx.entities.get('Project')?.fields.find((field: any) => field.fieldId === 'phase');
+  assert.deepEqual(phase?.enumLabels, [
+    { code: 'planned', label: 'Planejado' },
+    { code: 'active', label: 'Ativo' },
+    { code: 'closed', label: 'Encerrado' },
+  ]);
+
+  const prepared = await preparePageCreate(ctx.pages[0], ctx);
+  const create = prepared.commands.find((command: any) => String(command.commandName).toLowerCase().includes('create'));
+  const phaseInput = (create?.input || []).find((field: any) => field.name === 'phase');
+  assert.deepEqual(phaseInput?.enum, ['planned', 'active', 'closed']);
+  assert.equal(phaseInput?.enumLabels.find((item: any) => item.code === 'active')?.label, 'Ativo');
+
+  const variant = prepared.variantPlan[0];
+  const prompt = createLayoutPromptContext(prepared, variant.genome, variant.templateId);
+  const enumFields = prompt.shared.fieldCatalog.byAction.find((item: any) => item.actionId === create.commandName)?.enumFields || [];
+  const phaseCatalog = enumFields.find((item: any) => item.name === 'phase');
+  assert.equal(phaseCatalog.enumLabels.find((item: any) => item.code === 'active').label, 'Ativo');
+
+  const cases = buildPageTestCases(prepared);
+  const ok = cases.find((item: any) => String(item.id).includes('ok') && item.params?.phase);
+  if (ok) assert.equal(ok.params.phase, 'active', 'page tests still send the code, never the label');
 });
 
 test('ns4 and the old dialect coexist: each module is reconciled and planned by its own rule', async () => {
