@@ -80,6 +80,9 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
    system — a token that is not in it does not exist, resolves to the fallback and silently drops the
    theme, so never invent a name or a prefix (there is no \`ds-\`/\`color-\` prefix: the token is the
    role, e.g. \`--nav-text\`, \`--text-muted\`, \`--border-default\`).
+   You MAY declare custom properties of your own for control values — an animation index, a computed
+   offset, a local scale (\`--letter-index: 3\`, then \`var(--letter-index)\`). They are yours: only the
+   names you merely READ have to be tokens from the list.
 7. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
    navigation entries. You cannot know which routes exist — so never write a path that was not
    handed to you.

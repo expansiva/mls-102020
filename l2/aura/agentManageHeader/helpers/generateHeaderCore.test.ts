@@ -622,3 +622,42 @@ test('a hand-rolled user button is refused (it loses the fallback and the menu)'
     [],
   );
 });
+
+test('a custom property the header declares itself is not a design-system token', () => {
+  const tokens = ['--nav-bg', '--nav-text', '--text-default'];
+
+  // Declared in bandCss and read back: a control value, not a token. This exact case (a per-letter
+  // animation index) had a good header rejected.
+  const own = {
+    bandHtml: '${this.renderAsideToggle()}${this.renderBrand()}',
+    bandCss: '${tag} .x { --letter-index: 3; animation-delay: calc(var(--letter-index) * 60ms); color: var(--nav-text, #102a43); }',
+  };
+  assert.deepEqual(validateHeaderParts(own, { allowedTokens: tokens, colorTokens: tokens }), []);
+
+  // Declared in an inline style of the markup, read from the CSS.
+  const inline = {
+    bandHtml: '${this.renderAsideToggle()}<span style="--letter-index:${2}">a</span>',
+    bandCss: '${tag} span { transform: translateY(calc(var(--letter-index) * 1px)); }',
+  };
+  assert.deepEqual(validateHeaderParts(inline, { allowedTokens: tokens, colorTokens: tokens }), []);
+
+  // Still rejected: a name that is only READ and is not in the project's list.
+  const invented = {
+    bandHtml: '${this.renderAsideToggle()}${this.renderBrand()}',
+    bandCss: '${tag} .x { color: var(--ds-color-nav-text, #fff); }',
+  };
+  assert.match(
+    validateHeaderParts(invented, { allowedTokens: tokens }).join('; '),
+    /--ds-color-nav-text is not a token/,
+  );
+
+  // A var() reference with a fallback is a reference, never a declaration.
+  const fallbackOnly = {
+    bandHtml: '${this.renderAsideToggle()}${this.renderBrand()}',
+    bandCss: '${tag} .x { padding: var( --spacing-nope, 4px ); }',
+  };
+  assert.match(
+    validateHeaderParts(fallbackOnly, { allowedTokens: tokens }).join('; '),
+    /--spacing-nope is not a token/,
+  );
+});

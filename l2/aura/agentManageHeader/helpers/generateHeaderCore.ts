@@ -381,6 +381,23 @@ export function findCssVars(text: string): string[] {
   return [...new Set([...text.matchAll(/var\(\s*(--[a-z0-9-]+)/giu)].map((match) => match[1]))];
 }
 
+/**
+ * Custom properties the header DECLARES itself (`--letter-index: 3`), in CSS or in an inline style.
+ *
+ * These are the header's own control variables — animation indexes, computed offsets, a local scale —
+ * and they are not design-system tokens: rejecting them would forbid every technique that needs one.
+ * A declaration is `--name:` NOT preceded by `var(`, which is what tells it apart from a reference.
+ */
+export function findDeclaredCssVars(text: string): string[] {
+  const declared = new Set<string>();
+  for (const match of text.matchAll(/(--[a-z0-9-]+)\s*:/giu)) {
+    const before = text.slice(Math.max(0, match.index - 6), match.index);
+    if (/var\(\s*$/u.test(before)) continue; // `var(--x, …)` is a reference, not a declaration
+    declared.add(match[1]);
+  }
+  return [...declared];
+}
+
 /** Literal routes the band navigates to (href="/x" or navigateTo('/x')), minus the allowed ones. */
 export function findInventedRoutes(bandHtml: string, allowedHrefs: readonly string[] = []): string[] {
   const allowed = new Set(allowedHrefs);
@@ -464,12 +481,14 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
   // theme stops applying — silently. The DS names tokens by ROLE with no prefix (`--nav-text`), so
   // an invented `--ds-color-nav-text` looks right and does nothing.
   const usedVars = [...findCssVars(bandHtml), ...findCssVars(bandCss)];
+  // Everything the header declares for itself is its own business (see findDeclaredCssVars).
+  const ownVars = new Set([...findDeclaredCssVars(bandHtml), ...findDeclaredCssVars(bandCss)]);
   if (options.allowedTokens?.length) {
     const allowed = new Set(options.allowedTokens);
     for (const name of usedVars) {
       // `--aura-*` belongs to the shell/base, not to the design system.
-      if (name.startsWith('--aura-') || allowed.has(name)) continue;
-      errors.push(`${name} is not a token of this project's design system — use one of: ${options.allowedTokens.join(', ')}`);
+      if (name.startsWith('--aura-') || allowed.has(name) || ownVars.has(name)) continue;
+      errors.push(`${name} is not a token of this project's design system — use one of: ${options.allowedTokens.join(', ')} (a variable the header declares itself is fine, this one is only read)`);
       break;
     }
   }
@@ -479,7 +498,7 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
   // bright box. Non-color scales (radius/space/shadow/font) are free.
   if (options.colorTokens?.length) {
     const colors = new Set(options.colorTokens);
-    const offender = usedVars.find((name) => colors.has(name) && !name.startsWith('--nav-'));
+    const offender = usedVars.find((name) => colors.has(name) && !name.startsWith('--nav-') && !ownVars.has(name));
     if (offender) {
       const navFamily = options.colorTokens.filter((name) => name.startsWith('--nav-'));
       errors.push(`${offender} is a color of another role — inside the band paint with the nav family${navFamily.length ? ` (${navFamily.join(', ')})` : ''}`);

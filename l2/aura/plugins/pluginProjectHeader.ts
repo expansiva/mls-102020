@@ -120,6 +120,8 @@ const message_en = {
   save: 'Save',
   notes: 'Notes',
   invalid: 'Refused',
+  noDraft: 'The run produced nothing — open the task in the thread to see why it failed.',
+  staleDraft: 'What is parked belongs to an earlier run; this one produced nothing. Open the task to see why.',
   noTokens: 'The design system of the project could not be read; the preview has no real tokens',
 };
 type MessageType = typeof message_en;
@@ -176,6 +178,8 @@ const messages: Record<string, MessageType> = {
     save: 'Salvar',
     notes: 'Notas',
     invalid: 'Recusado',
+    noDraft: 'A execução não produziu nada — abra a task na thread para ver o motivo.',
+    staleDraft: 'O que está guardado é de uma execução anterior; esta não produziu nada. Abra a task para ver o motivo.',
     noTokens: 'Não foi possível ler o design system do projeto; o preview está sem os tokens reais',
   },
 };
@@ -445,6 +449,17 @@ export class PluginProjectHeader extends PluginBaseModule {
     return `${prefix}-${Date.now().toString(36)}`;
   }
 
+  /**
+   * Why the draft is not there. The two cases have different causes and different fixes, and
+   * collapsing them into one message cost an hour once: a STALE draft means the run failed and an
+   * older one is still parked, no draft at all means this run produced nothing (look at the task).
+   */
+  private _missingDraftReason(foundRequestId: string | undefined, expected: string): string {
+    return foundRequestId
+      ? `${this.msg.staleDraft} (${foundRequestId} != ${expected})`
+      : this.msg.noDraft;
+  }
+
   // ── header: generate / apply / discard / revert ───────────────────────────
 
   private async _generateHeader(): Promise<void> {
@@ -462,9 +477,11 @@ export class PluginProjectHeader extends PluginBaseModule {
     this._busy = this.msg.generating;
     try {
       await this._runAgent('agentGenerateHeader', JSON.stringify(request));
-      const projectConfig = await getConfigProject(this._projectId, true);
+      // NEVER with ignoreLocalChanges: the agents write the draft through localStor, and that flag
+      // reads the SERVER copy instead — the draft would be invisible (and the cache overwritten).
+      const projectConfig = await getConfigProject(this._projectId);
       const draft = readHeaderDraft(projectConfig, requestId);
-      if (!draft?.parts) throw new Error('the agent returned no draft for this request');
+      if (!draft?.parts) throw new Error(this._missingDraftReason(readHeaderDraft(projectConfig)?.requestId, requestId));
 
       this._draftParts = draft.parts;
       this._notes = draft.notes ?? '';
@@ -485,7 +502,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     this._busy = this.msg.apply;
     try {
       const config = await this._readClientConfig();
-      const projectConfig = await getConfigProject(this._projectId, true);
+      const projectConfig = await getConfigProject(this._projectId);
       const previousSource = this._view?.isProjectHeader
         ? await readRawSource(headerPaths(this._projectId).fileReference)
         : '';
@@ -518,7 +535,7 @@ export class PluginProjectHeader extends PluginBaseModule {
   private async _discardDraft(): Promise<void> {
     this._busy = this.msg.discard;
     try {
-      const projectConfig = await getConfigProject(this._projectId, true);
+      const projectConfig = await getConfigProject(this._projectId);
       await updateConfigProject(this._projectId, clearDraft(projectConfig, 'headerDraft') as any);
       await this._consumePreview();
     } catch (error) {
@@ -543,7 +560,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     this._busy = this.msg.revert;
     try {
       const config = await this._readClientConfig();
-      const projectConfig = await getConfigProject(this._projectId, true);
+      const projectConfig = await getConfigProject(this._projectId);
       const restored = restoreHeaderBackup(this._projectId, config, projectConfig);
       await saveFile(restored.paths.fileReference, restored.source);
       await this._writeClientConfig(restored.config);
@@ -610,9 +627,9 @@ export class PluginProjectHeader extends PluginBaseModule {
         commit: false,
         requestId,
       }));
-      const projectConfig = await getConfigProject(this._projectId, true);
+      const projectConfig = await getConfigProject(this._projectId);
       const draft = readLogoDraft(projectConfig, requestId);
-      if (!draft) throw new Error('the agent returned no mark for this request');
+      if (!draft) throw new Error(this._missingDraftReason(readLogoDraft(projectConfig) ? '?' : undefined, requestId));
       this._markSvg = draft.svg;
       this._markMode = 'paste';
       this._notes = draft.notes ?? '';
