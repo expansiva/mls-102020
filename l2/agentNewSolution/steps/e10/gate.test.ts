@@ -67,6 +67,28 @@ test('E10 passes over a module E8 approved and E9 emitted, and previews the menu
   assert.equal(report.checks.find(check => check.checkId === 'A6-staleness')?.status, 'passed');
 });
 
+test('R6-3: e10 rejects outputShape string for an ontology json field', async () => {
+  const input = await sources();
+  const operation = input.saved.operations[0];
+  const entity = input.ontology.entities.find((item: { entityId: string }) => item.entityId === operation.entity)
+    ?? input.ontology.entities[0];
+  entity.fields.push({
+    fieldId: 'beforeImages', title: 'Before', type: 'json', required: false, description: '', constraints: [],
+  });
+  operation.outputShape = {
+    kind: operation.outputShape?.kind ?? 'object',
+    fields: [
+      ...(operation.outputShape?.fields ?? []),
+      { name: 'beforeImages', type: 'string', required: false, fieldRef: `${entity.entityId}.beforeImages` },
+    ],
+  };
+  const report = await validateNs4E10(input);
+  assert.equal(report.finalStatus, 'failed');
+  assert.ok(report.errors.some(issue => issue.code === 'NS4_E10_OUTPUT_SHAPE_TYPE' && /json/.test(issue.message)),
+    report.errors.map(issue => issue.code).join(','));
+  assert.equal(report.repairStep, 'e9-navigation-compiler');
+});
+
 test('a saved artifact that drifted from the approved model is stale, and E10 names E9 as the repair', async () => {
   const input = await sources();
   input.saved.workspaces[0] = { ...input.saved.workspaces[0], title: 'Editado à mão' };

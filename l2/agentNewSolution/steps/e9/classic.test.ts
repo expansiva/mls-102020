@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { deriveNs4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/tiers.js';
-import { compileNs4ClassicL4 } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
+import { compileNs4ClassicL4, transposeNs4ClassicOperation } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
 import { ns4ClassicDefsSource, parseNs4ClassicDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
 // The consumers' OWN parsers. If these read the emission, the wave changed nothing in them.
 import { parseWorkspaceDefs } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
@@ -109,6 +109,41 @@ test('the approval of a change order arrives at the page as a closed verb select
   // And the record it decides on arrives from the page context, never as a typed id.
   const identity = decision.inputs.find(input => input.fieldRef === 'ChangeOrder.changeOrderId')!;
   assert.equal(identity.source, 'selectedEntity');
+});
+
+test('R6-3: ontology json stays json on classic outputShape and on the TS contract', async () => {
+  const ontology = {
+    entities: [{
+      entityId: 'ServiceExecution',
+      fields: [
+        { fieldId: 'serviceExecutionId', type: 'uuid', required: true },
+        { fieldId: 'beforeImages', type: 'json', required: false },
+        { fieldId: 'afterImages', type: 'json', required: false },
+      ],
+      storage: { idField: 'serviceExecutionId' },
+    }],
+  };
+  const operation = {
+    operationId: 'updateServiceExecution',
+    title: 'Update service execution',
+    entityRef: 'ServiceExecution',
+    entityRefs: ['ServiceExecution'],
+    kind: 'command',
+    useRules: [],
+    story: ['Store before/after images'],
+    accessPattern: { kind: 'update' },
+    inputs: [{
+      inputId: 'beforeImages',
+      fieldRef: { entityId: 'ServiceExecution', fieldId: 'beforeImages' },
+      required: false,
+      source: 'userInput',
+      description: 'photos',
+    }],
+  };
+  const classic = transposeNs4ClassicOperation({ workspaces: [], moduleName: 'petShop' } as any, operation as any, ontology as any);
+  assert.equal(classic.outputShape.fields.find(field => field.name === 'beforeImages')?.type, 'json');
+  assert.equal(classic.outputShape.fields.find(field => field.name === 'afterImages')?.type, 'json');
+  assert.equal(classic.inputs[0].fieldRef, 'ServiceExecution.beforeImages');
 });
 
 test('each bffCall emits one contract file, named and routed the way the consumers expect', async () => {

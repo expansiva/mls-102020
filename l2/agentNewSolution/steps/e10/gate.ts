@@ -26,6 +26,7 @@ export async function validateNs4E10(sources: Ns4E10Sources): Promise<Ns4E10Vali
 
   validateModel(sources, add);
   await validateEmissionFreshness(sources, add);
+  validateOutputShapeTypes(sources, add);
   validateDecisionCoherence(sources, add);
   validateDisclosureRegistrars(sources, add);
   validateWorkflows(sources, add);
@@ -104,6 +105,29 @@ function compare<T>(expected: T[], saved: T[], key: (item: T) => string, label: 
     savedById.delete(key(item));
   }
   for (const id of savedById.keys()) report(id, `Saved ${label} ${id} has no counterpart in the approved model.`);
+}
+
+/** outputShape field type must match the ontology fieldRef (json stays json, never flattened to string). */
+function validateOutputShapeTypes(sources: Ns4E10Sources, add: Add): void {
+  const entities = new Map(sources.ontology.entities.map(entity => [entity.entityId, entity]));
+  for (const operation of sources.saved.operations) {
+    for (const field of operation.outputShape?.fields ?? []) {
+      const ref = field.fieldRef || '';
+      const dot = ref.indexOf('.');
+      if (dot <= 0) continue;
+      const entity = entities.get(ref.slice(0, dot));
+      const ont = entity?.fields.find(item => item.fieldId === ref.slice(dot + 1));
+      if (!ont) continue;
+      if (ont.type === 'json' && field.type !== 'json') {
+        add('errors', {
+          code: 'NS4_E10_OUTPUT_SHAPE_TYPE',
+          path: `operations.${operation.operationId}.outputShape.${field.name}`,
+          message: `outputShape field '${field.name}' is type '${field.type}' but ontology ${ref} is json — json never becomes string on output.`,
+          repairStep: 'e9-navigation-compiler',
+        });
+      }
+    }
+  }
 }
 
 /**
@@ -221,7 +245,7 @@ const CHECK_OF: Array<[RegExp, Ns4E10CheckSummary['checkId']]> = [
   [/^NS4_E10_POLICY/, 'A3-decisions'],
   [/^NS4_E8_(DISCLOSURE|PICKER_SOURCE)/, 'A4-disclosure'],
   [/^NS4_E10_FSM/, 'A5-fsm'],
-  [/^NS4_E10_(WORKSPACE_STALE|OPERATION_STALE|CONTRACT_STALE|SITEMAP_STALE|JOURNEY_STALE|ONTOLOGY_STALE|RULES_STALE|USECASE_STALE|WORKFLOW_STALE)/, 'A6-staleness'],
+  [/^NS4_E10_(WORKSPACE_STALE|OPERATION_STALE|CONTRACT_STALE|SITEMAP_STALE|JOURNEY_STALE|ONTOLOGY_STALE|RULES_STALE|USECASE_STALE|WORKFLOW_STALE|OUTPUT_SHAPE_TYPE)/, 'A6-staleness'],
   [/^NS4_E10_DORMANT_COMMAND/, 'A8-dormant-commands'],
 ];
 function checkOf(code: string): Ns4E10CheckSummary['checkId'] {

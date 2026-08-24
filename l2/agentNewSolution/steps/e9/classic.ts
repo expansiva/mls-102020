@@ -269,12 +269,15 @@ function identityFieldOf(entity: Ns4OntologyEntity | undefined): string {
   return entity?.storage.idField || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId || '';
 }
 function classicType(type: Ns4OntologyField['type']): string {
+  if (type === 'json') return 'json';
   if (type === 'number' || type === 'integer' || type === 'money') return 'number';
   if (type === 'boolean') return 'boolean';
   return 'string';
 }
 function tsType(type: string | undefined): string {
-  return type === 'number' || type === 'boolean' ? type : 'string';
+  if (type === 'number' || type === 'boolean') return type;
+  if (type === 'json') return 'Record<string, unknown>';
+  return 'string';
 }
 
 function upperCamel(value: string): string {
