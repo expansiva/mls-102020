@@ -22,6 +22,9 @@ The workspace index is authoritative for the module name, workspace set, menu gr
 
 All artifacts carry their source hashes and omit timestamps. Recompiling unchanged inputs therefore produces byte-identical payloads.
 
+After emission, E9 audits approved E7 use-case drafts against written operations and records any
+loss on the pipeline (`useCases` / `useCasesDropped`). The audit never fails the step.
+
 ## Gate and repair boundary
 
 The gate checks path provenance, local selection sources, edge profile compatibility, carried-context providers, actor journey reachability, compiled-workflow queues, route ownership, typed field references, notification deep links and access realization.

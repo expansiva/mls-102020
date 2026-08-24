@@ -105,7 +105,7 @@ test('a record catalogue classifies its inputs structurally and never transition
   // The catalogue also READS the parent it asks the user to choose: `project` is a required foreign
   // key with source selectedEntity, so the screen owns the query the picker reads from.
   assert.deepEqual(catalogue.bffCalls.map(call => call.bffId),
-    ['qryListChangeOrder', 'cmdCreateChangeOrder', 'cmdUpdateChangeOrder', 'cmdDeleteChangeOrder', 'qryProjectPicker']);
+    ['qryListChangeOrder', 'cmdCreateChangeOrder', 'cmdUpdateChangeOrder', 'cmdDeleteChangeOrder', 'qryGetChangeOrder', 'qryProjectPicker']);
   assert.equal(model.operations.some(operation => operation.operationId === 'deleteChangeOrder'), true);
 
   // The catalogue edits a whole record: a field required on create stays required on update, and
@@ -412,6 +412,63 @@ test('a catalogue of a moduleDatabase entity keeps the delete it always had', ()
   assert.equal(model.operations.some(operation => operation.operationId === 'inactivateChangeOrder'), false);
   const list = model.operations.find(operation => operation.operationId === 'listChangeOrder')!;
   assert.equal(list.mdm, undefined);
+});
+
+test('every catalogue entity synthesizes a getById even when no page consumes it', () => {
+  const input = sources();
+  const model = deriveNs4E8Model(input);
+  const catalogues = model.workspaces.filter(workspace => workspace.tier === 'recordCatalogue');
+  assert.ok(catalogues.length, 'the fixture has catalogue entities');
+
+  for (const workspace of catalogues) {
+    const operationId = `get${workspace.entity}`;
+    const matches = model.operations.filter(operation => operation.operationId === operationId);
+    assert.equal(matches.length, 1, `${workspace.entity} must have exactly one ${operationId}`);
+    const operation = matches[0];
+    assert.equal(operation.accessPattern.kind, 'getById');
+    assert.equal(operation.kind, 'query');
+    const required = operation.inputs.filter(item => item.required);
+    assert.equal(required.length, 1, `${operationId} asks for the identity and nothing else`);
+    const entity = input.ontology.entities.find((item: any) => item.entityId === workspace.entity)!;
+    assert.deepEqual(
+      [...operation.outputRefs].sort(),
+      entity.fields.map((field: any) => `${entity.entityId}.${field.fieldId}`).sort(),
+    );
+
+    const call = workspace.bffCalls.find(item => item.bffId === `qryGet${workspace.entity}`)!;
+    assert.equal(call.kind, 'query');
+    assert.equal(call.outputKind, 'object');
+    assert.equal(call.entityRef, workspace.entity);
+    assert.equal(call.operationId, operationId);
+    // No organism: the page does not call it. The four original surfaces stay as they were.
+    const bound = workspace.sections.flatMap(section => section.organisms)
+      .some(organism => organism.dataSource === call.bffId || organism.action === call.bffId);
+    assert.equal(bound, false);
+  }
+
+  const create = model.operations.find(operation => operation.operationId === 'createChangeOrder')!;
+  const update = model.operations.find(operation => operation.operationId === 'updateChangeOrder')!;
+  const remove = model.operations.find(operation => operation.operationId === 'deleteChangeOrder')!;
+  const list = model.operations.find(operation => operation.operationId === 'listChangeOrder')!;
+  assert.equal(list.accessPattern.kind, 'list');
+  assert.equal(create.accessPattern.kind, 'create');
+  assert.equal(update.accessPattern.kind, 'update');
+  assert.equal(remove.accessPattern.kind, 'delete');
+  assert.equal(list.inputs.length, 0);
+});
+
+test('a journey that already produced get{Entity} keeps it; the catalogue does not duplicate', () => {
+  const input = sources();
+  const useCase = input.useCases.find((item: any) => item.useCaseId === 'inspectInvoice');
+  assert.ok(useCase, 'the fixture compiles inspectInvoice from a journey');
+  useCase.useCaseId = 'getInvoice';
+  const model = deriveNs4E8Model(input);
+  const matches = model.operations.filter(operation => operation.operationId === 'getInvoice');
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].useCaseId, 'getInvoice', 'the journey operation wins the operationId');
+  assert.equal(matches[0].accessPattern.kind, 'getById');
+  const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'invoiceCatalogue')!;
+  assert.equal(catalogue.bffCalls.some(call => call.operationId === 'getInvoice'), true);
 });
 
 test('a delete over an mdm entity is a blocking finding even if it arrives from elsewhere', () => {

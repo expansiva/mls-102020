@@ -41,8 +41,9 @@ export interface Ns4E8Input {
 
 /**
  * One operation of the module. A journey step compiles into the E7 use case it already owns; a
- * record catalogue synthesizes its four operations from the ontology, because E7 only compiles
- * journeys and a catalogue is not a journey.
+ * record catalogue synthesizes its five operations from the ontology (list, getById, create,
+ * update, and delete or the mdm inactivate/reactivate pair), because E7 only compiles journeys
+ * and a catalogue is not a journey. getById is emitted even when no page consumes it.
  */
 /**
  * Master-data semantics of one operation. Master data is referenced by other

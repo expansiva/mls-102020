@@ -281,17 +281,22 @@ function buildRecordCatalogue(
       story: [label(context, 'Corrigir os dados do registro escolhido.', 'Correct the chosen record.')],
     },
     ...removalOperations(entity, context),
+    getByIdOperation(entity, context),
   ];
+  const removalCalls: Ns4E8BffCall[] = removalOperations(entity, context).map(operation => ({
+    bffId: `cmd${upperFirst(operation.operationId)}`, kind: 'command' as const,
+    operationId: operation.operationId, outputKind: 'object' as const, entityRef: entity.entityId,
+  }));
   const bffCalls: Ns4E8BffCall[] = [
     { bffId: `qryList${entity.entityId}`, kind: 'query', operationId: `list${entity.entityId}`, outputKind: 'paginated', entityRef: entity.entityId },
     { bffId: `cmdCreate${entity.entityId}`, kind: 'command', operationId: `create${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
     { bffId: `cmdUpdate${entity.entityId}`, kind: 'command', operationId: `update${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
-    ...removalOperations(entity, context).map(operation => ({
-      bffId: `cmd${upperFirst(operation.operationId)}`, kind: 'command' as const,
-      operationId: operation.operationId, outputKind: 'object' as const, entityRef: entity.entityId,
-    })),
+    ...removalCalls,
+    // Named get{Entity} (bff qryGet{Entity}): locate* is already a list, inspect* is a journey
+    // screen. No organism consumes this call — it exists for a future id lookup, not the page.
+    { bffId: `qryGet${entity.entityId}`, kind: 'query', operationId: `get${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
   ];
-  const removalActions = bffCalls.slice(3).map(call => ({ role: 'contextualAction' as const, action: call.bffId }));
+  const removalActions = removalCalls.map(call => ({ role: 'contextualAction' as const, action: call.bffId }));
   const sections: Ns4E8Section[] = [
     { sectionId: 'recordList', intent: label(context, `Localizar ${entity.title}.`, `Find ${entity.title}.`),
       organisms: [{ role: 'primarySurface', dataSource: bffCalls[0].bffId }, ...removalActions] },
@@ -357,6 +362,22 @@ function removalOperations(entity: Ns4OntologyEntity, context: Ns4E8TierContext)
       story: [label(context, 'Reativar um registro desativado.', 'Reactivate a deactivated record.')],
     },
   ];
+}
+
+/**
+ * Row lookup by identity. A catalogue always emits it, even when no page calls it — the
+ * future LLM harness reads the table by id. A lookup still resolves an inactive mdm record.
+ */
+function getByIdOperation(entity: Ns4OntologyEntity, context: Ns4E8TierContext): Ns4E8Operation {
+  return {
+    operationId: `get${entity.entityId}`, title: label(context, `Obter ${entity.title}`, `Get ${entity.title}`),
+    kind: 'query', entityRef: entity.entityId, entityRefs: [entity.entityId],
+    accessPattern: { kind: 'getById' }, inputs: catalogueInputs(entity, context, 'identityOnly'),
+    outputRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
+    useRules: [], transitionRefs: [],
+    story: [label(context, 'Ler o registro pelo identificador.', 'Read the record by id.')],
+    ...(isMdmEntity(entity) ? { mdm: { situationOutput: 'active' as const } } : {}),
+  };
 }
 
 /**

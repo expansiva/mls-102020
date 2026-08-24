@@ -461,6 +461,20 @@ export function ns4FileExists(fileInfo: Ns4FileInfo): boolean {
   return !!file && file.status !== 'deleted';
 }
 
+/** Draft files of approved E7 use cases. Used by E9 only as an audit of what did not become an operation. */
+export function listNs4E7UseCaseDraftFiles(moduleName: string): Ns4FileInfo[] {
+  const project = mls.actualProject || 0;
+  const folder = `${normalizeNs4ModuleName(moduleName)}/pipeline/e7-usecases`;
+  const files: Ns4FileInfo[] = [];
+  for (const file of Object.values(mls.stor.files)) {
+    if (!file || file.project !== project || file.status === 'deleted') continue;
+    if (file.level !== 4 || file.folder !== folder || file.extension !== '.json') continue;
+    if (!file.shortName.endsWith('-draft')) continue;
+    files.push({ project, level: 4, folder, shortName: file.shortName, extension: '.json' });
+  }
+  return files.sort((left, right) => left.shortName.localeCompare(right.shortName));
+}
+
 export function listNs4ModuleFolders(): Set<string> {
   const project = mls.actualProject || 0;
   const modules = new Set<string>();

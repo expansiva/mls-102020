@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-24 — catálogo emite getById por entidade, sem consumidor de tela
+
+O catálogo sintetizava list/create/update/delete (ou inactivate/reactivate no mdm) e nunca uma
+leitura da linha pelo id. `getById` só nascia de um passo `inspect` de jornada. Toda entidade de
+catálogo passa a emitir `get{Entity}` (`qryGet{Entity}`, `accessPattern.kind: 'getById'`, id
+obrigatório, registro completo na saída), mesmo sem página que a chame. `locate*` continua list;
+`inspect*` continua a leitura de tela. Se a jornada já produziu o mesmo `operationId`, o
+`uniqueBy` existente (último vence: a jornada entra depois do catálogo) fica com a da jornada.
+As quatro operações originais e as seções da tela não mudam de forma.
+
 ## 2026-08-22 — comando exige chave que nenhuma leitura da página fornece
 
 `recordInStoreServiceAttendance` é um workspace de `ServiceExecution` com cinco comandos que

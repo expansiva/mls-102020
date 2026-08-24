@@ -1,5 +1,12 @@
 # E9 changelog
 
+## 2026-08-24 — E7 use cases that never became operations are declared
+
+E9 still transposes faithfully. After the write it compares `pipeline/e7-usecases/*-draft.json`
+to the `operationId`s it just wrote. A gap is `useCases: 'degraded'` plus `useCasesDropped` on
+the pipeline (and the English count in the step status). No gap strips both fields so a previous
+`degraded` cannot stick. The audit never fails the run and never forces emission.
+
 ## 2026-08-21 — o bloco `mdm` atravessa para o formato clássico
 
 `Ns4ClassicOperation` ganha `mdm?` opcional, copiado verbatim do modelo quando a operação é de

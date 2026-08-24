@@ -28,6 +28,10 @@ form from user-entered values; E8 does not invent a pre-existing record solely t
 
 ## Master data is deactivated, never deleted
 
+A record catalogue synthesizes five operations from the ontology: `list`, `getById` (`get{Entity}` /
+`qryGet{Entity}`), `create`, `update`, and `delete` (or `inactivate`/`reactivate` when
+`storage.target` is `mdm`). `getById` is emitted even when no page consumes it.
+
 A record catalogue of an entity whose `storage.target` is `mdm` emits `inactivate`/`reactivate`
 instead of `delete`, and its list returns only active records unless the caller passes the optional
 `includeInactive` request flag. A lookup by id still resolves an inactive record, so history stays
