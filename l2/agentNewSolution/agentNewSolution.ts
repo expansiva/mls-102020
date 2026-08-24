@@ -123,7 +123,6 @@ async function beforePromptImplicit(
   // ns4BuildStamp). Informational: a source edited locally is normal, and work never pushed is
   // invisible to the platform — so there is nothing here to warn about, only something to record.
   const provenance = describeProvenance(await readAgentProvenance());
-  if (provenance) console.info(`[${agent.agentName}]${provenance}`);
   const invocation = parseNs4Invocation(userPrompt || '');
   if (!invocation.prompt) {
     // error, i18n
@@ -135,6 +134,7 @@ async function beforePromptImplicit(
   let resumeTarget = '';
   let resumeRound = '';
   let rebuildModule = '';
+  let rebuildNote = '';
   let taskTitle = 'new Solution';
   const existingModules = listNs4ModuleFolders();
   const existingModule = resolveNs4ExistingModuleToken(invocation.prompt, existingModules);
@@ -249,7 +249,7 @@ async function beforePromptImplicit(
         // TOTAL: archive the module's whole l4/l5 so no draft, trace or per-entity defs from the previous
         // ontology survives into the new generation, then generate again from E1.
         const archived = await archiveNs4ModuleForRebuild(existingModule);
-        console.info(`[agentNewSolution] /rebuild ${existingModule}: archived ${archived.length} l4/l5 files`);
+        rebuildNote = `/rebuild ${existingModule}: archived ${archived.length} l4/l5 files`;
         rebuildModule = existingModule;
         sourcePrompt = pipeline?.sourcePrompt || invocation.prompt;
         // A prompt typed alongside the flag replaces the stored one; the bare module name does not.
@@ -278,7 +278,7 @@ async function beforePromptImplicit(
         resumeRound = '1';
         sourcePrompt = pipeline.sourcePrompt || invocation.prompt;
         taskTitle = `plan ${existingModule}`;
-        console.info(`[agentNewSolution] /rebuild ${existingModule} from ${invocation.rebuildFrom} at ${rebuiltAt}`);
+        rebuildNote = `/rebuild ${existingModule} from ${invocation.rebuildFrom} at ${rebuiltAt}`;
       }
     } else if (action === 'resume-next' && pipeline?.steps.e10?.status === 'approved') {
       return [await statusTask(
@@ -326,6 +326,8 @@ async function beforePromptImplicit(
         ...(rebuildModule ? { rebuildModule } : {}),
         ...(resumeTarget ? { resumeTarget } : {}),
         ...(resumeRound ? { resumeRound } : {}),
+        ...(rebuildNote ? { rebuildNote } : {}),
+        ...(provenance ? { agentBuild: provenance } : {}),
       },
     },
   } as mls.msg.AgentIntentAddMessageAI];
