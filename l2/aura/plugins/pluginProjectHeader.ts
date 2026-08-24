@@ -86,6 +86,7 @@ const message_en = {
   save: 'Save',
   notes: 'Notes',
   invalid: 'Refused',
+  noTokens: 'The design system of the project could not be read; the preview has no real tokens',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -124,6 +125,7 @@ const messages: Record<string, MessageType> = {
     save: 'Salvar',
     notes: 'Notas',
     invalid: 'Recusado',
+    noTokens: 'Não foi possível ler o design system do projeto; o preview está sem os tokens reais',
   },
 };
 /// **collab_i18n_end**
@@ -166,6 +168,8 @@ export class PluginProjectHeader extends PluginBaseModule {
   @state() private _markMode: 'none' | 'paste' | 'generate' = 'none';
   @state() private _markSvg = '';
   @state() private _markBrief = '';
+  /** Non-fatal: the preview still renders, but not with the project's real colours. */
+  @state() private _warn = '';
 
   private msg: MessageType = message_en;
   /** Signature of what is mounted in the applied band, so `updated()` does not rebuild the iframe. */
@@ -226,6 +230,7 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   private async _reload(): Promise<void> {
     this._error = '';
+    this._warn = '';
     const config = await this._readClientConfig();
     this._view = readHeaderProfileView(config, this._projectId);
     this._form = formFromProfile(this._view);
@@ -282,10 +287,16 @@ export class PluginProjectHeader extends PluginBaseModule {
       return;
     }
 
+    // Two ways a project module is addressed, tried in this order:
+    //   1. extensionless + `?t=` — exactly what collabImport builds, and what the studio serves;
+    //   2. `.js` with no query — the form of the config entrypoint and of the studio's own dynamic
+    //      imports (a cache-busting query on this one is what failed first: it reaches the network
+    //      instead of being resolved).
+    // The stamp keeps a header written seconds ago from coming out of the module cache.
+    const base = `/_${this._projectId}_/l2/${folder ? `${folder}/` : ''}${shortName}`;
     const payload = JSON.stringify({
       tag,
-      // Cache-busted: a header written seconds ago must not be served from the module cache.
-      url: `/_${this._projectId}_/l2/${folder ? `${folder}/` : ''}${shortName}.js?t=${Date.now()}`,
+      urls: [`${base}?t=${Date.now()}`, `${base}.js`],
       bootConfig: this._bootConfig(),
       regionProps: {
         ...(this._view?.brand ? { brand: this._view.brand } : {}),
@@ -306,17 +317,25 @@ export class PluginProjectHeader extends PluginBaseModule {
       `const p = ${payload};`,
       'window.litDisableBundleWarning = true;',
       '(async () => {',
-      '  for (let i = 0; i < 12; i += 1) {',
-      "    try { await import(p.url + '&r=' + i); break; }",
-      '    catch (error) {',
-      "      if (i === 11) { document.body.textContent = 'preview: ' + (error && error.message ? error.message : error); return; }",
-      '      await new Promise((done) => setTimeout(done, 300));',
+      "  let last = '';",
+      '  // Retried: a draft written a moment ago may not be compiled yet.',
+      '  for (let i = 0; i < 8; i += 1) {',
+      '    for (const url of p.urls) {',
+      '      // Only the URL that already carries a query gets the retry stamp: adding one to the',
+      "      // plain '.js' form is what made it miss the studio's resolution and hit the network.",
+      "      const bust = url.includes('?') ? url + '&r=' + i : url;",
+      "      try { await import(bust); } catch (error) { last = url + ' -> ' + (error && error.message ? error.message : error); continue; }",
+      `      if (!customElements.get(p.tag)) { last = url + ' -> loaded, but ' + p.tag + ' was not defined'; continue; }`,
+      '      const el = document.createElement(p.tag);',
+      '      el.bootConfig = p.bootConfig;',
+      '      el.regionProps = p.regionProps;',
+      '      document.body.appendChild(el);',
+      '      return;',
       '    }',
+      '    await new Promise((done) => setTimeout(done, 300));',
       '  }',
-      '  const el = document.createElement(p.tag);',
-      '  el.bootConfig = p.bootConfig;',
-      '  el.regionProps = p.regionProps;',
-      '  document.body.appendChild(el);',
+      "  document.body.style.cssText = 'font:12px/1.4 monospace;padding:8px;color:#b91c1c';",
+      "  document.body.textContent = 'preview: ' + last;",
       '})();',
       '<\/script></body></html>',
     ].join('\n'));
@@ -336,9 +355,11 @@ export class PluginProjectHeader extends PluginBaseModule {
       const mod = await collabImport({ project: this._projectId, folder: '', shortName: 'designSystem' });
       const entry = (mod?.tokens ?? [])[0] as IDesignSystemTokens | undefined;
       this._tokensCssCache = entry ? tokensCssFromTheme(entry) : '';
-    } catch {
-      // A project without a design system still previews — just without tokens.
+    } catch (error) {
+      // A project without a design system still previews — but say so: every colour of a generated
+      // header is a token, so an unstyled band would look like a broken header.
       this._tokensCssCache = '';
+      this._warn = `${this.msg.noTokens}: ${error instanceof Error ? error.message : String(error)}`;
     }
     return this._tokensCssCache;
   }
@@ -783,6 +804,7 @@ export class PluginProjectHeader extends PluginBaseModule {
           <span class="text-xs font-mono opacity-60">#${this._projectId}</span>
         </div>
         ${this._error ? html`<p class="text-sm" style="color:#b91c1c">${this._error}</p>` : nothing}
+        ${this._warn ? html`<p class="text-xs" style="color:#b45309">${this._warn}</p>` : nothing}
         ${this._renderApplied()}
         ${this._renderMark()}
         ${this._renderForm()}
