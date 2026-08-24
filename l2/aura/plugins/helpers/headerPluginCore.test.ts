@@ -10,8 +10,11 @@ import {
   formFromProfile,
   readHeaderBackup,
   readHeaderDraft,
+  countProjectDesignSystems,
   readHeaderProfileView,
   readLogoDraft,
+  readProjectLanguages,
+  readProjectRoutes,
   restoreHeaderBackup,
   scopeTokensCss,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
@@ -78,15 +81,61 @@ test('the view reports the profile the shell boots, and whether it is the projec
 });
 
 test('the form starts from what the project already has', () => {
-  const form = formFromProfile(readHeaderProfileView(config(), PROJECT));
+  const form = formFromProfile(readHeaderProfileView(config(), PROJECT), ['pt-BR', 'en']);
   assert.equal(form.brandTitle, 'Sample App');
   assert.equal(form.brandSubtitle, 'Operations');
   assert.deepEqual(form.actions, ['language', 'user']);
   assert.equal(form.profileName, 'defaultAura');
-  // Not carried over: they are per-generation decisions, not state of the project.
+  // No selection on the profile: the header speaks every language of the project.
+  assert.deepEqual(form.locales, ['pt-BR', 'en']);
+  assert.deepEqual(form.navLinks, [], 'no route selected = no links, the default');
+  // Not carried over: it is a per-generation decision, not state of the project.
   assert.equal(form.brief, '');
-  assert.equal(form.navLinks, false);
   assert.equal(form.logo, 'keep');
+});
+
+test('a selection recorded on the profile wins over the defaults', () => {
+  const view = readHeaderProfileView(
+    config({ props: { actions: ['language'], locales: ['en'], navLinks: ['/a', '/b'] } }),
+    PROJECT,
+  );
+  assert.deepEqual(view?.locales, ['en']);
+  assert.deepEqual(view?.navLinks, ['/a', '/b']);
+
+  const form = formFromProfile(view, ['pt-BR', 'en']);
+  assert.deepEqual(form.locales, ['en'], 'the profile decides, not the project list');
+  assert.deepEqual(form.navLinks, ['/a', '/b']);
+
+  // A locale the project dropped cannot stay selected: it has nowhere to come from.
+  assert.deepEqual(formFromProfile(view, ['pt-BR']).locales, []);
+});
+
+test('the project languages, themes and routes are read from the two documents', () => {
+  assert.deepEqual(
+    readProjectLanguages({ languages: [{ language: 'en', name: 'English', path: '/' }, { language: '', name: 'x' }] }),
+    [{ code: 'en', name: 'English' }],
+    'an entry with no code is not a language',
+  );
+  assert.deepEqual(readProjectLanguages(undefined), []);
+
+  assert.equal(countProjectDesignSystems({ designSystems: [{ dsIndex: '0' }, { dsIndex: '1' }] }), 2);
+  assert.equal(countProjectDesignSystems({}), 0);
+
+  const routes = readProjectRoutes({
+    projects: {
+      [String(PROJECT)]: {
+        modules: [
+          { navigation: [{ label: 'Dash', href: '/m/dash' }, { href: '/m/plain' }, { label: 'Dup', href: '/m/dash' }] },
+          { navigation: [{ label: 'Other', href: '/m/other', description: 'why' }] },
+        ],
+      },
+      '102034': { modules: [{ navigation: [{ label: 'Backend', href: '/nope' }] }] },
+    },
+  }, PROJECT);
+  assert.deepEqual(routes.map((route) => route.href), ['/m/dash', '/m/plain', '/m/other'],
+    'only the app project, deduped by href, in declaration order');
+  assert.equal(routes[1].label, '/m/plain', 'a nameless route falls back to its href');
+  assert.equal(routes[2].description, 'why');
 });
 
 // ── the request ────────────────────────────────────────────────────────────
@@ -99,8 +148,17 @@ test('the request is always a draft, and the local gate runs before the round tr
   assert.equal(request.brief, 'clean and warm');
   assert.deepEqual(request.brand, { title: 'Sample App', subtitle: undefined, logoUrl: undefined, logoAlt: undefined, href: undefined });
   assert.deepEqual(request.actions, ['language']);
-  assert.equal(request.navLinks, false, 'navigation stays opt-in');
+  assert.deepEqual(request.navLinks, [], 'navigation stays opt-in: an empty selection is off');
   assert.equal(request.requestId, 'req-1');
+
+  // The selection travels as lists, and the agent gets exactly what the screen shows.
+  const picked = buildHeaderRequest(
+    PROJECT,
+    { ...form, navLinks: ['/a'], locales: ['pt-BR', 'en'] },
+    'req-3',
+  );
+  assert.deepEqual(picked.navLinks, ['/a']);
+  assert.deepEqual(picked.locales, ['pt-BR', 'en']);
 
   // Same gate as the agent: no brief and no brand is not a request.
   assert.throws(() => buildHeaderRequest(PROJECT, emptyHeaderForm(), 'req-2'), /brief and\/or a brand.title/);

@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  allowedNavEntries,
+  allowsNavLinks,
   buildGenerateHeaderHumanPrompt,
   buildHeaderSource,
   findCssVars,
@@ -364,12 +366,57 @@ test('navigation links are opt-in, and off by default', () => {
   assert.equal(normalizeHeaderRequest({ ...base, navLinks: 'yes' }).navLinks, false);
 
   const withLinks = withBandHtml('${this.renderAsideToggle()}${this.renderNavLinks()}');
-  assert.match(validateHeaderParts(withLinks).join('; '), /navLinks is off/);
+  assert.match(validateHeaderParts(withLinks).join('; '), /no route was selected/);
   assert.deepEqual(validateHeaderParts(withLinks, { allowNavLinks: true }), []);
 
   // renderActions() may carry module links, so it is gated the same way.
   const withModuleLinks = withBandHtml('${this.renderAsideToggle()}${this.renderModuleLinks()}');
-  assert.match(validateHeaderParts(withModuleLinks).join('; '), /navLinks is off/);
+  assert.match(validateHeaderParts(withModuleLinks).join('; '), /no route was selected/);
+});
+
+test('a list of hrefs selects which routes the header may link', () => {
+  const base = { projectId: PROJECT, brand: { title: 'Sample App' } };
+  const navigation = [
+    { label: 'Dash', href: '/m/dash' },
+    { label: 'Stock', href: '/m/stock' },
+    { label: 'Shift', href: '/m/shift' },
+  ];
+
+  const picked = normalizeHeaderRequest({ ...base, navLinks: ['/m/stock', '', '/m/dash'], navigation });
+  assert.deepEqual(picked.navLinks, ['/m/stock', '/m/dash'], 'empty entries dropped');
+  assert.ok(allowsNavLinks(picked), 'a non-empty list turns links on');
+  assert.deepEqual(
+    allowedNavEntries(picked).map((entry) => entry.href),
+    ['/m/dash', '/m/stock'],
+    'in the order the project declares them, with the project label',
+  );
+
+  // Off cases: nothing selected is nothing allowed.
+  assert.equal(allowsNavLinks(normalizeHeaderRequest({ ...base, navLinks: [], navigation })), false);
+  assert.deepEqual(allowedNavEntries({ navLinks: [], navigation }), []);
+  // The legacy flag still means "every route".
+  assert.deepEqual(allowedNavEntries({ navLinks: true, navigation }), navigation);
+
+  // A route that exists but was NOT selected is as invented as one that does not exist.
+  const bandHtml = '${this.renderAsideToggle()}<a href="/m/shift" @click=${this.handleNavigate}>x</a>';
+  const errors = validateHeaderParts(withBandHtml(bandHtml), {
+    allowNavLinks: true,
+    allowedHrefs: allowedNavEntries(picked).map((entry) => entry.href),
+  });
+  assert.match(errors.join('; '), /\/m\/shift/);
+});
+
+test('the messages block must cover the locales that were asked for', () => {
+  const bandHtml = '${this.renderAsideToggle()}<span>${this.localized(messages).hint}</span>';
+  const parts = { ...withBandHtml(bandHtml), messages: { 'pt-BR': { hint: 'Oi' } } };
+
+  assert.match(
+    validateHeaderParts(parts, { locales: ['pt-BR', 'en'] }).join('; '),
+    /missing the locale "en"/,
+    'a missing locale falls back at runtime, which is invisible until someone switches',
+  );
+  assert.deepEqual(validateHeaderParts(parts, { locales: ['pt-BR'] }), []);
+  assert.deepEqual(validateHeaderParts(parts), [], 'no locales requested, no locale rule');
 });
 
 test('with links off the model is told so, and gets no routes to link', () => {

@@ -51,6 +51,10 @@ export interface HeaderProfileView {
   heightPx?: number;
   brand?: AppHeaderBrand;
   actions: AppHeaderAction[];
+  /** Locales the header offers (`props.locales`); empty = every language of the project. */
+  locales: string[];
+  /** Routes the header links (`props.navLinks`); empty = no links in the band. */
+  navLinks: string[];
   /** True when the profile points at the project's own generated header (not the master's). */
   isProjectHeader: boolean;
   /** Which shell document the app boots (`clientShell.mode`) — the preview's boot config mirrors it. */
@@ -74,9 +78,11 @@ export function readHeaderProfileView(
   const profile = header.profiles[name] as ProjectDynamicRegionConfig | undefined;
   if (!profile) return undefined;
 
-  const actions = isRecord(profile.props) && Array.isArray(profile.props.actions)
-    ? (profile.props.actions as AppHeaderAction[])
-    : [];
+  const props = isRecord(profile.props) ? profile.props : undefined;
+  const actions = Array.isArray(props?.actions) ? (props.actions as AppHeaderAction[]) : [];
+  const stringList = (value: unknown) => (Array.isArray(value)
+    ? value.map(readString).filter(Boolean)
+    : []);
 
   return {
     profileName: name,
@@ -88,6 +94,8 @@ export function readHeaderProfileView(
     heightPx: typeof profile.heightPx === 'number' ? profile.heightPx : undefined,
     brand: isRecord(profile.brand) ? profile.brand as unknown as AppHeaderBrand : undefined,
     actions,
+    locales: stringList(props?.locales),
+    navLinks: stringList(props?.navLinks),
     isProjectHeader: readString(profile.renderer?.tag) === headerPaths(projectId).tag,
   };
 }
@@ -118,8 +126,13 @@ export interface HeaderFormState {
   brandTitle: string;
   brandSubtitle: string;
   actions: AppHeaderAction[];
-  navLinks: boolean;
-  language: string;
+  /**
+   * Routes the band links, by href. EMPTY = no links, which stays the default: the aside owns the
+   * menu, and a header that repeats it shows the same list twice.
+   */
+  navLinks: string[];
+  /** Locales the header speaks: the i18n block it generates AND what its switcher offers. */
+  locales: string[];
   logo: 'keep' | 'generate' | 'none';
   logoStyle: string;
   logoBrief: string;
@@ -132,8 +145,8 @@ export function emptyHeaderForm(): HeaderFormState {
     brandTitle: '',
     brandSubtitle: '',
     actions: [],
-    navLinks: false,
-    language: '',
+    navLinks: [],
+    locales: [],
     logo: 'keep',
     logoStyle: '',
     logoBrief: '',
@@ -141,15 +154,71 @@ export function emptyHeaderForm(): HeaderFormState {
   };
 }
 
-/** Pre-fills the form from what the project already has, so a regeneration is a small edit. */
-export function formFromProfile(view: HeaderProfileView | undefined): HeaderFormState {
+/**
+ * Pre-fills the form from what the project already has, so a regeneration is a small edit.
+ *
+ * @param languages - Every language the project declares; used as the default selection, since a
+ * header with no `props.locales` speaks all of them.
+ */
+export function formFromProfile(
+  view: HeaderProfileView | undefined,
+  languages: readonly string[] = [],
+): HeaderFormState {
   const form = emptyHeaderForm();
+  form.locales = [...languages];
   if (!view) return form;
   form.brandTitle = readString(view.brand?.title);
   form.brandSubtitle = readString(view.brand?.subtitle);
   form.actions = [...view.actions];
+  form.navLinks = [...view.navLinks];
+  if (view.locales.length) form.locales = view.locales.filter((locale) => !languages.length || languages.includes(locale));
   form.profileName = view.profileName;
   return form;
+}
+
+/** Languages the project declares (`l5/project.json > languages`). */
+export function readProjectLanguages(projectConfig: unknown): Array<{ code: string; name: string }> {
+  if (!isRecord(projectConfig) || !Array.isArray(projectConfig.languages)) return [];
+  return projectConfig.languages
+    .filter(isRecord)
+    .map((entry) => ({ code: readString(entry.language), name: readString(entry.name) }))
+    .filter((entry) => Boolean(entry.code));
+}
+
+/** How many design-system themes the project declares — the switcher hides itself below two. */
+export function countProjectDesignSystems(projectConfig: unknown): number {
+  if (!isRecord(projectConfig) || !Array.isArray(projectConfig.designSystems)) return 0;
+  return projectConfig.designSystems.filter(isRecord).length;
+}
+
+/**
+ * Routes of the app, from `l5/config.json > projects[].modules[].navigation` — the same list the
+ * shell hands the aside, and the only hrefs a header is allowed to link.
+ */
+export function readProjectRoutes(
+  config: unknown,
+  projectId: number,
+): Array<{ label: string; href: string; description?: string }> {
+  if (!isRecord(config) || !isRecord(config.projects)) return [];
+  const projects = config.projects as Record<string, unknown>;
+  const owners = isRecord(projects[String(projectId)]) ? [projects[String(projectId)]] : Object.values(projects);
+  const routes: Array<{ label: string; href: string; description?: string }> = [];
+  const seen = new Set<string>();
+  for (const owner of owners) {
+    const modules = isRecord(owner) && Array.isArray(owner.modules) ? owner.modules : [];
+    for (const module of modules) {
+      const navigation = isRecord(module) && Array.isArray(module.navigation) ? module.navigation : [];
+      for (const entry of navigation) {
+        if (!isRecord(entry)) continue;
+        const href = readString(entry.href);
+        const label = readString(entry.label) || href;
+        if (!href || seen.has(href)) continue;
+        seen.add(href);
+        routes.push({ href, label, description: readString(entry.description) || undefined });
+      }
+    }
+  }
+  return routes;
 }
 
 /**
@@ -166,8 +235,9 @@ export function buildHeaderRequest(
     projectId,
     brief: readString(form.brief) || undefined,
     actions: form.actions,
-    navLinks: form.navLinks === true,
-    language: readString(form.language) || undefined,
+    // A list of hrefs, not a flag: the agent links exactly these and validates against them.
+    navLinks: [...form.navLinks],
+    locales: [...form.locales],
     logo: form.logo,
     logoStyle: readString(form.logoStyle) || undefined,
     logoBrief: readString(form.logoBrief) || undefined,
@@ -278,6 +348,10 @@ export function applyHeaderDraft(input: ApplyHeaderInput, buildSource: (parts: G
       ? { title: brandTitle, subtitle: readString(input.form.brandSubtitle) || undefined }
       : undefined,
     actions: input.form.actions,
+    // Both are DATA in the profile: changing which links or locales the header offers is a config
+    // edit afterwards, with no regeneration.
+    navLinks: input.form.navLinks,
+    locales: input.form.locales,
     profileName: readString(input.form.profileName) || undefined,
     dropLogo: input.form.logo === 'none',
   });

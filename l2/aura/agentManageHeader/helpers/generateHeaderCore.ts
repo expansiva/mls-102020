@@ -24,15 +24,21 @@ export interface GenerateHeaderRequest {
   /** Brand identity — stored in the CONFIG profile, never inlined in the generated file. */
   brand?: AppHeaderBrand;
   actions?: AppHeaderAction[];
-  /** Language of the copy the header renders (i18n block + notes). */
+  /**
+   * Locales the header speaks: one message map per locale in the generated i18n block, and the
+   * locales its switcher offers (`props.locales`). Empty = the model picks (legacy `language`).
+   */
+  locales?: string[];
+  /** Legacy single-language hint, kept for console callers; folded into `locales`. */
   language?: string;
   /**
-   * Render the module's navigation as links in the band. Default FALSE: navigation is the aside's
-   * job, and a header that duplicates it shows the same menu twice on screen. When false the model
-   * gets no routes at all, so it cannot link anything.
+   * Which routes the band links. Default FALSE/empty: navigation is the aside's job, and a header
+   * that duplicates it shows the same menu twice on screen. A LIST of hrefs links exactly those;
+   * `true` means "all of the project's routes" (the old behaviour). When off, the model gets no
+   * routes at all, so it cannot link anything.
    */
-  navLinks?: boolean;
-  /** Navigation entries available to the header (label + href); only read when navLinks is true. */
+  navLinks?: boolean | string[];
+  /** Navigation entries available to the header (label + href); only read when navLinks is on. */
   navigation?: Array<{ label: string; href: string }>;
   /** Every custom property the project's design system defines (color + global + typography). */
   tokens?: string[];
@@ -154,6 +160,10 @@ export interface HeaderProfileOptions {
   paths: HeaderPaths;
   brand?: AppHeaderBrand;
   actions?: AppHeaderAction[];
+  /** Routes the band links, by href (`props.navLinks`). Empty/absent removes the key. */
+  navLinks?: string[];
+  /** Locales the header offers (`props.locales`). Empty/absent removes the key = every language. */
+  locales?: string[];
   /** Profile to take over; the master's own `defaultAura` by default. */
   profileName?: string;
   /** Drop the mark the profile already had instead of carrying it over. */
@@ -202,8 +212,18 @@ export function pointHeaderProfileAtProject(config: unknown, options: HeaderProf
     const brand = (isRecord(profile.brand) ? profile.brand : (profile.brand = {})) as Record<string, unknown>;
     if (!readString(brand.logoSvg)) brand.logoSvg = previousLogoSvg;
   }
-  if (options.actions?.length) profile.props = { ...(isRecord(previous?.props) ? previous.props : {}), actions: [...options.actions] };
-  else if (isRecord(profile.props)) delete (profile.props as Record<string, unknown>).actions;
+  // props: same rule as the brand — what the request does not carry does not survive, so a
+  // regeneration cannot leave a stale selection behind.
+  const props = { ...(isRecord(previous?.props) ? previous.props : {}) } as Record<string, unknown>;
+  const setList = (key: string, values?: string[]) => {
+    if (values?.length) props[key] = [...values];
+    else delete props[key];
+  };
+  setList('actions', options.actions as string[] | undefined);
+  setList('navLinks', options.navLinks);
+  setList('locales', options.locales);
+  if (Object.keys(props).length) profile.props = props;
+  else delete profile.props;
 
   header.profiles[profileName] = profile;
   header.activeProfile = profileName;
@@ -239,6 +259,17 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
     ? raw.tokens.filter((token): token is string => typeof token === 'string' && token.startsWith('--'))
     : undefined;
 
+  // Locales: the list wins; a legacy single `language` becomes a one-entry list so both entries
+  // reach the prompt the same way.
+  const locales = (Array.isArray(raw.locales) ? raw.locales.map(readString) : [readString(raw.language)])
+    .filter(Boolean)
+    .filter((locale, index, all) => all.indexOf(locale) === index);
+
+  // navLinks: a list of hrefs (the plugin), `true` for every route (the old flag), off otherwise.
+  const navLinks: boolean | string[] = Array.isArray(raw.navLinks)
+    ? raw.navLinks.map(readString).filter(Boolean)
+    : raw.navLinks === true;
+
   return {
     projectId,
     brief: brief || undefined,
@@ -252,6 +283,7 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
       }
       : undefined,
     actions: actions?.length ? actions : undefined,
+    locales: locales.length ? locales : undefined,
     language: readString(raw.language) || undefined,
     navigation: navigation?.length ? navigation : undefined,
     tokens: tokens?.length ? tokens : undefined,
@@ -260,12 +292,31 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
       : undefined,
     requestId: readString(raw.requestId) || undefined,
     profileName: readString(raw.profileName) || undefined,
-    navLinks: raw.navLinks === true,
+    navLinks: navLinks,
     logo: raw.logo === 'generate' || raw.logo === 'none' ? raw.logo : 'keep',
     logoStyle: readString(raw.logoStyle) || undefined,
     logoBrief: readString(raw.logoBrief) || undefined,
     commit: raw.commit === true,
   };
+}
+
+/** Whether the band may render navigation links at all: `true` or a non-empty list of hrefs. */
+export function allowsNavLinks(request: Pick<GenerateHeaderRequest, 'navLinks'>): boolean {
+  return request.navLinks === true || (Array.isArray(request.navLinks) && request.navLinks.length > 0);
+}
+
+/**
+ * Navigation entries the header may link, in the order the project declares them.
+ *
+ * With a list of hrefs only those entries survive (the LABEL still comes from the project, so the
+ * model never invents one); with `true` every entry is allowed; otherwise none.
+ */
+export function allowedNavEntries(request: Pick<GenerateHeaderRequest, 'navLinks' | 'navigation'>): Array<{ label: string; href: string }> {
+  const navigation = request.navigation ?? [];
+  if (request.navLinks === true) return navigation;
+  if (!Array.isArray(request.navLinks) || request.navLinks.length === 0) return [];
+  const wanted = new Set(request.navLinks);
+  return navigation.filter((entry) => wanted.has(entry.href));
 }
 
 // ─── validation ──────────────────────────────────────────────────────────────
@@ -321,6 +372,8 @@ export interface ValidateHeaderOptions {
   allowedTokens?: string[];
   /** Which of those are COLORS (request.colorTokens) — the band may only use the nav family. */
   colorTokens?: string[];
+  /** Locales the header was asked to speak; the messages block must cover exactly these. */
+  locales?: string[];
 }
 
 /** Custom properties referenced with var(). */
@@ -391,7 +444,7 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
 
   // Navigation in the header is opt-in: the aside already owns the menu.
   if (options.allowNavLinks !== true && /this\.render(NavLinks|ModuleLinks)\s*\(/u.test(bandHtml)) {
-    errors.push('bandHtml renders navigation links but navLinks is off — drop this.renderNavLinks() (pass navLinks:true to allow it)');
+    errors.push('bandHtml renders navigation links but no route was selected — drop this.renderNavLinks() (select the routes, or pass navLinks:true, to allow it)');
   }
 
   // The model has no way to know which routes exist, so it must not name one: an action with no
@@ -471,6 +524,11 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
       }
       if (!bandHtml.includes('this.localized(messages)')) {
         errors.push('a messages block was returned but bandHtml never reads this.localized(messages)');
+      }
+      // The locales are the project's, not the model's choice: a missing one ships a header that
+      // falls back to another language at runtime, which is invisible until a user switches.
+      for (const wanted of options.locales ?? []) {
+        if (!locales.includes(wanted)) errors.push(`messages is missing the locale "${wanted}" (requested locales: ${(options.locales ?? []).join(', ')})`);
       }
       for (const locale of locales) {
         const bad = Object.keys(parts.messages[locale] ?? {}).find((key) => !isIdentifier(key));
@@ -616,10 +674,11 @@ export function sanitizeGeneratedHeader(
   };
 
   const errors = validateHeaderParts(parts, {
-    allowedHrefs: request.navLinks ? (request.navigation ?? []).map((entry) => entry.href) : [],
-    allowNavLinks: request.navLinks,
+    allowedHrefs: allowedNavEntries(request).map((entry) => entry.href),
+    allowNavLinks: allowsNavLinks(request),
     allowedTokens: request.tokens,
     colorTokens: request.colorTokens,
+    locales: request.locales,
   });
   if (errors.length > 0) return { ok: false, error: errors.join('; ') };
 
@@ -653,10 +712,10 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
       ? `Actions YOU must render in the band: ${ownHandled.join(', ')}. They have NO route: render a `
         + `<button> whose @click calls this.emitHeaderAction('<action>') — never this.navigateTo and never an href.`
       : '',
-    request.navLinks
-      ? (request.navigation?.length
-        ? `Navigation entries available (render them with this.renderNavLinks()): ${request.navigation.map((entry) => entry.label).join(', ')}`
-        : 'Navigation links were requested but the project declares none: render no links.')
+    allowsNavLinks(request)
+      ? (allowedNavEntries(request).length
+        ? `Navigation entries SELECTED for this header (render them with this.renderNavLinks(), which already receives exactly these): ${allowedNavEntries(request).map((entry) => entry.label).join(', ')}`
+        : 'Navigation links were requested but none of the selected routes exists in the project: render no links.')
       : 'NO navigation links in this header: the aside owns the menu. Do not call this.renderNavLinks() and do not write any route.',
     request.tokens?.length
       ? `Design system tokens THIS project defines — use only these, exactly as written: ${request.tokens.join(', ')}`
@@ -665,7 +724,10 @@ export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): 
       ? `COLOR inside the band comes from the nav family only: ${request.colorTokens.filter((name) => name.startsWith('--nav-')).join(', ')}.`
         + ' Every other color token (text-*, surface-*, button-*, input-*) belongs to the page, not to the header.'
       : '',
-    request.language ? `Write any fixed copy in: ${request.language}` : '',
+    request.locales?.length
+      ? `Fixed copy goes in the messages block, with ONE map per locale, exactly these: ${request.locales.join(', ')}.`
+        + ` The first one is the reference; every map must have the same keys. Read it with this.localized(messages).`
+      : (request.language ? `Write any fixed copy in: ${request.language}` : ''),
   ].filter(Boolean);
 
   return lines.join('\n');

@@ -26,6 +26,8 @@ import { MANDATORY_COLOR_ROLES } from '/_102029_/l2/designSystemBase.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
 import { skill as headerContract } from '/_102020_/l2/aura/agentManageHeader/skills/headerContract.js';
 import {
+  allowedNavEntries,
+  allowsNavLinks,
   buildGenerateHeaderHumanPrompt,
   normalizeHeaderRequest,
   pointHeaderProfileAtProject,
@@ -99,15 +101,15 @@ async function beforePromptImplicit(
   }
 
   // Only fetch routes when the header may link them — otherwise the model gets none, by design.
-  if (req.navLinks) req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
+  if (allowsNavLinks(req)) req.navigation = req.navigation ?? await readProjectNavigation(req.projectId);
   if (!req.tokens || !req.colorTokens) {
     const ds = await readProjectTokens(req.projectId);
     req.tokens = req.tokens ?? ds.all;
     req.colorTokens = req.colorTokens ?? ds.colors;
   }
 
-  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] tokens=${req.tokens?.length ?? 0} navLinks=${String(req.navLinks)} routes=${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
-  if (req.navLinks && !req.navigation?.length) console.warn('[agentGenerateHeader] navLinks is on but the project declares no navigation: the header will have no links');
+  console.info(`[agentGenerateHeader] ▶ project=${req.projectId} brand="${req.brand?.title ?? '—'}" logo=${req.brand?.logoUrl ?? '—'} actions=[${(req.actions ?? []).join(',') || '—'}] locales=[${(req.locales ?? []).join(',') || '—'}] tokens=${req.tokens?.length ?? 0} navLinks=${Array.isArray(req.navLinks) ? `[${req.navLinks.join(',')}]` : String(req.navLinks)} routes=${allowedNavEntries(req).length}/${req.navigation?.length ?? 0} commit=${String(req.commit)}`);
+  if (allowsNavLinks(req) && !allowedNavEntries(req).length) console.warn('[agentGenerateHeader] navigation links are on but no selected route exists in the project: the header will have no links');
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -229,6 +231,10 @@ async function pointConfigAtHeader(req: GenerateHeaderRequest, paths: HeaderPath
     paths,
     brand: req.brand,
     actions: req.actions,
+    // The selection travels as data on the profile: swapping a link or a locale later is a config
+    // edit, not a regeneration. `true` (link everything) writes no list, keeping the old meaning.
+    navLinks: Array.isArray(req.navLinks) ? req.navLinks : undefined,
+    locales: req.locales,
     profileName: req.profileName,
     dropLogo: req.logo === 'none',
   });

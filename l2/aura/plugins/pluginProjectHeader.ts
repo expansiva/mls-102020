@@ -3,12 +3,17 @@
 // The "Header" screen of a project (l5Project plugin, opened in the service details from
 // selectProject, next to Usage/Config/Project Settings).
 //
-// It is the UI for the two header agents, which until now were console-only. Four sections:
+// It is the UI for the two header agents, which until now were console-only. Sections:
 //   1. the header that is applied, rendered for real at band size;
 //   2. the brand mark: what is there, and three ways to change it (an .svg file, pasted markup, or
 //      agentGenerateLogo);
-//   3. the form of the header request (the fields the prompt takes);
-//   4. generate -> PREVIEW -> apply / discard / go back to the previous one.
+//   3. the request: brief/brand, the five actions (each with what it does, and a note when the base
+//      will render nothing), the locales the header speaks and WHICH routes it links;
+//   4. generate -> PREVIEW -> apply / discard / go back to the previous one, in a pinned action bar.
+//
+// The locale and route selections are DATA (`props.locales` / `props.navLinks` on the profile), not
+// generated code: changing which links or languages a header offers is a config edit afterwards,
+// with no round trip to the model.
 //
 // Every rule lives in `helpers/headerPluginCore.ts` (pure, tested); this file is DOM + I/O only.
 //
@@ -41,11 +46,16 @@ import {
 import { applyLogoToBrand, validateLogoSvg } from '/_102020_/l2/aura/agentManageHeader/helpers/generateLogoCore.js';
 import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
 import { tokensCssFromTheme, type IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
+import type { AppHeaderAction } from '/_102029_/l2/runtimeConfigTypes.js';
+import { flagChip, localeFlagMarkup } from '/_102020_/l2/aura/plugins/helpers/localeFlag.js';
 import {
   applyHeaderDraft,
   buildHeaderRequest,
   clearDraft,
+  countProjectDesignSystems,
   formFromProfile,
+  readProjectLanguages,
+  readProjectRoutes,
   readHeaderBackup,
   readHeaderDraft,
   readHeaderProfileView,
@@ -76,8 +86,27 @@ const message_en = {
   brandTitle: 'Brand title',
   brandSubtitle: 'Subtitle',
   actions: 'Actions',
-  navLinks: 'Navigation links in the header',
-  language: 'Language of the copy',
+  // What each action DOES, from the base that renders it — including the two that can render
+  // nothing, which is otherwise discovered as a bug.
+  actionLabel: {
+    language: 'Language',
+    designSystem: 'Design system',
+    modules: 'Modules',
+    search: 'Search',
+    user: 'User',
+  } as Record<string, string>,
+  actionHint: {
+    language: 'Language picker in the band.',
+    designSystem: 'Theme picker for the project design system.',
+    modules: "Links between the app's modules (not the pages of the current one).",
+    search: 'Reserves the search affordance — the generated header draws the field; the shell provides nothing.',
+    user: 'Avatar of the logged user (photo, initials or icon) with an email and sign-out menu.',
+  } as Record<string, string>,
+  oneLanguage: 'This project has one language: the picker will not appear.',
+  oneDesignSystem: 'This project has one theme: the picker will not appear.',
+  navLinks: 'Navigation links',
+  navLinksHint: 'Pick only what belongs in the band — the aside already lists everything.',
+  noRoutes: 'This project declares no routes yet.',
   logoMode: 'Mark',
   logoKeep: 'Keep the current one',
   logoGenerate: 'Generate a new one',
@@ -115,8 +144,25 @@ const messages: Record<string, MessageType> = {
     brandTitle: 'Título da marca',
     brandSubtitle: 'Subtítulo',
     actions: 'Ações',
-    navLinks: 'Links de navegação no header',
-    language: 'Idioma dos textos',
+    actionLabel: {
+      language: 'Idioma',
+      designSystem: 'Design System',
+      modules: 'Módulos',
+      search: 'Busca',
+      user: 'Usuário',
+    } as Record<string, string>,
+    actionHint: {
+      language: 'Seletor de idioma na banda.',
+      designSystem: 'Seletor de tema do design system do projeto.',
+      modules: 'Links entre os módulos do app (não as páginas do módulo atual).',
+      search: 'Reserva o espaço da busca — quem desenha o campo é o header gerado; o shell não fornece nada.',
+      user: 'Avatar do usuário logado (foto, iniciais ou ícone) com menu de e-mail e sair.',
+    } as Record<string, string>,
+    oneLanguage: 'Este projeto tem um idioma só: o seletor não vai aparecer.',
+    oneDesignSystem: 'Este projeto tem um tema só: o seletor não vai aparecer.',
+    navLinks: 'Links de navegação',
+    navLinksHint: 'Escolha só o que faz sentido na banda — o aside já lista tudo.',
+    noRoutes: 'Este projeto ainda não declara rotas.',
     logoMode: 'Marca',
     logoKeep: 'Manter a atual',
     logoGenerate: 'Gerar uma nova',
@@ -150,6 +196,16 @@ export const pluginData: mls.plugin.IPluginData = {
 
 const CONFIG_REF = (project: number) => `_${project}_/l5/config.json`;
 const HEADER_ACTIONS = ['language', 'designSystem', 'modules', 'search', 'user'] as const;
+
+// Shared field/button classes: repeated inline they drift, and a form where two inputs disagree
+// looks broken before it is read.
+const INPUT = 'w-full rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900'
+  + ' px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400'
+  + ' focus:outline-none focus:ring-2 focus:ring-indigo-500';
+const BUTTON = 'rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm'
+  + ' hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50';
+const BUTTON_PRIMARY = 'rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white'
+  + ' disabled:opacity-50';
 /** The thread the agent tasks are opened in (same convention as the design-system plugin). */
 const THREAD_NAME = '_102020_/l2/aura/plugins/pluginProjectHeader';
 
@@ -175,6 +231,12 @@ export class PluginProjectHeader extends PluginBaseModule {
   @state() private _markBrief = '';
   /** Non-fatal: the preview still renders, but not with the project's real colours. */
   @state() private _warn = '';
+  /** Languages the project declares — the locale picker, and the "1 language" badge. */
+  @state() private _languages: Array<{ code: string; name: string }> = [];
+  /** Routes the project declares — what the header may link. */
+  @state() private _routes: Array<{ label: string; href: string; description?: string }> = [];
+  /** How many DS themes exist: below two, the base hides the switcher. */
+  @state() private _dsCount = 0;
 
   private msg: MessageType = message_en;
   /** Signature of what is mounted in the applied band, so `updated()` does not remount it. */
@@ -237,8 +299,12 @@ export class PluginProjectHeader extends PluginBaseModule {
     this._warn = '';
     const config = await this._readClientConfig();
     this._view = readHeaderProfileView(config, this._projectId);
-    this._form = formFromProfile(this._view);
+    this._routes = readProjectRoutes(config, this._projectId);
     const projectConfig = await getConfigProject(this._projectId);
+    this._languages = readProjectLanguages(projectConfig);
+    this._dsCount = countProjectDesignSystems(projectConfig);
+    // No locale selection on the profile = the header speaks every language of the project.
+    this._form = formFromProfile(this._view, this._languages.map((language) => language.code));
     this._hasBackup = Boolean(readHeaderBackup(projectConfig));
     this.requestUpdate();
     await this._mountAppliedPreview();
@@ -558,86 +624,231 @@ export class PluginProjectHeader extends PluginBaseModule {
     }
   }
 
-  // ── render ────────────────────────────────────────────────────────────────
+  // ── render ──────────────────────────────────────────────────────────────
+
+  /** Section shell: same card the project panel uses, so the screen reads as part of it. */
+  private _card(title: string, body: unknown, aside: unknown = nothing) {
+    return html`
+      <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
+        <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex-1">${title}</h3>
+          ${aside}
+        </header>
+        <div class="p-3 flex flex-col gap-3">${body}</div>
+      </section>
+    `;
+  }
 
   private _renderBand(kind: 'applied' | 'draft') {
     return html`
       <div
         data-band=${kind}
-        style="height:${AURA_HEADER_HEIGHT_PX}px;border:1px solid #d9e2ec;border-radius:10px;overflow:hidden;background:#fff"
+        class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-950"
+        style="height:${AURA_HEADER_HEIGHT_PX}px"
       ></div>
     `;
   }
 
   private _renderApplied() {
     const view = this._view;
-    if (!view) return html`<p class="text-sm italic">${this.msg.noHeader}</p>`;
-    return html`
-      <section class="flex flex-col gap-2">
-        <h3 class="text-xs font-semibold uppercase tracking-wider">${this.msg.applied}</h3>
-        <div class="text-xs font-mono opacity-70">
-          ${this.msg.profile}: ${view.profileName} · ${this.msg.tag}: ${view.tag} · ${this.msg.band}: ${view.heightPx ?? AURA_HEADER_HEIGHT_PX}px
-        </div>
-        ${view.isProjectHeader
-          ? this._renderBand('applied')
-          : html`<p class="text-sm italic">${view.tag} (master)</p>`}
-      </section>
-    `;
+    if (!view) {
+      return this._card(this.msg.applied, html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noHeader}</p>`);
+    }
+    return this._card(
+      this.msg.applied,
+      view.isProjectHeader
+        ? this._renderBand('applied')
+        : html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${view.tag} (master)</p>`,
+      html`
+        <span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">
+          ${view.profileName} · ${view.tag} · ${view.heightPx ?? AURA_HEADER_HEIGHT_PX}px
+        </span>
+      `,
+    );
+  }
+
+  /** A flag when we can draw one, the uppercase code when we cannot — never an empty box. */
+  private _renderFlag(locale: string) {
+    const markup = localeFlagMarkup(locale);
+    return markup
+      ? html`<span class="inline-flex w-5 h-3.5 rounded-sm overflow-hidden ring-1 ring-black/10 shrink-0">
+          <svg viewBox="0 0 24 16" width="20" height="14" aria-hidden="true">${unsafeHTML(markup)}</svg>
+        </span>`
+      : html`<span class="text-[10px] font-mono px-1 rounded bg-gray-200 dark:bg-gray-700 shrink-0">${flagChip(locale)}</span>`;
   }
 
   private _renderMark() {
     const brand = this._view?.brand;
-    return html`
-      <section class="flex flex-col gap-2">
-        <h3 class="text-xs font-semibold uppercase tracking-wider">${this.msg.mark}</h3>
-        <div class="flex items-center gap-3">
-          <span style="display:inline-flex;width:44px;height:44px;align-items:center;justify-content:center;border:1px solid #d9e2ec;border-radius:10px">
-            ${brand?.logoSvg
-              ? unsafeHTML(brand.logoSvg)
-              : brand?.logoUrl
-                ? html`<img src=${brand.logoUrl} alt="" style="max-width:32px;max-height:32px" />`
-                : html`<span class="text-xs italic opacity-60">—</span>`}
-          </span>
-          ${!brand?.logoSvg && !brand?.logoUrl ? html`<span class="text-sm italic">${this.msg.noMark}</span>` : nothing}
-          <label class="text-sm underline cursor-pointer">
+    return this._card(this.msg.mark, html`
+      <div class="flex items-center gap-3 flex-wrap">
+        <span class="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-200">
+          ${brand?.logoSvg
+            ? unsafeHTML(brand.logoSvg)
+            : brand?.logoUrl
+              ? html`<img src=${brand.logoUrl} alt="" class="max-w-8 max-h-8" />`
+              : html`<span class="text-xs italic text-gray-400">—</span>`}
+        </span>
+        ${!brand?.logoSvg && !brand?.logoUrl
+          ? html`<span class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noMark}</span>`
+          : nothing}
+        <div class="flex items-center gap-3 ml-auto text-sm">
+          <label class="underline cursor-pointer text-indigo-600 dark:text-indigo-400">
             ${this.msg.markFile}
-            <input type="file" accept=".svg,image/svg+xml" style="display:none" @change=${(e: Event) => void this._onMarkFile(e)} />
+            <input type="file" accept=".svg,image/svg+xml" class="hidden" @change=${(e: Event) => void this._onMarkFile(e)} />
           </label>
-          <button type="button" class="text-sm underline" @click=${() => { this._markMode = 'paste'; }}>${this.msg.markPaste}</button>
-          <button type="button" class="text-sm underline" @click=${() => { this._markMode = 'generate'; }}>${this.msg.markGenerate}</button>
+          <button type="button" class="underline text-indigo-600 dark:text-indigo-400"
+            @click=${() => { this._markMode = this._markMode === 'paste' ? 'none' : 'paste'; }}>${this.msg.markPaste}</button>
+          <button type="button" class="underline text-indigo-600 dark:text-indigo-400"
+            @click=${() => { this._markMode = this._markMode === 'generate' ? 'none' : 'generate'; }}>${this.msg.markGenerate}</button>
         </div>
+      </div>
 
-        ${this._markMode === 'generate' ? html`
-          <div class="flex gap-2 items-center">
-            <input
-              class="flex-1 border rounded px-2 py-1 text-sm"
-              placeholder=${this.msg.markBrief}
-              .value=${this._markBrief}
-              @input=${(e: Event) => { this._markBrief = (e.target as HTMLInputElement).value; }}
-            />
-            <button type="button" class="border rounded px-3 py-1 text-sm" ?disabled=${!!this._busy} @click=${() => void this._generateMark()}>
-              ${this._busy || this.msg.generate}
+      ${this._markMode === 'generate' ? html`
+        <div class="flex gap-2 items-center">
+          <input
+            class=${INPUT}
+            placeholder=${this.msg.markBrief}
+            .value=${this._markBrief}
+            @input=${(e: Event) => { this._markBrief = (e.target as HTMLInputElement).value; }}
+          />
+          <button type="button" class=${BUTTON} ?disabled=${!!this._busy} @click=${() => void this._generateMark()}>
+            ${this._busy || this.msg.generate}
+          </button>
+        </div>
+      ` : nothing}
+
+      ${this._markMode === 'paste' ? html`
+        <div class="flex flex-col gap-2">
+          <textarea
+            class="${INPUT} text-xs font-mono"
+            rows="5"
+            .value=${this._markSvg}
+            @input=${(e: Event) => { this._markSvg = (e.target as HTMLTextAreaElement).value; }}
+          ></textarea>
+          <div class="flex items-center gap-3">
+            <span class="inline-flex h-7 items-center text-gray-700 dark:text-gray-200">${this._markSvg ? unsafeHTML(this._markSvg) : nothing}</span>
+            <button type="button" class=${BUTTON} ?disabled=${!!this._busy} @click=${() => void this._saveMark(this._markSvg.trim())}>
+              ${this.msg.save}
             </button>
           </div>
-        ` : nothing}
+        </div>
+      ` : nothing}
+    `);
+  }
 
-        ${this._markMode === 'paste' ? html`
-          <div class="flex flex-col gap-2">
-            <textarea
-              class="border rounded px-2 py-1 text-xs font-mono"
-              rows="5"
-              .value=${this._markSvg}
-              @input=${(e: Event) => { this._markSvg = (e.target as HTMLTextAreaElement).value; }}
-            ></textarea>
-            <div class="flex items-center gap-3">
-              <span style="display:inline-flex;height:28px;align-items:center">${this._markSvg ? unsafeHTML(this._markSvg) : nothing}</span>
-              <button type="button" class="border rounded px-3 py-1 text-sm" ?disabled=${!!this._busy} @click=${() => void this._saveMark(this._markSvg.trim())}>
-                ${this.msg.save}
-              </button>
-            </div>
-          </div>
-        ` : nothing}
-      </section>
+  /** The five actions, each with what it actually does — and whether it will show at all. */
+  private _renderActionList() {
+    const form = this._form;
+    return html`
+      <ul class="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+        ${HEADER_ACTIONS.map((action) => {
+          const on = form.actions.includes(action);
+          const silent = this._actionSilentReason(action);
+          return html`
+            <li class="py-2 first:pt-0 last:pb-0">
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  class="mt-0.5 accent-indigo-600"
+                  .checked=${on}
+                  @change=${(e: Event) => {
+                    const checked = (e.target as HTMLInputElement).checked;
+                    this._form = {
+                      ...this._form,
+                      actions: checked
+                        ? [...this._form.actions, action]
+                        : this._form.actions.filter((item) => item !== action),
+                    };
+                  }}
+                />
+                <span class="flex flex-col gap-0.5">
+                  <span class="text-sm font-medium text-gray-800 dark:text-gray-100">${this.msg.actionLabel[action]}</span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">${this.msg.actionHint[action]}</span>
+                  ${on && silent ? html`<span class="text-xs text-amber-700 dark:text-amber-500">${silent}</span>` : nothing}
+                </span>
+              </label>
+              ${on && action === 'language' ? this._renderLocalePicker() : nothing}
+            </li>
+          `;
+        })}
+      </ul>
+    `;
+  }
+
+  /** Why an enabled action renders nothing in this project — the base hides both switchers. */
+  private _actionSilentReason(action: AppHeaderAction): string | undefined {
+    if (action === 'language' && this._languages.length <= 1) return this.msg.oneLanguage;
+    if (action === 'designSystem' && this._dsCount <= 1) return this.msg.oneDesignSystem;
+    return undefined;
+  }
+
+  /** Which languages the header speaks: the project's, all selected by default. */
+  private _renderLocalePicker() {
+    if (this._languages.length === 0) return nothing;
+    const selected = this._form.locales;
+    return html`
+      <div class="mt-2 ml-6 flex flex-wrap gap-1.5">
+        ${this._languages.map((language) => {
+          const on = selected.includes(language.code);
+          return html`
+            <button
+              type="button"
+              title=${language.name || language.code}
+              class="flex items-center gap-1.5 rounded-full border px-2 py-1 text-xs transition-colors ${on
+                ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/15 text-indigo-800 dark:text-indigo-200'
+                : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 opacity-70 hover:opacity-100'}"
+              @click=${() => {
+                this._form = {
+                  ...this._form,
+                  locales: on
+                    ? selected.filter((code) => code !== language.code)
+                    : [...selected, language.code],
+                };
+              }}
+            >
+              ${this._renderFlag(language.code)}
+              <span class="font-mono">${language.code}</span>
+            </button>
+          `;
+        })}
+      </div>
+    `;
+  }
+
+  /** The project's routes, so the header links the two or three that matter — not all of them. */
+  private _renderRoutes() {
+    if (this._routes.length === 0) {
+      return html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noRoutes}</p>`;
+    }
+    const selected = this._form.navLinks;
+    return html`
+      <p class="text-xs text-gray-500 dark:text-gray-400">${this.msg.navLinksHint}</p>
+      <ul class="flex flex-col gap-1 max-h-56 overflow-y-auto pr-1">
+        ${this._routes.map((route) => {
+          const on = selected.includes(route.href);
+          return html`
+            <li>
+              <label class="flex items-center gap-2 rounded-md px-2 py-1 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                <input
+                  type="checkbox"
+                  class="accent-indigo-600"
+                  .checked=${on}
+                  @change=${() => {
+                    this._form = {
+                      ...this._form,
+                      navLinks: on
+                        ? selected.filter((href) => href !== route.href)
+                        : [...selected, route.href],
+                    };
+                  }}
+                />
+                <span class="text-sm text-gray-800 dark:text-gray-100 truncate">${route.label}</span>
+                <span class="ml-auto text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate">${route.href}</span>
+              </label>
+            </li>
+          `;
+        })}
+      </ul>
     `;
   }
 
@@ -645,101 +856,96 @@ export class PluginProjectHeader extends PluginBaseModule {
     const form = this._form;
     const set = (patch: Partial<HeaderFormState>) => { this._form = { ...this._form, ...patch }; };
     return html`
-      <section class="flex flex-col gap-2">
-        <h3 class="text-xs font-semibold uppercase tracking-wider">${this.msg.request}</h3>
+      ${this._card(this.msg.request, html`
         <textarea
-          class="border rounded px-2 py-1 text-sm"
+          class="${INPUT} text-sm"
           rows="4"
           placeholder=${this.msg.brief}
           .value=${form.brief}
           @input=${(e: Event) => set({ brief: (e.target as HTMLTextAreaElement).value })}
         ></textarea>
-        <div class="flex gap-2">
-          <input class="flex-1 border rounded px-2 py-1 text-sm" placeholder=${this.msg.brandTitle}
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input class=${INPUT} placeholder=${this.msg.brandTitle}
             .value=${form.brandTitle} @input=${(e: Event) => set({ brandTitle: (e.target as HTMLInputElement).value })} />
-          <input class="flex-1 border rounded px-2 py-1 text-sm" placeholder=${this.msg.brandSubtitle}
+          <input class=${INPUT} placeholder=${this.msg.brandSubtitle}
             .value=${form.brandSubtitle} @input=${(e: Event) => set({ brandSubtitle: (e.target as HTMLInputElement).value })} />
         </div>
-        <div class="flex flex-wrap gap-3 text-sm">
-          <span class="opacity-70">${this.msg.actions}:</span>
-          ${HEADER_ACTIONS.map((action) => html`
-            <label class="flex items-center gap-1">
-              <input type="checkbox" .checked=${form.actions.includes(action)} @change=${(e: Event) => {
-                const on = (e.target as HTMLInputElement).checked;
-                set({ actions: on ? [...form.actions, action] : form.actions.filter((a) => a !== action) });
-              }} />
-              ${action}
-            </label>
-          `)}
-        </div>
-        <div class="flex flex-wrap items-center gap-4 text-sm">
-          <label class="flex items-center gap-1">
-            <input type="checkbox" .checked=${form.navLinks} @change=${(e: Event) => set({ navLinks: (e.target as HTMLInputElement).checked })} />
-            ${this.msg.navLinks}
-          </label>
-          <label class="flex items-center gap-1">
-            ${this.msg.language}
-            <input class="border rounded px-2 py-1 w-16" .value=${form.language} @input=${(e: Event) => set({ language: (e.target as HTMLInputElement).value })} />
-          </label>
-          <label class="flex items-center gap-1">
-            ${this.msg.logoMode}
-            <select class="border rounded px-2 py-1" .value=${form.logo} @change=${(e: Event) => set({ logo: (e.target as HTMLSelectElement).value as HeaderFormState['logo'] })}>
-              <option value="keep">${this.msg.logoKeep}</option>
-              <option value="generate">${this.msg.logoGenerate}</option>
-              <option value="none">${this.msg.logoNone}</option>
-            </select>
-          </label>
-        </div>
-        <div class="flex items-center gap-3">
-          <button type="button" class="border rounded px-3 py-1 text-sm" ?disabled=${!!this._busy} @click=${() => void this._generateHeader()}>
-            ${this._busy || this.msg.generate}
-          </button>
-          ${this._hasBackup ? html`
-            <button type="button" class="text-sm underline" ?disabled=${!!this._busy} @click=${() => void this._revert()}>
-              ${this.msg.revert}
-            </button>
-          ` : nothing}
-        </div>
-      </section>
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          ${this.msg.logoMode}
+          <select class=${INPUT} .value=${form.logo}
+            @change=${(e: Event) => set({ logo: (e.target as HTMLSelectElement).value as HeaderFormState['logo'] })}>
+            <option value="keep">${this.msg.logoKeep}</option>
+            <option value="generate">${this.msg.logoGenerate}</option>
+            <option value="none">${this.msg.logoNone}</option>
+          </select>
+        </label>
+      `)}
+      ${this._card(this.msg.actions, this._renderActionList())}
+      ${this._card(this.msg.navLinks, this._renderRoutes())}
     `;
   }
 
   private _renderDraft() {
     if (!this._previewTag) return nothing;
-    return html`
-      <section class="flex flex-col gap-2">
-        <h3 class="text-xs font-semibold uppercase tracking-wider">${this.msg.draft}</h3>
-        <div class="text-xs font-mono opacity-70">${this._previewTag}</div>
+    return this._card(
+      this.msg.draft,
+      html`
         ${this._renderBand('draft')}
-        ${this._notes ? html`<p class="text-sm opacity-80">${this.msg.notes}: ${this._notes}</p>` : nothing}
-        <div class="flex items-center gap-3">
-          <button type="button" class="border rounded px-3 py-1 text-sm" ?disabled=${!!this._busy} @click=${() => void this._applyDraft()}>
+        ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
+      `,
+      html`<span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${this._previewTag}</span>`,
+    );
+  }
+
+  /** Everything that writes lives here, pinned to the bottom: it must not scroll out of reach. */
+  private _renderActionBar() {
+    return html`
+      <div class="sticky bottom-0 -mx-3 px-3 py-2 flex items-center gap-3 flex-wrap bg-white/95 dark:bg-gray-900/95 border-t border-gray-200 dark:border-gray-800 backdrop-blur">
+        ${this._previewTag ? html`
+          <button type="button" class=${BUTTON_PRIMARY} ?disabled=${!!this._busy} @click=${() => void this._applyDraft()}>
             ${this.msg.apply}
           </button>
-          <button type="button" class="text-sm underline" ?disabled=${!!this._busy} @click=${() => void this._discardDraft()}>
+          <button type="button" class=${BUTTON} ?disabled=${!!this._busy} @click=${() => void this._discardDraft()}>
             ${this.msg.discard}
           </button>
-        </div>
-      </section>
+        ` : html`
+          <button type="button" class=${BUTTON_PRIMARY} ?disabled=${!!this._busy} @click=${() => void this._generateHeader()}>
+            ${this._busy || this.msg.generate}
+          </button>
+        `}
+        ${this._hasBackup ? html`
+          <button type="button" class="ml-auto text-sm underline text-gray-600 dark:text-gray-300" ?disabled=${!!this._busy}
+            @click=${() => void this._revert()}>${this.msg.revert}</button>
+        ` : nothing}
+      </div>
     `;
   }
 
   render(): TemplateResult {
     this.msg = messages[this.getMessageKey(messages)] ?? message_en;
-    if (!this._projectId) return html`<p class="text-sm italic p-3">${this.msg.noProject}</p>`;
+    if (!this._projectId) {
+      return html`<p class="text-sm italic p-3 text-gray-500 dark:text-gray-400">${this.msg.noProject}</p>`;
+    }
     return html`
-      <div class="flex flex-col gap-4 p-3">
+      <div class="flex flex-col gap-3 p-3 text-gray-800 dark:text-gray-100">
         <div class="flex items-center gap-2">
-          <span class="w-5 h-5">${pluginData.getSvg()}</span>
-          <h2 class="text-sm font-semibold">${this.msg.title}</h2>
-          <span class="text-xs font-mono opacity-60">#${this._projectId}</span>
+          <span class="w-5 h-5 text-gray-500 dark:text-gray-400">${pluginData.getSvg()}</span>
+          <h2 class="text-sm font-semibold flex-1">${this.msg.title}</h2>
+          <span class="text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
         </div>
-        ${this._error ? html`<p class="text-sm" style="color:#b91c1c">${this._error}</p>` : nothing}
-        ${this._warn ? html`<p class="text-xs" style="color:#b45309">${this._warn}</p>` : nothing}
+        ${this._error ? html`
+          <p class="rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 py-1.5 text-sm text-red-700 dark:text-red-300">
+            ${this._error}
+          </p>` : nothing}
+        ${this._warn ? html`
+          <p class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+            ${this._warn}
+          </p>` : nothing}
         ${this._renderApplied()}
         ${this._renderMark()}
         ${this._renderForm()}
         ${this._renderDraft()}
+        ${this._renderActionBar()}
       </div>
     `;
   }
