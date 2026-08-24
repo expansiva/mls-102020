@@ -489,6 +489,22 @@ export class PluginProjectHeader extends PluginBaseModule {
     }
   }
 
+  /**
+   * Writes a source AND compiles it, which are two different things here.
+   *
+   * `saveFile` calls `model.setValue()` on a file that already exists, and setValue does not compile:
+   * the served .js keeps the PREVIOUS content, so importing it gives the previous tag/class and the
+   * band reports "was not registered". A brand-new file is compiled by createStorFile, so the model
+   * only needs the explicit pass when it is already there.
+   */
+  private async _writeSource(ref: string, source: string): Promise<void> {
+    await saveFile(ref, source);
+    const info = mls.stor.convertFileReferenceToFile(ref);
+    const model = mls.editor.getModel(info) as mls.editor.IModelTS | undefined;
+    if (!model) return;
+    await mls.l2.typescript.compileAndPostProcess(model, true, true);
+  }
+
   private _requestId(prefix: string): string {
     return `${prefix}-${Date.now().toString(36)}`;
   }
@@ -532,7 +548,7 @@ export class PluginProjectHeader extends PluginBaseModule {
       // A fresh tag per attempt: customElements.define cannot be repeated.
       const token = Date.now().toString(36).slice(-5);
       const preview = headerPaths(this._projectId, { previewToken: token });
-      await saveFile(preview.fileReference, buildHeaderSource(this._projectId, draft.parts, { previewToken: token }));
+      await this._writeSource(preview.fileReference, buildHeaderSource(this._projectId, draft.parts, { previewToken: token }));
       this._previewTag = preview.tag;
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
@@ -564,7 +580,7 @@ export class PluginProjectHeader extends PluginBaseModule {
         (parts) => buildHeaderSource(this._projectId, parts),
       );
 
-      await saveFile(result.paths.fileReference, result.source);
+      await this._writeSource(result.paths.fileReference, result.source);
       await this._writeClientConfig(result.config);
       await updateConfigProject(this._projectId, result.projectConfig as any);
       await this._consumePreview();
@@ -592,7 +608,7 @@ export class PluginProjectHeader extends PluginBaseModule {
   /** Puts the placeholder back so a consumed preview does not linger in the project. */
   private async _consumePreview(): Promise<void> {
     if (this._previewTag) {
-      await saveFile(headerPaths(this._projectId, { previewToken: 'x' }).fileReference, buildPreviewStub(this._projectId));
+      await this._writeSource(headerPaths(this._projectId, { previewToken: 'x' }).fileReference, buildPreviewStub(this._projectId));
     }
     this._previewTag = '';
     this._draftParts = undefined;
@@ -606,7 +622,7 @@ export class PluginProjectHeader extends PluginBaseModule {
       const config = await this._readClientConfig();
       const projectConfig = await getConfigProject(this._projectId);
       const restored = restoreHeaderBackup(this._projectId, config, projectConfig);
-      await saveFile(restored.paths.fileReference, restored.source);
+      await this._writeSource(restored.paths.fileReference, restored.source);
       await this._writeClientConfig(restored.config);
       await updateConfigProject(this._projectId, restored.projectConfig as any);
       this._mountedPreview = '';

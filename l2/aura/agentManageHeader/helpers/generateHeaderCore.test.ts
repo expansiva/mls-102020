@@ -668,3 +668,16 @@ test('a custom property the header declares itself is not a design-system token'
     /--spacing-nope is not a token/,
   );
 });
+
+test('the preview tag keeps the project number last', () => {
+  const preview = headerPaths(PROJECT, { previewToken: 'M4pcb!' });
+  // Every tag in the workspace ends with the project (convertFileToTag); a token after it is invalid.
+  assert.equal(preview.tag, `layout--app-header-preview-m4pcb-${PROJECT}`);
+  assert.equal(preview.tag.endsWith(`-${PROJECT}`), true);
+  assert.equal(preview.fileReference, `_${PROJECT}_/l2/layout/appHeaderPreview.ts`,
+    'the file is fixed; only the tag varies per attempt');
+
+  const applied = headerPaths(PROJECT);
+  assert.equal(applied.tag, `layout--app-header-${PROJECT}`);
+  assert.notEqual(applied.tag, preview.tag, 'a preview never takes over the applied tag');
+});

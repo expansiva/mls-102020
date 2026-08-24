@@ -111,7 +111,9 @@ export function headerPaths(projectId: number, options: { previewToken?: string 
       fileReference: `_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.ts`,
       source: `l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.ts`,
       entrypoint: `/_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.js`,
-      tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_PREVIEW_SHORT_NAME)}-${projectId}-${token}`,
+      // The project number is the LAST segment — that is the convention every tag in the workspace
+      // follows (convertFileToTag), so the token goes BEFORE it, never after.
+      tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_PREVIEW_SHORT_NAME)}-${token}-${projectId}`,
       className: `AppHeaderPreview${projectId}_${token}`,
     };
   }

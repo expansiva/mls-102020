@@ -188,13 +188,13 @@ test('a preview gets its own tag and file, the real one keeps the canonical name
   const real = headerPaths(PROJECT);
   const preview = headerPaths(PROJECT, { previewToken: 'k3f9' });
   assert.equal(real.tag, `layout--app-header-${PROJECT}`);
-  assert.equal(preview.tag, `layout--app-header-preview-${PROJECT}-k3f9`);
+  assert.equal(preview.tag, `layout--app-header-preview-k3f9-${PROJECT}`);
   assert.notEqual(preview.fileReference, real.fileReference);
   assert.match(preview.fileReference, /appHeaderPreview\.ts$/u);
   // customElements.define runs once per name: two previews in a session must not collide.
   assert.notEqual(headerPaths(PROJECT, { previewToken: 'aaa' }).tag, preview.tag);
   // A token that survives sanitisation only through letters/digits still yields a valid tag.
-  assert.equal(headerPaths(PROJECT, { previewToken: 'A-b_1' }).tag, `layout--app-header-preview-${PROJECT}-ab1`);
+  assert.equal(headerPaths(PROJECT, { previewToken: 'A-b_1' }).tag, `layout--app-header-preview-ab1-${PROJECT}`);
 });
 
 test('the preview source carries the preview tag, the applied one the canonical tag', () => {
@@ -203,7 +203,7 @@ test('the preview source carries the preview tag, the applied one the canonical 
   const real = buildHeaderSource(PROJECT, PARTS);
 
   // includes() instead of a regex: the tag carries characters a pattern would have to escape.
-  assert.ok(preview.includes(`customElements.define('layout--app-header-preview-${PROJECT}-${token}'`));
+  assert.ok(preview.includes(`customElements.define('layout--app-header-preview-${token}-${PROJECT}'`));
   assert.ok(preview.includes('appHeaderPreview.ts'), 'the mls header points at the preview file');
   assert.ok(real.includes(`customElements.define('${TAG}'`));
   assert.equal(real.includes('Preview'), false);
