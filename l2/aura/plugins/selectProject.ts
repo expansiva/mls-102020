@@ -401,6 +401,10 @@ export class PluginSelectProject extends StateLitElement {
         const tag = convertFileToTag(path);
         const el = document.createElement(tag);
         el.setAttribute('autoPrepare', 'true');
+        // The project the panel is showing, so the widget does not have to guess it from
+        // mls.actualProject (same attribute the 100555 project plugins take).
+        const project = this._selectedProject?.project;
+        if (project) el.setAttribute('project', String(project));
         openElementInServiceDetails(el);
     }
 

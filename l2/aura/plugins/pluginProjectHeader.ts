@@ -12,10 +12,10 @@
 //
 // Every rule lives in `helpers/headerPluginCore.ts` (pure, tested); this file is DOM + I/O only.
 //
-// Why previewing needs its own file and tag: a draft is TypeScript text, so it has to be compiled
-// before it can render, and `customElements.define` runs once per tag — reusing the applied tag would
-// break the second preview of a session. So a draft is written to `l2/layout/appHeaderPreview.ts`
-// under a per-attempt tag, imported with collabImport, and replaced by a stub once consumed.
+// Why previewing needs its own file: a draft is TypeScript text, so it has to be compiled before it
+// can render. It is written to `l2/layout/appHeaderPreview.ts` under a per-attempt tag and replaced
+// by a stub once consumed. Both bands render inside an IFRAME that reproduces the client app's
+// document (its stylesheets, its import map, the project's DS tokens) — see `_mountHeader`.
 
 import { html, nothing, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -36,6 +36,7 @@ import {
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import { applyLogoToBrand, validateLogoSvg } from '/_102020_/l2/aura/agentManageHeader/helpers/generateLogoCore.js';
 import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
+import { tokensCssFromTheme, type IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
 import {
   applyHeaderDraft,
   buildHeaderRequest,
@@ -150,6 +151,8 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   @property({ type: Boolean }) autoPrepare = false;
   @property({ type: String }) msize = '';
+  /** Project the panel is showing; `mls.actualProject` is only the fallback. */
+  @property({ type: Number }) project = 0;
 
   @state() private _projectId = 0;
   @state() private _view?: HeaderProfileView;
@@ -165,7 +168,11 @@ export class PluginProjectHeader extends PluginBaseModule {
   @state() private _markBrief = '';
 
   private msg: MessageType = message_en;
+  /** Signature of what is mounted in the applied band, so `updated()` does not rebuild the iframe. */
   private _mountedPreview = '';
+  /** Compiled DS tokens of the project; undefined = not read yet (an empty string is a valid answer). */
+  private _tokensCssCache?: string;
+  private _appEnvCache?: { head: string; bodyClass: string };
 
   createRenderRoot() {
     return this;
@@ -177,16 +184,34 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   async prepare(): Promise<void> {
     this.msg = messages[this.getMessageKey(messages)] ?? message_en;
-    this._projectId = mls.actualProject || 0;
+    this._projectId = Number(this.project) || mls.actualProject || 0;
     if (!this._projectId) return;
+    // A project that is not the actual one has no files in mls.stor yet, and every read here goes
+    // through the stor — without this the screen would silently look like "nothing configured".
+    if (this._projectId !== mls.actualProject) {
+      await mls.stor.server.loadProjectInfoIfNeeded(this._projectId, false);
+    }
     await this._reload();
   }
 
   // ── reading the project ───────────────────────────────────────────────────
 
   private async _readClientConfig(): Promise<unknown> {
-    const raw = await readRawSource(CONFIG_REF(this._projectId));
-    if (!raw.trim()) return undefined;
+    // Read the stor file directly (instead of readRawSource) to tell "the file is not loaded" apart
+    // from "the file has no header": both used to render as an empty screen, which is unreadable.
+    const key = mls.stor.getKeyToFile({
+      project: this._projectId, level: 5, folder: '', shortName: 'config', extension: '.json',
+    } as mls.stor.IFileInfoBase);
+    const storFile = mls.stor.files[key];
+    if (!storFile) {
+      this._error = `${CONFIG_REF(this._projectId)} is not loaded in mls.stor (key ${key})`;
+      return undefined;
+    }
+    const raw = String((await storFile.getContent()) ?? '');
+    if (!raw.trim()) {
+      this._error = `${CONFIG_REF(this._projectId)} is empty`;
+      return undefined;
+    }
     try {
       return JSON.parse(raw);
     } catch (error) {
@@ -200,6 +225,7 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   private async _reload(): Promise<void> {
+    this._error = '';
     const config = await this._readClientConfig();
     this._view = readHeaderProfileView(config, this._projectId);
     this._form = formFromProfile(this._view);
@@ -217,7 +243,7 @@ export class PluginProjectHeader extends PluginBaseModule {
       projectId: String(this._projectId),
       moduleId: 'preview',
       basePath: '/preview',
-      shellMode: 'spa',
+      shellMode: this._view?.shellMode ?? 'spa',
       device: 'desktop',
       routes: [],
       layout: {
@@ -228,40 +254,145 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   /**
-   * Imports a compiled header module and mounts its element in a band-sized host.
+   * Previews a header INSIDE AN IFRAME that reproduces the client app's own document.
    *
-   * The import is retried: a file written a moment ago may not be compiled yet, and collabImport
-   * resolves by version — so the element only becomes defined once the build lands.
+   * In the studio's document the band would be a lie: every colour a generated header uses is a
+   * `var(--nav-*)` from the PROJECT's design system, and the app also ships its own stylesheets and
+   * lit import map. So the preview document reuses the head of the very shell the app boots
+   * (`shellTemplates[clientShell.mode]`) plus the project's compiled DS tokens — and nothing of the
+   * studio's CSS reaches it.
+   *
+   * The app's boot scripts are deliberately dropped (only stylesheets and the import map are kept):
+   * the preview must not install the service worker or start a login.
+   *
+   * A second, free benefit: the iframe has its OWN custom-element registry, so the same tag can be
+   * previewed again in the same session without colliding on `customElements.define`.
    */
   private async _mountHeader(host: HTMLElement, folder: string, shortName: string, tag: string): Promise<void> {
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      try {
-        await collabImport({ project: this._projectId, folder, shortName, extension: '.ts' });
-      } catch {
-        // keep retrying: the module may not be compiled yet
-      }
-      if (customElements.get(tag)) break;
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-    if (!customElements.get(tag)) {
-      this._error = `preview: ${tag} was not registered (is the file compiled?)`;
+    const [tokensCss, env] = await Promise.all([this._tokensCss(), this._appEnv()]);
+    const iframe = document.createElement('iframe');
+    iframe.title = tag;
+    iframe.setAttribute('scrolling', 'no');
+    iframe.style.cssText = 'display:block;width:100%;height:100%;border:0';
+    host.replaceChildren(iframe);
+
+    const doc = iframe.contentDocument;
+    if (!doc) {
+      this._error = 'preview: the iframe has no document';
       return;
     }
-    const element = document.createElement(tag) as HTMLElement & { bootConfig?: unknown; regionProps?: unknown };
-    element.bootConfig = this._bootConfig();
-    element.regionProps = {
-      ...(this._view?.brand ? { brand: this._view.brand } : {}),
-      actions: this._form.actions,
-      heightPx: this._view?.heightPx ?? AURA_HEADER_HEIGHT_PX,
-    };
-    host.replaceChildren(element);
+
+    const payload = JSON.stringify({
+      tag,
+      // Cache-busted: a header written seconds ago must not be served from the module cache.
+      url: `/_${this._projectId}_/l2/${folder ? `${folder}/` : ''}${shortName}.js?t=${Date.now()}`,
+      bootConfig: this._bootConfig(),
+      regionProps: {
+        ...(this._view?.brand ? { brand: this._view.brand } : {}),
+        actions: this._form.actions,
+        heightPx: this._view?.heightPx ?? AURA_HEADER_HEIGHT_PX,
+      },
+    });
+
+    doc.open();
+    doc.write([
+      '<!doctype html><html><head>',
+      `<base href="${location.origin}/">`,
+      env.head,
+      '<style>html,body{height:100%;margin:0;padding:0;overflow:hidden}</style>',
+      tokensCss ? `<style>${tokensCss}</style>` : '',
+      `</head><body class="${env.bodyClass}">`,
+      '<script type="module">',
+      `const p = ${payload};`,
+      'window.litDisableBundleWarning = true;',
+      '(async () => {',
+      '  for (let i = 0; i < 12; i += 1) {',
+      "    try { await import(p.url + '&r=' + i); break; }",
+      '    catch (error) {',
+      "      if (i === 11) { document.body.textContent = 'preview: ' + (error && error.message ? error.message : error); return; }",
+      '      await new Promise((done) => setTimeout(done, 300));',
+      '    }',
+      '  }',
+      '  const el = document.createElement(p.tag);',
+      '  el.bootConfig = p.bootConfig;',
+      '  el.regionProps = p.regionProps;',
+      '  document.body.appendChild(el);',
+      '})();',
+      '<\/script></body></html>',
+    ].join('\n'));
+    doc.close();
+  }
+
+  /**
+   * The project's design-system tokens compiled to CSS — the same compile the app does at boot
+   * (`tokensCssFromTheme`), read through collabImport so an edit in the session is picked up.
+   *
+   * The first theme entry is used: which entry the app runs is a project-level choice that does not
+   * belong to this screen, and the header only reads the `nav-*` family, which every entry defines.
+   */
+  private async _tokensCss(): Promise<string> {
+    if (this._tokensCssCache !== undefined) return this._tokensCssCache;
+    try {
+      const mod = await collabImport({ project: this._projectId, folder: '', shortName: 'designSystem' });
+      const entry = (mod?.tokens ?? [])[0] as IDesignSystemTokens | undefined;
+      this._tokensCssCache = entry ? tokensCssFromTheme(entry) : '';
+    } catch {
+      // A project without a design system still previews — just without tokens.
+      this._tokensCssCache = '';
+    }
+    return this._tokensCssCache;
+  }
+
+  /**
+   * Head of the app's shell document, reduced to what makes the band look real: its stylesheets and
+   * its import map (the compiled header imports `lit` by bare specifier). Boot scripts are dropped.
+   */
+  private async _appEnv(): Promise<{ head: string; bodyClass: string }> {
+    if (this._appEnvCache) return this._appEnvCache;
+    const url = this._view?.shellTemplate;
+    let head = '';
+    let bodyClass = '';
+    if (url) {
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+          head = [...parsed.head.querySelectorAll('link[rel="stylesheet"], script[type="importmap"]')]
+            .map((node) => node.outerHTML)
+            .join('\n');
+          bodyClass = parsed.body.getAttribute('class') ?? '';
+        }
+      } catch {
+        // fall through to the import map below
+      }
+    }
+    if (!head) head = await this._fallbackImportMap();
+    this._appEnvCache = { head, bodyClass };
+    return this._appEnvCache;
+  }
+
+  /** Last resort when the shell document cannot be read: the Aura CDN map, so `lit` still resolves. */
+  private async _fallbackImportMap(): Promise<string> {
+    try {
+      const mod = await import('/_102020_/l2/enhancementAura.js');
+      const imports: Record<string, string> = {};
+      for (const item of (mod?.requires ?? []) as { type?: string; name?: string; ref?: string }[]) {
+        if (item?.type === 'cdn' && item.name && item.ref) imports[item.name] = item.ref;
+      }
+      if (!Object.keys(imports).length) return '';
+      return `<script type="importmap">${JSON.stringify({ imports })}<\/script>`;
+    } catch {
+      return '';
+    }
   }
 
   private async _mountAppliedPreview(): Promise<void> {
     const host = this.querySelector('[data-band="applied"]') as HTMLElement | null;
     if (!host || !this._view?.isProjectHeader) return;
-    if (this._mountedPreview === this._view.tag) return;
-    this._mountedPreview = this._view.tag;
+    // Keyed on what the band actually shows: saving a new mark must rebuild it, a re-render must not.
+    const signature = JSON.stringify([this._view.tag, this._view.brand ?? null, this._form.actions, this._view.heightPx]);
+    if (this._mountedPreview === signature) return;
+    this._mountedPreview = signature;
     await this._mountHeader(host, 'layout', 'appHeader', this._view.tag);
   }
 

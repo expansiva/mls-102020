@@ -53,6 +53,27 @@ export interface HeaderProfileView {
   actions: AppHeaderAction[];
   /** True when the profile points at the project's own generated header (not the master's). */
   isProjectHeader: boolean;
+  /** Which shell document the app boots (`clientShell.mode`). */
+  shellMode: string;
+  /** URL of that shell document, when the config declares `shellTemplates` — the preview reuses it. */
+  shellTemplate?: string;
+}
+
+/**
+ * URL of the shell document the app actually boots (`shellTemplates[clientShell.mode]`).
+ *
+ * The preview needs it because the band only looks real inside the app's own environment: the
+ * app's stylesheets and the lit import map live in that document, not in the studio's.
+ * Template paths are written relative (`./_102033_/…`) and served absolute.
+ */
+export function resolveShellTemplateUrl(config: unknown): { mode: string; url?: string } {
+  if (!isRecord(config)) return { mode: 'spa' };
+  const clientShell = isRecord(config.clientShell) ? config.clientShell : undefined;
+  const mode = readString(clientShell?.mode) || 'spa';
+  const templates = isRecord(config.shellTemplates) ? config.shellTemplates : undefined;
+  const raw = readString(templates?.[mode]);
+  if (!raw) return { mode };
+  return { mode, url: raw.replace(/^\.?\//u, '/') };
 }
 
 /** Reads the header region of `l5/config.json` for display. Returns undefined when there is none. */
@@ -76,9 +97,12 @@ export function readHeaderProfileView(
     ? (profile.props.actions as AppHeaderAction[])
     : [];
 
+  const shell = resolveShellTemplateUrl(config);
   return {
     profileName: name,
     profileNames: Object.keys(header.profiles),
+    shellMode: shell.mode,
+    shellTemplate: shell.url,
     tag: readString(profile.renderer?.tag),
     entrypoint: readString(profile.renderer?.entrypoint),
     source: readString(profile.renderer?.source) || undefined,
