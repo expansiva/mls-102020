@@ -196,7 +196,7 @@ async function afterPromptStep(
         await saveFile(paths.fileReference, source);
         profileName = await pointConfigAtHeader(req, paths);
       } else {
-        await persistDraft(req, source, parts.notes);
+        await persistDraft(req, source, parts.notes, parts);
       }
     }
 
@@ -291,8 +291,14 @@ export function logoStepIntent(
   };
 }
 
-/** One-shot channel to a reviewer: config.headerDraft (never composed into config.json). */
-async function persistDraft(req: GenerateHeaderRequest, source: string, notes?: string): Promise<void> {
+/**
+ * One-shot channel to a reviewer: config.headerDraft (never composed into config.json).
+ *
+ * It stores the PARTS as well as the assembled source: the Header plugin re-assembles them under a
+ * preview tag to render the draft before applying it, and re-assembles them under the real tag when
+ * the reviewer accepts — without asking the model again.
+ */
+async function persistDraft(req: GenerateHeaderRequest, source: string, notes?: string, parts?: unknown): Promise<void> {
   const config: any = await getConfigProject(req.projectId);
   if (!config) throw new Error('project config not found');
   config.headerDraft = {
@@ -300,7 +306,10 @@ async function persistDraft(req: GenerateHeaderRequest, source: string, notes?: 
     brief: req.brief ?? '',
     brand: req.brand ?? null,
     actions: req.actions ?? [],
+    profileName: req.profileName ?? null,
+    logo: req.logo ?? 'keep',
     source,
+    parts: parts ?? null,
     notes: notes ?? '',
     createdAt: new Date().toISOString(),
   };

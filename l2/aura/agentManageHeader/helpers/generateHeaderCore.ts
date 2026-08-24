@@ -75,6 +75,8 @@ export interface HeaderPaths {
 
 const HEADER_FOLDER = 'layout';
 const HEADER_SHORT_NAME = 'appHeader';
+/** Sibling file the Header plugin previews a draft from, before it is applied. */
+const HEADER_PREVIEW_SHORT_NAME = 'appHeaderPreview';
 /** Header profile the generated header takes over in `l5/config.json`. */
 export const DEFAULT_HEADER_PROFILE = 'defaultAura';
 /** The placeholder the generated CSS scopes itself with (bound to `this.localName`). */
@@ -94,7 +96,19 @@ function toKebab(value: string): string {
  * The tag follows the same rule as mls-102041 `convertFileToTag` (and cfePageSkeleton):
  * kebab(folder) with '/' -> '--', then '--' + kebab(shortName) + '-' + project.
  */
-export function headerPaths(projectId: number): HeaderPaths {
+export function headerPaths(projectId: number, options: { previewToken?: string } = {}): HeaderPaths {
+  const token = readString(options.previewToken).replace(/[^a-z0-9]+/giu, '').toLowerCase();
+  if (token) {
+    // A preview needs its OWN tag: `customElements.define` runs once per name, so reusing the real
+    // tag would break the second preview of a session (and leave the first class registered).
+    return {
+      fileReference: `_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.ts`,
+      source: `l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.ts`,
+      entrypoint: `/_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.js`,
+      tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_PREVIEW_SHORT_NAME)}-${projectId}-${token}`,
+      className: `AppHeaderPreview${projectId}_${token}`,
+    };
+  }
   return {
     fileReference: `_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_SHORT_NAME}.ts`,
     source: `l2/${HEADER_FOLDER}/${HEADER_SHORT_NAME}.ts`,
@@ -102,6 +116,20 @@ export function headerPaths(projectId: number): HeaderPaths {
     tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_SHORT_NAME)}-${projectId}`,
     className: `AppHeader${projectId}`,
   };
+}
+
+/** Source of the placeholder that replaces a consumed preview, so nothing dangles in the project. */
+export function buildPreviewStub(projectId: number): string {
+  const paths = headerPaths(projectId, { previewToken: 'x' });
+  return [
+    `/// <mls fileReference="${paths.fileReference}" enhancement="_blank" />`,
+    '',
+    '// Placeholder: the Header plugin writes a real preview here while a draft is being reviewed, and',
+    '// puts this back once the draft is applied or discarded. Nothing imports it.',
+    '',
+    'export {};',
+    '',
+  ].join('\n');
 }
 
 function readString(value: unknown): string {
@@ -514,8 +542,14 @@ ${Object.entries(messages[locale])
 }
 
 /** Assembles the final header source from the model's fragments. */
-export function buildHeaderSource(projectId: number, parts: GeneratedHeaderParts): string {
-  const paths = headerPaths(projectId);
+export function buildHeaderSource(
+  projectId: number,
+  parts: GeneratedHeaderParts,
+  options: { previewToken?: string } = {},
+): string {
+  // With a token the same parts are assembled under the preview tag/file, so the Header plugin can
+  // render a draft without touching the applied header.
+  const paths = headerPaths(projectId, options);
   const bandHtml = stripFences(parts.bandHtml);
   const bandCss = stripFences(parts.bandCss ?? '');
   const imports = ['html', ...(bandHtml.includes('nothing') ? ['nothing'] : [])].join(', ');

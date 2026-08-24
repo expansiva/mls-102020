@@ -28,6 +28,17 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 widget: '_102020_/l2/aura/services/serviceExploreProjects'
             },
             {
+                // Header/brand of the client app: current header + logo, and the form that drives
+                // agentGenerateHeader / agentGenerateLogo. It shows up in the project panel because
+                // loadPluginProject walks the selected project's workspaceDependencies, and every
+                // Aura client already depends on 102020.
+                category: 'Aura',
+                scope: ['l5Project'],
+                priority: 2,
+                auth: ['admin'],
+                widget: '_102020_/l2/aura/plugins/pluginProjectHeader'
+            },
+            {
                 category: 'Services',
                 scope: ['l5ServicesLeft'],
                 priority: 1,
