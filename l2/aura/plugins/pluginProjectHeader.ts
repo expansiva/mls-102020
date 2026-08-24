@@ -270,17 +270,21 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   // ── reading the project ───────────────────────────────────────────────────
 
-  private async _readClientConfig(): Promise<unknown> {
-    // Read the stor file directly (instead of readRawSource) to tell "the file is not loaded" apart
-    // from "the file has no header": both used to render as an empty screen, which is unreadable.
+  /** The stor file of `l5/config.json`, or undefined with the reason already on screen. */
+  private _configFile(): mls.stor.IFileInfo | undefined {
     const key = mls.stor.getKeyToFile({
       project: this._projectId, level: 5, folder: '', shortName: 'config', extension: '.json',
     } as mls.stor.IFileInfoBase);
     const storFile = mls.stor.files[key];
-    if (!storFile) {
-      this._error = `${CONFIG_REF(this._projectId)} is not loaded in mls.stor (key ${key})`;
-      return undefined;
-    }
+    if (!storFile) this._error = `${CONFIG_REF(this._projectId)} is not loaded in mls.stor (key ${key})`;
+    return storFile;
+  }
+
+  private async _readClientConfig(): Promise<unknown> {
+    // Read the stor file directly (instead of readRawSource) to tell "the file is not loaded" apart
+    // from "the file has no header": both used to render as an empty screen, which is unreadable.
+    const storFile = this._configFile();
+    if (!storFile) return undefined;
     const raw = String((await storFile.getContent()) ?? '');
     if (!raw.trim()) {
       this._error = `${CONFIG_REF(this._projectId)} is empty`;
@@ -294,8 +298,22 @@ export class PluginProjectHeader extends PluginBaseModule {
     }
   }
 
+  /**
+   * Writes `l5/config.json` straight through localStor.
+   *
+   * NOT through saveFile: that one goes via `getOrCreateModel`, which only exists for editor source
+   * files — on a .json it throws ("use getOrCreateModel only on source files"). This is the same
+   * write the agents do (`pointConfigAtHeader`).
+   */
   private async _writeClientConfig(config: unknown): Promise<void> {
-    await saveFile(CONFIG_REF(this._projectId), `${JSON.stringify(config, null, 2)}\n`);
+    const storFile = this._configFile();
+    if (!storFile) throw new Error(`${CONFIG_REF(this._projectId)} is not loaded in mls.stor`);
+    if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
+    storFile.updatedAt = new Date().toISOString();
+    await mls.stor.localStor.setContent(storFile, {
+      contentType: 'string',
+      content: `${JSON.stringify(config, null, 2)}\n`,
+    });
   }
 
   private async _reload(): Promise<void> {
@@ -316,7 +334,11 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   // ── preview of a compiled header ──────────────────────────────────────────
 
-  /** Minimal boot config: the band only needs the module identity and the aside mode. */
+  /**
+   * Boot config for the preview. It carries the project's REAL navigation: the band filters that list
+   * by the selected hrefs, so without it `renderNavLinks()` has nothing to link and the preview shows
+   * no links even when three routes are selected.
+   */
   private _bootConfig() {
     return {
       projectId: String(this._projectId),
@@ -325,6 +347,9 @@ export class PluginProjectHeader extends PluginBaseModule {
       shellMode: this._view?.shellMode ?? 'spa',
       device: 'desktop',
       routes: [],
+      navigation: this._routes.map((route) => ({ ...route })),
+      moduleLinks: [],
+      languages: this._languages.map((language) => language.code),
       layout: {
         regions: { desktop: { header: true, aside: true, content: true }, mobile: { header: true, aside: true, content: true } },
         asideMode: { desktop: 'inline', mobile: 'drawer' },
@@ -342,7 +367,13 @@ export class PluginProjectHeader extends PluginBaseModule {
    * The import is retried: a file written a moment ago may not be compiled yet, and collabImport
    * resolves by version — so the element only becomes defined once the build lands.
    */
-  private async _mountHeader(host: HTMLElement, folder: string, shortName: string, tag: string): Promise<void> {
+  private async _mountHeader(
+    host: HTMLElement,
+    folder: string,
+    shortName: string,
+    tag: string,
+    props: Record<string, unknown>,
+  ): Promise<void> {
     await this._applyProjectTokens(host);
     for (let attempt = 0; attempt < 12; attempt += 1) {
       try {
@@ -359,11 +390,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     }
     const element = document.createElement(tag) as HTMLElement & { bootConfig?: unknown; regionProps?: unknown };
     element.bootConfig = this._bootConfig();
-    element.regionProps = {
-      ...(this._view?.brand ? { brand: this._view.brand } : {}),
-      actions: this._form.actions,
-      heightPx: this._view?.heightPx ?? AURA_HEADER_HEIGHT_PX,
-    };
+    element.regionProps = props;
     host.replaceChildren(element);
   }
 
@@ -412,16 +439,33 @@ export class PluginProjectHeader extends PluginBaseModule {
     const host = this.querySelector('[data-band="applied"]') as HTMLElement | null;
     if (!host || !this._view?.isProjectHeader) return;
     // Keyed on what the band actually shows: saving a new mark must rebuild it, a re-render must not.
-    const signature = JSON.stringify([this._view.tag, this._view.brand ?? null, this._form.actions, this._view.heightPx]);
+    const signature = JSON.stringify([
+      this._view.tag, this._view.brand ?? null, this._view.actions,
+      this._view.navLinks, this._view.locales, this._view.heightPx,
+    ]);
     if (this._mountedPreview === signature) return;
     this._mountedPreview = signature;
-    await this._mountHeader(host, 'layout', 'appHeader', this._view.tag);
+    // The APPLIED band shows what is applied — the profile, not the unsaved form.
+    await this._mountHeader(host, 'layout', 'appHeader', this._view.tag, {
+      ...(this._view.brand ? { brand: this._view.brand } : {}),
+      actions: this._view.actions,
+      navLinks: this._view.navLinks,
+      locales: this._view.locales,
+      heightPx: this._view.heightPx ?? AURA_HEADER_HEIGHT_PX,
+    });
   }
 
   private async _mountDraftPreview(): Promise<void> {
     const host = this.querySelector('[data-band="draft"]') as HTMLElement | null;
     if (!host || !this._previewTag) return;
-    await this._mountHeader(host, 'layout', 'appHeaderPreview', this._previewTag);
+    // The DRAFT band shows what the form asks for, which is what "Apply" would write.
+    await this._mountHeader(host, 'layout', 'appHeaderPreview', this._previewTag, {
+      ...(this._view?.brand ? { brand: this._view.brand } : {}),
+      actions: this._form.actions,
+      navLinks: this._form.navLinks,
+      locales: this._form.locales,
+      heightPx: this._view?.heightPx ?? AURA_HEADER_HEIGHT_PX,
+    });
   }
 
   updated(): void {
@@ -914,10 +958,24 @@ export class PluginProjectHeader extends PluginBaseModule {
     );
   }
 
-  /** Everything that writes lives here, pinned to the bottom: it must not scroll out of reach. */
+  /**
+   * Everything that writes lives here, pinned to the bottom — INCLUDING the error and the warning.
+   *
+   * They used to sit at the top: clicking Generate at the bottom of a long form produced an error
+   * nobody saw until they scrolled back up. The answer to a button belongs next to the button.
+   */
   private _renderActionBar() {
     return html`
-      <div class="sticky bottom-0 -mx-3 px-3 py-2 flex items-center gap-3 flex-wrap bg-white/95 dark:bg-gray-900/95 border-t border-gray-200 dark:border-gray-800 backdrop-blur">
+      <div class="sticky bottom-0 -mx-3 px-3 py-2 flex flex-col gap-2 bg-white/95 dark:bg-gray-900/95 border-t border-gray-200 dark:border-gray-800 backdrop-blur">
+      ${this._error ? html`
+        <p class="rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 py-1.5 text-sm text-red-700 dark:text-red-300">
+          ${this._error}
+        </p>` : nothing}
+      ${this._warn ? html`
+        <p class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
+          ${this._warn}
+        </p>` : nothing}
+      <div class="flex items-center gap-3 flex-wrap">
         ${this._previewTag ? html`
           <button type="button" class=${BUTTON_PRIMARY} ?disabled=${!!this._busy} @click=${() => void this._applyDraft()}>
             ${this.msg.apply}
@@ -934,6 +992,7 @@ export class PluginProjectHeader extends PluginBaseModule {
           <button type="button" class="ml-auto text-sm underline text-gray-600 dark:text-gray-300" ?disabled=${!!this._busy}
             @click=${() => void this._revert()}>${this.msg.revert}</button>
         ` : nothing}
+        </div>
       </div>
     `;
   }
@@ -950,14 +1009,6 @@ export class PluginProjectHeader extends PluginBaseModule {
           <h2 class="text-sm font-semibold flex-1">${this.msg.title}</h2>
           <span class="text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
         </div>
-        ${this._error ? html`
-          <p class="rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 py-1.5 text-sm text-red-700 dark:text-red-300">
-            ${this._error}
-          </p>` : nothing}
-        ${this._warn ? html`
-          <p class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300">
-            ${this._warn}
-          </p>` : nothing}
         ${this._renderApplied()}
         ${this._renderMark()}
         ${this._renderForm()}

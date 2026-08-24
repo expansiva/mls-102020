@@ -460,8 +460,14 @@ export function validateHeaderParts(parts: GeneratedHeaderParts, options: Valida
   }
 
   // Navigation in the header is opt-in: the aside already owns the menu.
-  if (options.allowNavLinks !== true && /this\.render(NavLinks|ModuleLinks)\s*\(/u.test(bandHtml)) {
+  const rendersLinks = /this\.render(NavLinks|ModuleLinks)\s*\(/u.test(bandHtml);
+  if (options.allowNavLinks !== true && rendersLinks) {
     errors.push('bandHtml renders navigation links but no route was selected — drop this.renderNavLinks() (select the routes, or pass navLinks:true, to allow it)');
+  }
+  // And the other way round: routes were picked FOR this header, so a band that never calls the
+  // renderer drops them without a word — the selection would look broken instead of ignored.
+  if (options.allowNavLinks === true && !rendersLinks) {
+    errors.push('routes were selected for this header but bandHtml never calls this.renderNavLinks() — render them, in the group where they belong');
   }
 
   // The model has no way to know which routes exist, so it must not name one: an action with no

@@ -372,6 +372,13 @@ test('navigation links are opt-in, and off by default', () => {
   // renderActions() may carry module links, so it is gated the same way.
   const withModuleLinks = withBandHtml('${this.renderAsideToggle()}${this.renderModuleLinks()}');
   assert.match(validateHeaderParts(withModuleLinks).join('; '), /no route was selected/);
+
+  // The reverse omission is just as bad: routes picked and never rendered look like a broken screen.
+  const withoutLinks = withBandHtml('${this.renderAsideToggle()}${this.renderBrand()}');
+  assert.match(
+    validateHeaderParts(withoutLinks, { allowNavLinks: true }).join('; '),
+    /never calls this\.renderNavLinks/,
+  );
 });
 
 test('a list of hrefs selects which routes the header may link', () => {
