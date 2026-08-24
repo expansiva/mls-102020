@@ -12,10 +12,14 @@
 //
 // Every rule lives in `helpers/headerPluginCore.ts` (pure, tested); this file is DOM + I/O only.
 //
-// Why previewing needs its own file: a draft is TypeScript text, so it has to be compiled before it
-// can render. It is written to `l2/layout/appHeaderPreview.ts` under a per-attempt tag and replaced
-// by a stub once consumed. Both bands render inside an IFRAME that reproduces the client app's
-// document (its stylesheets, its import map, the project's DS tokens) — see `_mountHeader`.
+// Why previewing needs its own file and tag: a draft is TypeScript text, so it has to be compiled
+// before it can render, and `customElements.define` runs once per tag — reusing the applied tag would
+// break the second preview of a session. So a draft is written to `l2/layout/appHeaderPreview.ts`
+// under a per-attempt tag, imported with collabImport, and replaced by a stub once consumed.
+//
+// The band renders in the studio's own document (an iframe does not inherit the studio's module
+// resolution), with the project's DS tokens re-scoped to the band container so the colours are the
+// client's — see `_applyProjectTokens`.
 
 import { html, nothing, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -47,6 +51,7 @@ import {
   readHeaderProfileView,
   readLogoDraft,
   restoreHeaderBackup,
+  scopeTokensCss,
   type HeaderFormState,
   type HeaderProfileView,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
@@ -172,11 +177,10 @@ export class PluginProjectHeader extends PluginBaseModule {
   @state() private _warn = '';
 
   private msg: MessageType = message_en;
-  /** Signature of what is mounted in the applied band, so `updated()` does not rebuild the iframe. */
+  /** Signature of what is mounted in the applied band, so `updated()` does not remount it. */
   private _mountedPreview = '';
   /** Compiled DS tokens of the project; undefined = not read yet (an empty string is a valid answer). */
   private _tokensCssCache?: string;
-  private _appEnvCache?: { head: string; bodyClass: string };
 
   createRenderRoot() {
     return this;
@@ -259,87 +263,57 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   /**
-   * Previews a header INSIDE AN IFRAME that reproduces the client app's own document.
+   * Mounts a compiled header in a band-sized host, in the STUDIO's own document.
    *
-   * In the studio's document the band would be a lie: every colour a generated header uses is a
-   * `var(--nav-*)` from the PROJECT's design system, and the app also ships its own stylesheets and
-   * lit import map. So the preview document reuses the head of the very shell the app boots
-   * (`shellTemplates[clientShell.mode]`) plus the project's compiled DS tokens — and nothing of the
-   * studio's CSS reaches it.
+   * No iframe: the studio resolves `/_<project>_/l2/…` module URLs for its own document, and an
+   * `about:blank` frame does not inherit that resolution — every import inside it 404s. Rendering
+   * here is also what `collabImport` is for.
    *
-   * The app's boot scripts are deliberately dropped (only stylesheets and the import map are kept):
-   * the preview must not install the service worker or start a login.
-   *
-   * A second, free benefit: the iframe has its OWN custom-element registry, so the same tag can be
-   * previewed again in the same session without colliding on `customElements.define`.
+   * The import is retried: a file written a moment ago may not be compiled yet, and collabImport
+   * resolves by version — so the element only becomes defined once the build lands.
    */
   private async _mountHeader(host: HTMLElement, folder: string, shortName: string, tag: string): Promise<void> {
-    const [tokensCss, env] = await Promise.all([this._tokensCss(), this._appEnv()]);
-    const iframe = document.createElement('iframe');
-    iframe.title = tag;
-    iframe.setAttribute('scrolling', 'no');
-    iframe.style.cssText = 'display:block;width:100%;height:100%;border:0';
-    host.replaceChildren(iframe);
-
-    const doc = iframe.contentDocument;
-    if (!doc) {
-      this._error = 'preview: the iframe has no document';
+    await this._applyProjectTokens(host);
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      try {
+        await collabImport({ project: this._projectId, folder, shortName, extension: '.ts' });
+      } catch {
+        // keep retrying: the module may not be compiled yet
+      }
+      if (customElements.get(tag)) break;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    if (!customElements.get(tag)) {
+      this._error = `preview: ${tag} was not registered (is the file compiled?)`;
       return;
     }
+    const element = document.createElement(tag) as HTMLElement & { bootConfig?: unknown; regionProps?: unknown };
+    element.bootConfig = this._bootConfig();
+    element.regionProps = {
+      ...(this._view?.brand ? { brand: this._view.brand } : {}),
+      actions: this._form.actions,
+      heightPx: this._view?.heightPx ?? AURA_HEADER_HEIGHT_PX,
+    };
+    host.replaceChildren(element);
+  }
 
-    // Two ways a project module is addressed, tried in this order:
-    //   1. extensionless + `?t=` — exactly what collabImport builds, and what the studio serves;
-    //   2. `.js` with no query — the form of the config entrypoint and of the studio's own dynamic
-    //      imports (a cache-busting query on this one is what failed first: it reaches the network
-    //      instead of being resolved).
-    // The stamp keeps a header written seconds ago from coming out of the module cache.
-    const base = `/_${this._projectId}_/l2/${folder ? `${folder}/` : ''}${shortName}`;
-    const payload = JSON.stringify({
-      tag,
-      urls: [`${base}?t=${Date.now()}`, `${base}.js`],
-      bootConfig: this._bootConfig(),
-      regionProps: {
-        ...(this._view?.brand ? { brand: this._view.brand } : {}),
-        actions: this._form.actions,
-        heightPx: this._view?.heightPx ?? AURA_HEADER_HEIGHT_PX,
-      },
-    });
-
-    doc.open();
-    doc.write([
-      '<!doctype html><html><head>',
-      `<base href="${location.origin}/">`,
-      env.head,
-      '<style>html,body{height:100%;margin:0;padding:0;overflow:hidden}</style>',
-      tokensCss ? `<style>${tokensCss}</style>` : '',
-      `</head><body class="${env.bodyClass}">`,
-      '<script type="module">',
-      `const p = ${payload};`,
-      'window.litDisableBundleWarning = true;',
-      '(async () => {',
-      "  let last = '';",
-      '  // Retried: a draft written a moment ago may not be compiled yet.',
-      '  for (let i = 0; i < 8; i += 1) {',
-      '    for (const url of p.urls) {',
-      '      // Only the URL that already carries a query gets the retry stamp: adding one to the',
-      "      // plain '.js' form is what made it miss the studio's resolution and hit the network.",
-      "      const bust = url.includes('?') ? url + '&r=' + i : url;",
-      "      try { await import(bust); } catch (error) { last = url + ' -> ' + (error && error.message ? error.message : error); continue; }",
-      `      if (!customElements.get(p.tag)) { last = url + ' -> loaded, but ' + p.tag + ' was not defined'; continue; }`,
-      '      const el = document.createElement(p.tag);',
-      '      el.bootConfig = p.bootConfig;',
-      '      el.regionProps = p.regionProps;',
-      '      document.body.appendChild(el);',
-      '      return;',
-      '    }',
-      '    await new Promise((done) => setTimeout(done, 300));',
-      '  }',
-      "  document.body.style.cssText = 'font:12px/1.4 monospace;padding:8px;color:#b91c1c';",
-      "  document.body.textContent = 'preview: ' + last;",
-      '})();',
-      '<\/script></body></html>',
-    ].join('\n'));
-    doc.close();
+  /**
+   * Paints the band with the CLIENT's colours: the project's design-system tokens, re-scoped to the
+   * band container so they do not repaint the studio around it.
+   *
+   * Without this the band falls back to the hardcoded defaults of every `var(--nav-*, #…)` in the
+   * header, which is a different header from the one the user will see.
+   */
+  private async _applyProjectTokens(host: HTMLElement): Promise<void> {
+    host.setAttribute('data-token-scope', String(this._projectId));
+    const id = `header-preview-tokens-${this._projectId}`;
+    if (document.getElementById(id)) return;
+    const css = scopeTokensCss(await this._tokensCss(), `[data-token-scope="${this._projectId}"]`);
+    if (!css) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = css;
+    document.head.appendChild(style);
   }
 
   /**
@@ -362,49 +336,6 @@ export class PluginProjectHeader extends PluginBaseModule {
       this._warn = `${this.msg.noTokens}: ${error instanceof Error ? error.message : String(error)}`;
     }
     return this._tokensCssCache;
-  }
-
-  /**
-   * Head of the app's shell document, reduced to what makes the band look real: its stylesheets and
-   * its import map (the compiled header imports `lit` by bare specifier). Boot scripts are dropped.
-   */
-  private async _appEnv(): Promise<{ head: string; bodyClass: string }> {
-    if (this._appEnvCache) return this._appEnvCache;
-    const url = this._view?.shellTemplate;
-    let head = '';
-    let bodyClass = '';
-    if (url) {
-      try {
-        const response = await fetch(url);
-        if (response.ok) {
-          const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
-          head = [...parsed.head.querySelectorAll('link[rel="stylesheet"], script[type="importmap"]')]
-            .map((node) => node.outerHTML)
-            .join('\n');
-          bodyClass = parsed.body.getAttribute('class') ?? '';
-        }
-      } catch {
-        // fall through to the import map below
-      }
-    }
-    if (!head) head = await this._fallbackImportMap();
-    this._appEnvCache = { head, bodyClass };
-    return this._appEnvCache;
-  }
-
-  /** Last resort when the shell document cannot be read: the Aura CDN map, so `lit` still resolves. */
-  private async _fallbackImportMap(): Promise<string> {
-    try {
-      const mod = await import('/_102020_/l2/enhancementAura.js');
-      const imports: Record<string, string> = {};
-      for (const item of (mod?.requires ?? []) as { type?: string; name?: string; ref?: string }[]) {
-        if (item?.type === 'cdn' && item.name && item.ref) imports[item.name] = item.ref;
-      }
-      if (!Object.keys(imports).length) return '';
-      return `<script type="importmap">${JSON.stringify({ imports })}<\/script>`;
-    } catch {
-      return '';
-    }
   }
 
   private async _mountAppliedPreview(): Promise<void> {

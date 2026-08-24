@@ -12,8 +12,8 @@ import {
   readHeaderDraft,
   readHeaderProfileView,
   readLogoDraft,
-  resolveShellTemplateUrl,
   restoreHeaderBackup,
+  scopeTokensCss,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
 import { buildHeaderSource, headerPaths } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
@@ -262,35 +262,32 @@ test('going back rewrites the source and the profile, and consumes the slot', ()
   assert.throws(() => restoreHeaderBackup(PROJECT, config(), {}), /no previous header/);
 });
 
-// ── the shell document the preview reuses ──────────────────────────────────
+// ── the preview's environment ──────────────────────────────────────────────
 
-test('the shell template of the active mode is resolved as an absolute URL', () => {
-  const templates = {
-    spa: './_102033_/l2/shared/spa/index.html',
-    pwa: './_102033_/l2/shared/pwa/index.html',
-  };
-
-  assert.deepEqual(
-    resolveShellTemplateUrl({ clientShell: { mode: 'spa' }, shellTemplates: templates }),
-    { mode: 'spa', url: '/_102033_/l2/shared/spa/index.html' },
-    'the config writes the path relative; it is served absolute',
-  );
-  assert.deepEqual(
-    resolveShellTemplateUrl({ clientShell: { mode: 'pwa' }, shellTemplates: templates }),
-    { mode: 'pwa', url: '/_102033_/l2/shared/pwa/index.html' },
-  );
-
-  // No templates declared: the mode still answers, and the preview falls back to the CDN map.
-  assert.deepEqual(resolveShellTemplateUrl({ clientShell: { mode: 'pwa' } }), { mode: 'pwa' });
-  assert.deepEqual(resolveShellTemplateUrl(undefined), { mode: 'spa' }, 'spa is the default mode');
+test('the profile view carries the shell mode of the project', () => {
+  assert.equal(readHeaderProfileView(config(), PROJECT)?.shellMode, 'spa');
 });
 
-test('the profile view carries the shell of the project', () => {
-  // config() spreads its argument into the PROFILE, so the templates go on the root here.
-  const view = readHeaderProfileView(
-    { ...config(), shellTemplates: { spa: './_102033_/l2/shared/spa/index.html', pwa: './x.html' } },
-    PROJECT,
+test('project tokens are re-scoped off the document root', () => {
+  const css = [
+    '@import url("https://fonts.googleapis.com/css2?family=Inter");',
+    ':root{',
+    '\t--nav-bg: #ffffff;',
+    '}',
+    '[data-theme="dark"], :root.dark {',
+    '\t--nav-bg: #0f172a;',
+    '}',
+  ].join('\n');
+  const scoped = scopeTokensCss(css, '[data-token-scope="999999"]');
+
+  assert.ok(scoped.includes('@import url('), 'font loading survives');
+  assert.equal(scoped.includes(':root'), false, 'nothing is left painting the studio');
+  assert.ok(scoped.includes('[data-token-scope="999999"]{'), 'light block moves onto the container');
+  assert.ok(
+    scoped.includes('[data-theme="dark"] [data-token-scope="999999"], .dark [data-token-scope="999999"] {'),
+    'dark still switches from an ancestor',
   );
-  assert.equal(view?.shellMode, 'spa');
-  assert.equal(view?.shellTemplate, '/_102033_/l2/shared/spa/index.html');
+
+  assert.equal(scopeTokensCss('', '[x]'), '', 'no tokens, no style');
+  assert.equal(scopeTokensCss(':root{--a:1;}', '  '), '', 'no scope, no style: never leak to :root');
 });

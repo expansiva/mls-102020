@@ -53,27 +53,8 @@ export interface HeaderProfileView {
   actions: AppHeaderAction[];
   /** True when the profile points at the project's own generated header (not the master's). */
   isProjectHeader: boolean;
-  /** Which shell document the app boots (`clientShell.mode`). */
+  /** Which shell document the app boots (`clientShell.mode`) — the preview's boot config mirrors it. */
   shellMode: string;
-  /** URL of that shell document, when the config declares `shellTemplates` — the preview reuses it. */
-  shellTemplate?: string;
-}
-
-/**
- * URL of the shell document the app actually boots (`shellTemplates[clientShell.mode]`).
- *
- * The preview needs it because the band only looks real inside the app's own environment: the
- * app's stylesheets and the lit import map live in that document, not in the studio's.
- * Template paths are written relative (`./_102033_/…`) and served absolute.
- */
-export function resolveShellTemplateUrl(config: unknown): { mode: string; url?: string } {
-  if (!isRecord(config)) return { mode: 'spa' };
-  const clientShell = isRecord(config.clientShell) ? config.clientShell : undefined;
-  const mode = readString(clientShell?.mode) || 'spa';
-  const templates = isRecord(config.shellTemplates) ? config.shellTemplates : undefined;
-  const raw = readString(templates?.[mode]);
-  if (!raw) return { mode };
-  return { mode, url: raw.replace(/^\.?\//u, '/') };
 }
 
 /** Reads the header region of `l5/config.json` for display. Returns undefined when there is none. */
@@ -97,12 +78,10 @@ export function readHeaderProfileView(
     ? (profile.props.actions as AppHeaderAction[])
     : [];
 
-  const shell = resolveShellTemplateUrl(config);
   return {
     profileName: name,
     profileNames: Object.keys(header.profiles),
-    shellMode: shell.mode,
-    shellTemplate: shell.url,
+    shellMode: readString(clientShell?.mode) || 'spa',
     tag: readString(profile.renderer?.tag),
     entrypoint: readString(profile.renderer?.entrypoint),
     source: readString(profile.renderer?.source) || undefined,
@@ -111,6 +90,25 @@ export function readHeaderProfileView(
     actions,
     isProjectHeader: readString(profile.renderer?.tag) === headerPaths(projectId).tag,
   };
+}
+
+/**
+ * Re-scopes compiled design-system tokens from the document root onto one container.
+ *
+ * The preview renders inside the STUDIO's document, so the project's tokens cannot be dropped on
+ * `:root` — they would repaint the studio itself. `tokensCssFromTheme` emits exactly two selector
+ * shapes (`:root` for light, `[data-theme="dark"], :root.dark` for dark), so both are rewritten to
+ * live under `scope` while keeping the dark switch working from an ancestor.
+ *
+ * @param css - The compiled token CSS (`tokensCssFromTheme`).
+ * @param scope - Selector of the container that holds the band, e.g. `[data-token-scope="102051"]`.
+ */
+export function scopeTokensCss(css: string, scope: string): string {
+  if (!css.trim() || !scope.trim()) return '';
+  return css
+    .replace(/\[data-theme="dark"\]\s*,\s*:root\.dark/gu, `[data-theme="dark"] ${scope}, .dark ${scope}`)
+    .replace(/:root\.dark/gu, `.dark ${scope}`)
+    .replace(/:root/gu, scope);
 }
 
 // ─── the form → the agent request ───────────────────────────────────────────
