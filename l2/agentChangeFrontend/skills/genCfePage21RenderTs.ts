@@ -173,6 +173,7 @@ Prefer these patterns over the baseline stacked-cards-and-forms shape:
   from the selected item's current status (reading the lifecycle from shared state / rulesApplied) and
   render ONE button per allowed transition that calls the existing mutation handler. NEVER a free
   <select> over all enum values and NEVER a manually typed id input. This is the main fix over page11.
+  Button captions use enumLabels[].label when the catalog carries it; the handler still sends the code.
 - **card-board**: group items into lanes by status/stage; the primary action lives inline on each card.
 - **inline-row-command**: a one-decision command executed directly on a list row.
 - **summary-first**: when pageObjective.informationHierarchy leads with numbers/status, render a

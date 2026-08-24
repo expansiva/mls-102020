@@ -247,7 +247,7 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
       ${entity.storage.idField ? html`<div><dt>${text.idField}</dt><dd><code>${entity.storage.idField}</code></dd></div>` : ''}
       ${entity.storage.mdmType ? html`<div><dt>${text.mdmType}</dt><dd><code>${entity.storage.mdmType}</code></dd></div>` : ''}
       <div><dt>${text.reason}</dt><dd>${entity.storage.notes || '—'}</dd></div></dl>
-      <div class="ns4-entity-details"><article><h3>${text.lifecycle}</h3><p>${entity.lifecycleStates.join(' → ') || '—'}</p></article>
+      <div class="ns4-entity-details"><article><h3>${text.lifecycle}</h3><p>${this.lifecycleLine(entity) || '—'}</p></article>
         <article><h3>${text.ruleRefs}</h3><ul>${entity.useRules.map(ruleId => html`<li><code>${ruleId}</code></li>`)}</ul></article></div>
     </section>`;
   }
@@ -277,6 +277,13 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
 
   private renderDescriptions(entity: Ns4OntologyEntity, text: typeof labels.en) {
     return html`<section class="ns4-descriptions"><h3>${entity.title}</h3><code>${entity.entityId}</code><p>${entity.description || '—'}</p></section>`;
+  }
+
+  private lifecycleLine(entity: Ns4OntologyEntity): string {
+    return entity.lifecycleStates.map(code => {
+      const label = entity.lifecycleLabels?.find(item => item.code === code)?.label;
+      return label && label !== code ? `${label} (${code})` : code;
+    }).join(' → ');
   }
 }
 

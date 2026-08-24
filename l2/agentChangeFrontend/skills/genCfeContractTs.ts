@@ -40,6 +40,7 @@ Map field arrays mechanically:
 - Output fields are required unless field.required === false.
 - If field.enum is a non-empty string array, the type is a string literal union using those values.
 - Do not widen enum fields to string.
+- field.enumLabels (when present) is display text for those codes — do not put it in the TypeScript type.
 
 Primitive mapping:
 - string, uuid, guid, email, url, uri, date, datetime, dateTime, date-time, time, timestamp, timestamptz -> string

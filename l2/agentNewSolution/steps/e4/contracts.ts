@@ -46,6 +46,12 @@ export interface Ns4FieldConstraint {
   source: Ns4ConstraintSource;
 }
 
+/** Display text for one closed-domain code. Array-of-objects so the tool schema can stay additionalProperties:false. */
+export interface Ns4EnumLabel {
+  code: string;
+  label: string;
+}
+
 export interface Ns4OntologyField {
   fieldId: string;
   title: string;
@@ -59,6 +65,12 @@ export interface Ns4OntologyField {
    * instead of a free text box; the constraint stays as the human-readable rule.
    */
   enum?: string[];
+  /**
+   * User-language labels for `enum` codes. OPTIONAL so L4 written before this field keeps compiling —
+   * nothing is ever migrated. The model authors this next to the enum constraint; it is not derived
+   * from `enum`.
+   */
+  enumLabels?: Ns4EnumLabel[];
 }
 
 export interface Ns4LifecyclePredicate {
@@ -88,6 +100,8 @@ export interface Ns4OntologyEntity {
   lifecycleStates: string[];
   /** The lifecycle values as a literal union; mirrors lifecycleStates and is never a second truth. */
   statusEnum?: string[];
+  /** User-language labels for `lifecycleStates`. OPTIONAL; same rule as `party` / field `enumLabels`. */
+  lifecycleLabels?: Ns4EnumLabel[];
   initialState?: string;
   terminalStates?: string[];
   lifecyclePredicates: Ns4LifecyclePredicate[];
@@ -468,6 +482,13 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
 }
 
+function enumLabels(value: unknown): Ns4EnumLabel[] {
+  return array(value).map(item => {
+    const entry = record(item);
+    return { code: text(entry.code), label: text(entry.label) };
+  }).filter(entry => entry.code || entry.label);
+}
+
 function party(value: unknown): Ns4EntityParty | undefined {
   return value === 'person' || value === 'organization' || value === 'none' ? value : undefined;
 }
@@ -503,6 +524,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
       description: text(field.description),
       constraints,
       ...(values.length ? { enum: values } : {}),
+      ...(enumLabels(field.enumLabels).length ? { enumLabels: enumLabels(field.enumLabels) } : {}),
     };
   });
   const target = storageTarget(storage.target, kind, entityOwnership);
@@ -527,6 +549,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
     fields,
     lifecycleStates,
     ...(lifecycleStates.length ? { statusEnum: lifecycleStates } : {}),
+    ...(enumLabels(entity.lifecycleLabels).length ? { lifecycleLabels: enumLabels(entity.lifecycleLabels) } : {}),
     ...(text(entity.initialState) ? { initialState: text(entity.initialState) } : {}),
     ...(strings(entity.terminalStates).length ? { terminalStates: strings(entity.terminalStates) } : {}),
     lifecyclePredicates: array(entity.lifecyclePredicates).map(item => {

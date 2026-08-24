@@ -192,6 +192,7 @@ Render page11 as a simple operational page:
 - sections as cards
 - organisms as grouped panels
 - plain forms for commandForm intentions
+- When a field in the layout/shared catalog carries enumLabels, display enumLabels[].label (user language) and keep enum[] / the stored value as the wire code. Without enumLabels, display the code. Never send the label on the wire.
 - plain tables for queryList intentions
 - compact summary blocks for summary intentions
 - detail panels for detail intentions (a detailPanel organism): render the selected/loaded object's

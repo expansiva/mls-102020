@@ -15,6 +15,13 @@ entities or change relationships. Write human-facing text in the user's language
 - A stored entity must contain the overview's `idField` as required `uuid`.
 - Lifecycle states require a `status` field with an `enum` constraint whose value is a compact JSON
   array string containing exactly those states.
+- Those states, and every other enum constraint value, are **stable English codes**: lowerCamel ASCII
+  (`active`, `inactive`, `monday`), never the user's language (`ativo`, `segunda-feira`). Field
+  `title` and `description` remain in the user's language.
+- For every enumerated field, emit `enumLabels` as `{ "code", "label" }[]` next to the enum constraint —
+  `code` matches a value in the constraint, `label` is the user's language (`userLanguage`, default `en`).
+  Example: `{ "code": "active", "label": "Ativo" }`. Do not emit `enum` itself; it is derived. A status
+  field's labels should match the overview `lifecycleLabels` for those codes.
 - The overview already freezes any named lifecycle subsets required by the supplied sources. Use
   those exact predicates when shaping fields and rule references; do not add, remove or reinterpret them.
 - Constraints are shared frontend/backend validation contracts. Kinds: `min`, `max`, `minLength`,

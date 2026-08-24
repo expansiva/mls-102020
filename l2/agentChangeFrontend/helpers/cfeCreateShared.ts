@@ -41,14 +41,18 @@ import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource, replaceDefsValue } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
+import { enumDisplayLabel, readEnumLabels, type CfeEnumLabel } from '/_102020_/l2/agentChangeFrontend/helpers/cfeEnumLabels.js';
+
+export { enumDisplayLabel, readEnumLabels };
+export type { CfeEnumLabel };
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
 
-interface CfeFieldDef { fieldId: string; title?: string; type: string; required?: boolean; description?: string; enum?: string[] }
+interface CfeFieldDef { fieldId: string; title?: string; type: string; required?: boolean; description?: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }
 interface CfeEntityDef {
   entityId: string; title: string; fields: CfeFieldDef[]; rulesApplied: string[];
-  statusEnum: string[]; lifecycleStates: string[];
+  statusEnum: string[]; lifecycleStates: string[]; lifecycleLabels?: CfeEnumLabel[];
   /** l4 `storage.target` — where the record LIVES (`mdm` | `moduleDatabase` | `external` | …). */
   storageTarget: string;
 }
@@ -854,6 +858,17 @@ function bffFieldEnumValues(field: CfeBffCallField, operationsById: Map<string, 
   return [];
 }
 
+function bffFieldEnumLabels(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): CfeEnumLabel[] {
+  const dot = field.from.indexOf('.');
+  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
+  if (!operation) return [];
+  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
+  const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === inputId);
+  if (!raw) return [];
+  const resolved = resolveFieldRef(readString(raw.fieldRef), operation.entity, entities);
+  return fieldEnumLabels(resolved.field, resolved.entity);
+}
+
 function bffInputRequired(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>): boolean {
   if (field.required === true) return true;
   const dot = field.from.indexOf('.');
@@ -928,6 +943,7 @@ function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace,
     input: shape.input.map(field => {
       const raw = inputByName.get(field.name);
       const enumValues = raw ? bffFieldEnumValues(raw, operationsById, entities) : [];
+      const enumLabels = raw ? bffFieldEnumLabels(raw, operationsById, entities) : [];
       const l4Type = raw ? bffFieldL4Type(raw, operationsById, entities) : '';
       return {
         name: field.name,
@@ -937,6 +953,7 @@ function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace,
         presentation: field.presentation,
         ...(l4Type ? { l4Type } : {}),
         ...(enumValues.length > 0 ? { enum: enumValues } : {}),
+        ...(enumLabels.length > 0 ? { enumLabels } : {}),
       };
     }),
     output: shape.output,
@@ -1560,6 +1577,10 @@ function baseLayoutPromptContext(prepared: CfePreparedPage): Record<string, unkn
           kind: readString(command.kind) === 'query' ? 'query' : 'command',
           inputFields: commandFieldRecords(command.input).map(field => field.name),
           outputFields: commandFieldRecords(command.output).map(field => field.name),
+          enumFields: uniqueEnumFields([
+            ...commandFieldRecords(command.input),
+            ...commandFieldRecords(command.output),
+          ]),
         })),
         byEntity: prepared.entityFields,
       },
@@ -2664,6 +2685,21 @@ function allowedLayoutFields(prepared: CfePreparedPage): Set<string> {
   return allowed;
 }
 
+function uniqueEnumFields(fields: { name: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }[]): { name: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }[] {
+  const seen = new Set<string>();
+  const out: { name: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }[] = [];
+  for (const field of fields) {
+    if (!field.enum?.length || seen.has(field.name)) continue;
+    seen.add(field.name);
+    out.push({
+      name: field.name,
+      enum: field.enum,
+      ...(field.enumLabels?.length ? { enumLabels: field.enumLabels } : {}),
+    });
+  }
+  return out;
+}
+
 function commandFields(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => isRecord(item) ? readString(item.name) : '').filter(Boolean);
@@ -3561,7 +3597,7 @@ function defaultBusinessContextOriginRef(inputId: string, fieldRef: string): str
   return text.includes('unit') || text.includes('unidade') ? 'businessContext.activeUnitId' : 'businessContext.activeCompanyId';
 }
 
-function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; sourceRef?: string; presentation?: string; type?: string; l4Type?: string; enum?: string[] }[] {
+function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; sourceRef?: string; presentation?: string; type?: string; l4Type?: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }[] {
   if (!Array.isArray(value)) return [];
   return value.map(item => isRecord(item) ? {
     name: readString(item.name),
@@ -3577,6 +3613,7 @@ function commandFieldRecords(value: unknown): { name: string; required?: boolean
     type: readString(item.type),
     l4Type: readString(item.l4Type),
     ...(Array.isArray(item.enum) ? { enum: item.enum.map(String).filter(Boolean) } : {}),
+    ...(Array.isArray(item.enumLabels) ? { enumLabels: readEnumLabels(item.enumLabels) } : {}),
   } : { name: '' }).filter(item => item.name);
 }
 
@@ -4568,9 +4605,23 @@ function readRecordArray(value: unknown): Record<string, unknown>[] {
 function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeEntityDef | null {
   const entityId = readString(data.entityId) || fallbackId;
   if (!entityId) return null;
-  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => ({ fieldId: readString(field.fieldId), title: readString(field.title), type: readString(field.type), required: field.required === true, description: readString(field.description), enum: fieldEnumValues(field) })).filter(field => field.fieldId) : [];
+  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => {
+    const labels = readEnumLabels(field.enumLabels);
+    return {
+      fieldId: readString(field.fieldId), title: readString(field.title), type: readString(field.type),
+      required: field.required === true, description: readString(field.description), enum: fieldEnumValues(field),
+      ...(labels.length ? { enumLabels: labels } : {}),
+    };
+  }).filter(field => field.fieldId) : [];
   const storage = isRecord(data.storage) ? data.storage : {};
-  return { entityId, title: readString(data.title) || humanizeId(entityId), fields, rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum), lifecycleStates: readStringArray(data.lifecycleStates), storageTarget: readString(storage.target) };
+  const lifecycleLabels = readEnumLabels(data.lifecycleLabels);
+  return {
+    entityId, title: readString(data.title) || humanizeId(entityId), fields,
+    rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum),
+    lifecycleStates: readStringArray(data.lifecycleStates),
+    ...(lifecycleLabels.length ? { lifecycleLabels } : {}),
+    storageTarget: readString(storage.target),
+  };
 }
 
 /**
@@ -4713,8 +4764,16 @@ function contractFieldFromEntityField(entity: CfeEntityDef, field: CfeFieldDef, 
   if (options.includeRequired !== false) out.required = options.required ?? (field.required === true);
   const enumValues = field.enum?.length ? field.enum : (field.fieldId === 'status' ? entity.statusEnum : []);
   if (enumValues.length > 0) out.enum = enumValues;
+  const labels = fieldEnumLabels(field, entity);
+  if (labels.length) out.enumLabels = labels;
   if (field.description) out.description = field.description;
   return out;
+}
+
+function fieldEnumLabels(field: CfeFieldDef | undefined, entity: CfeEntityDef | undefined): CfeEnumLabel[] {
+  if (field?.enumLabels?.length) return field.enumLabels;
+  if (field && /status$/i.test(field.fieldId) && entity?.lifecycleLabels?.length) return entity.lifecycleLabels;
+  return [];
 }
 
 function explicitEntityFieldNames(values: string[], entityId: string): Set<string> {
