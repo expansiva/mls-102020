@@ -13,6 +13,8 @@
 import {
   DEFAULT_HEADER_PROFILE,
   headerPaths,
+  isProjectHeaderTag,
+  variantFromTag,
   normalizeHeaderRequest,
   pointHeaderProfileAtProject,
   type GenerateHeaderRequest,
@@ -59,6 +61,8 @@ export interface HeaderProfileView {
   isProjectHeader: boolean;
   /** Which shell document the app boots (`clientShell.mode`) — the preview's boot config mirrors it. */
   shellMode: string;
+  /** Variant slug of this header, or undefined for the project's default one. */
+  variant?: string;
 }
 
 /** Reads the header region of `l5/config.json` for display. Returns undefined when there is none. */
@@ -88,6 +92,7 @@ export function readHeaderProfileView(
     profileName: name,
     profileNames: Object.keys(header.profiles),
     shellMode: readString(clientShell?.mode) || 'spa',
+    variant: variantFromTag(readString(profile.renderer?.tag), projectId),
     tag: readString(profile.renderer?.tag),
     entrypoint: readString(profile.renderer?.entrypoint),
     source: readString(profile.renderer?.source) || undefined,
@@ -96,7 +101,8 @@ export function readHeaderProfileView(
     actions,
     locales: stringList(props?.locales),
     navLinks: stringList(props?.navLinks),
-    isProjectHeader: readString(profile.renderer?.tag) === headerPaths(projectId).tag,
+    // Any header this project generated counts — the default one and every variant.
+    isProjectHeader: isProjectHeaderTag(readString(profile.renderer?.tag), projectId),
   };
 }
 
@@ -119,6 +125,77 @@ export function scopeTokensCss(css: string, scope: string): string {
     .replace(/:root/gu, scope);
 }
 
+export interface ProjectHeaderEntry {
+  /** Profile name in `clientShell.regions.header.profiles`. */
+  profileName: string;
+  /** Variant slug, or undefined for the project's default header. */
+  variant?: string;
+  tag: string;
+  /** Client-relative source path, when the profile records one. */
+  source?: string;
+  /** The one the shell boots (`activeProfile`). */
+  isActive: boolean;
+  /** False for a profile pointing at a master's header (e.g. `studio`). */
+  isProjectHeader: boolean;
+  brand?: AppHeaderBrand;
+  actions: AppHeaderAction[];
+  locales: string[];
+  navLinks: string[];
+  heightPx?: number;
+}
+
+/**
+ * Every header the project has, in config order — what the knob lists and what the panel renders.
+ *
+ * Profiles that point at a master's header (`studio`) are kept in the result with
+ * `isProjectHeader: false`: the caller decides whether to show them, and hiding them here would make
+ * "why does Ctrl+Alt+S cycle into something I cannot see" unanswerable.
+ */
+export function listProjectHeaders(config: unknown, projectId: number): ProjectHeaderEntry[] {
+  if (!isRecord(config)) return [];
+  const clientShell = isRecord(config.clientShell)
+    ? config.clientShell as unknown as ProjectClientShellConfig
+    : undefined;
+  const header = clientShell?.regions?.header;
+  if (!header?.profiles) return [];
+
+  const active = header.activeProfile || DEFAULT_HEADER_PROFILE;
+  return Object.entries(header.profiles).map(([profileName, raw]) => {
+    const profile = raw as ProjectDynamicRegionConfig;
+    const props = isRecord(profile.props) ? profile.props : undefined;
+    const stringList = (value: unknown) => (Array.isArray(value) ? value.map(readString).filter(Boolean) : []);
+    const tag = readString(profile.renderer?.tag);
+    return {
+      profileName,
+      variant: variantFromTag(tag, projectId),
+      tag,
+      source: readString(profile.renderer?.source) || undefined,
+      isActive: profileName === active,
+      isProjectHeader: isProjectHeaderTag(tag, projectId),
+      brand: isRecord(profile.brand) ? profile.brand as unknown as AppHeaderBrand : undefined,
+      actions: Array.isArray(props?.actions) ? (props.actions as AppHeaderAction[]) : [],
+      locales: stringList(props?.locales),
+      navLinks: stringList(props?.navLinks),
+      heightPx: typeof profile.heightPx === 'number' ? profile.heightPx : undefined,
+    };
+  });
+}
+
+/**
+ * Makes a profile the one the shell boots. Only `activeProfile` moves — the renderer, brand and
+ * props of each profile are already in place, which is the whole point of having variants.
+ */
+export function activateHeaderProfile(config: unknown, profileName: string): Record<string, unknown> {
+  if (!isRecord(config)) throw new Error('l5/config.json not found or not an object');
+  const name = readString(profileName);
+  if (!name) throw new Error('activate needs a profile name');
+  const next = clone(config) as Record<string, unknown>;
+  const header = (next.clientShell as ProjectClientShellConfig | undefined)?.regions?.header;
+  if (!header?.profiles?.[name]) throw new Error(`there is no header profile "${name}" to activate`);
+  header.activeProfile = name;
+  return next;
+}
+
 // ─── the form → the agent request ───────────────────────────────────────────
 
 export interface HeaderFormState {
@@ -137,6 +214,11 @@ export interface HeaderFormState {
   logoStyle: string;
   logoBrief: string;
   profileName: string;
+  /**
+   * Which header of the project this request is for: '' = the default one, a slug = that variant.
+   * It decides the FILE, the tag and the class, so it cannot be inferred later.
+   */
+  variant: string;
 }
 
 export function emptyHeaderForm(): HeaderFormState {
@@ -151,6 +233,7 @@ export function emptyHeaderForm(): HeaderFormState {
     logoStyle: '',
     logoBrief: '',
     profileName: '',
+    variant: '',
   };
 }
 
@@ -173,6 +256,7 @@ export function formFromProfile(
   form.navLinks = [...view.navLinks];
   if (view.locales.length) form.locales = view.locales.filter((locale) => !languages.length || languages.includes(locale));
   form.profileName = view.profileName;
+  form.variant = view.variant ?? '';
   return form;
 }
 
@@ -242,6 +326,7 @@ export function buildHeaderRequest(
     logoStyle: readString(form.logoStyle) || undefined,
     logoBrief: readString(form.logoBrief) || undefined,
     profileName: readString(form.profileName) || undefined,
+    variant: readString(form.variant) || undefined,
     requestId,
     commit: false,
   };
@@ -339,7 +424,7 @@ export interface ApplyHeaderResult {
  */
 export function applyHeaderDraft(input: ApplyHeaderInput, buildSource: (parts: GeneratedHeaderParts) => string): ApplyHeaderResult {
   const view = readHeaderProfileView(input.config, input.projectId, input.form.profileName);
-  const paths = headerPaths(input.projectId);
+  const paths = headerPaths(input.projectId, { variant: input.form.variant || undefined });
   const brandTitle = readString(input.form.brandTitle);
 
   const written = pointHeaderProfileAtProject(input.config, {
@@ -352,6 +437,8 @@ export function applyHeaderDraft(input: ApplyHeaderInput, buildSource: (parts: G
     // edit afterwards, with no regeneration.
     navLinks: input.form.navLinks,
     locales: input.form.locales,
+    // A variant does not go on the air by being written: it is activated on purpose, from the list.
+    activate: !readString(input.form.variant),
     profileName: readString(input.form.profileName) || undefined,
     dropLogo: input.form.logo === 'none',
   });
@@ -361,12 +448,16 @@ export function applyHeaderDraft(input: ApplyHeaderInput, buildSource: (parts: G
   if (view?.isProjectHeader && readString(input.previousSource)) {
     const previousProfile = (input.config as { clientShell?: ProjectClientShellConfig }).clientShell
       ?.regions?.header?.profiles?.[view.profileName];
-    projectConfig.headerBackup = {
+    // One slot PER PROFILE: with several headers in the project, a single slot would let a variant's
+    // rollback overwrite the default header's.
+    const slots = isRecord(projectConfig.headerBackup) ? { ...projectConfig.headerBackup } : {};
+    slots[view.profileName] = {
       source: readString(input.previousSource),
       profile: previousProfile ? clone(previousProfile) : undefined,
       profileName: view.profileName,
       at: input.at,
     };
+    projectConfig.headerBackup = slots;
   }
 
   return {
@@ -378,15 +469,35 @@ export function applyHeaderDraft(input: ApplyHeaderInput, buildSource: (parts: G
   };
 }
 
-export function readHeaderBackup(projectConfig: unknown): HeaderBackup | undefined {
+/**
+ * The rollback slot of one profile.
+ *
+ * The slot used to be a single object for the whole project; it is now keyed by profile name. Both
+ * shapes are read (the old one answers for the profile it recorded), so a project mid-flight does not
+ * lose its rollback.
+ *
+ * @param profileName - Whose slot to read; the default header's when omitted.
+ */
+export function readHeaderBackup(projectConfig: unknown, profileName?: string): HeaderBackup | undefined {
   if (!isRecord(projectConfig)) return undefined;
-  const backup = projectConfig.headerBackup;
-  if (!isRecord(backup) || !readString(backup.source) || !isRecord(backup.profile)) return undefined;
+  const raw = projectConfig.headerBackup;
+  if (!isRecord(raw)) return undefined;
+  const wanted = readString(profileName);
+
+  // Legacy single slot: it carries its own profileName.
+  const legacy = readString(raw.source) && isRecord(raw.profile) ? raw : undefined;
+  const entry = legacy
+    ? ((!wanted || readString(legacy.profileName) === wanted || (!readString(legacy.profileName) && wanted === DEFAULT_HEADER_PROFILE))
+      ? legacy
+      : undefined)
+    : (isRecord(raw[wanted || DEFAULT_HEADER_PROFILE]) ? raw[wanted || DEFAULT_HEADER_PROFILE] as Record<string, unknown> : undefined);
+
+  if (!entry || !readString(entry.source) || !isRecord(entry.profile)) return undefined;
   return {
-    source: readString(backup.source),
-    profile: backup.profile as unknown as ProjectDynamicRegionConfig,
-    profileName: readString(backup.profileName) || DEFAULT_HEADER_PROFILE,
-    at: readString(backup.at),
+    source: readString(entry.source),
+    profile: entry.profile as unknown as ProjectDynamicRegionConfig,
+    profileName: readString(entry.profileName) || wanted || DEFAULT_HEADER_PROFILE,
+    at: readString(entry.at),
   };
 }
 
@@ -403,8 +514,9 @@ export function restoreHeaderBackup(
   projectId: number,
   config: unknown,
   projectConfig: unknown,
+  profileName?: string,
 ): RestoreHeaderResult {
-  const backup = readHeaderBackup(projectConfig);
+  const backup = readHeaderBackup(projectConfig, profileName);
   if (!backup) throw new Error('there is no previous header to restore');
   if (!isRecord(config)) throw new Error('l5/config.json not found or not an object');
 
@@ -417,11 +529,19 @@ export function restoreHeaderBackup(
   header.activeProfile = backup.profileName;
 
   const nextProject = isRecord(projectConfig) ? clone(projectConfig) : {};
-  // The slot is single: restoring consumes it, so a second "go back" does not resurrect an older one.
-  delete nextProject.headerBackup;
+  // Restoring CONSUMES the slot of this profile, so a second "go back" does not resurrect an older
+  // one — the other profiles keep theirs.
+  const slots = nextProject.headerBackup;
+  if (isRecord(slots) && !readString(slots.source)) {
+    delete (slots as Record<string, unknown>)[backup.profileName];
+    if (Object.keys(slots).length === 0) delete nextProject.headerBackup;
+  } else {
+    delete nextProject.headerBackup;
+  }
 
   return {
-    paths: headerPaths(projectId),
+    // The file to rewrite is the one THIS profile points at: a variant restores its own file.
+    paths: headerPaths(projectId, { variant: variantFromTag(readString(backup.profile.renderer?.tag), projectId) }),
     source: backup.source,
     config: next,
     projectConfig: nextProject,

@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/plugins/pluginProjectHeader.ts" enhancement="_102027_/l2/enhancementLit" />
 
-// The "Header" screen of a project (l5Project plugin, opened in the service details from
-// selectProject, next to Usage/Config/Project Settings).
+// The header EDITOR of a project: opened by the Header knob of the l5 service (selectHeader), which
+// says WHICH header of the app is being edited (`profileName` + `variant`).
 //
 // It is the UI for the two header agents, which until now were console-only. Sections:
 //   1. the header that is applied, rendered for real at band size;
@@ -31,7 +31,6 @@ import { html, nothing, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { PluginBaseModule } from '/_102027_/l2/pluginBaseModule.js';
-import { collabImport } from '/_102027_/l2/collabImport.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
@@ -46,9 +45,19 @@ import {
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import { applyLogoToBrand, validateLogoSvg } from '/_102020_/l2/aura/agentManageHeader/helpers/generateLogoCore.js';
 import { AURA_HEADER_HEIGHT_PX, AURA_HEADER_LOGO_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
-import { tokensCssFromTheme, type IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
+import {
+  applyProjectTokens,
+  bandBootConfig,
+  mountHeaderBand,
+} from '/_102020_/l2/aura/plugins/helpers/headerBandPreview.js';
 import type { AppHeaderAction } from '/_102029_/l2/runtimeConfigTypes.js';
 import { flagChip, localeFlagMarkup } from '/_102020_/l2/aura/plugins/helpers/localeFlag.js';
+import {
+  ensureProjectLoaded,
+  headerConfigRef,
+  readHeaderConfig,
+  writeHeaderConfig,
+} from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
 import {
   applyHeaderDraft,
   buildHeaderRequest,
@@ -209,7 +218,6 @@ export const pluginData: mls.plugin.IPluginData = {
 
 type RequestTab = 'brief' | 'actions' | 'links';
 
-const CONFIG_REF = (project: number) => `_${project}_/l5/config.json`;
 const HEADER_ACTIONS = ['language', 'designSystem', 'modules', 'search', 'user'] as const;
 
 // Shared field/button classes: repeated inline they drift, and a form where two inputs disagree
@@ -231,6 +239,13 @@ export class PluginProjectHeader extends PluginBaseModule {
   @property({ type: String }) msize = '';
   /** Project the panel is showing; `mls.actualProject` is only the fallback. */
   @property({ type: Number }) project = 0;
+  /**
+   * Which header of the project to edit. Empty = whatever profile is active (how the plugin panel
+   * opened it); a name = that profile, which is how the Header knob edits one of several.
+   */
+  @property({ attribute: false }) profileName = '';
+  /** Variant slug of that header: '' = the default one. Decides the file, the tag and the class. */
+  @property({ attribute: false }) variant = '';
 
   @state() private _projectId = 0;
   @state() private _view?: HeaderProfileView;
@@ -267,8 +282,6 @@ export class PluginProjectHeader extends PluginBaseModule {
   private msg: MessageType = message_en;
   /** Signature of what is mounted in the applied band, so `updated()` does not remount it. */
   private _mountedPreview = '';
-  /** Compiled DS tokens of the project; undefined = not read yet (an empty string is a valid answer). */
-  private _tokensCssCache?: string;
 
   createRenderRoot() {
     return this;
@@ -282,73 +295,40 @@ export class PluginProjectHeader extends PluginBaseModule {
     this.msg = messages[this.getMessageKey(messages)] ?? message_en;
     this._projectId = Number(this.project) || mls.actualProject || 0;
     if (!this._projectId) return;
-    // A project that is not the actual one has no files in mls.stor yet, and every read here goes
-    // through the stor — without this the screen would silently look like "nothing configured".
-    if (this._projectId !== mls.actualProject) {
-      await mls.stor.server.loadProjectInfoIfNeeded(this._projectId, false);
-    }
+    await ensureProjectLoaded(this._projectId);
     await this._reload();
   }
 
   // ── reading the project ───────────────────────────────────────────────────
 
-  /** The stor file of `l5/config.json`, or undefined with the reason already on screen. */
-  private _configFile(): mls.stor.IFileInfo | undefined {
-    const key = mls.stor.getKeyToFile({
-      project: this._projectId, level: 5, folder: '', shortName: 'config', extension: '.json',
-    } as mls.stor.IFileInfoBase);
-    const storFile = mls.stor.files[key];
-    if (!storFile) this._error = `${CONFIG_REF(this._projectId)} is not loaded in mls.stor (key ${key})`;
-    return storFile;
-  }
-
   private async _readClientConfig(): Promise<unknown> {
-    // Read the stor file directly (instead of readRawSource) to tell "the file is not loaded" apart
-    // from "the file has no header": both used to render as an empty screen, which is unreadable.
-    const storFile = this._configFile();
-    if (!storFile) return undefined;
-    const raw = String((await storFile.getContent()) ?? '');
-    if (!raw.trim()) {
-      this._error = `${CONFIG_REF(this._projectId)} is empty`;
-      return undefined;
-    }
     try {
-      return JSON.parse(raw);
+      return await readHeaderConfig(this._projectId);
     } catch (error) {
-      this._error = `l5/config.json: ${error instanceof Error ? error.message : String(error)}`;
+      this._error = error instanceof Error ? error.message : String(error);
       return undefined;
     }
   }
 
-  /**
-   * Writes `l5/config.json` straight through localStor.
-   *
-   * NOT through saveFile: that one goes via `getOrCreateModel`, which only exists for editor source
-   * files — on a .json it throws ("use getOrCreateModel only on source files"). This is the same
-   * write the agents do (`pointConfigAtHeader`).
-   */
   private async _writeClientConfig(config: unknown): Promise<void> {
-    const storFile = this._configFile();
-    if (!storFile) throw new Error(`${CONFIG_REF(this._projectId)} is not loaded in mls.stor`);
-    if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
-    storFile.updatedAt = new Date().toISOString();
-    await mls.stor.localStor.setContent(storFile, {
-      contentType: 'string',
-      content: `${JSON.stringify(config, null, 2)}\n`,
-    });
+    await writeHeaderConfig(this._projectId, config);
   }
 
   private async _reload(): Promise<void> {
     this._error = '';
     this._warn = '';
     const config = await this._readClientConfig();
-    this._view = readHeaderProfileView(config, this._projectId);
+    // With no profile named, the active one — the Header knob names the one it is editing.
+    this._view = readHeaderProfileView(config, this._projectId, this.profileName || undefined);
     this._routes = readProjectRoutes(config, this._projectId);
     const projectConfig = await getConfigProject(this._projectId);
     this._languages = readProjectLanguages(projectConfig);
     this._dsCount = countProjectDesignSystems(projectConfig);
     // No locale selection on the profile = the header speaks every language of the project.
     this._form = formFromProfile(this._view, this._languages.map((language) => language.code));
+    // A header being CREATED has no profile yet: the identity comes from the caller, not the config.
+    if (this.profileName) this._form = { ...this._form, profileName: this.profileName };
+    if (this.variant) this._form = { ...this._form, variant: this.variant };
     this._hasBackup = Boolean(readHeaderBackup(projectConfig));
     this.requestUpdate();
     await this._mountAppliedPreview();
@@ -356,83 +336,6 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   // ── preview of a compiled header ──────────────────────────────────────────
 
-  /**
-   * Boot config for the preview. It carries the project's REAL navigation: the band filters that list
-   * by the selected hrefs, so without it `renderNavLinks()` has nothing to link and the preview shows
-   * no links even when three routes are selected.
-   */
-  private _bootConfig() {
-    return {
-      projectId: String(this._projectId),
-      moduleId: 'preview',
-      basePath: '/preview',
-      shellMode: this._view?.shellMode ?? 'spa',
-      device: 'desktop',
-      routes: [],
-      navigation: this._routes.map((route) => ({ ...route })),
-      moduleLinks: [],
-      languages: this._languages.map((language) => language.code),
-      layout: {
-        regions: { desktop: { header: true, aside: true, content: true }, mobile: { header: true, aside: true, content: true } },
-        asideMode: { desktop: 'inline', mobile: 'drawer' },
-      },
-    };
-  }
-
-  /**
-   * Mounts a compiled header in a band-sized host, in the STUDIO's own document.
-   *
-   * No iframe: the studio resolves `/_<project>_/l2/…` module URLs for its own document, and an
-   * `about:blank` frame does not inherit that resolution — every import inside it 404s. Rendering
-   * here is also what `collabImport` is for.
-   *
-   * The import is retried: a file written a moment ago may not be compiled yet, and collabImport
-   * resolves by version — so the element only becomes defined once the build lands.
-   */
-  private async _mountHeader(
-    host: HTMLElement,
-    folder: string,
-    shortName: string,
-    tag: string,
-    props: Record<string, unknown>,
-  ): Promise<void> {
-    await this._applyProjectTokens(host);
-    // Already in the registry (a tag this session defined): importing again would only serve the
-    // file's CURRENT content, which for a consumed preview is the stub. The class is what we want.
-    if (customElements.get(tag)) {
-      host.replaceChildren(this._headerElement(tag, props));
-      return;
-    }
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      try {
-        await collabImport({ project: this._projectId, folder, shortName, extension: '.ts' });
-      } catch {
-        // keep retrying: the module may not be compiled yet
-      }
-      if (customElements.get(tag)) break;
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-    if (!customElements.get(tag)) {
-      this._error = `preview: ${tag} was not registered (is the file compiled?)`;
-      return;
-    }
-    host.replaceChildren(this._headerElement(tag, props));
-  }
-
-  private _headerElement(tag: string, props: Record<string, unknown>): HTMLElement {
-    const element = document.createElement(tag) as HTMLElement & { bootConfig?: unknown; regionProps?: unknown };
-    element.bootConfig = this._bootConfig();
-    element.regionProps = props;
-    return element;
-  }
-
-  /**
-   * Paints the band with the CLIENT's colours: the project's design-system tokens, re-scoped to the
-   * band container so they do not repaint the studio around it.
-   *
-   * Without this the band falls back to the hardcoded defaults of every `var(--nav-*, #…)` in the
-   * header, which is a different header from the one the user will see.
-   */
   /**
    * The single CSS rule the mark tiles need: an inlined `<svg>` has no width/height of its own (the
    * validator forbids them), so it is the container that must size it — by height, like the band.
@@ -447,38 +350,32 @@ export class PluginProjectHeader extends PluginBaseModule {
     document.head.appendChild(style);
   }
 
-  private async _applyProjectTokens(host: HTMLElement): Promise<void> {
-    host.setAttribute('data-token-scope', String(this._projectId));
-    const id = `header-preview-tokens-${this._projectId}`;
-    if (document.getElementById(id)) return;
-    const css = scopeTokensCss(await this._tokensCss(), `[data-token-scope="${this._projectId}"]`);
-    if (!css) return;
-    const style = document.createElement('style');
-    style.id = id;
-    style.textContent = css;
-    document.head.appendChild(style);
+  private _bootConfig() {
+    return bandBootConfig({
+      projectId: this._projectId,
+      shellMode: this._view?.shellMode,
+      navigation: this._routes,
+      languages: this._languages.map((language) => language.code),
+    });
   }
 
-  /**
-   * The project's design-system tokens compiled to CSS — the same compile the app does at boot
-   * (`tokensCssFromTheme`), read through collabImport so an edit in the session is picked up.
-   *
-   * The first theme entry is used: which entry the app runs is a project-level choice that does not
-   * belong to this screen, and the header only reads the `nav-*` family, which every entry defines.
-   */
-  private async _tokensCss(): Promise<string> {
-    if (this._tokensCssCache !== undefined) return this._tokensCssCache;
-    try {
-      const mod = await collabImport({ project: this._projectId, folder: '', shortName: 'designSystem' });
-      const entry = (mod?.tokens ?? [])[0] as IDesignSystemTokens | undefined;
-      this._tokensCssCache = entry ? tokensCssFromTheme(entry) : '';
-    } catch (error) {
-      // A project without a design system still previews — but say so: every colour of a generated
-      // header is a token, so an unstyled band would look like a broken header.
-      this._tokensCssCache = '';
-      this._warn = `${this.msg.noTokens}: ${error instanceof Error ? error.message : String(error)}`;
-    }
-    return this._tokensCssCache;
+  private async _mountHeader(
+    host: HTMLElement,
+    folder: string,
+    shortName: string,
+    tag: string,
+    props: Record<string, unknown>,
+  ): Promise<void> {
+    if (!(await applyProjectTokens(host, this._projectId))) this._warn = this.msg.noTokens;
+    const error = await mountHeaderBand(host, {
+      projectId: this._projectId,
+      folder,
+      shortName,
+      tag,
+      bootConfig: this._bootConfig(),
+      regionProps: props,
+    });
+    if (error) this._error = `preview: ${error}`;
   }
 
   private async _mountAppliedPreview(): Promise<void> {
@@ -641,6 +538,11 @@ export class PluginProjectHeader extends PluginBaseModule {
       this._appliedTag = this._previewTag;
       await this._consumePreview();
       await this._reload();
+      this.dispatchEvent(new CustomEvent('header-applied', {
+        detail: { profileName: result.profileName, variant: this._form.variant },
+        bubbles: true,
+        composed: true,
+      }));
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -787,6 +689,8 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   private _renderApplied() {
     const view = this._view;
+    // Creating a variant: there is nothing applied to show, and the list above already shows the rest.
+    if (!view && this.variant) return nothing;
     if (!view) {
       return this._card(this.msg.applied, html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noHeader}</p>`);
     }
