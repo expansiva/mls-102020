@@ -80,6 +80,8 @@ export interface HeaderPaths {
   /** Client-relative source path recorded in the config profile. */
   source: string;
   entrypoint: string;
+  /** Module name inside `l2/layout` — what collabImport/`import()` needs. Varies with the variant. */
+  shortName: string;
   tag: string;
   className: string;
 }
@@ -158,6 +160,7 @@ export function headerPaths(
       fileReference: `_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.ts`,
       source: `l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.ts`,
       entrypoint: `/_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.js`,
+      shortName: HEADER_PREVIEW_SHORT_NAME,
       // The project number is the LAST segment — that is the convention every tag in the workspace
       // follows (convertFileToTag), so the token goes BEFORE it, never after.
       tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_PREVIEW_SHORT_NAME)}-${token}-${projectId}`,
@@ -172,6 +175,7 @@ export function headerPaths(
     fileReference: `_${projectId}_/l2/${HEADER_FOLDER}/${shortName}.ts`,
     source: `l2/${HEADER_FOLDER}/${shortName}.ts`,
     entrypoint: `/_${projectId}_/l2/${HEADER_FOLDER}/${shortName}.js`,
+    shortName,
     // The project number stays the LAST segment (convertFileToTag), so the slug goes before it.
     tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_SHORT_NAME)}${variant ? `-${variant}` : ''}-${projectId}`,
     className: `AppHeader${variant ? toPascal(variant) : ''}${projectId}`,

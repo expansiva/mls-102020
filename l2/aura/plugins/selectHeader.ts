@@ -401,12 +401,10 @@ export class PluginSelectHeader extends StateLitElement {
       if (this._mounted.get(entry.profileName) === signature && host.firstElementChild) continue;
       this._mounted.set(entry.profileName, signature);
 
-      const paths = headerPaths(this.projectId, { variant: entry.variant });
-      const shortName = paths.fileReference.split('/').pop()?.replace(/\.ts$/u, '') ?? 'appHeader';
       const error = await mountHeaderBand(host, {
         projectId: this.projectId,
         folder: 'layout',
-        shortName,
+        shortName: headerPaths(this.projectId, { variant: entry.variant }).shortName,
         tag: entry.tag,
         bootConfig: bandBootConfig({
           projectId: this.projectId,

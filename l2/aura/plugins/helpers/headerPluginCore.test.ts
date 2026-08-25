@@ -520,3 +520,17 @@ test('the view says whether the header being edited is the default one', () => {
   assert.equal(readHeaderProfileView(activated, PROJECT, 'studio')?.isActive, true);
   assert.equal(readHeaderProfileView(activated, PROJECT, 'defaultAura')?.isActive, false);
 });
+
+test('the paths carry the module name to import, which follows the variant', () => {
+  // This is what a preview mount needs: importing `appHeader` for a variant registers the DEFAULT
+  // tag and leaves the variant unregistered — the band then never renders.
+  assert.equal(headerPaths(PROJECT).shortName, 'appHeader');
+  assert.equal(headerPaths(PROJECT, { variant: 'natal' }).shortName, 'appHeaderNatal');
+  assert.equal(headerPaths(PROJECT, { previewToken: 'k3f9' }).shortName, 'appHeaderPreview');
+
+  // And it always matches the file it names.
+  for (const options of [{}, { variant: 'natal' }, { previewToken: 'k3f9' }]) {
+    const paths = headerPaths(PROJECT, options);
+    assert.equal(paths.fileReference, `_${PROJECT}_/l2/layout/${paths.shortName}.ts`);
+  }
+});

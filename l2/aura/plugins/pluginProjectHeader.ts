@@ -456,7 +456,13 @@ export class PluginProjectHeader extends PluginBaseModule {
     if (this._mountedPreview === signature && host.firstElementChild) return;
     this._mountedPreview = signature;
     // The APPLIED band shows what is applied — the profile, not the unsaved form.
-    await this._mountHeader(host, 'layout', borrowed ? 'appHeaderPreview' : 'appHeader', tag, {
+    // The module to import follows the VARIANT: `appHeaderNatal`, not `appHeader`. Importing the
+    // default header here defined the default tag and left the variant's tag unregistered — the band
+    // only appeared after the listing happened to mount it.
+    const shortName = borrowed
+      ? headerPaths(this._projectId, { previewToken: 'x' }).shortName
+      : headerPaths(this._projectId, { variant: this._view.variant }).shortName;
+    await this._mountHeader(host, 'layout', shortName, tag, {
       ...(this._view.brand ? { brand: this._view.brand } : {}),
       actions: this._view.actions,
       navLinks: this._view.navLinks,
@@ -474,7 +480,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     if (this._mountedDraft === signature && host.firstElementChild) return;
     this._mountedDraft = signature;
     // The DRAFT band shows what the form asks for, which is what "Apply" would write.
-    await this._mountHeader(host, 'layout', 'appHeaderPreview', this._previewTag, {
+    await this._mountHeader(host, 'layout', headerPaths(this._projectId, { previewToken: 'x' }).shortName, this._previewTag, {
       ...(this._view?.brand ? { brand: this._view.brand } : {}),
       actions: this._form.actions,
       navLinks: this._form.navLinks,
