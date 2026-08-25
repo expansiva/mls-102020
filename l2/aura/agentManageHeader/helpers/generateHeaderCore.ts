@@ -233,6 +233,8 @@ export interface HeaderProfileOptions {
   activate?: boolean;
   /** Drop the mark the profile already had instead of carrying it over. */
   dropLogo?: boolean;
+  /** Remove the brand entirely. Without it, an absent `brand` KEEPS what the profile has. */
+  dropBrand?: boolean;
 }
 
 /**
@@ -266,16 +268,23 @@ export function pointHeaderProfileAtProject(config: unknown, options: HeaderProf
     heightPx: AURA_HEADER_HEIGHT_PX,
   };
 
-  // Brand and actions are config, not code: absent in the request means absent in the profile,
-  // otherwise a regeneration would keep a stale brand around. The MARK is the exception — it is
-  // agentGenerateLogo's artifact, not the header request's, so regenerating the header carries it
-  // over instead of wiping it (`dropLogo` is the explicit way out).
-  const previousLogoSvg = readString((isRecord(previous?.brand) ? previous.brand.logoSvg : undefined));
-  if (options.brand) profile.brand = { ...options.brand };
+  // The BRAND is edited on its own (title, subtitle and mark are one object in the config), so an
+  // absent brand means "keep what is there" — a regeneration must not cost the app its identity.
+  // `dropBrand` is the explicit way to remove it, and `dropLogo` the explicit way to drop just the
+  // mark. ACTIONS keep the opposite rule below: they ARE part of the request.
+  const previousBrand = isRecord(previous?.brand) ? { ...previous.brand } as Record<string, unknown> : undefined;
+  const previousLogoSvg = readString(previousBrand?.logoSvg);
+  if (options.dropBrand) delete profile.brand;
+  else if (options.brand) profile.brand = { ...options.brand };
+  else if (previousBrand) profile.brand = previousBrand;
   else delete profile.brand;
-  if (!options.dropLogo && previousLogoSvg) {
+  // dropBrand removes the brand INCLUDING the mark: carrying the logo back would resurrect the
+  // object that was just asked to go.
+  if (!options.dropBrand && !options.dropLogo && previousLogoSvg) {
     const brand = (isRecord(profile.brand) ? profile.brand : (profile.brand = {})) as Record<string, unknown>;
     if (!readString(brand.logoSvg)) brand.logoSvg = previousLogoSvg;
+  } else if (!options.dropBrand && options.dropLogo && isRecord(profile.brand)) {
+    delete (profile.brand as Record<string, unknown>).logoSvg;
   }
   // props: same rule as the brand — what the request does not carry does not survive, so a
   // regeneration cannot leave a stale selection behind.

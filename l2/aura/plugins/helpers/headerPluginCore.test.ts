@@ -11,6 +11,7 @@ import {
   readHeaderBackup,
   readHeaderDraft,
   activateHeaderProfile,
+  applyBrandTexts,
   countProjectDesignSystems,
   listProjectHeaders,
   readHeaderProfileView,
@@ -24,6 +25,7 @@ import {
   buildHeaderSource,
   headerPaths,
   isProjectHeaderTag,
+  pointHeaderProfileAtProject,
   slugVariant,
   variantFromTag,
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
@@ -90,8 +92,8 @@ test('the view reports the profile the shell boots, and whether it is the projec
 
 test('the form starts from what the project already has', () => {
   const form = formFromProfile(readHeaderProfileView(config(), PROJECT), ['pt-BR', 'en']);
-  assert.equal(form.brandTitle, 'Sample App');
-  assert.equal(form.brandSubtitle, 'Operations');
+  // The brand is NOT in the form: it is config, edited in its own section.
+  assert.equal('brandTitle' in form, false);
   assert.deepEqual(form.actions, ['language', 'user']);
   assert.equal(form.profileName, 'defaultAura');
   // No selection on the profile: the header speaks every language of the project.
@@ -149,8 +151,8 @@ test('the project languages, themes and routes are read from the two documents',
 // ── the request ────────────────────────────────────────────────────────────
 
 test('the request is always a draft, and the local gate runs before the round trip', () => {
-  const form = { ...emptyHeaderForm(), brief: 'clean and warm', brandTitle: 'Sample App', actions: ['language' as const] };
-  const request = buildHeaderRequest(PROJECT, form, 'req-1');
+  const form = { ...emptyHeaderForm(), brief: 'clean and warm', actions: ['language' as const] };
+  const request = buildHeaderRequest(PROJECT, form, 'req-1', { title: 'Sample App' });
   assert.equal(request.commit, false, 'the plugin previews before writing');
   assert.equal(request.projectId, PROJECT);
   assert.equal(request.brief, 'clean and warm');
@@ -256,7 +258,7 @@ test('applying stores the rollback slot with the source AND the profile it came 
       config: config(),
       projectConfig: {},
       parts: PARTS,
-      form: { ...emptyHeaderForm(), brief: 'x', brandTitle: 'New Name' },
+      form: { ...emptyHeaderForm(), brief: 'x' },
       previousSource: 'the header that was applied',
       at: '2026-08-21T12:00:00.000Z',
     },
@@ -295,7 +297,7 @@ test('no backup when there is no project header to go back to', () => {
       config: master,
       projectConfig: {},
       parts: PARTS,
-      form: { ...emptyHeaderForm(), brief: 'x', brandTitle: 'Sample App' },
+      form: { ...emptyHeaderForm(), brief: 'x' },
       at: '2026-08-21T12:00:00.000Z',
     },
     (parts) => buildHeaderSource(PROJECT, parts),
@@ -492,7 +494,7 @@ test('the rollback slot is per profile, and the legacy single slot still answers
 });
 
 test('writing a variant does not put it on the air', () => {
-  const form = { ...emptyHeaderForm(), brandTitle: 'Sample App', variant: 'natal', profileName: 'natal' };
+  const form = { ...emptyHeaderForm(), variant: 'natal', profileName: 'natal' };
   const result = applyHeaderDraft(
     { projectId: PROJECT, config: config(), projectConfig: {}, parts: PARTS, form, at: 'now' },
     () => 'source',
@@ -533,4 +535,62 @@ test('the paths carry the module name to import, which follows the variant', () 
     const paths = headerPaths(PROJECT, options);
     assert.equal(paths.fileReference, `_${PROJECT}_/l2/layout/${paths.shortName}.ts`);
   }
+});
+
+// ── the brand is config, edited on its own ─────────────────────────────────
+
+test('the brand texts are written straight into the profile', () => {
+  const written = applyBrandTexts(config(), { profileName: 'defaultAura', title: 'Cafe Flow', subtitle: 'Operação' });
+  const brand = (written.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.title, 'Cafe Flow');
+  assert.equal(brand.subtitle, 'Operação');
+  assert.equal(brand.logoSvg, '<svg viewBox="0 0 8 8"></svg>', 'the mark is not touched');
+  assert.deepEqual(
+    (written.config as any).clientShell.regions.header.profiles.defaultAura.props,
+    { actions: ['language', 'user'] },
+    'props are not touched',
+  );
+
+  // An empty subtitle REMOVES the key: the band renders one only when there is one.
+  const noSub = applyBrandTexts(config(), { title: 'Cafe Flow', subtitle: '   ' });
+  assert.equal('subtitle' in (noSub.config as any).clientShell.regions.header.profiles.defaultAura.brand, false);
+
+  // No name = the active profile.
+  assert.equal(applyBrandTexts(config(), { title: 'X' }).profileName, 'defaultAura');
+
+  assert.throws(() => applyBrandTexts(config(), { title: '  ' }), /needs a title/);
+  assert.throws(() => applyBrandTexts(config(), { title: 'X', profileName: 'nope' }), /does not exist/);
+  assert.throws(() => applyBrandTexts({}, { title: 'X' }), /no header region/);
+
+  const input = config();
+  applyBrandTexts(input, { title: 'Changed' });
+  assert.equal((input as any).clientShell.regions.header.profiles.defaultAura.brand.title, 'Sample App',
+    'the input is not mutated');
+});
+
+test('regenerating a header keeps the brand it had', () => {
+  const paths = headerPaths(PROJECT);
+
+  // No brand in the request = keep what the profile has. This is what makes the Brand section safe:
+  // otherwise every regeneration would cost the app its identity.
+  const kept = pointHeaderProfileAtProject(config(), { paths, actions: ['user'] });
+  const brand = (kept.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.title, 'Sample App');
+  assert.equal(brand.subtitle, 'Operations');
+  assert.equal(brand.logoSvg, '<svg viewBox="0 0 8 8"></svg>');
+
+  // An explicit brand replaces it (and the mark still carries over).
+  const replaced = pointHeaderProfileAtProject(config(), { paths, brand: { title: 'Other' } });
+  const next = (replaced.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(next.title, 'Other');
+  assert.equal(next.subtitle, undefined);
+  assert.equal(next.logoSvg, '<svg viewBox="0 0 8 8"></svg>', 'the mark is the exception: it carries over');
+
+  // And the two explicit removals.
+  const dropped = pointHeaderProfileAtProject(config(), { paths, dropBrand: true });
+  assert.equal((dropped.config as any).clientShell.regions.header.profiles.defaultAura.brand, undefined);
+  const noLogo = pointHeaderProfileAtProject(config(), { paths, dropLogo: true });
+  const trimmed = (noLogo.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(trimmed.title, 'Sample App', 'dropLogo drops the MARK, not the texts');
+  assert.equal('logoSvg' in trimmed, false);
 });

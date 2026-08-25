@@ -60,6 +60,7 @@ import {
 } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
 import {
   activateHeaderProfile,
+  applyBrandTexts,
   applyHeaderDraft,
   buildHeaderRequest,
   clearDraft,
@@ -86,6 +87,7 @@ const message_en = {
   profile: 'Profile',
   tag: 'Tag',
   band: 'Band',
+  brand: 'Brand',
   mark: 'Brand mark',
   noMark: 'No mark configured.',
   markFile: 'Choose an .svg file',
@@ -150,6 +152,7 @@ const messages: Record<string, MessageType> = {
     profile: 'Perfil',
     tag: 'Tag',
     band: 'Banda',
+    brand: 'Brand',
     mark: 'Marca',
     noMark: 'Nenhuma marca configurada.',
     markFile: 'Escolher arquivo .svg',
@@ -300,6 +303,9 @@ export class PluginProjectHeader extends PluginBaseModule {
   @state() private _markMode: 'none' | 'paste' | 'generate' = 'none';
   @state() private _markSvg = '';
   @state() private _markBrief = '';
+  /** Brand texts being edited. Backed by the config, not by the generation request. */
+  @state() private _brandTitle = '';
+  @state() private _brandSubtitle = '';
   /** Non-fatal: the preview still renders, but not with the project's real colours. */
   @state() private _warn = '';
   /** Languages the project declares — the locale picker, and the "1 language" badge. */
@@ -390,6 +396,8 @@ export class PluginProjectHeader extends PluginBaseModule {
     // No locale selection on the profile = the header speaks every language of the project.
     this._form = formFromProfile(this._view, this._languages.map((language) => language.code));
     // A header being CREATED has no profile yet: the identity comes from the caller, not the config.
+    this._brandTitle = this._view?.brand?.title ?? '';
+    this._brandSubtitle = this._view?.brand?.subtitle ?? '';
     if (this.profileName) this._form = { ...this._form, profileName: this.profileName };
     if (this.variant) this._form = { ...this._form, variant: this.variant };
     this._hasBackup = Boolean(readHeaderBackup(projectConfig));
@@ -569,7 +577,9 @@ export class PluginProjectHeader extends PluginBaseModule {
     const requestId = this._requestId('hdr');
     let request;
     try {
-      request = buildHeaderRequest(this._projectId, this._form, requestId);
+      // The brand comes from the profile: the model needs the title to lay the band out, and the
+      // Brand section is what owns it.
+      request = buildHeaderRequest(this._projectId, this._form, requestId, this._view?.brand);
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
       return;
@@ -738,7 +748,7 @@ export class PluginProjectHeader extends PluginBaseModule {
       const written = applyLogoToBrand(config, {
         svg: svgMarkup,
         profileName: this._form.profileName || undefined,
-        brandTitle: this._form.brandTitle || undefined,
+        brandTitle: this._brandTitle || undefined,
       });
       await this._writeClientConfig(written.config);
       this._markMode = 'none';
@@ -771,7 +781,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     try {
       await this._runAgent('agentGenerateLogo', JSON.stringify({
         projectId: this._projectId,
-        brandTitle: this._form.brandTitle || undefined,
+        brandTitle: this._brandTitle || undefined,
         brief: this._markBrief || undefined,
         profileName: this._form.profileName || undefined,
         commit: false,
@@ -867,9 +877,41 @@ export class PluginProjectHeader extends PluginBaseModule {
     `;
   }
 
+  /** True while the fields differ from what the config has — the only state where Save means anything. */
+  private get _brandDirty(): boolean {
+    return this._brandTitle.trim() !== (this._view?.brand?.title ?? '').trim()
+      || this._brandSubtitle.trim() !== (this._view?.brand?.subtitle ?? '').trim();
+  }
+
+  /**
+   * Writes the brand texts straight into the config — no model, no regeneration.
+   *
+   * They are config data (the band reads `this.brand.title` at runtime), and changing a word used to
+   * cost a full generation. The applied band remounts by itself: its mount signature includes the
+   * brand.
+   */
+  private async _saveBrand(): Promise<void> {
+    this._error = '';
+    this._busy = this.msg.save;
+    try {
+      const config = await this._readClientConfig();
+      const written = applyBrandTexts(config, {
+        profileName: this._view?.profileName,
+        title: this._brandTitle,
+        subtitle: this._brandSubtitle,
+      });
+      await this._writeClientConfig(written.config);
+      await this._reload();
+    } catch (error) {
+      this._error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._busy = '';
+    }
+  }
+
   private _renderMark() {
     const brand = this._view?.brand;
-    return this._card(this.msg.mark, html`
+    return this._card(this.msg.brand, html`
       <div class="flex items-center gap-3 flex-wrap">
         <span class="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-200">
           ${brand?.logoSvg
@@ -903,6 +945,23 @@ export class PluginProjectHeader extends PluginBaseModule {
             ${this._busy || this.msg.generate}
           </button>
         </div>
+      ` : nothing}
+
+      <div class="flex flex-col sm:flex-row gap-2">
+        <label class="flex-1 flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
+          ${this.msg.brandTitle}
+          <input class=${INPUT} .value=${this._brandTitle}
+            @input=${(e: Event) => { this._brandTitle = (e.target as HTMLInputElement).value; }} />
+        </label>
+        <label class="flex-1 flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
+          ${this.msg.brandSubtitle}
+          <input class=${INPUT} .value=${this._brandSubtitle}
+            @input=${(e: Event) => { this._brandSubtitle = (e.target as HTMLInputElement).value; }} />
+        </label>
+      </div>
+      ${this._brandDirty ? html`
+        <button type="button" class="${BUTTON_PRIMARY} self-start" ?disabled=${!!this._busy}
+          @click=${() => void this._saveBrand()}>${this._busy || this.msg.save}</button>
       ` : nothing}
 
       ${this._markMode === 'paste' ? html`
@@ -1113,7 +1172,7 @@ export class PluginProjectHeader extends PluginBaseModule {
    */
   private _renderRequest() {
     const tabs: Array<{ id: RequestTab; label: string; badge: string }> = [
-      { id: 'brief', label: this.msg.tabBrief, badge: this._form.brief.trim() || this._form.brandTitle.trim() ? '✓' : '—' },
+      { id: 'brief', label: this.msg.tabBrief, badge: this._form.brief.trim() ? '✓' : '—' },
       { id: 'actions', label: this.msg.actions, badge: String(this._form.actions.length) },
       { id: 'links', label: this.msg.navLinks, badge: `${this._form.navLinks.length}/${this._routes.length}` },
     ];
@@ -1171,22 +1230,14 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   private _renderBriefPanel() {
-    const form = this._form;
-    const set = (patch: Partial<HeaderFormState>) => { this._form = { ...this._form, ...patch }; };
     return html`
       <textarea
         class="${INPUT} text-sm"
-        rows="5"
+        rows="6"
         placeholder=${this.msg.brief}
-        .value=${form.brief}
-        @input=${(e: Event) => set({ brief: (e.target as HTMLTextAreaElement).value })}
+        .value=${this._form.brief}
+        @input=${(e: Event) => { this._form = { ...this._form, brief: (e.target as HTMLTextAreaElement).value }; }}
       ></textarea>
-      <div class="flex flex-col sm:flex-row gap-2">
-        <input class=${INPUT} placeholder=${this.msg.brandTitle}
-          .value=${form.brandTitle} @input=${(e: Event) => set({ brandTitle: (e.target as HTMLInputElement).value })} />
-        <input class=${INPUT} placeholder=${this.msg.brandSubtitle}
-          .value=${form.brandSubtitle} @input=${(e: Event) => set({ brandSubtitle: (e.target as HTMLInputElement).value })} />
-      </div>
     `;
   }
 

@@ -199,12 +199,49 @@ export function activateHeaderProfile(config: unknown, profileName: string): Rec
   return next;
 }
 
+/**
+ * Writes the brand TEXTS of one header profile: title and subtitle, nothing else.
+ *
+ * The brand is one object in the config (`title`, `subtitle`, `logoSvg`) and this is the single
+ * writer of its texts — the mark has its own path (`applyLogoToBrand`), and these two must never
+ * both claim the title, or one silently undoes the other.
+ *
+ * @param subtitle - Empty REMOVES the key: the band renders a subtitle only when there is one, and
+ * an empty string would reserve the space for nothing.
+ * @throws When the title is empty (`renderBrand()` with no title is a band with no identity) or the
+ * profile does not exist.
+ */
+export function applyBrandTexts(
+  config: unknown,
+  options: { profileName?: string; title: string; subtitle?: string },
+): { config: Record<string, unknown>; profileName: string } {
+  if (!isRecord(config)) throw new Error('l5/config.json not found or not an object');
+  const title = readString(options.title);
+  if (!title) throw new Error('the brand needs a title — the band renders it as its identity');
+
+  const next = clone(config) as Record<string, unknown>;
+  const header = (next.clientShell as ProjectClientShellConfig | undefined)?.regions?.header;
+  if (!header?.profiles) throw new Error('no header region in l5/config.json');
+
+  const profileName = readString(options.profileName) || header.activeProfile || DEFAULT_HEADER_PROFILE;
+  const profile = header.profiles[profileName] as ProjectDynamicRegionConfig | undefined;
+  if (!profile) {
+    throw new Error(`header profile "${profileName}" does not exist (available: ${Object.keys(header.profiles).join(', ') || 'none'})`);
+  }
+
+  const brand = (isRecord(profile.brand) ? profile.brand : (profile.brand = {})) as Record<string, unknown>;
+  brand.title = title;
+  const subtitle = readString(options.subtitle);
+  if (subtitle) brand.subtitle = subtitle;
+  else delete brand.subtitle;
+
+  return { config: next, profileName };
+}
+
 // ─── the form → the agent request ───────────────────────────────────────────
 
 export interface HeaderFormState {
   brief: string;
-  brandTitle: string;
-  brandSubtitle: string;
   actions: AppHeaderAction[];
   /**
    * Routes the band links, by href. EMPTY = no links, which stays the default: the aside owns the
@@ -232,8 +269,6 @@ export interface HeaderFormState {
 export function emptyHeaderForm(): HeaderFormState {
   return {
     brief: '',
-    brandTitle: '',
-    brandSubtitle: '',
     actions: [],
     navLinks: [],
     locales: [],
@@ -258,8 +293,7 @@ export function formFromProfile(
   const form = emptyHeaderForm();
   form.locales = [...languages];
   if (!view) return form;
-  form.brandTitle = readString(view.brand?.title);
-  form.brandSubtitle = readString(view.brand?.subtitle);
+  // The brand is NOT copied into the form: it is edited in its own section, straight into the config.
   form.actions = [...view.actions];
   form.navLinks = [...view.navLinks];
   if (view.locales.length) form.locales = view.locales.filter((locale) => !languages.length || languages.includes(locale));
@@ -317,12 +351,17 @@ export function readProjectRoutes(
  * Builds the request the agent receives. Always a DRAFT (`commit: false`): the plugin previews first
  * and writes only when the reviewer accepts — that is the whole point of the screen.
  */
+/**
+ * @param brand - The profile's brand, so the model knows the title it has to lay out. It comes from
+ * the CONFIG (the Brand section owns it), never from a field typed twice.
+ */
 export function buildHeaderRequest(
   projectId: number,
   form: HeaderFormState,
   requestId: string,
+  brand?: AppHeaderBrand,
 ): GenerateHeaderRequest {
-  const brandTitle = readString(form.brandTitle);
+  const brandTitle = readString(brand?.title);
   const raw: Record<string, unknown> = {
     projectId,
     brief: readString(form.brief) || undefined,
@@ -339,7 +378,7 @@ export function buildHeaderRequest(
     commit: false,
   };
   if (brandTitle) {
-    raw.brand = { title: brandTitle, subtitle: readString(form.brandSubtitle) || undefined };
+    raw.brand = { title: brandTitle, subtitle: readString(brand?.subtitle) || undefined };
   }
   // normalizeHeaderRequest is the same gate the agent applies, so the plugin fails fast and locally
   // (missing brief AND brand, unknown action, …) instead of after a round trip.
@@ -433,13 +472,11 @@ export interface ApplyHeaderResult {
 export function applyHeaderDraft(input: ApplyHeaderInput, buildSource: (parts: GeneratedHeaderParts) => string): ApplyHeaderResult {
   const view = readHeaderProfileView(input.config, input.projectId, input.form.profileName);
   const paths = headerPaths(input.projectId, { variant: input.form.variant || undefined });
-  const brandTitle = readString(input.form.brandTitle);
 
   const written = pointHeaderProfileAtProject(input.config, {
     paths,
-    brand: brandTitle
-      ? { title: brandTitle, subtitle: readString(input.form.brandSubtitle) || undefined }
-      : undefined,
+    // No brand here on purpose: absent = keep. The Brand section owns it, and a regeneration must
+    // not cost the app its identity.
     actions: input.form.actions,
     // Both are DATA in the profile: changing which links or locales the header offers is a config
     // edit afterwards, with no regeneration.
