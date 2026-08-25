@@ -13,7 +13,7 @@
 
 import type { Ns4E4Review, Ns4OntologyEntity, Ns4OntologyField } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import type {
-  Ns4E8BffCall, Ns4E8Input, Ns4E8Model, Ns4E8ModelWorkspace, Ns4E8Operation,
+  Ns4E8BffCall, Ns4E8Input, Ns4E8MdmSemantics, Ns4E8Model, Ns4E8ModelWorkspace, Ns4E8Operation,
 } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 
 export const NS4_CLASSIC_WORKSPACE_VERSION = '2026-08-14-ns4-classic-workspace-v6' as const;
@@ -23,7 +23,7 @@ export interface Ns4ClassicBffCall {
   bffId: string;
   kind: 'query' | 'command';
   uses: Array<{ operationId: string }>;
-  input: Array<{ name: string; from: string; required?: boolean; source: string; sourceRef?: string; type: string }>;
+  input: Array<{ name: string; from: string; required?: boolean; source: string; sourceRef?: string; type: string; enumValues?: string[] }>;
   output: { kind: 'object' | 'list'; fields: Ns4ClassicField[] };
   route: string;
 }
@@ -53,10 +53,18 @@ export interface Ns4ClassicOperation {
   story: { actor: string; goal: string; steps: string[]; outcome: string };
   accessPattern: { kind: string; description: string; entity: string; keyField: string; pagination: string; selection: string; output: string[] };
   outputShape: { kind: 'object' | 'list'; fields: Array<{ name: string; type: string; required: boolean; fieldRef: string }> };
-  inputs: Array<{ inputId: string; fieldRef: string; required: boolean; source: string; description: string }>;
+  inputs: Array<{ inputId: string; fieldRef: string; required: boolean; source: string; description: string; enumValues?: string[] }>;
   pageId: string;
   commandName: string;
   bffName: string;
+  /**
+   * Carried verbatim from the model when the operation is a master-data catalogue
+   * operation. Unlike `pagination` — emitted as `none` because the module never
+   * projects page meta — this one must survive to the consumer: it is what lets the
+   * backend generator route the lifecycle pair to the MDM facade and keep the list
+   * active-only. Optional, so a consumer that ignores it is unaffected.
+   */
+  mdm?: Ns4E8MdmSemantics;
 }
 export interface Ns4ClassicSiteMap {
   moduleName: string;
@@ -114,7 +122,9 @@ export function transposeNs4ClassicOperation(
       required: input.required,
       source: input.source,
       description: input.description,
+      ...(input.enumValues?.length ? { enumValues: input.enumValues } : {}),
     })),
+    ...(operation.mdm ? { mdm: operation.mdm } : {}),
     pageId: owner?.workspaceId || '',
     commandName: call?.bffId || operation.operationId,
     bffName: call?.bffId || operation.operationId,
@@ -141,6 +151,7 @@ export function transposeNs4ClassicWorkspace(
         ...(organism.dataSource ? { dataSource: organism.dataSource } : {}),
         ...(organism.action ? { action: organism.action } : {}),
         ...(organism.usage ? { usage: organism.usage } : {}),
+        ...(organism.attachTo ? { attachTo: organism.attachTo } : {}),
       })),
     })),
     operationIds: [...new Set(workspace.bffCalls.map(call => call.operationId))].sort(),
@@ -180,6 +191,7 @@ function transposeCall(
       // 2. The type comes from the ontology field the input names, never from a lucky match against
       // an output projection path (a list output is `$items.`-prefixed and would never match).
       type: classicType(fieldTypeOf(ontology, input.fieldRef.entityId, input.fieldRef.fieldId)),
+      ...(input.enumValues?.length ? { enumValues: input.enumValues } : {}),
     })),
     // One call carries at most one collection: composition is several calls on one page.
     output: { kind: list ? 'list' : 'object', fields },
@@ -201,7 +213,7 @@ export function buildNs4ClassicContractSource(args: {
   moduleName: string; workspaceId: string; call: Ns4ClassicBffCall; fileRef: string; sourceRef: string;
 }): string {
   const pascal = upperCamel(args.call.bffId);
-  const inputFields = args.call.input.map(input => `  ${input.name}${input.required ? '' : '?'}: ${tsType(input.type)};`);
+  const inputFields = args.call.input.map(input => `  ${input.name}${input.required ? '' : '?'}: ${tsType(input.type, input.enumValues)};`);
   const outputFields = args.call.output.fields.map(field => `  ${field.name}${field.required ? '' : '?'}: ${tsType(field.type)};`);
   return [
     `/// <mls fileReference="${args.fileRef}" enhancement="_blank"/>`,
@@ -260,12 +272,16 @@ function identityFieldOf(entity: Ns4OntologyEntity | undefined): string {
   return entity?.storage.idField || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId || '';
 }
 function classicType(type: Ns4OntologyField['type']): string {
+  if (type === 'json') return 'json';
   if (type === 'number' || type === 'integer' || type === 'money') return 'number';
   if (type === 'boolean') return 'boolean';
   return 'string';
 }
-function tsType(type: string | undefined): string {
-  return type === 'number' || type === 'boolean' ? type : 'string';
+function tsType(type: string | undefined, enumValues?: string[]): string {
+  if (enumValues?.length) return enumValues.map(value => `'${value}'`).join(' | ');
+  if (type === 'number' || type === 'boolean') return type;
+  if (type === 'json') return 'Record<string, unknown>';
+  return 'string';
 }
 
 function upperCamel(value: string): string {
@@ -291,7 +307,7 @@ export async function compileNs4ClassicL4(model: Ns4E8Model, ontology: Ns4E4Revi
     workspaceId: workspace.workspaceId, bffId: call.bffId, route: call.route,
     source: buildNs4ClassicContractSource({
       moduleName: model.moduleName, workspaceId: workspace.workspaceId, call,
-      fileRef: `_${'{project}'}_/l4/${model.moduleName}/contracts/${workspace.workspaceId}.${call.bffId}.defs.ts`,
+      fileRef: `_${'{project}'}_/l4/${model.moduleName}/contracts/${workspace.workspaceId}--${call.bffId}.defs.ts`,
       sourceRef: `l4/${model.moduleName}/workspaces/${workspace.workspaceId}.defs.ts`,
     }),
   })));

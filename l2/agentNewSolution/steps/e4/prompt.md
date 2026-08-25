@@ -23,6 +23,8 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
   every parent reached by a `required` `manyToOne`/`oneToOne` relationship, so declare those exactly.
 - Freeze every entity id, kind, ownership, lifecycle, source references and persistence decision here.
 - For every entity with lifecycle states, declare the single state in which a record is born as `initialState` and every state that ends its lifecycle as `terminalStates`; use only declared lifecycle state ids and never infer either meaning from the order of the list or from missing transitions.
+- Lifecycle states and every other closed-domain value (`initialState`, `terminalStates`, enum constraint values) are **stable English codes**: lowerCamel ASCII, no accent, no space, no hyphen (`active`, `inactive`, `cancelled`, `monday`). They are identifiers, not user-facing text. Never write them in the user's language (`ativo`, `vigente`, `segunda-feira`). Titles and descriptions stay in the user's language — that is what is translated.
+- Next to `lifecycleStates`, emit `lifecycleLabels` as an array of `{ "code", "label" }` objects — one per state, `code` equal to the state id, `label` in the user's language (`userLanguage`, default `en`). Example: `{ "code": "active", "label": "Ativo" }`. Do not put the label in the state id.
 - Freeze every relationship here. Relationships must carry journey context: when a journey selects a
   Project and later creates an order, usage, time log or invoice, the graph must make that selected
   Project available. A future UI must never ask a human to type a raw foreign-key id supplied by an
@@ -106,6 +108,12 @@ sources establish that same meaning.
       "authorityRefs": ["buildflow:projectsetup"]
     },
     "lifecycleStates": ["planned", "active", "completed", "cancelled"],
+    "lifecycleLabels": [
+      { "code": "planned", "label": "Planned" },
+      { "code": "active", "label": "Active" },
+      { "code": "completed", "label": "Completed" },
+      { "code": "cancelled", "label": "Cancelled" }
+    ],
     "initialState": "planned",
     "terminalStates": ["completed", "cancelled"],
     "lifecyclePredicates": [{

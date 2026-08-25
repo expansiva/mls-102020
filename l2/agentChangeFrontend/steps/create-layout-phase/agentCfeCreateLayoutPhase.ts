@@ -28,6 +28,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       [],
       'parallel_dynamic',
       'in_progress',
+      // One layout slot losing its LLM call must not kill the task: the slot lands in
+      // waiting_after_prompt_with_error, afterPromptStep completes it with 'CREATE-LAYOUT-FAILED' and
+      // the sequential verify-create-layouts gate decides. Children inherit it. See flow.json.
+      'wait_after_prompt',
     );
     fanout.interaction = fanoutInteraction(`queued ${layoutArgs.length} pinned layout item(s)`);
     const reconcilePhase = createAgentStepPayload(

@@ -1,5 +1,110 @@
 # Changelog
 
+## 2026-08-25 — inspect de coleção (antes do locate) é lista, nunca getById
+
+Um passo `inspect` de entidade X seguido de `locate` de X no mesmo journey é o resumo da listagem
+(totais/indicadores), não a leitura de um registro. Compila `list` sem input de identidade,
+organismo `usage: 'summary'`. Atrasada é predicado no render (dia de `dueDate` anterior a hoje e status não
+completed/cancelled), não campo. Gate `NS4_E8_COLLECTION_INSPECT_GETBYID` (registrar). Módulos
+já emitidos não mudam sem regeneração.
+
+## 2026-08-25 — lista de catálogo nasce com busca e ordenação opcionais
+
+O requisito de buscar/ordenar entra na jornada E2 e morre no E6 porque o E6 só trata módulos
+adicionais e plugins — não há vocabulário de "capacidades da listagem". Como o `getById`, a lista
+de catálogo sintetiza os controles a partir da ontologia: `search` (opcional, fieldRef no
+`title`/`name`) quando esse campo existe; `sortBy` (enum fechado dos campos data/`*At`/enum) e
+`sortOrder` (`asc`|`desc`) quando há o que ordenar. `recordList` ganha `filterControl.attachTo` na
+query da lista. Gate `NS4_E8_LIST_WITHOUT_SEARCH` / `_SORT` (registrar). Sem esses campos, a lista
+continua `inputs: []` como antes.
+
+## 2026-08-24 — inputId da jornada é o fieldId, não entidade+campo
+
+`buildJourneyOperation` emitia `lowerCamel(entity + fieldId)` (`taskTaskId`) para o mesmo
+`fieldRef` que o catálogo já chama `taskId`. A lista colhe `taskId`; o inspect pedia
+`taskTaskId`; o harness marcava `<seedRef>` inconclusive. O id do input é o `fieldId`; a
+forma qualificada só entra quando dois inputs da mesma operação compartilham o fieldId.
+
+## 2026-08-24 — dono do registro é `actorSession`, não `userInput`
+
+O catálogo e o form da jornada classificavam o handle do dono (`ownerUserId` / `ownerId` /
+`customerId` / `clientId`) como `userInput` quando ele não era FK de entidade de plataforma. O
+módulo `todo` nasceu com `Task.ownerUserId` editável; o gerador de testes inventou um literal e o
+backend recusou ("The task owner must be the authenticated actor").
+
+A classificação é por identidade, não por texto: grant E3 com `dataScope.mode: 'own'` (e só `own`)
+sobre a entidade + handle de dono (o mesmo formato do E4) ⇒ `source: 'actorSession'`. Pessoa que o
+ator escolhe (`assignedUserId`) continua `userInput`. Gate `NS4_E8_USERINPUT_FROM_SESSION`
+(registrar, irmão do `LANDING_REQUIRED_INPUT`): `userInput` cujo fieldRef/descrição ainda diz
+origem de sessão. Não é A — o mesmo compile existe em l4 já emitido.
+
+## 2026-08-24 — catálogo emite getById por entidade, sem consumidor de tela
+
+O catálogo sintetizava list/create/update/delete (ou inactivate/reactivate no mdm) e nunca uma
+leitura da linha pelo id. `getById` só nascia de um passo `inspect` de jornada. Toda entidade de
+catálogo passa a emitir `get{Entity}` (`qryGet{Entity}`, `accessPattern.kind: 'getById'`, id
+obrigatório, registro completo na saída), mesmo sem página que a chame. `locate*` continua list;
+`inspect*` continua a leitura de tela. Se a jornada já produziu o mesmo `operationId`, o
+`uniqueBy` existente (último vence: a jornada entra depois do catálogo) fica com a da jornada.
+As quatro operações originais e as seções da tela não mudam de forma.
+
+## 2026-08-22 — comando exige chave que nenhuma leitura da página fornece
+
+`recordInStoreServiceAttendance` é um workspace de `ServiceExecution` com cinco comandos que
+exigem `serviceExecutionId` e uma única leitura, de `ServiceAppointment`. O `NS4_E8_PICKER_SOURCE`
+cala quando `workspace.entity` é o dono da chave — assume que a tela já tem o registro. Não tem.
+
+Gate `NS4_E8_COMMAND_KEY_WITHOUT_SOURCE` (registrar, irmão do `LANDING_REQUIRED_INPUT`): input
+obrigatório `selectedEntity` cuja `fieldRef` é a identidade de X, e a página não tem (1) query cujo
+`outputRefs`/entidade exponha essa chave, (2) query de X, nem (3) `inputSources` apontando a um
+comando que a produz. (3) vira `NS4_E8_COMMAND_KEY_AFTER_COMMAND` — a tela só opera depois daquele
+comando. Warning, não A: o mesmo compile existe em fluxos seqüenciais sem feeder declarado e um A
+derrubaria o E10. Caminho legítimo no próximo ns: incluir a leitura de X (como `attachPetServiceImage`
+já faz com `qryLocateServiceExecution`) ou fiar `inputSources` no comando que cria a chave.
+
+## 2026-08-22 — landing sem entidade selecionada não lê por id obrigatório
+
+A home institucional do petShop (`consultInstitutionalHome`) era um journey `coldStart` cuja
+única leitura era `inspect`/`getById` com `selectedEntity` obrigatório. Sem id na URL nem picker
+na página, a BFF respondia `VALIDATION_ERROR` e a landing nascia vazia.
+
+O defeito é a **escolha da operação** (inspect onde precisava list/primeiro registro), não um
+`accessPattern` mal copiado: o inspect compilou `getById` corretamente para um passo inspect.
+
+Gate `NS4_E8_LANDING_REQUIRED_INPUT` (registrar, como o picker): journey `entry.mode: coldStart`
+cuja leitura primária tem input obrigatório e **não** há query `list` irmã. O check não se
+cala; não é A-terminal porque o mesmo compile (inspect-only coldStart) existe em módulos
+válidos (ex. viewProjectPortfolio no run44) e um A derrubaria o E10 inteiro. Caminho
+legítimo no próximo ns: list/primeiro registro, ou locate+inspect. (`kind: landing` no E8
+nomeia também projeção do hub — não entra.)
+
+## 2026-08-21 — dado mestre não deleta: desativar e reativar
+
+O catálogo de uma entidade com `storage.target: 'mdm'` deixa de emitir `delete`. Dado mestre é
+referenciado por outros registros, então remover a linha quebra essas referências. No lugar entram
+`inactivate<Entity>` e `reactivate<Entity>` (bffCalls `cmdInactivate`/`cmdReactivate`), e o
+`recordList` oferece as duas como ação contextual. Entidade `moduleDatabase`, `derived` ou
+`external` continua exatamente como antes — o escopo desta onda é só `mdm`.
+
+A `list` de catálogo mdm passa a devolver **só ativos** por default, com um flag de requisição
+opcional `includeInactive`; isso torna todo picker de chave estrangeira que reusa a operação de list
+compartilhada active-only sem tocar em picker nenhum. Busca por id continua resolvendo registro
+inativo: integridade de histórico nunca depende de o registro estar ativo.
+
+A situação é **derivada** do ciclo de vida do registro MDM: a ontologia não ganha campo `active`, e o
+modelo não inventa um field ref para ela — declara o membro derivado de resposta no bloco `mdm`.
+
+O par de comandos mantém `accessPattern.kind: 'update'` e carrega o significado no bloco `mdm` novo
+(um campo opcional só). O vocabulário de accessPattern do consumidor é fechado, então um kind novo
+seria invisível para o gerador de backend; o marcador é aditivo e não quebra consumidor que o ignora.
+
+Backstop determinístico: `NS4_E8_MDM_DELETE` reporta operação `delete` sobre entidade mdm. Com a
+regra do catálogo no lugar ele nunca dispara — existe contra regressão e contra caminho futuro que
+não passe pelo compilador de catálogos.
+
+Evidência que virou regra: o primeiro petShop entregou `deleteCustomerProfile`, `deletePet`,
+`deleteServiceOffering` e `deleteServiceHours` — as quatro sobre `storage.target: 'mdm'`.
+
 ## 2026-08-16 — a chave estrangeira ganha de onde escolher (bug_from_backend)
 
 - **O check estava cego.** O `NS4_E8_PICKER_SOURCE` lia o alvo da FK do prefixo de `input.fieldRef`,

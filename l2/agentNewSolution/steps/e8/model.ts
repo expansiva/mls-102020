@@ -22,6 +22,14 @@ export type Ns4WorkspaceTier = 'recordCatalogue' | 'journey' | 'hub' | 'projecti
  */
 export type Ns4E8InputSource = 'userInput' | 'selectedEntity' | 'routeParam' | 'actorSession' | 'systemDefault';
 
+/**
+ * The record-owner handle: `ownerId` / `ownerUserId` / `customerId` / `clientId`, or a field
+ * ending in `OwnerId`. Not every person FK — `assignedUserId` is a choice the actor makes.
+ */
+export function isNs4OwnerHandleField(fieldId: string): boolean {
+  return /^(owner(?:User)?|customer|client)Id$/i.test(fieldId) || /OwnerId$/u.test(fieldId);
+}
+
 export type Ns4E8AccessPatternKind = 'list' | 'getById' | 'create' | 'update' | 'delete' | 'transition' | 'commandInput';
 
 export interface Ns4E8FieldRef {
@@ -41,9 +49,33 @@ export interface Ns4E8Input {
 
 /**
  * One operation of the module. A journey step compiles into the E7 use case it already owns; a
- * record catalogue synthesizes its four operations from the ontology, because E7 only compiles
- * journeys and a catalogue is not a journey.
+ * record catalogue synthesizes its five operations from the ontology (list, getById, create,
+ * update, and delete or the mdm inactivate/reactivate pair), because E7 only compiles journeys
+ * and a catalogue is not a journey. getById is emitted even when no page consumes it.
  */
+/**
+ * Master-data semantics of one operation. Master data is referenced by other
+ * records, so an mdm catalogue deactivates instead of deleting.
+ *
+ * It is ONE optional block on purpose. The backend generator reads this artifact
+ * as JSON and its accessPattern vocabulary is a closed set, so the lifecycle pair
+ * keeps `kind: 'update'` — a command that mutates one identified record, which the
+ * consumer already understands — and the meaning travels here. A consumer that
+ * ignores the block behaves exactly as before.
+ */
+export interface Ns4E8MdmSemantics {
+  /** The command replaces a hard delete: route it to the MDM record lifecycle. */
+  lifecycle?: 'inactivate' | 'reactivate';
+  /** Optional request flag on a list: absent means only active records. */
+  activeFilterInput?: 'includeInactive';
+  /**
+   * Response member carrying the situation. Derived from the MDM record lifecycle,
+   * so it is NOT an ontology field and deliberately has no field ref: the ontology
+   * declares no `active` field and the model must not invent one.
+   */
+  situationOutput?: 'active';
+}
+
 export interface Ns4E8Operation {
   operationId: string;
   title: string;
@@ -58,6 +90,8 @@ export interface Ns4E8Operation {
   story: string[];
   /** Present when the operation is an approved E7 use case; absent when the catalogue derived it. */
   useCaseId?: string;
+  /** Present only on a catalogue operation of an entity whose storage.target is mdm. */
+  mdm?: Ns4E8MdmSemantics;
 }
 
 export interface Ns4E8BffCall {
@@ -80,8 +114,10 @@ export interface Ns4E8Organism {
   role: Ns4E8OrganismRole;
   dataSource?: string;
   action?: string;
-  /** A picker is a query rendered to choose the record another call consumes. */
-  usage?: 'picker';
+  /** A picker is a query rendered to choose the record another call consumes. summary is counts of that list, not a row. */
+  usage?: 'picker' | 'summary';
+  /** Query bffId whose optional list inputs (search/sort) this filterControl drives. */
+  attachTo?: string;
 }
 
 export interface Ns4E8Section {

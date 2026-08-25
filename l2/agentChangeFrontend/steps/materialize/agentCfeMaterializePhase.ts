@@ -18,16 +18,25 @@ import {
   collectMissingImageRenderIssues,
   collectChartEventIssues,
   collectMutationFeedbackIssues,
+  collectMutationEnvelopeErrorIssues,
+  collectEnumTextInputIssues,
+  collectEnumCellLabelIssues,
+  collectIdColumnIssues,
   collectPageExperienceIssues,
+  collectSelectionControlIssues,
+  collectCommandDisabledIssues,
+  collectMissingInitialLoadIssues,
   isL4LookupGap,
   collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
   collectContractFieldIssues,
+  collectPageCustomElementTagIssues,
   contractTsPathOf,
   countPage11Items,
   countSharedItems,
   isSystemicPageFailure,
   isSystemicSharedFailure,
+  pageDefinitionForChecks,
   parseDefs,
   testPathForOutputPath,
   validateGeneratedPageQuality,
@@ -418,7 +427,15 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   }
 
   const errors = [...await compileMlsPathAndGetErrors(outputPath)];
+  if (pipelineItem.type === 'l2_shared' && defsContent) {
+    errors.push(...collectMutationEnvelopeErrorIssues(parseDefs(defsContent).data, content));
+  }
   const warnings: string[] = [];
+  if (pipelineItem.type === 'l2_shared' && defsContent) {
+    // Defs-level: rewriting the shared .ts cannot add an initialLoad the defs omitted. Warning
+    // keeps the gap in the verdict; create-shared is what emits the list.
+    warnings.push(...collectMissingInitialLoadIssues(parseDefs(defsContent).data));
+  }
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
   const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
@@ -434,7 +451,13 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     // was fixed by hand in the module. Repairable: rewriting the .ts is exactly the fix.
     const contractPath = contractTsPathOf(sharedDefs);
     const contractSource = contractPath ? await getContentByMlsPath(contractPath) : null;
-    if (contractSource) errors.push(...collectContractFieldIssues(content, contractSource));
+    if (contractSource) {
+      errors.push(...collectContractFieldIssues(content, contractSource));
+      if (sharedDefs) errors.push(...collectEnumTextInputIssues(parseDefs(sharedDefs).data, content, contractSource));
+      errors.push(...collectEnumCellLabelIssues(content, contractSource));
+      errors.push(...collectIdColumnIssues(content));
+    }
+    errors.push(...collectPageCustomElementTagIssues(content, outputPath));
     // A background token used as a text color renders invisible text once the theme applies (the
     // hardcoded var() fallback hides it in one theme only) — mls-102045 shipped exactly that. It is a
     // pure .ts defect a rewrite fixes, and the check is deterministic (role suffix, no judgement), so it
@@ -449,7 +472,8 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       // .ts, never its .defs.ts; treating a defs-only issue as a repairable error loops until the
       // budget is exhausted. Keep the result auditable in the trace and let the create-page stage
       // own a future layout regeneration.
-      const pageData = parseDefs(defsContent).data;
+      const parsedPage = parseDefs(defsContent);
+      const pageData = pageDefinitionForChecks(parsedPage);
       const sharedData = parseDefs(sharedDefs).data;
       warnings.push(...validateGeneratedPageQuality(pageData, sharedData, content));
       // The reduced page defs carries no layout, so these judge the GENERATED CODE anchored on
@@ -462,6 +486,9 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       errors.push(...experienceIssues.filter(issue => !isL4LookupGap(issue)));
       warnings.push(...experienceIssues.filter(isL4LookupGap));
       errors.push(...collectMutationFeedbackIssues(pageData, sharedData, content));
+      errors.push(...collectSelectionControlIssues(pageData, sharedData, content));
+      errors.push(...collectCommandDisabledIssues(pageData, sharedData, content));
+      warnings.push(...collectMissingInitialLoadIssues(sharedData, pageData));
       errors.push(...collectTechnicalVocabularyIssues(pageData, content));
       errors.push(...collectHeadingDisciplineIssues(content));
     }
@@ -573,6 +600,16 @@ function createFanoutStep(planId: string, title: string, total: number, dependsO
   return {
     type: 'agent',
     stepId: 0,
+    // A provider/transport failure in ONE slot must not kill the task. Without this, the default branch
+    // of runLLMStepParallel marks the slot failed WITH newTaskStatus 'failed' and the whole
+    // changeFrontend dies mid-fan-out (msgtask_fe1, petShop: an HTTP 402 on the fallback model threw
+    // away 14 finished pages and orphaned 8 slots). With 'wait_after_prompt' the slot goes to
+    // waiting_after_prompt_with_error, afterPromptStep still runs and completes it with
+    // 'MATERIALIZE-FAILED: missing generated code', and the phase verify lists the item as broken and
+    // repairs it — the path this fan-out was designed around. Children inherit it via
+    // addParallelChildStep. NOT 'skip': that marks the slot failed, which fails the task while the
+    // siblings are still active and fails this host once they drain.
+    onFailure: 'wait_after_prompt',
     interaction: {
       input: [{ type: 'system', content: '<!-- modelType: code -->' }],
       cost: 0,

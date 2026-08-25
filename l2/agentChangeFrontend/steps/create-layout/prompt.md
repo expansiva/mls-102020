@@ -42,7 +42,9 @@ some organism's `uses`. A composition that leaves an action unused is rejected. 
 COMPOSITION: read `userJourney` and the pinned `template` for the intended structure and ordering. When
 the context includes a `workspace` skeleton (l4 v2), follow its section/organism grouping instead of
 creating one section per query: a `primarySurface` is the section's main surface, a `filterControl` folds
-into its surface (never a separate organism), a `detailPanel` pairs with its surface as `master-detail`,
+into its surface (never a separate organism), `usage: "summary"` on a list query is a compact KPI
+strip counted from the loaded items (total, each status except cancelled, overdue — overdue means
+dueDate before today and status not completed/cancelled), never a getById panel, a `detailPanel` pairs with its surface as `master-detail`,
 and a `contextualAction`/`batchAction` command is grouped WITH the surface it acts on (via displayHint
 `contextual-transition-actions`/`inline-row-command`) — do not scatter a lone form. Order organisms by
 importance to the user's primary decision.

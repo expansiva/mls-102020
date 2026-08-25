@@ -1,9 +1,33 @@
 # E9 changelog
 
+## 2026-08-25 — enumValues da lista e attachTo do filterControl atravessam
+
+`search`/`sortBy`/`sortOrder` da lista de catálogo levam `enumValues` no input clássico; o contrato
+TS emite a união literal (`sortBy?: 'createdAt' | 'dueDate' | 'priority'`), não `string`. O
+organismo `filterControl` copia `attachTo` para o frontend dobrar os filtros na superfície.
+
+## 2026-08-24 — E7 use cases that never became operations are declared
+
+E9 still transposes faithfully. After the write it compares `pipeline/e7-usecases/*-draft.json`
+to the `operationId`s it just wrote. A gap is `useCases: 'degraded'` plus `useCasesDropped` on
+the pipeline (and the English count in the step status). No gap strips both fields so a previous
+`degraded` cannot stick. The audit never fails the run and never forces emission.
+
+## 2026-08-21 — o bloco `mdm` atravessa para o formato clássico
+
+`Ns4ClassicOperation` ganha `mdm?` opcional, copiado verbatim do modelo quando a operação é de
+catálogo de dado mestre. É o que permite ao gerador de backend rotear `cmdInactivate`/`cmdReactivate`
+para a fachada de ciclo de vida do MDM e honrar a list active-only.
+
+Diferente de `pagination` — emitido deliberadamente como `none` porque o módulo nunca projeta meta de
+página — este filtro é real e **precisa** sobreviver até o consumidor. O campo é opcional, então
+consumidor que o ignora não muda de comportamento: `classic.test.ts` prova isso rodando os parsers
+PRÓPRIOS do agentChangeBackend e do agentChangeFrontend sobre a emissão nova.
+
 ## 2026-08-14 — Parte C: transpilador do formato clássico
 
 - `classic.ts` transpõe o modelo aprovado do E8 para o formato clássico: `workspaces/*.defs.ts`,
-  `operations/*.defs.ts`, `contracts/<ws>.<bff>.defs.ts` e `siteMap.defs.ts`. Zero decisão de tela.
+  `operations/*.defs.ts`, `contracts/<ws>--<bff>.defs.ts` e `siteMap.defs.ts`. Zero decisão de tela.
 - O caminho `"<operationId>.<inputId>"` é a única coisa que precisa estar exata: os DOIS consumidores
   rastreiam a origem de um input e a união literal de um campo por ele.
 - A origem que a tela renderiza sai em `operations[].inputs[].source`, no vocabulário de fronteira

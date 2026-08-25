@@ -2,7 +2,7 @@
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { extractNs4ClassicJsonObject, ns4ClassicDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
-import { normalizeNs4ModuleName } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
+import { listNs4RebuildDeletionKeys, normalizeNs4ModuleName } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import { readNs4AvailableContent } from '/_102020_/l2/agentNewSolution/helpers/ns4ContentRead.js';
 import { renderNs4TypedDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4TypedDefs.js';
 import type {
@@ -45,7 +45,7 @@ export function ns4PipelineFile(moduleName: string): Ns4FileInfo {
 }
 
 export function ns4E2DraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e2-journeys.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e2-journeys-draft', extension: '.json' };
 }
 
 export function ns4E2VersionedDraftFile(moduleName: string, reviewRound: number): Ns4FileInfo {
@@ -53,7 +53,7 @@ export function ns4E2VersionedDraftFile(moduleName: string, reviewRound: number)
     project: mls.actualProject || 0,
     level: 4,
     folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`,
-    shortName: `e2-journeys.draft.v${Math.max(1, Math.floor(reviewRound))}`,
+    shortName: `e2-journeys-draft-v${Math.max(1, Math.floor(reviewRound))}`,
     extension: '.json',
   };
 }
@@ -63,7 +63,7 @@ export function ns4E2ImpactReportFile(moduleName: string): Ns4FileInfo {
 }
 
 export function ns4E3DraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e3-access-matrix.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e3-access-matrix-draft', extension: '.json' };
 }
 
 export function ns4AccessMatrixFile(moduleName: string): Ns4FileInfo {
@@ -71,19 +71,19 @@ export function ns4AccessMatrixFile(moduleName: string): Ns4FileInfo {
 }
 
 export function ns4E4DraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-ontology.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-ontology-draft', extension: '.json' };
 }
 
 export function ns4E4PlanDraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-ontology-plan.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-ontology-plan-draft', extension: '.json' };
 }
 
 export function ns4E4EntityDraftFile(moduleName: string, entityId: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e4-entities`, shortName: `${entityId}.draft`, extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e4-entities`, shortName: `${entityId}-draft`, extension: '.json' };
 }
 
 export function ns4E4RelationshipBindingsDraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-relationship-bindings.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e4-relationship-bindings-draft', extension: '.json' };
 }
 
 export function ns4OntologyEntityFile(moduleName: string, entityId: string): Ns4FileInfo {
@@ -95,11 +95,11 @@ export function ns4OntologyIndexFile(moduleName: string): Ns4FileInfo {
 }
 
 export function ns4E5DraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules-draft', extension: '.json' };
 }
 
 export function ns4E5ApprovedFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules.approved', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e5-rules-approved', extension: '.json' };
 }
 
 export function ns4RulesFile(moduleName: string): Ns4FileInfo {
@@ -107,11 +107,11 @@ export function ns4RulesFile(moduleName: string): Ns4FileInfo {
 }
 
 export function ns4E6DraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e6-composition.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e6-composition-draft', extension: '.json' };
 }
 
 export function ns4E6ApprovedFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e6-composition.approved', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e6-composition-approved', extension: '.json' };
 }
 
 export function ns4CompositionFile(moduleName: string): Ns4FileInfo {
@@ -119,11 +119,11 @@ export function ns4CompositionFile(moduleName: string): Ns4FileInfo {
 }
 
 export function ns4E7PlanDraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e7-realization-plan.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e7-realization-plan-draft', extension: '.json' };
 }
 
 export function ns4E7UseCaseDraftFile(moduleName: string, useCaseId: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e7-usecases`, shortName: `${useCaseId}.draft`, extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e7-usecases`, shortName: `${useCaseId}-draft`, extension: '.json' };
 }
 
 export function ns4E7ValidationReportFile(moduleName: string): Ns4FileInfo {
@@ -148,10 +148,10 @@ export function ns4WorkflowIndexFile(moduleName: string): Ns4FileInfo {
 }
 
 export function ns4E8SkeletonDraftFile(moduleName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e8-skeleton.draft', extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e8-skeleton-draft', extension: '.json' };
 }
 export function ns4E8WorkspaceDraftFile(moduleName: string, workspaceId: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e8-workspaces`, shortName: `${workspaceId}.draft`, extension: '.json' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline/e8-workspaces`, shortName: `${workspaceId}-draft`, extension: '.json' };
 }
 export function ns4E8ValidationReportFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e8-validation-report', extension: '.json' };
@@ -174,7 +174,7 @@ export function ns4SiteMapFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: normalizeNs4ModuleName(moduleName), shortName: 'siteMap', extension: '.defs.ts' };
 }
 export function ns4ClassicContractFile(moduleName: string, workspaceId: string, bffId: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/contracts`, shortName: `${workspaceId}.${bffId}`, extension: '.defs.ts' };
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/contracts`, shortName: `${workspaceId}--${bffId}`, extension: '.defs.ts' };
 }
 export function ns4E10ValidationReportFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e10-validation-report', extension: '.json' };
@@ -393,8 +393,8 @@ export async function writeNs4WorkflowIndex(moduleName: string, artifact: Ns4Wor
 export async function writeNs4E10ValidationReport(moduleName: string, report: Ns4E10ValidationReport): Promise<string> {
   const fileInfo = ns4E10ValidationReportFile(moduleName); await writeNs4Text(fileInfo, `${JSON.stringify(report, null, 2)}\n`); return displayPath(fileInfo);
 }
-export function ns4L5ProjectFile(): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 5, folder: '', shortName: 'project', extension: '.json' };
+export function ns4L5ProjectFile(projectId?: number): Ns4FileInfo {
+  return { project: projectId ?? (mls.actualProject || 0), level: 5, folder: '', shortName: 'project', extension: '.json' };
 }
 
 export function ns4L5PublishConfFile(shortName: string): Ns4FileInfo {
@@ -402,8 +402,8 @@ export function ns4L5PublishConfFile(shortName: string): Ns4FileInfo {
 }
 
 /** l5/project.json — organization-level, owned by the studio. E10 reads it and only ADDS what is absent. */
-export async function readNs4L5Project(): Promise<Record<string, unknown> | null> {
-  const raw = await readNs4Text(ns4L5ProjectFile(), false); if (!raw.trim()) return null;
+export async function readNs4L5Project(projectId?: number): Promise<Record<string, unknown> | null> {
+  const raw = await readNs4Text(ns4L5ProjectFile(projectId), false); if (!raw.trim()) return null;
   try {
     const value = JSON.parse(raw);
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('root must be an object');
@@ -459,6 +459,20 @@ export async function writeNs4JourneyIndex(moduleName: string, index: Ns4Journey
 export function ns4FileExists(fileInfo: Ns4FileInfo): boolean {
   const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
   return !!file && file.status !== 'deleted';
+}
+
+/** Draft files of approved E7 use cases. Used by E9 only as an audit of what did not become an operation. */
+export function listNs4E7UseCaseDraftFiles(moduleName: string): Ns4FileInfo[] {
+  const project = mls.actualProject || 0;
+  const folder = `${normalizeNs4ModuleName(moduleName)}/pipeline/e7-usecases`;
+  const files: Ns4FileInfo[] = [];
+  for (const file of Object.values(mls.stor.files)) {
+    if (!file || file.project !== project || file.status === 'deleted') continue;
+    if (file.level !== 4 || file.folder !== folder || file.extension !== '.json') continue;
+    if (!file.shortName.endsWith('-draft')) continue;
+    files.push({ project, level: 4, folder, shortName: file.shortName, extension: '.json' });
+  }
+  return files.sort((left, right) => left.shortName.localeCompare(right.shortName));
 }
 
 export function listNs4ModuleFolders(): Set<string> {
@@ -536,7 +550,14 @@ export async function writeNs4WorkspaceModel(moduleName: string, model: unknown)
 }
 
 
+export function assertNs4ShortName(shortName: string): void {
+  if (shortName.includes('.')) {
+    throw new Error(`[agentNewSolution] filename out of standard: '${shortName}' — shortName must not contain dots`);
+  }
+}
+
 async function writeNs4Text(fileInfo: Ns4FileInfo, content: string): Promise<void> {
+  assertNs4ShortName(fileInfo.shortName);
   const key = mls.stor.getKeyToFile(fileInfo);
   let file = mls.stor.files[key];
   if (!file) {
@@ -564,4 +585,25 @@ function displayPath(fileInfo: Ns4FileInfo): string {
 
 function isGlobalFolder(level: number, folder: string): boolean {
   return level === 4 && ['actors', 'operations', 'rules', 'trace', 'workflows'].includes(folder);
+}
+
+/**
+ * Archives the module's whole l4/l5 through the platform channel (`libStor.deleteFile`): a persisted file
+ * becomes `status: 'deleted'` and a never-saved one is removed. Nothing is unlinked outside that channel.
+ */
+export async function archiveNs4ModuleForRebuild(moduleName: string): Promise<string[]> {
+  const project = mls.actualProject || 0;
+  // Snapshot first: deleteFile mutates mls.stor.files while we iterate.
+  const keys = listNs4RebuildDeletionKeys(mls.stor.files, project, moduleName);
+  const archived: string[] = [];
+  // Imported lazily: libStor touches the editor at module load, and ns4Fs must stay importable by the
+  // node tests that exercise the pure selection.
+  const { deleteFile } = await import('/_102027_/l2/libStor.js');
+  for (const key of keys) {
+    const file = mls.stor.files[key];
+    if (!file) continue;
+    await deleteFile(file);
+    archived.push(key);
+  }
+  return archived;
 }

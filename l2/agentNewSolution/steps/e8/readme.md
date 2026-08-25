@@ -25,3 +25,43 @@ durable system decisions; the backend remains responsible for enforcing the E3 p
 A review or a form backed by a command with declared `contexts.requires` still needs a frozen slice,
 workspace path or scenario context. A recognized context-free command, including a cold-start creation, may render a
 form from user-entered values; E8 does not invent a pre-existing record solely to satisfy the gate.
+
+## Master data is deactivated, never deleted
+
+A record catalogue synthesizes five operations from the ontology: `list`, `getById` (`get{Entity}` /
+`qryGet{Entity}`), `create`, `update`, and `delete` (or `inactivate`/`reactivate` when
+`storage.target` is `mdm`). `getById` is emitted even when no page consumes it.
+
+An `inspect` of entity X that comes **before** a `locate` of the same X is a collection summary
+(counts of the listing), not getById of one row. E8 emits `accessPattern.kind: 'list'`, no identity
+input, `outputKind: paginated`, organism `usage: 'summary'`. The five indicators (total, each
+non-cancelled status, overdue) are derived on the screen from the loaded items. Overdue is
+calendar day of `dueDate` before today and status ∉ {completed, cancelled, canceled} — not a field. A later
+inspect of the same entity (after locate) stays getById. `NS4_E8_COLLECTION_INSPECT_GETBYID`
+records a leftover getById on that path (registrar). Existing modules do not change without
+regeneration.
+
+The catalogue `list` also synthesizes optional listing controls from the ontology, because E6 has no
+vocabulary for them (it is additional modules/plugins) and a journey step is not a catalogue: `search`
+when the entity has `title` or `name`, `sortBy`/`sortOrder` when it has dates, `*At` timestamps or
+closed enums. All three are optional `userInput`. `sortBy` is the closed enum of those field ids, not
+a free string. A `filterControl` with `attachTo` the list query is added on `recordList` when any of
+them exist. `NS4_E8_LIST_WITHOUT_SEARCH` / `_SORT` record a leftover empty list (registrar).
+
+A record catalogue of an entity whose `storage.target` is `mdm` emits `inactivate`/`reactivate`
+instead of `delete`, and its list returns only active records unless the caller passes the optional
+`includeInactive` request flag. A lookup by id still resolves an inactive record, so history stays
+readable. The situation flag is derived from the MDM record lifecycle: the ontology declares no
+`active` field and the model declares the derived response member in the operation's `mdm` block.
+
+The lifecycle pair keeps `accessPattern.kind: 'update'` because the consumer's accessPattern
+vocabulary is a closed set; the meaning travels in `mdm.lifecycle`. `NS4_E8_MDM_DELETE` is the
+deterministic backstop for a delete over master data arriving from any other path.
+
+## The record owner is the session, never a form field
+
+An E3 grant with `dataScope.mode: 'own'` (and no other mode on that entity) binds the owner handle
+(`ownerId` / `ownerUserId` / `customerId` / `clientId`) to the authenticated actor. Catalogue and
+journey write inputs emit `source: 'actorSession'`. A person the actor actually chooses
+(`assignedUserId`) stays `userInput`. `NS4_E8_USERINPUT_FROM_SESSION` records a leftover `userInput`
+whose fieldRef or description still names the session — registrar, not a stop.

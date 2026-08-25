@@ -7,12 +7,16 @@ import {
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import { readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution/helpers/ns4ApprovedArtifacts.js';
 import {
-  ns4WorkspaceModelFile, readNs4DefsJson, readNs4Module, readNs4Pipeline, readNs4Text, writeNs4ClassicContract, writeNs4ClassicWorkspace,
-  writeNs4Module, writeNs4Operation, writeNs4Pipeline, writeNs4SiteMap,
+  listNs4E7UseCaseDraftFiles, ns4WorkspaceModelFile, readNs4DefsJson, readNs4Module, readNs4Pipeline, readNs4Text,
+  writeNs4ClassicContract, writeNs4ClassicWorkspace, writeNs4Module, writeNs4Operation, writeNs4Pipeline, writeNs4SiteMap,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
 import { readNs4ApprovedOntology as readOntology } from '/_102020_/l2/agentNewSolution/helpers/ns4ApprovedArtifacts.js';
 import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 import { compileNs4ClassicL4 } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
+import {
+  applyNs4UseCaseCoverage, compareE7ToOperations, useCaseCoverageLogLine,
+  type Ns4ApprovedUseCase, type Ns4UseCaseCoverageVerdict,
+} from '/_102020_/l2/agentNewSolution/steps/e9/coverage.js';
 /** E9 is a transpiler: a failure is either the approved model or the emission itself. */
 type Ns4E9IssueOrigin = 'skeleton' | 'compiler';
 
@@ -39,13 +43,16 @@ export async function beforeNs4E9PromptStep(
     const module = await readNs4Module(moduleName); if (!module) throw new Error(`Module artifact not found for ${moduleName}.`);
     const approvedAt = new Date().toISOString();
     await writeNs4Module(moduleName, markNs4ModuleE9Approved(module, approvedAt));
-    await writeNs4Pipeline(markNs4E9Approved(await requirePipeline(moduleName), artifactPaths, approvedAt));
+    const coverage = await auditE7ToOperations(moduleName, model, l4.operations.map(operation => operation.operationId));
+    const approved = markNs4E9Approved(await requirePipeline(moduleName), artifactPaths, approvedAt);
+    await writeNs4Pipeline(coverage ? applyNs4UseCaseCoverage(approved, coverage) : approved);
     const mutationParent = resolveNs4MutableParent(getAllSteps(context.task?.iaCompressed?.nextSteps), parent, step);
+    const coverageFields = coverageFieldsForResult(coverage);
     return [result(context, mutationParent, {
       moduleName, workspaceCount: l4.workspaces.length, operationCount: l4.operations.length,
-      contractCount: l4.contracts.length, artifactPaths,
+      contractCount: l4.contracts.length, artifactPaths, ...coverageFields,
     }), status(context, mutationParent, step, hookSequential, 'completed',
-      `E9 emitted ${l4.workspaces.length} workspaces, ${l4.operations.length} operations and ${l4.contracts.length} contracts.`, 'input_output')];
+      `E9 emitted ${l4.workspaces.length} workspaces, ${l4.operations.length} operations and ${l4.contracts.length} contracts.${coverage ? ` ${useCaseCoverageLogLine(coverage)}.` : ''}`, 'input_output')];
   } catch (error) {
     const message = errorMessage(error); if (moduleName) await fail(moduleName, message, failureOrigin);
     return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
@@ -79,6 +86,40 @@ function findE8Module(context: mls.msg.ExecutionContext): string {
   const value = anchor?.type === 'result' ? parse(anchor.result) : null; return isRecord(value) ? text(value.moduleName) : '';
 }
 async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> { const pipeline = await readNs4Pipeline(moduleName); if (!isNs4Pipeline(pipeline)) throw new Error(`Current agentNewSolution pipeline not found for ${moduleName}.`); return pipeline; }
+
+/** Compare E7 drafts to written operations. A miss here never fails E9. */
+async function auditE7ToOperations(
+  moduleName: string, model: Ns4E8Model, emittedOperationIds: string[],
+): Promise<Ns4UseCaseCoverageVerdict | undefined> {
+  try {
+    const approved: Ns4ApprovedUseCase[] = [];
+    for (const file of listNs4E7UseCaseDraftFiles(moduleName)) {
+      const useCaseId = file.shortName.replace(/-draft$/, '');
+      if (!useCaseId) continue;
+      let compiledFrom: string[] = [];
+      const raw = await readNs4Text(file, false);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as { compiledFrom?: unknown };
+          if (Array.isArray(parsed.compiledFrom)) {
+            compiledFrom = parsed.compiledFrom.filter((item): item is string => typeof item === 'string');
+          }
+        } catch { /* the filename is the approved id */ }
+      }
+      approved.push({ useCaseId, compiledFrom });
+    }
+    const hostedStepRefs = model.workspaces.flatMap(workspace => workspace.hostedStepRefs);
+    return compareE7ToOperations({ approved, emittedOperationIds, hostedStepRefs });
+  } catch {
+    return undefined;
+  }
+}
+
+function coverageFieldsForResult(coverage: Ns4UseCaseCoverageVerdict | undefined): Record<string, unknown> {
+  if (!coverage) return {};
+  if (coverage.useCases === 'ok') return { useCases: 'ok' };
+  return { useCases: 'degraded', useCasesDropped: coverage.useCasesDropped };
+}
 async function fail(moduleName: string, message: string, origin: Ns4E9IssueOrigin): Promise<void> { try { const pipeline = await readNs4Pipeline(moduleName); if (isNs4Pipeline(pipeline)) await writeNs4Pipeline(markNs4E9Failed(pipeline, message, origin)); } catch { /* task trace remains the fallback */ } }
 function result(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, value: Record<string, unknown>): mls.msg.AgentIntentAddStep { return { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, step: { type: 'result', stepId: 0, interaction: null, stepTitle: 'E9 navigation compiled', status: 'completed', nextSteps: [], result: JSON.stringify({ ...value, completedStep: 'e9-navigation-compiler', nextStep: 'e10-validation' }, null, 2), planning: { planId: 'e9-result', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' } } as mls.msg.AIResultStep }; }
 function status(context: mls.msg.ExecutionContext, parent: mls.msg.AIPayload, step: mls.msg.AIPayload, hookSequential: number, state: mls.msg.AIStepStatus, traceMsg: string, cleaner: 'input_output'): mls.msg.AgentIntentUpdateStatus { return { type: 'update-status', hookSequential, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, stepId: step.stepId, status: state, traceMsg, cleaner }; }

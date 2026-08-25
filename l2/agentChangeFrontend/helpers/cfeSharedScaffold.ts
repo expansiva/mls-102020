@@ -131,7 +131,15 @@ export function generateSharedScaffold(outputPath: string, data: unknown, contra
  * block at all — `localesOf` returned empty and every page lost its skeleton, silently, with a message
  * that blamed a block that was right there.
  */
-export function parsePreviousI18n(source: string | undefined): Map<string, Record<string, string>> {
+export function parsePreviousI18n(
+  source: string | undefined,
+  /**
+   * Const prefix of the catalogue. The shared used `message_`; a page uses
+   * `pageMessage_` and an organism `o<n>Message_`, so the reader has to be told
+   * which one it is looking at instead of assuming the shared's.
+   */
+  constPrefix = 'message',
+): Map<string, Record<string, string>> {
   const out = new Map<string, Record<string, string>>();
   if (!source) return out;
   const start = source.indexOf('/// **collab_i18n_start**');
@@ -141,7 +149,10 @@ export function parsePreviousI18n(source: string | undefined): Map<string, Recor
   // The optional `: MessageType` matters: every non-default locale carries that annotation (it is what
   // makes a forgotten translation a compile error), so a parser that only accepted `= {` would read the
   // default locale and silently drop every translated one.
-  const constRe = /const\s+message_([A-Za-z0-9_]+)\s*(?::\s*[A-Za-z0-9_]+\s*)?=\s*\{([\s\S]*?)\n\};/gu;
+  const constRe = new RegExp(
+    `const\\s+${constPrefix}_([A-Za-z0-9_]+)\\s*(?::\\s*[A-Za-z0-9_]+\\s*)?=\\s*\\{([\\s\\S]*?)\\n\\};`,
+    'gu',
+  );
   for (const constMatch of block.matchAll(constRe)) {
     const locale = constMatch[1].replace(/_/gu, '-').toLowerCase();
     const entries: Record<string, string> = {};
@@ -289,7 +300,7 @@ function buildModel(outputPath: string, data: unknown, contractSource: string, p
   // document.documentElement.lang carries. The default always comes first: getMessageKey falls back to
   // keys[0] when the language is unknown.
   const declared = Array.isArray(i18nMeta.runtimeLocales) ? i18nMeta.runtimeLocales.map(item => normalizeLocaleKey(stringOf(item))) : [];
-  const runtimeLocales = [defaultLocale, ...declared.filter(locale => locale && locale !== defaultLocale)];
+  const runtimeLocales = catalogueLocales(defaultLocale, declared);
 
   const model: ScaffoldModel = {
     outputPath, baseClassName, routePattern, states, actions, initialLoads,
@@ -476,7 +487,6 @@ function render(model: ScaffoldModel): string {
   out.push('');
   out.push(...renderImports(model));
   out.push('');
-  out.push(...renderI18n(model));
   out.push('');
   out.push(...renderDefaultConsts(model));
   out.push(...renderSubscribedKeys(model));
@@ -557,36 +567,63 @@ function usedCommands(model: ScaffoldModel): string[] {
 // The catalog is named after the module's DEFAULT LOCALE, never a hardcoded 'en': a pt-BR module used to
 // emit `message_en`/`messages.en` holding Portuguese text, so a pt-br runtime found no `messages['pt-br']`
 // (nor the 'pt' prefix fallback) and silently rendered whatever keys[0] happened to be.
-// The map key is the lowercase locale ('pt-br') because the runtime sets document.documentElement.lang
-// from the normalized config list (102033 listRuntimeLanguages) and the base class getter looks up
-// messages[lang.toLowerCase()]. The const name uses a TS-safe form of it ('pt-br' -> message_pt_br).
-// EVERY declared locale is emitted, not only the default. The pages reference sharedMessages['pt-br'], so
-// a shared regenerated with a single locale makes every page label fall back to the default language
-// without any error (i18n.md item 4). Text already translated in the previous file is carried over per
-// key; a key with no prior translation starts as the default-locale text, which agentAddLanguage then
-// translates. Non-default locales are annotated `: MessageType` so the compiler enforces locale parity —
-// a missing key is TS2741 and a typo'd key is TS2353, instead of a silent hole at runtime.
-function renderI18n(model: ScaffoldModel): string[] {
-  const constNameOf = (locale: string): string => `message_${locale.replace(/[^a-zA-Z0-9]+/gu, '_')}`;
-  const defaultConst = constNameOf(model.defaultLocale);
-  const lines = ['/// **collab_i18n_start**'];
+/**
+ * The i18n catalogue of a shared, read from its `.defs.ts`.
+ *
+ * The catalogue moved OUT of the emitted shared `.ts` and into the pages, but the
+ * defs is still where it is planned — so this is where a page skeleton reads the
+ * locales and the default-language text from. Same normalization the scaffold
+ * always applied, so the catalogue key keeps matching `documentElement.lang`.
+ */
+export interface SharedI18nCatalogue {
+  defaultLocale: string;
+  /** Default first: `getMessageKey` falls back to keys[0] for an unknown language. */
+  runtimeLocales: string[];
+  i18n: Record<string, string>;
+}
 
-  for (const locale of model.runtimeLocales) {
-    const isDefault = locale === model.defaultLocale;
-    const previous = model.previousText.get(locale) || {};
-    lines.push(`const ${constNameOf(locale)}${isDefault ? '' : ': MessageType'} = {`);
-    for (const [key, value] of Object.entries(model.i18n)) {
-      const text = isDefault ? value : (previous[key] ?? value);
-      lines.push(`  '${escapeSingle(key)}': '${escapeSingle(text)}',`);
-    }
-    lines.push('};');
-    if (isDefault) lines.push(`export type MessageType = typeof ${defaultConst};`);
+export function parseSharedI18nCatalogue(data: unknown): SharedI18nCatalogue | null {
+  if (!isRecord(data)) return null;
+
+  const i18nRaw = isRecord(data.i18n) ? data.i18n : null;
+  if (!i18nRaw) return null;
+  const i18n: Record<string, string> = {};
+  for (const [key, value] of Object.entries(i18nRaw)) {
+    if (typeof value === 'string') i18n[key] = value;
   }
+  if (Object.keys(i18n).length === 0) return null;
 
-  const entries = model.runtimeLocales.map(locale => `'${escapeSingle(locale)}': ${constNameOf(locale)}`).join(', ');
-  lines.push(`export const messages: { [key: string]: MessageType } = { ${entries} };`);
-  lines.push('/// **collab_i18n_end**');
-  return lines;
+  const i18nMeta = isRecord(data.i18nMeta) ? data.i18nMeta : {};
+  const defaultLocale = normalizeLocaleKey(stringOf(i18nMeta.defaultLocale)) || 'en';
+  const declared = Array.isArray(i18nMeta.runtimeLocales)
+    ? i18nMeta.runtimeLocales.map(item => normalizeLocaleKey(stringOf(item)))
+    : [];
+  const runtimeLocales = catalogueLocales(defaultLocale, declared);
+  return { defaultLocale, runtimeLocales, i18n };
+}
+
+/**
+ * The locales a catalogue is keyed by. `i18nMeta` carries the default COLLAPSED (`pt`, no region — it
+ * comes from `languageKey`) while `runtimeLocales` PRESERVES it (`pt-br`), so the old
+ * `[defaultLocale, ...declared.filter(l => l !== defaultLocale)]` let both in: `'pt' !== 'pt-br'`.
+ * Every module whose default language has a region got two IDENTICAL catalogues — measured on the
+ * petShop (`defaultLocale: 'pt'`, `runtimeLocales: ['pt-br']` -> `pageMessage_pt` + `pageMessage_pt_br`)
+ * and on the 102046, where 3 declared languages became 4.
+ *
+ * The duplicate is not only noise: the FIRST const defines the catalogue type, so a key the model adds
+ * to the second copy and not the first is a TS2353 on a locale that should not exist at all.
+ *
+ * The rule: `runtimeLocales` IS the set (region preserved, default already first — that is how
+ * `moduleI18n` builds it). The collapsed default only joins when NO declared locale shares its primary
+ * language. Never dedupe by primary language AMONG declared ones: a module may legitimately declare
+ * `en` and `en-AU` together, and both are real catalogues.
+ */
+export function catalogueLocales(defaultLocale: string, declared: readonly string[]): string[] {
+  const clean = [...new Set(declared.filter(Boolean))];
+  const primaryOf = (locale: string): string => locale.split('-')[0];
+  if (!defaultLocale) return clean;
+  const realizedByDeclared = clean.some(locale => primaryOf(locale) === primaryOf(defaultLocale));
+  return realizedByDeclared ? clean : [defaultLocale, ...clean];
 }
 
 // Lowercase, '_' -> '-' — the SAME normalization the runtime applies to the config language list
@@ -1083,7 +1120,7 @@ function queryFallback(model: ScaffoldModel, state: DefsState): string {
 
 function stateDoc(state: DefsState): string {
   const parts = [`state ${state.name} — ${state.kind}`];
-  if (state.kind === 'actionStatus') parts.push(`, values: ${state.valueSet!.join('|')}`);
+  if (state.valueSet?.length) parts.push(`, values: ${state.valueSet.join('|')}`);
   if (state.kind === 'queryResult') parts.push(`, outputShape: ${state.outputShape}`);
   return parts.join('');
 }

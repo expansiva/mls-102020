@@ -5,11 +5,12 @@
  * and everything that is evidence about the product is a registrar resolved through ns4Resolve.
  */
 
+import { isNs4CollectionInspect } from '/_102020_/l2/agentNewSolution/helpers/ns4Context.js';
 import { buildNs4ParentIndex, ns4FkParentOf } from '/_102020_/l2/agentNewSolution/helpers/ns4ForeignKeys.js';
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
-import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
+import { isNs4OwnerHandleField, type Ns4E8Model, type Ns4E8ModelWorkspace } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 
 /**
  * How a broken organism reference can be repaired without an LLM. The gate DETECTS as strictly as
@@ -25,6 +26,43 @@ export interface Ns4E8ModelResult { ok: boolean; issues: Ns4E8ModelIssue[]; }
 
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
 
+/** Owner handle (`ownerId` / `ownerUserId`) or prose that names the authenticated actor. */
+function userInputLooksLikeSession(input: Ns4E8Model['operations'][number]['inputs'][number]): boolean {
+  if (input.source !== 'userInput') return false;
+  if (isNs4OwnerHandleField(input.fieldRef.fieldId)) return true;
+  return /autenticad|authenticated|logged[- ]in|pessoa autenticada|actor session|usu[aá]rio autenticado/i.test(input.description);
+}
+
+function isLandingWithoutPriorSelection(
+  workspace: Ns4E8ModelWorkspace, _model: Ns4E8Model, sources: Ns4E8Sources,
+): boolean {
+  // E8 `kind: 'landing'` is also used for hub projections that open WITH a selected
+  // record (route/hub context). The empty-home defect is a coldStart journey: no
+  // entity is selected before the primary read runs.
+  if (!workspace.journeyRef) return false;
+  const journey = sources.journeys.journeys.find(item => item.journeyId === workspace.journeyRef);
+  return journey?.business.entry.mode === 'coldStart';
+}
+
+function identityEntityOfInput(
+  input: Ns4E8Model['operations'][number]['inputs'][number], sources: Ns4E8Sources,
+): { entityId: string; fieldId: string } | null {
+  const entity = sources.ontology.entities.find(item => item.entityId === input.fieldRef.entityId);
+  const idField = entity?.storage.idField
+    || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId
+    || '';
+  if (!idField || input.fieldRef.fieldId !== idField) return null;
+  return { entityId: input.fieldRef.entityId, fieldId: idField };
+}
+
+function primaryReadBffIds(workspace: Ns4E8ModelWorkspace): string[] {
+  const fromOrganisms = workspace.sections.flatMap(section => section.organisms)
+    .filter(organism => organism.dataSource && (organism.role === 'primarySurface' || organism.role === 'detailPanel'))
+    .map(organism => organism.dataSource as string);
+  if (fromOrganisms.length) return [...new Set(fromOrganisms)];
+  return workspace.bffCalls.filter(call => call.kind === 'query').map(call => call.bffId);
+}
+
 export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns4E8ModelResult {
   const issues: Ns4E8ModelIssue[] = [];
   const add = (code: string, path: string, message: string, severity?: 'warning') =>
@@ -37,6 +75,10 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
   const parentIndex = buildNs4ParentIndex(sources.ontology.relationships);
   const fields = new Set(sources.ontology.entities.flatMap(entity => entity.fields.map(field => `${entity.entityId}.${field.fieldId}`)));
   const entities = new Set(sources.ontology.entities.map(entity => entity.entityId));
+  // Master data is referenced by other records: removing the row breaks those
+  // references, so the catalogue deactivates instead of deleting.
+  const masterDataEntities = new Set(sources.ontology.entities
+    .filter(entity => entity.storage.target === 'mdm').map(entity => entity.entityId));
   const profiles = new Set(sources.access.profiles.map(profile => profile.profileId));
   const useCases = new Set(sources.useCases.map(useCase => useCase.useCaseId));
   const workspaceIds = new Set<string>();
@@ -52,8 +94,57 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
       if (!fields.has(`${input.fieldRef.entityId}.${input.fieldRef.fieldId}`)) {
         add('NS4_E8_INPUT_FIELD', `${path}.inputs.${input.inputId}`, `Input ${input.inputId} has no resolvable ontology field (${input.fieldRef.entityId}.${input.fieldRef.fieldId}).`);
       }
+      // Registrar, never A: synthesis should have set actorSession. A leftover userInput whose
+      // fieldRef/description still says "authenticated actor" is evidence, not a broken compile.
+      if (userInputLooksLikeSession(input)) {
+        add('NS4_E8_USERINPUT_FROM_SESSION', `${path}.inputs.${input.inputId}`,
+          `Input ${input.inputId} is userInput but fieldRef/description say it comes from the authenticated actor; it should be actorSession.`,
+          'warning');
+      }
     });
+    // Backstop, not the rule: the catalogue compiler already emits inactivate and
+    // reactivate for master data, so this never fires from that path. It guards
+    // against a regression there and against a future path that skips it.
+    if (operation.accessPattern.kind === 'delete' && masterDataEntities.has(operation.entityRef)) {
+      add('NS4_E8_MDM_DELETE', `${path}.accessPattern.kind`,
+        `Operation ${operation.operationId} deletes master data entity ${operation.entityRef}: master data is referenced by other records and must be deactivated instead.`);
+    }
+    // Catalogue list only (no useCaseId): search/sort are synthesized there, not on journey locate.
+    // Registrar, never A — a list without them still compiles; the page just cannot honour the prompt.
+    if (operation.accessPattern.kind === 'list' && !operation.useCaseId) {
+      const entity = sources.ontology.entities.find(item => item.entityId === operation.entityRef);
+      const ids = new Set(operation.inputs.map(input => input.inputId));
+      if (entity?.fields.some(field => /^(title|name)$/.test(field.fieldId) && (field.type === 'string' || field.type === 'text'))
+        && !ids.has('search')) {
+        add('NS4_E8_LIST_WITHOUT_SEARCH', `${path}.inputs`,
+          `List ${operation.operationId} has a title/name field but no optional search input.`,
+          'warning');
+      }
+      const idField = entity?.storage.idField || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId || '';
+      if (entity?.fields.some(field => field.fieldId !== idField && (
+        field.type === 'date' || field.type === 'datetime' || /At$/.test(field.fieldId) || (field.enum?.length ?? 0) > 0
+      )) && !ids.has('sortBy')) {
+        add('NS4_E8_LIST_WITHOUT_SORT', `${path}.inputs`,
+          `List ${operation.operationId} has sortable fields but no optional sortBy input.`,
+          'warning');
+      }
+    }
   });
+
+  for (const journey of sources.journeys.journeys) {
+    const steps = journey.business.steps;
+    steps.forEach((step, stepIndex) => {
+      if (!isNs4CollectionInspect(steps, stepIndex)) return;
+      const stepRef = `${journey.journeyId}.${step.stepId}`;
+      const useCase = sources.useCases.find(item => item.compiledFrom.includes(stepRef));
+      const operation = useCase ? operations.get(useCase.useCaseId) : undefined;
+      if (operation && operation.accessPattern.kind === 'getById') {
+        add('NS4_E8_COLLECTION_INSPECT_GETBYID', `operations.${operation.operationId}.accessPattern.kind`,
+          `Inspect ${stepRef} is a collection summary (a locate of ${step.entity} follows) but compiled as getById; it must be a list with no identity input.`,
+          'warning');
+      }
+    });
+  }
 
   model.workspaces.forEach((workspace, index) => {
     const path = `workspaces[${index}]`;
@@ -130,6 +221,70 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
           `A tela ${workspace.title} escolhe ${parent} sem uma consulta que o liste; nesta versão o registro vem de fora da tela. Revisar?`, 'warning');
       });
     });
+
+    // A command that requires the KEY of entity X needs a way for THIS page to obtain X.
+    // PICKER_SOURCE is silent when workspace.entity === X (it assumes the page already holds
+    // that record). recordInStoreServiceAttendance is of ServiceExecution and still has no
+    // read that returns serviceExecutionId — five commands demand it, the only query is of
+    // ServiceAppointment. The CF then invents the field on the appointment row.
+    //
+    // Warning/registrar, same as LANDING_REQUIRED_INPUT: a blocking A would fail E10 on any
+    // module that compiled this shape (sequential create-then-act without a declared feeder).
+    // Legitimate paths: a query whose output carries the key, a query of X, or inputSources
+    // pointing at a command that produces it (then the screen only operates after that command).
+    workspace.bffCalls.filter(call => call.kind === 'command').forEach(call => {
+      const operation = operations.get(call.operationId);
+      if (!operation) return;
+      (operation.inputs || []).forEach(input => {
+        if (!input.required) return;
+        if (input.source !== 'selectedEntity') return;
+        const keyEntity = identityEntityOfInput(input, sources);
+        if (!keyEntity) return;
+        const keyRef = `${keyEntity.entityId}.${keyEntity.fieldId}`;
+        const queryHasKey = workspace.bffCalls.some(item => {
+          if (item.kind !== 'query') return false;
+          if (item.entityRef === keyEntity.entityId) return true;
+          const queryOp = operations.get(item.operationId);
+          return Boolean(queryOp && (queryOp.entityRef === keyEntity.entityId || queryOp.outputRefs.includes(keyRef)));
+        });
+        if (queryHasKey) return;
+        const feeder = (call.inputSources || []).find(link => {
+          if (link.inputId !== input.inputId) return false;
+          const sourceCall = workspace.bffCalls.find(item => item.bffId === link.bffId);
+          if (!sourceCall || sourceCall.kind !== 'command') return false;
+          const sourceOp = operations.get(sourceCall.operationId);
+          return Boolean(sourceOp && (sourceOp.entityRef === keyEntity.entityId || sourceOp.outputRefs.includes(keyRef)));
+        });
+        if (feeder) {
+          add('NS4_E8_COMMAND_KEY_AFTER_COMMAND', `${path}.bffCalls.${call.bffId}.${input.inputId}`,
+            `A tela ${workspace.workspaceId} só opera ${call.bffId} depois de ${feeder.bffId}, que produz ${keyRef}.`,
+            'warning');
+          return;
+        }
+        add('NS4_E8_COMMAND_KEY_WITHOUT_SOURCE', `${path}.bffCalls.${call.bffId}.${input.inputId}`,
+          `Command ${call.bffId} requires ${keyRef} and no read on ${workspace.workspaceId} provides that key (output of a page query, a query of ${keyEntity.entityId}, or inputSources from a command that produces it).`,
+          'warning');
+      });
+    });
+
+    // A landing (site landing, kind=landing, or a coldStart journey) has no selected entity yet.
+    // Its primary read cannot be getById/inspect with a required input — that is how
+    // consultInstitutionalHome opened empty (VALIDATION_ERROR: id is required).
+    if (isLandingWithoutPriorSelection(workspace, model, sources)) {
+      const hasListQuery = workspace.bffCalls.some(call =>
+        call.kind === 'query' && operations.get(call.operationId)?.accessPattern.kind === 'list');
+      if (!hasListQuery) {
+        for (const bffId of primaryReadBffIds(workspace)) {
+          const call = workspace.bffCalls.find(item => item.bffId === bffId);
+          const operation = call ? operations.get(call.operationId) : undefined;
+          const required = (operation?.inputs || []).filter(input => input.required);
+          if (!operation || !required.length) continue;
+          add('NS4_E8_LANDING_REQUIRED_INPUT', `${path}.bffCalls.${bffId}`,
+            `Landing ${workspace.workspaceId} primary read ${bffId} (${operation.operationId}) requires ${required.map(input => input.inputId).join(', ')}; a page with no selected entity must read without a required input (list or first record).`,
+            'warning');
+        }
+      }
+    }
   });
 
   const hostedSteps = new Set(model.workspaces.flatMap(workspace => workspace.hostedStepRefs));

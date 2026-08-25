@@ -2,6 +2,16 @@
 
 # Changelog
 
+- 2026-08-22 (dossiê do último finalize) — o run fe4 gravou UM `cf-run-*.json`, do finalize que
+  FALHOU (`repairRounds: 0`); o `finalize-create-r2` completou a task e não deixou arquivo. Quem
+  lê o único dossiê conclui o oposto do que aconteceu. Causa: só havia snapshot com stamp, e o
+  caminho limpo do r2 podia gravar (e o post-mortem não tinha como saber qual era o último). Agora
+  todo finalize grava `attempt` + `final` + `repairRounds`, um snapshot com stamp E o estável
+  `l4/<módulo>/trace/cf-run.json` (overwrite). O último finalize — sucesso ou orçamento esgotado —
+  tem `final: true`; o que abre repair tem `final: false`. Monaco viu 1× TS2339 `confirmedAt` no
+  primeiro e 0 dos 6 `serviceExecutionId` no segundo: mesma classe, import degradado a `any` (já
+  declarado em `describeCompilerFidelity`; fora de escopo desta spec).
+
 - 2026-07-30 (handoff @@addLanguage no fim da task) — o shared `.ts` gerado carrega UM catálogo de
   mensagens (o `defaultLocale` do módulo): `cfeSharedScaffold.renderI18n` emite um único
   `message_<default>` + `messages`. Um módulo que declara 2+ idiomas em `l4/<module>/module.defs.ts`

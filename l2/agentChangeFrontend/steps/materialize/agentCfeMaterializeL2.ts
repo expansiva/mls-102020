@@ -27,7 +27,7 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentCfeMaterializeL2',
     agentProject: 102020,
     agentFolder: 'agentChangeFrontend/steps/materialize',
-    agentDescription: 'Materialize generated frontend L2 .defs.ts into .ts/.html before final status update',
+    agentDescription: 'Materialize generated frontend L2 .defs.ts into .ts before final status update',
     visibility: 'private',
     beforePromptStep,
   };

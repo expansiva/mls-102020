@@ -1,6 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/steps/e4/contracts.ts" enhancement="_blank"/>
 
 import { sha256Ns4 } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
+import {
+  resolveNs4Findings,
+  type Ns4ResolutionFinding,
+  type Ns4SystemDecision,
+} from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 
 export const NS4_ONTOLOGY_SCHEMA_VERSION = '2026-08-11-ns4-ontology-v6' as const;
 
@@ -46,6 +51,12 @@ export interface Ns4FieldConstraint {
   source: Ns4ConstraintSource;
 }
 
+/** Display text for one closed-domain code. Array-of-objects so the tool schema can stay additionalProperties:false. */
+export interface Ns4EnumLabel {
+  code: string;
+  label: string;
+}
+
 export interface Ns4OntologyField {
   fieldId: string;
   title: string;
@@ -59,6 +70,12 @@ export interface Ns4OntologyField {
    * instead of a free text box; the constraint stays as the human-readable rule.
    */
   enum?: string[];
+  /**
+   * User-language labels for `enum` codes. OPTIONAL on the type so L4 written before this field keeps
+   * compiling — nothing is ever migrated. New E4 runs backfill any gap with a humanized code and a
+   * non-blocking systemDecision; the model should still author the user's language.
+   */
+  enumLabels?: Ns4EnumLabel[];
 }
 
 export interface Ns4LifecyclePredicate {
@@ -88,6 +105,8 @@ export interface Ns4OntologyEntity {
   lifecycleStates: string[];
   /** The lifecycle values as a literal union; mirrors lifecycleStates and is never a second truth. */
   statusEnum?: string[];
+  /** User-language labels for `lifecycleStates`. OPTIONAL on the type; new E4 runs backfill a gap. */
+  lifecycleLabels?: Ns4EnumLabel[];
   initialState?: string;
   terminalStates?: string[];
   lifecyclePredicates: Ns4LifecyclePredicate[];
@@ -164,6 +183,8 @@ export interface Ns4E4Review {
   entities: Ns4OntologyEntity[];
   relationships: Ns4OntologyRelationship[];
   changeSummary: string[];
+  /** Type C backfills (missing enum/lifecycle labels). Empty when the model authored every label. */
+  systemDecisions?: Ns4SystemDecision[];
 }
 
 export interface Ns4E4ReviewEvent {
@@ -211,6 +232,7 @@ interface Ns4OntologyIndexArtifactBase {
   approvedBy: 'human' | 'auto';
   approvedAt: string;
   realization: { status: 'pending'; compiledFromOntologyHash: string };
+  systemDecisions?: Ns4SystemDecision[];
 }
 
 export interface Ns4OntologyIndexArtifactV5 extends Ns4OntologyIndexArtifactBase {
@@ -230,7 +252,8 @@ export function normalizeNs4E4Review(value: unknown, fallbackModule = ''): Ns4E4
   const root = record(value);
   const moduleName = text(root.moduleName) || fallbackModule;
   const entities = array(root.entities).map(item => normalizeEntity(item, moduleName));
-  return {
+  const incoming = normalizeSystemDecisions(root.systemDecisions);
+  const review: Ns4E4Review = {
     planId: 'e4-ontology-review',
     moduleName,
     userLanguage: text(root.userLanguage) || 'en',
@@ -256,7 +279,125 @@ export function normalizeNs4E4Review(value: unknown, fallbackModule = ''): Ns4E4
       };
     }),
     changeSummary: strings(root.changeSummary),
+    systemDecisions: incoming,
   };
+  return applyClosedDomainLabelBackfill(review);
+}
+
+/** `inProgress` → `In progress`. Fallback when the model omitted a user-language label. */
+export function humanizeNs4EnumCode(code: string): string {
+  const words = String(code || '').replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim().split(/\s+/u);
+  if (!words[0]) return code;
+  const first = words[0].charAt(0).toUpperCase() + words[0].slice(1).toLowerCase();
+  return [first, ...words.slice(1).map(word => word.toLowerCase())].join(' ');
+}
+
+function applyClosedDomainLabelBackfill(review: Ns4E4Review): Ns4E4Review {
+  const findings = closedDomainLabelFindings(review);
+  if (!findings.length) return review;
+  const resolution = resolveNs4Findings(review, findings);
+  const byId = new Map((review.systemDecisions || []).map(decision => [decision.decisionId, decision]));
+  resolution.systemDecisions.forEach(decision => byId.set(decision.decisionId, decision));
+  return { ...resolution.artifact, systemDecisions: [...byId.values()] };
+}
+
+function closedDomainLabelFindings(review: Ns4E4Review): Array<Ns4ResolutionFinding<Ns4E4Review>> {
+  const findings: Array<Ns4ResolutionFinding<Ns4E4Review>> = [];
+  review.entities.forEach(entity => {
+    // Plan drafts have no fields yet — do not poison the entity workers with humanized English.
+    if (!entity.fields.length) return;
+    if (entity.lifecycleStates.length) {
+      const { missing } = completeEnumLabels(entity.lifecycleStates, entity.lifecycleLabels);
+      if (missing.length) findings.push(lifecycleLabelFinding(entity.entityId, entity.lifecycleStates));
+    }
+    entity.fields.forEach(field => {
+      const codes = field.enum || [];
+      if (!codes.length || isLifecycleStatusField(field, entity)) return;
+      const { missing } = completeEnumLabels(codes, field.enumLabels);
+      if (missing.length) findings.push(fieldEnumLabelFinding(entity.entityId, field.fieldId, codes));
+    });
+  });
+  return findings;
+}
+
+function lifecycleLabelFinding(entityId: string, codes: string[]): Ns4ResolutionFinding<Ns4E4Review> {
+  return {
+    classification: 'C',
+    findingRef: `e4.lifecycleLabels.backfill:${entityId}`,
+    stage: 'e4',
+    question: `Entity ${entityId} is missing lifecycleLabels for one or more states.`,
+    deterministicChoice: 'humanizeMissingCodes',
+    alternatives: ['authorUserLanguageLabels'],
+    changeHint: 'Emit lifecycleLabels in the user language next to lifecycleStates. This run filled the gap with a humanized code so the UI is never raw camelCase.',
+    apply: artifact => ({
+      ...artifact,
+      entities: artifact.entities.map(entity => {
+        if (entity.entityId !== entityId) return entity;
+        const { labels } = completeEnumLabels(codes, entity.lifecycleLabels);
+        return { ...entity, lifecycleLabels: labels };
+      }),
+    }),
+  };
+}
+
+function fieldEnumLabelFinding(entityId: string, fieldId: string, codes: string[]): Ns4ResolutionFinding<Ns4E4Review> {
+  return {
+    classification: 'C',
+    findingRef: `e4.enumLabels.backfill:${entityId}.${fieldId}`,
+    stage: 'e4',
+    question: `Entity ${entityId} field ${fieldId} is missing enumLabels for one or more codes.`,
+    deterministicChoice: 'humanizeMissingCodes',
+    alternatives: ['authorUserLanguageLabels'],
+    changeHint: 'Emit enumLabels in the user language next to the enum constraint. Status uses lifecycleLabels — do not duplicate it on the status field.',
+    apply: artifact => ({
+      ...artifact,
+      entities: artifact.entities.map(entity => {
+        if (entity.entityId !== entityId) return entity;
+        return {
+          ...entity,
+          fields: entity.fields.map(field => {
+            if (field.fieldId !== fieldId) return field;
+            const { labels } = completeEnumLabels(codes, field.enumLabels);
+            return { ...field, enumLabels: labels };
+          }),
+        };
+      }),
+    }),
+  };
+}
+
+function completeEnumLabels(codes: string[], existing: Ns4EnumLabel[] | undefined): { labels: Ns4EnumLabel[]; missing: string[] } {
+  const byCode = new Map<string, string>();
+  const extras: Ns4EnumLabel[] = [];
+  const codeSet = new Set(codes);
+  (existing || []).forEach(entry => {
+    if (!entry.code) return;
+    if (!codeSet.has(entry.code)) extras.push(entry);
+    else if (entry.label) byCode.set(entry.code, entry.label);
+  });
+  const missing: string[] = [];
+  const labels = codes.map(code => {
+    const have = byCode.get(code);
+    if (have) return { code, label: have };
+    missing.push(code);
+    return { code, label: humanizeNs4EnumCode(code) };
+  });
+  return { labels: extras.length ? [...labels, ...extras] : labels, missing };
+}
+
+function isLifecycleStatusField(field: Ns4OntologyField, entity: Ns4OntologyEntity): boolean {
+  return isStatusFieldId(field.fieldId) && entity.lifecycleStates.length > 0;
+}
+
+function normalizeSystemDecisions(value: unknown): Ns4SystemDecision[] {
+  return array(value).map(item => {
+    const decision = record(item);
+    return {
+      decisionId: text(decision.decisionId), stage: text(decision.stage), question: text(decision.question),
+      chosen: text(decision.chosen), alternatives: strings(decision.alternatives), decidedBy: 'system' as const,
+      findingRef: text(decision.findingRef), changeHint: text(decision.changeHint),
+    };
+  }).filter(decision => decision.decisionId && decision.stage && decision.question && decision.chosen && decision.findingRef);
 }
 
 export function normalizeNs4E4PlanDraft(value: unknown, fallbackModule = ''): Ns4E4PlanDraft {
@@ -426,6 +567,7 @@ export async function buildNs4OntologyArtifacts(
       approvedBy,
       approvedAt,
       realization: { status: 'pending', compiledFromOntologyHash: ontologyHash },
+      ...(review.systemDecisions?.length ? { systemDecisions: review.systemDecisions } : {}),
     },
   };
 }
@@ -468,6 +610,13 @@ function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
 }
 
+function enumLabels(value: unknown): Ns4EnumLabel[] {
+  return array(value).map(item => {
+    const entry = record(item);
+    return { code: text(entry.code), label: text(entry.label) };
+  }).filter(entry => entry.code || entry.label);
+}
+
 function party(value: unknown): Ns4EntityParty | undefined {
   return value === 'person' || value === 'organization' || value === 'none' ? value : undefined;
 }
@@ -503,6 +652,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
       description: text(field.description),
       constraints,
       ...(values.length ? { enum: values } : {}),
+      ...(enumLabels(field.enumLabels).length ? { enumLabels: enumLabels(field.enumLabels) } : {}),
     };
   });
   const target = storageTarget(storage.target, kind, entityOwnership);
@@ -527,6 +677,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
     fields,
     lifecycleStates,
     ...(lifecycleStates.length ? { statusEnum: lifecycleStates } : {}),
+    ...(enumLabels(entity.lifecycleLabels).length ? { lifecycleLabels: enumLabels(entity.lifecycleLabels) } : {}),
     ...(text(entity.initialState) ? { initialState: text(entity.initialState) } : {}),
     ...(strings(entity.terminalStates).length ? { terminalStates: strings(entity.terminalStates) } : {}),
     lifecyclePredicates: array(entity.lifecyclePredicates).map(item => {

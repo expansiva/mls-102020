@@ -188,7 +188,7 @@ async function judgeExistingDraft(
   moduleArtifact: Ns4ModuleArtifact,
   promptTemplate: string,
 ): Promise<void> {
-  const draft = JSON.parse(await readFile(path.join(moduleDir, 'pipeline/e2-journeys.draft.json'), 'utf8'));
+  const draft = JSON.parse(await readFile(path.join(moduleDir, 'pipeline/e2-journeys-draft.json'), 'utf8'));
   const normalizedDraft = normalizeNs4E2Review(draft, args.moduleName);
   const mechanicalCoverage = analyzeNs4E2MechanicalCoverage(normalizedDraft);
   const pipeline = JSON.parse(await readFile(path.join(moduleDir, 'pipeline/pipeline.json'), 'utf8')) as { sourcePrompt?: unknown };

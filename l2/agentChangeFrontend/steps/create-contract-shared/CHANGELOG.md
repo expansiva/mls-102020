@@ -1,5 +1,30 @@
 <!-- mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-contract-shared/CHANGELOG.md" enhancement="_blank" -->
 
+- 2026-08-24 (page tests: `<seedRef>` by fieldRef): each seedRef param carries `paramFieldRefs`
+  (`Task.taskId`) so the monitor pool matches the harvested output field, not the input's wire name
+  (`taskTaskId` vs `taskId`). Harvestability uses the same aliases. Name remains the fallback.
+
+- 2026-08-24 (initialLoad com routeParam): query cujo required é só `presentation: route`
+  entra em `initialLoads` (syncRouteParams no connectedCallback já preenche o id). Required
+  `form`/`selection` continua sem auto-load. `accessPattern.selection` do l4 viaja no
+  command e no dataBinding da página para o gate de clique de linha.
+
+- 2026-08-24 (enum no contrato, também no OUTPUT): bffCall INPUT and OUTPUT whose l4 field has
+  enum[] (or statusEnum) is emitted as a string-literal union (`'pending' | 'inProgress' | …`),
+  not `string`. List item fields (`from: op.$items.status`) resolve the entity field the same
+  way. Shared command output carries `enum`/`enumLabels` so the page catalog's `enumFields` covers
+  the list query. The cell-label gate (`collectEnumCellLabelIssues`) reads the union.
+
+- 2026-08-24 (enum no contrato): bffCall INPUT whose l4 field has enum[] (or statusEnum) is emitted
+  as a string-literal union (`'pending' | 'inProgress' | …`), not `string`. Shared input states
+  carry the same codes as `valueSet` so the page .d.ts JSDoc lists `values: a|b|c`. The page-render
+  gate (`collectEnumTextInputIssues`) reads both.
+
+- 2026-08-24: Consume l4 `enumLabels` / `lifecycleLabels` for display. Command/contract fields carry
+  `{ code, label }[]` next to `enum`; the page catalog exposes them as `enumFields`. Wire values stay
+  the English codes. Fallback when labels are absent: show the code and record a create-context
+  warning (`enumLabelFallbackWarnings`). Helper `enumDisplayLabel`.
+
 - 2026-07-29 (page tests: emit the page actor + module-wide seedRef reach) — MEASURED on 102045/buildFlowFsm
   with the monitor runner (3 runs, same app/seeds): 4 pass / 1 fail / 9 inconclusive -> **12 pass / 0 fail /
   2 inconclusive**, the 2 remaining being the documented chicken-and-egg case (submitChangeOrderDecision

@@ -22,8 +22,14 @@ export interface PipelineItem {
 
 export interface ParsedDefs {
   dataExportName: string | null;
-  artifact: Record<string, unknown> | unknown[] | null;
+  artifact: Record<string, unknown> | unknown[] | string | null;
   data: unknown;
+  /**
+   * Sibling `export const bindings` on a page11 defs (prose `definition`). Never dumped into the
+   * materialize prompt — gates and the split plan read it. Null when the file has no such export
+   * (page21/31 keep `dataBindings` inside the definition object).
+   */
+  bindings: unknown[] | null;
   /** First pipeline item — what a defs with a single artifact always meant. */
   item: PipelineItem | null;
   /** EVERY pipeline item. A split page has N organisms plus the page in one defs. */
@@ -204,7 +210,9 @@ const PICKER_SOURCES = new Set(['selection', 'selectedentity', 'actordirectory']
 interface PageBinding {
   command: string;
   kind: string;
-  inputs: { name: string; stateKey: string; source: string; sourceRef: string }[];
+  stateKey: string;
+  selection: string;
+  inputs: { name: string; stateKey: string; source: string; sourceRef: string; required: boolean; presentation: string }[];
 }
 
 /** The command bindings of the reduced page defs — the deterministic anchor every check below uses. */
@@ -213,12 +221,16 @@ function readPageBindings(pageDefinition: unknown): PageBinding[] {
   return pageDefinition.dataBindings.filter(isRecord).map(binding => ({
     command: stringValue(binding.command),
     kind: stringValue(binding.kind),
+    stateKey: stringValue(binding.stateKey),
+    selection: stringValue(binding.selection).toLowerCase(),
     inputs: (Array.isArray(binding.inputs) ? binding.inputs.filter(isRecord) : []).map(input => ({
       name: stringValue(input.name),
       stateKey: stringValue(input.stateKey),
       source: stringValue(input.source).toLowerCase(),
       // Kept in original case: it names a bffCall, a field path or an actorId, all case-sensitive.
       sourceRef: stringValue(input.sourceRef),
+      required: input.required === true,
+      presentation: stringValue(input.presentation).toLowerCase(),
     })),
   })).filter(binding => binding.command);
 }
@@ -301,19 +313,151 @@ export function collectPageExperienceIssues(pageDefinition: unknown, sharedDefin
   return issues;
 }
 
+const ROUTE_SOURCES = new Set(['routeparam', 'pageinput']);
+const CONTEXTUAL_ID_SOURCES = new Set(['selection', 'selectedentity', 'routeparam', 'pageinput']);
+
+function isListQueryState(sharedDefinition: unknown, stateKey: string): boolean {
+  if (!stateKey || !isRecord(sharedDefinition) || !Array.isArray(sharedDefinition.states)) return false;
+  const state = sharedDefinition.states.filter(isRecord).find(item => stringValue(item.stateKey) === stateKey);
+  if (!state) return false;
+  if (state.collection === true) return true;
+  const shape = stringValue(state.outputShape).toLowerCase();
+  return shape === 'array' || shape === 'paginated';
+}
+
+function pascalIdent(name: string): string {
+  return name ? name.charAt(0).toUpperCase() + name.slice(1) : '';
+}
+
+function hasSelectionWriter(pageCode: string, property: string, setter: string): boolean {
+  if (!property) return false;
+  const prop = escapeForRegExp(property);
+  const set = escapeForRegExp(setter);
+  if (new RegExp(`<(?:select|input)\\b[^>]*\\b(?:\\.value|\\.checked|value|checked)=\\$\\{[^}]*\\b(?:this|host)\\.${prop}\\b`, 'u').test(pageCode)) return true;
+  if (new RegExp(`@(?:click|change)=\\$\\{[^}]*\\b(?:this|host)\\.${set}\\b`, 'u').test(pageCode)) return true;
+  if (new RegExp(`@(?:click|change)=\\$\\{[^}]*\\b(?:this|host)\\.${prop}\\s*=`, 'u').test(pageCode)) return true;
+  return false;
+}
+
+/**
+ * `selection: single` (or a selection/route id next to a list) must write the id — row click with a
+ * visible selected state, or a <select>. A table with no @click is the changeTaskStatus defect.
+ */
+export function collectSelectionControlIssues(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
+  if (!pageCode) return [];
+  const bindings = readPageBindings(pageDefinition);
+  const hasList = bindings.some(binding =>
+    binding.kind === 'query' && (binding.selection === 'single' || binding.selection === 'multiple' || isListQueryState(sharedDefinition, binding.stateKey)));
+  const issues: string[] = [];
+  const seen = new Set<string>();
+
+  for (const binding of bindings) {
+    for (const input of binding.inputs) {
+      if (input.source === 'actordirectory') continue;
+      const property = propertyForStateKey(sharedDefinition, input.stateKey);
+      if (!property || seen.has(input.stateKey)) continue;
+      const pickerSource = PICKER_SOURCES.has(input.source);
+      const contextualRequired = input.required && CONTEXTUAL_ID_SOURCES.has(input.source);
+      if (!pickerSource && !(hasList && contextualRequired)) continue;
+      if (pickerSource && !input.sourceRef && !hasList) continue;
+      seen.add(input.stateKey);
+      const setter = `set${pascalIdent(property)}`;
+      if (hasSelectionWriter(pageCode, property, setter)) continue;
+      issues.push(`${binding.command}.${input.name} has no selection control: click a list row (visible selected state + ${setter}(id)) or render a <select> bound to ${property} — never a dead table`);
+    }
+  }
+  return issues;
+}
+
+/**
+ * Command whose required route/selection input is empty must render disabled with a title hint.
+ * The shared handler silent-returns in that case — a live button is a dead click (no request, no message).
+ */
+export function collectCommandDisabledIssues(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues: string[] = [];
+  const tags = [...pageCode.matchAll(/<(?:button|input)\b[^>]*>/gu)].map(match => match[0]);
+  for (const binding of readPageBindings(pageDefinition)) {
+    if (binding.kind === 'query') continue;
+    const required = binding.inputs.filter(input => input.required && CONTEXTUAL_ID_SOURCES.has(input.source));
+    if (required.length === 0) continue;
+    const action = isRecord(sharedDefinition) && Array.isArray(sharedDefinition.actions)
+      ? sharedDefinition.actions.filter(isRecord).find(item => stringValue(item.actionId) === binding.command)
+      : undefined;
+    const handler = action ? stringValue(action.handlerName) : `handle${pascalIdent(binding.command)}Click`;
+    if (!pageCode.includes(binding.command) && !(handler && pageCode.includes(handler))) continue;
+    for (const input of required) {
+      const property = propertyForStateKey(sharedDefinition, input.stateKey);
+      if (!property) continue;
+      const disabledRe = new RegExp(`\\?disabled=\\$\\{[^}]*\\b(?:this|host)\\.${escapeForRegExp(property)}\\b`, 'u');
+      const matching = tags.filter(tag => disabledRe.test(tag));
+      if (matching.length === 0) {
+        issues.push(`${binding.command} button is clickable with empty required ${input.name}: bind ?disabled to ${property} and set title to the missing-precondition hint`);
+        continue;
+      }
+      if (!matching.some(tag => /\btitle\s*=/u.test(tag))) {
+        issues.push(`${binding.command} disabled button has no title hint for empty ${input.name}`);
+      }
+    }
+  }
+  return issues;
+}
+
+/**
+ * Query whose required inputs are all route params (or that has none) must be in initialLoads so
+ * connectedCallback runs it after syncRouteParams. getById with a URL id that only loads on a refresh
+ * click is the inspectCurrentTaskStatus defect.
+ */
+export function collectMissingInitialLoadIssues(sharedDefinition: unknown, pageDefinition?: unknown): string[] {
+  if (!isRecord(sharedDefinition)) return [];
+  const loaded = new Set(
+    (Array.isArray(sharedDefinition.initialLoads) ? sharedDefinition.initialLoads : [])
+      .filter(isRecord)
+      .map(load => stringValue(load.actionId))
+      .filter(Boolean),
+  );
+  const issues: string[] = [];
+  if (pageDefinition) {
+    for (const binding of readPageBindings(pageDefinition)) {
+      if (binding.kind !== 'query') continue;
+      const qualifies = binding.inputs.every(input =>
+        !input.required || ROUTE_SOURCES.has(input.source) || input.presentation === 'route');
+      if (!qualifies || loaded.has(binding.command)) continue;
+      issues.push(`${binding.command} is a query whose required inputs are route params (or none) but is not in initialLoads: connectedCallback must run it after syncRouteParams`);
+    }
+    return issues;
+  }
+  if (!Array.isArray(sharedDefinition.actions)) return [];
+  for (const action of sharedDefinition.actions.filter(isRecord)) {
+    if (stringValue(action.kind) !== 'query') continue;
+    const actionId = stringValue(action.actionId);
+    if (!actionId) continue;
+    const inputs = Array.isArray(action.inputStateKeys) ? action.inputStateKeys.map(String) : [];
+    const routes = new Set((Array.isArray(action.routeParamInputStateKeys) ? action.routeParamInputStateKeys : []).map(String));
+    if (!inputs.every(key => routes.has(key)) || loaded.has(actionId)) continue;
+    issues.push(`${actionId} is a query whose inputs are all route params (or none) but is not in initialLoads: connectedCallback must run it after syncRouteParams`);
+  }
+  return issues;
+}
+
 /**
  * Every command must render BOTH a success and an error path, in its own region.
  *
  * Supervisor refinement 2: the criterion is "both paths exist and are local", not the literal
  * `action.{cmd}.success/error` key — the reduced defs no longer carries an i18n contract, so demanding
  * the key would enforce a convention that is not there. The key is accepted as the preferred evidence.
+ *
+ * When the shared carries an actionError state, the error path must render that property (it holds
+ * error.message) or an i18n lookup keyed by error.code — a generic "Falhou" / HTTP status is not
+ * enough. Presence of feedback without the envelope was the 400-on-screen defect.
  */
 export function collectMutationFeedbackIssues(pageDefinition: unknown, sharedDefinition: unknown, pageCode: string): string[] {
   if (!pageCode) return [];
   const issues: string[] = [];
+  const pageId = stringValue((pageDefinition as Record<string, unknown>)?.pageId);
   for (const binding of readPageBindings(pageDefinition)) {
     if (binding.kind === 'query') continue;
-    const statusProperty = propertyForStateKey(sharedDefinition, `ui.${stringValue((pageDefinition as Record<string, unknown>)?.pageId)}.action.${binding.command}.state`);
+    const statusProperty = propertyForStateKey(sharedDefinition, `ui.${pageId}.action.${binding.command}.state`);
     const mentionsCommand = new RegExp(`\\b(?:${binding.command}|${statusProperty || binding.command})\\b`, 'u').test(pageCode);
     if (!mentionsCommand) continue;                                   // command not rendered at all
     const hasSuccess = new RegExp(`action\\.${binding.command}\\.success|'success'|"success"`, 'u').test(pageCode);
@@ -321,8 +465,217 @@ export function collectMutationFeedbackIssues(pageDefinition: unknown, sharedDef
     if (!hasSuccess || !hasError) {
       issues.push(`${binding.command} renders no ${!hasSuccess && !hasError ? 'success/error' : (!hasSuccess ? 'success' : 'error')} feedback: both paths must be rendered next to the command itself, never as a page-level banner`);
     }
+    const errorProperty = propertyForStateKey(sharedDefinition, `ui.${pageId}.action.${binding.command}.error`);
+    if (!errorProperty) continue;
+    const usesErrorState = new RegExp(`\\b(?:this|host)\\.${escapeForRegExp(errorProperty)}\\b`, 'u').test(pageCode);
+    const usesI18nByCode = /\.code\b/.test(pageCode) && /\b(?:this\.)?msg(?:Messages)?\s*\[/.test(pageCode);
+    if (!usesErrorState && !usesI18nByCode) {
+      issues.push(`${binding.command} error feedback discards the envelope: render ${errorProperty} (error.message) or this.msg[error.code], never the HTTP status`);
+    }
   }
   return issues;
+}
+
+/**
+ * Command handler whose error path never reads error.message (nor an i18n map keyed by error.code).
+ * Deterministic over the generated shared .ts — the page cannot invent a message the handler dropped.
+ */
+export function collectMutationEnvelopeErrorIssues(sharedDefinition: unknown, sharedCode: string): string[] {
+  if (!sharedCode) return [];
+  if (!isRecord(sharedDefinition) || !Array.isArray(sharedDefinition.actions)) return [];
+  const issues: string[] = [];
+  for (const action of sharedDefinition.actions.filter(isRecord)) {
+    if (stringValue(action.kind) !== 'command') continue;
+    const actionId = stringValue(action.actionId);
+    const methodName = stringValue(action.methodName) || actionId;
+    if (!methodName) continue;
+    const body = sliceGeneratedMethodBody(sharedCode, methodName);
+    if (body === null) continue;
+    if (commandErrorPathReadsEnvelope(body)) continue;
+    issues.push(`${actionId || methodName} error path does not read error.message (nor an i18n map keyed by error.code): the envelope message is the screen text, never the HTTP status`);
+  }
+  return issues;
+}
+
+function sliceGeneratedMethodBody(source: string, methodName: string): string | null {
+  const match = new RegExp(`(?:async\\s+)?${escapeForRegExp(methodName)}\\s*\\([^)]*\\)\\s*(?::\\s*[^{]+)?\\{`, 'u').exec(source);
+  if (!match) return null;
+  const start = match.index + match[0].length;
+  const rest = source.slice(start);
+  const end = rest.search(/\n  (?:async |[A-Za-z_]|\/\*\*)/);
+  return end < 0 ? rest : rest.slice(0, end);
+}
+
+function commandErrorPathReadsEnvelope(body: string): boolean {
+  if (/\breadErrorMessage\s*\(/.test(body)) return true;
+  if (/\berror\.message\b/.test(body) || /\brecord\.message\b/.test(body)) return true;
+  if (/\.code\b/.test(body) && /\b(?:this\.)?msg(?:Messages)?\s*\[/.test(body)) return true;
+  return false;
+}
+
+/**
+ * Closed-domain input (contract string-literal union, or the shared input state's valueSet copied
+ * from l4 enum[]) bound to a free-text control. Typing an invalid status into a 4-value field is a
+ * 400; the UI must make that impossible. Select / transition buttons are the legitimate path.
+ */
+export function collectEnumTextInputIssues(sharedDefinition: unknown, pageCode: string, contractSource: string): string[] {
+  if (!pageCode) return [];
+  const issues: string[] = [];
+  const unions = contractInputLiteralUnions(contractSource);
+  if (!isRecord(sharedDefinition) || !Array.isArray(sharedDefinition.states)) return issues;
+
+  for (const state of sharedDefinition.states.filter(isRecord)) {
+    if (stringValue(state.kind) !== 'input') continue;
+    const property = stringValue(state.name);
+    if (!property) continue;
+    const contractRef = isRecord(state.contractRef) ? state.contractRef : null;
+    const commandName = stringValue(contractRef?.commandName);
+    const field = stringValue(contractRef?.field);
+    const fromContract = (commandName && field) ? unions.get(commandName)?.get(field) : undefined;
+    const fromValueSet = Array.isArray(state.valueSet) ? state.valueSet.map(item => stringValue(item)).filter(Boolean) : [];
+    const literals = fromContract && fromContract.length >= 2
+      ? fromContract
+      : (fromValueSet.length >= 2 ? fromValueSet : []);
+    if (literals.length < 2) continue;
+    if (!isBoundToTextInput(pageCode, property)) continue;
+    const target = commandName && field ? `${commandName}.${field}` : property;
+    issues.push(`${target} is a closed domain (${literals.join('|')}) but is bound to a text input: render a <select> (or transition buttons when ≤4 options) with options {value: code, label: label}; never free text`);
+  }
+  return issues;
+}
+
+/** `XxxInput` field whose type is a pure string-literal union, keyed by camelCase(Xxx). */
+function contractInputLiteralUnions(contractSource: string): Map<string, Map<string, string[]>> {
+  const byCommand = new Map<string, Map<string, string[]>>();
+  if (!contractSource) return byCommand;
+  for (const match of contractSource.matchAll(/export\s+interface\s+([A-Za-z_$][\w$]*)Input\s*\{([^}]*)\}/gu)) {
+    const command = match[1].charAt(0).toLowerCase() + match[1].slice(1);
+    const fields = new Map<string, string[]>();
+    for (const field of match[2].matchAll(/^\s*([A-Za-z_$][\w$]*)\??\s*:\s*([^;]+);/gmu)) {
+      const literals = parseContractStringUnion(field[2]);
+      if (literals && literals.length >= 2) fields.set(field[1], literals);
+    }
+    if (fields.size) byCommand.set(command, fields);
+  }
+  return byCommand;
+}
+
+/** `'a' | 'b' | undefined` -> ['a','b']; null when the type is not a string-literal union. */
+function parseContractStringUnion(rawType: string): string[] | null {
+  const parts = rawType.split('|').map(part => part.trim()).filter(part => part && part !== 'undefined' && part !== 'null');
+  const literals: string[] = [];
+  for (const part of parts) {
+    const match = /^['"]([^'"]*)['"]$/.exec(part);
+    if (!match) return null;
+    literals.push(match[1]);
+  }
+  return literals.length ? literals : null;
+}
+
+const NON_TEXT_INPUT_TYPES = new Set([
+  'hidden', 'number', 'checkbox', 'radio', 'date', 'datetime-local', 'time', 'file', 'color', 'range', 'month', 'week',
+]);
+
+/** True when `property` is bound to a free-text `<input>` / `<textarea>` (not `<select>`). */
+function isBoundToTextInput(pageCode: string, property: string): boolean {
+  if (!property) return false;
+  const ident = escapeForRegExp(property);
+  const tagRe = new RegExp(`<(input|textarea)\\b([^>]*\\b(?:\\.value|value)=\\$\\{[^}]*\\b(?:this|host)\\.${ident}\\b[^>]*)>`, 'gu');
+  for (const match of pageCode.matchAll(tagRe)) {
+    if (match[1] === 'textarea') return true;
+    const type = /\btype\s*=\s*['"]([^'"]+)['"]/u.exec(match[2])?.[1]?.toLowerCase();
+    if (!type || !NON_TEXT_INPUT_TYPES.has(type)) return true;
+  }
+  return false;
+}
+
+/**
+ * Closed-domain field painted as the stored code in a list cell. The l4 already has
+ * enumLabels/lifecycleLabels; the cell must show the label (fallback: the code).
+ */
+export function collectEnumCellLabelIssues(pageCode: string, contractSource: string): string[] {
+  if (!pageCode) return [];
+  const unions = contractLiteralUnionFields(contractSource);
+  if (!unions.size) return [];
+  const issues: string[] = [];
+  const genericDump = /displayValue\s*\(\s*valueOf\s*\(\s*[^,]+,\s*column\.field/u.test(pageCode);
+  for (const [field, literals] of unions) {
+    if (hasBareEnumCell(pageCode, field) || (genericDump && hasColumnField(pageCode, field) && !hasEnumLabelLookup(pageCode, field))) {
+      issues.push(`${field} is a closed domain (${literals.join('|')}) painted as the stored code in a list cell: show the enumLabels/lifecycleLabels rótulo (fallback: the code); never \${item.${field}} or a generic displayValue on that column`);
+    }
+  }
+  return issues;
+}
+
+/**
+ * `*Id` (keyField / FK) as a table column when title/name is already there. The id stays in
+ * state for actions; the UUID is not a default column.
+ */
+export function collectIdColumnIssues(pageCode: string): string[] {
+  if (!pageCode) return [];
+  const columns = tableColumnFields(pageCode);
+  if (!columns.some(field => field === 'title' || field === 'name')) return [];
+  return columns.filter(isIdColumnField).map(field =>
+    `${field} is an id column while title/name is already in the table: drop the *Id column (keep the id in state for selection/actions)`);
+}
+
+function contractLiteralUnionFields(contractSource: string): Map<string, string[]> {
+  const byField = new Map<string, string[]>();
+  if (!contractSource) return byField;
+  for (const match of contractSource.matchAll(/([A-Za-z_$][\w$]*)\??\s*:\s*((?:'[^']*'\s*\|\s*)+'[^']*')/gu)) {
+    const literals = parseContractStringUnion(match[2]);
+    if (literals && literals.length >= 2 && !byField.has(match[1])) byField.set(match[1], literals);
+  }
+  return byField;
+}
+
+function hasColumnField(pageCode: string, field: string): boolean {
+  return new RegExp(`\\bfield\\s*:\\s*['"]${escapeForRegExp(field)}['"]`, 'u').test(pageCode);
+}
+
+function hasEnumLabelLookup(pageCode: string, field: string): boolean {
+  const ident = escapeForRegExp(field);
+  if (new RegExp(`\\[(?:item|row|entry|record)\\.${ident}\\]`, 'u').test(pageCode)) return true;
+  if (new RegExp(`column\\.field\\s*===\\s*['"]${ident}['"]`, 'u').test(pageCode)) return true;
+  if (new RegExp(`(?:Label|labels)\\s*[\\[(]`, 'u').test(pageCode) && new RegExp(`\\b${ident}\\b`, 'u').test(pageCode)) return true;
+  return false;
+}
+
+function hasBareEnumCell(pageCode: string, field: string): boolean {
+  const ident = escapeForRegExp(field);
+  const row = '(?:item|row|entry|record|task|project)';
+  const bare = new RegExp(
+    `\\$\\{\\s*(?:(?:displayValue|String)\\s*\\(\\s*)?(?:${row}\\.${ident}|valueOf\\s*\\(\\s*[^,]+,\\s*['"]${ident}['"]\\s*\\))\\s*\\)?\\s*\\}`,
+    'gu',
+  );
+  for (const match of pageCode.matchAll(bare)) {
+    if (isAttributeInterpolation(pageCode, match.index ?? 0)) continue;
+    if (hasEnumLabelLookup(match[0], field)) continue;
+    return true;
+  }
+  return false;
+}
+
+function isAttributeInterpolation(pageCode: string, index: number): boolean {
+  const before = pageCode.slice(Math.max(0, index - 48), index);
+  return /(?:^|[^=])\s*(?:\.?[A-Za-z_][\w-]*|@[A-Za-z_][\w-]*)=\s*$/u.test(before);
+}
+
+function tableColumnFields(pageCode: string): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const add = (name: string): void => {
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    names.push(name);
+  };
+  for (const match of pageCode.matchAll(/\bfield\s*:\s*['"]([A-Za-z_$][\w$]*)['"]/gu)) add(match[1]);
+  for (const match of pageCode.matchAll(/<td\b[^>]*>\s*\$\{[^}]*\b(?:item|row|entry|record)\.([A-Za-z_$][\w$]*)/gu)) add(match[1]);
+  return names;
+}
+
+function isIdColumnField(name: string): boolean {
+  return name === 'id' || /Id$/u.test(name);
 }
 
 /**
@@ -458,7 +811,55 @@ export function collectPageTemplateHygieneIssues(pageCode: string): string[] {
       ? '`this.msg` is used but this file defines no `get msg()`: the i18n block of the skeleton (/// **collab_i18n_start** … the messages consts … `protected get msg()`) was deleted — the shared base class does NOT provide `msg`. Restore the block with the keys this render references.'
       : '`this.msg` is used in a render FUNCTION, which has no `this`: an organism reads its own catalog — `const msg = o<N>Messages[host.getMessageKey(o<N>Messages)] || o<N>Fallback` — and takes everything else from `host`.');
   }
+  issues.push(...collectPageCatalogueIssues(pageCode));
   return issues;
+}
+
+/**
+ * The catalogue block belongs to the SKELETON, and the model rebuilding it is a compile error every time.
+ *
+ * Run fe2 of the petShop (22/08): 7 of 19 page21 files replaced the emitted
+ * `pageMessage_<locale>`/`PageMessageType` block with a hand-written `collab_i18n_<lang>` one — three
+ * locales for a module that declares ONE, each `as const`, typed `type CollabI18n = typeof
+ * collab_i18n_pt`. Since `as const` pins the values as literal types, the other two locales cannot
+ * satisfy that type: 6× TS2322 in 2 files, and the module gate was the only thing that saw them (the
+ * per-file verify does not close types over the module).
+ *
+ * Textual on purpose, same precedent as the helper-interpolation checks above: the defect is named in the
+ * loop that just saved the file, where a repair slot already exists, instead of arriving as a module-wide
+ * compiler diagnostic that says nothing about the cause.
+ */
+export function collectPageCatalogueIssues(pageCode: string): string[] {
+  if (!pageCode) return [];
+  const issues: string[] = [];
+  const handWritten = [...pageCode.matchAll(/^\s*(?:const|let)\s+(collab_i18n_[A-Za-z0-9_$]+)\s*[=:]/gmu)]
+    .map(match => match[1]);
+  if (handWritten.length > 0) {
+    issues.push(`catalogue rebuilt by hand: ${[...new Set(handWritten)].join(', ')} — the skeleton emits `
+      + '`pageMessage_<locale>` (or `o<N>Message_<locale>`) with the type `PageMessageType` (`O<N>Msg`) '
+      + 'and the map `pageMessages`; keep that block between the /// **collab_i18n_start** markers verbatim '
+      + 'and never introduce a `collab_i18n_*` const');
+  }
+  // A catalogue const frozen with `as const` makes its values LITERAL types, so no other locale can be
+  // typed from it. The skeleton never emits it.
+  for (const match of pageCode.matchAll(/^\s*(?:const|let)\s+((?:pageMessage|o\d+Message|collab_i18n)_[A-Za-z0-9_$]+)[^=]*=\s*\{[\s\S]*?^\s*\}\s*as const\s*;/gmu)) {
+    issues.push(`catalogue '${match[1]}' is frozen with \`as const\`: its values become literal types and `
+      + 'every other locale then fails TS2322 — drop `as const` (the default locale is inferred, the others '
+      + 'carry `: PageMessageType`)');
+  }
+  // More than one catalogue for the SAME locale: the duplicate is what diverges and produces a TS2353 on
+  // a key present in one copy and missing from the one that defines the type.
+  const byLocale = new Map<string, string[]>();
+  for (const match of pageCode.matchAll(/^\s*(?:const|let)\s+((?:pageMessage|o\d+Message)_([A-Za-z0-9_$]+))\s*[=:]/gmu)) {
+    const locale = match[2].replace(/_/gu, '-').toLowerCase();
+    byLocale.set(locale, [...(byLocale.get(locale) ?? []), match[1]]);
+  }
+  for (const [locale, consts] of byLocale) {
+    if (consts.length > 1) {
+      issues.push(`locale '${locale}' has ${consts.length} catalogues (${consts.join(', ')}): one locale, one const`);
+    }
+  }
+  return [...new Set(issues)];
 }
 
 /** Field names that carry an image URL from the BFF (bugimage.md). */
@@ -633,7 +1034,8 @@ function designTokenRoleRules(bases: string[]): string[] {
  * prompt (excess context slows the call and invites hallucination).
  */
 export function trimDefinitionForPrompt(itemType: string, data: unknown): unknown {
-  if (data === null || typeof data !== 'object' || Array.isArray(data)) return data;
+  // page11 prose is already the prompt; do not wrap it as JSON.
+  if (typeof data === 'string' || data === null || typeof data !== 'object' || Array.isArray(data)) return data;
   if (itemType === 'l2_page') {
     const { sections, origin, ...rest } = data as Record<string, unknown>;
     void sections;
@@ -715,6 +1117,8 @@ function extractConstObject(src: string, name: string): unknown {
   let open = eq + 1;
   while (open < src.length && /\s/.test(src[open])) open++;
   const openCh = src[open];
+  if (openCh === '"' || openCh === "'" || openCh === '`') return extractQuotedString(src, open);
+
   const closeCh = openCh === '[' ? ']' : openCh === '{' ? '}' : '';
   if (!closeCh) return null;
 
@@ -744,25 +1148,91 @@ function extractConstObject(src: string, name: string): unknown {
   try { return JSON.parse(src.slice(open, i)); } catch { return null; }
 }
 
+function extractQuotedString(src: string, start: number): string | null {
+  const quote = src[start];
+  if (quote === '"') {
+    let i = start + 1;
+    while (i < src.length) {
+      const c = src[i];
+      if (c === '\\') { i += 2; continue; }
+      if (c === '"') {
+        try { return JSON.parse(src.slice(start, i + 1)) as string; } catch { return null; }
+      }
+      i++;
+    }
+    return null;
+  }
+  let out = '';
+  for (let i = start + 1; i < src.length; i++) {
+    const c = src[i];
+    if (c === '\\' && i + 1 < src.length) {
+      const next = src[i + 1];
+      if (next === quote || next === '\\') { out += next; i++; continue; }
+      if (quote === '`' && next === '$') { out += '$'; i++; continue; }
+      if (next === 'n') { out += '\n'; i++; continue; }
+      if (next === 'r') { out += '\r'; i++; continue; }
+      if (next === 't') { out += '\t'; i++; continue; }
+      out += next;
+      i++;
+      continue;
+    }
+    if (c === quote) return out;
+    out += c;
+  }
+  return null;
+}
+
 function firstExportName(src: string): string | null {
   const re = /export const\s+([A-Za-z0-9_$]+)\s*=/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(src))) {
-    if (m[1] !== 'pipeline') return m[1];
+    // `pipeline` is the materialize plan; `bindings` is the page11 structured sibling. Neither is the
+    // artifact the prompt consumes.
+    if (m[1] !== 'pipeline' && m[1] !== 'bindings') return m[1];
   }
   return null;
 }
 
 export function parseDefs(src: string): ParsedDefs {
   const dataExportName = firstExportName(src);
-  const artifact = dataExportName ? extractConstObject(src, dataExportName) as Record<string, unknown> | unknown[] | null : null;
+  const artifact = dataExportName ? extractConstObject(src, dataExportName) as Record<string, unknown> | unknown[] | string | null : null;
   const pipelineArr = extractConstObject(src, 'pipeline');
   const items = Array.isArray(pipelineArr) ? pipelineArr as PipelineItem[] : [];
   const item = items.length ? items[0] : null;
+  const bindingsRaw = extractConstObject(src, 'bindings');
+  const bindings = Array.isArray(bindingsRaw) ? bindingsRaw : null;
   const data = artifact && typeof artifact === 'object' && !Array.isArray(artifact) && 'data' in artifact
     ? (artifact as { data: unknown }).data
     : artifact;
-  return { dataExportName, artifact, data, item, items };
+  return { dataExportName, artifact, data, bindings, item, items };
+}
+
+/**
+ * What the deterministic page gates read. page21/31: the definition object (has `dataBindings`).
+ * page11: the sibling `bindings` export plus `pageId` taken from the page outputPath (the prose
+ * definition has neither).
+ */
+export function pageDefinitionForChecks(parsed: ParsedDefs): unknown {
+  if (typeof parsed.data === 'string') {
+    return { pageId: pageIdFromParsed(parsed), dataBindings: parsed.bindings ?? [] };
+  }
+  return parsed.data;
+}
+
+/** Command ids the split plan needs — from the definition object or the page11 sibling export. */
+export function bindingCommandsOf(data: unknown, siblingBindings?: unknown[] | null): string[] {
+  const rows = typeof data === 'string'
+    ? (Array.isArray(siblingBindings) ? siblingBindings : [])
+    : (isRecord(data) && Array.isArray(data.dataBindings)
+      ? data.dataBindings
+      : (Array.isArray(siblingBindings) ? siblingBindings : []));
+  return rows.filter(isRecord).map(binding => String(binding.command ?? '')).filter(Boolean);
+}
+
+function pageIdFromParsed(parsed: ParsedDefs): string {
+  const pageItem = parsed.items.find(item => item.type === 'l2_page') ?? parsed.item;
+  const name = (pageItem?.outputPath || '').replace(/\.ts$/u, '').split('/').pop() ?? '';
+  return name.replace(/_O\d+$/u, '');
 }
 
 /**
@@ -898,7 +1368,9 @@ ${skills}`;
  *        Omitted on a repair round: there the file on disk already IS the skeleton, filled in.
  */
 export function buildHumanPrompt(data: unknown, contextSections: string[], outputPath: string, repairHint?: string, skeleton?: string): string {
-  const lines = ['## Definition', '', '```json', JSON.stringify(data, null, 2), '```', ''];
+  const lines = typeof data === 'string'
+    ? ['## Definition', '', data, '']
+    : ['## Definition', '', '```json', JSON.stringify(data, null, 2), '```', ''];
   if (contextSections.length) {
     lines.push('## Context files (dependsFiles)', '');
     for (const c of contextSections) lines.push(c, '');
@@ -1011,7 +1483,196 @@ export function collectContractFieldIssues(pageCode: string, contractSource: str
       }
     }
   }
+  issues.push(...collectSelectedRecordFieldIssues(pageCode, fieldsByBff, arrayBindings, seen));
+  issues.push(...collectTypedOutputParamFieldIssues(pageCode, fieldsByBff, seen));
+  issues.push(...collectOriginBoundFieldIssues(pageCode, fieldsByBff, arrayBindings, seen));
   return issues;
+}
+
+/**
+ * Close the field check by ORIGIN of the data, not by the syntactic form of the read.
+ *
+ * `selected.<campo>` (find/[0]/at) and `(row: QryXOutput) =>` were two forms. The third that
+ * escaped — run fe4, page21/recordInStoreServiceAttendance.ts:55–74 — is a parameter whose type is
+ * INFERRED from the list: `(row: (typeof rows)[number]) => row.serviceExecutionId`. Chasing forms
+ * is a losing race. Any identifier whose value derives from `this.<bffId>Data` (direct assignment,
+ * find/at/[0], map/forEach/filter callback, or `(typeof <list>)[number]`) may only read fields
+ * that bff declares.
+ */
+function collectOriginBoundFieldIssues(
+  pageCode: string,
+  fieldsByBff: Map<string, Set<string>>,
+  arrayBindings: Map<string, Set<string>>,
+  seen: Set<string>,
+): string[] {
+  const origin = new Map<string, Set<string>>();
+  const add = (name: string, bffs: Iterable<string>): void => {
+    const bound = origin.get(name) ?? new Set<string>();
+    for (const bff of bffs) bound.add(bff);
+    origin.set(name, bound);
+  };
+  for (const [name, bffs] of arrayBindings) add(name, bffs);
+
+  let grew = true;
+  while (grew) {
+    grew = false;
+    const pickRe = /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*(?:\.\s*find\s*\(|\.\s*at\s*\(\s*0\s*\)|\[\s*0\s*\])/gu;
+    for (const match of pageCode.matchAll(pickRe)) {
+      const source = origin.get(match[2]);
+      if (!source) continue;
+      const before = origin.get(match[1])?.size ?? 0;
+      add(match[1], source);
+      if ((origin.get(match[1])?.size ?? 0) > before) grew = true;
+    }
+    const callbackRe = /\b([A-Za-z_$][\w$]*)\s*\.\s*(?:map|forEach|filter|find)\s*\(\s*(?:async\s*)?\(?\s*([A-Za-z_$][\w$]*)/gu;
+    for (const match of pageCode.matchAll(callbackRe)) {
+      const source = origin.get(match[1]);
+      if (!source) continue;
+      const before = origin.get(match[2])?.size ?? 0;
+      add(match[2], source);
+      if ((origin.get(match[2])?.size ?? 0) > before) grew = true;
+    }
+    const typeofRe = /\(\s*([A-Za-z_$][\w$]*)\s*:\s*\(\s*typeof\s+([A-Za-z_$][\w$]*)\s*\)\s*\[\s*number\s*\]/gu;
+    for (const match of pageCode.matchAll(typeofRe)) {
+      const source = origin.get(match[2]);
+      if (!source) continue;
+      const before = origin.get(match[1])?.size ?? 0;
+      add(match[1], source);
+      if ((origin.get(match[1])?.size ?? 0) > before) grew = true;
+    }
+  }
+
+  const issues: string[] = [];
+  const commandRemedy = 'A field that only exists in the output of a COMMAND is read from that command\'s state, never from the query record';
+  for (const [name, bffs] of origin) {
+    if (bffs.size !== 1) continue;
+    const bff = [...bffs][0];
+    const declared = fieldsByBff.get(bff);
+    if (!declared) continue;
+    collectDirectFieldAccessIssues(pageCode, name, bff, declared, seen, issues, commandRemedy);
+  }
+  return issues;
+}
+
+/**
+ * The SINGLE record picked out of a list — `const selected = rows.find(…)` — read for a field the query
+ * does not return.
+ *
+ * The row check above only follows `<array>.map((row) => …)`, so a page that selects one record escaped
+ * it entirely. Run fe2 of the petShop, `page21/recordInStoreServiceAttendance.ts`: `const selected =
+ * rows.find(…)` and then `selected.inStorePaymentId`, `selected.serviceStartedAt`, `selected.completedAt`,
+ * `selected.pickedUpAt` — 7× TS2339. The fields are REAL, just not here: they are outputs of the
+ * `registerPetArrival`/`registerServiceStart` COMMANDS, while
+ * `qryLocateConfirmedServiceAppointment.outputShape` carries only the appointment's own fields. A field
+ * that exists only in a command's output is read from that command's state, never from the query row.
+ *
+ * Same scoping discipline as the row check: a name bound to more than one query is ambiguous and dropped,
+ * and only template interpolations count (outside `${…}` the same text can be an i18n key).
+ */
+function collectSelectedRecordFieldIssues(
+  pageCode: string,
+  fieldsByBff: Map<string, Set<string>>,
+  arrayBindings: Map<string, Set<string>>,
+  seen: Set<string>,
+): string[] {
+  const issues: string[] = [];
+  const singles = new Map<string, Set<string>>();
+  // `const selected = rows.find(…)`, `rows[0]`, `rows.at(0)` — the three ways a page picks one record out
+  // of a list it already bound to a query.
+  const pickRe = /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)\s*(?:\.\s*find\s*\(|\.\s*at\s*\(\s*0\s*\)|\[\s*0\s*\])/gu;
+  for (const match of pageCode.matchAll(pickRe)) {
+    const bffs = arrayBindings.get(match[2]);
+    if (!bffs || bffs.size !== 1) continue;
+    const bound = singles.get(match[1]) ?? new Set<string>();
+    bound.add([...bffs][0]);
+    singles.set(match[1], bound);
+  }
+  const commandRemedy = 'A field that only exists in the output of a COMMAND is read from that command\'s state, never from the query record';
+  for (const [name, bffs] of singles) {
+    if (bffs.size !== 1) continue;
+    const bff = [...bffs][0];
+    const declared = fieldsByBff.get(bff);
+    if (!declared) continue;
+    collectDirectFieldAccessIssues(pageCode, name, bff, declared, seen, issues, commandRemedy);
+  }
+  return issues;
+}
+
+/**
+ * Run fe3, `page21/recordInStoreServiceAttendance.ts`: the invented field is NOT in a template.
+ * `choose = (row: QryLocateConfirmedServiceAppointmentOutput) => { this.setX(row.serviceExecutionId) }`
+ * — a parameter typed as the query Output, read as a function argument. The interpolation-only check
+ * never saw it, and the repair loop regenerated the page 4× with the same invent.
+ */
+function collectTypedOutputParamFieldIssues(
+  pageCode: string,
+  fieldsByBff: Map<string, Set<string>>,
+  seen: Set<string>,
+): string[] {
+  const issues: string[] = [];
+  const paramRe = /\(\s*([A-Za-z_$][\w$]*)\s*:\s*([A-Za-z_$][\w$]*)Output\s*\)/gu;
+  const commandRemedy = 'A field that only exists in the output of a COMMAND is read from that command\'s state, never from the query record';
+  for (const match of pageCode.matchAll(paramRe)) {
+    const param = match[1];
+    const bff = match[2].charAt(0).toLowerCase() + match[2].slice(1);
+    const declared = fieldsByBff.get(bff);
+    if (!declared) continue;
+    const after = pageCode.slice(match.index! + match[0].length);
+    const body = typedParamBody(after);
+    if (!body) continue;
+    collectDirectFieldAccessIssues(body, param, bff, declared, seen, issues, commandRemedy);
+  }
+  return issues;
+}
+
+function typedParamBody(after: string): string {
+  const brace = after.indexOf('{');
+  const arrow = after.indexOf('=>');
+  if (arrow >= 0 && (brace < 0 || arrow < brace)) {
+    const rest = after.slice(arrow + 2);
+    const inner = rest.indexOf('{');
+    if (inner >= 0 && inner < 40 && !rest.slice(0, inner).includes(';')) {
+      return balancedBraceBody(rest, inner + 1);
+    }
+    const semi = rest.indexOf(';');
+    return semi >= 0 ? rest.slice(0, semi) : rest.slice(0, 400);
+  }
+  if (brace >= 0) return balancedBraceBody(after, brace + 1);
+  return '';
+}
+
+function collectDirectFieldAccessIssues(
+  source: string,
+  ident: string,
+  bff: string,
+  declared: Set<string>,
+  seen: Set<string>,
+  issues: string[],
+  remedy: string,
+): void {
+  const stripped = source.replace(/'[^']*'/gu, "''").replace(/"[^"]*"/gu, '""');
+  const accessRe = new RegExp(`\\b${escapeForRegExp(ident)}\\??\\.([A-Za-z_$][\\w$]*)\\b(?!\\s*[.(])`, 'gu');
+  for (const access of stripped.matchAll(accessRe)) {
+    const field = access[1];
+    if (declared.has(field) || ROW_BUILTINS.has(field)) continue;
+    const key = `${bff}.${ident}.${field}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    issues.push(`contract field missing -> \`${ident}.${field}\` is not declared by ${bff}: its output is ${[...declared].sort().join(', ')}. ${remedy}`);
+  }
+}
+
+function balancedBraceBody(source: string, from: number): string {
+  let depth = 1;
+  for (let index = from; index < source.length; index++) {
+    const char = source[index];
+    if (char === '{') depth++;
+    else if (char === '}') {
+      depth--;
+      if (depth === 0) return source.slice(from, index);
+    }
+  }
+  return source.slice(from);
 }
 
 /** From just after `map((row`, the balanced text of the callback — or '' when the parens do not close. */
@@ -1082,15 +1743,17 @@ export function applyHeader(outputPath: string, code: string): string {
  * or base class name because both are already fixed by the page/shared definitions.
  */
 export function normalizeGeneratedCode(item: PipelineItem, data: unknown, code: string): string {
-  if (!isRecord(data)) return code;
   if (item.type === 'l2_shared') {
+    if (!isRecord(data)) return code;
     const baseClassName = typeof data.baseClassName === 'string' ? data.baseClassName : '';
     if (!baseClassName) return code;
     return code.replace(/export\s+class\s+[A-Za-z_$][A-Za-z0-9_$]*\s+extends\s+CollabLitElement\b/, `export class ${baseClassName} extends CollabLitElement`);
   }
   if (item.type !== 'l2_page') return code;
 
-  const baseClassName = typeof data.baseClassName === 'string' ? data.baseClassName : '';
+  // page11 definition is prose — still fix the shared import extension; the class name comes from
+  // the skeleton / shared defs, so a missing baseClassName here is not a skip of the .js rewrite.
+  const baseClassName = isRecord(data) && typeof data.baseClassName === 'string' ? data.baseClassName : '';
   return code
     .replace(/(from\s+['"][^'"]+\/web\/shared\/[^'"]+)\.ts(['"])/g, '$1.js$2')
     .replace(/(import\s*\{\s*)[A-Za-z_$][A-Za-z0-9_$]*(\s*\}\s*from\s*['"][^'"]+\/web\/shared\/[^'"]+\.js['"])/g, (_match, start, end) => baseClassName ? `${start}${baseClassName}${end}` : _match);
@@ -1451,4 +2114,29 @@ function stringValue(value: unknown): string {
 
 function arrayRecords(value: unknown): Record<string, any>[] {
   return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+/** Legacy page tag: kebab(folder) with `/` → `--`, then kebab(shortName)-<projectId>.
+ * Variants of one page must differ ONLY by `--pageNN--`; the suffix is always the project id. */
+export function expectedPageCustomElementTag(outputPath: string): string | null {
+  const match = /^_(\d+)_\/l2\/(.+)\/([A-Za-z0-9_]+)\.ts$/u.exec(outputPath);
+  if (!match) return null;
+  const [, project, folder, shortName] = match;
+  const genome = folder.split('/').pop() || '';
+  if (!/^page\d+$/u.test(genome)) return null;
+  return `${toKebabFolder(folder).replace(/\//gu, '--')}--${toKebabFolder(shortName)}-${project}`;
+}
+
+function toKebabFolder(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase();
+}
+
+/** The LLM-emitted `@customElement` must match the path, or `mls.sites.setPage` cannot swap variants. */
+export function collectPageCustomElementTagIssues(pageCode: string, outputPath: string): string[] {
+  const expected = expectedPageCustomElementTag(outputPath);
+  if (!expected) return [];
+  const match = /@customElement\(\s*['"]([^'"]+)['"]\s*\)/u.exec(pageCode);
+  if (!match) return [`@customElement tag missing; expected '${expected}'`];
+  if (match[1] === expected) return [];
+  return [`@customElement '${match[1]}' must be '${expected}' (project id suffix; variants of a page differ only by --pageNN--)`];
 }

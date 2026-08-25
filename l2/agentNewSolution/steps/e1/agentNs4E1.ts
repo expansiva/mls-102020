@@ -240,10 +240,17 @@ async function persistNs4E1(
   if (resumeModule && moduleName !== resumeModule) {
     throw new Error(`A retomada pertence ao módulo "${resumeModule}"; mantenha esse moduleName ou inicie uma nova execução.`);
   }
+  const rebuildModule = normalizeOptionalModuleName(memoryString(context, 'rebuildModule'));
   const existingPipeline = await readNs4Pipeline(moduleName);
   if (listNs4ModuleFolders().has(moduleName)) {
     const allowedResume = resumeModule === moduleName && isNs4Pipeline(existingPipeline);
-    if (!allowedResume) throw new Error(`Módulo "${moduleName}" já existe e não pertence a uma retomada válida do agentNewSolution.`);
+    // A /rebuild run is a legitimate reason for the folder to still be there: the archive is a
+    // soft-delete and the module keeps l2 files this flow does not own, so `listNs4ModuleFolders`
+    // still reports it. The guard stays exactly as strict for every other collision.
+    const allowedRebuild = rebuildModule === moduleName;
+    if (!allowedResume && !allowedRebuild) {
+      throw new Error(`Módulo "${moduleName}" já existe e não pertence a uma retomada válida do agentNewSolution. Para regenerar, use "@@newSolution ${moduleName} /rebuild" (tudo) ou "@@newSolution ${moduleName} /rebuild e10" (a partir de um step).`);
+    }
   }
 
   const now = new Date().toISOString();

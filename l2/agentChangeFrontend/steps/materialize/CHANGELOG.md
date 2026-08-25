@@ -2,6 +2,75 @@
 
 # Changelog
 
+- 2026-08-24 (rótulos e ids na lista) — célula de enum que pinta o código armazenado
+  (`inProgress`, `medium`) é finding reparável (`collectEnumCellLabelIssues`); o rótulo do l4
+  (enumLabels/lifecycleLabels) é o default, o código é só fallback. Coluna cujo field é `id`/`*Id`
+  com title/name na mesma tabela é finding (`collectIdColumnIssues`) — UUID não é coluna default,
+  o id continua no state. Regras 9–10 nas skills page11/page21 na mesma entrega.
+
+- 2026-08-24 (seleção e estado de botão) — três gates no verify da page/shared, regras nas
+  skills page11/page21/shared na mesma entrega. (1) lista `selection:single` (ou id de
+  rota/seleção ao lado de uma lista) sem clique de linha / `<select>` é finding reparável
+  (`collectSelectionControlIssues`). (2) command com id required de rota/seleção vazio e
+  botão clicável (sem `?disabled` + `title`) é clique morto — `collectCommandDisabledIssues`.
+  (3) getById cujo input required é só `routeParam` tem de estar em `initialLoads`
+  (`collectMissingInitialLoadIssues`, warning: o .ts do shared não reescreve o defs).
+  Geração: `queryQualifiesForInitialLoad` — required route entra no boot; userInput/selection
+  required continua fora (102049 searchProducts 400).
+
+- 2026-08-24 (erro do envelope na tela) — HTTP 4xx do `/execBff` carrega o envelope
+  `{ok:false, error:{code,message}}`; o texto da tela é `error.message` (ou i18n keyed por
+  `error.code`), nunca "Erro do servidor (400)". O `bffClient` (102029) passou a devolver o
+  envelope em vez de sintetizar o status. Gate `collectMutationEnvelopeErrorIssues` no shared
+  gerado + fidelidade do error state em `collectMutationFeedbackIssues`. Mesma entrega: regra
+  nas skills shared/page11/page21.
+
+- 2026-08-24 (enum nunca é texto livre) — campo cuja união no contrato é literal (ou cujo shared
+  input state carrega `valueSet` do l4 enum[]) ligado a `<input>` de texto (typed ou untyped) é
+  finding reparável. `collectEnumTextInputIssues` no verify; select/botões de transição passam.
+  Filtro de enum é select com opção vazia. A regra entra nas duas skills de render na mesma
+  entrega (page11 não tinha nenhuma; page21 já cobria transição-como-botões). O contrato l2
+  passa a emitir a união literal no INPUT quando o l4 declara enum[] — sem isso o gate era no-op
+  (`status: string`).
+
+- 2026-08-22 (guard por ORIGEM do dado, fe4) — `collectContractFieldIssues` cobria `selected.campo`
+  (find/[0]/at) e `(row: QryXOutput) =>`. A terceira forma — `(row: (typeof rows)[number]) =>
+  row.serviceExecutionId` nas linhas 55–74 de `recordInStoreServiceAttendance` — escapou. Perseguir
+  formas perde. O guard agora rastreia identificadores que derivam de `this.<bffId>Data` (atribuição,
+  find/at/[0], callback de map/forEach/filter/find, parâmetro `(typeof list)[number]`) e só permite
+  campos declarados naquele bff. As duas formas anteriores continuam cobertas (mesmo `seen`).
+
+- 2026-08-22 (run fe2 do petShop: 15 erros de tsc em 5 arquivos mataram a task no gate final) — 4 causas,
+  4 fixes, nenhum afrouxamento de gate:
+  * **locale fantasma**: `i18nMeta.defaultLocale` vem COLAPSADO (`pt`) e `runtimeLocales` PRESERVA a
+    região (`pt-br`), então `[default, ...declared.filter(l => l !== default)]` deixava os dois entrarem
+    e a página saía com dois catálogos idênticos. Agora `catalogueLocales` (cfeSharedScaffold) — o default
+    colapsado só entra quando NENHUM declarado realiza a mesma língua primária, e `en` + `en-AU` seguem
+    sendo dois catálogos. Isto elimina por construção o TS2353 do page11 (a chave só existia na cópia
+    que não define o tipo).
+  * **catálogo reescrito à mão**: as skills mandavam manter "o bloco `collab_i18n_*` (seus consts, seu
+    tipo, seu mapa)" enquanto o esqueleto emite `pageMessage_<locale>`/`PageMessageType`/`pageMessages`.
+    7 de 19 arquivos page21 reconstruíram o token que a skill nomeava — 3 idiomas `as const` para um
+    módulo de UM idioma = 6× TS2322. Skills corrigidas para nomear o que o esqueleto emite, proibir
+    `as const` em catálogo e fixar o conjunto de locales; guard textual novo
+    `collectPageCatalogueIssues` pega o residual no mesmo loop que salvou o arquivo.
+  * **campo de comando lido da query**: `collectContractFieldIssues` só seguia `<array>.map(row => …)`;
+    uma página que seleciona UM registro (`rows.find(…)`, `rows[0]`) escapava inteira — 7× TS2339 em
+    `selected.inStorePaymentId`/`serviceStartedAt`/… , campos que são saída dos COMANDOS. Guard estendido
+    ao registro selecionado, com o remédio certo na mensagem, + regra nas duas skills.
+  * **helper recursivo**: a skill dizia "nunca anote retorno de render, a inferência é sempre correta" —
+    e para um helper recursivo não existe inferência (TS7023/7024). Exceção estreita adicionada.
+
+
+- 2026-08-21 (rodada 7: falha de LLM em 1 slot matava a task) — `createFanoutStep` passou a nascer com
+  `onFailure: 'wait_after_prompt'`, e com isso os 4 hosts deste agente (materialize, repair, split de
+  organismos, composicao da pagina). Evidencia: `msgtask_fe1` do petShop — um HTTP 402 no modelo de
+  fallback derrubou a task com 14/57 paginas prontas e 8 slots orfaos em `in_progress`. O comentario
+  "fan-out slots NEVER return 'failed'" cobria os RETORNOS do agente; a falha de LLM acontece no
+  harness, ANTES do `afterPromptStep`, e caia no default que passa `newTaskStatus: 'failed'`.
+  `'skip'` NAO resolveria: marca o slot como failed, o que derruba a task enquanto os irmaos estao
+  ativos e derruba o host quando eles drenam.
+
 - 2026-07-31 (item B + B.1 do supervisor: 4 defeitos transversais como REGRA e como CHECK) —
 . Cada defeito virou regra nas DUAS skills de render e check
   deterministico no verify; regra sozinha nao segura (a disciplina de titulos ja reincidiu 3x).

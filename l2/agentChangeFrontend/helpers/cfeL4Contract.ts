@@ -80,6 +80,15 @@ export function frontendInputPresentation(input: CfeL4OperationInput): ClientInp
   return clientInputPresentation(input.source);
 }
 
+/**
+ * A query may run on connectedCallback when every REQUIRED input is already on the URL.
+ * Required userInput/selection is empty at boot (the BFF 400s — 102049 searchProducts).
+ * Required routeParam is filled by syncRouteParams before initialLoads fire.
+ */
+export function queryQualifiesForInitialLoad(fields: { required?: boolean; presentation?: string | null }[]): boolean {
+  return fields.every(field => field.required !== true || field.presentation === 'route');
+}
+
 export function hasL4OperationInputs(operationData: unknown): boolean {
   const operation = isRecord(operationData) ? operationData : {};
   return Array.isArray(operation.inputs);
@@ -115,7 +124,7 @@ export function l4OperationOutputRefs(operationData: unknown): string[] {
 // ---- L4 v2: workspace bffCalls (the wire contract of a page) ----
 // A workspace declares bffCalls[] (projected views over 1..N operations) and sections[].organisms[]
 // (roles that reference a bffId via dataSource/action/attachTo). One bffCall => one page "command".
-// The precise TS types are the byte-copied l4 contract (l4/<module>/contracts/<ws>.<bffId>.ts); the
+// The precise TS types are the byte-copied l4 contract (l4/<module>/contracts/<ws>--<bffId>.defs.ts); the
 // shapes below carry only what the deterministic pipeline needs (names, kind, required, presentation).
 
 export interface CfeBffCallField {
@@ -159,6 +168,8 @@ export interface CfeWorkspaceOrganism {
   action?: string;       // command bffId (contextualAction / batchAction)
   attachTo?: string;     // query bffId whose inputs the filterControl drives
   slice?: string;        // slice of a composed (uses N>1) output
+  /** picker = choose a row; summary = counts of the list items (not getById of one row). */
+  usage?: string;
 }
 
 export interface CfeWorkspaceSection {
@@ -241,10 +252,12 @@ export function parseWorkspaceSections(data: unknown): CfeWorkspaceSection[] {
           const action = readString(org.action);
           const attachTo = readString(org.attachTo);
           const slice = readString(org.slice);
+          const usage = readString(org.usage);
           if (dataSource) organism.dataSource = dataSource;
           if (action) organism.action = action;
           if (attachTo) organism.attachTo = attachTo;
           if (slice) organism.slice = slice;
+          if (usage) organism.usage = usage;
           return organism;
         })
         .filter(org => org.role),

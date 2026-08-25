@@ -17,15 +17,43 @@ The human message ends with a "## Skeleton — complete this file" section holdi
 written for you. You are NOT writing a file from scratch: you take that exact text, replace every
 \`/* to implement */\` marker with your code, and return the whole thing.
 
-Keep verbatim: the mls header, the imports, the \`collab_i18n_*\` block STRUCTURE (its consts, its type,
-its map), the tag name, the class name, and the \`msg\` getter. Do not re-derive them, do not reorder
-them, never add a second i18n block, never write your own \`get msg\`.
+Keep verbatim: the mls header, the imports, the CATALOGUE BLOCK between the
+\`/// **collab_i18n_start**\` and \`/// **collab_i18n_end**\` markers, the tag name, the class name, and
+the \`msg\` getter. Do not re-derive them, do not reorder them, never add a second catalogue block,
+never write your own \`get msg\`.
+
+The block the skeleton hands you is named \`pageMessage_<locale>\` (or \`o<N>Message_<locale>\` in a split
+organism), with the type \`PageMessageType\` (\`O<N>Msg\`) and the map \`pageMessages\` (\`o<N>Messages\`).
+Those are the ONLY names — there is no \`collab_i18n_<lang>\` const and you must not create one. If you
+rename or rebuild that block, the file stops compiling:
+
+- **The LOCALE SET is the skeleton's, exactly.** One const per locale it emitted, no more, no fewer.
+  Adding a language is \`@@addLanguage\`'s job, which runs AFTER generation; a locale you invent here has
+  no translation and breaks the type.
+- **Never \`as const\` on a catalogue.** The first const defines the type by inference; with \`as const\`
+  its values become literal types and every OTHER locale fails TS2322. Real defect (petShop 22/08):
+  three \`collab_i18n_*\` consts with \`as const\` plus \`type CollabI18n = typeof collab_i18n_pt\` = 6
+  errors in 2 files.
+- The default locale is the only one WITHOUT an annotation; every other one keeps its \`: PageMessageType\`.
+  That is what makes a missing key TS2741 and a typo TS2353 instead of a silent untranslated screen.
 
 Anything below that contradicts the skeleton loses to the skeleton.
 
 Never annotate the return type of a render method. A helper that returns the Lit sentinel \`nothing\` for
 an empty branch is NOT a TemplateResult, so \`: TemplateResult\` (or \`: ReturnType<typeof html>\`) is a
-TS2322 error. Let TypeScript infer it — inference is always correct here.
+TS2322 error. Let TypeScript infer it.
+
+ONE exception, and it is not optional: a helper that is RECURSIVE — it calls itself, directly or through
+another helper — cannot be inferred at all (TS7023/TS7024, "implicitly has return type 'any' because it
+is referenced directly or indirectly in one of its return expressions"). Annotate exactly that helper,
+and only it, with the union the body really returns:
+
+\`\`\`ts
+const renderRecord = (value: unknown): TemplateResult | typeof nothing => { … renderRecord(child) … };
+\`\`\`
+
+Real defect (petShop 22/08, \`page11/petServiceOverviewView.ts\`): a recursive \`renderRecord\` with no
+annotation = 2 errors. Non-recursive helpers keep following the rule above: no annotation.
 
 ## Input contract
 
@@ -57,7 +85,18 @@ Read the shared base-class context (compiled .d.ts, or raw .ts as fallback) befo
    declare in the skeleton's block.
 6. Re-exported contract type names (export type { ... }).
 
-Use only those names in render(). Never invent property names or handler names. msg keys are the
+Use only those names in render().
+
+**The output of a query is a CLOSED set.** Every field you read from a row — or from the single record
+you pick out of it (\`const selected = rows.find(…)\`, \`rows[0]\`) — must be declared by that query's
+Output interface in the shared re-exports. A field that exists only in the output of a COMMAND is read
+from that command's state (\`this.cmd<X>Data\`), NEVER from the query record: the query does not return it
+and the access is a TS2339. Real defect (petShop 22/08, \`page21/recordInStoreServiceAttendance.ts\`):
+\`selected.serviceStartedAt\`, \`selected.completedAt\`, \`selected.pickedUpAt\`, \`selected.inStorePaymentId\`
+read off \`qryLocateConfirmedServiceAppointment\`, whose output carries only the appointment's own fields —
+7 errors from four fields that belong to \`registerServiceStart\`/\`registerPetArrival\`. If the screen needs
+a field the query does not return, render what IS declared; adding it to the query is an l4 decision, not
+a render workaround. Never invent property names or handler names. msg keys are the
 opposite: you DO invent them — short, in the skeleton's i18n block, in every locale.
 Import DTO types EXCLUSIVELY from the shared module — it re-exports every contract type this page can
 need. Never import from the contracts module (it is not in context and the page must not depend on it).
@@ -134,7 +173,13 @@ Prefer these patterns over the baseline stacked-cards-and-forms shape:
   from the selected item's current status (reading the lifecycle from shared state / rulesApplied) and
   render ONE button per allowed transition that calls the existing mutation handler. NEVER a free
   <select> over all enum values and NEVER a manually typed id input. This is the main fix over page11.
+  Button captions use enumLabels[].label when the catalog carries it; the handler still sends the code.
 - **card-board**: group items into lanes by status/stage; the primary action lives inline on each card.
+  Lane titles and the status text ON the card use enumLabels[].label (fallback: the code), never the
+  stored camelCase code. Same map as page11 list cells.
+- **list columns**: \`*Id\` (keyField / FKs) is not a default column when title or name is already there.
+  Keep the id in state for selection. Enum cells use the label map, never \`\${item.status}\` / generic
+  \`displayValue(valueOf(row, column.field))\`.
 - **inline-row-command**: a one-decision command executed directly on a list row.
 - **summary-first**: when pageObjective.informationHierarchy leads with numbers/status, render a
   compact summary/stat row before the detail.
@@ -164,14 +209,15 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
 - Translate pageObjective.usageFrequency into density: continuous/hands-busy favors large touch
   targets and compact cards; back-office favors tables and detail panels.
 - For every command action, render a dismissible textual feedback region driven by its action status:
-  success uses feedback.successMessageKey; error uses the AppError text from errorStateKey when present,
-  otherwise feedback.errorMessageKey. Never only an icon.
+  success uses feedback.successMessageKey; error uses the AppError text from errorStateKey (envelope
+  error.message) when present, otherwise this.msg[error.code] when that catalogue key exists, otherwise
+  feedback.errorMessageKey. Never only an icon. Never interpolate an HTTP status as the screen text.
 - Query/list intentions show a placeholder/skeleton while their query state is loading; command buttons
   show a progress label and are disabled while their action is loading.
 - Collapse repeated hierarchy: page title once as h1; a title that resolves to the same message as its
   parent is not repeated.
 
-## Regras invioláveis de experiência (as 4 reincidentes — cada uma tem check no gate)
+## Regras invioláveis de experiência (as 10 reincidentes — cada uma tem check no gate)
 
 1. VOCABULÁRIO INTERNO NUNCA VIRA TEXTO DE TELA. displayHint, intent id, state key, nome de bffCall e
    ids de binding são fiação, não copy. Um tile intitulado "Summary first" (o displayHint humanizado)
@@ -192,6 +238,26 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
    não repita); um heading nunca repete o label do botão/link vizinho (se o botão diz "Aprovar", o
    heading acima dele diz outra coisa ou não existe); no máximo UMA ação destrutiva por superfície,
    nunca como botão default de linha, e sempre com confirmação que NOMEIA o registro.
+5. ENUM NUNCA É TEXTO LIVRE. União literal no contrato, \`values:\` no JSDoc do @property, ou enum[]
+   no catálogo ⇒ nunca \`<input>\` de texto. Filtro: \`<select>\` com primeira opção vazia "todos".
+   Formulário (priority, tipo, …): \`<select>\` com opções {value: código, label: rótulo}. Transição
+   de ciclo de vida: botões contextuais (regra acima) — não texto e não um \`<select>\` solto de todos
+   os valores.
+6. ERRO DE MUTAÇÃO É A MENSAGEM DO ENVELOPE. O texto do feedback de erro é o error state (error.message
+   do envelope) ou this.msg[error.code] quando essa chave existe. HTTP status NUNCA é o texto da tela
+   — nunca "Erro do servidor (400)". A chave i18n de erro do comando é só fallback quando o envelope
+   não trouxe message.
+7. SELECTION NUNCA É DECORATIVA. \`selection: "single"\` na query, ou um input com source
+   \`selection\`/\`selectedEntity\`/\`routeParam\` ao lado de uma lista: a linha (ou um \`<select>\`) TEM
+   de gravar o id no stateKey. Clique na linha chama o setter, marca o selecionado, dispara o
+   getById/inspect. Tabela sem \`@click\` é defeito — nunca "nenhum". \`<select>\` tipo "Choose a
+   task" é o outro caminho válido.
+8. BOTÃO COM PRÉ-CONDIÇÃO. Command cujo input required de rota/seleção está vazio fica
+   \`?disabled=\${!host.id}\` com \`title\` dizendo o que falta. Nunca clicável-e-mudo.
+9. CÉLULA DE ENUM MOSTRA O RÓTULO. União literal / enum[] / lifecycleLabels ⇒ célula e texto de
+   card usam o rótulo, fallback o código. Nunca o código cru na lista. O fio continua o código.
+10. COLUNA \`*Id\` NÃO É DEFAULT. \`id\` / \`*Id\` só é coluna quando é a única identificação; com
+    title/name na tabela o UUID fica fora (id permanece no state para as ações).
 
 ## \`source\` is a RENDERING INSTRUCTION, not metadata
 
@@ -227,7 +293,14 @@ html\`<select .value=\${host.projectId} @change=\${host.setProjectId}>
 </select>\`
 \`\`\`
 
-Selecting a row of that query's own table is equally valid, and better when the row is already on screen.
+Selecting a row of that query's own table is equally valid, and better when the row is already on screen:
+
+\`\`\`typescript
+html\`<tr class=\${item.id === host.projectId ? 'bg-[var(--surface-selected)]' : ''}
+        @click=\${() => { host.setProjectId(item.id); void host.loadInspect(); }}>
+\`\`\`
+
+A list whose l4 accessPattern.selection is \`single\` MUST do one of the two. Never a table that only paints columns.
 
 ### \`actorDirectory\` — no directory service exists yet
 

@@ -89,8 +89,6 @@ self-sufficient (no other file needed to understand the member). Formats:
   /** handler for action <actionId> — bind UI events here */
 - Every stateSetter method:
   /** setter for state <stateKey> */
-- The msg getter:
-  /** i18n catalog — MessageType keys are the CLOSED msg vocabulary for page renders */
 
 Use /** ... */ JSDoc syntax exactly (line comments // are stripped from the .d.ts). Keep each JSDoc
 to one line. The information comes from Definition.states[] and Definition.actions[] — never invent.
@@ -142,43 +140,10 @@ Maintain a mapping from stateKey to propertyName internally while generating cod
 
 ## i18n
 
-The i18n block must be outside the class and wrapped exactly with these markers:
-
-\`\`\`typescript
-/// **collab_i18n_start**
-const message_en = {
-  // copy Definition.i18n exactly for Definition.i18nMeta.defaultLocale
-};
-type MessageType = typeof message_en;
-const messages: { [key: string]: MessageType } = { 'en': message_en };
-/// **collab_i18n_end**
-\`\`\`
-
-The example uses "en". NEVER hardcode "en": derive the key from Definition.i18nMeta.defaultLocale by
-lowercasing it and turning "_" into "-" — that is EXACTLY what the runtime does to the configured language
-list (mls-102033 listRuntimeLanguages), and document.documentElement.lang always holds that normalized
-form, so the map key must match it or the catalog is never found. The REGION IS PRESERVED (a module may
-declare both "en" and "en-AU"; the runtime falls back to the 2-letter prefix on its own). The const name
-is the same key with non-alphanumerics as "_":
-- "en" -> message_en and messages['en']
-- "pt-BR" or "pt_BR" -> message_pt_br and messages['pt-br']
-- "en-AU" -> message_en_au and messages['en-au']
-
-Generate ONE message object per locale in Definition.i18nMeta.runtimeLocales, all with the SAME keys,
-taken from Definition.i18n. The default locale comes first; the others repeat the same keys (leave the
-default text where you have no translation). Annotate every non-default one with \`: MessageType\` so a
-missing key fails to compile.
-Never declare the message objects or \`messages\` inside the class.
-Never write \`as const\` on message objects.
-
-EXPORT the type and the map — the pages import them:
-
-\`\`\`typescript
-export type MessageType = typeof message_en;
-export const messages: { [key: string]: MessageType } = { 'en': message_en, 'pt-br': message_pt_br };
-\`\`\`
-
-Use the real locale-derived names (never the literal message_en unless the default locale really is "en").
+The shared carries NO i18n block. Do not emit \`message_<locale>\` consts, a \`MessageType\` type or a
+\`messages\` export, and never read a message inside the class: the catalogue lives in the PAGE files,
+which emit it deterministically from the same Definition.i18n map. A catalogue here would be a second
+copy of the same text, translated separately from the one the screens actually render.
 
 NEVER declare a \`msg\` getter in this class. The catalog belongs to the PAGE: each page builds its own
 short-key catalog referencing this one, and declares its own \`msg\`. A getter here is dead code in this
@@ -229,10 +194,20 @@ For every action in actions[]:
 - Use contract input/output interfaces only if they exist in contract .ts context.
 - Write response data into action.outputStateKeys by mapping each stateKey to a declared property and calling setState.
 - If the response is not ok, preserve/set the error status and expose/log the response error; do not set success.
+- ERROR DISPLAY CONTRACT (the screen text): when response.ok === false, the error state MUST be
+  response.error.message (keep response.error.code available for styling / for a catalogue lookup
+  keyed by that code). HTTP status is NEVER the primary text — never compose "Erro do servidor (400)"
+  or any interpolation of response.status. If the page catalogue has a key equal to error.code, that
+  translation may replace the envelope message; otherwise show the envelope message as it came.
+  The feedback.errorMessageKey is only the fallback when the envelope has no message.
 - If the action has outputStateKeys, write response.data, falling back to the state's defaultValue only when response.data is nullish. Use [] only for array output states and { items: [], total: 0 } only for paginated output states.
-- Query actions used in initialLoads must be safe to call without explicit params.
+- Query actions used in initialLoads must be safe to call without USER params. A required input
+  whose source is routeParam/pageInput is filled by syncRouteParams in connectedCallback BEFORE
+  initialLoads run — those queries MUST be in initialLoads and MUST fire on connect when the
+  param is present (the existing idle-guard skips execBff when the param is absent). A required
+  userInput or selection input is empty at boot: do not auto-load those (the BFF would 400).
 - Command actions may have refreshActionIds. After a successful command response and output-state write, call the referenced query actions by their methodName from Definition.actions. Use the existing query methods so they run with silent BFF mode and update their queryResult states. Set command success only after the refresh calls complete; if a refresh fails, leave the command in error instead of showing success with stale data.
-- Command actions may have errorStateKey, feedback and clearInputStateKeys. On a failed response, store the backend AppError message in errorStateKey before setting error. On success, refresh first, then clear every clearInputStateKeys property/state and set success. Do not replace backend error text with a generic label.
+- Command actions may have errorStateKey, feedback and clearInputStateKeys. On a failed response, store response.error.message in errorStateKey before setting error (read error.message, never the HTTP status). On success, refresh first, then clear every clearInputStateKeys property/state and set success. Do not replace backend error text with a generic label.
 - feedback.successMessageKey and feedback.errorMessageKey are the textual, dismissible feedback contract used by page11. The success key describes the completed domain action; the error key is only a fallback when the backend did not provide an AppError message.
 - Handler wrappers must use runBlockingUiAction for command actions and may call query methods directly for query actions.
 
@@ -247,7 +222,7 @@ connectedCallback:
 - call super.connectedCallback()
 - initialize state from getState where useful, falling back to defaultValue
 - subscribe to shared states only if unsubscribe is implemented
-- run every initialLoads[] action
+- run every initialLoads[] action (after syncRouteParams, so a getById keyed by the URL can fire)
 
 disconnectedCallback:
 - unsubscribe any subscriptions created

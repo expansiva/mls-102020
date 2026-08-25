@@ -17,7 +17,9 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
   backticks. It is inlined inside \`return html\\\`…\\\`\`.
 - \`bandCss\` (optional): extra CSS for this header. It is inlined inside a template literal where
   \`\\\${tag}\` is this header's own tag name.
-- \`messages\` (optional): locale -> key -> text, for any FIXED copy you render.
+- \`messages\` (optional): locale -> key -> text, for any FIXED copy you render. When the request
+  lists locales, return **one map per listed locale**, all with the same keys — a missing locale
+  silently falls back to another language at runtime.
 
 ## The base already does this — call it, never reimplement it
 - \`this.renderAsideToggle()\` — the mobile hamburger that opens the aside. **Mandatory**: it is the
@@ -30,10 +32,11 @@ CONTENT for a specific project. You are NOT writing a file: the surrounding clas
 - \`this.renderBrand()\` — logo + title + subtitle, taken from the CONFIG profile. Use it instead of
   writing the brand name: \`this.brand.title\`, \`this.brand.logoUrl\`, \`this.brand.subtitle\` are
   available if you need a custom arrangement.
-- \`this.renderNavLinks()\` — the module's navigation entries as links, with the active one marked.
-  **Only when the request says navigation links are wanted.** By default they are NOT: the aside owns
-  the menu, and a header repeating it shows the same list twice. If the request does not offer routes,
-  do not call this and do not write a path anywhere.
+- \`this.renderNavLinks()\` — the navigation entries as links, with the active one marked. It already
+  receives EXACTLY the routes selected for this header, so call it with no argument and never filter
+  or re-list them yourself. **Only when the request lists selected routes.** By default there are
+  none: the aside owns the menu, and a header repeating it shows the same list twice. If the request
+  offers no route, do not call this and do not write a path anywhere.
 - \`this.renderActions()\` — the optional actions the profile enabled (language / design system /
   module links). Render it once, on the right.
 - \`this.renderUserAvatar()\` — the logged user as a round avatar: the IdP photo when there is one,
@@ -77,6 +80,9 @@ Ready-made classes from the base's CSS (use them and you inherit the band's spac
    system — a token that is not in it does not exist, resolves to the fallback and silently drops the
    theme, so never invent a name or a prefix (there is no \`ds-\`/\`color-\` prefix: the token is the
    role, e.g. \`--nav-text\`, \`--text-muted\`, \`--border-default\`).
+   You MAY declare custom properties of your own for control values — an animation index, a computed
+   offset, a local scale (\`--letter-index: 3\`, then \`var(--letter-index)\`). They are yours: only the
+   names you merely READ have to be tokens from the list.
 7. Navigate with \`this.handleNavigate\` / \`this.navigateTo\`, and ONLY to a route given to you in the
    navigation entries. You cannot know which routes exist — so never write a path that was not
    handed to you.

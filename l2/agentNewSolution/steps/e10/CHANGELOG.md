@@ -1,5 +1,15 @@
 # E10 changelog
 
+## 2026-08-22 — `projectType` no project.json é a fonte do type
+
+A API da plataforma não expõe a natureza do projeto. O tipo canônico passa a ser
+`projectType` em `l5/project.json` de cada projeto (`lib` | `master frontend` |
+`master backend` | `client`). Ao montar `config.projects`, E10 lê esse campo nas
+dependências; o type já declarado no config continua ganhando; sem os dois, o
+próprio módulo é `client` e o resto `lib` + finding (sem heurística). No
+project.json do projeto atual, E10 grava `projectType: client` só quando o campo
+não existe — o mesmo contrato do `appEnv`.
+
 ## 2026-08-15 — coerência de decisões: índice × índice (bug_e10_1)
 
 - `validateDecisionCoherence` lia os CORPOS das decisões dos artefatos de jornada, mas o E7 reescreve

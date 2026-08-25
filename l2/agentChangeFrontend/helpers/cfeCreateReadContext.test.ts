@@ -9,7 +9,7 @@ const g = globalThis as unknown as Record<string, any>;
 // later test file in the same process doesn't inherit it.
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
-async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string }> {
+async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string; createLayoutPromptContext: (prepared: any, genome: string, templateId: string) => any }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   // libModel.ts runs init() -> mls.events.addEventListener at import time; the setup-l2 stub omits
@@ -31,7 +31,7 @@ function operationDefs(operationId: string, kind: string, extra: Record<string, 
 }
 
 const CATALOG_CONTRACT = [
-  `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/catalog.catalogList.ts" enhancement="_blank"/>`,
+  `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/catalog--catalogList.ts" enhancement="_blank"/>`,
   '',
   '// GENERATED MECHANICALLY from _' + PROJECT + '_/l4/petShop/workspaces/catalog.defs.ts — DO NOT EDIT.',
   'export interface CatalogListInput { searchTerm?: string; page?: number; }',
@@ -41,7 +41,7 @@ const CATALOG_CONTRACT = [
 ].join('\n');
 
 const DETAIL_CONTRACT = [
-  `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/catalog.productDetail.ts" enhancement="_blank"/>`,
+  `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/catalog--productDetail.ts" enhancement="_blank"/>`,
   '',
   'export interface ProductDetailInput { productId: string; }',
   'export interface ProductDetailOutput { productId: string; name: string; }',
@@ -88,15 +88,15 @@ function installPetShopStor(opts: { contracts?: boolean } = {}): void {
       sections: [{ sectionId: 'home', intent: 'Descobrir', organisms: [{ role: 'hero' }, { role: 'showcase', dataSource: 'featuredProducts' }, { role: 'ctaLink' }] }],
       operationIds: ['browseCatalog'],
     }))),
-    file(4, 'petShop/contracts', 'home.featuredProducts', '.ts', [
-      `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/home.featuredProducts.ts" enhancement="_blank"/>`,
+    file(4, 'petShop/contracts', 'home--featuredProducts', '.ts', [
+      `/// <mls fileReference="_${PROJECT}_/l4/petShop/contracts/home--featuredProducts.ts" enhancement="_blank"/>`,
       'export interface FeaturedProductsInput { page?: number; }',
       'export interface FeaturedProductsOutput { productId: string; name: string; }',
       "export const featuredProductsRoute = 'petShop.home.featuredProducts' as const;",
       '',
     ].join('\n')),
-    file(4, 'petShop/contracts', 'catalog.catalogList', '.ts', CATALOG_CONTRACT),
-    file(4, 'petShop/contracts', 'catalog.productDetail', '.ts', DETAIL_CONTRACT),
+    file(4, 'petShop/contracts', 'catalog--catalogList', '.ts', CATALOG_CONTRACT),
+    file(4, 'petShop/contracts', 'catalog--productDetail', '.ts', DETAIL_CONTRACT),
     file(5, 'petShop', 'todoFrontend', '.defs.ts', defs('petShopTodoFrontend', JSON.stringify({
       moduleName: 'petShop', layer: 'frontend', owners: [
         { ownerType: 'operation', ownerId: 'browseCatalog', status: 'toCreate' },
@@ -183,6 +183,19 @@ test('preparePageCreate builds one command per bffCall and GENERATES the l2 cont
   assert.match(copy.source, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
   assert.match(copy.source, /export interface ProductDetailOutput \{/);
   assert.match(copy.source, /export const productDetailRoute = 'petShop\.catalog\.productDetail' as const;/);
+});
+
+test('initialLoads include parameterless lists, not getById keyed by selectedEntity', async () => {
+  const { readCreateContext, preparePageCreate, createLayoutPromptContext } = await loadModule();
+  installPetShopStor();
+  const ctx = await readCreateContext();
+  const page = ctx.pages.find((p: { pageId: string; }) => p.pageId === 'catalog')!;
+  const prepared = await preparePageCreate(page, ctx);
+  const variant = prepared.variantPlan[0];
+  const prompt = createLayoutPromptContext(prepared, variant.genome, variant.templateId);
+  const loads = (prompt.shared.initialLoads as { actionId: string }[]).map(load => load.actionId);
+  assert.ok(loads.includes('catalogList'), `list query should auto-load, got ${loads.join(',')}`);
+  assert.ok(!loads.includes('productDetail'), `selectedEntity getById must not auto-load, got ${loads.join(',')}`);
 });
 
 test('deterministicLayoutFromBase (F4) builds one surface + embedded filters + detail panel, not sibling lists', async () => {
@@ -488,14 +501,16 @@ test('page tests: paginated query declares the real collection key (itemsKey)', 
   assert.ok(!('itemsKey' in noKey.expect));
 });
 
-test('page tests: a required id no read of the page produces yields NO case (unsatisfiable)', async () => {
-  // 102051 D4: getShiftClosingReport required shiftClosingReportId, which no page routine returns — the
-  // case could never pass under any runner, so it is permanent panel noise.
+test('page tests: a required id no read of the page produces still emits a query with <seedRef>', async () => {
+  // Inspect-only screens (consultInstitutionalHome, petServiceOverviewView, planScheduleAvailability)
+  // used to skip silently. The runner harvests <seedRef> from every page of the run / from seeds.
   const { buildPageTestCases } = await loadModule();
   const orphan = { commandName: 'readOrphan', kind: 'query', routeKey: 'r', outputShape: 'object', input: [{ name: 'otherThingId', required: true, presentation: 'form', type: 'string' }], output: [] };
   const cases = buildPageTestCases(preparedFor([queryCommand(), orphan]));
-  assert.equal(cases.some((c: any) => c.id.startsWith('readOrphan')), false, 'unsatisfiable case not emitted');
-  assert.equal(cases.some((c: any) => c.id === 'readThings.ok'), true, 'the satisfiable case is still emitted');
+  const inspect = cases.find((c: any) => c.id === 'readOrphan.ok');
+  assert.ok(inspect, 'inspect query is emitted');
+  assert.equal(inspect.params.otherThingId, '<seedRef>');
+  assert.equal(cases.some((c: any) => c.id === 'readThings.ok'), true, 'the list case is still emitted');
 });
 
 test('page tests are deterministic (same input -> byte-identical cases)', async () => {
@@ -543,12 +558,119 @@ test('page tests: a read cannot satisfy its OWN required id (no self-harvest)', 
     input: [{ name: 'reportId', required: true, presentation: 'form', type: 'string', source: 'routeParam' }],
     output: [{ name: 'reportId' }], producedFields: ['reportId', 'label'],
   };
-  // Alone on the page: only its own output could supply reportId -> unsatisfiable, no case.
-  assert.equal(buildPageTestCases(preparedFor([selfFed])).length, 0);
+  // Alone on the page: still emit the inspect case with <seedRef> (harvested from other pages /
+  // seeds of the run). Silent skip made consultInstitutionalHome / petServiceOverviewView /
+  // planScheduleAvailability look untested.
+  const alone = buildPageTestCases(preparedFor([selfFed]));
+  assert.equal(alone.length, 1);
+  assert.equal(alone[0].params.reportId, '<seedRef>');
   // With ANOTHER read that produces reportId, the seedRef resolves and the case is emitted.
   const other = queryCommand({ commandName: 'readReports', producedFields: ['reportId', 'label'], collectionField: 'reports' });
   const withPeer = buildPageTestCases(preparedFor([other, selfFed]));
   assert.equal(withPeer.find((c: any) => c.id === 'readReport.ok')!.params.reportId, '<seedRef>');
+});
+
+test('page tests: a qualified inputId still harvests via fieldRef (taskTaskId × taskId)', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const list = queryCommand({ commandName: 'qryLocateTask', producedFields: ['taskId', 'title'], collectionField: 'tasks' });
+  const inspect = {
+    commandName: 'qryInspectCurrentTaskStatus', kind: 'query', routeKey: 'todo.x.qryInspectCurrentTaskStatus',
+    outputShape: 'object',
+    input: [{ name: 'taskTaskId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string', fieldRef: 'Task.taskId' }],
+    output: [{ name: 'taskId' }],
+    producedFields: ['taskId', 'title'],
+  };
+  const cases = buildPageTestCases(preparedFor([list, inspect]));
+  const ok = cases.find((c: any) => c.id === 'qryInspectCurrentTaskStatus.ok');
+  assert.ok(ok, 'inspect is emitted: fieldRef Task.taskId matches harvested taskId');
+  assert.equal(ok.params.taskTaskId, '<seedRef>');
+  assert.equal(ok.paramFieldRefs.taskTaskId, 'Task.taskId');
+});
+
+test('page tests: a command whose inputId does not match the harvested name is still emitted when fieldRef does', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const write = {
+    commandName: 'cmdRemoveTask', kind: 'command', routeKey: 'todo.x.cmdRemoveTask', outputShape: 'object',
+    input: [{ name: 'taskTaskId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string', fieldRef: 'Task.taskId' }],
+    output: [],
+  };
+  const cases = buildPageTestCases(preparedFor([queryCommand({ producedFields: ['taskId', 'title'], collectionField: 'tasks' }), write]));
+  const ok = cases.find((c: any) => c.id === 'cmdRemoveTask.ok');
+  assert.ok(ok, 'command is not skipped: harvestable aliases include the fieldId');
+  assert.equal(ok.params.taskTaskId, '<seedRef>');
+  assert.equal(ok.paramFieldRefs.taskTaskId, 'Task.taskId');
+});
+
+test('page tests: HH:MM format/pattern yields 08:00, not teste', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const write = {
+    commandName: 'cmdCreateBusinessHours', kind: 'command', routeKey: 'r', outputShape: 'object',
+    input: [
+      { name: 'dayOfWeek', required: true, presentation: 'form', type: 'string', enum: ['segunda-feira', 'terça-feira', 'quarta-feira'] },
+      { name: 'startTime', required: true, presentation: 'form', type: 'string', format: 'time' },
+      { name: 'endTime', required: true, presentation: 'form', type: 'string', pattern: '^([01]\\d|2[0-3]):[0-5]\\d$' },
+    ],
+    output: [],
+  };
+  const ok = buildPageTestCases(preparedFor([queryCommand(), write])).find((c: any) => c.id === 'cmdCreateBusinessHours.ok')!;
+  assert.equal(ok.params.startTime, '08:00');
+  assert.equal(ok.params.endTime, '18:00');
+  assert.equal(ok.params.dayOfWeek, 'segunda-feira', 'non-status enum uses the first code, not teste');
+});
+
+test('page tests: email format yields a@b.co', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const write = {
+    commandName: 'saveContact', kind: 'command', routeKey: 'r', outputShape: 'object',
+    input: [
+      { name: 'thingId', required: true, presentation: 'form', type: 'string' },
+      { name: 'email', required: true, presentation: 'form', type: 'string', format: 'email' },
+    ],
+    output: [],
+  };
+  const ok = buildPageTestCases(preparedFor([queryCommand(), write])).find((c: any) => c.id === 'saveContact.ok')!;
+  assert.equal(ok.params.email, 'a@b.co');
+});
+
+test('page tests: unsatisfiable date × seeded weekday is skipped and reported', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const w = g.window as { __agentChangeFrontendCreateDiagnostics?: string[] };
+  w.__agentChangeFrontendCreateDiagnostics = [];
+  const list = queryCommand({ commandName: 'qryListBusinessHours', producedFields: ['businessHoursId', 'dayOfWeek'], collectionField: 'hours' });
+  const write = {
+    commandName: 'cmdCreateAvailabilityBlock', kind: 'command', routeKey: 'r', outputShape: 'object',
+    input: [
+      { name: 'businessHoursId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string', fieldRef: 'BusinessHours.businessHoursId' },
+      { name: 'blockDate', required: true, presentation: 'form', type: 'string', l4Type: 'date' },
+    ],
+    output: [],
+  };
+  const cases = buildPageTestCases({
+    page: { moduleName: 'petShop', pageId: 'planScheduleAvailability' },
+    commands: [list, write],
+    entityFields: { BusinessHours: ['businessHoursId', 'dayOfWeek', 'startTime', 'endTime'] },
+  });
+  assert.equal(cases.some((c: any) => String(c.id).startsWith('cmdCreateAvailabilityBlock')), false, 'impossible .ok is not emitted');
+  assert.ok(cases.some((c: any) => c.id === 'qryListBusinessHours.ok'), 'the list case is still emitted');
+  assert.ok(
+    (w.__agentChangeFrontendCreateDiagnostics || []).some((msg: string) => /cmdCreateAvailabilityBlock/.test(msg) && /dayOfWeek/.test(msg)),
+    'skip is counted in the generator diagnostics, not silent',
+  );
+  // Same shape without a weekday on the referenced entity still emits — a dueDate next to a task id is fine.
+  const due = buildPageTestCases({
+    page: { moduleName: 'anyModule', pageId: 'anyPage' },
+    commands: [queryCommand({ producedFields: ['taskId'] }), {
+      commandName: 'cmdCreateTask', kind: 'command', routeKey: 'r', outputShape: 'object',
+      input: [
+        { name: 'taskId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string', fieldRef: 'Task.taskId' },
+        { name: 'dueDate', required: true, presentation: 'form', l4Type: 'date' },
+      ],
+      output: [],
+    }],
+    entityFields: { Task: ['taskId', 'title', 'dueDate'] },
+  });
+  assert.ok(due.some((c: any) => c.id === 'cmdCreateTask.ok'));
+  assert.equal(due.find((c: any) => c.id === 'cmdCreateTask.ok').params.dueDate, '2026-01-01');
 });
 
 // ---- addLanguage handoff: the extra-locale task at the end of changeFrontend ----
@@ -693,8 +815,8 @@ const NS4_WORKSPACE = {
   workspaceId: 'projectCatalogue', title: 'Projetos', actors: ['projectManager'], kind: 'record',
   entity: 'Project', purpose: 'Catálogo de projetos',
   bffCalls: [
-    { bffId: 'qryListProject', kind: 'query', uses: [{ operationId: 'listProject' }], input: [], output: { kind: 'list', fields: [{ name: 'projectId', from: 'listProject.$items.projectId', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.qryListProject` },
-    { bffId: 'cmdCreateProject', kind: 'command', uses: [{ operationId: 'createProject' }], input: [{ name: 'name', from: 'createProject.name', type: 'string', required: true }], output: { kind: 'object', fields: [{ name: 'projectId', from: 'createProject.projectId', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.cmdCreateProject` },
+    { bffId: 'qryListProject', kind: 'query', uses: [{ operationId: 'listProject' }], input: [], output: { kind: 'list', fields: [{ name: 'projectId', from: 'listProject.$items.projectId', type: 'string', required: true }, { name: 'phase', from: 'listProject.$items.phase', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.qryListProject` },
+    { bffId: 'cmdCreateProject', kind: 'command', uses: [{ operationId: 'createProject' }], input: [{ name: 'name', from: 'createProject.name', type: 'string', required: true }, { name: 'phase', from: 'createProject.phase', type: 'string', required: true }], output: { kind: 'object', fields: [{ name: 'projectId', from: 'createProject.projectId', type: 'string', required: true }] }, route: `${NS4}.projectCatalogue.cmdCreateProject` },
   ],
   sections: [{ sectionId: 'recordCatalogue', intent: 'Listar', organisms: [{ role: 'primarySurface', dataSource: 'qryListProject' }, { role: 'contextualAction', action: 'cmdCreateProject' }] }],
   operationIds: ['listProject', 'createProject'],
@@ -724,7 +846,8 @@ function installNs4Stor(withLegacyModule = false): void {
         { fieldId: 'projectId', type: 'string', required: true },
         { fieldId: 'name', type: 'string', required: true },
         // The literal union states itself as a constraint now, not as `enum`.
-        { fieldId: 'phase', type: 'string', required: true, constraints: [{ kind: 'enum', value: '["planned","active","closed"]' }] },
+        { fieldId: 'phase', type: 'string', required: true, constraints: [{ kind: 'enum', value: '["planned","active","closed"]' }],
+          enumLabels: [{ code: 'planned', label: 'Planejado' }, { code: 'active', label: 'Ativo' }, { code: 'closed', label: 'Encerrado' }] },
       ],
     })),
     file(4, `${NS4}/ontology`, 'index', '.defs.ts', ns4Defs(`${NS4}OntologyIndex`, 'Ns4OntologyIndexArtifact', {
@@ -736,7 +859,10 @@ function installNs4Stor(withLegacyModule = false): void {
     })),
     file(4, `${NS4}/operations`, 'createProject', '.defs.ts', operation('createProject', 'create', {
       accessPattern: { kind: 'create' },
-      inputs: [{ inputId: 'name', fieldRef: 'Project.name', required: true, source: 'userInput' }],
+      inputs: [
+        { inputId: 'name', fieldRef: 'Project.name', required: true, source: 'userInput' },
+        { inputId: 'phase', fieldRef: 'Project.phase', required: true, source: 'userInput' },
+      ],
       outputShape: { kind: 'object', fields: [{ name: 'projectId', type: 'string', required: true }] },
     })),
     file(4, `${NS4}/workspaces`, 'projectCatalogue', '.defs.ts', defs('projectCatalogueWorkspace', JSON.stringify(NS4_WORKSPACE))),
@@ -829,6 +955,46 @@ test('ns4: the default language is the one the product was written in, and enums
   assert.deepEqual(ctx.entities.get('Project')?.fields.find((field: any) => field.fieldId === 'phase')?.enum, ['planned', 'active', 'closed']);
   // The audience comes from the access matrix profiles.
   assert.deepEqual((ctx.actorsByModule[NS4] || []).map((actor: any) => actor.actorId), ['projectManager']);
+});
+
+test('CF prefers enumLabels for display and falls back to the code', async () => {
+  const { readCreateContext, preparePageCreate, createLayoutPromptContext, buildPageTestCases } = await loadModule();
+  installNs4Stor();
+  if (typeof g.mls.stor.getKeyToFile !== 'function') {
+    g.mls.stor.getKeyToFile = (info: { project: number; level: number; folder: string; shortName: string; extension: string }) =>
+      `${info.project}/${info.level}/${info.folder}/${info.shortName}${info.extension}`;
+  }
+  const ctx = await readCreateContext();
+  const phase = ctx.entities.get('Project')?.fields.find((field: any) => field.fieldId === 'phase');
+  assert.deepEqual(phase?.enumLabels, [
+    { code: 'planned', label: 'Planejado' },
+    { code: 'active', label: 'Ativo' },
+    { code: 'closed', label: 'Encerrado' },
+  ]);
+
+  const prepared = await preparePageCreate(ctx.pages[0], ctx);
+  const create = prepared.commands.find((command: any) => String(command.commandName).toLowerCase().includes('create'));
+  const phaseInput = (create?.input || []).find((field: any) => field.name === 'phase');
+  assert.deepEqual(phaseInput?.enum, ['planned', 'active', 'closed']);
+  assert.equal(phaseInput?.enumLabels.find((item: any) => item.code === 'active')?.label, 'Ativo');
+
+  const variant = prepared.variantPlan[0];
+  const prompt = createLayoutPromptContext(prepared, variant.genome, variant.templateId);
+  const enumFields = prompt.shared.fieldCatalog.byAction.find((item: any) => item.actionId === create.commandName)?.enumFields || [];
+  const phaseCatalog = enumFields.find((item: any) => item.name === 'phase');
+  assert.equal(phaseCatalog.enumLabels.find((item: any) => item.code === 'active').label, 'Ativo');
+
+  const cases = buildPageTestCases(prepared);
+  const ok = cases.find((item: any) => String(item.id).includes('ok') && item.params?.phase);
+  if (ok) assert.equal(ok.params.phase, 'planned', 'page tests send the first enum code, never the label');
+
+  const contract = prepared.contractCopies[0]?.source || '';
+  assert.match(contract, /phase: 'planned' \| 'active' \| 'closed'/, 'l2 contract keeps the enum as a literal union, not string');
+  assert.match(contract, /export interface QryListProjectOutput \{[\s\S]*phase: 'planned' \| 'active' \| 'closed'/, 'list OUTPUT also keeps the enum as a union so cells can gate on it');
+  const list = prepared.commands.find((command: any) => String(command.commandName).toLowerCase().includes('list'));
+  const phaseOut = (list?.output || []).find((field: any) => field.name === 'phase');
+  assert.deepEqual(phaseOut?.enum, ['planned', 'active', 'closed']);
+  assert.equal(phaseOut?.enumLabels.find((item: any) => item.code === 'active')?.label, 'Ativo');
 });
 
 test('ns4 and the old dialect coexist: each module is reconciled and planned by its own rule', async () => {

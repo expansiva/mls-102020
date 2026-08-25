@@ -12,6 +12,20 @@
 
 export type PublishableIssue = string;
 
+/** Canonical project kind. Lives in each project's `l5/project.json` as `projectType`. */
+export const PROJECT_TYPES = ['lib', 'master frontend', 'master backend', 'client'] as const;
+export type PublishableProjectType = typeof PROJECT_TYPES[number];
+
+export function isPublishableProjectType(value: unknown): value is PublishableProjectType {
+  return typeof value === 'string' && (PROJECT_TYPES as readonly string[]).includes(value);
+}
+
+/** The `projectType` field of an l5/project.json, or '' when absent/invalid. */
+export function readProjectTypeFromProjectJson(projectJson: unknown): PublishableProjectType | '' {
+  if (!isRecord(projectJson)) return '';
+  return isPublishableProjectType(projectJson.projectType) ? projectJson.projectType : '';
+}
+
 /** `102029` -> `{ root: '../mls-102029', type: … }` */
 export const PROJECT_ROOT_PREFIX = '../mls-';
 
@@ -61,15 +75,17 @@ export interface ProjectsBlockResult {
 /**
  * `projects` covering every dependency plus the module's own project.
  *
- * The TYPE of a project has no source in the platform API — `IPrj_settings` carries name/owner/
- * dependencies and nothing about the kind of project (checked on 2026-08-19). So: a type already in the
- * config is PRESERVED, the module's own project is `client`, and a dependency nobody has typed yet gets
- * `lib` plus a finding naming it. Guessing silently is what would produce a wrong root in the build.
+ * The platform API still has no project kind (`IPrj_settings` is name/owner/dependencies). The
+ * canonical source is `projectType` on that project's `l5/project.json`. Order: a type already in
+ * this config is PRESERVED, then `typeById` (read from that project's project.json), then the
+ * module's own project is `client`, else `lib` plus a finding. Guessing master frontend/backend
+ * silently is what would produce a wrong root in the build.
  */
 export function buildProjectsBlock(
   existing: unknown,
   projectId: number,
   dependencies: readonly number[],
+  typeById: Readonly<Record<string, string>> = {},
 ): ProjectsBlockResult {
   const previous = isRecord(existing) ? existing : {};
   const projects: Record<string, unknown> = {};
@@ -79,9 +95,10 @@ export function buildProjectsBlock(
     const key = String(id);
     const before = isRecord(previous[key]) ? previous[key] as Record<string, unknown> : undefined;
     const declaredType = typeof before?.type === 'string' && before.type ? before.type : '';
-    const type = declaredType || (id === projectId ? 'client' : 'lib');
-    if (!declaredType && id !== projectId) {
-      issues.push(`projects.${key}: no type declared anywhere (the platform API does not expose one), assumed 'lib' — set it if this dependency is a master frontend/backend`);
+    const fromJson = isPublishableProjectType(typeById[key]) ? typeById[key] : '';
+    const type = declaredType || fromJson || (id === projectId ? 'client' : 'lib');
+    if (!declaredType && !fromJson && id !== projectId) {
+      issues.push(`projects.${key}: no type in config.projects nor in mls-${key}/l5/project.json projectType, assumed 'lib' — set projectType on that project.json if this dependency is a master frontend/backend`);
     }
     projects[key] = { ...(before ?? {}), root: `${PROJECT_ROOT_PREFIX}${key}`, type };
   }
@@ -113,6 +130,19 @@ export function ensureProjectAppEnv(projectJson: unknown): { projectJson: Record
   const json = isRecord(projectJson) ? { ...projectJson } : {};
   if (typeof json.appEnv === 'string' && json.appEnv) return { projectJson: json, changed: false };
   json.appEnv = DEFAULT_PROJECT_APP_ENV;
+  return { projectJson: json, changed: true };
+}
+
+/**
+ * `projectType` on the CURRENT project's l5/project.json: written ONLY when absent.
+ * E10 of a generated module writes `client`. It never overwrites a type already set.
+ */
+export function ensureProjectType(
+  projectJson: unknown, type: PublishableProjectType,
+): { projectJson: Record<string, unknown>; changed: boolean } {
+  const json = isRecord(projectJson) ? { ...projectJson } : {};
+  if (isPublishableProjectType(json.projectType)) return { projectJson: json, changed: false };
+  json.projectType = type;
   return { projectJson: json, changed: true };
 }
 

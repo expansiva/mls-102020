@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildNs4ModuleArtifact,
+  createNs4E3GateRepairStep,
   createNs4Pipeline,
   markNs4E1Approved,
   markNs4E2Approved,
@@ -23,6 +24,11 @@ import {
 } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
 import { validateNs4E3Review } from '/_102020_/l2/agentNewSolution/steps/e3/gate.js';
 import { resolveNs4E3HookArgs } from '/_102020_/l2/agentNewSolution/steps/e3/hookArgs.js';
+import {
+  ns4E3DuplicateGrantPayload,
+  ns4E3PetShopJourneysInput,
+  ns4E3RepairedGrantPayload,
+} from '/_102020_/l2/agentNewSolution/steps/e3/fixtures/duplicateGrant.fixture.js';
 
 const journeys = normalizeNs4E2Review({
   planId: 'e2-review', moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', title: 'Jornadas', reviewRound: 1,
@@ -136,7 +142,7 @@ test('E3 lifecycle persists rounds, failures and advances module and pipeline to
   const e2 = markNs4E2Approved(markNs4E2WaitingHuman(markNs4E2Running(e1, 1), 1, 'e2.json'), 'human', ['journey.ts']);
   assert.equal(resolveNs4ExistingAction(true, e2, true), 'resume-e3');
   const running = markNs4E3Running(e2, 2);
-  const waiting = markNs4E3WaitingHuman(running, 2, 'l4/buildFlowFsm/pipeline/e3-access-matrix.draft.json');
+  const waiting = markNs4E3WaitingHuman(running, 2, 'l4/buildFlowFsm/pipeline/e3-access-matrix-draft.json');
   assert.equal(waiting.steps.e3?.status, 'waitingHuman');
   const failed = markNs4E3Failed(waiting, 'provider timeout', '2026-08-05T10:03:00.000Z');
   assert.equal(failed.steps.e3?.error, 'provider timeout');
@@ -147,4 +153,46 @@ test('E3 lifecycle persists rounds, failures and advances module and pipeline to
   assert.equal(markNs4E3Running(approved, 3), approved);
   assert.equal(markNs4E3WaitingHuman(approved, 3, 'late-draft.json'), approved);
   assert.equal(markNs4E3Failed(approved, 'late duplicate callback'), approved);
+});
+
+const petShopJourneys = normalizeNs4E2Review(ns4E3PetShopJourneysInput);
+
+// ── Regression: petShop run of 2026-08-21 ────────────────────────────────────
+// The model split ONE profile x authority pair into three grants, one per access
+// facet. The gate was right; what was missing was a repair round.
+
+test('E3 rejects the real petShop matrix that split one pair into three grants', () => {
+  const review = normalizeNs4E3Review(ns4E3DuplicateGrantPayload, 'petShop');
+  const result = validateNs4E3Review(review, petShopJourneys);
+  assert.equal(result.ok, false);
+  const duplicates = result.issues.filter(issue => issue.code === 'NS4_E3_DUPLICATE_GRANT');
+  assert.equal(duplicates.length, 2, 'the second and third grant of the pair are both reported');
+  assert.deepEqual(duplicates.map(issue => issue.path), ['grants[2]', 'grants[3]']);
+  duplicates.forEach(issue => assert.match(issue.message, /cliente and petshop:cliente/));
+});
+
+test('E3 accepts the repaired matrix that keeps one grant per pair', () => {
+  const review = normalizeNs4E3Review(ns4E3RepairedGrantPayload, 'petShop');
+  const result = validateNs4E3Review(review, petShopJourneys);
+  assert.equal(result.ok, true, result.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'));
+  const pairs = review.grants.map(grant => `${grant.profileRef}/${grant.authorityRef}`);
+  assert.equal(new Set(pairs).size, pairs.length, 'every pair appears at most once');
+  // The facets survived the fold: they became disclosure limits, not deletions.
+  const cliente = review.grants.find(grant => grant.profileRef === 'cliente');
+  assert.ok((cliente?.disclosure.allowedInformation.length || 0) >= 3);
+});
+
+test('E3 creates one open gate repair step carrying the numbered findings', () => {
+  const step = createNs4E3GateRepairStep('petShop', 1, 1, 'NS4_E3_DUPLICATE_GRANT grants[2]: Duplicate grant.');
+  assert.equal(step.planning?.planId, 'e3-access-matrix-round-1-gate-repair-1');
+  assert.equal(step.status, 'waiting_human_input');
+  assert.equal(step.onFailure, 'wait_after_prompt');
+  assert.doesNotMatch(String(step.stepTitle), /^👤/u);
+  // The args must round-trip both fields: without gateFeedback the repair prompt
+  // is a plain retry, and without gateRepairAttempt the bounded round never ends.
+  assert.deepEqual(JSON.parse(step.prompt || '{}'), {
+    planId: 'e3-access-matrix', moduleName: 'petShop', reviewRound: 1,
+    gateRepairAttempt: 1, gateFeedback: 'NS4_E3_DUPLICATE_GRANT grants[2]: Duplicate grant.',
+  });
+  assert.equal(resolveNs4E3HookArgs(undefined, step.prompt), step.prompt);
 });

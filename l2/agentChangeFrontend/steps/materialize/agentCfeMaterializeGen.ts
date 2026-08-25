@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   applyHeader,
+  bindingCommandsOf,
   buildCompileRepairHint,
   collectChartEventIssues,
   collectPageTemplateHygieneIssues,
@@ -221,7 +222,7 @@ async function afterPromptStep(
       // verify can turn it into organism steps instead of burning repair rounds (paginaDividida.md §4.1).
       // Cap or timeout: both mean the page does not fit in one call, and both are fixed by a split.
       if (isSplitWorthyFailure(describePayload(raw))) {
-        await writeSplitPlanFromL4(pipelineItem, parsedDefs?.data, detail);
+        await writeSplitPlanFromL4(pipelineItem, parsedDefs?.data, detail, parsedDefs?.bindings);
       }
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, detail, true)];
     }
@@ -320,8 +321,8 @@ function createPromptReadyIntent(
  * Deterministic skeleton for a page item, or undefined when it cannot be built — then the model writes the
  * file from scratch exactly as before, so an unmodelled shared never blocks a run.
  *
- * Reads the RAW shared .ts, never the compiled .d.ts the context carries: the locale list lives in the
- * `message_<locale>` consts, which the .d.ts does not have.
+ * Reads the RAW shared .ts, never the compiled .d.ts the context carries: the page imports DTO types from
+ * it. The i18n catalogue comes from the shared .defs.ts, which is where it is planned.
  */
 async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineItem[], data: unknown): Promise<string | undefined> {
   if (pipelineItem.type !== 'l2_page' && pipelineItem.type !== 'l2_page_organism') return undefined;
@@ -329,6 +330,8 @@ async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineIte
   if (!sharedRef) return undefined;
   const sharedSource = await getContentByMlsPath(sharedRef);
   if (!sharedSource) return undefined;
+  const sharedDefsSource = await getContentByMlsPath(sharedRef.replace(/\.ts$/u, '.defs.ts'));
+  const sharedDefsData = sharedDefsSource ? parseDefs(sharedDefsSource).data : undefined;
 
   // The organisms of a split page are the sibling items of the same defs — the page composes them and an
   // organism builds only its own file (paginaDividida.md §3).
@@ -348,7 +351,12 @@ async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineIte
     ? pipelineItem.outputPath.replace(/_O\d+\.ts$/u, '.ts')
     : pipelineItem.outputPath;
 
-  const built = buildPageSkeleton({ outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource, organisms, current });
+  // The previous content of THIS file — the organism's own .ts when building an organism, so a split page
+  // does not lose the translations that live in its organisms.
+  const previousSource = (await getContentByMlsPath(pipelineItem.outputPath)) ?? undefined;
+  const built = buildPageSkeleton({
+    outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource, sharedDefsData, previousSource, organisms, current,
+  });
   if (!built.code) console.info(`[agentCfeMaterializeGen] skeleton skipped for ${pipelineItem.outputPath}: ${built.reason}`);
   return built.code ?? undefined;
 }
@@ -362,7 +370,7 @@ async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineIte
  *
  * Best-effort: a page with no usable l4 simply keeps the plain failure, which the trace already explains.
  */
-export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unknown, reason: string): Promise<boolean> {
+export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unknown, reason: string, siblingBindings?: unknown[] | null): Promise<boolean> {
   const parsed = parseMlsPath(pipelineItem.outputPath);
   if (!parsed) return false;
   const moduleName = parsed.folder.split('/')[0];
@@ -379,8 +387,7 @@ export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unk
     }))
     .filter(section => section.sectionId);
 
-  const bindings = (isRecord(data) && Array.isArray(data.dataBindings) ? data.dataBindings : [])
-    .filter(isRecord).map(binding => String(binding.command ?? '')).filter(Boolean);
+  const bindings = bindingCommandsOf(data, siblingBindings);
 
   const plan = buildSplitPlan(parsed.shortName, genome, sections, bindings, reason);
   if (!plan) return false;

@@ -2,6 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { agentBuildTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
 
 interface ScanArgs {
   command?: string;
@@ -23,6 +24,9 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
+    // WHICH BUILD is running. A run over stale agent code looks exactly as green as a correct one
+    // (petShop 2026-08-22); the warning has to land before the LLM calls are paid for.
+    const buildTrace = await agentBuildTrace('[agentCfeCreateScanL4]');
     const scanArgs = parseScanArgs(step.prompt);
     const createContext = await readCreateContext();
 
@@ -47,10 +51,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const materialize = createMaterializeStep(scanArgs, []);
         return [
           createAddStepIntent(context, parentStep, materialize),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason} Queued materialization freshness check.`),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason} Queued materialization freshness check.${buildTrace}`),
         ];
       }
-      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', reason)];
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason}${buildTrace}`)];
     }
 
     // Guaranteed defined once pages are non-empty (pages were filtered by this module).
@@ -120,7 +124,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       step,
       hookSequential,
       'completed',
-      `Scanned L4 once; module ${runModule}: queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}`,
+      `Scanned L4 once; module ${runModule}: queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}${buildTrace}`,
     );
     // Name the task after the single module it processes: "<module> - frontend".
     doneIntent.newTaskTitle = `${runModule} - frontend`;

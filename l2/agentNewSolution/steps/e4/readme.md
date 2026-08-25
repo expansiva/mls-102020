@@ -4,17 +4,17 @@ Inputs are the approved module contract, E2 journeys and E3 access matrix. Curre
 E3 is approved resume this step with the explicit `new` solution mode; E4 never fabricates legacy
 database evidence.
 
-Each round first writes `pipeline/e4-ontology-plan.draft.json`, then details entities through a
-`parallel_dynamic` fan-out with `maxParallel: 20` into `pipeline/e4-entities/{EntityId}.draft.json`.
+Each round first writes `pipeline/e4-ontology-plan-draft.json`, then details entities through a
+`parallel_dynamic` fan-out with `maxParallel: 20` into `pipeline/e4-entities/{EntityId}-draft.json`.
 Each worker submits its artifact in the strict internal `{type:"flexible",result:{…}}` envelope, so
 the orchestration protocol accepts healthy worker output without a provisional failure.
 The overview freezes lifecycle states, one explicit initial state, optional terminal states and named predicate-to-state mappings before the workers run;
 workers add fields, constraints and rule ids without redefining those meanings or duplicating rule descriptions.
 The deterministic finalizer repairs only missing/invalid entities once. It then starts one compact
-relationship-binding pass, which writes `pipeline/e4-relationship-bindings.draft.json` and maps every
+relationship-binding pass, which writes `pipeline/e4-relationship-bindings-draft.json` and maps every
 semantic edge to exact existing endpoint fields or an explicit MDM/derived realization. Its gate rejects
 invented fields, missing edges and incompatible persistence strategies and allows one localized repair.
-Only then E4 assembles `pipeline/e4-ontology.draft.json` and renders the same single ontology widget. Titles
+Only then E4 assembles `pipeline/e4-ontology-draft.json` and renders the same single ontology widget. Titles
 and descriptions can be edited directly. Structural requests first persist those edits, then add the
 next open E4 round before completing the current clarification.
 
@@ -26,7 +26,7 @@ back to normal E4 generation.
 The gate requires coverage of all E2 journeys, all `now` features, every required carried/produced E2
 `businessObject`, and every E3 authority carrying an information need. Required journey objects must
 exist as an entity or projection with the same id. Entity and relationship references are closed, stored entities have identifiers,
-lifecycle entities have status and an initial state that is not terminal, lifecycle predicates and terminal states contain only exact declared states, and persistent business entities form a connected graph. Persistence
+lifecycle entities have status and an initial state that is not terminal, lifecycle predicates and terminal states contain only exact declared states, closed-domain values (states and field enums) are stable English codes with user-language `enumLabels`/`lifecycleLabels` (optional on the type; a new run backfills a missing list with a humanized code and a non-blocking systemDecision), and persistent business entities form a connected graph. Persistence
 is explicit and closed: `mdm` for organization master records, `moduleDatabase` for transactions,
 `derived`, `external` or `embedded` for concepts without a module table. Kind, scope, idField and
 mdmType must agree. Master data never carries mutable operational balances or transaction history.

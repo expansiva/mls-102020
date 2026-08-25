@@ -29,6 +29,7 @@ import {
   assembleNs4E4Review,
   applyNs4E4RelationshipBindings,
   buildNs4OntologyArtifacts,
+  humanizeNs4EnumCode,
   normalizeNs4E4EntityDraft,
   stripNs4DerivedFieldUnions,
   normalizeNs4E4PlanDraft,
@@ -152,6 +153,25 @@ test('every E4 LLM prompt declares an active model alias explicitly', () => {
     const prompt = readFileSync(new URL(file, import.meta.url), 'utf8');
     assert.match(prompt, /<!--\s*modelType:\s*reasoning\s*-->/, `${file} must not fall back to the inactive cost alias`);
   }
+});
+
+test('E4 overview and entity prompts require stable English enum codes', () => {
+  for (const file of ['prompt.md', 'promptEntity.md']) {
+    const prompt = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.match(prompt, /stable English codes/u, `${file} must tell the model that enum values are English codes`);
+    assert.match(prompt, /ativo/u, `${file} must name the Portuguese counter-example`);
+  }
+  assert.match(readFileSync(new URL('prompt.md', import.meta.url), 'utf8'), /lifecycleLabels/u);
+  const entityPrompt = readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8');
+  assert.match(entityPrompt, /enumLabels/u);
+  assert.match(entityPrompt, /"fieldId": "priority"/u, 'the entity example must show a labelled non-lifecycle enum, not only a uuid field');
+  assert.match(entityPrompt, /"enumLabels"/u);
+  assert.match(entityPrompt, /Do not emit\s+`enumLabels` on the `status` field/u);
+});
+
+test('E4 ontology widget surfaces assumed enum-label decisions', () => {
+  const source = readFileSync(new URL('../../widgets/widgetNs4Ontology.ts', import.meta.url), 'utf8');
+  assert.match(source, /this\.value\.systemDecisions\?\.length/);
 });
 
 test('E4 overview freezes global decisions and entity detail reassembles the final review', () => {
@@ -394,6 +414,24 @@ test('E4 rejects kind core with ownership external — the combination the polic
   assert.match(issue!.message, /external-reference field \(platformUserId\)/u);
 });
 
+test('E4 flags an ownership rule when the entity has no owner field (petShop customerCanViewOnlyOwnPets)', () => {
+  const broken = structuredClone(reviewInput) as any;
+  broken.entities[0].useRules = ['customerCanViewOnlyOwnPets'];
+  const gate = validateNs4E4Review(normalizeNs4E4Review(broken), journeys, access);
+  const issue = gate.issues.find(item => item.code === 'NS4_E4_OWNER_RELATION');
+  assert.ok(issue, JSON.stringify(gate.issues));
+  assert.match(issue!.message, /customerCanViewOnlyOwnPets/);
+  assert.match(issue!.message, /Project/);
+
+  const withField = structuredClone(reviewInput) as any;
+  withField.entities[0].useRules = ['customerCanViewOnlyOwnPets'];
+  withField.entities[0].fields.push({
+    fieldId: 'customerId', title: 'Customer', type: 'uuid', required: true, description: 'Owner of the record.', constraints: [],
+  });
+  const ok = validateNs4E4Review(normalizeNs4E4Review(withField), journeys, access);
+  assert.ok(!ok.issues.some(item => item.code === 'NS4_E4_OWNER_RELATION'), JSON.stringify(ok.issues));
+});
+
 test('E4 carries the party declaration into the entity artifact', async () => {
   const input = structuredClone(reviewInput) as any;
   input.entities[0].kind = 'mdm';
@@ -487,8 +525,290 @@ test('the derived union never reaches the strict entity worker, and always reach
   const echoed = stripNs4DerivedFieldUnions(artifact as unknown as { fields?: unknown });
   assert.equal((echoed as any).fields.some((field: any) => 'enum' in field), false);
   assert.equal('statusEnum' in (echoed as any), false);
+  // enumLabels is authored, not derived — stripping the union must not drop it.
+  entity.fields[entity.fields.length - 1].enumLabels = [{ code: 'draft', label: 'Rascunho' }, { code: 'active', label: 'Ativo' }];
+  const withLabels = normalizeNs4E4EntityDraft({ fields: entity.fields, useRules: entity.useRules },
+    source.moduleName, 1, entity.entityId);
+  assert.deepEqual(withLabels.fields.find(field => field.fieldId === 'status')?.enumLabels?.[0], { code: 'draft', label: 'Rascunho' });
+  assert.equal('enum' in (withLabels.fields.find(field => field.fieldId === 'status') || {}), false);
 
   // The emitted artifact is what the frontend parses: it reads data.statusEnum and data.fields[].enum.
   assert.deepEqual(artifact.statusEnum, ['draft', 'active']);
   assert.deepEqual(artifact.fields.find(field => field.fieldId === 'status')?.enum, ['draft', 'active']);
+});
+
+const PETSHOP_ONTOLOGY = JSON.parse(
+  readFileSync(new URL('fixtures/petShop-e4-ontology-draft.json', import.meta.url), 'utf8'),
+) as unknown;
+
+const PETSHOP_PT_TO_EN: Record<string, string> = {
+  ativo: 'active',
+  inativo: 'inactive',
+  vigente: 'current',
+  cancelado: 'cancelled',
+  confirmado: 'confirmed',
+  recusado: 'rejected',
+  solicitado: 'requested',
+  diaInteiro: 'allDay',
+  hora: 'hour',
+  domingo: 'sunday',
+  'quarta-feira': 'wednesday',
+  'quinta-feira': 'thursday',
+  'segunda-feira': 'monday',
+  'sexta-feira': 'friday',
+  sábado: 'saturday',
+  'terça-feira': 'tuesday',
+  concluida: 'completed',
+  encerrada: 'closed',
+  iniciada: 'started',
+  disponivel: 'available',
+  indisponivel: 'unavailable',
+};
+
+function enumCodeIssues(review: unknown) {
+  return validateNs4E4Review(normalizeNs4E4Review(review)).issues.filter(issue => issue.code === 'NS4_E4_ENUM_CODE_EN');
+}
+
+function rewriteClosedDomainCodes(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(item => (typeof item === 'string' ? PETSHOP_PT_TO_EN[item] || item : rewriteClosedDomainCodes(item)));
+  }
+  if (!value || typeof value !== 'object') return value;
+  const source = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(source)) {
+    if (key === 'title' || key === 'description' || key === 'notes' || key === 'businessDomain' || key === 'changeSummary') {
+      out[key] = item;
+      continue;
+    }
+    if (key === 'value' && source.kind === 'enum' && typeof item === 'string') {
+      out[key] = rewriteEnumConstraintValue(item);
+      continue;
+    }
+    if (typeof item === 'string') {
+      out[key] = PETSHOP_PT_TO_EN[item] || item;
+      continue;
+    }
+    out[key] = rewriteClosedDomainCodes(item);
+  }
+  return out;
+}
+
+function rewriteEnumConstraintValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return JSON.stringify(parsed.map(item => PETSHOP_PT_TO_EN[String(item)] || item));
+      }
+    } catch { /* keep walking the separated forms */ }
+  }
+  const separator = trimmed.includes('|') ? '|' : ',';
+  return trimmed.split(separator).map(part => {
+    const token = part.trim().replace(/^['"]|['"]$/g, '');
+    const next = PETSHOP_PT_TO_EN[token] || token;
+    return part.replace(token, next);
+  }).join(separator);
+}
+
+test('E4 rejects Portuguese enum codes from the real petShop ontology and accepts the English rewrite', () => {
+  const rejected = enumCodeIssues(PETSHOP_ONTOLOGY);
+  assert.ok(rejected.length, 'the petShop draft must fail the English-code gate');
+  const messages = rejected.map(issue => issue.message).join('\n');
+  assert.match(messages, /ativo/u);
+  assert.match(messages, /vigente/u);
+  assert.match(messages, /segunda-feira/u);
+
+  const rewritten = rewriteClosedDomainCodes(structuredClone(PETSHOP_ONTOLOGY));
+  const accepted = enumCodeIssues(rewritten);
+  assert.deepEqual(accepted, [], JSON.stringify(accepted));
+  const rewrittenText = JSON.stringify(rewritten);
+  assert.match(rewrittenText, /"active"/u);
+  assert.match(rewrittenText, /"current"/u);
+  assert.match(rewrittenText, /"monday"/u);
+  assert.match(rewrittenText, /"Situação"/u);
+  assert.match(rewrittenText, /"Ontologia de negócio"/u);
+});
+
+test('E4 English-code gate does not touch user-facing title or description', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].title = 'Projeto';
+  input.entities[0].description = 'Um engajamento com situação ativo ou inativo.';
+  input.entities[0].fields[1].title = 'Situação';
+  input.entities[0].fields[1].description = 'Nome apresentado ao cliente, inclusive segunda-feira.';
+  input.entities[0].lifecycleStates = ['active', 'inactive'];
+  input.entities[0].initialState = 'active';
+  input.entities[0].terminalStates = ['inactive'];
+  input.entities[0].fields.push({
+    fieldId: 'status', title: 'Situação', type: 'string', required: true,
+    description: 'A situação pode ser ativo ou inativo — o rótulo, não o código.',
+    constraints: [{
+      constraintId: 'projectStatus', kind: 'enum', value: '["active","inactive"]',
+      description: 'Valores estáveis em inglês; o texto desta descrição fica em português.', source: 'journey',
+    }],
+  });
+  const issues = enumCodeIssues(input);
+  assert.deepEqual(issues, [], JSON.stringify(issues));
+  const full = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(!full.issues.some(issue => issue.code === 'NS4_E4_ENUM_CODE_EN'), JSON.stringify(full.issues));
+});
+
+test('E4 backfills missing enumLabels with a humanized code and a non-blocking systemDecision', () => {
+  assert.equal(humanizeNs4EnumCode('inProgress'), 'In progress');
+  const input = structuredClone(reviewInput) as any;
+  input.userLanguage = 'pt-BR';
+  input.entities[0].lifecycleStates = ['pending', 'inProgress', 'completed', 'cancelled'];
+  input.entities[0].initialState = 'pending';
+  input.entities[0].lifecycleLabels = [
+    { code: 'pending', label: 'Pendente' },
+    { code: 'inProgress', label: 'Em andamento' },
+    { code: 'completed', label: 'Concluída' },
+    { code: 'cancelled', label: 'Cancelada' },
+  ];
+  input.entities[0].fields.push(
+    {
+      fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Situação.',
+      constraints: [{
+        constraintId: 'statusEnum', kind: 'enum',
+        value: '["pending","inProgress","completed","cancelled"]', description: 'States.', source: 'journey',
+      }],
+    },
+    {
+      fieldId: 'priority', title: 'Prioridade', type: 'string', required: true, description: 'Prioridade.',
+      constraints: [{
+        constraintId: 'priorityEnum', kind: 'enum', value: '["low","medium","high"]',
+        description: 'Priority.', source: 'user',
+      }],
+    },
+  );
+  const normalized = normalizeNs4E4Review(input);
+  const priority = normalized.entities[0].fields.find(field => field.fieldId === 'priority');
+  const status = normalized.entities[0].fields.find(field => field.fieldId === 'status');
+  assert.deepEqual(priority?.enumLabels, [
+    { code: 'low', label: 'Low' },
+    { code: 'medium', label: 'Medium' },
+    { code: 'high', label: 'High' },
+  ]);
+  assert.equal(status?.enumLabels, undefined, 'status stays on lifecycleLabels; do not duplicate');
+  assert.deepEqual(normalized.entities[0].lifecycleLabels?.find(item => item.code === 'inProgress'), {
+    code: 'inProgress', label: 'Em andamento',
+  });
+  const decisions = normalized.systemDecisions ?? [];
+  assert.equal(decisions.length, 1);
+  assert.equal(decisions[0]?.findingRef, 'e4.enumLabels.backfill:Project.priority');
+  assert.equal(decisions[0]?.chosen, 'humanizeMissingCodes');
+  const gate = validateNs4E4Review(normalized, journeys, access);
+  assert.equal(gate.ok, true, JSON.stringify(gate.issues));
+  assert.ok(!gate.issues.some(issue => issue.code.startsWith('NS4_E4_ENUM_LABEL')), JSON.stringify(gate.issues));
+
+  input.entities[0].fields.at(-1).enumLabels = [{ code: 'low', label: 'Baixa' }];
+  const partial = normalizeNs4E4Review(input);
+  assert.deepEqual(partial.entities[0].fields.find(field => field.fieldId === 'priority')?.enumLabels, [
+    { code: 'low', label: 'Baixa' },
+    { code: 'medium', label: 'Medium' },
+    { code: 'high', label: 'High' },
+  ]);
+
+  const plan = normalizeNs4E4PlanDraft(input);
+  assert.equal(
+    plan.entities[0].lifecycleLabels?.find(item => item.code === 'inProgress')?.label,
+    'Em andamento',
+  );
+
+  delete input.entities[0].lifecycleLabels;
+  const lifecycleGap = normalizeNs4E4Review(input);
+  assert.equal(lifecycleGap.entities[0].lifecycleLabels?.find(item => item.code === 'inProgress')?.label, 'In progress');
+  assert.ok(lifecycleGap.systemDecisions?.some(decision => decision.findingRef === 'e4.lifecycleLabels.backfill:Project'));
+});
+
+test('E4 enumLabels is optional, accepts a Portuguese label, and rejects orphan or duplicate codes', () => {
+  const without = enumCodeIssues(PETSHOP_ONTOLOGY);
+  assert.ok(without.length, 'the petShop draft must fail the English-code gate');
+  const labelIssues = validateNs4E4Review(normalizeNs4E4Review(PETSHOP_ONTOLOGY)).issues
+    .filter(issue => issue.code.startsWith('NS4_E4_ENUM_LABEL'));
+  assert.deepEqual(labelIssues, [], 'missing labels are backfilled, never a blocking gate finding');
+
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].lifecycleStates = ['active', 'inactive'];
+  input.entities[0].initialState = 'active';
+  input.entities[0].lifecycleLabels = [{ code: 'active', label: 'Ativo' }, { code: 'inactive', label: 'Inativo' }];
+  input.entities[0].fields.push({
+    fieldId: 'status', title: 'Situação', type: 'string', required: true, description: 'Status.',
+    constraints: [{
+      constraintId: 'statusEnum', kind: 'enum', value: '["active","inactive"]', description: 'States.', source: 'journey',
+    }],
+    enumLabels: [{ code: 'active', label: 'Ativo' }, { code: 'inactive', label: 'Inativo' }],
+  });
+  const ok = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(!ok.issues.some(issue => issue.code === 'NS4_E4_ENUM_CODE_EN'), JSON.stringify(ok.issues));
+  assert.ok(!ok.issues.some(issue => issue.code.startsWith('NS4_E4_ENUM_LABEL')), JSON.stringify(ok.issues));
+  assert.equal(normalizeNs4E4Review(input).entities[0].fields.find((field: any) => field.fieldId === 'status')?.enumLabels?.[0].label, 'Ativo');
+
+  input.entities[0].fields.at(-1).enumLabels.push({ code: 'pending', label: 'Pendente' });
+  const orphan = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(orphan.issues.some(issue => issue.code === 'NS4_E4_ENUM_LABEL_ORPHAN'), JSON.stringify(orphan.issues));
+
+  input.entities[0].fields.at(-1).enumLabels = [
+    { code: 'active', label: 'Ativo' }, { code: 'active', label: 'Ativa' },
+  ];
+  const duplicate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.ok(duplicate.issues.some(issue => issue.code === 'NS4_E4_ENUM_LABEL_DUPLICATE'), JSON.stringify(duplicate.issues));
+});
+
+test('E4 tool schemas accept enumLabels as a closed object array', () => {
+  for (const file of ['../../schemas/e4-review.schema.json', '../../schemas/e4-entity-worker.schema.json']) {
+    const schema = JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8')) as any;
+    const label = schema.$defs.enumLabel;
+    assert.equal(label.additionalProperties, false, `${file} enumLabel must stay closed`);
+    assert.deepEqual(Object.keys(label.properties).sort(), ['code', 'label']);
+    assert.equal(schema.$defs.field.additionalProperties, false);
+    assert.ok(schema.$defs.field.properties.enumLabels);
+    const accepted = closedObjectIssues(label, { code: 'active', label: 'Ativo' });
+    assert.deepEqual(accepted, [], JSON.stringify(accepted));
+    const rejected = closedObjectIssues(label, { code: 'active', label: 'Ativo', extra: 'nope' });
+    assert.ok(rejected.some(issue => issue.includes('extra')), JSON.stringify(rejected));
+  }
+});
+
+function closedObjectIssues(schema: { additionalProperties?: unknown; properties?: Record<string, unknown>; required?: string[] }, data: Record<string, unknown>): string[] {
+  const issues: string[] = [];
+  if (schema.additionalProperties === false) {
+    for (const key of Object.keys(data)) {
+      if (!schema.properties || !(key in schema.properties)) issues.push(`unknown property ${key}`);
+    }
+  }
+  for (const key of schema.required || []) {
+    if (data[key] === undefined || data[key] === '') issues.push(`missing ${key}`);
+  }
+  return issues;
+}
+
+test('E4 rejects a Portuguese weekday or status and accepts the English code', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].lifecycleStates = ['ativo', 'inativo'];
+  input.entities[0].initialState = 'ativo';
+  input.entities[0].fields.push({
+    fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Status.',
+    constraints: [{
+      constraintId: 'statusEnum', kind: 'enum', value: '["ativo","inativo"]', description: 'States.', source: 'journey',
+    }],
+  });
+  const portuguese = enumCodeIssues(input);
+  assert.ok(portuguese.some(issue => issue.message.includes('ativo')), JSON.stringify(portuguese));
+
+  input.entities[0].lifecycleStates = ['active', 'inactive'];
+  input.entities[0].initialState = 'active';
+  input.entities[0].fields.at(-1).constraints[0].value = '["active","inactive"]';
+  assert.deepEqual(enumCodeIssues(input), []);
+
+  input.entities[0].fields.push({
+    fieldId: 'dayOfWeek', title: 'Dia', type: 'string', required: true, description: 'Dia da semana.',
+    constraints: [{
+      constraintId: 'weekdays', kind: 'enum', value: '["segunda-feira","monday"]', description: 'Weekdays.', source: 'journey',
+    }],
+  });
+  const weekday = enumCodeIssues(input);
+  assert.ok(weekday.some(issue => issue.message.includes('segunda-feira')), JSON.stringify(weekday));
+  assert.ok(!weekday.some(issue => issue.message.includes("'monday'")), JSON.stringify(weekday));
 });

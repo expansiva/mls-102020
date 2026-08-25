@@ -67,9 +67,7 @@
     "l2/{module}/web/contracts/{page}.ts",
     "l2/{module}/web/shared/{page}.ts",
     "l2/{module}/web/desktop/page11/{page}.ts",
-    "l2/{module}/web/desktop/page11/{page}.html",
     "l2/{module}/web/desktop/page21/{page}.ts",
-    "l2/{module}/web/desktop/page21/{page}.html",
     "l2/{module}/trace/frontend-page-objective/{page}.json",
     "l2/{module}/trace/frontend-shared-dts/{page}.txt",
     "l2/{module}/trace/frontend-create-pages/{page}.json",
@@ -109,7 +107,14 @@
     "Fan-out progress titles must expose completed, total and failed counters.",
     "Dynamic child args stay compact and unique.",
     "A worker should prefer completed-with-trace plus downstream verification when one item can be repaired without failing the whole pipeline.",
-    "PlanIds must be unique; runtime-generated planIds are documented by pattern below."
+    "Every fan-out host whose slots call an LLM sets onFailure: 'wait_after_prompt' (children inherit it via addParallelChildStep). A transport/provider failure then puts the slot in waiting_after_prompt_with_error, the agent's afterPromptStep still runs, completes the slot with its '*-FAILED: ' trace, and the fan-out counter reclassifies the provisional failure as completed (recoverParallelCompletion). WITHOUT it the default branch of runLLMStepParallel fails the STEP with newTaskStatus 'failed' and kills the whole task - msgtask_fe1 (petShop, 2026-08-21): one LLM 402 on the fallback threw away 14 finished pages and left 8 slots orphaned in in_progress. onFailure: 'skip' does NOT solve it: it marks the slot failed, updateStepStatus fails the task anyway while siblings are active, and updateParentStep later fails the host. Deterministic fan-outs (no afterPromptStep) must NOT set it - the engine would enqueue a hook that does not exist and the slot would stay active forever.",
+    "Sequential steps (phase, verify, register, finalize) carry NO onFailure: they are unique and mandatory, and failing the task is the correct outcome there. createAgentStepPayload therefore omits the field unless a caller asks for it.",
+    "PlanIds must be unique; runtime-generated planIds are documented by pattern below.",
+    "The i18n catalogue lives in the PAGE files only. A shared .ts emits no message_* consts, no MessageType and no messages export; the page (and each organism of a split page) emits its own complete pageMessage_<locale> catalogue.",
+    "The page catalogue is emitted DETERMINISTICALLY from the shared .defs.ts i18n map — the same map that used to feed the shared .ts. The model never copies a literal into it: a literal is what produced hardcoded English text in files that compiled clean.",
+    "Text already translated in the previous PAGE file is carried over per key, exactly as the shared did. Regenerating a page must never drop a hand-made translation. For an organism the previous file is the organism file, not the page.",
+    "Non-default locales stay annotated with the page message type, so a forgotten key is a compile error (TS2741) and a typo is TS2353 — locale parity is enforced by the compiler, not by a gate.",
+    "Consequence accepted with the decision: the same key now lives in every page of a shared (about 3), so translation cost and drift risk move from one catalogue per workspace to one per screen."
   ],
   "steps": [
     {
@@ -192,6 +197,7 @@
         "create-contract-shared-fanout"
       ],
       "maxParallel": 10,
+      "onFailure": "wait_after_prompt",
       "progressTitle": "Criar layouts {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
@@ -295,6 +301,8 @@
         "materialize-phase-{phase}"
       ],
       "maxParallel": 10,
+      "onFailure": "wait_after_prompt",
+      "onFailureCovers": "createFanoutStep builds all four hosts of this agent (materialize, repair round, split organisms, split page), so they share the policy.",
       "modelAlias": "code",
       "goal": "Generate one materialized runtime file from one pipeline item.",
       "deterministicShared": {
@@ -336,7 +344,7 @@
         "terminal materialization fanouts"
       ],
       "modelAlias": "deterministic",
-      "goal": "Write page preview HTML, register generated pages, and sign l5/project.json."
+      "goal": "Register generated pages and sign l5/project.json. Soft-delete leftover page preview .html."
     },
     {
       "planId": "finalize-create",
@@ -348,7 +356,13 @@
         "register-frontend"
       ],
       "modelAlias": "deterministic",
-      "goal": "Validate create/register markers and mark processed L5 todoFrontend owners as done."
+      "goal": "Validate create/register markers, mark processed L5 todoFrontend owners as done, and run the CLOSING GATE: compile every generated .ts of the module. On errors the gate does NOT loosen — it opens ONE repair round per broken file (max 2 rounds) and a fresh finalize that recompiles; only a module that compiles hands off to agentAddLanguage. A broken file whose defs is not on disk has no pipeline item to regenerate it, so it is named and still fails the gate.",
+      "moduleCompileRepair": {
+        "planIds": "finalize-create-repair-r{attempt} (parallel_dynamic fan-out of agentCfeMaterializeGen, one slot per broken FILE) + finalize-create-r{attempt+1} (sequential recompile). Unique per round: unlockWaitingDependencySteps only releases on a COMPLETED step per planId.",
+        "budget": "MAX_MODULE_COMPILE_REPAIRS = 2 (helpers/cfeCompileRepair.ts); past it the gate fails with the same count/severity as before.",
+        "slotArgs": "{planId, defPath, itemId?, attempt} — compact BY CONTRACT: agentCfeMaterializeGen recomputes the tsc errors from disk when attempt >= 2, so no error text travels in a step prompt (16/jul lesson: repair in fan-out, raw data never in the parent prompt).",
+        "addLanguageOrder": "The addLanguage handoff moved to AFTER the gate: it spawns an independent task, so dispatching it before a failing gate translated code about to be regenerated — and once per repair round."
+      }
     }
   ],
   "removedLegacy": [

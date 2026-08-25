@@ -12,6 +12,8 @@ import {
   Ns4E4PlanDraft,
   Ns4E4RelationshipBindingsDraft,
   Ns4E4Review,
+  Ns4EnumLabel,
+  Ns4OntologyEntity,
   Ns4OntologyField,
   Ns4OntologyRelationship,
   Ns4RelationshipRealizationKind,
@@ -197,6 +199,21 @@ export function validateNs4E4Review(
         add('NS4_E4_GREENFIELD_LEGACY_PREDICATE', `${predicatePath}.source`, 'A new solution cannot claim a discovered legacy lifecycle predicate.');
       }
     });
+    for (const { path: codePath, value } of closedDomainCodes(entity, path)) {
+      if (!isStableEnEnumCode(value)) {
+        add(
+          'NS4_E4_ENUM_CODE_EN',
+          codePath,
+          `Closed-domain value must be a stable English code (lowerCamel ASCII, e.g. active, monday), not user-language text (got '${value}').`,
+        );
+      }
+    }
+    const lifecycleCodes = new Set(entity.lifecycleStates);
+    validateEnumLabelList(entity.lifecycleLabels, lifecycleCodes, `${path}.lifecycleLabels`, add);
+    entity.fields.forEach((field, fieldIndex) => {
+      const allowed = new Set(field.enum?.length ? field.enum : isStatusFieldId(field.fieldId) ? entity.lifecycleStates : []);
+      validateEnumLabelList(field.enumLabels, allowed, `${path}.fields[${fieldIndex}].enumLabels`, add);
+    });
     const ruleIds = new Set<string>();
     entity.useRules.forEach((ruleId, ruleIndex) => {
       const rulePath = `${path}.useRules[${ruleIndex}]`;
@@ -250,6 +267,19 @@ export function validateNs4E4Review(
       if (entityIds.has('Project') && !relatedEntities.has(entity.entityId)) {
         add('NS4_E4_PROJECT_PROJECTION_ORPHAN', 'relationships', `Project-related projection ${entity.entityId} must declare its relationship to Project.`);
       }
+    });
+  }
+
+  if (options.requireRelationshipRealization !== false) {
+    review.entities.forEach((entity, entityIndex) => {
+      const ownershipRules = entity.useRules.filter(ruleRequiresOwnerRelation);
+      if (!ownershipRules.length) return;
+      if (entityDeclaresOwnerHandle(entity, review.relationships)) return;
+      add(
+        'NS4_E4_OWNER_RELATION',
+        `entities[${entityIndex}].useRules`,
+        `Rule ${ownershipRules.join(', ')} requires an owner relation on ${entity.entityId} (a customerId/ownerId field, or a relationship to Customer/Client/Owner realized by such a field) — without it the generated usecase cannot verify ownership.`,
+      );
     });
   }
 
@@ -399,7 +429,122 @@ export function validateNs4E4EntityDraft(
     { ...plan, entities: plan.entities.filter(entity => entity.entityId === detail.entityId), relationships: [] },
     [detail],
   );
-  return validateNs4E4Review(review);
+  return validateNs4E4Review(review, undefined, undefined, { requireRelationshipRealization: false });
+}
+
+/** `customerCanViewOnlyOwnPets` and kin: the rule is only evaluable if the entity names its owner. */
+function ruleRequiresOwnerRelation(ruleId: string): boolean {
+  return /own(?:er|pets?)/i.test(ruleId);
+}
+
+function entityDeclaresOwnerHandle(entity: { entityId: string; fields: Ns4OntologyField[]; storage: { idField?: string } }, relationships: Ns4OntologyRelationship[]): boolean {
+  const idField = entity.storage.idField || `${entity.entityId.slice(0, 1).toLowerCase()}${entity.entityId.slice(1)}Id`;
+  if (entity.fields.some(field => /^(owner|customer|client)Id$/i.test(field.fieldId) || /OwnerId$/u.test(field.fieldId))) {
+    return true;
+  }
+  return relationships.some((rel) => {
+    if (rel.fromEntity !== entity.entityId && rel.toEntity !== entity.entityId) return false;
+    const other = rel.fromEntity === entity.entityId ? rel.toEntity : rel.fromEntity;
+    if (!/^(Customer|Client|Owner)$/u.test(other)) return false;
+    const realization = rel.realization;
+    if (!realization) return false;
+    const ownFields = realization.from.entityId === entity.entityId
+      ? realization.from.fieldIds
+      : realization.to.entityId === entity.entityId ? realization.to.fieldIds : [];
+    return ownFields.some(fieldId => fieldId !== idField && /Id$/u.test(fieldId));
+  });
+}
+
+/**
+ * Enum and lifecycle values are stable codes, not labels. Format alone is not enough: `ativo` is a
+ * legal identifier and is exactly what the petShop E4 wrote (run08 then died when a seed repair
+ * "translated" it to Active). The stem list is the Portuguese closed-domain vocabulary that shape
+ * cannot catch, including camelCase splits (`diaInteiro` → dia + inteiro).
+ */
+const STABLE_EN_ENUM_CODE = /^[a-z][a-zA-Z0-9]*$/;
+const PORTUGUESE_ENUM_STEMS = new Set([
+  'aberto', 'agendado', 'aprovado', 'ativo', 'cancelada', 'cancelado', 'concluida', 'concluido',
+  'confirmado', 'dia', 'disponivel', 'domingo', 'encerrada', 'encerrado', 'fechada', 'fechado',
+  'feira', 'hora', 'inativa', 'inativo', 'indisponivel', 'iniciada', 'iniciado', 'inteiro',
+  'pendente', 'publicado', 'quarta', 'quinta', 'rascunho', 'recusado', 'rejeitado', 'sabado',
+  'segunda', 'sexta', 'solicitado', 'terca', 'vigente',
+]);
+
+function isStableEnEnumCode(value: string): boolean {
+  if (!STABLE_EN_ENUM_CODE.test(value)) return false;
+  if (PORTUGUESE_ENUM_STEMS.has(value.toLowerCase())) return false;
+  return !splitCamelStems(value).some(stem => PORTUGUESE_ENUM_STEMS.has(stem));
+}
+
+function splitCamelStems(value: string): string[] {
+  return value.split(/(?=[A-Z])/u).map(part => part.toLowerCase()).filter(Boolean);
+}
+
+function closedDomainCodes(entity: Ns4OntologyEntity, path: string): { path: string; value: string }[] {
+  const out: { path: string; value: string }[] = [];
+  const push = (codePath: string, value: string) => {
+    if (value) out.push({ path: codePath, value });
+  };
+  entity.lifecycleStates.forEach((state, index) => push(`${path}.lifecycleStates[${index}]`, state));
+  if (entity.initialState) push(`${path}.initialState`, entity.initialState);
+  (entity.terminalStates || []).forEach((state, index) => push(`${path}.terminalStates[${index}]`, state));
+  entity.lifecyclePredicates.forEach((predicate, predicateIndex) => {
+    predicate.stateIds.forEach((state, stateIndex) => {
+      push(`${path}.lifecyclePredicates[${predicateIndex}].stateIds[${stateIndex}]`, state);
+    });
+  });
+  entity.fields.forEach((field, fieldIndex) => {
+    const fieldPath = `${path}.fields[${fieldIndex}]`;
+    const declared = field.enum?.length
+      ? field.enum
+      : field.constraints.filter(constraint => constraint.kind === 'enum').flatMap(constraint => enumConstraintValues(constraint.value));
+    declared.forEach((value, valueIndex) => push(`${fieldPath}.enum[${valueIndex}]`, value));
+  });
+  return out;
+}
+
+function isStatusFieldId(fieldId: string): boolean {
+  return /(^|[a-z0-9])status$/i.test(fieldId);
+}
+
+function validateEnumLabelList(
+  labels: Ns4EnumLabel[] | undefined,
+  allowed: Set<string>,
+  path: string,
+  add: (code: string, path: string, message: string) => void,
+): void {
+  if (!labels?.length) return;
+  const seen = new Set<string>();
+  labels.forEach((entry, index) => {
+    const entryPath = `${path}[${index}]`;
+    if (!entry.code) {
+      add('NS4_E4_ENUM_LABEL_CODE', `${entryPath}.code`, 'enumLabels.code is required.');
+    } else if (!allowed.has(entry.code)) {
+      add('NS4_E4_ENUM_LABEL_ORPHAN', `${entryPath}.code`, `enumLabels code '${entry.code}' is not in the closed domain.`);
+    }
+    if (entry.code && seen.has(entry.code)) {
+      add('NS4_E4_ENUM_LABEL_DUPLICATE', `${entryPath}.code`, `Duplicate enumLabels code '${entry.code}'.`);
+    }
+    if (entry.code) seen.add(entry.code);
+    if (!entry.label) {
+      add('NS4_E4_ENUM_LABEL_TEXT', `${entryPath}.label`, 'enumLabels.label is required user-language text.');
+    }
+  });
+}
+
+function enumConstraintValues(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed.map(item => String(item).trim()).filter(Boolean);
+    } catch { /* fall through to the separated forms */ }
+  }
+  const separator = trimmed.includes('|') ? '|' : ',';
+  return trimmed.replace(/^[[(]|[\])]$/g, '').split(separator)
+    .map(item => item.trim().replace(/^['"]|['"]$/g, ''))
+    .filter(Boolean);
 }
 
 function placeholderFields(entityId: string, idField: string | undefined, needsStatus: boolean): Ns4OntologyField[] {

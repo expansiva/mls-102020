@@ -1,5 +1,24 @@
 # E4 changelog
 
+- 2026-08-24: Non-lifecycle enum fields (`priority`, …) were omitted by the entity worker even
+  though `enumLabels` was in the prompt: the JSON example showed only a uuid field, the schema
+  leaves the array optional, and the gate treats absence as valid. The entity example now includes
+  a labelled enum; a Type C backfill fills any remaining gap with a humanized code
+  (`inProgress` → `In progress`) and a non-blocking `systemDecision`. Status stays on
+  `lifecycleLabels` (not duplicated as field `enumLabels`). The gate still does not fail a run for
+  missing labels — old L4 without the field keeps compiling.
+
+- 2026-08-24: Closed-domain values carry an optional `enumLabels` / `lifecycleLabels` array of
+  `{ code, label }` (user-language text next to the English code). The tool schema stays
+  `additionalProperties: false` — a Record map is inexpressible. Absence is valid (old L4). The
+  gate checks orphan/duplicate codes and does not run `NS4_E4_ENUM_CODE_EN` on the label.
+
+- 2026-08-24: Closed-domain values (lifecycle states, `initialState`, `terminalStates`, field enums)
+  are stable English codes (`active`, `monday`), not user-language text. The overview and entity
+  prompts say so; the gate rejects anything else (`NS4_E4_ENUM_CODE_EN`). Titles and descriptions
+  stay in the user's language. Motivated by petShop run08: seeds died after repair translated
+  `ativo` → `Active` because the canonical value was Portuguese.
+
 - 2026-08-18 (party policy,: every entity now declares
   `party: 'person' | 'organization' | 'none'`, and the gate makes the storage decision mechanical instead
   of a prompt the model may skip: `party !== 'none'` must use `storage.target: 'mdm'`

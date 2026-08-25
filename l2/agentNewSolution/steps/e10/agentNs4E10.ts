@@ -16,7 +16,8 @@ import {
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
 import {
   PUBLISH_CONF_EXAMPLES, applyPlatformBlockDefaults, buildProjectsBlock, buildWorkspaceDependencies,
-  collectProjectJsonIssues, collectPublishableConfigIssues, ensureProjectAppEnv,
+  collectProjectJsonIssues, collectPublishableConfigIssues, ensureProjectAppEnv, ensureProjectType,
+  readProjectTypeFromProjectJson,
 } from '/_102020_/l2/agentNewSolution/steps/e10/publishable.js';
 import type { Ns4JourneyIndex } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import type { Ns4AccessMatrixArtifact } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
@@ -29,6 +30,7 @@ import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/model.js
 import type { Ns4ClassicOperation, Ns4ClassicSiteMap, Ns4ClassicWorkspace } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
 import { compileNs4E10Delivery, type Ns4E10Sources, type Ns4E10ValidationReport } from '/_102020_/l2/agentNewSolution/steps/e10/contracts.js';
 import { validateNs4E10 } from '/_102020_/l2/agentNewSolution/steps/e10/gate.js';
+import { agentBuildTrace } from '/_102020_/l2/agentNewSolution/helpers/ns4BuildStamp.js';
 
 interface Ns4E10Args { planId: 'e10-validation'; moduleName: string; }
 
@@ -67,7 +69,7 @@ export async function beforeNs4E10PromptStep(
     const publishIssues: string[] = [];
     const config = { ...delivery.config };
     config.workspaceDependencies = buildWorkspaceDependencies(dependencies);
-    const projectsBlock = buildProjectsBlock(config.projects, projectId, dependencies);
+    const projectsBlock = buildProjectsBlock(config.projects, projectId, dependencies, await collectProjectTypes(projectId, dependencies));
     config.projects = projectsBlock.projects;
     publishIssues.push(...projectsBlock.issues);
     if (!config.defaultProjectId) config.defaultProjectId = String(projectId);
@@ -81,7 +83,8 @@ export async function beforeNs4E10PromptStep(
     const projectJson = await readNs4L5Project();
     publishIssues.push(...collectProjectJsonIssues(projectJson, moduleName));
     const withAppEnv = ensureProjectAppEnv(projectJson);
-    if (withAppEnv.changed && projectJson) artifactPaths.push(await writeNs4L5Project(withAppEnv.projectJson));
+    const withType = ensureProjectType(withAppEnv.projectJson, 'client');
+    if ((withAppEnv.changed || withType.changed) && projectJson) artifactPaths.push(await writeNs4L5Project(withType.projectJson));
 
     // The real `.conf` are environment (hosts, keys) and never come out of a generator; the examples do.
     for (const [name, content] of Object.entries(PUBLISH_CONF_EXAMPLES)) {
@@ -98,7 +101,7 @@ export async function beforeNs4E10PromptStep(
         ? 'E10 automatic completion was already recorded.'
         : `E10 validation passed; ${artifactPaths.length - 1} L5 delivery artifacts were written and the solution was completed automatically.${
           publishIssues.length ? ` PUBLISH CHECKLIST (${publishIssues.length}): ${publishIssues.slice(0, 8).join('; ')}` : ' Publish checklist clean.'
-        }`, 'input_output')];
+        }${await agentBuildTrace('[agentNs4E10]')}`, 'input_output')];
   } catch (error) {
     const message = errorMessage(error); if (moduleName) await runtimeFail(moduleName, message, reportPath);
     return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
@@ -133,7 +136,7 @@ async function loadSources(moduleName: string): Promise<Ns4E10Sources> {
     operations: await Promise.all(model.operations.map(operation => readRequired<Ns4ClassicOperation>(ns4OperationFile(moduleName, operation.operationId), `operation ${operation.operationId}`))),
     contracts: await Promise.all(model.workspaces.flatMap(workspace => workspace.bffCalls.map(async call => ({
       workspaceId: workspace.workspaceId, bffId: call.bffId, route: `${moduleName}.${workspace.workspaceId}.${call.bffId}`,
-      source: await readRequiredText(ns4ClassicContractFile(moduleName, workspace.workspaceId, call.bffId), `contract ${workspace.workspaceId}.${call.bffId}`),
+      source: await readRequiredText(ns4ClassicContractFile(moduleName, workspace.workspaceId, call.bffId), `contract ${workspace.workspaceId}--${call.bffId}`),
     })))),
     siteMap: await readRequired<Ns4ClassicSiteMap>(ns4SiteMapFile(moduleName), 'site map'),
   };
@@ -161,6 +164,20 @@ async function readRequired<T>(file: Parameters<typeof readNs4DefsJson>[0], labe
   let failure = ''; for (let attempt = 0; attempt < 2; attempt += 1) try { const value = await readNs4DefsJson<T>(file, true); if (value) return value; } catch (error) { failure = errorMessage(error); }
   throw new Error(`Unable to read approved ${label}: ${failure || 'invalid artifact'}`);
 }
+async function collectProjectTypes(projectId: number, dependencies: readonly number[]): Promise<Record<string, string>> {
+  const typeById: Record<string, string> = {};
+  for (const id of [...new Set([projectId, ...dependencies])]) {
+    if (!Number.isFinite(id) || id <= 0) continue;
+    try {
+      const type = readProjectTypeFromProjectJson(await readNs4L5Project(id));
+      if (type) typeById[String(id)] = type;
+    } catch {
+      // Another project's project.json may be missing or unreadable; the lib+finding fallback remains.
+    }
+  }
+  return typeById;
+}
+
 function resolveArgs(context: mls.msg.ExecutionContext, value: unknown): Ns4E10Args {
   const root = parse(value); const moduleName = isRecord(root) && text(root.moduleName) ? text(root.moduleName) : findE9Module(context) || memory(context, 'resumeModule');
   if (!isRecord(root) || root.planId !== 'e10-validation' || !moduleName) throw new Error('Invalid E10 step arguments or missing E9 module handoff.');

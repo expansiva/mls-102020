@@ -6,7 +6,7 @@ authentication. Those runtime concerns remain in collab-auth.
 The LLM emits a `clarification` payload containing access profiles, `domain:code` authorities,
 profile-authority grants, data scopes and disclosure boundaries. The gate validates the proposal
 against the approved E2 draft. Before approval only
-`l4/{module}/pipeline/e3-access-matrix.draft.json` is written.
+`l4/{module}/pipeline/e3-access-matrix-draft.json` is written.
 
 The widget is read-only except for the adjustment prompt. A change request adds the next open E3
 agent step first, records the request second and completes the current clarification last. The new LLM
@@ -38,3 +38,14 @@ tsx --import ./test/register-hooks.mjs --import ./test/setup-l2.ts \
 
 Without `--write` it performs no filesystem mutation. With `--write` it stores only diagnostic live
 review/response files under the module pipeline; it never approves E3.
+
+## Structural repair round
+
+A deterministic gate finding schedules ONE repair (`e3-access-matrix-round-{round}-gate-repair-1`)
+instead of failing. The rejected draft is written to the pipeline first, then the repair step reads it
+back together with the numbered findings and answers through `gateRepair.md` with a complete
+corrected matrix, which passes the same unchanged gate. A second consecutive failure is terminal,
+with the same message the step produced before this round existed.
+
+The repair step's args carry `gateFeedback` and `gateRepairAttempt`; both are part of the step
+contract, because dropping either turns the bounded round into a plain retry or an endless one.

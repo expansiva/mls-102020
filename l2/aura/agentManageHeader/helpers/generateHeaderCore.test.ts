@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  allowedNavEntries,
+  allowsNavLinks,
   buildGenerateHeaderHumanPrompt,
   buildHeaderSource,
   findCssVars,
@@ -364,12 +366,64 @@ test('navigation links are opt-in, and off by default', () => {
   assert.equal(normalizeHeaderRequest({ ...base, navLinks: 'yes' }).navLinks, false);
 
   const withLinks = withBandHtml('${this.renderAsideToggle()}${this.renderNavLinks()}');
-  assert.match(validateHeaderParts(withLinks).join('; '), /navLinks is off/);
+  assert.match(validateHeaderParts(withLinks).join('; '), /no route was selected/);
   assert.deepEqual(validateHeaderParts(withLinks, { allowNavLinks: true }), []);
 
   // renderActions() may carry module links, so it is gated the same way.
   const withModuleLinks = withBandHtml('${this.renderAsideToggle()}${this.renderModuleLinks()}');
-  assert.match(validateHeaderParts(withModuleLinks).join('; '), /navLinks is off/);
+  assert.match(validateHeaderParts(withModuleLinks).join('; '), /no route was selected/);
+
+  // The reverse omission is just as bad: routes picked and never rendered look like a broken screen.
+  const withoutLinks = withBandHtml('${this.renderAsideToggle()}${this.renderBrand()}');
+  assert.match(
+    validateHeaderParts(withoutLinks, { allowNavLinks: true }).join('; '),
+    /never calls this\.renderNavLinks/,
+  );
+});
+
+test('a list of hrefs selects which routes the header may link', () => {
+  const base = { projectId: PROJECT, brand: { title: 'Sample App' } };
+  const navigation = [
+    { label: 'Dash', href: '/m/dash' },
+    { label: 'Stock', href: '/m/stock' },
+    { label: 'Shift', href: '/m/shift' },
+  ];
+
+  const picked = normalizeHeaderRequest({ ...base, navLinks: ['/m/stock', '', '/m/dash'], navigation });
+  assert.deepEqual(picked.navLinks, ['/m/stock', '/m/dash'], 'empty entries dropped');
+  assert.ok(allowsNavLinks(picked), 'a non-empty list turns links on');
+  assert.deepEqual(
+    allowedNavEntries(picked).map((entry) => entry.href),
+    ['/m/dash', '/m/stock'],
+    'in the order the project declares them, with the project label',
+  );
+
+  // Off cases: nothing selected is nothing allowed.
+  assert.equal(allowsNavLinks(normalizeHeaderRequest({ ...base, navLinks: [], navigation })), false);
+  assert.deepEqual(allowedNavEntries({ navLinks: [], navigation }), []);
+  // The legacy flag still means "every route".
+  assert.deepEqual(allowedNavEntries({ navLinks: true, navigation }), navigation);
+
+  // A route that exists but was NOT selected is as invented as one that does not exist.
+  const bandHtml = '${this.renderAsideToggle()}<a href="/m/shift" @click=${this.handleNavigate}>x</a>';
+  const errors = validateHeaderParts(withBandHtml(bandHtml), {
+    allowNavLinks: true,
+    allowedHrefs: allowedNavEntries(picked).map((entry) => entry.href),
+  });
+  assert.match(errors.join('; '), /\/m\/shift/);
+});
+
+test('the messages block must cover the locales that were asked for', () => {
+  const bandHtml = '${this.renderAsideToggle()}<span>${this.localized(messages).hint}</span>';
+  const parts = { ...withBandHtml(bandHtml), messages: { 'pt-BR': { hint: 'Oi' } } };
+
+  assert.match(
+    validateHeaderParts(parts, { locales: ['pt-BR', 'en'] }).join('; '),
+    /missing the locale "en"/,
+    'a missing locale falls back at runtime, which is invisible until someone switches',
+  );
+  assert.deepEqual(validateHeaderParts(parts, { locales: ['pt-BR'] }), []);
+  assert.deepEqual(validateHeaderParts(parts), [], 'no locales requested, no locale rule');
 });
 
 test('with links off the model is told so, and gets no routes to link', () => {
@@ -574,4 +628,56 @@ test('a hand-rolled user button is refused (it loses the fallback and the menu)'
     validateHeaderParts(withBandHtml("${this.renderAsideToggle()}<button @click=${() => this.emitHeaderAction('search')}>s</button>")),
     [],
   );
+});
+
+test('a custom property the header declares itself is not a design-system token', () => {
+  const tokens = ['--nav-bg', '--nav-text', '--text-default'];
+
+  // Declared in bandCss and read back: a control value, not a token. This exact case (a per-letter
+  // animation index) had a good header rejected.
+  const own = {
+    bandHtml: '${this.renderAsideToggle()}${this.renderBrand()}',
+    bandCss: '${tag} .x { --letter-index: 3; animation-delay: calc(var(--letter-index) * 60ms); color: var(--nav-text, #102a43); }',
+  };
+  assert.deepEqual(validateHeaderParts(own, { allowedTokens: tokens, colorTokens: tokens }), []);
+
+  // Declared in an inline style of the markup, read from the CSS.
+  const inline = {
+    bandHtml: '${this.renderAsideToggle()}<span style="--letter-index:${2}">a</span>',
+    bandCss: '${tag} span { transform: translateY(calc(var(--letter-index) * 1px)); }',
+  };
+  assert.deepEqual(validateHeaderParts(inline, { allowedTokens: tokens, colorTokens: tokens }), []);
+
+  // Still rejected: a name that is only READ and is not in the project's list.
+  const invented = {
+    bandHtml: '${this.renderAsideToggle()}${this.renderBrand()}',
+    bandCss: '${tag} .x { color: var(--ds-color-nav-text, #fff); }',
+  };
+  assert.match(
+    validateHeaderParts(invented, { allowedTokens: tokens }).join('; '),
+    /--ds-color-nav-text is not a token/,
+  );
+
+  // A var() reference with a fallback is a reference, never a declaration.
+  const fallbackOnly = {
+    bandHtml: '${this.renderAsideToggle()}${this.renderBrand()}',
+    bandCss: '${tag} .x { padding: var( --spacing-nope, 4px ); }',
+  };
+  assert.match(
+    validateHeaderParts(fallbackOnly, { allowedTokens: tokens }).join('; '),
+    /--spacing-nope is not a token/,
+  );
+});
+
+test('the preview tag keeps the project number last', () => {
+  const preview = headerPaths(PROJECT, { previewToken: 'M4pcb!' });
+  // Every tag in the workspace ends with the project (convertFileToTag); a token after it is invalid.
+  assert.equal(preview.tag, `layout--app-header-preview-m4pcb-${PROJECT}`);
+  assert.equal(preview.tag.endsWith(`-${PROJECT}`), true);
+  assert.equal(preview.fileReference, `_${PROJECT}_/l2/layout/appHeaderPreview.ts`,
+    'the file is fixed; only the tag varies per attempt');
+
+  const applied = headerPaths(PROJECT);
+  assert.equal(applied.tag, `layout--app-header-${PROJECT}`);
+  assert.notEqual(applied.tag, preview.tag, 'a preview never takes over the applied tag');
 });

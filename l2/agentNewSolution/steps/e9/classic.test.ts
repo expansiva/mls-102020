@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { deriveNs4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/tiers.js';
-import { compileNs4ClassicL4 } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
+import { compileNs4ClassicL4, transposeNs4ClassicOperation } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
 import { ns4ClassicDefsSource, parseNs4ClassicDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
 // The consumers' OWN parsers. If these read the emission, the wave changed nothing in them.
 import { parseWorkspaceDefs } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
@@ -111,6 +111,41 @@ test('the approval of a change order arrives at the page as a closed verb select
   assert.equal(identity.source, 'selectedEntity');
 });
 
+test('R6-3: ontology json stays json on classic outputShape and on the TS contract', async () => {
+  const ontology = {
+    entities: [{
+      entityId: 'ServiceExecution',
+      fields: [
+        { fieldId: 'serviceExecutionId', type: 'uuid', required: true },
+        { fieldId: 'beforeImages', type: 'json', required: false },
+        { fieldId: 'afterImages', type: 'json', required: false },
+      ],
+      storage: { idField: 'serviceExecutionId' },
+    }],
+  };
+  const operation = {
+    operationId: 'updateServiceExecution',
+    title: 'Update service execution',
+    entityRef: 'ServiceExecution',
+    entityRefs: ['ServiceExecution'],
+    kind: 'command',
+    useRules: [],
+    story: ['Store before/after images'],
+    accessPattern: { kind: 'update' },
+    inputs: [{
+      inputId: 'beforeImages',
+      fieldRef: { entityId: 'ServiceExecution', fieldId: 'beforeImages' },
+      required: false,
+      source: 'userInput',
+      description: 'photos',
+    }],
+  };
+  const classic = transposeNs4ClassicOperation({ workspaces: [], moduleName: 'petShop' } as any, operation as any, ontology as any);
+  assert.equal(classic.outputShape.fields.find(field => field.name === 'beforeImages')?.type, 'json');
+  assert.equal(classic.outputShape.fields.find(field => field.name === 'afterImages')?.type, 'json');
+  assert.equal(classic.inputs[0].fieldRef, 'ServiceExecution.beforeImages');
+});
+
 test('each bffCall emits one contract file, named and routed the way the consumers expect', async () => {
   const { model, l4 } = await compile();
   const expected = l4.workspaces.flatMap(workspace => workspace.bffCalls.length);
@@ -192,4 +227,62 @@ test('what E9 writes is what E10 reads back: the defs round trip, not an in-memo
 
   // A contract file is raw TypeScript source, read as text and never parsed as defs data.
   assert.equal(parseNs4ClassicDefsSource(l4.contracts[0].source), null);
+});
+
+test('the mdm block survives to the classic operation without breaking either consumer parser', async () => {
+  const { model, l4 } = await compile();
+  const classicOf = (operationId: string) => l4.operations.find(operation => operation.operationId === operationId)!;
+
+  // The lifecycle pair keeps a kind the consumer already understands; the meaning
+  // rides in the mdm block.
+  const inactivate = classicOf('inactivateClient');
+  assert.equal(inactivate.accessPattern.kind, 'update');
+  assert.equal(inactivate.kind, 'update');
+  assert.deepEqual(inactivate.mdm, { lifecycle: 'inactivate' });
+  assert.deepEqual(classicOf('reactivateClient').mdm, { lifecycle: 'reactivate' });
+  assert.deepEqual(classicOf('listClient').mdm, { activeFilterInput: 'includeInactive', situationOutput: 'active' });
+
+  // No delete of master data reaches the emission at all.
+  assert.equal(l4.operations.some(operation => operation.operationId === 'deleteClient'), false);
+  // And an entity outside master data emits no block.
+  assert.equal(classicOf('deleteChangeOrder').mdm, undefined);
+  assert.equal(classicOf('listChangeOrder').mdm, undefined);
+
+  // The block survives the write/read round trip, which is how the consumers
+  // actually receive it — not an in-memory shortcut.
+  const fileInfo = { project: 102046, level: 4 as const, folder: 'buildFlowFsm44/operations', shortName: 'x', extension: '.defs.ts' };
+  const source = ns4ClassicDefsSource({ ...fileInfo, shortName: inactivate.operationId }, `operation${inactivate.operationId}`, inactivate);
+  assert.deepEqual(parseNs4ClassicDefsSource(source), inactivate);
+
+  // The consumers' OWN parsers still read the emission: an optional field they do
+  // not know about must not change what they resolve.
+  const workspace = l4.workspaces.find(item => item.workspaceId === 'clientCatalogue')!;
+  const parsed = parseWorkspaceDefs(workspace as unknown as Record<string, unknown>, model.moduleName);
+  assert.ok(parsed, 'the backend parser still reads the master-data catalogue');
+  assert.equal(parsed!.bffCalls.length, workspace.bffCalls.length);
+  const calls = parseWorkspaceBffCalls(workspace as never);
+  assert.ok(calls.some(call => call.bffId === 'cmdInactivateClient'), 'the frontend parser sees the new command');
+  assert.equal(calls.some(call => call.bffId === 'cmdDeleteClient'), false);
+  assert.ok(parseWorkspaceSections(workspace as never).length, 'the frontend parser still reads the sections');
+  assert.equal(l4OperationInputs(inactivate as never).length, 1, 'the lifecycle command takes the identity only');
+});
+
+test('a catalogue list contract types search as string and sortBy as a closed enum', async () => {
+  const { l4 } = await compile();
+  const listClient = l4.operations.find(operation => operation.operationId === 'listClient')!;
+  assert.equal(listClient.inputs.find(input => input.inputId === 'search')?.fieldRef, 'Client.name');
+  const clientCall = l4.workspaces.flatMap(workspace => workspace.bffCalls)
+    .find(call => call.bffId === 'qryListClient' && call.route.includes('clientCatalogue'))!;
+  assert.equal(clientCall.input.find(input => input.name === 'search')?.type, 'string');
+  const clientContract = l4.contracts.find(item => item.bffId === 'qryListClient' && item.workspaceId === 'clientCatalogue')!;
+  assert.match(clientContract.source, /search\?: string;/);
+
+  const listChangeOrder = l4.operations.find(operation => operation.operationId === 'listChangeOrder')!;
+  assert.deepEqual(listChangeOrder.inputs.find(input => input.inputId === 'sortBy')?.enumValues, ['submittedAt', 'status', 'decidedAt']);
+  const changeContract = l4.contracts.find(item => item.bffId === 'qryListChangeOrder' && item.workspaceId === 'changeOrderCatalogue')!;
+  assert.match(changeContract.source, /sortBy\?: 'submittedAt' \| 'status' \| 'decidedAt';/);
+  assert.match(changeContract.source, /sortOrder\?: 'asc' \| 'desc';/);
+  const workspace = l4.workspaces.find(item => item.workspaceId === 'changeOrderCatalogue')!;
+  const recordList = workspace.sections.find(section => section.sectionId === 'recordList')!;
+  assert.equal(recordList.organisms.find(organism => organism.role === 'filterControl')?.attachTo, 'qryListChangeOrder');
 });
