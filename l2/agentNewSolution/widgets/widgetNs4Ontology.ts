@@ -26,6 +26,7 @@ const labels = {
     structural: 'What should change?', structuralHint: 'Use the LLM for entities, fields, types, relationships, lifecycle or constraints.',
     placeholder: 'Example: add a client-facing published material-usage projection related to Project, without exposing internal costs.',
     request: 'Generate another proposal', approve: 'Approve ontology', requiredAdjustment: 'Describe the structural change first.', empty: 'No ontology proposal available.', processingApproval: 'Validating ontology…', processingChanges: 'Preparing a new review…', processingCancel: 'Cancelling execution…', revise: 'Review the items below', cancel: 'Cancel execution', cancelTitle: 'Cancel this execution?', cancelText: 'Processing will end. The history and approved artifacts will be preserved.', keepWorking: 'Keep working',
+    assumedDecisions: 'Assumed decisions', changeHint: 'How to change later',
   },
   pt: {
     subtitle: 'Revise os dados de negócio, restrições e relacionamentos compartilhados pelo frontend e backend.', step: 'Etapa', of: 'de',
@@ -42,6 +43,7 @@ const labels = {
     structural: 'O que deve mudar?', structuralHint: 'Use a LLM para entidades, campos, tipos, relacionamentos, ciclos ou restrições.',
     placeholder: 'Exemplo: adicione uma projeção publicada do uso de materiais para o cliente, relacionada ao projeto e sem custos internos.',
     request: 'Gerar nova proposta', approve: 'Aprovar ontologia', requiredAdjustment: 'Descreva primeiro a alteração estrutural.', empty: 'Nenhuma proposta de ontologia disponível.', processingApproval: 'Validando ontologia…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…', revise: 'Revise os itens abaixo', cancel: 'Cancelar execução', cancelTitle: 'Cancelar esta execução?', cancelText: 'O processamento será encerrado. O histórico e os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
+    assumedDecisions: 'Decisões assumidas', changeHint: 'Como alterar depois',
   },
   es: {
     subtitle: 'Revise los datos de negocio, restricciones y relaciones compartidos por frontend y backend.', step: 'Paso', of: 'de',
@@ -58,6 +60,7 @@ const labels = {
     structural: '¿Qué debe cambiar?', structuralHint: 'Use la LLM para entidades, campos, tipos, relaciones, ciclos o restricciones.',
     placeholder: 'Ejemplo: agregue una proyección publicada del uso de materiales para el cliente, relacionada con el proyecto y sin costos internos.',
     request: 'Generar otra propuesta', approve: 'Aprobar ontología', requiredAdjustment: 'Describa primero el cambio estructural.', empty: 'No hay propuesta de ontología.', processingApproval: 'Validando ontología…', processingChanges: 'Preparando una nueva revisión…', processingCancel: 'Cancelando la ejecución…', revise: 'Revise los elementos a continuación', cancel: 'Cancelar ejecución', cancelTitle: '¿Cancelar esta ejecución?', cancelText: 'El procesamiento terminará. Se conservarán el historial y los artefactos aprobados.', keepWorking: 'Seguir trabajando',
+    assumedDecisions: 'Decisiones asumidas', changeHint: 'Cómo cambiar después',
   },
 };
 
@@ -185,6 +188,18 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
           <span class="ns4-review">${text.round} ${this.value.reviewRound}</span>
         </header>
         ${this.renderFeedback(text)}
+        ${this.value.systemDecisions?.length ? html`
+          <details class="ns4-system-decisions">
+            <summary>${text.assumedDecisions} (${this.value.systemDecisions.length})</summary>
+            <div>${this.value.systemDecisions.map(decision => html`
+              <article>
+                <strong>${decision.question}</strong>
+                <p>${decision.chosen}</p>
+                <small><b>${text.changeHint}:</b> ${decision.changeHint}</small>
+              </article>
+            `)}</div>
+          </details>
+        ` : ''}
 
         <div class="ns4-workbench">
           <aside aria-label=${text.entities}>

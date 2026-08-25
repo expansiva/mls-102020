@@ -10,14 +10,14 @@ import { collectNs4DemotedJourneyIds } from '/_102020_/l2/agentNewSolution/steps
 import type { Ns4JourneyProposal, Ns4JourneyStep } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import type { Ns4OntologyEntity, Ns4OntologyRelationship } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import type { Ns4UseCaseArtifactV3 } from '/_102020_/l2/agentNewSolution/steps/e7/contracts.js';
-import { deriveNs4Contexts, isNs4PlatformOwnedEntity, ns4ContextIdOf } from '/_102020_/l2/agentNewSolution/helpers/ns4Context.js';
+import { deriveNs4Contexts, isNs4CollectionInspect, isNs4PlatformOwnedEntity, ns4ContextIdOf } from '/_102020_/l2/agentNewSolution/helpers/ns4Context.js';
 import { buildNs4ParentIndex, ns4FkParentOf } from '/_102020_/l2/agentNewSolution/helpers/ns4ForeignKeys.js';
 import type { Ns4DerivedContextGraph } from '/_102020_/l2/agentNewSolution/helpers/ns4Context.js';
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import { deriveE8HubScore, type Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
 import { applyNs4HubComposition, defaultNs4HubComposition } from '/_102020_/l2/agentNewSolution/steps/e8/hubComposition.js';
 import {
-  NS4_E8_MODEL_VERSION,
+  NS4_E8_MODEL_VERSION, isNs4OwnerHandleField,
   type Ns4E8BffCall, type Ns4E8HubCatalogue, type Ns4E8HubCatalogueItem, type Ns4E8Input,
   type Ns4E8InputSource, type Ns4E8MenuEntry, type Ns4E8Model, type Ns4E8ModelWorkspace,
   type Ns4E8Operation, type Ns4E8Section,
@@ -253,11 +253,12 @@ function buildRecordCatalogue(
   // scopes from actors, so a profile id there would fabricate a scope collab-auth never issued.
   const actors = unique(profileRefs.flatMap(profileRef => context.actorsByProfile.get(profileRef) || []));
   const idField = identityFieldOf(entity);
+  const listInputs = catalogueListInputs(entity, context);
   const operations: Ns4E8Operation[] = [
     {
       operationId: `list${entity.entityId}`, title: label(context, `Listar ${entity.title}`, `List ${entity.title}`),
       kind: 'query', entityRef: entity.entityId, entityRefs: [entity.entityId],
-      accessPattern: { kind: 'list', pagination: 'optional' }, inputs: [],
+      accessPattern: { kind: 'list', pagination: 'optional' }, inputs: listInputs,
       outputRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
       useRules: [], transitionRefs: [], story: [label(context, 'Encontrar o registro.', 'Find the record.')],
       // Master data lists hide deactivated records unless the caller asks for them,
@@ -281,20 +282,28 @@ function buildRecordCatalogue(
       story: [label(context, 'Corrigir os dados do registro escolhido.', 'Correct the chosen record.')],
     },
     ...removalOperations(entity, context),
+    getByIdOperation(entity, context),
   ];
+  const removalCalls: Ns4E8BffCall[] = removalOperations(entity, context).map(operation => ({
+    bffId: `cmd${upperFirst(operation.operationId)}`, kind: 'command' as const,
+    operationId: operation.operationId, outputKind: 'object' as const, entityRef: entity.entityId,
+  }));
   const bffCalls: Ns4E8BffCall[] = [
     { bffId: `qryList${entity.entityId}`, kind: 'query', operationId: `list${entity.entityId}`, outputKind: 'paginated', entityRef: entity.entityId },
     { bffId: `cmdCreate${entity.entityId}`, kind: 'command', operationId: `create${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
     { bffId: `cmdUpdate${entity.entityId}`, kind: 'command', operationId: `update${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
-    ...removalOperations(entity, context).map(operation => ({
-      bffId: `cmd${upperFirst(operation.operationId)}`, kind: 'command' as const,
-      operationId: operation.operationId, outputKind: 'object' as const, entityRef: entity.entityId,
-    })),
+    ...removalCalls,
+    // Named get{Entity} (bff qryGet{Entity}): locate* is already a list, inspect* is a journey
+    // screen. No organism consumes this call — it exists for a future id lookup, not the page.
+    { bffId: `qryGet${entity.entityId}`, kind: 'query', operationId: `get${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
   ];
-  const removalActions = bffCalls.slice(3).map(call => ({ role: 'contextualAction' as const, action: call.bffId }));
+  const removalActions = removalCalls.map(call => ({ role: 'contextualAction' as const, action: call.bffId }));
+  const listFilters = listInputs.length
+    ? [{ role: 'filterControl' as const, attachTo: bffCalls[0].bffId }]
+    : [];
   const sections: Ns4E8Section[] = [
     { sectionId: 'recordList', intent: label(context, `Localizar ${entity.title}.`, `Find ${entity.title}.`),
-      organisms: [{ role: 'primarySurface', dataSource: bffCalls[0].bffId }, ...removalActions] },
+      organisms: [{ role: 'primarySurface', dataSource: bffCalls[0].bffId }, ...listFilters, ...removalActions] },
     { sectionId: 'recordForm', intent: label(context, `Criar ou corrigir ${entity.title}.`, `Create or correct ${entity.title}.`),
       organisms: [{ role: 'primarySurface', action: bffCalls[1].bffId }, { role: 'contextualAction', action: bffCalls[2].bffId }] },
   ];
@@ -360,6 +369,22 @@ function removalOperations(entity: Ns4OntologyEntity, context: Ns4E8TierContext)
 }
 
 /**
+ * Row lookup by identity. A catalogue always emits it, even when no page calls it — the
+ * future LLM harness reads the table by id. A lookup still resolves an inactive mdm record.
+ */
+function getByIdOperation(entity: Ns4OntologyEntity, context: Ns4E8TierContext): Ns4E8Operation {
+  return {
+    operationId: `get${entity.entityId}`, title: label(context, `Obter ${entity.title}`, `Get ${entity.title}`),
+    kind: 'query', entityRef: entity.entityId, entityRefs: [entity.entityId],
+    accessPattern: { kind: 'getById' }, inputs: catalogueInputs(entity, context, 'identityOnly'),
+    outputRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
+    useRules: [], transitionRefs: [],
+    story: [label(context, 'Ler o registro pelo identificador.', 'Read the record by id.')],
+    ...(isMdmEntity(entity) ? { mdm: { situationOutput: 'active' as const } } : {}),
+  };
+}
+
+/**
  * A catalogue is visible to the profiles that already operate the entity somewhere. An entity no
  * journey touches still needs a maintenance screen, so it falls back to the internal profiles and
  * the module records the choice instead of leaving the data unreachable.
@@ -395,8 +420,9 @@ function catalogueEntityRefs(entity: Ns4OntologyEntity, context: Ns4E8TierContex
 /**
  * The inputs of a catalogue command, classified structurally: the identity is chosen in the grid,
  * a foreign key is chosen through a picker over its own catalogue, a lifecycle status and a
- * timestamp are set by the server, and everything else is typed by the user. A state transition is
- * never here — it belongs to the journey that operates it.
+ * timestamp are set by the server, the record owner bound by an E3 `own` scope is the session, and
+ * everything else is typed by the user. A state transition is never here — it belongs to the
+ * journey that operates it.
  */
 function catalogueInputs(
   entity: Ns4OntologyEntity, context: Ns4E8TierContext, mode: 'create' | 'update' | 'identityOnly',
@@ -419,6 +445,12 @@ function catalogueInputs(
       inputs.push({ ...base, source: 'systemDefault', required: field.required });
       continue;
     }
+    // The owner of the record is the authenticated actor (E3 dataScope `own`), never a form field.
+    // A person FK the user actually chooses (assign to someone else) is not an owner handle.
+    if (isRecordOwnerSessionField(entity, field, context)) {
+      inputs.push({ ...base, source: 'actorSession', required: field.required });
+      continue;
+    }
     const parent = parents.get(field.fieldId);
     if (parent) {
       // A platform-owned parent is the acting identity: it comes from the session, never from a picker.
@@ -429,6 +461,59 @@ function catalogueInputs(
     // A required field is required whenever it is written: the catalogue edits a whole record, and
     // partial-patch semantics would let an update violate the contract the ontology declares.
     inputs.push({ ...base, source: 'userInput', required: field.required });
+  }
+  return inputs;
+}
+
+/** A catalogue list is searchable when the ontology has a display string (`title` or `name`). */
+const SEARCHABLE_FIELD = /^(title|name)$/;
+
+function searchableFieldOf(entity: Ns4OntologyEntity) {
+  return entity.fields.find(field => SEARCHABLE_FIELD.test(field.fieldId) && (field.type === 'string' || field.type === 'text'));
+}
+
+/**
+ * Dates, timestamps (`<verb>At`) and closed enums are the fields a listing can order by.
+ * Identity is never a sort key — it is not a product ordering.
+ */
+function sortableFieldIds(entity: Ns4OntologyEntity): string[] {
+  const idField = identityFieldOf(entity);
+  return entity.fields
+    .filter(field => field.fieldId !== idField && (
+      field.type === 'date' || field.type === 'datetime' || TIMESTAMP_FIELD.test(field.fieldId) || (field.enum?.length ?? 0) > 0
+    ))
+    .map(field => field.fieldId);
+}
+
+/**
+ * Optional list controls, synthesized like getById: they do not travel through E6 (additional
+ * modules/plugins) and they are not journey steps. `search` fieldRef is the display field so the
+ * existing field-ref gate and the frontend parser (which drop inputs with an empty fieldRef) both
+ * keep it. `sortBy` is a closed enum of sortable field ids, not a free string.
+ */
+function catalogueListInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContext): Ns4E8Input[] {
+  const inputs: Ns4E8Input[] = [];
+  const searchField = searchableFieldOf(entity);
+  if (searchField) {
+    inputs.push({
+      inputId: 'search',
+      fieldRef: { entityId: entity.entityId, fieldId: searchField.fieldId },
+      source: 'userInput', required: false,
+      description: label(context, `Buscar por ${searchField.title}.`, `Search by ${searchField.title}.`),
+    });
+  }
+  const sortFields = sortableFieldIds(entity);
+  const firstSort = sortFields[0] ? entity.fields.find(field => field.fieldId === sortFields[0]) : undefined;
+  if (firstSort) {
+    const fieldRef = { entityId: entity.entityId, fieldId: firstSort.fieldId };
+    inputs.push({
+      inputId: 'sortBy', fieldRef, source: 'userInput', required: false, enumValues: sortFields,
+      description: label(context, 'Campo de ordenação da listagem.', 'Field to sort the listing by.'),
+    });
+    inputs.push({
+      inputId: 'sortOrder', fieldRef, source: 'userInput', required: false, enumValues: ['asc', 'desc'],
+      description: label(context, 'Direção da ordenação.', 'Sort direction.'),
+    });
   }
   return inputs;
 }
@@ -446,21 +531,23 @@ function buildJourneyWorkspace(
   const operations: Ns4E8Operation[] = [];
   const providedEarlier = new Set<string>();
 
-  for (const step of steps) {
+  for (let index = 0; index < steps.length; index++) {
+    const step = steps[index];
     const stepRef = `${journey.journeyId}.${step.stepId}`;
     const useCase = context.useCaseByStepRef.get(stepRef);
     if (!useCase) continue;
+    const collection = isNs4CollectionInspect(steps, index);
     const query = step.kind === 'locate' || step.kind === 'inspect';
     const bffId = `${query ? 'qry' : 'cmd'}${upperCamel(step.stepId)}`;
     bffCalls.push({
       bffId, kind: query ? 'query' : 'command', operationId: useCase.useCaseId,
-      outputKind: step.kind === 'locate' ? 'paginated' : 'object', entityRef: step.entity,
+      outputKind: step.kind === 'locate' || collection ? 'paginated' : 'object', entityRef: step.entity,
     });
-    operations.push(buildJourneyOperation(journey, step, useCase, context, providedEarlier));
+    operations.push(buildJourneyOperation(journey, step, useCase, context, providedEarlier, index));
     sections.push({
       sectionId: step.stepId,
       intent: step.description || step.title,
-      organisms: [journeyOrganism(step, bffId)],
+      organisms: [journeyOrganism(step, bffId, collection)],
     });
     providedEarlier.add(step.entity);
   }
@@ -485,7 +572,8 @@ function buildJourneyWorkspace(
   };
 }
 
-function journeyOrganism(step: Ns4JourneyStep, bffId: string): Ns4E8Section['organisms'][number] {
+function journeyOrganism(step: Ns4JourneyStep, bffId: string, collection = false): Ns4E8Section['organisms'][number] {
+  if (collection) return { role: 'primarySurface', dataSource: bffId, usage: 'summary' };
   if (step.kind === 'locate') return { role: 'primarySurface', dataSource: bffId, usage: 'picker' };
   if (step.kind === 'inspect') return { role: 'detailPanel', dataSource: bffId };
   if (step.kind === 'handoff') return { role: 'contextualAction', action: bffId };
@@ -494,7 +582,7 @@ function journeyOrganism(step: Ns4JourneyStep, bffId: string): Ns4E8Section['org
 
 function buildJourneyOperation(
   journey: Ns4JourneyProposal, step: Ns4JourneyStep, useCase: Ns4UseCaseArtifactV3,
-  context: Ns4E8TierContext, providedEarlier: Set<string>,
+  context: Ns4E8TierContext, providedEarlier: Set<string>, stepIndex = 0,
 ): Ns4E8Operation {
   const stepRef = `${journey.journeyId}.${step.stepId}`;
   const entity = context.entities.get(step.entity);
@@ -505,7 +593,7 @@ function buildJourneyOperation(
     const fieldId = required.idFieldRef || identityFieldOf(parent);
     if (!fieldId) continue;
     inputs.push({
-      inputId: lowerCamel(`${required.businessObject}${upperCamel(fieldId)}`),
+      inputId: fieldId,
       fieldRef: { entityId: required.businessObject, fieldId },
       source: journeyInputSource(required.businessObject, journey, context, providedEarlier),
       required: true,
@@ -516,8 +604,8 @@ function buildJourneyOperation(
   return {
     operationId: useCase.useCaseId, title: useCase.title || step.title, kind: query ? 'query' : 'command',
     entityRef: step.entity, entityRefs: useCase.entityRefs,
-    accessPattern: journeyAccessPattern(step),
-    inputs: uniqueBy(inputs, input => input.inputId),
+    accessPattern: journeyAccessPattern(step, journey.business.steps, stepIndex),
+    inputs: uniqueBy(assignInputIds(inputs), input => input.inputId),
     outputRefs: (entity?.fields || []).map(field => `${step.entity}.${field.fieldId}`),
     useRules: useCase.useRules, transitionRefs: useCase.transitionRefs,
     story: [step.title, step.description].filter(Boolean),
@@ -525,8 +613,10 @@ function buildJourneyOperation(
   };
 }
 
-function journeyAccessPattern(step: Ns4JourneyStep): Ns4E8Operation['accessPattern'] {
-  if (step.kind === 'locate') return { kind: 'list', pagination: 'optional' };
+function journeyAccessPattern(
+  step: Ns4JourneyStep, steps: Ns4JourneyStep[], index: number,
+): Ns4E8Operation['accessPattern'] {
+  if (step.kind === 'locate' || isNs4CollectionInspect(steps, index)) return { kind: 'list', pagination: 'optional' };
   if (step.kind === 'inspect') return { kind: 'getById' };
   if (step.kind === 'decide') return { kind: 'transition' };
   return { kind: 'commandInput' };
@@ -578,7 +668,8 @@ function journeyFormInputs(
       && !statusFieldIds.has(field.fieldId) && !TIMESTAMP_FIELD.test(field.fieldId))
     .map(field => ({
       inputId: field.fieldId, fieldRef: { entityId: entity.entityId, fieldId: field.fieldId },
-      source: 'userInput' as const, required: field.required, description: field.description,
+      source: (isRecordOwnerSessionField(entity, field, context) ? 'actorSession' : 'userInput') as Ns4E8InputSource,
+      required: field.required, description: field.description,
       ...(field.enum?.length ? { enumValues: field.enum } : {}),
     }));
 }
@@ -719,6 +810,28 @@ type Ns4WorkspaceTierValue = Ns4E8ModelWorkspace['tier'];
 function identityFieldOf(entity: Ns4OntologyEntity | undefined): string {
   return entity?.storage.idField || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId || '';
 }
+
+/**
+ * The entity is owned by the authenticated actor when every grant whose authority operates it is
+ * `dataScope.mode: 'own'`. Mixed own+organization keeps a person FK choosable (staff assigning).
+ */
+function entityOwnedByActorSession(entityId: string, context: Ns4E8TierContext): boolean {
+  const modes = new Set<string>();
+  for (const authority of context.sources.access.authorities) {
+    const operates = authority.journeyStepRefs.some(ref => context.derived.byStepRef.get(ref)?.entity === entityId);
+    if (!operates) continue;
+    for (const grant of context.sources.access.grants) {
+      if (grant.authorityRef === authority.authorityRef && grant.dataScope?.mode) modes.add(grant.dataScope.mode);
+    }
+  }
+  return modes.size === 1 && modes.has('own');
+}
+
+function isRecordOwnerSessionField(
+  entity: Ns4OntologyEntity, field: { fieldId: string }, context: Ns4E8TierContext,
+): boolean {
+  return entityOwnedByActorSession(entity.entityId, context) && isNs4OwnerHandleField(field.fieldId);
+}
 function sameValues(left: string[], right: string[]): boolean {
   return left.length > 0 && left.length === right.length && left.every((value, index) => value === right[index]);
 }
@@ -730,6 +843,26 @@ function byEntityId(left: Ns4OntologyEntity, right: Ns4OntologyEntity): number {
 }
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort();
+}
+/**
+ * Prefer the ontology fieldId as inputId so catalogue and journey name the same field the same way
+ * (`taskId`, not `taskTaskId`). Qualify with the entity only when two entities in THIS operation
+ * share a fieldId — otherwise uniqueBy would drop one.
+ */
+function assignInputIds(inputs: Ns4E8Input[]): Ns4E8Input[] {
+  const countByFieldId = new Map<string, number>();
+  for (const input of inputs) {
+    const fieldId = input.fieldRef.fieldId;
+    countByFieldId.set(fieldId, (countByFieldId.get(fieldId) || 0) + 1);
+  }
+  return inputs.map(input => {
+    const fieldId = input.fieldRef.fieldId;
+    const collide = (countByFieldId.get(fieldId) || 0) > 1;
+    return {
+      ...input,
+      inputId: collide ? lowerCamel(`${input.fieldRef.entityId}${upperCamel(fieldId)}`) : fieldId,
+    };
+  });
 }
 function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
   return [...new Map(values.map(value => [key(value), value])).values()];

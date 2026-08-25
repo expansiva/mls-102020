@@ -23,7 +23,7 @@ export interface Ns4ClassicBffCall {
   bffId: string;
   kind: 'query' | 'command';
   uses: Array<{ operationId: string }>;
-  input: Array<{ name: string; from: string; required?: boolean; source: string; sourceRef?: string; type: string }>;
+  input: Array<{ name: string; from: string; required?: boolean; source: string; sourceRef?: string; type: string; enumValues?: string[] }>;
   output: { kind: 'object' | 'list'; fields: Ns4ClassicField[] };
   route: string;
 }
@@ -53,7 +53,7 @@ export interface Ns4ClassicOperation {
   story: { actor: string; goal: string; steps: string[]; outcome: string };
   accessPattern: { kind: string; description: string; entity: string; keyField: string; pagination: string; selection: string; output: string[] };
   outputShape: { kind: 'object' | 'list'; fields: Array<{ name: string; type: string; required: boolean; fieldRef: string }> };
-  inputs: Array<{ inputId: string; fieldRef: string; required: boolean; source: string; description: string }>;
+  inputs: Array<{ inputId: string; fieldRef: string; required: boolean; source: string; description: string; enumValues?: string[] }>;
   pageId: string;
   commandName: string;
   bffName: string;
@@ -122,6 +122,7 @@ export function transposeNs4ClassicOperation(
       required: input.required,
       source: input.source,
       description: input.description,
+      ...(input.enumValues?.length ? { enumValues: input.enumValues } : {}),
     })),
     ...(operation.mdm ? { mdm: operation.mdm } : {}),
     pageId: owner?.workspaceId || '',
@@ -150,6 +151,7 @@ export function transposeNs4ClassicWorkspace(
         ...(organism.dataSource ? { dataSource: organism.dataSource } : {}),
         ...(organism.action ? { action: organism.action } : {}),
         ...(organism.usage ? { usage: organism.usage } : {}),
+        ...(organism.attachTo ? { attachTo: organism.attachTo } : {}),
       })),
     })),
     operationIds: [...new Set(workspace.bffCalls.map(call => call.operationId))].sort(),
@@ -189,6 +191,7 @@ function transposeCall(
       // 2. The type comes from the ontology field the input names, never from a lucky match against
       // an output projection path (a list output is `$items.`-prefixed and would never match).
       type: classicType(fieldTypeOf(ontology, input.fieldRef.entityId, input.fieldRef.fieldId)),
+      ...(input.enumValues?.length ? { enumValues: input.enumValues } : {}),
     })),
     // One call carries at most one collection: composition is several calls on one page.
     output: { kind: list ? 'list' : 'object', fields },
@@ -210,7 +213,7 @@ export function buildNs4ClassicContractSource(args: {
   moduleName: string; workspaceId: string; call: Ns4ClassicBffCall; fileRef: string; sourceRef: string;
 }): string {
   const pascal = upperCamel(args.call.bffId);
-  const inputFields = args.call.input.map(input => `  ${input.name}${input.required ? '' : '?'}: ${tsType(input.type)};`);
+  const inputFields = args.call.input.map(input => `  ${input.name}${input.required ? '' : '?'}: ${tsType(input.type, input.enumValues)};`);
   const outputFields = args.call.output.fields.map(field => `  ${field.name}${field.required ? '' : '?'}: ${tsType(field.type)};`);
   return [
     `/// <mls fileReference="${args.fileRef}" enhancement="_blank"/>`,
@@ -274,7 +277,8 @@ function classicType(type: Ns4OntologyField['type']): string {
   if (type === 'boolean') return 'boolean';
   return 'string';
 }
-function tsType(type: string | undefined): string {
+function tsType(type: string | undefined, enumValues?: string[]): string {
+  if (enumValues?.length) return enumValues.map(value => `'${value}'`).join(' | ');
   if (type === 'number' || type === 'boolean') return type;
   if (type === 'json') return 'Record<string, unknown>';
   return 'string';

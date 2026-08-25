@@ -77,6 +77,22 @@ export function ns4ContextIdOf(entity: string): string {
 }
 
 /**
+ * Inspect of entity X that still has no selected X, while a later step locates X, is a collection
+ * summary (counts of the listing) — not getById of one record. Identity-free by construction.
+ */
+export function isNs4CollectionInspect(
+  steps: ReadonlyArray<{ kind: string; entity: string }>,
+  index: number,
+): boolean {
+  const step = steps[index];
+  if (!step || step.kind !== 'inspect' || !step.entity) return false;
+  const laterLocate = steps.slice(index + 1).some(item => item.kind === 'locate' && item.entity === step.entity);
+  const earlierOfSame = steps.slice(0, index).some(item => item.entity === step.entity
+    && (item.kind === 'locate' || item.kind === 'act' || item.kind === 'inspect'));
+  return laterLocate && !earlierOfSame;
+}
+
+/**
  * Platform-owned records are supplied by the runtime session, never selected by the user, so they
  * are not a coordination requirement of a business step.
  */
@@ -97,11 +113,17 @@ export function deriveNs4Contexts(sources: Ns4ContextSources): Ns4DerivedContext
   const steps: Ns4DerivedStepContexts[] = [];
   for (const journey of sources.journeys.journeys) {
     const provided = new Set<string>();
-    for (const step of journey.business.steps) {
+    const journeySteps = journey.business.steps;
+    for (let index = 0; index < journeySteps.length; index++) {
+      const step = journeySteps[index];
       const entity = step.entity;
       const creates = step.kind === 'act' && !provided.has(entity);
       const requires = new Map<string, Ns4DerivedContext>();
-      if (entity && !creates && step.kind !== 'locate') requires.set(entity, context(entity));
+      // Collection inspect (totals of a listing) is not a selected record: it comes before a
+      // locate of the same entity. A later inspect of one row still requires the identity.
+      if (entity && !creates && step.kind !== 'locate' && !isNs4CollectionInspect(journeySteps, index)) {
+        requires.set(entity, context(entity));
+      }
       if (entity && (step.kind === 'act' || step.kind === 'decide')) {
         for (const parent of parentsByEntity.get(entity) || []) {
           if (parent !== entity) requires.set(parent, context(parent));

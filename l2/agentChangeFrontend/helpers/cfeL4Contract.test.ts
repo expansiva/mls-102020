@@ -5,6 +5,7 @@ import {
   frontendOutputShapeForOperation,
   frontendQueryStateDefaults,
   frontendInputPresentation,
+  queryQualifiesForInitialLoad,
   isRuntimeResolvedInputSource,
   isUserFacingOperationInput,
   l4OperationInputs,
@@ -61,6 +62,18 @@ test('L4 inputs retain every browser boundary input and classify contextual inpu
   assert.equal(isRuntimeResolvedInputSource('userInput'), false);
   assert.equal(isRuntimeResolvedInputSource('routeParam'), false);
   assert.equal(isRuntimeResolvedInputSource('selectedEntity'), false);
+});
+
+test('queryQualifiesForInitialLoad: route-only required is boot-safe; user/selection required is not', () => {
+  assert.equal(queryQualifiesForInitialLoad([]), true);
+  assert.equal(queryQualifiesForInitialLoad([{ required: false, presentation: 'form' }]), true);
+  assert.equal(queryQualifiesForInitialLoad([{ required: true, presentation: 'route' }]), true);
+  assert.equal(queryQualifiesForInitialLoad([
+    { required: true, presentation: 'route' },
+    { required: false, presentation: 'form' },
+  ]), true);
+  assert.equal(queryQualifiesForInitialLoad([{ required: true, presentation: 'form' }]), false);
+  assert.equal(queryQualifiesForInitialLoad([{ required: true, presentation: 'selection' }]), false);
 });
 
 test('generated contract typecheck expects paginated query output when outputShape is paginated', () => {
@@ -165,6 +178,18 @@ test('parseWorkspaceSections keeps organism roles and their bffId references', (
   assert.equal(sections[0].organisms[0].dataSource, 'catalogList');
   assert.equal(sections[0].organisms[1].attachTo, 'catalogList');
   assert.equal(sections[0].organisms[2].dataSource, 'productDetail');
+});
+
+test('parseWorkspaceSections keeps usage summary on a collection-indicator organism', () => {
+  const sections = parseWorkspaceSections({
+    sections: [{
+      sectionId: 'inspectTaskSummary',
+      intent: 'Totais visíveis.',
+      organisms: [{ role: 'primarySurface', dataSource: 'qryInspectTaskSummary', usage: 'summary' }],
+    }],
+  });
+  assert.equal(sections[0].organisms[0].usage, 'summary');
+  assert.equal(sections[0].organisms[0].dataSource, 'qryInspectTaskSummary');
   assert.equal(isContentOrganismRole('showcase'), true);
   assert.equal(isContentOrganismRole('primarySurface'), false);
 });

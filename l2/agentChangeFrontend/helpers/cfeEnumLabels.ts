@@ -32,3 +32,34 @@ export function enumDisplayLabel(code: string, labels?: readonly CfeEnumLabel[])
 export function enumDisplayOptions(codes: readonly string[], labels?: readonly CfeEnumLabel[]): { value: string; label: string }[] {
   return codes.map(code => ({ value: code, label: enumDisplayLabel(code, labels) }));
 }
+
+/** Codes that would paint as themselves because the L4 has no label entry. */
+export function missingEnumDisplayCodes(codes: readonly string[], labels?: readonly CfeEnumLabel[]): string[] {
+  const have = new Set((labels || []).map(item => item.code));
+  return codes.filter(code => Boolean(code) && !have.has(code));
+}
+
+/**
+ * Non-blocking CF degradation: an enumerated field arrived without enumLabels (and status without
+ * lifecycleLabels). The page still renders the stored code; the wire still sends the code.
+ */
+export function enumLabelFallbackWarnings(entity: {
+  entityId: string;
+  fields: Array<{ fieldId: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }>;
+  lifecycleLabels?: CfeEnumLabel[];
+}): string[] {
+  const warnings: string[] = [];
+  for (const field of entity.fields) {
+    const codes = field.enum || [];
+    if (!codes.length) continue;
+    const labels = field.enumLabels?.length
+      ? field.enumLabels
+      : /(^|[a-z0-9])status$/i.test(field.fieldId) ? entity.lifecycleLabels : undefined;
+    const missing = missingEnumDisplayCodes(codes, labels);
+    if (!missing.length) continue;
+    warnings.push(
+      `entity ${entity.entityId} field ${field.fieldId}: closed-domain display falls back to the stored code (${missing.join(', ')}) because l4 has no enumLabels/lifecycleLabels; wire still sends the code`,
+    );
+  }
+  return warnings;
+}

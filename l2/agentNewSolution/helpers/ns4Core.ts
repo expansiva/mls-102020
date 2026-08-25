@@ -279,6 +279,17 @@ export interface Ns4PipelineState {
   nextStep: Ns4NextStep;
   createdAt: string;
   updatedAt: string;
+  /**
+   * E9 audit: an E7 use case that did not become an operation. Only `degraded` is persisted at the
+   * top level — a clean emit strips both fields so a prior-run `degraded` cannot come back.
+   */
+  useCases?: 'degraded';
+  useCasesDropped?: {
+    notEmitted: string[];
+    approved: number;
+    emitted: number;
+    reasons?: Record<string, string>;
+  };
 }
 
 export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-e4' | 'resume-e5' | 'resume-e6' | 'resume-e7' | 'resume-e8' | 'resume-e9' | 'resume-e10' | 'resume-next' | 'collision';

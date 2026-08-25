@@ -1,5 +1,13 @@
 # E4 changelog
 
+- 2026-08-24: Non-lifecycle enum fields (`priority`, …) were omitted by the entity worker even
+  though `enumLabels` was in the prompt: the JSON example showed only a uuid field, the schema
+  leaves the array optional, and the gate treats absence as valid. The entity example now includes
+  a labelled enum; a Type C backfill fills any remaining gap with a humanized code
+  (`inProgress` → `In progress`) and a non-blocking `systemDecision`. Status stays on
+  `lifecycleLabels` (not duplicated as field `enumLabels`). The gate still does not fail a run for
+  missing labels — old L4 without the field keeps compiling.
+
 - 2026-08-24: Closed-domain values carry an optional `enumLabels` / `lifecycleLabels` array of
   `{ code, label }` (user-language text next to the English code). The tool schema stays
   `additionalProperties: false` — a Record map is inexpressible. Absence is valid (old L4). The

@@ -2,6 +2,37 @@
 
 # Changelog
 
+- 2026-08-24 (rótulos e ids na lista) — célula de enum que pinta o código armazenado
+  (`inProgress`, `medium`) é finding reparável (`collectEnumCellLabelIssues`); o rótulo do l4
+  (enumLabels/lifecycleLabels) é o default, o código é só fallback. Coluna cujo field é `id`/`*Id`
+  com title/name na mesma tabela é finding (`collectIdColumnIssues`) — UUID não é coluna default,
+  o id continua no state. Regras 9–10 nas skills page11/page21 na mesma entrega.
+
+- 2026-08-24 (seleção e estado de botão) — três gates no verify da page/shared, regras nas
+  skills page11/page21/shared na mesma entrega. (1) lista `selection:single` (ou id de
+  rota/seleção ao lado de uma lista) sem clique de linha / `<select>` é finding reparável
+  (`collectSelectionControlIssues`). (2) command com id required de rota/seleção vazio e
+  botão clicável (sem `?disabled` + `title`) é clique morto — `collectCommandDisabledIssues`.
+  (3) getById cujo input required é só `routeParam` tem de estar em `initialLoads`
+  (`collectMissingInitialLoadIssues`, warning: o .ts do shared não reescreve o defs).
+  Geração: `queryQualifiesForInitialLoad` — required route entra no boot; userInput/selection
+  required continua fora (102049 searchProducts 400).
+
+- 2026-08-24 (erro do envelope na tela) — HTTP 4xx do `/execBff` carrega o envelope
+  `{ok:false, error:{code,message}}`; o texto da tela é `error.message` (ou i18n keyed por
+  `error.code`), nunca "Erro do servidor (400)". O `bffClient` (102029) passou a devolver o
+  envelope em vez de sintetizar o status. Gate `collectMutationEnvelopeErrorIssues` no shared
+  gerado + fidelidade do error state em `collectMutationFeedbackIssues`. Mesma entrega: regra
+  nas skills shared/page11/page21.
+
+- 2026-08-24 (enum nunca é texto livre) — campo cuja união no contrato é literal (ou cujo shared
+  input state carrega `valueSet` do l4 enum[]) ligado a `<input>` de texto (typed ou untyped) é
+  finding reparável. `collectEnumTextInputIssues` no verify; select/botões de transição passam.
+  Filtro de enum é select com opção vazia. A regra entra nas duas skills de render na mesma
+  entrega (page11 não tinha nenhuma; page21 já cobria transição-como-botões). O contrato l2
+  passa a emitir a união literal no INPUT quando o l4 declara enum[] — sem isso o gate era no-op
+  (`status: string`).
+
 - 2026-08-22 (guard por ORIGEM do dado, fe4) — `collectContractFieldIssues` cobria `selected.campo`
   (find/[0]/at) e `(row: QryXOutput) =>`. A terceira forma — `(row: (typeof rows)[number]) =>
   row.serviceExecutionId` nas linhas 55–74 de `recordInStoreServiceAttendance` — escapou. Perseguir

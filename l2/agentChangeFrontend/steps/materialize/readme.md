@@ -4,7 +4,7 @@
 
 ## Role
 
-`agentCfeMaterializeL2` plans stale `.defs.ts` materialization. `agentCfeMaterializePhase` runs phase barriers and bounded verification/repair. `agentCfeMaterializeGen` generates each `.ts`, `.html` or companion `.test.ts` artifact.
+`agentCfeMaterializeL2` plans stale `.defs.ts` materialization. `agentCfeMaterializePhase` runs phase barriers and bounded verification/repair. `agentCfeMaterializeGen` generates each `.ts` or companion `.test.ts` artifact.
 
 ## Input
 

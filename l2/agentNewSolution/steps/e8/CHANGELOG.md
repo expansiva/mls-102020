@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-08-25 — inspect de coleção (antes do locate) é lista, nunca getById
+
+Um passo `inspect` de entidade X seguido de `locate` de X no mesmo journey é o resumo da listagem
+(totais/indicadores), não a leitura de um registro. Compila `list` sem input de identidade,
+organismo `usage: 'summary'`. Atrasada é predicado no render (dia de `dueDate` anterior a hoje e status não
+completed/cancelled), não campo. Gate `NS4_E8_COLLECTION_INSPECT_GETBYID` (registrar). Módulos
+já emitidos não mudam sem regeneração.
+
+## 2026-08-25 — lista de catálogo nasce com busca e ordenação opcionais
+
+O requisito de buscar/ordenar entra na jornada E2 e morre no E6 porque o E6 só trata módulos
+adicionais e plugins — não há vocabulário de "capacidades da listagem". Como o `getById`, a lista
+de catálogo sintetiza os controles a partir da ontologia: `search` (opcional, fieldRef no
+`title`/`name`) quando esse campo existe; `sortBy` (enum fechado dos campos data/`*At`/enum) e
+`sortOrder` (`asc`|`desc`) quando há o que ordenar. `recordList` ganha `filterControl.attachTo` na
+query da lista. Gate `NS4_E8_LIST_WITHOUT_SEARCH` / `_SORT` (registrar). Sem esses campos, a lista
+continua `inputs: []` como antes.
+
+## 2026-08-24 — inputId da jornada é o fieldId, não entidade+campo
+
+`buildJourneyOperation` emitia `lowerCamel(entity + fieldId)` (`taskTaskId`) para o mesmo
+`fieldRef` que o catálogo já chama `taskId`. A lista colhe `taskId`; o inspect pedia
+`taskTaskId`; o harness marcava `<seedRef>` inconclusive. O id do input é o `fieldId`; a
+forma qualificada só entra quando dois inputs da mesma operação compartilham o fieldId.
+
+## 2026-08-24 — dono do registro é `actorSession`, não `userInput`
+
+O catálogo e o form da jornada classificavam o handle do dono (`ownerUserId` / `ownerId` /
+`customerId` / `clientId`) como `userInput` quando ele não era FK de entidade de plataforma. O
+módulo `todo` nasceu com `Task.ownerUserId` editável; o gerador de testes inventou um literal e o
+backend recusou ("The task owner must be the authenticated actor").
+
+A classificação é por identidade, não por texto: grant E3 com `dataScope.mode: 'own'` (e só `own`)
+sobre a entidade + handle de dono (o mesmo formato do E4) ⇒ `source: 'actorSession'`. Pessoa que o
+ator escolhe (`assignedUserId`) continua `userInput`. Gate `NS4_E8_USERINPUT_FROM_SESSION`
+(registrar, irmão do `LANDING_REQUIRED_INPUT`): `userInput` cujo fieldRef/descrição ainda diz
+origem de sessão. Não é A — o mesmo compile existe em l4 já emitido.
+
+## 2026-08-24 — catálogo emite getById por entidade, sem consumidor de tela
+
+O catálogo sintetizava list/create/update/delete (ou inactivate/reactivate no mdm) e nunca uma
+leitura da linha pelo id. `getById` só nascia de um passo `inspect` de jornada. Toda entidade de
+catálogo passa a emitir `get{Entity}` (`qryGet{Entity}`, `accessPattern.kind: 'getById'`, id
+obrigatório, registro completo na saída), mesmo sem página que a chame. `locate*` continua list;
+`inspect*` continua a leitura de tela. Se a jornada já produziu o mesmo `operationId`, o
+`uniqueBy` existente (último vence: a jornada entra depois do catálogo) fica com a da jornada.
+As quatro operações originais e as seções da tela não mudam de forma.
+
 ## 2026-08-22 — comando exige chave que nenhuma leitura da página fornece
 
 `recordInStoreServiceAttendance` é um workspace de `ServiceExecution` com cinco comandos que

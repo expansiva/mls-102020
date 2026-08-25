@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   applyHeader,
+  bindingCommandsOf,
   buildCompileRepairHint,
   collectChartEventIssues,
   collectPageTemplateHygieneIssues,
@@ -221,7 +222,7 @@ async function afterPromptStep(
       // verify can turn it into organism steps instead of burning repair rounds (paginaDividida.md §4.1).
       // Cap or timeout: both mean the page does not fit in one call, and both are fixed by a split.
       if (isSplitWorthyFailure(describePayload(raw))) {
-        await writeSplitPlanFromL4(pipelineItem, parsedDefs?.data, detail);
+        await writeSplitPlanFromL4(pipelineItem, parsedDefs?.data, detail, parsedDefs?.bindings);
       }
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, detail, true)];
     }
@@ -369,7 +370,7 @@ async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineIte
  *
  * Best-effort: a page with no usable l4 simply keeps the plain failure, which the trace already explains.
  */
-export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unknown, reason: string): Promise<boolean> {
+export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unknown, reason: string, siblingBindings?: unknown[] | null): Promise<boolean> {
   const parsed = parseMlsPath(pipelineItem.outputPath);
   if (!parsed) return false;
   const moduleName = parsed.folder.split('/')[0];
@@ -386,8 +387,7 @@ export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unk
     }))
     .filter(section => section.sectionId);
 
-  const bindings = (isRecord(data) && Array.isArray(data.dataBindings) ? data.dataBindings : [])
-    .filter(isRecord).map(binding => String(binding.command ?? '')).filter(Boolean);
+  const bindings = bindingCommandsOf(data, siblingBindings);
 
   const plan = buildSplitPlan(parsed.shortName, genome, sections, bindings, reason);
   if (!plan) return false;

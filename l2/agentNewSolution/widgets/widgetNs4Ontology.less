@@ -34,6 +34,11 @@ widget-ns4-ontology-102020 {
   .ns4-feedback strong, .ns4-feedback span, .ns4-feedback li { font-size: 13px; line-height: 1.4; }
   .ns4-feedback.is-error { background: #fff1f2; border-color: #fda4af; color: #9f1239; }
   .ns4-feedback.is-ok { background: #ecfdf5; border-color: #86efac; color: #166534; }
+  .ns4-system-decisions { background: var(--ns4-bg-soft); border: 1px solid var(--ns4-border); border-radius: 8px; }
+  .ns4-system-decisions > summary { cursor: pointer; font-weight: 700; padding: 12px 14px; }
+  .ns4-system-decisions > div { border-top: 1px solid var(--ns4-border-soft); display: grid; gap: 8px; padding: 12px; }
+  .ns4-system-decisions article { background: var(--ns4-bg); border: 1px solid var(--ns4-border-soft); border-radius: 7px; display: grid; gap: 5px; padding: 10px 12px; }
+  .ns4-system-decisions small { color: var(--ns4-subtle); }
 
   .ns4-workbench { align-items: stretch; display: grid; gap: 22px; grid-template-columns: minmax(190px, 230px) minmax(0, 1fr); height: min(72vh, 760px); min-height: 440px; min-width: 0; }
   aside { border-right: 1px solid var(--ns4-border-soft); display: grid; align-content: start; gap: 7px; min-height: 0; min-width: 0; overflow-y: auto; padding-right: 15px; }

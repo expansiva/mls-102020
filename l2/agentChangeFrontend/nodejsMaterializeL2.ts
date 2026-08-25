@@ -29,6 +29,7 @@ import {
   layerRank,
   MATERIALIZE_REPAIR_ATTEMPTS,
   orderItems,
+  bindingCommandsOf,
   parseDefs,
   sharedDtsArtifactRef,
   testPathForOutputPath,
@@ -74,17 +75,11 @@ function toKebab(str: string): string {
   return str.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
 }
 
-/** Preview html for a PAGE. An organism is not a page and never gets one (paginaDividida.md decision 7). */
-function writePagePreviewHtml(item: PipelineItem): string | null {
-  if (item.type !== 'l2_page') return null;
-  const parsed = parseMlsTsPath(item.outputPath);
-  if (!parsed) return null;
-  const tag = convertFileToTag(parsed);
-  const htmlRef = item.outputPath.replace(/\.ts$/, '.html');
-  const htmlAbs = mlsToFs(htmlRef);
-  fs.mkdirSync(path.dirname(htmlAbs), { recursive: true });
-  fs.writeFileSync(htmlAbs, `<${tag}></${tag}>`);
-  return htmlRef;
+/** Drop leftover page preview .html (Studio iframe no longer needs it). Organisms never had one. */
+function removeLeftoverPageHtml(item: PipelineItem): void {
+  if (item.type !== 'l2_page') return;
+  const htmlAbs = mlsToFs(item.outputPath.replace(/\.ts$/, '.html'));
+  try { fs.unlinkSync(htmlAbs); } catch { /* leftover may already be gone */ }
 }
 
 /**
@@ -119,7 +114,7 @@ function readPageSplit(pageOutputPath: string): PageSplit | null {
  * One pipeline item per organism plus the page that composes them. The organisms depend only on the shared
  * — they are independent of each other, so they generate in parallel; the page depends on all of them
  * because it imports their functions. `l2_page_organism` keeps them out of everything that treats a file
- * as a page (the .html preview, the page gates).
+ * as a page (the page gates).
  */
 function expandSplitPage(base: ScannedDefs, plan: PageSplit): ScannedDefs[] {
   const parsed = parseMlsTsPath(base.item.outputPath);
@@ -154,7 +149,7 @@ function expandSplitPage(base: ScannedDefs, plan: PageSplit): ScannedDefs[] {
  * Deterministic: the l4 already declares the page's sections and the bffCall each organism binds to, so
  * this projects that, it does not decide anything (cfePageSplitPlan). Returns the plan when written.
  */
-function writeSplitPlanFromL4(item: PipelineItem, data: unknown, reason: string): PageSplit | null {
+function writeSplitPlanFromL4(item: PipelineItem, data: unknown, reason: string, siblingBindings?: unknown[] | null): PageSplit | null {
   const parsed = parseMlsTsPath(item.outputPath);
   if (!parsed) return null;
   const moduleName = parsed.folder.split('/')[0];
@@ -172,8 +167,7 @@ function writeSplitPlanFromL4(item: PipelineItem, data: unknown, reason: string)
     }))
     .filter(section => section.sectionId);
 
-  const bindings = (isPlainRecord(data) && Array.isArray(data.dataBindings) ? data.dataBindings : [])
-    .filter(isPlainRecord).map(binding => String(binding.command ?? '')).filter(Boolean);
+  const bindings = bindingCommandsOf(data, siblingBindings);
 
   const plan = buildSplitPlan(parsed.shortName, genome, sections, bindings, reason);
   if (!plan) { console.log(`  l4 gives ${sections.length} usable section(s) — not enough to split`); return null; }
@@ -231,7 +225,7 @@ function readContext(ref: string): { ref: string; found: boolean; content: strin
   return { ref, found: false, content: '' };
 }
 
-interface ScannedDefs { defRef: string; defAbs: string; item: PipelineItem; data: unknown; }
+interface ScannedDefs { defRef: string; defAbs: string; item: PipelineItem; data: unknown; bindings: unknown[] | null; }
 
 function scanModule(project: number, moduleName: string): ScannedDefs[] {
   const moduleDir = path.join(ROOT, `mls-${project}`, 'l2', moduleName);
@@ -250,7 +244,7 @@ function scanModule(project: number, moduleName: string): ScannedDefs[] {
     if (!parsed.item) continue;
     if (!parsed.item.type.startsWith('l2_')) continue;
     const defRef = `_${project}_/l2/${moduleName}/${rel.split(path.sep).join('/')}`;
-    const scanned: ScannedDefs = { defRef, defAbs, item: parsed.item, data: parsed.data };
+    const scanned: ScannedDefs = { defRef, defAbs, item: parsed.item, data: parsed.data, bindings: parsed.bindings };
     const split = parsed.item.type === 'l2_page' ? readPageSplit(parsed.item.outputPath) : null;
     if (split) out.push(...expandSplitPage(scanned, split));
     else out.push(scanned);
@@ -554,6 +548,7 @@ async function main(): Promise<void> {
   let planned = plan(scanned, args.force);
   if (args.only) planned = planned.filter((p) => p.item.id.includes(args.only!) || p.item.type.includes(args.only!) || p.item.outputPath.includes(args.only!));
   const dataByOut = new Map(scanned.map((s) => [s.item.outputPath, s.data]));
+  const bindingsByOut = new Map(scanned.map((s) => [s.item.outputPath, s.bindings]));
   // The failed item's ScannedDefs, so a split can be expanded from it without re-scanning the module.
   const byDefPath = new Map(scanned.map((s) => [s.defRef, s]));
   // A page is split AT MOST ONCE per run. Without this, a page whose organisms also blow the cap would
@@ -615,7 +610,7 @@ async function main(): Promise<void> {
       // and APPEND the resulting items to this same work list — `todo.length` is re-read every iteration,
       // so they run right after, in order, without a second invocation. The page comes last (it imports
       // the organisms' render functions), which is exactly the order expandSplitPage emits.
-      const plan = alreadySplit.has(p.item.outputPath) ? null : writeSplitPlanFromL4(p.item, data, result.error ?? '');
+      const plan = alreadySplit.has(p.item.outputPath) ? null : writeSplitPlanFromL4(p.item, data, result.error ?? '', bindingsByOut.get(p.item.outputPath) ?? byDefPath.get(p.item.defPath ?? '')?.bindings);
       const scanned = plan ? byDefPath.get(p.item.defPath ?? '') : undefined;
       if (plan && scanned) {
         alreadySplit.add(p.item.outputPath);
@@ -783,7 +778,7 @@ async function materializeOne(
     if (r.ok && code) {
       try {
         const artifacts = writeGeneratedArtifacts(p.item, data, code);
-        console.log(`ok ${code.length}b${artifacts.typecheckRef ? ' + test' : ''}${artifacts.htmlRef ? ' + html' : ''}`);
+        console.log(`ok ${code.length}b${artifacts.typecheckRef ? ' + test' : ''}`);
         return { ok: true };
       } catch (error) {
         const detail = `save generated artifacts failed: ${formatMaterializeError(error)}`;
@@ -887,7 +882,7 @@ function appendTrace(
   fs.appendFileSync(tracePath, sec.join('\n'));
 }
 
-function writeGeneratedArtifacts(item: PipelineItem, data: unknown, code: string): { typecheckRef: string | null; htmlRef: string | null } {
+function writeGeneratedArtifacts(item: PipelineItem, data: unknown, code: string): { typecheckRef: string | null } {
   const outAbs = mlsToFs(item.outputPath);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, code);
@@ -900,7 +895,8 @@ function writeGeneratedArtifacts(item: PipelineItem, data: unknown, code: string
     fs.writeFileSync(typecheckAbs, typecheckCode);
   }
 
-  return { typecheckRef, htmlRef: writePagePreviewHtml(item) };
+  removeLeftoverPageHtml(item);
+  return { typecheckRef };
 }
 
 // Inside the MODULE folder, next to every other trace the pipeline writes (trace/frontend-*). It used to

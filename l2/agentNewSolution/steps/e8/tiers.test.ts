@@ -105,7 +105,7 @@ test('a record catalogue classifies its inputs structurally and never transition
   // The catalogue also READS the parent it asks the user to choose: `project` is a required foreign
   // key with source selectedEntity, so the screen owns the query the picker reads from.
   assert.deepEqual(catalogue.bffCalls.map(call => call.bffId),
-    ['qryListChangeOrder', 'cmdCreateChangeOrder', 'cmdUpdateChangeOrder', 'cmdDeleteChangeOrder', 'qryProjectPicker']);
+    ['qryListChangeOrder', 'cmdCreateChangeOrder', 'cmdUpdateChangeOrder', 'cmdDeleteChangeOrder', 'qryGetChangeOrder', 'qryProjectPicker']);
   assert.equal(model.operations.some(operation => operation.operationId === 'deleteChangeOrder'), true);
 
   // The catalogue edits a whole record: a field required on create stays required on update, and
@@ -401,7 +401,7 @@ test('an mdm list is active-only by default and carries the derived situation', 
   const ontologyFields = sources().ontology.entities.find((entity: any) => entity.entityId === 'Client')!
     .fields.map((field: any) => field.fieldId);
   assert.equal(ontologyFields.includes('active'), false, 'the situation is derived, never an ontology field');
-  assert.equal(list.inputs.length, 0, 'the filter is not an entity-field input');
+  assert.equal(list.inputs.some(input => input.inputId === 'includeInactive'), false, 'the filter is not an entity-field input');
 });
 
 test('a catalogue of a moduleDatabase entity keeps the delete it always had', () => {
@@ -412,6 +412,104 @@ test('a catalogue of a moduleDatabase entity keeps the delete it always had', ()
   assert.equal(model.operations.some(operation => operation.operationId === 'inactivateChangeOrder'), false);
   const list = model.operations.find(operation => operation.operationId === 'listChangeOrder')!;
   assert.equal(list.mdm, undefined);
+});
+
+test('every catalogue entity synthesizes a getById even when no page consumes it', () => {
+  const input = sources();
+  const model = deriveNs4E8Model(input);
+  const catalogues = model.workspaces.filter(workspace => workspace.tier === 'recordCatalogue');
+  assert.ok(catalogues.length, 'the fixture has catalogue entities');
+
+  for (const workspace of catalogues) {
+    const operationId = `get${workspace.entity}`;
+    const matches = model.operations.filter(operation => operation.operationId === operationId);
+    assert.equal(matches.length, 1, `${workspace.entity} must have exactly one ${operationId}`);
+    const operation = matches[0];
+    assert.equal(operation.accessPattern.kind, 'getById');
+    assert.equal(operation.kind, 'query');
+    const required = operation.inputs.filter(item => item.required);
+    assert.equal(required.length, 1, `${operationId} asks for the identity and nothing else`);
+    const entity = input.ontology.entities.find((item: any) => item.entityId === workspace.entity)!;
+    assert.deepEqual(
+      [...operation.outputRefs].sort(),
+      entity.fields.map((field: any) => `${entity.entityId}.${field.fieldId}`).sort(),
+    );
+
+    const call = workspace.bffCalls.find(item => item.bffId === `qryGet${workspace.entity}`)!;
+    assert.equal(call.kind, 'query');
+    assert.equal(call.outputKind, 'object');
+    assert.equal(call.entityRef, workspace.entity);
+    assert.equal(call.operationId, operationId);
+    // No organism: the page does not call it. The four original surfaces stay as they were.
+    const bound = workspace.sections.flatMap(section => section.organisms)
+      .some(organism => organism.dataSource === call.bffId || organism.action === call.bffId);
+    assert.equal(bound, false);
+  }
+
+  const create = model.operations.find(operation => operation.operationId === 'createChangeOrder')!;
+  const update = model.operations.find(operation => operation.operationId === 'updateChangeOrder')!;
+  const remove = model.operations.find(operation => operation.operationId === 'deleteChangeOrder')!;
+  const list = model.operations.find(operation => operation.operationId === 'listChangeOrder')!;
+  assert.equal(list.accessPattern.kind, 'list');
+  assert.equal(create.accessPattern.kind, 'create');
+  assert.equal(update.accessPattern.kind, 'update');
+  assert.equal(remove.accessPattern.kind, 'delete');
+});
+
+test('a catalogue list with a name/title field emits optional search, and sortable fields emit sortBy enum', () => {
+  const model = deriveNs4E8Model(sources());
+  const listClient = model.operations.find(operation => operation.operationId === 'listClient')!;
+  const search = listClient.inputs.find(input => input.inputId === 'search')!;
+  assert.equal(search.required, false);
+  assert.equal(search.source, 'userInput');
+  assert.equal(search.fieldRef.fieldId, 'name');
+  assert.equal(listClient.inputs.some(input => input.inputId === 'sortBy'), false, 'Client has no date/enum to sort by');
+
+  const listChangeOrder = model.operations.find(operation => operation.operationId === 'listChangeOrder')!;
+  assert.equal(listChangeOrder.inputs.some(input => input.inputId === 'search'), false, 'ChangeOrder has no title/name');
+  const sortBy = listChangeOrder.inputs.find(input => input.inputId === 'sortBy')!;
+  const sortOrder = listChangeOrder.inputs.find(input => input.inputId === 'sortOrder')!;
+  assert.equal(sortBy.required, false);
+  assert.deepEqual(sortBy.enumValues, ['submittedAt', 'status', 'decidedAt']);
+  assert.deepEqual(sortOrder.enumValues, ['asc', 'desc']);
+  assert.equal(sortBy.source, 'userInput');
+
+  const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'changeOrderCatalogue')!;
+  const recordList = catalogue.sections.find(section => section.sectionId === 'recordList')!;
+  const filter = recordList.organisms.find(organism => organism.role === 'filterControl');
+  assert.equal(filter?.attachTo, 'qryListChangeOrder');
+
+  const clientCatalogue = model.workspaces.find(workspace => workspace.workspaceId === 'clientCatalogue')!;
+  const clientList = clientCatalogue.sections.find(section => section.sectionId === 'recordList')!;
+  assert.equal(clientList.organisms.find(organism => organism.role === 'filterControl')?.attachTo, 'qryListClient');
+});
+
+test('a catalogue list missing search/sort is a registrar finding, not a stop', () => {
+  const input = sources();
+  const model = deriveNs4E8Model(input);
+  const smuggled = structuredClone(model);
+  const list = smuggled.operations.find(operation => operation.operationId === 'listClient')!;
+  list.inputs = [];
+  const gate = validateNs4E8Model(smuggled, input);
+  const finding = gate.issues.find(issue => issue.code === 'NS4_E8_LIST_WITHOUT_SEARCH');
+  assert.ok(finding);
+  assert.equal(finding!.severity, 'warning');
+  assert.equal(gate.ok, true);
+  assert.equal(validateNs4E8Model(model, input).issues.some(issue => issue.code === 'NS4_E8_LIST_WITHOUT_SEARCH'), false);
+});
+
+test('a journey that already produced get{Entity} keeps it; the catalogue does not duplicate', () => {
+  const input = sources();
+  const useCase = input.useCases.find((item: any) => item.useCaseId === 'inspectInvoice');
+  assert.ok(useCase, 'the fixture compiles inspectInvoice from a journey');
+  useCase.useCaseId = 'getInvoice';
+  const model = deriveNs4E8Model(input);
+  const matches = model.operations.filter(operation => operation.operationId === 'getInvoice');
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].useCaseId, 'getInvoice', 'the journey operation wins the operationId');
+  assert.equal(matches[0].accessPattern.kind, 'getById');
+  const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'invoiceCatalogue')!;
+  assert.equal(catalogue.bffCalls.some(call => call.operationId === 'getInvoice'), true);
 });
 
 test('a delete over an mdm entity is a blocking finding even if it arrives from elsewhere', () => {

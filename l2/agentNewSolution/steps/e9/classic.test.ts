@@ -266,3 +266,23 @@ test('the mdm block survives to the classic operation without breaking either co
   assert.ok(parseWorkspaceSections(workspace as never).length, 'the frontend parser still reads the sections');
   assert.equal(l4OperationInputs(inactivate as never).length, 1, 'the lifecycle command takes the identity only');
 });
+
+test('a catalogue list contract types search as string and sortBy as a closed enum', async () => {
+  const { l4 } = await compile();
+  const listClient = l4.operations.find(operation => operation.operationId === 'listClient')!;
+  assert.equal(listClient.inputs.find(input => input.inputId === 'search')?.fieldRef, 'Client.name');
+  const clientCall = l4.workspaces.flatMap(workspace => workspace.bffCalls)
+    .find(call => call.bffId === 'qryListClient' && call.route.includes('clientCatalogue'))!;
+  assert.equal(clientCall.input.find(input => input.name === 'search')?.type, 'string');
+  const clientContract = l4.contracts.find(item => item.bffId === 'qryListClient' && item.workspaceId === 'clientCatalogue')!;
+  assert.match(clientContract.source, /search\?: string;/);
+
+  const listChangeOrder = l4.operations.find(operation => operation.operationId === 'listChangeOrder')!;
+  assert.deepEqual(listChangeOrder.inputs.find(input => input.inputId === 'sortBy')?.enumValues, ['submittedAt', 'status', 'decidedAt']);
+  const changeContract = l4.contracts.find(item => item.bffId === 'qryListChangeOrder' && item.workspaceId === 'changeOrderCatalogue')!;
+  assert.match(changeContract.source, /sortBy\?: 'submittedAt' \| 'status' \| 'decidedAt';/);
+  assert.match(changeContract.source, /sortOrder\?: 'asc' \| 'desc';/);
+  const workspace = l4.workspaces.find(item => item.workspaceId === 'changeOrderCatalogue')!;
+  const recordList = workspace.sections.find(section => section.sectionId === 'recordList')!;
+  assert.equal(recordList.organisms.find(organism => organism.role === 'filterControl')?.attachTo, 'qryListChangeOrder');
+});

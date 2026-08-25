@@ -117,6 +117,30 @@ test('an event-driven journey without an internal sender carries the entity of i
   assert.deepEqual(graph.entryByJourneyId.get('readUpdate')!.map(item => item.contextId), ['selectedWorkTask']);
 });
 
+test('inspect before locate of the same entity is a collection summary and does not require the record', () => {
+  const graph = deriveNs4Contexts({ ontology, access, journeys: { journeys: [{
+    journeyId: 'monitorTasks',
+    business: { actorRef: 'projectManager', entry: { mode: 'coldStart' }, steps: [
+      { stepId: 'inspectTaskSummary', kind: 'inspect', entity: 'WorkTask' },
+      { stepId: 'locateTasks', kind: 'locate', entity: 'WorkTask' },
+      { stepId: 'inspectTaskDetails', kind: 'inspect', entity: 'WorkTask' },
+    ] },
+  }] } });
+  assert.deepEqual(graph.byStepRef.get('monitorTasks.inspectTaskSummary')!.requires, []);
+  assert.deepEqual(graph.byStepRef.get('monitorTasks.locateTasks')!.requires, []);
+  assert.deepEqual(graph.byStepRef.get('monitorTasks.inspectTaskDetails')!.requires.map(item => item.contextId), ['selectedWorkTask']);
+});
+
+test('inspect without a later locate of the same entity still requires the selected record', () => {
+  const graph = deriveNs4Contexts({ ontology, access, journeys: { journeys: [{
+    journeyId: 'inspectOnly',
+    business: { actorRef: 'projectManager', entry: { mode: 'coldStart' }, steps: [
+      { stepId: 'inspectProject', kind: 'inspect', entity: 'Project' },
+    ] },
+  }] } });
+  assert.deepEqual(graph.byStepRef.get('inspectOnly.inspectProject')!.requires.map(item => item.contextId), ['selectedProject']);
+});
+
 test('the catalog is entity-keyed, id-field resolved and free of duplicates', () => {
   const graph = deriveNs4Contexts({ ontology, access, journeys: { journeys: [
     { journeyId: 'a', business: { actorRef: 'projectManager', entry: { mode: 'coldStart' }, steps: [

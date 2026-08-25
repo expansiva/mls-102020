@@ -31,6 +31,19 @@ test('NS4 reads versionRef=0 locally and never requests the invalid remote blob'
   assert.equal(remoteReads, 0);
 });
 
+test('listNs4E7UseCaseDraftFiles lists live *-draft.json of the module', async () => {
+  const ns4 = await loadNs4Fs();
+  const g = globalThis as unknown as Record<string, any>;
+  g.mls.actualProject = 102047;
+  g.mls.stor.files = {
+    a: { project: 102047, level: 4, folder: 'petShop/pipeline/e7-usecases', shortName: 'locateServiceExecution-draft', extension: '.json', status: 'changed' },
+    b: { project: 102047, level: 4, folder: 'petShop/pipeline/e7-usecases', shortName: 'createPet-draft', extension: '.json', status: 'deleted' },
+    c: { project: 1, level: 4, folder: 'petShop/pipeline/e7-usecases', shortName: 'other-draft', extension: '.json', status: 'changed' },
+    d: { project: 102047, level: 4, folder: 'petShop/operations', shortName: 'listPet', extension: '.defs.ts', status: 'changed' },
+  };
+  assert.deepEqual(ns4.listNs4E7UseCaseDraftFiles('petShop').map(file => file.shortName), ['locateServiceExecution-draft']);
+});
+
 test('assertNs4ShortName rejects extra dots', async () => {
   const { assertNs4ShortName } = await loadNs4Fs();
   assert.doesNotThrow(() => assertNs4ShortName('e2-journeys-draft'));

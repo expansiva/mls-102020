@@ -4,7 +4,7 @@
 
 ## Role
 
-`agentCfeRegisterFrontend` writes page preview HTML files, registers generated pages and signs `l5/project.json` with the frontend master signature.
+`agentCfeRegisterFrontend` registers generated pages and signs `l5/project.json` with the frontend master signature. Leftover page preview `.html` under `web/desktop|mobile/pageN` is soft-deleted (Studio preview no longer uses it).
 
 ## Input
 
@@ -13,7 +13,6 @@
 
 ## Output
 
-- `l2/{module}/web/desktop/page11/{page}.html`.
 - `l2/{module}/trace/frontend-register-pages/{page}.json`.
 - Updated `l5/project.json`.
 

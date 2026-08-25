@@ -13,4 +13,14 @@ void test('agentCfeRebuildDefsCleanup declares the rebuild cleanup step agent co
   assert.match(src, /agentCfeRebuildDefsCleanup/);
   assert.match(src, /export function createAgent/);
   assert.match(src, /beforePromptStep/);
+  assert.match(src, /extension !== '\.html'/);
+});
+
+void test('register and CLI materialize no longer emit page preview html', () => {
+  const helpers = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
+  const cli = readFileSync(path.join(HERE, '..', '..', 'nodejsMaterializeL2.ts'), 'utf8');
+  assert.doesNotMatch(helpers, /function savePageHtml/);
+  assert.match(helpers, /function deleteLeftoverPageHtml/);
+  assert.doesNotMatch(cli, /function writePagePreviewHtml/);
+  assert.match(cli, /function removeLeftoverPageHtml/);
 });

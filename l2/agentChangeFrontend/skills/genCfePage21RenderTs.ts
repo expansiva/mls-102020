@@ -175,6 +175,11 @@ Prefer these patterns over the baseline stacked-cards-and-forms shape:
   <select> over all enum values and NEVER a manually typed id input. This is the main fix over page11.
   Button captions use enumLabels[].label when the catalog carries it; the handler still sends the code.
 - **card-board**: group items into lanes by status/stage; the primary action lives inline on each card.
+  Lane titles and the status text ON the card use enumLabels[].label (fallback: the code), never the
+  stored camelCase code. Same map as page11 list cells.
+- **list columns**: \`*Id\` (keyField / FKs) is not a default column when title or name is already there.
+  Keep the id in state for selection. Enum cells use the label map, never \`\${item.status}\` / generic
+  \`displayValue(valueOf(row, column.field))\`.
 - **inline-row-command**: a one-decision command executed directly on a list row.
 - **summary-first**: when pageObjective.informationHierarchy leads with numbers/status, render a
   compact summary/stat row before the detail.
@@ -204,14 +209,15 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
 - Translate pageObjective.usageFrequency into density: continuous/hands-busy favors large touch
   targets and compact cards; back-office favors tables and detail panels.
 - For every command action, render a dismissible textual feedback region driven by its action status:
-  success uses feedback.successMessageKey; error uses the AppError text from errorStateKey when present,
-  otherwise feedback.errorMessageKey. Never only an icon.
+  success uses feedback.successMessageKey; error uses the AppError text from errorStateKey (envelope
+  error.message) when present, otherwise this.msg[error.code] when that catalogue key exists, otherwise
+  feedback.errorMessageKey. Never only an icon. Never interpolate an HTTP status as the screen text.
 - Query/list intentions show a placeholder/skeleton while their query state is loading; command buttons
   show a progress label and are disabled while their action is loading.
 - Collapse repeated hierarchy: page title once as h1; a title that resolves to the same message as its
   parent is not repeated.
 
-## Regras invioláveis de experiência (as 4 reincidentes — cada uma tem check no gate)
+## Regras invioláveis de experiência (as 10 reincidentes — cada uma tem check no gate)
 
 1. VOCABULÁRIO INTERNO NUNCA VIRA TEXTO DE TELA. displayHint, intent id, state key, nome de bffCall e
    ids de binding são fiação, não copy. Um tile intitulado "Summary first" (o displayHint humanizado)
@@ -232,6 +238,26 @@ must not emit them. Order organisms by pageObjective.informationHierarchy / prim
    não repita); um heading nunca repete o label do botão/link vizinho (se o botão diz "Aprovar", o
    heading acima dele diz outra coisa ou não existe); no máximo UMA ação destrutiva por superfície,
    nunca como botão default de linha, e sempre com confirmação que NOMEIA o registro.
+5. ENUM NUNCA É TEXTO LIVRE. União literal no contrato, \`values:\` no JSDoc do @property, ou enum[]
+   no catálogo ⇒ nunca \`<input>\` de texto. Filtro: \`<select>\` com primeira opção vazia "todos".
+   Formulário (priority, tipo, …): \`<select>\` com opções {value: código, label: rótulo}. Transição
+   de ciclo de vida: botões contextuais (regra acima) — não texto e não um \`<select>\` solto de todos
+   os valores.
+6. ERRO DE MUTAÇÃO É A MENSAGEM DO ENVELOPE. O texto do feedback de erro é o error state (error.message
+   do envelope) ou this.msg[error.code] quando essa chave existe. HTTP status NUNCA é o texto da tela
+   — nunca "Erro do servidor (400)". A chave i18n de erro do comando é só fallback quando o envelope
+   não trouxe message.
+7. SELECTION NUNCA É DECORATIVA. \`selection: "single"\` na query, ou um input com source
+   \`selection\`/\`selectedEntity\`/\`routeParam\` ao lado de uma lista: a linha (ou um \`<select>\`) TEM
+   de gravar o id no stateKey. Clique na linha chama o setter, marca o selecionado, dispara o
+   getById/inspect. Tabela sem \`@click\` é defeito — nunca "nenhum". \`<select>\` tipo "Choose a
+   task" é o outro caminho válido.
+8. BOTÃO COM PRÉ-CONDIÇÃO. Command cujo input required de rota/seleção está vazio fica
+   \`?disabled=\${!host.id}\` com \`title\` dizendo o que falta. Nunca clicável-e-mudo.
+9. CÉLULA DE ENUM MOSTRA O RÓTULO. União literal / enum[] / lifecycleLabels ⇒ célula e texto de
+   card usam o rótulo, fallback o código. Nunca o código cru na lista. O fio continua o código.
+10. COLUNA \`*Id\` NÃO É DEFAULT. \`id\` / \`*Id\` só é coluna quando é a única identificação; com
+    title/name na tabela o UUID fica fora (id permanece no state para as ações).
 
 ## \`source\` is a RENDERING INSTRUCTION, not metadata
 
@@ -267,7 +293,14 @@ html\`<select .value=\${host.projectId} @change=\${host.setProjectId}>
 </select>\`
 \`\`\`
 
-Selecting a row of that query's own table is equally valid, and better when the row is already on screen.
+Selecting a row of that query's own table is equally valid, and better when the row is already on screen:
+
+\`\`\`typescript
+html\`<tr class=\${item.id === host.projectId ? 'bg-[var(--surface-selected)]' : ''}
+        @click=\${() => { host.setProjectId(item.id); void host.loadInspect(); }}>
+\`\`\`
+
+A list whose l4 accessPattern.selection is \`single\` MUST do one of the two. Never a table that only paints columns.
 
 ### \`actorDirectory\` — no directory service exists yet
 
