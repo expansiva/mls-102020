@@ -44,7 +44,7 @@ import {
   type GeneratedHeaderParts,
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import { applyLogoToBrand, validateLogoSvg } from '/_102020_/l2/aura/agentManageHeader/helpers/generateLogoCore.js';
-import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
+import { AURA_HEADER_HEIGHT_PX, AURA_HEADER_LOGO_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
 import { tokensCssFromTheme, type IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
 import type { AppHeaderAction } from '/_102029_/l2/runtimeConfigTypes.js';
 import { flagChip, localeFlagMarkup } from '/_102020_/l2/aura/plugins/helpers/localeFlag.js';
@@ -120,6 +120,9 @@ const message_en = {
   save: 'Save',
   notes: 'Notes',
   invalid: 'Refused',
+  light: 'light',
+  dark: 'dark',
+  markEmpty: 'Nothing to preview yet — paste the markup or generate a mark.',
   noDraft: 'The run produced nothing — open the task in the thread to see why it failed.',
   staleDraft: 'What is parked belongs to an earlier run; this one produced nothing. Open the task to see why.',
   noTokens: 'The design system of the project could not be read; the preview has no real tokens',
@@ -178,6 +181,9 @@ const messages: Record<string, MessageType> = {
     save: 'Salvar',
     notes: 'Notas',
     invalid: 'Recusado',
+    light: 'claro',
+    dark: 'escuro',
+    markEmpty: 'Nada para visualizar ainda — cole o markup ou gere uma marca.',
     noDraft: 'A execução não produziu nada — abra a task na thread para ver o motivo.',
     staleDraft: 'O que está guardado é de uma execução anterior; esta não produziu nada. Abra a task para ver o motivo.',
     noTokens: 'Não foi possível ler o design system do projeto; o preview está sem os tokens reais',
@@ -421,6 +427,20 @@ export class PluginProjectHeader extends PluginBaseModule {
    * Without this the band falls back to the hardcoded defaults of every `var(--nav-*, #…)` in the
    * header, which is a different header from the one the user will see.
    */
+  /**
+   * The single CSS rule the mark tiles need: an inlined `<svg>` has no width/height of its own (the
+   * validator forbids them), so it is the container that must size it — by height, like the band.
+   * Injected once, scoped to this widget's tag, because the widget renders in the light DOM.
+   */
+  private _ensureMarkPreviewCss(): void {
+    const id = 'header-plugin-mark-preview-css';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `${this.localName} .mark-tile svg { display: block; width: auto; height: var(--mark-h, ${AURA_HEADER_LOGO_PX}px); }`;
+    document.head.appendChild(style);
+  }
+
   private async _applyProjectTokens(host: HTMLElement): Promise<void> {
     host.setAttribute('data-token-scope', String(this._projectId));
     const id = `header-preview-tokens-${this._projectId}`;
@@ -832,15 +852,65 @@ export class PluginProjectHeader extends PluginBaseModule {
             .value=${this._markSvg}
             @input=${(e: Event) => { this._markSvg = (e.target as HTMLTextAreaElement).value; }}
           ></textarea>
+          ${this._renderMarkPreview()}
           <div class="flex items-center gap-3">
-            <span class="inline-flex h-7 items-center text-gray-700 dark:text-gray-200">${this._markSvg ? unsafeHTML(this._markSvg) : nothing}</span>
-            <button type="button" class=${BUTTON} ?disabled=${!!this._busy} @click=${() => void this._saveMark(this._markSvg.trim())}>
+            <button type="button" class=${BUTTON} ?disabled=${!!this._busy || this._markErrors.length > 0}
+              @click=${() => void this._saveMark(this._markSvg.trim())}>
               ${this.msg.save}
             </button>
+            ${this._notes ? html`<span class="text-xs text-gray-500 dark:text-gray-400">${this._notes}</span>` : nothing}
           </div>
         </div>
       ` : nothing}
     `);
+  }
+
+  /** Why the pending mark would be refused; empty when it is fine (or when there is nothing yet). */
+  private get _markErrors(): string[] {
+    const markup = this._markSvg.trim();
+    return markup ? validateLogoSvg(markup) : [];
+  }
+
+  /**
+   * The pending mark, before saving: at band size and large, on light AND on dark.
+   *
+   * A mark drawn with `currentColor` inherits the surface it sits on, and the header is a nav
+   * surface that can be either — one that disappears on dark is a real failure this catches. The
+   * refusal reasons show here too, so Save is not a guessing game.
+   */
+  private _renderMarkPreview() {
+    this._ensureMarkPreviewCss();
+    const markup = this._markSvg.trim();
+    if (!markup) {
+      return html`<p class="text-xs italic text-gray-400 dark:text-gray-500">${this.msg.markEmpty}</p>`;
+    }
+    const errors = this._markErrors;
+    // Sized by HEIGHT with width auto, exactly like the band (AURA_HEADER_LOGO_PX): a wordmark must
+    // not be squeezed into a square here and stretched there.
+    const tile = (dark: boolean) => html`
+      <div class="flex items-center gap-5 rounded-md border px-4 py-3
+        ${dark
+          ? 'border-gray-800 bg-gray-900 text-white'
+          : 'border-gray-200 bg-white text-gray-900'}">
+        <span class="mark-tile inline-flex items-center" style="--mark-h:${AURA_HEADER_LOGO_PX}px">
+          ${unsafeHTML(markup)}
+        </span>
+        <span class="mark-tile inline-flex items-center" style="--mark-h:64px">
+          ${unsafeHTML(markup)}
+        </span>
+        <span class="text-[11px] font-mono opacity-60 ml-auto">${dark ? this.msg.dark : this.msg.light}</span>
+      </div>
+    `;
+    return html`
+      <div class="flex flex-col gap-2">
+        ${tile(false)}
+        ${tile(true)}
+        ${errors.length ? html`
+          <ul class="rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 py-1.5 text-xs text-red-700 dark:text-red-300 flex flex-col gap-0.5">
+            ${errors.map((error) => html`<li>${error}</li>`)}
+          </ul>` : nothing}
+      </div>
+    `;
   }
 
   /** The five actions, each with what it actually does — and whether it will show at all. */
