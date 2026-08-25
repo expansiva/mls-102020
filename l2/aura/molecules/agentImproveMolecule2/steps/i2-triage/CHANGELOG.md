@@ -1,5 +1,20 @@
 # CHANGELOG — i2-triage
 
+## 2026-08-25 — o trace passou a dizer QUAL contrato o runtime serviu
+
+Este é o primeiro step do pipeline a carregar um contrato, e `readGroupSkill` (em `imResolve`) degrada
+um import quebrado para `''` **em silêncio** — o gate então pula a checagem de vocabulário, porque ela
+exige `groupSkill.trim()`. Import quebrado virava gate aberto, sem aviso, e o trace não registrava nada.
+
+O trace agora leva `contract`: a referência, `loaded`, e a impressão digital do texto (`chars` +
+hash FNV-1a, de `shared/contractFingerprint.ts`). `loaded: false` é aquela falha, finalmente visível;
+o par chars/hash diz se o texto era o publicado — a mesma função roda em node, então comparar com a
+cópia de trabalho é igualdade de string.
+
+A leitura é repetida aqui em vez de ser passada do `beforePromptStep`, e isso é de graça: `await
+import` cacheia por especificador, então a segunda chamada devolve o mesmo módulo.
+
+
 ## 2026-08-18 — o artefato que o editor não escreve, e a lista de rotas que eu duplicei
 
 Duas coisas, e a segunda é pior que a primeira.

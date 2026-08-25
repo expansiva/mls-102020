@@ -41,6 +41,7 @@ import {
   readImAgentText,
   sourceOf,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
+import { contractFingerprint } from '/_102020_/l2/aura/molecules/shared/contractFingerprint.js';
 import { capableOverridesOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { getImRunKey } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imRootPlan.js';
 import { readSurface, renderSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
@@ -157,6 +158,11 @@ async function afterPromptStep(
     planId: PLAN_ID,
     attempt,
     ok: gate.ok,
+    // WHICH usage contract the runtime served — this is the first step of the pipeline to load one,
+    // and `readGroupSkill` degrades a broken import to '' in silence (the gate then skips its
+    // vocabulary check). `loaded: false` here is that failure, finally visible; the pair
+    // chars/hash tells a later analysis whether the text was the published one.
+    contract: contractTrace(ctx.groupSkill.usageReference, await readGroupSkill(ctx.groupSkill.usageReference)),
     ...(gate.ok ? {} : { error: errorText, output }),
   });
 
@@ -238,6 +244,18 @@ function normalizeOutput(result: Record<string, unknown>): ImTriageOutput {
  * Saying WHICH matters: a shell's contract describes the parent, so "the contract promises X" is
  * still the right test, but the reader must know it is not this file that promises it.
  */
+// WHICH usage contract the runtime served. This step is the first of the pipeline to load one, and
+// `readGroupSkill` degrades a broken import to '' in SILENCE (the gate then skips its vocabulary
+// check) — `loaded: false` here is that failure, finally visible. The chars/hash pair tells a later
+// analysis whether the text was the published one — the same pair, computed over the working copy of
+// the contract, is what it compares against.
+//
+// Re-reading here instead of threading the text from `beforePromptStep` is free: `await import`
+// caches by specifier, so the second call returns the very same module.
+function contractTrace(reference: string, text: string): Record<string, unknown> {
+  return { reference, kind: 'usage', loaded: !!text, ...contractFingerprint(text) };
+}
+
 function renderContract(ctx: ImContext): string {
   if (!ctx.contract.source.trim()) return '(the contract could not be read — decide from the code alone, and say so in the rationale)';
   if (!ctx.contract.inherited) return ctx.contract.source;

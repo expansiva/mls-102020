@@ -24,6 +24,7 @@ import {
 import { NM_BASE_CLASS, NM_BASE_IMPORT } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext, moleculeContextSummary } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmDoneAnchor, nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
+import { ContractFingerprint, contractFingerprint } from '/_102020_/l2/aura/molecules/shared/contractFingerprint.js';
 import { loadVTheme } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTheme.js';
 import { NmBootstrapInputs, runNmBootstrapGate } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
 import { getNmInput, getNmRootPlan, getNmRunKey } from '/_102020_/l2/aura/molecules/agentNewMolecule2/agentNewMolecule2.js';
@@ -62,7 +63,11 @@ async function beforePromptStep(
 
   // The creation skill is only PROBED here (fail fast); each later step imports it from the
   // reference in context.json, so the skill text never bloats the artifact.
-  const { loaded: groupSkillLoaded, error: groupSkillError } = await probeSkill(groupEntry?.skillReference);
+  const creationProbe = await probeSkill(groupEntry?.skillReference);
+  const { loaded: groupSkillLoaded, error: groupSkillError } = creationProbe;
+
+  // Probed, never gated — see traceContracts.
+  const usageProbe = await probeSkill(groupEntry?.skillUsageReference);
 
   const baseSource = await readStorText(nmBaseFile(), false);
 
@@ -120,6 +125,12 @@ async function beforePromptStep(
     planId: 'n1-bootstrap',
     summary: moleculeContextSummary(ctx),
     themePresent,
+    contracts: traceContracts(
+      groupEntry?.skillReference || '',
+      creationProbe,
+      groupEntry?.skillUsageReference || '',
+      usageProbe,
+    ),
   });
 
   const summary = moleculeContextSummary(ctx);
@@ -136,13 +147,39 @@ async function beforePromptStep(
 
 // Importable + returns a non-empty `skill`? Errors are reported, never thrown: the gate turns them
 // into a readable admission failure.
-async function probeSkill(reference?: string): Promise<{ loaded: boolean; error?: string }> {
+interface SkillProbe {
+  loaded: boolean;
+  error?: string;
+  /** Present only when loaded — what the runtime SERVED, for the trace to record. */
+  print?: ContractFingerprint;
+}
+
+async function probeSkill(reference?: string): Promise<SkillProbe> {
   if (!reference) return { loaded: false, error: 'no skillReference declared' };
   try {
     const mod = await import(reference) as { skill?: unknown };
     if (typeof mod.skill !== 'string' || !mod.skill.trim()) return { loaded: false, error: `${reference} exports no non-empty 'skill'` };
-    return { loaded: true };
+    return { loaded: true, print: contractFingerprint(mod.skill) };
   } catch (error) {
     return { loaded: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+// Both contracts, for the trace. The CREATION one gates this step (n2-plan/n4-render read it); the
+// USAGE one does not — n6-demo and n7-index read it much later, and a run that only fails there is
+// worth finishing. Recording it here is what makes the failure diagnosable afterwards instead of
+// having to guess which text the playground was generated from.
+function traceContracts(
+  creationReference: string,
+  creation: SkillProbe,
+  usageReference: string,
+  usage: SkillProbe,
+): Record<string, unknown> {
+  const entry = (reference: string, probe: SkillProbe) => ({
+    reference,
+    loaded: probe.loaded,
+    ...(probe.print ? { chars: probe.print.chars, hash: probe.print.hash } : {}),
+    ...(probe.error ? { error: probe.error } : {}),
+  });
+  return { creation: entry(creationReference, creation), usage: entry(usageReference, usage) };
 }
