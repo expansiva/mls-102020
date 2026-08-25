@@ -7,9 +7,10 @@
 //   1. the header that is applied, rendered for real at band size;
 //   2. the brand mark: what is there, and three ways to change it (an .svg file, pasted markup, or
 //      agentGenerateLogo);
-//   3. the request: brief/brand, the five actions (each with what it does, and a note when the base
-//      will render nothing), the locales the header speaks and WHICH routes it links;
-//   4. generate -> PREVIEW -> apply / discard / go back to the previous one, in a pinned action bar.
+//   3. the request, as ONE panel with tabs (Description | Actions | Navigation links) — each tab
+//      badged with what it holds, because a tab hides state and this state IS the request;
+//   4. generate -> PREVIEW -> apply / discard / go back to the previous one, in a pinned action bar
+//      (the draft band sits at the top of the request panel, so it stays put while tabs change).
 //
 // The locale and route selections are DATA (`props.locales` / `props.navLinks` on the profile), not
 // generated code: changing which links or languages a header offers is a config edit afterwards,
@@ -120,6 +121,7 @@ const message_en = {
   save: 'Save',
   notes: 'Notes',
   invalid: 'Refused',
+  tabBrief: 'Description',
   light: 'light',
   dark: 'dark',
   markEmpty: 'Nothing to preview yet — paste the markup or generate a mark.',
@@ -181,6 +183,7 @@ const messages: Record<string, MessageType> = {
     save: 'Salvar',
     notes: 'Notas',
     invalid: 'Recusado',
+    tabBrief: 'Descrição',
     light: 'claro',
     dark: 'escuro',
     markEmpty: 'Nada para visualizar ainda — cole o markup ou gere uma marca.',
@@ -203,6 +206,8 @@ export const pluginData: mls.plugin.IPluginData = {
     `;
   },
 };
+
+type RequestTab = 'brief' | 'actions' | 'links';
 
 const CONFIG_REF = (project: number) => `_${project}_/l5/config.json`;
 const HEADER_ACTIONS = ['language', 'designSystem', 'modules', 'search', 'user'] as const;
@@ -246,6 +251,7 @@ export class PluginProjectHeader extends PluginBaseModule {
    */
   @state() private _appliedTag = '';
   @state() private _hasBackup = false;
+  @state() private _tab: RequestTab = 'brief';
   @state() private _markMode: 'none' | 'paste' | 'generate' = 'none';
   @state() private _markSvg = '';
   @state() private _markBrief = '';
@@ -595,6 +601,9 @@ export class PluginProjectHeader extends PluginBaseModule {
       this._previewTag = preview.tag;
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
+      // Move to where the fix is: the reason lives on one tab, and it may be a hidden one.
+      const faulty = this._errorTab;
+      if (faulty) this._tab = faulty;
     } finally {
       this._busy = '';
     }
@@ -865,6 +874,20 @@ export class PluginProjectHeader extends PluginBaseModule {
     `);
   }
 
+  /**
+   * The tab an error belongs to, so the tab strip can point at it.
+   *
+   * The local gate rejects before the round trip, and its reason lives on ONE tab — with the message
+   * in the footer and the culprit hidden behind a tab, there is nothing to act on.
+   */
+  private get _errorTab(): RequestTab | undefined {
+    if (!this._error) return undefined;
+    if (/brand\.title|brief/iu.test(this._error)) return 'brief';
+    if (/action/iu.test(this._error)) return 'actions';
+    if (/route|navLinks|renderNavLinks/iu.test(this._error)) return 'links';
+    return undefined;
+  }
+
   /** Why the pending mark would be refused; empty when it is fine (or when there is nothing yet). */
   private get _markErrors(): string[] {
     const markup = this._markSvg.trim();
@@ -1000,7 +1023,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     const selected = this._form.navLinks;
     return html`
       <p class="text-xs text-gray-500 dark:text-gray-400">${this.msg.navLinksHint}</p>
-      <ul class="flex flex-col gap-1 max-h-56 overflow-y-auto pr-1">
+      <ul class="flex flex-col gap-1">
         ${this._routes.map((route) => {
           const on = selected.includes(route.href);
           return html`
@@ -1029,49 +1052,99 @@ export class PluginProjectHeader extends PluginBaseModule {
     `;
   }
 
-  private _renderForm() {
-    const form = this._form;
-    const set = (patch: Partial<HeaderFormState>) => { this._form = { ...this._form, ...patch }; };
+  /**
+   * The request, as ONE panel with tabs instead of three stacked cards.
+   *
+   * Tabs hide state, and this state is what goes in the request — so every tab carries a badge with
+   * what it holds (a brief or not, how many actions, how many of the project's routes). Without it
+   * someone generates without ever opening "navigation links" and never notices.
+   */
+  private _renderRequest() {
+    const tabs: Array<{ id: RequestTab; label: string; badge: string }> = [
+      { id: 'brief', label: this.msg.tabBrief, badge: this._form.brief.trim() || this._form.brandTitle.trim() ? '✓' : '—' },
+      { id: 'actions', label: this.msg.actions, badge: String(this._form.actions.length) },
+      { id: 'links', label: this.msg.navLinks, badge: `${this._form.navLinks.length}/${this._routes.length}` },
+    ];
+    const faulty = this._errorTab;
+
     return html`
-      ${this._card(this.msg.request, html`
-        <textarea
-          class="${INPUT} text-sm"
-          rows="4"
-          placeholder=${this.msg.brief}
-          .value=${form.brief}
-          @input=${(e: Event) => set({ brief: (e.target as HTMLTextAreaElement).value })}
-        ></textarea>
-        <div class="flex flex-col sm:flex-row gap-2">
-          <input class=${INPUT} placeholder=${this.msg.brandTitle}
-            .value=${form.brandTitle} @input=${(e: Event) => set({ brandTitle: (e.target as HTMLInputElement).value })} />
-          <input class=${INPUT} placeholder=${this.msg.brandSubtitle}
-            .value=${form.brandSubtitle} @input=${(e: Event) => set({ brandSubtitle: (e.target as HTMLInputElement).value })} />
+      <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
+        <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex-1">${this.msg.request}</h3>
+          ${this._previewTag
+            ? html`<span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${this._previewTag}</span>`
+            : nothing}
+        </header>
+
+        ${this._previewTag ? html`
+          <div class="px-3 py-3 flex flex-col gap-2 border-b border-gray-200 dark:border-gray-800 bg-indigo-50/40 dark:bg-indigo-500/5">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">${this.msg.draft}</span>
+            ${this._renderBand('draft')}
+            ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
+          </div>
+        ` : nothing}
+
+        <div role="tablist" class="flex items-stretch gap-px px-3 pt-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+          ${tabs.map((tab) => {
+            const active = this._tab === tab.id;
+            return html`
+              <button
+                type="button"
+                role="tab"
+                aria-selected=${String(active)}
+                class="flex items-center gap-1.5 rounded-t-md px-3 py-1.5 text-sm border border-b-0 -mb-px transition-colors
+                  ${active
+                    ? 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-medium'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+                @click=${() => { this._tab = tab.id; }}
+              >
+                <span class=${tab.id === faulty ? 'text-red-600 dark:text-red-400' : ''}>${tab.label}</span>
+                <span class="text-[10px] font-mono rounded px-1
+                  ${tab.id === faulty
+                    ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}">${tab.badge}</span>
+              </button>
+            `;
+          })}
         </div>
-        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-          ${this.msg.logoMode}
-          <select class=${INPUT} .value=${form.logo}
-            @change=${(e: Event) => set({ logo: (e.target as HTMLSelectElement).value as HeaderFormState['logo'] })}>
-            <option value="keep">${this.msg.logoKeep}</option>
-            <option value="generate">${this.msg.logoGenerate}</option>
-            <option value="none">${this.msg.logoNone}</option>
-          </select>
-        </label>
-      `)}
-      ${this._card(this.msg.actions, this._renderActionList())}
-      ${this._card(this.msg.navLinks, this._renderRoutes())}
+
+        <!-- One scroll here, not one per list: the panel is the scrolling area. -->
+        <div class="p-3 flex flex-col gap-3 max-h-96 overflow-y-auto">
+          ${this._tab === 'brief' ? this._renderBriefPanel() : nothing}
+          ${this._tab === 'actions' ? this._renderActionList() : nothing}
+          ${this._tab === 'links' ? this._renderRoutes() : nothing}
+        </div>
+      </section>
     `;
   }
 
-  private _renderDraft() {
-    if (!this._previewTag) return nothing;
-    return this._card(
-      this.msg.draft,
-      html`
-        ${this._renderBand('draft')}
-        ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
-      `,
-      html`<span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${this._previewTag}</span>`,
-    );
+  private _renderBriefPanel() {
+    const form = this._form;
+    const set = (patch: Partial<HeaderFormState>) => { this._form = { ...this._form, ...patch }; };
+    return html`
+      <textarea
+        class="${INPUT} text-sm"
+        rows="5"
+        placeholder=${this.msg.brief}
+        .value=${form.brief}
+        @input=${(e: Event) => set({ brief: (e.target as HTMLTextAreaElement).value })}
+      ></textarea>
+      <div class="flex flex-col sm:flex-row gap-2">
+        <input class=${INPUT} placeholder=${this.msg.brandTitle}
+          .value=${form.brandTitle} @input=${(e: Event) => set({ brandTitle: (e.target as HTMLInputElement).value })} />
+        <input class=${INPUT} placeholder=${this.msg.brandSubtitle}
+          .value=${form.brandSubtitle} @input=${(e: Event) => set({ brandSubtitle: (e.target as HTMLInputElement).value })} />
+      </div>
+      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+        ${this.msg.logoMode}
+        <select class=${INPUT} .value=${form.logo}
+          @change=${(e: Event) => set({ logo: (e.target as HTMLSelectElement).value as HeaderFormState['logo'] })}>
+          <option value="keep">${this.msg.logoKeep}</option>
+          <option value="generate">${this.msg.logoGenerate}</option>
+          <option value="none">${this.msg.logoNone}</option>
+        </select>
+      </label>
+    `;
   }
 
   /**
@@ -1127,8 +1200,7 @@ export class PluginProjectHeader extends PluginBaseModule {
         </div>
         ${this._renderApplied()}
         ${this._renderMark()}
-        ${this._renderForm()}
-        ${this._renderDraft()}
+        ${this._renderRequest()}
         ${this._renderActionBar()}
       </div>
     `;
