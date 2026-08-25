@@ -1120,7 +1120,7 @@ function queryFallback(model: ScaffoldModel, state: DefsState): string {
 
 function stateDoc(state: DefsState): string {
   const parts = [`state ${state.name} — ${state.kind}`];
-  if (state.kind === 'actionStatus') parts.push(`, values: ${state.valueSet!.join('|')}`);
+  if (state.valueSet?.length) parts.push(`, values: ${state.valueSet.join('|')}`);
   if (state.kind === 'queryResult') parts.push(`, outputShape: ${state.outputShape}`);
   return parts.join('');
 }

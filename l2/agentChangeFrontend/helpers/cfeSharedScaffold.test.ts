@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { catalogueLocales, generateSharedScaffold, parseContractInterfaces, parsePreviousI18n } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+import { collectMutationEnvelopeErrorIssues } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 const CONTRACT = `
 // bffCall listThings (query) — Output kind=paginated
@@ -113,6 +114,8 @@ test('generateSharedScaffold renders the full base class', () => {
   // class closes
   assert.match(code, /export class DemoThingsBase extends CollabLitElement {/);
   assert.match(code, /\n}\n$/);
+  assert.match(code, /readErrorMessage\(response\.error/);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(definition(), code), []);
 });
 
 test('generateSharedScaffold bails on unsupported shapes instead of guessing', () => {

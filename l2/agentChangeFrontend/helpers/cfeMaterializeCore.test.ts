@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -289,6 +289,67 @@ test('parseDefs on a single-item defs is unchanged', () => {
   const parsed = parseDefs(src);
   assert.equal(parsed.items.length, 1);
   assert.equal(parsed.item?.id, 'pd__l2_page');
+  assert.equal(parsed.bindings, null);
+  assert.equal(typeof parsed.data, 'object');
+});
+
+test('parseDefs reads a page11 prose definition (template literal) and the bindings sibling', () => {
+  const prose = 'Esta página é Pedidos. Destina-se a o gerente. A página estende a classe base do shared deste workspace.';
+  const bindings = [{ command: 'listOrders', kind: 'query', selection: 'single', inputs: [{ name: 'q', stateKey: 'ui.p.q', source: 'userInput', required: false }] }];
+  const src = [
+    'export const definition = `' + prose + '`;',
+    '',
+    `export const bindings = ${JSON.stringify(bindings, null, 2)} as const;`,
+    '',
+    `export const pipeline = ${JSON.stringify([{ id: 'pd__l2_page', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/pd.ts' }], null, 2)} as const;`,
+  ].join('\n');
+  const parsed = parseDefs(src);
+  assert.equal(parsed.dataExportName, 'definition');
+  assert.equal(parsed.data, prose);
+  assert.deepEqual(parsed.bindings, bindings);
+  const gateInput = pageDefinitionForChecks(parsed) as { pageId: string; dataBindings: unknown[] };
+  assert.equal(gateInput.pageId, 'pd');
+  assert.deepEqual(gateInput.dataBindings, bindings);
+  assert.deepEqual(bindingCommandsOf(parsed.data, parsed.bindings), ['listOrders']);
+});
+
+test('parseDefs still returns an object for a page21-style definition (pageObjective stays)', () => {
+  const src = `export const definition = ${JSON.stringify({ pageId: 'pd', pageObjective: { goal: 'decide' }, dataBindings: [{ command: 'cmd' }] }, null, 2)};\n\nexport const pipeline = ${JSON.stringify([
+    { id: 'pd__l2_page', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page21/pd.ts' },
+  ], null, 2)} as const;\n`;
+  const parsed = parseDefs(src);
+  assert.equal(typeof parsed.data, 'object');
+  assert.deepEqual((parsed.data as { pageObjective: unknown }).pageObjective, { goal: 'decide' });
+  assert.equal(parsed.bindings, null);
+  assert.deepEqual(pageDefinitionForChecks(parsed), parsed.data);
+});
+
+test('firstExportName skips the bindings sibling even when it is written before definition', () => {
+  const src = [
+    'export const bindings = [{"command":"x"}] as const;',
+    'export const definition = `prose`;',
+    'export const pipeline = [{"id":"p","type":"l2_page","outputPath":"_1_/l2/m/web/desktop/page11/p.ts"}] as const;',
+  ].join('\n');
+  const parsed = parseDefs(src);
+  assert.equal(parsed.dataExportName, 'definition');
+  assert.equal(parsed.data, 'prose');
+});
+
+test('buildHumanPrompt puts page11 prose verbatim, not as a JSON string', () => {
+  const prose = 'Esta página é Pedidos. A página estende a classe base do shared.';
+  const human = buildHumanPrompt(prose, [], '_1_/l2/m/web/desktop/page11/pd.ts');
+  assert.match(human, /## Definition\n\nEsta página é Pedidos/);
+  assert.ok(!human.includes('```json'), 'prose must not be wrapped as json');
+  assert.equal(trimDefinitionForPrompt('l2_page', prose), prose);
+  const objectHuman = buildHumanPrompt({ pageId: 'pd' }, [], '_1_/l2/m/web/desktop/page21/pd.ts');
+  assert.match(objectHuman, /```json/);
+});
+
+test('normalizeGeneratedCode still rewrites .ts shared imports when definition is prose', () => {
+  const item = { id: 'pd', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/pd.ts' };
+  const code = "import { FooBase } from '/_1_/l2/m/web/shared/pd.ts';\nexport class P extends FooBase {}";
+  const out = normalizeGeneratedCode(item, 'prose only', code);
+  assert.match(out, /web\/shared\/pd\.js/);
 });
 
 test('isMaxTokensFailure recognises the collab-llm marker, and nothing else', () => {
@@ -624,4 +685,336 @@ void test('fe3 recortes: family B is now visible to the guard; C and D stay as c
   assert.match(FE3_PAGE11_RECURSIVE_RENDER_RECORD, /function renderRecord\(value: unknown, imageAlt: string\) \{/);
   assert.match(FE3_PAGE11_RECURSIVE_RENDER_RECORD, /return renderRecord\(entry, imageAlt\)/);
   assert.equal(FE3_PAGE11_ORPHAN_I18N_KEY, 'intent.consultPetHistoryAndPendingServices.qryInspectPetHistoryAndPendingServices.list.column.serviceImages.label');
+});
+
+const ENUM_SHARED = {
+  states: [{
+    stateKey: 'ui.p.input.cmdDecide.status',
+    name: 'cmdDecideStatus',
+    kind: 'input',
+    contractRef: { commandName: 'cmdDecide', direction: 'input', field: 'status' },
+  }],
+};
+const ENUM_CONTRACT = `export interface CmdDecideInput {
+  taskId: string;
+  status: 'pending' | 'inProgress' | 'completed' | 'cancelled';
+}
+export interface CmdDecideOutput { taskId: string; }
+`;
+const TEXT_BOUND = 'html`<input class="rounded" .value=${this.cmdDecideStatus} @input=${this.handleCmdDecideStatusChange} />`';
+const TEXT_TYPED = 'html`<input type="text" .value=${this.cmdDecideStatus} @input=${this.handleCmdDecideStatusChange} />`';
+const SELECT_BOUND = 'html`<select .value=${this.cmdDecideStatus} @change=${this.handleCmdDecideStatusChange}></select>`';
+const BUTTONS = "html`<button @click=${() => this.setCmdDecideStatus('completed')}>x</button>`";
+const TITLE_INPUT = 'html`<input .value=${this.cmdDecideTitle} @input=${this.handleTitle} />`';
+
+void test('enum bound to an untyped text input is flagged with the codes and the select remedy', () => {
+  const issues = collectEnumTextInputIssues(ENUM_SHARED, TEXT_BOUND, ENUM_CONTRACT);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /cmdDecide\.status is a closed domain \(pending\|inProgress\|completed\|cancelled\)/);
+  assert.match(issues[0], /<select>/);
+});
+
+void test('enum bound to type=text is flagged; select, buttons and hidden are not', () => {
+  assert.equal(collectEnumTextInputIssues(ENUM_SHARED, TEXT_TYPED, ENUM_CONTRACT).length, 1);
+  assert.deepEqual(collectEnumTextInputIssues(ENUM_SHARED, SELECT_BOUND, ENUM_CONTRACT), []);
+  assert.deepEqual(collectEnumTextInputIssues(ENUM_SHARED, BUTTONS, ENUM_CONTRACT), []);
+  assert.deepEqual(collectEnumTextInputIssues(ENUM_SHARED, 'html`<input type="hidden" .value=${this.cmdDecideStatus} />`', ENUM_CONTRACT), []);
+});
+
+void test('a string field (not a union) as text input is not an enum finding', () => {
+  const shared = {
+    states: [{
+      stateKey: 'ui.p.input.cmdDecide.title',
+      name: 'cmdDecideTitle',
+      kind: 'input',
+      contractRef: { commandName: 'cmdDecide', direction: 'input', field: 'title' },
+    }],
+  };
+  assert.deepEqual(collectEnumTextInputIssues(shared, TITLE_INPUT, ENUM_CONTRACT), []);
+});
+
+void test('page with no enum field is a no-op even when it has text inputs', () => {
+  assert.deepEqual(collectEnumTextInputIssues({ states: [] }, TEXT_BOUND, 'export interface OtherInput { name: string; }'), []);
+  assert.deepEqual(collectEnumTextInputIssues(ENUM_SHARED, '', ENUM_CONTRACT), []);
+});
+
+void test('shared valueSet flags an enum even when the contract still says string', () => {
+  const shared = {
+    states: [{
+      stateKey: 'ui.p.input.cmdDecide.status',
+      name: 'cmdDecideStatus',
+      kind: 'input',
+      valueSet: ['pending', 'inProgress', 'completed', 'cancelled'],
+      contractRef: { commandName: 'cmdDecide', direction: 'input', field: 'status' },
+    }],
+  };
+  const stringContract = 'export interface CmdDecideInput { status: string; }';
+  assert.equal(collectEnumTextInputIssues(shared, TEXT_BOUND, stringContract).length, 1);
+});
+
+void test('organism host. binding is flagged the same as this.', () => {
+  const hostBound = 'html`<input .value=${host.cmdDecideStatus} @input=${host.handleCmdDecideStatusChange} />`';
+  assert.equal(collectEnumTextInputIssues(ENUM_SHARED, hostBound, ENUM_CONTRACT).length, 1);
+});
+
+void test('enum-as-text gate and the page11/page21 skills land in the same delivery', () => {
+  const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
+  assert.match(phase, /collectEnumTextInputIssues\(/);
+  const page11 = readFileSync(new URL('../skills/genCfePage11RenderTs.ts', import.meta.url), 'utf8');
+  const page21 = readFileSync(new URL('../skills/genCfePage21RenderTs.ts', import.meta.url), 'utf8');
+  assert.match(page11, /ENUM NUNCA É TEXTO LIVRE/);
+  assert.match(page21, /ENUM NUNCA É TEXTO LIVRE/);
+});
+
+const LIST_CONTRACT = `export interface QryListTaskOutput {
+  taskId: string;
+  title: string;
+  status: 'pending' | 'inProgress' | 'completed' | 'cancelled';
+  ownerUserId: string;
+}
+export interface CmdDecideInput {
+  taskId: string;
+  status: 'pending' | 'inProgress' | 'completed' | 'cancelled';
+}
+`;
+const RAW_STATUS_CELL = "html`<td>${item.status}</td>`";
+const LABELED_STATUS_CELL = "html`<td>${statusLabel[item.status] ?? item.status}</td>`";
+const GENERIC_ENUM_COLUMNS = `
+const columns = [{ field: 'title' }, { field: 'status' }];
+html\`<td>\${displayValue(valueOf(row, column.field))}</td>\`
+`;
+const GENERIC_ENUM_LABELED = `
+const columns = [{ field: 'title' }, { field: 'status' }];
+html\`<td>\${column.field === 'status' ? (statusLabel[String(valueOf(row, 'status'))] ?? '') : displayValue(valueOf(row, column.field))}</td>\`
+`;
+const SELECT_STATUS_WIRE = "html`<option value=${item.status}>${statusLabel[item.status]}</option>`";
+
+void test('enum cell showing the stored code is flagged; label map is the legitimate path', () => {
+  const issues = collectEnumCellLabelIssues(RAW_STATUS_CELL, LIST_CONTRACT);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /status is a closed domain \(pending\|inProgress\|completed\|cancelled\)/);
+  assert.match(issues[0], /rótulo|label/i);
+  assert.deepEqual(collectEnumCellLabelIssues(LABELED_STATUS_CELL, LIST_CONTRACT), []);
+});
+
+void test('generic displayValue on a column that is an enum is flagged; a per-field label branch is not', () => {
+  assert.equal(collectEnumCellLabelIssues(GENERIC_ENUM_COLUMNS, LIST_CONTRACT).length, 1);
+  assert.deepEqual(collectEnumCellLabelIssues(GENERIC_ENUM_LABELED, LIST_CONTRACT), []);
+});
+
+void test('enum code as option value (the wire) is not a cell finding', () => {
+  assert.deepEqual(collectEnumCellLabelIssues(SELECT_STATUS_WIRE, LIST_CONTRACT), []);
+});
+
+void test('page without a closed-domain field is a no-op for enum cells', () => {
+  assert.deepEqual(collectEnumCellLabelIssues(RAW_STATUS_CELL, 'export interface QryListTaskOutput { title: string; }'), []);
+  assert.deepEqual(collectEnumCellLabelIssues('', LIST_CONTRACT), []);
+});
+
+const ID_AND_TITLE_COLUMNS = "const columns = [{ field: 'taskId' }, { field: 'title' }, { field: 'ownerUserId' }];";
+const ID_ONLY_COLUMNS = "const columns = [{ field: 'taskId' }, { field: 'status' }];";
+const TITLE_TD = "html`<td>${item.taskId}</td><td>${item.title}</td>`";
+const ID_IN_OPTION = "html`<option value=${item.taskId}>${item.title}</option>`";
+
+void test('id column next to title/name is flagged; id-only tables and option values are not', () => {
+  const issues = collectIdColumnIssues(ID_AND_TITLE_COLUMNS);
+  assert.ok(issues.some(item => /taskId/.test(item)), issues.join(' | '));
+  assert.ok(issues.some(item => /ownerUserId/.test(item)), issues.join(' | '));
+  assert.deepEqual(collectIdColumnIssues(ID_ONLY_COLUMNS), []);
+  assert.equal(collectIdColumnIssues(TITLE_TD).length, 1);
+  assert.match(collectIdColumnIssues(TITLE_TD)[0], /taskId/);
+  assert.deepEqual(collectIdColumnIssues(ID_IN_OPTION), []);
+  assert.deepEqual(collectIdColumnIssues(''), []);
+});
+
+void test('enum-cell and id-column gates land in the same delivery as the page11/page21 skills', () => {
+  const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
+  assert.match(phase, /collectEnumCellLabelIssues\(/);
+  assert.match(phase, /collectIdColumnIssues\(/);
+  const page11 = readFileSync(new URL('../skills/genCfePage11RenderTs.ts', import.meta.url), 'utf8');
+  const page21 = readFileSync(new URL('../skills/genCfePage21RenderTs.ts', import.meta.url), 'utf8');
+  assert.match(page11, /CÉLULA DE ENUM MOSTRA O RÓTULO/);
+  assert.match(page11, /NÃO É DEFAULT/);
+  assert.match(page21, /CÉLULA DE ENUM MOSTRA O RÓTULO/);
+  assert.match(page21, /NÃO É DEFAULT/);
+});
+
+const LOCATE_PAGE = {
+  dataBindings: [
+    { command: 'qryLocate', kind: 'query', stateKey: 'ui.p.data.qryLocate', selection: 'single', inputs: [] },
+    { command: 'qryInspect', kind: 'query', stateKey: 'ui.p.data.qryInspect', inputs: [
+      { name: 'taskId', stateKey: 'ui.p.input.qryInspect.taskId', source: 'routeParam', required: true, presentation: 'route' },
+    ] },
+    { command: 'cmdDecide', kind: 'command', stateKey: 'ui.p.output.cmdDecide', inputs: [
+      { name: 'taskId', stateKey: 'ui.p.input.cmdDecide.taskId', source: 'routeParam', required: true, presentation: 'route' },
+      { name: 'status', stateKey: 'ui.p.input.cmdDecide.status', source: 'userInput', required: true, presentation: 'form' },
+    ] },
+  ],
+};
+const LOCATE_SHARED = {
+  states: [
+    { stateKey: 'ui.p.data.qryLocate', name: 'qryLocateData', kind: 'queryResult', collection: true, outputShape: 'array' },
+    { stateKey: 'ui.p.data.qryInspect', name: 'qryInspectData', kind: 'queryResult', collection: false, outputShape: 'object' },
+    { stateKey: 'ui.p.input.qryInspect.taskId', name: 'qryInspectTaskId', kind: 'input' },
+    { stateKey: 'ui.p.input.cmdDecide.taskId', name: 'cmdDecideTaskId', kind: 'input' },
+    { stateKey: 'ui.p.input.cmdDecide.status', name: 'cmdDecideStatus', kind: 'input' },
+  ],
+  actions: [
+    { actionId: 'qryLocate', kind: 'query', methodName: 'loadQryLocate', handlerName: 'handleQryLocateClick', inputStateKeys: [], routeParamInputStateKeys: [] },
+    { actionId: 'qryInspect', kind: 'query', methodName: 'loadQryInspect', handlerName: 'handleQryInspectClick', inputStateKeys: ['ui.p.input.qryInspect.taskId'], routeParamInputStateKeys: ['ui.p.input.qryInspect.taskId'] },
+    { actionId: 'cmdDecide', kind: 'command', methodName: 'cmdDecide', handlerName: 'handleCmdDecideClick' },
+  ],
+  initialLoads: [{ actionId: 'qryLocate', stateKey: 'ui.p.data.qryLocate' }],
+};
+
+const DEAD_TABLE = `
+html\`<table><tbody>\${rows.map(item => html\`<tr><td>\${item.taskId}</td></tr>\`)}</tbody></table>
+<button type="submit" class="btn" @click=\${this.handleCmdDecideClick} ?disabled=\${isLoading}>Go</button>\`
+`;
+const ROW_CLICK = `
+html\`<table><tbody>\${rows.map(item => html\`<tr class=\${item.taskId === this.cmdDecideTaskId ? 'sel' : ''} @click=\${() => { this.setCmdDecideTaskId(item.taskId); this.setQryInspectTaskId(item.taskId); }}><td>\${item.taskId}</td></tr>\`)}</tbody></table>
+<button type="submit" title=\${this.cmdDecideTaskId ? '' : this.msg['needTask']} ?disabled=\${!this.cmdDecideTaskId || isLoading} @click=\${this.handleCmdDecideClick}>Go</button>\`
+`;
+const SELECT_PICKER = `
+html\`<select .value=\${this.cmdDecideTaskId} @change=\${this.handleCmdDecideTaskIdChange}>
+  \${rows.map(item => html\`<option value=\${item.taskId}>\${item.title}</option>\`)}
+</select>
+<select .value=\${this.qryInspectTaskId} @change=\${this.handleQryInspectTaskIdChange}></select>
+<button type="submit" title=\${this.msg['needTask']} ?disabled=\${!this.cmdDecideTaskId} @click=\${this.handleCmdDecideClick}>Go</button>\`
+`;
+
+void test('a list with selection:single and no row click / select is flagged', () => {
+  const issues = collectSelectionControlIssues(LOCATE_PAGE, LOCATE_SHARED, DEAD_TABLE);
+  assert.equal(issues.length, 2, issues.join(' | '));
+  assert.match(issues[0], /qryInspect\.taskId has no selection control/);
+  assert.match(issues[1], /cmdDecide\.taskId has no selection control/);
+});
+
+void test('page11 prose defs still feed the selection/disabled/experience gates via bindings', () => {
+  const src = [
+    'export const definition = `Esta página estende o shared.`;',
+    `export const bindings = ${JSON.stringify(LOCATE_PAGE.dataBindings)} as const;`,
+    `export const pipeline = ${JSON.stringify([{ id: 'p', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/p.ts' }])} as const;`,
+  ].join('\n');
+  const page = pageDefinitionForChecks(parseDefs(src));
+  assert.equal(collectSelectionControlIssues(page, LOCATE_SHARED, DEAD_TABLE).length, 2);
+  assert.equal(collectCommandDisabledIssues(page, LOCATE_SHARED, DEAD_TABLE).length, 1);
+  assert.equal(collectMissingInitialLoadIssues(LOCATE_SHARED, page).length, 1);
+});
+
+void test('row click that writes the id (and a select) both pass the selection gate', () => {
+  assert.deepEqual(collectSelectionControlIssues(LOCATE_PAGE, LOCATE_SHARED, ROW_CLICK), []);
+  assert.deepEqual(collectSelectionControlIssues(LOCATE_PAGE, LOCATE_SHARED, SELECT_PICKER), []);
+});
+
+void test('command button without disabled-on-empty-id is flagged; title is required', () => {
+  const issues = collectCommandDisabledIssues(LOCATE_PAGE, LOCATE_SHARED, DEAD_TABLE);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /cmdDecide button is clickable with empty required taskId/);
+  assert.deepEqual(collectCommandDisabledIssues(LOCATE_PAGE, LOCATE_SHARED, ROW_CLICK), []);
+  const noTitle = 'html`<button type="submit" ?disabled=${!this.cmdDecideTaskId} @click=${this.handleCmdDecideClick}>Go</button>`';
+  assert.match(collectCommandDisabledIssues(LOCATE_PAGE, LOCATE_SHARED, noTitle)[0], /no title hint/);
+});
+
+void test('getById whose only input is a route param must be in initialLoads', () => {
+  const missing = collectMissingInitialLoadIssues(LOCATE_SHARED, LOCATE_PAGE);
+  assert.equal(missing.length, 1, missing.join(' | '));
+  assert.match(missing[0], /qryInspect is a query whose required inputs are route params/);
+  const withLoad = { ...LOCATE_SHARED, initialLoads: [
+    { actionId: 'qryLocate', stateKey: 'ui.p.data.qryLocate' },
+    { actionId: 'qryInspect', stateKey: 'ui.p.data.qryInspect' },
+  ] };
+  assert.deepEqual(collectMissingInitialLoadIssues(withLoad, LOCATE_PAGE), []);
+  assert.equal(collectMissingInitialLoadIssues(LOCATE_SHARED).length, 1);
+});
+
+void test('selection/disabled/initialLoad gates and the render skills land in the same delivery', () => {
+  const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
+  assert.match(phase, /collectSelectionControlIssues\(/);
+  assert.match(phase, /collectCommandDisabledIssues\(/);
+  assert.match(phase, /collectMissingInitialLoadIssues\(/);
+  const page11 = readFileSync(new URL('../skills/genCfePage11RenderTs.ts', import.meta.url), 'utf8');
+  const page21 = readFileSync(new URL('../skills/genCfePage21RenderTs.ts', import.meta.url), 'utf8');
+  const shared = readFileSync(new URL('../skills/genCfeSharedTs.ts', import.meta.url), 'utf8');
+  assert.match(page11, /SELECTION NUNCA É DECORATIVA/);
+  assert.match(page11, /BOTÃO COM PRÉ-CONDIÇÃO/);
+  assert.match(page11, /PROSE STRING/);
+  assert.doesNotMatch(page11, /dataBindings\[\]: THE source of truth/);
+  assert.match(page21, /SELECTION NUNCA É DECORATIVA/);
+  assert.match(page21, /BOTÃO COM PRÉ-CONDIÇÃO/);
+  assert.match(shared, /syncRouteParams in connectedCallback BEFORE/);
+});
+
+const ENVELOPE_SHARED = {
+  actions: [{
+    actionId: 'cmdDecide',
+    kind: 'command',
+    methodName: 'cmdDecide',
+  }],
+};
+const ENVELOPE_OK = `
+  async cmdDecide(): Promise<void> {
+    const response = await execBff(route, params, options);
+    if (!response.ok) {
+      const errMsg: string = this.readErrorMessage(response.error, 'action.cmdDecide.error');
+      this.cmdDecideError = errMsg;
+      return;
+    }
+  }
+`;
+const ENVELOPE_MESSAGE = `
+  async cmdDecide(): Promise<void> {
+    const response = await execBff(route, params, options);
+    if (!response.ok) {
+      this.cmdDecideError = response.error.message;
+      return;
+    }
+  }
+`;
+const ENVELOPE_HTTP = `
+  async cmdDecide(): Promise<void> {
+    const response = await execBff(route, params, options);
+    if (!response.ok) {
+      this.cmdDecideError = 'Erro do servidor (' + String(response.status) + ')';
+      return;
+    }
+  }
+`;
+
+void test('mutation handler that drops error.message is flagged; readErrorMessage and error.message pass', () => {
+  const bad = collectMutationEnvelopeErrorIssues(ENVELOPE_SHARED, ENVELOPE_HTTP);
+  assert.equal(bad.length, 1, bad.join(' | '));
+  assert.match(bad[0], /cmdDecide error path does not read error\.message/);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(ENVELOPE_SHARED, ENVELOPE_OK), []);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(ENVELOPE_SHARED, ENVELOPE_MESSAGE), []);
+});
+
+void test('query-only shared is a no-op for the envelope gate', () => {
+  assert.deepEqual(collectMutationEnvelopeErrorIssues({ actions: [{ actionId: 'list', kind: 'query', methodName: 'loadList' }] }, 'async loadList() { }'), []);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(ENVELOPE_SHARED, ''), []);
+});
+
+void test('page error feedback that ignores the error state is flagged', () => {
+  const page = { pageId: 'p', dataBindings: [{ command: 'cmdDecide', kind: 'command', inputs: [] }] };
+  const shared = { states: [
+    { stateKey: 'ui.p.action.cmdDecide.state', name: 'cmdDecideState' },
+    { stateKey: 'ui.p.action.cmdDecide.error', name: 'cmdDecideError' },
+  ] };
+  const generic = "html`<span>${this.cmdDecideState === 'success' ? 'ok' : ''}</span><span>${this.cmdDecideState === 'error' ? 'Falhou' : ''}</span>`";
+  const issues = collectMutationFeedbackIssues(page, shared, generic);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  assert.match(issues[0], /discards the envelope/);
+  const withState = "html`<span>${this.cmdDecideState === 'success' ? this.msg['action.cmdDecide.success'] : ''}</span><span>${this.cmdDecideError || this.msg['action.cmdDecide.error']}</span>`";
+  assert.deepEqual(collectMutationFeedbackIssues(page, shared, withState), []);
+});
+
+void test('envelope-error gate and the shared/page skills land in the same delivery', () => {
+  const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
+  assert.match(phase, /collectMutationEnvelopeErrorIssues\(/);
+  const sharedSkill = readFileSync(new URL('../skills/genCfeSharedTs.ts', import.meta.url), 'utf8');
+  const page11 = readFileSync(new URL('../skills/genCfePage11RenderTs.ts', import.meta.url), 'utf8');
+  const page21 = readFileSync(new URL('../skills/genCfePage21RenderTs.ts', import.meta.url), 'utf8');
+  assert.match(sharedSkill, /ERROR DISPLAY CONTRACT/);
+  assert.match(page11, /ERRO DE MUTAÇÃO É A MENSAGEM DO ENVELOPE/);
+  assert.match(page21, /ERRO DE MUTAÇÃO É A MENSAGEM DO ENVELOPE/);
 });

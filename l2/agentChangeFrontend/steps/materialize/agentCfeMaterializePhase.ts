@@ -18,7 +18,14 @@ import {
   collectMissingImageRenderIssues,
   collectChartEventIssues,
   collectMutationFeedbackIssues,
+  collectMutationEnvelopeErrorIssues,
+  collectEnumTextInputIssues,
+  collectEnumCellLabelIssues,
+  collectIdColumnIssues,
   collectPageExperienceIssues,
+  collectSelectionControlIssues,
+  collectCommandDisabledIssues,
+  collectMissingInitialLoadIssues,
   isL4LookupGap,
   collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
@@ -29,6 +36,7 @@ import {
   countSharedItems,
   isSystemicPageFailure,
   isSystemicSharedFailure,
+  pageDefinitionForChecks,
   parseDefs,
   testPathForOutputPath,
   validateGeneratedPageQuality,
@@ -419,7 +427,15 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   }
 
   const errors = [...await compileMlsPathAndGetErrors(outputPath)];
+  if (pipelineItem.type === 'l2_shared' && defsContent) {
+    errors.push(...collectMutationEnvelopeErrorIssues(parseDefs(defsContent).data, content));
+  }
   const warnings: string[] = [];
+  if (pipelineItem.type === 'l2_shared' && defsContent) {
+    // Defs-level: rewriting the shared .ts cannot add an initialLoad the defs omitted. Warning
+    // keeps the gap in the verdict; create-shared is what emits the list.
+    warnings.push(...collectMissingInitialLoadIssues(parseDefs(defsContent).data));
+  }
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
   const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
@@ -435,7 +451,12 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     // was fixed by hand in the module. Repairable: rewriting the .ts is exactly the fix.
     const contractPath = contractTsPathOf(sharedDefs);
     const contractSource = contractPath ? await getContentByMlsPath(contractPath) : null;
-    if (contractSource) errors.push(...collectContractFieldIssues(content, contractSource));
+    if (contractSource) {
+      errors.push(...collectContractFieldIssues(content, contractSource));
+      if (sharedDefs) errors.push(...collectEnumTextInputIssues(parseDefs(sharedDefs).data, content, contractSource));
+      errors.push(...collectEnumCellLabelIssues(content, contractSource));
+      errors.push(...collectIdColumnIssues(content));
+    }
     errors.push(...collectPageCustomElementTagIssues(content, outputPath));
     // A background token used as a text color renders invisible text once the theme applies (the
     // hardcoded var() fallback hides it in one theme only) — mls-102045 shipped exactly that. It is a
@@ -451,7 +472,8 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       // .ts, never its .defs.ts; treating a defs-only issue as a repairable error loops until the
       // budget is exhausted. Keep the result auditable in the trace and let the create-page stage
       // own a future layout regeneration.
-      const pageData = parseDefs(defsContent).data;
+      const parsedPage = parseDefs(defsContent);
+      const pageData = pageDefinitionForChecks(parsedPage);
       const sharedData = parseDefs(sharedDefs).data;
       warnings.push(...validateGeneratedPageQuality(pageData, sharedData, content));
       // The reduced page defs carries no layout, so these judge the GENERATED CODE anchored on
@@ -464,6 +486,9 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       errors.push(...experienceIssues.filter(issue => !isL4LookupGap(issue)));
       warnings.push(...experienceIssues.filter(isL4LookupGap));
       errors.push(...collectMutationFeedbackIssues(pageData, sharedData, content));
+      errors.push(...collectSelectionControlIssues(pageData, sharedData, content));
+      errors.push(...collectCommandDisabledIssues(pageData, sharedData, content));
+      warnings.push(...collectMissingInitialLoadIssues(sharedData, pageData));
       errors.push(...collectTechnicalVocabularyIssues(pageData, content));
       errors.push(...collectHeadingDisciplineIssues(content));
     }

@@ -401,7 +401,7 @@ test('an mdm list is active-only by default and carries the derived situation', 
   const ontologyFields = sources().ontology.entities.find((entity: any) => entity.entityId === 'Client')!
     .fields.map((field: any) => field.fieldId);
   assert.equal(ontologyFields.includes('active'), false, 'the situation is derived, never an ontology field');
-  assert.equal(list.inputs.length, 0, 'the filter is not an entity-field input');
+  assert.equal(list.inputs.some(input => input.inputId === 'includeInactive'), false, 'the filter is not an entity-field input');
 });
 
 test('a catalogue of a moduleDatabase entity keeps the delete it always had', () => {
@@ -454,7 +454,48 @@ test('every catalogue entity synthesizes a getById even when no page consumes it
   assert.equal(create.accessPattern.kind, 'create');
   assert.equal(update.accessPattern.kind, 'update');
   assert.equal(remove.accessPattern.kind, 'delete');
-  assert.equal(list.inputs.length, 0);
+});
+
+test('a catalogue list with a name/title field emits optional search, and sortable fields emit sortBy enum', () => {
+  const model = deriveNs4E8Model(sources());
+  const listClient = model.operations.find(operation => operation.operationId === 'listClient')!;
+  const search = listClient.inputs.find(input => input.inputId === 'search')!;
+  assert.equal(search.required, false);
+  assert.equal(search.source, 'userInput');
+  assert.equal(search.fieldRef.fieldId, 'name');
+  assert.equal(listClient.inputs.some(input => input.inputId === 'sortBy'), false, 'Client has no date/enum to sort by');
+
+  const listChangeOrder = model.operations.find(operation => operation.operationId === 'listChangeOrder')!;
+  assert.equal(listChangeOrder.inputs.some(input => input.inputId === 'search'), false, 'ChangeOrder has no title/name');
+  const sortBy = listChangeOrder.inputs.find(input => input.inputId === 'sortBy')!;
+  const sortOrder = listChangeOrder.inputs.find(input => input.inputId === 'sortOrder')!;
+  assert.equal(sortBy.required, false);
+  assert.deepEqual(sortBy.enumValues, ['submittedAt', 'status', 'decidedAt']);
+  assert.deepEqual(sortOrder.enumValues, ['asc', 'desc']);
+  assert.equal(sortBy.source, 'userInput');
+
+  const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'changeOrderCatalogue')!;
+  const recordList = catalogue.sections.find(section => section.sectionId === 'recordList')!;
+  const filter = recordList.organisms.find(organism => organism.role === 'filterControl');
+  assert.equal(filter?.attachTo, 'qryListChangeOrder');
+
+  const clientCatalogue = model.workspaces.find(workspace => workspace.workspaceId === 'clientCatalogue')!;
+  const clientList = clientCatalogue.sections.find(section => section.sectionId === 'recordList')!;
+  assert.equal(clientList.organisms.find(organism => organism.role === 'filterControl')?.attachTo, 'qryListClient');
+});
+
+test('a catalogue list missing search/sort is a registrar finding, not a stop', () => {
+  const input = sources();
+  const model = deriveNs4E8Model(input);
+  const smuggled = structuredClone(model);
+  const list = smuggled.operations.find(operation => operation.operationId === 'listClient')!;
+  list.inputs = [];
+  const gate = validateNs4E8Model(smuggled, input);
+  const finding = gate.issues.find(issue => issue.code === 'NS4_E8_LIST_WITHOUT_SEARCH');
+  assert.ok(finding);
+  assert.equal(finding!.severity, 'warning');
+  assert.equal(gate.ok, true);
+  assert.equal(validateNs4E8Model(model, input).issues.some(issue => issue.code === 'NS4_E8_LIST_WITHOUT_SEARCH'), false);
 });
 
 test('a journey that already produced get{Entity} keeps it; the catalogue does not duplicate', () => {

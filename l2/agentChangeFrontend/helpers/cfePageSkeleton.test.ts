@@ -145,8 +145,14 @@ test('skeleton imports the base class from the .js ref — and nothing else from
   assert.ok(!/from '_\d+_\//u.test(code), 'every mls import is rooted with a leading slash');
 });
 
+test('skeleton takes baseClassName from shared when the page definition is prose', () => {
+  const built = buildPageSkeleton({ ...INPUT, data: 'Esta página é o resumo. A página estende a classe base do shared.' });
+  assert.ok(built.code, built.reason ?? '');
+  assert.match(built.code ?? '', /BuildFlowFsmBillingSummaryWorkspaceBase/);
+});
+
 test('bails instead of guessing when the inputs cannot produce a valid page', () => {
-  assert.match(buildPageSkeleton({ ...INPUT, data: {} }).reason ?? '', /baseClassName/u);
+  assert.match(buildPageSkeleton({ ...INPUT, data: {}, sharedDefsData: { i18n: SHARED_DEFS_DATA.i18n, i18nMeta: SHARED_DEFS_DATA.i18nMeta } }).reason ?? '', /baseClassName/u);
   // The bail is on the DEFS now: reading the locale list from the .ts would silently fall through to
   // "the model writes the whole file", i18n included.
   assert.match(buildPageSkeleton({ ...INPUT, sharedDefsData: undefined }).reason ?? '', /no i18n catalogue/u);

@@ -29,6 +29,7 @@ import {
   assembleNs4E4Review,
   applyNs4E4RelationshipBindings,
   buildNs4OntologyArtifacts,
+  humanizeNs4EnumCode,
   normalizeNs4E4EntityDraft,
   stripNs4DerivedFieldUnions,
   normalizeNs4E4PlanDraft,
@@ -161,7 +162,16 @@ test('E4 overview and entity prompts require stable English enum codes', () => {
     assert.match(prompt, /ativo/u, `${file} must name the Portuguese counter-example`);
   }
   assert.match(readFileSync(new URL('prompt.md', import.meta.url), 'utf8'), /lifecycleLabels/u);
-  assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /enumLabels/u);
+  const entityPrompt = readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8');
+  assert.match(entityPrompt, /enumLabels/u);
+  assert.match(entityPrompt, /"fieldId": "priority"/u, 'the entity example must show a labelled non-lifecycle enum, not only a uuid field');
+  assert.match(entityPrompt, /"enumLabels"/u);
+  assert.match(entityPrompt, /Do not emit\s+`enumLabels` on the `status` field/u);
+});
+
+test('E4 ontology widget surfaces assumed enum-label decisions', () => {
+  const source = readFileSync(new URL('../../widgets/widgetNs4Ontology.ts', import.meta.url), 'utf8');
+  assert.match(source, /this\.value\.systemDecisions\?\.length/);
 });
 
 test('E4 overview freezes global decisions and entity detail reassembles the final review', () => {
@@ -644,12 +654,80 @@ test('E4 English-code gate does not touch user-facing title or description', () 
   assert.ok(!full.issues.some(issue => issue.code === 'NS4_E4_ENUM_CODE_EN'), JSON.stringify(full.issues));
 });
 
+test('E4 backfills missing enumLabels with a humanized code and a non-blocking systemDecision', () => {
+  assert.equal(humanizeNs4EnumCode('inProgress'), 'In progress');
+  const input = structuredClone(reviewInput) as any;
+  input.userLanguage = 'pt-BR';
+  input.entities[0].lifecycleStates = ['pending', 'inProgress', 'completed', 'cancelled'];
+  input.entities[0].initialState = 'pending';
+  input.entities[0].lifecycleLabels = [
+    { code: 'pending', label: 'Pendente' },
+    { code: 'inProgress', label: 'Em andamento' },
+    { code: 'completed', label: 'Concluída' },
+    { code: 'cancelled', label: 'Cancelada' },
+  ];
+  input.entities[0].fields.push(
+    {
+      fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Situação.',
+      constraints: [{
+        constraintId: 'statusEnum', kind: 'enum',
+        value: '["pending","inProgress","completed","cancelled"]', description: 'States.', source: 'journey',
+      }],
+    },
+    {
+      fieldId: 'priority', title: 'Prioridade', type: 'string', required: true, description: 'Prioridade.',
+      constraints: [{
+        constraintId: 'priorityEnum', kind: 'enum', value: '["low","medium","high"]',
+        description: 'Priority.', source: 'user',
+      }],
+    },
+  );
+  const normalized = normalizeNs4E4Review(input);
+  const priority = normalized.entities[0].fields.find(field => field.fieldId === 'priority');
+  const status = normalized.entities[0].fields.find(field => field.fieldId === 'status');
+  assert.deepEqual(priority?.enumLabels, [
+    { code: 'low', label: 'Low' },
+    { code: 'medium', label: 'Medium' },
+    { code: 'high', label: 'High' },
+  ]);
+  assert.equal(status?.enumLabels, undefined, 'status stays on lifecycleLabels; do not duplicate');
+  assert.deepEqual(normalized.entities[0].lifecycleLabels?.find(item => item.code === 'inProgress'), {
+    code: 'inProgress', label: 'Em andamento',
+  });
+  const decisions = normalized.systemDecisions ?? [];
+  assert.equal(decisions.length, 1);
+  assert.equal(decisions[0]?.findingRef, 'e4.enumLabels.backfill:Project.priority');
+  assert.equal(decisions[0]?.chosen, 'humanizeMissingCodes');
+  const gate = validateNs4E4Review(normalized, journeys, access);
+  assert.equal(gate.ok, true, JSON.stringify(gate.issues));
+  assert.ok(!gate.issues.some(issue => issue.code.startsWith('NS4_E4_ENUM_LABEL')), JSON.stringify(gate.issues));
+
+  input.entities[0].fields.at(-1).enumLabels = [{ code: 'low', label: 'Baixa' }];
+  const partial = normalizeNs4E4Review(input);
+  assert.deepEqual(partial.entities[0].fields.find(field => field.fieldId === 'priority')?.enumLabels, [
+    { code: 'low', label: 'Baixa' },
+    { code: 'medium', label: 'Medium' },
+    { code: 'high', label: 'High' },
+  ]);
+
+  const plan = normalizeNs4E4PlanDraft(input);
+  assert.equal(
+    plan.entities[0].lifecycleLabels?.find(item => item.code === 'inProgress')?.label,
+    'Em andamento',
+  );
+
+  delete input.entities[0].lifecycleLabels;
+  const lifecycleGap = normalizeNs4E4Review(input);
+  assert.equal(lifecycleGap.entities[0].lifecycleLabels?.find(item => item.code === 'inProgress')?.label, 'In progress');
+  assert.ok(lifecycleGap.systemDecisions?.some(decision => decision.findingRef === 'e4.lifecycleLabels.backfill:Project'));
+});
+
 test('E4 enumLabels is optional, accepts a Portuguese label, and rejects orphan or duplicate codes', () => {
   const without = enumCodeIssues(PETSHOP_ONTOLOGY);
-  assert.ok(without.length, 'petShop still fails the English-code gate');
+  assert.ok(without.length, 'the petShop draft must fail the English-code gate');
   const labelIssues = validateNs4E4Review(normalizeNs4E4Review(PETSHOP_ONTOLOGY)).issues
     .filter(issue => issue.code.startsWith('NS4_E4_ENUM_LABEL'));
-  assert.deepEqual(labelIssues, [], 'an L4 without enumLabels is not a finding');
+  assert.deepEqual(labelIssues, [], 'missing labels are backfilled, never a blocking gate finding');
 
   const input = structuredClone(reviewInput) as any;
   input.entities[0].lifecycleStates = ['active', 'inactive'];

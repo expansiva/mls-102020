@@ -2,8 +2,9 @@
 
 // Terminal step for the `/rebuild defs` CLI command only (no LLM). After the create phases have
 // regenerated every .defs.ts, this soft-deletes the DERIVED frontend artifacts (materialized .ts
-// render/shared/contract outputs AND their .test.ts) so the module's l2 web tree keeps ONLY the
-// .defs.ts source of truth. A later `/run` re-materializes the .ts from the fresh defs.
+// render/shared/contract outputs, their .test.ts, and leftover page preview .html) so the module's
+// l2 web tree keeps ONLY the .defs.ts source of truth. A later `/run` re-materializes the .ts from
+// the fresh defs.
 //
 // Runs after `verify-create-layouts` (dependsOn) so it never races the defs regeneration. Deletion
 // is a soft-delete (deleteFile -> status='deleted', recoverable from the collab-fs trash), scoped to
@@ -32,7 +33,7 @@ export function createAgent(): IAgentAsync {
     agentName: AGENT_NAME,
     agentProject: 102020,
     agentFolder: 'agentChangeFrontend/steps/rebuild-defs-cleanup',
-    agentDescription: 'Soft-delete derived frontend .ts/.test.ts after a /rebuild defs, keeping only .defs.ts',
+    agentDescription: 'Soft-delete derived frontend .ts/.test.ts/.html after a /rebuild defs, keeping only .defs.ts',
     visibility: 'private',
     beforePromptStep,
   };
@@ -51,7 +52,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const folder = String(file.folder || '');
       if (!isGeneratedFrontendFolder(folder, modules)) continue;
       if (file.extension === '.defs.ts') { keptDefs += 1; continue; }
-      if (file.extension !== '.ts' && file.extension !== '.test.ts') continue;
+      if (file.extension !== '.ts' && file.extension !== '.test.ts' && file.extension !== '.html') continue;
       // Preserve the deterministic l4 contract byte-copies (F3): they are the wire contract of record.
       if (file.extension === '.ts' && /\/web\/contracts$/.test(folder) && isCopiedL4Contract(String(await file.getContent()))) {
         keptContracts += 1;
@@ -63,9 +64,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 
     // F2: defs-only run — report the defs written and that nothing was materialized.
     const keptNote = keptContracts > 0 ? `, kept ${keptContracts} l4 contract copy/-ies` : '';
-    const summaryLine = `rebuild-defs: ${keptDefs} defs gravados, 0 materializados (${deleted.length} .ts derivados removidos${keptNote})`;
+    const summaryLine = `rebuild-defs: ${keptDefs} defs gravados, 0 materializados (${deleted.length} derivados removidos${keptNote})`;
     const trace = deleted.length === 0
-      ? `${summaryLine} — nenhum .ts/.test.ts derivado para remover`
+      ? `${summaryLine} — nenhum .ts/.test.ts/.html derivado para remover`
       : `${summaryLine}:\n${summarize(deleted)}`;
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace)];
   } catch (error) {

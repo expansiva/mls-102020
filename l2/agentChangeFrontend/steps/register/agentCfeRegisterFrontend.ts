@@ -8,7 +8,7 @@ export function createAgent(): IAgentAsync {
     agentName: 'agentCfeRegisterFrontend',
     agentProject: 102020,
     agentFolder: 'agentChangeFrontend/steps/register',
-    agentDescription: 'Register materialized frontend pages in config.json and generate preview HTML',
+    agentDescription: 'Register materialized frontend pages in config.json and drop leftover page preview HTML',
     visibility: 'private',
     beforePromptStep,
   };

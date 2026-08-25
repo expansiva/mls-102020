@@ -36,7 +36,7 @@ export interface PageOrganism {
 export interface PageSkeletonInput {
   /** mls ref of the PAGE: _<project>_/l2/<module>/web/desktop/<genome>/<page>.ts */
   outputPath: string;
-  /** The page defs `definition` object (reduced shape: pageId, baseClassName, actor, purpose, …). */
+  /** The page defs `definition` — object (page21/31) or prose string (page11). */
   data: unknown;
   /** mls ref of the shared .ts this page extends. */
   sharedTsRef: string;
@@ -113,7 +113,8 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   if (!parsed) return { code: null, reason: `outputPath is not an l2 page ref: ${input.outputPath}` };
 
   const data = isRecord(input.data) ? input.data : {};
-  const baseClassName = stringOf(data.baseClassName);
+  const shared = isRecord(input.sharedDefsData) ? input.sharedDefsData : {};
+  const baseClassName = stringOf(data.baseClassName) || stringOf(shared.baseClassName);
   if (!baseClassName) return { code: null, reason: 'defs has no baseClassName' };
 
   // The catalogue is planned in the shared DEFS and emitted here: the shared .ts no

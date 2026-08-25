@@ -26,7 +26,7 @@ back to normal E4 generation.
 The gate requires coverage of all E2 journeys, all `now` features, every required carried/produced E2
 `businessObject`, and every E3 authority carrying an information need. Required journey objects must
 exist as an entity or projection with the same id. Entity and relationship references are closed, stored entities have identifiers,
-lifecycle entities have status and an initial state that is not terminal, lifecycle predicates and terminal states contain only exact declared states, closed-domain values (states and field enums) are stable English codes with optional user-language `enumLabels`/`lifecycleLabels`, and persistent business entities form a connected graph. Persistence
+lifecycle entities have status and an initial state that is not terminal, lifecycle predicates and terminal states contain only exact declared states, closed-domain values (states and field enums) are stable English codes with user-language `enumLabels`/`lifecycleLabels` (optional on the type; a new run backfills a missing list with a humanized code and a non-blocking systemDecision), and persistent business entities form a connected graph. Persistence
 is explicit and closed: `mdm` for organization master records, `moduleDatabase` for transactions,
 `derived`, `external` or `embedded` for concepts without a module table. Kind, scope, idField and
 mdmType must agree. Master data never carries mutable operational balances or transaction history.

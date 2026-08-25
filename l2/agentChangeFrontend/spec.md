@@ -255,7 +255,7 @@ O agente só deve processar owners com `statusFrontend` acionável:
 
 - `toCreate`: criar os três `.defs.ts`, materializar e registrar.
 - `toUpdate`: atualizar os três `.defs.ts`, rematerializar e atualizar registro.
-- `toRemove`: remover `.defs.ts`, `.ts`, `.html` se houver e registro em `config.json`.
+- `toRemove`: remover `.defs.ts`, `.ts` e registro em `config.json` (`.html` de preview, se ainda existir, é resíduo e também some).
 
 Owners com `statusFrontend = done` não podem ser alterados. Owners com `statusFrontend = inProgress` devem ser ignorados por padrão para evitar corrida; recuperação de `inProgress` antigo precisa ser uma regra separada.
 
@@ -506,13 +506,13 @@ Logo, o novo agente não deve copiar entidades/comandos do exemplo. Ele deve cop
 
 ## Atualização do fluxo v1 — defs + materialização + config
 
-O `flow.json` v1 passa a ser **create-only, com `.defs.ts` + materialização `.ts/.html` + `config.json`**. Isto corrige/sobrescreve as partes anteriores desta spec que ainda citavam entrada manual:
+O `flow.json` v1 passa a ser **create-only, com `.defs.ts` + materialização `.ts` + `config.json`**. Isto corrige/sobrescreve as partes anteriores desta spec que ainda citavam entrada manual:
 
 - o agente não recebe `module`, `owner`, `page` ou outro input operacional; ele varre o `l4` e processa somente owners com `statusFrontend = toCreate`;
 - se não houver `toCreate`, encerra sem escrever arquivos nem alterar status;
 - gera os três `.defs.ts` finais por página: `web/contracts`, `web/shared` e `web/desktop/page11`;
 - materializa os `.ts` via pipelines dos `.defs.ts`, usando `agentCfeMaterializeGen` com os skills do `agentChangeFrontend`;
-- gera o `.html` de preview pelo agente explícito `agentCfeRegisterFrontend`, depois da página materializada;
+- `agentCfeRegisterFrontend` registra a página materializada; **não** gera `.html` de preview (Studio não usa mais iframe por arquivo);
 - atualiza `l0/config.json` com a página que aparecerá no menu;
 - a geração de layout é uma etapa LLM importante e deve seguir as regras de layout semântico desta spec;
 - a geração por página deve tentar paralelismo: um item paralelo por página com filhos `contract -> layout -> shared/state-reconcile -> validate`; como ainda não há exemplo confirmado de `parallel_dynamic` com filhos, o fluxo registra fallback para um único agente paralelo por página que executa essas quatro ações internamente;
@@ -542,7 +542,7 @@ Após validar o paralelo, a implementação real inicial para `toCreate` está d
 - `agentCfeCreateContractShared` gera `web/contracts/{page}.defs.ts` e o shared base de forma determinística; `agentCfeCreateLayout` chama a LLM uma vez por `{ pageId, genome, templateId }` para gravar uma definição de layout; `agentCfeReconcileShared` une os estados das variantes salvas no shared;
 - a reconciliação grava `l2/{module}/trace/frontend-create-pages/{page}.json` como `done` somente depois de layout primário e shared validados, para evitar que uma página antiga seja aceita por engano;
 - `agentCfeMaterializeL2` lê os pipelines gerados, cria launchers sequenciais por fase (`contracts -> shared -> page11`) e cada `agentCfeMaterializePhase` inicia um fan-out paralelo com `agentCfeMaterializeGen` somente depois da fase anterior completar sem erro;
-- `agentCfeRegisterFrontend` gera o `.html` de preview, assina `l5/project.json` e grava marcador de registro por página; o step final grava a parte frontend no `l5/config.json`;
+- `agentCfeRegisterFrontend` assina `l5/project.json` e grava marcador de registro por página; o step final grava a parte frontend no `l5/config.json`; leftover `.html` de preview em `web/desktop|mobile/pageN` é soft-deletado;
 - `agentCfeCreateFinalize` grava `l2/{module}/trace/frontend-create-report.json` e muda os owners gerados para `statusFrontend = done` somente após materialização e registro;
 - `cfeCreateShared` concentra leitura do L4, geração determinística dos comandos, schema/validação do layout, gravação dos `.defs.ts`, registro/assinatura e atualização de status.
 

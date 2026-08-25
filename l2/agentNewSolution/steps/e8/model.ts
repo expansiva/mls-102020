@@ -22,6 +22,14 @@ export type Ns4WorkspaceTier = 'recordCatalogue' | 'journey' | 'hub' | 'projecti
  */
 export type Ns4E8InputSource = 'userInput' | 'selectedEntity' | 'routeParam' | 'actorSession' | 'systemDefault';
 
+/**
+ * The record-owner handle: `ownerId` / `ownerUserId` / `customerId` / `clientId`, or a field
+ * ending in `OwnerId`. Not every person FK — `assignedUserId` is a choice the actor makes.
+ */
+export function isNs4OwnerHandleField(fieldId: string): boolean {
+  return /^(owner(?:User)?|customer|client)Id$/i.test(fieldId) || /OwnerId$/u.test(fieldId);
+}
+
 export type Ns4E8AccessPatternKind = 'list' | 'getById' | 'create' | 'update' | 'delete' | 'transition' | 'commandInput';
 
 export interface Ns4E8FieldRef {
@@ -106,8 +114,10 @@ export interface Ns4E8Organism {
   role: Ns4E8OrganismRole;
   dataSource?: string;
   action?: string;
-  /** A picker is a query rendered to choose the record another call consumes. */
-  usage?: 'picker';
+  /** A picker is a query rendered to choose the record another call consumes. summary is counts of that list, not a row. */
+  usage?: 'picker' | 'summary';
+  /** Query bffId whose optional list inputs (search/sort) this filterControl drives. */
+  attachTo?: string;
 }
 
 export interface Ns4E8Section {

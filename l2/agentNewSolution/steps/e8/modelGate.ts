@@ -5,11 +5,12 @@
  * and everything that is evidence about the product is a registrar resolved through ns4Resolve.
  */
 
+import { isNs4CollectionInspect } from '/_102020_/l2/agentNewSolution/helpers/ns4Context.js';
 import { buildNs4ParentIndex, ns4FkParentOf } from '/_102020_/l2/agentNewSolution/helpers/ns4ForeignKeys.js';
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
-import type { Ns4E8Model, Ns4E8ModelWorkspace } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
+import { isNs4OwnerHandleField, type Ns4E8Model, type Ns4E8ModelWorkspace } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 
 /**
  * How a broken organism reference can be repaired without an LLM. The gate DETECTS as strictly as
@@ -24,6 +25,13 @@ export interface Ns4E8ModelIssue { code: string; path: string; message: string; 
 export interface Ns4E8ModelResult { ok: boolean; issues: Ns4E8ModelIssue[]; }
 
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
+
+/** Owner handle (`ownerId` / `ownerUserId`) or prose that names the authenticated actor. */
+function userInputLooksLikeSession(input: Ns4E8Model['operations'][number]['inputs'][number]): boolean {
+  if (input.source !== 'userInput') return false;
+  if (isNs4OwnerHandleField(input.fieldRef.fieldId)) return true;
+  return /autenticad|authenticated|logged[- ]in|pessoa autenticada|actor session|usu[aá]rio autenticado/i.test(input.description);
+}
 
 function isLandingWithoutPriorSelection(
   workspace: Ns4E8ModelWorkspace, _model: Ns4E8Model, sources: Ns4E8Sources,
@@ -86,6 +94,13 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
       if (!fields.has(`${input.fieldRef.entityId}.${input.fieldRef.fieldId}`)) {
         add('NS4_E8_INPUT_FIELD', `${path}.inputs.${input.inputId}`, `Input ${input.inputId} has no resolvable ontology field (${input.fieldRef.entityId}.${input.fieldRef.fieldId}).`);
       }
+      // Registrar, never A: synthesis should have set actorSession. A leftover userInput whose
+      // fieldRef/description still says "authenticated actor" is evidence, not a broken compile.
+      if (userInputLooksLikeSession(input)) {
+        add('NS4_E8_USERINPUT_FROM_SESSION', `${path}.inputs.${input.inputId}`,
+          `Input ${input.inputId} is userInput but fieldRef/description say it comes from the authenticated actor; it should be actorSession.`,
+          'warning');
+      }
     });
     // Backstop, not the rule: the catalogue compiler already emits inactivate and
     // reactivate for master data, so this never fires from that path. It guards
@@ -94,7 +109,42 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
       add('NS4_E8_MDM_DELETE', `${path}.accessPattern.kind`,
         `Operation ${operation.operationId} deletes master data entity ${operation.entityRef}: master data is referenced by other records and must be deactivated instead.`);
     }
+    // Catalogue list only (no useCaseId): search/sort are synthesized there, not on journey locate.
+    // Registrar, never A — a list without them still compiles; the page just cannot honour the prompt.
+    if (operation.accessPattern.kind === 'list' && !operation.useCaseId) {
+      const entity = sources.ontology.entities.find(item => item.entityId === operation.entityRef);
+      const ids = new Set(operation.inputs.map(input => input.inputId));
+      if (entity?.fields.some(field => /^(title|name)$/.test(field.fieldId) && (field.type === 'string' || field.type === 'text'))
+        && !ids.has('search')) {
+        add('NS4_E8_LIST_WITHOUT_SEARCH', `${path}.inputs`,
+          `List ${operation.operationId} has a title/name field but no optional search input.`,
+          'warning');
+      }
+      const idField = entity?.storage.idField || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId || '';
+      if (entity?.fields.some(field => field.fieldId !== idField && (
+        field.type === 'date' || field.type === 'datetime' || /At$/.test(field.fieldId) || (field.enum?.length ?? 0) > 0
+      )) && !ids.has('sortBy')) {
+        add('NS4_E8_LIST_WITHOUT_SORT', `${path}.inputs`,
+          `List ${operation.operationId} has sortable fields but no optional sortBy input.`,
+          'warning');
+      }
+    }
   });
+
+  for (const journey of sources.journeys.journeys) {
+    const steps = journey.business.steps;
+    steps.forEach((step, stepIndex) => {
+      if (!isNs4CollectionInspect(steps, stepIndex)) return;
+      const stepRef = `${journey.journeyId}.${step.stepId}`;
+      const useCase = sources.useCases.find(item => item.compiledFrom.includes(stepRef));
+      const operation = useCase ? operations.get(useCase.useCaseId) : undefined;
+      if (operation && operation.accessPattern.kind === 'getById') {
+        add('NS4_E8_COLLECTION_INSPECT_GETBYID', `operations.${operation.operationId}.accessPattern.kind`,
+          `Inspect ${stepRef} is a collection summary (a locate of ${step.entity} follows) but compiled as getById; it must be a list with no identity input.`,
+          'warning');
+      }
+    });
+  }
 
   model.workspaces.forEach((workspace, index) => {
     const path = `workspaces[${index}]`;

@@ -1,5 +1,11 @@
 # E9 changelog
 
+## 2026-08-25 — enumValues da lista e attachTo do filterControl atravessam
+
+`search`/`sortBy`/`sortOrder` da lista de catálogo levam `enumValues` no input clássico; o contrato
+TS emite a união literal (`sortBy?: 'createdAt' | 'dueDate' | 'priority'`), não `string`. O
+organismo `filterControl` copia `attachTo` para o frontend dobrar os filtros na superfície.
+
 ## 2026-08-24 — E7 use cases that never became operations are declared
 
 E9 still transposes faithfully. After the write it compares `pipeline/e7-usecases/*-draft.json`

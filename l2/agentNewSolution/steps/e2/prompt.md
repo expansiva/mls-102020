@@ -29,7 +29,11 @@ approved ontology. Your job is the narrative and the right entity — nothing ab
    PascalCase (`ProjectPortfolio`, never the display label `Project portfolio`). `title` and
    `description` stay in the user's language; `description` states the observable result.
 2. Step `kind` is exactly one of `locate`, `inspect`, `act`, `decide` or `handoff`. Use `inspect`
-   for reviewing information; never invent synonyms such as `review`.
+   for reviewing ONE existing record; never invent synonyms such as `review`. Totals, counts and
+   indicators of a listing are not an inspect of that record — they live on the listing, derived
+   from the items already loaded. If the narrative names those indicators, put them as `inspect`
+   before the `locate` of the same entity (the compiler emits a list, never getById). "Overdue" /
+   atrasada is not a field: calendar day of `dueDate` before today and status is not `completed` or `cancelled`.
 3. Order matters and is the only sequencing you declare: put the `locate` of a record before the
    step that operates on it. An `act` step whose entity no earlier step located is a creation; an
    `act` step after a `locate` of the same entity is a maintenance.

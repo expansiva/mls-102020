@@ -18,10 +18,13 @@ entities or change relationships. Write human-facing text in the user's language
 - Those states, and every other enum constraint value, are **stable English codes**: lowerCamel ASCII
   (`active`, `inactive`, `monday`), never the user's language (`ativo`, `segunda-feira`). Field
   `title` and `description` remain in the user's language.
-- For every enumerated field, emit `enumLabels` as `{ "code", "label" }[]` next to the enum constraint —
-  `code` matches a value in the constraint, `label` is the user's language (`userLanguage`, default `en`).
-  Example: `{ "code": "active", "label": "Ativo" }`. Do not emit `enum` itself; it is derived. A status
-  field's labels should match the overview `lifecycleLabels` for those codes.
+- For every enumerated field that is NOT the lifecycle `status` field, emit `enumLabels` as
+  `{ "code", "label" }[]` next to the enum constraint — `code` matches a value in the constraint,
+  `label` is the user's language (`userLanguage`, default `en`). Example:
+  `{ "code": "high", "label": "Alta" }`. Do not emit `enum` itself; it is derived. Do not emit
+  `enumLabels` on the `status` field: those codes already have `lifecycleLabels` on the overview.
+  Optional in the schema is not optional for the model — a later deterministic pass will humanize
+  the code (`inProgress` → `In progress`) if you omit a label, which is worse than your translation.
 - The overview already freezes any named lifecycle subsets required by the supplied sources. Use
   those exact predicates when shaping fields and rule references; do not add, remove or reinterpret them.
 - Constraints are shared frontend/backend validation contracts. Kinds: `min`, `max`, `minLength`,
@@ -60,6 +63,24 @@ value must be the entity artifact below.
       "description": "Each project has one stable identifier.",
       "source": "inferred"
     }]
+  }, {
+    "fieldId": "priority",
+    "title": "Priority",
+    "type": "string",
+    "required": true,
+    "description": "How urgent the work is.",
+    "constraints": [{
+      "constraintId": "priorityEnum",
+      "kind": "enum",
+      "value": "[\"low\",\"medium\",\"high\"]",
+      "description": "Allowed priority codes.",
+      "source": "user"
+    }],
+    "enumLabels": [
+      { "code": "low", "label": "Low" },
+      { "code": "medium", "label": "Medium" },
+      { "code": "high", "label": "High" }
+    ]
   }],
   "useRules": ["projectHasClient"]
 }
