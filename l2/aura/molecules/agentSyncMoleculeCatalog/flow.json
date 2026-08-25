@@ -1,0 +1,85 @@
+{
+  "flowId": "agentSyncMoleculeCatalog",
+  "schemaVersion": "2026-08-25-syncmoleculecatalog-v1",
+  "specFirst": "Written per skills/agentsBestPractices.md §1. This file, spec.md and the per-step CHANGELOG.md are the design record. The decisions were closed with the product owner between 2026-08-17 and 2026-08-25 (recorded, section by section, in the control document on the author's machine — never cited by path here, per shared/localDocRefs.test.ts) and are restated in decisions[] below; when behaviour must change, change this file first, then the code.",
+  "description": "Generates the molecule catalog an LLM consumer reads to choose components: l2/molecules/skill.ts (level 1, project) and, per group, index.defs.ts + index.html (level 2). All three are 100% derivable from the molecule files already in the project — the format was proven by the agentChooseMolecules pilot (23 runs, zero invented tag) and is anchored on the 6 groups it seeded by hand. The index.ts showcase page (level 2's authored sibling) is NOT built by this stopping point — see notBuilt.",
+  "principles": [
+    "THE DEFAULT PATH SPENDS NO LLM CALL. Discovery is a stor scan; scoping the mention is deterministic word matching (helpers/syEntry). The root's own bootstrap step uses AgentIntentAddMessageAI.skipRootLLM — the same mechanism agentChangeFrontend already ships with — so the platform gets its step tree without a classifier deciding something that was never a classification.",
+    "REUSE THE PLUMBING. Intents and l4 mechanics come from agentNewMolecule2/helpers (nmFs, nmSteps), the same way agentChooseMolecules reuses them. One new function was added to the shared nmFs.ts (nmGroupDefsFile) — a small, additive, family-pattern extension, not a fork.",
+    "THE TAG IS NEVER DERIVED FROM A FILENAME. It comes from the real `@customElement(...)` decorator of the molecule's own .ts (helpers/syExtract.syExtractTag) — the rule that got 45/45 tags right in the pilot.",
+    "SCENARIOS ARE THE ONE FIELD THAT IS NOT DERIVED. They are editorial. On a group's first sync they are harvested mechanically from its CURRENT index.ts (a data read, not composition — no LLM); on every later sync, whatever is already in the group's index.defs.ts is PRESERVED untouched. See decisions.scenarioHarvest.",
+    "GROUP -> PROJECT, NEVER IN PARALLEL. s2 (skill.ts) dependsOn every s1 (index.defs.ts) anchor of the run and reads their l4 artifacts, never level 2 source text directly — one source of truth per value.",
+    "HONESTY OVER SILENCE. A group with no skills/index.ts entry is IGNORED WITH A REASON, never dropped quietly (D4). The report always says the catalog is written but not published (D5, by impossibility — no publish API exists on this platform). It always says whether index.ts was touched (never, in this build) and how to ask for it."
+  ],
+  "decisions": {
+    "defaultLlmCost": "Zero for the default path (discover -> s1 x N -> s2 -> s4). Measured: none of syEntry, syDiscover, syExtract, syRenderDefs, syRenderSkill, or any of the three step agents (agentSyGroup, agentSyProject, agentSyReport) call an LLM. Confirmed viable via a real precedent: mls-102020/l2/agentChangeFrontend/agentChangeFrontend.ts already ships AgentIntentAddMessageAI.skipRootLLM for exactly this purpose.",
+    "rootPlanting": "Single phase, unlike agentChooseMolecules. That family needs two phases because the fan-out size (how many groups an LLM chose) is unknown until c1 answers. Here discovery is a stor scan the root itself can do synchronously in beforePromptImplicit, so every step (s1 x N, s2, s4) is planted in ONE batch, dependency edges included.",
+    "groupOrder": "Alphabetical by folder — NOT skills/index.ts order. The first hypothesis (matched groups follow skills/index.ts's own order) fit 4 of the 6 seeded groups and was falsified by E5's regeneration: the seed's skill.ts lists 'groupViewTable' BEFORE 'groupEnterDate', the opposite of their skills/index.ts order. A second hypothesis (skills/index.ts order full stop) was also tried and also falsified. The seed's actual order looks like an artifact of the ad-hoc pilot seeding process, not a rule — alphabetical is simple, deterministic, and reproduces every OTHER structural property of the seed exactly.",
+    "purposeText": "The FULL skills/index.ts `description`, untruncated, for both level 1 and level 2's 'Objetivo do grupo' line. The seed truncates it (drops a trailing 'Implementations include...' / 'Supports...' sentence in most groups, but keeps the WHOLE description for groupSelectOne, which has neither trigger phrase). Measured on 2026-08-25: skills/index.ts has been hand-edited since the pilot's 2026-08-21 seed (groupSelectOne's description today has no 'Implementations'/'Supports' sentence at all — it was rewritten with new structure), so no clean split-point formula reproduces all 6 groups from the CURRENT source text. Publishing the full description is simple, always in sync with the manually-maintained source of truth, and a defensible content choice — a fragile truncation heuristic would be worse than a longer but always-accurate line.",
+    "scenarioHarvest": "Not in the original helper list (todo §3 names syDiscover/syExtract/syRenderDefs/syRenderSkill/syEntry/syLabels only), but required by the ordering rule itself: s1 runs before s3, and s1 must write a complete index.defs.ts — including `scenarios`, which the format requires — even when s3 never runs (the common case, today, for all 32 groups). So the harvest lives in s1 (helpers/syExtract.syHarvestScenarios), reading the group's CURRENT index.ts. Table columns use free, abbreviated field names (`detailGrid`, `advanced`, plain `data` in groupViewTable) — matched to a molecule by TOKEN SET, not string similarity: exact set match first, then the unique SMALLEST superset (plain `data` is a subset of 5 `*-data-*` molecules; `ml-data-table` alone has no token beyond what the field named, so it is the specific match). A genuine tie is left unmatched, never guessed. On any RESYNC, whatever scenarios are already in index.defs.ts are preserved instead — the harvest only ever runs once per group, by construction (helpers/syExtract.syExtractExistingScenarios).",
+    "indexTsScope": "Not built at this stopping point. The todo (§9, 'pare depois do E7') explicitly allows stopping after the derivable catalog is generating correctly, since the index.ts (s3) is authored-page migration work, not catalog generation, and the derivable must never be refém of it. Every run's report says index.ts was not touched and how to ask for it (todo §8, obligation 3); a run that DOES ask for it gets an honest 'not built yet' instead of silent ignoring."
+  },
+  "conventions": {
+    "input": "'@@agentSyncMoleculeCatalog [atualizar [grupo|grupos] <lista separada por vírgula/e ou all>] [incluindo o arquivo index.ts | com todos os arquivos]'. Parsed by helpers/syEntry (pure, no I/O). A mention that names the index page in an unrecognized way ('e a página do grupo', 'com o showcase') is REFUSED, naming the two recognized phrases — never silently interpreted either way (D1a: the cost asymmetry is that guessing 'no index.ts' is free to retry, guessing 'yes' can rewrite up to ~795 authored lines).",
+    "discovery": "Group folders come from the project's OWN directories (helpers/syFs.syScanProjectGroupFolders — a stor scan, mirroring how the legacy agentUpdateIndexGroupPage's getMoleculeFiles reads molecules), matched case-insensitively against skills/index.ts (the manual, editorial purpose-phrase registry). A folder with no skills/index.ts entry is IGNORED WITH A REASON, not skipped silently (D4) — today that is 'groupNavigateMain', invisible to the legacy agent because it resolves against skills/index.ts alone.",
+    "runKey": "Timestamp-based ('sync-YYYYMMDDTHHmmss'), always unique — unlike agentChooseMolecules, whose runKey is a slug an LLM proposes from prose and which can collide across similar-sounding runs (a measured armadilha). This agent parses no prose into a name, so a clock-derived key is both simpler and collision-free by construction.",
+    "artifactsAreTheContract": "s2 and s4 read what s1 already wrote to l4 (SyGroupArtifact), never the group's own index.defs.ts source text — the renderer (syRenderDefs) and any future reader would otherwise need to agree on a SECOND parser. One writer, one source of truth per value.",
+    "writesNothingUnexpected": "Only the three artifact kinds named in the description: skill.ts, index.defs.ts, index.html — never index.less, index.test.ts, or any usage.ts/creation.ts (manual, decision of 2026-08-17)."
+  },
+  "treeOverview": [
+    "root (beforePromptImplicit, no LLM): parse the mention, scan the project, plant everything in one batch",
+    "  s1-<group> x N  (code)  one index.defs.ts + index.html per matched group",
+    "  s2-project       (code)  skill.ts, dependsOn every s1 anchor",
+    "  s4-report        (code)  report.json + readable summary, dependsOn s2"
+  ],
+  "steps": [
+    {
+      "planId": "s1-<groupfolder>",
+      "agentName": "agentSyGroup",
+      "model": "none (deterministic)",
+      "dependsOn": [],
+      "goal": "For ONE group: read every molecule's .ts (tag) and .defs.ts (Objective, layoutConfig) if present; compute which layoutConfig axes vary across the siblings; resolve scenarios (preserve existing, else harvest from index.ts, else empty); render and write index.defs.ts + index.html.",
+      "output": { "artifacts": ["l2/molecules/<group>/index.defs.ts", "l2/molecules/<group>/index.html", "l4/agentSyncMoleculeCatalog/<runKey>/s1-<group>.json"], "result": "SyGroupArtifact + warnings" },
+      "doneAnchor": "s1-<groupfolder>-done"
+    },
+    {
+      "planId": "s2-project",
+      "agentName": "agentSyProject",
+      "model": "none (deterministic)",
+      "dependsOn": ["every s1-<groupfolder>-done of this run"],
+      "goal": "Read every s1 group artifact of this run's input.json list and render l2/molecules/skill.ts from them, alphabetical by folder.",
+      "output": { "artifact": "l2/molecules/skill.ts + l4/agentSyncMoleculeCatalog/<runKey>/s2-project.json", "result": "SyProjectArtifact" },
+      "doneAnchor": "s2-done"
+    },
+    {
+      "planId": "s4-report",
+      "agentName": "agentSyReport",
+      "model": "none (deterministic)",
+      "dependsOn": ["s2-done"],
+      "goal": "Aggregate input.json + every s1/s2 artifact into report.json and a readable summary carrying the four obligations: what was written, ignored groups with reasons, that index.ts was not touched and how to ask for it, that the catalog is written but not published.",
+      "output": { "artifact": "l4/agentSyncMoleculeCatalog/<runKey>/report.json", "result": "the summary, in the step trace" },
+      "doneAnchor": "s4-done"
+    }
+  ],
+  "artifacts": {
+    "l4/agentSyncMoleculeCatalog/<runKey>/input.json": "the resolved run scope: matched/ignored/requested-but-ignored/unknown groups, whether index.ts was requested",
+    "l4/agentSyncMoleculeCatalog/<runKey>/s1-<groupfolder>.json": "one group's written summary (SyGroupArtifact)",
+    "l4/agentSyncMoleculeCatalog/<runKey>/s2-project.json": "the project skill.ts summary (SyProjectArtifact)",
+    "l4/agentSyncMoleculeCatalog/<runKey>/report.json": "the consolidated run report — the four obligations, machine-readable"
+  },
+  "acceptance": {
+    "e5RegenerationCheck": "Regenerating the 6 pilot groups (groupEnterDate, groupEnterNumber, groupEnterText, groupSelectMany, groupSelectOne, groupViewTable) from their real source files in mls-102040-temp and diffing against the seeded v2 index.defs.ts: STRUCTURALLY IDENTICAL for all 6 — every molecule entry, every layout axis, every scenario recommendation (including groupViewTable's abbreviated field names, once the token-matcher's exact+unique-smallest-superset rule was added), every markdown bullet. The only differences are the two documented content divergences (decisions.purposeText; and two markdown-table cells where the seed carries a hand-written cross-group explanation this generator cannot know). skill.ts (level 1): same `groups[]` entries and same `Moléculas:` lines as SETS (order aside — decisions.groupOrder).",
+    "tagResolution": "Every tag in every artifact is read from a real @customElement decorator (helpers/syExtract.syExtractTag) — by construction, not by a post-hoc gate.",
+    "noMoleculeDisappears": "Every molecule file found under a group's folder appears in molecules[] — with defs:null and the out-of-contract markdown line when it has no .defs.ts (the ml-table-multi-select case)."
+  },
+  "outOfScope": [
+    "s3-indexts (the index.ts showcase page) — todo §9 allows stopping here; a run that asks for it gets an honest 'not built yet', never silence",
+    "n7-index / i6-index / v4-index and the two legacy agents (agentIndexGroupPage, agentUpdateIndexGroupPage) — excluding them is a decision for later, after this agent is proven",
+    "publishing the written catalog — no publish API exists on this platform (D5); the report says so every run",
+    "an agent-to-agent trigger from agentNewMolecule2/agentImproveMolecule2 into this one — depends on an unverified platform capability"
+  ],
+  "planting": "Single phase (see decisions.rootPlanting). The root's beforePromptImplicit does the discovery + entry parsing itself and returns, in ONE batch: an add-message-ai intent with skipRootLLM:true (creates the step tree), one add-step per matched group (s1, status waiting_human_input — runs immediately), s2 (waiting_dependency on every s1 anchor), s4 (waiting_dependency on s2's anchor). All planted with parentStepId:1, the same convention agentChangeFrontend's bootstrap uses, because no real parent step object exists yet at this point in the hook.",
+  "notBuilt": {
+    "s3-indexts": "Out of scope for this stopping point — see outOfScope."
+  }
+}
