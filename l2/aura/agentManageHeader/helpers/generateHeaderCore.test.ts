@@ -323,12 +323,18 @@ test('the input config document is not mutated', () => {
   assert.equal(config.clientShell.regions.header.profiles.defaultAura.renderer.tag, 'collab-aura-header');
 });
 
-test('regenerating without a brand clears the stale one', () => {
+test('regenerating keeps the brand and drops the actions', () => {
+  // The two follow OPPOSITE rules on purpose: the brand is config edited on its own screen (losing it
+  // to a regeneration would cost the app its identity), the actions ARE part of the request.
   const first = pointHeaderProfileAtProject(clientConfig(), { paths: headerPaths(PROJECT), brand: { title: 'Sample App' }, actions: ['language'] });
   const second = pointHeaderProfileAtProject(first.config, { paths: headerPaths(PROJECT) });
   const profile = (second.config as any).clientShell.regions.header.profiles.defaultAura;
-  assert.equal(profile.brand, undefined);
+  assert.deepEqual(profile.brand, { title: 'Sample App' });
   assert.equal(profile.props?.actions, undefined);
+
+  // Removing the brand is explicit.
+  const cleared = pointHeaderProfileAtProject(first.config, { paths: headerPaths(PROJECT), dropBrand: true });
+  assert.equal((cleared.config as any).clientShell.regions.header.profiles.defaultAura.brand, undefined);
 });
 
 test('another profile can be targeted, and it becomes the active one', () => {
@@ -499,7 +505,13 @@ test('a brand-less regeneration still keeps the mark', () => {
   const again = pointHeaderProfileAtProject(withMark, { paths: headerPaths(PROJECT) });
   const brand = (again.config as any).clientShell.regions.header.profiles.defaultAura.brand;
   assert.equal(brand.logoSvg, svg);
-  assert.equal(brand.title, undefined, 'a brand the request omits is not invented');
+  assert.equal(brand.title, 'Sample App', 'and the texts, which live in the same object');
+
+  // A request that DOES carry a brand replaces the texts; the mark still survives.
+  const renamed = pointHeaderProfileAtProject(withMark, { paths: headerPaths(PROJECT), brand: { title: 'Other' } });
+  const next = (renamed.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(next.title, 'Other');
+  assert.equal(next.logoSvg, svg);
 });
 
 test('a contract violation is reported instead of written', () => {

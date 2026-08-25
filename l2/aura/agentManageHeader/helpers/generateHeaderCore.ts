@@ -48,6 +48,11 @@ export interface GenerateHeaderRequest {
   /** Header profile of l5/config.json to take over; `defaultAura` by default. */
   profileName?: string;
   /**
+   * Which header of the project to write: absent = the default one (`appHeader.ts`), a slug = that
+   * variant (`appHeader<Slug>.ts`, own tag, own class). Several headers can coexist; one is active.
+   */
+  variant?: string;
+  /**
    * What to do about the brand mark: `keep` (default) leaves whatever the profile has, `generate`
    * queues agentGenerateLogo as a child step right after the header is written, `none` drops the
    * mark from the profile.
@@ -75,6 +80,8 @@ export interface HeaderPaths {
   /** Client-relative source path recorded in the config profile. */
   source: string;
   entrypoint: string;
+  /** Module name inside `l2/layout` — what collabImport/`import()` needs. Varies with the variant. */
+  shortName: string;
   tag: string;
   className: string;
 }
@@ -85,6 +92,11 @@ const HEADER_SHORT_NAME = 'appHeader';
 const HEADER_PREVIEW_SHORT_NAME = 'appHeaderPreview';
 /** Header profile the generated header takes over in `l5/config.json`. */
 export const DEFAULT_HEADER_PROFILE = 'defaultAura';
+/**
+ * Profile names a variant may not claim: `defaultAura` IS the default header, and `studio` is the
+ * master's own studio band (what Ctrl+Alt+S cycles into) — neither belongs to a project variant.
+ */
+export const RESERVED_HEADER_VARIANTS: readonly string[] = ['default', 'defaultaura', 'studio', 'preview'];
 /** The placeholder the generated CSS scopes itself with (bound to `this.localName`). */
 export const TAG_PLACEHOLDER = '${tag}';
 
@@ -96,13 +108,50 @@ function toKebab(value: string): string {
   return value.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase();
 }
 
+function toPascal(slug: string): string {
+  return slug.replace(/(^|[^a-z0-9])([a-z0-9])/giu, (_all, _sep, char: string) => char.toUpperCase());
+}
+
+/**
+ * Normalizes a variant name into the slug that names its file, tag and class.
+ *
+ * A variant is a SECOND (third, …) header of the project: one profile, one source file, one tag. The
+ * slug has to survive all three, so it is plain lowercase alphanumerics starting with a letter.
+ *
+ * @throws When the name yields nothing usable, does not start with a letter, or claims a reserved
+ * profile ({@link RESERVED_HEADER_VARIANTS}).
+ */
+export function slugVariant(name: string): string {
+  const slug = readString(name).toLowerCase().replace(/[^a-z0-9]+/gu, '');
+  if (!slug) throw new Error('a header variant needs a name with letters or digits');
+  if (!/^[a-z]/u.test(slug)) throw new Error(`"${name}": a variant name must start with a letter`);
+  if (RESERVED_HEADER_VARIANTS.includes(slug)) throw new Error(`"${slug}" is a reserved name — pick another`);
+  return slug;
+}
+
+/** True when the tag is a header this project generated (the default one or any variant). */
+export function isProjectHeaderTag(tag: string, projectId: number): boolean {
+  const pattern = new RegExp(`^${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_SHORT_NAME)}(-[a-z0-9]+)?-${projectId}$`, 'u');
+  return pattern.test(readString(tag));
+}
+
+/** The variant slug carried by a header tag, or undefined for the default header. */
+export function variantFromTag(tag: string, projectId: number): string | undefined {
+  const match = new RegExp(`^${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_SHORT_NAME)}-([a-z0-9]+)-${projectId}$`, 'u')
+    .exec(readString(tag));
+  return match ? match[1] : undefined;
+}
+
 /**
  * Paths, tag and class name of a project's header.
  *
  * The tag follows the same rule as mls-102041 `convertFileToTag` (and cfePageSkeleton):
  * kebab(folder) with '/' -> '--', then '--' + kebab(shortName) + '-' + project.
  */
-export function headerPaths(projectId: number, options: { previewToken?: string } = {}): HeaderPaths {
+export function headerPaths(
+  projectId: number,
+  options: { previewToken?: string; variant?: string } = {},
+): HeaderPaths {
   const token = readString(options.previewToken).replace(/[^a-z0-9]+/giu, '').toLowerCase();
   if (token) {
     // A preview needs its OWN tag: `customElements.define` runs once per name, so reusing the real
@@ -111,18 +160,25 @@ export function headerPaths(projectId: number, options: { previewToken?: string 
       fileReference: `_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.ts`,
       source: `l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.ts`,
       entrypoint: `/_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_PREVIEW_SHORT_NAME}.js`,
+      shortName: HEADER_PREVIEW_SHORT_NAME,
       // The project number is the LAST segment — that is the convention every tag in the workspace
       // follows (convertFileToTag), so the token goes BEFORE it, never after.
       tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_PREVIEW_SHORT_NAME)}-${token}-${projectId}`,
       className: `AppHeaderPreview${projectId}_${token}`,
     };
   }
+  // A variant is a header of its own: its own file, tag and class, so several can coexist in the
+  // project (and in the browser: customElements.define runs once per NAME).
+  const variant = readString(options.variant) ? slugVariant(options.variant as string) : '';
+  const shortName = variant ? `${HEADER_SHORT_NAME}${toPascal(variant)}` : HEADER_SHORT_NAME;
   return {
-    fileReference: `_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_SHORT_NAME}.ts`,
-    source: `l2/${HEADER_FOLDER}/${HEADER_SHORT_NAME}.ts`,
-    entrypoint: `/_${projectId}_/l2/${HEADER_FOLDER}/${HEADER_SHORT_NAME}.js`,
-    tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_SHORT_NAME)}-${projectId}`,
-    className: `AppHeader${projectId}`,
+    fileReference: `_${projectId}_/l2/${HEADER_FOLDER}/${shortName}.ts`,
+    source: `l2/${HEADER_FOLDER}/${shortName}.ts`,
+    entrypoint: `/_${projectId}_/l2/${HEADER_FOLDER}/${shortName}.js`,
+    shortName,
+    // The project number stays the LAST segment (convertFileToTag), so the slug goes before it.
+    tag: `${toKebab(HEADER_FOLDER)}--${toKebab(HEADER_SHORT_NAME)}${variant ? `-${variant}` : ''}-${projectId}`,
+    className: `AppHeader${variant ? toPascal(variant) : ''}${projectId}`,
   };
 }
 
@@ -168,8 +224,17 @@ export interface HeaderProfileOptions {
   locales?: string[];
   /** Profile to take over; the master's own `defaultAura` by default. */
   profileName?: string;
+  /**
+   * Whether this profile becomes the active one. Default true (regenerating the header you are
+   * looking at should show it). A VARIANT passes false: creating a seasonal header in June must not
+   * put it on the air. A region with no active profile is activated regardless — otherwise the app
+   * would boot with nothing.
+   */
+  activate?: boolean;
   /** Drop the mark the profile already had instead of carrying it over. */
   dropLogo?: boolean;
+  /** Remove the brand entirely. Without it, an absent `brand` KEEPS what the profile has. */
+  dropBrand?: boolean;
 }
 
 /**
@@ -203,16 +268,23 @@ export function pointHeaderProfileAtProject(config: unknown, options: HeaderProf
     heightPx: AURA_HEADER_HEIGHT_PX,
   };
 
-  // Brand and actions are config, not code: absent in the request means absent in the profile,
-  // otherwise a regeneration would keep a stale brand around. The MARK is the exception — it is
-  // agentGenerateLogo's artifact, not the header request's, so regenerating the header carries it
-  // over instead of wiping it (`dropLogo` is the explicit way out).
-  const previousLogoSvg = readString((isRecord(previous?.brand) ? previous.brand.logoSvg : undefined));
-  if (options.brand) profile.brand = { ...options.brand };
+  // The BRAND is edited on its own (title, subtitle and mark are one object in the config), so an
+  // absent brand means "keep what is there" — a regeneration must not cost the app its identity.
+  // `dropBrand` is the explicit way to remove it, and `dropLogo` the explicit way to drop just the
+  // mark. ACTIONS keep the opposite rule below: they ARE part of the request.
+  const previousBrand = isRecord(previous?.brand) ? { ...previous.brand } as Record<string, unknown> : undefined;
+  const previousLogoSvg = readString(previousBrand?.logoSvg);
+  if (options.dropBrand) delete profile.brand;
+  else if (options.brand) profile.brand = { ...options.brand };
+  else if (previousBrand) profile.brand = previousBrand;
   else delete profile.brand;
-  if (!options.dropLogo && previousLogoSvg) {
+  // dropBrand removes the brand INCLUDING the mark: carrying the logo back would resurrect the
+  // object that was just asked to go.
+  if (!options.dropBrand && !options.dropLogo && previousLogoSvg) {
     const brand = (isRecord(profile.brand) ? profile.brand : (profile.brand = {})) as Record<string, unknown>;
     if (!readString(brand.logoSvg)) brand.logoSvg = previousLogoSvg;
+  } else if (!options.dropBrand && options.dropLogo && isRecord(profile.brand)) {
+    delete (profile.brand as Record<string, unknown>).logoSvg;
   }
   // props: same rule as the brand — what the request does not carry does not survive, so a
   // regeneration cannot leave a stale selection behind.
@@ -228,7 +300,7 @@ export function pointHeaderProfileAtProject(config: unknown, options: HeaderProf
   else delete profile.props;
 
   header.profiles[profileName] = profile;
-  header.activeProfile = profileName;
+  if (options.activate !== false || !readString(header.activeProfile)) header.activeProfile = profileName;
 
   return { config: next, profileName, previousTag: previous?.renderer?.tag };
 }
@@ -294,6 +366,8 @@ export function normalizeHeaderRequest(raw: unknown): GenerateHeaderRequest {
       : undefined,
     requestId: readString(raw.requestId) || undefined,
     profileName: readString(raw.profileName) || undefined,
+    // Throws on an unusable/reserved name: better here than after a round trip to the model.
+    variant: readString(raw.variant) ? slugVariant(readString(raw.variant)) : undefined,
     navLinks: navLinks,
     logo: raw.logo === 'generate' || raw.logo === 'none' ? raw.logo : 'keep',
     logoStyle: readString(raw.logoStyle) || undefined,
@@ -630,7 +704,7 @@ ${Object.entries(messages[locale])
 export function buildHeaderSource(
   projectId: number,
   parts: GeneratedHeaderParts,
-  options: { previewToken?: string } = {},
+  options: { previewToken?: string; variant?: string } = {},
 ): string {
   // With a token the same parts are assembled under the preview tag/file, so the Header plugin can
   // render a draft without touching the applied header.
@@ -713,8 +787,8 @@ export function sanitizeGeneratedHeader(
     ok: true,
     value: {
       parts,
-      source: buildHeaderSource(request.projectId, parts),
-      paths: headerPaths(request.projectId),
+      source: buildHeaderSource(request.projectId, parts, { variant: request.variant }),
+      paths: headerPaths(request.projectId, { variant: request.variant }),
     },
   };
 }
@@ -723,7 +797,7 @@ export function sanitizeGeneratedHeader(
 
 /** The human turn: what this project's header must look like and what it may use. */
 export function buildGenerateHeaderHumanPrompt(request: GenerateHeaderRequest): string {
-  const paths = headerPaths(request.projectId);
+  const paths = headerPaths(request.projectId, { variant: request.variant });
   const actions = request.actions ?? [];
   const baseHandled = actions.filter((action) => BASE_ACTIONS.includes(action));
   const ownHandled = actions.filter((action) => !BASE_ACTIONS.includes(action));
