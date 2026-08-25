@@ -229,6 +229,16 @@ export class PluginProjectHeader extends PluginBaseModule {
   @state() private _notes = '';
   @state() private _draftParts?: GeneratedHeaderParts;
   @state() private _previewTag = '';
+  /**
+   * Tag to render in the APPLIED band when the applied header was written in this same session.
+   *
+   * `customElements.define` runs once per name per window, so re-importing the real tag after Apply
+   * still constructs the PREVIOUS class — the band would keep showing the old header until a reload.
+   * The draft that was just approved is already registered under its own tag and has exactly the
+   * content that was written, so the band borrows it. Cleared by a reload, when the real tag is
+   * registered from the file for the first time.
+   */
+  @state() private _appliedTag = '';
   @state() private _hasBackup = false;
   @state() private _markMode: 'none' | 'paste' | 'generate' = 'none';
   @state() private _markSvg = '';
@@ -375,6 +385,12 @@ export class PluginProjectHeader extends PluginBaseModule {
     props: Record<string, unknown>,
   ): Promise<void> {
     await this._applyProjectTokens(host);
+    // Already in the registry (a tag this session defined): importing again would only serve the
+    // file's CURRENT content, which for a consumed preview is the stub. The class is what we want.
+    if (customElements.get(tag)) {
+      host.replaceChildren(this._headerElement(tag, props));
+      return;
+    }
     for (let attempt = 0; attempt < 12; attempt += 1) {
       try {
         await collabImport({ project: this._projectId, folder, shortName, extension: '.ts' });
@@ -388,10 +404,14 @@ export class PluginProjectHeader extends PluginBaseModule {
       this._error = `preview: ${tag} was not registered (is the file compiled?)`;
       return;
     }
+    host.replaceChildren(this._headerElement(tag, props));
+  }
+
+  private _headerElement(tag: string, props: Record<string, unknown>): HTMLElement {
     const element = document.createElement(tag) as HTMLElement & { bootConfig?: unknown; regionProps?: unknown };
     element.bootConfig = this._bootConfig();
     element.regionProps = props;
-    host.replaceChildren(element);
+    return element;
   }
 
   /**
@@ -438,15 +458,18 @@ export class PluginProjectHeader extends PluginBaseModule {
   private async _mountAppliedPreview(): Promise<void> {
     const host = this.querySelector('[data-band="applied"]') as HTMLElement | null;
     if (!host || !this._view?.isProjectHeader) return;
+    // Borrow the approved draft's tag only while its class is really in the registry.
+    const borrowed = Boolean(this._appliedTag) && Boolean(customElements.get(this._appliedTag));
+    const tag = borrowed ? this._appliedTag : this._view.tag;
     // Keyed on what the band actually shows: saving a new mark must rebuild it, a re-render must not.
     const signature = JSON.stringify([
-      this._view.tag, this._view.brand ?? null, this._view.actions,
+      tag, this._view.brand ?? null, this._view.actions,
       this._view.navLinks, this._view.locales, this._view.heightPx,
     ]);
     if (this._mountedPreview === signature) return;
     this._mountedPreview = signature;
     // The APPLIED band shows what is applied — the profile, not the unsaved form.
-    await this._mountHeader(host, 'layout', 'appHeader', this._view.tag, {
+    await this._mountHeader(host, 'layout', borrowed ? 'appHeaderPreview' : 'appHeader', tag, {
       ...(this._view.brand ? { brand: this._view.brand } : {}),
       actions: this._view.actions,
       navLinks: this._view.navLinks,
@@ -583,6 +606,10 @@ export class PluginProjectHeader extends PluginBaseModule {
       await this._writeSource(result.paths.fileReference, result.source);
       await this._writeClientConfig(result.config);
       await updateConfigProject(this._projectId, result.projectConfig as any);
+      // The class of the approved draft IS what was just written, and it is already registered —
+      // so the applied band renders that tag instead of the real one, which in this window still
+      // points at the previous class. See _appliedTag.
+      this._appliedTag = this._previewTag;
       await this._consumePreview();
       await this._reload();
     } catch (error) {
@@ -625,6 +652,9 @@ export class PluginProjectHeader extends PluginBaseModule {
       await this._writeSource(restored.paths.fileReference, restored.source);
       await this._writeClientConfig(restored.config);
       await updateConfigProject(this._projectId, restored.projectConfig as any);
+      // Going back means the previous header again — which in this window is exactly the class the
+      // real tag still holds, so the borrowed draft tag must go.
+      this._appliedTag = '';
       this._mountedPreview = '';
       await this._reload();
     } catch (error) {
