@@ -59,6 +59,7 @@ import {
   writeHeaderConfig,
 } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
 import {
+  activateHeaderProfile,
   applyHeaderDraft,
   buildHeaderRequest,
   clearDraft,
@@ -91,7 +92,7 @@ const message_en = {
   markPaste: 'Paste SVG markup',
   markGenerate: 'Generate with AI',
   markBrief: 'What should the mark evoke?',
-  request: 'New header',
+  request: 'Changes',
   brief: 'What the header should look like',
   brandTitle: 'Brand title',
   brandSubtitle: 'Subtitle',
@@ -127,6 +128,10 @@ const message_en = {
   apply: 'Apply',
   discard: 'Discard',
   revert: 'Back to the previous header',
+  setDefault: 'Set as default',
+  isDefault: 'DEFAULT',
+  settingDefault: 'Setting…',
+  defaultNeedsPublish: 'This is now the default header. The app shows it after a publish.',
   save: 'Save',
   notes: 'Notes',
   invalid: 'Refused',
@@ -155,7 +160,7 @@ const messages: Record<string, MessageType> = {
     markPaste: 'Colar markup SVG',
     markGenerate: 'Gerar com IA',
     markBrief: 'O que a marca deve evocar?',
-    request: 'Novo header',
+    request: 'Alterações',
     brief: 'Como o header deve ser',
     brandTitle: 'Título da marca',
     brandSubtitle: 'Subtítulo',
@@ -189,6 +194,10 @@ const messages: Record<string, MessageType> = {
     apply: 'Aplicar',
     discard: 'Descartar',
     revert: 'Voltar ao header anterior',
+    setDefault: 'Definir como padrão',
+    isDefault: 'PADRÃO',
+    settingDefault: 'Definindo…',
+    defaultNeedsPublish: 'Este é o header padrão agora. O app mostra depois de publicar.',
     save: 'Salvar',
     notes: 'Notas',
     invalid: 'Recusado',
@@ -445,7 +454,17 @@ export class PluginProjectHeader extends PluginBaseModule {
    */
   private async _writeSource(ref: string, source: string): Promise<void> {
     await saveFile(ref, source);
+
+    // Verify instead of assuming: a write that did not land used to surface later as a preview that
+    // "was not registered" or an applied header that never changed, with nothing pointing here.
     const info = mls.stor.convertFileReferenceToFile(ref);
+    const storFile = mls.stor.files[mls.stor.getKeyToFile(info)];
+    if (!storFile) throw new Error(`${ref} was not created in mls.stor`);
+    const written = String((await storFile.getContent()) ?? '');
+    if (written.trim() !== source.trim()) {
+      throw new Error(`${ref} was written but read back different (${written.length} vs ${source.length} bytes)`);
+    }
+
     const model = mls.editor.getModel(info) as mls.editor.IModelTS | undefined;
     if (!model) return;
     await mls.l2.typescript.compileAndPostProcess(model, true, true);
@@ -512,8 +531,9 @@ export class PluginProjectHeader extends PluginBaseModule {
     try {
       const config = await this._readClientConfig();
       const projectConfig = await getConfigProject(this._projectId);
+      // The backup keeps the source of THIS header, so a variant rolls back to its own file.
       const previousSource = this._view?.isProjectHeader
-        ? await readRawSource(headerPaths(this._projectId).fileReference)
+        ? await readRawSource(headerPaths(this._projectId, { variant: this._form.variant || undefined }).fileReference)
         : '';
 
       const result = applyHeaderDraft(
@@ -526,7 +546,10 @@ export class PluginProjectHeader extends PluginBaseModule {
           previousSource,
           at: new Date().toISOString(),
         },
-        (parts) => buildHeaderSource(this._projectId, parts),
+        // The variant decides the tag and the class INSIDE the source, not just the file name: without
+        // it, appHeaderNatal.ts would define the DEFAULT header's tag and the profile would point at
+        // a tag nothing registers.
+        (parts) => buildHeaderSource(this._projectId, parts, { variant: this._form.variant || undefined }),
       );
 
       await this._writeSource(result.paths.fileReference, result.source);
@@ -596,6 +619,35 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   // ── mark ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Makes the header being edited the one the app boots (`activeProfile`).
+   *
+   * Only that key moves: the renderer, brand and props of every profile are already in place, which
+   * is the whole point of keeping several headers. The app only shows it after a publish, and the
+   * screen says so — otherwise "I set it and nothing changed" is the next question.
+   */
+  private async _setAsDefault(): Promise<void> {
+    const profileName = this._view?.profileName;
+    if (!profileName || this._view?.isActive) return;
+    this._error = '';
+    this._busy = this.msg.settingDefault;
+    try {
+      const config = await this._readClientConfig();
+      await this._writeClientConfig(activateHeaderProfile(config, profileName));
+      await this._reload();
+      this._warn = this.msg.defaultNeedsPublish;
+      this.dispatchEvent(new CustomEvent('header-activated', {
+        detail: { profileName },
+        bubbles: true,
+        composed: true,
+      }));
+    } catch (error) {
+      this._error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._busy = '';
+    }
+  }
 
   private async _saveMark(svgMarkup: string): Promise<void> {
     const errors = validateLogoSvg(svgMarkup);
@@ -679,10 +731,12 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   private _renderBand(kind: 'applied' | 'draft') {
     return html`
+      <!-- pointer-events:none — a preview is a PICTURE of the header: live, its links would navigate
+           the studio window and its user menu would open over the editor. -->
       <div
         data-band=${kind}
         class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-950"
-        style="height:${AURA_HEADER_HEIGHT_PX}px"
+        style="height:${AURA_HEADER_HEIGHT_PX}px;pointer-events:none"
       ></div>
     `;
   }
@@ -700,6 +754,10 @@ export class PluginProjectHeader extends PluginBaseModule {
         ? this._renderBand('applied')
         : html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${view.tag} (master)</p>`,
       html`
+        ${view.isActive ? html`
+          <span class="text-[10px] font-semibold tracking-wider px-1.5 py-0.5 rounded
+            bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">${this.msg.isDefault}</span>
+        ` : nothing}
         <span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">
           ${view.profileName} · ${view.tag} · ${view.heightPx ?? AURA_HEADER_HEIGHT_PX}px
         </span>
@@ -1081,6 +1139,10 @@ export class PluginProjectHeader extends PluginBaseModule {
             ${this._busy || this.msg.generate}
           </button>
         `}
+        ${this._view && !this._view.isActive ? html`
+          <button type="button" class=${BUTTON} ?disabled=${!!this._busy}
+            @click=${() => void this._setAsDefault()}>${this.msg.setDefault}</button>
+        ` : nothing}
         ${this._hasBackup ? html`
           <button type="button" class="ml-auto text-sm underline text-gray-600 dark:text-gray-300" ?disabled=${!!this._busy}
             @click=${() => void this._revert()}>${this.msg.revert}</button>

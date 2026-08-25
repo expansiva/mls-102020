@@ -270,7 +270,7 @@ export class ServiceProject102020 extends ServiceBase {
      * Profiles pointing at a master's band (`studio`) are left out: they are not editable here, and
      * a slot that opens nothing is worse than no slot.
      */
-    private async _initHeaderConfig(): Promise<void> {
+    private async _initHeaderConfig(preselect = true): Promise<void> {
         const project = getAuraState().actualProject;
         if (!project) {
             this._headerConfig = DISABLED_CONFIG('header');
@@ -284,8 +284,21 @@ export class ServiceProject102020 extends ServiceBase {
         entries.forEach((entry, i) => { labels[i + 1] = entry.variant || 'default'; });
         labels[entries.length + 1] = '+';
         this._headerConfig = { key: 'header', min: 0, max: entries.length + 1, labels };
-        if (this._headerValue === null || this._headerValue > entries.length + 1) this._headerValue = 0;
+
+        // The header the app boots is the state, not a preference: it comes from l5/config.json.
+        const active = entries.find(entry => entry.isActive);
+        setAuraState('actualHeader', active?.profileName ?? null);
+        // Open ON the active header instead of the list: that is the one being worked on.
+        const activeIndex = active ? entries.indexOf(active) + 1 : 0;
+        if (preselect) this._headerValue = activeIndex;
+        else if (this._headerValue === null || this._headerValue > entries.length + 1) this._headerValue = activeIndex;
         this.requestUpdate();
+    }
+
+    /** Another header became the default (from the editor): keep the view, refresh the labels. */
+    private async _onHeaderActivated(profileName: string) {
+        setAuraState('actualHeader', profileName || null);
+        await this._initHeaderConfig(false);
     }
 
     /** The panel rebuilt the list (renamed, deleted, activated): take its labels. */
@@ -550,6 +563,7 @@ export class ServiceProject102020 extends ServiceBase {
                     @header-config=${(e: CustomEvent) => this._onHeaderConfig(e)}
                     @select-header=${(e: CustomEvent) => this._setKnobValue('header', e.detail.value)}
                     @header-created=${(e: CustomEvent) => this._onHeaderCreated(e.detail.value)}
+                    @header-activated=${(e: CustomEvent) => this._onHeaderActivated(e.detail.profileName)}
                     @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
                     @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}

@@ -509,3 +509,14 @@ test('writing a variant does not put it on the air', () => {
   );
   assert.equal((onDefault.config as any).clientShell.regions.header.activeProfile, 'defaultAura');
 });
+
+test('the view says whether the header being edited is the default one', () => {
+  // config() boots defaultAura, so that profile IS the default and the studio band is not.
+  assert.equal(readHeaderProfileView(config(), PROJECT, 'defaultAura')?.isActive, true);
+  assert.equal(readHeaderProfileView(config(), PROJECT, 'studio')?.isActive, false);
+
+  // Setting one as default moves only that key — and the view follows.
+  const activated = activateHeaderProfile(config(), 'studio');
+  assert.equal(readHeaderProfileView(activated, PROJECT, 'studio')?.isActive, true);
+  assert.equal(readHeaderProfileView(activated, PROJECT, 'defaultAura')?.isActive, false);
+});

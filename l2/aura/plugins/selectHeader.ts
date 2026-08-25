@@ -26,16 +26,11 @@ import {
   slugVariant,
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import {
-  activateHeaderProfile,
   listProjectHeaders,
   readProjectRoutes,
   type ProjectHeaderEntry,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
-import {
-  ensureProjectLoaded,
-  readHeaderConfig,
-  writeHeaderConfig,
-} from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
+import { ensureProjectLoaded, readHeaderConfig } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
 import { bandBootConfig, mountHeaderBand, projectTokensCss } from '/_102020_/l2/aura/plugins/helpers/headerBandPreview.js';
 import { readRawSource } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
@@ -47,23 +42,18 @@ const message_en = {
   desc: 'The headers of this app — one is active, the others are kept.',
   needsProject: 'Select a project first to see its headers.',
   allTitle: 'All headers',
-  allDesc: 'Every header of this app. Activate one; the rest stay available.',
+  allDesc: 'Every header of this app. Open one to edit it or make it the default.',
   addTitle: 'New header',
   addDesc: 'Name it and generate — the current header is not touched.',
   loading: 'Loading headers…',
   none: 'This app has no header of its own yet.',
   active: 'ACTIVE',
-  activate: 'Activate',
-  edit: 'Edit',
   nameLabel: 'Name',
   namePlaceholder: 'e.g. christmas',
   create: 'Create and generate',
   defaultName: 'default',
-  checking: 'Checking…',
-  activating: 'Activating…',
   staleRoutes: 'links to routes that no longer exist:',
   staleTokens: 'uses design-system tokens that no longer exist:',
-  activatedNeedsPublish: 'Activated. The app only shows it after a publish.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -73,23 +63,18 @@ const messages: Record<string, MessageType> = {
     desc: 'Os headers deste app — um está ativo, os outros ficam guardados.',
     needsProject: 'Selecione um projeto para ver os headers.',
     allTitle: 'Todos os headers',
-    allDesc: 'Todos os headers deste app. Ative um; os demais continuam disponíveis.',
+    allDesc: 'Todos os headers deste app. Abra um para editar ou definir como padrão.',
     addTitle: 'Novo header',
     addDesc: 'Dê um nome e gere — o header atual não é tocado.',
     loading: 'Carregando headers…',
     none: 'Este app ainda não tem header próprio.',
     active: 'ATIVO',
-    activate: 'Ativar',
-    edit: 'Editar',
     nameLabel: 'Nome',
     namePlaceholder: 'ex. natal',
     create: 'Criar e gerar',
     defaultName: 'padrão',
-    checking: 'Verificando…',
-    activating: 'Ativando…',
     staleRoutes: 'linka rotas que não existem mais:',
     staleTokens: 'usa tokens do design system que não existem mais:',
-    activatedNeedsPublish: 'Ativado. O app só mostra depois de publicar.',
   },
 };
 /// **collab_i18n_end**
@@ -103,10 +88,7 @@ export class PluginSelectHeader extends StateLitElement {
   @state() private _entries: ProjectHeaderEntry[] = [];
   @state() private _routes: Array<{ label: string; href: string }> = [];
   @state() private _loading = false;
-  @state() private _busy = '';
   @state() private _error = '';
-  /** Non-blocking outcome (activated, but the app still needs a publish). */
-  @state() private _notice = '';
   /** Per profile: why activating it would be a downgrade (stale routes/tokens). Empty = healthy. */
   @state() private _health: Record<string, string[]> = {};
   @state() private _newName = '';
@@ -205,33 +187,6 @@ export class PluginSelectHeader extends StateLitElement {
     this._health = health;
   }
 
-  private async _activate(entry: ProjectHeaderEntry): Promise<void> {
-    if (!this.projectId) return;
-    this._busy = this.msg.activating;
-    this._error = '';
-    this._notice = '';
-    try {
-      const config = await readHeaderConfig(this.projectId);
-      await writeHeaderConfig(this.projectId, activateHeaderProfile(config, entry.profileName));
-
-      // Runtime courtesy: a shell listening in this window follows along. The index is 1-based over
-      // ALL profiles of the region (mls.sites.setHeader), not over the filtered list on screen — a
-      // `studio` profile in between would otherwise switch to the wrong header.
-      const all = listProjectHeaders(config, this.projectId);
-      const index = all.findIndex((item) => item.profileName === entry.profileName) + 1;
-      if (index > 0) {
-        try { mls.sites.setHeader(index); } catch { /* no shell in this window */ }
-      }
-
-      await this._load(this.projectId);
-      this._notice = this.msg.activatedNeedsPublish;
-    } catch (error) {
-      this._error = error instanceof Error ? error.message : String(error);
-    } finally {
-      this._busy = '';
-    }
-  }
-
   private _startCreate(): void {
     this._error = '';
     try {
@@ -287,10 +242,6 @@ export class PluginSelectHeader extends StateLitElement {
       <div class="flex flex-col gap-3">
         ${this._navHeader(this.msg.allTitle, this.msg.allDesc, 0)}
         ${this._error ? this._renderError() : nothing}
-        ${this._notice ? html`
-          <p class="rounded-md border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-1.5 text-xs text-indigo-800 dark:text-indigo-300">
-            ${this._notice}
-          </p>` : nothing}
         ${this._entries.length === 0
           ? this._frame(this.msg.none)
           : html`<div class="flex flex-col gap-3">${this._entries.map((entry, i) => this._renderCard(entry, i + 1))}</div>`}
@@ -299,13 +250,25 @@ export class PluginSelectHeader extends StateLitElement {
     `;
   }
 
+  /**
+   * One header of the app. The whole card navigates to it — no Edit/Activate buttons here: the list
+   * is for choosing WHICH header you are looking at, and what to do with it belongs to its own
+   * screen (that is where "Definir como padrão" lives).
+   */
   private _renderCard(entry: ProjectHeaderEntry, value: number) {
     const reasons = this._health[entry.profileName] ?? [];
     return html`
-      <section class="rounded-lg border overflow-hidden
-        ${entry.isActive
-          ? 'border-indigo-400 dark:border-indigo-500/70'
-          : 'border-gray-200 dark:border-gray-800'}">
+      <section
+        role="button"
+        tabindex="0"
+        class="text-left rounded-lg border overflow-hidden cursor-pointer transition-colors
+          hover:border-indigo-400 dark:hover:border-indigo-500
+          ${entry.isActive
+            ? 'border-indigo-400 dark:border-indigo-500/70'
+            : 'border-gray-200 dark:border-gray-800'}"
+        @click=${() => this._select(value)}
+        @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') this._select(value); }}
+      >
         <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
           <span class="text-sm font-medium">${entry.variant || this.msg.defaultName}</span>
           ${entry.isActive ? html`
@@ -316,26 +279,18 @@ export class PluginSelectHeader extends StateLitElement {
         </header>
 
         <div class="p-3 flex flex-col gap-2">
+          <!-- pointer-events:none — this is a PICTURE of the header. Live, its links would navigate
+               the studio and its user menu would open, from a card whose job is to be clicked. -->
           <div
             data-band=${entry.profileName}
             class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-950"
-            style="height:${AURA_HEADER_HEIGHT_PX}px"
+            style="height:${AURA_HEADER_HEIGHT_PX}px;pointer-events:none"
           ></div>
 
           ${reasons.length ? html`
             <ul class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300 flex flex-col gap-0.5">
               ${reasons.map((reason) => html`<li>${reason}</li>`)}
             </ul>` : nothing}
-
-          <div class="flex items-center gap-3">
-            ${entry.isActive ? nothing : html`
-              <button type="button" ?disabled=${!!this._busy}
-                class="rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white disabled:opacity-50"
-                @click=${() => void this._activate(entry)}>${this._busy || this.msg.activate}</button>
-            `}
-            <button type="button" class="text-sm underline text-indigo-600 dark:text-indigo-400"
-              @click=${() => this._select(value)}>${this.msg.edit}</button>
-          </div>
         </div>
       </section>
     `;
@@ -372,6 +327,7 @@ export class PluginSelectHeader extends StateLitElement {
           .profileName=${entry.profileName}
           .variant=${entry.variant ?? ''}
           @header-applied=${() => { if (this.projectId) void this._load(this.projectId); }}
+          @header-activated=${() => { if (this.projectId) void this._load(this.projectId); }}
         ></aura--plugins--plugin-project-header-102020>
       </div>
     `;

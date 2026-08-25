@@ -63,6 +63,8 @@ export interface HeaderProfileView {
   shellMode: string;
   /** Variant slug of this header, or undefined for the project's default one. */
   variant?: string;
+  /** True when this is the profile the shell boots (`activeProfile`) — the app's default header. */
+  isActive: boolean;
 }
 
 /** Reads the header region of `l5/config.json` for display. Returns undefined when there is none. */
@@ -93,6 +95,7 @@ export function readHeaderProfileView(
     profileNames: Object.keys(header.profiles),
     shellMode: readString(clientShell?.mode) || 'spa',
     variant: variantFromTag(readString(profile.renderer?.tag), projectId),
+    isActive: name === (header.activeProfile || DEFAULT_HEADER_PROFILE),
     tag: readString(profile.renderer?.tag),
     entrypoint: readString(profile.renderer?.entrypoint),
     source: readString(profile.renderer?.source) || undefined,
