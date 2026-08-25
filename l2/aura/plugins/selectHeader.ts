@@ -396,7 +396,9 @@ export class PluginSelectHeader extends StateLitElement {
       const host = this.querySelector(`[data-band="${entry.profileName}"]`) as HTMLElement | null;
       if (!host) continue;
       const signature = JSON.stringify([entry.tag, entry.brand ?? null, entry.actions, entry.navLinks, entry.locales]);
-      if (this._mounted.get(entry.profileName) === signature) continue;
+      // The guard asks the DOM, not only the bookkeeping: navigating to a header and back destroys
+      // this list and builds a NEW host, so "already mounted" would skip an EMPTY band forever.
+      if (this._mounted.get(entry.profileName) === signature && host.firstElementChild) continue;
       this._mounted.set(entry.profileName, signature);
 
       const paths = headerPaths(this.projectId, { variant: entry.variant });

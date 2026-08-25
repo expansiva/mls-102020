@@ -213,6 +213,11 @@ export interface HeaderFormState {
   navLinks: string[];
   /** Locales the header speaks: the i18n block it generates AND what its switcher offers. */
   locales: string[];
+  /**
+   * What to do about the mark. The screen always sends `keep`: the mark is edited in its own section
+   * (file / pasted markup / agentGenerateLogo), not as a side effect of regenerating the header.
+   * `generate`/`none` stay for console callers of the agent.
+   */
   logo: 'keep' | 'generate' | 'none';
   logoStyle: string;
   logoBrief: string;

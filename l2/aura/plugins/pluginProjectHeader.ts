@@ -118,10 +118,6 @@ const message_en = {
   navLinks: 'Navigation links',
   navLinksHint: 'Pick only what belongs in the band — the aside already lists everything.',
   noRoutes: 'This project declares no routes yet.',
-  logoMode: 'Mark',
-  logoKeep: 'Keep the current one',
-  logoGenerate: 'Generate a new one',
-  logoNone: 'No mark',
   generate: 'Generate',
   generating: 'Generating…',
   draft: 'Draft (not applied)',
@@ -184,10 +180,6 @@ const messages: Record<string, MessageType> = {
     navLinks: 'Links de navegação',
     navLinksHint: 'Escolha só o que faz sentido na banda — o aside já lista tudo.',
     noRoutes: 'Este projeto ainda não declara rotas.',
-    logoMode: 'Marca',
-    logoKeep: 'Manter a atual',
-    logoGenerate: 'Gerar uma nova',
-    logoNone: 'Sem marca',
     generate: 'Gerar',
     generating: 'Gerando…',
     draft: 'Rascunho (não aplicado)',
@@ -238,6 +230,35 @@ const BUTTON = 'rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1
   + ' hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50';
 const BUTTON_PRIMARY = 'rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white'
   + ' disabled:opacity-50';
+/** Square icon button: the label lives in the tooltip, so it must never lose the title/aria-label. */
+const ICON_BUTTON = 'inline-flex items-center justify-center w-8 h-8 rounded-md border cursor-pointer'
+  + ' border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+  + ' hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors';
+/** Pressed: these two toggle a panel open, and a toggle with no visible state is a guessing game. */
+const ICON_BUTTON_ON = 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300';
+
+// Inline, currentColor, 16px: no icon font is loaded in this panel.
+const ICON = {
+  upload: svg`
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 15V3" /><path d="M7.5 7.5 12 3l4.5 4.5" />
+      <path d="M4 15v3.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V15" />
+    </svg>`,
+  paste: svg`
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 4h6v2.5H9z" />
+      <path d="M8.5 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.5" />
+      <path d="M9 12h6M9 16h4" />
+    </svg>`,
+  ai: svg`
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M13 3 14.6 8 19.5 9.5 14.6 11 13 16 11.4 11 6.5 9.5 11.4 8Z" />
+      <path d="M18.5 15.5 19.2 17.8 21.5 18.5 19.2 19.2 18.5 21.5 17.8 19.2 15.5 18.5 17.8 17.8Z" />
+    </svg>`,
+} as const;
 /** The thread the agent tasks are opened in (same convention as the design-system plugin). */
 const THREAD_NAME = '_102020_/l2/aura/plugins/pluginProjectHeader';
 
@@ -291,6 +312,8 @@ export class PluginProjectHeader extends PluginBaseModule {
   private msg: MessageType = message_en;
   /** Signature of what is mounted in the applied band, so `updated()` does not remount it. */
   private _mountedPreview = '';
+  /** Same, for the draft band. */
+  private _mountedDraft = '';
 
   createRenderRoot() {
     return this;
@@ -317,6 +340,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     this._draftParts = undefined;
     this._appliedTag = '';
     this._mountedPreview = '';
+    this._mountedDraft = '';
     this._markMode = 'none';
     this._markSvg = '';
     this._markBrief = '';
@@ -428,7 +452,8 @@ export class PluginProjectHeader extends PluginBaseModule {
       tag, this._view.brand ?? null, this._view.actions,
       this._view.navLinks, this._view.locales, this._view.heightPx,
     ]);
-    if (this._mountedPreview === signature) return;
+    // Same rule as the list: a signature match only counts while the band is actually IN the host.
+    if (this._mountedPreview === signature && host.firstElementChild) return;
     this._mountedPreview = signature;
     // The APPLIED band shows what is applied — the profile, not the unsaved form.
     await this._mountHeader(host, 'layout', borrowed ? 'appHeaderPreview' : 'appHeader', tag, {
@@ -443,6 +468,11 @@ export class PluginProjectHeader extends PluginBaseModule {
   private async _mountDraftPreview(): Promise<void> {
     const host = this.querySelector('[data-band="draft"]') as HTMLElement | null;
     if (!host || !this._previewTag) return;
+    // Guarded like the applied band: updated() runs on every keystroke in the form, and rebuilding
+    // the element each time made the draft band flicker while typing.
+    const signature = JSON.stringify([this._previewTag, this._form.actions, this._form.navLinks, this._form.locales]);
+    if (this._mountedDraft === signature && host.firstElementChild) return;
+    this._mountedDraft = signature;
     // The DRAFT band shows what the form asks for, which is what "Apply" would write.
     await this._mountHeader(host, 'layout', 'appHeaderPreview', this._previewTag, {
       ...(this._view?.brand ? { brand: this._view.brand } : {}),
@@ -633,6 +663,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     }
     this._previewTag = '';
     this._draftParts = undefined;
+    this._mountedDraft = '';
     const host = this.querySelector('[data-band="draft"]') as HTMLElement | null;
     host?.replaceChildren();
   }
@@ -815,6 +846,21 @@ export class PluginProjectHeader extends PluginBaseModule {
       : html`<span class="text-[10px] font-mono px-1 rounded bg-gray-200 dark:bg-gray-700 shrink-0">${flagChip(locale)}</span>`;
   }
 
+  /** One of the two toggles (paste / generate): pressed state included, since both open a panel. */
+  private _markModeButton(mode: 'paste' | 'generate', label: string, icon: TemplateResult) {
+    const on = this._markMode === mode;
+    return html`
+      <button
+        type="button"
+        title=${label}
+        aria-label=${label}
+        aria-pressed=${String(on)}
+        class="${ICON_BUTTON} ${on ? ICON_BUTTON_ON : ''}"
+        @click=${() => { this._markMode = on ? 'none' : mode; }}
+      >${icon}</button>
+    `;
+  }
+
   private _renderMark() {
     const brand = this._view?.brand;
     return this._card(this.msg.mark, html`
@@ -829,15 +875,13 @@ export class PluginProjectHeader extends PluginBaseModule {
         ${!brand?.logoSvg && !brand?.logoUrl
           ? html`<span class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noMark}</span>`
           : nothing}
-        <div class="flex items-center gap-3 ml-auto text-sm">
-          <label class="underline cursor-pointer text-indigo-600 dark:text-indigo-400">
-            ${this.msg.markFile}
+        <div class="flex items-center gap-1.5 ml-auto">
+          <label class=${ICON_BUTTON} title=${this.msg.markFile} aria-label=${this.msg.markFile}>
+            ${ICON.upload}
             <input type="file" accept=".svg,image/svg+xml" class="hidden" @change=${(e: Event) => void this._onMarkFile(e)} />
           </label>
-          <button type="button" class="underline text-indigo-600 dark:text-indigo-400"
-            @click=${() => { this._markMode = this._markMode === 'paste' ? 'none' : 'paste'; }}>${this.msg.markPaste}</button>
-          <button type="button" class="underline text-indigo-600 dark:text-indigo-400"
-            @click=${() => { this._markMode = this._markMode === 'generate' ? 'none' : 'generate'; }}>${this.msg.markGenerate}</button>
+          ${this._markModeButton('paste', this.msg.markPaste, ICON.paste)}
+          ${this._markModeButton('generate', this.msg.markGenerate, ICON.ai)}
         </div>
       </div>
 
@@ -1137,15 +1181,6 @@ export class PluginProjectHeader extends PluginBaseModule {
         <input class=${INPUT} placeholder=${this.msg.brandSubtitle}
           .value=${form.brandSubtitle} @input=${(e: Event) => set({ brandSubtitle: (e.target as HTMLInputElement).value })} />
       </div>
-      <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-        ${this.msg.logoMode}
-        <select class=${INPUT} .value=${form.logo}
-          @change=${(e: Event) => set({ logo: (e.target as HTMLSelectElement).value as HeaderFormState['logo'] })}>
-          <option value="keep">${this.msg.logoKeep}</option>
-          <option value="generate">${this.msg.logoGenerate}</option>
-          <option value="none">${this.msg.logoNone}</option>
-        </select>
-      </label>
     `;
   }
 
