@@ -1,5 +1,28 @@
 # n1-bootstrap — CHANGELOG
 
+## 2026-08-25 — the trace now records WHICH contract the runtime served
+
+The step already PROBED the creation skill to fail fast. It probed it, and then threw the answer away:
+the trace said `themePresent` and a summary, and nothing about the contract. So when a run produced a
+wrong molecule there was no way, afterwards, to tell whether the contract in the runtime was the
+published one — and the contracts are loaded with `await import`, which serves the MODULE, not the
+`.ts` on disk. Editing the source without publishing changes nothing, silently.
+
+Two additions:
+
+- `probeSkill` now returns a **fingerprint** of the text it loaded — `chars` and an FNV-1a hash
+  (`shared/contractFingerprint.ts`). The same function runs in node, so the pair computed over a
+  working copy compares to the pair in a trace by string equality.
+- the **usage** contract is probed too, and both go to the trace under `contracts`. It is
+  deliberately NOT gated: `n6-demo` and `n7-index` are the steps that read the usage, they run much
+  later, and a run that only fails there is worth finishing. Recording it here is what makes that
+  failure diagnosable instead of guessing which text the playground came from.
+
+Measured on 2026-08-25: two runs of the same prompt produced molecules that differed on a rule the
+contract does not state, and reconstructing which contract each had seen took reading the generated
+code. That is the cost this entry removes.
+
+
 ## 2026-07-29 — created (control item 3.3)
 
 Written together with the root (`agentNewMolecule2.ts`). Gate covers 9 codes with 13 tests.
