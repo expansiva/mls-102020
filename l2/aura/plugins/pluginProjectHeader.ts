@@ -300,6 +300,36 @@ export class PluginProjectHeader extends PluginBaseModule {
     if (this.autoPrepare) void this.prepare();
   }
 
+  /**
+   * Reacts to being pointed at ANOTHER header.
+   *
+   * The knob keeps this same element and only swaps the properties (lit reuses the DOM at that
+   * position), so without this the screen would keep showing the previous header's data — and the
+   * band would keep a BORROWED tag that belongs to it. Everything about the previous one is dropped.
+   *
+   * The first update is skipped: `firstUpdated` + autoPrepare owns the initial load.
+   */
+  willUpdate(changed: Map<string, unknown>) {
+    if (!this._projectId) return;
+    if (!changed.has('project') && !changed.has('profileName') && !changed.has('variant')) return;
+    this._view = undefined;
+    this._previewTag = '';
+    this._draftParts = undefined;
+    this._appliedTag = '';
+    this._mountedPreview = '';
+    this._markMode = 'none';
+    this._markSvg = '';
+    this._markBrief = '';
+    this._notes = '';
+    this._tab = 'brief';
+    // Empty the bands NOW: the reload is async, and until it lands the previous header's element
+    // would still be sitting there, looking like the one just selected.
+    for (const kind of ['applied', 'draft']) {
+      (this.querySelector(`[data-band="${kind}"]`) as HTMLElement | null)?.replaceChildren();
+    }
+    void this.prepare();
+  }
+
   async prepare(): Promise<void> {
     this.msg = messages[this.getMessageKey(messages)] ?? message_en;
     this._projectId = Number(this.project) || mls.actualProject || 0;
@@ -467,7 +497,17 @@ export class PluginProjectHeader extends PluginBaseModule {
 
     const model = mls.editor.getModel(info) as mls.editor.IModelTS | undefined;
     if (!model) return;
-    await mls.l2.typescript.compileAndPostProcess(model, true, true);
+    // The RESULT matters: a file that does not compile serves no .js, and the only symptom used to be
+    // "<tag> was not registered" three screens later, with nothing naming the actual error.
+    const compiled = await mls.l2.typescript.compileAndPostProcess(model, true, true);
+    if (!compiled) {
+      const first = (model.compilerResults?.errors ?? [])
+        .map((diagnostic) => (typeof diagnostic.messageText === 'string'
+          ? diagnostic.messageText
+          : diagnostic.messageText?.messageText ?? ''))
+        .filter(Boolean)[0];
+      throw new Error(`${ref} did not compile${first ? `: ${first}` : ''}`);
+    }
   }
 
   private _requestId(prefix: string): string {

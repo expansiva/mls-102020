@@ -123,23 +123,39 @@ export async function mountHeaderBand(host: HTMLElement, request: BandMountReque
     return undefined;
   }
 
+  // Imported by URL, with a stamp, BEFORE trying collabImport.
+  //
+  // collabImport derives the cache-busting version from the editor model, and it looks the model up
+  // with `mls.actualLevel` (collabImport.getFileVersion) — here that is the level of the SERVICE (l5),
+  // not the level of the file (l2). The lookup misses, the version comes back empty, and a file that
+  // was just written locally is requested with no stamp: the studio answers with what it already had,
+  // which for a brand-new variant is nothing. Hence "was not registered" for a file that is on disk.
+  const url = `/_${request.projectId}_/l2/${request.folder ? `${request.folder}/` : ''}${request.shortName}`;
+  let lastError = '';
+
   for (let attempt = 0; attempt < 12; attempt += 1) {
     try {
-      await collabImport({
-        project: request.projectId,
-        folder: request.folder,
-        shortName: request.shortName,
-        extension: '.ts',
-      });
-    } catch {
-      // keep retrying: the module may not be compiled yet
+      await import(/* @vite-ignore */ `${url}?t=${Date.now()}`);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+      try {
+        // Fallback: the published path, resolved by collabImport as usual.
+        await collabImport({
+          project: request.projectId,
+          folder: request.folder,
+          shortName: request.shortName,
+          extension: '.ts',
+        });
+      } catch (fallback) {
+        lastError = fallback instanceof Error ? fallback.message : String(fallback);
+      }
     }
     if (customElements.get(request.tag)) break;
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 
   if (!customElements.get(request.tag)) {
-    return `${request.tag} was not registered (is the file compiled?)`;
+    return `${request.tag} was not registered${lastError ? ` — ${lastError}` : ' (is the file compiled?)'}`;
   }
   host.replaceChildren(bandElement(request.tag, request.bootConfig, request.regionProps));
   return undefined;
