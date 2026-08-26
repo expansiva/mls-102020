@@ -11,7 +11,7 @@ from scratch, not built yet — see "E8" in `spec.md`). **No LLM call anywhere i
 @@agentSyncMoleculeCatalog atualizar groupEnterText
 @@agentSyncMoleculeCatalog atualizar grupos groupEnterText, groupSelectOne e groupViewTable
 ```
-
+ 
 With nothing after the mention, or `all`, every group the project has (with a `skills/index.ts` entry) is
 synced. A specific list is comma/`e`-separated. `index.ts` migration runs automatically wherever it
 applies — no opt-in needed (see `spec.md` → `decisions.migrationIsAutomatic`).
