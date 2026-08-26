@@ -10,7 +10,7 @@ export const skill = `
 | Field       | Value                              |
 |-------------|------------------------------------|
 | **Name**    | \`moleculePlaygroundGenerator\`    |
-| **Version** | \`2.7.0\`                          |
+| **Version** | \`2.9.0\`                          |
 
 ---
 
@@ -161,9 +161,23 @@ All elements MUST include \`dark:\` variants so the playground renders correctly
 > was produced twice by reading this template as if it described the page instead of the card — the other
 > cards become static screenshots.
 >
-> ⚠️ **Slot content is LITERAL TEXT** — \`<Label>Copy</Label>\`. Bindings resolve on ATTRIBUTES only: a
-> \`{{playground.basic.label}}\` written inside a slot is printed on the screen as that token. Zero of the
-> 196 pages in the three projects do it; a deterministic gate now refuses it.
+> ⚠️ **Slot content takes no BINDING.** A \`{{playground.basic.label}}\` written inside a slot is printed
+> on the screen as that token — bindings resolve on ATTRIBUTES only. Zero of the 196 pages in the three
+> projects do it; a deterministic gate now refuses it. So slot content is **literal**:
+> \`<Label>Copy</Label>\`.
+>
+> ⚠️ **Literal does not mean text-only — a WEB COMPONENT is valid slot content**, with literal
+> attribute values. It is how a slot gets an editor, and a molecule whose contract offers one cannot be
+> demonstrated without it: measured 2026-08-25, three playgrounds in a row for a CRUD table were
+> generated with plain text in every cell, so clicking "edit" opened a row where nothing changed. The
+> gate refuses the BINDING, never the component.
+>
+> ⛔ **And a native \`<input>\` is NOT an editor here** — this is the trap, not a style preference. A
+> molecule propagates \`is-editing\` only to CUSTOM ELEMENTS (tags carrying a hyphen), so a raw
+> \`<input>\` **never leaves edit mode**: it looks editable while the row is being read, and stays
+> editable after save. It also escapes the theme and the tokens. Measured 2026-08-25: a run wrote
+> \`<input value="Ana Oliveira">\` in a cell and that row could never close. Use the group's own
+> component — \`groupentertext--ml-enter-text\` for text, and its siblings for the other types.
 
 \`\`\`html
 <div class="bg-white dark:bg-slate-900 min-h-screen">
@@ -224,6 +238,8 @@ All elements MUST include \`dark:\` variants so the playground renders correctly
 O elemento \`<demo>\` DEVE:
 - Ter um \`id\` único (ex: demo-basic, demo-disabled)
 - Conter o HTML do componente (funciona independente do editor)
+- Quando o slot aceita componente — e o contrato do grupo diz quando —, pôr o componente ali, com
+  valores literais nos atributos dele
 
 \`\`\`html
 <demo id="demo-basic">
@@ -232,6 +248,25 @@ O elemento \`<demo>\` DEVE:
     error="{{playground.basic.error}}">
     <Label>Field</Label>
   </molecules--ml-component>
+</demo>
+\`\`\`
+
+Um slot que aceita componente — aqui a célula de uma tabela com edição em linha, cujo editor é sempre
+do consumidor, nunca da molécula:
+
+\`\`\`html
+<demo id="demo-editing">
+  <groupviewtable--ml-inline-edit-table>
+    <TableBody>
+      <TableRow key="1">
+        <TableCell><groupentertext--ml-enter-text value="Ana Silva"></groupentertext--ml-enter-text></TableCell>
+        <RowActions>
+          <RowAction action="edit">Editar</RowAction><RowAction action="save">Salvar</RowAction>
+          <RowAction action="cancel">Cancelar</RowAction>
+        </RowActions>
+      </TableRow>
+    </TableBody>
+  </groupviewtable--ml-inline-edit-table>
 </demo>
 \`\`\`
 
@@ -270,7 +305,9 @@ O widget:
 - [ ] Cada demo tem namespace próprio
 - [ ] Cada \`<demo>\` tem id único e contém o HTML do componente
 - [ ] **CADA exemplo** tem o cartão completo: \`Properties\` com um widget por propriedade ligada, e \`HTML\` apontando para o seu \`<demo id>\`
-- [ ] Conteúdo de slot é texto literal — nunca \`{{playground...}}\` dentro do slot
+- [ ] Conteúdo de slot sem binding — nunca \`{{playground...}}\` dentro do slot; valores literais
+- [ ] Slot que aceita componente tem o **componente** no exemplo (não texto puro), com atributos literais
+- [ ] Nenhum \`<input>\`/\`<select>\`/\`<textarea>\` **nativo** dentro de slot — \`is-editing\` não alcança tag sem hífen, e o campo nunca sai de edição
 - [ ] string → aura--molecules--playground--widget-playground-state-text-102020
 - [ ] number → aura--molecules--playground--widget-playground-state-number-102020
 - [ ] boolean → aura--molecules--playground--widget-playground-state-boolean-102020
@@ -292,5 +329,7 @@ O widget:
 | 2.7.0   | 2026-08-18 | Every example carries the full card (Properties + HTML details); slot content is literal text, never a binding |
 | 2.5.0   | 2026-04-17 | Added §2 explicit rule: tag name must be copied from @customElement, never derived |
 | 2.6.0   | 2026-04-22 | Added dark mode: dark: variants on all styling elements, page root wrapper, updated Demo Card example and checklist |
+| 2.8.0   | 2026-08-25 | Slot content: the rule is "no BINDING", not "text only" — a web component is valid slot content, which is how a slot gets an editor; §6.3 gained the example and the checklist the item |
+| 2.9.0   | 2026-08-25 | The consequence the 2.8.0 left out: a native \`<input>\` in a slot is not an editor — \`is-editing\` reaches only custom elements, so it never leaves edit mode. Measured the same day, on a run that read 2.8.0 |
 
 `

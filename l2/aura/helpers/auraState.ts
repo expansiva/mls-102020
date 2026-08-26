@@ -22,6 +22,14 @@ export interface IAuraState {
     actualDevice: string | null;
     actualLayout: number | null;
     actualDesignSystem: number | null;
+    /**
+     * Header the app boots — the `activeProfile` of `clientShell.regions.header` in l5/config.json.
+     *
+     * NOT persisted with the rest of the aura state: the config is the truth, and a copy in
+     * localStorage would go stale the moment someone activates another header (or pulls the project).
+     * Whoever reads the config sets it (the l5 Header knob does, on load and on activation).
+     */
+    actualHeader: string | null;
     actualPage: IAuraPage | null;
 }
 
@@ -98,6 +106,8 @@ export function AuraInitState(): void {
         actualDevice: getActualDevice(),
         actualLayout: getActualLayout(),
         actualDesignSystem: getActualDesignSystem(),
+        // Read from l5/config.json by the Header knob; there is nothing to seed it from here.
+        actualHeader: null,
         actualPage: getActualPage(),
     } satisfies IAuraState);
 }
@@ -171,6 +181,7 @@ export function setAuraStateFromPageSource(project: number, source: string): IAu
             actualDevice: parsed.device,
             actualLayout: parsed.layout,
             actualDesignSystem: parsed.designSystem,
+            actualHeader: null,
             actualPage: parsed.actualPage,
         } satisfies IAuraState);
     }
@@ -253,7 +264,9 @@ export function setActualLanguage(module: string, language: string | null): void
 
 const LS_KEY = 'AuraProjects';
 
-type IAuraProjectEntry = Omit<IAuraState, 'actualProject'>;
+// actualHeader is deliberately out: it mirrors l5/config.json, so persisting it would mean
+// restoring a header that the config may no longer point at.
+type IAuraProjectEntry = Omit<IAuraState, 'actualProject' | 'actualHeader'>;
 type AuraProjectsStore = Record<number, IAuraProjectEntry>;
 
 function readStore(): AuraProjectsStore {

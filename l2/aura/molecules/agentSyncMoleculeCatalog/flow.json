@@ -1,0 +1,104 @@
+{
+  "flowId": "agentSyncMoleculeCatalog",
+  "schemaVersion": "2026-08-25-syncmoleculecatalog-v2-e8a",
+  "specFirst": "Written per skills/agentsBestPractices.md §1. This file, spec.md and the per-step CHANGELOG.md are the design record. The decisions were closed with the product owner between 2026-08-17 and 2026-08-25 (recorded, section by section, in the control document on the author's machine — never cited by path here, per shared/localDocRefs.test.ts) and are restated in decisions[] below; when behaviour must change, change this file first, then the code.",
+  "description": "Generates the molecule catalog an LLM consumer reads to choose components: l2/molecules/skill.ts (level 1, project) and, per group, index.defs.ts + index.html (level 2) — all 100% derivable, no LLM. E8 adds s3-indexts: migrating a group's index.ts showcase page from its hand-authored scenario table to a thin call into a shared renderer (also deterministic, no LLM — E8a, 30 of 32 groups). Creating an index.ts from scratch for a group that has none (E8b, 2 groups, the one place this agent uses an LLM) is NOT built — see notBuilt.",
+  "principles": [
+    "THIS AGENT SPENDS NO LLM CALL, EVER, IN THIS BUILD. Discovery, mention scoping (helpers/syEntry), and now migration-vs-creation triggers (helpers/syMigrateIndexTs) are all deterministic. The root's own bootstrap step uses AgentIntentAddMessageAI.skipRootLLM — the same mechanism agentChangeFrontend already ships with — so the platform gets its step tree without a classifier deciding something that was never a classification. E8b (the only step that would call an LLM) is not built.",
+    "REUSE THE PLUMBING. Intents and l4 mechanics come from agentNewMolecule2/helpers (nmFs, nmSteps), the same way agentChooseMolecules reuses them. One new function was added to the shared nmFs.ts (nmGroupDefsFile) — a small, additive extension, not a fork.",
+    "THE TAG IS NEVER DERIVED FROM A FILENAME. It comes from the real `@customElement(...)` decorator of the molecule's own .ts (helpers/syExtract.syExtractTag) — the rule that got 45/45 tags right in the pilot.",
+    "SCENARIOS ARE THE ONE FIELD THAT IS NOT DERIVED. They are editorial. On a group's first sync they are harvested mechanically from its CURRENT index.ts (a data read, not composition — no LLM); on every later sync, whatever is already in the group's index.defs.ts is PRESERVED untouched. See decisions.scenarioHarvest.",
+    "GROUP -> PROJECT, NEVER IN PARALLEL. s2 (skill.ts) dependsOn every s1 (index.defs.ts) anchor of the run and reads their l4 artifacts, never level 2 source text directly. s3 (migration) dependsOn its OWN group's s1 anchor only — it needs index.defs.ts to exist before index.ts starts importing it, nothing from other groups.",
+    "HONESTY OVER SILENCE. A group with no skills/index.ts entry is IGNORED WITH A REASON, never dropped quietly (D4). The report always says the catalog is written but not published (D5, by impossibility — no publish API exists on this platform). Every matched group's index.ts status (migrated / needs creation / migration failed / already migrated) is reported by name — a run never reads as having silently skipped a page."
+  ],
+  "decisions": {
+    "defaultLlmCost": "Zero. Measured: none of the pure helpers or the four step agents (agentSyGroup, agentSyProject, agentSyIndexTs, agentSyReport) call an LLM. Confirmed viable via a real precedent: mls-102020/l2/agentChangeFrontend/agentChangeFrontend.ts already ships AgentIntentAddMessageAI.skipRootLLM for exactly this purpose.",
+    "rootPlanting": "Single phase, unlike agentChooseMolecules. That family needs two phases because the fan-out size (how many groups an LLM chose) is unknown until c1 answers. Here discovery is a stor scan the root itself can do synchronously in beforePromptImplicit, so every step (s1 x N, s3 x M, s2, s4) is planted in ONE batch, dependency edges included.",
+    "groupOrder": "Alphabetical by folder — NOT skills/index.ts order. The first hypothesis (matched groups follow skills/index.ts's own order) fit 4 of the 6 seeded groups and was falsified by E5's regeneration: the seed's skill.ts lists 'groupViewTable' BEFORE 'groupEnterDate', the opposite of their skills/index.ts order. A second hypothesis (skills/index.ts order full stop) was also tried and also falsified. The seed's actual order looks like an artifact of the ad-hoc pilot seeding process, not a rule — alphabetical is simple, deterministic, and reproduces every OTHER structural property of the seed exactly.",
+    "purposeText": "The FULL skills/index.ts `description`, untruncated, for both level 1 and level 2's 'Objetivo do grupo' line. The seed truncates it (drops a trailing 'Implementations include...' / 'Supports...' sentence in most groups, but keeps the WHOLE description for groupSelectOne, which has neither trigger phrase). Measured on 2026-08-25: skills/index.ts has been hand-edited since the pilot's 2026-08-21 seed, so no clean split-point formula reproduces all 6 groups from the CURRENT source text. Publishing the full description is simple, always in sync with the manually-maintained source of truth — a fragile truncation heuristic would be worse than a longer but always-accurate line.",
+    "scenarioHarvest": "Not in the original E1-E7 helper list, but required by the ordering rule itself: s1 runs before s3, and s1 must write a complete index.defs.ts — including `scenarios` — even when s3 never runs. So the harvest lives in s1 (helpers/syExtract.syHarvestScenarios), reading the group's CURRENT index.ts. Table columns use free, abbreviated field names (`detailGrid`, `advanced`, plain `data` in groupViewTable; `mlDateIntervalDrag` keeping the 'ml' prefix in others) — matched to a molecule by TOKEN SET, not string similarity, in three tiers: (1) exact set match; (2) the unique SMALLEST superset (plain `data` is a subset of 5 `*-data-*` molecules; `ml-data-table` alone has no token beyond what the field named); (3) a unique squashed-substring match, for a compound word spelled as ONE word in the filename but split by camelCase in the field (`mindMap` vs `ml-view-hierarchy-mindmap`'s `mindmap`). A genuine tie at any tier is left unmatched, never guessed. E8 prep found and fixed two bugs in this matcher by sweeping all 30 real groups (D-E3, below) — 7 of 30 looked 'foreign' before the fixes, 1 after.",
+    "migrationIsAutomatic": "SINCE E8, index.ts migration (G3) is NOT gated behind the mention's opt-in phrase anymore. E1-E7 treated all index.ts work as opt-in because it was assumed authorial and risky (up to 795 hand-written lines). E8's measurement (todo-implementar-E8-index-ts.md §1) showed migration is actually deterministic text surgery with a cheap, safe failure mode (the gate in helpers/syMigrateIndexTs.ts either applies cleanly or changes nothing) — so the asymmetric-cost argument for opt-in no longer applies to it, and it now runs automatically whenever a matched group has the G3 trigger. The opt-in phrase is still parsed and still recorded (SyRunInput.includeIndexTsRequested), because it still matters for a G1 group (creation, E8b, LLM) — not built, so a request for it gets an honest 'not built yet' from s4, never silence.",
+    "s3Migration_D-E1_sharedModuleLocation": "D-E1 (closed with the product owner, 2026-08-25): the generic table-rendering code lives in mls-102020/l2/aura/molecules/shared/ (indexReferenceTable.ts + indexReferenceTableData.ts), imported FROM mls-102040's index.ts files — chosen over the alternative of putting it inside mls-102040 itself, or duplicating it per group. ⚠️ RISK NAMED AND ACCEPTED, NOT DISCOVERED AS SAFE: there is no existing precedent in this repo for mls-102040 source importing `/_102020_/` (only the reverse, and the unrelated `enhancement=` triple-slash metadata directive) — searched and confirmed absent. A scoped `tsc` compile of the migrated groupEnterDate/groupViewTable against the real shared module DID resolve cleanly (E8a acceptance, below), which is strong TYPE-LEVEL evidence, but the Studio's own runtime module/dependency resolution is a different system and was not exercised. If it does not resolve there, every migrated page's reference table breaks the same way, all at once, which is what makes it easy to notice and revert.",
+    "s3Migration_D-E2_color": "D-E2 (closed): header color is derived from the molecule's ALPHABETICAL index in molecules[] (helpers/syLabels.syPaletteColor), not harvested from the pre-migration page's historical import-order pairing — a deliberate visual change, chosen over preserving the old color-per-tag mapping (which the product owner considered, but declined, given the coupled D-E2b below). Tailwind classes are a STATIC lookup table (shared/indexReferenceTableData.ts COLOR_CLASSES), never string-interpolated (`text-${color}-600`), because Tailwind's build scans literal source text for class names and a computed one is invisible to it.",
+    "s3Migration_D-E2b_columnOrder": "Follow-up to D-E2, closed the same session: because color now comes from the alphabetical index, the COLUMN ORDER also became alphabetical (matching molecules[]) rather than staying in the page's historical order — otherwise colors would read as scattered instead of in a clean left-to-right sequence. This is why block ④ (the reference-table markup) could not stay literally untouched, which led directly to s3Migration_consolidation below.",
+    "s3Migration_consolidation": "Once color+order already required editing the table's markup (D-E2b) and D-E1 already asked for a 'thin call site', the whole `renderReferenceTable()` method collapses to ~3 lines (`return renderCatalogReferenceTable(molecules, scenarios);`) instead of the ①②③-only surgery the todo originally scoped (leaving ④'s ~40-90 lines of markup in each group's own file). Confirmed explicitly with the product owner as a deliberate, bigger-than-originally-scoped simplification, not a unilateral expansion — the todo's own measurement (§1) that the markup is structurally IDENTICAL across groups is what makes unifying it lossless.",
+    "s3Migration_D-E3_foreignColumns": "D-E3 (closed, WITH a real measurement, not an impression): swept all 30 real groups with an index.ts for scenario-table fields matching no LOCAL molecule (candidates for 'this recommends a molecule from another group'). Before fixing the two matcher bugs above: 7 of 30 groups, 19 columns. After: 1 of 30 (`groupEnterNumber`'s 'Range Slider' column, genuinely `ml-number-range-slider` from `groupEnterNumberInterval`). Decision: such a column never renders (the product owner's own constraint — 'nenhum index deve referenciar moléculas de outros grupos' — already rules out showing it), and a scenario row left with ZERO in-group recommendations after dropping it is OMITTED from the rendered table entirely (not shown as an all-empty row) — it stays in scenarios[] in the .defs.ts either way, so no data is lost, only a dead row is not drawn.",
+    "s3Migration_D-E4_title": "D-E4 (closed): swept all 30 groups' `<h2>` reference-table title — 28 say 'Quick reference', 2 (`groupTriggerAction`, `groupViewTable`) say 'Referência rápida' (found during the sweep; the todo's own text only knew about groupViewTable). The shared module hardcodes 'Quick reference' for every group, normalizing both outliers. This is the one place the migration edits prose inside what used to be block ④ — accepted because it is a single, uniform, swept correction, not a per-group judgment call."
+  },
+  "conventions": {
+    "input": "'@@agentSyncMoleculeCatalog [atualizar [grupo|grupos] <lista separada por vírgula/e ou all>] [incluindo o arquivo index.ts | com todos os arquivos]'. Parsed by helpers/syEntry (pure, no I/O). A mention that names the index page in an unrecognized way ('e a página do grupo', 'com o showcase') is REFUSED, naming the two recognized phrases — never silently interpreted either way. Since E8, the opt-in phrase no longer gates migration (decisions.migrationIsAutomatic) — it is parsed only because it still matters for a G1 group (creation, not built).",
+    "discovery": "Group folders come from the project's OWN directories (helpers/syFs.syScanProjectGroupFolders — a stor scan), matched case-insensitively against skills/index.ts (the manual, editorial purpose-phrase registry). A folder with no skills/index.ts entry is IGNORED WITH A REASON, not skipped silently (D4) — today that is 'groupNavigateMain'.",
+    "runKey": "Timestamp-based ('sync-YYYYMMDDTHHmmss'), always unique.",
+    "artifactsAreTheContract": "s2 and s4 read what s1/s3 already wrote to l4 (SyGroupArtifact / SyIndexTsArtifact), never a group's own index.defs.ts or index.ts source text — one source of truth per value.",
+    "writesNothingUnexpected": "skill.ts, index.defs.ts, index.html — and now index.ts, but ONLY the renderReferenceTable() method plus two import lines (helpers/syMigrateIndexTs.syMigrateIndexTs) — never index.less, index.test.ts, or any usage.ts/creation.ts (manual, decision of 2026-08-17)."
+  },
+  "treeOverview": [
+    "root (beforePromptImplicit, no LLM): parse the mention, scan the project, compute G1/G3 triggers, plant everything in one batch",
+    "  s1-<group> x N   (code)  one index.defs.ts + index.html per matched group",
+    "  s3-<group> x M   (code)  migrates index.ts for each G3-triggered group, dependsOn its own s1 anchor",
+    "  s2-project       (code)  skill.ts, dependsOn every s1 anchor",
+    "  s4-report        (code)  report.json + readable summary, dependsOn s2 and every s3 anchor"
+  ],
+  "steps": [
+    {
+      "planId": "s1-<groupfolder>",
+      "agentName": "agentSyGroup",
+      "model": "none (deterministic)",
+      "dependsOn": [],
+      "goal": "For ONE group: read every molecule's .ts (tag) and .defs.ts (Objective, layoutConfig) if present; compute which layoutConfig axes vary across the siblings; resolve scenarios (preserve existing, else harvest from index.ts, else empty); render and write index.defs.ts + index.html.",
+      "output": { "artifacts": ["l2/molecules/<group>/index.defs.ts", "l2/molecules/<group>/index.html", "l4/agentSyncMoleculeCatalog/<runKey>/s1-<group>.json"], "result": "SyGroupArtifact + warnings" },
+      "doneAnchor": "s1-<groupfolder>-done"
+    },
+    {
+      "planId": "s3-<groupfolder>",
+      "agentName": "agentSyIndexTs",
+      "model": "none (deterministic) — E8a only",
+      "dependsOn": ["s1-<groupfolder>-done (its own group)"],
+      "goal": "Planted ONLY for a group with the G3 trigger (index.ts exists, not yet migrated). Replaces the whole renderReferenceTable() method body with a 3-line call into shared/indexReferenceTable.ts and adds the two imports it needs (helpers/syMigrateIndexTs). Never planted for G1 (no index.ts — E8b, not built) or a group with no trigger.",
+      "output": { "artifacts": ["l2/molecules/<group>/index.ts (edited)", "l4/agentSyncMoleculeCatalog/<runKey>/s3-<group>.json"], "result": "SyIndexTsArtifact" },
+      "doneAnchor": "s3-<groupfolder>-done"
+    },
+    {
+      "planId": "s2-project",
+      "agentName": "agentSyProject",
+      "model": "none (deterministic)",
+      "dependsOn": ["every s1-<groupfolder>-done of this run"],
+      "goal": "Read every s1 group artifact of this run's input.json list and render l2/molecules/skill.ts from them, alphabetical by folder.",
+      "output": { "artifact": "l2/molecules/skill.ts + l4/agentSyncMoleculeCatalog/<runKey>/s2-project.json", "result": "SyProjectArtifact" },
+      "doneAnchor": "s2-done"
+    },
+    {
+      "planId": "s4-report",
+      "agentName": "agentSyReport",
+      "model": "none (deterministic)",
+      "dependsOn": ["s2-done", "every s3-<groupfolder>-done planted this run"],
+      "goal": "Aggregate input.json + every s1/s2/s3 artifact into report.json and a readable summary: what was written, ignored groups with reasons, index.ts status PER GROUP (migrated / creation-needed / migration-failed / already-migrated), and that the catalog is written but not published.",
+      "output": { "artifact": "l4/agentSyncMoleculeCatalog/<runKey>/report.json", "result": "the summary, in the step trace" },
+      "doneAnchor": "s4-done"
+    }
+  ],
+  "artifacts": {
+    "l4/agentSyncMoleculeCatalog/<runKey>/input.json": "the resolved run scope: matched/ignored/requested-but-ignored/unknown groups, indexTsMigrationGroups, indexTsCreationGroups",
+    "l4/agentSyncMoleculeCatalog/<runKey>/s1-<groupfolder>.json": "one group's written catalog summary (SyGroupArtifact)",
+    "l4/agentSyncMoleculeCatalog/<runKey>/s3-<groupfolder>.json": "one group's index.ts migration outcome (SyIndexTsArtifact)",
+    "l4/agentSyncMoleculeCatalog/<runKey>/s2-project.json": "the project skill.ts summary (SyProjectArtifact)",
+    "l4/agentSyncMoleculeCatalog/<runKey>/report.json": "the consolidated run report, machine-readable"
+  },
+  "acceptance": {
+    "e5RegenerationCheck": "(E1-E7) Regenerating the 6 pilot groups from their real source files and diffing against the seeded v2 index.defs.ts: STRUCTURALLY IDENTICAL for all 6. skill.ts: same `groups[]` entries and `Moléculas:` lines as SETS (order aside — decisions.groupOrder).",
+    "e8aStrongAcceptance": "(E8a, todo §3) Migrated groupEnterDate (4 molecules) and groupViewTable (12, the largest/most complex real index.ts at 796 lines) from their REAL current index.ts. Both: braces balanced after the surgery; hero/showcase cards/class declaration/render() left byte-identical; renderReferenceTable() collapsed to the 3-line delegate; the two new imports landed right after the last existing import. A scoped tsc compile of BOTH migrated files against real index.defs.ts content (regenerated for the check) and the real shared module: CLEAN, zero errors — including the cross-project mls-102040 -> mls-102020 import (s3Migration_D-E1_sharedModuleLocation). Reverted after the check; nothing in mls-102040 is committed by this agent's own work.",
+    "tagResolution": "Every tag in every artifact is read from a real @customElement decorator (helpers/syExtract.syExtractTag) — by construction, not by a post-hoc gate.",
+    "noMoleculeDisappears": "Every molecule file found under a group's folder appears in molecules[] — with defs:null and the out-of-contract markdown line when it has no .defs.ts."
+  },
+  "outOfScope": [
+    "E8b: creating an index.ts from scratch for a G1 group (groupNavigateMain, groupEnterDateTime) — the only place this agent would use an LLM. todo §6 explicitly allows stopping after E8a; a run that touches a G1 group gets an honest 'creation-needed, not built yet' from s4, never silence.",
+    "n7-index / i6-index / v4-index and the two legacy agents (agentIndexGroupPage, agentUpdateIndexGroupPage) — excluding them is a decision for later, after this agent is proven",
+    "publishing the written catalog — no publish API exists on this platform (D5); the report says so every run",
+    "an agent-to-agent trigger from agentNewMolecule2/agentImproveMolecule2 into this one — depends on an unverified platform capability",
+    "recoloring the showcase CARDS (only the reference table is in play — todo §8) and normalizing intro prose beyond the title (D-E4)"
+  ],
+  "planting": "Single phase (see decisions.rootPlanting). The root's beforePromptImplicit does discovery + entry parsing + G1/G3 trigger detection itself and returns, in ONE batch: an add-message-ai intent with skipRootLLM:true (creates the step tree), one add-step per matched group (s1, status waiting_human_input), one add-step per G3-triggered group (s3, waiting_dependency on that group's own s1 anchor), s2 (waiting_dependency on every s1 anchor), s4 (waiting_dependency on s2's anchor plus every planted s3's anchor). All planted with parentStepId:1, the same convention agentChangeFrontend's bootstrap uses.",
+  "notBuilt": {
+    "s3-indexts (E8b only)": "Creating index.ts for a G1 group (no index.ts at all) is not built — see outOfScope. E8a (migration, G3) IS built."
+  }
+}

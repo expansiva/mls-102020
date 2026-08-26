@@ -63,6 +63,10 @@ export function nmHtmlFile(groupFolder: string, shortName: string): NmFileInfo {
 export function nmGroupIndexFile(groupFolder: string, extension: '.ts' | '.html'): NmFileInfo {
   return nmMoleculeFile(groupFolder, 'index', extension);
 }
+/** The group's own catalog, level 2 (agentSyncMoleculeCatalog): <groupFolder>/index.defs.ts. */
+export function nmGroupDefsFile(groupFolder: string): NmFileInfo {
+  return nmMoleculeFile(groupFolder, 'index', '.defs.ts');
+}
 
 export function nmThemeFile(): NmFileInfo {
   return { project: nmDestProject(), level: 2, folder: 'skills', shortName: 'theme', extension: '.ts' };

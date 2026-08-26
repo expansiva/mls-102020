@@ -14,6 +14,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as playgroundGeneratorSkill } from '/_102020_/l2/aura/molecules/skills/playgroundGenerator.js';
+import { contractFingerprint } from '/_102020_/l2/aura/molecules/shared/contractFingerprint.js';
 import {
   NM_AGENT_FOLDER,
   isRecord,
@@ -160,6 +161,17 @@ async function afterPromptStep(
     attempt,
     ok: issues.length === 0,
     examples: examples.length,
+    // WHICH texts wrote this playground. The demo comes from TWO skills — the group's usage contract
+    // and the playground generator — and `n1-bootstrap` fingerprints only the group's. The generator
+    // is the one that decides the SHAPE of slot content, so a page whose cells came out as plain text
+    // is a question about this file's version, and until now the trace could not answer it.
+    //
+    // `loadGroupUsageSkill` degrades to a placeholder in silence, so `loaded` here is the group's
+    // usage really arriving — not the fallback text being fingerprinted as if it were the contract.
+    skills: {
+      playgroundGenerator: { loaded: true, ...contractFingerprint(playgroundGeneratorSkill) },
+      groupUsage: usedGroupUsage(await loadGroupUsageSkill(ctx)),
+    },
     ...(issues.length ? { error: errorText, source: html } : {}),
   });
 
@@ -214,15 +226,23 @@ async function readArtifacts(runKey: string): Promise<{ ctx: MoleculeContext; pl
   return { ctx, plan };
 }
 
+const NO_GROUP_USAGE = '(this group has no usage skill)';
+
 async function loadGroupUsageSkill(ctx: MoleculeContext): Promise<string> {
-  if (!ctx.groupSkill.usageReference) return '(this group has no usage skill)';
+  if (!ctx.groupSkill.usageReference) return NO_GROUP_USAGE;
   try {
     const mod = await import(ctx.groupSkill.usageReference) as { skill?: unknown };
-    return typeof mod.skill === 'string' && mod.skill.trim() ? mod.skill : '(this group has no usage skill)';
+    return typeof mod.skill === 'string' && mod.skill.trim() ? mod.skill : NO_GROUP_USAGE;
   } catch {
     // The usage skill is a nice-to-have for the demo, not an admission requirement.
-    return '(this group has no usage skill)';
+    return NO_GROUP_USAGE;
   }
+}
+
+/** The usage contract as it REACHED the prompt — the placeholder is an absence, not a version. */
+function usedGroupUsage(text: string): Record<string, unknown> {
+  const missing = text === NO_GROUP_USAGE;
+  return { loaded: !missing, ...(missing ? { chars: 0, hash: null } : contractFingerprint(text)) };
 }
 
 function buildBackgroundSection(ctx: MoleculeContext): string {

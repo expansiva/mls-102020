@@ -10,7 +10,10 @@ import {
   formFromProfile,
   readHeaderBackup,
   readHeaderDraft,
+  activateHeaderProfile,
+  applyBrandTexts,
   countProjectDesignSystems,
+  listProjectHeaders,
   readHeaderProfileView,
   readLogoDraft,
   readProjectLanguages,
@@ -18,7 +21,14 @@ import {
   restoreHeaderBackup,
   scopeTokensCss,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
-import { buildHeaderSource, headerPaths } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
+import {
+  buildHeaderSource,
+  headerPaths,
+  isProjectHeaderTag,
+  pointHeaderProfileAtProject,
+  slugVariant,
+  variantFromTag,
+} from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
 
 // Fictitious project: the fixtures must not depend on a real project in the workspace.
@@ -82,8 +92,8 @@ test('the view reports the profile the shell boots, and whether it is the projec
 
 test('the form starts from what the project already has', () => {
   const form = formFromProfile(readHeaderProfileView(config(), PROJECT), ['pt-BR', 'en']);
-  assert.equal(form.brandTitle, 'Sample App');
-  assert.equal(form.brandSubtitle, 'Operations');
+  // The brand is NOT in the form: it is config, edited in its own section.
+  assert.equal('brandTitle' in form, false);
   assert.deepEqual(form.actions, ['language', 'user']);
   assert.equal(form.profileName, 'defaultAura');
   // No selection on the profile: the header speaks every language of the project.
@@ -141,8 +151,8 @@ test('the project languages, themes and routes are read from the two documents',
 // ── the request ────────────────────────────────────────────────────────────
 
 test('the request is always a draft, and the local gate runs before the round trip', () => {
-  const form = { ...emptyHeaderForm(), brief: 'clean and warm', brandTitle: 'Sample App', actions: ['language' as const] };
-  const request = buildHeaderRequest(PROJECT, form, 'req-1');
+  const form = { ...emptyHeaderForm(), brief: 'clean and warm', actions: ['language' as const] };
+  const request = buildHeaderRequest(PROJECT, form, 'req-1', { title: 'Sample App' });
   assert.equal(request.commit, false, 'the plugin previews before writing');
   assert.equal(request.projectId, PROJECT);
   assert.equal(request.brief, 'clean and warm');
@@ -248,7 +258,7 @@ test('applying stores the rollback slot with the source AND the profile it came 
       config: config(),
       projectConfig: {},
       parts: PARTS,
-      form: { ...emptyHeaderForm(), brief: 'x', brandTitle: 'New Name' },
+      form: { ...emptyHeaderForm(), brief: 'x' },
       previousSource: 'the header that was applied',
       at: '2026-08-21T12:00:00.000Z',
     },
@@ -287,7 +297,7 @@ test('no backup when there is no project header to go back to', () => {
       config: master,
       projectConfig: {},
       parts: PARTS,
-      form: { ...emptyHeaderForm(), brief: 'x', brandTitle: 'Sample App' },
+      form: { ...emptyHeaderForm(), brief: 'x' },
       at: '2026-08-21T12:00:00.000Z',
     },
     (parts) => buildHeaderSource(PROJECT, parts),
@@ -348,4 +358,239 @@ test('project tokens are re-scoped off the document root', () => {
 
   assert.equal(scopeTokensCss('', '[x]'), '', 'no tokens, no style');
   assert.equal(scopeTokensCss(':root{--a:1;}', '  '), '', 'no scope, no style: never leak to :root');
+});
+
+// ── several headers in one project ─────────────────────────────────────────
+
+test('a variant gets its own file, tag and class — with the project number last', () => {
+  const natal = headerPaths(PROJECT, { variant: 'Natal' });
+  assert.equal(natal.fileReference, `_${PROJECT}_/l2/layout/appHeaderNatal.ts`);
+  assert.equal(natal.source, 'l2/layout/appHeaderNatal.ts');
+  assert.equal(natal.entrypoint, `/_${PROJECT}_/l2/layout/appHeaderNatal.js`);
+  assert.equal(natal.tag, `layout--app-header-natal-${PROJECT}`);
+  assert.equal(natal.className, `AppHeaderNatal${PROJECT}`);
+
+  // The default header is untouched by the new parameter.
+  assert.deepEqual(headerPaths(PROJECT), headerPaths(PROJECT, { variant: '' }));
+  assert.equal(headerPaths(PROJECT).tag, `layout--app-header-${PROJECT}`);
+});
+
+test('a variant name that cannot become a file/tag/class is refused', () => {
+  assert.equal(slugVariant('Black Friday!'), 'blackfriday');
+  assert.equal(slugVariant('  natal  '), 'natal');
+
+  assert.throws(() => slugVariant(''), /needs a name/);
+  assert.throws(() => slugVariant('---'), /needs a name/);
+  assert.throws(() => slugVariant('2024'), /must start with a letter/, 'a class name cannot start with a digit');
+  for (const reserved of ['default', 'defaultAura', 'studio', 'Preview']) {
+    assert.throws(() => slugVariant(reserved), /reserved/, `${reserved} must be refused`);
+  }
+});
+
+test('a header tag is recognised as the project own, variant or not', () => {
+  assert.equal(isProjectHeaderTag(`layout--app-header-${PROJECT}`, PROJECT), true);
+  assert.equal(isProjectHeaderTag(`layout--app-header-natal-${PROJECT}`, PROJECT), true);
+  assert.equal(isProjectHeaderTag('collab-cbe-studio-header', PROJECT), false, 'the studio band is not ours');
+  assert.equal(isProjectHeaderTag(`layout--app-header-${PROJECT + 1}`, PROJECT), false, 'another project is not ours');
+
+  assert.equal(variantFromTag(`layout--app-header-natal-${PROJECT}`, PROJECT), 'natal');
+  assert.equal(variantFromTag(`layout--app-header-${PROJECT}`, PROJECT), undefined, 'the default has no slug');
+});
+
+test('the listing reports every profile, which is active, and whose it is', () => {
+  const config = {
+    clientShell: {
+      mode: 'spa',
+      regions: {
+        header: {
+          activeProfile: 'natal',
+          profiles: {
+            defaultAura: {
+              renderer: { tag: `layout--app-header-${PROJECT}`, source: 'l2/layout/appHeader.ts' },
+              heightPx: AURA_HEADER_HEIGHT_PX,
+              brand: { title: 'Sample App' },
+              props: { actions: ['user'], locales: ['en'], navLinks: ['/a'] },
+            },
+            natal: {
+              renderer: { tag: `layout--app-header-natal-${PROJECT}`, source: 'l2/layout/appHeaderNatal.ts' },
+              heightPx: AURA_HEADER_HEIGHT_PX,
+            },
+            studio: { renderer: { tag: 'collab-cbe-studio-header' } },
+          },
+        },
+      },
+    },
+  };
+
+  const entries = listProjectHeaders(config, PROJECT);
+  assert.deepEqual(entries.map((entry) => entry.profileName), ['defaultAura', 'natal', 'studio'],
+    'config order, nothing hidden');
+  assert.deepEqual(entries.map((entry) => entry.isActive), [false, true, false]);
+  assert.deepEqual(entries.map((entry) => entry.isProjectHeader), [true, true, false],
+    'the studio band is listed, but it is not one of ours');
+  assert.equal(entries[1].variant, 'natal');
+  assert.equal(entries[0].variant, undefined);
+  assert.deepEqual(entries[0].actions, ['user']);
+  assert.deepEqual(entries[0].navLinks, ['/a']);
+  assert.deepEqual(entries[1].actions, [], 'a profile with no props reads as empty, never undefined');
+
+  assert.deepEqual(listProjectHeaders({}, PROJECT), []);
+});
+
+test('activating moves activeProfile and nothing else', () => {
+  const config = {
+    clientShell: {
+      regions: {
+        header: {
+          activeProfile: 'defaultAura',
+          profiles: {
+            defaultAura: { renderer: { tag: `layout--app-header-${PROJECT}` }, brand: { title: 'A' } },
+            natal: { renderer: { tag: `layout--app-header-natal-${PROJECT}` }, brand: { title: 'B' } },
+          },
+        },
+      },
+    },
+  };
+  const next = activateHeaderProfile(config, 'natal') as any;
+  assert.equal(next.clientShell.regions.header.activeProfile, 'natal');
+  assert.deepEqual(next.clientShell.regions.header.profiles.defaultAura.brand, { title: 'A' },
+    'the other profiles are untouched');
+  assert.equal((config as any).clientShell.regions.header.activeProfile, 'defaultAura', 'the input is not mutated');
+
+  assert.throws(() => activateHeaderProfile(config, 'nope'), /no header profile "nope"/);
+  assert.throws(() => activateHeaderProfile(config, ''), /needs a profile name/);
+});
+
+test('the rollback slot is per profile, and the legacy single slot still answers', () => {
+  const profile = {
+    renderer: { entrypoint: `/_${PROJECT}_/l2/layout/appHeader.js`, source: 'l2/layout/appHeader.ts', tag: TAG },
+    heightPx: AURA_HEADER_HEIGHT_PX,
+  };
+
+  // New shape: keyed by profile name.
+  const perProfile = {
+    headerBackup: {
+      defaultAura: { source: 'src default', profile, profileName: 'defaultAura', at: 'x' },
+      natal: { source: 'src natal', profile, profileName: 'natal', at: 'y' },
+    },
+  };
+  assert.equal(readHeaderBackup(perProfile, 'natal')?.source, 'src natal');
+  assert.equal(readHeaderBackup(perProfile, 'defaultAura')?.source, 'src default');
+  assert.equal(readHeaderBackup(perProfile)?.source, 'src default', 'no name = the default header');
+  assert.equal(readHeaderBackup(perProfile, 'nope'), undefined);
+
+  // Legacy shape: one object, which answers for the profile it recorded.
+  const legacy = { headerBackup: { source: 'old', profile, profileName: 'defaultAura', at: 'z' } };
+  assert.equal(readHeaderBackup(legacy)?.source, 'old', 'a project mid-flight keeps its rollback');
+  assert.equal(readHeaderBackup(legacy, 'defaultAura')?.source, 'old');
+  assert.equal(readHeaderBackup(legacy, 'natal'), undefined, 'it does not answer for another profile');
+
+  // Restoring consumes only that profile's slot.
+  const restored = restoreHeaderBackup(PROJECT, config(), perProfile, 'natal');
+  assert.equal(restored.source, 'src natal');
+  const left = (restored.projectConfig as any).headerBackup;
+  assert.equal('natal' in left, false, 'consumed');
+  assert.equal('defaultAura' in left, true, 'the other profile keeps its own');
+});
+
+test('writing a variant does not put it on the air', () => {
+  const form = { ...emptyHeaderForm(), variant: 'natal', profileName: 'natal' };
+  const result = applyHeaderDraft(
+    { projectId: PROJECT, config: config(), projectConfig: {}, parts: PARTS, form, at: 'now' },
+    () => 'source',
+  );
+  const header = (result.config as any).clientShell.regions.header;
+  assert.equal(header.activeProfile, 'defaultAura', 'the active header is untouched');
+  assert.ok(header.profiles.natal, 'but the variant is there, ready to activate');
+  assert.equal(result.paths.fileReference, `_${PROJECT}_/l2/layout/appHeaderNatal.ts`);
+
+  // The default header, on the other hand, IS what you are looking at: it stays active.
+  const onDefault = applyHeaderDraft(
+    { projectId: PROJECT, config: config(), projectConfig: {}, parts: PARTS, form: { ...form, variant: '', profileName: '' }, at: 'now' },
+    () => 'source',
+  );
+  assert.equal((onDefault.config as any).clientShell.regions.header.activeProfile, 'defaultAura');
+});
+
+test('the view says whether the header being edited is the default one', () => {
+  // config() boots defaultAura, so that profile IS the default and the studio band is not.
+  assert.equal(readHeaderProfileView(config(), PROJECT, 'defaultAura')?.isActive, true);
+  assert.equal(readHeaderProfileView(config(), PROJECT, 'studio')?.isActive, false);
+
+  // Setting one as default moves only that key — and the view follows.
+  const activated = activateHeaderProfile(config(), 'studio');
+  assert.equal(readHeaderProfileView(activated, PROJECT, 'studio')?.isActive, true);
+  assert.equal(readHeaderProfileView(activated, PROJECT, 'defaultAura')?.isActive, false);
+});
+
+test('the paths carry the module name to import, which follows the variant', () => {
+  // This is what a preview mount needs: importing `appHeader` for a variant registers the DEFAULT
+  // tag and leaves the variant unregistered — the band then never renders.
+  assert.equal(headerPaths(PROJECT).shortName, 'appHeader');
+  assert.equal(headerPaths(PROJECT, { variant: 'natal' }).shortName, 'appHeaderNatal');
+  assert.equal(headerPaths(PROJECT, { previewToken: 'k3f9' }).shortName, 'appHeaderPreview');
+
+  // And it always matches the file it names.
+  for (const options of [{}, { variant: 'natal' }, { previewToken: 'k3f9' }]) {
+    const paths = headerPaths(PROJECT, options);
+    assert.equal(paths.fileReference, `_${PROJECT}_/l2/layout/${paths.shortName}.ts`);
+  }
+});
+
+// ── the brand is config, edited on its own ─────────────────────────────────
+
+test('the brand texts are written straight into the profile', () => {
+  const written = applyBrandTexts(config(), { profileName: 'defaultAura', title: 'Cafe Flow', subtitle: 'Operação' });
+  const brand = (written.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.title, 'Cafe Flow');
+  assert.equal(brand.subtitle, 'Operação');
+  assert.equal(brand.logoSvg, '<svg viewBox="0 0 8 8"></svg>', 'the mark is not touched');
+  assert.deepEqual(
+    (written.config as any).clientShell.regions.header.profiles.defaultAura.props,
+    { actions: ['language', 'user'] },
+    'props are not touched',
+  );
+
+  // An empty subtitle REMOVES the key: the band renders one only when there is one.
+  const noSub = applyBrandTexts(config(), { title: 'Cafe Flow', subtitle: '   ' });
+  assert.equal('subtitle' in (noSub.config as any).clientShell.regions.header.profiles.defaultAura.brand, false);
+
+  // No name = the active profile.
+  assert.equal(applyBrandTexts(config(), { title: 'X' }).profileName, 'defaultAura');
+
+  assert.throws(() => applyBrandTexts(config(), { title: '  ' }), /needs a title/);
+  assert.throws(() => applyBrandTexts(config(), { title: 'X', profileName: 'nope' }), /does not exist/);
+  assert.throws(() => applyBrandTexts({}, { title: 'X' }), /no header region/);
+
+  const input = config();
+  applyBrandTexts(input, { title: 'Changed' });
+  assert.equal((input as any).clientShell.regions.header.profiles.defaultAura.brand.title, 'Sample App',
+    'the input is not mutated');
+});
+
+test('regenerating a header keeps the brand it had', () => {
+  const paths = headerPaths(PROJECT);
+
+  // No brand in the request = keep what the profile has. This is what makes the Brand section safe:
+  // otherwise every regeneration would cost the app its identity.
+  const kept = pointHeaderProfileAtProject(config(), { paths, actions: ['user'] });
+  const brand = (kept.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(brand.title, 'Sample App');
+  assert.equal(brand.subtitle, 'Operations');
+  assert.equal(brand.logoSvg, '<svg viewBox="0 0 8 8"></svg>');
+
+  // An explicit brand replaces it (and the mark still carries over).
+  const replaced = pointHeaderProfileAtProject(config(), { paths, brand: { title: 'Other' } });
+  const next = (replaced.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(next.title, 'Other');
+  assert.equal(next.subtitle, undefined);
+  assert.equal(next.logoSvg, '<svg viewBox="0 0 8 8"></svg>', 'the mark is the exception: it carries over');
+
+  // And the two explicit removals.
+  const dropped = pointHeaderProfileAtProject(config(), { paths, dropBrand: true });
+  assert.equal((dropped.config as any).clientShell.regions.header.profiles.defaultAura.brand, undefined);
+  const noLogo = pointHeaderProfileAtProject(config(), { paths, dropLogo: true });
+  const trimmed = (noLogo.config as any).clientShell.regions.header.profiles.defaultAura.brand;
+  assert.equal(trimmed.title, 'Sample App', 'dropLogo drops the MARK, not the texts');
+  assert.equal('logoSvg' in trimmed, false);
 });

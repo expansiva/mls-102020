@@ -1,15 +1,16 @@
 /// <mls fileReference="_102020_/l2/aura/plugins/pluginProjectHeader.ts" enhancement="_102027_/l2/enhancementLit" />
 
-// The "Header" screen of a project (l5Project plugin, opened in the service details from
-// selectProject, next to Usage/Config/Project Settings).
+// The header EDITOR of a project: opened by the Header knob of the l5 service (selectHeader), which
+// says WHICH header of the app is being edited (`profileName` + `variant`).
 //
 // It is the UI for the two header agents, which until now were console-only. Sections:
 //   1. the header that is applied, rendered for real at band size;
 //   2. the brand mark: what is there, and three ways to change it (an .svg file, pasted markup, or
 //      agentGenerateLogo);
-//   3. the request: brief/brand, the five actions (each with what it does, and a note when the base
-//      will render nothing), the locales the header speaks and WHICH routes it links;
-//   4. generate -> PREVIEW -> apply / discard / go back to the previous one, in a pinned action bar.
+//   3. the request, as ONE panel with tabs (Description | Actions | Navigation links) — each tab
+//      badged with what it holds, because a tab hides state and this state IS the request;
+//   4. generate -> PREVIEW -> apply / discard / go back to the previous one, in a pinned action bar
+//      (the draft band sits at the top of the request panel, so it stays put while tabs change).
 //
 // The locale and route selections are DATA (`props.locales` / `props.navLinks` on the profile), not
 // generated code: changing which links or languages a header offers is a config edit afterwards,
@@ -30,7 +31,6 @@ import { html, nothing, svg, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { PluginBaseModule } from '/_102027_/l2/pluginBaseModule.js';
-import { collabImport } from '/_102027_/l2/collabImport.js';
 import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
@@ -44,11 +44,23 @@ import {
   type GeneratedHeaderParts,
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import { applyLogoToBrand, validateLogoSvg } from '/_102020_/l2/aura/agentManageHeader/helpers/generateLogoCore.js';
-import { AURA_HEADER_HEIGHT_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
-import { tokensCssFromTheme, type IDesignSystemTokens } from '/_102029_/l2/designSystemBase.js';
+import { AURA_HEADER_HEIGHT_PX, AURA_HEADER_LOGO_PX } from '/_102033_/l2/shared/layout/auraHeaderCore.js';
+import {
+  applyProjectTokens,
+  bandBootConfig,
+  mountHeaderBand,
+} from '/_102020_/l2/aura/plugins/helpers/headerBandPreview.js';
 import type { AppHeaderAction } from '/_102029_/l2/runtimeConfigTypes.js';
 import { flagChip, localeFlagMarkup } from '/_102020_/l2/aura/plugins/helpers/localeFlag.js';
 import {
+  ensureProjectLoaded,
+  headerConfigRef,
+  readHeaderConfig,
+  writeHeaderConfig,
+} from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
+import {
+  activateHeaderProfile,
+  applyBrandTexts,
   applyHeaderDraft,
   buildHeaderRequest,
   clearDraft,
@@ -75,13 +87,14 @@ const message_en = {
   profile: 'Profile',
   tag: 'Tag',
   band: 'Band',
+  brand: 'Brand',
   mark: 'Brand mark',
   noMark: 'No mark configured.',
   markFile: 'Choose an .svg file',
   markPaste: 'Paste SVG markup',
   markGenerate: 'Generate with AI',
   markBrief: 'What should the mark evoke?',
-  request: 'New header',
+  request: 'Changes',
   brief: 'What the header should look like',
   brandTitle: 'Brand title',
   brandSubtitle: 'Subtitle',
@@ -104,22 +117,26 @@ const message_en = {
   } as Record<string, string>,
   oneLanguage: 'This project has one language: the picker will not appear.',
   oneDesignSystem: 'This project has one theme: the picker will not appear.',
-  navLinks: 'Navigation links',
+  navLinks: 'Links',
   navLinksHint: 'Pick only what belongs in the band — the aside already lists everything.',
   noRoutes: 'This project declares no routes yet.',
-  logoMode: 'Mark',
-  logoKeep: 'Keep the current one',
-  logoGenerate: 'Generate a new one',
-  logoNone: 'No mark',
   generate: 'Generate',
   generating: 'Generating…',
   draft: 'Draft (not applied)',
   apply: 'Apply',
   discard: 'Discard',
   revert: 'Back to the previous header',
+  setDefault: 'Set as default',
+  isDefault: 'DEFAULT',
+  settingDefault: 'Setting…',
+  defaultNeedsPublish: 'This is now the default header. The app shows it after a publish.',
   save: 'Save',
   notes: 'Notes',
   invalid: 'Refused',
+  tabBrief: 'Description',
+  light: 'light',
+  dark: 'dark',
+  markEmpty: 'Nothing to preview yet — paste the markup or generate a mark.',
   noDraft: 'The run produced nothing — open the task in the thread to see why it failed.',
   staleDraft: 'What is parked belongs to an earlier run; this one produced nothing. Open the task to see why.',
   noTokens: 'The design system of the project could not be read; the preview has no real tokens',
@@ -135,13 +152,14 @@ const messages: Record<string, MessageType> = {
     profile: 'Perfil',
     tag: 'Tag',
     band: 'Banda',
+    brand: 'Brand',
     mark: 'Marca',
     noMark: 'Nenhuma marca configurada.',
     markFile: 'Escolher arquivo .svg',
     markPaste: 'Colar markup SVG',
     markGenerate: 'Gerar com IA',
     markBrief: 'O que a marca deve evocar?',
-    request: 'Novo header',
+    request: 'Alterações',
     brief: 'Como o header deve ser',
     brandTitle: 'Título da marca',
     brandSubtitle: 'Subtítulo',
@@ -162,22 +180,26 @@ const messages: Record<string, MessageType> = {
     } as Record<string, string>,
     oneLanguage: 'Este projeto tem um idioma só: o seletor não vai aparecer.',
     oneDesignSystem: 'Este projeto tem um tema só: o seletor não vai aparecer.',
-    navLinks: 'Links de navegação',
+    navLinks: 'Links',
     navLinksHint: 'Escolha só o que faz sentido na banda — o aside já lista tudo.',
     noRoutes: 'Este projeto ainda não declara rotas.',
-    logoMode: 'Marca',
-    logoKeep: 'Manter a atual',
-    logoGenerate: 'Gerar uma nova',
-    logoNone: 'Sem marca',
     generate: 'Gerar',
     generating: 'Gerando…',
     draft: 'Rascunho (não aplicado)',
     apply: 'Aplicar',
     discard: 'Descartar',
     revert: 'Voltar ao header anterior',
+    setDefault: 'Definir como padrão',
+    isDefault: 'PADRÃO',
+    settingDefault: 'Definindo…',
+    defaultNeedsPublish: 'Este é o header padrão agora. O app mostra depois de publicar.',
     save: 'Salvar',
     notes: 'Notas',
     invalid: 'Recusado',
+    tabBrief: 'Descrição',
+    light: 'claro',
+    dark: 'escuro',
+    markEmpty: 'Nada para visualizar ainda — cole o markup ou gere uma marca.',
     noDraft: 'A execução não produziu nada — abra a task na thread para ver o motivo.',
     staleDraft: 'O que está guardado é de uma execução anterior; esta não produziu nada. Abra a task para ver o motivo.',
     noTokens: 'Não foi possível ler o design system do projeto; o preview está sem os tokens reais',
@@ -198,7 +220,8 @@ export const pluginData: mls.plugin.IPluginData = {
   },
 };
 
-const CONFIG_REF = (project: number) => `_${project}_/l5/config.json`;
+type RequestTab = 'brief' | 'actions' | 'links';
+
 const HEADER_ACTIONS = ['language', 'designSystem', 'modules', 'search', 'user'] as const;
 
 // Shared field/button classes: repeated inline they drift, and a form where two inputs disagree
@@ -210,6 +233,35 @@ const BUTTON = 'rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1
   + ' hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50';
 const BUTTON_PRIMARY = 'rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white'
   + ' disabled:opacity-50';
+/** Square icon button: the label lives in the tooltip, so it must never lose the title/aria-label. */
+const ICON_BUTTON = 'inline-flex items-center justify-center w-8 h-8 rounded-md border cursor-pointer'
+  + ' border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'
+  + ' hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors';
+/** Pressed: these two toggle a panel open, and a toggle with no visible state is a guessing game. */
+const ICON_BUTTON_ON = 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/15 text-indigo-700 dark:text-indigo-300';
+
+// Inline, currentColor, 16px: no icon font is loaded in this panel.
+const ICON = {
+  upload: svg`
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 15V3" /><path d="M7.5 7.5 12 3l4.5 4.5" />
+      <path d="M4 15v3.5A2.5 2.5 0 0 0 6.5 21h11a2.5 2.5 0 0 0 2.5-2.5V15" />
+    </svg>`,
+  paste: svg`
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M9 4h6v2.5H9z" />
+      <path d="M8.5 4H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.5" />
+      <path d="M9 12h6M9 16h4" />
+    </svg>`,
+  ai: svg`
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M13 3 14.6 8 19.5 9.5 14.6 11 13 16 11.4 11 6.5 9.5 11.4 8Z" />
+      <path d="M18.5 15.5 19.2 17.8 21.5 18.5 19.2 19.2 18.5 21.5 17.8 19.2 15.5 18.5 17.8 17.8Z" />
+    </svg>`,
+} as const;
 /** The thread the agent tasks are opened in (same convention as the design-system plugin). */
 const THREAD_NAME = '_102020_/l2/aura/plugins/pluginProjectHeader';
 
@@ -220,6 +272,13 @@ export class PluginProjectHeader extends PluginBaseModule {
   @property({ type: String }) msize = '';
   /** Project the panel is showing; `mls.actualProject` is only the fallback. */
   @property({ type: Number }) project = 0;
+  /**
+   * Which header of the project to edit. Empty = whatever profile is active (how the plugin panel
+   * opened it); a name = that profile, which is how the Header knob edits one of several.
+   */
+  @property({ attribute: false }) profileName = '';
+  /** Variant slug of that header: '' = the default one. Decides the file, the tag and the class. */
+  @property({ attribute: false }) variant = '';
 
   @state() private _projectId = 0;
   @state() private _view?: HeaderProfileView;
@@ -229,10 +288,24 @@ export class PluginProjectHeader extends PluginBaseModule {
   @state() private _notes = '';
   @state() private _draftParts?: GeneratedHeaderParts;
   @state() private _previewTag = '';
+  /**
+   * Tag to render in the APPLIED band when the applied header was written in this same session.
+   *
+   * `customElements.define` runs once per name per window, so re-importing the real tag after Apply
+   * still constructs the PREVIOUS class — the band would keep showing the old header until a reload.
+   * The draft that was just approved is already registered under its own tag and has exactly the
+   * content that was written, so the band borrows it. Cleared by a reload, when the real tag is
+   * registered from the file for the first time.
+   */
+  @state() private _appliedTag = '';
   @state() private _hasBackup = false;
+  @state() private _tab: RequestTab = 'brief';
   @state() private _markMode: 'none' | 'paste' | 'generate' = 'none';
   @state() private _markSvg = '';
   @state() private _markBrief = '';
+  /** Brand texts being edited. Backed by the config, not by the generation request. */
+  @state() private _brandTitle = '';
+  @state() private _brandSubtitle = '';
   /** Non-fatal: the preview still renders, but not with the project's real colours. */
   @state() private _warn = '';
   /** Languages the project declares — the locale picker, and the "1 language" badge. */
@@ -245,8 +318,8 @@ export class PluginProjectHeader extends PluginBaseModule {
   private msg: MessageType = message_en;
   /** Signature of what is mounted in the applied band, so `updated()` does not remount it. */
   private _mountedPreview = '';
-  /** Compiled DS tokens of the project; undefined = not read yet (an empty string is a valid answer). */
-  private _tokensCssCache?: string;
+  /** Same, for the draft band. */
+  private _mountedDraft = '';
 
   createRenderRoot() {
     return this;
@@ -256,77 +329,77 @@ export class PluginProjectHeader extends PluginBaseModule {
     if (this.autoPrepare) void this.prepare();
   }
 
+  /**
+   * Reacts to being pointed at ANOTHER header.
+   *
+   * The knob keeps this same element and only swaps the properties (lit reuses the DOM at that
+   * position), so without this the screen would keep showing the previous header's data — and the
+   * band would keep a BORROWED tag that belongs to it. Everything about the previous one is dropped.
+   *
+   * The first update is skipped: `firstUpdated` + autoPrepare owns the initial load.
+   */
+  willUpdate(changed: Map<string, unknown>) {
+    if (!this._projectId) return;
+    if (!changed.has('project') && !changed.has('profileName') && !changed.has('variant')) return;
+    this._view = undefined;
+    this._previewTag = '';
+    this._draftParts = undefined;
+    this._appliedTag = '';
+    this._mountedPreview = '';
+    this._mountedDraft = '';
+    this._markMode = 'none';
+    this._markSvg = '';
+    this._markBrief = '';
+    this._notes = '';
+    this._tab = 'brief';
+    // Empty the bands NOW: the reload is async, and until it lands the previous header's element
+    // would still be sitting there, looking like the one just selected.
+    for (const kind of ['applied', 'draft']) {
+      (this.querySelector(`[data-band="${kind}"]`) as HTMLElement | null)?.replaceChildren();
+    }
+    void this.prepare();
+  }
+
   async prepare(): Promise<void> {
     this.msg = messages[this.getMessageKey(messages)] ?? message_en;
     this._projectId = Number(this.project) || mls.actualProject || 0;
     if (!this._projectId) return;
-    // A project that is not the actual one has no files in mls.stor yet, and every read here goes
-    // through the stor — without this the screen would silently look like "nothing configured".
-    if (this._projectId !== mls.actualProject) {
-      await mls.stor.server.loadProjectInfoIfNeeded(this._projectId, false);
-    }
+    await ensureProjectLoaded(this._projectId);
     await this._reload();
   }
 
   // ── reading the project ───────────────────────────────────────────────────
 
-  /** The stor file of `l5/config.json`, or undefined with the reason already on screen. */
-  private _configFile(): mls.stor.IFileInfo | undefined {
-    const key = mls.stor.getKeyToFile({
-      project: this._projectId, level: 5, folder: '', shortName: 'config', extension: '.json',
-    } as mls.stor.IFileInfoBase);
-    const storFile = mls.stor.files[key];
-    if (!storFile) this._error = `${CONFIG_REF(this._projectId)} is not loaded in mls.stor (key ${key})`;
-    return storFile;
-  }
-
   private async _readClientConfig(): Promise<unknown> {
-    // Read the stor file directly (instead of readRawSource) to tell "the file is not loaded" apart
-    // from "the file has no header": both used to render as an empty screen, which is unreadable.
-    const storFile = this._configFile();
-    if (!storFile) return undefined;
-    const raw = String((await storFile.getContent()) ?? '');
-    if (!raw.trim()) {
-      this._error = `${CONFIG_REF(this._projectId)} is empty`;
-      return undefined;
-    }
     try {
-      return JSON.parse(raw);
+      return await readHeaderConfig(this._projectId);
     } catch (error) {
-      this._error = `l5/config.json: ${error instanceof Error ? error.message : String(error)}`;
+      this._error = error instanceof Error ? error.message : String(error);
       return undefined;
     }
   }
 
-  /**
-   * Writes `l5/config.json` straight through localStor.
-   *
-   * NOT through saveFile: that one goes via `getOrCreateModel`, which only exists for editor source
-   * files — on a .json it throws ("use getOrCreateModel only on source files"). This is the same
-   * write the agents do (`pointConfigAtHeader`).
-   */
   private async _writeClientConfig(config: unknown): Promise<void> {
-    const storFile = this._configFile();
-    if (!storFile) throw new Error(`${CONFIG_REF(this._projectId)} is not loaded in mls.stor`);
-    if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
-    storFile.updatedAt = new Date().toISOString();
-    await mls.stor.localStor.setContent(storFile, {
-      contentType: 'string',
-      content: `${JSON.stringify(config, null, 2)}\n`,
-    });
+    await writeHeaderConfig(this._projectId, config);
   }
 
   private async _reload(): Promise<void> {
     this._error = '';
     this._warn = '';
     const config = await this._readClientConfig();
-    this._view = readHeaderProfileView(config, this._projectId);
+    // With no profile named, the active one — the Header knob names the one it is editing.
+    this._view = readHeaderProfileView(config, this._projectId, this.profileName || undefined);
     this._routes = readProjectRoutes(config, this._projectId);
     const projectConfig = await getConfigProject(this._projectId);
     this._languages = readProjectLanguages(projectConfig);
     this._dsCount = countProjectDesignSystems(projectConfig);
     // No locale selection on the profile = the header speaks every language of the project.
     this._form = formFromProfile(this._view, this._languages.map((language) => language.code));
+    // A header being CREATED has no profile yet: the identity comes from the caller, not the config.
+    this._brandTitle = this._view?.brand?.title ?? '';
+    this._brandSubtitle = this._view?.brand?.subtitle ?? '';
+    if (this.profileName) this._form = { ...this._form, profileName: this.profileName };
+    if (this.variant) this._form = { ...this._form, variant: this.variant };
     this._hasBackup = Boolean(readHeaderBackup(projectConfig));
     this.requestUpdate();
     await this._mountAppliedPreview();
@@ -335,38 +408,28 @@ export class PluginProjectHeader extends PluginBaseModule {
   // ── preview of a compiled header ──────────────────────────────────────────
 
   /**
-   * Boot config for the preview. It carries the project's REAL navigation: the band filters that list
-   * by the selected hrefs, so without it `renderNavLinks()` has nothing to link and the preview shows
-   * no links even when three routes are selected.
+   * The single CSS rule the mark tiles need: an inlined `<svg>` has no width/height of its own (the
+   * validator forbids them), so it is the container that must size it — by height, like the band.
+   * Injected once, scoped to this widget's tag, because the widget renders in the light DOM.
    */
-  private _bootConfig() {
-    return {
-      projectId: String(this._projectId),
-      moduleId: 'preview',
-      basePath: '/preview',
-      shellMode: this._view?.shellMode ?? 'spa',
-      device: 'desktop',
-      routes: [],
-      navigation: this._routes.map((route) => ({ ...route })),
-      moduleLinks: [],
-      languages: this._languages.map((language) => language.code),
-      layout: {
-        regions: { desktop: { header: true, aside: true, content: true }, mobile: { header: true, aside: true, content: true } },
-        asideMode: { desktop: 'inline', mobile: 'drawer' },
-      },
-    };
+  private _ensureMarkPreviewCss(): void {
+    const id = 'header-plugin-mark-preview-css';
+    if (document.getElementById(id)) return;
+    const style = document.createElement('style');
+    style.id = id;
+    style.textContent = `${this.localName} .mark-tile svg { display: block; width: auto; height: var(--mark-h, ${AURA_HEADER_LOGO_PX}px); }`;
+    document.head.appendChild(style);
   }
 
-  /**
-   * Mounts a compiled header in a band-sized host, in the STUDIO's own document.
-   *
-   * No iframe: the studio resolves `/_<project>_/l2/…` module URLs for its own document, and an
-   * `about:blank` frame does not inherit that resolution — every import inside it 404s. Rendering
-   * here is also what `collabImport` is for.
-   *
-   * The import is retried: a file written a moment ago may not be compiled yet, and collabImport
-   * resolves by version — so the element only becomes defined once the build lands.
-   */
+  private _bootConfig() {
+    return bandBootConfig({
+      projectId: this._projectId,
+      shellMode: this._view?.shellMode,
+      navigation: this._routes,
+      languages: this._languages.map((language) => language.code),
+    });
+  }
+
   private async _mountHeader(
     host: HTMLElement,
     folder: string,
@@ -374,79 +437,40 @@ export class PluginProjectHeader extends PluginBaseModule {
     tag: string,
     props: Record<string, unknown>,
   ): Promise<void> {
-    await this._applyProjectTokens(host);
-    for (let attempt = 0; attempt < 12; attempt += 1) {
-      try {
-        await collabImport({ project: this._projectId, folder, shortName, extension: '.ts' });
-      } catch {
-        // keep retrying: the module may not be compiled yet
-      }
-      if (customElements.get(tag)) break;
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-    if (!customElements.get(tag)) {
-      this._error = `preview: ${tag} was not registered (is the file compiled?)`;
-      return;
-    }
-    const element = document.createElement(tag) as HTMLElement & { bootConfig?: unknown; regionProps?: unknown };
-    element.bootConfig = this._bootConfig();
-    element.regionProps = props;
-    host.replaceChildren(element);
-  }
-
-  /**
-   * Paints the band with the CLIENT's colours: the project's design-system tokens, re-scoped to the
-   * band container so they do not repaint the studio around it.
-   *
-   * Without this the band falls back to the hardcoded defaults of every `var(--nav-*, #…)` in the
-   * header, which is a different header from the one the user will see.
-   */
-  private async _applyProjectTokens(host: HTMLElement): Promise<void> {
-    host.setAttribute('data-token-scope', String(this._projectId));
-    const id = `header-preview-tokens-${this._projectId}`;
-    if (document.getElementById(id)) return;
-    const css = scopeTokensCss(await this._tokensCss(), `[data-token-scope="${this._projectId}"]`);
-    if (!css) return;
-    const style = document.createElement('style');
-    style.id = id;
-    style.textContent = css;
-    document.head.appendChild(style);
-  }
-
-  /**
-   * The project's design-system tokens compiled to CSS — the same compile the app does at boot
-   * (`tokensCssFromTheme`), read through collabImport so an edit in the session is picked up.
-   *
-   * The first theme entry is used: which entry the app runs is a project-level choice that does not
-   * belong to this screen, and the header only reads the `nav-*` family, which every entry defines.
-   */
-  private async _tokensCss(): Promise<string> {
-    if (this._tokensCssCache !== undefined) return this._tokensCssCache;
-    try {
-      const mod = await collabImport({ project: this._projectId, folder: '', shortName: 'designSystem' });
-      const entry = (mod?.tokens ?? [])[0] as IDesignSystemTokens | undefined;
-      this._tokensCssCache = entry ? tokensCssFromTheme(entry) : '';
-    } catch (error) {
-      // A project without a design system still previews — but say so: every colour of a generated
-      // header is a token, so an unstyled band would look like a broken header.
-      this._tokensCssCache = '';
-      this._warn = `${this.msg.noTokens}: ${error instanceof Error ? error.message : String(error)}`;
-    }
-    return this._tokensCssCache;
+    if (!(await applyProjectTokens(host, this._projectId))) this._warn = this.msg.noTokens;
+    const error = await mountHeaderBand(host, {
+      projectId: this._projectId,
+      folder,
+      shortName,
+      tag,
+      bootConfig: this._bootConfig(),
+      regionProps: props,
+    });
+    if (error) this._error = `preview: ${error}`;
   }
 
   private async _mountAppliedPreview(): Promise<void> {
     const host = this.querySelector('[data-band="applied"]') as HTMLElement | null;
     if (!host || !this._view?.isProjectHeader) return;
+    // Borrow the approved draft's tag only while its class is really in the registry.
+    const borrowed = Boolean(this._appliedTag) && Boolean(customElements.get(this._appliedTag));
+    const tag = borrowed ? this._appliedTag : this._view.tag;
     // Keyed on what the band actually shows: saving a new mark must rebuild it, a re-render must not.
     const signature = JSON.stringify([
-      this._view.tag, this._view.brand ?? null, this._view.actions,
+      tag, this._view.brand ?? null, this._view.actions,
       this._view.navLinks, this._view.locales, this._view.heightPx,
     ]);
-    if (this._mountedPreview === signature) return;
+    // Same rule as the list: a signature match only counts while the band is actually IN the host.
+    if (this._mountedPreview === signature && host.firstElementChild) return;
     this._mountedPreview = signature;
     // The APPLIED band shows what is applied — the profile, not the unsaved form.
-    await this._mountHeader(host, 'layout', 'appHeader', this._view.tag, {
+    // The module to import follows the VARIANT: `appHeaderNatal`, not `appHeader`. Importing the
+    // default header here defined the default tag and left the variant's tag unregistered — the band
+    // only appeared after the listing happened to mount it.
+    const shortName = borrowed
+      ? headerPaths(this._projectId, { previewToken: 'x' }).shortName
+      : headerPaths(this._projectId, { variant: this._view.variant }).shortName;
+    await this._mountHeader(host, 'layout', shortName, tag, {
       ...(this._view.brand ? { brand: this._view.brand } : {}),
       actions: this._view.actions,
       navLinks: this._view.navLinks,
@@ -458,8 +482,13 @@ export class PluginProjectHeader extends PluginBaseModule {
   private async _mountDraftPreview(): Promise<void> {
     const host = this.querySelector('[data-band="draft"]') as HTMLElement | null;
     if (!host || !this._previewTag) return;
+    // Guarded like the applied band: updated() runs on every keystroke in the form, and rebuilding
+    // the element each time made the draft band flicker while typing.
+    const signature = JSON.stringify([this._previewTag, this._form.actions, this._form.navLinks, this._form.locales]);
+    if (this._mountedDraft === signature && host.firstElementChild) return;
+    this._mountedDraft = signature;
     // The DRAFT band shows what the form asks for, which is what "Apply" would write.
-    await this._mountHeader(host, 'layout', 'appHeaderPreview', this._previewTag, {
+    await this._mountHeader(host, 'layout', headerPaths(this._projectId, { previewToken: 'x' }).shortName, this._previewTag, {
       ...(this._view?.brand ? { brand: this._view.brand } : {}),
       actions: this._form.actions,
       navLinks: this._form.navLinks,
@@ -499,10 +528,30 @@ export class PluginProjectHeader extends PluginBaseModule {
    */
   private async _writeSource(ref: string, source: string): Promise<void> {
     await saveFile(ref, source);
+
+    // Verify instead of assuming: a write that did not land used to surface later as a preview that
+    // "was not registered" or an applied header that never changed, with nothing pointing here.
     const info = mls.stor.convertFileReferenceToFile(ref);
+    const storFile = mls.stor.files[mls.stor.getKeyToFile(info)];
+    if (!storFile) throw new Error(`${ref} was not created in mls.stor`);
+    const written = String((await storFile.getContent()) ?? '');
+    if (written.trim() !== source.trim()) {
+      throw new Error(`${ref} was written but read back different (${written.length} vs ${source.length} bytes)`);
+    }
+
     const model = mls.editor.getModel(info) as mls.editor.IModelTS | undefined;
     if (!model) return;
-    await mls.l2.typescript.compileAndPostProcess(model, true, true);
+    // The RESULT matters: a file that does not compile serves no .js, and the only symptom used to be
+    // "<tag> was not registered" three screens later, with nothing naming the actual error.
+    const compiled = await mls.l2.typescript.compileAndPostProcess(model, true, true);
+    if (!compiled) {
+      const first = (model.compilerResults?.errors ?? [])
+        .map((diagnostic) => (typeof diagnostic.messageText === 'string'
+          ? diagnostic.messageText
+          : diagnostic.messageText?.messageText ?? ''))
+        .filter(Boolean)[0];
+      throw new Error(`${ref} did not compile${first ? `: ${first}` : ''}`);
+    }
   }
 
   private _requestId(prefix: string): string {
@@ -528,7 +577,9 @@ export class PluginProjectHeader extends PluginBaseModule {
     const requestId = this._requestId('hdr');
     let request;
     try {
-      request = buildHeaderRequest(this._projectId, this._form, requestId);
+      // The brand comes from the profile: the model needs the title to lay the band out, and the
+      // Brand section is what owns it.
+      request = buildHeaderRequest(this._projectId, this._form, requestId, this._view?.brand);
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
       return;
@@ -552,6 +603,9 @@ export class PluginProjectHeader extends PluginBaseModule {
       this._previewTag = preview.tag;
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
+      // Move to where the fix is: the reason lives on one tab, and it may be a hidden one.
+      const faulty = this._errorTab;
+      if (faulty) this._tab = faulty;
     } finally {
       this._busy = '';
     }
@@ -563,8 +617,9 @@ export class PluginProjectHeader extends PluginBaseModule {
     try {
       const config = await this._readClientConfig();
       const projectConfig = await getConfigProject(this._projectId);
+      // The backup keeps the source of THIS header, so a variant rolls back to its own file.
       const previousSource = this._view?.isProjectHeader
-        ? await readRawSource(headerPaths(this._projectId).fileReference)
+        ? await readRawSource(headerPaths(this._projectId, { variant: this._form.variant || undefined }).fileReference)
         : '';
 
       const result = applyHeaderDraft(
@@ -577,14 +632,26 @@ export class PluginProjectHeader extends PluginBaseModule {
           previousSource,
           at: new Date().toISOString(),
         },
-        (parts) => buildHeaderSource(this._projectId, parts),
+        // The variant decides the tag and the class INSIDE the source, not just the file name: without
+        // it, appHeaderNatal.ts would define the DEFAULT header's tag and the profile would point at
+        // a tag nothing registers.
+        (parts) => buildHeaderSource(this._projectId, parts, { variant: this._form.variant || undefined }),
       );
 
       await this._writeSource(result.paths.fileReference, result.source);
       await this._writeClientConfig(result.config);
       await updateConfigProject(this._projectId, result.projectConfig as any);
+      // The class of the approved draft IS what was just written, and it is already registered —
+      // so the applied band renders that tag instead of the real one, which in this window still
+      // points at the previous class. See _appliedTag.
+      this._appliedTag = this._previewTag;
       await this._consumePreview();
       await this._reload();
+      this.dispatchEvent(new CustomEvent('header-applied', {
+        detail: { profileName: result.profileName, variant: this._form.variant },
+        bubbles: true,
+        composed: true,
+      }));
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
     } finally {
@@ -612,6 +679,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     }
     this._previewTag = '';
     this._draftParts = undefined;
+    this._mountedDraft = '';
     const host = this.querySelector('[data-band="draft"]') as HTMLElement | null;
     host?.replaceChildren();
   }
@@ -625,6 +693,9 @@ export class PluginProjectHeader extends PluginBaseModule {
       await this._writeSource(restored.paths.fileReference, restored.source);
       await this._writeClientConfig(restored.config);
       await updateConfigProject(this._projectId, restored.projectConfig as any);
+      // Going back means the previous header again — which in this window is exactly the class the
+      // real tag still holds, so the borrowed draft tag must go.
+      this._appliedTag = '';
       this._mountedPreview = '';
       await this._reload();
     } catch (error) {
@@ -635,6 +706,35 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   // ── mark ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Makes the header being edited the one the app boots (`activeProfile`).
+   *
+   * Only that key moves: the renderer, brand and props of every profile are already in place, which
+   * is the whole point of keeping several headers. The app only shows it after a publish, and the
+   * screen says so — otherwise "I set it and nothing changed" is the next question.
+   */
+  private async _setAsDefault(): Promise<void> {
+    const profileName = this._view?.profileName;
+    if (!profileName || this._view?.isActive) return;
+    this._error = '';
+    this._busy = this.msg.settingDefault;
+    try {
+      const config = await this._readClientConfig();
+      await this._writeClientConfig(activateHeaderProfile(config, profileName));
+      await this._reload();
+      this._warn = this.msg.defaultNeedsPublish;
+      this.dispatchEvent(new CustomEvent('header-activated', {
+        detail: { profileName },
+        bubbles: true,
+        composed: true,
+      }));
+    } catch (error) {
+      this._error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._busy = '';
+    }
+  }
 
   private async _saveMark(svgMarkup: string): Promise<void> {
     const errors = validateLogoSvg(svgMarkup);
@@ -648,7 +748,7 @@ export class PluginProjectHeader extends PluginBaseModule {
       const written = applyLogoToBrand(config, {
         svg: svgMarkup,
         profileName: this._form.profileName || undefined,
-        brandTitle: this._form.brandTitle || undefined,
+        brandTitle: this._brandTitle || undefined,
       });
       await this._writeClientConfig(written.config);
       this._markMode = 'none';
@@ -681,7 +781,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     try {
       await this._runAgent('agentGenerateLogo', JSON.stringify({
         projectId: this._projectId,
-        brandTitle: this._form.brandTitle || undefined,
+        brandTitle: this._brandTitle || undefined,
         brief: this._markBrief || undefined,
         profileName: this._form.profileName || undefined,
         commit: false,
@@ -718,16 +818,20 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   private _renderBand(kind: 'applied' | 'draft') {
     return html`
+      <!-- pointer-events:none — a preview is a PICTURE of the header: live, its links would navigate
+           the studio window and its user menu would open over the editor. -->
       <div
         data-band=${kind}
         class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-950"
-        style="height:${AURA_HEADER_HEIGHT_PX}px"
+        style="height:${AURA_HEADER_HEIGHT_PX}px;pointer-events:none"
       ></div>
     `;
   }
 
   private _renderApplied() {
     const view = this._view;
+    // Creating a variant: there is nothing applied to show, and the list above already shows the rest.
+    if (!view && this.variant) return nothing;
     if (!view) {
       return this._card(this.msg.applied, html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noHeader}</p>`);
     }
@@ -737,6 +841,10 @@ export class PluginProjectHeader extends PluginBaseModule {
         ? this._renderBand('applied')
         : html`<p class="text-sm italic text-gray-500 dark:text-gray-400">${view.tag} (master)</p>`,
       html`
+        ${view.isActive ? html`
+          <span class="text-[10px] font-semibold tracking-wider px-1.5 py-0.5 rounded
+            bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">${this.msg.isDefault}</span>
+        ` : nothing}
         <span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">
           ${view.profileName} · ${view.tag} · ${view.heightPx ?? AURA_HEADER_HEIGHT_PX}px
         </span>
@@ -754,9 +862,56 @@ export class PluginProjectHeader extends PluginBaseModule {
       : html`<span class="text-[10px] font-mono px-1 rounded bg-gray-200 dark:bg-gray-700 shrink-0">${flagChip(locale)}</span>`;
   }
 
+  /** One of the two toggles (paste / generate): pressed state included, since both open a panel. */
+  private _markModeButton(mode: 'paste' | 'generate', label: string, icon: TemplateResult) {
+    const on = this._markMode === mode;
+    return html`
+      <button
+        type="button"
+        title=${label}
+        aria-label=${label}
+        aria-pressed=${String(on)}
+        class="${ICON_BUTTON} ${on ? ICON_BUTTON_ON : ''}"
+        @click=${() => { this._markMode = on ? 'none' : mode; }}
+      >${icon}</button>
+    `;
+  }
+
+  /** True while the fields differ from what the config has — the only state where Save means anything. */
+  private get _brandDirty(): boolean {
+    return this._brandTitle.trim() !== (this._view?.brand?.title ?? '').trim()
+      || this._brandSubtitle.trim() !== (this._view?.brand?.subtitle ?? '').trim();
+  }
+
+  /**
+   * Writes the brand texts straight into the config — no model, no regeneration.
+   *
+   * They are config data (the band reads `this.brand.title` at runtime), and changing a word used to
+   * cost a full generation. The applied band remounts by itself: its mount signature includes the
+   * brand.
+   */
+  private async _saveBrand(): Promise<void> {
+    this._error = '';
+    this._busy = this.msg.save;
+    try {
+      const config = await this._readClientConfig();
+      const written = applyBrandTexts(config, {
+        profileName: this._view?.profileName,
+        title: this._brandTitle,
+        subtitle: this._brandSubtitle,
+      });
+      await this._writeClientConfig(written.config);
+      await this._reload();
+    } catch (error) {
+      this._error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._busy = '';
+    }
+  }
+
   private _renderMark() {
     const brand = this._view?.brand;
-    return this._card(this.msg.mark, html`
+    return this._card(this.msg.brand, html`
       <div class="flex items-center gap-3 flex-wrap">
         <span class="inline-flex w-11 h-11 items-center justify-center rounded-lg border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-200">
           ${brand?.logoSvg
@@ -768,15 +923,13 @@ export class PluginProjectHeader extends PluginBaseModule {
         ${!brand?.logoSvg && !brand?.logoUrl
           ? html`<span class="text-sm italic text-gray-500 dark:text-gray-400">${this.msg.noMark}</span>`
           : nothing}
-        <div class="flex items-center gap-3 ml-auto text-sm">
-          <label class="underline cursor-pointer text-indigo-600 dark:text-indigo-400">
-            ${this.msg.markFile}
+        <div class="flex items-center gap-1.5 ml-auto">
+          <label class=${ICON_BUTTON} title=${this.msg.markFile} aria-label=${this.msg.markFile}>
+            ${ICON.upload}
             <input type="file" accept=".svg,image/svg+xml" class="hidden" @change=${(e: Event) => void this._onMarkFile(e)} />
           </label>
-          <button type="button" class="underline text-indigo-600 dark:text-indigo-400"
-            @click=${() => { this._markMode = this._markMode === 'paste' ? 'none' : 'paste'; }}>${this.msg.markPaste}</button>
-          <button type="button" class="underline text-indigo-600 dark:text-indigo-400"
-            @click=${() => { this._markMode = this._markMode === 'generate' ? 'none' : 'generate'; }}>${this.msg.markGenerate}</button>
+          ${this._markModeButton('paste', this.msg.markPaste, ICON.paste)}
+          ${this._markModeButton('generate', this.msg.markGenerate, ICON.ai)}
         </div>
       </div>
 
@@ -794,6 +947,23 @@ export class PluginProjectHeader extends PluginBaseModule {
         </div>
       ` : nothing}
 
+      <div class="flex flex-col sm:flex-row gap-2">
+        <label class="flex-1 flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
+          ${this.msg.brandTitle}
+          <input class=${INPUT} .value=${this._brandTitle}
+            @input=${(e: Event) => { this._brandTitle = (e.target as HTMLInputElement).value; }} />
+        </label>
+        <label class="flex-1 flex flex-col gap-1 text-xs text-gray-500 dark:text-gray-400">
+          ${this.msg.brandSubtitle}
+          <input class=${INPUT} .value=${this._brandSubtitle}
+            @input=${(e: Event) => { this._brandSubtitle = (e.target as HTMLInputElement).value; }} />
+        </label>
+      </div>
+      ${this._brandDirty ? html`
+        <button type="button" class="${BUTTON_PRIMARY} self-start" ?disabled=${!!this._busy}
+          @click=${() => void this._saveBrand()}>${this._busy || this.msg.save}</button>
+      ` : nothing}
+
       ${this._markMode === 'paste' ? html`
         <div class="flex flex-col gap-2">
           <textarea
@@ -802,15 +972,79 @@ export class PluginProjectHeader extends PluginBaseModule {
             .value=${this._markSvg}
             @input=${(e: Event) => { this._markSvg = (e.target as HTMLTextAreaElement).value; }}
           ></textarea>
+          ${this._renderMarkPreview()}
           <div class="flex items-center gap-3">
-            <span class="inline-flex h-7 items-center text-gray-700 dark:text-gray-200">${this._markSvg ? unsafeHTML(this._markSvg) : nothing}</span>
-            <button type="button" class=${BUTTON} ?disabled=${!!this._busy} @click=${() => void this._saveMark(this._markSvg.trim())}>
+            <button type="button" class=${BUTTON} ?disabled=${!!this._busy || this._markErrors.length > 0}
+              @click=${() => void this._saveMark(this._markSvg.trim())}>
               ${this.msg.save}
             </button>
+            ${this._notes ? html`<span class="text-xs text-gray-500 dark:text-gray-400">${this._notes}</span>` : nothing}
           </div>
         </div>
       ` : nothing}
     `);
+  }
+
+  /**
+   * The tab an error belongs to, so the tab strip can point at it.
+   *
+   * The local gate rejects before the round trip, and its reason lives on ONE tab — with the message
+   * in the footer and the culprit hidden behind a tab, there is nothing to act on.
+   */
+  private get _errorTab(): RequestTab | undefined {
+    if (!this._error) return undefined;
+    if (/brand\.title|brief/iu.test(this._error)) return 'brief';
+    if (/action/iu.test(this._error)) return 'actions';
+    if (/route|navLinks|renderNavLinks/iu.test(this._error)) return 'links';
+    return undefined;
+  }
+
+  /** Why the pending mark would be refused; empty when it is fine (or when there is nothing yet). */
+  private get _markErrors(): string[] {
+    const markup = this._markSvg.trim();
+    return markup ? validateLogoSvg(markup) : [];
+  }
+
+  /**
+   * The pending mark, before saving: at band size and large, on light AND on dark.
+   *
+   * A mark drawn with `currentColor` inherits the surface it sits on, and the header is a nav
+   * surface that can be either — one that disappears on dark is a real failure this catches. The
+   * refusal reasons show here too, so Save is not a guessing game.
+   */
+  private _renderMarkPreview() {
+    this._ensureMarkPreviewCss();
+    const markup = this._markSvg.trim();
+    if (!markup) {
+      return html`<p class="text-xs italic text-gray-400 dark:text-gray-500">${this.msg.markEmpty}</p>`;
+    }
+    const errors = this._markErrors;
+    // Sized by HEIGHT with width auto, exactly like the band (AURA_HEADER_LOGO_PX): a wordmark must
+    // not be squeezed into a square here and stretched there.
+    const tile = (dark: boolean) => html`
+      <div class="flex items-center gap-5 rounded-md border px-4 py-3
+        ${dark
+          ? 'border-gray-800 bg-gray-900 text-white'
+          : 'border-gray-200 bg-white text-gray-900'}">
+        <span class="mark-tile inline-flex items-center" style="--mark-h:${AURA_HEADER_LOGO_PX}px">
+          ${unsafeHTML(markup)}
+        </span>
+        <span class="mark-tile inline-flex items-center" style="--mark-h:64px">
+          ${unsafeHTML(markup)}
+        </span>
+        <span class="text-[11px] font-mono opacity-60 ml-auto">${dark ? this.msg.dark : this.msg.light}</span>
+      </div>
+    `;
+    return html`
+      <div class="flex flex-col gap-2">
+        ${tile(false)}
+        ${tile(true)}
+        ${errors.length ? html`
+          <ul class="rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 py-1.5 text-xs text-red-700 dark:text-red-300 flex flex-col gap-0.5">
+            ${errors.map((error) => html`<li>${error}</li>`)}
+          </ul>` : nothing}
+      </div>
+    `;
   }
 
   /** The five actions, each with what it actually does — and whether it will show at all. */
@@ -900,7 +1134,7 @@ export class PluginProjectHeader extends PluginBaseModule {
     const selected = this._form.navLinks;
     return html`
       <p class="text-xs text-gray-500 dark:text-gray-400">${this.msg.navLinksHint}</p>
-      <ul class="flex flex-col gap-1 max-h-56 overflow-y-auto pr-1">
+      <ul class="flex flex-col gap-1">
         ${this._routes.map((route) => {
           const on = selected.includes(route.href);
           return html`
@@ -929,49 +1163,82 @@ export class PluginProjectHeader extends PluginBaseModule {
     `;
   }
 
-  private _renderForm() {
-    const form = this._form;
-    const set = (patch: Partial<HeaderFormState>) => { this._form = { ...this._form, ...patch }; };
+  /**
+   * The request, as ONE panel with tabs instead of three stacked cards.
+   *
+   * Tabs hide state, and this state is what goes in the request — so every tab carries a badge with
+   * what it holds (a brief or not, how many actions, how many of the project's routes). Without it
+   * someone generates without ever opening "navigation links" and never notices.
+   */
+  private _renderRequest() {
+    const tabs: Array<{ id: RequestTab; label: string; badge: string }> = [
+      { id: 'brief', label: this.msg.tabBrief, badge: this._form.brief.trim() ? '✓' : '—' },
+      { id: 'actions', label: this.msg.actions, badge: String(this._form.actions.length) },
+      { id: 'links', label: this.msg.navLinks, badge: `${this._form.navLinks.length}/${this._routes.length}` },
+    ];
+    const faulty = this._errorTab;
+
     return html`
-      ${this._card(this.msg.request, html`
-        <textarea
-          class="${INPUT} text-sm"
-          rows="4"
-          placeholder=${this.msg.brief}
-          .value=${form.brief}
-          @input=${(e: Event) => set({ brief: (e.target as HTMLTextAreaElement).value })}
-        ></textarea>
-        <div class="flex flex-col sm:flex-row gap-2">
-          <input class=${INPUT} placeholder=${this.msg.brandTitle}
-            .value=${form.brandTitle} @input=${(e: Event) => set({ brandTitle: (e.target as HTMLInputElement).value })} />
-          <input class=${INPUT} placeholder=${this.msg.brandSubtitle}
-            .value=${form.brandSubtitle} @input=${(e: Event) => set({ brandSubtitle: (e.target as HTMLInputElement).value })} />
+      <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
+        <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex-1">${this.msg.request}</h3>
+          ${this._previewTag
+            ? html`<span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${this._previewTag}</span>`
+            : nothing}
+        </header>
+
+        ${this._previewTag ? html`
+          <div class="px-3 py-3 flex flex-col gap-2 border-b border-gray-200 dark:border-gray-800 bg-indigo-50/40 dark:bg-indigo-500/5">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">${this.msg.draft}</span>
+            ${this._renderBand('draft')}
+            ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
+          </div>
+        ` : nothing}
+
+        <div role="tablist" class="flex items-stretch gap-px px-3 pt-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+          ${tabs.map((tab) => {
+            const active = this._tab === tab.id;
+            return html`
+              <button
+                type="button"
+                role="tab"
+                aria-selected=${String(active)}
+                class="flex items-center gap-1.5 rounded-t-md px-3 py-1.5 text-sm border border-b-0 -mb-px transition-colors
+                  ${active
+                    ? 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-medium'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+                @click=${() => { this._tab = tab.id; }}
+              >
+                <span class=${tab.id === faulty ? 'text-red-600 dark:text-red-400' : ''}>${tab.label}</span>
+                <span class="text-[10px] font-mono rounded px-1
+                  ${tab.id === faulty
+                    ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}">${tab.badge}</span>
+              </button>
+            `;
+          })}
         </div>
-        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-          ${this.msg.logoMode}
-          <select class=${INPUT} .value=${form.logo}
-            @change=${(e: Event) => set({ logo: (e.target as HTMLSelectElement).value as HeaderFormState['logo'] })}>
-            <option value="keep">${this.msg.logoKeep}</option>
-            <option value="generate">${this.msg.logoGenerate}</option>
-            <option value="none">${this.msg.logoNone}</option>
-          </select>
-        </label>
-      `)}
-      ${this._card(this.msg.actions, this._renderActionList())}
-      ${this._card(this.msg.navLinks, this._renderRoutes())}
+
+        <!-- One scroll here, not one per list: the panel is the scrolling area. -->
+        <div class="p-3 flex flex-col gap-3 max-h-96 overflow-y-auto">
+          ${this._tab === 'brief' ? this._renderBriefPanel() : nothing}
+          ${this._tab === 'actions' ? this._renderActionList() : nothing}
+          ${this._tab === 'links' ? this._renderRoutes() : nothing}
+        </div>
+      </section>
     `;
   }
 
-  private _renderDraft() {
-    if (!this._previewTag) return nothing;
-    return this._card(
-      this.msg.draft,
-      html`
-        ${this._renderBand('draft')}
-        ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
-      `,
-      html`<span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${this._previewTag}</span>`,
-    );
+  private _renderBriefPanel() {
+    return html`
+      <textarea
+        class="${INPUT} text-sm"
+        rows="6"
+        placeholder=${this.msg.brief}
+        .value=${this._form.brief}
+        @input=${(e: Event) => { this._form = { ...this._form, brief: (e.target as HTMLTextAreaElement).value }; }}
+      ></textarea>
+    `;
   }
 
   /**
@@ -1004,6 +1271,10 @@ export class PluginProjectHeader extends PluginBaseModule {
             ${this._busy || this.msg.generate}
           </button>
         `}
+        ${this._view && !this._view.isActive ? html`
+          <button type="button" class=${BUTTON} ?disabled=${!!this._busy}
+            @click=${() => void this._setAsDefault()}>${this.msg.setDefault}</button>
+        ` : nothing}
         ${this._hasBackup ? html`
           <button type="button" class="ml-auto text-sm underline text-gray-600 dark:text-gray-300" ?disabled=${!!this._busy}
             @click=${() => void this._revert()}>${this.msg.revert}</button>
@@ -1027,8 +1298,7 @@ export class PluginProjectHeader extends PluginBaseModule {
         </div>
         ${this._renderApplied()}
         ${this._renderMark()}
-        ${this._renderForm()}
-        ${this._renderDraft()}
+        ${this._renderRequest()}
         ${this._renderActionBar()}
       </div>
     `;

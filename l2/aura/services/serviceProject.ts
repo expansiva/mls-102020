@@ -12,7 +12,12 @@ import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectDesignSystem.js';
 import '/_102020_/l2/aura/plugins/selectModule.js';
 import '/_102020_/l2/aura/plugins/selectLanguage.js';
+// Device is off the knob row for now (the value is kept: the Assets panels read it). The import
+// stays so putting the knob back is two lines in _renderKnobRow and the details switch.
 import '/_102020_/l2/aura/plugins/selectDevice.js';
+import '/_102020_/l2/aura/plugins/selectHeader.js';
+import { listProjectHeaders } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
+import { ensureProjectLoaded, tryReadHeaderConfig } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
 import '/_102020_/l2/aura/plugins/selectAssetsComponents.js';
 import '/_102020_/l2/aura/plugins/selectAssetsPlugins.js';
 import '/_102020_/l2/aura/plugins/selectAssetsMedia.js';
@@ -25,6 +30,8 @@ const message_en = {
     svcTitle: 'Project',
     designSystem: 'UI',
     designSystemFull: 'User Interface (design system)',
+    header: 'Header',
+    headerFull: 'Header of the client app (one active, others kept)',
     module: 'Module',
     language: 'Language',
     device: 'Device',
@@ -37,6 +44,8 @@ const messages: Record<string, MessageType> = {
         svcTitle: 'Projeto',
         designSystem: 'UI',
         designSystemFull: 'User Interface (design system)',
+        header: 'Header',
+        headerFull: 'Header do app do cliente (um ativo, os outros guardados)',
         module: 'Módulo',
         language: 'Idioma',
         device: 'Dispositivo',
@@ -46,6 +55,8 @@ const messages: Record<string, MessageType> = {
         svcTitle: 'Proyecto',
         designSystem: 'UI',
         designSystemFull: 'User Interface (design system)',
+        header: 'Header',
+        headerFull: 'Header de la app del cliente (uno activo, los demás guardados)',
         module: 'Módulo',
         language: 'Idioma',
         device: 'Dispositivo',
@@ -148,6 +159,7 @@ export class ServiceProject102020 extends ServiceBase {
     @state() private _moduleReloadToken: number = 0;
 
     @state() private _dsValue: number | null = null;
+    @state() private _headerValue: number | null = 0;
     @state() private _moduleValue: number | null = null;
     @state() private _langValue: number | null = null;
     @state() private _deviceValue: number | null = 1;
@@ -156,6 +168,7 @@ export class ServiceProject102020 extends ServiceBase {
     @state() private _selectedKnob: string = 'module';
 
     @state() private _dsConfig: IKnobConfig = DISABLED_CONFIG('designSystem');
+    @state() private _headerConfig: IKnobConfig = DISABLED_CONFIG('header');
     @state() private _langConfig: IKnobConfig = DISABLED_CONFIG('language');
     @state() private _deviceConfig: IKnobConfig = { ...DEVICE_CONFIG };
     @state() private _assetsConfig: IKnobConfig = { ...ASSETS_CONFIG };
@@ -249,6 +262,58 @@ export class ServiceProject102020 extends ServiceBase {
         try { mls.sites.setPage(Number(`${layout}${ds}`)); } catch { /* base not registered */ }
     }
 
+    // ─── Header (project scope) ───────────────────────────────────────
+
+    /**
+     * Header knob from `l5/config.json`: 0=All, 1..N=each header OF THIS PROJECT, last '+'=Add.
+     *
+     * Profiles pointing at a master's band (`studio`) are left out: they are not editable here, and
+     * a slot that opens nothing is worse than no slot.
+     */
+    private async _initHeaderConfig(preselect = true): Promise<void> {
+        const project = getAuraState().actualProject;
+        if (!project) {
+            this._headerConfig = DISABLED_CONFIG('header');
+            this.requestUpdate();
+            return;
+        }
+        await ensureProjectLoaded(project);
+        const config = await tryReadHeaderConfig(project);
+        const entries = listProjectHeaders(config, project).filter(e => e.isProjectHeader);
+        const labels: Record<number, string> = { 0: 'All' };
+        entries.forEach((entry, i) => { labels[i + 1] = entry.variant || 'default'; });
+        labels[entries.length + 1] = '+';
+        this._headerConfig = { key: 'header', min: 0, max: entries.length + 1, labels };
+
+        // The header the app boots is the state, not a preference: it comes from l5/config.json.
+        const active = entries.find(entry => entry.isActive);
+        setAuraState('actualHeader', active?.profileName ?? null);
+        // Open ON the active header instead of the list: that is the one being worked on.
+        const activeIndex = active ? entries.indexOf(active) + 1 : 0;
+        if (preselect) this._headerValue = activeIndex;
+        else if (this._headerValue === null || this._headerValue > entries.length + 1) this._headerValue = activeIndex;
+        this.requestUpdate();
+    }
+
+    /** Another header became the default (from the editor): keep the view, refresh the labels. */
+    private async _onHeaderActivated(profileName: string) {
+        setAuraState('actualHeader', profileName || null);
+        await this._initHeaderConfig(false);
+    }
+
+    /** The panel rebuilt the list (renamed, deleted, activated): take its labels. */
+    private _onHeaderConfig(e: CustomEvent) {
+        this._headerConfig = { key: 'header', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
+        if (this._headerValue === null || this._headerValue > e.detail.max) this._headerValue = 0;
+        this.requestUpdate();
+    }
+
+    /** A header was created: rebuild the knob (new entry + fresh '+' slot), then select it. */
+    private async _onHeaderCreated(value: number) {
+        await this._initHeaderConfig();
+        this._setKnobValue('header', value);
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────
 
     private get _selectedModule(): IModule | null {
@@ -313,6 +378,7 @@ export class ServiceProject102020 extends ServiceBase {
             designSystem: this._dsValue,
             module: this._moduleValue,
             language: this._langValue,
+            header: this._headerValue,
             device: this._deviceValue,
             assets: this._assetsValue,
         };
@@ -322,6 +388,8 @@ export class ServiceProject102020 extends ServiceBase {
         switch (key) {
             // Project scope — unlike the others, NOT gated on a selected module.
             case 'designSystem': return this._dsConfig;
+            // Project scope as well: a header belongs to the app, not to a module.
+            case 'header': return this._headerConfig;
             case 'module': return this._moduleConfig;
             case 'language':
                 return this._moduleSelected ? this._langConfig : DISABLED_CONFIG('language');
@@ -345,6 +413,9 @@ export class ServiceProject102020 extends ServiceBase {
                     saveAuraProject();
                     this._notifySitesPage(value);
                 }
+                break;
+            case 'header':
+                this._headerValue = value;
                 break;
             case 'module': {
                 this._moduleValue = value;
@@ -395,6 +466,7 @@ export class ServiceProject102020 extends ServiceBase {
         AuraInitState();
         this._loadModules();
         this._initDsConfig();
+        this._initHeaderConfig();
         this._updateMenuTitle();
     }
 
@@ -425,9 +497,9 @@ export class ServiceProject102020 extends ServiceBase {
                 gap-0
             " style="--knob-scale: 0.5">
                 ${this._renderKnobItem('designSystem')}
+                ${this._renderKnobItem('header')}
                 ${this._renderKnobItem('module')}
                 ${this._renderKnobItem('language')}
-                ${this._renderKnobItem('device')}
                 ${this._renderKnobItem('assets')}
             </div>
         `;
@@ -488,6 +560,10 @@ export class ServiceProject102020 extends ServiceBase {
                     @select-assets=${(e: CustomEvent) => this._setKnobValue('assets', e.detail.value)}
                     @lang-config=${(e: CustomEvent) => this._onLangConfig(e)}
                     @select-language=${(e: CustomEvent) => this._setKnobValue('language', e.detail.value)}
+                    @header-config=${(e: CustomEvent) => this._onHeaderConfig(e)}
+                    @select-header=${(e: CustomEvent) => this._setKnobValue('header', e.detail.value)}
+                    @header-created=${(e: CustomEvent) => this._onHeaderCreated(e.detail.value)}
+                    @header-activated=${(e: CustomEvent) => this._onHeaderActivated(e.detail.profileName)}
                     @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
                     @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
                     @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
@@ -509,6 +585,14 @@ export class ServiceProject102020 extends ServiceBase {
                         .value=${this._dsValue}
                     ></aura--plugins--select-design-system-102020>
                 `;
+            case 'header':
+                // Headers of the app: 0=list (which one is active), 1..N=edit one, last=Add.
+                return html`
+                    <aura--plugins--select-header-102020
+                        .projectId=${getAuraState().actualProject}
+                        .value=${this._headerValue}
+                    ></aura--plugins--select-header-102020>
+                `;
             case 'module':
                 return html`
                     <aura--plugins--select-module-102020
@@ -527,14 +611,6 @@ export class ServiceProject102020 extends ServiceBase {
                     ></aura--plugins--select-language-102020>
                 `;
             }
-            case 'device':
-                return html`
-                    <aura--plugins--select-device-102020
-                        .value=${this._deviceValue}
-                        .selectedModule=${this._selectedModule}
-                        @select-device=${(e: CustomEvent) => this._setKnobValue('device', e.detail.value)}
-                    ></aura--plugins--select-device-102020>
-                `;
             case 'assets':
                 return this._renderAssetsPanel();
             default:

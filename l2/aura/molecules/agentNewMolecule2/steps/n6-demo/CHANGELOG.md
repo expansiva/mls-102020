@@ -1,5 +1,28 @@
 # n6-demo — CHANGELOG
 
+## 2026-08-25 — o trace passou a dizer QUAIS skills escreveram o playground
+
+Um playground sai de **dois** textos: o contrato de **uso** do grupo e o **playgroundGenerator**. O
+`n1-bootstrap` grava a digital do contrato do grupo, e não tem como gravar a do gerador — este step é
+quem o importa.
+
+E o gerador é justamente quem decide a **forma** do conteúdo de slot. Medido em 24-25/08: três
+playgrounds seguidos de uma tabela com CRUD nasceram com texto puro em toda célula, e a pergunta "qual
+versão do gerador escreveu isso?" não tinha resposta no trace — a causa acabou sendo uma frase da §6.2
+dele, mais larga que a razão dela.
+
+O trace agora leva `skills.playgroundGenerator` e `skills.groupUsage`, cada um com `loaded` + `chars` +
+`hash` (`shared/contractFingerprint.ts`).
+
+Um detalhe que vale a linha extra: `loadGroupUsageSkill` degrada para um **placeholder** em silêncio
+quando o import falha ("the usage skill is a nice-to-have for the demo"), e por isso o `loaded` do
+`groupUsage` reporta a ausência em vez de tirar a digital do texto de fallback como se fosse contrato.
+A string virou a constante `NO_GROUP_USAGE`, para o loader e o relator não discordarem.
+
+A leitura é repetida no `afterPromptStep` em vez de atravessar do `beforePromptStep`, e é de graça:
+`await import` cacheia por especificador.
+
+
 ## 2026-08-18 (noite) — binding dentro de slot, e a mensagem do órfão que convidava a apagar
 
 Duas correções que vieram de um run do IM2 e valem igualmente aqui, porque este passo escreve a mesma página.
