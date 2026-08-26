@@ -71,3 +71,39 @@ export function syScanGroupMoleculeShortNames(groupFolder: string): string[] {
   }
   return [...names].sort((a, b) => a.localeCompare(b));
 }
+
+/**
+ * Puts an already-written, already-compiled module into the browser CACHE, and returns the path the
+ * platform will serve it from ('' when it could not).
+ *
+ * ⚠️ WHY WRITING + COMPILING IS STILL NOT ENOUGH. The preview bundles a page by FETCHING each import.
+ * A module that was written to the stor and compiled for diagnostics is still not served: the group
+ * page failed with `Error get /_102053_/l2/molecules/groupenterboolean/index.defs.js` while the file sat
+ * compiled in the editor (measured 2026-08-26, twice — once without the extension and once with it, so
+ * the specifier was never the problem).
+ *
+ * The missing step is the CACHE. `mls.l2.typescript.compileAndPostProcess(model, runAfterCompile,
+ * saveCache)` takes a third argument for exactly this, and every agent in this family passes it FALSE —
+ * they only ever needed the compiler's diagnostics, because their files are molecule sources that the
+ * runtime already knows how to reach. This agent is the first to write a module that another file
+ * IMPORTS BY NAME, so it is the first that needs the module to be fetchable.
+ *
+ * `mls.stor.cache.AddMfileIfNeed` is the documented door for that — "add a L2 resource to the cache,
+ * returns a path to use in fetch" — and it is what the Studio does when a human saves the file, which is
+ * why editing the .defs by hand in the preview made the import start working.
+ *
+ * Never throws: a cache miss must degrade to a reported warning, not to a failed run that wrote correct
+ * files.
+ */
+export async function syPublishToCache(fileInfo: NmFileInfo): Promise<{ path: string; error: string }> {
+  try {
+    const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+    if (!storFile) return { path: '', error: 'arquivo não está no stor' };
+    const modelTs = await storFile.getOrCreateModel() as mls.editor.IModelTS;
+    if (!modelTs) return { path: '', error: 'sem model para compilar' };
+    const path = await mls.stor.cache.AddMfileIfNeed(modelTs);
+    return { path: path || '', error: path ? '' : 'AddMfileIfNeed não devolveu caminho' };
+  } catch (e) {
+    return { path: '', error: (e as Error)?.message || String(e) };
+  }
+}

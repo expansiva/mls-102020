@@ -28,6 +28,10 @@ export interface SyRunReportGroup {
   moleculesWithoutDefs: string[];
   scenarioCount: number;
   scenariosSource: SyGroupArtifact['scenariosSource'];
+  /** Where the platform will serve index.defs.ts from — '' when it could not be cached. */
+  cachedAs: string;
+  /** Why it could not be cached. Non-empty means the group page will fail to import it. */
+  cacheError: string;
 }
 
 export type SyIndexTsStatus = 'migrated' | 'migration-failed' | 'creation-needed' | 'already-migrated';
@@ -116,6 +120,8 @@ export function buildSyRunReport(facts: {
           moleculesWithoutDefs: g.moleculesWithoutDefs,
           scenarioCount: g.scenarioCount,
           scenariosSource: g.scenariosSource,
+          cachedAs: g.cachedAs || '',
+          cacheError: g.cacheError || '',
         }))
         .sort((a, b) => a.folder.localeCompare(b.folder)),
     },
@@ -157,6 +163,9 @@ export function renderSyRunSummary(report: SyRunReport): string {
   for (const group of report.written.groups) {
     const defsNote = group.moleculesWithoutDefs.length ? `, ${group.moleculesWithoutDefs.length} sem .defs.ts` : '';
     lines.push(`  - ${group.canonical}: ${group.moleculeCount} molécula(s)${defsNote}, ${group.scenarioCount} cenário(s) (${group.scenariosSource}) — ${group.indexDefsFile}`);
+    // A module that is written and compiled but not CACHED fails only later, in the page, with a fetch
+    // error — while the run looks successful. Say it here, where someone will read it.
+    if (group.cacheError) lines.push(`    ⚠️ fora do cache (${group.cacheError}) — a página do grupo não vai conseguir importar molecules/scenarios`);
   }
 
   if (report.ignored.length || report.requestedButIgnored.length) {

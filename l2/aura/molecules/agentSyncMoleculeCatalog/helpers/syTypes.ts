@@ -163,6 +163,13 @@ export interface SyGroupArtifact {
   /** Tags (full, prefixed) with no .defs.ts — reported so the human knows what is out of contract. */
   moleculesWithoutDefs: string[];
   scenarioCount: number;
+  /**
+   * The path the platform will serve index.defs.ts from, or '' when it could not be cached. Recorded
+   * because a module that is written and compiled but NOT cached fails only later, in the page, with a
+   * fetch error — the run itself looks perfectly successful (measured 2026-08-26, twice).
+   */
+  cachedAs?: string;
+  cacheError?: string;
   scenariosSource: 'harvested' | 'preserved-existing' | 'empty-no-source';
   indexDefsFile: string;
   indexHtmlFile: string;

@@ -14,7 +14,7 @@ import { nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102
 import { SY_AGENT_PROJECT, SY_PLAN_S2, SyGroupArtifact, SyProjectArtifact, SyRunInput, syDoneAnchor } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
 import { syExtractMoleculeShortTags } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syExtract.js';
 import { syRenderProjectSkill, SyRenderSkillGroup } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syRenderSkill.js';
-import { nmGroupDefsFile, syGroupArtifactFileInfo, syInputFileInfo, syProjectArtifactFileInfo, syProjectSkillFile } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
+import { nmGroupDefsFile, syGroupArtifactFileInfo, syInputFileInfo, syProjectArtifactFileInfo, syProjectSkillFile, syPublishToCache } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
 
 const AGENT_NAME = 'agentSyProject';
 
@@ -100,6 +100,8 @@ async function beforePromptStep(
   // the stor alone leaves it unfetchable (measured 2026-08-26; see s1-group for the full note). It is
   // also this step's only compile gate.
   const skillCompile = await compileStorTs(syProjectSkillFile(), skillText);
+  // skill.ts is imported BY NAME by the catalog consumer, so it needs to be fetchable, not just valid.
+  const skillCache = await syPublishToCache(syProjectSkillFile());
 
   const artifact: SyProjectArtifact = {
     schemaVersion: 1,
@@ -112,6 +114,7 @@ async function beforePromptStep(
   await writeJsonArtifact(syProjectArtifactFileInfo(runKey), artifact);
 
   const note = `${skillCompile.errors.length ? `⚠️ skill.ts NÃO COMPILA: ${skillCompile.errors.slice(0, 3).join(' | ')} — ` : ''}`
+    + `${skillCache.error ? `⚠️ skill.ts fora do cache (${skillCache.error}) — ` : ''}`
     + `skill.ts: ${groups.length} grupo(s), ${moleculeCount} molécula(s)`
     + ` (${fromArtifact.length} deste run, ${fromIndexDefs.length} do index.defs.ts existente)`
     + `${neverSynced.length ? ` — ${neverSynced.length} ainda sem catálogo, fora do skill.ts: ${neverSynced.join(', ')}` : ''}`;

@@ -29,6 +29,7 @@ import {
 } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syExtract.js';
 import { syRenderIndexDefs, syRenderIndexHtml } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syRenderDefs.js';
 import {
+  syPublishToCache,
   nmDefsFile,
   nmGroupDefsFile,
   nmGroupIndexFile,
@@ -165,6 +166,11 @@ async function beforePromptStep(
   if (defsCompile.errors.length) {
     warnings.push(`index.defs.ts não compila: ${defsCompile.errors.slice(0, 3).join(' | ')}`);
   }
+  // Compiling proves it is VALID; caching is what makes it FETCHABLE — the group page imports
+  // molecules/scenarios from this module by name, and an uncached module 404s in the preview bundler.
+  // See helpers/syFs.syPublishToCache for the two measurements behind this.
+  const defsCache = await syPublishToCache(nmGroupDefsFile(folder));
+  if (defsCache.error) warnings.push(`index.defs.ts não entrou no cache (${defsCache.error}) — a página do grupo não vai conseguir importá-lo`);
 
   const artifact: SyGroupArtifact = {
     schemaVersion: 1,
@@ -178,6 +184,8 @@ async function beforePromptStep(
     // (§4.4), and this is exactly the "Moléculas: ml-x, ml-y" line skill.ts (level 1) needs.
     moleculeShortTags: molecules.map(m => (m.tag.includes('--') ? m.tag.slice(m.tag.indexOf('--') + 2) : m.tag)),
     moleculesWithoutDefs: molecules.filter(m => !m.defsRef).map(m => m.tag),
+    cachedAs: defsCache.path,
+    cacheError: defsCache.error,
     scenarioCount: scenarios.length,
     scenariosSource,
     indexDefsFile: `l2/molecules/${folder}/index.defs.ts`,
