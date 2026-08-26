@@ -18,6 +18,7 @@ const INPUT: SyRunInput = {
   ignoredGroups: [{ folder: 'groupnavigatemain', reason: 'sem entrada em skills/index.ts' }],
   requestedButIgnoredGroups: [],
   unknownGroups: [],
+  catalogGroups: [{ folder: 'groupenternumber', canonical: 'groupEnterNumber', purpose: 'Allows the user to input numeric values.', usageContract: '/_102020_/l2/aura/molecules/skills/groupEnterNumber/usage' }],
 };
 
 const GROUP_ARTIFACT: SyGroupArtifact = {
@@ -139,4 +140,30 @@ void test('a group whose s1 step left no artifact is not counted as written (mis
   const report = buildSyRunReport(baseFacts({ groupArtifacts: [] }));
   assert.equal(report.written.groupCount, 0);
   assert.equal(report.written.moleculeCount, 0);
+});
+
+// ⚠️ THE RUN THAT GENERATES NOTHING STILL REPORTS. A throw inside beforePromptImplicit reaches no one
+// (the platform has no try/catch around that hook: uncaught rejection in the console, empty screen for
+// the user — measured on a real Studio run 2026-08-26). So a refused run is still a run, and the
+// summary is the only channel that reaches the human.
+void test('a refused run names the reason AND the group names the project accepts', () => {
+  const refused: SyRunInput = { ...INPUT, matchedGroups: [], indexTsMigrationGroups: [], unknownGroups: ['groupEnterDate'], refusal: "grupo(s) desconhecido(s): groupEnterDate" };
+  const report = buildSyRunReport({ savedAt: '2026-08-26T00:00:00.000Z', runKey: 'sync-x', project: 102053, input: refused, projectArtifact: null, groupArtifacts: [], indexTsArtifacts: [] });
+
+  assert.equal(report.refusal, 'grupo(s) desconhecido(s): groupEnterDate');
+  assert.deepEqual(report.validGroups, ['groupEnterNumber']);
+
+  const summary = renderSyRunSummary(report);
+  assert.match(summary, /Nada foi gerado/);
+  assert.match(summary, /groupEnterDate/);
+  // the correction, not just the complaint
+  assert.match(summary, /Grupos que este projeto aceita: groupEnterNumber/);
+  assert.match(summary, /Nenhum arquivo foi escrito/);
+});
+
+void test('a normal run carries no refusal and still lists the valid group names', () => {
+  const report = buildSyRunReport({ savedAt: '2026-08-26T00:00:00.000Z', runKey: 'sync-y', project: 102053, input: INPUT, projectArtifact: null, groupArtifacts: [], indexTsArtifacts: [] });
+  assert.equal(report.refusal, null);
+  assert.deepEqual(report.validGroups, ['groupEnterNumber']);
+  assert.doesNotMatch(renderSyRunSummary(report), /Nada foi gerado/);
 });

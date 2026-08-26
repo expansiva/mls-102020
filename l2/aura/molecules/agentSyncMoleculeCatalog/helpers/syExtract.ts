@@ -312,3 +312,33 @@ function parseRowObject(chunk: string): SyParsedRow {
   }
   return { scenario, trueFields };
 }
+
+/**
+ * The short molecule names published by an ALREADY GENERATED `index.defs.ts` — 'ml-date-picker', no
+ * group prefix, in the order the file lists them.
+ *
+ * ⚠️ WHY s2 NEEDS THIS. Level 1 (`skill.ts`) lists every group of the project, but a targeted run only
+ * regenerates one of them. For the groups it did not touch, their own level 2 file is the source — the
+ * catalog's "level 1 is derived from level 2" rule, applied to the groups this run left alone. Reading
+ * the FILE (not this run's l4 artifact) is what stops a single-group run from truncating level 1.
+ *
+ * Returns [] when the text carries no `molecules` array — a stub, or a group never synced.
+ */
+export function syExtractMoleculeShortTags(indexDefsSource: string): string[] {
+  const text = indexDefsSource || '';
+  const start = text.indexOf('export const molecules');
+  if (start < 0) return [];
+  const open = text.indexOf('[', start);
+  if (open < 0) return [];
+  const close = matchDelimiter(text, open, '[', ']');
+  if (close < 0) return [];
+  const block = text.slice(open, close + 1);
+  const tags: string[] = [];
+  const re = /tag:\s*(['"])([^'"]+)\1/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(block))) {
+    const tag = match[2];
+    tags.push(tag.includes('--') ? tag.slice(tag.indexOf('--') + 2) : tag);
+  }
+  return tags;
+}

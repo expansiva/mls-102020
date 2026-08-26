@@ -9,11 +9,12 @@
 // value, and no second parser to keep in sync with syRenderDefs.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { nmDestProject, readJsonArtifact, writeJsonArtifact, writeStorTextAtomic, toDisplayPath } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { nmDestProject, readJsonArtifact, readStorText, writeJsonArtifact, writeStorTextAtomic, toDisplayPath } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import { SY_AGENT_PROJECT, SY_PLAN_S2, SyGroupArtifact, SyProjectArtifact, SyRunInput, syDoneAnchor } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
+import { syExtractMoleculeShortTags } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syExtract.js';
 import { syRenderProjectSkill, SyRenderSkillGroup } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syRenderSkill.js';
-import { syGroupArtifactFileInfo, syInputFileInfo, syProjectArtifactFileInfo, syProjectSkillFile } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
+import { nmGroupDefsFile, syGroupArtifactFileInfo, syInputFileInfo, syProjectArtifactFileInfo, syProjectSkillFile } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
 
 const AGENT_NAME = 'agentSyProject';
 
@@ -47,22 +48,46 @@ async function beforePromptStep(
     return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `[${AGENT_NAME}] run ${runKey} has no input.json / no matched groups to build the project skill from`)];
   }
 
+  // EVERY group of the project, not just this run's targets — skill.ts is rewritten WHOLE, and a group
+  // missing from level 1 is unreachable by the consumer even when its level 2 is perfect. Building this
+  // list from `matchedGroups` alone made 'atualizar grupo X' silently delete every OTHER group from
+  // level 1 (measured on a real Studio run, 2026-08-26).
+  //
+  // Two sources, in this order:
+  //   1. this run's l4 artifact — freshest, and the only one a just-regenerated group has;
+  //   2. the group's own index.defs.ts — for the groups this run did not touch. That is the catalog's
+  //      own rule ("level 1 is derived from level 2") applied to the groups left alone.
+  // A group with neither has never been synced: it is skipped and named, never silently dropped.
   const groups: SyRenderSkillGroup[] = [];
-  const missing: string[] = [];
+  const fromArtifact: string[] = [];
+  const fromIndexDefs: string[] = [];
+  const neverSynced: string[] = [];
   let moleculeCount = 0;
-  for (const canonical of input.matchedGroups) {
-    const folder = canonical.trim().toLowerCase();
+  const catalogGroups = input.catalogGroups && input.catalogGroups.length
+    ? input.catalogGroups
+    : input.matchedGroups.map(canonical => ({ folder: canonical.trim().toLowerCase(), canonical, purpose: '', usageContract: '' }));
+
+  for (const group of catalogGroups) {
+    const folder = group.folder;
     const artifact = await readJsonArtifact<SyGroupArtifact>(syGroupArtifactFileInfo(runKey, folder), false);
-    if (!artifact) {
-      missing.push(canonical);
+    if (artifact) {
+      moleculeCount += artifact.moleculeShortTags.length;
+      groups.push({ canonical: artifact.canonical, folder: artifact.folder, purpose: artifact.purpose, moleculeShortTags: artifact.moleculeShortTags });
+      fromArtifact.push(artifact.canonical);
       continue;
     }
-    moleculeCount += artifact.moleculeShortTags.length;
-    groups.push({ canonical: artifact.canonical, folder: artifact.folder, purpose: artifact.purpose, moleculeShortTags: artifact.moleculeShortTags });
+    const shortTags = syExtractMoleculeShortTags(await readStorText(nmGroupDefsFile(folder), false));
+    if (!shortTags.length) {
+      neverSynced.push(group.canonical || folder);
+      continue;
+    }
+    moleculeCount += shortTags.length;
+    groups.push({ canonical: group.canonical || folder, folder, purpose: group.purpose, moleculeShortTags: shortTags });
+    fromIndexDefs.push(group.canonical || folder);
   }
 
   if (!groups.length) {
-    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `[${AGENT_NAME}] none of this run's group steps left an artifact to read (missing: ${missing.join(', ')})`)];
+    return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `[${AGENT_NAME}] nenhum grupo do projeto tem catálogo para compor o skill.ts (nunca sincronizados: ${neverSynced.join(', ') || '-'})`)];
   }
 
   const project = nmDestProject();
@@ -80,7 +105,9 @@ async function beforePromptStep(
   };
   await writeJsonArtifact(syProjectArtifactFileInfo(runKey), artifact);
 
-  const note = `skill.ts: ${groups.length} grupo(s), ${moleculeCount} molécula(s)${missing.length ? ` — ${missing.length} grupo(s) sem artefato do s1: ${missing.join(', ')}` : ''}`;
+  const note = `skill.ts: ${groups.length} grupo(s), ${moleculeCount} molécula(s)`
+    + ` (${fromArtifact.length} deste run, ${fromIndexDefs.length} do index.defs.ts existente)`
+    + `${neverSynced.length ? ` — ${neverSynced.length} ainda sem catálogo, fora do skill.ts: ${neverSynced.join(', ')}` : ''}`;
   return [
     nmResultStepIntent(context, parentStep, {
       planId: syDoneAnchor(SY_PLAN_S2),

@@ -54,6 +54,10 @@ export interface SyRunReport {
   ignored: SyIgnoredGroup[];
   requestedButIgnored: SyIgnoredGroup[];
   unknown: string[];
+  /** Set when the run generated nothing on purpose — bad syntax, unknown names, or no eligible group. */
+  refusal: string | null;
+  /** Every group name this project accepts in a mention — what makes `unknown` actionable. */
+  validGroups: string[];
   indexTs: {
     requested: boolean;
     groups: SyRunReportIndexTsGroup[];
@@ -118,6 +122,10 @@ export function buildSyRunReport(facts: {
     ignored: facts.input.ignoredGroups,
     requestedButIgnored: facts.input.requestedButIgnoredGroups,
     unknown: facts.input.unknownGroups,
+    refusal: facts.input.refusal || null,
+    // The names a mention MAY use. Without them an "I don't know that group" message is a dead end;
+    // with them it is a correction the human can act on in one read.
+    validGroups: (facts.input.catalogGroups || []).map(group => group.canonical || group.folder),
     indexTs: { requested: facts.input.includeIndexTsRequested, groups: indexTsGroups, creationNotBuilt: SY_CREATION_NOT_BUILT },
     publish: { published: false, warning: SY_PUBLISH_WARNING },
   };
@@ -134,6 +142,17 @@ export function renderSyRunSummary(report: SyRunReport): string {
   const lines: string[] = [];
   lines.push(`agentSyncMoleculeCatalog — run ${report.runKey} (mls-${report.project})`);
   lines.push('');
+  if (report.refusal) {
+    lines.push(`⚠️ Nada foi gerado: ${report.refusal}`);
+    if (report.validGroups.length) {
+      lines.push('');
+      lines.push(`Grupos que este projeto aceita: ${report.validGroups.join(', ')}.`);
+    }
+    lines.push('');
+    lines.push('Nenhum arquivo foi escrito — corrija a menção e rode de novo.');
+    return lines.join('\n');
+  }
+
   lines.push(`Gravado: ${report.written.skillFile || 'l2/molecules/skill.ts'} + ${report.written.groupCount} grupo(s), ${report.written.moleculeCount} molécula(s) no total.`);
   for (const group of report.written.groups) {
     const defsNote = group.moleculesWithoutDefs.length ? `, ${group.moleculesWithoutDefs.length} sem .defs.ts` : '';
@@ -149,6 +168,7 @@ export function renderSyRunSummary(report: SyRunReport): string {
   if (report.unknown.length) {
     lines.push('');
     lines.push(`Nomes não reconhecidos na menção: ${report.unknown.join(', ')}.`);
+    if (report.validGroups.length) lines.push(`  Grupos que este projeto aceita: ${report.validGroups.join(', ')}.`);
   }
 
   lines.push('');

@@ -67,19 +67,28 @@ async function beforePromptImplicit(
   const text = stripAgentMention(userPrompt, agent.agentName);
   const raw = isBareMention(text) ? '' : text;
 
+  // ⚠️ NOTHING HERE THROWS, and that is the point. The platform's executeBeforePromptStream has no
+  // try/catch around beforePromptImplicit, so a throw becomes an uncaught promise rejection in the
+  // browser console and the user sees an EMPTY SCREEN — measured on a real Studio run, 2026-08-26, on
+  // '@@agentSyncMoleculeCatalog atualizar grupo groupEnterDate' in a project without that group. The
+  // message was correct and reached nobody.
+  //
+  // So every user-input problem becomes a `refusal` carried in input.json, the run is created anyway,
+  // and s4 alone is planted: the report is the only channel that reaches the human. This also makes the
+  // unknown-group path the report was ALREADY built for (`unknown`) reachable for the first time.
   const entry = syParseEntry(raw);
-  if (entry.error) throw new Error(`[${AGENT_NAME}] ${entry.error}`);
-
   const discovery = syDiscoverGroups(syScanProjectGroupFolders(), sySkillList());
-  const resolved = syResolveRequested(discovery, entry);
-  if (resolved.unknown.length) {
-    throw new Error(`[${AGENT_NAME}] ${syUnknownGroupsMessage(resolved.unknown, discovery)}`);
-  }
-  if (!resolved.selected.length) {
-    const reason = resolved.requestedButIgnored.length
-      ? `todos os grupos pedidos estão fora do catálogo: ${resolved.requestedButIgnored.map(group => `${group.folder} (${group.reason})`).join('; ')}`
-      : 'nenhum grupo com entrada em skills/index.ts foi encontrado no projeto';
-    throw new Error(`[${AGENT_NAME}] nada para gerar — ${reason}`);
+  const resolved = entry.error ? { selected: [], requestedButIgnored: [], unknown: [] } : syResolveRequested(discovery, entry);
+
+  let refusal = '';
+  if (entry.error) {
+    refusal = entry.error;
+  } else if (!resolved.selected.length) {
+    refusal = resolved.unknown.length
+      ? syUnknownGroupsMessage(resolved.unknown, discovery)
+      : resolved.requestedButIgnored.length
+        ? `todos os grupos pedidos estão fora do catálogo: ${resolved.requestedButIgnored.map(group => `${group.folder} (${group.reason})`).join('; ')}`
+        : 'nenhum grupo com entrada em skills/index.ts foi encontrado no projeto';
   }
 
   // E8 triggers, per matched group (todo-implementar-E8-index-ts.md §1): G1 (no index.ts at all) is not
@@ -114,7 +123,13 @@ async function beforePromptImplicit(
     // requestedButIgnored already covers what the human asked about.
     ignoredGroups: entry.wantsAll ? discovery.ignored : [],
     requestedButIgnoredGroups: resolved.requestedButIgnored,
-    unknownGroups: [],
+    // Reported by s4, never thrown. A name the mention got wrong is information, not a crash — and when
+    // OTHER named groups were valid, the run generates those and reports this one alongside.
+    unknownGroups: resolved.unknown,
+    // Every group of the project, so s2 can rewrite level 1 WHOLE without deleting the groups this run
+    // did not target. See SyRunInput.catalogGroups for what that cost before it existed.
+    catalogGroups: discovery.matched,
+    ...(refusal ? { refusal } : {}),
   };
   await writeJsonArtifact(syInputFileInfo(runKey), input);
 
@@ -131,7 +146,9 @@ async function beforePromptImplicit(
         },
         { type: 'human', content: raw || AGENT_NAME },
       ],
-      taskTitle: `Sync molecule catalog: ${resolved.selected.length === 1 ? resolved.selected[0].canonical : `${resolved.selected.length} grupos`}`,
+      taskTitle: refusal
+        ? 'Sync molecule catalog: nada a gerar'
+        : `Sync molecule catalog: ${resolved.selected.length === 1 ? resolved.selected[0].canonical : `${resolved.selected.length} grupos`}`,
       threadId: context.message.threadId,
       userMessage: context.message.content,
       longTermMemory: { flowName: AGENT_NAME, runKey },
@@ -139,6 +156,23 @@ async function beforePromptImplicit(
   };
 
   const intents: mls.msg.AgentIntent[] = [addMessageAI];
+
+  // Nothing to generate: s4 alone, and it runs immediately. The report is the only thing that reaches
+  // the human, so a refused run is still a run — it just produces a report and no files.
+  if (refusal) {
+    intents.push(
+      bootstrapAddStepIntent(context, {
+        planId: SY_PLAN_S4,
+        agentName: 'agentSyReport',
+        title: 's4 · relatório',
+        dependsOn: [],
+        status: 'waiting_human_input',
+        prompt: { planId: SY_PLAN_S4, runKey },
+      }),
+    );
+    return intents;
+  }
+
   for (const group of resolved.selected) {
     intents.push(
       bootstrapAddStepIntent(context, {

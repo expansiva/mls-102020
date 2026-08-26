@@ -123,8 +123,29 @@ export interface SyRunInput {
   ignoredGroups: SyIgnoredGroup[];
   /** Named explicitly, but this project ignores them too — same reason, same D4 outcome. */
   requestedButIgnoredGroups: SyIgnoredGroup[];
-  /** Named in the mention, but no project folder answers to it — the run refuses before planting anything if this is non-empty. */
+  /** Named in the mention, but no project folder answers to it. Reported by s4, never thrown (see `refusal`). */
   unknownGroups: string[];
+  /**
+   * EVERY group of the project that has a skills/index.ts entry — not just this run's targets.
+   *
+   * ⚠️ WHY THIS EXISTS. s2 rewrites l2/molecules/skill.ts WHOLE, and level 1 must list every group the
+   * project has. Building it from `matchedGroups` alone meant a targeted run ('atualizar grupo X')
+   * silently DELETED every other group from level 1 — and a group missing from level 1 is unreachable
+   * by the consumer, which is the exact failure the catalog pilot measured as fatal (it refuses at the
+   * door what the level below could serve). s2 now reads this list and falls back to each group's own
+   * index.defs.ts for the ones this run did not regenerate.
+   */
+  catalogGroups: SyDiscoveredGroup[];
+  /**
+   * Set when the run has NOTHING to generate — bad mention syntax, only unknown group names, or no
+   * eligible group at all. The run still happens: it plants s4 alone, which reports this in the summary.
+   *
+   * ⚠️ It is NOT thrown. A throw inside beforePromptImplicit reaches no one: the platform's
+   * executeBeforePromptStream has no try/catch around that hook, so the error lands as an uncaught
+   * promise rejection in the browser console and the user sees an empty screen. Measured 2026-08-26 on
+   * a real Studio run.
+   */
+  refusal?: string;
 }
 
 // ---- what s1 leaves behind for s2/s4 to read (l4/agentSyncMoleculeCatalog/<runKey>/s1-<folder>.json) ----
