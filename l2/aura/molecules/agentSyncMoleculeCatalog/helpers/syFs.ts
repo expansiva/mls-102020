@@ -26,6 +26,9 @@ export function syGroupArtifactFileInfo(runKey: string, groupFolder: string): Nm
   return syWorkFile(runKey, `s1-${groupFolder}`);
 }
 export const syProjectArtifactFileInfo = (runKey: string): NmFileInfo => syWorkFile(runKey, 's2-project');
+export function syIndexTsArtifactFileInfo(runKey: string, groupFolder: string): NmFileInfo {
+  return syWorkFile(runKey, `s3-${groupFolder}`);
+}
 
 // ---- the source artifacts this agent writes ----
 

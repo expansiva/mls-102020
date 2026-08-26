@@ -2,14 +2,12 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  syExtractTag,
+import {syExtractTag,
   syExtractMoleculeDefs,
   syVaryingAxes,
   syPublishedLayout,
   syHarvestScenarios,
-  syExtractExistingScenarios,
-} from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syExtract.js';
+  syExtractExistingScenarios, syExtractMoleculeShortTags } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syExtract.js';
 
 // ---- syExtractTag ----
 
@@ -205,4 +203,25 @@ void test('an intentionally empty scenarios array comes back as [], not null —
   const defs = `export const scenarios = [
 ];`;
   assert.deepEqual(syExtractExistingScenarios(defs), []);
+});
+
+// ⚠️ THE REGRESSION THIS GUARDS. s2 rewrites level 1 (skill.ts) WHOLE. It used to build the group list
+// from the RUN's targets alone, so 'atualizar grupo X' silently deleted every other group from level 1 —
+// and a group missing from level 1 is unreachable by the consumer even when its level 2 is perfect.
+// The fix reads the untouched groups' own index.defs.ts, which is what this parses.
+void test('syExtractMoleculeShortTags reads an existing index.defs.ts, without the group prefix', () => {
+  const source = `
+export const group = 'groupEnterDate';
+export const molecules = [
+    { tag: 'groupenterdate--ml-compact-calendar', defs: '/_102040_/l2/molecules/groupenterdate/ml-compact-calendar.defs' },
+    { tag: 'groupenterdate--ml-date-picker', layout: { labelPlacement: 'top' }, defs: '/_102040_/l2/molecules/groupenterdate/ml-date-picker.defs' },
+];
+export const scenarios = [ { scenario: 'tag: not-a-molecule', recommended: [] } ];
+`;
+  assert.deepEqual(syExtractMoleculeShortTags(source), ['ml-compact-calendar', 'ml-date-picker']);
+});
+
+void test('syExtractMoleculeShortTags returns [] for a stub or a never-synced group', () => {
+  assert.deepEqual(syExtractMoleculeShortTags(''), []);
+  assert.deepEqual(syExtractMoleculeShortTags('/// <mls fileReference="x"/>\n'), []);
 });

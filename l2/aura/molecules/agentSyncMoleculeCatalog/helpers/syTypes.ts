@@ -12,9 +12,12 @@ export const SY_AGENT_NAME = 'agentSyncMoleculeCatalog';
 export const SY_AGENT_FOLDER = 'aura/molecules/agentSyncMoleculeCatalog';
 export const SY_AGENT_PROJECT = 102020;
 
-/** Fixed planIds. The s1 steps are one per group — see syGroupPlanId. */
+/** Fixed planIds. The s1/s3 steps are one per group — see syGroupPlanId / syIndexTsPlanId. */
 export const SY_PLAN_S2 = 's2-project';
 export const SY_PLAN_S4 = 's4-report';
+
+/** The shared reference-table renderer's import specifier — see shared/indexReferenceTable.ts. */
+export const SY_SHARED_TABLE_IMPORT = '/_102020_/l2/aura/molecules/shared/indexReferenceTable.js';
 
 /** The folder spelling of a group: the catalog publishes 'groupSelectOne', the folder is lowercase. */
 export function syGroupFolder(groupName: string): string {
@@ -38,6 +41,14 @@ export function syDoneAnchor(planId: string): string {
 
 export function syGroupDoneAnchor(groupName: string): string {
   return `${syGroupPlanId(groupName)}-done`;
+}
+
+export function syIndexTsPlanId(groupName: string): string {
+  return `s3-${syGroupFolder(groupName)}`;
+}
+
+export function syIndexTsDoneAnchor(groupName: string): string {
+  return `${syIndexTsPlanId(groupName)}-done`;
 }
 
 // ---- what the catalog is made of, once discovered/extracted ----
@@ -95,17 +106,46 @@ export interface SyRunInput {
   /** The mention, after stripping the agent's own '@@name' prefix. */
   mentionRaw: string;
   wantsAll: boolean;
-  /** True when the mention matched a recognized index.ts phrase (G2) — s3 does not exist yet (todo §9,
-   * "pare depois do E7"), so this only feeds s4's honesty obligation: say the request was heard. */
+  /**
+   * True when the mention matched a recognized index.ts phrase (G2). ⚠️ Since E8, this does NOT gate
+   * whether index.ts is touched — migration (G3) fires automatically, no opt-in needed, because it is
+   * deterministic and safe (flow.json `decisions.migrationIsAutomatic`). It still feeds s4's honesty
+   * obligation for a G1 group (creation), which is not built in this version regardless of the request.
+   */
   includeIndexTsRequested: boolean;
   /** Canonical names of the groups this run actually generates, alphabetical by folder. */
   matchedGroups: string[];
+  /** G3 (todo §1): index.ts exists and still has the pre-migration code table. Migrated automatically. */
+  indexTsMigrationGroups: string[];
+  /** G1 (todo §1): no index.ts at all. E8b (creation, LLM) is not built in this version — todo §6 step 7. */
+  indexTsCreationGroups: string[];
   /** Ignored in a batch run (D4) — not requested by name, or requested via 'all'. */
   ignoredGroups: SyIgnoredGroup[];
   /** Named explicitly, but this project ignores them too — same reason, same D4 outcome. */
   requestedButIgnoredGroups: SyIgnoredGroup[];
-  /** Named in the mention, but no project folder answers to it — the run refuses before planting anything if this is non-empty. */
+  /** Named in the mention, but no project folder answers to it. Reported by s4, never thrown (see `refusal`). */
   unknownGroups: string[];
+  /**
+   * EVERY group of the project that has a skills/index.ts entry — not just this run's targets.
+   *
+   * ⚠️ WHY THIS EXISTS. s2 rewrites l2/molecules/skill.ts WHOLE, and level 1 must list every group the
+   * project has. Building it from `matchedGroups` alone meant a targeted run ('atualizar grupo X')
+   * silently DELETED every other group from level 1 — and a group missing from level 1 is unreachable
+   * by the consumer, which is the exact failure the catalog pilot measured as fatal (it refuses at the
+   * door what the level below could serve). s2 now reads this list and falls back to each group's own
+   * index.defs.ts for the ones this run did not regenerate.
+   */
+  catalogGroups: SyDiscoveredGroup[];
+  /**
+   * Set when the run has NOTHING to generate — bad mention syntax, only unknown group names, or no
+   * eligible group at all. The run still happens: it plants s4 alone, which reports this in the summary.
+   *
+   * ⚠️ It is NOT thrown. A throw inside beforePromptImplicit reaches no one: the platform's
+   * executeBeforePromptStream has no try/catch around that hook, so the error lands as an uncaught
+   * promise rejection in the browser console and the user sees an empty screen. Measured 2026-08-26 on
+   * a real Studio run.
+   */
+  refusal?: string;
 }
 
 // ---- what s1 leaves behind for s2/s4 to read (l4/agentSyncMoleculeCatalog/<runKey>/s1-<folder>.json) ----
@@ -137,4 +177,18 @@ export interface SyProjectArtifact {
   groupCount: number;
   moleculeCount: number;
   skillFile: string;
+}
+
+// ---- what s3 leaves behind for s4 to read (l4/agentSyncMoleculeCatalog/<runKey>/s3-<folder>.json) ----
+
+export interface SyIndexTsArtifact {
+  schemaVersion: 1;
+  savedAt: string;
+  runKey: string;
+  folder: string;
+  canonical: string;
+  status: 'migrated' | 'failed';
+  /** Set when status is 'failed' — why the migration did not apply. */
+  reason?: string;
+  indexTsFile: string;
 }
