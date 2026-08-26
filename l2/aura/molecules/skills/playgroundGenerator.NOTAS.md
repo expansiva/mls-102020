@@ -7,8 +7,31 @@ Escrito em 2026-08-25 como `playgroundGenerator2.ts`, ao lado do original e iner
 placeholders. O texto que embarca é este; a versão anterior (2.7.0, digital do `skill`
 **11.663 · `a0f36218`**) ficou apenas no backup da sessão da troca.
 
-Digital do `skill` desta versão: **13.267 · `a179b0c2`** — o `n6-demo` grava esse par no trace, então dá
-para conferir num run qual versão o runtime serviu.
+Digital do `skill`: **2.8.0** = 13.267 · `a179b0c2` · **2.9.0 (vigente)** = **14.223 · `f136d71a`** — o
+`n6-demo` grava esse par no trace, então dá para conferir num run qual versão o runtime serviu.
+
+## 2.9.0 — 2026-08-25, a consequência que a 2.8.0 deixou de fora (+978 caracteres)
+
+**Medido no primeiro run que leu a 2.8.0 já publicada** (digital confirmada no trace): o cenário de
+edição nasceu com **`<input>` nativo** na célula — `<input aria-label="Cliente em edição"
+value="Ana Oliveira" />` — e **nenhum** componente do design system nos 7 cenários, onde os três runs
+anteriores tinham `groupentertext--ml-enter-text`.
+
+**A 2.8.0 declarava a categoria e não a consequência.** Ela diz que web component *é* conteúdo de slot
+válido e que é assim que um slot ganha editor; o gerador obedeceu à metade que importa menos ("ponha um
+editor") e escolheu o editor mais barato. É obediência parcial, e bate com o padrão medido nesta frente:
+**pega a frase que diz o que acontece, não a que diz o que é permitido.**
+
+| edição | o quê |
+|---|---|
+| versão | `2.8.0` → `2.9.0` |
+| **§6.2, um ⛔ novo** | *"a native `<input>` is NOT an editor here — this is the trap, not a style preference"*: a molécula propaga `is-editing` só para **custom elements** (tag com hífen), então um `<input>` cru **nunca sai do modo de edição** — parece editável na leitura e continua editável depois do salvar; e escapa do tema e dos tokens. Com a medição do dia e o encaminhamento para o componente do grupo |
+| §8 Checklist | item novo: nenhum `<input>`/`<select>`/`<textarea>` **nativo** dentro de slot |
+| §9 Changelog | linha `2.9.0` |
+
+⛔ **Não pus contra-exemplo em bloco de código.** O exemplo é o texto de maior alavancagem deste arquivo
+— mostrar a forma errada, mesmo marcada como errada, é convidar a copiá-la. A proibição fica em prosa e
+no checklist; o único bloco `html` continua sendo o certo, na §6.3.
 
 > ⚠️ **Este arquivo é lido por QUATRO agentes**, não três: `n6-demo` (NM2), `v5-demo` (Variant),
 > `i5-playground` (IM2) e `agentNewMoleculePlayground` (agentsManageMolecules). Vale para os 31 grupos
