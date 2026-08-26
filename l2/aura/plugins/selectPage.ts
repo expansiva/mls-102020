@@ -390,13 +390,22 @@ export class PluginSelectPage extends StateLitElement {
         const results = await Promise.all(this._pages.filter(p => p.exists).map(async (p) => {
             const shortName = p.file?.shortName ?? p.name;
             const ref = `_${project}_/l2/${module}/web/${device}/page${layout}${ds}/${shortName}.defs.ts`;
-            const src = await getContentByMlsPath(ref);
-            const definition = src ? parseExportValue(src, 'definition') : null;
-            const isGenome = !!definition?.layout?.sections;
-            return [p.name, isGenome ? 'genome' : 'pipeline'] as const;
+            try {
+                const src = await getContentByMlsPath(ref);
+                if (!src) {
+                    // No defs to classify: offer no edit panel rather than the wrong one.
+                    console.warn(`[selectPage] defs not found, edit panel disabled for ${shortName}: ${ref}`);
+                    return [p.name, null] as const;
+                }
+                const definition = parseExportValue(src, 'definition');
+                return [p.name, definition?.layout?.sections ? 'genome' : 'pipeline'] as const;
+            } catch (error) {
+                console.warn(`[selectPage] could not classify ${shortName}:`, error);
+                return [p.name, null] as const;
+            }
         }));
         const map: Record<string, 'genome' | 'pipeline'> = {};
-        for (const [name, shape] of results) map[name] = shape;
+        for (const [name, shape] of results) if (shape) map[name] = shape;
         this._shapeByName = map;
         this.requestUpdate();
     }
@@ -590,7 +599,13 @@ export class PluginSelectPage extends StateLitElement {
         // Pages of the current frontend pipeline have no layout tree in their defs: their visual edit
         // is a patch on the rendered .ts (agentManagePage2), not an edit of a structural definition.
         // The panel below stays for genome defs.
-        if (this._shapeByName[page.name] === 'pipeline') {
+        //
+        // Until the shape is known, NO panel is offered. Defaulting to either flow means offering the
+        // wrong agent: the genome one writes `visualStyle` into the definition, which on a pipeline
+        // page is junk the renderer never reads.
+        const shape = this._shapeByName[page.name];
+        if (!shape) return nothing;
+        if (shape === 'pipeline') {
             const layout = getAuraState().actualLayout ?? 1;
             const ds = getAuraState().actualDesignSystem ?? 1;
             const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
