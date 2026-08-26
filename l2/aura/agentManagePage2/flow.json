@@ -1,0 +1,58 @@
+{
+  "flowId": "agentManagePage2",
+  "schemaVersion": "2026-08-26",
+  "description": "Edição VISUAL pontual de uma página já gerada, por PATCH no .ts. O root agentManagePage2 é o GATE (LLM): recebe o request + um DIGEST (l4 workspace + superfície do shared + outline dos métodos render da página) e decide se é uma mudança visual realizável com o que o projeto já tem; caso contrário RECUSA (nada é tocado). Aprovado, cria 2 steps: agentPatchPage (troca os métodos render tocados, determinístico + compile + 1 rodada de reparo + REVERT) e agentRecordUserChanges (grava a intenção no export userChanges do .defs.ts). O .defs.ts do pipeline atual NÃO tem árvore de layout — por isso o artefato editável é o .ts e o defs só documenta. NOTA: flow.json é documentação — a descoberta de agentes é por convenção (arquivo agent*.ts com createAgent()).",
+  "entry": "{ module, page, layout, ds, device?, request, planOnly?, operations?, imageUrl? }  (JSON, do Studio)",
+  "escopo": "Somente alterações VISUAIS. Pedido que exija campo/rotina inexistente, novo estado/ação, backend, regra de negócio, outra página, navegação ou permissão é RECUSADO pelo gate.",
+  "independencia": "Nenhum import de aura/agentManagePage/* (o grupo legado segue servindo o defs do genome). Reusa apenas helpers de fora: derivePaths, agentImplementGenome/planning, agentChangeFrontend/helpers/cfeMaterialize{Core,Studio}.",
+  "source": {
+    "orchestrator": "_102020_/l2/aura/agentManagePage2/agentManagePage2.ts (gate em beforePromptImplicit; afterPromptStep cria patch+record ou recusa)",
+    "patcher": "_102020_/l2/aura/agentManagePage2/agentPatchPage.ts (LLM devolve métodos completos via tool submitPagePatch; splice determinístico; compile; reparo; revert)",
+    "recorder": "_102020_/l2/aura/agentManagePage2/agentRecordUserChanges.ts (supersede determinístico + consolidação por LLM validada)",
+    "patchCore": "_102020_/l2/aura/agentManagePage2/patchCore.ts (scanner TS-aware, splice de método, inserção i18n, guardas, PATCH_RULES/PATCH_TOOL)",
+    "contextCore": "_102020_/l2/aura/agentManagePage2/pageContextCore.ts (digest do l4 workspace, superfície do shared, outline da página)",
+    "userChangesCore": "_102020_/l2/aura/agentManagePage2/userChangesCore.ts (parse/render/upsert do export + supersede + validação)"
+  },
+  "contexto_do_gate": {
+    "primario": "_<proj>_/l4/<module>/workspaces/<page>.defs.ts — sections/organisms + bffCalls com inputs e output.fields (o conjunto FECHADO de dados da página)",
+    "fallback": "definition.dataBindings do próprio .defs.ts da página (projetos sem l4 workspace); output.fields fica 'unknown' e o gate é avisado via contextSource",
+    "superficie": "_<proj>_/l2/<module>/trace/frontend-shared-dts/<page>.txt (compiled .d.ts persistido) → compile sob demanda → .ts cru",
+    "nunca": "workspace-model.defs.ts (271 KB), access-matrix, siteMap"
+  },
+  "steps": [
+    {
+      "planId": "(root)",
+      "agentName": "agentManagePage2",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "GATE (LLM reasoning). PLAN (planOnly:true) → recusa {type:'result'} = mkFail; aprovação = mkCompleted com 'PLAN:<operations json>' (nada escrito). APPLY (operations pré-aprovadas) → pula o gate (step classificador trivial) e cria os 2 filhos. Operations cujo scope não é um método desta página são descartadas antes de seguir."
+    },
+    {
+      "planId": "patch:<page>",
+      "agentName": "agentPatchPage",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "Recebe o .ts atual + o .d.ts do shared + as operations. LLM devolve {methods:[{name,code}], messages?:[{key,values}], notes} pela tool submitPagePatch. Guardas (invariantes do arquivo, sem comportamento, escopo, membros do shared, chaves i18n) → splice determinístico → salva → compila. Erro na 1ª tentativa = step de reparo (attempt 2, com os erros); erro na 2ª = RESTAURA o original e falha. Sucesso = mkCompleted com 'NOTES:<uma linha>'."
+    },
+    {
+      "planId": "record:<page>",
+      "agentName": "agentRecordUserChanges",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": ["patch:<page>"],
+      "initialStatus": "waiting_dependency",
+      "goal": "Grava o export userChanges no .defs.ts. Supersede determinístico primeiro (mesma dupla scope+intent = substitui); o LLM só classifica o eixo da entrada nova e derruba contradições entre eixos. Resposta validada (nada inventado, entrada mantida intacta, autoria estampada pelo agente); se a validação falhar, grava o resultado determinístico. Depende do patch: patch revertido não deixa registro órfão."
+    }
+  ],
+  "userChanges": {
+    "onde": "export const userChanges = [...] no .defs.ts da página, entre definition e pipeline (definition e pipeline nunca são tocados)",
+    "semantica": "CONJUNTO ATUAL de desvios visuais desejados, não histórico. 'centralize os botões' seguido de 'alinhe à esquerda' deixa UMA entrada.",
+    "entrada": "{ id, change, scope, intent, user, date, styleReference? } — styleReference é RESERVADO para imagem de referência (não populado nesta versão)",
+    "eixos": "layout.align | layout.order | layout.density | layout.grouping | layout.size | style.emphasis | style.color | style.border | style.shadow | text.label | visibility"
+  },
+  "materialize": "NÃO re-renderiza a página. O .ts é editado no lugar; a regeneração completa (agentCfeMaterializeGen) ainda IGNORA userChanges — fechar esse ciclo é a fase 5 documentada em TASK-102020-agent-manage-page-2.md §11."
+}

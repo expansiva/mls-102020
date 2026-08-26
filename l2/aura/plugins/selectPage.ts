@@ -13,7 +13,9 @@ import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
 import { getState, setState } from '/_102029_/l2/collabState.js';
+import { parseExportValue } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
+import '/_102020_/l2/aura/plugins/pageVisualEdit.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -213,6 +215,8 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _pagesNotCreated: boolean = false;
     // page name → DS-version check: status ('stale' | 'review' | 'fresh') + what changed / why.
     @state() private _checkByName: Record<string, PageDsCheck> = {};
+    // 'pipeline' = defs with no layout tree (current generator) -> agentManagePage2 panel.
+    @state() private _shapeByName: Record<string, 'genome' | 'pipeline'> = {};
     // page currently being re-stamped (disables its button).
     @state() private _busyPage: string | null = null;
 
@@ -365,6 +369,45 @@ export class PluginSelectPage extends StateLitElement {
         this.requestUpdate();
         this._autoSelectActivePage();
         this._loadPageStatus();
+        this._loadPageShapes();
+    }
+
+    /**
+     * Which edit flow each page belongs to. A defs that carries `definition.layout.sections` is a
+     * genome defs and keeps the structural flow below (agentManagePage). The defs the current
+     * frontend pipeline produces has no layout tree at all, so its visual edits are patches on the
+     * rendered `.ts` — that is agentManagePage2, hosted by the pageVisualEdit panel.
+     */
+    private async _loadPageShapes(): Promise<void> {
+        this._shapeByName = {};
+        const module = this._modulePath;
+        const project = getAuraState().actualProject;
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        if (!module || !project) return;
+
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+        const results = await Promise.all(this._pages.filter(p => p.exists).map(async (p) => {
+            const shortName = p.file?.shortName ?? p.name;
+            const ref = `_${project}_/l2/${module}/web/${device}/page${layout}${ds}/${shortName}.defs.ts`;
+            try {
+                const src = await getContentByMlsPath(ref);
+                if (!src) {
+                    // No defs to classify: offer no edit panel rather than the wrong one.
+                    console.warn(`[selectPage] defs not found, edit panel disabled for ${shortName}: ${ref}`);
+                    return [p.name, null] as const;
+                }
+                const definition = parseExportValue(src, 'definition');
+                return [p.name, definition?.layout?.sections ? 'genome' : 'pipeline'] as const;
+            } catch (error) {
+                console.warn(`[selectPage] could not classify ${shortName}:`, error);
+                return [p.name, null] as const;
+            }
+        }));
+        const map: Record<string, 'genome' | 'pipeline'> = {};
+        for (const [name, shape] of results) if (shape) map[name] = shape;
+        this._shapeByName = map;
+        this.requestUpdate();
     }
 
     /** Fallback page source: scan the stor for {module}/web/{device}/page11/*.ts pages and
@@ -553,6 +596,30 @@ export class PluginSelectPage extends StateLitElement {
     // requests (backend/new data/new state); accepted edits update the defs + pageAdjustments and
     // the page is re-materialized in delta mode.
     private _renderEditPanel(page: IPageEntry) {
+        // Pages of the current frontend pipeline have no layout tree in their defs: their visual edit
+        // is a patch on the rendered .ts (agentManagePage2), not an edit of a structural definition.
+        // The panel below stays for genome defs.
+        //
+        // Until the shape is known, NO panel is offered. Defaulting to either flow means offering the
+        // wrong agent: the genome one writes `visualStyle` into the definition, which on a pipeline
+        // page is junk the renderer never reads.
+        const shape = this._shapeByName[page.name];
+        if (!shape) return nothing;
+        if (shape === 'pipeline') {
+            const layout = getAuraState().actualLayout ?? 1;
+            const ds = getAuraState().actualDesignSystem ?? 1;
+            const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+            return html`
+                <aura--plugins--page-visual-edit-102020
+                    .module=${this._modulePath ?? ''}
+                    .page=${page.file?.shortName ?? page.name}
+                    .layout=${layout}
+                    .ds=${ds}
+                    .device=${device}
+                ></aura--plugins--page-visual-edit-102020>
+            `;
+        }
+
         const plan = this._editPlan.get(page.name);
         // Confirmation panel — the gate's interpreted operations awaiting the user's approval.
         if (plan) return this._renderEditConfirm(page, plan);
