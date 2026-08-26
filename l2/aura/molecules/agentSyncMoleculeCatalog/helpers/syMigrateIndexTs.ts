@@ -27,18 +27,29 @@ export interface SyMigrationResult {
 }
 
 const METHOD_MARKER = 'private renderReferenceTable(): TemplateResult {';
-const ALREADY_MIGRATED_MARKER = "from './index.defs'";
+// Matched on the MODULE NAME, not the whole specifier: the specifier is absolute
+// ('/_102053_/l2/molecules/groupenterdate/index.defs.js') and carries the project number, which differs
+// per project — while the earlier build emitted a relative './index.defs'. Matching the name alone keeps
+// a page migrated by either build recognized as migrated, so a re-run never migrates twice.
+const ALREADY_MIGRATED_MARKER = 'index.defs';
 
 /**
  * `sharedImportReference` is the import specifier for the shared renderer, e.g.
- * '/_102020_/l2/aura/molecules/shared/indexReferenceTable.js' — passed in rather than hardcoded so the
- * pure helper does not know about project layout, and so a test can point it at a fixture path.
+ * '/_102020_/l2/aura/molecules/shared/indexReferenceTable.js'; `indexDefsReference` is the group's own
+ * level-2 file, e.g. '/_102053_/l2/molecules/groupenterdate/index.defs.js'. Both are passed in rather
+ * than hardcoded so the pure helper does not know about project layout, and so a test can point them at
+ * fixture paths.
+ *
+ * ⚠️ BOTH MUST BE ABSOLUTE '/_project_/...' SPECIFIERS, and a named import ends in '.js'. The first
+ * build emitted a RELATIVE "from './index.defs'" and it did not resolve in the Studio: swept the whole
+ * l2 tree on 2026-08-26 and the only relative import in it was the one this migrator had just written —
+ * every other module, in every project, is imported by absolute path.
  */
-export function syMigrateIndexTs(source: string, sharedImportReference: string): SyMigrationResult {
+export function syMigrateIndexTs(source: string, sharedImportReference: string, indexDefsReference: string): SyMigrationResult {
   const text = source || '';
   if (!text.trim()) return { migrated: text, changed: false, reason: 'empty file' };
-  if (text.includes(ALREADY_MIGRATED_MARKER)) {
-    return { migrated: text, changed: false, reason: 'already imports scenarios from ./index.defs' };
+  if (importsIndexDefs(text)) {
+    return { migrated: text, changed: false, reason: 'já importa molecules/scenarios do index.defs' };
   }
 
   const markerAt = text.indexOf(METHOD_MARKER);
@@ -61,7 +72,7 @@ export function syMigrateIndexTs(source: string, sharedImportReference: string):
   ].join('\n');
 
   const withNewMethod = `${before}${newMethod}${after}`;
-  const migrated = insertImports(withNewMethod, sharedImportReference);
+  const migrated = insertImports(withNewMethod, sharedImportReference, indexDefsReference);
   return { migrated, changed: true };
 }
 
@@ -71,7 +82,7 @@ export function syMigrateIndexTs(source: string, sharedImportReference: string):
  * line and then the `@customElement` decorator, so this position never lands inside a comment block or
  * the class body.
  */
-function insertImports(text: string, sharedImportReference: string): string {
+function insertImports(text: string, sharedImportReference: string, indexDefsReference: string): string {
   const importLineRe = /^import .+;$/gm;
   let lastMatchEnd = -1;
   let match: RegExpExecArray | null;
@@ -80,7 +91,7 @@ function insertImports(text: string, sharedImportReference: string): string {
 
   const newImports = [
     '',
-    "import { molecules, scenarios } from './index.defs';",
+    `import { molecules, scenarios } from '${indexDefsReference}';`,
     `import { renderCatalogReferenceTable } from '${sharedImportReference}';`,
   ].join('\n');
 
@@ -151,4 +162,9 @@ export function syNeedsIndexTsCreation(indexTsExists: boolean): boolean {
 /** G3: the group's index.ts exists and still has the old code-table, not the migrated import. */
 export function syNeedsIndexTsMigration(indexTsExists: boolean, indexTsSource: string): boolean {
   return indexTsExists && !(indexTsSource || '').includes(ALREADY_MIGRATED_MARKER);
+}
+
+/** True when the page already pulls the catalog from its group's index.defs — either specifier form. */
+function importsIndexDefs(text: string): boolean {
+  return /^import\s*\{[^}]*\}\s*from\s*['"][^'"]*index\.defs(?:\.js)?['"];?$/m.test(text);
 }

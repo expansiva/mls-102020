@@ -8,7 +8,7 @@
 // never plants this step for a G1 group; those are reported directly from input.json by s4.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readStorText, toDisplayPath, writeJsonArtifact, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { nmDestProject, readStorText, toDisplayPath, writeJsonArtifact, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import { SY_AGENT_PROJECT, SY_SHARED_TABLE_IMPORT, SyIndexTsArtifact, syGroupFolder, syIndexTsDoneAnchor } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
 import { syMigrateIndexTs } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syMigrateIndexTs.js';
@@ -60,7 +60,10 @@ async function beforePromptStep(
   const indexTsInfo = nmGroupIndexFile(folder, '.ts');
 
   const source = await readStorText(indexTsInfo, true);
-  const result = syMigrateIndexTs(source, SY_SHARED_TABLE_IMPORT);
+  // The group's own level-2 file, by ABSOLUTE path — the house convention for every module in l2, and
+  // the reason the first build's relative './index.defs' did not resolve in the Studio.
+  const indexDefsReference = `/_${nmDestProject()}_/l2/molecules/${folder}/index.defs.js`;
+  const result = syMigrateIndexTs(source, SY_SHARED_TABLE_IMPORT, indexDefsReference);
 
   const savedAt = new Date().toISOString();
   let artifact: SyIndexTsArtifact;

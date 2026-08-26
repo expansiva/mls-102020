@@ -15,6 +15,8 @@
 // ⚠️ PURPOSE TEXT: the full skills/index.ts `description`, untruncated — see syRenderDefs.ts's header
 // and flow.json `decisions.purposeText` for why the seed's shorter text is not reproduced here.
 
+import { syEscapeTemplateLiteral } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTemplateText.js';
+
 export interface SyRenderSkillGroup {
   canonical: string;
   folder: string;
@@ -47,7 +49,9 @@ export function syRenderProjectSkill(input: SyRenderSkillInput): string {
   }
   lines.push('];');
   lines.push('');
-  lines.push(`export const skill = \`${renderProjectSkillMarkdown(input)}\`;`);
+  // Escaped: the prose comes from skills/index.ts, and a backtick in it (markdown inline code, e.g.
+  // "via the `variant` property") would close this template literal early — measured 2026-08-26.
+  lines.push(`export const skill = \`${syEscapeTemplateLiteral(renderProjectSkillMarkdown(input))}\`;`);
   lines.push('');
   return lines.join('\n');
 }

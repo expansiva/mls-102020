@@ -12,6 +12,8 @@
 
 import { SyMoleculeEntry, SyScenario } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
 
+import { syEscapeTemplateLiteral } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTemplateText.js';
+
 export interface SyRenderDefsInput {
   project: number;
   groupCanonical: string;
@@ -59,7 +61,9 @@ export function syRenderIndexDefs(input: SyRenderDefsInput): string {
   for (const scenario of input.scenarios) lines.push(`    ${renderScenarioEntry(scenario)}`);
   lines.push('];');
   lines.push('');
-  lines.push(`export const skill = \`${renderSkillMarkdown(input)}\`;`);
+  // Escaped: each molecule's `# Objective` is written by its own author and may contain backticks —
+  // one of them closes this template literal early and silently invalidates the file (measured 2026-08-26).
+  lines.push(`export const skill = \`${syEscapeTemplateLiteral(renderSkillMarkdown(input))}\`;`);
   lines.push('');
   return lines.join('\n');
 }

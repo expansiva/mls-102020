@@ -46,3 +46,32 @@ void test('a single group gets singular wording ("1 grupo")', () => {
   const text = syRenderProjectSkill({ ...INPUT, groups: [INPUT.groups[0]] });
   assert.match(text, /\(1 grupo\)/);
 });
+
+// ⚠️ THE REGRESSION OF 2026-08-26. groupSelectOne's description in skills/index.ts contains markdown
+// inline code — "Layout is chosen via the `variant` property" — and its first backtick CLOSED the
+// generated template literal 29 lines early, so a real skill.ts stopped being valid TypeScript. It
+// wrote and synced without complaint; only the editor showed it. Backticks in prose are normal.
+void test('a backtick in the group description does not break out of the generated template literal', () => {
+  const source = syRenderProjectSkill({
+    project: 102053,
+    generatedAt: '2026-08-26T00:00:00.000Z',
+    groups: [{ canonical: 'groupSelectOne', folder: 'groupselectone', purpose: 'Layout is chosen via the `variant` property: dropdown, radio group.', moleculeShortTags: ['ml-select'] }],
+  });
+
+  const body = source.slice(source.indexOf('export const skill = `') + 'export const skill = `'.length);
+  const closing = body.indexOf('`');
+  // everything before the closing delimiter must be ESCAPED backticks only — never a bare one
+  assert.equal(body.slice(0, closing).includes('\\`'), true, 'the prose backticks must be escaped');
+  assert.match(source, /\\`variant\\`/);
+  // and the literal must close exactly once, at the end
+  assert.match(source, /\\`;\n?$/);
+});
+
+void test('a ${ in the prose cannot become an interpolation', () => {
+  const source = syRenderProjectSkill({
+    project: 102053,
+    generatedAt: '2026-08-26T00:00:00.000Z',
+    groups: [{ canonical: 'groupX', folder: 'groupx', purpose: 'Use ${value} as the placeholder.', moleculeShortTags: ['ml-x'] }],
+  });
+  assert.match(source, /\\\$\{value\}/);
+});
