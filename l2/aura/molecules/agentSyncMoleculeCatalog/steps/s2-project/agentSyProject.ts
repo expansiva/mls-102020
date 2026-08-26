@@ -93,7 +93,9 @@ async function beforePromptStep(
   const project = nmDestProject();
   const generatedAt = new Date().toISOString();
   const skillText = syRenderProjectSkill({ project, groups, generatedAt });
-  await writeStorTextAtomic(syProjectSkillFile(), skillText);
+  // `true` = also set the editor model. Without it this write is silently lost whenever the Studio has
+  // skill.ts open — measured 2026-08-26 (see s1-group for the full note).
+  await writeStorTextAtomic(syProjectSkillFile(), skillText, true);
 
   const artifact: SyProjectArtifact = {
     schemaVersion: 1,

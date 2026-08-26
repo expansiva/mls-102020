@@ -141,8 +141,15 @@ async function beforePromptStep(
   const indexDefsText = syRenderIndexDefs({ project, groupCanonical: canonical, groupFolder: folder, usageContract, purpose, molecules, scenarios, generatedAt });
   const indexHtmlText = syRenderIndexHtml(folder, project);
 
-  await writeStorTextAtomic(nmGroupDefsFile(folder), indexDefsText);
-  await writeStorTextAtomic(nmGroupIndexFile(folder, '.html'), indexHtmlText);
+  // ⚠️ THE THIRD ARGUMENT IS NOT OPTIONAL IN PRACTICE. `needCreateModel: true` also pushes the text
+  // into the file's editor MODEL. Without it, writeStorTextAtomic only calls setContent — and for a
+  // file the Studio has a model open for, the model still holds the OLD text and is what gets persisted,
+  // so the write is silently lost. Measured on a real Studio run 2026-08-26: index.defs.ts (no model
+  // open) landed, while skill.ts and index.ts (models open) did not — the steps reported success either
+  // way. Every source-writing step in this family passes true (n3-defs, n4-render, n7-index, v2-shell,
+  // v4-index, t3-generate); only the l4 JSON artifacts may leave it false.
+  await writeStorTextAtomic(nmGroupDefsFile(folder), indexDefsText, true);
+  await writeStorTextAtomic(nmGroupIndexFile(folder, '.html'), indexHtmlText, true);
 
   const artifact: SyGroupArtifact = {
     schemaVersion: 1,

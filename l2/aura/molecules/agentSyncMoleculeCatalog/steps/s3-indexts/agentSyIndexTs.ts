@@ -66,7 +66,9 @@ async function beforePromptStep(
   let artifact: SyIndexTsArtifact;
 
   if (result.changed) {
-    await writeStorTextAtomic(indexTsInfo, result.migrated);
+    // `true` = also set the editor model. Without it the migration reported 'migrated' and the page on
+    // disk stayed unmigrated — measured 2026-08-26 (see s1-group for the full note).
+    await writeStorTextAtomic(indexTsInfo, result.migrated, true);
     artifact = { schemaVersion: 1, savedAt, runKey, folder, canonical, status: 'migrated', indexTsFile: toDisplayPath(indexTsInfo) };
   } else {
     artifact = { schemaVersion: 1, savedAt, runKey, folder, canonical, status: 'failed', reason: result.reason || 'unknown', indexTsFile: toDisplayPath(indexTsInfo) };
