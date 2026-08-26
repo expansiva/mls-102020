@@ -26,7 +26,8 @@ import { getContentByMlsPath, getCompiledDtsByMlsPath } from '/_102020_/l2/agent
 import { sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { normalizeOperations2, type EditOperation2 } from '/_102020_/l2/aura/agentManagePage2/patchCore.js';
 import { buildPageEditContext, partitionOperationsByScope, scopeVocabulary, type PageEditContext } from '/_102020_/l2/aura/agentManagePage2/pageContextCore.js';
-import { parseUserChanges } from '/_102020_/l2/aura/agentManagePage2/userChangesCore.js';
+import { parseUserChanges, summarizeUserChanges } from '/_102020_/l2/aura/agentManagePage2/userChangesCore.js';
+import { traceStep, traceSources, traceSent, traceReceived, traceVerdict, traceFail, tracePlan, type TraceMeta } from '/_102020_/l2/aura/agentManagePage2/trace.js';
 
 interface EntryArgs {
   module: string;
@@ -82,32 +83,61 @@ export function designSystemRef(project: number): string {
 /**
  * The shared base class surface: the persisted compiled `.d.ts` artifact, else compiled on demand,
  * else the raw `.ts`. Same three-tier resolution the materializer uses — the `.d.ts` is 4x smaller
- * than the source and is the authoritative contract.
+ * than the source and is the authoritative contract. `onResolve` reports which tier answered, which
+ * matters when the surface looks thinner than expected.
  */
-export async function readSharedSurfaceSource(project: number, module: string, page: string): Promise<string> {
+export async function readSharedSurfaceSource(
+  project: number,
+  module: string,
+  page: string,
+  onResolve?: (info: { ref: string; via: string; size: number }) => void,
+): Promise<string> {
   const tsRef = sharedTsRef(project, module, page);
   const artifact = sharedDtsArtifactRef(tsRef);
   if (artifact) {
     const persisted = await getContentByMlsPath(artifact);
-    if (persisted?.trim()) return persisted;
+    if (persisted?.trim()) {
+      onResolve?.({ ref: artifact, via: 'persisted .d.ts artifact', size: persisted.length });
+      return persisted;
+    }
   }
   const compiled = await getCompiledDtsByMlsPath(tsRef);
-  if (compiled?.trim()) return compiled;
-  return (await getContentByMlsPath(tsRef)) ?? '';
+  if (compiled?.trim()) {
+    onResolve?.({ ref: tsRef, via: 'compiled on demand', size: compiled.length });
+    return compiled;
+  }
+  const raw = (await getContentByMlsPath(tsRef)) ?? '';
+  onResolve?.({ ref: tsRef, via: raw ? 'raw .ts fallback' : 'NOT FOUND', size: raw.length });
+  return raw;
 }
 
-/** Read every source the gate's digest needs. */
-export async function loadEditContext(entry: { module: string; page: string; layout: number | string; ds: number | string; device: string }): Promise<{ context: PageEditContext; tsRef: string; defsRef: string } | null> {
+/** Read every source the gate's digest needs, tracing what each one resolved to. */
+export async function loadEditContext(
+  entry: { module: string; page: string; layout: number | string; ds: number | string; device: string },
+  meta?: TraceMeta,
+): Promise<{ context: PageEditContext; tsRef: string; defsRef: string } | null> {
   const project = mls.actualProject || 0;
   const defsRef = pageRef(project, entry.module, entry.layout, entry.ds, entry.page, '.defs.ts', entry.device);
   const tsRef = pageRef(project, entry.module, entry.layout, entry.ds, entry.page, '.ts', entry.device);
+  const l4Ref = l4WorkspaceRef(project, entry.module, entry.page);
 
   const defsSrc = await getContentByMlsPath(defsRef);
   const pageSrc = await getContentByMlsPath(tsRef);
-  if (!defsSrc || !pageSrc) return null;
+  const l4WorkspaceSrc = defsSrc && pageSrc ? await getContentByMlsPath(l4Ref) : null;
+  let sharedInfo: { ref: string; via: string; size: number } | undefined;
+  const sharedSrc = defsSrc && pageSrc
+    ? await readSharedSurfaceSource(project, entry.module, entry.page, info => { sharedInfo = info; })
+    : '';
 
-  const l4WorkspaceSrc = await getContentByMlsPath(l4WorkspaceRef(project, entry.module, entry.page));
-  const sharedSrc = await readSharedSurfaceSource(project, entry.module, entry.page);
+  if (meta) {
+    traceSources(meta, {
+      'page .defs.ts': { ref: defsRef, found: !!defsSrc, size: defsSrc?.length },
+      'page .ts': { ref: tsRef, found: !!pageSrc, size: pageSrc?.length },
+      'l4 workspace': { ref: l4Ref, found: !!l4WorkspaceSrc, size: l4WorkspaceSrc?.length ?? undefined },
+      'shared surface': { ref: sharedInfo?.ref ?? '', found: !!sharedSrc, size: sharedInfo?.size, via: sharedInfo?.via },
+    });
+  }
+  if (!defsSrc || !pageSrc) return null;
 
   const context = buildPageEditContext({
     page: entry.page,
@@ -118,6 +148,19 @@ export async function loadEditContext(entry: { module: string; page: string; lay
     sharedSrc,
     userChanges: parseUserChanges(defsSrc),
   });
+  if (meta) {
+    traceStep(meta, 'context digest built', {
+      source: context.contextSource,
+      scopes: scopeVocabulary(context),
+      routines: context.data.length,
+      states: context.surface.states.length,
+      handlers: context.surface.handlers.length,
+      msgKeys: context.pageMsgKeys.length,
+      locales: context.languages,
+      canAddText: context.canAddText,
+      userChanges: context.userChanges.length,
+    });
+  }
   return { context, tsRef, defsRef };
 }
 
@@ -131,6 +174,8 @@ async function beforePromptImplicit(
 
   const entry = JSON.parse(userPrompt) as EntryArgs;
   const { module, page, layout, ds, request } = entry;
+  const meta: TraceMeta = { agent: agent.agentName, page };
+  traceStep(meta, 'entry', { project: mls.actualProject || 0, module, page, layout, ds, device: entry.device ?? DEFAULT_DEVICE, planOnly: !!entry.planOnly, operations: entry.operations?.length ?? 0, request });
   if (!module || !page || layout == null || ds == null || !request?.trim()) {
     throw new Error(`(${agent.agentName}) entry needs { module, page, layout, ds, request }`);
   }
@@ -148,7 +193,8 @@ async function beforePromptImplicit(
 
   // APPLY — the user already confirmed these operations; the gate would only cost tokens.
   if (preApproved.length) {
-    console.info(`[agentManagePage2] ▶ apply ${preApproved.length} pre-approved op(s) on ${module}/${page}`);
+    traceStep(meta, 'PHASE = APPLY (gate skipped, operations pre-approved)', { operations: preApproved.map(op => `${op.kind}@${op.scope}`) });
+    traceSent(meta, 'apply classifier (vehicle step)', { system: applyPrompt, data: preApproved });
     return [{
       type: 'add-message-ai',
       request: {
@@ -167,16 +213,17 @@ async function beforePromptImplicit(
   }
 
   // PLAN — run the gate over the digest.
-  const loaded = await loadEditContext({ module, page, layout, ds, device });
+  traceStep(meta, `PHASE = ${planOnly ? 'PLAN (gate only, nothing is written)' : 'LEGACY single-shot (gate then apply)'}`);
+  const loaded = await loadEditContext({ module, page, layout, ds, device }, meta);
   if (!loaded) throw new Error(`(${agent.agentName}) page not found (needs both .defs.ts and .ts): ${module}/${page}`);
   const { context: editContext } = loaded;
-  console.info(`[agentManagePage2] ▶ gate "${request}" on ${module}/${page} (context: ${editContext.contextSource}, scopes: ${scopeVocabulary(editContext).join(', ')})`);
 
   const human = JSON.stringify({
     request,
     scopeVocabulary: scopeVocabulary(editContext),
     context: editContext,
   });
+  traceSent(meta, 'scope gate', { system: gatePrompt, human, data: { request, context: editContext } });
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
@@ -214,6 +261,7 @@ async function afterPromptStep(
     const request = lm['request'] || '';
     const imageUrl = lm['imageUrl'] || '';
     const planOnly = lm['planOnly'] === 'true';
+    const meta: TraceMeta = { agent: agent.agentName, page, taskId: context.task?.PK };
     if (!module || !page || layout == null || ds == null) throw new Error('missing run params in longMemory');
 
     const base = { module, page, layout, ds, device, request, ...(imageUrl ? { imageUrl } : {}) };
@@ -222,21 +270,27 @@ async function afterPromptStep(
     let preApproved: EditOperation2[] = [];
     try { preApproved = lm['operations'] ? normalizeOperations2(JSON.parse(lm['operations'])) : []; } catch { preApproved = []; }
     if (preApproved.length) {
-      console.info(`[agentManagePage2] ✓ applying ${preApproved.length} pre-approved operation(s) on ${module}/${page}`);
-      return buildChildSteps(context, step, { ...base, operations: preApproved });
+      traceVerdict(meta, `APPLY — ${preApproved.length} pre-approved operation(s)`, true, preApproved.map(op => `${op.kind}@${op.scope}: ${op.description}`).join(' | '));
+      return traceChildSteps(meta, buildChildSteps(context, step, { ...base, operations: preApproved }));
     }
 
     // PLAN — read the gate's verdict.
     const payload = step.interaction?.payload?.[0] as any;
+    traceReceived(meta, 'scope gate', payload, { verdict: payload?.type === 'result' ? 'REJECTED' : payload?.type === 'flexible' ? 'APPROVED' : 'UNEXPECTED' });
     if (!payload) throw new Error('missing gate payload');
     if (payload.type === 'result') {
-      return [mkFail(context, parentStep, step, hookSequential, String(payload.result || 'edit request rejected by the scope gate'))];
+      const reason = String(payload.result || 'edit request rejected by the scope gate');
+      traceVerdict(meta, 'gate rejected — nothing was written', false, reason);
+      return [mkFail(context, parentStep, step, hookSequential, reason)];
     }
     if (payload.type !== 'flexible' || !payload.result) {
+      traceVerdict(meta, 'gate payload not understood', false, `type=${payload.type}`);
       return [mkFail(context, parentStep, step, hookSequential, 'gate returned an unexpected payload')];
     }
 
     const operations = normalizeOperations2(payload.result.operations);
+    traceVerdict(meta, `operations normalized: ${operations.length} of ${payload.result.operations?.length ?? 0}`, operations.length > 0,
+      operations.map(op => `${op.kind}@${op.scope}: ${op.description}`).join(' | '));
     if (!operations.length) {
       return [mkFail(context, parentStep, step, hookSequential, 'no actionable visual operations were produced from the request')];
     }
@@ -246,25 +300,48 @@ async function afterPromptStep(
     const loaded = await loadEditContext({ module, page, layout, ds, device });
     if (!loaded) throw new Error(`page not found: ${module}/${page}`);
     const { valid, unknown } = partitionOperationsByScope(operations, loaded.context);
+    if (unknown.length) {
+      traceVerdict(meta, `${unknown.length} operation(s) dropped — scope not in this page`, false,
+        `${unknown.map(op => op.scope).join(', ')} (page has: ${scopeVocabulary(loaded.context).join(', ')})`);
+    }
     if (!valid.length) {
       const scopes = unknown.map(op => op.scope).join(', ');
       return [mkFail(context, parentStep, step, hookSequential,
         `the change targets '${scopes}', which is not part of this page (methods: ${scopeVocabulary(loaded.context).join(', ')})`)];
     }
-    if (unknown.length) console.warn(`[agentManagePage2] dropped ${unknown.length} op(s) out of this page's scope: ${unknown.map(op => op.scope).join(', ')}`);
 
     if (planOnly) {
-      console.info(`[agentManagePage2] ✓ plan ready — ${valid.length} operation(s): ${valid.map(op => `${op.kind}@${op.scope}`).join(', ')}`);
+      traceVerdict(meta, `PLAN ready — ${valid.length} operation(s) returned to the caller, nothing written`, true,
+        valid.map(op => `${op.kind}@${op.scope}`).join(', '));
       return [mkCompleted(context, parentStep, step, hookSequential, `PLAN:${JSON.stringify(valid)}`)];
     }
 
-    console.info(`[agentManagePage2] ✓ gate approved — ${valid.length} operation(s)`);
-    return buildChildSteps(context, step, { ...base, operations: valid });
+    traceVerdict(meta, `gate approved — ${valid.length} operation(s)`, true);
+    return traceChildSteps(meta, buildChildSteps(context, step, { ...base, operations: valid }));
   } catch (error) {
     const msg = `[${agent.agentName}] ${error instanceof Error ? error.message : String(error)}`;
-    console.error('[agentManagePage2] ✗', msg);
+    traceFail({ agent: agent.agentName, page: lmPage(context) }, msg);
     return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
+}
+
+function lmPage(context: mls.msg.ExecutionContext): string | undefined {
+  return ((context.task?.iaCompressed?.longMemory || {}) as Record<string, string>)['page'];
+}
+
+/** Log the run shape the orchestrator just scheduled (planId → agent, and what waits on what). */
+function traceChildSteps(meta: TraceMeta, intents: mls.msg.AgentIntent[]): mls.msg.AgentIntent[] {
+  tracePlan(meta, intents
+    .filter(intent => intent.type === 'add-step')
+    .map(intent => {
+      const step = (intent as mls.msg.AgentIntentAddStep).step as any;
+      return {
+        planId: step?.planning?.planId ?? '?',
+        agent: step?.agentName ?? '?',
+        dependsOn: step?.planning?.dependsOn,
+      };
+    }));
+  return intents;
 }
 
 /** Patch the page, then record the intent. The record waits on the patch — and is skipped if it fails. */

@@ -24,6 +24,7 @@ import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helper
 import { pageRef } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
 import { parseUserChanges, type UserChange } from '/_102020_/l2/aura/agentManagePage2/userChangesCore.js';
 import type { EditOperation2 } from '/_102020_/l2/aura/agentManagePage2/patchCore.js';
+import { traceStep, traceVerdict } from '/_102020_/l2/aura/agentManagePage2/trace.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -319,6 +320,8 @@ export class PluginPageVisualEdit extends StateLitElement {
      * `PLAN:<json>`, and the patch's `NOTES:<line>`.
      */
     private async _executeAgent(prompt: string): Promise<{ failure?: string; plan?: unknown[]; notes?: string }> {
+        const phase = prompt.includes('"planOnly":true') ? 'PLAN' : 'APPLY';
+        traceStep({ agent: 'pageVisualEdit', page: this.page }, `calling agentManagePage2 · ${phase}`, { prompt });
         const fullName = '_102020_/l2/serviceGenome';
         let threadPromise = this._threadCache.get(fullName);
         if (!threadPromise) {
@@ -335,6 +338,8 @@ export class PluginPageVisualEdit extends StateLitElement {
         if (!userId || !threadId) return {};
 
         const moduleAgent = await loadAgent('agentManagePage2');
+        traceVerdict({ agent: 'pageVisualEdit', page: this.page }, 'loadAgent(agentManagePage2)', !!moduleAgent,
+            moduleAgent ? `resolved: ${(moduleAgent as { agentName?: string }).agentName ?? '?'}` : 'NOT FOUND — is 102020 published and the stor cache fresh?');
         if (!moduleAgent) throw new Error('agentManagePage2 not found');
         const context = getTemporaryContext(threadId, userId, prompt);
 
@@ -348,7 +353,12 @@ export class PluginPageVisualEdit extends StateLitElement {
             } else if (event.type === 'hook-done') {
                 for (const intent of event.intents ?? []) {
                     const i = intent as any;
+                    if (i?.type === 'add-step') {
+                        traceStep({ agent: 'pageVisualEdit', page: this.page }, 'step created', { agentName: i.step?.agentName, planId: i.step?.planning?.planId });
+                        continue;
+                    }
                     if (i?.type !== 'update-status') continue;
+                    traceStep({ agent: 'pageVisualEdit', page: this.page }, `step ${i.status}`, { traceMsg: i.traceMsg ?? '—' });
                     if (i.status === 'failed' && i.traceMsg) failure = String(i.traceMsg);
                     else if (i.status === 'completed' && typeof i.traceMsg === 'string') {
                         if (i.traceMsg.startsWith('PLAN:')) { try { plan = JSON.parse(i.traceMsg.slice(5)); } catch { /* ignore */ } }

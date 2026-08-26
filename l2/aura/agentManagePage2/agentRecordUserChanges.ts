@@ -19,6 +19,7 @@ import {
   parseUserChanges, upsertUserChanges, nextChangeId, supersedeDeterministic, validateConsolidated,
   summarizeUserChanges, CHANGE_INTENTS, type UserChange,
 } from '/_102020_/l2/aura/agentManagePage2/userChangesCore.js';
+import { traceStep, traceSent, traceReceived, traceVerdict, traceFail, type TraceMeta } from '/_102020_/l2/aura/agentManagePage2/trace.js';
 
 interface RecordArgs {
   module: string;
@@ -95,6 +96,7 @@ async function beforePromptStep(
 
   try {
     const a = parseArgs(args ?? step.prompt);
+    const meta: TraceMeta = { agent: 'agentRecordUserChanges', page: a.page, taskId: context.task?.PK };
     const defsRef = defsRefOf(a);
     const defsSrc = await getContentByMlsPath(defsRef);
     if (!defsSrc) throw new Error(`defs not found: ${defsRef}`);
@@ -108,7 +110,13 @@ async function beforePromptStep(
     let baseline = existing;
     for (const entry of incoming) baseline = supersedeDeterministic(baseline, entry);
 
-    console.info(`[agentRecordUserChanges] ▶ ${a.page}: ${existing.length} existing + ${incoming.length} new → ${baseline.length} after the deterministic supersede`);
+    traceStep(meta, 'consolidating userChanges', {
+      target: defsRef,
+      existing: existing.map(entry => `${entry.id}[${entry.intent}@${entry.scope}]`),
+      incoming: incoming.map(entry => `${entry.id}[${entry.intent}@${entry.scope}]`),
+      afterDeterministicSupersede: baseline.map(entry => entry.id),
+      user,
+    });
 
     const human = JSON.stringify({
       request: a.request,
@@ -130,10 +138,15 @@ async function beforePromptStep(
       systemPrompt: recordPrompt,
       humanPrompt: human,
     };
+    traceSent(meta, 'userChanges consolidation', {
+      system: recordPrompt,
+      human,
+      data: { existing, incoming, deterministicResult: baseline },
+    });
     return [continueParallel];
   } catch (error) {
     const msg = `[agentRecordUserChanges] ${error instanceof Error ? error.message : String(error)}`;
-    console.error('✗', msg);
+    traceFail({ agent: 'agentRecordUserChanges' }, msg);
     return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
 }
@@ -148,12 +161,16 @@ async function afterPromptStep(
 
   try {
     const a = parseArgs(step.prompt);
+    const meta: TraceMeta = { agent: 'agentRecordUserChanges', page: a.page, taskId: context.task?.PK };
     const defsRef = defsRefOf(a);
     const defsSrc = await getContentByMlsPath(defsRef);
     if (!defsSrc) throw new Error(`defs not found: ${defsRef}`);
 
     const existing = parseUserChanges(defsSrc);
     const payload = step.interaction?.payload?.[0] as any;
+    traceReceived(meta, 'userChanges consolidation', payload, {
+      returned: Array.isArray(payload?.result?.userChanges) ? payload.result.userChanges.map((entry: any) => entry?.id) : 'NOT AN ARRAY',
+    });
     // Same derivation as beforePromptStep, stamped here — this hook is the one that writes.
     const incoming = buildIncoming(a, existing, context.message.senderId || '', new Date().toISOString());
 
@@ -163,20 +180,23 @@ async function afterPromptStep(
     const guard = validateConsolidated(existing, payload?.result?.userChanges, incoming);
     if (guard.ok) {
       consolidated = guard.value;
+      traceVerdict(meta, 'consolidation accepted', true, consolidated.map(entry => entry.id).join(', '));
     } else {
-      console.warn(`[agentRecordUserChanges] consolidation refused (${guard.reason}) — falling back to the deterministic supersede`);
+      traceVerdict(meta, 'consolidation REFUSED — writing the deterministic result instead', false, guard.reason);
       consolidated = incoming.reduce((list, entry) => supersedeDeterministic(list, entry), existing);
     }
 
     const out = upsertUserChanges(defsSrc, consolidated);
     if (!context.isTest) {
       await saveFile(defsRef, out);
-      console.info(`[agentRecordUserChanges] ✓ ${a.page}: ${consolidated.length} userChange(s) recorded in ${defsRef}`);
+      traceVerdict(meta, `DONE — ${consolidated.length} userChange(s) written to ${defsRef}`, true, `${defsSrc.length}B -> ${out.length}B`);
+      console.info(`[agentRecordUserChanges] userChanges now:
+${summarizeUserChanges(consolidated)}`);
     }
     return [mkCompleted(context, parentStep, step, hookSequential, `CHANGES:${summarizeUserChanges(consolidated)}`)];
   } catch (error) {
     const msg = `[agentRecordUserChanges] ${error instanceof Error ? error.message : String(error)}`;
-    console.error('✗', msg);
+    traceFail({ agent: 'agentRecordUserChanges' }, msg);
     return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
 }

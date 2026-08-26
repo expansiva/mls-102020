@@ -22,8 +22,9 @@ import {
   applyPagePatch, normalizePatch, hasPageCatalogue,
   PATCH_RULES, PATCH_TOOL, PATCH_TOOL_NAME, type EditOperation2, type PagePatch,
 } from '/_102020_/l2/aura/agentManagePage2/patchCore.js';
-import { parseSharedSurface, pageLocales, dsTokenNames } from '/_102020_/l2/aura/agentManagePage2/pageContextCore.js';
+import { parseSharedSurface, pageLocales, dsTokenNames, outlinePage } from '/_102020_/l2/aura/agentManagePage2/pageContextCore.js';
 import { readSharedSurfaceSource, designSystemRef } from '/_102020_/l2/aura/agentManagePage2/agentManagePage2.js';
+import { traceStep, traceSent, traceReceived, traceVerdict, traceFail, type TraceMeta } from '/_102020_/l2/aura/agentManagePage2/trace.js';
 
 interface PatchArgs {
   module: string;
@@ -125,6 +126,7 @@ async function beforePromptStep(
   try {
     const a = parseArgs(args ?? step.prompt);
     const attempt = a.attempt ?? 1;
+    const meta: TraceMeta = { agent: 'agentPatchPage', page: a.page, taskId: context.task?.PK, attempt };
     const tsRef = tsRefOf(a);
     const pageSrc = await getContentByMlsPath(tsRef);
     if (!pageSrc) throw new Error(`page not found: ${tsRef}`);
@@ -134,7 +136,14 @@ async function beforePromptStep(
 
     // Attempt 2 is the repair round: feed back what the compiler said about the file on disk.
     const compileErrors = attempt >= 2 ? await compileMlsPathAndGetErrors(tsRef) : [];
-    console.info(`[agentPatchPage] ▶ ${a.page} (attempt ${attempt}) ${a.operations.length} op(s)${compileErrors.length ? ` + ${compileErrors.length} compile error(s)` : ''}`);
+    traceStep(meta, attempt >= 2 ? 'repair round' : 'patching', {
+      target: tsRef,
+      pageBytes: pageSrc.length,
+      sharedBytes: sharedSrc.length,
+      methods: outlinePage(pageSrc).map(item => item.method),
+      operations: a.operations.map(op => `${op.kind}@${op.scope}`),
+      compileErrors: compileErrors.length,
+    });
 
     const continueParallel: mls.msg.AgentIntentPromptReady = {
       type: 'prompt_ready',
@@ -149,10 +158,16 @@ async function beforePromptStep(
       tools: [PATCH_TOOL as unknown as mls.msg.LLMTool],
       toolChoice: { type: 'function', function: { name: PATCH_TOOL_NAME } },
     };
+    traceSent(meta, 'page patch', {
+      system: continueParallel.systemPrompt,
+      human: continueParallel.humanPrompt,
+      tool: PATCH_TOOL_NAME,
+      data: { operations: a.operations, request: a.request },
+    });
     return [continueParallel];
   } catch (error) {
     const msg = `[agentPatchPage] ${error instanceof Error ? error.message : String(error)}`;
-    console.error('✗', msg);
+    traceFail({ agent: 'agentPatchPage' }, msg);
     return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
 }
@@ -168,6 +183,7 @@ async function afterPromptStep(
   try {
     const a = parseArgs(step.prompt);
     const attempt = a.attempt ?? 1;
+    const meta: TraceMeta = { agent: 'agentPatchPage', page: a.page, taskId: context.task?.PK, attempt };
     const tsRef = tsRefOf(a);
     const currentSrc = await getContentByMlsPath(tsRef);
     if (!currentSrc) throw new Error(`page not found: ${tsRef}`);
@@ -175,7 +191,15 @@ async function afterPromptStep(
     // so the original travels in the step args.
     const originalCode = a.originalCode ?? currentSrc;
 
-    const patch = normalizePatch(extractToolCallArgs<PagePatch>(step.interaction?.payload?.[0], PATCH_TOOL_NAME));
+    const rawPayload = step.interaction?.payload?.[0];
+    const patch = normalizePatch(extractToolCallArgs<PagePatch>(rawPayload, PATCH_TOOL_NAME));
+    traceReceived(meta, 'page patch', rawPayload, patch
+      ? {
+        methods: patch.methods.map(method => `${method.name} (${method.code.length}B)`),
+        newKeys: patch.messages?.map(message => message.key) ?? [],
+        notes: patch.notes,
+      }
+      : { parsed: 'FAILED — empty or malformed' });
     if (!patch) return [failAndRestore(context, parentStep, step, hookSequential, a, originalCode, 'the patch came back empty or malformed', attempt)];
 
     const project = mls.actualProject || 0;
@@ -191,20 +215,25 @@ async function afterPromptStep(
       dsTokens: dsTokenNames(designSystemSrc),
     });
     if (!applied.ok) {
-      console.warn(`[agentPatchPage] patch refused: ${applied.reason}`);
+      traceVerdict(meta, 'guards REFUSED the patch — the file was not touched', false, applied.reason);
       return [failAndRestore(context, parentStep, step, hookSequential, a, originalCode, `patch refused: ${applied.reason}`, attempt)];
     }
 
     const { code, warnings } = applied.value;
+    traceVerdict(meta, 'guards passed, patch spliced in memory', true,
+      `${currentSrc.length}B -> ${code.length}B${warnings.length ? ` | warnings: ${warnings.join(' ; ')}` : ''}`);
+
     if (!context.isTest) {
       const saved = await saveGeneratedTsByMlsPath(tsRef, code);
+      traceVerdict(meta, `saved ${tsRef}`, saved);
       if (!saved) return [mkFail(context, parentStep, step, hookSequential, `save failed: ${tsRef}`)];
     }
 
     const errors = context.isTest ? [] : await compileMlsPathAndGetErrors(tsRef);
+    traceVerdict(meta, `compile: ${errors.length} error(s)`, errors.length === 0, errors.slice(0, 8).join(' | '));
     if (errors.length) {
       if (attempt < 2) {
-        console.info(`[agentPatchPage] ${a.page}: ${errors.length} compile error(s) → repair round`);
+        traceStep(meta, 'queueing ONE repair round (attempt 2) with the compiler output');
         const repairArgs: PatchArgs = { ...a, attempt: 2, originalCode };
         return [
           mkCompleted(context, parentStep, step, hookSequential),
@@ -214,21 +243,21 @@ async function afterPromptStep(
       }
       // Second failure: put the page back the way it was and report.
       if (!context.isTest) await saveGeneratedTsByMlsPath(tsRef, originalCode);
-      console.error(`[agentPatchPage] ✗ ${a.page}: reverted after a failed repair`);
+      traceFail(meta, `repair failed too — ${tsRef} REVERTED to its pre-patch content`);
       return [mkFail(context, parentStep, step, hookSequential,
         `the visual change could not be applied without breaking the page — it was reverted.\n${errors.slice(0, 8).join('\n')}`)];
     }
 
     const touched = patch.methods.map(m => m.name).join(', ');
     const added = patch.messages?.length ? ` (+${patch.messages.length} i18n key(s))` : '';
-    console.info(`[agentPatchPage] ✓ ${a.page}: patched ${touched}${added}${warnings.length ? ` — ${warnings.length} warning(s)` : ''}`);
+    traceVerdict(meta, `DONE — patched ${touched}${added}`, true, patch.notes);
     for (const warning of warnings) console.warn(`[agentPatchPage] ! ${warning}`);
 
     const notes = patch.notes || `alterado: ${touched}`;
     return [mkCompleted(context, parentStep, step, hookSequential, `NOTES:${notes}`)];
   } catch (error) {
     const msg = `[agentPatchPage] ${error instanceof Error ? error.message : String(error)}`;
-    console.error('✗', msg);
+    traceFail({ agent: 'agentPatchPage' }, msg);
     return [mkFail(context, parentStep, step, hookSequential, msg)];
   }
 }
