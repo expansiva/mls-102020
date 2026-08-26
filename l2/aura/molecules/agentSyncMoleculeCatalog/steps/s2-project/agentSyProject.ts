@@ -9,7 +9,7 @@
 // value, and no second parser to keep in sync with syRenderDefs.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { nmDestProject, readJsonArtifact, readStorText, writeJsonArtifact, writeStorTextAtomic, toDisplayPath } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { compileStorTs, nmDestProject, readJsonArtifact, readStorText, writeJsonArtifact, writeStorTextAtomic, toDisplayPath } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import { SY_AGENT_PROJECT, SY_PLAN_S2, SyGroupArtifact, SyProjectArtifact, SyRunInput, syDoneAnchor } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
 import { syExtractMoleculeShortTags } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syExtract.js';
@@ -96,6 +96,10 @@ async function beforePromptStep(
   // `true` = also set the editor model. Without it this write is silently lost whenever the Studio has
   // skill.ts open — measured 2026-08-26 (see s1-group for the full note).
   await writeStorTextAtomic(syProjectSkillFile(), skillText, true);
+  // Compiling is what publishes the module into the cache the preview/consumer loads from — writing to
+  // the stor alone leaves it unfetchable (measured 2026-08-26; see s1-group for the full note). It is
+  // also this step's only compile gate.
+  const skillCompile = await compileStorTs(syProjectSkillFile(), skillText);
 
   const artifact: SyProjectArtifact = {
     schemaVersion: 1,
@@ -107,7 +111,8 @@ async function beforePromptStep(
   };
   await writeJsonArtifact(syProjectArtifactFileInfo(runKey), artifact);
 
-  const note = `skill.ts: ${groups.length} grupo(s), ${moleculeCount} molécula(s)`
+  const note = `${skillCompile.errors.length ? `⚠️ skill.ts NÃO COMPILA: ${skillCompile.errors.slice(0, 3).join(' | ')} — ` : ''}`
+    + `skill.ts: ${groups.length} grupo(s), ${moleculeCount} molécula(s)`
     + ` (${fromArtifact.length} deste run, ${fromIndexDefs.length} do index.defs.ts existente)`
     + `${neverSynced.length ? ` — ${neverSynced.length} ainda sem catálogo, fora do skill.ts: ${neverSynced.join(', ')}` : ''}`;
   return [

@@ -48,8 +48,16 @@ const ALREADY_MIGRATED_MARKER = 'index.defs';
 export function syMigrateIndexTs(source: string, sharedImportReference: string, indexDefsReference: string): SyMigrationResult {
   const text = source || '';
   if (!text.trim()) return { migrated: text, changed: false, reason: 'empty file' };
+  // Already migrated — but by WHICH build? An earlier one emitted a relative './index.defs', and a
+  // later one an absolute path without the '.js' a named import needs; neither resolves in the Studio.
+  // Treating "already migrated" as "nothing to do" would leave those pages broken forever, because the
+  // page never migrates twice. So a migrated page with the WRONG specifier gets its import line
+  // rewritten in place — the method body is already the 3-line call and must not be touched again, and
+  // re-running the full migration would duplicate the imports.
   if (importsIndexDefs(text)) {
-    return { migrated: text, changed: false, reason: 'já importa molecules/scenarios do index.defs' };
+    const fixed = rewriteIndexDefsImport(text, indexDefsReference);
+    if (fixed === text) return { migrated: text, changed: false, reason: 'já importa molecules/scenarios do index.defs' };
+    return { migrated: fixed, changed: true };
   }
 
   const markerAt = text.indexOf(METHOD_MARKER);
@@ -167,4 +175,15 @@ export function syNeedsIndexTsMigration(indexTsExists: boolean, indexTsSource: s
 /** True when the page already pulls the catalog from its group's index.defs — either specifier form. */
 function importsIndexDefs(text: string): boolean {
   return /^import\s*\{[^}]*\}\s*from\s*['"][^'"]*index\.defs(?:\.js)?['"];?$/m.test(text);
+}
+
+/**
+ * Rewrites an existing `import { molecules, scenarios } from '<anything ending in index.defs[.js]>';`
+ * to the canonical absolute specifier. Returns the input unchanged when it is already canonical.
+ */
+function rewriteIndexDefsImport(text: string, indexDefsReference: string): string {
+  return text.replace(
+    /^(import\s*\{[^}]*\}\s*from\s*)['"][^'"]*index\.defs(?:\.js)?['"];?$/m,
+    `$1'${indexDefsReference}';`,
+  );
 }

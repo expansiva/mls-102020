@@ -142,3 +142,26 @@ void test('a page migrated by the OLD relative-import build is still recognized 
   const result = syMigrateIndexTs(oldStyle, SHARED_REF, DEFS_REF);
   assert.equal(result.changed, false);
 });
+
+// ⚠️ SELF-HEALING. Two earlier builds emitted specifiers that do not resolve in the Studio: a relative
+// './index.defs', and an absolute one without the '.js' a named import needs. Since a page never
+// migrates twice, "already migrated" had to stop meaning "nothing to do" — otherwise those pages stay
+// broken forever and only a hand edit fixes them.
+void test('a page migrated with the OLD relative specifier is upgraded in place', () => {
+  const oldStyle = syMigrateIndexTs(FIXTURE, SHARED_REF, DEFS_REF).migrated
+    .replace(DEFS_REF, './index.defs');
+  const result = syMigrateIndexTs(oldStyle, SHARED_REF, DEFS_REF);
+  assert.equal(result.changed, true);
+  assert.match(result.migrated, new RegExp(`from '${DEFS_REF.replace(/[/.]/g, '\\$&')}'`));
+  assert.equal(/from '\.\//.test(result.migrated), false);
+  // the method body was already the 3-line call — it must not be migrated a second time
+  assert.equal((result.migrated.match(/renderCatalogReferenceTable/g) || []).length, 2, 'one import + one call');
+  assert.equal((result.migrated.match(/import \{ molecules, scenarios \}/g) || []).length, 1, 'imports are not duplicated');
+});
+
+void test('a page missing only the .js is upgraded, and a canonical page is left alone', () => {
+  const canonical = syMigrateIndexTs(FIXTURE, SHARED_REF, DEFS_REF).migrated;
+  const noJs = canonical.replace(DEFS_REF, DEFS_REF.replace('.js', ''));
+  assert.equal(syMigrateIndexTs(noJs, SHARED_REF, DEFS_REF).changed, true);
+  assert.equal(syMigrateIndexTs(canonical, SHARED_REF, DEFS_REF).changed, false);
+});

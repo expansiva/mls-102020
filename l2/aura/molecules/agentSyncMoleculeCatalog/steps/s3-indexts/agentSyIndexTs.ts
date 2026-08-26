@@ -8,7 +8,7 @@
 // never plants this step for a G1 group; those are reported directly from input.json by s4.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { nmDestProject, readStorText, toDisplayPath, writeJsonArtifact, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { compileStorTs, nmDestProject, readStorText, toDisplayPath, writeJsonArtifact, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import { SY_AGENT_PROJECT, SY_SHARED_TABLE_IMPORT, SyIndexTsArtifact, syGroupFolder, syIndexTsDoneAnchor } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
 import { syMigrateIndexTs } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syMigrateIndexTs.js';
@@ -72,6 +72,17 @@ async function beforePromptStep(
     // `true` = also set the editor model. Without it the migration reported 'migrated' and the page on
     // disk stayed unmigrated — measured 2026-08-26 (see s1-group for the full note).
     await writeStorTextAtomic(indexTsInfo, result.migrated, true);
+    // Compiling publishes the page into the cache the preview bundles from, and is this step's only
+    // compile gate — a migration that breaks the file must not report success (2026-08-26).
+    const compiled = await compileStorTs(indexTsInfo, result.migrated);
+    if (compiled.errors.length) {
+      artifact = { schemaVersion: 1, savedAt, runKey, folder, canonical, status: 'failed', reason: `migrado, mas não compila: ${compiled.errors.slice(0, 3).join(' | ')}`, indexTsFile: toDisplayPath(indexTsInfo) };
+      await writeJsonArtifact(syIndexTsArtifactFileInfo(runKey, folder), artifact);
+      return [
+        nmResultStepIntent(context, parentStep, { planId: syIndexTsDoneAnchor(canonical), dependsOn: [], stepTitle: artifact.reason as string, result: artifact }),
+        nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', artifact.reason as string, 'input_output'),
+      ];
+    }
     artifact = { schemaVersion: 1, savedAt, runKey, folder, canonical, status: 'migrated', indexTsFile: toDisplayPath(indexTsInfo) };
   } else {
     artifact = { schemaVersion: 1, savedAt, runKey, folder, canonical, status: 'failed', reason: result.reason || 'unknown', indexTsFile: toDisplayPath(indexTsInfo) };

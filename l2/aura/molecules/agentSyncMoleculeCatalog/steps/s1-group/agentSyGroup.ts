@@ -9,7 +9,7 @@
 // refém of the authored index.ts (s3) — if s3 fails, the catalog this step wrote is already there.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { nmFileExists, nmDestProject, readStorText, writeJsonArtifact, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { compileStorTs, nmFileExists, nmDestProject, readStorText, writeJsonArtifact, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import {
   SY_AGENT_PROJECT,
@@ -150,6 +150,21 @@ async function beforePromptStep(
   // v4-index, t3-generate); only the l4 JSON artifacts may leave it false.
   await writeStorTextAtomic(nmGroupDefsFile(folder), indexDefsText, true);
   await writeStorTextAtomic(nmGroupIndexFile(folder, '.html'), indexHtmlText, true);
+
+  // ⚠️ WRITING IS NOT ENOUGH TO MAKE A MODULE LOADABLE. The preview bundles a page by FETCHING each
+  // import, and a source that was only written to the stor is not served yet — the group page failed
+  // with `Error get /_102053_/l2/molecules/groupenterdate/index.defs` while the file sat right there in
+  // the editor (measured 2026-08-26). Compiling is the step that publishes the module into the cache
+  // the bundler reads; it is what the Studio itself does when a human saves the file, and what every
+  // source-writing step in this family already does (n3-defs, n4-render, i3-edit, …).
+  //
+  // Second reason, free: this is also the only COMPILE GATE this deterministic agent has. The backtick
+  // defect of 2026-08-26 — a molecule Objective containing `code` closed the generated template literal
+  // and silently invalidated the file — would have been caught here instead of in the editor.
+  const defsCompile = await compileStorTs(nmGroupDefsFile(folder), indexDefsText);
+  if (defsCompile.errors.length) {
+    warnings.push(`index.defs.ts não compila: ${defsCompile.errors.slice(0, 3).join(' | ')}`);
+  }
 
   const artifact: SyGroupArtifact = {
     schemaVersion: 1,

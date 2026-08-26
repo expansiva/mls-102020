@@ -19,3 +19,15 @@
   of 30 groups with fields that looked "foreign"; after, only 1 (`groupEnterNumber`'s `rangeSlider`,
   genuinely `ml-number-range-slider` from `groupEnterNumberInterval`) — this is the number D-E3 uses.
   Re-verified: all helper tests green, E5's 6-group regeneration still structurally identical.
+
+- **2026-08-26** — ⚠️ **passou a COMPILAR o `index.defs.ts` depois de gravá-lo.** Gravar no stor não
+  torna um módulo carregável: o bundler do preview monta a página fazendo `fetch` de cada import, e um
+  arquivo só escrito não é servido — a página do grupo falhava com
+  `Error get /_102053_/l2/molecules/groupenterdate/index.defs` com o arquivo ali, no editor. Quem publica
+  o módulo no cache é a **compilação** (`nmFs.compileStorTs` → `mls.l2.typescript.compileAndPostProcess`),
+  que é o que o Studio faz quando um humano salva, e o que todo passo desta família que escreve fonte já
+  fazia (n3-defs, n4-render, i3-edit).
+
+  Segundo motivo, de graça: esta é a **única porta de compilação** que este passo determinístico tem. O
+  defeito da crase de 26/08 — um `# Objective` com `código` inline fechava o template literal e
+  invalidava o arquivo em silêncio — teria sido pego aqui, na geração.
