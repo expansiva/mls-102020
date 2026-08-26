@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSyRunReport, renderSyRunSummary } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/steps/s4-report/report.js';
-import { SyGroupArtifact, SyProjectArtifact, SyRunInput } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
+import { SyGroupArtifact, SyIndexTsArtifact, SyProjectArtifact, SyRunInput } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
 
 const INPUT: SyRunInput = {
   schemaVersion: 1,
@@ -13,6 +13,8 @@ const INPUT: SyRunInput = {
   wantsAll: true,
   includeIndexTsRequested: false,
   matchedGroups: ['groupEnterNumber'],
+  indexTsMigrationGroups: ['groupEnterNumber'],
+  indexTsCreationGroups: [],
   ignoredGroups: [{ folder: 'groupnavigatemain', reason: 'sem entrada em skills/index.ts' }],
   requestedButIgnoredGroups: [],
   unknownGroups: [],
@@ -43,6 +45,16 @@ const PROJECT_ARTIFACT: SyProjectArtifact = {
   skillFile: 'l2/molecules/skill.ts',
 };
 
+const INDEX_TS_ARTIFACT: SyIndexTsArtifact = {
+  schemaVersion: 1,
+  savedAt: '2026-08-25T00:00:00.000Z',
+  runKey: 'sync-20260825t000000',
+  folder: 'groupenternumber',
+  canonical: 'groupEnterNumber',
+  status: 'migrated',
+  indexTsFile: 'l2/molecules/groupenternumber/index.ts',
+};
+
 function baseFacts(overrides: Partial<Parameters<typeof buildSyRunReport>[0]> = {}) {
   return {
     savedAt: '2026-08-25T00:00:00.000Z',
@@ -51,6 +63,7 @@ function baseFacts(overrides: Partial<Parameters<typeof buildSyRunReport>[0]> = 
     input: INPUT,
     projectArtifact: PROJECT_ARTIFACT,
     groupArtifacts: [GROUP_ARTIFACT],
+    indexTsArtifacts: [INDEX_TS_ARTIFACT],
     ...overrides,
   };
 }
@@ -79,18 +92,33 @@ void test('obligation 2b — a batch run (all) still names WHY each ignored grou
   assert.match(summary, /groupnavigatemain: sem entrada em skills\/index\.ts/);
 });
 
-void test('obligation 3 — index.ts not touched, and the summary always says how to ask for it', () => {
+void test('obligation 3 — a MIGRATED group is reported as migrated', () => {
   const report = buildSyRunReport(baseFacts());
-  assert.equal(report.indexTs.touched, false);
+  assert.equal(report.indexTs.groups.length, 1);
+  assert.equal(report.indexTs.groups[0].status, 'migrated');
   const summary = renderSyRunSummary(report);
-  assert.match(summary, /index\.ts: não tocado/);
-  assert.match(summary, /incluindo o arquivo index\.ts/);
+  assert.match(summary, /groupEnterNumber: index\.ts migrado/);
 });
 
-void test('obligation 3b — when index.ts WAS requested, the summary says so honestly (s3 does not exist yet)', () => {
-  const report = buildSyRunReport(baseFacts({ input: { ...INPUT, includeIndexTsRequested: true } }));
+void test('obligation 3b — a group whose s3 step left no artifact is reported as migration-failed, not silently skipped', () => {
+  const report = buildSyRunReport(baseFacts({ indexTsArtifacts: [] }));
+  assert.equal(report.indexTs.groups[0].status, 'migration-failed');
+  assert.match(report.indexTs.groups[0].reason || '', /não deixou artefato/);
+});
+
+void test('obligation 3c — a G1 group (no index.ts) is reported as creation-needed, with the "not built" note', () => {
+  const report = buildSyRunReport(
+    baseFacts({ input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: ['groupEnterNumber'] }, indexTsArtifacts: [] }),
+  );
+  assert.equal(report.indexTs.groups[0].status, 'creation-needed');
   const summary = renderSyRunSummary(report);
-  assert.match(summary, /pedido na menção, mas esta versão do agente ainda não o gera/);
+  assert.match(summary, /groupEnterNumber: sem index\.ts/);
+  assert.match(summary, /E8b, não implementado/);
+});
+
+void test('obligation 3d — a group that needed no trigger at all is reported as already-migrated', () => {
+  const report = buildSyRunReport(baseFacts({ input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: [] } }));
+  assert.equal(report.indexTs.groups[0].status, 'already-migrated');
 });
 
 void test('obligation 4 — the report ALWAYS says the catalog is not published, and names the silent consequence', () => {

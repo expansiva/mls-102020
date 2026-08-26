@@ -3,24 +3,34 @@
 // Root of agentSyncMoleculeCatalog (spec: flow.json / spec.md in this folder).
 // Entry: '@@agentSyncMoleculeCatalog [atualizar [grupo(s)] <lista ou all>] [incluindo o arquivo index.ts]'
 //
-// ⚠️ THE DEFAULT PATH SPENDS NO LLM CALL. Which groups to generate, and whether the index.ts opt-in was
-// asked for, are BOTH deterministic — word matching (helpers/syEntry) and a stor scan
-// (helpers/syDiscover + helpers/syFs), never a classifier. So this root's own bootstrap uses
+// ⚠️ THIS ROOT SPENDS NO LLM CALL, EVER. Which groups to generate, and which of them need index.ts
+// migrated (G3) or created (G1 — not built, E8b), are ALL deterministic — word matching
+// (helpers/syEntry), a stor scan (helpers/syDiscover + helpers/syFs), and a text check
+// (helpers/syMigrateIndexTs), never a classifier. So this root's own bootstrap uses
 // AgentIntentAddMessageAI.skipRootLLM (the same mechanism agentChangeFrontend already ships with) to get
 // the step tree the platform needs without spending a call on a decision that was never a
 // classification to begin with.
 //
+// ⚠️ SINCE E8, index.ts MIGRATION (G3) IS AUTOMATIC — the mention's opt-in phrase
+// ('incluindo o arquivo index.ts') no longer gates it. It is deterministic, safe and reversible (the
+// gate in helpers/syMigrateIndexTs.ts either applies cleanly or changes nothing), so there is no longer
+// an asymmetric-cost reason to hide it behind a request — see flow.json `decisions.migrationIsAutomatic`.
+// The opt-in phrase is still parsed and still recorded, because it still matters for a G1 group
+// (creation, E8b, LLM, not built): a run that asks for it gets an honest "not built yet" from s4, not
+// silence.
+//
 // ⚠️ NO TWO-PHASE PLANTING, unlike agentChooseMolecules. That family's fan-out needs a second phase
 // because c1's answer (which groups an LLM chose) is not known until c1 runs. Here discovery is a stor
-// scan this root can do itself, synchronously, so every step — s1 per group, s2, s4 — is planted in this
-// single batch, dependency edges and all.
+// scan this root can do itself, synchronously, so every step — s1 per group, s3 per migration group, s2,
+// s4 — is planted in this single batch, dependency edges and all.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { isBareMention, stripAgentMention } from '/_102020_/l2/aura/molecules/shared/mentionEntry.js';
-import { writeJsonArtifact } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { nmFileExists, readStorText, writeJsonArtifact } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import { syParseEntry } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syEntry.js';
 import { syDiscoverGroups, syResolveRequested, syUnknownGroupsMessage } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syDiscover.js';
+import { syNeedsIndexTsCreation, syNeedsIndexTsMigration } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syMigrateIndexTs.js';
 import {
   SY_AGENT_PROJECT,
   SY_PLAN_S2,
@@ -29,8 +39,10 @@ import {
   syDoneAnchor,
   syGroupDoneAnchor,
   syGroupPlanId,
+  syIndexTsDoneAnchor,
+  syIndexTsPlanId,
 } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
-import { syInputFileInfo, syScanProjectGroupFolders, sySkillList } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
+import { nmGroupIndexFile, syInputFileInfo, syScanProjectGroupFolders, sySkillList } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
 
 const AGENT_NAME = 'agentSyncMoleculeCatalog';
 
@@ -70,6 +82,23 @@ async function beforePromptImplicit(
     throw new Error(`[${AGENT_NAME}] nada para gerar — ${reason}`);
   }
 
+  // E8 triggers, per matched group (todo-implementar-E8-index-ts.md §1): G1 (no index.ts at all) is not
+  // acted on in this version (E8b, creation, is not built — todo §6 step 7); G3 (index.ts exists and
+  // still has the pre-migration code table) migrates AUTOMATICALLY, no opt-in needed — flow.json
+  // `decisions.migrationIsAutomatic` explains why that is no longer gated behind entry.includeIndexTs.
+  const migrationGroups: string[] = [];
+  const creationGroups: string[] = [];
+  for (const group of resolved.selected) {
+    const indexTsInfo = nmGroupIndexFile(group.folder, '.ts');
+    const exists = nmFileExists(indexTsInfo);
+    if (syNeedsIndexTsCreation(exists)) {
+      creationGroups.push(group.canonical);
+      continue;
+    }
+    const source = await readStorText(indexTsInfo, false);
+    if (syNeedsIndexTsMigration(exists, source)) migrationGroups.push(group.canonical);
+  }
+
   const runKey = syRunKeyFromNow();
   const input: SyRunInput = {
     schemaVersion: 1,
@@ -79,6 +108,8 @@ async function beforePromptImplicit(
     wantsAll: entry.wantsAll,
     includeIndexTsRequested: entry.includeIndexTs,
     matchedGroups: resolved.selected.map(group => group.canonical),
+    indexTsMigrationGroups: migrationGroups,
+    indexTsCreationGroups: creationGroups,
     // Batch-only (D4): naming every OTHER ignored group in the project is noise on a targeted request —
     // requestedButIgnored already covers what the human asked about.
     ignoredGroups: entry.wantsAll ? discovery.ignored : [],
@@ -120,6 +151,23 @@ async function beforePromptImplicit(
       }),
     );
   }
+  // G3: planted for a migration group only — dependsOn just that group's own s1 anchor (it needs
+  // index.defs.ts to exist before index.ts starts importing it), not the whole batch. Never planted for
+  // a creation group (E8b is not built) or a group with no trigger at all — a group without a trigger
+  // does not get a step, it is not a step that runs and decides to do nothing (todo §1 / §5).
+  for (const canonical of migrationGroups) {
+    intents.push(
+      bootstrapAddStepIntent(context, {
+        planId: syIndexTsPlanId(canonical),
+        agentName: 'agentSyIndexTs',
+        title: `s3 · ${canonical}`,
+        dependsOn: [syGroupDoneAnchor(canonical)],
+        status: 'waiting_dependency',
+        prompt: { planId: syIndexTsPlanId(canonical), runKey, group: canonical },
+      }),
+    );
+  }
+
   intents.push(
     bootstrapAddStepIntent(context, {
       planId: SY_PLAN_S2,
@@ -135,7 +183,7 @@ async function beforePromptImplicit(
       planId: SY_PLAN_S4,
       agentName: 'agentSyReport',
       title: 's4 · relatório',
-      dependsOn: [syDoneAnchor(SY_PLAN_S2)],
+      dependsOn: [syDoneAnchor(SY_PLAN_S2), ...migrationGroups.map(syIndexTsDoneAnchor)],
       status: 'waiting_dependency',
       prompt: { planId: SY_PLAN_S4, runKey },
     }),

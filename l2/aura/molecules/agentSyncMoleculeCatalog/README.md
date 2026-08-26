@@ -2,26 +2,29 @@
 
 Generates the molecule catalog an LLM consumer reads to choose components: `l2/molecules/skill.ts`
 (level 1) and, per group, `index.defs.ts` + `index.html` (level 2) — derived from the molecule files
-already in the project. **No LLM call in the default path.**
+already in the project. Also migrates a group's `index.ts` showcase page to import its scenario table
+from the catalog instead of carrying it as hand-written code (30 of 32 groups; the other 2 need creation
+from scratch, not built yet — see "E8" in `spec.md`). **No LLM call anywhere in this build.**
 
 ```
 @@agentSyncMoleculeCatalog
 @@agentSyncMoleculeCatalog atualizar groupEnterText
 @@agentSyncMoleculeCatalog atualizar grupos groupEnterText, groupSelectOne e groupViewTable
-@@agentSyncMoleculeCatalog atualizar grupo groupEnterText incluindo o arquivo index.ts
 ```
 
 With nothing after the mention, or `all`, every group the project has (with a `skills/index.ts` entry) is
-synced. A specific list is comma/`e`-separated. `index.ts` is opt-in — see below.
+synced. A specific list is comma/`e`-separated. `index.ts` migration runs automatically wherever it
+applies — no opt-in needed (see `spec.md` → `decisions.migrationIsAutomatic`).
 
 ## The tree
 
 | step | model | what it does |
 |---|---|---|
-| root (`beforePromptImplicit`) | — | parses the mention, scans the project, plants everything below in one batch |
+| root (`beforePromptImplicit`) | — | parses the mention, scans the project, computes triggers, plants everything below in one batch |
 | `s1-<group>` × N | none | one group's `index.defs.ts` + `index.html` |
+| `s3-<group>` × M | none | migrates `index.ts` for each group whose migration is pending (G3), after that group's own `s1` |
 | `s2-project` | none | `l2/molecules/skill.ts`, after every `s1` of the run |
-| `s4-report` | none | `report.json` + the readable summary, after `s2` |
+| `s4-report` | none | `report.json` + the readable summary, after `s2` and every `s3` |
 
 ## What a run leaves behind
 
@@ -29,9 +32,9 @@ synced. A specific list is comma/`e`-separated. `index.ts` is opt-in — see bel
 
 | file | what for |
 |---|---|
-| `report.json` | **the four obligations**: what was written, ignored groups with reasons, whether `index.ts` was touched (never, in this build) and how to ask for it, and that the catalog is written but **not published** |
-| `input.json` | the resolved scope: matched/ignored/requested-but-ignored/unknown groups |
-| `s1-<group>.json`, `s2-project.json` | each step's own written summary |
+| `report.json` | what was written, ignored groups with reasons, `index.ts` status **per group** (migrated / creation-needed / migration-failed / already-migrated), and that the catalog is written but **not published** |
+| `input.json` | the resolved scope: matched/ignored/requested-but-ignored/unknown groups, which groups need migration vs. creation |
+| `s1-<group>.json`, `s3-<group>.json`, `s2-project.json` | each step's own written summary |
 
 ## Three things worth knowing before reading the code
 
@@ -44,27 +47,31 @@ harvested from its current `index.ts`; on every resync, whatever is already in t
 `index.defs.ts` is preserved — a resync never clobbers a hand edit. See `spec.md` for the field-matching
 algorithm groupViewTable's abbreviated column names required.
 
-**`index.ts` is not built by this agent yet.** It is the authored Lit showcase page, and the analysis
-that designed this agent measured it at 189–795 hand-written lines per group across the 30 existing ones
-— not derivable, and it must never hold the derivable catalog hostage. Every run's report says so, and
-how to ask for it once that step exists.
+**`index.ts` migration is a text surgery, not a rewrite.** `renderReferenceTable()`'s whole method body
+is replaced with a 3-line call into the new `shared/indexReferenceTable.ts`; everything else in the file
+— hero, showcase cards, `render()` — is untouched. Creating a page from scratch for the 2 groups that
+have none at all is a separate, LLM-based step (E8b) and is not built yet; a run touching one of those
+groups gets an honest "creation-needed, not built yet" in the report, never silence.
 
 ## Files
 
 ```
 flow.json  spec.md  README.md              the design record — spec first
-agentSyncMoleculeCatalog.ts                root: mention parsing, discovery, single-batch planting
+agentSyncMoleculeCatalog.ts                root: mention parsing, discovery, trigger detection, single-batch planting
 helpers/syTypes.ts                         pure: constants, anchors, artifact shapes
-helpers/syEntry.ts                         pure: the mention — which groups, index.ts opt-in or refusal
+helpers/syEntry.ts                         pure: the mention — which groups, index.ts opt-in phrase
 helpers/syDiscover.ts                      pure: project folders matched against skills/index.ts
 helpers/syExtract.ts                       pure: one molecule's tag/Objective/layoutConfig + scenario harvest
-helpers/syLabels.ts                        pure: palette + short label (consumed by the future s3)
+helpers/syLabels.ts                        pure: palette + short label (consumed by s3/the shared renderer)
 helpers/syRenderDefs.ts                    pure: index.defs.ts + index.html TEXT
 helpers/syRenderSkill.ts                   pure: skill.ts TEXT
+helpers/syMigrateIndexTs.ts                pure: the index.ts migration surgery + G1/G3 trigger checks
 helpers/syFs.ts                            the only module that touches mls.stor — l4 paths + scans
-steps/s1-group/  steps/s2-project/  steps/s4-report/
+steps/s1-group/  steps/s3-indexts/  steps/s2-project/  steps/s4-report/
+../shared/indexReferenceTable.ts           the shared Lit renderer every migrated index.ts imports
+../shared/indexReferenceTableData.ts       its pure data half (column order, color, D-E3 row filtering)
 ```
 
-Tests: `helpers/*.test.ts` (59+ cases) and `steps/s4-report/report.test.ts`, all pure, all `node:test`.
-E5's acceptance (regenerating the 6 pilot groups and diffing against the seed) was run as a one-off
-script, not shipped — see `spec.md` → "E5 acceptance" for the result.
+Tests: `helpers/*.test.ts`, `steps/s4-report/report.test.ts` and `../shared/indexReferenceTableData.test.ts`
+— all pure, all `node:test`. E5's and E8a's acceptance checks (regenerating pilot groups / migrating real
+`index.ts` files and diffing) were run as one-off scripts, not shipped — see `spec.md` for the results.

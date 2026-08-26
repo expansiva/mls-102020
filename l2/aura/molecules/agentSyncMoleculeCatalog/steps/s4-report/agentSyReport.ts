@@ -9,9 +9,9 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { nmDestProject, readJsonArtifact, writeJsonArtifact } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
-import { SY_AGENT_PROJECT, SY_PLAN_S4, SyGroupArtifact, SyProjectArtifact, SyRunInput, syDoneAnchor, syGroupFolder } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
+import { SY_AGENT_PROJECT, SY_PLAN_S4, SyGroupArtifact, SyIndexTsArtifact, SyProjectArtifact, SyRunInput, syDoneAnchor, syGroupFolder } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
 import { buildSyRunReport, renderSyRunSummary } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/steps/s4-report/report.js';
-import { syGroupArtifactFileInfo, syInputFileInfo, syProjectArtifactFileInfo, syReportFileInfo } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
+import { syGroupArtifactFileInfo, syIndexTsArtifactFileInfo, syInputFileInfo, syProjectArtifactFileInfo, syReportFileInfo } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
 
 const AGENT_NAME = 'agentSyReport';
 
@@ -51,9 +51,14 @@ async function beforePromptStep(
     const artifact = await readJsonArtifact<SyGroupArtifact>(syGroupArtifactFileInfo(runKey, syGroupFolder(canonical)), false);
     if (artifact) groupArtifacts.push(artifact);
   }
+  const indexTsArtifacts: SyIndexTsArtifact[] = [];
+  for (const canonical of input.indexTsMigrationGroups) {
+    const artifact = await readJsonArtifact<SyIndexTsArtifact>(syIndexTsArtifactFileInfo(runKey, syGroupFolder(canonical)), false);
+    if (artifact) indexTsArtifacts.push(artifact);
+  }
 
   const savedAt = new Date().toISOString();
-  const report = buildSyRunReport({ savedAt, runKey, project: nmDestProject(), input, projectArtifact, groupArtifacts });
+  const report = buildSyRunReport({ savedAt, runKey, project: nmDestProject(), input, projectArtifact, groupArtifacts, indexTsArtifacts });
   await writeJsonArtifact(syReportFileInfo(runKey), report);
   const summary = renderSyRunSummary(report);
 

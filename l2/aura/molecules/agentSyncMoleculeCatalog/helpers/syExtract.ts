@@ -168,6 +168,12 @@ export function syHarvestScenarios(indexTsSource: string, molecules: Array<{ tag
  * beyond what the field named, so it is the most specific match, the same way a human reading a
  * `data: true` column next to `advanced: true` and `select: true` columns reads it as the PLAIN table.
  * A genuine tie (two equally-small supersets) is left unmatched rather than guessed.
+ *
+ * ⚠️ SOME GROUPS KEEP THE 'ml' PREFIX IN THE FIELD NAME (`mlDateIntervalDrag`), most drop it
+ * (`addressField`). Measured across all 30 groups with a real index.ts (D-E3 sweep): treating a leading
+ * 'ml' token as noise on the FIELD side only — molecule tokens never carry it, `ml-` is already stripped
+ * before tokenizing — turned 4 of the 7 groups the naive matcher flagged as "referencing another group"
+ * into exact, in-group matches. It is never a discriminating word, so dropping it is safe both ways.
  */
 function buildFieldMatcher(molecules: Array<{ tag: string }>): (field: string) => string | null {
   const candidates = molecules.map(({ tag }) => {
@@ -176,7 +182,7 @@ function buildFieldMatcher(molecules: Array<{ tag: string }>): (field: string) =
   });
 
   return (field: string): string | null => {
-    const fieldTokens = new Set(tokensOf(field));
+    const fieldTokens = new Set(tokensOf(field).filter(token => token !== 'ml'));
     if (!fieldTokens.size) return null;
 
     const exact = candidates.find(c => setsEqual(c.tokens, fieldTokens));
@@ -187,13 +193,33 @@ function buildFieldMatcher(molecules: Array<{ tag: string }>): (field: string) =
 
     const smallest = Math.min(...supersets.map(c => c.tokens.size));
     const smallestOnes = supersets.filter(c => c.tokens.size === smallest);
-    return smallestOnes.length === 1 ? smallestOnes[0].tag : null;
+    if (smallestOnes.length === 1) return smallestOnes[0].tag;
+
+    // Tier 3: a compound word spelled as ONE word in the filename ('mindmap', 'orgchart') but split by
+    // camelCase in the field ('mindMap' -> {mind, map}) matches neither exactly nor as a token superset.
+    // Squash both sides in their NATURAL (reading) order — a Set built from tokensOf() iterates in
+    // insertion order, so joining without sorting preserves adjacency — and require a UNIQUE substring
+    // match: 'mindmap' is a contiguous substring of only one candidate's squashed tokens
+    // ('viewhierarchymindmap'); sorting first would scramble 'mind'+'map' into 'mapmind', which is NOT a
+    // substring of the candidate and silently breaks this tier — do not sort.
+    const squashedField = [...fieldTokens].join('');
+    const squashedCandidates = candidates.filter(c => {
+      const squashed = [...c.tokens].join('');
+      return squashed.includes(squashedField) || squashedField.includes(squashed);
+    });
+    return squashedCandidates.length === 1 ? squashedCandidates[0].tag : null;
   };
 }
 
-/** camelCase or kebab-case -> lowercase tokens: 'detailGrid' / 'detail-grid' -> ['detail', 'grid']. */
+/**
+ * camelCase or kebab-case -> lowercase tokens: 'detailGrid' / 'detail-grid' -> ['detail', 'grid'].
+ * Also splits a letter/digit boundary ('scanCode1d' -> ['scan', 'code', '1d']) — measured on
+ * groupScanCode: without it, 'scanCode1d' tokenizes as {scan, code1d}, one merged token short of
+ * `ml-scan-code-1d`'s {scan, code, 1d}, and a real in-group molecule reads as a foreign one.
+ */
 function tokensOf(text: string): string[] {
   return text
+    .replace(/([a-z])([0-9])/g, '$1-$2')
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .split(/[-_]+/)
     .map(token => token.toLowerCase())
