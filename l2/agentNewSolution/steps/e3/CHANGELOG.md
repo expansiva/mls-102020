@@ -1,5 +1,11 @@
 # E3 changelog
 
+- 2026-08-26: `smart` still opens the E3 widget — the access review has no A/B/C signal, so missing
+  signal never hides the checkpoint. `/fast` and `automatic` still skip.
+
+- 2026-08-26: Auto-approval after a valid gate now also follows E1 `reviewPolicy.mode=automatic`
+  via `helpers/ns4ReviewPolicy.ts`. `/fast` is unchanged. `guided`/`smart` still open the widget.
+
 - 2026-08-21: One bounded structural repair round. A deterministic gate finding no longer kills the
   step: the invalid draft is persisted, the numbered findings plus that draft go back to the model
   through `gateRepair.md`, and the corrected complete matrix re-enters the same gate. Exhausting the

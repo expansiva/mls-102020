@@ -24,6 +24,7 @@ import {
   buildNs4CompositionArtifact, normalizeNs4E6Review, Ns4E6Review, Ns4E6ReviewEvent,
 } from '/_102020_/l2/agentNewSolution/steps/e6/contracts.js';
 import { validateNs4E6Review } from '/_102020_/l2/agentNewSolution/steps/e6/gate.js';
+import { decideNs4LaterCheckpoint, NS4_UNAVAILABLE_SMART_SIGNAL } from '/_102020_/l2/agentNewSolution/helpers/ns4ReviewPolicy.js';
 
 interface Ns4E6Args {
   planId: 'e6-behaviors';
@@ -110,8 +111,9 @@ export async function afterNs4E6PromptStep(
     }
 
     await writeNs4Pipeline(markNs4E6WaitingHuman(await requirePipeline(moduleName), round, draftPath));
-    if (isFast(context)) {
-      const saved = await persist(moduleName, review, 'auto');
+    const checkpoint = decideNs4LaterCheckpoint(context, module, NS4_UNAVAILABLE_SMART_SIGNAL);
+    if (!checkpoint.open) {
+      const saved = await persist(moduleName, review, 'auto', checkpoint.autoReason);
       return [resultStep(context, mutationParent, saved, 'E6 composition auto-approved'),
         updateStatus(context, mutationParent, step, hookSequential, 'completed', `E6 approved ${saved.recommendationCount} recommendations.`, 'input_output')];
     }
@@ -166,7 +168,7 @@ async function applyReview(
   await continuePoolingTask(context);
 }
 
-async function persist(moduleName: string, review: Ns4E6Review, approvedBy: Ns4ApprovedBy): Promise<Ns4PersistedE6> {
+async function persist(moduleName: string, review: Ns4E6Review, approvedBy: Ns4ApprovedBy, autoReason?: string): Promise<Ns4PersistedE6> {
   const module = await readNs4Module(moduleName); if (!module) throw new Error(`Module artifact not found for ${moduleName}.`);
   const gate = validateNs4E6Review(review, module); if (!gate.ok) throw new Error(formatGate(gate.issues));
   const approvedAt = new Date().toISOString();
@@ -174,8 +176,8 @@ async function persist(moduleName: string, review: Ns4E6Review, approvedBy: Ns4A
   const artifactPath = await writeNs4Composition(moduleName, artifact);
   const approvedPath = await writeNs4E6Approved(moduleName, review);
   const pipeline = await requirePipeline(moduleName);
-  await writeNs4Module(moduleName, markNs4ModuleE6Approved(module, approvedBy, approvedAt));
-  await writeNs4Pipeline(markNs4E6Approved(pipeline, approvedBy, [artifactPath, approvedPath], approvedAt));
+  await writeNs4Module(moduleName, markNs4ModuleE6Approved(module, approvedBy, approvedAt, autoReason));
+  await writeNs4Pipeline(markNs4E6Approved(pipeline, approvedBy, [artifactPath, approvedPath], approvedAt, autoReason));
   return { moduleName, recommendationCount: artifact.recommendations.length, artifactPath, approvedPath };
 }
 
@@ -265,5 +267,4 @@ function formatGate(issues: Array<{ code: string; path: string; message: string 
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
 function number(value: unknown): number { return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0; }
 function memoryString(context: mls.msg.ExecutionContext, key: string): string { const value = context.task?.iaCompressed?.longMemory?.[key]; return typeof value === 'string' ? value.trim() : ''; }
-function isFast(context: mls.msg.ExecutionContext): boolean { return memoryString(context, 'fastMode') === 'true'; }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }

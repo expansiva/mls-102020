@@ -2,6 +2,9 @@
 
 # Changelog
 
+- 2026-08-26 (gates declaram) — closing gate still compiles `.test.ts` (detector stays loud) but
+  those findings are `declared`, never `MODULE-COMPILE-FAILED`. Only shipped `.ts` errors block.
+
 - 2026-08-22 (dossiê do último finalize) — o run fe4 gravou UM `cf-run-*.json`, do finalize que
   FALHOU (`repairRounds: 0`); o `finalize-create-r2` completou a task e não deixou arquivo. Quem
   lê o único dossiê conclui o oposto do que aconteceu. Causa: só havia snapshot com stamp, e o

@@ -22,6 +22,8 @@ After a green report E10 writes:
 - `l5/<module>/todoBackend.defs.ts`, with use-case owners;
 - `l5/<module>/process.defs.ts`, with hashes, counts and report handoff.
 
+E10 does not write `publish*.conf` or `.conf.example`.
+
 The config merger preserves unrelated keys, projects and modules. With no existing config it creates only a module seed; publication, masters and deploy settings remain out of scope. Output ordering is stable, so unchanged inputs produce byte-identical config JSON.
 
 ## Completion

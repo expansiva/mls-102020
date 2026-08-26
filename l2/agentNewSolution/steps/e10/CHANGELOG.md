@@ -1,5 +1,12 @@
 # E10 changelog
 
+## 2026-08-26 — e10 não emite `publish*.conf.example`
+
+Publish local/remoto sai do `l5` (`.env` do mls-base / parâmetros no `package.json`). O gerador
+parou de escrever exemplos de um arquivo que não vai mais existir. O laço em
+`writeNs4L5PublishExample` era o que derrubava todo run no guard de shortName com ponto, **antes**
+de marcar o módulo aprovado. Sem o laço, o e10 fecha `completed` e o módulo sai aprovado.
+
 ## 2026-08-22 — `projectType` no project.json é a fonte do type
 
 A API da plataforma não expõe a natureza do projeto. O tipo canônico passa a ser

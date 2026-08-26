@@ -16,6 +16,7 @@ Invocation:
 
 - `@@newSolution petShop` — create a module or resume its next incomplete v19 step;
 - `@@newSolution petShop /fast` — auto-accept valid E1 through E6 proposals;
+- E1 Follow-up mode **Automatic execution** — auto-accept valid E2 through E6 proposals (E1 still opens; `/fast` is not required);
 - `@@newSolution petShop /rebuild` — regenerate the module WHOLE: archives `l4/petShop` and
   `l5/petShop` through the platform soft-delete and generates again from E1. The whole folder on
   purpose — a previous run leaves drafts, pipeline traces and per-entity defs named after ITS
@@ -159,10 +160,11 @@ record” must be represented by an E4 projection or traceable information entit
 selected journey context so later screens do not ask humans to type foreign-key ids.
 
 `/fast` auto-approves E1 through E6 proposals through the same durable answer/result contracts used
-by the interactive flow. E2 still passes its independent coverage judge, and E5 passes its deterministic
-reference gate, in fast mode. Without
-`/fast`, neither the E1 compile nor permanent E2 journeys can proceed before the respective checkpoint
-is approved.
+by the interactive flow. E1 Follow-up mode `automatic` auto-approves E2 through E6 the same way; E1
+itself still opens. E2 still passes its independent coverage judge, and E5 passes its deterministic
+reference gate, in both automatic paths. `guided` and `smart` keep every later checkpoint. Without
+`/fast` or `automatic`, neither the E1 compile nor permanent E2 journeys can proceed before the
+respective checkpoint is approved.
 
 The flow contract lives in `docs/flow.json`. Canonical agent-engine guidance lives in
 `mls-base/skills/collab_messages.md`, `agentsBestPractices.md` and `modelTypes.md`.

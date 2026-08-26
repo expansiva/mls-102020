@@ -2,6 +2,11 @@
 
 # Changelog
 
+- 2026-08-26 (gates declaram, raio por item) — doutrina "declarar, não bloquear" no verify e no
+  closing gate. Guard sistêmico exige a mesma assinatura do primeiro erro (não o placar). `.test.ts`
+  e prosa nunca bloqueiam; gates de qualidade reparam e, esgotado o orçamento, declaram. Um shared
+  compile-quebrado só pula quem depende dele. Summary/status: blocked × repaired × declared.
+
 - 2026-08-24 (rótulos e ids na lista) — célula de enum que pinta o código armazenado
   (`inProgress`, `medium`) é finding reparável (`collectEnumCellLabelIssues`); o rótulo do l4
   (enumLabels/lifecycleLabels) é o default, o código é só fallback. Coluna cujo field é `id`/`*Id`

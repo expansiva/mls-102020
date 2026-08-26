@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-26 — reviewPolicy smart
+
+- `smart` still opens E5: the rules catalog has no A/B/C signal. `/fast` and `automatic` still skip.
+
+## 2026-08-26 — reviewPolicy automatic
+
+- After a valid catalog gate, E5 auto-approves when `/fast` is set **or** the E1 module has
+  `reviewPolicy.mode=automatic`. Shared helper: `helpers/ns4ReviewPolicy.ts`.
+
 ## 2026-08-09 — build 37, simple rule catalog, flow v18
 
 - Regras permanentes agora contêm somente `id` e `description` em um único

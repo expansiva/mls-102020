@@ -101,7 +101,6 @@ test('every ns4Fs *File builder shortName is free of dots', async () => {
     ns4JourneyFile: ns4.ns4JourneyFile(m, 'buyProduct'),
     ns4JourneyIndexFile: ns4.ns4JourneyIndexFile(m),
     ns4L5ProjectFile: ns4.ns4L5ProjectFile(102047),
-    ns4L5PublishConfFile: ns4.ns4L5PublishConfFile('publish'),
   };
   const exportedFileBuilders = Object.keys(ns4).filter(name => name.endsWith('File') && typeof (ns4 as Record<string, unknown>)[name] === 'function');
   for (const name of exportedFileBuilders) {
@@ -112,4 +111,6 @@ test('every ns4Fs *File builder shortName is free of dots', async () => {
   }
   assert.equal(built.ns4ClassicContractFile.shortName, 'catalog--catalogList');
   assert.equal(built.ns4E2VersionedDraftFile.shortName, 'e2-journeys-draft-v2');
+  assert.equal('ns4L5PublishConfFile' in ns4, false);
+  assert.equal('writeNs4L5PublishExample' in ns4, false);
 });

@@ -77,6 +77,7 @@ import {
   validateNs4E4Review,
 } from '/_102020_/l2/agentNewSolution/steps/e4/gate.js';
 import { resolveNs4E4HookArgs, resolveNs4E4InvocationArgs } from '/_102020_/l2/agentNewSolution/steps/e4/hookArgs.js';
+import { decideNs4LaterCheckpoint, ns4E4SmartSignal } from '/_102020_/l2/agentNewSolution/helpers/ns4ReviewPolicy.js';
 
 interface Ns4E4Args {
   planId: 'e4-ontology';
@@ -514,8 +515,10 @@ async function openOntologyReview(
   if (!gate.ok) throw new Error(formatGate(gate.issues));
   const draftPath = await writeNs4E4Draft(review.moduleName, review);
   await writeNs4Pipeline(markNs4E4WaitingHuman(await requirePipeline(review.moduleName), review.reviewRound, draftPath));
-  if (isFast(context)) {
-    const saved = await persistNs4E4(review.moduleName, review, 'auto', journeys, access);
+  const module = await readNs4Module(review.moduleName);
+  const checkpoint = decideNs4LaterCheckpoint(context, module, ns4E4SmartSignal(review));
+  if (!checkpoint.open) {
+    const saved = await persistNs4E4(review.moduleName, review, 'auto', journeys, access, checkpoint.autoReason);
     return [
       resultStep(context, mutationParent, saved, 'E4 ontology auto-approved'),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', `E4 auto-approved ${saved.entityCount} entities and ${saved.relationshipCount} bound relationships.`, 'input_output'),
@@ -593,6 +596,7 @@ async function persistNs4E4(
   approvedBy: Ns4ApprovedBy,
   journeys: Ns4E2Review,
   access: Ns4E3Review,
+  autoReason?: string,
 ): Promise<Ns4PersistedE4> {
   const gate = validateNs4E4Review(review, journeys, access);
   if (!gate.ok) throw new Error(formatGate(gate.issues));
@@ -603,8 +607,8 @@ async function persistNs4E4(
   const artifactPaths: string[] = [];
   for (const entity of artifacts.entities) artifactPaths.push(await writeNs4OntologyEntity(moduleName, entity.entityId, entity));
   artifactPaths.push(await writeNs4OntologyIndex(moduleName, artifacts.index));
-  await writeNs4Module(moduleName, markNs4ModuleE4Approved(moduleArtifact, approvedBy, approvedAt));
-  await writeNs4Pipeline(markNs4E4Approved(pipeline, approvedBy, artifactPaths, approvedAt, review.reviewRound));
+  await writeNs4Module(moduleName, markNs4ModuleE4Approved(moduleArtifact, approvedBy, approvedAt, autoReason));
+  await writeNs4Pipeline(markNs4E4Approved(pipeline, approvedBy, artifactPaths, approvedAt, review.reviewRound, autoReason));
   return { moduleName, solutionMode: 'new', entityCount: review.entities.length, relationshipCount: review.relationships.length, artifactPaths };
 }
 
@@ -853,7 +857,6 @@ function formatGate(issues: Array<{ code: string; path: string; message: string 
   return issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
 }
 
-function isFast(context: mls.msg.ExecutionContext): boolean { return context.task?.iaCompressed?.longMemory?.fastMode === 'true'; }
 function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 function errorMessage(error: unknown): string { return error instanceof Error ? error.message : String(error); }
 function readE4FailureMessage(payload: unknown): string {

@@ -906,7 +906,20 @@ function bffFieldEntityTarget(field: CfeBffCallField, operationsById: Map<string
   return { field: def, entity };
 }
 
-function bffFieldEnumValues(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string[] {
+/** Raw l4 operation input named by a bffCall field's `from` (`<operationId>.<inputId>`). */
+function bffOperationInput(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>): Record<string, unknown> | undefined {
+  const dot = field.from.indexOf('.');
+  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
+  if (!operation) return undefined;
+  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
+  return (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === inputId);
+}
+
+export function bffFieldEnumValues(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string[] {
+  // The operation input's own enumValues win: sortOrder is 'asc'|'desc' even when fieldRef is borrowed
+  // from Task.status. Falling through to the field enum types a direction control as a lifecycle.
+  const fromInput = readStringArray(bffOperationInput(field, operationsById)?.enumValues);
+  if (fromInput.length >= 2) return fromInput;
   const resolved = bffFieldEntityTarget(field, operationsById, entities);
   const declared = resolved.field?.enum;
   if (Array.isArray(declared) && declared.length > 0) return declared.map(String).filter(Boolean);
@@ -915,18 +928,24 @@ function bffFieldEnumValues(field: CfeBffCallField, operationsById: Map<string, 
   return [];
 }
 
-function bffFieldEnumLabels(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): CfeEnumLabel[] {
+export function bffFieldEnumLabels(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): CfeEnumLabel[] {
+  const raw = bffOperationInput(field, operationsById);
+  const fromInput = readEnumLabels(raw?.enumLabels);
+  if (fromInput.length) return fromInput;
+  const inputValues = readStringArray(raw?.enumValues);
   const resolved = bffFieldEntityTarget(field, operationsById, entities);
-  return fieldEnumLabels(resolved.field, resolved.entity);
+  const fieldLabels = fieldEnumLabels(resolved.field, resolved.entity);
+  if (inputValues.length >= 2) {
+    const codes = new Set(inputValues);
+    const matching = fieldLabels.filter(item => codes.has(item.code));
+    return matching.length === inputValues.length ? matching : [];
+  }
+  return fieldLabels;
 }
 
 function bffInputRequired(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>): boolean {
   if (field.required === true) return true;
-  const dot = field.from.indexOf('.');
-  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
-  if (!operation) return false;
-  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
-  const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === inputId);
+  const raw = bffOperationInput(field, operationsById);
   return raw ? raw.required === true : false;
 }
 
@@ -1937,6 +1956,8 @@ export async function saveCreateLayoutFailureTrace(
   }, null, 2)}\n`);
 }
 
+export interface MaterializeVerifyPassed { planId: string; typecheck: string; }
+
 export interface MaterializeVerifyBrokenTrace {
   planId: string;
   defPath: string;
@@ -1944,6 +1965,12 @@ export interface MaterializeVerifyBrokenTrace {
   typecheck: string;
   errors: string[];
   warnings: string[];
+  severity?: 'blocked' | 'repair' | 'declared';
+}
+
+export interface MaterializeVerifySummaryBuckets {
+  declared?: MaterializeVerifyBrokenTrace[];
+  repaired?: MaterializeVerifyPassed[];
 }
 
 // Full, unbounded verify detail (every compile/typecheck error + warning per broken item) written to
@@ -1996,19 +2023,24 @@ function deriveTraceModule(broken: MaterializeVerifyBrokenTrace[]): string {
   return '';
 }
 
-export interface MaterializeVerifyPassed { planId: string; typecheck: string; }
-
 // A stable, ALWAYS-written verdict for a materialization phase, so "was it resolved?" has one place to
 // look instead of inferring it from the presence/absence of cryptic per-round trace files. The name is
 // derived by stripping the round suffix (`-v2`, `-v2-v3`) from planId, so every round overwrites the
 // SAME file and the last write is the final verdict: allClear + the passed items + any still-broken.
 // Always module-scoped: like the trace, there is NO project-root fallback (that polluted l2/trace and the
 // junk got committed) — without a derivable module the verdict is skipped with a warning.
-export async function saveMaterializeVerifySummary(moduleName: string, planId: string, attempt: number, passed: MaterializeVerifyPassed[], broken: MaterializeVerifyBrokenTrace[]): Promise<string | null> {
+export async function saveMaterializeVerifySummary(
+  moduleName: string,
+  planId: string,
+  attempt: number,
+  passed: MaterializeVerifyPassed[],
+  broken: MaterializeVerifyBrokenTrace[],
+  buckets: MaterializeVerifySummaryBuckets = {},
+): Promise<string | null> {
   try {
     const project = mls.actualProject || 0;
     if (!project) return null;
-    const module = moduleName || deriveTraceModule(broken);
+    const module = moduleName || deriveTraceModule(broken) || deriveTraceModule(buckets.declared ?? []);
     if (!module) {
       console.warn(`[saveMaterializeVerifySummary] no module could be derived for ${planId}; verdict not written (never write to the project-root l2/trace)`);
       return null;
@@ -2016,22 +2048,103 @@ export async function saveMaterializeVerifySummary(moduleName: string, planId: s
     const folder = `${module}/trace/frontend-materialize-verify`;
     const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
     const shortName = `${toSafeShortName(basePlanId)}-summary`;
+    const declared = buckets.declared ?? [];
+    const repaired = buckets.repaired ?? [];
     const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
     await saveStorContent(fileInfo, `${JSON.stringify({
       savedAt: new Date().toISOString(),
       phase: basePlanId,
       lastRoundPlanId: planId,
       attempt,
+      // allClear means nothing BLOCKS the next phase / a later plan. Declared findings stay named.
       allClear: broken.length === 0,
+      blockedCount: broken.length,
+      repairedCount: repaired.length,
+      declaredCount: declared.length,
       passedCount: passed.length,
       passed: passed.map(item => ({ planId: item.planId, typecheck: item.typecheck })),
+      repaired: repaired.map(item => ({ planId: item.planId, typecheck: item.typecheck })),
+      declared: declared.map(item => ({
+        planId: item.planId,
+        outputPath: item.outputPath,
+        errorCount: item.errors.length,
+        warningCount: item.warnings.length,
+        firstError: item.errors[0] ?? item.warnings[0] ?? null,
+        severity: 'declared' as const,
+      })),
       brokenCount: broken.length,
-      broken: broken.map(item => ({ planId: item.planId, outputPath: item.outputPath, errorCount: item.errors.length, warningCount: item.warnings.length, firstError: item.errors[0] ?? null })),
+      broken: broken.map(item => ({
+        planId: item.planId,
+        outputPath: item.outputPath,
+        errorCount: item.errors.length,
+        warningCount: item.warnings.length,
+        firstError: item.errors[0] ?? null,
+        severity: 'blocked' as const,
+      })),
       agent: 'agentCfeMaterializePhase',
     }, null, 2)}\n`);
     return `_${project}_/l2/${folder}/${shortName}.json`;
   } catch (error) {
     console.error(`[saveMaterializeVerifySummary] ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/** Plan ids the last verify verdict still lists as blocking (compile of the shipped .ts). Declared-only is not here. */
+export async function readBlockedMaterializePlanIds(project: number): Promise<Set<string>> {
+  const blocked = new Set<string>();
+  if (!project) return blocked;
+  for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || !String(file.folder || '').endsWith('/trace/frontend-materialize-verify')) continue;
+    if (!String(file.shortName || '').endsWith('-summary')) continue;
+    try {
+      const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
+      if (!verdict || verdict.allClear !== false || !Array.isArray(verdict.broken)) continue;
+      for (const item of verdict.broken) {
+        const planId = item && typeof item.planId === 'string' ? item.planId : '';
+        if (planId) blocked.add(planId);
+      }
+    } catch { /* an unreadable verdict schedules nothing */ }
+  }
+  return blocked;
+}
+
+export async function readMaterializeVerifySummary(moduleName: string, planId: string): Promise<{
+  passed: MaterializeVerifyPassed[];
+  broken: MaterializeVerifyBrokenTrace[];
+  declared: MaterializeVerifyBrokenTrace[];
+  repaired: MaterializeVerifyPassed[];
+} | null> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project || !moduleName) return null;
+    const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
+    const folder = `${moduleName}/trace/frontend-materialize-verify`;
+    const shortName = `${toSafeShortName(basePlanId)}-summary`;
+    const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
+    const file = (mls.stor.files as Record<string, { status?: string; getContent?: () => Promise<string> } | undefined>)[mls.stor.getKeyToFile(fileInfo)];
+    if (!file || file.status === 'deleted' || !file.getContent) return null;
+    const verdict = JSON.parse(String(await file.getContent()));
+    if (!verdict || typeof verdict !== 'object') return null;
+    const asPassed = (items: unknown): MaterializeVerifyPassed[] =>
+      Array.isArray(items) ? items.filter(isRecord).map(item => ({ planId: readString(item.planId), typecheck: readString(item.typecheck) })).filter(item => item.planId) : [];
+    const asBroken = (items: unknown): MaterializeVerifyBrokenTrace[] =>
+      Array.isArray(items) ? items.filter(isRecord).map(item => ({
+        planId: readString(item.planId),
+        defPath: readString(item.defPath),
+        outputPath: typeof item.outputPath === 'string' ? item.outputPath : null,
+        typecheck: readString(item.typecheck) || 'not-applicable',
+        errors: Array.isArray(item.errors) ? item.errors.map(String) : (item.firstError ? [String(item.firstError)] : []),
+        warnings: Array.isArray(item.warnings) ? item.warnings.map(String) : [],
+      })).filter(item => item.planId) : [];
+    return {
+      passed: asPassed(verdict.passed),
+      broken: asBroken(verdict.broken),
+      declared: asBroken(verdict.declared),
+      repaired: asPassed(verdict.repaired),
+    };
+  } catch {
     return null;
   }
 }

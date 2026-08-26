@@ -11,6 +11,7 @@ import {
 import {
   isStale,
   layerRank,
+  materializePlanIdFromPipelineId,
   orderItems,
   testPathForOutputPath,
   type PipelineItem,
@@ -20,6 +21,7 @@ import {
   createAgentStepPayload,
   createUpdateStatusIntent,
   listGeneratedCreatePages,
+  readBlockedMaterializePlanIds,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 
 export function createAgent(): IAgentAsync {
@@ -53,7 +55,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const args = parseArgs(step.prompt);
     const generated = await listGeneratedCreatePages();
     const candidates = await readMaterializeCandidates(generated.project);
-    const planned = planMaterialization(candidates, args.force === true, await readBrokenVerdictPlanIds(generated.project));
+    const planned = planMaterialization(candidates, args.force === true, await readBlockedMaterializePlanIds(generated.project));
     const todo = planned.filter(item => item.stale);
     const phasePlan = createMaterializePhaseSteps(context, step, todo);
     const registerDeps = phasePlan.terminalPlanIds;
@@ -195,28 +197,7 @@ function planMaterialization(candidates: MaterializeCandidate[], force: boolean,
   return planned;
 }
 
-/**
- * The plan ids the LAST verify verdict of each phase still lists as broken. One file per phase
- * (`<phase>-summary.json`, overwritten by the final round), so this is always the current verdict:
- * once a run leaves a phase clean the file says `allClear` and nothing is re-scheduled.
- */
-async function readBrokenVerdictPlanIds(project: number): Promise<Set<string>> {
-  const broken = new Set<string>();
-  for (const file of Object.values(mls.stor.files) as any[]) {
-    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
-    if (file.extension !== '.json' || !String(file.folder || '').endsWith('/trace/frontend-materialize-verify')) continue;
-    if (!String(file.shortName || '').endsWith('-summary')) continue;
-    try {
-      const verdict = JSON.parse(String(await file.getContent()));
-      if (!verdict || verdict.allClear !== false || !Array.isArray(verdict.broken)) continue;
-      for (const item of verdict.broken) {
-        const planId = item && typeof item.planId === 'string' ? item.planId : '';
-        if (planId) broken.add(planId);
-      }
-    } catch { /* an unreadable verdict schedules nothing */ }
-  }
-  return broken;
-}
+
 
 function newestDependencyMs(item: PipelineItem): number | null {
   let newest: number | null = null;
@@ -286,12 +267,4 @@ function groupByMaterializePhase(planned: PlannedMaterializeItem[]): Array<{ pha
 
 function materializePlanId(item: PipelineItem): string {
   return materializePlanIdFromPipelineId(item.id);
-}
-
-function materializePlanIdFromPipelineId(id: string): string {
-  return `materialize-${safe(id)}`;
-}
-
-function safe(value: string): string {
-  return value.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
 }

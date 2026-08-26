@@ -473,6 +473,10 @@ test('a catalogue list with a name/title field emits optional search, and sortab
   assert.deepEqual(sortBy.enumValues, ['submittedAt', 'status', 'decidedAt']);
   assert.deepEqual(sortOrder.enumValues, ['asc', 'desc']);
   assert.equal(sortBy.source, 'userInput');
+  // fieldRef stays borrowed (first sortable field): empty fieldRef is dropped by the CF parser
+  // (`l4OperationInputs`) and rejected by NS4_E8_INPUT_FIELD. The closed domain is enumValues, not the field.
+  assert.equal(sortOrder.fieldRef.fieldId, sortBy.fieldRef.fieldId);
+  assert.equal(sortBy.fieldRef.fieldId, 'submittedAt');
 
   const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'changeOrderCatalogue')!;
   const recordList = catalogue.sections.find(section => section.sectionId === 'recordList')!;

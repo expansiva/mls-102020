@@ -3,7 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, finalizeGeneratedPages } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
-  MAX_MODULE_COMPILE_REPAIRS, compileRepairSlotArgs, describeCompileRepairPlan, planModuleCompileRepair,
+  MAX_MODULE_COMPILE_REPAIRS, compileRepairSlotArgs, describeCompileRepairPlan, partitionModuleCompileErrors, planModuleCompileRepair,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileRepair.js';
 // `addMessage('@@agent …')` posts a message that spawns a NEW task through the target agent's own
 // beforePromptImplicit (no coupling to its internals) — the same handoff agentNewSolution uses to start
@@ -178,12 +178,16 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // Closing gate FIRST: compile the WHOLE module, not just what this run touched (compileModuleClosure).
     const closure = await compileModuleClosure(result.moduleName);
     const base = `pagesDone=${result.pagesDone.length}; ownersDone=${result.ownersDone.length}; skippedPages=${result.skippedPages.length}; ${result.configMsg}`;
-    if (closure.errors.length > 0) {
+    const partitioned = partitionModuleCompileErrors(closure.errors);
+    const declaredNote = partitioned.declared.length
+      ? `; declared ${partitioned.declared.length} .test.ts finding(s) (never blocking)`
+      : '';
+    if (partitioned.blocking.length > 0) {
       // The gate does not loosen — it gets a repair with a budget. A file whose defs is not on disk has no
-      // item to regenerate it, so it can only fail, and it is named.
-      const plan = planModuleCompileRepair(closure.errors, defsIsPresent);
-      const shown = closure.errors.slice(0, 12).join('\n');
-      const more = closure.errors.length > 12 ? `\n…(+${closure.errors.length - 12} more)` : '';
+      // item to regenerate it, so it can only fail, and it is named. `.test.ts` is not in this set.
+      const plan = planModuleCompileRepair(partitioned.blocking, defsIsPresent);
+      const shown = partitioned.blocking.slice(0, 12).join('\n');
+      const more = partitioned.blocking.length > 12 ? `\n…(+${partitioned.blocking.length - 12} more)` : '';
       const fidelity = describeCompilerFidelity();
       const writeDossier = async (summary: string, repairing: boolean): Promise<string | null> => saveCfRunReport(result.moduleName, buildCfRunReport({
         moduleName: result.moduleName,
@@ -193,13 +197,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         ownersDone: result.ownersDone,
         skippedPages: result.skippedPages,
         repairRounds: attempt - 1,
-        gate: { checked: closure.checked, errors: closure.errors, fidelity, repairing },
+        gate: { checked: closure.checked, errors: partitioned.blocking, declared: partitioned.declared, fidelity, repairing },
         agentBuild: await readAgentProvenance(),
         steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
         summary,
       }));
       if (attempt <= MAX_MODULE_COMPILE_REPAIRS && plan.slots.length > 0) {
-        const failTrace = `MODULE-COMPILE-FAILED (${closure.errors.length} error(s) across ${closure.checked} .ts of ${result.moduleName}) -> ${describeCompileRepairPlan(plan, attempt)}. ${fidelity}\n${shown}${more}\n${base}`;
+        const failTrace = `MODULE-COMPILE-FAILED (${partitioned.blocking.length} blocking error(s) across ${closure.checked} .ts of ${result.moduleName}${declaredNote}) -> ${describeCompileRepairPlan(plan, attempt)}. ${fidelity}\n${shown}${more}\n${base}`;
         const reportRef = await writeDossier(failTrace, true);
         return [
           ...buildCompileRepairRound(context, parentStep, plan.slots, attempt),
@@ -211,11 +215,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         ? 'no broken file has a defs on disk, so no repair slot can be built'
         : `repair budget exhausted after ${MAX_MODULE_COMPILE_REPAIRS} round(s)`;
       const reportRef = await writeDossier(
-        `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (${why}). ${fidelity}`,
+        `MODULE-COMPILE-FAILED: ${partitioned.blocking.length} blocking error(s) across ${closure.checked} .ts of module ${result.moduleName} (${why}). ${fidelity}`,
         false,
       );
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed',
-        `MODULE-COMPILE-FAILED: ${closure.errors.length} error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them; ${why}). ${fidelity}\n${shown}${more}\n${base}${reportRef ? ` Run report: ${reportRef}.` : ''}`)];
+        `MODULE-COMPILE-FAILED: ${partitioned.blocking.length} blocking error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them; ${why})${declaredNote}. ${fidelity}\n${shown}${more}\n${base}${reportRef ? ` Run report: ${reportRef}.` : ''}`)];
     }
     // Only a CLEAN module hands off to agentAddLanguage — it translates the i18n block of the generated
     // files, and translating a module that did not compile spends a task on code about to be regenerated.
@@ -226,7 +230,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const agentBuild = await readAgentProvenance();
     // Repeat the build stamp at the end: a post-mortem reads the LAST trace of the run first.
     // Do NOT claim tsc-equivalence: the gate is Monaco; declare the difference (F2).
-    const trace = `${base}${addLanguage}; moduleCompile=${closure.checked} file(s) with no Monaco errors${repaired}; ${fidelity}; released ${closure.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
+    const trace = `${base}${addLanguage}; moduleCompile=${closure.checked} file(s) with no blocking Monaco errors${declaredNote}${repaired}; ${fidelity}; released ${closure.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
     const reportRef = await saveCfRunReport(result.moduleName, buildCfRunReport({
       moduleName: result.moduleName,
       attempt,
@@ -237,7 +241,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       repairRounds: attempt - 1,
       gate: {
         checked: closure.checked,
-        errors: closure.errors,
+        errors: partitioned.blocking,
+        declared: partitioned.declared,
         fidelity,
       },
       agentBuild,

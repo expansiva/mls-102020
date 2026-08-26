@@ -637,6 +637,7 @@ async function main(): Promise<void> {
   if (tracePath) console.log(`trace: ${tracePath}`);
   if (!args.dryRun && cfg && args.check) {
     let check = runGeneratedCheckCapture(planned, dataByOut);
+    check = withDeclaredTestFindings(planned, check);
     for (let round = 1; round <= MATERIALIZE_REPAIR_ATTEMPTS && !check.ok; round++) {
       const errorsByFile = parseTscErrorsByFile(check.output);
       const targets = planned.filter(p => itemHasTscErrors(p.item, errorsByFile) || failures.includes(p.item.id));
@@ -658,7 +659,7 @@ async function main(): Promise<void> {
         if (result.ok && failedIndex >= 0) failures.splice(failedIndex, 1);
         if (!result.ok && failedIndex < 0) failures.push(p.item.id);
       }
-      check = runGeneratedCheckCapture(planned, dataByOut);
+      check = withDeclaredTestFindings(planned, runGeneratedCheckCapture(planned, dataByOut));
     }
 
     if (check.ok) {
@@ -917,13 +918,26 @@ function nextTracePath(project: number, moduleName: string): string {
 }
 
 function runGeneratedCheck(items: PlannedItem[], dataByOut: Map<string, unknown>): boolean {
-  const result = runGeneratedCheckCapture(items, dataByOut, true);
+  const result = withDeclaredTestFindings(items, runGeneratedCheckCapture(items, dataByOut, true));
   if (result.ok) {
     console.log('generated strict tsc: OK');
     return true;
   }
   console.log('generated strict tsc: errors (see above)');
   return false;
+}
+
+function withDeclaredTestFindings(items: PlannedItem[], check: { ok: boolean; output: string }): { ok: boolean; output: string } {
+  if (check.ok) return check;
+  const errorsByFile = parseTscErrorsByFile(check.output);
+  const declared = items.flatMap(item => itemDeclaredTscErrors(item.item, errorsByFile));
+  const blocking = items.some(item => itemHasTscErrors(item.item, errorsByFile));
+  if (declared.length) {
+    console.log(`declared ${declared.length} .test.ts finding(s) (never blocking)`);
+    for (const line of declared.slice(0, 12)) console.log(`  ${line}`);
+    if (declared.length > 12) console.log(`  …(+${declared.length - 12} more)`);
+  }
+  return blocking ? check : { ok: true, output: check.output };
 }
 
 function runGeneratedCheckCapture(items: PlannedItem[], dataByOut: Map<string, unknown>, inherit = false): { ok: boolean; output: string } {
@@ -979,9 +993,14 @@ function itemHasTscErrors(item: PipelineItem, errorsByFile: Map<string, string[]
 }
 
 function itemTscErrors(item: PipelineItem, errorsByFile: Map<string, string[]>): string[] {
-  const refs = [item.outputPath];
-  if (item.type === 'l2_contract' || item.type === 'l2_shared') refs.push(testPathForOutputPath(item.outputPath));
-  return refs.flatMap(ref => errorsByFile.get(normalizeFsPath(mlsToFs(ref))) ?? []);
+  // Only the shipped .ts blocks. Companion `.test.ts` still runs through tsc (generatedCheckFiles)
+  // and is named in the output; it never queues a repair or fails the item.
+  return errorsByFile.get(normalizeFsPath(mlsToFs(item.outputPath))) ?? [];
+}
+
+function itemDeclaredTscErrors(item: PipelineItem, errorsByFile: Map<string, string[]>): string[] {
+  if (item.type !== 'l2_contract' && item.type !== 'l2_shared') return [];
+  return errorsByFile.get(normalizeFsPath(mlsToFs(testPathForOutputPath(item.outputPath)))) ?? [];
 }
 
 function parseTscErrorsByFile(output: string): Map<string, string[]> {

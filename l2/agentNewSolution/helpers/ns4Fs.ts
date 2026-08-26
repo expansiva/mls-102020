@@ -397,10 +397,6 @@ export function ns4L5ProjectFile(projectId?: number): Ns4FileInfo {
   return { project: projectId ?? (mls.actualProject || 0), level: 5, folder: '', shortName: 'project', extension: '.json' };
 }
 
-export function ns4L5PublishConfFile(shortName: string): Ns4FileInfo {
-  return { project: mls.actualProject || 0, level: 5, folder: '', shortName, extension: '.example' };
-}
-
 /** l5/project.json — organization-level, owned by the studio. E10 reads it and only ADDS what is absent. */
 export async function readNs4L5Project(projectId?: number): Promise<Record<string, unknown> | null> {
   const raw = await readNs4Text(ns4L5ProjectFile(projectId), false); if (!raw.trim()) return null;
@@ -415,10 +411,6 @@ export async function readNs4L5Project(projectId?: number): Promise<Record<strin
 
 export async function writeNs4L5Project(projectJson: Record<string, unknown>): Promise<string> {
   const fileInfo = ns4L5ProjectFile(); await writeNs4Text(fileInfo, `${JSON.stringify(projectJson, null, 2)}\n`); return displayPath(fileInfo);
-}
-
-export async function writeNs4L5PublishExample(shortName: string, content: string): Promise<string> {
-  const fileInfo = ns4L5PublishConfFile(shortName); await writeNs4Text(fileInfo, content); return displayPath(fileInfo);
 }
 
 export async function readNs4L5Config(): Promise<Record<string, unknown> | null> {

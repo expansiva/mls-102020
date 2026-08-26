@@ -41,6 +41,7 @@ import {
 } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
 import { validateNs4E3Review } from '/_102020_/l2/agentNewSolution/steps/e3/gate.js';
 import { resolveNs4E3HookArgs } from '/_102020_/l2/agentNewSolution/steps/e3/hookArgs.js';
+import { decideNs4LaterCheckpoint, NS4_UNAVAILABLE_SMART_SIGNAL } from '/_102020_/l2/agentNewSolution/helpers/ns4ReviewPolicy.js';
 
 interface Ns4E3Args {
   planId: 'e3-access-matrix';
@@ -183,8 +184,10 @@ export async function afterNs4E3PromptStep(
     }
     const draftPath = await writeNs4E3Draft(moduleName, review);
     await writeNs4Pipeline(markNs4E3WaitingHuman(await requirePipeline(moduleName), review.reviewRound, draftPath));
-    if (!isFast(context)) return [];
-    const saved = await persistNs4E3(moduleName, review, 'auto', journeys);
+    const module = await readNs4Module(moduleName);
+    const checkpoint = decideNs4LaterCheckpoint(context, module, NS4_UNAVAILABLE_SMART_SIGNAL);
+    if (checkpoint.open) return [];
+    const saved = await persistNs4E3(moduleName, review, 'auto', journeys, checkpoint.autoReason);
     return [
       resultStep(context, mutationParent, saved, 'E3 access matrix auto-approved'),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', `E3 auto-approved ${saved.authorityCount} authorities.`, 'input_output'),
@@ -259,6 +262,7 @@ async function persistNs4E3(
   review: Ns4E3Review,
   approvedBy: Ns4ApprovedBy,
   journeys: Ns4E2Review,
+  autoReason?: string,
 ): Promise<Ns4PersistedE3> {
   const gate = validateNs4E3Review(review, journeys);
   if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
@@ -267,8 +271,8 @@ async function persistNs4E3(
   const approvedAt = new Date().toISOString();
   const artifact = await buildNs4AccessMatrixArtifact(review, approvedBy, approvedAt);
   const artifactPath = await writeNs4AccessMatrix(moduleName, artifact);
-  await writeNs4Module(moduleName, markNs4ModuleE3Approved(moduleArtifact, approvedBy, approvedAt));
-  await writeNs4Pipeline(markNs4E3Approved(pipeline, approvedBy, artifactPath, approvedAt, review.reviewRound));
+  await writeNs4Module(moduleName, markNs4ModuleE3Approved(moduleArtifact, approvedBy, approvedAt, autoReason));
+  await writeNs4Pipeline(markNs4E3Approved(pipeline, approvedBy, artifactPath, approvedAt, review.reviewRound, autoReason));
   return {
     moduleName, profileCount: review.profiles.length, authorityCount: review.authorities.length,
     grantCount: review.grants.length, artifactPath, approvedBy, approvedAt, approvedReview: review,
@@ -404,10 +408,6 @@ function parseMaybeJson(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try { return JSON.parse(clean); } catch { return value; }
-}
-
-function isFast(context: mls.msg.ExecutionContext): boolean {
-  return context.task?.iaCompressed?.longMemory?.fastMode === 'true';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -489,7 +489,10 @@ function sortableFieldIds(entity: Ns4OntologyEntity): string[] {
  * Optional list controls, synthesized like getById: they do not travel through E6 (additional
  * modules/plugins) and they are not journey steps. `search` fieldRef is the display field so the
  * existing field-ref gate and the frontend parser (which drop inputs with an empty fieldRef) both
- * keep it. `sortBy` is a closed enum of sortable field ids, not a free string.
+ * keep it. `sortBy`/`sortOrder` borrow the first sortable field for the same reason — `Ns4E8Input.fieldRef`
+ * is required, `l4OperationInputs` drops an empty fieldRef, and `NS4_E8_INPUT_FIELD` demands a resolvable
+ * ontology field. The closed domain lives on `enumValues` (`sortBy` = field ids, `sortOrder` = asc|desc),
+ * not on that borrowed field; CF must prefer the input's enumValues over the fieldRef enum.
  */
 function catalogueListInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContext): Ns4E8Input[] {
   const inputs: Ns4E8Input[] = [];

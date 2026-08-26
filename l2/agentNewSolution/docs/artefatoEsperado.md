@@ -52,7 +52,23 @@ a auditoria do E9 lê `e7-usecases/*-draft.json` — sem pipeline, a auditoria f
 ### L5 (E10)
 
 `l5/config.json` · `l5/<module>/todoFrontend.defs.ts` · `todoBackend.defs.ts` · `process.defs.ts` ·
-`l5/project.json` (só complementa chaves ausentes).
+`l5/project.json` (só complementa chaves ausentes). E10 **não** escreve `publish*.conf` nem
+`.conf.example` — a config de publish local/remoto fica fora do `l5`.
+
+## 2b. Modo de acompanhamento (`reviewPolicy.mode`, escolhido na primeira tela)
+
+Fica no artefato do módulo e vale para os checkpoints **E2–E6** (o E1 sempre abre). Default `smart`.
+
+| modo | comportamento |
+|---|---|
+| `guided` | abre todos |
+| `smart` | abre quando há finding A, decisão Type B / relevante, **ou quando a etapa não tem sinal** |
+| `automatic` | não abre nenhum (equivale ao `/fast` no prompt) |
+
+Decisão única em `helpers/ns4ReviewPolicy.ts`. Regra dura: **sem sinal, abre** — ausência de
+vocabulário A/B numa etapa não é prova de que não há o que revisar. Hoje só o E2 tem sinal de
+verdade; E3, E4, E5 e E6 abrem por ausência. Quando `smart` pula, o motivo é gravado ao lado de
+`approvedBy: 'auto'` — nunca pula em silêncio.
 
 ## 3. Contagens de sanidade (como conferir rápido)
 
@@ -104,12 +120,3 @@ a auditoria do E9 lê `e7-usecases/*-draft.json` — sem pipeline, a auditoria f
 - `flow.json` usa separador `.` nos nomes (`contracts/{ws}.{fn}`, `e2-journeys.draft.json`); o
   código usa `--` e `-draft`.
 - `steps/e9/gate.ts` não existe (validação inline); `steps/e8/gate.ts` chama-se `modelGate.ts`.
-
-## 6. Defeito conhecido no fechamento (24/08)
-
-`e10` falha em TODO run no último write: `writeNs4L5PublishExample('publishLocal.conf', ...)` tem
-ponto no shortName e o próprio guard de nomes rejeita. Os L5 ficam no disco, mas o módulo nunca é
-marcado aprovado. **Adiado por decisão do produto (24/08): o publish será reformado, e consertar
-agora sujaria código descartável.** Enquanto não
-corrigido: **e10 `failed` com essa mensagem específica NÃO invalida o l4** — conferir se os L5
-existem e seguir.

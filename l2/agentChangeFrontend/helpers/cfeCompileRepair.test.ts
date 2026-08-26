@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   MAX_MODULE_COMPILE_REPAIRS, compileRepairSlotArgs, defsRefForGeneratedTs, describeCompileRepairPlan,
-  groupModuleCompileErrors, planModuleCompileRepair,
+  groupModuleCompileErrors, partitionModuleCompileErrors,
+  compileErrorRef, planModuleCompileRepair,
 } from './cfeCompileRepair.js';
 
 // Os 15 erros REAIS do run fe2 do petShop (22/08 01:59Z), no formato que compileModuleClosure produz
@@ -65,6 +66,21 @@ test('planModuleCompileRepair: nada repável ⇒ nenhum slot (o gate falha, e di
   assert.match(described, /5 file\(s\) NOT repairable \(no defs on disk/);
 });
 
+test('partitionModuleCompileErrors: .test.ts is declared, shipped .ts stays blocking', () => {
+  const { blocking, declared } = partitionModuleCompileErrors([
+    "_102047_/l2/m/web/shared/taskHub.ts: error TS2304: Cannot find name 'x'",
+    "_102047_/l2/m/web/shared/taskHub.test.ts: error TS2344: Type 'false' does not satisfy",
+    'compile worker unavailable',
+  ]);
+  assert.deepEqual(blocking, [
+    "_102047_/l2/m/web/shared/taskHub.ts: error TS2304: Cannot find name 'x'",
+    'compile worker unavailable',
+  ]);
+  assert.deepEqual(declared, [
+    "_102047_/l2/m/web/shared/taskHub.test.ts: error TS2344: Type 'false' does not satisfy",
+  ]);
+});
+
 test('compileRepairSlotArgs é COMPACTO: nenhum texto de erro no prompt do step', () => {
   const plan = planModuleCompileRepair(FE2_ERRORS, () => true);
   const args = compileRepairSlotArgs(plan.slots[0], 'finalize-create-repair-r1', 2);
@@ -93,8 +109,33 @@ test('o finalize abre a rodada com orçamento, e falha igual quando ele esgota',
   assert.match(src, /createAddStepIntent\(context, parentStep, nextFinalize\),\s*\n\s*\];/);
   // Orçamento esgotado ⇒ 'failed' com a mesma contagem/severidade de antes.
   assert.match(src, /repair budget exhausted after \$\{MAX_MODULE_COMPILE_REPAIRS\} round\(s\)/);
-  assert.match(src, /'failed',\s*\n\s*`MODULE-COMPILE-FAILED: \$\{closure\.errors\.length\} error\(s\)/);
+  assert.match(src, /'failed',\s*\n\s*`MODULE-COMPILE-FAILED: \$\{partitioned\.blocking\.length\} blocking error\(s\)/);
   // addLanguage só num módulo que compila (spawna task independente; não pode sair por rodada).
   assert.match(src, /Only a CLEAN module hands off to agentAddLanguage/);
   assert.equal(MAX_MODULE_COMPILE_REPAIRS, 2);
+});
+
+// O verify por item e o closing gate produzem diagnosticos com FORMATOS DIFERENTES. Ler so o do
+// closing gate mandava todo achado do verify para o mesmo balde — inclusive um .ts embarcado que nao
+// compila, que tem de bloquear. (review 26/08 da task cf_gates_declaram_e_raio)
+void test('compileErrorRef reads both diagnostic shapes', () => {
+  assert.equal(
+    compileErrorRef('_102047_/l2/todo/web/shared/taskHub.ts: TS2339 - Property x does not exist'),
+    '_102047_/l2/todo/web/shared/taskHub.ts',
+  );
+  assert.equal(
+    compileErrorRef('file://server/_102047_/l2/todo/web/shared/taskHub.test.ts - TS2344 - Type \'false\''),
+    '_102047_/l2/todo/web/shared/taskHub.test.ts',
+  );
+  assert.equal(compileErrorRef('sem ref nenhuma'), '');
+});
+
+void test('partition: .test.ts declara, .ts embarcado bloqueia — nos dois formatos', () => {
+  const split = partitionModuleCompileErrors([
+    'file://server/_102047_/l2/todo/web/shared/taskHub.test.ts - TS2344 - Type \'false\'',
+    'file://server/_102047_/l2/todo/web/shared/taskHub.ts - TS2339 - Property x does not exist',
+    '_102047_/l2/todo/web/desktop/page11/taskHub.ts: TS1005 - expected',
+  ]);
+  assert.equal(split.declared.length, 1);
+  assert.equal(split.blocking.length, 2);
 });
