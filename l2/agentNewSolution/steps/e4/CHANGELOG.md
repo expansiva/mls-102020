@@ -1,5 +1,12 @@
 # E4 changelog
 
+- 2026-08-26: `smart` skips the ontology widget when the only recorded decisions are Type C label
+  backfills (or none) and writes `autoReason: nenhum finding A` next to `approvedBy=auto`. `/fast`
+  and `automatic` still skip. A Type A finding would reopen the widget.
+
+- 2026-08-26: The post-gate auto-approval also honors E1 `reviewPolicy.mode=automatic` through
+  `helpers/ns4ReviewPolicy.ts`. `/fast` is unchanged.
+
 - 2026-08-24: Non-lifecycle enum fields (`priority`, …) were omitted by the entity worker even
   though `enumLabels` was in the prompt: the JSON example showed only a uuid field, the schema
   leaves the array optional, and the gate treats absence as valid. The entity example now includes

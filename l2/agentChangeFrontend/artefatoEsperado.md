@@ -79,8 +79,20 @@ recebem literais determinísticos (`'teste'`, `1`, `'2026-01-01'`, ISO datetime)
 
 ## 5. Gates
 
+Doutrina: **declarar, não bloquear**. O detector não afrouxa; muda o que acontece DEPOIS. Três
+níveis:
+
+| nível | o quê | efeito |
+|---|---|---|
+| **bloqueia** | o `.ts` **embarcado** não compila, depois do repair | o item fica bloqueado; o closing gate falha o run |
+| **repara, declara** | gates de qualidade (envelope, enum, rótulo, coluna id, vocabulário, higiene, tag, token, experiência, seleção, botão disabled) | entra no repair; sobreviveu ao orçamento ⇒ registra e segue |
+| **declara** | asserção de `.test.ts` e heurística textual sobre prosa (imagem, lookup L4, initialLoad, `validateGeneratedPageQuality`) | nunca bloqueia, nunca consome o orçamento de repair |
+
 1. **Por fase** (`materialize-phase-*-verify`): compile do output + do `.test.ts` companheiro, com
-   pré-load dos `.d.ts` (sem isso import não resolvido vira `any` e esconde erro).
+   pré-load dos `.d.ts` (sem isso import não resolvido vira `any` e esconde erro). O `.test.ts` é
+   **declarado** no summary; só o compile do `.ts` embarcado alimenta o guard sistêmico e o repair.
+   Guard sistêmico (`MATERIALIZE-SYSTEMIC-FAILURE`) exige **a mesma assinatura** no primeiro erro
+   (não basta o placar "todos quebrados") — 3 shareds com 3 causas distintas seguem para o repair.
 2. **Textuais de página** (só `l2_page`): higiene de template (função pintada por nome), campo fora
    do contrato, tag divergente do path, token `-bg` como cor de texto, vocabulário técnico na tela,
    disciplina de headings, feedback de mutação, `@chartclick` morto, enum ligado a `<input>` de texto,
@@ -89,11 +101,17 @@ recebem literais determinísticos (`'teste'`, `1`, `'2026-01-01'`, ISO datetime)
    initialLoad, vocabulário técnico) leem o objeto do page21/31 ou o irmão `bindings` do page11 —
    nenhum vira no-op porque a prosa substituiu o `definition`. `collectMissingImageRenderIssues`
    continua regex no texto bruto do `.defs.ts` (agora prosa + JSON de `bindings`); campo de imagem
-   que só existe no shared/contrato já não aparecia no defs reduzido.
+   que só existe no shared/contrato já não aparecia no defs reduzido. São **repara, declara** (ou
+   **declara**, quando a fase não reescreve o defs).
 3. **Closing gate** (`finalize-create`): compila o módulo INTEIRO; 1 repair por arquivo, máx 2
-   rodadas; handoff para `agentAddLanguage` só depois do verde.
+   rodadas; handoff para `agentAddLanguage` só depois do verde **de blocking**. Erro em `.test.ts`
+   sai nomeado (`declared`) e não falha o gate.
 4. **Árbitro final é o `tsc` real do `mls-base`**, não o gate do Monaco (configs divergem;
    incidente documentado em fixture).
+5. **Raio por item**, não por fase: um shared cujo `.ts` embarcado não compilou degrada a si e a
+   quem `dependsOn` dele; as páginas independentes materializam. O summary
+   (`materialize-*-verify-summary.json`) e o status do step distinguem `blocked` × `repaired` ×
+   `declared`, com contagem. Degradar em silêncio é pior que bloquear.
 
 ## 6. Onde o flow.json MENTE (conferido 24/08)
 

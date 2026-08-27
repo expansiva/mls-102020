@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, firstErrorSignature, itemsShareErrorSignature, materializePlanIdFromPipelineId } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -981,12 +981,32 @@ const ENVELOPE_HTTP = `
   }
 `;
 
+const ENVELOPE_OPTIONAL = `
+  async cmdCreateTask(): Promise<void> {
+    const response = await execBff(route, params, options);
+    if (!response.ok) return this.failCommand('cmdCreateTask', response.error?.message ?? 'Falha ao criar');
+  }
+`;
+const ENVELOPE_RECORD_OPTIONAL = `
+  async cmdCreateTask(): Promise<void> {
+    const record = response.error;
+    if (!response.ok) return this.failCommand('cmdCreateTask', record?.message ?? 'Falha ao criar');
+  }
+`;
+
 void test('mutation handler that drops error.message is flagged; readErrorMessage and error.message pass', () => {
   const bad = collectMutationEnvelopeErrorIssues(ENVELOPE_SHARED, ENVELOPE_HTTP);
   assert.equal(bad.length, 1, bad.join(' | '));
   assert.match(bad[0], /cmdDecide error path does not read error\.message/);
   assert.deepEqual(collectMutationEnvelopeErrorIssues(ENVELOPE_SHARED, ENVELOPE_OK), []);
   assert.deepEqual(collectMutationEnvelopeErrorIssues(ENVELOPE_SHARED, ENVELOPE_MESSAGE), []);
+});
+
+void test('optional chaining error?.message (and record?.message) is the envelope, not a false positive', () => {
+  const shared = { actions: [{ actionId: 'cmdCreateTask', kind: 'command', methodName: 'cmdCreateTask' }] };
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(shared, ENVELOPE_OPTIONAL), []);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(shared, ENVELOPE_RECORD_OPTIONAL), []);
+  assert.equal(collectMutationEnvelopeErrorIssues(shared, ENVELOPE_HTTP.replace('cmdDecide', 'cmdCreateTask')).length, 1);
 });
 
 void test('query-only shared is a no-op for the envelope gate', () => {
@@ -1017,4 +1037,17 @@ void test('envelope-error gate and the shared/page skills land in the same deliv
   assert.match(sharedSkill, /ERROR DISPLAY CONTRACT/);
   assert.match(page11, /ERRO DE MUTAÇÃO É A MENSAGEM DO ENVELOPE/);
   assert.match(page21, /ERRO DE MUTAÇÃO É A MENSAGEM DO ENVELOPE/);
+});
+
+test('firstErrorSignature strips mls refs so the same environment fault matches across files', () => {
+  const a = firstErrorSignature(["error TS2792: Cannot find module '/_102046_/l2/m/web/contracts/a.js' or its corresponding type declarations."]);
+  const b = firstErrorSignature(["error TS2792: Cannot find module '/_102046_/l2/m/web/contracts/b.js' or its corresponding type declarations."]);
+  assert.equal(a, b);
+  assert.match(a, /TS2792/);
+  assert.equal(itemsShareErrorSignature([
+    { errors: ['TS2344 sortOrder is wrong'] },
+    { errors: ['TS2344 empty sentinel'] },
+    { errors: ['cmdCreateTask error path does not read error.message'] },
+  ]), false);
+  assert.equal(materializePlanIdFromPipelineId('taskHub__l2_shared'), 'materialize-taskhub-l2-shared');
 });

@@ -54,9 +54,9 @@ export interface GenResult { code: string; }
 export const SYSTEMIC_FAILURE_MIN_PAGES = 3;
 
 /**
- * True when the FIRST compile found EVERY page11 item broken. With 3+ primary pages that is not N
- * independent code bugs — it is an environment/configuration fault (a package or path the compiler
- * cannot resolve), and no amount of code repair can fix it.
+ * True when the FIRST compile found EVERY page11 item broken WITH THE SAME first-error signature.
+ * With 3+ primary pages that is not N independent code bugs — it is an environment/configuration
+ * fault (a package or path the compiler cannot resolve), and no amount of code repair can fix it.
  *
  * Why this must STOP the phase instead of repairing (102051 run01): an unresolved `lit` import failed
  * every file, so no item ever left the broken list (12 -> 12 -> 12 -> 11) and the whole repair budget
@@ -68,7 +68,9 @@ export const SYSTEMIC_FAILURE_MIN_PAGES = 3;
 export function isSystemicPageFailure(attempt: number, items: { outputPath: string | null; errors: string[] }[]): boolean {
   if (attempt !== 1) return false;
   const page11 = items.filter(item => /\/page11\/[^/]+\.ts$/.test(item.outputPath || ''));
-  return page11.length >= SYSTEMIC_FAILURE_MIN_PAGES && page11.every(item => item.errors.length > 0);
+  return page11.length >= SYSTEMIC_FAILURE_MIN_PAGES
+    && page11.every(item => item.errors.length > 0)
+    && itemsShareErrorSignature(page11);
 }
 
 /** The page11 items considered by isSystemicPageFailure — used to report how many failed. */
@@ -106,7 +108,41 @@ const SHARED_OUTPUT = /\/web\/shared\/[^/]+\.ts$/;
 export function isSystemicSharedFailure(attempt: number, items: { outputPath: string | null; errors: string[] }[]): boolean {
   if (attempt !== 1) return false;
   const shared = items.filter(item => isSharedOutput(item.outputPath));
-  return shared.length >= SYSTEMIC_FAILURE_MIN_PAGES && shared.every(item => item.errors.length > 0);
+  return shared.length >= SYSTEMIC_FAILURE_MIN_PAGES
+    && shared.every(item => item.errors.length > 0)
+    && itemsShareErrorSignature(shared);
+}
+
+/**
+ * Compact identity of an item's first finding. Same TS code + same message (mls refs stripped) is
+ * the environment-fault signature the systemic guards always meant: run cf2 was 34/34 with the same
+ * first error, not N independent bugs. Distinct first messages — even the same TSnnnn — are not
+ * systemic, so the phase goes to the normal repair instead of MATERIALIZE-SYSTEMIC-FAILURE.
+ */
+export function firstErrorSignature(errors: string[]): string {
+  const first = (errors[0] ?? '').trim();
+  if (!first) return '';
+  return first
+    .replace(/\/?_\d+_\/[^\s:'"]+/g, '<ref>')
+    .replace(/(?:[A-Za-z0-9_./-]+)\.ts\(\d+,\d+\):\s*/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function itemsShareErrorSignature(items: { errors: string[] }[]): boolean {
+  if (items.length === 0) return false;
+  const signatures = items.map(item => firstErrorSignature(item.errors));
+  const first = signatures[0];
+  return first !== '' && signatures.every(signature => signature === first);
+}
+
+/** Plan id the materialize fan-out uses for a pipeline item id (`taskHub__l2_shared` → `materialize-taskhub-l2-shared`). */
+export function materializePlanIdFromPipelineId(id: string): string {
+  return `materialize-${id.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}`;
+}
+
+export function describeVerifyBuckets(counts: { blocked: number; repaired: number; declared: number }): string {
+  return `blocked=${counts.blocked} repaired=${counts.repaired} declared=${counts.declared}`;
 }
 
 /** The shared items considered by isSystemicSharedFailure — used to report how many failed. */
@@ -508,7 +544,8 @@ function sliceGeneratedMethodBody(source: string, methodName: string): string | 
 
 function commandErrorPathReadsEnvelope(body: string): boolean {
   if (/\breadErrorMessage\s*\(/.test(body)) return true;
-  if (/\berror\.message\b/.test(body) || /\brecord\.message\b/.test(body)) return true;
+  // Optional chaining (`error?.message`) is the generated form; `\berror\.message\b` does not match it.
+  if (/\berror\??\.message\b/.test(body) || /\brecord\??\.message\b/.test(body)) return true;
   if (/\.code\b/.test(body) && /\b(?:this\.)?msg(?:Messages)?\s*\[/.test(body)) return true;
   return false;
 }
@@ -1993,6 +2030,11 @@ function stateAssertionType(state: Record<string, unknown>, contractType?: strin
   // absorbs null, so skip in that case.
   if ((state.defaultValue === null || state.nullable === true) && !types.includes('unknown')) {
     types.push('null');
+  }
+  // Enum inputs initialize as `Union | '' = ''`. The expected type must include that sentinel
+  // (otherwise Assignable<Union | '', Union> is TS2344). A literal `''`, never a widened `string`.
+  if (state.defaultValue === '' && !types.includes('string') && !types.includes('unknown')) {
+    types.push("''");
   }
   return uniqueTypeUnion(types);
 }

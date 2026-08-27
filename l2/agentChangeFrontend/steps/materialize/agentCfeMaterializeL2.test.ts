@@ -41,16 +41,17 @@ void test('phases and register depend on the phase step, never on its fan-out', 
 // phase is already persisted, so the plan believes it.
 void test('the plan re-schedules whatever the last verify verdict still calls broken', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializeL2.ts'), 'utf8');
-  assert.match(src, /async function readBrokenVerdictPlanIds\(project: number\): Promise<Set<string>>/);
+  const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
+  assert.match(shared, /export async function readBlockedMaterializePlanIds\(project: number\): Promise<Set<string>>/);
   // Only a verdict that is NOT clear schedules work, and it is read from the stable summary file.
-  assert.match(src, /verdict\.allClear !== false/);
-  assert.match(src, /endsWith\('\/trace\/frontend-materialize-verify'\)/);
-  assert.match(src, /endsWith\('-summary'\)/);
+  assert.match(shared, /verdict\.allClear !== false/);
+  assert.match(shared, /endsWith\('\/trace\/frontend-materialize-verify'\)/);
+  assert.match(shared, /endsWith\('-summary'\)/);
   // It reaches the planner and shows up as its own reason (never hidden inside 'up to date').
-  assert.match(src, /planMaterialization\(candidates, args\.force === true, await readBrokenVerdictPlanIds\(generated\.project\)\)/);
+  assert.match(src, /planMaterialization\(candidates, args\.force === true, await readBlockedMaterializePlanIds\(generated\.project\)\)/);
   assert.match(src, /const verdictBroken = brokenPlanIds\.has\(materializePlanId\(item\)\)/);
   assert.match(src, /force \|\| scheduledDep \|\| verdictBroken \|\|/);
   assert.match(src, /\? 'last verify verdict: broken'/);
   // An unreadable verdict schedules nothing.
-  assert.match(src, /catch \{ \/\* an unreadable verdict schedules nothing \*\/ \}/);
+  assert.match(shared, /catch \{ \/\* an unreadable verdict schedules nothing \*\/ \}/);
 });

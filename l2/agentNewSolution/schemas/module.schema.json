@@ -145,7 +145,8 @@
               "stepId": { "type": "string", "enum": ["e1", "e2-journeys", "e3-access-matrix", "e4-ontology", "e5-rules", "e6-behaviors", "e7-realization"] },
               "status": { "type": "string", "const": "approved" },
               "approvedBy": { "type": "string", "enum": ["human", "auto"] },
-              "approvedAt": { "type": "string", "minLength": 10 }
+              "approvedAt": { "type": "string", "minLength": 10 },
+              "autoReason": { "type": "string", "minLength": 1 }
             }
           }
         },

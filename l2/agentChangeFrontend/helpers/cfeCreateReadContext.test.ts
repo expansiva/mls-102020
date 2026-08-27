@@ -9,7 +9,7 @@ const g = globalThis as unknown as Record<string, any>;
 // later test file in the same process doesn't inherit it.
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
-async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string; createLayoutPromptContext: (prepared: any, genome: string, templateId: string) => any }> {
+async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string; bffFieldEnumValues: (field: any, ops: any, entities: any) => string[]; bffFieldEnumLabels: (field: any, ops: any, entities: any) => { code: string; label: string }[]; createLayoutPromptContext: (prepared: any, genome: string, templateId: string) => any }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   // libModel.ts runs init() -> mls.events.addEventListener at import time; the setup-l2 stub omits
@@ -375,6 +375,34 @@ test('seed is bffCall-keyed and contracts are generated even with NO l4 .ts pres
   assert.ok(organisms.some((o: any) => o.userActions.includes('catalogList')));
   assert.equal(organisms.some((o: any) => o.userActions.includes('browseCatalog') || o.userActions.includes('viewProductDetail')), false);
   assert.doesNotThrow(() => validatePageLayout(prepared, layout));
+});
+
+test('operation input enumValues win over the borrowed fieldRef enum (sortOrder is not Task.status)', async () => {
+  const { bffFieldEnumValues, bffFieldEnumLabels } = await loadModule();
+  const entities = new Map([['Task', {
+    entityId: 'Task',
+    fields: [{
+      fieldId: 'status', type: 'string',
+      enum: ['pending', 'inProgress', 'completed', 'cancelled'],
+      enumLabels: [{ code: 'pending', label: 'Pendente' }, { code: 'inProgress', label: 'Em andamento' }, { code: 'completed', label: 'Concluída' }, { code: 'cancelled', label: 'Cancelada' }],
+    }],
+    statusEnum: ['pending', 'inProgress', 'completed', 'cancelled'],
+    lifecycleLabels: [{ code: 'pending', label: 'Pendente' }],
+  }]]);
+  const operations = new Map([['listTask', {
+    operationId: 'listTask',
+    entity: 'Task',
+    data: { inputs: [
+      { inputId: 'sortBy', fieldRef: 'Task.status', required: false, enumValues: ['status', 'priority', 'dueDate'] },
+      { inputId: 'sortOrder', fieldRef: 'Task.status', required: false, enumValues: ['asc', 'desc'] },
+      { inputId: 'status', fieldRef: 'Task.status', required: false },
+    ] },
+  }]]);
+  assert.deepEqual(bffFieldEnumValues({ name: 'sortOrder', from: 'listTask.sortOrder' }, operations, entities), ['asc', 'desc']);
+  assert.deepEqual(bffFieldEnumValues({ name: 'sortBy', from: 'listTask.sortBy' }, operations, entities), ['status', 'priority', 'dueDate']);
+  assert.deepEqual(bffFieldEnumValues({ name: 'status', from: 'listTask.status' }, operations, entities), ['pending', 'inProgress', 'completed', 'cancelled']);
+  assert.deepEqual(bffFieldEnumLabels({ name: 'sortOrder', from: 'listTask.sortOrder' }, operations, entities), []);
+  assert.equal(bffFieldEnumLabels({ name: 'status', from: 'listTask.status' }, operations, entities).find(item => item.code === 'pending')?.label, 'Pendente');
 });
 
 test('bffFieldTsType types a paginated envelope items[] as a nested object array (not a scalar) — Lima regression', async () => {

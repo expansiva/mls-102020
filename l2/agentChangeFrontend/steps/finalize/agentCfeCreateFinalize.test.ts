@@ -27,6 +27,8 @@ void test('the finalize gate declares Monaco vs tsc fidelity and writes a cf-run
   assert.match(src, /final: !repairing/);
   assert.match(src, /collectRunStepRecords/);
   assert.match(src, /cfeRunSteps/);
-  assert.match(src, /no Monaco errors/);
+  assert.match(src, /no blocking Monaco errors/);
+  assert.match(src, /partitionModuleCompileErrors/);
+  assert.match(src, /declared \$\{partitioned\.declared\.length\} \.test\.ts finding\(s\) \(never blocking\)/);
   assert.doesNotMatch(src, /file\(s\) clean/);
 });

@@ -3,7 +3,7 @@
 //
 // The delivery used to merge only what E10 knows (modules/navigation) into whatever l5/config.json was
 // already there. On a virgin project the platform blocks simply were not there, and the run that first
-// published a module had `workspaceDependencies`, `projects` and the publish confs typed in by hand. A
+// published a module had `workspaceDependencies` and `projects` typed in by hand. A
 // hand-written block is not a bug in itself; the bug is that nothing SAID it was missing, and the failure
 // only appeared hours later, inside the publish.
 //
@@ -185,22 +185,3 @@ export function collectPublishableConfigIssues(
   if (!named) issues.push(`config: module '${moduleName}' is not listed in modules[] (neither at the root nor under its client project)`);
   return issues;
 }
-
-/** The publish confs are ENVIRONMENT (hosts, keys): the generator emits examples, never the real ones. */
-export const PUBLISH_CONF_EXAMPLES: Record<string, string> = {
-  'publishLocal.conf.example': [
-    '# Copy to publishLocal.conf and fill in. NEVER commit the real file: it points at your machine.',
-    'HOST=<ssh-host-or-alias>',
-    'REMOTE_DIR=<absolute path on that host>',
-    'SSH_KEY=<path to the private key>',
-    '',
-  ].join('\n'),
-  'publishRemote.conf.example': [
-    '# Copy to publishRemote.conf and fill in. NEVER commit the real file: it carries the target server.',
-    'HOST=<server host or IP>',
-    'REMOTE_DIR=<absolute path on the server>',
-    'SSH_KEY=<path to the private key>',
-    'SERVER_PROJECT_ID=<id of the project that serves this app>',
-    '',
-  ].join('\n'),
-};

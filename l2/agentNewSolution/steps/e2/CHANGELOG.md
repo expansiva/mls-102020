@@ -1,5 +1,13 @@
 # E2 changelog
 
+- 2026-08-26: `smart` opens the journey widget when coverage recorded a Type B systemDecision or a
+  journey still has policyDecisions; otherwise it auto-approves with `autoReason: nenhum finding A`.
+  `/fast` and `automatic` still skip. Shared helper: `helpers/ns4ReviewPolicy.ts`.
+
+- 2026-08-26: Later checkpoints share `helpers/ns4ReviewPolicy.ts`. `/fast` still auto-approves
+  after the coverage judge; E1 Follow-up mode `automatic` now does the same without the token.
+  `guided` and `smart` still open the journey widget.
+
 - 2026-08-15 (bug_e10_1): `buildNs4JourneyIndex` persiste os CORPOS das decisões
   (`policyDecisions`, cada um com o `journeyRef` do dono) ao lado das `policyDecisionSelections` que
   já moravam no índice — casa durável. A cópia no artefato da jornada continua, porque é estado de

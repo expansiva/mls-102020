@@ -38,6 +38,31 @@ export interface CfeCompileRepairPlan {
  * error that does not carry a ref is kept under '' and treated as unowned: it is real and must not
  * disappear, but there is no file to hand a slot.
  */
+/**
+ * `.test.ts` findings are declared, never blocking: the file does not ship. Detectors still run
+ * (the diagnostic is named in the trace); only the aftermath changes.
+ */
+export function partitionModuleCompileErrors(errors: readonly string[]): { blocking: string[]; declared: string[] } {
+  const blocking: string[] = [];
+  const declared: string[] = [];
+  for (const error of errors) {
+    if (compileErrorRef(error).endsWith('.test.ts')) declared.push(error);
+    else blocking.push(error);
+  }
+  return { blocking, declared };
+}
+
+/**
+ * The mls ref an error points at, across the TWO diagnostic shapes the pipeline produces:
+ * `compileModuleClosure` writes `_102047_/l2/…/x.ts: message`, while the per-item verify writes
+ * `file://server/_102047_/l2/…/x.test.ts - TS2344 - message`. Reading only the first shape sent every
+ * verify diagnostic to the same bucket — including a shipped .ts that does not compile, which must
+ * block. The ref always opens the message, so the first occurrence is the owner.
+ */
+export function compileErrorRef(error: string): string {
+  return /(_\d+_\/l\d+\/[^\s:]+?\.ts)/su.exec(error)?.[1] ?? '';
+}
+
 export function groupModuleCompileErrors(errors: readonly string[]): Map<string, string[]> {
   const byRef = new Map<string, string[]>();
   for (const error of errors) {

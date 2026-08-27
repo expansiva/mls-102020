@@ -12,10 +12,10 @@ import {
   ns4WorkflowFile, ns4WorkflowIndexFile, ns4WorkspaceFile, readNs4DefsJson, readNs4L5Config,
   readNs4Module, readNs4Pipeline, writeNs4E10ValidationReport, writeNs4L5Config, writeNs4Module, writeNs4Pipeline,
   writeNs4Process, writeNs4TodoBackend, writeNs4TodoFrontend,
-  readNs4L5Project, writeNs4L5Project, writeNs4L5PublishExample,
+  readNs4L5Project, writeNs4L5Project,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
 import {
-  PUBLISH_CONF_EXAMPLES, applyPlatformBlockDefaults, buildProjectsBlock, buildWorkspaceDependencies,
+  applyPlatformBlockDefaults, buildProjectsBlock, buildWorkspaceDependencies,
   collectProjectJsonIssues, collectPublishableConfigIssues, ensureProjectAppEnv, ensureProjectType,
   readProjectTypeFromProjectJson,
 } from '/_102020_/l2/agentNewSolution/steps/e10/publishable.js';
@@ -61,9 +61,9 @@ export async function beforeNs4E10PromptStep(
     artifactPaths.push(await writeNs4Process(moduleName, delivery.process));
 
     // THE PUBLISHABLE l5. Everything below is derived or validated — never invented: the blocks that were
-    // typed in by hand the first time a module went live (dependencies, projects, the platform blocks and
-    // the publish confs) are exactly what is filled or NAMED here, at delivery time, instead of failing
-    // later inside the publish with nothing pointing at the cause.
+    // typed in by hand the first time a module went live (dependencies, projects, the platform blocks)
+    // are exactly what is filled or NAMED here, at delivery time, instead of failing later inside the
+    // publish with nothing pointing at the cause.
     const projectId = mls.actualProject || 0;
     const dependencies = mls.l5.getProjectDependencies(projectId, false);
     const publishIssues: string[] = [];
@@ -86,10 +86,6 @@ export async function beforeNs4E10PromptStep(
     const withType = ensureProjectType(withAppEnv.projectJson, 'client');
     if ((withAppEnv.changed || withType.changed) && projectJson) artifactPaths.push(await writeNs4L5Project(withType.projectJson));
 
-    // The real `.conf` are environment (hosts, keys) and never come out of a generator; the examples do.
-    for (const [name, content] of Object.entries(PUBLISH_CONF_EXAMPLES)) {
-      artifactPaths.push(await writeNs4L5PublishExample(name.replace(/\.example$/u, ''), content));
-    }
     const module = await readNs4Module(moduleName); if (!module) throw new Error(`Module artifact not found for ${moduleName}.`);
     const approvedAt = new Date().toISOString();
     await writeNs4Module(moduleName, markNs4ModuleE10Approved(module, 'auto', approvedAt));

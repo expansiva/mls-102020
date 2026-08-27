@@ -192,6 +192,8 @@ async function beforePromptImplicit(
           approvedE3.approvedBy,
           `l4/${existingModule}/access/access-matrix.defs.ts`,
           approvedE3.approvedAt,
+          undefined,
+          approvedE3.autoReason,
         );
       }
       if (pipeline.steps.e4?.status !== 'approved' && approvedE4 && ns4FileExists(ns4OntologyIndexFile(existingModule))) {
@@ -200,6 +202,8 @@ async function beforePromptImplicit(
           approvedE4.approvedBy,
           [`l4/${existingModule}/ontology/index.defs.ts`],
           approvedE4.approvedAt,
+          undefined,
+          approvedE4.autoReason,
         );
       }
       if (pipeline.steps.e5?.status !== 'approved' && approvedE5 && ns4FileExists(ns4RulesFile(existingModule))) {
@@ -208,6 +212,7 @@ async function beforePromptImplicit(
           approvedE5.approvedBy,
           [`l4/${existingModule}/rules/rules.defs.ts`],
           approvedE5.approvedAt,
+          approvedE5.autoReason,
         );
       }
       if (pipeline.steps.e6?.status !== 'approved' && approvedE6 && ns4FileExists(ns4CompositionFile(existingModule))) {
@@ -216,6 +221,7 @@ async function beforePromptImplicit(
           approvedE6.approvedBy,
           [`l4/${existingModule}/composition/additional-capabilities.defs.ts`],
           approvedE6.approvedAt,
+          approvedE6.autoReason,
         );
       }
       if (pipeline.steps.e7?.status !== 'approved' && approvedE7 && ns4FileExists(ns4UseCaseIndexFile(existingModule))) {

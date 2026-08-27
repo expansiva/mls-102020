@@ -152,6 +152,8 @@ export interface Ns4ModuleArtifact {
       status: 'approved';
       approvedBy: Ns4ApprovedBy;
       approvedAt: string;
+      /** Present when smart skipped the human checkpoint. */
+      autoReason?: string;
     }>;
     nextStep: Ns4NextStep;
     updatedAt: string;
@@ -186,6 +188,7 @@ export interface Ns4PipelineState {
       artifactPaths?: string[];
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
+      autoReason?: string;
       error?: string;
       failedAt?: string;
       updatedAt: string;
@@ -197,6 +200,7 @@ export interface Ns4PipelineState {
       artifactPath?: string;
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
+      autoReason?: string;
       error?: string;
       failedAt?: string;
       updatedAt: string;
@@ -209,6 +213,7 @@ export interface Ns4PipelineState {
       artifactPaths?: string[];
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
+      autoReason?: string;
       error?: string;
       failedAt?: string;
       updatedAt: string;
@@ -220,6 +225,7 @@ export interface Ns4PipelineState {
       artifactPaths?: string[];
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
+      autoReason?: string;
       error?: string;
       failedAt?: string;
       updatedAt: string;
@@ -231,6 +237,7 @@ export interface Ns4PipelineState {
       artifactPaths?: string[];
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
+      autoReason?: string;
       error?: string;
       failedAt?: string;
       updatedAt: string;
@@ -1110,6 +1117,7 @@ export function markNs4E2Approved(
   approvedBy: Ns4ApprovedBy,
   artifactPaths: string[],
   now = new Date().toISOString(),
+  autoReason?: string,
 ): Ns4PipelineState {
   const reviewRound = state.steps.e2?.reviewRound || 1;
   return {
@@ -1123,6 +1131,7 @@ export function markNs4E2Approved(
         artifactPaths: [...artifactPaths],
         approvedBy,
         approvedAt: now,
+        ...ns4AutoReason(autoReason),
         updatedAt: now,
       },
     },
@@ -1155,12 +1164,13 @@ export function markNs4ModuleE2Approved(
   approvedBy: Ns4ApprovedBy,
   now = new Date().toISOString(),
   invalidateDownstream = false,
+  autoReason?: string,
 ): Ns4ModuleArtifact {
   const invalidated = new Set<Ns4CompletedStepId>(invalidateDownstream
     ? ['e2-journeys', 'e3-access-matrix', 'e4-ontology', 'e5-rules', 'e7-realization']
     : ['e2-journeys']);
   const completedSteps = artifact.specStatus.completedSteps.filter(step => !invalidated.has(step.stepId));
-  completedSteps.push({ stepId: 'e2-journeys', status: 'approved', approvedBy, approvedAt: now });
+  completedSteps.push({ stepId: 'e2-journeys', status: 'approved', approvedBy, approvedAt: now, ...ns4AutoReason(autoReason) });
   return {
     ...artifact,
     specStatus: {
@@ -1234,6 +1244,7 @@ export function markNs4E3Approved(
   artifactPath: string,
   now = new Date().toISOString(),
   approvedReviewRound = state.steps.e3?.reviewRound || 1,
+  autoReason?: string,
 ): Ns4PipelineState {
   const reviewRound = Math.max(1, approvedReviewRound);
   return {
@@ -1243,7 +1254,7 @@ export function markNs4E3Approved(
       ...state.steps,
       e3: {
         ...state.steps.e3,
-        status: 'approved', reviewRound, artifactPath, approvedBy, approvedAt: now, updatedAt: now,
+        status: 'approved', reviewRound, artifactPath, approvedBy, approvedAt: now, ...ns4AutoReason(autoReason), updatedAt: now,
       },
     },
     nextStep: 'e4-ontology',
@@ -1255,9 +1266,10 @@ export function markNs4ModuleE3Approved(
   artifact: Ns4ModuleArtifact,
   approvedBy: Ns4ApprovedBy,
   now = new Date().toISOString(),
+  autoReason?: string,
 ): Ns4ModuleArtifact {
   const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e3-access-matrix');
-  completedSteps.push({ stepId: 'e3-access-matrix', status: 'approved', approvedBy, approvedAt: now });
+  completedSteps.push({ stepId: 'e3-access-matrix', status: 'approved', approvedBy, approvedAt: now, ...ns4AutoReason(autoReason) });
   return {
     ...artifact,
     specStatus: { ...artifact.specStatus, completedSteps, nextStep: 'e4-ontology', updatedAt: now },
@@ -1328,6 +1340,7 @@ export function markNs4E4Approved(
   artifactPaths: string[],
   now = new Date().toISOString(),
   approvedReviewRound = state.steps.e4?.reviewRound || 1,
+  autoReason?: string,
 ): Ns4PipelineState {
   const reviewRound = Math.max(1, approvedReviewRound);
   return {
@@ -1337,7 +1350,7 @@ export function markNs4E4Approved(
       ...state.steps,
       e4: {
         ...state.steps.e4,
-        status: 'approved', reviewRound, solutionMode: 'new', artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, updatedAt: now,
+        status: 'approved', reviewRound, solutionMode: 'new', artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, ...ns4AutoReason(autoReason), updatedAt: now,
       },
     },
     nextStep: 'e5-rules',
@@ -1349,9 +1362,10 @@ export function markNs4ModuleE4Approved(
   artifact: Ns4ModuleArtifact,
   approvedBy: Ns4ApprovedBy,
   now = new Date().toISOString(),
+  autoReason?: string,
 ): Ns4ModuleArtifact {
   const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e4-ontology');
-  completedSteps.push({ stepId: 'e4-ontology', status: 'approved', approvedBy, approvedAt: now });
+  completedSteps.push({ stepId: 'e4-ontology', status: 'approved', approvedBy, approvedAt: now, ...ns4AutoReason(autoReason) });
   return {
     ...artifact,
     specStatus: { ...artifact.specStatus, completedSteps, nextStep: 'e5-rules', updatedAt: now },
@@ -1413,6 +1427,7 @@ export function markNs4E5Approved(
   approvedBy: Ns4ApprovedBy,
   artifactPaths: string[],
   now = new Date().toISOString(),
+  autoReason?: string,
 ): Ns4PipelineState {
   const reviewRound = state.steps.e5?.reviewRound || 1;
   return {
@@ -1422,7 +1437,7 @@ export function markNs4E5Approved(
       ...state.steps,
       e5: {
         ...state.steps.e5,
-        status: 'approved', reviewRound, artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, updatedAt: now,
+        status: 'approved', reviewRound, artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, ...ns4AutoReason(autoReason), updatedAt: now,
       },
     },
     nextStep: 'e6-behaviors',
@@ -1434,9 +1449,10 @@ export function markNs4ModuleE5Approved(
   artifact: Ns4ModuleArtifact,
   approvedBy: Ns4ApprovedBy,
   now = new Date().toISOString(),
+  autoReason?: string,
 ): Ns4ModuleArtifact {
   const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e5-rules');
-  completedSteps.push({ stepId: 'e5-rules', status: 'approved', approvedBy, approvedAt: now });
+  completedSteps.push({ stepId: 'e5-rules', status: 'approved', approvedBy, approvedAt: now, ...ns4AutoReason(autoReason) });
   return {
     ...artifact,
     specStatus: { ...artifact.specStatus, completedSteps, nextStep: 'e6-behaviors', updatedAt: now },
@@ -1498,6 +1514,7 @@ export function markNs4E6Approved(
   approvedBy: Ns4ApprovedBy,
   artifactPaths: string[],
   now = new Date().toISOString(),
+  autoReason?: string,
 ): Ns4PipelineState {
   const reviewRound = state.steps.e6?.reviewRound || 1;
   return {
@@ -1507,7 +1524,7 @@ export function markNs4E6Approved(
       ...state.steps,
       e6: {
         ...state.steps.e6,
-        status: 'approved', reviewRound, artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, updatedAt: now,
+        status: 'approved', reviewRound, artifactPaths: [...artifactPaths], approvedBy, approvedAt: now, ...ns4AutoReason(autoReason), updatedAt: now,
       },
     },
     nextStep: 'e7-realization',
@@ -1519,9 +1536,10 @@ export function markNs4ModuleE6Approved(
   artifact: Ns4ModuleArtifact,
   approvedBy: Ns4ApprovedBy,
   now = new Date().toISOString(),
+  autoReason?: string,
 ): Ns4ModuleArtifact {
   const completedSteps = artifact.specStatus.completedSteps.filter(step => step.stepId !== 'e6-behaviors');
-  completedSteps.push({ stepId: 'e6-behaviors', status: 'approved', approvedBy, approvedAt: now });
+  completedSteps.push({ stepId: 'e6-behaviors', status: 'approved', approvedBy, approvedAt: now, ...ns4AutoReason(autoReason) });
   return {
     ...artifact,
     specStatus: { ...artifact.specStatus, completedSteps, nextStep: 'e7-realization', updatedAt: now },
@@ -1852,6 +1870,10 @@ function defaultNs4Presentation(prompt: string): Ns4Presentation {
 
 function readString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+function ns4AutoReason(autoReason?: string): { autoReason?: string } {
+  return autoReason ? { autoReason } : {};
 }
 
 function normalizeNs4Failure(value: unknown): string {

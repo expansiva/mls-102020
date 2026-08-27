@@ -42,6 +42,7 @@
     "The pipeline folder is working state for one run and is never a source of truth: every contract a later step reads is a permanent L4 artifact, so discarding pipeline/ loses nothing but the trace.",
     "Previous flow versions are never migrated automatically.",
     "The /fast flag uses the same deterministic gates and persistence paths; E1 auto-accepts its clarification and valid E2-E6 proposals are approved without opening their widgets.",
+    "E1 Follow-up mode is stored on the module artifact as reviewPolicy.mode. E1 itself always opens. guided opens every later checkpoint. automatic and /fast auto-approve E2-E6. smart opens a later checkpoint when that stage has a Type A finding, a Type B / relevant decision, or no classified signal yet (E3/E5/E6 today); it skips a classified stage that has only Type C or nothing to decide, and records autoReason 'nenhum finding A' next to approvedBy=auto. /fast still works without the screen option.",
     "E1 records modernization strategies now; E4 currently compiles only explicit new-solution ontology contracts and fails closed for modernization instead of fabricating a greenfield or replacement database.",
     "E4 classifies every entity into an explicit persistence target: shared MDM for stable base records, module database for transactions, or derived/external/embedded storage for non-table concepts.",
     "Every E4 lifecycle declares its initial state and optional terminal states explicitly; E7 copies that contract mechanically rather than inferring lifecycle meaning from state ordering or missing outgoing transitions.",
@@ -229,7 +230,7 @@
         "A surviving moduleWithoutDecide issue is recorded on the judge-selected existing journey as a policyDecision whose chosen value preserves the current no-decision behavior and whose alternatives remain selectable in the existing checkpoint. It is excluded from systemDecision conversion.",
         "If the judge is unavailable, omits an active moduleWithoutDecide signal or returns another invalid response, one retry remains allowed; exhaustion records a localized systemDecision that decision coverage was not evaluated and continues to the normal checkpoint instead of failing the task.",
         "An invalid judge envelope is retried once. Compact judge results remain in the task trace after large LLM interactions are cleaned.",
-        "Every structurally valid draft opens the 👤 widget after the judge round unless /fast is active. Judged-complete is not a prerequisite; assumed decisions are shown read-only in a collapsed Decisões assumidas section. In /fast, the same generated choices and system decisions are persisted automatically after gate and judge without creating the clarification widget.",
+        "Every structurally valid draft opens the 👤 widget after the judge round unless /fast is active, reviewPolicy.mode is automatic, or smart finds no Type A/B signal (no coverage systemDecision and no journey policyDecision). Judged-complete is not a prerequisite; assumed decisions are shown read-only in a collapsed Decisões assumidas section. In /fast, automatic, or a smart skip, the same generated choices and system decisions are persisted automatically after gate and judge without creating the clarification widget; a smart skip records autoReason 'nenhum finding A' next to approvedBy=auto.",
         "Generation declares journey policy decisions before journeys and never supplies impact; the independent judge is the only stage that may add decision impact and related journeys.",
         "Selecting an alternative or requesting free-text changes preserves the current versioned draft, starts a full replacement round, and passes the deterministic selected-choice honor gate before the widget can reopen.",
         "Approval persists every decision selection, including unchanged generated choices, in the journey index. A deterministic E2 impact report records the full step-kind histogram and downstream E3-E7 contracts made stale by changed, added or removed journeys.",
@@ -261,7 +262,7 @@
         "Authorities follow the lowercase collab-auth domain:code convention and remain opaque to the agent.",
         "External grants cannot use organization-wide scope.",
         "Limited disclosure records an enforceable projection intent; hiding fields in the frontend is insufficient.",
-        "The /fast path validates and approves the same E3 contract without opening the widget.",
+        "The /fast path, and reviewPolicy.mode automatic, validates and approves the same E3 contract without opening the widget. smart still opens E3: the access review has no A/B/C signal on the contract, and missing signal never hides a checkpoint.",
         "The e3-result handoff carries the approved review, approval metadata and permanent artifact path for the immediately unlocked E4 hook.",
         "Late or duplicate callbacks cannot regress an approved E3 pipeline state to running, waitingHuman or failed.",
         "A deterministic gate failure persists the invalid draft and may schedule one bounded structural repair for the current proposal cycle; the repair reads the persisted draft plus the numbered findings and returns a complete corrected matrix through the same gate. Exhausting the single attempt keeps the original terminal failure.",
@@ -293,7 +294,7 @@
         "Before entity fan-out, the overview gate requires every required E2 carried or produced businessObject to exist as an E4 entity or projection with the same id.",
         "One parallel_dynamic child then details each entity with filtered E2/E3 context; maxParallel is 20, matching the proven agentNewSolution ontology implementation.",
         "Parallel children complete with trace on provider or gate failure so one entity cannot fail the fan-out; the deterministic finalizer runs one targeted parallel repair round for only missing or invalid entities.",
-        "The finalizer reassembles the unchanged human E4 review contract and reruns the complete journey/access/relationship gate before opening one widget or approving /fast.",
+        "The finalizer reassembles the unchanged human E4 review contract and reruns the complete journey/access/relationship gate before opening one widget, or approving /fast, reviewPolicy.mode automatic, or smart when the only recorded decisions are Type C label backfills (autoReason 'nenhum finding A').",
         "The run carries solutionMode=new explicitly; it never infers or fabricates a legacy database contract.",
         "E4 consumes the permanent access/access-matrix.defs.ts artifact; during the immediate E3-to-E4 transition it may consume the identical approved contract carried by e3-result.",
         "Stable base registrations such as clients, projects, regions and material catalogs are proposed as organization-scoped MDM; orders, movements, logs, invoices and other transactions use the module database.",
@@ -338,7 +339,7 @@
         "One transport retry and one deterministic-gate repair are bounded; E5 has no per-rule fan-out, executable policy schema or independent judge.",
         "Static scalar field constraints remain in E4 and are not duplicated as business rules.",
         "A human change request persists the edited draft and adds the next open E5 round before completing the current clarification.",
-        "Approval writes one rules/rules.defs.ts catalog and an approved review snapshot for future maintenance and L1/L2 compilation.",
+        "Approval writes one rules/rules.defs.ts catalog and an approved review snapshot for future maintenance and L1/L2 compilation. /fast and reviewPolicy.mode automatic auto-approve a valid catalog; smart still opens E5 because the rules review has no A/B/C signal.",
         "Later page, use-case, table and behavior compilers scan the complete L4 for matching rule ids and store only useRules references."
       ]
     },
@@ -364,7 +365,7 @@
         "Authentication/RBAC, i18n, tenant isolation, files, LLM proxy, messages/tasks, monitoring and auditing are platform baseline and cannot become recommendations.",
         "Recommendations contain only id, kind, title, purpose and include/defer decision; implementation design is deferred to E7.",
         "One transport retry and one deterministic-gate repair are bounded; there is no fan-out or independent judge.",
-        "A human may approve immediately or request another conservative proposal through the same localized 6/6 widget.",
+        "A human may approve immediately or request another conservative proposal through the same localized 6/6 widget. /fast and reviewPolicy.mode automatic auto-approve a valid composition; smart still opens E6 because the composition review has no A/B/C signal.",
         "The stable e6-behaviors runtime id is internal; only modules owned by the current flow version may resume."
       ]
     },
@@ -503,7 +504,8 @@
         "The L5 config merger updates only the current module navigation/headerLinks in an existing client project or top-level module seed. Unrelated keys and modules are preserved; identical inputs produce byte-identical config JSON.",
         "Decision coherence compares the journey index against itself — decisions and selections are two fields of the same permanent artifact, never a draft of the pipeline.",
         "An index that answers decisions it does not carry is a defect of the pipeline, not of the product: E10 fails without a repair step and without marking any step stale, because no step can repair a source that was written wrong.",
-        "When assembling config.projects, E10 reads `projectType` from each dependency's l5/project.json (`lib` | `master frontend` | `master backend` | `client`). A type already in config.projects is preserved; a type from project.json is next; otherwise the module's own project is `client` and an untyped dependency is `lib` plus a finding. E10 never guesses master frontend/backend. On the current project's project.json it writes `projectType: client` only when the field is absent, same as appEnv."
+        "When assembling config.projects, E10 reads `projectType` from each dependency's l5/project.json (`lib` | `master frontend` | `master backend` | `client`). A type already in config.projects is preserved; a type from project.json is next; otherwise the module's own project is `client` and an untyped dependency is `lib` plus a finding. E10 never guesses master frontend/backend. On the current project's project.json it writes `projectType: client` only when the field is absent, same as appEnv.",
+        "E10 does not write publish*.conf or .conf.example. Local and remote publish configuration lives outside l5."
       ]
     }
   ]

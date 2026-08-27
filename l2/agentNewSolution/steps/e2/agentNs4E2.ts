@@ -53,7 +53,7 @@ import {
 } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import { validateNs4E2PolicySelections, validateNs4E2Review } from '/_102020_/l2/agentNewSolution/steps/e2/gate.js';
 import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution/steps/e2/hookArgs.js';
-import { isNs4E2FastMode } from '/_102020_/l2/agentNewSolution/steps/e2/fastMode.js';
+import { decideNs4LaterCheckpoint, ns4E2SmartSignal } from '/_102020_/l2/agentNewSolution/helpers/ns4ReviewPolicy.js';
 import {
   formatNs4E2CoverageRepairFeedback,
   applyNs4E2PolicyDecisionImpacts,
@@ -449,8 +449,10 @@ async function continueNs4E2AfterCoverageJudge(
   await writeNs4E2VersionedDraft(args.moduleName, review.reviewRound, review);
   const reviewedPipeline = await requirePipeline(args.moduleName);
   await writeNs4Pipeline(markNs4E2WaitingHuman(reviewedPipeline, round, draftPath));
-  if (isFast(context)) {
-    const saved = await persistNs4E2(args.moduleName, review, 'auto');
+  const module = await readNs4Module(args.moduleName);
+  const checkpoint = decideNs4LaterCheckpoint(context, module, ns4E2SmartSignal(review));
+  if (!checkpoint.open) {
+    const saved = await persistNs4E2(args.moduleName, review, 'auto', [], checkpoint.autoReason);
     return [
       trace,
       resultStep(context, judgeParent, saved, 'E2 journeys auto-approved'),
@@ -579,6 +581,7 @@ async function persistNs4E2(
   review: Ns4E2Review,
   approvedBy: Ns4ApprovedBy,
   requestedSelections: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>> = [],
+  autoReason?: string,
 ): Promise<Ns4PersistedE2> {
   const gate = validateNs4E2Review(review);
   if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
@@ -597,8 +600,8 @@ async function persistNs4E2(
   const impactReport = buildNs4E2ImpactReport(moduleName, previousIndex, artifacts, approvedAt, review);
   const impactReportPath = await writeNs4E2ImpactReport(moduleName, impactReport);
   const invalidated = impactReport.changes.length > 0;
-  await writeNs4Module(moduleName, markNs4ModuleE2Approved(moduleArtifact, approvedBy, approvedAt, invalidated));
-  const approvedPipeline = markNs4E2Approved(pipeline, approvedBy, [...artifactPaths, indexPath, impactReportPath], approvedAt);
+  await writeNs4Module(moduleName, markNs4ModuleE2Approved(moduleArtifact, approvedBy, approvedAt, invalidated, autoReason));
+  const approvedPipeline = markNs4E2Approved(pipeline, approvedBy, [...artifactPaths, indexPath, impactReportPath], approvedAt, autoReason);
   await writeNs4Pipeline(markNs4E2ImpactStale(approvedPipeline, invalidated, approvedAt));
   return { moduleName, journeyCount: artifacts.length, artifactPaths, indexPath };
 }
@@ -683,8 +686,6 @@ function adjustmentResultStep(context: mls.msg.ExecutionContext, parentStep: mls
     planning: { planId: `e2-adjustment-request-${Date.now()}`, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);
 }
-
-function isFast(context: mls.msg.ExecutionContext): boolean { return isNs4E2FastMode(context); }
 
 function gateRepairResultStep(
   context: mls.msg.ExecutionContext,

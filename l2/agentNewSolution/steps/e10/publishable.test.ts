@@ -1,13 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/steps/e10/publishable.test.ts" enhancement="_blank"/>
 
-// The l5 blocks a publish needs. The first module that went live had `workspaceDependencies`, `projects`
-// and the publish confs typed in by hand — not because writing them is wrong, but because nothing SAID
-// they were missing and the failure surfaced hours later inside the publish.
+// The l5 blocks a publish needs. The first module that went live had `workspaceDependencies` and
+// `projects` typed in by hand — not because writing them is wrong, but because nothing SAID they
+// were missing and the failure surfaced hours later inside the publish.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DEFAULT_PROJECT_APP_ENV, PLATFORM_BLOCK_DEFAULTS, PUBLISH_CONF_EXAMPLES, applyPlatformBlockDefaults,
+  DEFAULT_PROJECT_APP_ENV, PLATFORM_BLOCK_DEFAULTS, applyPlatformBlockDefaults,
   buildProjectsBlock, buildWorkspaceDependencies, collectProjectJsonIssues, collectPublishableConfigIssues,
   ensureProjectAppEnv, ensureProjectType, readProjectTypeFromProjectJson,
 } from './publishable.js';
@@ -100,16 +100,9 @@ test('the checklist names the missing block instead of letting the publish fail 
   assert.deepEqual(collectPublishableConfigIssues(null, 'petShop', []), ['l5/config.json is missing or unreadable']);
 });
 
-test('the module has to be listed in l5/project.json.modules, and the confs are only examples', () => {
+test('the module has to be listed in l5/project.json.modules', () => {
   assert.deepEqual(collectProjectJsonIssues({ modules: [{ moduleId: 'petShop' }] }, 'petShop'), []);
   assert.deepEqual(collectProjectJsonIssues({ modules: ['petShop'] }, 'petShop'), []);
   assert.match(collectProjectJsonIssues({ modules: [] }, 'petShop')[0], /does not list 'petShop'/u);
   assert.match(collectProjectJsonIssues(null, 'petShop')[0], /missing or unreadable/u);
-
-  // Environment, never generated: placeholders only, and the name says it is an example.
-  assert.deepEqual(Object.keys(PUBLISH_CONF_EXAMPLES).sort(), ['publishLocal.conf.example', 'publishRemote.conf.example']);
-  for (const content of Object.values(PUBLISH_CONF_EXAMPLES)) {
-    assert.match(content, /NEVER commit the real file/u);
-    assert.match(content, /<.+>/u, 'every value is a placeholder');
-  }
 });

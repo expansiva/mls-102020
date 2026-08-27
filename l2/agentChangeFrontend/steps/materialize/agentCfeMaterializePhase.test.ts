@@ -7,7 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   SYSTEMIC_FAILURE_MIN_PAGES, contractTsPathOf, countPage11Items, countSharedItems,
-  isSystemicPageFailure, isSystemicSharedFailure,
+  describeVerifyBuckets, firstErrorSignature, isSystemicPageFailure, isSystemicSharedFailure,
+  materializePlanIdFromPipelineId,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -27,7 +28,7 @@ void test('verify trace and verdict are module-scoped with no project-root fallb
   const src = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
   // The caller's moduleName (derived from ALL items) is the first argument of both writers.
   assert.match(src, /export async function saveMaterializeVerifyTrace\(moduleName: string, planId: string/);
-  assert.match(src, /export async function saveMaterializeVerifySummary\(moduleName: string, planId: string/);
+  assert.match(src, /export async function saveMaterializeVerifySummary\(/);
   // No root fallback: the folder is always `${module}/trace/...`, never a bare 'trace/...'.
   assert.doesNotMatch(src, /folder\s*=\s*module\s*\?/, 'root-fallback ternary must be gone');
   assert.doesNotMatch(src, /:\s*'trace\/frontend-materialize-verify'/, "bare 'trace/...' folder must never be used");
@@ -96,7 +97,7 @@ void test('the verify carries itemId end to end', () => {
   assert.match(src, /const itemId = readString\(value\.itemId\);/);
   assert.match(src, /return itemId \? \{ planId, defPath, itemId \} : \{ planId, defPath \};/);
   // vai junto em cada rodada de repair
-  assert.match(src, /repairArgs = broken\.map\(entry => JSON\.stringify\(\{[^)]*itemId: entry\.item\.itemId/);
+  assert.match(src, /repairArgs = toRepair\.map\(entry => JSON\.stringify\(\{[^)]*itemId: entry\.item\.itemId/);
   // e a divisao deriva os ids dos organismos do itemId da pagina, sem reconstruir do planId
   assert.match(src, /const basePipeline = pageItemId\.slice\(0, -'__l2_page'\.length\);/);
   assert.ok(!src.includes('basePipelineId'), 'a reconstrucao lossy a partir do planId foi removida');
@@ -126,6 +127,24 @@ void test('systemic guard trips when every shared item fails the first compile',
   assert.equal(isSystemicSharedFailure(1, items.slice(0, 2)), false);
   // One shared that compiles means the fault is not systemic.
   assert.equal(isSystemicSharedFailure(1, [sharedItem('a', []), ...items]), false);
+});
+
+void test('systemic guard does not trip when every shared is broken with a different first error', () => {
+  const items = [
+    sharedItem('a', ['TS2344 Type "string" is not assignable to sortOrder']),
+    sharedItem('b', ['cmdCreateTask error path does not read error.message']),
+    sharedItem('c', ['TS2344 Type "" is not assignable to status union']),
+  ];
+  assert.equal(isSystemicSharedFailure(1, items), false);
+  assert.equal(isSystemicPageFailure(1, ['a', 'b', 'c'].map(name => pageItem('page11', name, [`TS2344 ${name} distinct`]))), false);
+});
+
+void test('systemic guard still trips when every shared shares the first-error signature', () => {
+  const items = ['a', 'b', 'c'].map(name => sharedItem(name, [
+    `error TS2792: Cannot find module '/_102046_/l2/buildFlowFsm47/web/contracts/${name}.js' or its corresponding type declarations.`,
+  ]));
+  assert.equal(firstErrorSignature(items[0].errors), firstErrorSignature(items[1].errors));
+  assert.equal(isSystemicSharedFailure(1, items), true);
 });
 
 void test('the two systemic guards never count each other', () => {
@@ -199,4 +218,44 @@ void test('todo host de fan-out do materialize nasce com onFailure wait_after_pr
   assert.doesNotMatch(src, /onFailure: 'skip'/);
   // Os 4 call sites continuam passando pelo helper (nenhum host montado à mão).
   assert.equal((src.match(/createFanoutStep\(/g) || []).length, 5); // 4 chamadas + a declaração
+});
+
+void test('a .test.ts finding is declared, never blocking, and never queued for repair', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  // O compile do .test.ts nomeia OS DOIS arquivos (o teste importa o .ts embarcado). O split e por
+  // ref: o proprio outputPath bloqueia, qualquer outro arquivo declara — despejar a lista inteira em
+  // `declared` deixaria passar pagina que nao compila. (review 26/08)
+  assert.match(src, /compileErrorRef\(error\) === outputPath\.replace/);
+  assert.doesNotMatch(src, /declared\.push\(\.\.\.typecheckErrors\)/);
+  assert.doesNotMatch(src, /blocking\.push\(\.\.\.typecheckErrors\)/);
+  assert.match(src, /const blocked = checkedItems\.filter\(checked => checked\.blocking\.length > 0\)/);
+  assert.match(src, /const toRepair = checkedItems\.filter\(checked => checked\.blocking\.length > 0 \|\| checked\.repairable\.length > 0\)/);
+  assert.match(src, /isSystemicSharedFailure\(args\.attempt, blockingView\)/);
+  assert.match(src, /isSystemicPageFailure\(args\.attempt, blockingView\)/);
+});
+
+void test('quality gates enter repair and are declared after the budget, they never fail the phase', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /repairable\.push\(\.\.\.collectMutationEnvelopeErrorIssues/);
+  assert.match(src, /quality findings declared after repair budget/);
+  assert.match(src, /describeVerifyBuckets/);
+  assert.equal(describeVerifyBuckets({ blocked: 1, repaired: 2, declared: 3 }), 'blocked=1 repaired=2 declared=3');
+});
+
+void test('a blocked shared skips only the pages that depend on it', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /async function skipBlockedDependents/);
+  assert.match(src, /dependency \$\{blockedDep\} is blocked \(shipped \.ts does not compile\)/);
+  assert.match(src, /skipped all \$\{skipped\.length\} item\(s\) whose dependency is blocked/);
+  assert.equal(materializePlanIdFromPipelineId('taskHub__l2_shared'), 'materialize-taskhub-l2-shared');
+  assert.equal(materializePlanIdFromPipelineId('taskCatalogue__l2_page'), 'materialize-taskcatalogue-l2-page');
+});
+
+void test('the verify summary writes blocked, repaired and declared counts', () => {
+  const src = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
+  assert.match(src, /blockedCount: broken\.length/);
+  assert.match(src, /repairedCount: repaired\.length/);
+  assert.match(src, /declaredCount: declared\.length/);
+  assert.match(src, /severity: 'blocked' as const/);
+  assert.match(src, /severity: 'declared' as const/);
 });

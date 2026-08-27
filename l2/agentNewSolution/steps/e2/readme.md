@@ -32,7 +32,8 @@ It never becomes a blocking gate.
 The proposal LLM returns an internal `flexible` payload rather than a clarification. This prevents an
 ungated candidate from briefly opening the journey widget while the deterministic gate, repair and
 coverage judge are still running. Guided review means that every approved checkpoint is shown; it
-does not bypass these pre-review quality gates.
+does not bypass these pre-review quality gates. E1 Follow-up mode `automatic` uses the same `/fast`
+persistence path after the judge, without the prompt token.
 
 Approval writes:
 

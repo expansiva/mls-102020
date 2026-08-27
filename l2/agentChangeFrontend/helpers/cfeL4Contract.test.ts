@@ -111,6 +111,26 @@ test('generated typecheck tests import via the project alias, not relative paths
   assert.match(shared, /from '\/_102051_\/l2\/cafeFlow\/web\/shared\/menuManagement\.js'/);
 });
 
+test('shared enum input assertion includes the empty sentinel the property is initialized with', () => {
+  const shared = buildMaterializeTypecheckTest({
+    id: 'taskCatalogue__l2_shared', type: 'l2_shared', outputPath: '_102047_/l2/todo/web/shared/taskCatalogue.ts',
+  }, {
+    moduleName: 'todo',
+    pageId: 'taskCatalogue',
+    contractRef: { tsPath: '_102047_/l2/todo/web/contracts/taskCatalogue.ts' },
+    states: [{
+      name: 'cmdDecideNextTaskStatusStatus',
+      kind: 'input',
+      defaultValue: '',
+      valueSet: ['pending', 'inProgress', 'completed', 'cancelled'],
+      contractRef: { commandName: 'cmdDecideNextTaskStatus', direction: 'input', field: 'status' },
+    }],
+    actions: [],
+  }) || '';
+  assert.match(shared, /Assignable<typeof page\.cmdDecideNextTaskStatusStatus, "pending" \| "inProgress" \| "completed" \| "cancelled" \| CmdDecideNextTaskStatusInput\["status"\] \| ''>/);
+  assert.doesNotMatch(shared, /Assignable<typeof page\.cmdDecideNextTaskStatusStatus, string>/);
+});
+
 // ---- L4 v2: workspace bffCalls -> page commands ----
 
 // Trimmed fixture mirroring l4/petShop/workspaces/catalog.defs.ts (a query surface + a detailPanel query).

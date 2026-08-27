@@ -11,7 +11,8 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, saveMaterializeVerifySummary, saveMaterializeVerifyTrace, type MaterializeVerifyPassed } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readBlockedMaterializePlanIds, readMaterializeVerifySummary, saveMaterializeVerifySummary, saveMaterializeVerifyTrace, type MaterializeVerifyBrokenTrace, type MaterializeVerifyPassed } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { compileErrorRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileRepair.js';
 import {
   collectDesignTokenRoleIssues,
   collectHeadingDisciplineIssues,
@@ -34,12 +35,16 @@ import {
   contractTsPathOf,
   countPage11Items,
   countSharedItems,
+  describeVerifyBuckets,
+  firstErrorSignature,
   isSystemicPageFailure,
   isSystemicSharedFailure,
+  materializePlanIdFromPipelineId,
   pageDefinitionForChecks,
   parseDefs,
   testPathForOutputPath,
   validateGeneratedPageQuality,
+  type PipelineItem,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   compileMlsPathAndGetErrors,
@@ -59,16 +64,27 @@ interface MaterializePhaseArgs {
   maxParallel?: number;
 }
 
+interface MaterializeSkippedDep {
+  planId: string;
+  defPath: string;
+  outputPath: string | null;
+  reason: string;
+}
+
 interface MaterializeVerifyArgs {
   planId: string;
   items: GenStepArgs[];
   attempt: number;
+  skipped?: MaterializeSkippedDep[];
 }
 
 interface BrokenItem {
   item: GenStepArgs;
   outputPath: string | null;
   errors: string[];
+  blocking: string[];
+  repairable: string[];
+  declared: string[];
   warnings: string[];
   typecheck: 'not-applicable' | 'passed' | 'failed';
 }
@@ -106,8 +122,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'no materialization items in phase')];
     }
 
-    const fanout = createFanoutStep(args.fanoutPlanId, args.fanoutTitle, args.items.length);
-    const parallelArgs = args.items.map(item => JSON.stringify(item));
+    const { runnable, skipped } = await skipBlockedDependents(args.items);
+    if (runnable.length === 0) {
+      const skipNote = skipped.map(item => `${item.planId} (${item.reason})`).join('; ');
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
+        `skipped all ${skipped.length} item(s) whose dependency is blocked: ${skipNote}`)];
+    }
+
+    const fanout = createFanoutStep(args.fanoutPlanId, args.fanoutTitle, runnable.length);
+    const parallelArgs = runnable.map(item => JSON.stringify(item));
     // Verify step (no LLM): unlocked when the fan-out host completes; checks the artifacts on
     // disk because fan-out children never return 'failed' (they complete with a
     // 'MATERIALIZE-FAILED: ' trace — see agentCfeMaterializeGen and skills/collab_messages.md).
@@ -117,12 +140,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       verifyPlanId,
       AGENT_NAME,
       `Verify ${args.title}`,
-      { mode: 'verify', planId: verifyPlanId, items: args.items, attempt: 1 },
+      { mode: 'verify', planId: verifyPlanId, items: runnable, attempt: 1, skipped },
       [args.fanoutPlanId],
       'sequential',
       'waiting_dependency',
     );
-    const trace = `queued ${args.items.length} materialization item(s)`;
+    const skipNote = skipped.length ? `; skipped ${skipped.length} blocked-dep item(s)` : '';
+    const trace = `queued ${runnable.length} materialization item(s)${skipNote}`;
     return [
       createAddStepIntent(context, step, fanout, parallelArgs, args.maxParallel ?? 10),
       createAddStepIntent(context, step, verify),
@@ -176,59 +200,108 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     const checked = await verifyItem(item);
     checkedItems.push(checked);
   }
-  const broken = checkedItems.filter(checked => checked.errors.length > 0);
-  const passed: MaterializeVerifyPassed[] = checkedItems.filter(checked => checked.errors.length === 0).map(checked => ({ planId: checked.item.planId, typecheck: checked.typecheck }));
-  const moduleName = deriveVerifyModule(args.items);
+  const blocked = checkedItems.filter(checked => checked.blocking.length > 0);
+  const toRepair = checkedItems.filter(checked => checked.blocking.length > 0 || checked.repairable.length > 0);
+  const declaredItems = checkedItems.filter(checked => checked.blocking.length === 0 && checked.repairable.length === 0 && (checked.declared.length > 0 || checked.warnings.length > 0));
+  const passedNow: MaterializeVerifyPassed[] = checkedItems
+    .filter(checked => checked.blocking.length === 0 && checked.repairable.length === 0)
+    .map(checked => ({ planId: checked.item.planId, typecheck: checked.typecheck }));
+  const skippedDeclared: MaterializeVerifyBrokenTrace[] = (args.skipped ?? []).map(item => ({
+    planId: item.planId,
+    defPath: item.defPath,
+    outputPath: item.outputPath,
+    typecheck: 'not-applicable',
+    errors: [item.reason],
+    warnings: [],
+    severity: 'declared',
+  }));
+  const moduleName = deriveVerifyModule(args.items.length ? args.items : (args.skipped ?? []).map(item => ({ planId: item.planId, defPath: item.defPath })));
+  const previous = await readMaterializeVerifySummary(moduleName, args.planId);
+  const currentIds = new Set(checkedItems.map(item => item.item.planId));
+  const carriedDeclared = (previous?.declared ?? []).filter(item => !currentIds.has(item.planId));
+  const carriedPassed = (previous?.passed ?? []).filter(item => !currentIds.has(item.planId));
+  const repairedThisRound = args.attempt > 1
+    ? passedNow.filter(item => (previous?.broken ?? []).some(entry => entry.planId === item.planId))
+    : [];
+  const repaired = [
+    ...(previous?.repaired ?? []).filter(item => !currentIds.has(item.planId) || repairedThisRound.some(entry => entry.planId === item.planId)),
+    ...repairedThisRound.filter(item => !(previous?.repaired ?? []).some(entry => entry.planId === item.planId)),
+  ];
+  const passed = [...carriedPassed, ...passedNow.filter(item => !carriedPassed.some(entry => entry.planId === item.planId))];
+  const declaredTraces = [
+    ...skippedDeclared,
+    ...carriedDeclared,
+    ...declaredItems.map(item => toBrokenTrace(item, 'declared')),
+    ...checkedItems.filter(item => item.blocking.length === 0 && item.repairable.length > 0 && args.attempt > MATERIALIZE_REPAIR_ROUNDS).map(item => toBrokenTrace(item, 'declared')),
+  ];
+  const bucketsNote = describeVerifyBuckets({ blocked: blocked.length, repaired: repaired.length, declared: declaredTraces.length });
   // ALWAYS write the stable verdict file (overwrites each round) so "was this phase resolved?" has one
   // place to look — passed items + any still-broken — instead of inferring it from the presence of
   // cryptic per-round trace files (102051 run19: no file meant "clean" AND "not run", indistinguishable).
-  const summaryRef = await saveMaterializeVerifySummary(moduleName, args.planId, args.attempt, passed, broken.map(toBrokenTrace));
+  const summaryRef = await saveMaterializeVerifySummary(
+    moduleName, args.planId, args.attempt, passed, blocked.map(item => toBrokenTrace(item, 'blocked')),
+    { declared: declaredTraces, repaired },
+  );
 
-  if (broken.length === 0) {
+  if (toRepair.length === 0) {
     const trace = checkedItems.map(checked => {
+      const declared = checked.declared.length ? `; declared: ${checked.declared.join(' | ')}` : '';
       const warnings = checked.warnings.length ? `; UX warnings: ${checked.warnings.join(' | ')}` : '';
-      return `${checked.item.planId}: ${checked.typecheck}${warnings}`;
+      return `${checked.item.planId}: ${checked.typecheck}${declared}${warnings}`;
     }).join('; ');
+    const skipNote = skippedDeclared.length ? `; skipped ${skippedDeclared.length} blocked-dep item(s)` : '';
     const summaryNote = summaryRef ? ` verdict: ${summaryRef}` : '';
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified; typechecks: ${trace}.${summaryNote}`)];
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified (${bucketsNote}${skipNote}); typechecks: ${trace}.${summaryNote}`)];
   }
 
   // Full detail (all errors + warnings per item) goes to the file system; the msg-task step trace
   // keeps only a short summary that points at that file (DynamoDB 400KB task cap).
-  const traceRef = await saveMaterializeVerifyTrace(moduleName, args.planId, args.attempt, broken.map(toBrokenTrace));
-  const summary = summarizeBroken(broken, traceRef);
+  const traceRef = await saveMaterializeVerifyTrace(moduleName, args.planId, args.attempt, toRepair.map(item => toBrokenTrace(item)));
+  const summary = `${bucketsNote}\n${summarizeBroken(toRepair, traceRef)}`;
+  const blockingView = checkedItems.map(item => ({ outputPath: item.outputPath, errors: item.blocking }));
 
-  // Systemic failure: EVERY page11 item broken on the FIRST compile is an environment/config fault, not
-  // N code bugs. Repairing would burn the budget rewriting correct files and regress them (see
-  // isSystemicPageFailure). Stop here so the real cause is fixed instead of masked.
-  if (isSystemicPageFailure(args.attempt, checkedItems)) {
+  // Systemic failure: EVERY page11 item broken on the FIRST compile with the SAME first error is an
+  // environment/config fault, not N code bugs. Distinct signatures go to the normal repair.
+  if (isSystemicPageFailure(args.attempt, blockingView)) {
     const total = countPage11Items(checkedItems);
+    const signature = firstErrorSignature(blocked[0]?.blocking ?? []);
     return [createUpdateStatusIntent(
       context,
       parentStep,
       step,
       hookSequential,
       'failed',
-      `MATERIALIZE-SYSTEMIC-FAILURE: all ${total} page11 item(s) failed the first compile. That points at an environment/configuration fault (typically a package or path the compiler cannot resolve — check the repeated error below), not at ${total} independent code bugs. Repair rounds were NOT started: they cannot fix a resolution fault and would rewrite already-correct files until they regress. Fix the root cause and re-run.\n${summary}`,
+      `MATERIALIZE-SYSTEMIC-FAILURE: all ${total} page11 item(s) failed the first compile with the same error (${signature}). That points at an environment/configuration fault (typically a package or path the compiler cannot resolve — check the repeated error below), not at ${total} independent code bugs. Repair rounds were NOT started: they cannot fix a resolution fault and would rewrite already-correct files until they regress. Fix the root cause and re-run.\n${summary}`,
     )];
   }
 
   // Same reasoning for the shared phase (run cf2: 34/34 broken with the same first error). Kept as a
   // separate guard because the two phases fail for different reasons — and this one is defence in
   // depth now that the contract is preloaded before the shared compiles.
-  if (isSystemicSharedFailure(args.attempt, checkedItems)) {
+  if (isSystemicSharedFailure(args.attempt, blockingView)) {
     const total = countSharedItems(checkedItems);
+    const signature = firstErrorSignature(blocked[0]?.blocking ?? []);
     return [createUpdateStatusIntent(
       context,
       parentStep,
       step,
       hookSequential,
       'failed',
-      `MATERIALIZE-SYSTEMIC-FAILURE: all ${total} shared item(s) failed the first compile. That points at an environment/configuration fault (typically a contract or path the compiler cannot resolve — check the repeated error below), not at ${total} independent code bugs. Repair rounds were NOT started: they cannot fix a resolution fault and would rewrite already-correct files until they regress. Fix the root cause and re-run.\n${summary}`,
+      `MATERIALIZE-SYSTEMIC-FAILURE: all ${total} shared item(s) failed the first compile with the same error (${signature}). That points at an environment/configuration fault (typically a contract or path the compiler cannot resolve — check the repeated error below), not at ${total} independent code bugs. Repair rounds were NOT started: they cannot fix a resolution fault and would rewrite already-correct files until they regress. Fix the root cause and re-run.\n${summary}`,
     )];
   }
 
   if (args.attempt > MATERIALIZE_REPAIR_ROUNDS) {
+    if (blocked.length === 0) {
+      return [createUpdateStatusIntent(
+        context,
+        parentStep,
+        step,
+        hookSequential,
+        'completed',
+        `quality findings declared after repair budget (${MATERIALIZE_REPAIR_ROUNDS}/${MATERIALIZE_REPAIR_ROUNDS}) (${bucketsNote}):\n${summary}`,
+      )];
+    }
     // The generated artifacts can be repaired by the CLI after this task. Do not fail the whole
     // changeFrontend tree merely because Studio's bounded materialization repair was exhausted.
     return [createUpdateStatusIntent(
@@ -237,7 +310,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
       step,
       hookSequential,
       'completed',
-      `MATERIALIZE-CLI-PENDING: repair budget exhausted (${MATERIALIZE_REPAIR_ROUNDS}/${MATERIALIZE_REPAIR_ROUNDS}). Complete materialization with the CLI:\n${summary}`,
+      `MATERIALIZE-CLI-PENDING: repair budget exhausted (${MATERIALIZE_REPAIR_ROUNDS}/${MATERIALIZE_REPAIR_ROUNDS}) (${bucketsNote}). Complete materialization with the CLI:\n${summary}`,
     )];
   }
 
@@ -245,10 +318,10 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   // It is not repairable — the same prompt hits the same ceiling — but it IS now materializable as N
   // organisms plus the page, so turn the plan into steps instead of spending repair rounds on it.
   const anchorForSplit = findMutableParentStep(context, parentStep);
-  const splitIntents = await planSplitSteps(context, anchorForSplit, args, broken);
+  const splitIntents = await planSplitSteps(context, anchorForSplit, args, toRepair);
   if (splitIntents) {
     return [...splitIntents, createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
-      `SPLIT: page over the output cap re-queued as organisms.\n${summary}`)];
+      `SPLIT: page over the output cap re-queued as organisms (${bucketsNote}).\n${summary}`)];
   }
 
   // Anchor new steps on a non-terminal agent step (the phase step stays in_progress while its
@@ -263,16 +336,16 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   // skills/collab_messages.md). Fan-out slots are also deleted when finished, unlike the old
   // one-step-per-broken-item shape that stayed on the task record forever.
   const repairPlanId = `${args.planId}-repair${nextAttempt - 1}`;
-  const repairFanout = createFanoutStep(repairPlanId, `Repair ${roundLabel}: {{completed}}/{{total}}, falhas {{failed}}`, broken.length);
+  const repairFanout = createFanoutStep(repairPlanId, `Repair ${roundLabel}: {{completed}}/{{total}}, falhas {{failed}}`, toRepair.length);
   // itemId rides along: without it a repair slot would fall back to pipeline[0] and rewrite the FIRST
   // organism's file instead of the one that is actually broken.
-  const repairArgs = broken.map(entry => JSON.stringify({ planId: entry.item.planId, defPath: entry.item.defPath, itemId: entry.item.itemId, attempt: nextAttempt }));
+  const repairArgs = toRepair.map(entry => JSON.stringify({ planId: entry.item.planId, defPath: entry.item.defPath, itemId: entry.item.itemId, attempt: nextAttempt }));
   const nextVerifyPlanId = `${args.planId}-v${nextAttempt}`;
   const nextVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
     nextVerifyPlanId,
     AGENT_NAME,
     'Verify materialization (after repair)',
-    { mode: 'verify', planId: nextVerifyPlanId, items: broken.map(entry => entry.item), attempt: nextAttempt },
+    { mode: 'verify', planId: nextVerifyPlanId, items: toRepair.map(entry => entry.item), attempt: nextAttempt, skipped: args.skipped },
     [repairPlanId],
     'sequential',
     'waiting_dependency',
@@ -281,7 +354,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   return [
     createAddStepIntent(context, anchor, repairFanout, repairArgs, 10),
     nextVerify,
-    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${broken.length} broken item(s), repair round ${roundLabel} started:\n${summary}`),
+    createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${toRepair.length} item(s) queued for repair round ${roundLabel} (${bucketsNote}):\n${summary}`),
   ];
 }
 
@@ -392,25 +465,38 @@ function summarizeBroken(broken: BrokenItem[], traceRef: string | null): string 
   return lines.join('\n');
 }
 
-function toBrokenTrace(entry: BrokenItem) {
+function toBrokenTrace(entry: BrokenItem, severity?: 'blocked' | 'repair' | 'declared'): MaterializeVerifyBrokenTrace {
+  const resolved = severity ?? (entry.blocking.length ? 'blocked' : entry.repairable.length ? 'repair' : 'declared');
+  const errors = resolved === 'blocked' ? entry.blocking
+    : resolved === 'repair' ? entry.repairable
+    : [...entry.declared, ...entry.repairable];
   return {
     planId: entry.item.planId,
     defPath: entry.item.defPath,
     outputPath: entry.outputPath,
     typecheck: entry.typecheck,
-    errors: entry.errors,
+    errors: errors.length ? errors : entry.errors,
     warnings: entry.warnings,
+    severity: resolved,
   };
+}
+
+function withFindings(item: GenStepArgs, outputPath: string | null, typecheck: BrokenItem['typecheck'], findings: Partial<Pick<BrokenItem, 'blocking' | 'repairable' | 'declared' | 'warnings'>>): BrokenItem {
+  const blocking = findings.blocking ?? [];
+  const repairable = findings.repairable ?? [];
+  const declared = findings.declared ?? [];
+  const warnings = findings.warnings ?? [];
+  return { item, outputPath, blocking, repairable, declared, warnings, errors: [...blocking, ...repairable, ...declared], typecheck };
 }
 
 async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const defsContent = await getContentByMlsPath(item.defPath);
-  const pipelineItem = defsContent ? parseDefs(defsContent).item : null;
-  if (!pipelineItem) return { item, outputPath: null, errors: [`pipeline not found in defs: ${item.defPath}`], warnings: [], typecheck: 'not-applicable' };
+  const pipelineItem = defsContent ? pipelineItemForStep(defsContent, item.itemId) : null;
+  if (!pipelineItem) return withFindings(item, null, 'not-applicable', { blocking: [`pipeline not found in defs: ${item.defPath}`] });
 
   const outputPath = pipelineItem.outputPath;
   const content = await getContentByMlsPath(outputPath);
-  if (!content || !content.trim()) return { item, outputPath, errors: [`generated file missing or empty: ${outputPath}`], warnings: [], typecheck: 'not-applicable' };
+  if (!content || !content.trim()) return withFindings(item, outputPath, 'not-applicable', { blocking: [`generated file missing or empty: ${outputPath}`] });
 
   // A page is verified only AFTER its shared/contract phases finished (contracts -> shared -> pages), so
   // the deps on disk are final. Force-compile their .d.ts FIRST so the Studio per-file compile resolves
@@ -426,12 +512,12 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     await preloadTypecheckDeps([contractTsPathOf(defsContent)]);
   }
 
-  const errors = [...await compileMlsPathAndGetErrors(outputPath)];
-  if (pipelineItem.type === 'l2_shared' && defsContent) {
-    errors.push(...collectMutationEnvelopeErrorIssues(parseDefs(defsContent).data, content));
-  }
+  const blocking = [...await compileMlsPathAndGetErrors(outputPath)];
+  const repairable: string[] = [];
+  const declared: string[] = [];
   const warnings: string[] = [];
   if (pipelineItem.type === 'l2_shared' && defsContent) {
+    repairable.push(...collectMutationEnvelopeErrorIssues(parseDefs(defsContent).data, content));
     // Defs-level: rewriting the shared .ts cannot add an initialLoad the defs omitted. Warning
     // keeps the gap in the verdict; create-shared is what emits the list.
     warnings.push(...collectMissingInitialLoadIssues(parseDefs(defsContent).data));
@@ -439,30 +525,38 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
   const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
-  errors.push(...typecheckErrors);
+  // The companion .test.ts imports the shipped .ts, so this compile can name EITHER file. The shipped
+  // one is already compiled on its own above, but usage inside the test surfaces errors a lone compile
+  // misses — those still block, because the file that does not compile is the one that ships. An error
+  // naming any OTHER file (a dependency) is declared here: it belongs to that item, which blocks on
+  // its own; blocking this one for a neighbour's fault is the false-positive the phase must avoid.
+  for (const error of typecheckErrors) {
+    if (compileErrorRef(error) === outputPath.replace(/^\/+/u, '')) blocking.push(error);
+    else declared.push(error);
+  }
   if (pipelineItem.type === 'l2_page') {
     // bugpage21: an invented module-level helper rendered by NAME (`: nothing` + `function nothing()`)
     // paints the function's own source code on screen. It COMPILES, so neither the typecheck above nor
     // the defs-level UX rules below can see it. This is a pure .ts defect that rewriting the .ts fixes,
     // so it belongs in `errors` (repairable, fed back to the page generator), not in `warnings`.
-    errors.push(...collectPageTemplateHygieneIssues(content), ...collectChartEventIssues(content));
+    repairable.push(...collectPageTemplateHygieneIssues(content), ...collectChartEventIssues(content));
     // Second line under the compiler: a field the contract does not declare. `tsc` catches it where the
     // row is genuinely typed, and only with the module loaded — which is how one reached production and
     // was fixed by hand in the module. Repairable: rewriting the .ts is exactly the fix.
     const contractPath = contractTsPathOf(sharedDefs);
     const contractSource = contractPath ? await getContentByMlsPath(contractPath) : null;
     if (contractSource) {
-      errors.push(...collectContractFieldIssues(content, contractSource));
-      if (sharedDefs) errors.push(...collectEnumTextInputIssues(parseDefs(sharedDefs).data, content, contractSource));
-      errors.push(...collectEnumCellLabelIssues(content, contractSource));
-      errors.push(...collectIdColumnIssues(content));
+      repairable.push(...collectContractFieldIssues(content, contractSource));
+      if (sharedDefs) repairable.push(...collectEnumTextInputIssues(parseDefs(sharedDefs).data, content, contractSource));
+      repairable.push(...collectEnumCellLabelIssues(content, contractSource));
+      repairable.push(...collectIdColumnIssues(content));
     }
-    errors.push(...collectPageCustomElementTagIssues(content, outputPath));
+    repairable.push(...collectPageCustomElementTagIssues(content, outputPath));
     // A background token used as a text color renders invisible text once the theme applies (the
     // hardcoded var() fallback hides it in one theme only) — mls-102045 shipped exactly that. It is a
     // pure .ts defect a rewrite fixes, and the check is deterministic (role suffix, no judgement), so it
     // is a repairable ERROR rather than a warning.
-    errors.push(...collectDesignTokenRoleIssues(content));
+    repairable.push(...collectDesignTokenRoleIssues(content));
   }
   if (pipelineItem.type === 'l2_page' && defsContent) {
     if (!sharedDefs) {
@@ -483,14 +577,14 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       // only rewrite .ts: routing it to repair burns the budget and ends broken anyway. Warning keeps
       // it visible in the verdict without stopping the run.
       const experienceIssues = collectPageExperienceIssues(pageData, sharedData, content);
-      errors.push(...experienceIssues.filter(issue => !isL4LookupGap(issue)));
+      repairable.push(...experienceIssues.filter(issue => !isL4LookupGap(issue)));
       warnings.push(...experienceIssues.filter(isL4LookupGap));
-      errors.push(...collectMutationFeedbackIssues(pageData, sharedData, content));
-      errors.push(...collectSelectionControlIssues(pageData, sharedData, content));
-      errors.push(...collectCommandDisabledIssues(pageData, sharedData, content));
+      repairable.push(...collectMutationFeedbackIssues(pageData, sharedData, content));
+      repairable.push(...collectSelectionControlIssues(pageData, sharedData, content));
+      repairable.push(...collectCommandDisabledIssues(pageData, sharedData, content));
       warnings.push(...collectMissingInitialLoadIssues(sharedData, pageData));
-      errors.push(...collectTechnicalVocabularyIssues(pageData, content));
-      errors.push(...collectHeadingDisciplineIssues(content));
+      repairable.push(...collectTechnicalVocabularyIssues(pageData, content));
+      repairable.push(...collectHeadingDisciplineIssues(content));
     }
     // bugimage.md: a page binding an image-URL field must render an <img>. Deliberately a WARNING, not
     // an error: unlike the template-hygiene defect above (unambiguously broken output), "should render an
@@ -499,7 +593,41 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     // binding, so this reports non-compliance instead of policing it.
     warnings.push(...collectMissingImageRenderIssues(defsContent, content));
   }
-  return { item, outputPath, errors, warnings, typecheck: testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable' };
+  return withFindings(item, outputPath, testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable', {
+    blocking, repairable, declared, warnings,
+  });
+}
+
+function pipelineItemForStep(defsContent: string, itemId?: string): PipelineItem | null {
+  const parsed = parseDefs(defsContent);
+  if (itemId) return parsed.items.find(entry => entry.id === itemId) ?? parsed.item;
+  return parsed.item;
+}
+
+/** Independents keep going: an item whose dependsOn is still compile-blocked is skipped, not the whole phase. */
+async function skipBlockedDependents(items: GenStepArgs[]): Promise<{ runnable: GenStepArgs[]; skipped: MaterializeSkippedDep[] }> {
+  const blocked = await readBlockedMaterializePlanIds(mls.actualProject || 0);
+  if (blocked.size === 0) return { runnable: items, skipped: [] };
+  const runnable: GenStepArgs[] = [];
+  const skipped: MaterializeSkippedDep[] = [];
+  for (const item of items) {
+    const defsContent = await getContentByMlsPath(item.defPath);
+    const pipelineItem = defsContent ? pipelineItemForStep(defsContent, item.itemId) : null;
+    const blockedDep = (pipelineItem?.dependsOn ?? [])
+      .map(materializePlanIdFromPipelineId)
+      .find(planId => blocked.has(planId));
+    if (blockedDep) {
+      skipped.push({
+        planId: item.planId,
+        defPath: item.defPath,
+        outputPath: pipelineItem?.outputPath ?? null,
+        reason: `dependency ${blockedDep} is blocked (shipped .ts does not compile)`,
+      });
+      continue;
+    }
+    runnable.push(item);
+  }
+  return { runnable, skipped };
 }
 
 
@@ -578,7 +706,18 @@ function parseVerifyArgs(parsed: Record<string, unknown>): MaterializeVerifyArgs
   if (!planId) throw new Error('verify prompt missing planId');
   const items = Array.isArray(parsed.items) ? parsed.items.map(readGenStepArgs) : [];
   const attempt = typeof parsed.attempt === 'number' && Number.isInteger(parsed.attempt) ? parsed.attempt : 1;
-  return { planId, items, attempt };
+  const skipped = Array.isArray(parsed.skipped) ? parsed.skipped.map(readSkippedDep).filter(item => item.planId) : [];
+  return skipped.length ? { planId, items, attempt, skipped } : { planId, items, attempt };
+}
+
+function readSkippedDep(value: unknown): MaterializeSkippedDep {
+  if (!isRecord(value)) return { planId: '', defPath: '', outputPath: null, reason: '' };
+  return {
+    planId: readString(value.planId),
+    defPath: readString(value.defPath),
+    outputPath: typeof value.outputPath === 'string' ? value.outputPath : null,
+    reason: readString(value.reason) || 'dependency is blocked',
+  };
 }
 
 function readGenStepArgs(value: unknown): GenStepArgs {
