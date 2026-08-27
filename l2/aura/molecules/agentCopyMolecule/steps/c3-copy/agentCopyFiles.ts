@@ -124,14 +124,17 @@ async function beforePromptStep(
     const ref = entry.item.origin.ref;
 
     const tsFileInfo = cDestMoleculeFile(entry.item.destination.group, shortName, '.ts');
-    await writeStorTextAtomic(tsFileInfo, entry.ts, true);
+    // compileOnCreate=false: cCompileAndPublishTs logo abaixo é a ÚNICA compilação — e é a que salva o
+    // cache. Deixar o createStorFile compilar junto criou duas compilações concorrentes no mesmo model
+    // (ver helpers/cFs.writeStorTextAtomic).
+    await writeStorTextAtomic(tsFileInfo, entry.ts, true, false);
     written.push(entry.item.destination.files.ts);
     const tsErrors = await cCompileAndPublishTs(tsFileInfo, entry.ts, true);
     compileIssues.push(...tsErrors.map(message => ({ code: 'compile_ts', message: `${ref}: ${message}` })));
 
     if (entry.defs) {
       const defsFileInfo = cDestMoleculeFile(entry.item.destination.group, shortName, '.defs.ts');
-      await writeStorTextAtomic(defsFileInfo, entry.defs, true);
+      await writeStorTextAtomic(defsFileInfo, entry.defs, true, false);
       written.push(entry.item.destination.files.defs);
       const defsErrors = await cCompileAndPublishTs(defsFileInfo, entry.defs, false);
       compileIssues.push(...defsErrors.map(message => ({ code: 'compile_defs', message: `${ref}: ${message}` })));

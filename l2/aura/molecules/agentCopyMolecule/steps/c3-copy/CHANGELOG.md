@@ -51,3 +51,33 @@ contrato, não componente).
 Erro de compilação agora falha o step (`compile_ts`/`compile_defs`), em vez de completar como
 sucesso com um arquivo quebrado no destino — o `.defs.ts` ausente continua sendo só aviso, isso não
 mudou.
+
+- **2026-08-27 (2ª)** — ⚠️ **DUAS COMPILAÇÕES CONCORRENTES no mesmo model — o conserto de hoje de manhã
+  tinha criado uma corrida.** Run real de Studio (`run-20260827163406.5225`, copiando
+  `ml-datetime-picker` para o 102053):
+
+  ```
+  compile_ts:   … compilação falhou sem erro relatado
+  compile_defs: … compilação falhou sem erro relatado
+  ```
+
+  O `c3-copy` abortou, e por isso **o `c4-less` e o `c5-demo` nunca rodaram** — nem `.less` nem `.html`
+  foram copiados. O sintoma que o usuário viu ("o .html não foi copiado") é consequência, não causa.
+
+  **O que prova que é mecânico e não de conteúdo:** o `.defs.ts` copiado tem **zero imports** e é só
+  `export const` de dados. Não há como ele falhar ao compilar de verdade — e falhou **igual** ao `.ts`.
+
+  **A causa:** o `writeStorTextAtomic` deste agente passava `awaitCompile: false` ao `createStorFile`.
+  Para um arquivo NOVO, isso dispara uma compilação **não aguardada**, e o `cCompileAndPublishTs` logo em
+  seguida roda uma **segunda** compilação no mesmo model. O `compile()` faz curto-circuito em
+  `modelVersion === model.getVersionId() && !modelNeedCompile` — estado que é setado no **início** da
+  compilação em voo, antes de os diagnósticos chegarem — então uma das duas perde e volta com
+  `compilerResults.errors` vazio. O `nmFs` do `agentNewMolecule2` documenta exatamente essa corrida.
+
+  **O conserto:** `compileOnCreate = false` nas duas escritas do `c3`. Passa a haver **uma única**
+  compilação — a explícita, que é também a única que salva o cache. O `agentNewMolecule2` resolve a mesma
+  corrida pelo outro lado (amarrando `awaitCompile` a `needCreateModel`) porque lá o arquivo **já existe**
+  quando um passo o escreve, e o `createStorFile` nunca é alcançado; aqui todo arquivo de destino é novo,
+  então o create é justamente de onde vem o segundo compilador.
+
+  O `.html` do `c5-demo` mantém o padrão anterior — é a única compilação que ele tem.

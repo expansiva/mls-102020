@@ -123,11 +123,38 @@ export async function writeJsonArtifact(fileInfo: CFileInfo, data: unknown): Pro
 
 // needCreateModel=true for molecule source files (the editor model is kept in sync);
 // false for l4 work files.
-export async function writeStorTextAtomic(fileInfo: CFileInfo, content: string, needCreateModel = false): Promise<void> {
+//
+// ⚠️ `compileOnCreate` EXISTS BECAUSE OF A RACE, MEASURED IN THE STUDIO ON 2026-08-27. For a file that
+// does not exist yet, createStorFile creates the model and — with needCompile true — fires a compile.
+// This function passed `awaitCompile: false`, so that compile was NOT awaited, and the caller's own
+// `cCompileAndPublishTs` then ran a SECOND compile concurrently on the same model. `compile()`
+// short-circuits on `modelVersion === model.getVersionId() && !modelNeedCompile`, a state set at the
+// START of the in-flight compile, before diagnostics land — so one of the two loses and returns with
+// `compilerResults.errors` empty. The run reported:
+//
+//     compile_ts:   … compilação falhou sem erro relatado
+//     compile_defs: … compilação falhou sem erro relatado
+//
+// and aborted c3-copy, so c4-less and c5-demo never ran (no .less, no .html copied). ⚠️ What proves it
+// is MECHANICAL and not a content problem: the `.defs.ts` has ZERO imports and is pure data exports —
+// there is no way for it to genuinely fail to compile, and it failed identically to the .ts.
+//
+// The fix is to have exactly ONE compile: the caller's, which is also the only one that saves the cache
+// (`saveCache: true`). agentNewMolecule2's nmFs solves the same race the other way — by tying
+// awaitCompile to needCreateModel — because there the file already exists when a step writes it, so
+// createStorFile is never even reached. Here every destination file is new, so the create is exactly
+// where the second compiler comes from.
+export async function writeStorTextAtomic(
+  fileInfo: CFileInfo,
+  content: string,
+  needCreateModel = false,
+  compileOnCreate = true,
+): Promise<void> {
   const key = mls.stor.getKeyToFile(fileInfo);
   let storFile = mls.stor.files[key];
   if (!storFile) {
-    storFile = await createStorFile({ ...fileInfo, source: content }, needCreateModel, needCreateModel, false);
+    const compileNow = needCreateModel && compileOnCreate;
+    storFile = await createStorFile({ ...fileInfo, source: content }, needCreateModel, compileNow, compileNow);
   } else {
     // Re-run resurrection (lesson inherited from nsFs/vFs — do NOT drop this branch): a
     // locally deleted file stays in the stor with status 'deleted' and would silently
