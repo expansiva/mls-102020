@@ -216,9 +216,13 @@ async function compileNs4E1(
     if (!answer) throw new Error('E1 clarification answer not found.');
     const saved = await persistNs4E1(context, answer.review, answer.approvedBy);
     const mutationParent = findMutableParentStep(context, parentStep);
+    // Discarded-language warnings must reach the step trace: silence here is how run02 shipped
+    // en/es translations nobody asked for.
+    const i18nWarnings = answer.review.i18nWarnings || [];
+    const traceMsg = `E1 compiled: ${saved.artifactPath}${i18nWarnings.length ? `\n${i18nWarnings.map(item => `warning: ${item}`).join('\n')}` : ''}`;
     return [
       e1ResultStep(context, mutationParent, saved, getNs4RootPlan(context)),
-      updateStatus(context, mutationParent, step, hookSequential, 'completed', `E1 compiled: ${saved.artifactPath}`, 'input_output'),
+      updateStatus(context, mutationParent, step, hookSequential, 'completed', traceMsg, 'input_output'),
     ];
   } catch (error) {
     const message = errorMessage(error);

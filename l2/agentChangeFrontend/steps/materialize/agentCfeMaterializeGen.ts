@@ -21,7 +21,9 @@ import {
   GEN_TOOL_NAME,
   isMaxTokensFailure,
   isSplitWorthyFailure,
+  isSharedDtsArtifactRef,
   isSharedRuntimeTsRef,
+  sharedTsRefOfDtsArtifact,
   parseDefs,
   normalizeGeneratedCode,
   sharedDtsArtifactRef,
@@ -35,6 +37,7 @@ import {
   compileMlsPathAndGetErrors,
   consumeMaterializeStudioMessages,
   extractToolCallArgs,
+  formatGeneratedTsInStudio,
   getCompiledDtsByMlsPath,
   releaseBorrowedModelScope,
   preloadItemTypecheckDeps,
@@ -232,7 +235,10 @@ async function afterPromptStep(
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `invalid outputPath: ${pipelineItem.outputPath}`)];
     }
 
-    const code = applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code));
+    // Formatted BEFORE the textual gates below and before the save, so the hygiene checks, the
+    // compile and the phase verify (which re-reads from disk) all see exactly the bytes that were
+    // written — the safe order the format×gates contract requires (cf_format_codigo_gerado).
+    const code = await formatGeneratedTsInStudio(applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code)));
     const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
     if (!saved) {
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
@@ -259,9 +265,12 @@ async function afterPromptStep(
       ...(pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism' ? [...collectPageTemplateHygieneIssues(code), ...collectChartEventIssues(code)] : []),
     ];
     const studioDiagnostics = consumeMaterializeStudioMessages();
+    // Which shared context this item was generated against (recorded by readContextSections). It
+    // goes in the trace on EVERY outcome, so a raw-ts fallback is auditable instead of silent.
+    const contextNote = consumeContextTrace(pipelineItem.outputPath);
     if (compileErrors.length > 0) {
       const checkedFiles = typecheckPath ? `${pipelineItem.outputPath} + ${typecheckPath}` : pipelineItem.outputPath;
-      const traceMsg = `compile/typecheck failed for ${checkedFiles}:\n${compileErrors.slice(0, 8).join('\n')}`;
+      const traceMsg = `compile/typecheck failed for ${checkedFiles}${contextNote ? ` [${contextNote}]` : ''}:\n${compileErrors.slice(0, 8).join('\n')}`;
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(traceMsg, studioDiagnostics), true)];
     }
 
@@ -269,7 +278,11 @@ async function afterPromptStep(
     // the CLI runtime) read the same authoritative context from disk. Best-effort: never blocks.
     if (pipelineItem.type === 'l2_shared') await persistSharedDtsArtifact(pipelineItem.outputPath);
 
-    return [mkStatus(context, parentStep, step, hookSequential, 'completed', studioDiagnostics.length ? formatStudioDiagnostics(studioDiagnostics) : undefined, 'input_output')];
+    const completedNotes = [
+      ...(contextNote ? [contextNote] : []),
+      ...(studioDiagnostics.length ? [formatStudioDiagnostics(studioDiagnostics)] : []),
+    ];
+    return [mkStatus(context, parentStep, step, hookSequential, 'completed', completedNotes.length ? completedNotes.join('. ') : undefined, 'input_output')];
   } catch (error) {
     const message = formatError('afterPromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
@@ -326,7 +339,10 @@ function createPromptReadyIntent(
  */
 async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineItem[], data: unknown): Promise<string | undefined> {
   if (pipelineItem.type !== 'l2_page' && pipelineItem.type !== 'l2_page_organism') return undefined;
-  const sharedRef = (pipelineItem.dependsFiles ?? []).find(ref => isSharedRuntimeTsRef(ref));
+  // The page item now declares the shared-dts ARTIFACT (web/shared/<page>Dts.txt); the raw .ts ref
+  // the skeleton needs is derived from it. Old defs still declare the .ts directly.
+  const sharedRef = (pipelineItem.dependsFiles ?? []).find(ref => isSharedRuntimeTsRef(ref))
+    ?? (pipelineItem.dependsFiles ?? []).map(ref => sharedTsRefOfDtsArtifact(ref)).find((ref): ref is string => !!ref);
   if (!sharedRef) return undefined;
   const sharedSource = await getContentByMlsPath(sharedRef);
   if (!sharedSource) return undefined;
@@ -465,22 +481,57 @@ async function buildGenContext(defPath: string, itemId?: string): Promise<{
 // Context diet (flow.json materializationContextPolicy): for page items the shared base class is
 // sent as its compiled .d.ts INSTEAD of the raw source — the compact, authoritative public surface
 // (typed msg keys, properties, handlers). Resolution order: fresh persisted artifact
-// (trace/frontend-shared-dts) -> compile on demand -> raw .ts fallback. The _102029_ runtime
+// (web/shared/<page>Dts.txt, declared in the page defs) -> compile on demand -> raw .ts fallback,
+// each item recording which one it got (context=dts / context=raw-ts). The _102029_ runtime
 // library files are likewise sent as compiled .d.ts (their implementation bodies are ~8k tokens
 // of noise per shared item). designSystem.ts is summarized to token names inside
 // buildContextSection.
 const RUNTIME_102029_REFS = new Set<string>(CONTRACTS_102029);
 
+// Which context the shared base class actually reached this item as — 'context=dts' or
+// 'context=raw-ts (reason)'. Recorded by readContextSections (beforePromptStep) and surfaced into
+// the step trace by afterPromptStep, so the fallback stops being invisible (run02 102047: the .ts
+// went out raw and nothing said so). Module-level and best-effort on purpose: both hooks of a
+// fan-out slot run in the same client session; losing the note on a reload only loses the note.
+const contextTraceByOutput = new Map<string, string>();
+
+function consumeContextTrace(outputPath: string): string | undefined {
+  const note = contextTraceByOutput.get(outputPath);
+  contextTraceByOutput.delete(outputPath);
+  return note;
+}
+
 async function readContextSections(pipelineItem: PipelineItem): Promise<string[]> {
   const sections: string[] = [];
   for (const requestedPath of pipelineItem.dependsFiles ?? []) {
     for (const path of expandContextRef(requestedPath)) {
+      // Declared shared-dts artifact (web/shared/<page>Dts.txt) — the page defs points at the
+      // artifact itself since 27/ago, so nothing is swapped implicitly. Resolution: fresh artifact
+      // -> compile on demand -> raw .ts fallback, and the choice is recorded for the step trace.
+      if (isSharedDtsArtifactRef(path)) {
+        const sharedTsPath = sharedTsRefOfDtsArtifact(path);
+        if (!sharedTsPath) continue;
+        const resolved = await resolveSharedDts(sharedTsPath);
+        if (resolved.dts) {
+          contextTraceByOutput.set(pipelineItem.outputPath, 'context=dts');
+          sections.push(buildSharedDtsSection(sharedTsPath, resolved.dts));
+        } else {
+          const raw = await getContentByMlsPath(sharedTsPath);
+          if (!raw) continue;
+          contextTraceByOutput.set(pipelineItem.outputPath, `context=raw-ts (${resolved.reason})`);
+          sections.push(buildContextSection(sharedTsPath, trimSharedI18nForPageContext(raw)));
+        }
+        continue;
+      }
+      // Legacy defs (pre-27/ago) still declare the shared .ts and rely on the implicit swap.
       if (pipelineItem.type === 'l2_page' && isSharedRuntimeTsRef(path)) {
-        const dts = await resolveSharedDts(path);
-        if (dts) {
-          sections.push(buildSharedDtsSection(path, dts));
+        const resolved = await resolveSharedDts(path);
+        if (resolved.dts) {
+          contextTraceByOutput.set(pipelineItem.outputPath, 'context=dts');
+          sections.push(buildSharedDtsSection(path, resolved.dts));
           continue;
         }
+        contextTraceByOutput.set(pipelineItem.outputPath, `context=raw-ts (${resolved.reason})`);
       }
       if (RUNTIME_102029_REFS.has(path)) {
         const dts = await getCompiledDtsByMlsPath(path);
@@ -511,18 +562,25 @@ async function persistSharedDtsArtifact(sharedTsPath: string): Promise<void> {
 }
 
 // Fresh persisted artifact first (readable by both runtimes), then compile on demand. An artifact
-// older than the shared .ts is stale (e.g. shared regenerated by the CLI) and is ignored.
-async function resolveSharedDts(sharedTsPath: string): Promise<string | null> {
+// older than the shared .ts is stale (e.g. shared regenerated by the CLI) and is ignored. The
+// reason travels with a null dts so the raw-ts fallback can SAY why it happened (context trace).
+async function resolveSharedDts(sharedTsPath: string): Promise<{ dts: string | null; reason: string }> {
   const artifactPath = sharedDtsArtifactRef(sharedTsPath);
+  let reason = 'no artifact ref derivable';
   if (artifactPath) {
     const artifactModified = getFileModifiedByMlsPath(artifactPath);
     const sharedModified = getFileModifiedByMlsPath(sharedTsPath);
-    if (artifactModified !== null && (sharedModified === null || artifactModified >= sharedModified)) {
+    if (artifactModified === null) reason = `artifact missing: ${artifactPath}`;
+    else if (sharedModified !== null && artifactModified < sharedModified) reason = `artifact stale: ${artifactPath}`;
+    else {
       const artifact = await getContentByMlsPath(artifactPath);
-      if (artifact && artifact.trim()) return artifact;
+      if (artifact && artifact.trim()) return { dts: artifact, reason: 'artifact' };
+      reason = `artifact empty: ${artifactPath}`;
     }
   }
-  return getCompiledDtsByMlsPath(sharedTsPath);
+  const compiled = await getCompiledDtsByMlsPath(sharedTsPath);
+  if (compiled) return { dts: compiled, reason: 'compiled on demand' };
+  return { dts: null, reason: `${reason}; compile on demand failed` };
 }
 
 async function readSections(paths: string[], kind: 'skill'): Promise<string[]> {

@@ -56,6 +56,8 @@ interface DefsPrefill {
 interface DefsAction {
   actionId: string;
   kind: 'query' | 'command' | 'stateSetter';
+  /** l4 title of the operation this action fronts (defs `purpose`) — one short line for the JSDoc. */
+  purpose?: string;
   methodName: string;
   handlerName: string;
   commandRef?: string;
@@ -357,6 +359,9 @@ function parseAction(raw: Record<string, unknown>): DefsAction {
     methodName: stringOf(raw.methodName) || bail(`action ${stringOf(raw.actionId)} missing methodName`),
     handlerName: stringOf(raw.handlerName) || bail(`action ${stringOf(raw.actionId)} missing handlerName`),
   };
+  // l4 enrichment (decision 27/ago): the operation title rides into the JSDoc so the compiled .d.ts
+  // is self-explanatory. ONE line, never a dump — absent when the defs carries none.
+  if (typeof raw.purpose === 'string' && raw.purpose.trim()) action.purpose = raw.purpose.trim();
   if (typeof raw.commandRef === 'string') action.commandRef = raw.commandRef;
   if (typeof raw.routeKey === 'string') action.routeKey = raw.routeKey;
   if (typeof raw.stateKey === 'string') action.stateKey = raw.stateKey;
@@ -830,7 +835,7 @@ function renderQuery(model: ScaffoldModel, action: DefsAction): string[] {
   lines.push('    this.requestUpdate();');
   lines.push('  }');
   lines.push('');
-  lines.push(`  /** handler for action ${action.actionId} — bind UI events here */`);
+  lines.push(`  /** ${handlerDoc(action)} */`);
   lines.push(`  ${action.handlerName}(event?: Event): void {`);
   lines.push('    if (event) {');
   lines.push('      event.preventDefault();');
@@ -902,7 +907,7 @@ function renderCommand(model: ScaffoldModel, action: DefsAction): string[] {
   lines.push('    this.requestUpdate();');
   lines.push('  }');
   lines.push('');
-  lines.push(`  /** handler for action ${action.actionId} — bind UI events here */`);
+  lines.push(`  /** ${handlerDoc(action)} */`);
   lines.push(`  ${action.handlerName}(event?: Event): void {`);
   lines.push('    if (event) {');
   lines.push('      event.preventDefault();');
@@ -1010,7 +1015,7 @@ function renderSetter(model: ScaffoldModel, action: DefsAction): string[] {
   lines.push('    this.requestUpdate();');
   lines.push('  }');
   lines.push('');
-  lines.push(`  /** handler for action ${action.actionId} — bind UI events here */`);
+  lines.push(`  /** ${handlerDoc(action)} */`);
   lines.push(`  ${action.handlerName}(event: Event): void {`);
   lines.push('    const target = event.target as HTMLInputElement | HTMLSelectElement | null;');
   lines.push(`    const value: string = target && 'value' in target ? String(target.value) : '';`);
@@ -1129,7 +1134,8 @@ function actionDoc(model: ScaffoldModel, action: DefsAction): string {
   const input = inputInterfaceOf(model, action.commandRef!);
   const inputs = input.fields.map(f => f.name).join(', ');
   const parts = [
-    `action ${action.actionId} (${action.kind}) — route ${action.routeKey}`,
+    // The l4 title first, when the defs carries one (decision 27/ago): one short line, no dump.
+    `action ${action.actionId} (${action.kind})${action.purpose ? ` "${action.purpose}"` : ''} — route ${action.routeKey}`,
     `inputs: ${inputs || '(none)'}`,
     `writes ${(action.outputStateKeys || [])[0]}`,
     `status ${action.statusStateKey}`,
@@ -1138,6 +1144,11 @@ function actionDoc(model: ScaffoldModel, action: DefsAction): string {
     parts.push(`feedback keys ${action.feedback.successMessageKey} / ${action.feedback.errorMessageKey}`);
   }
   return parts.join('; ');
+}
+
+/** JSDoc for a handler: the l4 title (when present) plus the binding hint — one line. */
+function handlerDoc(action: DefsAction): string {
+  return `handler for action ${action.actionId}${action.purpose ? ` "${action.purpose}"` : ''} — bind UI events here`;
 }
 
 function zeroValue(field: ContractField): string {

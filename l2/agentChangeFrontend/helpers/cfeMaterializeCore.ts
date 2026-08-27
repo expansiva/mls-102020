@@ -899,6 +899,65 @@ export function collectPageCatalogueIssues(pageCode: string): string[] {
   return [...new Set(issues)];
 }
 
+/**
+ * The i18n block must EXIST — the inverse of collectPageCatalogueIssues, which only rejects a block
+ * rebuilt in the wrong vocabulary.
+ *
+ * Run02 of the 102047 todo module (26/08): `page11/reviewAndProgressTasks.ts` came back with no
+ * `/// **collab_i18n_start**`/`end` markers, a hand-written `type PageMessageType = {...}` literal and a
+ * single `en` const in a module that declares pt-br/en/es. It compiled, passed every gate, and
+ * @@addLanguage then classified it `without catalogue` and SKIPPED it — the page will never be
+ * translated. The sibling pages of the SAME run (taskCatalogue, taskHub) were born with the skeleton
+ * block intact, so this is per-call LLM variation, exactly what a deterministic gate must hold.
+ *
+ * Repairable, not warning: rewriting the .ts is the whole fix, and the message tells the repair what to
+ * do. Same textual-gate family as the checks above, and pure (string in, findings out) for the same
+ * reason: the defect is named in the loop that saved the file.
+ *
+ * `kind` decides the expected vocabulary: a page emits `pageMessage_<locale>`/`PageMessageType`/
+ * `pageMessages`; an organism emits `o<n>Message_<locale>`/`O<n>Msg`/`o<n>Messages`.
+ */
+export function collectMissingI18nBlockIssues(code: string, kind: 'page' | 'organism'): string[] {
+  if (!code) return [];
+  const issues: string[] = [];
+  const remedy = 'restore the skeleton i18n block between the /// **collab_i18n_start** and /// **collab_i18n_end** markers — never invent your own format: one const per declared locale, the default inferred (`type <T> = typeof <default>`), the others annotated, and the map at the end';
+  const constLabel = kind === 'page' ? 'pageMessage_<locale>' : 'o<n>Message_<locale>';
+  const typeLabel = kind === 'page' ? 'PageMessageType' : 'O<n>Msg';
+  const mapLabel = kind === 'page' ? 'pageMessages' : 'o<n>Messages';
+
+  const missingMarkers = ['/// **collab_i18n_start**', '/// **collab_i18n_end**'].filter(marker => !code.includes(marker));
+  if (missingMarkers.length > 0) {
+    issues.push(`i18n block marker(s) missing (${missingMarkers.join(', ')}): a page without the markers is invisible to @@addLanguage ('without catalogue') and stops being translated — ${remedy}`);
+  }
+
+  // The catalogue consts in the skeleton's vocabulary, annotated or not. `o\d+` and not a fixed `o<n>`:
+  // the checker sees one file at a time and the organism position lives in the file NAME.
+  const constRe = kind === 'page'
+    ? /^\s*(?:export\s+)?(?:const|let)\s+(pageMessage_[A-Za-z0-9_$]+)\s*(:\s*PageMessageType)?\s*=/gmu
+    : /^\s*(?:export\s+)?(?:const|let)\s+(o\d+Message_[A-Za-z0-9_$]+)\s*(:\s*O\d+Msg)?\s*=/gmu;
+  const consts = [...code.matchAll(constRe)];
+  if (consts.length === 0) {
+    issues.push(`no \`${constLabel}\` catalogue const: the i18n block of the skeleton was dropped — ${remedy}`);
+  } else {
+    // Only the default locale is inferred, and it is the one that DEFINES the type. Every other const
+    // carries the annotation, so a forgotten key is TS2741 and a typo TS2353 — parity by the compiler.
+    const typeSources = new Set([...code.matchAll(/^\s*type\s+(?:PageMessageType|O\d+Msg)\s*=\s*typeof\s+([A-Za-z0-9_$]+)\s*;/gmu)].map(match => match[1]));
+    for (const match of consts) {
+      if (!match[2] && !typeSources.has(match[1])) {
+        issues.push(`catalogue '${match[1]}' has no \`: ${typeLabel}\` parity annotation and is not the default (\`type ${typeLabel} = typeof ${match[1]}\`): without it the compiler cannot enforce locale parity — ${remedy}`);
+      }
+    }
+  }
+
+  const mapRe = kind === 'page'
+    ? /^\s*(?:export\s+)?(?:const|let)\s+pageMessages\s*[=:]/mu
+    : /^\s*(?:export\s+)?(?:const|let)\s+o\d+Messages\s*[=:]/mu;
+  if (!mapRe.test(code)) {
+    issues.push(`the catalogue map \`${mapLabel}\` is missing: the msg getter resolves the locale through it — ${remedy}`);
+  }
+  return issues;
+}
+
 /** Field names that carry an image URL from the BFF (bugimage.md). */
 // The prefix is OPTIONAL: match both a bare `imageUrl` and a qualified `menuItemPhotoUrl`.
 const IMAGE_FIELD = /\b[\w$]*(?:image|photo|logo|avatar|picture|thumbnail)Url\b/iu;
@@ -984,11 +1043,45 @@ export function isSharedRuntimeTsRef(ref: string): boolean {
   return /\/web\/shared\/[^/]+\.ts$/u.test(ref) && !ref.endsWith('.defs.ts');
 }
 
-/** Persisted compiled .d.ts artifact path for a shared runtime ref (trace/frontend-shared-dts). */
+/**
+ * Persisted compiled .d.ts artifact path for a shared runtime ref.
+ *
+ * Lives NEXT TO the shared (`web/shared/<page>Dts.txt`) so it is a first-class object of human
+ * conferral, not buried in trace/ (decision 27/ago). Named `<page>Dts.txt`, NOT `<page>.d.ts`:
+ * - stor shortNames never carry a dot (nomes_sem_ponto); '.d.ts' is not a compound extension the
+ *   Studio sync knows (collabFileSystemSync KNOWN_EXTENSIONS), so it would round-trip as
+ *   shortName `<page>.d` + '.ts' — the exact 2-dot family of the SW add versionRef-0 bug.
+ * - .txt is invisible to tsc. A real .d.ts beside the shared was proved inert for the mls-base
+ *   tsc (27/ago: an import of `<page>.js` still resolves to the .ts, and skipLibCheck hides the
+ *   declaration file's own errors) — but only while skipLibCheck stays on; .txt does not bet on it.
+ */
 export function sharedDtsArtifactRef(sharedTsRef: string): string | null {
   const match = sharedTsRef.match(/^(.*)\/web\/shared\/([^/]+)\.ts$/u);
   if (!match || sharedTsRef.endsWith('.defs.ts')) return null;
-  return `${match[1]}/trace/frontend-shared-dts/${match[2]}.txt`;
+  return `${match[1]}/web/shared/${match[2]}Dts.txt`;
+}
+
+/** True for a persisted shared-dts artifact ref (`web/shared/<page>Dts.txt`). */
+export function isSharedDtsArtifactRef(ref: string): boolean {
+  return /\/web\/shared\/[^/]+Dts\.txt$/u.test(ref);
+}
+
+/** Inverse of sharedDtsArtifactRef: the shared runtime .ts a persisted artifact belongs to. */
+export function sharedTsRefOfDtsArtifact(artifactRef: string): string | null {
+  const match = artifactRef.match(/^(.*)\/web\/shared\/([^/]+)Dts\.txt$/u);
+  return match ? `${match[1]}/web/shared/${match[2]}.ts` : null;
+}
+
+/**
+ * The refs a DEPENDENCY probe (staleness mtime / "is my dep scheduled in this run") must check for
+ * one dependsFiles entry. A page now declares the shared-dts ARTIFACT as its context (not the
+ * shared .ts), but the artifact is derived from the shared: a shared newer than the artifact, or a
+ * shared scheduled in this same run, still makes the page stale. Both planners (Studio
+ * agentCfeMaterializeL2 and the CLI) share this so they cannot drift.
+ */
+export function dependencyProbeRefs(ref: string): string[] {
+  const sharedTs = sharedTsRefOfDtsArtifact(ref);
+  return sharedTs ? [ref, sharedTs] : [ref];
 }
 
 /** Context section for the compiled .d.ts of the shared base class. */
@@ -1764,6 +1857,222 @@ function escapeForRegExp(value: string): string {
 export function orderModuleCompile(refs: string[]): string[] {
   const tier = (ref: string): number => (/\/web\/contracts\//u.test(ref) ? 0 : /\/web\/shared\//u.test(ref) ? 1 : 2);
   return [...refs].sort((left, right) => tier(left) - tier(right) || left.localeCompare(right));
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic line breaks for generated code (cf_format_codigo_gerado, 27/ago).
+//
+// run02/102047: taskCatalogue.ts came back as 13KB in 35 lines (whole render* methods on one
+// 3.6K-char line) while its siblings came back formatted — per-call LLM variation, so the model's
+// output cannot be the only source of formatting. The TypeScript formatter (Monaco formatDocument
+// and the ts languageService alike) only edits EXISTING whitespace — it never splits a jammed line —
+// so both runtimes first run this pure pass, then hand indentation to their formatter
+// (formatGeneratedTsInStudio / formatGeneratedTsCli).
+//
+// Whitespace-only BY CONSTRUCTION: it only inserts '\n' between tokens and drops the spaces the
+// break replaces — never inside a string, template text, comment or regex, so the AST is identical
+// (proven in nodejsFormatTs.test.ts) and the i18n markers stay recognizable by @@addLanguage.
+// Conservative: any construct the scanner cannot classify (unterminated literal, unbalanced
+// braces) returns the input UNCHANGED — an unformatted file is a degraded result, a broken one is
+// a defect.
+// ---------------------------------------------------------------------------
+
+/** Brace groups whose single-line span is at most this stay inline (`{ page: 1 }`); longer ones break. */
+const LINE_BREAK_MAX_INLINE_SPAN = 100;
+
+interface LineBreakFrame {
+  kind: 'block' | 'literal' | 'sub';
+  open: number;
+  paren: number;
+  bracket: number;
+  /** Candidate member separators (after `,`/`;`), committed only when the frame qualifies. */
+  separators: number[];
+}
+
+const REGEX_CONTEXT_WORDS = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await']);
+const NO_BREAK_AFTER_BLOCK_WORDS = new Set(['else', 'catch', 'finally', 'while', 'instanceof', 'in', 'of', 'as', 'satisfies']);
+
+export function insertGeneratedTsLineBreaks(source: string): string {
+  const n = source.length;
+  const committed: number[] = [];
+  const commit = (pos: number) => { committed.push(pos); };
+  const committedInside = (open: number, close: number) => committed.some(pos => pos > open && pos < close);
+
+  const root: LineBreakFrame = { kind: 'block', open: -1, paren: 0, bracket: 0, separators: [] };
+  const frames: LineBreakFrame[] = [root];
+  const mode: Array<'code' | 'template'> = ['code'];
+  let lastSig = '';
+  let lastWord = '';
+  let i = 0;
+
+  const closeBraceFrame = (frame: LineBreakFrame, closeIdx: number): boolean => {
+    if (frame.paren !== 0 || frame.bracket !== 0) return false;
+    const empty = source.slice(frame.open + 1, closeIdx).trim() === '';
+    const qualifies = !empty && (closeIdx - frame.open > LINE_BREAK_MAX_INLINE_SPAN || committedInside(frame.open, closeIdx));
+    if (!qualifies) return true;
+    commit(frame.open + 1);
+    commit(closeIdx);
+    for (const pos of frame.separators) commit(pos);
+    if (frame.kind === 'block') {
+      // A new member/statement jammed right after the `}` gets its own line — but never split
+      // `} else {`, `}.then(`, `})`, `};` and friends, where the `}` does not end the construct.
+      let after = closeIdx + 1;
+      while (after < n && (source[after] === ' ' || source[after] === '\t')) after++;
+      if (after < n && /[A-Za-z_$@]/u.test(source[after])) {
+        let end = after;
+        while (end < n && /[A-Za-z0-9_$]/u.test(source[end])) end++;
+        if (!NO_BREAK_AFTER_BLOCK_WORDS.has(source.slice(after, end))) commit(closeIdx + 1);
+      }
+    }
+    return true;
+  };
+
+  while (i < n) {
+    if (mode[mode.length - 1] === 'template') {
+      const ch = source[i];
+      if (ch === '\\') { i += 2; continue; }
+      if (ch === '`') { mode.pop(); lastSig = '`'; lastWord = ''; i++; continue; }
+      if (ch === '$' && source[i + 1] === '{') {
+        mode.push('code');
+        frames.push({ kind: 'sub', open: i + 1, paren: 0, bracket: 0, separators: [] });
+        lastSig = '{'; lastWord = '';
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    const ch = source[i];
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') { i++; continue; }
+
+    if (/[A-Za-z0-9_$]/u.test(ch)) {
+      let j = i + 1;
+      while (j < n && /[A-Za-z0-9_$]/u.test(source[j])) j++;
+      lastWord = source.slice(i, j);
+      lastSig = source[j - 1];
+      i = j;
+      continue;
+    }
+
+    if (ch === '/' && source[i + 1] === '/') {
+      while (i < n && source[i] !== '\n') i++;
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '*') {
+      const end = source.indexOf('*/', i + 2);
+      if (end < 0) return source;
+      i = end + 2;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < n && source[j] !== ch) {
+        if (source[j] === '\\') { j += 2; continue; }
+        if (source[j] === '\n') return source;
+        j++;
+      }
+      if (j >= n) return source;
+      lastSig = ch; lastWord = '';
+      i = j + 1;
+      continue;
+    }
+
+    if (ch === '`') { mode.push('template'); lastSig = ''; lastWord = ''; i++; continue; }
+
+    if (ch === '/') {
+      const valueBefore = /[A-Za-z0-9_$)\]"'`]/u.test(lastSig) && !REGEX_CONTEXT_WORDS.has(lastWord);
+      if (!valueBefore) {
+        let j = i + 1;
+        let inClass = false;
+        while (j < n) {
+          const c = source[j];
+          if (c === '\\') { j += 2; continue; }
+          if (c === '\n') return source;
+          if (inClass) { if (c === ']') inClass = false; }
+          else if (c === '[') inClass = true;
+          else if (c === '/') break;
+          j++;
+        }
+        if (j >= n) return source;
+        j++;
+        while (j < n && /[a-z]/iu.test(source[j])) j++;
+        lastSig = '"'; lastWord = '';
+        i = j;
+        continue;
+      }
+      lastSig = '/'; lastWord = '';
+      i++;
+      continue;
+    }
+
+    const frame = frames[frames.length - 1];
+    if (ch === '(') frame.paren++;
+    else if (ch === ')') { frame.paren--; if (frame.paren < 0) return source; }
+    else if (ch === '[') frame.bracket++;
+    else if (ch === ']') { frame.bracket--; if (frame.bracket < 0) return source; }
+    else if (ch === '{') {
+      const literal = ['=', '(', '[', ',', ':', '?', '&', '|'].includes(lastSig) || lastWord === 'return';
+      frames.push({ kind: literal ? 'literal' : 'block', open: i, paren: 0, bracket: 0, separators: [] });
+    } else if (ch === '}') {
+      const closed = frames.pop();
+      if (!closed || closed === root) return source;
+      if (closed.kind === 'sub') {
+        if (closed.paren !== 0 || closed.bracket !== 0) return source;
+        mode.pop();
+        if (mode[mode.length - 1] !== 'template') return source;
+        i++;
+        continue;
+      }
+      if (!closeBraceFrame(closed, i)) return source;
+    } else if (ch === ';') {
+      if (frame.paren === 0 && frame.bracket === 0) {
+        if (frame.kind === 'block') commit(i + 1);
+        else if (frame.kind === 'literal') frame.separators.push(i + 1);
+      }
+    } else if (ch === ',') {
+      if (frame.kind === 'literal' && frame.paren === 0 && frame.bracket === 0) frame.separators.push(i + 1);
+    }
+
+    lastSig = ch; lastWord = '';
+    i++;
+  }
+
+  if (frames.length !== 1 || mode.length !== 1) return source;
+
+  const positions = [...new Set(committed)].sort((left, right) => left - right);
+  const merged = positions.filter((pos, index) => {
+    const next = positions[index + 1];
+    return next === undefined || source.slice(pos, next).trim() !== '';
+  });
+  const finalPositions = merged.filter(pos => {
+    let back = pos - 1;
+    while (back >= 0 && (source[back] === ' ' || source[back] === '\t')) back--;
+    if (back < 0 || source[back] === '\n') return false;
+    let ahead = pos;
+    while (ahead < n && (source[ahead] === ' ' || source[ahead] === '\t')) ahead++;
+    return ahead < n && source[ahead] !== '\n';
+  });
+  if (!finalPositions.length) return source;
+
+  let out = '';
+  let prev = 0;
+  for (const pos of finalPositions) {
+    out += source.slice(prev, pos).replace(/[ \t]+$/u, '');
+    out += '\n';
+    prev = pos;
+    while (prev < n && (source[prev] === ' ' || source[prev] === '\t')) prev++;
+  }
+  out += source.slice(prev);
+
+  // Whitespace-only by construction; this seals it against any scanner bug — on ANY doubt, unformatted.
+  return stripAllWhitespace(out) === stripAllWhitespace(source) ? out : source;
+}
+
+/** Whitespace-blind view of a source, the byte-safety guard both formatters compare against. */
+export function stripAllWhitespace(text: string): string {
+  return text.replace(/\s+/gu, '');
 }
 
 export function applyHeader(outputPath: string, code: string): string {

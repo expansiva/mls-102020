@@ -118,6 +118,20 @@ test('generateSharedScaffold renders the full base class', () => {
   assert.deepEqual(collectMutationEnvelopeErrorIssues(definition(), code), []);
 });
 
+// Decision 27/ago: the l4 title (defs `purpose`) rides into the member JSDoc — ONE short line per
+// action/handler, never a dump — so the compiled .d.ts artifact is self-explanatory for conferral.
+test('generateSharedScaffold puts the l4 purpose into action and handler JSDoc, one line', () => {
+  const defs = definition();
+  (defs.actions as Record<string, unknown>[])[0].purpose = 'Listar Coisa';
+  const result = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', defs, CONTRACT);
+  const code = result.code!;
+  assert.match(code, /\/\*\* action listThings \(query\) "Listar Coisa" — route demo\.things\.listThings;[^\n]*\*\//);
+  assert.match(code, /\/\*\* handler for action listThings "Listar Coisa" — bind UI events here \*\//);
+  // absent purpose (createThing) keeps the old shape — nothing invented
+  assert.match(code, /\/\*\* action createThing \(command\) — route demo\.things\.createThing;/);
+  assert.match(code, /\/\*\* handler for action createThing — bind UI events here \*\//);
+});
+
 test('generateSharedScaffold bails on unsupported shapes instead of guessing', () => {
   const data = definition();
   (data.states as Record<string, unknown>[])[1].kind = 'weirdKind';

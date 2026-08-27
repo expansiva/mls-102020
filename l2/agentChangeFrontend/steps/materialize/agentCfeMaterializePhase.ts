@@ -30,6 +30,7 @@ import {
   isL4LookupGap,
   collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
+  collectMissingI18nBlockIssues,
   collectContractFieldIssues,
   collectPageCustomElementTagIssues,
   contractTsPathOf,
@@ -49,6 +50,7 @@ import {
 import {
   compileMlsPathAndGetErrors,
   releaseBorrowedModelScope,
+  persistSharedDtsArtifactIfStale,
   preloadTypecheckDeps,
   sharedDefsPathForPageOutput,
   getContentByMlsPath,
@@ -534,6 +536,12 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     if (compileErrorRef(error) === outputPath.replace(/^\/+/u, '')) blocking.push(error);
     else declared.push(error);
   }
+  if (pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism') {
+    // run02/102047: a page born WITHOUT the skeleton i18n block passed every gate and @@addLanguage then
+    // skipped it ('without catalogue') — the inverse of the hand-rebuilt-catalogue check below. Repairable:
+    // rewriting the .ts (restoring the block) is exactly the fix, and the finding says so.
+    repairable.push(...collectMissingI18nBlockIssues(content, pipelineItem.type === 'l2_page' ? 'page' : 'organism'));
+  }
   if (pipelineItem.type === 'l2_page') {
     // bugpage21: an invented module-level helper rendered by NAME (`: nothing` + `function nothing()`)
     // paints the function's own source code on screen. It COMPILES, so neither the typecheck above nor
@@ -592,6 +600,13 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     // input), and a false blocking error would burn the repair budget. The render skills now mandate the
     // binding, so this reports non-compliance instead of policing it.
     warnings.push(...collectMissingImageRenderIssues(defsContent, content));
+  }
+  // A shared that verifies CLEAN gets its persisted .d.ts artifact (re)written if absent or stale.
+  // The materialize-time persist never re-runs, so a shared that only compiled after a repair round
+  // would leave its pages on the raw-ts fallback forever (run02 102047: taskCatalogue). This runs
+  // on every verify round — including the last one — so the artifact converges by the module gate.
+  if (pipelineItem.type === 'l2_shared' && blocking.length === 0) {
+    await persistSharedDtsArtifactIfStale(outputPath);
   }
   return withFindings(item, outputPath, testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable', {
     blocking, repairable, declared, warnings,

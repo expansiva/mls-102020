@@ -16,7 +16,7 @@
   "contexto_do_gate": {
     "primario": "_<proj>_/l4/<module>/workspaces/<page>.defs.ts — sections/organisms + bffCalls com inputs e output.fields (o conjunto FECHADO de dados da página)",
     "fallback": "definition.dataBindings do próprio .defs.ts da página (projetos sem l4 workspace); output.fields fica 'unknown' e o gate é avisado via contextSource",
-    "superficie": "_<proj>_/l2/<module>/trace/frontend-shared-dts/<page>.txt (compiled .d.ts persistido) → compile sob demanda → .ts cru",
+    "superficie": "_<proj>_/l2/<module>/web/shared/<page>Dts.txt (compiled .d.ts persistido ao lado do shared) → compile sob demanda → .ts cru",
     "nunca": "workspace-model.defs.ts (271 KB), access-matrix, siteMap"
   },
   "steps": [

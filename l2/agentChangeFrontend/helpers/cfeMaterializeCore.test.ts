@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, firstErrorSignature, itemsShareErrorSignature, materializePlanIdFromPipelineId } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -565,6 +565,94 @@ const pageMessage_pt_br: PageMessageType = { 'a.b': 'A', 'c.d': 'C' };
   assert.deepEqual(collectPageCatalogueIssues(FE2_PHANTOM_LOCALE_CATALOGUE), []);
 });
 
+// ── bloco i18n AUSENTE (run02 do 102047, 26/08) ───────────────────────────────
+// Recorte VERBATIM de mls-102047/l2/todo/web/desktop/page11/reviewAndProgressTasks.ts: sem os marcadores
+// do skeleton, `type PageMessageType = {...}` literal escrito à mão e um único locale `en` num módulo que
+// declara pt-br/en/es. Passou por todos os gates e o @@addLanguage o pulou ('without catalogue 1').
+const RUN02_PAGE_WITHOUT_MARKERS = `
+type PageMessageType = {
+  'page.title': string;
+  refresh: string;
+};
+
+const pageMessage_en: PageMessageType = {
+  'page.title': 'Review and progress tasks',
+  refresh: 'Refresh',
+};
+
+const pageMessages = { en: pageMessage_en };
+`;
+
+void test('collectMissingI18nBlockIssues acusa a página sem os marcadores (run02/102047) e orienta o repair', () => {
+  const issues = collectMissingI18nBlockIssues(RUN02_PAGE_WITHOUT_MARKERS, 'page');
+  assert.equal(issues.length, 1, JSON.stringify(issues));
+  assert.match(issues[0], /collab_i18n_start/);
+  assert.match(issues[0], /restore the skeleton i18n block/);
+});
+
+void test('collectMissingI18nBlockIssues NÃO acusa o bloco que o esqueleto emite', () => {
+  // Um locale (default inferido) — o mesmo fixture verbatim do check antigo.
+  assert.deepEqual(collectMissingI18nBlockIssues(FE2_SKELETON_CATALOGUE, 'page'), []);
+  assert.deepEqual(collectMissingI18nBlockIssues('', 'page'), []);
+  // Três locales como o skeleton os emite: default inferido, os demais com a anotação de paridade.
+  const threeLocales = `
+/// **collab_i18n_start**
+const pageMessage_pt_br = { 'a.b': 'A' };
+type PageMessageType = typeof pageMessage_pt_br;
+const pageMessage_en: PageMessageType = { 'a.b': 'A' }; // collab_untranslated
+const pageMessage_es: PageMessageType = { 'a.b': 'A' }; // collab_untranslated
+const pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br, 'en': pageMessage_en, 'es': pageMessage_es };
+/// **collab_i18n_end**
+`;
+  assert.deepEqual(collectMissingI18nBlockIssues(threeLocales, 'page'), []);
+});
+
+void test('collectMissingI18nBlockIssues aceita o organismo com o<n>Message_* e acusa o vocabulário trocado', () => {
+  const organism = `
+/// **collab_i18n_start**
+const o2Message_pt_br = { 'a.b': 'A' };
+type O2Msg = typeof o2Message_pt_br;
+const o2Message_en: O2Msg = { 'a.b': 'A' }; // collab_untranslated
+const o2Messages: { [key: string]: O2Msg } = { 'pt-br': o2Message_pt_br, 'en': o2Message_en };
+/// **collab_i18n_end**
+`;
+  assert.deepEqual(collectMissingI18nBlockIssues(organism, 'organism'), []);
+  // O MESMO conteúdo julgado como página: o vocabulário o<n>Message_* não é o de página.
+  const asPage = collectMissingI18nBlockIssues(organism, 'page');
+  assert.ok(asPage.some(issue => /no `pageMessage_<locale>` catalogue const/.test(issue)), JSON.stringify(asPage));
+});
+
+void test('collectMissingI18nBlockIssues acusa paridade e mapa ausentes, cada um por si', () => {
+  // Locale não-default SEM a anotação: o compilador perde a paridade (TS2741/TS2353 deixam de existir).
+  const noParity = `
+/// **collab_i18n_start**
+const pageMessage_pt_br = { 'a.b': 'A' };
+type PageMessageType = typeof pageMessage_pt_br;
+const pageMessage_en = { 'a.b': 'A' };
+const pageMessages: { [key: string]: PageMessageType } = { 'pt-br': pageMessage_pt_br, 'en': pageMessage_en };
+/// **collab_i18n_end**
+`;
+  const parityIssues = collectMissingI18nBlockIssues(noParity, 'page');
+  assert.equal(parityIssues.length, 1, JSON.stringify(parityIssues));
+  assert.match(parityIssues[0], /'pageMessage_en' has no `: PageMessageType` parity annotation/);
+  // Sem o mapa: o getter msg não tem por onde resolver o locale.
+  const noMap = `
+/// **collab_i18n_start**
+const pageMessage_pt_br = { 'a.b': 'A' };
+type PageMessageType = typeof pageMessage_pt_br;
+/// **collab_i18n_end**
+`;
+  const mapIssues = collectMissingI18nBlockIssues(noMap, 'page');
+  assert.equal(mapIssues.length, 1, JSON.stringify(mapIssues));
+  assert.match(mapIssues[0], /`pageMessages` is missing/);
+});
+
+void test('página com collab_i18n_* manual continua caindo no check ANTIGO (não regrediu)', () => {
+  // O check novo também a acusa (não há pageMessage_*), mas o antigo é quem nomeia o remédio certo.
+  const old = collectPageCatalogueIssues(FE2_PAGE21_HANDWRITTEN_CATALOGUE);
+  assert.ok(old.some(issue => issue.startsWith('catalogue rebuilt by hand')), JSON.stringify(old));
+});
+
 // ── família B do run fe2: campo lido do registro SELECIONADO ─────────────────
 // page21/recordInStoreServiceAttendance.ts: `const selected = rows.find(…)` e depois
 // `selected.inStorePaymentId` — 7× TS2339. Os campos existem, mas na saída dos COMANDOS
@@ -1050,4 +1138,29 @@ test('firstErrorSignature strips mls refs so the same environment fault matches 
     { errors: ['cmdCreateTask error path does not read error.message'] },
   ]), false);
   assert.equal(materializePlanIdFromPipelineId('taskHub__l2_shared'), 'materialize-taskhub-l2-shared');
+});
+
+// Decision 27/ago (cf_shared_dts_persistido_e_ref): the shared-dts artifact lives BESIDE the shared
+// (web/shared/<page>Dts.txt) for human conferral. `Dts.txt`, never `.d.ts`: stor shortNames carry no
+// dot (nomes_sem_ponto — '.d.ts' would round-trip as shortName '<page>.d', the SW versionRef-0
+// 2-dot family), and .txt is invisible to the mls-base tsc by construction.
+test('sharedDtsArtifactRef points beside the shared and round-trips through its inverse', () => {
+  const sharedTs = '_102047_/l2/todo/web/shared/taskCatalogue.ts';
+  const artifact = sharedDtsArtifactRef(sharedTs);
+  assert.equal(artifact, '_102047_/l2/todo/web/shared/taskCatalogueDts.txt');
+  assert.equal(isSharedDtsArtifactRef(artifact!), true);
+  assert.equal(sharedTsRefOfDtsArtifact(artifact!), sharedTs);
+  // never for defs, never for non-shared paths
+  assert.equal(sharedDtsArtifactRef('_102047_/l2/todo/web/shared/taskCatalogue.defs.ts'), null);
+  assert.equal(sharedDtsArtifactRef('_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts'), null);
+  assert.equal(isSharedDtsArtifactRef(sharedTs), false);
+  assert.equal(sharedTsRefOfDtsArtifact(sharedTs), null);
+  // the artifact itself is not a shared runtime ts (no re-diet loops)
+  assert.equal(isSharedRuntimeTsRef(artifact!), false);
+});
+
+test('dependencyProbeRefs expands an artifact dep to its shared .ts for staleness/scheduling', () => {
+  const artifact = '_102047_/l2/todo/web/shared/taskCatalogueDts.txt';
+  assert.deepEqual(dependencyProbeRefs(artifact), [artifact, '_102047_/l2/todo/web/shared/taskCatalogue.ts']);
+  assert.deepEqual(dependencyProbeRefs('_102047_/l2/designSystem.ts'), ['_102047_/l2/designSystem.ts']);
 });

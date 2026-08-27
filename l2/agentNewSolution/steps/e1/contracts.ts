@@ -41,6 +41,11 @@ export interface Ns4E1Review {
     criticalNotes?: string;
   };
   changeSummary: string[];
+  /**
+   * Product languages the normalizer discarded for lacking user provenance (run02 102047: the LLM
+   * invented en/es for a pt-BR-only request). Trace-only: never copied into the l4 artifact.
+   */
+  i18nWarnings?: string[];
 }
 
 export interface Ns4E1ReviewEvent {
@@ -71,7 +76,23 @@ export function normalizeNs4E1Review(value: unknown, fallback: { userLanguage?: 
   const legacy = record(root.questions);
   const moduleName = normalizeNs4ModuleName(text(module.moduleName) || text(legacy.moduleName?.answer) || fallback.moduleName || fallback.sourcePrompt || 'newModule');
   const userLanguage = normalizeNs4Languages(root.userLanguage || fallback.userLanguage || 'en')[0];
-  const languages = normalizeNs4Languages(localization.productLanguages || text(legacy.productLanguages?.answer) || fallback.productLanguages || userLanguage, userLanguage);
+  const clarificationLanguagesAnswer = text(legacy.productLanguages?.answer) || text(fallback.productLanguages);
+  const requestedLanguages = normalizeNs4Languages(localization.productLanguages || clarificationLanguagesAnswer || userLanguage, userLanguage);
+  // Languages are a user decision, never an LLM guess. When the caller supplies the provenance
+  // context (clarification answer and/or the original prompt), every language the user did not cite
+  // is discarded with a warning instead of silently reaching the l4 — run02 of 102047 shipped en/es
+  // for a pt-BR-only request and the CF finalize auto-dispatched @@addLanguage for both.
+  const provenanceKnown = fallback.sourcePrompt !== undefined || fallback.productLanguages !== undefined || Boolean(clarificationLanguagesAnswer);
+  const i18nWarnings: string[] = [];
+  const languages = provenanceKnown
+    ? filterNs4LanguagesByProvenance(requestedLanguages, userLanguage, clarificationLanguagesAnswer, text(fallback.sourcePrompt), i18nWarnings)
+    : requestedLanguages;
+  const declaredDefault = normalizeNs4Languages(localization.defaultLanguage || languages[0], languages[0])[0];
+  // A default that was itself discarded follows the list; any other mismatch keeps failing the gate.
+  const defaultLanguage = !languages.some(language => sameNs4Language(language, declaredDefault))
+    && requestedLanguages.some(language => sameNs4Language(language, declaredDefault))
+    ? languages[0]
+    : declaredDefault;
   const requestedMode = strategy.mode;
   const mode: Ns4SolutionStrategy = requestedMode === 'modernizePreserveDatabase' || requestedMode === 'modernizeEvolveDatabase' || requestedMode === 'replaceAndMigrateData' ? requestedMode : 'newSolution';
   const actors = list(scope.actors).map((item, index) => {
@@ -97,9 +118,10 @@ export function normalizeNs4E1Review(value: unknown, fallback: { userLanguage?: 
       ...(mode !== 'newSolution' ? { modernization: { sourceSystemName: text(modernization.sourceSystemName), sourceTechnology: text(modernization.sourceTechnology), databaseEngine: text(modernization.databaseEngine), databaseVersion: text(modernization.databaseVersion), schemaAvailability: modernization.schemaAvailability === 'metadataAtE4' || modernization.schemaAvailability === 'notAvailableYet' ? modernization.schemaAvailability : 'uploadAtE4', notes: text(modernization.notes) } } : {}),
     },
     businessScope: { mainGoal, actors: safeActors, expectedOutcomes: safeOutcomes, inScope: strings(scope.inScope), outOfScope: strings(scope.outOfScope) },
-    localization: { productLanguages: languages, defaultLanguage: normalizeNs4Languages(localization.defaultLanguage || languages[0], languages[0])[0], defaultLocale: text(localization.defaultLocale), currency: text(localization.currency), timeZone: text(localization.timeZone), primaryMarket: text(localization.primaryMarket) },
+    localization: { productLanguages: languages, defaultLanguage, defaultLocale: text(localization.defaultLocale), currency: text(localization.currency), timeZone: text(localization.timeZone), primaryMarket: text(localization.primaryMarket) },
     declaredConstraints: { mandatoryIntegrations: list(record(root.declaredConstraints).mandatoryIntegrations).map((item, index) => { const dependency = record(item); return { dependencyId: stableId(text(dependency.dependencyId) || text(dependency.title), `dependency${index + 1}`), title: text(dependency.title), kind: dependency.kind === 'externalSystem' || dependency.kind === 'platform' ? dependency.kind : 'unknown' as const, reason: text(dependency.reason) }; }).filter(item => item.title || item.reason), regulatoryNotes: text(record(root.declaredConstraints).regulatoryNotes), criticalNotes: text(record(root.declaredConstraints).criticalNotes) },
     changeSummary: strings(root.changeSummary),
+    ...(i18nWarnings.length ? { i18nWarnings } : {}),
   };
 }
 
@@ -133,6 +155,9 @@ export function validateNs4E1Review(review: Ns4E1Review): Ns4E1ReviewGate {
   if (!review.localization.defaultLanguage
     || !review.localization.productLanguages.includes(review.localization.defaultLanguage)) {
     add('NS4_E1_DEFAULT_LANGUAGE', 'The default language must belong to the product language list.', 'localization.defaultLanguage');
+  }
+  for (const warning of review.i18nWarnings || []) {
+    add('NS4_E1_LANGUAGES_PROVENANCE', warning, 'localization.productLanguages', 'warning');
   }
   if (!review.businessScope.mainGoal.trim()) add('NS4_E1_MAIN_GOAL', 'The main business goal is required.', 'businessScope.mainGoal');
   validateMembers(review.businessScope.actors, 'actorId', 'businessScope.actors', issues);
@@ -243,6 +268,84 @@ function validateMembers(
     if (ids.has(id)) issues.push({ severity: 'error', code: 'NS4_E1_MEMBER_DUPLICATE', message: `Duplicate ${idKey} ${id}.`, path: `${path}[${index}].${idKey}` });
     if (id) ids.add(id);
   });
+}
+
+/**
+ * Keeps only the product languages the user actually cited: the tag itself in the clarification
+ * answer, or the tag/language name in the answer or original prompt. Everything else is discarded
+ * with a warning — when in doubt, discard; the human can add the language back in the E1 review.
+ */
+function filterNs4LanguagesByProvenance(
+  languages: string[],
+  userLanguage: string,
+  clarificationAnswer: string,
+  sourcePrompt: string,
+  warnings: string[],
+): string[] {
+  const answerTags = clarificationAnswer ? normalizeNs4Languages(clarificationAnswer, userLanguage) : [];
+  const citedText = foldNs4Text(`${clarificationAnswer}\n${sourcePrompt}`);
+  const kept: string[] = [];
+  const discarded: string[] = [];
+  for (const language of languages) {
+    const cited = sameNs4Language(language, userLanguage)
+      || answerTags.some(tag => sameNs4Language(tag, language))
+      || ns4LanguageMentioned(language, userLanguage, citedText);
+    (cited ? kept : discarded).push(language);
+  }
+  if (discarded.length) {
+    warnings.push(`localization.productLanguages: discarded ${discarded.join(', ')} — languages are a user decision and the user did not cite them in the clarification answer or in the original prompt; kept ${(kept.length ? kept : [userLanguage]).join(', ')}.`);
+  }
+  return kept.length ? kept : normalizeNs4Languages(userLanguage);
+}
+
+function sameNs4Language(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase() || primaryNs4Subtag(a) === primaryNs4Subtag(b);
+}
+
+function primaryNs4Subtag(tag: string): string { return tag.split('-')[0].toLowerCase(); }
+
+function ns4LanguageMentioned(language: string, userLanguage: string, foldedText: string): boolean {
+  if (!foldedText.trim()) return false;
+  const tag = language.toLowerCase();
+  // A bare two-letter code is a common word elsewhere ('en' in Spanish, 'de' in Portuguese): only a
+  // tag with a region or with three letters counts as a textual citation.
+  if ((tag.includes('-') || tag.length >= 3) && ns4WordMentioned(foldedText, foldNs4Text(tag))) return true;
+  return ns4LanguageNames(language, userLanguage).some(name => ns4WordMentioned(foldedText, name));
+}
+
+/** Display names of the language in the user's language, its own language and English. */
+function ns4LanguageNames(language: string, userLanguage: string): string[] {
+  const primary = primaryNs4Subtag(language);
+  const names = new Set<string>();
+  for (const displayLanguage of [userLanguage, primary, 'en']) {
+    let displayNames: Intl.DisplayNames;
+    try { displayNames = new Intl.DisplayNames([displayLanguage], { type: 'language' }); } catch { continue; }
+    for (const target of [language, primary]) {
+      try {
+        const name = displayNames.of(target);
+        // `of` echoes unknown tags back: an echoed tag must not bypass the two-letter token rule.
+        if (name && name.toLowerCase() !== target.toLowerCase()) names.add(foldNs4Text(name));
+      } catch { /* invalid tag: it has no display name, only a literal tag citation can keep it */ }
+    }
+  }
+  return [...names];
+}
+
+function ns4WordMentioned(text: string, token: string): boolean {
+  if (!token) return false;
+  let index = text.indexOf(token);
+  while (index !== -1) {
+    const before = index > 0 ? text[index - 1] : ' ';
+    const after = index + token.length < text.length ? text[index + token.length] : ' ';
+    if (!/[\p{L}\p{N}-]/u.test(before) && !/[\p{L}\p{N}-]/u.test(after)) return true;
+    index = text.indexOf(token, index + 1);
+  }
+  return false;
+}
+
+/** Lower case without diacritics, so 'inglês' also matches 'ingles'. */
+function foldNs4Text(value: string): string {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 function record(value: unknown): Record<string, any> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {}; }

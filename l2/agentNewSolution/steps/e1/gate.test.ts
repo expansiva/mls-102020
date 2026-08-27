@@ -91,6 +91,67 @@ test('E1 preserves the rich strategy, scope and localization contract', () => {
   assert.equal(validateNs4E1Module(artifact).ok, true);
 });
 
+function e1ReviewBodyWithLanguages(productLanguages: string[]) {
+  return {
+    userLanguage: 'pt-BR', reviewPolicy: { mode: 'smart' },
+    module: { moduleName: 'todo', title: 'Tarefas', purpose: 'Gerenciar tarefas da equipe.' },
+    strategy: { mode: 'newSolution', rationale: 'Não existe sistema legado.', databaseChangePolicy: 'new' },
+    businessScope: {
+      mainGoal: 'Gerenciar tarefas da equipe.',
+      actors: [{ actorId: 'member', title: 'Membro da equipe', kind: 'internal', expectedOutcome: 'Concluir tarefas.' }],
+      expectedOutcomes: [{ outcomeId: 'tasksDone', title: 'Tarefas concluídas', description: 'O quadro reflete o progresso.' }],
+      inScope: ['tarefas'], outOfScope: [],
+    },
+    localization: { productLanguages, defaultLanguage: 'pt-BR' },
+    declaredConstraints: { mandatoryIntegrations: [] }, changeSummary: [],
+  };
+}
+
+test('languages the user never asked for are discarded with a visible warning — run02 102047', () => {
+  // The LLM invented en/es for a pt-BR-only request: empty clarification answer, prompt without any
+  // language mention. The l4 must carry exactly [userLanguage] and the discard must never be silent.
+  const review = normalizeNs4E1Review(e1ReviewBodyWithLanguages(['pt-BR', 'en', 'es']), {
+    userLanguage: 'pt-BR', productLanguages: '',
+    sourcePrompt: 'Criar um aplicativo de tarefas para minha equipe',
+  });
+  assert.deepEqual(review.localization.productLanguages, ['pt-BR']);
+  assert.equal(review.localization.defaultLanguage, 'pt-BR');
+  assert.equal(review.i18nWarnings?.length, 1);
+  assert.match(review.i18nWarnings?.[0] || '', /en, es/);
+  const gate = validateNs4E1Review(review);
+  assert.equal(gate.ok, true);
+  assert.equal(gate.issues.some(issue => issue.severity === 'warning' && issue.code === 'NS4_E1_LANGUAGES_PROVENANCE'), true);
+  const plan = normalizeNs4RootPlan({
+    validPrompt: true, userPrompt: 'Criar um aplicativo de tarefas para minha equipe', userLanguage: 'pt-BR',
+    titles: Object.fromEntries([
+      'e1-clarification', 'e1-compile', 'e2-journeys', 'e3-access-matrix', 'e4-ontology',
+      'e5-rules', 'e6-behaviors', 'e7-realization', 'e8-workspaces', 'e9-navigation-compiler', 'e10-validation',
+    ].map(id => [id, id])), clarification,
+  }, 'Criar um aplicativo de tarefas para minha equipe');
+  const artifact = buildNs4ModuleArtifactFromReview(review, plan.userPrompt, 'auto', plan.presentation);
+  assert.deepEqual(artifact.module.languages, ['pt-BR']);
+  assert.deepEqual(artifact.localization.productLanguages, ['pt-BR']);
+  assert.equal('i18nWarnings' in artifact, false, 'the warning is trace-only, never part of the l4');
+});
+
+test('languages with user provenance pass untouched, by prompt mention or clarification answer', () => {
+  // Cited by NAME in the prompt ("em português e inglês") — no clarification answer.
+  const promptReview = normalizeNs4E1Review(e1ReviewBodyWithLanguages(['pt-BR', 'en']), {
+    userLanguage: 'pt-BR', productLanguages: '',
+    sourcePrompt: 'Criar um pet shop em português e inglês',
+  });
+  assert.deepEqual(promptReview.localization.productLanguages, ['pt-BR', 'en']);
+  assert.equal(promptReview.i18nWarnings, undefined);
+  assert.equal(validateNs4E1Review(promptReview).ok, true);
+  // Cited by TAG in the clarification answer.
+  const answerReview = normalizeNs4E1Review(e1ReviewBodyWithLanguages(['pt-BR', 'en', 'es']), {
+    userLanguage: 'pt-BR', productLanguages: 'pt-br, en, es',
+    sourcePrompt: 'Criar um pet shop',
+  });
+  assert.deepEqual(answerReview.localization.productLanguages, ['pt-BR', 'en', 'es']);
+  assert.equal(answerReview.i18nWarnings, undefined);
+});
+
 test('product languages are normalized, ordered and deduplicated independently of widget language', () => {
   assert.deepEqual(normalizeNs4Languages('pt-br, EN; es, pt-BR'), ['pt-BR', 'en', 'es']);
   assert.deepEqual(normalizeNs4Languages('', 'pt-br'), ['pt-BR']);

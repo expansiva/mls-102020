@@ -2,6 +2,20 @@
 
 # Changelog
 
+- 2026-08-27 (shared dts persistido e referenciado — cf_shared_dts_persistido_e_ref) — o artefato
+  compilado do shared muda de `trace/frontend-shared-dts/<page>.txt` para `web/shared/<page>Dts.txt`
+  (visível ao lado do shared, decisão do Wagner 27/ago). `<page>Dts.txt` e não `<page>.d.ts`:
+  shortName do stor não tem ponto (nomes_sem_ponto; '.d.ts' não é extensão composta conhecida do sync
+  e viraria shortName `<page>.d` — família do bug SW add versionRef 0); prova de 27/ago: um `.d.ts`
+  real ao lado do shared é inerte para o tsc do mls-base (import de `<page>.js` resolve para o `.ts`;
+  skipLibCheck esconde o declaration file), mas só enquanto skipLibCheck durar. O item l2_page passa
+  a DECLARAR o artefato em dependsFiles (sem troca implícita; defs antigos seguem funcionando pelo
+  branch legado), os planners sondam o shared .ts por trás do artefato (dependencyProbeRefs), o
+  verify da phase re-persiste o artefato de um shared que só compilou após repair
+  (persistSharedDtsArtifactIfStale — run02 102047: taskCatalogue nunca nasceu), o trace de cada item
+  declara `context=dts` ou `context=raw-ts (motivo)` nos DOIS runtimes, e o scaffold leva o
+  `purpose` (título do l4) para o JSDoc de action/handler — uma linha, sem despejo.
+
 - 2026-08-26 (gates declaram, raio por item) — doutrina "declarar, não bloquear" no verify e no
   closing gate. Guard sistêmico exige a mesma assinatura do primeiro erro (não o placar). `.test.ts`
   e prosa nunca bloqueiam; gates de qualidade reparam e, esgotado o orçamento, declaram. Um shared

@@ -15,13 +15,17 @@ import {
   buildMaterializeTypecheckTest,
   buildMissingCodeRepairHint,
   collectChartEventIssues,
+  collectMissingI18nBlockIssues,
   collectPageCustomElementTagIssues,
   collectPageTemplateHygieneIssues,
   buildSharedDtsSection,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
+  dependencyProbeRefs,
   expandContextRef,
+  isSharedDtsArtifactRef,
   isSharedRuntimeTsRef,
+  sharedTsRefOfDtsArtifact,
   isMaxTokensFailure,
   isSplitWorthyFailure,
   isTimeoutFailure,
@@ -39,6 +43,7 @@ import {
   type PlannedItem,
 } from './helpers/cfeMaterializeCore.js';
 import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './helpers/nodejsMaterializeLlmClient.js';
+import { formatGeneratedTsCli } from './helpers/nodejsFormatTs.js';
 import { generateSharedScaffold } from './helpers/cfeSharedScaffold.js';
 import { buildPageSkeleton, organismShortName, type PageOrganism } from './helpers/cfePageSkeleton.js';
 import { buildSplitPlan, type SplitPlanSection } from './helpers/cfePageSplitPlan.js';
@@ -256,7 +261,9 @@ function newestDependencyMs(item: PipelineItem): number | null {
   const deps = item.dependsFiles ?? [];
   let newest: number | null = null;
   for (const dep of deps) {
-    for (const ref of expandContextRef(dep)) {
+    // dependencyProbeRefs: a shared-dts artifact dep also probes its shared .ts — a shared
+    // regenerated with a stale/absent artifact must still make the page "dependency newer than ts".
+    for (const ref of expandContextRef(dep).flatMap(dependencyProbeRefs)) {
       const ms = refMtimeMs(ref);
       if (ms != null && (newest == null || ms > newest)) newest = ms;
     }
@@ -278,7 +285,7 @@ function plan(scanned: ScannedDefs[], force: boolean): PlannedItem[] {
     const testRef = typecheckCode ? testPathForOutputPath(item.outputPath) : null;
     const testMs = testRef ? mtimeMs(mlsToFs(testRef)) : null;
     const depMs = newestDependencyMs(item);
-    const scheduledDep = (item.dependsFiles ?? []).some((dep) => expandContextRef(dep).some((ref) => scheduledOutputs.has(ref)));
+    const scheduledDep = (item.dependsFiles ?? []).some((dep) => expandContextRef(dep).flatMap(dependencyProbeRefs).some((ref) => scheduledOutputs.has(ref)));
     const stale = force || scheduledDep || isStale(defsMs, tsMs, depMs) || (testRef != null && (testMs == null || (defsMs != null && defsMs > testMs)));
     const reason = force
       ? 'forced'
@@ -315,20 +322,37 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
   const depReport: string[] = [];
   for (const d of item.dependsFiles ?? []) {
     for (const ref of expandContextRef(d)) {
-      // Context diet (flow.json materializationContextPolicy): for page items the shared base
-      // class is sent as its persisted compiled .d.ts (trace/frontend-shared-dts, written by the
-      // Studio materializer) when it is at least as fresh as the shared .ts; otherwise the raw
-      // source is the fallback (this runner has no compiler).
+      // Declared shared-dts artifact (web/shared/<page>Dts.txt): the page defs points at the
+      // artifact itself since 27/ago. Fresh artifact wins; this runner has no compiler, so the raw
+      // shared .ts (i18n-trimmed) is the fallback — and the report SAYS which one the page got.
+      if (isSharedDtsArtifactRef(ref)) {
+        const sharedTs = sharedTsRefOfDtsArtifact(ref);
+        if (!sharedTs) continue;
+        const dts = readFreshSharedDts(sharedTs);
+        if (dts != null) {
+          depReport.push(`OK  ${ref} context=dts`);
+          contextSections.push(buildSharedDtsSection(sharedTs, dts));
+          continue;
+        }
+        const r = readContext(sharedTs);
+        depReport.push(`${r.found ? 'OK ' : 'MISS'} ${ref} -> ${sharedTs} context=raw-ts (artifact missing or stale; this runner has no compiler)`);
+        if (r.found) contextSections.push(buildContextSection(sharedTs, trimSharedI18nForPageContext(r.content)));
+        continue;
+      }
+      // Legacy defs (pre-27/ago): the page still declares the shared .ts and the swap is implicit.
       if (item.type === 'l2_page' && isSharedRuntimeTsRef(ref)) {
         const dts = readFreshSharedDts(ref);
         if (dts != null) {
-          depReport.push(`OK  ${ref} -> ${sharedDtsArtifactRef(ref)}`);
+          depReport.push(`OK  ${ref} -> ${sharedDtsArtifactRef(ref)} context=dts`);
           contextSections.push(buildSharedDtsSection(ref, dts));
           continue;
         }
       }
       const r = readContext(ref);
-      depReport.push(`${r.found ? 'OK ' : 'MISS'} ${ref === d ? d : `${d} -> ${ref}`}`);
+      const contextNote = item.type === 'l2_page' && isSharedRuntimeTsRef(r.ref)
+        ? ' context=raw-ts (artifact missing or stale; this runner has no compiler)'
+        : '';
+      depReport.push(`${r.found ? 'OK ' : 'MISS'} ${ref === d ? d : `${d} -> ${ref}`}${contextNote}`);
       // A page gets the shared with only the default locale catalog: it needs the key NAMES, not three
       // translations of every string (see trimSharedI18nForPageContext).
       const content = item.type === 'l2_page' && isSharedRuntimeTsRef(r.ref) ? trimSharedI18nForPageContext(r.content) : r.content;
@@ -354,7 +378,10 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
  */
 function pageSkeletonFor(item: PipelineItem, data: unknown): string | undefined {
   if (item.type !== 'l2_page' && item.type !== 'l2_page_organism') return undefined;
-  const sharedRef = (item.dependsFiles ?? []).find(ref => isSharedRuntimeTsRef(ref));
+  // The page item now declares the shared-dts ARTIFACT (web/shared/<page>Dts.txt); the raw .ts ref
+  // the skeleton needs is derived from it. Old defs still declare the .ts directly.
+  const sharedRef = (item.dependsFiles ?? []).find(ref => isSharedRuntimeTsRef(ref))
+    ?? (item.dependsFiles ?? []).map(ref => sharedTsRefOfDtsArtifact(ref)).find((ref): ref is string => !!ref);
   if (!sharedRef) return undefined;
   const shared = readIfExists(mlsToFs(sharedRef));
   if (shared == null) return undefined;
@@ -744,7 +771,9 @@ async function materializeOne(
     let code = '';
     try {
       r = await callCollabLlm(cfg, { model: modelType, system, human: humanFull });
-      code = r.ok && r.code ? applyHeader(p.item.outputPath, r.code) : '';
+      // Formatted BEFORE the hygiene gates below and before writeGeneratedArtifacts: the gates, the
+      // strict tsc and the file on disk all see the same bytes (cf_format_codigo_gerado).
+      code = r.ok && r.code ? formatGeneratedTsCli(applyHeader(p.item.outputPath, r.code)) : '';
     } catch (error) {
       r = failedLlmResult(error);
     }
@@ -760,6 +789,9 @@ async function materializeOne(
     const hygiene = r.ok && code && (p.item.type === 'l2_page' || p.item.type === 'l2_page_organism')
       ? [
           ...collectPageTemplateHygieneIssues(code),
+          // run02/102047: a page born WITHOUT the skeleton i18n block passed every gate and
+          // @@addLanguage then skipped it ('without catalogue') — hold it here like the Studio phase does.
+          ...collectMissingI18nBlockIssues(code, p.item.type === 'l2_page' ? 'page' : 'organism'),
           ...collectChartEventIssues(code),
           ...(p.item.type === 'l2_page' ? collectPageCustomElementTagIssues(code, p.item.outputPath) : []),
         ]

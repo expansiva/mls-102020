@@ -52,7 +52,12 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const folder = String(file.folder || '');
       if (!isGeneratedFrontendFolder(folder, modules)) continue;
       if (file.extension === '.defs.ts') { keptDefs += 1; continue; }
-      if (file.extension !== '.ts' && file.extension !== '.test.ts' && file.extension !== '.html') continue;
+      // The persisted shared-dts artifact (web/shared/<page>Dts.txt) is derived from the shared .ts
+      // being deleted right here — leaving it behind would contradict "keeps ONLY the .defs.ts".
+      // Staleness alone would already protect readers, but the artifact exists for human conferral,
+      // and a stale one on display is exactly the doubt it was created to remove.
+      const isSharedDtsArtifact = file.extension === '.txt' && /\/web\/shared$/.test(folder) && String(file.shortName || '').endsWith('Dts');
+      if (file.extension !== '.ts' && file.extension !== '.test.ts' && file.extension !== '.html' && !isSharedDtsArtifact) continue;
       // Preserve the deterministic l4 contract byte-copies (F3): they are the wire contract of record.
       if (file.extension === '.ts' && /\/web\/contracts$/.test(folder) && isCopiedL4Contract(String(await file.getContent()))) {
         keptContracts += 1;

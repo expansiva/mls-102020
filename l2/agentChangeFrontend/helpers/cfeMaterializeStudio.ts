@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.ts" enhancement="_blank"/>
 
-import { parseDefs, contractTsPathOf, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { parseDefs, contractTsPathOf, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 
 declare const mls: any;
@@ -201,6 +201,46 @@ export function borrowedModelScopeSize(): number {
   return borrowedByScope.size;
 }
 
+/**
+ * Format a generated .ts before it is saved (cf_format_codigo_gerado, 27/ago).
+ *
+ * run02/102047: taskCatalogue.ts was born as 13KB in 35 lines while its siblings came out formatted —
+ * per-call LLM variation, so the model's output cannot be the only source of formatting. Two stages:
+ * the pure line-break pass (cfeMaterializeCore, shared with the CLI so both surfaces emit the same
+ * shape), then Monaco's own `editor.action.formatDocument` on a detached temporary editor for
+ * indentation — the exact precedent of enhancementStyleAura.formatTextInMemory, with language
+ * 'typescript'. tabSize 2 mirrors the CLI's ts-languageService settings (same formatter engine).
+ *
+ * Conservative by contract: the result is accepted only when it is whitespace-identical to the
+ * input (the i18n markers and every token survive byte-for-byte modulo whitespace); on any failure
+ * — Monaco missing, worker error, guard mismatch — the ORIGINAL code is returned, never an
+ * exception. Both model and editor are disposed (the editor alone does not dispose an external
+ * model — the Monaco listener-leak lesson).
+ */
+export async function formatGeneratedTsInStudio(code: string): Promise<string> {
+  try {
+    const broken = insertGeneratedTsLineBreaks(code);
+    const tempModel = monaco.editor.createModel(broken, 'typescript');
+    let formatted = broken;
+    try {
+      tempModel.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+      const tempEditor = monaco.editor.create(document.createElement('div'), { model: tempModel });
+      try {
+        await tempEditor.getAction('editor.action.formatDocument')?.run();
+        formatted = tempModel.getValue();
+      } finally {
+        tempEditor.dispose();
+      }
+    } finally {
+      tempModel.dispose();
+    }
+    return stripAllWhitespace(formatted) === stripAllWhitespace(code) ? formatted : code;
+  } catch (error) {
+    recordStudioMessage('warn', 'formatGeneratedTsInStudio failed (kept unformatted code)', error);
+    return code;
+  }
+}
+
 export async function saveGeneratedTs(
   project: number,
   level: number,
@@ -247,7 +287,7 @@ export async function saveGeneratedTsByMlsPath(mlsPath: string, content: string)
 }
 
 // Plain text artifact writer (no editor model, no compile) — used to persist the shared compiled
-// .d.ts to trace/frontend-shared-dts so the CLI runtime can read the same context from disk.
+// .d.ts to web/shared/<page>Dts.txt so the CLI runtime can read the same context from disk.
 export async function saveArtifactTextByMlsPath(mlsPath: string, content: string): Promise<boolean> {
   try {
     const parsed = parseMlsPath(mlsPath);
@@ -268,6 +308,25 @@ export async function saveArtifactTextByMlsPath(mlsPath: string, content: string
     recordStudioMessage('error', 'saveArtifactTextByMlsPath failed', error);
     return false;
   }
+}
+
+/**
+ * (Re)persist the shared compiled .d.ts artifact when it is absent or older than the shared .ts.
+ *
+ * The materialize-time persist (agentCfeMaterializeGen) runs only right after a SUCCESSFUL
+ * materialization — a shared that only compiled after a repair round never got a second chance and
+ * its pages silently fell back to the raw .ts (run02 102047: taskCatalogue, the largest shared,
+ * had no artifact at all). Called from the phase verify whenever a shared item verifies clean, so
+ * the artifact converges by the module gate. Best-effort: never blocks a run.
+ */
+export async function persistSharedDtsArtifactIfStale(sharedTsPath: string): Promise<void> {
+  const artifactPath = sharedDtsArtifactRef(sharedTsPath);
+  if (!artifactPath) return;
+  const artifactModified = getFileModifiedByMlsPath(artifactPath);
+  const sharedModified = getFileModifiedByMlsPath(sharedTsPath);
+  if (artifactModified !== null && (sharedModified === null || artifactModified >= sharedModified)) return;
+  const dts = await getCompiledDtsByMlsPath(sharedTsPath);
+  if (dts) await saveArtifactTextByMlsPath(artifactPath, dts);
 }
 
 export async function compileAndGetErrors(

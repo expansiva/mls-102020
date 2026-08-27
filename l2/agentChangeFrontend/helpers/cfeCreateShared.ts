@@ -43,6 +43,7 @@ import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource, replaceDefsValue } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
 import { enumDisplayLabel, enumLabelFallbackWarnings, readEnumLabels, type CfeEnumLabel } from '/_102020_/l2/agentChangeFrontend/helpers/cfeEnumLabels.js';
+import { sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 export { enumDisplayLabel, readEnumLabels };
 export type { CfeEnumLabel };
@@ -4406,15 +4407,20 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
     outputPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.ts`,
     defPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.defs.ts`,
     // Context diet (flow.json materializationContextPolicy): the *.defs.ts of shared/contracts are
-    // generator inputs, not render inputs — they no longer travel to the page LLM. The shared .ts is
-    // sent as its compiled .d.ts (self-describing via JSDoc) and RE-EXPORTS every contract DTO type
-    // (Input/Output/OutputItem), so the page imports all DTO types from shared and never needs the
-    // contract in its context — the raw contract .ts was dropped here (item 4, 16/07). Field names
-    // come from this page's layout defs; the contract still exists on disk and is compiled via the
-    // shared dependency (page -> shared -> contract). designSystem.ts is summarized to token names by
-    // the context builder. Missing files are tolerated by the materializer (readers skip null content).
+    // generator inputs, not render inputs — they no longer travel to the page LLM. The shared base
+    // class reaches the page as its compiled .d.ts (self-describing via JSDoc), and since 27/ago the
+    // page DECLARES that artifact (web/shared/<page>Dts.txt) instead of the .ts being swapped
+    // implicitly at prompt-assembly time — the context that travels is the context declared. The raw
+    // shared .ts stays the FALLBACK when the artifact is absent/stale (a shared that never compiled
+    // must not block the run), and the item trace then says `context=raw-ts (reason)`. The shared
+    // .d.ts RE-EXPORTS every contract DTO type (Input/Output/OutputItem), so the page imports all DTO
+    // types from shared and never needs the contract in its context — the raw contract .ts was
+    // dropped here (item 4, 16/07). Field names come from this page's layout defs; the contract still
+    // exists on disk and is compiled via the shared dependency (page -> shared -> contract).
+    // designSystem.ts is summarized to token names by the context builder. Missing files are
+    // tolerated by the materializer (readers skip null content).
     dependsFiles: [
-      `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
+      sharedDtsArtifactRef(`_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`)!,
       `_${project}_/l2/designSystem.ts`,
     ],
     dependsOn: [`${page.pageId}__l2_shared`, ...organisms.map(item => item.id)],
