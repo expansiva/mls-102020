@@ -88,9 +88,10 @@ export function syScanGroupMoleculeShortNames(groupFolder: string): string[] {
  * runtime already knows how to reach. This agent is the first to write a module that another file
  * IMPORTS BY NAME, so it is the first that needs the module to be fetchable.
  *
- * `mls.stor.cache.AddMfileIfNeed` is the documented door for that — "add a L2 resource to the cache,
- * returns a path to use in fetch" — and it is what the Studio does when a human saves the file, which is
- * why editing the .defs by hand in the preview made the import start working.
+ * The door is the `saveCache` argument of `compileAndPostProcess` — which is literally what the editor
+ * service calls when a human saves a file, which is why editing the .defs by hand made the import start
+ * working. (`mls.stor.cache.AddMfileIfNeed` is the lower-level primitive; the editor goes through
+ * compileAndPostProcess, so this does too — copy the product's path, do not invent a parallel one.)
  *
  * Never throws: a cache miss must degrade to a reported warning, not to a failed run that wrote correct
  * files.
@@ -101,8 +102,16 @@ export async function syPublishToCache(fileInfo: NmFileInfo): Promise<{ path: st
     if (!storFile) return { path: '', error: 'arquivo não está no stor' };
     const modelTs = await storFile.getOrCreateModel() as mls.editor.IModelTS;
     if (!modelTs) return { path: '', error: 'sem model para compilar' };
-    const path = await mls.stor.cache.AddMfileIfNeed(modelTs);
-    return { path: path || '', error: path ? '' : 'AddMfileIfNeed não devolveu caminho' };
+    // ⚠️ THIS EXACT CALL IS THE PRODUCT'S OWN SAVE PATH, not a guess. The editor service does
+    // `compileAndPostProcess(mmodel, false, true)` (mls-100554/l2/serviceSource.ts) — and the third
+    // argument, `saveCache`, is the whole difference. `nmFs.compileStorTs` passes it FALSE, as do all
+    // ten agents in this family: they only ever wanted diagnostics, because their files are molecule
+    // sources the runtime already reaches. A module that another file IMPORTS BY NAME has to be in the
+    // cache, and only saveCache puts it there. Measured 2026-08-26: writing, then writing + compiling,
+    // both left the group page failing with `Error get …/index.defs.js` — and editing the same file by
+    // hand in the editor (which runs this call) made the import start working.
+    const ok = await mls.l2.typescript.compileAndPostProcess(modelTs, false, true);
+    return { path: ok ? 'cache' : '', error: ok ? '' : 'compileAndPostProcess(saveCache) devolveu false' };
   } catch (e) {
     return { path: '', error: (e as Error)?.message || String(e) };
   }
