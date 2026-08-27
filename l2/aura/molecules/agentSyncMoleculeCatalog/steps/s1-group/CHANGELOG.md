@@ -9,7 +9,7 @@
   from a molecule's short name. See `flow.json` → `decisions.scenarioHarvest`.
 
 - **2026-08-25 (E8 prep)** — Two matcher bugs found and fixed while running the D-E3 sweep
-  (`todo-implementar-E8-index-ts.md` §2) across all 30 real groups with an `index.ts` (the pilot's 6
+  (`the E8a measurement of 2026-08-25` §2) across all 30 real groups with an `index.ts` (the pilot's 6
   seeded groups never exercised them): (1) some groups keep the `ml` prefix in the field name
   (`mlDateIntervalDrag`), most drop it (`addressField`) — the field side now drops a leading `ml` token;
   (2) a letter→digit boundary was not tokenized (`scanCode1d` read as one merged token `code1d` instead
@@ -31,3 +31,17 @@
   Segundo motivo, de graça: esta é a **única porta de compilação** que este passo determinístico tem. O
   defeito da crase de 26/08 — um `# Objective` com `código` inline fechava o template literal e
   invalidava o arquivo em silêncio — teria sido pego aqui, na geração.
+
+- **2026-08-27 (idioma)** — **o markdown e os comentários dos arquivos GERADOS passaram a ser em inglês.**
+  O conteúdo sempre foi inglês (a descrição do grupo vem do `skills/index.ts`, o `# Objective` vem de cada
+  molécula); o que estava em português era o **arcabouço** — "Objetivo do grupo", "Como escolher",
+  "Cenários (quick reference)", "Moléculas (N)", "Este projeto não tem tema local" — herdado da semeadura
+  do piloto, escrita à mão em 19/08. O resultado era um quadro em português em volta de conteúdo em
+  inglês, num projeto que é todo em inglês.
+
+  Traduzidos os dois renderizadores (`syRenderDefs`, `syRenderSkill`), markdown e comentários do arquivo
+  gerado. ⚠️ **As mensagens do agente ao usuário — resumo do `s4`, avisos, recusas — seguem em português**,
+  porque são para quem roda, não para o arquivo. O escopo aqui era só o que o agente ESCREVE.
+
+  Efeito: todo `.defs.ts` e o `skill.ts` diferem do que existe hoje nessas linhas — o próximo sync de cada
+  projeto normaliza sozinho.

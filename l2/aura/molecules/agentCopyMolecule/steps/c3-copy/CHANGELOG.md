@@ -33,3 +33,51 @@ Nada mudou no código: mudou o PESO. Com a tradução passando para outro agente
 `i18n_changed`/`i18n_lost` deixou de proteger apenas "o motivo da cópia" e passou a ser o contrato
 entre os dois agentes — o bloco que o próximo agente vai editar tem de chegar idêntico ao da base.
 Registrado para que ninguém relaxe essa checagem achando que é zelo estético.
+
+## 2026-08-27 — escreve, mas não compilava nem publicava no cache
+
+Achado comparando o `102040` (onde a molécula nasce, correto) com o `102053` (recebe por cópia,
+sem borda de botão): fonte idêntica, comportamento diferente — a única diferença era o arquivo
+nunca ter sido compilado no destino. `n4-render`/`n3-defs` (`agentNewMolecule2`) compilam o `.ts` e
+o `.defs.ts` que escrevem; este step só escrevia.
+
+Depois de cada escrita, o step agora chama `cCompileAndPublishTs` (novo em `cFs.ts`):
+`mls.l2.typescript.compileAndPostProcess(model, runAfterCompile, true)` — o MESMO caminho que o
+editor usa ao salvar (`mls-100554/l2/serviceSource.ts:1352`), com `saveCache:true`. `runAfterCompile`
+é `true` no `.ts` (dispara `enhancementAura.onAfterCompile` → injeção de estilo — sem efeito ainda
+aqui, porque o `.less` só existe depois do `c4-less`, que republica) e `false` no `.defs.ts` (é
+contrato, não componente).
+
+Erro de compilação agora falha o step (`compile_ts`/`compile_defs`), em vez de completar como
+sucesso com um arquivo quebrado no destino — o `.defs.ts` ausente continua sendo só aviso, isso não
+mudou.
+
+- **2026-08-27 (2ª)** — ⚠️ **DUAS COMPILAÇÕES CONCORRENTES no mesmo model — o conserto de hoje de manhã
+  tinha criado uma corrida.** Run real de Studio (`run-20260827163406.5225`, copiando
+  `ml-datetime-picker` para o 102053):
+
+  ```
+  compile_ts:   … compilação falhou sem erro relatado
+  compile_defs: … compilação falhou sem erro relatado
+  ```
+
+  O `c3-copy` abortou, e por isso **o `c4-less` e o `c5-demo` nunca rodaram** — nem `.less` nem `.html`
+  foram copiados. O sintoma que o usuário viu ("o .html não foi copiado") é consequência, não causa.
+
+  **O que prova que é mecânico e não de conteúdo:** o `.defs.ts` copiado tem **zero imports** e é só
+  `export const` de dados. Não há como ele falhar ao compilar de verdade — e falhou **igual** ao `.ts`.
+
+  **A causa:** o `writeStorTextAtomic` deste agente passava `awaitCompile: false` ao `createStorFile`.
+  Para um arquivo NOVO, isso dispara uma compilação **não aguardada**, e o `cCompileAndPublishTs` logo em
+  seguida roda uma **segunda** compilação no mesmo model. O `compile()` faz curto-circuito em
+  `modelVersion === model.getVersionId() && !modelNeedCompile` — estado que é setado no **início** da
+  compilação em voo, antes de os diagnósticos chegarem — então uma das duas perde e volta com
+  `compilerResults.errors` vazio. O `nmFs` do `agentNewMolecule2` documenta exatamente essa corrida.
+
+  **O conserto:** `compileOnCreate = false` nas duas escritas do `c3`. Passa a haver **uma única**
+  compilação — a explícita, que é também a única que salva o cache. O `agentNewMolecule2` resolve a mesma
+  corrida pelo outro lado (amarrando `awaitCompile` a `needCreateModel`) porque lá o arquivo **já existe**
+  quando um passo o escreve, e o `createStorFile` nunca é alcançado; aqui todo arquivo de destino é novo,
+  então o create é justamente de onde vem o segundo compilador.
+
+  O `.html` do `c5-demo` mantém o padrão anterior — é a única compilação que ele tem.

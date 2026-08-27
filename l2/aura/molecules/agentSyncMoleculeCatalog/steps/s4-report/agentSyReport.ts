@@ -52,7 +52,7 @@ async function beforePromptStep(
     if (artifact) groupArtifacts.push(artifact);
   }
   const indexTsArtifacts: SyIndexTsArtifact[] = [];
-  for (const canonical of input.indexTsMigrationGroups) {
+  for (const canonical of [...input.indexTsMigrationGroups, ...input.indexTsCreationGroups, ...(input.indexTsRegenerationGroups || []).map(g => g.canonical)]) {
     const artifact = await readJsonArtifact<SyIndexTsArtifact>(syIndexTsArtifactFileInfo(runKey, syGroupFolder(canonical)), false);
     if (artifact) indexTsArtifacts.push(artifact);
   }

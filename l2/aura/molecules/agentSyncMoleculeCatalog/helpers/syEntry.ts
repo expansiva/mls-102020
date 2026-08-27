@@ -5,7 +5,7 @@
 // validation against the discovered groups is syDiscover's job (helpers/syDiscover.ts), because only
 // it knows which groups actually exist.
 //
-// ⚠️ DECISION D1a (closed 2026-08-25, todo §2 / analysis §9): detecting the index.ts opt-in is
+// ⚠️ DECISION D1a (closed 2026-08-25, the brief §2 / analysis §9): detecting the index.ts opt-in is
 // DETERMINISTIC WORD MATCHING. No clarification, no classifier — a wrong guess towards "no index.ts"
 // costs nothing (the run is asked again); a wrong guess towards "yes" would rewrite up to 795 lines of
 // authored Lit. So a mention that TALKS ABOUT the index page without matching one of the recognized

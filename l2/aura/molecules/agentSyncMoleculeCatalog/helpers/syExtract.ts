@@ -4,10 +4,10 @@
 // index.ts. Pure — no I/O, no mls.* access; the step reads the files and hands their text here.
 //
 // ⚠️ THE TAG COMES FROM THE REAL `@customElement(...)` OF THE MOLECULE'S .ts, NEVER FROM THE FILENAME
-// (todo §4.4 — this is what got 45/45 tags right in the pilot). syExtractTag reads the .ts; everything
+// (the brief §4.4 — this is what got 45/45 tags right in the pilot). syExtractTag reads the .ts; everything
 // else (# Objective, layoutConfig) is read from the molecule's .defs.ts.
 //
-// ⚠️ SCENARIOS ARE THE ONE PART OF THE CATALOG THAT IS NOT DERIVED (todo §4.4) — they are editorial. But
+// ⚠️ SCENARIOS ARE THE ONE PART OF THE CATALOG THAT IS NOT DERIVED (the brief §4.4) — they are editorial. But
 // the very first time a group is synced, there is nowhere else for them to come from except the group's
 // CURRENT index.ts (its hand-authored `renderReferenceTable()`), so syHarvestScenarios reads that table
 // mechanically (no LLM: it is a data read, not composition — the LLM in s3 is only for the Lit page
@@ -29,7 +29,7 @@ export interface SyExtractedDefs {
   layoutConfig: Record<string, string>;
 }
 
-/** Reads `# Objective` (COMPLETE — never truncated, todo §4.4) and `layoutConfig` from a .defs.ts. */
+/** Reads `# Objective` (COMPLETE — never truncated, the brief §4.4) and `layoutConfig` from a .defs.ts. */
 export function syExtractMoleculeDefs(defsSource: string): SyExtractedDefs | null {
   const text = defsSource || '';
   if (!text.trim()) return null;
@@ -69,12 +69,12 @@ function extractLayoutConfig(text: string): Record<string, string> {
   return out;
 }
 
-// ---- which layoutConfig axes vary across a group's siblings (todo §4.4 / analysis §6.2) ----
+// ---- which layoutConfig axes vary across a group's siblings (the brief §4.4 / analysis §6.2) ----
 
 /**
  * An axis is published only when at least two DISTINCT values exist among the molecules that DEFINE it.
  * A molecule that does not define the axis at all contributes nothing to that set — absence is "not
- * defined", never a value of its own (todo §4.4: "eixo ausente é 'não definido', não valor diferente").
+ * defined", never a value of its own (the brief §4.4: "eixo ausente é 'não definido', não valor diferente").
  */
 export function syVaryingAxes(layoutConfigs: Array<Record<string, string>>): string[] {
   const valuesByAxis = new Map<string, Set<string>>();
@@ -148,7 +148,7 @@ export function syHarvestScenarios(indexTsSource: string, molecules: Array<{ tag
     .map(row => ({
       scenario: row.scenario,
       // A field that matches no molecule of THIS group (e.g. the original table recommended a molecule
-      // that actually lives in a different group) is dropped, not guessed — todo §4.4.
+      // that actually lives in a different group) is dropped, not guessed — the brief §4.4.
       recommended: row.trueFields.map(matchField).filter((tag): tag is string => Boolean(tag)),
     }));
 }

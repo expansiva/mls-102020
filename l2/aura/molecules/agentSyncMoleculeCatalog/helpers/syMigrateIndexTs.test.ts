@@ -2,7 +2,13 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { syMigrateIndexTs, syNeedsIndexTsCreation, syNeedsIndexTsMigration } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syMigrateIndexTs.js';
+import {
+  syMigrateIndexTs,
+  syMoleculesNotShown,
+  syNeedsIndexTsCreation,
+  syNeedsIndexTsMigration,
+  syNeedsIndexTsRegeneration,
+} from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syMigrateIndexTs.js';
 
 const SHARED_REF = '/_102020_/l2/aura/molecules/shared/indexReferenceTable.js';
 // Absolute, like every other module specifier in l2 — a relative './index.defs' did not resolve in the
@@ -164,4 +170,32 @@ void test('a page missing only the .js is upgraded, and a canonical page is left
   const noJs = canonical.replace(DEFS_REF, DEFS_REF.replace('.js', ''));
   assert.equal(syMigrateIndexTs(noJs, SHARED_REF, DEFS_REF).changed, true);
   assert.equal(syMigrateIndexTs(canonical, SHARED_REF, DEFS_REF).changed, false);
+});
+
+// ---- G4: the page exists, is already migrated, but doesn't show every molecule (G4 decision, 2026-08-27) ----
+
+const SHOWCASE_TWO = `<groupfoo--ml-a></groupfoo--ml-a>
+<groupfoo--ml-b></groupfoo--ml-b>`;
+const SHOWCASE_ONE = `<groupfoo--ml-a></groupfoo--ml-a>`;
+
+void test('syMoleculesNotShown: every molecule instantiated outside imports is not missing', () => {
+  const content = `import '/x/ml-a';\nimport '/x/ml-b';\n${SHOWCASE_TWO}`;
+  assert.deepEqual(syMoleculesNotShown(content, 'groupfoo', ['ml-a', 'ml-b']), []);
+});
+
+void test('syMoleculesNotShown: a molecule with no instance is reported missing, even if imported', () => {
+  const content = `import '/x/ml-a';\nimport '/x/ml-b';\n${SHOWCASE_ONE}`;
+  assert.deepEqual(syMoleculesNotShown(content, 'groupfoo', ['ml-a', 'ml-b']), ['ml-b']);
+});
+
+void test('syMoleculesNotShown: an instance mentioned only on an import line does not count', () => {
+  // The import line itself contains the module path, never the '<groupfoo--ml-b' tag shape — this
+  // fixture guards against a regression back to the pre-2026-08-27 `content.includes(shortName)` bug.
+  const content = `import '/x/groupfoo/ml-a';\nimport '/x/groupfoo/ml-b';\n${SHOWCASE_ONE}`;
+  assert.deepEqual(syMoleculesNotShown(content, 'groupfoo', ['ml-a', 'ml-b']), ['ml-b']);
+});
+
+void test('G4: fires when at least one molecule of the group is missing', () => {
+  assert.equal(syNeedsIndexTsRegeneration(['ml-b']), true);
+  assert.equal(syNeedsIndexTsRegeneration([]), false);
 });

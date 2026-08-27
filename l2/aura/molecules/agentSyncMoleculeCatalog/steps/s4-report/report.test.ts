@@ -15,6 +15,7 @@ const INPUT: SyRunInput = {
   matchedGroups: ['groupEnterNumber'],
   indexTsMigrationGroups: ['groupEnterNumber'],
   indexTsCreationGroups: [],
+  indexTsRegenerationGroups: [],
   ignoredGroups: [{ folder: 'groupnavigatemain', reason: 'sem entrada em skills/index.ts' }],
   requestedButIgnoredGroups: [],
   unknownGroups: [],
@@ -107,19 +108,57 @@ void test('obligation 3b — a group whose s3 step left no artifact is reported 
   assert.match(report.indexTs.groups[0].reason || '', /não deixou artefato/);
 });
 
-void test('obligation 3c — a G1 group (no index.ts) is reported as creation-needed, with the "not built" note', () => {
+void test('obligation 3c — a G1 group (no index.ts) whose s3 step CREATED the page is reported as created, with its scenario count', () => {
+  const created: SyIndexTsArtifact = { ...INDEX_TS_ARTIFACT, status: 'created', scenarioCount: 3 };
+  const report = buildSyRunReport(
+    baseFacts({ input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: ['groupEnterNumber'] }, indexTsArtifacts: [created] }),
+  );
+  assert.equal(report.indexTs.groups[0].status, 'created');
+  assert.equal(report.indexTs.groups[0].scenarioCount, 3);
+  const summary = renderSyRunSummary(report);
+  assert.match(summary, /groupEnterNumber: index\.ts criado \(E8b\), 3 cenário\(s\)/);
+});
+
+void test('obligation 3c\' — a G1 group whose s3 step left no artifact is reported as creation-failed, not silently skipped', () => {
   const report = buildSyRunReport(
     baseFacts({ input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: ['groupEnterNumber'] }, indexTsArtifacts: [] }),
   );
-  assert.equal(report.indexTs.groups[0].status, 'creation-needed');
-  const summary = renderSyRunSummary(report);
-  assert.match(summary, /groupEnterNumber: sem index\.ts/);
-  assert.match(summary, /E8b, não implementado/);
+  assert.equal(report.indexTs.groups[0].status, 'creation-failed');
+  assert.match(report.indexTs.groups[0].reason || '', /não deixou artefato/);
 });
 
 void test('obligation 3d — a group that needed no trigger at all is reported as already-migrated', () => {
   const report = buildSyRunReport(baseFacts({ input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: [] } }));
   assert.equal(report.indexTs.groups[0].status, 'already-migrated');
+});
+
+// ---- G4 (decision of 2026-08-27) — a page that exists, is already migrated, but did not show every molecule ----
+
+void test('obligation 3e — a G4 group whose page was rewritten is reported as regenerated, WITH THE REASON (the brief §3.2)', () => {
+  const regenerated: SyIndexTsArtifact = { ...INDEX_TS_ARTIFACT, status: 'created', scenarioCount: 2 };
+  const report = buildSyRunReport(
+    baseFacts({
+      input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: [], indexTsRegenerationGroups: [{ canonical: 'groupEnterNumber', missingMoleculeCount: 2 }] },
+      indexTsArtifacts: [regenerated],
+    }),
+  );
+  assert.equal(report.indexTs.groups[0].status, 'regenerated');
+  assert.match(report.indexTs.groups[0].reason || '', /regenerada: 2 molécula\(s\) do grupo não apareciam na página/);
+  const summary = renderSyRunSummary(report);
+  // a silently rewritten page is indistinguishable from a corrupted one — the summary line must carry
+  // the "regenerada e por quê" text, not just the report object
+  assert.match(summary, /groupEnterNumber: index\.ts — regenerada: 2 molécula\(s\) do grupo não apareciam na página/);
+});
+
+void test("obligation 3e' — a G4 group whose s3 step left no artifact is reported as regeneration-failed, not silently skipped", () => {
+  const report = buildSyRunReport(
+    baseFacts({
+      input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: [], indexTsRegenerationGroups: [{ canonical: 'groupEnterNumber', missingMoleculeCount: 1 }] },
+      indexTsArtifacts: [],
+    }),
+  );
+  assert.equal(report.indexTs.groups[0].status, 'regeneration-failed');
+  assert.match(report.indexTs.groups[0].reason || '', /não deixou artefato/);
 });
 
 void test('obligation 4 — the report ALWAYS says the catalog is not published, and names the silent consequence', () => {

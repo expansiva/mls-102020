@@ -6,8 +6,8 @@
 //
 // The four obligations below are NOT stylistic — each traces to a measured defect (design record §8,
 // §9.3): (1) what was written; (2) ignored groups WITH a reason, so D4 never reads as data loss;
-// (3) index.ts status PER GROUP — migrated / needs creation (not built, E8b) / migration failed, so a
-// run never silently skips a group's page; (4) that the catalog is written but NOT PUBLISHED — the two
+// (3) index.ts status PER GROUP — migrated / created / migration failed / creation failed, so a run
+// never silently skips a group's page; (4) that the catalog is written but NOT PUBLISHED — the two
 // silent failures §9.3 measured (an unpublished catalog reads "Failed to fetch"; a published one with
 // unsaved edits reads the OLD content, with no error at all).
 
@@ -16,9 +16,6 @@ import { SyGroupArtifact, SyIgnoredGroup, SyIndexTsArtifact, SyProjectArtifact, 
 export const SY_PUBLISH_WARNING =
   'o catálogo foi gravado no stor (editor), mas NÃO foi publicado — não existe API de publicação nesta plataforma (D5). ' +
   'Um consumidor fora do editor (await import()) ainda lê o catálogo anterior, e um projeto publicado com esta edição não salva lê o conteúdo ANTIGO, sem erro nenhum. Publique o projeto manualmente para que o catálogo valha.';
-export const SY_CREATION_NOT_BUILT =
-  'criação de index.ts do zero (E8b) não está implementada nesta versão — o grupo segue sem página de demonstração até isso ser construído.';
-
 export interface SyRunReportGroup {
   canonical: string;
   folder: string;
@@ -34,14 +31,17 @@ export interface SyRunReportGroup {
   cacheError: string;
 }
 
-export type SyIndexTsStatus = 'migrated' | 'migration-failed' | 'creation-needed' | 'already-migrated';
+export type SyIndexTsStatus = 'migrated' | 'migration-failed' | 'created' | 'creation-failed' | 'regenerated' | 'regeneration-failed' | 'already-migrated';
 
 export interface SyRunReportIndexTsGroup {
   canonical: string;
   folder: string;
   status: SyIndexTsStatus;
-  /** Set when status is 'migration-failed'. */
+  /** Set when status is 'migration-failed' or 'creation-failed'. */
   reason?: string;
+  /** Set when status is 'created' (E8b). */
+  scenarioCount?: number;
+  droppedScenarioNames?: string[];
 }
 
 export interface SyRunReport {
@@ -65,7 +65,6 @@ export interface SyRunReport {
   indexTs: {
     requested: boolean;
     groups: SyRunReportIndexTsGroup[];
-    creationNotBuilt: string;
   };
   publish: {
     published: false;
@@ -84,18 +83,43 @@ export function buildSyRunReport(facts: {
 }): SyRunReport {
   const migrationSet = new Set(facts.input.indexTsMigrationGroups);
   const creationSet = new Set(facts.input.indexTsCreationGroups);
+  const regenerationByCanonical = new Map((facts.input.indexTsRegenerationGroups || []).map(g => [g.canonical, g.missingMoleculeCount]));
   const indexTsArtifactByCanonical = new Map(facts.indexTsArtifacts.map(artifact => [artifact.canonical, artifact]));
 
   const indexTsGroups: SyRunReportIndexTsGroup[] = facts.input.matchedGroups
     .map((canonical): SyRunReportIndexTsGroup => {
       const folder = canonical.trim().toLowerCase();
-      if (creationSet.has(canonical)) return { canonical, folder, status: 'creation-needed' };
+      if (creationSet.has(canonical)) {
+        const artifact = indexTsArtifactByCanonical.get(canonical);
+        if (artifact?.status === 'created') return { canonical, folder, status: 'created', scenarioCount: artifact.scenarioCount, droppedScenarioNames: artifact.droppedScenarioNames };
+        // A group flagged for creation whose s3 step left no artifact (crashed) is reported the same as
+        // one that reported failure — the run must never read as silently having skipped it.
+        return { canonical, folder, status: 'creation-failed', reason: artifact?.reason || "o passo s3 não deixou artefato" };
+      }
       if (migrationSet.has(canonical)) {
         const artifact = indexTsArtifactByCanonical.get(canonical);
         if (artifact?.status === 'migrated') return { canonical, folder, status: 'migrated' };
         // A group flagged for migration whose s3 step left no artifact (crashed) is reported the same
         // as one that reported failure — the run must never read as silently having skipped it.
         return { canonical, folder, status: 'migration-failed', reason: artifact?.reason || "o passo s3 não deixou artefato" };
+      }
+      if (regenerationByCanonical.has(canonical)) {
+        // G4 (decision of 2026-08-27): a silently rewritten page is indistinguishable
+        // from a corrupted one, so the report MUST say the page was regenerated and why, every time —
+        // this is not decoration, it is the one obligation this trigger's automatic dispatch adds.
+        const missingCount = regenerationByCanonical.get(canonical) as number;
+        const artifact = indexTsArtifactByCanonical.get(canonical);
+        if (artifact?.status === 'created') {
+          return {
+            canonical,
+            folder,
+            status: 'regenerated',
+            reason: `regenerada: ${missingCount} molécula(s) do grupo não apareciam na página`,
+            scenarioCount: artifact.scenarioCount,
+            droppedScenarioNames: artifact.droppedScenarioNames,
+          };
+        }
+        return { canonical, folder, status: 'regeneration-failed', reason: artifact?.reason || "o passo s3 não deixou artefato" };
       }
       return { canonical, folder, status: 'already-migrated' };
     })
@@ -132,7 +156,7 @@ export function buildSyRunReport(facts: {
     // The names a mention MAY use. Without them an "I don't know that group" message is a dead end;
     // with them it is a correction the human can act on in one read.
     validGroups: (facts.input.catalogGroups || []).map(group => group.canonical || group.folder),
-    indexTs: { requested: facts.input.includeIndexTsRequested, groups: indexTsGroups, creationNotBuilt: SY_CREATION_NOT_BUILT },
+    indexTs: { requested: facts.input.includeIndexTsRequested, groups: indexTsGroups },
     publish: { published: false, warning: SY_PUBLISH_WARNING },
   };
 }
@@ -140,7 +164,10 @@ export function buildSyRunReport(facts: {
 const INDEX_TS_STATUS_LABEL: Record<SyIndexTsStatus, string> = {
   migrated: 'index.ts migrado (tabela agora vem do index.defs)',
   'migration-failed': 'index.ts NÃO migrado',
-  'creation-needed': 'sem index.ts — precisa ser criado (E8b, não implementado)',
+  created: 'index.ts criado (E8b)',
+  'creation-failed': 'index.ts NÃO criado',
+  regenerated: 'index.ts',
+  'regeneration-failed': 'index.ts NÃO regenerado',
   'already-migrated': 'index.ts já estava migrado, nada a fazer',
 };
 
@@ -183,11 +210,13 @@ export function renderSyRunSummary(report: SyRunReport): string {
   lines.push('');
   lines.push('index.ts, por grupo:');
   for (const group of report.indexTs.groups) {
-    const suffix = group.status === 'migration-failed' && group.reason ? ` — ${group.reason}` : '';
-    lines.push(`  - ${group.canonical}: ${INDEX_TS_STATUS_LABEL[group.status]}${suffix}`);
-  }
-  if (report.indexTs.groups.some(group => group.status === 'creation-needed')) {
-    lines.push(`  (${report.indexTs.creationNotBuilt})`);
+    // reason is only ever set for migration-failed / creation-failed / regeneration-failed / regenerated
+    // (the last one is not a failure — it is G4's own "regenerada e por quê" obligation, the brief §3.2).
+    const reasonSuffix = group.reason ? ` — ${group.reason}` : '';
+    const scenarioSuffix = group.status === 'created' || group.status === 'regenerated'
+      ? `, ${group.scenarioCount ?? 0} cenário(s)${group.droppedScenarioNames?.length ? `, ${group.droppedScenarioNames.length} nome(s) inventado(s) descartado(s)` : ''}`
+      : '';
+    lines.push(`  - ${group.canonical}: ${INDEX_TS_STATUS_LABEL[group.status]}${reasonSuffix}${scenarioSuffix}`);
   }
 
   lines.push('');

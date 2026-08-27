@@ -52,3 +52,25 @@ Duas correções, e a segunda é a que importa mais:
 Consequência de desenho, registrada de propósito: **o fail-fast do pipeline é por step, não
 transacional entre steps.** Os steps que decidem se a molécula existe (c1, c3) falham cedo e sem
 escrever; os que completam uma molécula já escrita (c4, c5) reportam em vez de bloquear.
+
+## 2026-08-27 — folha escrita nunca compilava, e o `.ts` irmão nunca sabia que ela existia
+
+Raiz do defeito visual (borda de botão sumindo em cópias — ver CHANGELOG do `c3-copy`, mesma
+data). `createStorFile` (`mls-102027/l2/libStor.ts`) só cria model automaticamente para
+`.ts`/`.html`/`.defs.ts`/`.test.ts` — `.less` fica de fora da lista. Sem model, a folha escrita por
+este step nunca compilava, e pior: o hook `onAfterCompile` do `.ts` irmão
+(`enhancementAura` → `injectStyle`, `mls-102027/l2/processCssLit.ts`) só encontra o estilo a injetar
+quando o model do `.less` **já existe no momento em que o `.ts` é compilado** — e o `c3-copy` roda
+ANTES deste step, quando o `.less` nem existe ainda. O JS já publicado no cache ficava para sempre
+sem a chamada `this.loadStyle(...)`, até um humano abrir o `.less` no editor (criando o model) e
+salvar (recompilando o `.ts` com o model já presente) — exatamente o gesto que o Lucas reproduziu
+manualmente em 27/08 para confirmar a causa.
+
+Depois de escrever a folha, o step agora:
+1. chama `cCompileLess` (novo em `cFs.ts`) — `createModel(storFile, true, true)`, a mesma chamada
+   que `createStorFile` teria feito se `.less` estivesse na lista; cria o model E compila;
+2. com o model existindo, chama `cCompileAndPublishTs` no `.ts` irmão com `runAfterCompile:true` —
+   agora `injectStyle` encontra o `.less` e embute o CSS no JS republicado no cache.
+
+Ambos os erros (`less_compile`, `ts_republish`) entram na lista de `issues` existente — mesma
+convenção per-item já documentada acima, nada novo em blocking/non-blocking.

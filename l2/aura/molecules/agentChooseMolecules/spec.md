@@ -42,7 +42,7 @@ a catalog of its own, since today only one project has one.
 
 Two calls instead of one, because the whole catalog does not fit a prompt and should not have to.
 Level 1 is ~1.5 KB; a single level 2 is 2–6 KB; all 32 groups would be ~90 KB. The precedent that
-settles it is `i3-edit`, which the 58 KB prompt brought down (`analise-skill-molecules.md` §2).
+settles it is `i3-edit`, which the 58 KB prompt brought down (`the catalog analysis` §2).
 
 So: **one level per prompt, one group per c2 call.** A c2 that received two groups would be cheaper in
 step count and would stop measuring what the design claims.

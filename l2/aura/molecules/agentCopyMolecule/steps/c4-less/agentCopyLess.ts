@@ -7,6 +7,8 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   C_AGENT_FOLDER,
+  cCompileAndPublishTs,
+  cCompileLess,
   cContextFileInfo,
   cDestMoleculeFile,
   cMoleculeFile,
@@ -85,8 +87,29 @@ async function beforePromptStep(
     const blocking = itemIssues.filter(issue => !C_LESS_NON_BLOCKING.includes(issue.code));
     issues.push(...itemIssues);
     if (blocking.length) continue;   // this item's sheet is skipped; the others still get theirs
-    await writeStorTextAtomic(cDestMoleculeFile(item.destination.group, copyShortName(item), '.less'), less, true);
+    const shortName = copyShortName(item);
+    const lessFileInfo = cDestMoleculeFile(item.destination.group, shortName, '.less');
+    await writeStorTextAtomic(lessFileInfo, less, true);
     written.push(item.destination.files.less);
+
+    // needCreateModel above is a no-op for .less (createStorFile's whitelist skips it — see
+    // cCompileLess), so without this the sheet sits uncompiled and its sibling .ts never gets a
+    // style to inject: create+compile the .less model...
+    const lessErrors = await cCompileLess(lessFileInfo);
+    if (lessErrors.length) {
+      issues.push(...lessErrors.map(message => ({ code: 'less_compile', message: `${item.origin.ref}: ${message}` })));
+      continue;   // a sheet that doesn't compile must not be reported as republished
+    }
+
+    // ...then recompile+republish the sibling .ts now that the .less model exists, so
+    // enhancementAura's onAfterCompile (processCssLit.ts injectStyle) finds it and bakes the
+    // style into the JS this run just published to the cache in c3-copy.
+    const tsFileInfo = cDestMoleculeFile(item.destination.group, shortName, '.ts');
+    const tsSource = await readStorText(tsFileInfo);
+    const republishErrors = await cCompileAndPublishTs(tsFileInfo, tsSource, true);
+    if (republishErrors.length) {
+      issues.push(...republishErrors.map(message => ({ code: 'ts_republish', message: `${item.origin.ref}: ${message}` })));
+    }
   }
 
   await writeJsonArtifact(cTraceFileInfo(runKey, PLAN_ID, 1), { savedAt: new Date().toISOString(), planId: PLAN_ID, written, issues });
