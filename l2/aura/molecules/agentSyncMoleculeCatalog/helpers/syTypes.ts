@@ -97,6 +97,13 @@ export interface SyDiscoveryResult {
   ignored: SyIgnoredGroup[];
 }
 
+/** G4 trigger detail (helpers/syMigrateIndexTs.ts syNeedsIndexTsRegeneration) — one per triggered group. */
+export interface SyRegenerationTrigger {
+  canonical: string;
+  /** How many molecules of the group have no visible instance on the CURRENT page — why G4 fired. */
+  missingMoleculeCount: number;
+}
+
 // ---- what the root leaves behind for every step to read (l4/agentSyncMoleculeCatalog/<runKey>/input.json) ----
 
 export interface SyRunInput {
@@ -115,10 +122,20 @@ export interface SyRunInput {
   includeIndexTsRequested: boolean;
   /** Canonical names of the groups this run actually generates, alphabetical by folder. */
   matchedGroups: string[];
-  /** G3 (todo §1): index.ts exists and still has the pre-migration code table. Migrated automatically. */
+  /** G3 (the brief §1): index.ts exists and still has the pre-migration code table. Migrated automatically. */
   indexTsMigrationGroups: string[];
-  /** G1 (todo §1): no index.ts at all. Created automatically since E8b — one LLM call per group. */
+  /** G1 (the brief §1): no index.ts at all. Created automatically since E8b — one LLM call per group. */
   indexTsCreationGroups: string[];
+  /**
+   * G4 (decision of 2026-08-27): the page exists and is already migrated (G1 and G3 both
+   * false), but renderShowcaseCards() — static Lit code, unlike the now-reactive reference table — does
+   * not show every molecule of the group. Regenerated automatically, same shape as G1 creation (one LLM
+   * call per group), never a text patch onto the existing page (the brief §2: acrescentar é o problema do
+   * i6-index). `missingMoleculeCount` is carried here, not re-derived by s4, because only the root reads
+   * the group's CURRENT page — s4 only ever reads artifacts, never source text (spec.md
+   * `artifactsAreTheContract`).
+   */
+  indexTsRegenerationGroups: SyRegenerationTrigger[];
   /** Ignored in a batch run (D4) — not requested by name, or requested via 'all'. */
   ignoredGroups: SyIgnoredGroup[];
   /** Named explicitly, but this project ignores them too — same reason, same D4 outcome. */

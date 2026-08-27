@@ -15,6 +15,7 @@ const INPUT: SyRunInput = {
   matchedGroups: ['groupEnterNumber'],
   indexTsMigrationGroups: ['groupEnterNumber'],
   indexTsCreationGroups: [],
+  indexTsRegenerationGroups: [],
   ignoredGroups: [{ folder: 'groupnavigatemain', reason: 'sem entrada em skills/index.ts' }],
   requestedButIgnoredGroups: [],
   unknownGroups: [],
@@ -129,6 +130,35 @@ void test('obligation 3c\' — a G1 group whose s3 step left no artifact is repo
 void test('obligation 3d — a group that needed no trigger at all is reported as already-migrated', () => {
   const report = buildSyRunReport(baseFacts({ input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: [] } }));
   assert.equal(report.indexTs.groups[0].status, 'already-migrated');
+});
+
+// ---- G4 (decision of 2026-08-27) — a page that exists, is already migrated, but did not show every molecule ----
+
+void test('obligation 3e — a G4 group whose page was rewritten is reported as regenerated, WITH THE REASON (the brief §3.2)', () => {
+  const regenerated: SyIndexTsArtifact = { ...INDEX_TS_ARTIFACT, status: 'created', scenarioCount: 2 };
+  const report = buildSyRunReport(
+    baseFacts({
+      input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: [], indexTsRegenerationGroups: [{ canonical: 'groupEnterNumber', missingMoleculeCount: 2 }] },
+      indexTsArtifacts: [regenerated],
+    }),
+  );
+  assert.equal(report.indexTs.groups[0].status, 'regenerated');
+  assert.match(report.indexTs.groups[0].reason || '', /regenerada: 2 molécula\(s\) do grupo não apareciam na página/);
+  const summary = renderSyRunSummary(report);
+  // a silently rewritten page is indistinguishable from a corrupted one — the summary line must carry
+  // the "regenerada e por quê" text, not just the report object
+  assert.match(summary, /groupEnterNumber: index\.ts — regenerada: 2 molécula\(s\) do grupo não apareciam na página/);
+});
+
+void test("obligation 3e' — a G4 group whose s3 step left no artifact is reported as regeneration-failed, not silently skipped", () => {
+  const report = buildSyRunReport(
+    baseFacts({
+      input: { ...INPUT, indexTsMigrationGroups: [], indexTsCreationGroups: [], indexTsRegenerationGroups: [{ canonical: 'groupEnterNumber', missingMoleculeCount: 1 }] },
+      indexTsArtifacts: [],
+    }),
+  );
+  assert.equal(report.indexTs.groups[0].status, 'regeneration-failed');
+  assert.match(report.indexTs.groups[0].reason || '', /não deixou artefato/);
 });
 
 void test('obligation 4 — the report ALWAYS says the catalog is not published, and names the silent consequence', () => {

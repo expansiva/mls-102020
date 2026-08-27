@@ -87,6 +87,10 @@ interface SyIndexTsStepArgs {
   group: string;
   purpose: string;
   usageContract: string;
+  /** Decided by the root (G4 the brief §3.1) — never re-derived here from whether index.ts exists on disk. */
+  mode: 'migrate' | 'create';
+  /** Set only for a G4 (regeneration) group — how many molecules the CURRENT page doesn't show. */
+  regenerationMissingCount?: number;
 }
 
 function parseGroupArg(prompt: unknown): SyIndexTsStepArgs | null {
@@ -95,11 +99,14 @@ function parseGroupArg(prompt: unknown): SyIndexTsStepArgs | null {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const group = typeof parsed.group === 'string' ? parsed.group.trim() : '';
-    if (!group) return null;
+    const mode = parsed.mode;
+    if (!group || (mode !== 'migrate' && mode !== 'create')) return null;
     return {
       group,
       purpose: typeof parsed.purpose === 'string' ? parsed.purpose : '',
       usageContract: typeof parsed.usageContract === 'string' ? parsed.usageContract : '',
+      mode,
+      ...(typeof parsed.regenerationMissingCount === 'number' ? { regenerationMissingCount: parsed.regenerationMissingCount } : {}),
     };
   } catch {
     return null;
@@ -122,17 +129,15 @@ async function beforePromptStep(
   const runKey = stepArgs.runKey;
   const canonical = groupArgs.group;
   const folder = syGroupFolder(canonical);
-  const indexTsInfo = nmGroupIndexFile(folder, '.ts');
 
-  // ⚠️ A retry continuation must NOT re-check file existence: creation mode writes index.ts
-  // SPECULATIVELY, before the gate runs (same shape as n7-index, so gate + compile issues report
-  // together) — so after a failed attempt the file exists on disk with BROKEN/incomplete content. Without
-  // this check, the retry step's own beforePromptStep would see an existing index.ts and misroute into
-  // migration mode, silently ending the retry loop instead of continuing it. retryAttempt is only ever
-  // present on a step this agent itself planted via nmAgentStepIntent below (buildCreationPromptReady's
-  // own retry branch never sets it), so its presence alone means "keep going in creation mode."
-  const isRetryContinuation = typeof stepArgs.retryAttempt === 'number';
-  if (!isRetryContinuation && nmFileExists(indexTsInfo)) {
+  // ⚠️ MODE COMES FROM THE ROOT, NEVER RE-DERIVED FROM WHETHER index.ts EXISTS ON DISK (G4 the brief §3.1).
+  // The old rule ("exists -> migrate") broke two ways: a G4 group's file DOES exist (migration would be
+  // a silent no-op on an already-migrated page), and a retry continuation's SPECULATIVELY-written index.ts
+  // from a failed creation attempt also exists (which used to misroute the retry into migration). Since
+  // the root already knows which trigger fired and hands the mode down explicitly, both problems are the
+  // same fix: trust groupArgs.mode, not nmFileExists.
+  if (groupArgs.mode === 'migrate') {
+    const indexTsInfo = nmGroupIndexFile(folder, '.ts');
     return runMigration(context, parentStep, step, hookSequential, runKey, canonical, folder, indexTsInfo);
   }
 
@@ -209,7 +214,7 @@ async function runMigration(
       stepTitle: note,
       result: artifact,
     }),
-    // A migration that could not apply is not a step failure — todo §3 gate list has no "must succeed"
+    // A migration that could not apply is not a step failure — the brief §3 gate list has no "must succeed"
     // requirement, and the group's catalog (s1/s2) is already written regardless (analysis §3: the
     // derivable must never be refém of the authored). The run reports it; it does not fail the batch.
     nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', note, 'input_output'),
@@ -269,7 +274,15 @@ async function buildCreationPromptReady(
 
   return [{
     type: 'prompt_ready',
-    args: step.prompt || JSON.stringify({ planId: syIndexTsPlanId(canonical), runKey, group: canonical, purpose: groupArgs.purpose, usageContract: groupArgs.usageContract }),
+    args: step.prompt || JSON.stringify({
+      planId: syIndexTsPlanId(canonical),
+      runKey,
+      group: canonical,
+      purpose: groupArgs.purpose,
+      usageContract: groupArgs.usageContract,
+      mode: 'create',
+      ...(groupArgs.regenerationMissingCount !== undefined ? { regenerationMissingCount: groupArgs.regenerationMissingCount } : {}),
+    }),
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
     taskId: context.task?.PK || '',
@@ -357,7 +370,17 @@ async function finishCreation(
         agentName: AGENT_NAME,
         stepTitle: `${step.stepTitle || syIndexTsPlanId(canonical)} (retry)`,
         planId: `${syIndexTsPlanId(canonical)}-retry${attempt}`,
-        prompt: { planId: syIndexTsPlanId(canonical), runKey, group: canonical, purpose: groupArgs.purpose, usageContract: groupArgs.usageContract, retryAttempt: attempt + 1, retryContext: errorText },
+        prompt: {
+          planId: syIndexTsPlanId(canonical),
+          runKey,
+          group: canonical,
+          purpose: groupArgs.purpose,
+          usageContract: groupArgs.usageContract,
+          mode: 'create',
+          ...(groupArgs.regenerationMissingCount !== undefined ? { regenerationMissingCount: groupArgs.regenerationMissingCount } : {}),
+          retryAttempt: attempt + 1,
+          retryContext: errorText,
+        },
       }),
       nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `gate failed, retrying:\n${errorText}`, 'input_output'),
     ];
@@ -405,8 +428,13 @@ async function finishCreation(
   };
   await writeJsonArtifact(syIndexTsArtifactFileInfo(runKey, folder), artifact);
 
+  // G4 (regenerationMissingCount set) vs G1: the underlying write is identical (creation mode always
+  // regenerates the whole page), only the step-trace wording differs — s4's report gets the "por quê"
+  // from input.json, not from this string (spec.md `artifactsAreTheContract`).
   const note = [
-    `${folder}: index.ts criado, ${scenarios.length} cenário(s)`,
+    typeof groupArgs.regenerationMissingCount === 'number'
+      ? `${folder}: index.ts regenerado (${groupArgs.regenerationMissingCount} molécula(s) não apareciam na página), ${scenarios.length} cenário(s)`
+      : `${folder}: index.ts criado, ${scenarios.length} cenário(s)`,
     droppedNames.length ? `${droppedNames.length} nome(s) inventado(s) descartado(s): ${droppedNames.join(', ')}` : '',
     defsWarnings.length ? `⚠️ ${defsWarnings.join(' | ')}` : '',
   ].filter(Boolean).join(' — ');
@@ -450,7 +478,7 @@ async function readPreviousCreationAttempt(runKey: string, folder: string, attem
  * pure extraction helpers, not a new invention. Needed because syRenderIndexDefs re-renders the WHOLE
  * index.defs.ts (decisions.e8bCreation_rewriteViaRendererNotTextEdit); this agent does not read s1's own
  * SyGroupArtifact back (it does not carry the full molecule list, only short tags) to avoid widening that
- * contract for a step it does not own (todo §0.4, "não reabra o que já funciona").
+ * contract for a step it does not own (the brief §0.4, "não reabra o que já funciona").
  */
 async function deriveGroupMolecules(folder: string, project: number): Promise<{ molecules: SyMoleculeEntry[]; warnings: string[] }> {
   const shortNames = syScanGroupMoleculeShortNames(folder);

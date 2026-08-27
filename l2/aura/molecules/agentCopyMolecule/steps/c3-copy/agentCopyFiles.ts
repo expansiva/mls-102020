@@ -112,7 +112,7 @@ async function beforePromptStep(
     return [cUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 
-  // Writing alone leaves the copy inert (§3 of the todo): a file that was written but never
+  // Writing alone leaves the copy inert (§3 of the brief): a file that was written but never
   // compiled+published only "works" after a human opens it in the editor and saves — the exact
   // gesture cCompileAndPublishTs replicates programmatically. runAfterCompile:true on the .ts so
   // enhancementAura's onAfterCompile runs (it will find no .less yet at this point — c4-less

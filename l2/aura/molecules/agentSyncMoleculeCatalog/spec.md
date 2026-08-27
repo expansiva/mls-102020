@@ -11,7 +11,7 @@ molecule list). Design record: this file + `flow.json` + the per-step `CHANGELOG
 | 1 | `l2/molecules/skill.ts` | ✅ from level 2 | **this agent, s2** |
 | 2 | `l2/molecules/<group>/index.defs.ts` | ✅ from the molecule `.ts`/`.defs.ts` files | **this agent, s1** |
 | 3 | `skills/<group>/usage.ts` | ❌ manual, editorial | nobody (decision of 2026-08-17) |
-| — | `l2/molecules/<group>/index.ts` (the showcase page) | ✅ mostly (E8a) / editorial-by-LLM (E8b) | **this agent, s3** — deterministic migration for a G3 group, one LLM call for a G1 group |
+| — | `l2/molecules/<group>/index.ts` (the showcase page) | ✅ mostly (E8a) / editorial-by-LLM (E8b/G4) | **this agent, s3** — deterministic migration for a G3 group, one LLM call for a G1 group (create) or a G4 group (regenerate) |
 
 Level 3 is referenced by level 2 (`usageContract`) and never read or written here.
 
@@ -193,7 +193,7 @@ table's markup rather than leaving it untouched.
 Once the markup needed editing anyway (D-E2b) and D-E1 already asked for a "thin call site," the whole
 `renderReferenceTable()` collapses to ~3 lines instead of the narrower "①②③ change, ④ untouched" surgery
 first scoped — confirmed explicitly with the product owner as a deliberate, bigger simplification. It is
-lossless because the todo's own measurement found the markup structurally identical across all 30 groups.
+lossless because the brief's own measurement found the markup structurally identical across all 30 groups.
 
 ### D-E3 — a scenario column naming another group's molecule
 
@@ -210,7 +210,7 @@ the `.defs.ts` regardless — no data lost, just no dead row drawn).
 ### D-E4 — the reference-table title
 
 **Measured:** swept all 30 groups' `<h2>` title — 28 say "Quick reference", 2 (`groupTriggerAction`,
-`groupViewTable`) say "Referência rápida" (the todo's own text only knew about `groupViewTable`).
+`groupViewTable`) say "Referência rápida" (the brief's own text only knew about `groupViewTable`).
 **Closed:** normalize to "Quick reference" everywhere — the shared module hardcodes it. This is the one
 place the migration edits prose that used to live in the untouched block; accepted because it is a
 single, swept, uniform correction, not a per-group judgment call.
@@ -236,7 +236,7 @@ showcase page written by ONE LLM tool-call turn, the same shape as `agentNewMole
 whether `index.ts` exists when the step runs, not by a flag (`flow.json` →
 `decisions.e8bCreation_sameStepTwoModes`).
 
-### The page is born migrated — the sharpest failure mode named in the todo
+### The page is born migrated — the sharpest failure mode named in the brief
 
 The model must NOT hand-write `rows`/`headers`/`<table>` markup for the model to "migrate" later. The
 system prompt reuses `skills/indexGroupPage.ts` verbatim (`decisions.e8bCreation_skillReuseNotFork` — no
@@ -281,6 +281,70 @@ line was written. **Still pending, and it is the real gate**: a Studio run creat
 the first time this agent calls an LLM at all, and no amount of unit testing exercises prompt/schema
 correctness against a real model the way E8a's own T1 gate did for the migration import.
 
+## G4 — regenerating a page that no longer shows every molecule
+
+Measured on `mls-102053`'s `groupViewHierarchy` (2026-08-27, `the G4 decision of 2026-08-27` §1):
+copy one molecule into a group with no page → Sync → page created, complete. Copy a 2nd molecule → Sync
+→ only `index.defs.ts` changes. Sync again with the opt-in phrase → still nothing. Copy the rest of the
+group → Sync → the page stays stuck at 1 card while the folder has 4. The trace explained it:
+`indexTsMigrationGroups: []` and `indexTsCreationGroups: []` — **no `s3` step was ever planted**. The page
+exists (G1 false) and already imports from `index.defs` (G3 false), so neither existing trigger fires.
+
+**Why the reactive reference table doesn't fix this on its own:** E8a made the "Quick reference" table
+reactive (it now reads `molecules`/`scenarios` from `index.defs.ts`), but `renderShowcaseCards()` — the
+actual per-molecule cards — is still hand-written Lit markup, one `<tag>` per molecule, same as before E8.
+A molecule folder that appears or disappears after the page was last created/migrated has nothing that
+regenerates those cards.
+
+**G4, closed with the product owner 2026-08-27:** a new trigger — the page exists, is already migrated,
+but does not show every molecule of the group (`helpers/syMigrateIndexTs.syNeedsIndexTsRegeneration`,
+fed by `syMoleculesNotShown`) — fires an AUTOMATIC, full regeneration of the page, reusing E8b's creation
+mode WHOLE rather than patching the missing card(s) in (`flow.json` → `decisions.g4Regeneration_*`).
+Patching in place is the shape `i6-index` already tried — authoring inside someone else's code, at real
+risk — while creation mode already exists, is gated, and retries; G4 is "run it again, on a page that
+happens to already exist" rather than a new authoring path.
+
+### The detector is not new — it is the gate's own check, extracted
+
+`createGate.ts`'s `molecule_not_shown` check (added 2026-08-27 to catch a molecule imported and never
+instantiated) already computes exactly "does the page show every molecule of the group" for a
+freshly-created page. `syMoleculesNotShown` is that same computation, extracted into
+`helpers/syMigrateIndexTs.ts` so the gate and the G4 trigger share ONE implementation instead of two
+copies that could drift — the gate now calls it too, in place of its old inline loop.
+
+### The mode has to be decided by the ROOT, not re-derived inside s3
+
+The sharpest trap in this work (the brief §3.1): `s3`'s own header used to say the two modes are "decided by
+whether the group's `index.ts` exists when the step runs." That rule is exactly right for G1 (absent) and
+G3 (present, unmigrated) — and exactly wrong for G4, whose file is both present AND already migrated. Left
+alone, a G4 group's `s3` step would pick migration, find nothing to migrate (the reference table is
+already delegated), and report success without ever touching the missing cards — the defect surviving the
+very step meant to fix it. The fix: the root computes the trigger and passes the mode explicitly
+(`mode: 'migrate' | 'create'` in the step's own prompt); `s3` trusts it and never calls `nmFileExists` to
+route. This also retires the narrower `retryAttempt`-presence workaround E8b needed for the same class of
+bug (a failed creation attempt's speculatively-written `index.ts` misrouting its own retry into migration)
+— with the mode always explicit, file existence is never consulted for routing at all.
+
+### Regenerating destroys a hand edit, on purpose, out loud
+
+Because G4 is automatic and reuses full creation, any manual edit to a card since the group's page was
+last written is lost the moment the group next gains or loses a molecule. There is no way to keep "full
+regenerate" and avoid this, so the mitigation is not prevention — it is that the report NEVER lets this
+pass silently. `s4`'s per-group `index.ts` line for a regenerated group always names the reason: *"index.ts
+— regenerada: N molécula(s) do grupo não apareciam na página"*. A page rewritten without an explanation in
+the report is indistinguishable from a corrupted one — this line is an obligation the brief states in so
+many words, not a nice-to-have.
+
+### G4 acceptance — what is verified, what is pending
+
+Verified without an LLM: `syMoleculesNotShown`/`syNeedsIndexTsRegeneration` unit tests
+(`helpers/syMigrateIndexTs.test.ts`), `createGate.ts`'s own `molecule_not_shown` tests unchanged after the
+extraction (`steps/s3-indexts/createGate.test.ts`), the report's `regenerated`/`regeneration-failed`
+branches and the exact reason string (`steps/s4-report/report.test.ts`), and a scoped `tsc` compile of the
+whole agent — clean. **Pending, same shape as E8b's own gap**: a real Studio run reproducing §1's exact
+sequence — see `flow.json` → `acceptance.g4StrongAcceptance` and the brief's own §5 "aceite forte", which
+also requires confirming a SECOND, unchanged Sync does NOT regenerate again (no trigger, no LLM call).
+
 ## How to run it
 
 ```
@@ -289,8 +353,8 @@ correctness against a real model the way E8a's own T1 gate did for the migration
 @@agentSyncMoleculeCatalog atualizar grupos groupEnterText, groupSelectOne e groupViewTable
 ```
 
-`index.ts` migration (G3) and creation (G1) both run automatically whenever a matched group has the
-trigger — the `incluindo o arquivo index.ts` phrase is still accepted but no longer required
+`index.ts` migration (G3), creation (G1) and regeneration (G4) all run automatically whenever a matched
+group has the trigger — the `incluindo o arquivo index.ts` phrase is still accepted but no longer required
 (`flow.json` → `decisions.migrationIsAutomatic`).
 
 Then read `l4/agentSyncMoleculeCatalog/<runKey>/report.json` (or the step's readable summary) for what

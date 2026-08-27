@@ -4,7 +4,7 @@
 // the group's own molecule files. See readme.md for the field-by-field derivation rules and
 // CHANGELOG.md for why each one exists.
 //
-// Deterministic on purpose (todo §3 / analysis §8): this is the part of the catalog the piloted
+// Deterministic on purpose (the brief §3 / analysis §8): this is the part of the catalog the piloted
 // agentChooseMolecules proved an LLM can choose from without inventing a tag, and it must never be
 // refém of the authored index.ts (s3) — if s3 fails, the catalog this step wrote is already there.
 
@@ -206,7 +206,7 @@ async function beforePromptStep(
 }
 
 /**
- * Scenarios come from ONE of three places, in this order (todo §4.4 / §6.1):
+ * Scenarios come from ONE of three places, in this order (the brief §4.4 / §6.1):
  * 1. Already in this group's index.defs.ts from a PREVIOUS sync — editorial content is preserved, never
  *    re-derived (the one field in the catalog that is not derived).
  * 2. Harvested from the group's CURRENT index.ts, mechanically — the first sync of a group that already

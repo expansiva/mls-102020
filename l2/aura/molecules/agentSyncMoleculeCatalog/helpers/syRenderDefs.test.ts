@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { syRenderIndexDefs, syRenderIndexHtml, SyRenderDefsInput } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syRenderDefs.js';
 
-// Shaped after the real groupEnterNumber seed (todo §4, mls-102040-temp/l2/molecules/groupenternumber).
+// Shaped after the real groupEnterNumber seed (the brief §4, mls-102040-temp/l2/molecules/groupenternumber).
 const INPUT: SyRenderDefsInput = {
   project: 102040,
   groupCanonical: 'groupEnterNumber',

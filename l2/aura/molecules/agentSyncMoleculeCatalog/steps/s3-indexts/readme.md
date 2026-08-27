@@ -1,15 +1,23 @@
-# s3-indexts (E8a + E8b)
+# s3-indexts (E8a + E8b + G4)
 
-ONE step, TWO modes, decided by whether the group's `index.ts` exists when the step runs:
+ONE step, TWO modes — **migrate** (no LLM) and **create** (one LLM call). ⚠️ Since G4, the mode is decided
+by the ROOT and passed in the step's own prompt (`mode: 'migrate' | 'create'`), never re-derived here from
+whether `index.ts` exists on disk: a G4 group's file DOES exist, so "exists -> migrate" would silently
+pick a no-op migration and never touch the missing cards (see `the G4 decision of 2026-08-27` §3.1
+and `flow.json`'s `decisions.g4Regeneration_modeFromRoot`).
 
 - **G3 — migrate** an existing `index.ts`: its `renderReferenceTable()` method starts importing the
   scenario table from `index.defs.ts` instead of carrying it as hand-written Lit code. No LLM.
 - **G1 — create** `index.ts` from scratch (E8b): the ONLY LLM call in this whole agent, one tool-call
   turn. The page must be born ALREADY in the migrated shape — see `createGate.ts` and
   `flow.json`'s `decisions.e8bCreation_*`.
+- **G4 — regenerate** an existing, already-migrated `index.ts` whose `renderShowcaseCards()` (still
+  static Lit code, unlike the now-reactive reference table) doesn't show every molecule of the group.
+  Runs in CREATE mode — the whole page is rewritten, same as G1 — with `regenerationMissingCount` set in
+  the step args so the note/report can say "regenerada: N molécula(s)..." instead of "criado".
 
-Planted for a group the root already confirmed has the **G3** trigger (`index.ts` exists, not yet
-migrated) OR the **G1** trigger (no `index.ts` at all). Never planted for a group with no trigger at all.
+Planted for a group the root already confirmed has the **G3**, **G1** or **G4** trigger. Never planted for
+a group with no trigger at all.
 
 ## Migration mode (G3) — what it does
 
@@ -36,7 +44,7 @@ migrated) OR the **G1** trigger (no `index.ts` at all). Never planted for a grou
 
 ## Why the whole method is replaced, not edited piecemeal
 
-Measured across all 30 real groups (`todo-implementar-E8-index-ts.md` §1, E8 prep sweep): the
+Measured across all 30 real groups (`the E8a measurement of 2026-08-25` §1, E8 prep sweep): the
 `rows`/`headers` declaration shape is not consistent — 27 groups inline `Array<{...}>`, one uses a local
 `interface Row`, one a local `type Row`, one no type at all. All four live entirely inside the method
 body, so replacing the whole method sidesteps parsing any of them — the only thing that has to be exactly
@@ -45,7 +53,7 @@ nested Lit template literals (`${headers.map(h => html\`...\`)}`).
 
 ## Why the migration collapsed to a 3-line call instead of ①②③-only surgery
 
-The original plan (`todo-implementar-E8-index-ts.md` §1) was to regenerate only the interface/headers/
+The original plan (`the E8a measurement of 2026-08-25` §1) was to regenerate only the interface/headers/
 rows and leave the table's markup untouched. Two decisions made with the product owner changed that:
 color now follows the molecule's alphabetical index (D-E2), which meant column order had to become
 alphabetical too (D-E2b) to keep the colors reading as a clean sequence — and that already required

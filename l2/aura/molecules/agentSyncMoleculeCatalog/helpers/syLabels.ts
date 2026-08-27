@@ -1,8 +1,8 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syLabels.ts" enhancement="_blank"/>
 
-// Color and label, DERIVED — never stored in a .defs.ts (decision D3a, todo §6.2 / analysis §5.2).
+// Color and label, DERIVED — never stored in a .defs.ts (decision D3a, the brief §6.2 / analysis §5.2).
 //
-// Consumed only by s3 (the index.ts migration, out of this stopping point's scope — todo §9 "pare
+// Consumed only by s3 (the index.ts migration, out of this stopping point's scope — the brief §9 "pare
 // depois do E7") — no field in index.defs.ts or skill.ts carries either. Built now anyway because the
 // todo assigns it to E4 regardless, so whoever builds s3 later does not have to re-derive it.
 //
@@ -24,7 +24,7 @@ export function syPaletteColor(index: number): string {
 
 /**
  * Acronyms that must stay fully upper-case instead of being title-cased ('Cpf' is a defect, not a
- * variant — todo §6.2, measured on `ml-cpf-input`). Short and curated on purpose: a wrong guess here is
+ * variant — the brief §6.2, measured on `ml-cpf-input`). Short and curated on purpose: a wrong guess here is
  * a cosmetic label, not an invented tag, so the list grows as new acronyms show up in molecule names.
  */
 const KNOWN_ACRONYMS = new Set(['CPF', 'CNPJ', 'CEP', 'OTP', 'URL', 'PDF', 'NPS', 'CSAT', 'CES', 'QR', 'ID', 'API', 'HTML', 'CSS', 'OCR']);

@@ -31,7 +31,7 @@ export interface SyRunReportGroup {
   cacheError: string;
 }
 
-export type SyIndexTsStatus = 'migrated' | 'migration-failed' | 'created' | 'creation-failed' | 'already-migrated';
+export type SyIndexTsStatus = 'migrated' | 'migration-failed' | 'created' | 'creation-failed' | 'regenerated' | 'regeneration-failed' | 'already-migrated';
 
 export interface SyRunReportIndexTsGroup {
   canonical: string;
@@ -83,6 +83,7 @@ export function buildSyRunReport(facts: {
 }): SyRunReport {
   const migrationSet = new Set(facts.input.indexTsMigrationGroups);
   const creationSet = new Set(facts.input.indexTsCreationGroups);
+  const regenerationByCanonical = new Map((facts.input.indexTsRegenerationGroups || []).map(g => [g.canonical, g.missingMoleculeCount]));
   const indexTsArtifactByCanonical = new Map(facts.indexTsArtifacts.map(artifact => [artifact.canonical, artifact]));
 
   const indexTsGroups: SyRunReportIndexTsGroup[] = facts.input.matchedGroups
@@ -101,6 +102,24 @@ export function buildSyRunReport(facts: {
         // A group flagged for migration whose s3 step left no artifact (crashed) is reported the same
         // as one that reported failure — the run must never read as silently having skipped it.
         return { canonical, folder, status: 'migration-failed', reason: artifact?.reason || "o passo s3 não deixou artefato" };
+      }
+      if (regenerationByCanonical.has(canonical)) {
+        // G4 (decision of 2026-08-27): a silently rewritten page is indistinguishable
+        // from a corrupted one, so the report MUST say the page was regenerated and why, every time —
+        // this is not decoration, it is the one obligation this trigger's automatic dispatch adds.
+        const missingCount = regenerationByCanonical.get(canonical) as number;
+        const artifact = indexTsArtifactByCanonical.get(canonical);
+        if (artifact?.status === 'created') {
+          return {
+            canonical,
+            folder,
+            status: 'regenerated',
+            reason: `regenerada: ${missingCount} molécula(s) do grupo não apareciam na página`,
+            scenarioCount: artifact.scenarioCount,
+            droppedScenarioNames: artifact.droppedScenarioNames,
+          };
+        }
+        return { canonical, folder, status: 'regeneration-failed', reason: artifact?.reason || "o passo s3 não deixou artefato" };
       }
       return { canonical, folder, status: 'already-migrated' };
     })
@@ -147,6 +166,8 @@ const INDEX_TS_STATUS_LABEL: Record<SyIndexTsStatus, string> = {
   'migration-failed': 'index.ts NÃO migrado',
   created: 'index.ts criado (E8b)',
   'creation-failed': 'index.ts NÃO criado',
+  regenerated: 'index.ts',
+  'regeneration-failed': 'index.ts NÃO regenerado',
   'already-migrated': 'index.ts já estava migrado, nada a fazer',
 };
 
@@ -189,9 +210,13 @@ export function renderSyRunSummary(report: SyRunReport): string {
   lines.push('');
   lines.push('index.ts, por grupo:');
   for (const group of report.indexTs.groups) {
-    const failureSuffix = (group.status === 'migration-failed' || group.status === 'creation-failed') && group.reason ? ` — ${group.reason}` : '';
-    const createdSuffix = group.status === 'created' ? `, ${group.scenarioCount ?? 0} cenário(s)${group.droppedScenarioNames?.length ? `, ${group.droppedScenarioNames.length} nome(s) inventado(s) descartado(s)` : ''}` : '';
-    lines.push(`  - ${group.canonical}: ${INDEX_TS_STATUS_LABEL[group.status]}${failureSuffix}${createdSuffix}`);
+    // reason is only ever set for migration-failed / creation-failed / regeneration-failed / regenerated
+    // (the last one is not a failure — it is G4's own "regenerada e por quê" obligation, the brief §3.2).
+    const reasonSuffix = group.reason ? ` — ${group.reason}` : '';
+    const scenarioSuffix = group.status === 'created' || group.status === 'regenerated'
+      ? `, ${group.scenarioCount ?? 0} cenário(s)${group.droppedScenarioNames?.length ? `, ${group.droppedScenarioNames.length} nome(s) inventado(s) descartado(s)` : ''}`
+      : '';
+    lines.push(`  - ${group.canonical}: ${INDEX_TS_STATUS_LABEL[group.status]}${reasonSuffix}${scenarioSuffix}`);
   }
 
   lines.push('');

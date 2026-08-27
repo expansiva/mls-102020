@@ -40,7 +40,7 @@ export function syRenderProjectSkill(input: SyRenderSkillInput): string {
   lines.push('');
   lines.push(`export const project = '${input.project}';`);
   lines.push('');
-  lines.push('// Este projeto não tem tema local.');
+  lines.push('// This project has no local theme.');
   lines.push('export const theme = null;');
   lines.push('');
   lines.push('export const groups = [');
@@ -58,26 +58,26 @@ export function syRenderProjectSkill(input: SyRenderSkillInput): string {
 
 function renderProjectSkillMarkdown(input: SyRenderSkillInput): string {
   const parts: string[] = [];
-  parts.push(`# Molecules — catálogo do projeto mls-${input.project} (${input.groups.length} grupo${input.groups.length === 1 ? '' : 's'})`);
+  parts.push(`# Molecules — catalog of project mls-${input.project} (${input.groups.length} group${input.groups.length === 1 ? '' : 's'})`);
   parts.push('');
-  parts.push('## Como consumir (em etapas, para não estourar o prompt)');
+  parts.push('## How to consume it (one level at a time, so the prompt stays small)');
   parts.push('');
   parts.push(
-    '1. Leia ESTE arquivo e escolha os GRUPOS que a página precisa. A lista de moléculas de cada grupo está abaixo para isso: se o nome de uma molécula corresponde ao que a região precisa, o grupo dela é o caminho.',
+    '1. Read THIS file and choose the GROUPS the page needs. Each group lists its molecules below for exactly that: if a molecule name matches what the region needs, its group is the way in.',
   );
-  parts.push('2. Para cada grupo escolhido, leia o catálogo do grupo (index.defs) e escolha a MOLÉCULA pela descrição completa.');
-  parts.push('3. Antes de escrever marcação, leia o contrato de uso do grupo (o index.defs do grupo aponta para ele).');
+  parts.push('2. For each chosen group, read the group catalog (index.defs) and choose the MOLECULE by its full description.');
+  parts.push('3. Before writing markup, read the group usage contract (the group index.defs points at it).');
   parts.push('');
-  parts.push('Se a página precisa de algo que NENHUM grupo abaixo cobre, responda que não há molécula disponível para aquela região — NUNCA invente uma tag.');
+  parts.push('If the page needs something NO group below covers, answer that there is no molecule available for that region — NEVER invent a tag.');
   parts.push('');
-  parts.push('## Grupos disponíveis');
+  parts.push('## Available groups');
   parts.push('');
   for (const group of input.groups) {
-    parts.push(`### ${group.canonical} (${group.moleculeShortTags.length} moléculas)`);
+    parts.push(`### ${group.canonical} (${group.moleculeShortTags.length} molecule${group.moleculeShortTags.length === 1 ? '' : 's'})`);
     parts.push(group.purpose);
-    parts.push(`Moléculas: ${group.moleculeShortTags.join(', ')}`);
+    parts.push(`Molecules: ${group.moleculeShortTags.join(', ')}`);
     parts.push('');
   }
-  parts.push('Este projeto não tem tema local.');
+  parts.push('This project has no local theme.');
   return `${parts.join('\n')}\n`;
 }

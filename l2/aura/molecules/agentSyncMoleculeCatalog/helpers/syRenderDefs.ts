@@ -4,7 +4,7 @@
 // returns a string; the step writes it to the stor.
 //
 // ⚠️ THE FORMAT IS NOT INVENTED HERE — it is anchored on the 6 groups seeded by hand for the
-// agentChooseMolecules pilot (todo §4, "os 7 arquivos semeados SÃO a especificação"). E5's acceptance
+// agentChooseMolecules pilot (the brief §4, "os 7 arquivos semeados SÃO a especificação"). E5's acceptance
 // is regenerating those 6 groups from their real source files and diffing against the seed: a
 // structural difference is a bug in this renderer; a content difference (e.g. the group's `purpose`
 // text, which the manually-maintained skills/index.ts has kept editing since the seed was taken) is
@@ -29,7 +29,7 @@ export interface SyRenderDefsInput {
 
 /**
  * The whole file: one line, `<molecules--<groupfolder>--index-<project>>` opened and closed
- * (todo §4.3, measured 81–107 bytes across the seeded groups). No trailing newline — matches the
+ * (the brief §4.3, measured 81–107 bytes across the seeded groups). No trailing newline — matches the
  * seeded files exactly, which is worth keeping since this file is never hand-edited.
  */
 export function syRenderIndexHtml(groupFolder: string, project: number): string {
@@ -46,17 +46,18 @@ export function syRenderIndexDefs(input: SyRenderDefsInput): string {
   lines.push('');
   lines.push(`export const group = '${escapeSingleQuoted(input.groupCanonical)}';`);
   lines.push('');
-  lines.push('// Contrato do grupo (slots, propriedades, eventos, exemplos) — referenciado, nunca');
-  lines.push('// copiado (contrato é manual: decisão de 17/08). Leia ANTES de escrever marcação.');
+  lines.push('// The group contract (slots, properties, events, examples) — REFERENCED, never copied:');
+  lines.push('// the contract is hand-written and no agent may generate it. Read it BEFORE writing markup.');
   lines.push(`export const usageContract = '${escapeSingleQuoted(input.usageContract)}';`);
   lines.push('');
-  lines.push('// Lista estruturada, para consumo determinístico (gates, lints).');
-  lines.push('// layout = eixos do layoutConfig que VARIAM entre os irmãos deste grupo.');
+  lines.push('// Structured list, for deterministic consumers (gates, lints).');
+  lines.push('// layout = the layoutConfig axes that VARY among this group\'s siblings.');
   lines.push('export const molecules = [');
   for (const molecule of input.molecules) lines.push(`    ${renderMoleculeEntry(molecule)}`);
   lines.push('];');
   lines.push('');
-  lines.push('// Tabela "Quick reference" (cenário -> recomendadas). Editorial: não é derivada do catálogo.');
+  lines.push('// The "Quick reference" table (scenario -> recommended). EDITORIAL: written, not derived —');
+  lines.push('// the one field here that no extraction produces. Edit it HERE; the group page renders it.');
   lines.push('export const scenarios = [');
   for (const scenario of input.scenarios) lines.push(`    ${renderScenarioEntry(scenario)}`);
   lines.push('];');
@@ -74,7 +75,7 @@ function renderMoleculeEntry(molecule: SyMoleculeEntry): string {
   if (axes.length) {
     parts.push(`layout: { ${axes.map(([axis, value]) => `${axis}: '${escapeSingleQuoted(value)}'`).join(', ')} }`);
   }
-  parts.push(molecule.defsRef ? `defs: '${escapeSingleQuoted(molecule.defsRef)}'` : 'defs: null /* ⚠ sem .defs.ts — fora de contrato */');
+  parts.push(molecule.defsRef ? `defs: '${escapeSingleQuoted(molecule.defsRef)}'` : 'defs: null /* ⚠ no .defs.ts — outside the contract */');
   return `{ ${parts.join(', ')} },`;
 }
 
@@ -85,31 +86,31 @@ function renderScenarioEntry(scenario: SyScenario): string {
 
 function renderSkillMarkdown(input: SyRenderDefsInput): string {
   const parts: string[] = [];
-  parts.push(`# ${input.groupCanonical} — moléculas disponíveis (mls-${input.project})`);
+  parts.push(`# ${input.groupCanonical} — available molecules (mls-${input.project})`);
   parts.push('');
-  parts.push(`Objetivo do grupo: ${input.purpose}`);
+  parts.push(`Group objective: ${input.purpose}`);
   parts.push('');
-  parts.push('## Como escolher');
+  parts.push('## How to choose');
   parts.push('');
-  parts.push('1. Se o cenário da página bate com um da tabela abaixo, comece pelas recomendadas.');
-  parts.push('2. Desempate pelo layout e pela descrição completa de cada molécula.');
-  parts.push('3. Antes de escrever a marcação, leia o contrato de uso do grupo (usageContract).');
-  parts.push('   A tag deve ser copiada EXATAMENTE como está aqui.');
+  parts.push('1. If the page scenario matches a row below, start from the recommended molecules.');
+  parts.push('2. Break the tie by the layout axes and by each molecule\'s full description.');
+  parts.push('3. Before writing markup, read the group usage contract (usageContract).');
+  parts.push('   Copy the tag EXACTLY as it appears here.');
   parts.push('');
-  parts.push('## Cenários (quick reference)');
+  parts.push('## Scenarios (quick reference)');
   parts.push('');
-  parts.push('| cenário | recomendadas |');
+  parts.push('| scenario | recommended |');
   parts.push('|---|---|');
   for (const scenario of input.scenarios) {
     const shortTags = scenario.recommended.map(shortTagOf).join(', ');
     parts.push(`| ${scenario.scenario} | ${shortTags || '—'} |`);
   }
   parts.push('');
-  parts.push(`## Moléculas (${input.molecules.length})`);
+  parts.push(`## Molecules (${input.molecules.length})`);
   parts.push('');
   for (const molecule of input.molecules) {
     if (!molecule.defsRef || !molecule.objective) {
-      parts.push(`- **${molecule.tag}** — ⚠ fora de contrato: sem .defs.ts (objetivo indisponível; leia o arquivo da molécula antes de usar).`);
+      parts.push(`- **${molecule.tag}** — ⚠ outside the contract: no .defs.ts (objective unavailable; read the molecule file before using it).`);
       continue;
     }
     const axes = molecule.layout ? Object.entries(molecule.layout) : [];

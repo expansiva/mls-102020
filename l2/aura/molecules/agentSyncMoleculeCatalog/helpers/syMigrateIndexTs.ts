@@ -160,7 +160,7 @@ function findMatchingBrace(text: string, openBraceAt: number): number {
   return -1;
 }
 
-// ---- triggers (G1 / G3) ----
+// ---- triggers (G1 / G3 / G4) ----
 
 /** G1: the group has no index.ts at all. */
 export function syNeedsIndexTsCreation(indexTsExists: boolean): boolean {
@@ -170,6 +170,31 @@ export function syNeedsIndexTsCreation(indexTsExists: boolean): boolean {
 /** G3: the group's index.ts exists and still has the old code-table, not the migrated import. */
 export function syNeedsIndexTsMigration(indexTsExists: boolean, indexTsSource: string): boolean {
   return indexTsExists && !(indexTsSource || '').includes(ALREADY_MIGRATED_MARKER);
+}
+
+/**
+ * G4 (decision of 2026-08-27): the page exists and is already migrated (G1 and G3 both
+ * false), but does not show every molecule of the group — the renderShowcaseCards() half of the page is
+ * static Lit code, so a molecule folder that grew after the page was created/migrated never appears on
+ * it by itself. `missingMolecules` is `syMoleculesNotShown`'s own output — pass it in rather than the raw
+ * source so the caller (the root) computes it once and reuses it for the trigger AND the report reason.
+ */
+export function syNeedsIndexTsRegeneration(missingMolecules: string[]): boolean {
+  return missingMolecules.length > 0;
+}
+
+/**
+ * The molecules of the group with no `<groupFolder--shortName` instance on the page, outside import
+ * lines — the same detector `createGate.ts`'s `molecule_not_shown` check uses for a just-created page
+ * (extracted here, the brief §4: "reuse a função pura, não a copie" — createGate.ts now consumes this instead
+ * of computing it inline).
+ */
+export function syMoleculesNotShown(content: string, groupFolder: string, shortNames: string[]): string[] {
+  const withoutImports = (content || '')
+    .split('\n')
+    .filter(line => !/^\s*import\s/.test(line))
+    .join('\n');
+  return shortNames.filter(shortName => !withoutImports.includes(`<${groupFolder}--${shortName}`));
 }
 
 /** True when the page already pulls the catalog from its group's index.defs — either specifier form. */

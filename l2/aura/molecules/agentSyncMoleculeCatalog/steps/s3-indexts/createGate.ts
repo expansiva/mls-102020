@@ -9,6 +9,7 @@
 // n7-index's page is intentionally still hand-written (it was not itself migrated to the shared renderer).
 
 import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
+import { syMoleculesNotShown } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syMigrateIndexTs.js';
 
 export interface SyCreateGateOptions {
   indexTag: string;
@@ -41,23 +42,18 @@ export function runSyCreateIndexTsGate(indexTs: string, options: SyCreateGateOpt
   // satisfies `includes`. That is the 2026-08-05 defect verbatim — a molecule imported and never shown,
   // found by accident days later — and it is why `i6-index` carries the invariant at all.
   //
-  // So: count the IMPORT (exactly once, never twice) and look for the INSTANCE outside the import lines.
-  const withoutImports = content
-    .split('\n')
-    .filter(line => !/^\s*import\s/.test(line))
-    .join('\n');
-
+  // So: count the IMPORT (exactly once, never twice) and look for the INSTANCE outside the import lines
+  // — syMoleculesNotShown (helpers/syMigrateIndexTs.ts), shared with the G4 regeneration trigger.
   const notImported: string[] = [];
   const importedTwice: string[] = [];
-  const notShown: string[] = [];
   for (const shortName of options.groupMoleculeShortNames) {
     // matched by PATH END, so `ml-data-table` never counts an `ml-data-table-select` import as its own
     const importRe = new RegExp(`^\\s*import\\s+['"][^'"]*/${escapeForRegExp(shortName)}(?:\\.js)?['"];?\\s*$`, 'gm');
     const importCount = (content.match(importRe) || []).length;
     if (importCount === 0) notImported.push(shortName);
     else if (importCount > 1) importedTwice.push(shortName);
-    if (!withoutImports.includes(`<${options.groupFolder}--${shortName}`)) notShown.push(shortName);
   }
+  const notShown = syMoleculesNotShown(content, options.groupFolder, options.groupMoleculeShortNames);
 
   if (notImported.length) {
     issues.push({
@@ -85,7 +81,7 @@ export function runSyCreateIndexTsGate(indexTs: string, options: SyCreateGateOpt
     issues.push({ code: 'shared_import', message: `index.ts must import { renderCatalogReferenceTable } from '${options.sharedTableReference}'` });
   }
 
-  // ⚠️ THE PAGE MUST BE BORN MIGRATED (todo §3). renderReferenceTable() must be EXACTLY the 3-line
+  // ⚠️ THE PAGE MUST BE BORN MIGRATED (the brief §3). renderReferenceTable() must be EXACTLY the 3-line
   // delegating call — never a hand-written table for a later run to fix.
   if (!content.includes('renderCatalogReferenceTable(molecules, scenarios)')) {
     issues.push({
