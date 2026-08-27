@@ -1,19 +1,38 @@
-# s3-indexts (E8a only)
+# s3-indexts (E8a + E8b)
 
-Migrates ONE group's `index.ts` — its `renderReferenceTable()` method starts importing the scenario
-table from `index.defs.ts` instead of carrying it as hand-written Lit code. No LLM.
+ONE step, TWO modes, decided by whether the group's `index.ts` exists when the step runs:
 
-Planted ONLY for a group the root already confirmed has the **G3 trigger**: `index.ts` exists and does
-not yet import from `./index.defs`. Never planted for a **G1** group (no `index.ts` at all — that is
-creation, E8b, not built) or a group with no trigger at all.
+- **G3 — migrate** an existing `index.ts`: its `renderReferenceTable()` method starts importing the
+  scenario table from `index.defs.ts` instead of carrying it as hand-written Lit code. No LLM.
+- **G1 — create** `index.ts` from scratch (E8b): the ONLY LLM call in this whole agent, one tool-call
+  turn. The page must be born ALREADY in the migrated shape — see `createGate.ts` and
+  `flow.json`'s `decisions.e8bCreation_*`.
 
-## What it does
+Planted for a group the root already confirmed has the **G3** trigger (`index.ts` exists, not yet
+migrated) OR the **G1** trigger (no `index.ts` at all). Never planted for a group with no trigger at all.
+
+## Migration mode (G3) — what it does
 
 1. Read the group's current `index.ts`.
 2. `helpers/syMigrateIndexTs.syMigrateIndexTs`: find `renderReferenceTable()`, replace its whole body
    with `return renderCatalogReferenceTable(molecules, scenarios);`, add the two imports it needs.
 3. Write the result back — or, if the migration could not apply (no method found, unbalanced source),
    leave the file untouched and record why.
+
+## Creation mode (G1, E8b) — what it does
+
+1. `beforePromptStep` builds the system/human prompt (`createPrompt.md` + `skills/indexGroupPage.ts` +
+   an OVERRIDE section that supersedes only the skill's `renderReferenceTable()` instructions) and
+   returns a `prompt_ready` intent with a strict tool schema (`schemas/s3-indexts-create.schema.json`) —
+   this is the only branch of this step that ever reaches an LLM.
+2. `afterPromptStep` extracts `{ indexTs, scenarios }`, writes+compiles `index.ts`, runs `createGate.ts`
+   (structural checks — importantly, that the reference table was NOT hand-written) plus the compile
+   diagnostics together, and retries (same shape as `agentNewMolecule2/n7-index`) up to `NM_MAX_ATTEMPTS`.
+3. On success: re-derives the group's molecule list the same way `s1` does, resolves the model's
+   `scenarios` (short names -> full tags, dropping anything that matches no real molecule — never
+   guessed), and re-renders the group's WHOLE `index.defs.ts` via `syRenderIndexDefs` (the same renderer
+   `s1` used a moment earlier in the same run) with only `scenarios[]` different. Writes, compiles and
+   re-caches it — `index.ts` itself is never cached, since nothing imports it by name.
 
 ## Why the whole method is replaced, not edited piecemeal
 

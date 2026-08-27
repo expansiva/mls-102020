@@ -11,7 +11,7 @@ molecule list). Design record: this file + `flow.json` + the per-step `CHANGELOG
 | 1 | `l2/molecules/skill.ts` | ✅ from level 2 | **this agent, s2** |
 | 2 | `l2/molecules/<group>/index.defs.ts` | ✅ from the molecule `.ts`/`.defs.ts` files | **this agent, s1** |
 | 3 | `skills/<group>/usage.ts` | ❌ manual, editorial | nobody (decision of 2026-08-17) |
-| — | `l2/molecules/<group>/index.ts` (the showcase page) | ✅ mostly (E8a) / ❌ 2 groups (E8b) | **this agent, s3** for 30 of 32 groups; 2 not built yet |
+| — | `l2/molecules/<group>/index.ts` (the showcase page) | ✅ mostly (E8a) / editorial-by-LLM (E8b) | **this agent, s3** — deterministic migration for a G3 group, one LLM call for a G1 group |
 
 Level 3 is referenced by level 2 (`usageContract`) and never read or written here.
 
@@ -90,9 +90,10 @@ truth, and a defensible content choice (`flow.json` → `decisions.purposeText`)
 4. **A group with no `skills/index.ts` entry is ignored WITH A REASON**, never dropped silently — today
    that is `groupNavigateMain`, invisible to the legacy `agentUpdateIndexGroupPage` because it resolves
    against `skills/index.ts` alone, not the project's own directories.
-5. **`index.ts` migration is automatic and safe, creation is not built.** A G3 group (index.ts exists,
-   not yet migrated) is migrated on every run, no opt-in needed (see "E8" below). A G1 group (no
-   index.ts) is reported `creation-needed`, never silently skipped — E8b is not built.
+5. **`index.ts` migration and creation are both automatic**, no opt-in needed. A G3 group (index.ts
+   exists, not yet migrated) is migrated on every run (see "E8" below). A G1 group (no index.ts at all)
+   has its page CREATED on every run, one LLM call, since E8b (see "E8b" below) — never reported as a
+   gap to fill later.
 6. **The catalog is written but never published** (no publish API exists on this platform) — the report
    says so every run, naming the two silent failure modes an unpublished/stale-published catalog produces.
 
@@ -139,8 +140,8 @@ nature, per a real measurement (not the original assumption that the whole page 
 
 | | groups | nature | LLM? |
 |---|---|---|---|
-| **E8a — migrate** an existing `index.ts` | 30 | deterministic text surgery | ❌ no — **built** |
-| **E8b — create** `index.ts` from scratch | 2 (`groupNavigateMain`, `groupEnterDateTime`) | authorial | ✅ yes — **not built** |
+| **E8a — migrate** an existing `index.ts` | 30 (mls-102040) | deterministic text surgery | ❌ no — **built** |
+| **E8b — create** `index.ts` from scratch | any G1 group of any project (7/7 in mls-102053) | authorial | ✅ yes, exactly 1 call/group — **built** |
 
 ### The migration surgery
 
@@ -225,6 +226,61 @@ renderers, from real source) and ran a scoped `tsc` compile of the migrated `ind
 `mls-102040` → `mls-102020` import (D-E1). The temporary swap into the real `mls-102040` files was
 reverted immediately after the check; nothing there is modified by this agent's own work.
 
+## E8b — creating index.ts from scratch (the only LLM call in this agent)
+
+E8b adds the second mode of `s3-indexts`: a G1 group (no `index.ts` at all — 7 of 7 groups in
+`mls-102053`, the project this was built against, todo `decisions.e8bCreation_targetChanged`) gets its
+showcase page written by ONE LLM tool-call turn, the same shape as `agentNewMolecule2`'s `n7-index`
+(`prompt_ready` + a strict tool schema + `afterPromptStep` + a structural gate + retry up to
+`NM_MAX_ATTEMPTS`). Same step, same agent (`agentSyIndexTs`) as migration — which mode runs is decided by
+whether `index.ts` exists when the step runs, not by a flag (`flow.json` →
+`decisions.e8bCreation_sameStepTwoModes`).
+
+### The page is born migrated — the sharpest failure mode named in the todo
+
+The model must NOT hand-write `rows`/`headers`/`<table>` markup for the model to "migrate" later. The
+system prompt reuses `skills/indexGroupPage.ts` verbatim (`decisions.e8bCreation_skillReuseNotFork` — no
+forked copy, so the two legacy agents that still use that skill unmodified never silently diverge from
+it) and appends an `## OVERRIDE` section that gives `renderReferenceTable()`'s exact 3-line body and the
+two import lines — the SAME text `syMigrateIndexTs.ts` (E8a) generates — superseding only that one
+section of the skill. `steps/s3-indexts/createGate.ts` enforces it structurally: an attempt whose
+`renderReferenceTable()` is not exactly that call, or that contains `<table`, `headers.map(` or a `rows`
+array literal anywhere, fails the gate and retries (`decisions.e8bCreation_pageIsBornMigrated`).
+
+### Scenarios stay authorial — only the address changes (§4's correction, restated here)
+
+`skills/indexGroupPage.ts` already told the model to hand-write the quick-reference table's `rows`/
+`headers` (line 106); the pilot's seed HARVESTED that authored table from a real `index.ts`, it never
+derived it. E8b keeps the model as the author of the table's content, only moves where it lands: the tool
+schema (`schemas/s3-indexts-create.schema.json`) asks for `scenarios: Array<{ scenario, recommended }>`
+as DATA, `recommended` naming SHORT molecule names from the same "Available molecules" list the prompt
+already shows the model. The step resolves each short name against the group's own molecule list — a
+name matching nothing is DROPPED and recorded as a warning, never guessed
+(`helpers/syCreateIndexTs.syResolveCreationScenarios`, `decisions.e8bCreation_tagAntiInvention`) — then
+re-renders the group's WHOLE `index.defs.ts` via `syRenderIndexDefs` (the same renderer `s1` uses, not a
+text edit) with everything unchanged except `scenarios[]`, and writes + compiles + re-caches it
+(`decisions.e8bCreation_rewriteViaRendererNotTextEdit`) — `s1` already wrote+cached that file earlier in
+the same run with `scenarios: []`, since a G1 group has nowhere to harvest from.
+
+### Publish sequence, and where it differs from index.defs.ts
+
+`index.ts` (either mode) is written + compiled, never passed through `syPublishToCache` — nothing imports
+`index.ts` by name, the same reasoning already recorded for E8a's migration mode
+(`decisions.e8bCreation_indexTsNeverCached`). `index.defs.ts`, rewritten with the model's scenarios, DOES
+get re-cached: `index.ts` imports it by name.
+
+### E8b acceptance — what is verified, what is pending
+
+See `flow.json` → `acceptance.e8bStrongAcceptance` for the full record. Verified without an LLM: scoped
+`tsc` compiles clean (two projects, mls-102020 + mls-102040), `syResolveCreationScenarios` and
+`createGate.ts` pass unit tests against hand-written fixtures shaped like a real page, and a
+retry-routing bug (found by code review, not by running it: a failed attempt's speculatively-written
+`index.ts` made the retry's own `beforePromptStep` misroute into migration mode) was fixed before this
+line was written. **Still pending, and it is the real gate**: a Studio run creating `groupEnterDateTime`'s
+`index.ts` in `mls-102040` (2 molecules, the smallest real G1 case) from a REAL model response — this is
+the first time this agent calls an LLM at all, and no amount of unit testing exercises prompt/schema
+correctness against a real model the way E8a's own T1 gate did for the migration import.
+
 ## How to run it
 
 ```
@@ -233,9 +289,9 @@ reverted immediately after the check; nothing there is modified by this agent's 
 @@agentSyncMoleculeCatalog atualizar grupos groupEnterText, groupSelectOne e groupViewTable
 ```
 
-`index.ts` migration (G3) now runs automatically whenever a matched group has it pending — the
-`incluindo o arquivo index.ts` phrase is still accepted, but no longer required (`flow.json` →
-`decisions.migrationIsAutomatic`); it only still matters for a G1 group (creation, not built).
+`index.ts` migration (G3) and creation (G1) both run automatically whenever a matched group has the
+trigger — the `incluindo o arquivo index.ts` phrase is still accepted but no longer required
+(`flow.json` → `decisions.migrationIsAutomatic`).
 
 Then read `l4/agentSyncMoleculeCatalog/<runKey>/report.json` (or the step's readable summary) for what
 was written, what was ignored and why, `index.ts` status per group, and the publish reminder.

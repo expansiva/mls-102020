@@ -13,6 +13,8 @@
 //    agentImproveMolecule2 (helpers/imResolve.ts + imRootPlan.getImRunKey).
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
+import { createModel } from '/_102027_/l2/libModel.js';
+import { formatCompileDiagnostics, type NmDiagnosticLike } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmDiagnostics.js';
 
 export type CFileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
 
@@ -141,6 +143,43 @@ export async function writeStorTextAtomic(fileInfo: CFileInfo, content: string, 
     }
   }
   await mls.stor.localStor.setContent(storFile, { contentType: 'string', content });
+}
+
+// ---- compile + cache publish ----
+//
+// Bug fixed 2026-08-27: a copied file was written but never compiled, so it "worked" only after a
+// human opened it in the editor and saved — the gesture that does both things below. The other
+// four agents of this family only ever call `compileAndPostProcess(model, awaitCompile, false)`
+// (nmFs.compileStorTs) — diagnostics only, saveCache FALSE — because their files are molecule
+// sources the runtime already reaches through the group they were born in. This agent writes
+// files a human never touched, so publishing to the cache is not optional here; `saveCache:true`
+// is the exact call the editor makes on save (mls-100554/l2/serviceSource.ts:1352), already
+// validated for `.defs.ts` by agentSyncMoleculeCatalog/helpers/syFs.ts (syPublishToCache) — this
+// reuses the same principle for `.ts`, and adds the missing piece for `.less` below.
+export async function cCompileAndPublishTs(fileInfo: CFileInfo, source: string, runAfterCompile: boolean): Promise<string[]> {
+  const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+  if (!storFile) return [`não foi possível abrir ${toDisplayPath(fileInfo)} para compilar`];
+  const modelTs = await storFile.getOrCreateModel() as mls.editor.IModelTS;
+  const ok = await mls.l2.typescript.compileAndPostProcess(modelTs, runAfterCompile, true);
+  const raw = modelTs.compilerResults?.errors || [];
+  const errors = formatCompileDiagnostics(raw as NmDiagnosticLike[], source || modelTs.model?.getValue?.() || '');
+  if (!ok && !errors.length) errors.push('compilação falhou sem erro relatado');
+  return errors;
+}
+
+// `.less` is not in createStorFile's extension whitelist (mls-102027/l2/libStor.ts), so
+// writeStorTextAtomic's needCreateModel never creates a model for a NEW stylesheet — and without
+// that model, the sibling .ts's onAfterCompile hook (enhancementAura -> injectStyle,
+// mls-102027/l2/processCssLit.ts) finds no style to inject and silently no-ops. `createModel` is
+// the exact call createStorFile would have made had `.less` been in that whitelist — same
+// function, same compile + bookkeeping, just invoked explicitly for the one extension it skips.
+export async function cCompileLess(fileInfo: CFileInfo): Promise<string[]> {
+  const storFile = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+  if (!storFile) return [`não foi possível abrir ${toDisplayPath(fileInfo)} para compilar`];
+  const modelStyle = await createModel(storFile, true, true) as mls.editor.IModelStyle | undefined;
+  if (!modelStyle) return [`sem model de estilo para ${toDisplayPath(fileInfo)}`];
+  const raw = modelStyle.styleResults?.errors || [];
+  return formatCompileDiagnostics(raw as NmDiagnosticLike[], modelStyle.model?.getValue?.() || '');
 }
 
 export function toDisplayPath(fileInfo: CFileInfo): string {

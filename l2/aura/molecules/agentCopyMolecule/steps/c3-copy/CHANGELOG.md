@@ -33,3 +33,21 @@ Nada mudou no código: mudou o PESO. Com a tradução passando para outro agente
 `i18n_changed`/`i18n_lost` deixou de proteger apenas "o motivo da cópia" e passou a ser o contrato
 entre os dois agentes — o bloco que o próximo agente vai editar tem de chegar idêntico ao da base.
 Registrado para que ninguém relaxe essa checagem achando que é zelo estético.
+
+## 2026-08-27 — escreve, mas não compilava nem publicava no cache
+
+Achado comparando o `102040` (onde a molécula nasce, correto) com o `102053` (recebe por cópia,
+sem borda de botão): fonte idêntica, comportamento diferente — a única diferença era o arquivo
+nunca ter sido compilado no destino. `n4-render`/`n3-defs` (`agentNewMolecule2`) compilam o `.ts` e
+o `.defs.ts` que escrevem; este step só escrevia.
+
+Depois de cada escrita, o step agora chama `cCompileAndPublishTs` (novo em `cFs.ts`):
+`mls.l2.typescript.compileAndPostProcess(model, runAfterCompile, true)` — o MESMO caminho que o
+editor usa ao salvar (`mls-100554/l2/serviceSource.ts:1352`), com `saveCache:true`. `runAfterCompile`
+é `true` no `.ts` (dispara `enhancementAura.onAfterCompile` → injeção de estilo — sem efeito ainda
+aqui, porque o `.less` só existe depois do `c4-less`, que republica) e `false` no `.defs.ts` (é
+contrato, não componente).
+
+Erro de compilação agora falha o step (`compile_ts`/`compile_defs`), em vez de completar como
+sucesso com um arquivo quebrado no destino — o `.defs.ts` ausente continua sendo só aviso, isso não
+mudou.

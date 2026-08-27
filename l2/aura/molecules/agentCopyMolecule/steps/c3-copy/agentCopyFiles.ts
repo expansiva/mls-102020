@@ -7,6 +7,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
   C_AGENT_FOLDER,
+  cCompileAndPublishTs,
   cContextFileInfo,
   cDestMoleculeFile,
   cMoleculeFile,
@@ -111,15 +112,36 @@ async function beforePromptStep(
     return [cUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 
+  // Writing alone leaves the copy inert (§3 of the todo): a file that was written but never
+  // compiled+published only "works" after a human opens it in the editor and saves — the exact
+  // gesture cCompileAndPublishTs replicates programmatically. runAfterCompile:true on the .ts so
+  // enhancementAura's onAfterCompile runs (it will find no .less yet at this point — c4-less
+  // republishes once the sheet exists); .defs.ts needs no post-process, only the cache entry.
   const written: string[] = [];
+  const compileIssues: CGateIssue[] = [];
   for (const entry of prepared) {
     const shortName = copyShortName(entry.item);
-    await writeStorTextAtomic(cDestMoleculeFile(entry.item.destination.group, shortName, '.ts'), entry.ts, true);
+    const ref = entry.item.origin.ref;
+
+    const tsFileInfo = cDestMoleculeFile(entry.item.destination.group, shortName, '.ts');
+    await writeStorTextAtomic(tsFileInfo, entry.ts, true);
     written.push(entry.item.destination.files.ts);
+    const tsErrors = await cCompileAndPublishTs(tsFileInfo, entry.ts, true);
+    compileIssues.push(...tsErrors.map(message => ({ code: 'compile_ts', message: `${ref}: ${message}` })));
+
     if (entry.defs) {
-      await writeStorTextAtomic(cDestMoleculeFile(entry.item.destination.group, shortName, '.defs.ts'), entry.defs, true);
+      const defsFileInfo = cDestMoleculeFile(entry.item.destination.group, shortName, '.defs.ts');
+      await writeStorTextAtomic(defsFileInfo, entry.defs, true);
       written.push(entry.item.destination.files.defs);
+      const defsErrors = await cCompileAndPublishTs(defsFileInfo, entry.defs, false);
+      compileIssues.push(...defsErrors.map(message => ({ code: 'compile_defs', message: `${ref}: ${message}` })));
     }
+  }
+
+  if (compileIssues.length) {
+    const message = compileIssues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
+    await writeJsonArtifact(cTraceFileInfo(runKey, PLAN_ID, 1), { savedAt: new Date().toISOString(), planId: PLAN_ID, written, compileIssues });
+    return [cUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
 
   await writeJsonArtifact(cTraceFileInfo(runKey, PLAN_ID, 1), {

@@ -6,9 +6,10 @@
 // downstream (syDiscover, syExtract, syRenderDefs, syRenderSkill) is pure, same split as
 // agentChooseMolecules' chCatalog.ts.
 
-import { NmFileInfo, nmDestProject, nmDefsFile, nmGroupDefsFile, nmGroupIndexFile, nmTsFile } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { NmFileInfo, nmDestProject, nmDefsFile, nmGroupDefsFile, nmGroupIndexFile, nmTsFile, readStorText } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { skills as skillListSource } from '/_102020_/l2/aura/molecules/skills/index.js';
 import { SySkillListEntry } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syDiscover.js';
+import { SY_AGENT_FOLDER, SY_AGENT_PROJECT } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syTypes.js';
 
 export function sySkillList(): SySkillListEntry[] {
   return skillListSource;
@@ -29,6 +30,13 @@ export const syProjectArtifactFileInfo = (runKey: string): NmFileInfo => syWorkF
 export function syIndexTsArtifactFileInfo(runKey: string, groupFolder: string): NmFileInfo {
   return syWorkFile(runKey, `s3-${groupFolder}`);
 }
+/** Creation mode (E8b) retry trace, one per attempt — mirrors nmFs.nmTraceFileInfo but scoped to THIS
+ * agent's own l4 folder (nmTraceFileInfo is hardcoded to agentNewMolecule2/<runKey>/, the wrong namespace
+ * for this agent's runs). */
+export function syIndexTsTraceFileInfo(runKey: string, groupFolder: string, attempt: number): NmFileInfo {
+  // syWorkFile já fixa a extensão '.json' — passá-la aqui era um 3º argumento que a função não tem.
+  return syWorkFile(runKey, `s3-${groupFolder}-trace-${String(attempt).padStart(2, '0')}`);
+}
 
 // ---- the source artifacts this agent writes ----
 
@@ -36,6 +44,16 @@ export { nmGroupDefsFile, nmGroupIndexFile, nmDefsFile, nmTsFile };
 
 export function syProjectSkillFile(): NmFileInfo {
   return { project: nmDestProject(), level: 2, folder: 'molecules', shortName: 'skill', extension: '.ts' };
+}
+
+// ---- this agent's OWN files (creation-mode prompt.md + schema.json), same pattern as nmFs.nmAgentFile
+// ---- but scoped to THIS agent's folder — nmAgentFile is hardcoded to agentNewMolecule2's own tree.
+export function syAgentFile(subfolder: string, shortName: string, extension: string): NmFileInfo {
+  return { project: SY_AGENT_PROJECT, level: 2, folder: `${SY_AGENT_FOLDER}/${subfolder}`, shortName, extension };
+}
+
+export async function readSyAgentText(subfolder: string, shortName: string, extension: string, required = false): Promise<string> {
+  return readStorText(syAgentFile(subfolder, shortName, extension), required);
 }
 
 // ---- discovery: which group folders the project actually has ----

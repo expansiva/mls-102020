@@ -2,9 +2,10 @@
 
 Generates the molecule catalog an LLM consumer reads to choose components: `l2/molecules/skill.ts`
 (level 1) and, per group, `index.defs.ts` + `index.html` (level 2) — derived from the molecule files
-already in the project. Also migrates a group's `index.ts` showcase page to import its scenario table
-from the catalog instead of carrying it as hand-written code (30 of 32 groups; the other 2 need creation
-from scratch, not built yet — see "E8" in `spec.md`). **No LLM call anywhere in this build.**
+already in the project. Also handles a group's `index.ts` showcase page: migrates it to import its
+scenario table from the catalog instead of carrying it as hand-written code (G3, no LLM), or creates it
+from scratch for a group that has none at all (G1, E8b — the ONE LLM call in this whole agent, exactly
+one tool-call turn per group). See "E8"/"E8b" in `spec.md`.
 
 ```
 @@agentSyncMoleculeCatalog
@@ -22,7 +23,7 @@ applies — no opt-in needed (see `spec.md` → `decisions.migrationIsAutomatic`
 |---|---|---|
 | root (`beforePromptImplicit`) | — | parses the mention, scans the project, computes triggers, plants everything below in one batch |
 | `s1-<group>` × N | none | one group's `index.defs.ts` + `index.html` |
-| `s3-<group>` × M | none | migrates `index.ts` for each group whose migration is pending (G3), after that group's own `s1` |
+| `s3-<group>` × M | none for G3, one call for G1 | migrates (G3) or creates (G1, E8b) `index.ts` for each triggered group, after that group's own `s1` |
 | `s2-project` | none | `l2/molecules/skill.ts`, after every `s1` of the run |
 | `s4-report` | none | `report.json` + the readable summary, after `s2` and every `s3` |
 
@@ -32,7 +33,7 @@ applies — no opt-in needed (see `spec.md` → `decisions.migrationIsAutomatic`
 
 | file | what for |
 |---|---|
-| `report.json` | what was written, ignored groups with reasons, `index.ts` status **per group** (migrated / creation-needed / migration-failed / already-migrated), and that the catalog is written but **not published** |
+| `report.json` | what was written, ignored groups with reasons, `index.ts` status **per group** (migrated / created / migration-failed / creation-failed / already-migrated), and that the catalog is written but **not published** |
 | `input.json` | the resolved scope: matched/ignored/requested-but-ignored/unknown groups, which groups need migration vs. creation |
 | `s1-<group>.json`, `s3-<group>.json`, `s2-project.json` | each step's own written summary |
 
@@ -49,9 +50,10 @@ algorithm groupViewTable's abbreviated column names required.
 
 **`index.ts` migration is a text surgery, not a rewrite.** `renderReferenceTable()`'s whole method body
 is replaced with a 3-line call into the new `shared/indexReferenceTable.ts`; everything else in the file
-— hero, showcase cards, `render()` — is untouched. Creating a page from scratch for the 2 groups that
-have none at all is a separate, LLM-based step (E8b) and is not built yet; a run touching one of those
-groups gets an honest "creation-needed, not built yet" in the report, never silence.
+— hero, showcase cards, `render()` — is untouched. **Creating a page from scratch (E8b) is the one LLM
+call in this agent** — the model writes the page ALREADY in that migrated shape (never hand-written table
+markup — a structural gate enforces it and retries otherwise) plus the scenarios as data, which the step
+then writes into the group's `index.defs.ts`.
 
 ## Files
 
@@ -66,12 +68,19 @@ helpers/syLabels.ts                        pure: palette + short label (consumed
 helpers/syRenderDefs.ts                    pure: index.defs.ts + index.html TEXT
 helpers/syRenderSkill.ts                   pure: skill.ts TEXT
 helpers/syMigrateIndexTs.ts                pure: the index.ts migration surgery + G1/G3 trigger checks
+helpers/syCreateIndexTs.ts                 pure: E8b's scenario resolution (short name -> full tag, anti-invention)
 helpers/syFs.ts                            the only module that touches mls.stor — l4 paths + scans
-steps/s1-group/  steps/s3-indexts/  steps/s2-project/  steps/s4-report/
-../shared/indexReferenceTable.ts           the shared Lit renderer every migrated index.ts imports
+schemas/s3-indexts-create.schema.json      the E8b tool schema (indexTs + scenarios as data)
+steps/s1-group/  steps/s2-project/  steps/s4-report/
+steps/s3-indexts/agentSyIndexTs.ts         both modes: G3 migration (no LLM) and G1 creation (E8b, one LLM call)
+steps/s3-indexts/createPrompt.md           E8b's system prompt (reuses skills/indexGroupPage.ts + an override)
+steps/s3-indexts/createGate.ts             pure: E8b's structural gate — "born migrated" is enforced, not just asked
+../shared/indexReferenceTable.ts           the shared Lit renderer every migrated/created index.ts imports
 ../shared/indexReferenceTableData.ts       its pure data half (column order, color, D-E3 row filtering)
 ```
 
-Tests: `helpers/*.test.ts`, `steps/s4-report/report.test.ts` and `../shared/indexReferenceTableData.test.ts`
-— all pure, all `node:test`. E5's and E8a's acceptance checks (regenerating pilot groups / migrating real
-`index.ts` files and diffing) were run as one-off scripts, not shipped — see `spec.md` for the results.
+Tests: `helpers/*.test.ts`, `steps/s3-indexts/createGate.test.ts`, `steps/s4-report/report.test.ts` and
+`../shared/indexReferenceTableData.test.ts` — all pure, all `node:test`. E5's and E8a's acceptance checks
+(regenerating pilot groups / migrating real `index.ts` files and diffing) were run as one-off scripts, not
+shipped; E8b's strong acceptance (creating `groupEnterDateTime`'s page for real) is a Studio run — see
+`spec.md` for both.
