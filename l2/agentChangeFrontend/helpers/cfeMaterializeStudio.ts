@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.ts" enhancement="_blank"/>
 
-import { parseDefs, contractTsPathOf, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { parseDefs, checkSharedDtsProvenance, contractTsPathOf, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stampSharedDtsArtifact, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 
 declare const mls: any;
@@ -202,43 +202,80 @@ export function borrowedModelScopeSize(): number {
 }
 
 /**
+ * ONE hidden, persistent model+editor reused by every `formatGeneratedTsInStudio` call of the
+ * session (cf_format_monaco_dispose, 28/ago).
+ *
+ * The first version created a temporary model+editor per file and disposed both. `createModel`
+ * fires the TS worker's async validation, which answers AFTER the dispose and rejects without a
+ * catch — run01/102047 flooded the console with one
+ * `Uncaught (in promise) Error: Could not find source file: 'inmemory://model/N'` per generated
+ * file (same family as the Monaco listener leak `releaseBorrowedModels` documents above). With a
+ * singleton there is no create/dispose per file, so there is no orphan worker response at all.
+ *
+ * The URI is stable and self-describing so anything the worker ever logs about this model is
+ * attributable at a glance. Lazy: nothing is created until the first format of the session. If
+ * creation fails halfway, the half is disposed and the NEXT call retries from scratch.
+ */
+let formatterSingleton: { model: any; editor: any } | null = null;
+
+function getFormatterSingleton(): { model: any; editor: any } {
+  if (formatterSingleton) return formatterSingleton;
+  const model = monaco.editor.createModel('', 'typescript', monaco.Uri.parse('inmemory://collab-cfe-formatter/formatGeneratedTs.ts'));
+  try {
+    model.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+    const editor = monaco.editor.create(document.createElement('div'), { model });
+    formatterSingleton = { model, editor };
+    return formatterSingleton;
+  } catch (error) {
+    // Only on the creation-failure path: the model never reached the singleton, keeping it would
+    // be a leak. One orphan validation of an EMPTY model is the worst this can cost.
+    model.dispose();
+    throw error;
+  }
+}
+
+/**
+ * Calls are chained because the singleton is shared mutable state and the materialize phase fans
+ * out in `parallel_dynamic` (see `releaseBorrowedModels`): two interleaved calls would format each
+ * other's `setValue`. Failures never break the chain — each turn resolves regardless.
+ */
+let formatterTurn: Promise<void> = Promise.resolve();
+
+/**
  * Format a generated .ts before it is saved (cf_format_codigo_gerado, 27/ago).
  *
  * run02/102047: taskCatalogue.ts was born as 13KB in 35 lines while its siblings came out formatted —
  * per-call LLM variation, so the model's output cannot be the only source of formatting. Two stages:
  * the pure line-break pass (cfeMaterializeCore, shared with the CLI so both surfaces emit the same
- * shape), then Monaco's own `editor.action.formatDocument` on a detached temporary editor for
- * indentation — the exact precedent of enhancementStyleAura.formatTextInMemory, with language
- * 'typescript'. tabSize 2 mirrors the CLI's ts-languageService settings (same formatter engine).
+ * shape), then Monaco's own `editor.action.formatDocument` for indentation, on the persistent
+ * singleton above (cf_format_monaco_dispose: per-call model+editor dispose left orphan TS-worker
+ * validations rejecting all over the console). tabSize 2 mirrors the CLI's ts-languageService
+ * settings (same formatter engine). The singleton is emptied (`setValue('')`) after every call so
+ * the last file's content is not retained.
  *
  * Conservative by contract: the result is accepted only when it is whitespace-identical to the
  * input (the i18n markers and every token survive byte-for-byte modulo whitespace); on any failure
  * — Monaco missing, worker error, guard mismatch — the ORIGINAL code is returned, never an
- * exception. Both model and editor are disposed (the editor alone does not dispose an external
- * model — the Monaco listener-leak lesson).
+ * exception, and the singleton stays usable for the next call.
  */
 export async function formatGeneratedTsInStudio(code: string): Promise<string> {
-  try {
+  const turn = formatterTurn.then(async () => {
     const broken = insertGeneratedTsLineBreaks(code);
-    const tempModel = monaco.editor.createModel(broken, 'typescript');
-    let formatted = broken;
+    const { model, editor } = getFormatterSingleton();
     try {
-      tempModel.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
-      const tempEditor = monaco.editor.create(document.createElement('div'), { model: tempModel });
-      try {
-        await tempEditor.getAction('editor.action.formatDocument')?.run();
-        formatted = tempModel.getValue();
-      } finally {
-        tempEditor.dispose();
-      }
+      model.setValue(broken);
+      await editor.getAction('editor.action.formatDocument')?.run();
+      const formatted = model.getValue();
+      return stripAllWhitespace(formatted) === stripAllWhitespace(code) ? formatted : code;
     } finally {
-      tempModel.dispose();
+      model.setValue('');
     }
-    return stripAllWhitespace(formatted) === stripAllWhitespace(code) ? formatted : code;
-  } catch (error) {
+  });
+  formatterTurn = turn.then(() => undefined, () => undefined);
+  return turn.catch(error => {
     recordStudioMessage('warn', 'formatGeneratedTsInStudio failed (kept unformatted code)', error);
     return code;
-  }
+  });
 }
 
 export async function saveGeneratedTs(
@@ -311,22 +348,29 @@ export async function saveArtifactTextByMlsPath(mlsPath: string, content: string
 }
 
 /**
- * (Re)persist the shared compiled .d.ts artifact when it is absent or older than the shared .ts.
+ * (Re)persist the shared compiled .d.ts artifact whenever it was not derived from the shared .ts on disk.
  *
  * The materialize-time persist (agentCfeMaterializeGen) runs only right after a SUCCESSFUL
  * materialization — a shared that only compiled after a repair round never got a second chance and
  * its pages silently fell back to the raw .ts (run02 102047: taskCatalogue, the largest shared,
  * had no artifact at all). Called from the phase verify whenever a shared item verifies clean, so
  * the artifact converges by the module gate. Best-effort: never blocks a run.
+ *
+ * The freshness test is the artifact's STAMP, not mtime. `getFileModified` answers MAX_SAFE_INTEGER for
+ * any file with status new/changed, so from the moment both the artifact and the shared are dirty — every
+ * round after the first — the old comparison was MAX >= MAX and this returned early forever. In run01 of
+ * 102047 that froze the artifact at the round-1 surface while the repair rounds went on rewriting the
+ * shared, and the pages were generated against the frozen one.
  */
 export async function persistSharedDtsArtifactIfStale(sharedTsPath: string): Promise<void> {
   const artifactPath = sharedDtsArtifactRef(sharedTsPath);
   if (!artifactPath) return;
-  const artifactModified = getFileModifiedByMlsPath(artifactPath);
-  const sharedModified = getFileModifiedByMlsPath(sharedTsPath);
-  if (artifactModified !== null && (sharedModified === null || artifactModified >= sharedModified)) return;
+  const source = await getContentByMlsPath(sharedTsPath);
+  if (!source) return;
+  const artifact = await getContentByMlsPath(artifactPath);
+  if (artifact && checkSharedDtsProvenance(artifact, source).dts) return;
   const dts = await getCompiledDtsByMlsPath(sharedTsPath);
-  if (dts) await saveArtifactTextByMlsPath(artifactPath, dts);
+  if (dts) await saveArtifactTextByMlsPath(artifactPath, stampSharedDtsArtifact(dts, source));
 }
 
 export async function compileAndGetErrors(

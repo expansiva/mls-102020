@@ -19,6 +19,7 @@ import {
   collectPageCustomElementTagIssues,
   collectPageTemplateHygieneIssues,
   buildSharedDtsSection,
+  checkSharedDtsProvenance,
   buildSystemPrompt,
   DEFAULT_MODEL_TYPE,
   dependencyProbeRefs,
@@ -402,14 +403,20 @@ function pageSkeletonFor(item: PipelineItem, data: unknown): string | undefined 
   return built.code ?? undefined;
 }
 
+/**
+ * The artifact ONLY when its stamp proves the shared .ts on disk is what produced it.
+ *
+ * mtime cannot answer this here: the Studio sync flattens every mtime on the way to disk (run01 of 102047
+ * landed with one timestamp on the whole module), so `artifactMs < sharedMs` was false for a stale
+ * artifact and the page was generated against a base class the shared no longer had.
+ */
 function readFreshSharedDts(sharedTsRef: string): string | null {
   const artifactRef = sharedDtsArtifactRef(sharedTsRef);
   if (!artifactRef) return null;
-  const artifactMs = refMtimeMs(artifactRef);
-  const sharedMs = refMtimeMs(sharedTsRef);
-  if (artifactMs == null || (sharedMs != null && artifactMs < sharedMs)) return null;
   const artifact = readContext(artifactRef);
-  return artifact.found && artifact.content.trim() ? artifact.content : null;
+  if (!artifact.found) return null;
+  const shared = readContext(sharedTsRef);
+  return checkSharedDtsProvenance(artifact.content, shared.found ? shared.content : null).dts;
 }
 
 function loadConfig(explicitPath: string | undefined): LlmConfig {

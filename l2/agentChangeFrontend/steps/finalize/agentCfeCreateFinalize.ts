@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/finalize/agentCfeCreateFinalize.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, finalizeGeneratedPages } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, finalizeGeneratedPages, readUnresolvedMaterializeItems } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
   MAX_MODULE_COMPILE_REPAIRS, compileRepairSlotArgs, describeCompileRepairPlan, partitionModuleCompileErrors, planModuleCompileRepair,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileRepair.js';
@@ -177,8 +177,20 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const result = await finalizeGeneratedPages();
     // Closing gate FIRST: compile the WHOLE module, not just what this run touched (compileModuleClosure).
     const closure = await compileModuleClosure(result.moduleName);
-    const base = `pagesDone=${result.pagesDone.length}; ownersDone=${result.ownersDone.length}; skippedPages=${result.skippedPages.length}; ${result.configMsg}`;
+    const incompleteNote = result.incompletePages.length
+      ? `; incompletePages=${result.incompletePages.length} (${result.incompletePages.map(page => `${page.pageId}: ${page.reason}`).join(' | ')})`
+      : '';
+    const base = `pagesDone=${result.pagesDone.length}; ownersDone=${result.ownersDone.length}; skippedPages=${result.skippedPages.length}${incompleteNote}; ${result.configMsg}`;
     const partitioned = partitionModuleCompileErrors(closure.errors);
+    // The materialize verdicts are the gate's suspect list. A suspect the whole-module compile cannot
+    // reproduce is NOT absolved by that silence: it is the Monaco-vs-tsc fidelity gap, named here with the
+    // error the verify did record. run01 of 102047 closed `completed` with five tsc errors in exactly the
+    // three files its own verdict had marked blocked.
+    const unreproduced = (await readUnresolvedMaterializeItems(result.moduleName))
+      .filter(item => !closure.errors.some(error => item.outputPath && error.startsWith(`${item.outputPath}:`)));
+    const verdictNote = unreproduced.length
+      ? `; MATERIALIZE-VERDICT-UNREPRODUCED: ${unreproduced.length} item(s) the materialization verify recorded as blocked that this gate did not reproduce — the shipped .ts of each is the one the publish compiles: ${unreproduced.map(item => `${item.planId} @ ${item.outputPath ?? '(no output)'} — ${item.firstError || 'no error recorded'}`).join(' | ')}`
+      : '';
     const declaredNote = partitioned.declared.length
       ? `; declared ${partitioned.declared.length} .test.ts finding(s) (never blocking)`
       : '';
@@ -203,7 +215,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         summary,
       }));
       if (attempt <= MAX_MODULE_COMPILE_REPAIRS && plan.slots.length > 0) {
-        const failTrace = `MODULE-COMPILE-FAILED (${partitioned.blocking.length} blocking error(s) across ${closure.checked} .ts of ${result.moduleName}${declaredNote}) -> ${describeCompileRepairPlan(plan, attempt)}. ${fidelity}\n${shown}${more}\n${base}`;
+        const failTrace = `MODULE-COMPILE-FAILED (${partitioned.blocking.length} blocking error(s) across ${closure.checked} .ts of ${result.moduleName}${declaredNote}${verdictNote}) -> ${describeCompileRepairPlan(plan, attempt)}. ${fidelity}\n${shown}${more}\n${base}`;
         const reportRef = await writeDossier(failTrace, true);
         return [
           ...buildCompileRepairRound(context, parentStep, plan.slots, attempt),
@@ -219,7 +231,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         false,
       );
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed',
-        `MODULE-COMPILE-FAILED: ${partitioned.blocking.length} blocking error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them; ${why})${declaredNote}. ${fidelity}\n${shown}${more}\n${base}${reportRef ? ` Run report: ${reportRef}.` : ''}`)];
+        `MODULE-COMPILE-FAILED: ${partitioned.blocking.length} blocking error(s) across ${closure.checked} .ts of module ${result.moduleName} (includes files this run did not touch — they are not stale, so only this gate sees them; ${why})${declaredNote}${verdictNote}. ${fidelity}\n${shown}${more}\n${base}${reportRef ? ` Run report: ${reportRef}.` : ''}`)];
     }
     // Only a CLEAN module hands off to agentAddLanguage — it translates the i18n block of the generated
     // files, and translating a module that did not compile spends a task on code about to be regenerated.
@@ -230,7 +242,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const agentBuild = await readAgentProvenance();
     // Repeat the build stamp at the end: a post-mortem reads the LAST trace of the run first.
     // Do NOT claim tsc-equivalence: the gate is Monaco; declare the difference (F2).
-    const trace = `${base}${addLanguage}; moduleCompile=${closure.checked} file(s) with no blocking Monaco errors${declaredNote}${repaired}; ${fidelity}; released ${closure.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
+    const trace = `${base}${addLanguage}; moduleCompile=${closure.checked} file(s) with no blocking Monaco errors${declaredNote}${verdictNote}${repaired}; ${fidelity}; released ${closure.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
     const reportRef = await saveCfRunReport(result.moduleName, buildCfRunReport({
       moduleName: result.moduleName,
       attempt,

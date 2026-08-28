@@ -11,7 +11,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readBlockedMaterializePlanIds, readMaterializeVerifySummary, saveMaterializeVerifySummary, saveMaterializeVerifyTrace, type MaterializeVerifyBrokenTrace, type MaterializeVerifyPassed } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readBlockedMaterializePlanIds, readMaterializeVerifySummary, saveMaterializeItemFindings, saveMaterializeVerifySummary, saveMaterializeVerifyTrace, type MaterializeVerifyBrokenTrace, type MaterializeVerifyPassed } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { compileErrorRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileRepair.js';
 import {
   collectDesignTokenRoleIssues,
@@ -342,6 +342,13 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   // itemId rides along: without it a repair slot would fall back to pipeline[0] and rewrite the FIRST
   // organism's file instead of the one that is actually broken.
   const repairArgs = toRepair.map(entry => JSON.stringify({ planId: entry.item.planId, defPath: entry.item.defPath, itemId: entry.item.itemId, attempt: nextAttempt }));
+  // The findings go to DISK, keyed by the slot's own planId + the attempt it will carry, because the args
+  // above may not grow (400KB task cap) and the slot cannot recompute the defs-level detectors. Without
+  // this an item broken only by those got an empty hint, which the gen agent cannot tell apart from a
+  // first pass — it sends the blank skeleton and the model rewrites the file blind (run01/102047).
+  for (const entry of toRepair) {
+    await saveMaterializeItemFindings(moduleName, entry.item.planId, nextAttempt, [...entry.blocking, ...entry.repairable]);
+  }
   const nextVerifyPlanId = `${args.planId}-v${nextAttempt}`;
   const nextVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
     nextVerifyPlanId,

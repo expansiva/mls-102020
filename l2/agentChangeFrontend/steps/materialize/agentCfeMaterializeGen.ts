@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializeGen.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { readMaterializeItemFindings } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
   applyHeader,
   bindingCommandsOf,
@@ -14,6 +15,8 @@ import {
   buildRuntimeDtsSection,
   buildSharedDtsSection,
   buildSystemPrompt,
+  checkSharedDtsProvenance,
+  stampSharedDtsArtifact,
   CONTRACTS_102029,
   DEFAULT_MODEL_TYPE,
   expandContextRef,
@@ -42,7 +45,6 @@ import {
   releaseBorrowedModelScope,
   preloadItemTypecheckDeps,
   getContentByMlsPath,
-  getFileModifiedByMlsPath,
   parseMlsPath,
   saveArtifactTextByMlsPath,
   saveGeneratedTs,
@@ -94,7 +96,7 @@ async function beforePromptStep(
     // 11m39s ($0.30), failing the whole task. The scaffold returns {code:null, reason} on any defs shape
     // it does not model, and then we fall through to the LLM exactly as before.
     if (genContext.pipelineItem.type === 'l2_shared') {
-      const deterministic = await materializeSharedDeterministic(context, parentStep, step, hookSequential, genContext.pipelineItem, genContext.definitionData);
+      const deterministic = await materializeSharedDeterministic(context, parentStep, step, hookSequential, genContext.pipelineItem, genContext.definitionData, genArgs.attempt ?? 1);
       if (deterministic) return deterministic;
     }
     // Repair rounds (attempt >= 2) arrive as fan-out slots carrying only compact refs — the
@@ -102,7 +104,7 @@ async function beforePromptStep(
     // later by the interaction cleaner), never persisted in a step prompt/args (DynamoDB 400KB
     // cap; skills/collab_messages.md "Interaction cleaner").
     const repairHint = (genArgs.attempt ?? 1) >= 2
-      ? genArgs.repairHint ?? await computeRepairHint(genContext.pipelineItem)
+      ? genArgs.repairHint ?? await computeRepairHint(genContext.pipelineItem, genArgs.planId, genArgs.attempt ?? 2)
       : undefined;
     // Deterministic page skeleton (i18n.md §4) — same helper the CLI uses, so both surfaces emit the
     // identical file shape. Only on the first attempt (see createPromptReadyIntent).
@@ -130,6 +132,7 @@ async function materializeSharedDeterministic(
   hookSequential: number,
   pipelineItem: PipelineItem,
   definitionData: unknown,
+  attempt: number,
 ): Promise<mls.msg.AgentIntent[] | null> {
   try {
     const contractTsPath = isRecord(definitionData) && isRecord(definitionData.contractRef) && typeof definitionData.contractRef.tsPath === 'string'
@@ -146,6 +149,13 @@ async function materializeSharedDeterministic(
       console.info(`[agentCfeMaterializeGen] scaffold bail for ${pipelineItem.outputPath} (${scaffold.reason}) -> LLM`);
       return null;
     }
+    // A REPAIR round whose scaffold reproduces the file already on disk has nothing to repair with: the
+    // scaffold is a pure function of defs + contract, so re-saving its own output re-earns the finding
+    // that opened the round and the budget drains one useless round at a time. Hand it to the model,
+    // which does get the file and the findings. Byte-equality only — anything else keeps today's path.
+    // (Silent: the absence of the 'deterministic scaffold' trace on the step IS the signal, and the
+    // console guard keeps run-path prints to the ones already declared.)
+    if (attempt >= 2 && previousSource === scaffold.code) return null;
 
     const parsed = parseMlsPath(pipelineItem.outputPath);
     if (!parsed) return null;
@@ -428,12 +438,18 @@ function extractFirstExportedObject(source: string): unknown {
   return null;
 }
 
-async function computeRepairHint(pipelineItem: PipelineItem): Promise<string | undefined> {
+async function computeRepairHint(pipelineItem: PipelineItem, planId: string, attempt: number): Promise<string | undefined> {
   const outputPath = pipelineItem.outputPath;
   const content = await getContentByMlsPath(outputPath);
   if (!content || !content.trim()) {
     return buildMissingCodeRepairHint(outputPath, `generated file missing or empty: ${outputPath}`);
   }
+  // What the VERIFY actually saw, written by it for this exact slot. The recompute below covers the
+  // compiler and the template hygiene; everything else (enum labels, selection controls, i18n block,
+  // custom-element tag, contract fields, design tokens…) only exists here. Empty for a finalize
+  // module-compile slot, whose planId is the round — that path is compile-driven and the recompute
+  // below is the whole of it.
+  const declaredFindings = await readMaterializeItemFindings(moduleOfMlsPath(outputPath), planId, attempt);
   // THE SAME preload the verify does, before the same compile. Without it the imports resolve loosely
   // and a cross-file TS2339 simply is not reported: the verify (which preloads) failed the item, the hint
   // (which did not) came back empty, and the model was asked to repair a file with no error in hand. It
@@ -454,7 +470,18 @@ async function computeRepairHint(pipelineItem: PipelineItem): Promise<string | u
   // model would be asked to regenerate without ever seeing the remedy and would burn the round blind.
   // Safe to recompute: collectPageTemplateHygieneIssues is a pure function of the file text.
   if (pipelineItem.type === 'l2_page') errors.push(...collectPageTemplateHygieneIssues(content));
-  return errors.length ? buildCompileRepairHint(outputPath, errors.slice(0, 8)) : undefined;
+  for (const finding of declaredFindings) if (!errors.includes(finding)) errors.push(finding);
+  // `content` travels WITH the findings: a repair that does not carry the file it repairs is a first-pass
+  // generation wearing an error list (see buildCompileRepairHint).
+  return errors.length ? buildCompileRepairHint(outputPath, errors.slice(0, 12), content) : undefined;
+}
+
+/** `_102047_/l2/todo/web/shared/x.ts` -> `todo`. Empty when the ref is not an l2 module path. */
+function moduleOfMlsPath(mlsPath: string): string {
+  const parts = String(mlsPath || '').split('/');
+  const at = parts.indexOf('l2');
+  const moduleName = at >= 0 ? parts[at + 1] ?? '' : '';
+  return moduleName === 'trace' ? '' : moduleName;
 }
 
 async function buildGenContext(defPath: string, itemId?: string): Promise<{
@@ -558,24 +585,27 @@ async function persistSharedDtsArtifact(sharedTsPath: string): Promise<void> {
   const artifactPath = sharedDtsArtifactRef(sharedTsPath);
   if (!artifactPath) return;
   const dts = await getCompiledDtsByMlsPath(sharedTsPath);
-  if (dts) await saveArtifactTextByMlsPath(artifactPath, dts);
+  if (!dts) return;
+  // Stamped with the source it came from: an artifact whose provenance cannot be proved is refused by
+  // resolveSharedDts, so writing one unstamped would retire the artifact path altogether.
+  const source = await getContentByMlsPath(sharedTsPath);
+  await saveArtifactTextByMlsPath(artifactPath, source ? stampSharedDtsArtifact(dts, source) : dts);
 }
 
-// Fresh persisted artifact first (readable by both runtimes), then compile on demand. An artifact
-// older than the shared .ts is stale (e.g. shared regenerated by the CLI) and is ignored. The
-// reason travels with a null dts so the raw-ts fallback can SAY why it happened (context trace).
+// Persisted artifact first (readable by both runtimes), then compile on demand. The artifact is served
+// only when its stamp proves it was derived from the shared .ts NOW ON DISK — see
+// checkSharedDtsProvenance for why mtime cannot answer this. The reason travels with a null dts so the
+// raw-ts fallback can SAY why it happened (context trace).
 async function resolveSharedDts(sharedTsPath: string): Promise<{ dts: string | null; reason: string }> {
   const artifactPath = sharedDtsArtifactRef(sharedTsPath);
   let reason = 'no artifact ref derivable';
   if (artifactPath) {
-    const artifactModified = getFileModifiedByMlsPath(artifactPath);
-    const sharedModified = getFileModifiedByMlsPath(sharedTsPath);
-    if (artifactModified === null) reason = `artifact missing: ${artifactPath}`;
-    else if (sharedModified !== null && artifactModified < sharedModified) reason = `artifact stale: ${artifactPath}`;
+    const artifact = await getContentByMlsPath(artifactPath);
+    if (artifact === null) reason = `artifact missing: ${artifactPath}`;
     else {
-      const artifact = await getContentByMlsPath(artifactPath);
-      if (artifact && artifact.trim()) return { dts: artifact, reason: 'artifact' };
-      reason = `artifact empty: ${artifactPath}`;
+      const checked = checkSharedDtsProvenance(artifact, await getContentByMlsPath(sharedTsPath));
+      if (checked.dts) return checked;
+      reason = `${checked.reason}: ${artifactPath}`;
     }
   }
   const compiled = await getCompiledDtsByMlsPath(sharedTsPath);

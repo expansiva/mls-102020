@@ -2010,6 +2010,49 @@ export async function saveMaterializeVerifyTrace(moduleName: string, planId: str
   }
 }
 
+/**
+ * The findings ONE repair slot has to close, dropped where that slot can read them.
+ *
+ * A repair slot carries only `{planId, defPath, itemId, attempt}` (the 400KB task cap: no error text in a
+ * step prompt), so `agentCfeMaterializeGen` recomputes what is wrong from disk. It can only recompute the
+ * COMPILER errors and the template hygiene — the dozen defs-level detectors the verify also runs are not
+ * reachable there. An item broken ONLY by those therefore produced an EMPTY hint, and an empty hint makes
+ * a repair round indistinguishable from a first-pass generation: no hint means the deterministic skeleton
+ * is sent instead, and the model rewrites the page from scratch, blind to the finding. That is run01 of
+ * 102047: four rounds, findings churning, `repairedCount` 0.
+ *
+ * Written by the verify right before it queues the round, keyed by the ITEM planId and stamped with the
+ * attempt the slot will carry, so a slot can never pick up a previous round's (or a previous run's) list.
+ * Best-effort on both sides: without the file the slot falls back to the compile recompute, exactly as
+ * before.
+ */
+export async function saveMaterializeItemFindings(moduleName: string, planId: string, attempt: number, findings: string[]): Promise<boolean> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project || !moduleName || !planId) return false;
+    const fileInfo: FileInfo = { project, level: 2, folder: `${moduleName}/trace/frontend-materialize-findings`, shortName: toSafeShortName(planId), extension: '.json' };
+    await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), planId, attempt, findings }, null, 2)}\n`);
+    return true;
+  } catch (error) {
+    console.error(`[saveMaterializeItemFindings] ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
+
+/** The findings saved for this exact slot (planId + attempt). A different attempt is a stale file: ignored. */
+export async function readMaterializeItemFindings(moduleName: string, planId: string, attempt: number): Promise<string[]> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project || !moduleName || !planId) return [];
+    const fileInfo: FileInfo = { project, level: 2, folder: `${moduleName}/trace/frontend-materialize-findings`, shortName: toSafeShortName(planId), extension: '.json' };
+    const record = await readJsonFile(fileInfo);
+    if (!isRecord(record) || record.attempt !== attempt || !Array.isArray(record.findings)) return [];
+    return record.findings.map(String).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 // The module name from a broken item's `_<project>_/l2/<module>/...` outputPath/defPath (all items in one
 // verify belong to the same module). Empty when none can be derived — the caller then skips the write.
 function deriveTraceModule(broken: MaterializeVerifyBrokenTrace[]): string {
@@ -2089,6 +2132,43 @@ export async function saveMaterializeVerifySummary(
     console.error(`[saveMaterializeVerifySummary] ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
+}
+
+export interface UnresolvedMaterializeItem { planId: string; outputPath: string | null; firstError: string }
+
+/**
+ * What the materialization verdicts of ONE module still list as blocking, for the closing gate to answer for.
+ *
+ * The finalize gate re-derives everything from Monaco and knew nothing about these files. In run01 of
+ * 102047 the pages verdict closed with three `blocked` items whose shipped .ts does not compile, the
+ * module gate reported no blocking Monaco error, and the run went `completed` with `pagesDone` naming all
+ * three pages — while `tsc` finds five errors in exactly those files. The verdict is written BEFORE the
+ * finalize repair rounds, so it is a SUSPECT LIST the gate must answer for, never a verdict of its own:
+ * the gate recompiles the module anyway, and a suspect the gate cannot reproduce is the fidelity gap,
+ * recorded as such.
+ */
+export async function readUnresolvedMaterializeItems(moduleName: string): Promise<UnresolvedMaterializeItem[]> {
+  const items: UnresolvedMaterializeItem[] = [];
+  const project = mls.actualProject || 0;
+  if (!project || !moduleName) return items;
+  for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || String(file.folder || '') !== `${moduleName}/trace/frontend-materialize-verify`) continue;
+    if (!String(file.shortName || '').endsWith('-summary')) continue;
+    try {
+      const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
+      if (!verdict || verdict.allClear !== false || !Array.isArray(verdict.broken)) continue;
+      for (const entry of verdict.broken) {
+        if (!isRecord(entry) || !readString(entry.planId)) continue;
+        items.push({
+          planId: readString(entry.planId),
+          outputPath: typeof entry.outputPath === 'string' ? entry.outputPath : null,
+          firstError: readString(entry.firstError),
+        });
+      }
+    } catch { /* an unreadable verdict accuses nobody */ }
+  }
+  return items;
 }
 
 /** Plan ids the last verify verdict still lists as blocking (compile of the shipped .ts). Declared-only is not here. */
@@ -2192,15 +2272,50 @@ function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayou
   return { pageId: primary.pageId, layoutId: primary.layoutId, sections, i18n, dataBindings };
 }
 
-export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; configMsg: string; addLanguageMessage: string | null; moduleName: string }> {
+export interface CfeIncompletePage { page: CfePagePlan; reason: string }
+
+/**
+ * Is this unresolved materialize item one of THIS page's artifacts?
+ * `_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts` belongs to page `taskCatalogue` of module `todo`.
+ */
+export function unresolvedItemBelongsToPage(outputPath: string | null, moduleName: string, pageId: string): boolean {
+  if (!outputPath || !moduleName || !pageId) return false;
+  const match = /^_\d+_\/l\d+\/([^/]+)\/web\/(?:[^/]+\/[^/]+|shared)\/([A-Za-z0-9_]+)\.ts$/u.exec(outputPath);
+  // an organism of a split page (`taskCatalogue_O2.ts`) is an artifact OF that page
+  return !!match && match[1] === moduleName && match[2].replace(/_O\d+$/u, '') === pageId;
+}
+
+export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; incompletePages: { pageId: string; reason: string }[]; configMsg: string; addLanguageMessage: string | null; moduleName: string }> {
   const context = await readCreateContext();
   const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && await hasRegisteredFrontend(context.project, page) })));
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
   const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
-  const ownersDone = await updateOwnerStatuses(context, validPages.flatMap(page => page.ownerIds), 'done');
-  await saveCreateReport(context.project, validPages, ownersDone, skippedPages);
+  const moduleName = validPages.length > 0 ? readString(validPages[0].moduleName) : '';
+  // A page is DONE only when the materialization verdict on disk stopped blocking its artifacts. In run01
+  // of 102047 three genome variants of `taskCatalogue` ended `blocked` (their shipped .ts does not
+  // compile) and the report still listed the page in `pagesDone` — the run declared itself ready and the
+  // publish would fail on the build. Degrading with a record is the house rule; what the record must not
+  // do is say "pronto".
+  const unresolved = await readUnresolvedMaterializeItems(moduleName);
+  const incompletePages: CfeIncompletePage[] = validPages
+    .map(page => ({ page, blocked: unresolved.filter(item => unresolvedItemBelongsToPage(item.outputPath, page.moduleName, page.pageId)) }))
+    .filter(entry => entry.blocked.length > 0)
+    .map(entry => ({ page: entry.page, reason: `${entry.blocked.length} materialization item(s) still blocked: ${entry.blocked.map(item => `${item.planId} (${item.firstError || 'no error recorded'})`).join('; ')}` }));
+  const donePages = validPages.filter(page => !incompletePages.some(entry => entry.page === page));
+  const ownersDone = await updateOwnerStatuses(context, donePages.flatMap(page => page.ownerIds), 'done');
+  await saveCreateReport(context.project, donePages, ownersDone, skippedPages, incompletePages);
+  // Registration is NOT the lie: an incomplete page stays in the workspace config so the app still knows
+  // about it (and the CLI can finish it). What it loses is the `done` claim.
   const configMsg = await saveFrontendWorkspaceConfig(context, validPages);
-  return { pagesDone: validPages.map(page => page.pageId), ownersDone, skippedPages, configMsg, addLanguageMessage: buildAddLanguageMessage(context, validPages), moduleName: validPages.length > 0 ? readString(validPages[0].moduleName) : '' };
+  return {
+    pagesDone: donePages.map(page => page.pageId),
+    ownersDone,
+    skippedPages,
+    incompletePages: incompletePages.map(entry => ({ pageId: entry.page.pageId, reason: entry.reason })),
+    configMsg,
+    addLanguageMessage: buildAddLanguageMessage(context, donePages),
+    moduleName,
+  };
 }
 
 /**
@@ -4806,10 +4921,19 @@ async function setTodoFrontendStatuses(project: number, wanted: Set<string>, sta
   return updated;
 }
 
-async function saveCreateReport(project: number, pages: CfePagePlan[], ownersDone: string[], skippedPages: string[]): Promise<void> {
-  for (const moduleName of unique(pages.map(page => page.moduleName))) {
+async function saveCreateReport(project: number, pages: CfePagePlan[], ownersDone: string[], skippedPages: string[], incompletePages: CfeIncompletePage[] = []): Promise<void> {
+  for (const moduleName of unique([...pages, ...incompletePages.map(item => item.page)].map(page => page.moduleName))) {
     const fileInfo: FileInfo = { project, level: 2, folder: `${moduleName}/trace`, shortName: 'frontend-create-report', extension: '.json' };
-    await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), pagesDone: pages.filter(p => p.moduleName === moduleName).map(p => p.pageId), ownersDone, skippedPages }, null, 2)}\n`);
+    await saveStorContent(fileInfo, `${JSON.stringify({
+      savedAt: new Date().toISOString(),
+      pagesDone: pages.filter(p => p.moduleName === moduleName).map(p => p.pageId),
+      ownersDone,
+      skippedPages,
+      // A page whose materialization verdict is still blocking is NOT done. It stays here, with the
+      // reason, instead of being counted in pagesDone — run01 of 102047 listed all three pages as done
+      // while three of their nine artifacts did not compile.
+      incompletePages: incompletePages.filter(item => item.page.moduleName === moduleName).map(item => ({ pageId: item.page.pageId, reason: item.reason })),
+    }, null, 2)}\n`);
   }
 }
 

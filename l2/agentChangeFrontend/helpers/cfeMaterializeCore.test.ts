@@ -3,11 +3,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
 } from '../steps/materialize/fixtures/fe2PetShopCatalogue.fixture.js';
+import { RUN01_TASK_CATALOGUE_DTS, RUN01_TASK_CATALOGUE_SHARED } from '../steps/materialize/fixtures/run01TaskCatalogueDts.fixture.js';
 
 // bugpage21: the EXACT shape generated into
 // mls-102051/l2/cafeFlow/web/desktop/page21/shiftWorkspace.ts — `: nothing` in the template with a
@@ -1163,4 +1164,197 @@ test('dependencyProbeRefs expands an artifact dep to its shared .ts for stalenes
   const artifact = '_102047_/l2/todo/web/shared/taskCatalogueDts.txt';
   assert.deepEqual(dependencyProbeRefs(artifact), [artifact, '_102047_/l2/todo/web/shared/taskCatalogue.ts']);
   assert.deepEqual(dependencyProbeRefs('_102047_/l2/designSystem.ts'), ['_102047_/l2/designSystem.ts']);
+});
+
+// ---------------------------------------------------------------------------------------------------
+// run01 do 102047 (28/ago): o run fechou `completed`, o `pagesDone` listou as 3 páginas e o módulo NÃO
+// COMPILA (5 erros de tsc). Os testes abaixo cobrem os dois elos que a investigação provou.
+// ---------------------------------------------------------------------------------------------------
+
+// D4 — o achado IMPOSSÍVEL que queimou as 3 rodadas de repair.
+//
+// O shared gerado no run01 tem `async cmdCreateTask() { await this.executeCreateTask(undefined); }`, e é
+// `executeCreateTask` que lê `response.error?.message`. O detector fatiava só o corpo do wrapper: nenhuma
+// implementação correta desse formato conseguia fechar o achado. O repair, disparado por ele, reescreveu
+// o shared às cegas e nessa reescrita PERDEU `handleQryListTaskClick` — os TS2551/TS2554 das 3 páginas.
+const RUN01_SHARED_COMMANDS = {
+  actions: [
+    { actionId: 'cmdCreateTask', kind: 'command', methodName: 'cmdCreateTask' },
+    { actionId: 'cmdUpdateTask', kind: 'command', methodName: 'cmdUpdateTask' },
+    { actionId: 'cmdDeleteTask', kind: 'command', methodName: 'cmdDeleteTask' },
+  ],
+};
+
+test('D4: o shared do run01 não tem mais achado de envelope — o comando que só delega é seguido um salto', () => {
+  const issues = collectMutationEnvelopeErrorIssues(RUN01_SHARED_COMMANDS, RUN01_TASK_CATALOGUE_SHARED);
+  assert.deepEqual(issues, [], issues.join(' | '));
+  // e a delegação que o detector precisa atravessar é exatamente esta
+  assert.match(RUN01_TASK_CATALOGUE_SHARED, /async cmdCreateTask\(\): Promise<void> \{\s*await this\.executeCreateTask\(undefined\);/u);
+});
+
+// O ciclo que o aceite pede, na parte que um teste offline PODE provar: achado conhecido => arquivo
+// corrigido => achado some. (Convergência do modelo nenhum teste offline prova; o que se prova é que o
+// detector está certo e que o repair recebe o necessário — ver os dois testes seguintes.)
+test('D4: achado presente no error path que descarta o envelope, ausente depois da correção', () => {
+  const broken = `
+export class B {
+  async cmdCreateTask(): Promise<void> {
+    const response = await execBff(route, params);
+    if (!response.ok) {
+      this.cmdCreateTaskError = 'HTTP ' + response.status;
+      return;
+    }
+  }
+}
+`;
+  const fixed = broken.replace("'HTTP ' + response.status", "response.error?.message ?? 'action.cmdCreateTask.error'");
+  const defs = { actions: [{ actionId: 'cmdCreateTask', kind: 'command', methodName: 'cmdCreateTask' }] };
+  const before = collectMutationEnvelopeErrorIssues(defs, broken);
+  assert.equal(before.length, 1, before.join(' | '));
+  assert.match(before[0], /cmdCreateTask error path does not read error\.message/u);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(defs, fixed), []);
+});
+
+test('D4: seguir a delegação não cega o detector — o callee que também descarta o envelope segue acusado', () => {
+  const source = `
+export class B {
+  async cmdCreateTask(): Promise<void> {
+    await this.executeCreateTask(undefined);
+  }
+
+  private async executeCreateTask(signal: AbortSignal | undefined): Promise<void> {
+    const response = await execBff(route, params);
+    if (!response.ok) {
+      this.cmdCreateTaskError = 'HTTP ' + response.status;
+    }
+  }
+}
+`;
+  const issues = collectMutationEnvelopeErrorIssues({ actions: [{ actionId: 'cmdCreateTask', kind: 'command', methodName: 'cmdCreateTask' }] }, source);
+  assert.equal(issues.length, 1, issues.join(' | '));
+  // e um corpo que faz OUTRA coisa além de delegar não é seguido (senão um helper qualquer absolveria o comando)
+  const alsoWorks = source.replace('await this.executeCreateTask(undefined);', 'this.log(); await this.executeCreateTask(undefined);');
+  assert.equal(collectMutationEnvelopeErrorIssues({ actions: [{ actionId: 'cmdCreateTask', kind: 'command', methodName: 'cmdCreateTask' }] }, alsoWorks).length, 1);
+});
+
+// D4 — o prompt de repair. No run01 ele NUNCA carregou o arquivo a corrigir: era uma geração de primeira
+// passada com uma lista de erros anexada, e o modelo reescrevia a página do zero a cada rodada (1 achado
+// de UX na rodada 1 -> 36 erros de sintaxe na rodada 3 -> 2 achados na rodada 4).
+test('D4: o hint de repair carrega o arquivo em disco e manda partir DELE', () => {
+  const current = 'export class P { handleQryListTaskClick(_e: Event) {} }';
+  const hint = buildCompileRepairHint('_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts', ['TS2551 - Property handleQryListTaskClick does not exist'], current);
+  assert.match(hint, /START FROM THIS FILE/u);
+  assert.ok(hint.includes(current), 'o conteúdo atual tem de viajar no hint');
+  assert.match(hint, /TS2551/u);
+  assert.match(hint, /Change ONLY what these findings require/u);
+  assert.match(hint, /must come back BYTE FOR BYTE/u);
+  // sem o arquivo (chamador legado) o hint continua válido, só não promete preservação
+  const bare = buildCompileRepairHint('_102047_/l2/x.ts', ['TS1005']);
+  assert.doesNotMatch(bare, /START FROM THIS FILE/u);
+});
+
+test('D4: um humanPrompt de repair leva achados + arquivo e NENHUM esqueleto em branco', () => {
+  const hint = buildCompileRepairHint('_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts', ['qryListTask.sortBy is collection wiring'], 'export class P {}');
+  const prompt = buildHumanPrompt({ pageId: 'taskCatalogue' }, [], '_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts', hint, undefined);
+  assert.match(prompt, /qryListTask\.sortBy is collection wiring/u);
+  assert.match(prompt, /START FROM THIS FILE/u);
+  assert.doesNotMatch(prompt, /## Skeleton/u);
+  // e é o chamador que garante a exclusão: hint => sem esqueleto
+  const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
+  assert.match(gen, /repairHint \? undefined : skeleton/u);
+});
+
+// D4 — os achados que o slot NÃO consegue recomputar. Um slot carrega só {planId, defPath, itemId,
+// attempt} e o gen recompõe compilador + higiene de template; os detectores de defs (enum, sortBy,
+// selection control, bloco i18n, tag do custom element, campos de contrato, tokens…) não existem lá. Um
+// item quebrado só por eles produzia hint VAZIO — e hint vazio é indistinguível de primeira passada:
+// manda o esqueleto em branco e o modelo reescreve às cegas. Por isso o verify grava os achados em disco.
+test('D4: o verify grava os achados do item e o gen os lê antes de montar o hint', () => {
+  const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
+  assert.match(phase, /saveMaterializeItemFindings\(moduleName, entry\.item\.planId, nextAttempt, \[\.\.\.entry\.blocking, \.\.\.entry\.repairable\]\)/u);
+  const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
+  assert.match(gen, /readMaterializeItemFindings\(moduleOfMlsPath\(outputPath\), planId, attempt\)/u);
+  // e eles entram no hint junto com o que foi recomputado
+  assert.match(gen, /for \(const finding of declaredFindings\)/u);
+});
+
+// D1 — proveniência do artefato por CONTEÚDO. No run01 o `taskCatalogueDts.txt` descrevia uma API que o
+// shared em disco não tinha mais, e as 3 páginas foram geradas fiéis a ela. mtime não arbitra isso em
+// nenhuma das duas camadas: o sync do Studio achata todos os mtimes em disco, e no browser
+// `getFileModified` responde MAX_SAFE_INTEGER para qualquer arquivo sujo — a partir da 2ª rodada a
+// comparação é MAX vs MAX e lê "fresco" para sempre, no leitor E nos dois escritores.
+test('D1: o artefato do run01, como o run o deixou, é recusado — proveniência desconhecida', () => {
+  const resolved = checkSharedDtsProvenance(RUN01_TASK_CATALOGUE_DTS, RUN01_TASK_CATALOGUE_SHARED);
+  assert.equal(resolved.dts, null);
+  assert.match(resolved.reason, /provenance unknown/u);
+  // e a divergência que ele teria carregado é real: o artefato DECLARA o handler que o shared perdeu,
+  // e declara sem argumento os handlers que o shared exige com (_event: Event) — os 5 erros do tsc.
+  assert.match(RUN01_TASK_CATALOGUE_DTS, /handleQryListTaskClick\(\): void;/u);
+  assert.doesNotMatch(RUN01_TASK_CATALOGUE_SHARED, /handleQryListTaskClick/u);
+  assert.match(RUN01_TASK_CATALOGUE_DTS, /handleCmdCreateTaskClick\(\): void;/u);
+  assert.match(RUN01_TASK_CATALOGUE_SHARED, /handleCmdCreateTaskClick\(_event: Event\): void/u);
+});
+
+test('D1: o artefato só é servido para o shared que o produziu', () => {
+  // o shared que TINHA o handler (o que gerou o artefato do run01) e o que o perdeu
+  const withHandler = RUN01_TASK_CATALOGUE_SHARED.replace(
+    '  handleQryGetTaskClick(_event: Event): void {',
+    '  handleQryListTaskClick(): void {\n    void this.loadQryListTask();\n  }\n\n  handleQryGetTaskClick(_event: Event): void {',
+  );
+  assert.notEqual(withHandler, RUN01_TASK_CATALOGUE_SHARED);
+  const artifact = stampSharedDtsArtifact(RUN01_TASK_CATALOGUE_DTS, withHandler);
+
+  const served = checkSharedDtsProvenance(artifact, withHandler);
+  assert.equal(served.reason, 'artifact');
+  assert.equal(served.dts, RUN01_TASK_CATALOGUE_DTS);          // o carimbo não vaza para o contexto
+  assert.doesNotMatch(served.dts!, /sharedSourceHash/u);
+
+  const refused = checkSharedDtsProvenance(artifact, RUN01_TASK_CATALOGUE_SHARED);
+  assert.equal(refused.dts, null);
+  assert.match(refused.reason, /artifact stale/u);
+});
+
+test('D1: o hash muda com o conteúdo e o carimbo sobrevive a um recarimbo', () => {
+  assert.notEqual(sharedSourceHash('a'), sharedSourceHash('b'));
+  assert.equal(sharedSourceHash('abc'), sharedSourceHash('abc'));
+  const once = stampSharedDtsArtifact('declare class X {}', 'source');
+  const twice = stampSharedDtsArtifact(once, 'source');
+  assert.equal(twice, once, 'recarimbar não empilha carimbos');
+  assert.equal(stripSharedDtsStamp(once), 'declare class X {}');
+  assert.equal(checkSharedDtsProvenance('', 'source').dts, null);
+  assert.equal(checkSharedDtsProvenance(once, null).dts, null);
+});
+
+test('D1: nenhum leitor/escritor do artefato decide por mtime', () => {
+  const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
+  const studio = readFileSync(new URL('./cfeMaterializeStudio.ts', import.meta.url), 'utf8');
+  const cli = readFileSync(new URL('../nodejsMaterializeL2.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(gen, /getFileModified/u);
+  assert.match(gen, /checkSharedDtsProvenance/u);
+  assert.match(gen, /stampSharedDtsArtifact/u);
+  // o escritor do Studio precisa do carimbo TAMBÉM: só corrigir o leitor deixaria o artefato
+  // congelado (MAX >= MAX) e toda página cairia em raw-ts para sempre.
+  assert.match(studio, /persistSharedDtsArtifactIfStale[\s\S]{0,900}checkSharedDtsProvenance/u);
+  assert.match(studio, /persistSharedDtsArtifactIfStale[\s\S]{0,900}stampSharedDtsArtifact/u);
+  assert.match(cli, /function readFreshSharedDts[\s\S]{0,600}checkSharedDtsProvenance/u);
+  assert.doesNotMatch(cli.slice(cli.indexOf('function readFreshSharedDts')), /^[\s\S]{0,600}refMtimeMs/u);
+});
+
+// D4.4 — o l2_shared entra em `materializeSharedDeterministic` ANTES de qualquer coisa, inclusive numa
+// rodada de repair. O scaffold é função pura de defs + contrato: re-salvar a própria saída reganha o
+// achado que abriu a rodada e drena o orçamento uma rodada inútil por vez. Igualdade byte a byte só —
+// qualquer outra coisa mantém o caminho de hoje.
+test('D4.4: numa rodada de repair o scaffold que repete o arquivo em disco cede a vez ao modelo', () => {
+  const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
+  assert.match(gen, /if \(attempt >= 2 && previousSource === scaffold\.code\) return null;/u);
+  assert.match(gen, /materializeSharedDeterministic\([^)]*genArgs\.attempt \?\? 1\)/su);
+});
+
+// D1 — o quarto leitor do artefato. `agentManagePage2.readSharedSurfaceSource` servia o
+// `web/shared/<page>Dts.txt` sem NENHUM teste de frescor: entregaria o artefato do run01 — que declara
+// um handler que o shared perdeu — como a superfície da classe base para uma edição de página.
+test('D1: o leitor do agentManagePage2 também exige proveniência antes de servir o artefato', () => {
+  const page2 = readFileSync(new URL('../../aura/agentManagePage2/agentManagePage2.ts', import.meta.url), 'utf8');
+  assert.match(page2, /checkSharedDtsProvenance\(persisted, await getContentByMlsPath\(tsRef\)\)/u);
+  assert.match(page2, /artifact refused \(\$\{checked\.reason\}\)/u);
 });

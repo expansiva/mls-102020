@@ -32,3 +32,31 @@ void test('the finalize gate declares Monaco vs tsc fidelity and writes a cf-run
   assert.match(src, /declared \$\{partitioned\.declared\.length\} \.test\.ts finding\(s\) \(never blocking\)/);
   assert.doesNotMatch(src, /file\(s\) clean/);
 });
+
+// D3/D2 (run01 do 102047, 28/ago) — o run fechou `completed` com `pagesDone` listando as 3 páginas
+// enquanto o próprio veredito da materialização registrava 3 itens `blocked`; o `tsc` acha 5 erros
+// exatamente nesses arquivos. O gate roda em Monaco e não os reproduziu.
+void test('D3: o gate responde pelos vereditos da materialização e nomeia o que não reproduziu', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
+  assert.match(src, /readUnresolvedMaterializeItems\(result\.moduleName\)/u);
+  // suspeitos, não veredito: só entra na nota o que o compile do módulo NÃO reproduziu
+  assert.match(src, /\.filter\(item => !closure\.errors\.some\(/u);
+  assert.match(src, /MATERIALIZE-VERDICT-UNREPRODUCED/u);
+  // e a nota tem de aparecer nos TRÊS desfechos do gate, inclusive no limpo
+  const notes = src.match(/\$\{verdictNote\}/gu) ?? [];
+  assert.equal(notes.length, 3, `verdictNote aparece ${notes.length}x`);
+  assert.match(src, /no blocking Monaco errors\$\{declaredNote\}\$\{verdictNote\}/u);
+});
+
+void test('D2: uma página com item bloqueado não entra em pagesDone', () => {
+  const src = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
+  assert.match(src, /const donePages = validPages\.filter\(page => !incompletePages\.some\(/u);
+  assert.match(src, /pagesDone: donePages\.map\(page => page\.pageId\)/u);
+  assert.match(src, /updateOwnerStatuses\(context, donePages\.flatMap/u);
+  // o relatório registra a página incompleta com o motivo, em vez de omitir
+  assert.match(src, /incompletePages: incompletePages\.filter\(item => item\.page\.moduleName === moduleName\)/u);
+  // e a REGISTRAÇÃO continua com todas as páginas válidas: o que se perde é a alegação de 'done'
+  assert.match(src, /saveFrontendWorkspaceConfig\(context, validPages\)/u);
+  // addLanguage só traduz o que ficou pronto
+  assert.match(src, /buildAddLanguageMessage\(context, donePages\)/u);
+});

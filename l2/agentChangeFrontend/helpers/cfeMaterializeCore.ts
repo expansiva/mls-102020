@@ -527,7 +527,7 @@ export function collectMutationEnvelopeErrorIssues(sharedDefinition: unknown, sh
     if (!methodName) continue;
     const body = sliceGeneratedMethodBody(sharedCode, methodName);
     if (body === null) continue;
-    if (commandErrorPathReadsEnvelope(body)) continue;
+    if (commandErrorPathReadsEnvelope(body, sharedCode)) continue;
     issues.push(`${actionId || methodName} error path does not read error.message (nor an i18n map keyed by error.code): the envelope message is the screen text, never the HTTP status`);
   }
   return issues;
@@ -542,12 +542,38 @@ function sliceGeneratedMethodBody(source: string, methodName: string): string | 
   return end < 0 ? rest : rest.slice(0, end);
 }
 
-function commandErrorPathReadsEnvelope(body: string): boolean {
+/**
+ * @param source the whole shared .ts, so a THIN DELEGATING command can be followed one hop.
+ *
+ * run01/102047: `async cmdCreateTask() { await this.executeCreateTask(undefined); }` reads the envelope
+ * inside `executeCreateTask`, but this check only ever saw the wrapper and reported an IMPOSSIBLE finding
+ * — no correct implementation of that shape could clear it. Three repair rounds were spent on it, and the
+ * blind rewrite they triggered is what destroyed `handleQryListTaskClick` (the run then shipped a module
+ * that does not compile). A finding no rewrite can close is worse than no finding at all.
+ */
+function commandErrorPathReadsEnvelope(body: string, source: string): boolean {
   if (/\breadErrorMessage\s*\(/.test(body)) return true;
   // Optional chaining (`error?.message`) is the generated form; `\berror\.message\b` does not match it.
   if (/\berror\??\.message\b/.test(body) || /\brecord\??\.message\b/.test(body)) return true;
   if (/\.code\b/.test(body) && /\b(?:this\.)?msg(?:Messages)?\s*\[/.test(body)) return true;
-  return false;
+  const delegate = delegatedMethodName(body);
+  if (!delegate) return false;
+  const delegateBody = sliceGeneratedMethodBody(source, delegate);
+  // ONE hop, and only into the callee of a body that does nothing else: a method that also does work of
+  // its own keeps its own error path, and following every `this.x()` call would clear a genuinely broken
+  // command because some unrelated helper happens to read error.message.
+  return delegateBody === null ? false : commandErrorPathReadsEnvelope(delegateBody, '');
+}
+
+/** The single method a body delegates to and nothing else (`{ await this.executeCreateTask(undefined); }`). */
+function delegatedMethodName(body: string): string | null {
+  const only = body
+    .replace(/\/\*[\s\S]*?\*\//gu, '')
+    .replace(/\/\/[^\n]*/gu, '')
+    .trim()
+    .replace(/\}$/u, '')
+    .trim();
+  return /^(?:return\s+|await\s+|void\s+)*this\.([A-Za-z_$][\w$]*)\s*\([^;]*\)\s*;?$/u.exec(only)?.[1] ?? null;
 }
 
 /**
@@ -1066,6 +1092,66 @@ export function isSharedDtsArtifactRef(ref: string): boolean {
   return /\/web\/shared\/[^/]+Dts\.txt$/u.test(ref);
 }
 
+/**
+ * Provenance of the shared .d.ts artifact — by CONTENT, never by mtime.
+ *
+ * The artifact is the page's only description of the base class it extends: generate a page against an
+ * artifact the shared no longer matches and the page compiles against a fiction. run01/102047 shipped
+ * exactly that — `taskCatalogueDts.txt` declared `handleQryListTaskClick(): void` and `handleCmd…Click():
+ * void` while the shared on disk had lost the first and taken an `(_event: Event)` on the rest. Five tsc
+ * errors, and the page was faithful to the context it was given.
+ *
+ * mtime cannot arbitrate this, at two independent layers:
+ * - the Studio sync flattens every mtime on the way to disk (all of run01 landed at 21:37:35);
+ * - in the browser, `getFileModified` answers MAX_SAFE_INTEGER for any file with status new/changed, so
+ *   once the artifact AND the shared are both dirty — which is every round after the first — the
+ *   comparison is MAX vs MAX and reads "fresh" forever, in the writers as well as the reader.
+ *
+ * So the artifact carries a stamp of the source that produced it and is refused when it does not match.
+ * An artifact with NO stamp is of unknown provenance and is refused too (every project takes one
+ * compile-on-demand after this ships; the context trace declares the fallback).
+ */
+const SHARED_DTS_STAMP = '// sharedSourceHash:';
+
+/** FNV-1a 32-bit, hex. A checksum, not a signature: it only has to change when the source changes. */
+export function sharedSourceHash(source: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < source.length; i++) {
+    hash ^= source.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${hash.toString(16).padStart(8, '0')}-${source.length}`;
+}
+
+export function stampSharedDtsArtifact(dts: string, sharedSource: string): string {
+  return `${SHARED_DTS_STAMP} ${sharedSourceHash(sharedSource)}\n${stripSharedDtsStamp(dts)}`;
+}
+
+/** The stamped hash, or null when the artifact carries none (pre-stamp artifact = unknown provenance). */
+export function readSharedDtsStamp(artifact: string): string | null {
+  const match = new RegExp(`^\\s*${SHARED_DTS_STAMP}\\s*(\\S+)`, 'u').exec(artifact);
+  return match ? match[1] : null;
+}
+
+export function stripSharedDtsStamp(artifact: string): string {
+  return artifact.replace(new RegExp(`^\\s*${SHARED_DTS_STAMP}[^\\n]*\\n`, 'u'), '');
+}
+
+/**
+ * Whether this artifact was derived from this exact shared source.
+ * `reason` is the context trace when it was not — the page must then say which fallback it took.
+ */
+export function checkSharedDtsProvenance(artifact: string | null, sharedSource: string | null): { dts: string | null; reason: string } {
+  if (!artifact || !artifact.trim()) return { dts: null, reason: 'artifact empty' };
+  if (!sharedSource) return { dts: null, reason: 'shared source unreadable' };
+  const stamp = readSharedDtsStamp(artifact);
+  if (!stamp) return { dts: null, reason: 'artifact provenance unknown (no source stamp)' };
+  const expected = sharedSourceHash(sharedSource);
+  if (stamp !== expected) return { dts: null, reason: `artifact stale (stamp ${stamp} != shared ${expected})` };
+  const body = stripSharedDtsStamp(artifact);
+  return body.trim() ? { dts: body, reason: 'artifact' } : { dts: null, reason: 'artifact empty' };
+}
+
 /** Inverse of sharedDtsArtifactRef: the shared runtime .ts a persisted artifact belongs to. */
 export function sharedTsRefOfDtsArtifact(artifactRef: string): string | null {
   const match = artifactRef.match(/^(.*)\/web\/shared\/([^/]+)Dts\.txt$/u);
@@ -1531,18 +1617,32 @@ export function buildMissingCodeRepairHint(outputPath: string, detail: string): 
   ].filter(Boolean).join('\n');
 }
 
-export function buildCompileRepairHint(outputPath: string, errors: string[]): string {
+/**
+ * @param currentCode the file ON DISK that must be corrected. Without it a "repair" was a first-pass
+ *        generation with an error list attached: the model had never seen the file it was told to fix, so
+ *        it rewrote the page from scratch every round. run01/102047 is the whole demonstration — one page
+ *        went from 1 UX finding (round 1) to 36 syntax errors (round 3) and back to 2 findings (round 4);
+ *        another lost the i18n markers it had; the shared lost a handler its own typecheck test asserts.
+ *        Findings churned instead of converging, and `repairedCount` closed the run at 0.
+ */
+export function buildCompileRepairHint(outputPath: string, errors: string[], currentCode?: string): string {
+  const current = currentCode && currentCode.trim()
+    ? ['', `Current content of ${outputPath} — START FROM THIS FILE:`, '```typescript', currentCode, '```']
+    : [];
   return [
     '## Repair',
     `The previous generated file for ${outputPath} failed TypeScript checking.`,
     '',
-    'Compiler errors:',
+    'Findings to fix:',
     '```text',
     errors.slice(0, 20).join('\n'),
     '```',
+    ...current,
     '',
     `Return the COMPLETE corrected TypeScript file through the ${GEN_TOOL_NAME} tool.`,
-    'Fix exactly these syntax/type errors while preserving the .defs.ts contract and the existing context.',
+    current.length
+      ? 'Change ONLY what these findings require. Everything else — the header, the imports, the i18n block and its markers, the class and tag names, and every handler already declared — must come back BYTE FOR BYTE. Do not rewrite the file from scratch.'
+      : 'Fix exactly these syntax/type errors while preserving the .defs.ts contract and the existing context.',
   ].join('\n');
 }
 

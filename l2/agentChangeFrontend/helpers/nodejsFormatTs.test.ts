@@ -126,3 +126,21 @@ test('wiring: both runtimes format BEFORE the textual gates and before the write
   assert.match(studio, /editor\.action\.formatDocument/u);
   assert.match(studio, /stripAllWhitespace\(formatted\) === stripAllWhitespace\(code\)/u);
 });
+
+// cf_format_monaco_dispose (28/ago): the per-call model+editor create/dispose left the TS worker's
+// async validation answering a disposed model — run01/102047 flooded the console with one
+// "Could not find source file: 'inmemory://model/N'" per generated file. The fix is ONE persistent
+// singleton; this wiring test pins the shape so a dispose-per-call cannot come back silently.
+test('wiring: the Studio formatter reuses one persistent model+editor (no create/dispose per call)', () => {
+  const studio = readFileSync(new URL('./cfeMaterializeStudio.ts', import.meta.url), 'utf8');
+  const start = studio.indexOf('export async function formatGeneratedTsInStudio');
+  assert.ok(start >= 0, 'formatGeneratedTsInStudio must exist');
+  const end = studio.indexOf('\nexport ', start);
+  const body = studio.slice(start, end > start ? end : studio.length);
+  assert.ok(!body.includes('createModel('), 'no model creation per call — each one fires an async worker validation');
+  assert.ok(!body.includes('.dispose('), 'no dispose per call — a disposed model orphans the worker response');
+  assert.match(body, /getFormatterSingleton\(\)/u, 'the call must go through the persistent singleton');
+  assert.match(body, /setValue\(''\)/u, 'the singleton is emptied after each call (no retained content)');
+  // The singleton model has a stable, self-describing URI (never the anonymous inmemory://model/N).
+  assert.match(studio, /monaco\.Uri\.parse\('inmemory:\/\/collab-cfe-formatter\//u);
+});

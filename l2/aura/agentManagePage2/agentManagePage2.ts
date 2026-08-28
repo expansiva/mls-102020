@@ -23,7 +23,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { pageRef, DEFAULT_DEVICE } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
 import { mkAgentStep, mkFail, mkCompleted, makePlanId } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
 import { getContentByMlsPath, getCompiledDtsByMlsPath } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
-import { sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { checkSharedDtsProvenance, sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { normalizeOperations2, type EditOperation2 } from '/_102020_/l2/aura/agentManagePage2/patchCore.js';
 import { buildPageEditContext, partitionOperationsByScope, scopeVocabulary, type PageEditContext } from '/_102020_/l2/aura/agentManagePage2/pageContextCore.js';
 import { parseUserChanges, summarizeUserChanges } from '/_102020_/l2/aura/agentManagePage2/userChangesCore.js';
@@ -96,10 +96,15 @@ export async function readSharedSurfaceSource(
   const artifact = sharedDtsArtifactRef(tsRef);
   if (artifact) {
     const persisted = await getContentByMlsPath(artifact);
-    if (persisted?.trim()) {
-      onResolve?.({ ref: artifact, via: 'persisted .d.ts artifact', size: persisted.length });
-      return persisted;
+    // Same provenance test the materializer applies: the artifact is served only when its stamp proves
+    // the shared .ts on disk produced it. This reader had NO freshness check at all, so it would hand
+    // over the run01 artifact — which declared a handler the shared had lost — as the base-class surface.
+    const checked = checkSharedDtsProvenance(persisted, await getContentByMlsPath(tsRef));
+    if (checked.dts) {
+      onResolve?.({ ref: artifact, via: 'persisted .d.ts artifact', size: checked.dts.length });
+      return checked.dts;
     }
+    if (persisted?.trim()) onResolve?.({ ref: artifact, via: `artifact refused (${checked.reason})`, size: persisted.length });
   }
   const compiled = await getCompiledDtsByMlsPath(tsRef);
   if (compiled?.trim()) {
