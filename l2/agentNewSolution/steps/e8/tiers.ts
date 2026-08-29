@@ -43,19 +43,26 @@ export function deriveNs4E8Model(sources: Ns4E8Sources, reviewRound = 1): Ns4E8M
     operations.push(...built.operations);
     workspaces.push(built.workspace);
   }
-  for (const journey of context.compiledJourneys) {
-    const built = buildJourneyWorkspace(journey, context);
-    operations.push(...built.operations);
-    workspaces.push(built.workspace);
-  }
+  // Projections before journeys so a single-entity inspect can host on the view instead of a second page.
   for (const projection of context.standaloneProjections) {
     const built = buildProjectionWorkspace(projection, context);
     if (built) { operations.push(...built.operations); workspaces.push(built.workspace); }
   }
+  for (const journey of context.compiledJourneys) {
+    const built = buildJourneyWorkspace(journey, context);
+    operations.push(...built.operations);
+    const owner = ownerPlaceForJourney(journey, workspaces);
+    if (owner) absorbJourneyIntoOwner(owner, journey, built);
+    else workspaces.push(built.workspace);
+  }
   // A record chosen on a screen needs a query on that same screen to choose it from.
   wireNs4ParentPickers(workspaces, operations, context, decisions);
   // The hub is built last: its catalogue points at calls of the workspaces that already exist.
-  if (context.hubEntity) workspaces.push(buildHubWorkspace(context, workspaces));
+  // A hub that only copies the anchor list (action/pending tiles) is not a place of its own.
+  if (context.hubEntity) {
+    const hub = buildHubWorkspace(context, workspaces);
+    if (hubHasOwnSurface(hub)) workspaces.push(hub);
+  }
 
   workspaces.sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
   return {
@@ -519,6 +526,78 @@ function catalogueListInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContex
     });
   }
   return inputs;
+}
+
+// ---------------------------------------------------------------------------------------------
+// A workspace is a PLACE. Journeys that are not places host on the owner catalogue/view.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Own page only when at least one of: (a) actor is not already on the entity's catalogue/view,
+ * (b) entry is eventDriven/contextRequired, (c) the journey spans more than one entity.
+ * Same actor + same entity + coldStart/contextOrLookup is hosted on the owner.
+ */
+function ownerPlaceForJourney(
+  journey: Ns4JourneyProposal, workspaces: Ns4E8ModelWorkspace[],
+): Ns4E8ModelWorkspace | null {
+  const mode = journey.business.entry.mode;
+  if (mode === 'eventDriven' || mode === 'contextRequired') return null;
+  const entityIds = unique(journey.business.steps.map(step => step.entity));
+  if (entityIds.length !== 1) return null;
+  const owner = workspaces.find(workspace =>
+    (workspace.tier === 'recordCatalogue' || workspace.tier === 'projection') && workspace.entity === entityIds[0]);
+  if (!owner) return null;
+  if (!owner.actors.includes(journey.business.actorRef)) return null;
+  return owner;
+}
+
+function absorbJourneyIntoOwner(
+  owner: Ns4E8ModelWorkspace, journey: Ns4JourneyProposal,
+  built: { workspace: Ns4E8ModelWorkspace },
+): void {
+  owner.hostedStepRefs = uniqueAppend(owner.hostedStepRefs, built.workspace.hostedStepRefs);
+  owner.featureRefs = uniqueAppend(owner.featureRefs, built.workspace.featureRefs);
+  owner.profileRefs = unique([...owner.profileRefs, ...built.workspace.profileRefs]);
+  const existingByOperation = new Map(owner.bffCalls.map(call => [call.operationId, call.bffId]));
+  for (const call of built.workspace.bffCalls) {
+    if (existingByOperation.has(call.operationId)) continue;
+    owner.bffCalls.push(call);
+    existingByOperation.set(call.operationId, call.bffId);
+  }
+  const rewrite = (bffId: string | undefined): string | undefined => {
+    if (!bffId) return bffId;
+    const call = built.workspace.bffCalls.find(item => item.bffId === bffId);
+    return (call && existingByOperation.get(call.operationId)) || bffId;
+  };
+  for (const section of built.workspace.sections) {
+    const step = journey.business.steps.find(item => item.stepId === section.sectionId);
+    // Locate of the owner's entity reuses the catalogue list — no second picker surface.
+    if (step?.kind === 'locate' && step.entity === owner.entity) continue;
+    if (owner.sections.some(item => item.sectionId === section.sectionId)) continue;
+    owner.sections.push({
+      ...section,
+      organisms: section.organisms.map(organism => ({
+        ...organism,
+        ...(organism.dataSource ? { dataSource: rewrite(organism.dataSource) } : {}),
+        ...(organism.action ? { action: rewrite(organism.action) } : {}),
+      })),
+    });
+  }
+}
+
+function hubHasOwnSurface(hub: Ns4E8ModelWorkspace): boolean {
+  return (hub.hubCatalogue?.items || []).some(item => item.kind === 'relatedList' || item.kind === 'projectionTile');
+}
+
+function uniqueAppend(existing: string[], extra: string[]): string[] {
+  const seen = new Set(existing);
+  const out = [...existing];
+  for (const item of extra) {
+    if (!item || seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------

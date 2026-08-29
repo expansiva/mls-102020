@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { catalogueLocales, ensureSharedScenaryMembers, generateSharedScaffold, parseContractInterfaces, parsePreviousI18n, renderUiScenaryMembers, sharedLlmFallbackTemplate } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+import { catalogueLocales, ensureSharedScenaryMembers, generateSharedScaffold, migrateI18nKeyOffPageId, migratePreviousI18nKeys, parseContractInterfaces, parsePreviousI18n, renderUiScenaryMembers, sharedLlmFallbackTemplate } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
 import { collectMutationEnvelopeErrorIssues } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 const CONTRACT = `
@@ -249,6 +249,31 @@ test('the page catalogue prefix is what the reader is told to look for', () => {
   assert.equal(parsePreviousI18n(pageCatalogue, 'pageMessage').get('pt-br')!['intent.things.title'], 'TRADUZIDO');
   // The default prefix keeps reading the shared's own form.
   assert.equal(parsePreviousI18n(pageCatalogue).size, 0, 'pageMessage_ is not message_');
+});
+
+test('parsePreviousI18n migrates a pageId-qualified key onto the short form without dropping the translation', () => {
+  const pageId = 'monitorAndUpdateTaskStatus';
+  const oldKey = `intent.${pageId}.qryInspectTaskSummary.list.column.createdAt.label`;
+  const newKey = 'intent.qryInspectTaskSummary.list.column.createdAt.label';
+  assert.equal(migrateI18nKeyOffPageId(oldKey, pageId), newKey);
+  assert.equal(migrateI18nKeyOffPageId('action.cmdDecideTaskStatus.success', pageId), 'action.cmdDecideTaskStatus.success');
+  const source = [
+    '/// **collab_i18n_start**',
+    'const pageMessage_en = {',
+    `  '${oldKey}': 'Created at',`,
+    '};',
+    'type PageMessageType = typeof pageMessage_en;',
+    'const pageMessage_pt_br: PageMessageType = {',
+    `  '${oldKey}': 'Data de criação',`,
+    '};',
+    '/// **collab_i18n_end**',
+  ].join('\n');
+  const byLocale = parsePreviousI18n(source, 'pageMessage', pageId);
+  assert.equal(byLocale.get('pt-br')![oldKey], 'Data de criação');
+  assert.equal(byLocale.get('pt-br')![newKey], 'Data de criação');
+  assert.equal(byLocale.get('en')![newKey], 'Created at');
+  const alreadyShort = migratePreviousI18nKeys({ [newKey]: 'já na chave nova', [oldKey]: 'valor antigo' }, pageId);
+  assert.equal(alreadyShort[newKey], 'já na chave nova', 'an existing short key is not overwritten');
 });
 
 // ── locale fantasma: 'pt' colapsado + 'pt-br' declarado (incidente 22/08) ─────

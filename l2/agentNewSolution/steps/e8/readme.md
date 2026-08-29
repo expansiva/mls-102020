@@ -18,6 +18,12 @@ form input, actor session or the unique scenario target. The strict L1 call is p
 invalid presentation gets one constrained repair and then keeps the mechanical defaults, so presentation
 variance never blocks the run. E8 preview and E9 compilation both use the total `helpers/routeOf.ts`.
 
+A workspace is a place. A journey of the same actor on an entity the catalogue already shows is
+hosted on that catalogue (`hostedStepRefs`) instead of becoming a second page. A hub is emitted only
+when its closed catalogue has a `relatedList` or `projectionTile`. `NS4_E8_STEP_UNHOSTED` requires
+every non-demoted journey step to be hosted somewhere; `NS4_E8_REDUNDANT_WORKSPACE` is the inverse
+(a leftover journey or a hub that only copies the anchor list). Scene grouping stays a CF concern.
+
 The gate rejects unhosted use cases, empty workspaces, unresolved page context, unbounded menu
 sections, invalid queues, skeleton drift and invented fields. Until E3 binds its business-language
 `allowedInformation` to ontology field refs, `fieldsOnly` projections are recorder warnings and

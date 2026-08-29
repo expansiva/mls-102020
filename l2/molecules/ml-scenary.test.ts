@@ -1,5 +1,6 @@
 /// <mls fileReference="_102020_/l2/molecules/ml-scenary.test.ts" enhancement="_blank"/>
 
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
@@ -38,6 +39,13 @@ function fake(tag: string, attrs: Record<string, string | true>): SceneHostChild
     },
   };
 }
+
+test('ml-scenary.less uses DS role tokens, not undefined --ml-*', () => {
+  const less = readFileSync(new URL('./ml-scenary.less', import.meta.url), 'utf8');
+  assert.equal(less.includes('var(--ml-'), false);
+  assert.match(less, /var\(--text-default,/u);
+  assert.match(less, /var\(--surface-bg,/u);
+});
 
 test('parseScenes keeps unique required values in authored order', () => {
   const scenes = parseScenes([

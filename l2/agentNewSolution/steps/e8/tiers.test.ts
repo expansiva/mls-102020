@@ -42,8 +42,11 @@ test('every screen of the module is one of the three tiers, and the module compi
   assert.equal(model.hubEntity, run44.expected.hubEntity);
   assert.equal(model.workspaces.length, run44.expected.workspaces);
   assert.deepEqual(byTier, run44.expected.byTier);
-  // The three capture-only journeys are demoted by E2 and never become a second screen.
-  assert.equal(input.journeys.journeys.length - byTier.journey, run44.expected.demotedJourneys);
+  // Capture-only journeys are demoted by E2; same-actor single-entity journeys are hosted on the owner place.
+  assert.equal(
+    input.journeys.journeys.length - (byTier.journey || 0),
+    run44.expected.demotedJourneys + (run44.expected.hostedJourneys || 0),
+  );
 
   const gate = validateNs4E8Model(model, input);
   assert.equal(gate.issues.filter(issue => issue.severity !== 'warning').length, run44.expected.blockingIssues);

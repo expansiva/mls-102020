@@ -4,8 +4,8 @@ molecules--ml-scenary-102020 {
   display: block;
 
   .ml-scenary {
-    font-family: var(--ml-font-family, system-ui, -apple-system, sans-serif);
-    color: var(--ml-on-surface, #1c1b1f);
+    font-family: var(--font-family-primary, system-ui, -apple-system, sans-serif);
+    color: var(--text-default, currentColor);
   }
 
   .ml-scenary-direct,
@@ -14,7 +14,7 @@ molecules--ml-scenary-102020 {
   }
 
   .ml-disabled {
-    opacity: var(--ml-disabled-opacity, 0.5);
+    opacity: 0.5;
     cursor: not-allowed;
     pointer-events: none;
   }
@@ -23,7 +23,7 @@ molecules--ml-scenary-102020 {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    border-bottom: var(--ml-border-width, 1px) var(--ml-border-style, solid) var(--ml-outline-variant, #e2e8f0);
+    border-bottom: 1px solid var(--border-subtle, currentColor);
   }
 
   .ml-scenary-tab {
@@ -31,27 +31,27 @@ molecules--ml-scenary-102020 {
     align-items: center;
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
-    color: var(--ml-on-surface-muted, #49454f);
+    color: var(--text-muted, currentColor);
     background: transparent;
     border: 0;
-    border-bottom: 2px var(--ml-border-style, solid) transparent;
+    border-bottom: 2px solid transparent;
     cursor: pointer;
-    transition: color var(--ml-transition, 200ms ease), border-color var(--ml-transition, 200ms ease);
+    transition: color var(--transition-normal, 0.3s) ease, border-color var(--transition-normal, 0.3s) ease;
 
     &:hover {
-      color: var(--ml-on-surface, #1c1b1f);
+      color: var(--text-default, currentColor);
     }
 
     &:focus-visible {
-      outline: 2px solid var(--ml-primary, #3b82f6);
+      outline: 2px solid var(--link-text, currentColor);
       outline-offset: 2px;
     }
   }
 
   .ml-scenary-tab-active {
-    color: var(--ml-primary, #3b82f6);
-    border-bottom-color: var(--ml-primary, #3b82f6);
-    font-weight: var(--ml-font-weight-medium, 500);
+    color: var(--link-text, currentColor);
+    border-bottom-color: var(--link-text, currentColor);
+    font-weight: var(--font-weight-normal, 400);
   }
 
   .ml-scenary-panel {
@@ -65,11 +65,11 @@ molecules--ml-scenary-102020 {
   .ml-scenary-heading {
     margin: 0 0 0.75rem;
     font-size: 1.125rem;
-    font-weight: var(--ml-font-weight-medium, 500);
-    color: var(--ml-on-surface, #1c1b1f);
+    font-weight: var(--font-weight-normal, 400);
+    color: var(--text-default, currentColor);
 
     &:focus-visible {
-      outline: 2px solid var(--ml-primary, #3b82f6);
+      outline: 2px solid var(--link-text, currentColor);
       outline-offset: 2px;
     }
   }
@@ -93,13 +93,13 @@ molecules--ml-scenary-102020 {
     margin-bottom: 0.75rem;
     padding: 0.25rem 0.5rem;
     font-size: 0.875rem;
-    color: var(--ml-primary, #3b82f6);
+    color: var(--link-text, currentColor);
     background: transparent;
     border: 0;
     cursor: pointer;
 
     &:focus-visible {
-      outline: 2px solid var(--ml-primary, #3b82f6);
+      outline: 2px solid var(--link-text, currentColor);
       outline-offset: 2px;
     }
   }
@@ -122,8 +122,8 @@ molecules--ml-scenary-102020 {
 
   .ml-scenary-reveal .ml-scenary-panel {
     padding: 0.75rem;
-    border: var(--ml-border-width, 1px) var(--ml-border-style, solid) var(--ml-outline-variant, #e2e8f0);
-    background-color: var(--ml-surface, #ffffff);
+    border: 1px solid var(--border-subtle, currentColor);
+    background-color: var(--surface-bg, transparent);
   }
 
   .ml-scenary-badge {
@@ -133,12 +133,12 @@ molecules--ml-scenary-102020 {
     margin-bottom: 0.5rem;
     padding: 0.125rem 0.5rem;
     font-size: 0.75rem;
-    color: var(--ml-on-surface-muted, #49454f);
-    border: var(--ml-border-width, 1px) var(--ml-border-style, solid) var(--ml-outline-variant, #e2e8f0);
+    color: var(--text-muted, currentColor);
+    border: 1px solid var(--border-subtle, currentColor);
     border-radius: 999px;
   }
 
   .ml-scenary-badge-title {
-    color: var(--ml-on-surface, #1c1b1f);
+    color: var(--text-default, currentColor);
   }
 }

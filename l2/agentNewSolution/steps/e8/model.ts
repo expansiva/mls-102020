@@ -4,9 +4,11 @@
  * The E8 workspace model: every screen of the module, in the shape E9 transposes into the classic
  * L4 format without taking a single decision of its own.
  *
- * A screen is one of three things and never a fourth: the record catalogue of an entity (tier 1),
- * an approved journey (tier 2), or the hub of the dominant anchor and its standalone projections
- * (tier 3). There is no partition of steps into invented workspaces.
+ * A screen is a place: the record catalogue of an entity (tier 1), an approved journey that is
+ * itself a place (tier 2: distinct actor, eventDriven/contextRequired, or more than one entity),
+ * or the hub of the dominant anchor when it has related lists or projection tiles (tier 3).
+ * A journey of the same actor on an entity the catalogue already shows is hosted there
+ * (`hostedStepRefs`); it is not a fourth kind of page.
  */
 
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';

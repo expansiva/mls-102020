@@ -210,6 +210,12 @@ export function parsePreviousI18n(
    * which one it is looking at instead of assuming the shared's.
    */
   constPrefix = 'message',
+  /**
+   * Page id of the file being read. When set, keys of the form
+   * `section.|organism.|intent.<pageId>.…` are also exposed under the short form
+   * without that segment, so a hand-made translation survives the key rename.
+   */
+  pageId?: string,
 ): Map<string, Record<string, string>> {
   const out = new Map<string, Record<string, string>>();
   if (!source) return out;
@@ -232,7 +238,25 @@ export function parsePreviousI18n(
     for (const pair of constMatch[2].matchAll(PAIR_RE)) {
       entries[unescapeQuoted(pair[2], pair[1])] = unescapeQuoted(pair[4], pair[3]);
     }
-    if (Object.keys(entries).length > 0) out.set(locale, entries);
+    if (Object.keys(entries).length > 0) out.set(locale, migratePreviousI18nKeys(entries, pageId));
+  }
+  return out;
+}
+
+/** Drop the redundant `pageId` segment from a taxonomy i18n key. Unrelated keys stay as-is. */
+export function migrateI18nKeyOffPageId(key: string, pageId: string): string {
+  if (!key || !pageId) return key;
+  const escaped = pageId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return key.replace(new RegExp(`^(section|organism|intent)\\.${escaped}\\.`, 'u'), '$1.');
+}
+
+/** If the old (pageId-qualified) key exists and the short key does not, copy the value across. */
+export function migratePreviousI18nKeys(entries: Record<string, string>, pageId?: string): Record<string, string> {
+  if (!pageId) return entries;
+  const out: Record<string, string> = { ...entries };
+  for (const [key, value] of Object.entries(entries)) {
+    const next = migrateI18nKeyOffPageId(key, pageId);
+    if (next !== key && out[next] === undefined) out[next] = value;
   }
   return out;
 }

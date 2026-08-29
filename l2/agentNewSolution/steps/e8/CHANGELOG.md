@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-29 — workspace só nasce quando é um lugar
+
+Jornada do mesmo ator sobre a entidade do catálogo (command/inspect/decide/locate) é hospedada no
+dono (`hostedStepRefs`); não vira página. Hub só existe com `relatedList` ou `projectionTile`.
+Gate `NS4_E8_REDUNDANT_WORKSPACE` (blocking, irmão do `STEP_UNHOSTED`). `STEP_UNHOSTED` passa a
+exigir hospedagem de todo step de jornada não demovida. Cena continua derivada no CF — o E8 não
+declara `scenaries[]`.
+
 ## 2026-08-25 — inspect de coleção (antes do locate) é lista, nunca getById
 
 Um passo `inspect` de entidade X seguido de `locate` de X no mesmo journey é o resumo da listagem

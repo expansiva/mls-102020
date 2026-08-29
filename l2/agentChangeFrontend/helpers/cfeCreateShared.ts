@@ -48,6 +48,7 @@ import {
 import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
 import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource, replaceDefsValue } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
+import { navigationFromE8Menu } from '/_102020_/l2/agentChangeFrontend/helpers/cfeModuleNavigation.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
 import { enumDisplayLabel, enumLabelFallbackWarnings, readEnumLabels, type CfeEnumLabel } from '/_102020_/l2/agentChangeFrontend/helpers/cfeEnumLabels.js';
 import { sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
@@ -194,6 +195,8 @@ export interface CfeCreateContext {
   actorsByModule: Record<string, CfeActorDef[]>;
   pages: CfePagePlan[];
   warnings: string[];
+  /** E8 model.menu per module — places only. Empty when the L4 has no workspace-model. */
+  menuByModule?: Record<string, Array<{ workspaceId: string; label: string }>>;
 }
 
 export interface CfePreparedPage {
@@ -512,6 +515,7 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   const navByModule = new Map<string, { edges: Record<string, unknown>[]; landings: CfeLanding[] }>();
   const siteMapByModule = new Map<string, { edges: Record<string, unknown>[]; landings: CfeLanding[] }>();
   const actorsByModule: Record<string, CfeActorDef[]> = {};
+  const menuByModule: Record<string, Array<{ workspaceId: string; label: string }>> = {};
 
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
@@ -521,9 +525,20 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     // l4 holds ONLY .defs.ts (it is not a compilable layer). Never read a .ts/.d.ts from l4 — the l2
     // contract .ts is generated deterministically from the bffCall in the workspace defs (F3).
     if (extension !== '.defs.ts') continue;
-    // The approved workspace model is the generator's own contract (hundreds of KB) and nothing here
-    // reads it: the pages come from workspaces/ + siteMap. Skipping it before the parse is free.
-    if (shortName === 'workspace-model') continue;
+    // Pages still come from workspaces/ + siteMap. The workspace-model is only read for `menu`
+    // (E8 places), so the shell navigation is model.menu ∩ materialized pages.
+    if (shortName === 'workspace-model') {
+      const parsedModel = parseDefsSource(String(await file.getContent()));
+      if (parsedModel && Array.isArray((parsedModel.data as Record<string, unknown>).menu)) {
+        const moduleName = folder && !folder.includes('/') ? folder : String((parsedModel.data as Record<string, unknown>).moduleName || '');
+        if (moduleName) {
+          menuByModule[moduleName] = ((parsedModel.data as Record<string, unknown>).menu as Record<string, unknown>[])
+            .map(entry => ({ workspaceId: readString(entry?.workspaceId), label: readString(entry?.label) }))
+            .filter(entry => entry.workspaceId);
+        }
+      }
+      continue;
+    }
     const parsed = parseDefsSource(String(await file.getContent()));
     if (!parsed) continue;
     const fileInfo: FileInfo = { project: file.project, level: file.level, folder, shortName, extension };
@@ -744,7 +759,7 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     modules: new Set([...declaredByModule].filter(([, types]) => types.has('workspace')).map(([moduleName]) => moduleName)),
     ids: new Set([...todoState.ownersByKey.values()].filter(owner => owner.ownerType === 'workspace' && owner.status === 'toCreate').map(owner => owner.ownerId)),
   };
-  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList, pendingWorkspaces), warnings };
+  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList, pendingWorkspaces), warnings, menuByModule };
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
@@ -1615,14 +1630,28 @@ export function page11DefinitionProse(prepared: Pick<CfePreparedPage, 'page' | '
   const actor = readString(prepared.baseDefinition.actor);
   const purpose = readString(prepared.baseDefinition.purpose);
   const category = prepared.presentation?.categoryRef || '';
-  // English, like every other skill text: this prose is a PROMPT, and the module it describes may be
-  // in any language. `pageName`/`actor`/`purpose` ride through verbatim in the module's own language.
-  const parts = [`This page is ${pageName}.`];
-  if (actor) parts.push(`It is for: ${actor}.`);
-  if (purpose) parts.push(/[.!?]$/u.test(purpose) ? purpose : `${purpose}.`);
-  if (category) parts.push(`Its UX experience is ${category}.`);
+  // English labels, l4 values verbatim. Never interpolate module copy into an English sentence —
+  // that produces bilingual prompts. A missing field omits the whole line, not an empty label.
+  const parts: string[] = [];
+  if (pageName) parts.push(`page: ${pageName}`);
+  if (actor) parts.push(`actor: ${actor}`);
+  if (purpose) parts.push(`purpose: ${purpose}`);
+  if (category) parts.push(`uxExperience: ${category}`);
   parts.push('The page extends the shared base class of this workspace: the shared travels in this pipeline and already carries the states, actions and handlers the page inherits. Render the experience around that intent — do not list fields and do not list routines.');
   return parts.join('\n');
+}
+
+/** section./organism./intent. ids are per-page; repeating pageId in them inflates every i18n key. */
+function stripPageIdFromTaxonomyId(id: string, pageId: string): string {
+  if (!id || !pageId) return id;
+  const escaped = pageId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return id.replace(new RegExp(`^(section|organism|intent)\\.${escaped}\\.`, 'u'), '$1.');
+}
+
+function layoutTaxonomyId(kind: 'section' | 'organism' | 'intent', pageId: string, rest: string): string {
+  const body = String(rest || '').replace(/^\.+|\.+$/gu, '') || 'main';
+  const prefixed = body === kind || body.startsWith(`${kind}.`) ? body : `${kind}.${body}`;
+  return stripPageIdFromTaxonomyId(prefixed, pageId);
 }
 
 // Expand the LLM's minimal semantic composition into the full internal layout the rest of the pipeline
@@ -1636,7 +1665,7 @@ export function expandLayoutComposition(prepared: CfePreparedPage, composition: 
   const i18n: Record<string, string> = {};
   const sections: CfeLayoutSection[] = [];
   composition.sections.forEach((section, sectionIndex) => {
-    const sectionId = section.id && section.id.startsWith('section.') ? section.id : `section.${pageId}.${toSafeShortName(section.id || section.sectionName || `s${sectionIndex + 1}`) || 'main'}`;
+    const sectionId = layoutTaxonomyId('section', pageId, section.id && section.id.startsWith('section.') ? section.id : (toSafeShortName(section.id || section.sectionName || `s${sectionIndex + 1}`) || 'main'));
     const sectionTitleKey = `${sectionId}.title`;
     i18n[sectionTitleKey] = section.sectionName || prepared.page.pageName;
     const organisms: CfeLayoutOrganism[] = [];
@@ -1696,7 +1725,7 @@ function expandCompositionOrganism(pageId: string, composition: CfeCompositionOr
   if (uses.length === 0) {
     // No data binding -> a content/landing organism; the displayHint is the content role (hero, showcase…).
     const content = buildContentOrganism(pageId, composition.displayHint || 'content', order, i18n);
-    return { ...content, id: composition.id || content.id, organismName: composition.organismName || content.organismName, purpose: composition.purpose || content.purpose, displayHint: composition.displayHint, order };
+    return { ...content, id: composition.id ? stripPageIdFromTaxonomyId(composition.id, pageId) : content.id, organismName: composition.organismName || content.organismName, purpose: composition.purpose || content.purpose, displayHint: composition.displayHint, order };
   }
   const built = uses.map(bffId => {
     const command = commandByBff.get(bffId) || {};
@@ -1708,7 +1737,7 @@ function expandCompositionOrganism(pageId: string, composition: CfeCompositionOr
   // Merge every used bffCall's intentions into one organism; carry the model's identity/hint through.
   return {
     ...base,
-    id: composition.id || base.id,
+    id: composition.id ? stripPageIdFromTaxonomyId(composition.id, pageId) : base.id,
     organismName: composition.organismName || base.organismName,
     purpose: composition.purpose || base.purpose,
     displayHint: composition.displayHint || base.displayHint,
@@ -3331,7 +3360,7 @@ export function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageL
     return deterministicWorkspaceLayout(prepared, prepared.workspace);
   }
   const i18n: Record<string, string> = {};
-  const sectionId = `section.${prepared.page.pageId}.main`;
+  const sectionId = layoutTaxonomyId('section', prepared.page.pageId, 'main');
   const sectionTitleKey = `${sectionId}.title`;
   i18n[sectionTitleKey] = prepared.page.pageName;
   const contextOrganism = deterministicBusinessContextOrganism(prepared, i18n);
@@ -3365,9 +3394,9 @@ export function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageL
 function deterministicBusinessContextOrganism(prepared: CfePreparedPage, i18n: Record<string, string>): CfeLayoutOrganism | null {
   const refs = collectBusinessContextRefs(prepared.operations);
   if (refs.length === 0) return null;
-  const organismId = `organism.${prepared.page.pageId}.businessContext`;
+  const organismId = layoutTaxonomyId('organism', prepared.page.pageId, 'businessContext');
   const organismTitleKey = `${organismId}.title`;
-  const intentId = `intent.${prepared.page.pageId}.businessContext.summary`;
+  const intentId = layoutTaxonomyId('intent', prepared.page.pageId, 'businessContext.summary');
   const intentTitleKey = `${intentId}.title`;
   i18n[organismTitleKey] = 'Contexto de negocio';
   i18n[intentTitleKey] = 'Contexto de negocio';
@@ -3409,10 +3438,10 @@ function deterministicBusinessContextField(pageId: string, intentId: string, ref
 function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperationDef, index: number, i18n: Record<string, string>): CfeLayoutOrganism {
   const command = prepared.commands.find(item => item.commandName === operation.operationId) || {};
   const isQuery = command.kind === 'query';
-  const organismId = `organism.${prepared.page.pageId}.${operation.operationId}`;
+  const organismId = layoutTaxonomyId('organism', prepared.page.pageId, operation.operationId);
   const organismTitleKey = `${organismId}.title`;
   i18n[organismTitleKey] = operation.title || humanizeId(operation.operationId);
-  const intentId = `intent.${prepared.page.pageId}.${operation.operationId}.${isQuery ? 'list' : 'form'}`;
+  const intentId = layoutTaxonomyId('intent', prepared.page.pageId, `${operation.operationId}.${isQuery ? 'list' : 'form'}`);
   const intentTitleKey = `${intentId}.title`;
   const emptyKey = `${intentId}.empty`;
   i18n[intentTitleKey] = operation.title || humanizeId(operation.operationId);
@@ -3478,7 +3507,7 @@ function deterministicWorkspaceLayout(prepared: CfePreparedPage, workspace: CfeJ
     : [{ sectionId: 'main', intent: workspace.purpose || prepared.page.pageName, organisms: workspace.bffCalls.map(call => ({ role: call.kind === 'command' ? 'contextualAction' : 'primarySurface', ...(call.kind === 'command' ? { action: call.bffId } : { dataSource: call.bffId }) })) }];
   const sections: CfeLayoutSection[] = [];
   workspaceSections.forEach((section, sectionIndex) => {
-    const sectionId = `section.${pageId}.${toSafeShortName(section.sectionId) || 'main'}`;
+    const sectionId = layoutTaxonomyId('section', pageId, toSafeShortName(section.sectionId) || 'main');
     const sectionTitleKey = `${sectionId}.title`;
     i18n[sectionTitleKey] = section.intent || prepared.page.pageName;
     const organisms: CfeLayoutOrganism[] = [];
@@ -3497,7 +3526,7 @@ function deterministicWorkspaceLayout(prepared: CfePreparedPage, workspace: CfeJ
     }
   });
   if (sections.length === 0) {
-    const fallbackId = `section.${pageId}.main`;
+    const fallbackId = layoutTaxonomyId('section', pageId, 'main');
     i18n[`${fallbackId}.title`] = prepared.page.pageName;
     sections.push({ id: fallbackId, type: 'section', sectionName: prepared.page.pageName, titleKey: `${fallbackId}.title`, mode: 'view', order: 10, organisms: [] });
   }
@@ -3536,10 +3565,10 @@ function buildWorkspaceOrganism(pageId: string, organism: CfeWorkspaceOrganism, 
 function buildQueryOrganism(pageId: string, bffId: string, mode: 'list' | 'detail' | 'showcase' | 'summary', order: number, commandByBff: Map<string, Record<string, unknown>>, i18n: Record<string, string>, fieldTitles: Record<string, string> = {}): CfeLayoutOrganism {
   const command = commandByBff.get(bffId) || {};
   const title = readString(command.purpose) || humanizeId(bffId);
-  const organismId = `organism.${pageId}.${bffId}`;
+  const organismId = layoutTaxonomyId('organism', pageId, bffId);
   const organismTitleKey = `${organismId}.title`;
   i18n[organismTitleKey] = title;
-  const intentId = `intent.${pageId}.${bffId}.${mode}`;
+  const intentId = layoutTaxonomyId('intent', pageId, `${bffId}.${mode}`);
   const intentTitleKey = `${intentId}.title`;
   const emptyKey = `${intentId}.empty`;
   i18n[intentTitleKey] = title;
@@ -3582,10 +3611,10 @@ function buildQueryOrganism(pageId: string, bffId: string, mode: 'list' | 'detai
 function buildCommandOrganism(pageId: string, bffId: string, order: number, commandByBff: Map<string, Record<string, unknown>>, i18n: Record<string, string>, fieldTitles: Record<string, string> = {}): CfeLayoutOrganism {
   const command = commandByBff.get(bffId) || {};
   const title = readString(command.purpose) || humanizeId(bffId);
-  const organismId = `organism.${pageId}.${bffId}`;
+  const organismId = layoutTaxonomyId('organism', pageId, bffId);
   const organismTitleKey = `${organismId}.title`;
   i18n[organismTitleKey] = title;
-  const intentId = `intent.${pageId}.${bffId}.form`;
+  const intentId = layoutTaxonomyId('intent', pageId, `${bffId}.form`);
   const intentTitleKey = `${intentId}.title`;
   const actionKey = `${intentId}.action.${bffId}`;
   i18n[intentTitleKey] = title;
@@ -3623,10 +3652,10 @@ function buildCommandOrganism(pageId: string, bffId: string, order: number, comm
 
 // F6: content organism (no bffCall) for landing roles hero/banner/richText/imageSet/ctaLink.
 function buildContentOrganism(pageId: string, role: string, order: number, i18n: Record<string, string>): CfeLayoutOrganism {
-  const organismId = `organism.${pageId}.${role}${order}`;
+  const organismId = layoutTaxonomyId('organism', pageId, `${role}${order}`);
   const organismTitleKey = `${organismId}.title`;
   i18n[organismTitleKey] = humanizeId(role);
-  const intentId = `intent.${pageId}.${role}${order}.content`;
+  const intentId = layoutTaxonomyId('intent', pageId, `${role}${order}.content`);
   const intentTitleKey = `${intentId}.title`;
   i18n[intentTitleKey] = humanizeId(role);
   if (role === 'ctaLink') i18n[`${intentId}.label`] = 'Ver mais';
@@ -4809,12 +4838,13 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
     // falls back to the 2-letter prefix on its own. Rewritten on every rebuild so l4 stays authoritative.
     const runtimeLocales = context.moduleI18n[moduleName]?.runtimeLocales ?? [];
     if (runtimeLocales.length > 0) mod.languages = runtimeLocales;
-    mod.navigation = mergeByKey(asRecords(mod.navigation), modulePages.map(page => ({
-      id: page.pageId,
-      label: readString(labels[page.pageId]) || page.pageName,
-      href: `/${moduleName}/${page.pageId}`,
-      description: readString(labels[page.pageId]) || page.pageName,
-    })), 'id');
+    const labelRecord = Object.fromEntries(Object.entries(labels).map(([key, value]) => [key, readString(value)]));
+    mod.navigation = navigationFromE8Menu({
+      moduleName,
+      menu: context.menuByModule?.[moduleName] || [],
+      pages: modulePages.map(page => ({ pageId: page.pageId, label: page.pageName, actors: page.actorIds })),
+      labels: labelRecord,
+    });
     const existingFrontend = isRecord(mod.frontend) ? mod.frontend : {};
     const pageTests = frontendPageTestPaths(project, modulePages);
     mod.frontend = {

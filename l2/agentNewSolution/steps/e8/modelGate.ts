@@ -9,8 +9,9 @@ import { isNs4CollectionInspect } from '/_102020_/l2/agentNewSolution/helpers/ns
 import { buildNs4ParentIndex, ns4FkParentOf } from '/_102020_/l2/agentNewSolution/helpers/ns4ForeignKeys.js';
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
+import { collectNs4DemotedJourneyIds } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
-import { isNs4OwnerHandleField, type Ns4E8Model, type Ns4E8ModelWorkspace } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
+import { isNs4OwnerHandleField, type Ns4E8BffCall, type Ns4E8Model, type Ns4E8ModelWorkspace, type Ns4E8Operation } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 
 /**
  * How a broken organism reference can be repaired without an LLM. The gate DETECTS as strictly as
@@ -288,15 +289,25 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
   });
 
   const hostedSteps = new Set(model.workspaces.flatMap(workspace => workspace.hostedStepRefs));
+  const demotedJourneys = new Set(collectNs4DemotedJourneyIds(sources.journeys, sources.policyDecisionSelections || []));
   model.workspaces.filter(workspace => workspace.tier === 'journey').forEach(workspace => {
     if (!workspace.bffCalls.length) add('NS4_E8_EMPTY_JOURNEY', workspace.workspaceId, `Journey workspace ${workspace.workspaceId} compiles no call.`);
   });
-  sources.journeys.journeys.forEach(journey => journey.business.steps.forEach(step => {
-    const ref = `${journey.journeyId}.${step.stepId}`;
-    if (!hostedSteps.has(ref) && model.workspaces.some(workspace => workspace.journeyRef === journey.journeyId)) {
-      add('NS4_E8_STEP_UNHOSTED', 'workspaces', `Journey step ${ref} is not hosted by its journey workspace.`);
-    }
-  }));
+  if (model.workspaces.length) {
+    sources.journeys.journeys.forEach(journey => {
+      if (demotedJourneys.has(journey.journeyId)) return;
+      (journey.business?.steps || []).forEach(step => {
+        const ref = `${journey.journeyId}.${step.stepId}`;
+        if (!hostedSteps.has(ref)) {
+          add('NS4_E8_STEP_UNHOSTED', 'workspaces', `Journey step ${ref} is not hosted by any workspace.`);
+        }
+      });
+    });
+    model.workspaces.forEach((workspace, index) => {
+      const redundant = redundantWorkspaceReason(workspace, model, operations, sources);
+      if (redundant) add('NS4_E8_REDUNDANT_WORKSPACE', `workspaces[${index}]`, redundant);
+    });
+  }
   model.menu.forEach((entry, index) => {
     if (!workspaceIds.has(entry.workspaceId)) add('NS4_E8_MENU_WORKSPACE', `menu[${index}]`, `Unknown workspace ${entry.workspaceId}.`);
     if (entry.tier === 'journey') add('NS4_E8_MENU_JOURNEY', `menu[${index}]`, 'A journey is never a menu item; it is reached from a hub action, a related list or a notification.');
@@ -307,6 +318,46 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
   });
 
   return { ok: issues.every(issue => issue.severity === 'warning'), issues };
+}
+
+function redundantWorkspaceReason(
+  workspace: Ns4E8ModelWorkspace, model: Ns4E8Model, operations: Map<string, Ns4E8Operation>,
+  sources: Ns4E8Sources,
+): string | null {
+  if (workspace.tier === 'hub') {
+    const items = workspace.hubCatalogue?.items || [];
+    if (!items.some(item => item.kind === 'relatedList' || item.kind === 'projectionTile')) {
+      return `Hub ${workspace.workspaceId} has no relatedList or projectionTile; it duplicates the anchor catalogue.`;
+    }
+    return null;
+  }
+  if (workspace.tier !== 'journey') return null;
+  const journey = sources.journeys.journeys.find(item => item.journeyId === workspace.journeyRef);
+  if (!journey) return null;
+  const mode = journey.business.entry.mode;
+  if (mode === 'eventDriven' || mode === 'contextRequired') return null;
+  const entityIds = [...new Set(journey.business.steps.map(step => step.entity).filter(Boolean))];
+  if (entityIds.length !== 1) return null;
+  if (!isCommandInspectLocateSummarySurface(workspace, operations)) return null;
+  const container = model.workspaces.find(other => other.workspaceId !== workspace.workspaceId
+    && (other.tier === 'recordCatalogue' || other.tier === 'projection')
+    && other.entity === entityIds[0]
+    && workspace.actors.length > 0
+    && workspace.actors.every(actor => other.actors.includes(actor)));
+  if (!container) return null;
+  return `Workspace ${workspace.workspaceId} is redundant with ${container.workspaceId}; host its steps on the owner place.`;
+}
+
+function isCommandInspectLocateSummarySurface(
+  workspace: Ns4E8ModelWorkspace, operations: Map<string, Ns4E8Operation>,
+): boolean {
+  if (!workspace.bffCalls.length) return false;
+  return workspace.bffCalls.every(call => isHostableCall(call, operations));
+}
+
+function isHostableCall(call: Ns4E8BffCall, operations: Map<string, Ns4E8Operation>): boolean {
+  const kind = operations.get(call.operationId)?.accessPattern.kind;
+  return kind === 'list' || kind === 'getById' || kind === 'transition' || kind === 'commandInput';
 }
 
 /**

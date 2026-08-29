@@ -168,9 +168,9 @@ export interface Ns4E10Delivery {
 }
 
 /**
- * The L5 menu preview. The frontend builds the real navigation itself from workspaces/*.defs.ts plus
- * the site map landings (nodejsSaveConfigJson.ts), with `/<module>/<workspaceId>` as the href — this
- * mirrors that derivation so the report shows the menu the module will actually have.
+ * The L5 menu preview. The frontend rebuilds navigation as E8 `model.menu` ∩ materialized pages
+ * (nodejsSaveConfigJson.ts), with `/<module>/<workspaceId>` as the href — this mirrors that
+ * derivation so the report shows the menu the module will actually have.
  */
 export function compileNs4L5ModuleNavigation(sources: Ns4E10Sources): Ns4L5ModuleNavigation {
   const workspaceById = new Map(sources.model.workspaces.map(workspace => [workspace.workspaceId, workspace]));

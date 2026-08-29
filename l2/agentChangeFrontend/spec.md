@@ -80,9 +80,10 @@ de página) e `journeys/*.defs.ts` é artefato de negócio — o mapa de telas v
 + `siteMap`. O `workspace-model.defs.ts` é contrato do gerador e é ignorado sem parse.
 
 **Dono do menu (`modules[].navigation` do l5/config.json): este agente.** O ns4 semeia um menu no e10
-para todos os workspaces compilados — é a prévia certa, mas aponta para páginas que ainda não
-existem. O menu final é reconstruído a partir das páginas que realmente materializaram, então nunca
-mostra link morto.
+a partir de `model.menu` (só lugares: catálogo, hub, projeção). Essa prévia pode apontar para páginas
+que ainda não existem. O menu final é `model.menu` ∩ páginas materializadas — ordem e inclusão do E8,
+existência do CF. Página materializada que não está no `menu` do E8 continua roteável e não entra no
+menu. Sem `workspace-model.menu` (l4 antigo), uma entrada por página materializada.
 
 ## O que este agente NÃO faz
 

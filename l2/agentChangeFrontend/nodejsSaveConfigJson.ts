@@ -20,6 +20,7 @@ import type {
   ProjectNavigationEntry,
   ProjectsConfig,
 } from '/_102029_/l2/runtimeConfigTypes.js';
+import { navigationFromE8Menu } from './helpers/cfeModuleNavigation.js';
 // Relative path (not /_102029_/...) because this file runs standalone via tsx at publish:
 // tsx resolves relative .ts, but does not swap .js→.ts for path-mapped (/_XXX_/) runtime imports.
 
@@ -394,20 +395,22 @@ function main(): void {
   mod.designSystems = moduleDesignSystems;
 
   const labels = customize.navigationLabels || {};
-  // Ownership of `modules[].navigation`: THIS agent. agentNewSolution seeds a menu at e10 for every
-  // workspace it compiled, which is the right preview but points at pages that do not exist yet; the
-  // menu here is rebuilt from the pages that actually materialized, so it never shows a dead link.
-  // F5: menu derived from workspaces + siteMap/actors. `actors` lets the shell filter the menu by the
-  // logged-in actor (menu is UX; route enforcement is changeBackend's job). `landing` marks the
-  // public/pre-login entry. Both ride as extra JSON fields (the shell reads them; types stay in 102029).
-  mod.navigation = pages.map((page): ProjectNavigationEntry => ({
-    id: page.pageId,
-    label: labels[page.pageId] || page.label,
-    href: `/${moduleName}/${page.pageId}`,
-    description: labels[page.pageId] || page.label,
-    ...(page.actors.length ? { actors: page.actors } : {}),
-    ...(page.landing ? { landing: true } : {}),
-  } as ProjectNavigationEntry & { actors?: string[]; landing?: boolean }));
+  // Ownership of `modules[].navigation`: THIS agent. agentNewSolution seeds a menu at e10 from
+  // model.menu (places only). That preview can point at pages that do not exist yet, so the menu
+  // here is rebuilt as E8 model.menu ∩ pages that materialized — order from E8, existence from CF.
+  // A materialized page that is not in model.menu stays routable and is not listed.
+  const e8Model = readDefsData(path.join(clientRoot, 'l4', moduleName, 'workspace-model.defs.ts'));
+  const e8Menu = (Array.isArray(e8Model?.menu) ? e8Model.menu as Record<string, unknown>[] : [])
+    .map(entry => ({ workspaceId: toSafeShortName(readString(entry?.workspaceId)), label: readString(entry?.label) }))
+    .filter(entry => entry.workspaceId);
+  mod.navigation = navigationFromE8Menu({
+    moduleName,
+    menu: e8Menu,
+    pages: pages.map(page => ({
+      pageId: page.pageId, label: page.label, actors: page.actors, landing: page.landing,
+    })),
+    labels,
+  }) as ProjectNavigationEntry[];
 
   // F5: landings (siteMap | navigation) -> initial route per actor. Only for pages that materialized.
   const pageIds = new Set(pages.map(page => page.pageId));

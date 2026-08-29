@@ -495,7 +495,7 @@ export function collectNs4DemotedJourneyIds(
   selections: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>> = [],
 ): string[] {
   const selected = new Map(selections.map(selection => [selection.decisionId, selection.selectedChoice]));
-  return review.journeys.filter(journey => journey.policyDecisions.some(decision => {
+  return review.journeys.filter(journey => (journey.policyDecisions || []).some(decision => {
     if (!isNs4E2DemotionDecisionId(decision.decisionId)) return false;
     return (selected.get(decision.decisionId) ?? decision.chosen) === decision.chosen;
   })).map(journey => journey.journeyId).sort();

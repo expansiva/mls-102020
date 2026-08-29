@@ -208,6 +208,13 @@ test('deterministicLayoutFromBase (F4) builds one surface + embedded filters + d
   // One section (the workspace section), not one-per-query.
   assert.equal(layout.sections.length, 1);
   const organisms = layout.sections[0].organisms;
+  const pageId = prepared.page.pageId;
+  assert.equal(
+    Object.keys(layout.i18n).some((key: string) => key.startsWith(`intent.${pageId}.`) || key.startsWith(`organism.${pageId}.`)),
+    false,
+    'taxonomy i18n keys must not repeat pageId after the prefix',
+  );
+  assert.ok(Object.keys(layout.i18n).some((key: string) => key.startsWith('intent.catalogList.') || key.startsWith('organism.catalogList.')), 'short taxonomy keys are present');
   // primarySurface(catalogList) as a queryResult + detailPanel(productDetail); filterControl folded in.
   const surface = organisms.find((o: any) => o.id.endsWith('.catalogList'));
   const detail = organisms.find((o: any) => o.id.endsWith('.productDetail'));

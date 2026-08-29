@@ -1,0 +1,153 @@
+{
+  "note": "Byte-copy of the todo (102047) E8 inputs that produced three pages. Permanent fixture: tests must not read mls-102047.",
+  "journeys": {
+    "planId": "e2-review",
+    "moduleName": "todo",
+    "userLanguage": "pt-BR",
+    "title": "Jornadas",
+    "reviewRound": 1,
+    "features": [
+      { "featureId": "taskSummaryDashboard", "title": "Indicadores", "priority": "now", "journeyStepRefs": ["monitorAndUpdateTaskStatus.inspectTaskSummary"] },
+      { "featureId": "taskListingAndSearch", "title": "Listagem", "priority": "now", "journeyStepRefs": ["monitorAndUpdateTaskStatus.locateTask"] },
+      { "featureId": "taskDetails", "title": "Detalhes", "priority": "now", "journeyStepRefs": ["monitorAndUpdateTaskStatus.inspectTask"] },
+      { "featureId": "taskStatusControl", "title": "Status", "priority": "now", "journeyStepRefs": ["monitorAndUpdateTaskStatus.decideTaskStatus"] }
+    ],
+    "systemDecisions": [],
+    "journeys": [
+      {
+        "journeyId": "monitorAndUpdateTaskStatus",
+        "policyDecisions": [],
+        "business": {
+          "actorRef": "taskOwner",
+          "title": "Acompanhar tarefas e atualizar o status",
+          "goal": "Acompanhar o progresso das tarefas.",
+          "entry": { "mode": "coldStart" },
+          "steps": [
+            { "stepId": "inspectTaskSummary", "kind": "inspect", "entity": "Task", "title": "Consultar o resumo", "description": "Totais visíveis.", "featureRefs": ["taskSummaryDashboard"] },
+            { "stepId": "locateTask", "kind": "locate", "entity": "Task", "title": "Localizar", "description": "Lista.", "featureRefs": ["taskListingAndSearch"] },
+            { "stepId": "inspectTask", "kind": "inspect", "entity": "Task", "title": "Detalhes", "description": "Um registro.", "featureRefs": ["taskDetails"] },
+            { "stepId": "decideTaskStatus", "kind": "decide", "entity": "Task", "title": "Definir o status", "description": "Decisão de status.", "featureRefs": ["taskStatusControl"] }
+          ],
+          "outcome": { "statement": "Status atualizado.", "evidence": [] },
+          "useRules": []
+        }
+      },
+      {
+        "journeyId": "createTask",
+        "policyDecisions": [{
+          "decisionId": "demoteCreateTaskToRecordCatalogue",
+          "question": "Criar uma nova tarefa não tem decisão nem repasse: vira a tela de cadastro padrão de Task?",
+          "chosen": "Tela de cadastro padrão de Task",
+          "alternatives": ["Tela de cadastro padrão de Task", "Manter Criar uma nova tarefa como jornada própria"]
+        }],
+        "business": {
+          "actorRef": "taskOwner", "title": "Criar uma nova tarefa", "goal": "Cadastrar.",
+          "entry": { "mode": "coldStart" },
+          "steps": [{ "stepId": "registerTask", "kind": "act", "entity": "Task", "title": "Cadastrar", "description": "Novo registro.", "featureRefs": [] }],
+          "outcome": { "statement": "Criada.", "evidence": [] }, "useRules": []
+        }
+      },
+      {
+        "journeyId": "maintainTask",
+        "policyDecisions": [{
+          "decisionId": "demoteMaintainTaskToRecordCatalogue",
+          "question": "Editar dados de uma tarefa não tem decisão nem repasse: vira a tela de cadastro padrão de Task?",
+          "chosen": "Tela de cadastro padrão de Task",
+          "alternatives": ["Tela de cadastro padrão de Task", "Manter Editar dados de uma tarefa como jornada própria"]
+        }],
+        "business": {
+          "actorRef": "taskOwner", "title": "Editar dados de uma tarefa", "goal": "Manter.",
+          "entry": { "mode": "coldStart" },
+          "steps": [
+            { "stepId": "locateExistingTask", "kind": "locate", "entity": "Task", "title": "Localizar", "description": "Lista.", "featureRefs": [] },
+            { "stepId": "editTaskData", "kind": "act", "entity": "Task", "title": "Editar", "description": "Corrigir.", "featureRefs": [] }
+          ],
+          "outcome": { "statement": "Editada.", "evidence": [] }, "useRules": []
+        }
+      },
+      {
+        "journeyId": "deleteTask",
+        "policyDecisions": [{
+          "decisionId": "demoteDeleteTaskToRecordCatalogue",
+          "question": "Excluir uma tarefa não tem decisão nem repasse: vira a tela de cadastro padrão de Task?",
+          "chosen": "Tela de cadastro padrão de Task",
+          "alternatives": ["Tela de cadastro padrão de Task", "Manter Excluir uma tarefa como jornada própria"]
+        }],
+        "business": {
+          "actorRef": "taskOwner", "title": "Excluir uma tarefa", "goal": "Remover.",
+          "entry": { "mode": "coldStart" },
+          "steps": [
+            { "stepId": "locateTaskToDelete", "kind": "locate", "entity": "Task", "title": "Localizar", "description": "Lista.", "featureRefs": [] },
+            { "stepId": "removeTask", "kind": "act", "entity": "Task", "title": "Excluir", "description": "Remover.", "featureRefs": [] }
+          ],
+          "outcome": { "statement": "Excluída.", "evidence": [] }, "useRules": []
+        }
+      }
+    ]
+  },
+  "policyDecisionSelections": [
+    { "decisionId": "demoteCreateTaskToRecordCatalogue", "generatedChoice": "Tela de cadastro padrão de Task", "selectedChoice": "Tela de cadastro padrão de Task", "selectedBy": "auto", "selectedAt": "2026-08-28T00:07:24.444Z" },
+    { "decisionId": "demoteMaintainTaskToRecordCatalogue", "generatedChoice": "Tela de cadastro padrão de Task", "selectedChoice": "Tela de cadastro padrão de Task", "selectedBy": "auto", "selectedAt": "2026-08-28T00:07:24.444Z" },
+    { "decisionId": "demoteDeleteTaskToRecordCatalogue", "generatedChoice": "Tela de cadastro padrão de Task", "selectedChoice": "Tela de cadastro padrão de Task", "selectedBy": "auto", "selectedAt": "2026-08-28T00:07:24.444Z" }
+  ],
+  "access": {
+    "profiles": [{ "profileId": "taskManager", "title": "Responsável", "kind": "internal", "description": "", "actorRefs": ["taskOwner"], "landingIntent": "" }],
+    "authorities": [{
+      "authorityRef": "todo:manage", "title": "Gerenciar", "description": "",
+      "journeyStepRefs": [
+        "monitorAndUpdateTaskStatus.inspectTaskSummary",
+        "monitorAndUpdateTaskStatus.locateTask",
+        "monitorAndUpdateTaskStatus.inspectTask",
+        "monitorAndUpdateTaskStatus.decideTaskStatus",
+        "createTask.registerTask",
+        "maintainTask.locateExistingTask",
+        "maintainTask.editTaskData",
+        "deleteTask.locateTaskToDelete",
+        "deleteTask.removeTask"
+      ],
+      "informationNeeds": []
+    }],
+    "grants": [{
+      "profileRef": "taskManager", "authorityRef": "todo:manage", "reason": "",
+      "dataScope": { "mode": "organization", "description": "" },
+      "disclosure": { "mode": "fullRecord", "description": "", "allowedInformation": [], "deniedInformation": [] },
+      "useRules": []
+    }]
+  },
+  "ontology": {
+    "moduleName": "todo",
+    "entities": [{
+      "entityId": "Task", "title": "Tarefa", "description": "Tarefa.", "kind": "core", "ownership": "moduleOwned", "party": "none",
+      "sourceRefs": { "journeyIds": ["monitorAndUpdateTaskStatus", "createTask", "maintainTask", "deleteTask"], "featureIds": [], "authorityRefs": ["todo:manage"] },
+      "fields": [
+        { "fieldId": "taskId", "title": "Id", "type": "uuid", "required": true, "description": "Id.", "constraints": [] },
+        { "fieldId": "title", "title": "Título", "type": "string", "required": true, "description": "Título.", "constraints": [] },
+        { "fieldId": "status", "title": "Status", "type": "string", "required": true, "description": "Status.", "enum": ["pending", "inProgress", "completed", "cancelled"], "constraints": [] },
+        { "fieldId": "priority", "title": "Prioridade", "type": "string", "required": true, "description": "Prioridade.", "enum": ["low", "medium", "high"], "constraints": [] },
+        { "fieldId": "dueDate", "title": "Prazo", "type": "date", "required": false, "description": "Prazo.", "constraints": [] },
+        { "fieldId": "createdAt", "title": "Criada em", "type": "datetime", "required": true, "description": "Criação.", "constraints": [] }
+      ],
+      "statusEnum": ["pending", "inProgress", "completed", "cancelled"],
+      "lifecycleStates": ["pending", "inProgress", "completed", "cancelled"],
+      "lifecyclePredicates": [], "useRules": [],
+      "storage": { "target": "moduleDatabase", "scope": "module", "idField": "taskId", "notes": "" }
+    }],
+    "relationships": []
+  },
+  "useCases": [
+    { "useCaseId": "inspectTaskSummary", "title": "Resumo", "kind": "query", "compiledFrom": ["monitorAndUpdateTaskStatus.inspectTaskSummary"], "entityRefs": ["Task"], "useRules": [], "transitionRefs": [] },
+    { "useCaseId": "locateTask", "title": "Localizar", "kind": "query", "compiledFrom": ["monitorAndUpdateTaskStatus.locateTask"], "entityRefs": ["Task"], "useRules": [], "transitionRefs": [] },
+    { "useCaseId": "inspectTask", "title": "Detalhes", "kind": "query", "compiledFrom": ["monitorAndUpdateTaskStatus.inspectTask"], "entityRefs": ["Task"], "useRules": [], "transitionRefs": [] },
+    { "useCaseId": "decideTaskStatus", "title": "Decidir status", "kind": "command", "compiledFrom": ["monitorAndUpdateTaskStatus.decideTaskStatus"], "entityRefs": ["Task"], "useRules": [], "transitionRefs": ["setTaskPending", "setTaskInProgress", "setTaskCompleted", "setTaskCancelled"] }
+  ],
+  "workflows": [{
+    "workflowId": "taskLifecycle", "entityRef": "Task",
+    "states": ["pending", "inProgress", "completed", "cancelled"],
+    "transitions": [
+      { "transitionId": "setTaskPending", "fromStates": ["inProgress"], "toState": "pending", "useCaseId": "decideTaskStatus" },
+      { "transitionId": "setTaskInProgress", "fromStates": ["pending"], "toState": "inProgress", "useCaseId": "decideTaskStatus" },
+      { "transitionId": "setTaskCompleted", "fromStates": ["pending", "inProgress"], "toState": "completed", "useCaseId": "decideTaskStatus" },
+      { "transitionId": "setTaskCancelled", "fromStates": ["pending", "inProgress"], "toState": "cancelled", "useCaseId": "decideTaskStatus" }
+    ]
+  }]
+}

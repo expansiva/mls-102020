@@ -121,7 +121,9 @@ void test('page11 defs export is multiline prose without bindings; page21 stays 
 
   const body = mod.renderFrontendDefsBody('definition', page11.definition, [{ id: 'x', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/orders.ts' }], page11.extras);
   assert.match(body, /export const definition = `/);
-  assert.match(body, /This page is Pedidos\.\nIt is for: o gerente\./);
+  assert.match(body, /page: Pedidos\nactor: o gerente\n/);
+  assert.match(body, /purpose: Acompanhar pedidos abertos\nuxExperience: operationalList/);
+  assert.doesNotMatch(body, /This page is|It is for:|Its purpose:|Its UX experience is/);
   assert.doesNotMatch(body, /export const bindings = /);
   assert.match(body, /export const pipeline = /);
 
@@ -131,6 +133,46 @@ void test('page11 defs export is multiline prose without bindings; page21 stays 
 
   const helperSrc = readFileSync(new URL('../../helpers/cfeCreateShared.ts', import.meta.url), 'utf8');
   assert.match(helperSrc, /dataBindings: layout\.dataBindings/);
+});
+
+void test('page11 definition prose never mixes English instruction with l4 copy on the same line', async () => {
+  const mod = await loadCreateShared() as unknown as { page11DefinitionProse: (prepared: unknown) => string };
+  const l4 = {
+    pageName: 'Acompanhar tarefas e atualizar o status',
+    actor: 'taskOwner',
+    purpose: 'Acompanhar o progresso das tarefas, encontrar a tarefa desejada e atualizar seu status.',
+    uxExperience: 'approvalWorkflow',
+  };
+  const prose = mod.page11DefinitionProse({
+    page: { pageId: 'monitorAndUpdateTaskStatus', pageName: l4.pageName },
+    baseDefinition: { actor: l4.actor, purpose: l4.purpose },
+    presentation: { categoryRef: l4.uxExperience },
+  });
+  const l4Values = Object.values(l4);
+  const instructional = /This page is|It is for:|Its purpose:|Its UX experience is|The page extends|do not list fields|do not list routines/u;
+  for (const line of prose.split('\n')) {
+    const hasL4 = l4Values.some(value => line.includes(value));
+    const hasInstruction = instructional.test(line);
+    assert.equal(hasL4 && hasInstruction, false, `bilingual line: ${line}`);
+  }
+  assert.equal(prose, [
+    `page: ${l4.pageName}`,
+    `actor: ${l4.actor}`,
+    `purpose: ${l4.purpose}`,
+    `uxExperience: ${l4.uxExperience}`,
+    'The page extends the shared base class of this workspace: the shared travels in this pipeline and already carries the states, actions and handlers the page inherits. Render the experience around that intent — do not list fields and do not list routines.',
+  ].join('\n'));
+
+  const missingPurpose = mod.page11DefinitionProse({
+    page: { pageId: 'monitorAndUpdateTaskStatus', pageName: l4.pageName },
+    baseDefinition: { actor: l4.actor, purpose: '' },
+    presentation: { categoryRef: l4.uxExperience },
+  });
+  assert.doesNotMatch(missingPurpose, /^purpose:/mu);
+  assert.equal(missingPurpose.split('\n').some(line => line.trim() === ''), false, 'missing field must not leave an empty line');
+  assert.match(missingPurpose, /^page: /mu);
+  assert.match(missingPurpose, /^actor: /mu);
+  assert.match(missingPurpose, /^uxExperience: /mu);
 });
 
 // Coverage guarantee: if the model's `uses` omit a command, expansion must still surface it (else

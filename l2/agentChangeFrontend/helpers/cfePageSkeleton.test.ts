@@ -77,6 +77,31 @@ function translatePtBr(code: string, entries: Array<[string, string]>): string {
   ), code);
 }
 
+test('regenerating carries a translation whose previous key still had the pageId', () => {
+  const pageId = 'billingSummaryWorkspace';
+  const oldKey = `intent.${pageId}.list.empty`;
+  const newKey = 'intent.list.empty';
+  const defs = {
+    ...SHARED_DEFS_DATA,
+    i18n: { [newKey]: 'No summaries yet', 'action.createBillingSummaryCmd.success': 'Created' },
+  };
+  const previous = [
+    '/// **collab_i18n_start**',
+    'const pageMessage_en = {',
+    `  '${oldKey}': 'No summaries yet',`,
+    `  'action.createBillingSummaryCmd.success': 'Created',`,
+    '};',
+    'type PageMessageType = typeof pageMessage_en;',
+    'const pageMessage_pt_br: PageMessageType = {',
+    `  '${oldKey}': 'Nenhum resumo ainda',`,
+    `  'action.createBillingSummaryCmd.success': 'Created',`,
+    '};',
+    '/// **collab_i18n_end**',
+  ].join('\n');
+  const again = buildPageSkeleton({ ...INPUT, sharedDefsData: defs, previousSource: previous }).code ?? '';
+  assert.match(again, /'intent\.list\.empty': 'Nenhum resumo ainda',/u);
+});
+
 test('regenerating a page carries its translations forward instead of resetting them', () => {
   const previous = buildPageSkeleton(INPUT).code ?? '';
   const translated = translatePtBr(previous, [['intent.billingSummaryWorkspace.list.empty', 'Nenhum resumo ainda']]);
@@ -250,6 +275,27 @@ test('skeleton without uiScenary keeps the host-less shape of today', () => {
   assert.ok(!code.includes("import '/_102020_/l2/molecules/ml-scenary.js'"));
   assert.ok(!code.includes('renderScenaryBase'));
   assert.match(code, /return html``;/u);
+});
+
+test('scenary.* defaults follow the module locale and l4 command titles, not English', () => {
+  const defs = {
+    ...SCENARY_DEFS,
+    pageName: 'Acompanhar tarefas e atualizar o status',
+    i18nMeta: { defaultLocale: 'pt-br', runtimeLocales: ['pt-br'] },
+    i18n: {
+      ...SCENARY_DEFS.i18n,
+      'organism.cmdDecideTaskStatus.title': 'Decidir status da tarefa',
+      'organism.qryInspect.title': 'Inspecionar tarefa',
+    },
+  };
+  const code = buildPageSkeleton(scenaryInput({ sharedDefsData: defs })).code ?? '';
+  assert.match(code, /const pageMessage_pt_br = \{/u);
+  assert.match(code, /'scenary\.base': 'Acompanhar tarefas e atualizar o status',/u);
+  assert.match(code, /'scenary\.detail': 'Inspecionar tarefa',/u);
+  assert.match(code, /'scenary\.decideTaskStatus': 'Decidir status da tarefa',/u);
+  assert.match(code, /'scenary\.back': 'Voltar',/u);
+  assert.doesNotMatch(code, /'scenary\.back': 'Back'/u);
+  assert.doesNotMatch(code, /'scenary\.decideTaskStatus': 'Decide Task Status'/u);
 });
 
 test('organism files never wrap themselves in ml-scenary even when the shared exposes uiScenary', () => {

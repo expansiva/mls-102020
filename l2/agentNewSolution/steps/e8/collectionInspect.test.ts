@@ -77,7 +77,7 @@ test('inspect before locate of the same entity compiles as a list summary, not g
   assert.equal(summary.inputs.some(input => input.required), false);
   assert.equal(details.accessPattern.kind, 'getById');
 
-  const workspace = model.workspaces.find(item => item.workspaceId === 'monitorTasks')!;
+  const workspace = model.workspaces.find(item => item.workspaceId === 'taskCatalogue')!;
   const summaryCall = workspace.bffCalls.find(call => call.operationId === 'inspectTaskSummary')!;
   const summarySection = workspace.sections.find(section => section.sectionId === 'inspectTaskSummary')!;
   assert.equal(summaryCall.outputKind, 'paginated');
@@ -99,7 +99,25 @@ test('leftover getById on a collection inspect is a registrar, never a failure',
     title: 'Workspaces',
     reviewRound: 1,
     hubEntity: 'Task',
-    workspaces: [],
+    workspaces: [{
+      workspaceId: 'taskCatalogue',
+      tier: 'recordCatalogue',
+      title: 'Tarefa',
+      purpose: 'Cadastro.',
+      kind: 'operation',
+      entity: 'Task',
+      actors: ['taskOwner'],
+      profileRefs: ['taskOwner'],
+      featureRefs: [],
+      hostedStepRefs: [
+        'monitorTasks.inspectTaskSummary',
+        'monitorTasks.locateTasks',
+        'monitorTasks.inspectTaskDetails',
+      ],
+      categoryRef: 'entityRecordManagement',
+      bffCalls: [],
+      sections: [],
+    }],
     operations: [{
       operationId: 'inspectTaskSummary', title: 'Resumo', kind: 'query', entityRef: 'Task', entityRefs: ['Task'],
       accessPattern: { kind: 'getById' },

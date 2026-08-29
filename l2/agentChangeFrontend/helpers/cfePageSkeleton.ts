@@ -167,7 +167,7 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   lines.push('// The catalogue of this page. The keys below come from the module plan — do NOT edit their');
   lines.push('// text and do NOT inline a string in the template: reference a key, or add your own SHORT');
   lines.push(`//   key here (in EVERY locale) — 'orders.empty': 'No orders yet',`);
-  const previousText = parsePreviousI18n(input.previousSource, `${prefix}Message`);
+  const previousText = parsePreviousI18n(input.previousSource, `${prefix}Message`, parsed.shortName);
   const stillUntranslated = untranslatedLocales(input.previousSource, `${prefix}Message`);
   locales.forEach((locale, index) => {
     const isDefault = index === 0;
@@ -180,7 +180,7 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
     // is untranslated by construction. Otherwise the marker is whatever the previous file said: only
     // @@addLanguage clears it, because only it knows a translation actually happened.
     let untranslated = !isDefault && (Object.keys(previous).length === 0 || stillUntranslated.has(locale));
-    for (const [key, text] of Object.entries(pageI18nCatalogue(catalogue.i18n, scenaries))) {
+    for (const [key, text] of Object.entries(pageI18nCatalogue(catalogue, scenaries, shared))) {
       const carried = isDefault ? undefined : previous[key];
       if (!isDefault && carried === undefined) untranslated = true;
       body.push(`  '${escapeSingle(key)}': '${escapeSingle(carried ?? text)}',`);
@@ -362,7 +362,7 @@ function stringOf(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
-interface SkeletonScenary { value: string; kind: string }
+interface SkeletonScenary { value: string; kind: string; commandName: string }
 
 /**
  * Values the page skeleton must emit as `<Scene>`. Prefer `scenaries[]` from the shared defs
@@ -375,13 +375,14 @@ function scenariesOf(sharedDefsData: unknown): SkeletonScenary[] {
     const listed = data.scenaries.filter(isRecord).map(item => ({
       value: stringOf(item.value),
       kind: stringOf(item.kind) || 'base',
+      commandName: stringOf(item.commandName),
     })).filter(item => item.value);
     if (listed.length) return listed;
   }
   const states = Array.isArray(data.states) ? data.states.filter(isRecord) : [];
   const ui = states.find(item => stringOf(item.kind) === 'uiScenary' || stringOf(item.name) === 'uiScenary');
   const valueSet = ui && Array.isArray(ui.valueSet) ? ui.valueSet.map(value => String(value)).filter(Boolean) : [];
-  return valueSet.map(value => ({ value, kind: value === 'detail' ? 'detail' : 'base' }));
+  return valueSet.map(value => ({ value, kind: value === 'detail' ? 'detail' : 'base', commandName: '' }));
 }
 
 function scenaryRenderName(value: string): string {
@@ -400,13 +401,54 @@ function humanizeScenary(value: string): string {
   return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : value;
 }
 
+const SCENARY_FALLBACK: Record<string, { base: string; detail: string; back: string }> = {
+  en: { base: 'Base', detail: 'Detail', back: 'Back' },
+  pt: { base: 'Base', detail: 'Detalhe', back: 'Voltar' },
+  es: { base: 'Base', detail: 'Detalle', back: 'Volver' },
+};
+
+function primaryLocale(locale: string): string {
+  return locale.split('-')[0]?.toLowerCase() || 'en';
+}
+
+function scenaryKindFallback(locale: string, kind: 'base' | 'detail' | 'back'): string {
+  return (SCENARY_FALLBACK[primaryLocale(locale)] || SCENARY_FALLBACK.en)[kind];
+}
+
+function scenaryLabelFromL4(scene: SkeletonScenary, i18n: Record<string, string>, pageName: string, locale: string): string {
+  if (scene.commandName) {
+    const candidates = [
+      `organism.${scene.commandName}.title`,
+      `intent.${scene.commandName}.form.title`,
+      `intent.${scene.commandName}.list.title`,
+      `intent.${scene.commandName}.detail.title`,
+    ];
+    for (const key of candidates) {
+      const text = i18n[key];
+      if (text) return text;
+    }
+  }
+  if (scene.kind === 'base' && pageName) return pageName;
+  if (scene.kind === 'base') return scenaryKindFallback(locale, 'base');
+  if (scene.kind === 'detail') return scenaryKindFallback(locale, 'detail');
+  return humanizeScenary(scene.value);
+}
+
 /** Shared catalogue plus the scene title keys the host binds, so title= never needs a literal. */
-function pageI18nCatalogue(sharedI18n: Record<string, string>, scenaries: SkeletonScenary[]): Record<string, string> {
-  const out: Record<string, string> = { ...sharedI18n };
+function pageI18nCatalogue(
+  catalogue: { i18n: Record<string, string>; defaultLocale: string },
+  scenaries: SkeletonScenary[],
+  shared: Record<string, unknown>,
+): Record<string, string> {
+  const out: Record<string, string> = { ...catalogue.i18n };
+  const locale = catalogue.defaultLocale || 'en';
+  const pageName = stringOf(shared.pageName);
   for (const scene of scenaries) {
     const key = `scenary.${scene.value}`;
-    if (!(key in out)) out[key] = humanizeScenary(scene.value);
+    if (!(key in out)) out[key] = scenaryLabelFromL4(scene, catalogue.i18n, pageName, locale);
   }
-  if (scenaries.some(scene => scene.kind === 'detail') && !('scenary.back' in out)) out['scenary.back'] = 'Back';
+  if (scenaries.some(scene => scene.kind === 'detail') && !('scenary.back' in out)) {
+    out['scenary.back'] = scenaryKindFallback(locale, 'back');
+  }
   return out;
 }
