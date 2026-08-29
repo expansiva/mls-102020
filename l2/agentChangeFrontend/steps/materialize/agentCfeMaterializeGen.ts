@@ -413,7 +413,11 @@ export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unk
     }))
     .filter(section => section.sectionId);
 
-  const bindings = bindingCommandsOf(data, siblingBindings);
+  const sharedTs = (pipelineItem.dependsFiles ?? []).find(ref => isSharedRuntimeTsRef(ref))
+    ?? (pipelineItem.dependsFiles ?? []).map(ref => sharedTsRefOfDtsArtifact(ref)).find((ref): ref is string => !!ref);
+  const sharedDefsSource = sharedTs ? await getContentByMlsPath(sharedTs.replace(/\.ts$/u, '.defs.ts')) : null;
+  const sharedData = sharedDefsSource ? parseDefs(sharedDefsSource).data : undefined;
+  const bindings = bindingCommandsOf(data, siblingBindings, sharedData);
 
   const plan = buildSplitPlan(parsed.shortName, genome, sections, bindings, reason);
   if (!plan) return false;

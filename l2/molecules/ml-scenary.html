@@ -1,0 +1,74 @@
+<div class="min-h-screen">
+<div class="mx-auto p-8">
+<header class="text-center mb-12">
+<h1 class="text-3xl font-semibold mb-2">Scenary molecule</h1>
+<span class="inline-block px-3 py-1 rounded-full text-sm font-medium">molecules--ml-scenary-102020</span>
+</header>
+
+<section class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+
+<article class="rounded-xl p-6 ml-scenary-demo-card">
+<h3 class="text-lg font-semibold mb-4">mode=scenary — list / detail / edit</h3>
+<demo id="demo-scenary">
+<molecules--ml-scenary-102020 mode="scenary" value="list" backLabel="Back">
+  <Scene value="list" title="List">
+    <p>Queue of records. Nested filters and scroll stay here while other scenes are hidden.</p>
+  </Scene>
+  <Scene value="detail" title="Detail" nav="back" backTo="list">
+    <p>Record detail. Back returns to list.</p>
+  </Scene>
+  <Scene value="edit" title="Edit">
+    <p>Edit form. Cancel/save live in the page, not in this molecule.</p>
+  </Scene>
+</molecules--ml-scenary-102020>
+</demo>
+</article>
+
+<article class="rounded-xl p-6 ml-scenary-demo-card">
+<h3 class="text-lg font-semibold mb-4">mode=tabs — same three scenes</h3>
+<demo id="demo-tabs">
+<molecules--ml-scenary-102020 mode="tabs" value="list">
+  <Scene value="list" title="List">
+    <p>List panel.</p>
+  </Scene>
+  <Scene value="detail" title="Detail">
+    <p>Detail panel.</p>
+  </Scene>
+  <Scene value="edit" title="Edit">
+    <p>Edit panel.</p>
+  </Scene>
+</molecules--ml-scenary-102020>
+</demo>
+</article>
+
+<article class="rounded-xl p-6 ml-scenary-demo-card">
+<h3 class="text-lg font-semibold mb-4">revealall — IDE inspection</h3>
+<demo id="demo-revealall">
+<molecules--ml-scenary-102020 revealall>
+  <Scene value="list" title="List">
+    <p>List content stacked for inspection.</p>
+  </Scene>
+  <Scene value="detail" title="Detail">
+    <p>Detail content stacked for inspection.</p>
+  </Scene>
+  <Scene value="edit" title="Edit">
+    <p>Edit content stacked for inspection.</p>
+  </Scene>
+</molecules--ml-scenary-102020>
+</demo>
+</article>
+
+<article class="rounded-xl p-6 ml-scenary-demo-card">
+<h3 class="text-lg font-semibold mb-4">one scene — no chrome</h3>
+<demo id="demo-one">
+<molecules--ml-scenary-102020 mode="scenary">
+  <Scene value="only" title="Only">
+    <p>Single scene renders as itself.</p>
+  </Scene>
+</molecules--ml-scenary-102020>
+</demo>
+</article>
+
+</section>
+</div>
+</div>

@@ -128,6 +128,8 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   const organisms = input.organisms ?? [];
   const current = input.current ? organisms.find(item => item.n === input.current) : undefined;
   if (input.current && !current) return { code: null, reason: `no organism ${input.current} in the split plan` };
+  // Host + Scenes are a PAGE concern. An organism is a fragment; wrapping it would nest hosts.
+  const scenaries = current ? [] : scenariesOf(input.sharedDefsData);
 
   // LEADING SLASH is mandatory: mls refs travel without it ('_102045_/l2/…') but a runtime import must be
   // '/_102045_/l2/…'. Emitting it unrooted made the module unresolvable (TS2307), which then took down the
@@ -150,6 +152,7 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   lines.push(current
     ? `import { type ${baseClassName} as Host } from '${sharedImport}';`
     : `import { ${baseClassName} } from '${sharedImport}';`);
+  if (scenaries.length) lines.push(`import '/_102020_/l2/molecules/ml-scenary.js';`);
   for (const organism of current ? [] : organisms) {
     lines.push(`import { ${organismRenderName(organism.organism)} } from '/_${parsed.project}_/l2/${parsed.folder}/${organismShortName(parsed.shortName, organism.n)}.js';`);
   }
@@ -177,7 +180,7 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
     // is untranslated by construction. Otherwise the marker is whatever the previous file said: only
     // @@addLanguage clears it, because only it knows a translation actually happened.
     let untranslated = !isDefault && (Object.keys(previous).length === 0 || stillUntranslated.has(locale));
-    for (const [key, text] of Object.entries(catalogue.i18n)) {
+    for (const [key, text] of Object.entries(pageI18nCatalogue(catalogue.i18n, scenaries))) {
       const carried = isDefault ? undefined : previous[key];
       if (!isDefault && carried === undefined) untranslated = true;
       body.push(`  '${escapeSingle(key)}': '${escapeSingle(carried ?? text)}',`);
@@ -237,24 +240,59 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   lines.push('    return this.#msgCache;');
   lines.push('  }');
   lines.push('');
-  lines.push(organisms.length
-    ? '  /** Main render. Compose the page from the organisms — never re-implement what they already render. */'
-    : '  /** Main render. Split the page into render<Name>() methods and call them from here. */');
+  lines.push(scenaries.length
+    ? '  /** Main render. The scenary host and Scene list are fixed — fill renderScenary<X>(), not this. */'
+    : organisms.length
+      ? '  /** Main render. Compose the page from the organisms — never re-implement what they already render. */'
+      : '  /** Main render. Split the page into render<Name>() methods and call them from here. */');
   lines.push('  render() {');
   lines.push('    const msg = this.msg;');
-  if (organisms.length) {
-    lines.push('    // Already implemented and imported above — CALL them, in the order that composes the page:');
-    for (const organism of organisms) {
-      lines.push(`    //   ${organismRenderName(organism.organism)}(this)   [${organism.bindings.join(', ')}]`);
+  if (scenaries.length) {
+    const hasDetail = scenaries.some(scene => scene.kind === 'detail');
+    lines.push('    return html`');
+    lines.push('      <molecules--ml-scenary-102020 mode="scenary" .value=${this.uiScenary}');
+    lines.push(hasDetail
+      ? "          @change=${this.handleUiScenaryChange} backLabel=${msg['scenary.back']}>"
+      : '          @change=${this.handleUiScenaryChange}>');
+    for (const scene of scenaries) {
+      const nav = scene.kind === 'detail' ? ' nav="back"' : '';
+      lines.push(`        <Scene value="${scene.value}" title=\${msg['scenary.${scene.value}']}${nav}>`);
+      lines.push(`          \${this.${scenaryRenderName(scene.value)}()}`);
+      lines.push('        </Scene>');
     }
+    lines.push('      </molecules--ml-scenary-102020>');
+    lines.push('    `;');
+  } else {
+    if (organisms.length) {
+      lines.push('    // Already implemented and imported above — CALL them, in the order that composes the page:');
+      for (const organism of organisms) {
+        lines.push(`    //   ${organismRenderName(organism.organism)}(this)   [${organism.bindings.join(', ')}]`);
+      }
+    }
+    lines.push(`    ${MARKER}`);
+    lines.push('    return html``;');
   }
-  lines.push(`    ${MARKER}`);
-  lines.push('    return html``;');
   lines.push('  }');
-  lines.push('');
-  lines.push(organisms.length
-    ? '  /* to implement: ONLY what no organism covers (page title, layout chrome). No return type. */'
-    : '  /* to implement: one render<Name>() per organism, called from render(). No return type: let TypeScript infer it. */');
+  if (scenaries.length) {
+    for (const scene of scenaries) {
+      lines.push('');
+      lines.push(`  ${scenaryRenderName(scene.value)}() {`);
+      if (scene.kind === 'base' && organisms.length) {
+        lines.push('    // Already implemented and imported above — CALL them, in the order that composes the page:');
+        for (const organism of organisms) {
+          lines.push(`    //   ${organismRenderName(organism.organism)}(this)   [${organism.bindings.join(', ')}]`);
+        }
+      }
+      lines.push(`    ${MARKER}`);
+      lines.push('    return html``;');
+      lines.push('  }');
+    }
+  } else {
+    lines.push('');
+    lines.push(organisms.length
+      ? '  /* to implement: ONLY what no organism covers (page title, layout chrome). No return type. */'
+      : '  /* to implement: one render<Name>() per organism, called from render(). No return type: let TypeScript infer it. */');
+  }
   lines.push('}');
   lines.push('');
   return { code: lines.join('\n') };
@@ -322,4 +360,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function stringOf(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+interface SkeletonScenary { value: string; kind: string }
+
+/**
+ * Values the page skeleton must emit as `<Scene>`. Prefer `scenaries[]` from the shared defs
+ * (ux04 contract); fall back to the uiScenary state's valueSet. Empty = old shared, keep today's
+ * skeleton (no host).
+ */
+function scenariesOf(sharedDefsData: unknown): SkeletonScenary[] {
+  const data = isRecord(sharedDefsData) ? sharedDefsData : {};
+  if (Array.isArray(data.scenaries)) {
+    const listed = data.scenaries.filter(isRecord).map(item => ({
+      value: stringOf(item.value),
+      kind: stringOf(item.kind) || 'base',
+    })).filter(item => item.value);
+    if (listed.length) return listed;
+  }
+  const states = Array.isArray(data.states) ? data.states.filter(isRecord) : [];
+  const ui = states.find(item => stringOf(item.kind) === 'uiScenary' || stringOf(item.name) === 'uiScenary');
+  const valueSet = ui && Array.isArray(ui.valueSet) ? ui.valueSet.map(value => String(value)).filter(Boolean) : [];
+  return valueSet.map(value => ({ value, kind: value === 'detail' ? 'detail' : 'base' }));
+}
+
+function scenaryRenderName(value: string): string {
+  const pascal = value
+    .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+    .replace(/[^A-Za-z0-9]+/gu, ' ')
+    .trim()
+    .split(/\s+/u)
+    .map(capitalize)
+    .join('');
+  return `renderScenary${pascal || 'Base'}`;
+}
+
+function humanizeScenary(value: string): string {
+  const spaced = value.replace(/([a-z0-9])([A-Z])/gu, '$1 $2').replace(/[_-]+/g, ' ').trim();
+  return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : value;
+}
+
+/** Shared catalogue plus the scene title keys the host binds, so title= never needs a literal. */
+function pageI18nCatalogue(sharedI18n: Record<string, string>, scenaries: SkeletonScenary[]): Record<string, string> {
+  const out: Record<string, string> = { ...sharedI18n };
+  for (const scene of scenaries) {
+    const key = `scenary.${scene.value}`;
+    if (!(key in out)) out[key] = humanizeScenary(scene.value);
+  }
+  if (scenaries.some(scene => scene.kind === 'detail') && !('scenary.back' in out)) out['scenary.back'] = 'Back';
+  return out;
 }

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -186,6 +186,11 @@ test('bugimage: empty inputs never throw or report', () => {
   assert.deepEqual(collectMissingImageRenderIssues(DEFS_WITH_IMAGE, ''), []);
 });
 
+test('bugimage: a multiline page11 prose defs still matches an image field token', () => {
+  const defs = 'export const definition = `This page is X.\nIt binds photoUrl somehow.`;';
+  assert.equal(collectMissingImageRenderIssues(defs, 'render() { return html`<p>x</p>`; }').length, 1);
+});
+
 // ---------------------------------------------------------------------------
 // trimSharedI18nForPageContext — used by BOTH materialize paths (Studio + CLI), i18n.md §12.1
 
@@ -314,6 +319,24 @@ test('parseDefs reads a page11 prose definition (template literal) and the bindi
   assert.deepEqual(bindingCommandsOf(parsed.data, parsed.bindings), ['listOrders']);
 });
 
+test('parseDefs reads a multiline page11 template literal and gates prefer shared dataBindings', () => {
+  const prose = 'This page is Pedidos.\nIt is for: o gerente.\nThe page extends the shared base class of this workspace.';
+  const src = [
+    'export const definition = `' + prose + '`;',
+    '',
+    `export const pipeline = ${JSON.stringify([{ id: 'pd__l2_page', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/pd.ts' }], null, 2)} as const;`,
+  ].join('\n');
+  const parsed = parseDefs(src);
+  assert.equal(parsed.data, prose);
+  assert.equal(parsed.bindings, null);
+  const shared = { dataBindings: [{ command: 'listOrders', kind: 'query' }] };
+  const gateInput = pageDefinitionForChecks(parsed, shared) as { pageId: string; dataBindings: unknown[] };
+  assert.equal(gateInput.pageId, 'pd');
+  assert.deepEqual(gateInput.dataBindings, shared.dataBindings);
+  assert.deepEqual(bindingCommandsOf(parsed.data, parsed.bindings, shared), ['listOrders']);
+  assert.deepEqual((pageDefinitionForChecks(parsed) as { dataBindings: unknown[] }).dataBindings, []);
+});
+
 test('parseDefs still returns an object for a page21-style definition (pageObjective stays)', () => {
   const src = `export const definition = ${JSON.stringify({ pageId: 'pd', pageObjective: { goal: 'decide' }, dataBindings: [{ command: 'cmd' }] }, null, 2)};\n\nexport const pipeline = ${JSON.stringify([
     { id: 'pd__l2_page', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page21/pd.ts' },
@@ -342,6 +365,10 @@ test('buildHumanPrompt puts page11 prose verbatim, not as a JSON string', () => 
   assert.match(human, /## Definition\n\nEsta página é Pedidos/);
   assert.ok(!human.includes('```json'), 'prose must not be wrapped as json');
   assert.equal(trimDefinitionForPrompt('l2_page', prose), prose);
+  const sharedPrompt = trimDefinitionForPrompt('l2_shared', { pageId: 'pd', origin: { x: 1 }, dataBindings: [{ command: 'x' }], states: [] }) as Record<string, unknown>;
+  assert.equal(sharedPrompt.pageId, 'pd');
+  assert.ok(!('dataBindings' in sharedPrompt), 'shared dataBindings must not travel in the prompt');
+  assert.ok(!('origin' in sharedPrompt));
   const objectHuman = buildHumanPrompt({ pageId: 'pd' }, [], '_1_/l2/m/web/desktop/page21/pd.ts');
   assert.match(objectHuman, /```json/);
 });
@@ -991,6 +1018,32 @@ void test('page11 prose defs still feed the selection/disabled/experience gates 
   assert.equal(collectMissingInitialLoadIssues(LOCATE_SHARED, page).length, 1);
 });
 
+void test('page11 gates read dataBindings from shared, with page11 sibling as fallback', () => {
+  const pipeline = JSON.stringify([{ id: 'p', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/p.ts' }]);
+  const sharedWithMap = { ...LOCATE_SHARED, dataBindings: LOCATE_PAGE.dataBindings };
+  const fromShared = pageDefinitionForChecks(parseDefs([
+    'export const definition = `This page is P.\nThe page extends the shared base class.`;',
+    `export const pipeline = ${pipeline} as const;`,
+  ].join('\n')), sharedWithMap);
+  const fromLegacy = pageDefinitionForChecks(parseDefs([
+    'export const definition = `This page is P.`;',
+    `export const bindings = ${JSON.stringify(LOCATE_PAGE.dataBindings)} as const;`,
+    `export const pipeline = ${pipeline} as const;`,
+  ].join('\n')), LOCATE_SHARED);
+  const expectedSel = collectSelectionControlIssues(LOCATE_PAGE, LOCATE_SHARED, DEAD_TABLE);
+  const expectedDis = collectCommandDisabledIssues(LOCATE_PAGE, LOCATE_SHARED, DEAD_TABLE);
+  const expectedLoad = collectMissingInitialLoadIssues(LOCATE_SHARED, LOCATE_PAGE);
+  const expectedExp = collectPageExperienceIssues(LOCATE_PAGE, LOCATE_SHARED, DEAD_TABLE);
+  const expectedMut = collectMutationFeedbackIssues(LOCATE_PAGE, LOCATE_SHARED, DEAD_TABLE);
+  for (const page of [fromShared, fromLegacy]) {
+    assert.deepEqual(collectSelectionControlIssues(page, LOCATE_SHARED, DEAD_TABLE), expectedSel);
+    assert.deepEqual(collectCommandDisabledIssues(page, LOCATE_SHARED, DEAD_TABLE), expectedDis);
+    assert.deepEqual(collectMissingInitialLoadIssues(LOCATE_SHARED, page), expectedLoad);
+    assert.deepEqual(collectPageExperienceIssues(page, LOCATE_SHARED, DEAD_TABLE), expectedExp);
+    assert.deepEqual(collectMutationFeedbackIssues(page, LOCATE_SHARED, DEAD_TABLE), expectedMut);
+  }
+});
+
 void test('row click that writes the id (and a select) both pass the selection gate', () => {
   assert.deepEqual(collectSelectionControlIssues(LOCATE_PAGE, LOCATE_SHARED, ROW_CLICK), []);
   assert.deepEqual(collectSelectionControlIssues(LOCATE_PAGE, LOCATE_SHARED, SELECT_PICKER), []);
@@ -1264,6 +1317,15 @@ test('D4: um humanPrompt de repair leva achados + arquivo e NENHUM esqueleto em 
   assert.match(gen, /repairHint \? undefined : skeleton/u);
 });
 
+test('D4: CLI e agentRenderEdit passam o arquivo atual no hint de repair (não só o Studio)', () => {
+  const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
+  const cli = readFileSync(new URL('../nodejsMaterializeL2.ts', import.meta.url), 'utf8');
+  const render = readFileSync(new URL('../../aura/agentManagePage/agentRenderEdit.ts', import.meta.url), 'utf8');
+  assert.match(gen, /buildCompileRepairHint\(outputPath, errors\.slice\(0, 12\), content\)/u);
+  assert.match(cli, /buildCompileRepairHint\(p\.item\.outputPath, repairErrors, currentCode\)/u);
+  assert.match(render, /buildCompileRepairHint\(item\.outputPath, errors\.slice\(0, 8\), currentCode \?\? undefined\)/u);
+});
+
 // D4 — os achados que o slot NÃO consegue recomputar. Um slot carrega só {planId, defPath, itemId,
 // attempt} e o gen recompõe compilador + higiene de template; os detectores de defs (enum, sortBy,
 // selection control, bloco i18n, tag do custom element, campos de contrato, tokens…) não existem lá. Um
@@ -1357,4 +1419,54 @@ test('D1: o leitor do agentManagePage2 também exige proveniência antes de serv
   const page2 = readFileSync(new URL('../../aura/agentManagePage2/agentManagePage2.ts', import.meta.url), 'utf8');
   assert.match(page2, /checkSharedDtsProvenance\(persisted, await getContentByMlsPath\(tsRef\)\)/u);
   assert.match(page2, /artifact refused \(\$\{checked\.reason\}\)/u);
+});
+
+const SCENARY_SHARED = {
+  states: [{ name: 'uiScenary', kind: 'uiScenary', valueSet: ['base', 'detail', 'edit'] }],
+  scenaries: [
+    { value: 'base', kind: 'base' },
+    { value: 'detail', kind: 'detail' },
+    { value: 'edit', kind: 'command' },
+  ],
+};
+
+const SCENARY_PAGE = `
+import '/_102020_/l2/molecules/ml-scenary.js';
+html\`<molecules--ml-scenary-102020 .value=\${this.uiScenary} @change=\${this.handleUiScenaryChange}>
+  <Scene value="base">\${this.renderScenaryBase()}</Scene>
+  <Scene value="detail" nav="back">\${this.renderScenaryDetail()}</Scene>
+  <Scene value="edit"><form @submit=\${this.handleEdit}>x</form></Scene>
+</molecules--ml-scenary-102020>\`;
+`;
+
+test('scenary gate is silent on an old shared that does not expose uiScenary', () => {
+  assert.deepEqual(collectPageScenaryIssues(SCENARY_PAGE, {}), []);
+  assert.deepEqual(collectPageScenaryIssues('html`<div></div>`', { states: [{ kind: 'input', name: 'x' }] }), []);
+});
+
+test('scenary gate accepts a host + import + one Scene per shared value', () => {
+  assert.deepEqual(collectPageScenaryIssues(SCENARY_PAGE, SCENARY_SHARED), []);
+});
+
+test('scenary gate records missing host, missing import, missing Scene and form outside Scene', () => {
+  assert.match(collectPageScenaryIssues('html`<div></div>`', SCENARY_SHARED).join(' | '), /exactly 1/);
+  const noImport = SCENARY_PAGE.replace("import '/_102020_/l2/molecules/ml-scenary.js';\n", '');
+  assert.match(collectPageScenaryIssues(noImport, SCENARY_SHARED).join(' | '), /side-effect import/);
+  const missingScene = SCENARY_PAGE.replace('<Scene value="edit"><form @submit=${this.handleEdit}>x</form></Scene>', '');
+  assert.match(collectPageScenaryIssues(missingScene, SCENARY_SHARED).join(' | '), /missing <Scene value="edit">/);
+  const formOut = `${SCENARY_PAGE}\nhtml\`<form @submit=\${this.handleEdit}>out</form>\`;`;
+  assert.match(collectPageScenaryIssues(formOut, SCENARY_SHARED).join(' | '), /form is outside/);
+});
+
+test('scenary gate degrades in verify (warnings) and the page skills teach the host', () => {
+  const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
+  assert.match(phase, /warnings\.push\(\.\.\.collectPageScenaryIssues\(content, sharedData\)\)/);
+  assert.doesNotMatch(phase, /repairable\.push\(\.\.\.collectPageScenaryIssues/);
+  const page11 = readFileSync(new URL('../skills/genCfePage11RenderTs.ts', import.meta.url), 'utf8');
+  const page21 = readFileSync(new URL('../skills/genCfePage21RenderTs.ts', import.meta.url), 'utf8');
+  assert.match(page11, /## Scenary \(mandatory\)/);
+  assert.match(page21, /## Scenary \(mandatory\)/);
+  assert.match(page11, /molecules--ml-scenary-102020/);
+  assert.match(page21, /this skill is the render skill for both page21 and page31/);
+  assert.match(page11, /scenes inside the single scenary host; sections as cards WITHIN a scene/);
 });

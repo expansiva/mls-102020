@@ -1,0 +1,144 @@
+/// <mls fileReference="_102020_/l2/molecules/ml-scenary.less" enhancement="_102020_/l2/enhancementStyleAura"/>
+
+molecules--ml-scenary-102020 {
+  display: block;
+
+  .ml-scenary {
+    font-family: var(--ml-font-family, system-ui, -apple-system, sans-serif);
+    color: var(--ml-on-surface, #1c1b1f);
+  }
+
+  .ml-scenary-direct,
+  .ml-scenary-panel-direct {
+    display: contents;
+  }
+
+  .ml-disabled {
+    opacity: var(--ml-disabled-opacity, 0.5);
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .ml-scenary-tablist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    border-bottom: var(--ml-border-width, 1px) var(--ml-border-style, solid) var(--ml-outline-variant, #e2e8f0);
+  }
+
+  .ml-scenary-tab {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    color: var(--ml-on-surface-muted, #49454f);
+    background: transparent;
+    border: 0;
+    border-bottom: 2px var(--ml-border-style, solid) transparent;
+    cursor: pointer;
+    transition: color var(--ml-transition, 200ms ease), border-color var(--ml-transition, 200ms ease);
+
+    &:hover {
+      color: var(--ml-on-surface, #1c1b1f);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--ml-primary, #3b82f6);
+      outline-offset: 2px;
+    }
+  }
+
+  .ml-scenary-tab-active {
+    color: var(--ml-primary, #3b82f6);
+    border-bottom-color: var(--ml-primary, #3b82f6);
+    font-weight: var(--ml-font-weight-medium, 500);
+  }
+
+  .ml-scenary-panel {
+    min-width: 0;
+  }
+
+  .ml-scenary-panel-active {
+    outline: none;
+  }
+
+  .ml-scenary-heading {
+    margin: 0 0 0.75rem;
+    font-size: 1.125rem;
+    font-weight: var(--ml-font-weight-medium, 500);
+    color: var(--ml-on-surface, #1c1b1f);
+
+    &:focus-visible {
+      outline: 2px solid var(--ml-primary, #3b82f6);
+      outline-offset: 2px;
+    }
+  }
+
+  .ml-scenary-heading-sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .ml-scenary-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    color: var(--ml-primary, #3b82f6);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 2px solid var(--ml-primary, #3b82f6);
+      outline-offset: 2px;
+    }
+  }
+
+  .ml-scenary-back-icon {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .ml-scenary-body {
+    display: block;
+    min-width: 0;
+  }
+
+  .ml-scenary-reveal {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .ml-scenary-reveal .ml-scenary-panel {
+    padding: 0.75rem;
+    border: var(--ml-border-width, 1px) var(--ml-border-style, solid) var(--ml-outline-variant, #e2e8f0);
+    background-color: var(--ml-surface, #ffffff);
+  }
+
+  .ml-scenary-badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    color: var(--ml-on-surface-muted, #49454f);
+    border: var(--ml-border-width, 1px) var(--ml-border-style, solid) var(--ml-outline-variant, #e2e8f0);
+    border-radius: 999px;
+  }
+
+  .ml-scenary-badge-title {
+    color: var(--ml-on-surface, #1c1b1f);
+  }
+}

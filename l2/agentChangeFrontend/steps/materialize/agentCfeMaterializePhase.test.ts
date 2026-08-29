@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   SYSTEMIC_FAILURE_MIN_PAGES, contractTsPathOf, countPage11Items, countSharedItems,
   describeVerifyBuckets, firstErrorSignature, isSystemicPageFailure, isSystemicSharedFailure,
-  materializePlanIdFromPipelineId,
+  materializePlanIdFromPipelineId, selectRepairedThisRound,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -204,7 +204,7 @@ void test('the verify reports released models in the step trace, never in the co
   assert.ok(!/console\.(info|log)\([^)]*released/u.test(src), 'the verify must not print the released count');
   assert.ok(!/console\.(info|log)\([^)]*released/u.test(finalize), 'the module gate must not print the released count');
   assert.match(src, /released \$\{released\} borrowed model\(s\)/u);
-  assert.match(finalize, /released \$\{closure\.released\} borrowed model\(s\)/u);
+  assert.match(finalize, /released \$\{compiled\.released\} borrowed model\(s\)/u);
 });
 
 // ── uma falha de LLM num slot não pode matar a task (rodada 7) ────────────────
@@ -258,4 +258,19 @@ void test('the verify summary writes blocked, repaired and declared counts', () 
   assert.match(src, /declaredCount: declared\.length/);
   assert.match(src, /severity: 'blocked' as const/);
   assert.match(src, /severity: 'declared' as const/);
+});
+
+void test('R1: repaired counts a finding that cleared, not only an item that was blocked', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /selectRepairedThisRound\(args\.attempt, passedNow, previous\?\.passed\)/);
+  // monitorAndUpdateTaskStatus no run01: finding na rodada 1, limpo na 2, nunca esteve em `broken`.
+  const passedNow = [{ planId: 'materialize-monitorandupdatetaskstatus-l2-page', typecheck: 'passed' }];
+  assert.deepEqual(selectRepairedThisRound(2, passedNow, []), passedNow);
+  assert.deepEqual(selectRepairedThisRound(2, passedNow, [{ planId: 'other' }]), passedNow);
+  // primeira rodada não conta geração limpa como reparo
+  assert.deepEqual(selectRepairedThisRound(1, passedNow, null), []);
+  // ainda quebrado (não está em passedNow) não entra
+  assert.deepEqual(selectRepairedThisRound(2, [], [{ planId: 'materialize-taskcatalogue-l2-page' }]), []);
+  // já estava em passed: não é transição
+  assert.deepEqual(selectRepairedThisRound(2, passedNow, passedNow), []);
 });

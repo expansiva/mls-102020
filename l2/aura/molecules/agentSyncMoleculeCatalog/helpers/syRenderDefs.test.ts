@@ -61,7 +61,7 @@ void test('a molecule with no varying axis omits the layout key entirely', () =>
 
 void test('a molecule with no .defs.ts renders defs: null with the out-of-contract comment, no layout key', () => {
   const text = syRenderIndexDefs(INPUT);
-  assert.match(text, /\{ tag: 'groupenternumber--ml-table-multi-select', defs: null \/\* ⚠ sem \.defs\.ts — fora de contrato \*\/ \},/);
+  assert.match(text, /\{ tag: 'groupenternumber--ml-table-multi-select', defs: null \/\* ⚠ no \.defs\.ts — outside the contract \*\/ \},/);
 });
 
 void test('scenarios render as full prefixed tags', () => {
@@ -76,9 +76,9 @@ void test('the skill markdown table uses SHORT tag names (no group prefix), "—
   assert.match(text, /\| Percentage \| — \|/);
 });
 
-void test('the "## Moléculas (N)" count is the TOTAL molecule count, defs-less ones included', () => {
+void test('the "## Molecules (N)" count is the TOTAL molecule count, defs-less ones included', () => {
   const text = syRenderIndexDefs(INPUT);
-  assert.match(text, /## Moléculas \(3\)/);
+  assert.match(text, /## Molecules \(3\)/);
 });
 
 void test('a molecule bullet with layout: "**tag** · axis: value, axis2: value2 — objective"', () => {
@@ -99,7 +99,7 @@ void test('a defs-less molecule bullet: the out-of-contract line, no objective, 
   const text = syRenderIndexDefs(INPUT);
   assert.match(
     text,
-    /- \*\*groupenternumber--ml-table-multi-select\*\* — ⚠ fora de contrato: sem \.defs\.ts \(objetivo indisponível; leia o arquivo da molécula antes de usar\)\.$/m,
+    /- \*\*groupenternumber--ml-table-multi-select\*\* — ⚠ outside the contract: no \.defs\.ts \(objective unavailable; read the molecule file before using it\)\.$/m,
   );
 });
 

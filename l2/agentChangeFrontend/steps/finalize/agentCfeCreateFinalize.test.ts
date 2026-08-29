@@ -40,12 +40,24 @@ void test('D3: o gate responde pelos vereditos da materialização e nomeia o qu
   const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
   assert.match(src, /readUnresolvedMaterializeItems\(result\.moduleName\)/u);
   // suspeitos, não veredito: só entra na nota o que o compile do módulo NÃO reproduziu
-  assert.match(src, /\.filter\(item => !closure\.errors\.some\(/u);
+  assert.match(src, /\.filter\(item => !compiled\.errors\.some\(/u);
   assert.match(src, /MATERIALIZE-VERDICT-UNREPRODUCED/u);
   // e a nota tem de aparecer nos TRÊS desfechos do gate, inclusive no limpo
   const notes = src.match(/\$\{verdictNote\}/gu) ?? [];
   assert.equal(notes.length, 3, `verdictNote aparece ${notes.length}x`);
   assert.match(src, /no blocking Monaco errors\$\{declaredNote\}\$\{verdictNote\}/u);
+});
+
+void test('R2: o finalize reescreve o veredito do item que reparou antes de ler pagesDone', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
+  assert.match(src, /rewriteMaterializeVerdictsNowClean/u);
+  assert.match(src, /readFinalizeRepairing/u);
+  assert.match(src, /repairing: slots\.map\(slot => slot\.ref\)/u);
+  // o slot do finalize usa o planId da RODADA — a reescrita casa por outputPath, não por esse planId
+  assert.match(src, /compileRepairSlotArgs\(slot, repairPlanId, attempt \+ 1\)/u);
+  assert.match(src, /await rewriteMaterializeVerdictsNowClean\(repairModule[\s\S]{0,400}await finalizeGeneratedPages\(\)/u);
+  // UNREPRODUCED permanece: só entra na nota o que o compile NÃO reproduziu
+  assert.match(src, /MATERIALIZE-VERDICT-UNREPRODUCED/u);
 });
 
 void test('D2: uma página com item bloqueado não entra em pagesDone', () => {

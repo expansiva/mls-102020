@@ -12,10 +12,12 @@ The human message ends with a "## Skeleton — complete this file" section holdi
 written for you. You are NOT writing a file from scratch: you take that exact text, replace every
 \`/* to implement */\` marker with your code, and return the whole thing.
 
-Keep verbatim: the mls header, the imports, the CATALOGUE BLOCK between the
-\`/// **collab_i18n_start**\` and \`/// **collab_i18n_end**\` markers, the tag name, the class name, and
-the \`msg\` getter. Do not re-derive them, do not reorder them, never add a second catalogue block,
-never write your own \`get msg\`.
+Keep verbatim: the mls header, the imports (including the ml-scenary side-effect import when present),
+the CATALOGUE BLOCK between the
+\`/// **collab_i18n_start**\` and \`/// **collab_i18n_end**\` markers, the tag name, the class name, the
+\`msg\` getter, and the scenary host/\`<Scene>\`/\`renderScenary<X>()\` structure when the skeleton emitted
+them. Do not re-derive them, do not reorder them, never add a second catalogue block,
+never write your own \`get msg\`. Fill the \`/* to implement */\` markers inside the scene stubs.
 
 The block the skeleton hands you is named \`pageMessage_<locale>\` (or \`o<N>Message_<locale>\` in a split
 organism), with the type \`PageMessageType\` (\`O<N>Msg\`) and the map \`pageMessages\` (\`o<N>Messages\`).
@@ -108,6 +110,9 @@ Generate:
 - import { customElement } from 'lit/decorators.js';
 - import the shared base class already named in the skeleton from /_{project}_/l2/{moduleName}/web/shared/{pageName}.js.
   The extension is always .js, never .ts. Do not invent a different class name.
+- When the skeleton emits \`import '/_102020_/l2/molecules/ml-scenary.js';\`, keep it. That side-effect
+  import is what registers \`<molecules--ml-scenary-102020>\`. Without it the browser treats the tag as
+  unknown, renders the children with no scenary behavior, and prints NOTHING on the console.
 - @customElement tag from outputPath using the same rule as /_102020_/l2/utils.ts convertFileToTag:
   - Insert "-" before every uppercase letter that follows a lowercase letter or digit.
   - Lowercase the result.
@@ -181,15 +186,57 @@ For every shared action:
 - Bind only to a handler/method that exists in the shared context (JSDoc 'handler for action ...').
 - If no handler exists, render the button disabled.
 
+## Scenary (mandatory)
+
+Every page renders ALL of its content inside exactly ONE \`<molecules--ml-scenary-102020>\`, even when
+there is only one scene. The shared owns the active scene (\`this.uiScenary\` + \`setUiScenary\` /
+\`handleUiScenaryChange\`). The page still has NO state of its own — do not add \`@property\` for the
+scene.
+
+The skeleton already emits the host, one \`<Scene>\` per shared \`scenaries[].value\`, and a
+\`renderScenary<X>()\` stub per scene. Fill the stubs; do not invent a second host, do not drop a Scene,
+do not rename the tag.
+
+\`\`\`ts
+import '/_102020_/l2/molecules/ml-scenary.js';
+// render():
+html\`<molecules--ml-scenary-102020 mode="scenary" .value=\${this.uiScenary}
+    @change=\${this.handleUiScenaryChange}>
+  <Scene value="base" title=\${msg['scenary.base']}>\${this.renderScenaryBase()}</Scene>
+  <Scene value="detail" title=\${msg['scenary.detail']} nav="back">\${this.renderScenaryDetail()}</Scene>
+  <Scene value="edit" title=\${msg['scenary.edit']}>\${this.renderScenaryEdit()}</Scene>
+</molecules--ml-scenary-102020>\`
+\`\`\`
+
+Rules:
+- Bind \`.value\` to \`this.uiScenary\` and \`@change\` to the shared handler (\`handleUiScenaryChange\` /
+  \`setUiScenary\`). Never a page-local property.
+- One \`<Scene>\` per value the shared JSDoc / \`scenaries[]\` lists. Base = list/hub. Each command form
+  is its OWN scene (never a form loose on the base scene). Detail is its own scene when the shared
+  declares it.
+- Scene content = one render function (\`renderScenaryBase()\`, \`renderScenaryEdit()\`…) — the same
+  organism granularity already practiced.
+- Leave an edit scene via the page Cancel button (calls the setter) plus the shared's automatic
+  return to base on command success. \`nav="back"\` only on a detail scene.
+- Command SUCCESS feedback is shown on the BASE scene (the user returns and sees it). Error stays
+  on the command scene, using the envelope message (rule 6).
+- A page with one operation: one host, one Scene, no tabs, no back.
+- \`mode="tabs"\` is allowed only when the scenes are parallel QUERY subjects. Never for a command
+  form — a command form is a \`scenary\` scene.
+- \`title\` and \`backLabel\` are msg keys, never a literal.
+
+Anti-rules: never \`@property\` for the scene; never a command form outside \`<Scene>\`; never a
+literal in \`title\` / \`backLabel\`.
+
 ## Layout patterns
 
 Render page11 as a simple operational page:
 - outer wrapper: min-h-full, background from the design-system surface token (see "Design system colors")
 - inner container: max-w-6xl mx-auto px-4 py-6 space-y-6
 - header with page title from an existing msg key. Do not render purpose unless a purpose msg key exists in the shared class.
-- sections as cards
+- scenes inside the single scenary host; sections as cards WITHIN a scene
 - organisms as grouped panels
-- plain forms for commandForm intentions
+- plain forms for commandForm intentions — each inside its own Scene, never on the base scene
 - When a field in the layout/shared catalog carries enumLabels, display enumLabels[].label (user language) and keep enum[] / the stored value as the wire code. Without enumLabels, display the code. Never send the label on the wire. This applies to FORM controls AND to LIST CELLS — interpolating the stored code as table text is the same defect.
 
 ## Closed-domain fields (enum) — NEVER free text
@@ -270,9 +317,14 @@ seeded photos were invisible in the app.
 - collapse repeated hierarchy: render the page title once as h1. A section/organism/intention title that resolves to the same message as its parent must not be rendered again. Use the next distinct title as h2, then render blocks without another repeated title.
 - use the definition prose (intent, actor, motivation) to choose density. Translate only evidenced signals into layout: data-dense/status-driven favors compact tables and grouped statuses; dashboard-first favors summary before detail; otherwise retain the simple operational layout. Do not invent colors, chart data or components from the prose.
 
-Do not import or render molecule packages in page11.
-Do not render custom molecule/web-component tags.
-Do not use group names such as groupViewTable or tags such as groupviewtable--ml-data-table.
+## Molecules
+
+- Molecules and web components are allowed. Any molecule may be used; when the context carries a
+  molecule's defs (tag, props, content areas, events), follow those defs.
+- A molecule is chrome, not data: states, handlers and text keep coming from the shared class and
+  from this.msg exactly as before. Visible text reaches the molecule through attributes or content
+  areas fed from this.msg — never a literal in the template.
+- Plain HTML stays perfectly valid: a page that needs no molecule renders exactly as it does today.
 
 Keep cards at rounded-lg or less. Use Tailwind utility classes for LAYOUT (spacing, flex/grid, sizing, radius).
 
@@ -407,8 +459,8 @@ breakdown by category, a distribution. A list of records is still a list; do not
 
 ## Design system colors
 
-Color must come from the design-system tokens, not hardcoded palettes. This keeps page11 plain (no
-molecules) but themed by the project's design system.
+Color must come from the design-system tokens, not hardcoded palettes, so the page is themed by the
+project's design system.
 - The context provides the design-system token NAMES as a compact list (token "<t>" -> CSS variable
   var(--<t>)). Use ONLY names from that list; when the list says base tokens also have -hover/-focus/
   -disabled variants, those variants are valid too. If no token list is present, use neutral

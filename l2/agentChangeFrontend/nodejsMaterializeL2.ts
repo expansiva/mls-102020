@@ -173,7 +173,11 @@ function writeSplitPlanFromL4(item: PipelineItem, data: unknown, reason: string,
     }))
     .filter(section => section.sectionId);
 
-  const bindings = bindingCommandsOf(data, siblingBindings);
+  const sharedTs = (item.dependsFiles ?? []).find(ref => isSharedRuntimeTsRef(ref))
+    ?? (item.dependsFiles ?? []).map(ref => sharedTsRefOfDtsArtifact(ref)).find((ref): ref is string => !!ref);
+  const sharedDefsSource = sharedTs ? readIfExists(mlsToFs(sharedTs.replace(/\.ts$/u, '.defs.ts'))) : null;
+  const sharedData = sharedDefsSource ? parseDefs(sharedDefsSource).data : undefined;
+  const bindings = bindingCommandsOf(data, siblingBindings, sharedData);
 
   const plan = buildSplitPlan(parsed.shortName, genome, sections, bindings, reason);
   if (!plan) { console.log(`  l4 gives ${sections.length} usable section(s) — not enough to split`); return null; }
@@ -683,8 +687,9 @@ async function main(): Promise<void> {
       console.log(`\nrepair round ${round}/${MATERIALIZE_REPAIR_ATTEMPTS}: ${targets.length} file(s)`);
       for (const p of targets) {
         const repairErrors = itemTscErrors(p.item, errorsByFile);
+        const currentCode = readIfExists(mlsToFs(p.item.outputPath)) ?? undefined;
         const repairHint = repairErrors.length
-          ? buildCompileRepairHint(p.item.outputPath, repairErrors)
+          ? buildCompileRepairHint(p.item.outputPath, repairErrors, currentCode)
           : buildMissingCodeRepairHint(p.item.outputPath, 'previous attempt failed before a valid file was generated');
         const data = dataByOut.get(p.item.outputPath);
         const { skillReport, depReport } = assemble(p.item, data, modelType);

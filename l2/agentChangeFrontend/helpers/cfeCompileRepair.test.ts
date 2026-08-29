@@ -102,6 +102,8 @@ test('o finalize abre a rodada com orçamento, e falha igual quando ele esgota',
   // planIds dinâmicos por rodada: reusar 'finalize-create' travaria a segunda rodada para sempre.
   assert.match(src, /finalize-create-repair-r\$\{attempt\}/);
   assert.match(src, /finalize-create-r\$\{attempt \+ 1\}/);
+  // A próxima rodada precisa dos refs que ESTA tentou reparar: o planId do slot é o da rodada (P5).
+  assert.match(src, /repairing: slots\.map\(slot => slot\.ref\)/);
   // O host do fan-out precisa de interaction.input e da política de falha do CF.
   assert.match(src, /'parallel_dynamic',\s*\n\s*'in_progress',[\s\S]{0,400}'wait_after_prompt',/);
   assert.match(src, /fanout\.interaction = \{/);

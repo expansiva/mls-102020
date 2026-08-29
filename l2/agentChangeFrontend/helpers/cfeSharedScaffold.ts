@@ -34,13 +34,20 @@ interface ContractInterface {
 interface DefsState {
   stateKey: string;
   name: string;
-  kind: 'pageStatus' | 'actionStatus' | 'input' | 'queryResult' | 'commandOutput' | 'actionError';
+  kind: 'pageStatus' | 'actionStatus' | 'input' | 'queryResult' | 'commandOutput' | 'actionError' | 'uiScenary';
   defaultValue: unknown;
   actionRef?: string;
   valueSet?: string[];
   contractRef?: { commandName: string; direction: 'input' | 'output'; field?: string };
   outputShape?: 'paginated' | 'object' | 'array';
   collection?: boolean;
+}
+
+interface DefsScenary {
+  value: string;
+  kind: 'base' | 'detail' | 'command';
+  commandName?: string;
+  preconditions: string[];
 }
 
 interface DefsPrefillField { itemField: string; targetStateKey: string }
@@ -81,6 +88,7 @@ interface ScaffoldModel {
   routePattern: string;
   states: DefsState[];
   actions: DefsAction[];
+  scenaries: DefsScenary[];
   initialLoads: { actionId: string }[];
   i18n: Record<string, string>;
   // The module's default locale (defs i18nMeta.defaultLocale). The catalog is keyed by its LOWERCASE
@@ -285,6 +293,7 @@ function buildModel(outputPath: string, data: unknown, contractSource: string, p
   if (!states.length) bail('states is empty');
   const actions = (Array.isArray(data.actions) ? data.actions.filter(isRecord) : bail('missing actions')).map(parseAction);
   if (!actions.length) bail('actions is empty');
+  const scenaries = parseScenaries(data.scenaries);
 
   const initialLoads = Array.isArray(data.initialLoads)
     ? data.initialLoads.filter(isRecord).map(load => ({ actionId: stringOf(load.actionId) || bail('initialLoads entry missing actionId') }))
@@ -305,7 +314,7 @@ function buildModel(outputPath: string, data: unknown, contractSource: string, p
   const runtimeLocales = catalogueLocales(defaultLocale, declared);
 
   const model: ScaffoldModel = {
-    outputPath, baseClassName, routePattern, states, actions, initialLoads,
+    outputPath, baseClassName, routePattern, states, actions, scenaries, initialLoads,
     i18n, defaultLocale, runtimeLocales, previousText: parsePreviousI18n(previousSource),
     contractTsPath, contracts, interfaces, stateByKey, actionById,
   };
@@ -313,9 +322,30 @@ function buildModel(outputPath: string, data: unknown, contractSource: string, p
   return model;
 }
 
+function parseScenaries(raw: unknown): DefsScenary[] {
+  if (!Array.isArray(raw)) return [];
+  const scenes: DefsScenary[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const value = stringOf(item.value);
+    const kind = stringOf(item.kind);
+    if (!value) continue;
+    if (kind !== 'base' && kind !== 'detail' && kind !== 'command') {
+      bail(`scenary ${value} has unsupported kind: ${kind}`);
+    }
+    scenes.push({
+      value,
+      kind,
+      commandName: stringOf(item.commandName) || undefined,
+      preconditions: stringArray(item.preconditions),
+    });
+  }
+  return scenes;
+}
+
 function parseState(raw: Record<string, unknown>): DefsState {
   const kind = stringOf(raw.kind);
-  if (!['pageStatus', 'actionStatus', 'input', 'queryResult', 'commandOutput', 'actionError'].includes(kind)) {
+  if (!['pageStatus', 'actionStatus', 'input', 'queryResult', 'commandOutput', 'actionError', 'uiScenary'].includes(kind)) {
     bail(`state ${stringOf(raw.stateKey)} has unsupported kind: ${kind}`);
   }
   const state: DefsState = {
@@ -345,6 +375,7 @@ function parseState(raw: Record<string, unknown>): DefsState {
   }
   if (typeof raw.collection === 'boolean') state.collection = raw.collection;
   if (state.kind === 'actionStatus' && (!state.valueSet || !state.valueSet.length)) bail(`state ${state.stateKey} actionStatus without valueSet`);
+  if (state.kind === 'uiScenary' && (!state.valueSet || !state.valueSet.length)) bail(`state ${state.stateKey} uiScenary without valueSet`);
   if (state.kind === 'queryResult' && !state.contractRef) bail(`state ${state.stateKey} queryResult without contractRef`);
   if (state.kind === 'commandOutput' && !state.contractRef) bail(`state ${state.stateKey} commandOutput without contractRef`);
   return state;
@@ -510,6 +541,10 @@ function render(model: ScaffoldModel): string {
     out.push('');
     out.push(...renderSyncRouteParams(model));
   }
+  if (uiScenaryState(model)) {
+    out.push('');
+    out.push(...renderUiScenary(model));
+  }
   if (model.actions.some(a => a.kind === 'command')) {
     out.push('');
     out.push(...renderReadErrorMessage());
@@ -671,6 +706,7 @@ function renderConnectedCallback(model: ScaffoldModel): string[] {
     lines.push(`    this.initStateValue('${state.stateKey}', ${propertyInit(model, state)});`);
   }
   if (routeParams(model).length) lines.push('    this.syncRouteParams();');
+  if (uiScenaryState(model)) lines.push('    this.applyUrlScenary();');
   lines.push('    subscribe(SUBSCRIBED_STATE_KEYS, this);');
   for (const load of model.initialLoads) {
     const action = model.actionById.get(load.actionId)!;
@@ -902,6 +938,7 @@ function renderCommand(model: ScaffoldModel, action: DefsAction): string[] {
     lines.push(`    this.${clearState.name} = '';`);
     lines.push(`    setState('${key}', '');`);
   }
+  if (uiScenaryState(model)) lines.push(`    this.setUiScenary('${escapeSingle(baseScenaryValue(model))}');`);
   lines.push(`    this.${statusState.name} = 'success';`);
   lines.push(`    setState('${statusState.stateKey}', 'success');`);
   lines.push('    this.requestUpdate();');
@@ -1003,6 +1040,107 @@ function renderParams(model: ScaffoldModel, action: DefsAction, input: ContractI
   return lines;
 }
 
+function uiScenaryState(model: ScaffoldModel): DefsState | undefined {
+  return model.states.find(state => state.kind === 'uiScenary');
+}
+
+function baseScenaryValue(model: ScaffoldModel): string {
+  return model.scenaries.find(scene => scene.kind === 'base')?.value || model.scenaries[0]?.value || 'base';
+}
+
+function renderUiScenary(model: ScaffoldModel): string[] {
+  const state = uiScenaryState(model)!;
+  const values = (state.valueSet && state.valueSet.length ? state.valueSet : model.scenaries.map(scene => scene.value)).filter(Boolean);
+  const allowed = values.length ? values : ['base'];
+  const allowedLit = allowed.map(value => `'${escapeSingle(value)}'`).join(', ');
+  const lines: string[] = [
+    `  /** setter for state ${state.stateKey} */`,
+    `  setUiScenary(value: string): void {`,
+    `    const allowed: string[] = [${allowedLit}];`,
+    `    if (!allowed.includes(value)) {`,
+    // Split so this generator is not a console.warn call site (nsConsoleGuard).
+    `      console${'.warn'}('setUiScenary: unknown value \\'' + value + '\\'');`,
+    '      return;',
+    '    }',
+    '    let next: string = value;',
+  ];
+  for (const scene of model.scenaries) {
+    if (scene.kind === 'base' || scene.preconditions.length === 0) continue;
+    const checks = scene.preconditions.map(key => {
+      const input = model.stateByKey.get(key);
+      return input ? `!this.${input.name}` : '';
+    }).filter(Boolean);
+    if (!checks.length) continue;
+    lines.push(`    if (value === '${escapeSingle(scene.value)}' && (${checks.join(' || ')})) next = '${escapeSingle(baseScenaryValue(model))}';`);
+  }
+  lines.push(`    this.${state.name} = next as typeof this.${state.name};`);
+  lines.push(`    setState('${state.stateKey}', next);`);
+  lines.push('    this.syncScenaryQuery(next);');
+  lines.push('    this.requestUpdate();');
+  lines.push('  }');
+  lines.push('');
+  lines.push('  /** handler for action set.uiScenary — bind UI events here */');
+  lines.push('  handleUiScenaryChange(event: Event): void {');
+  lines.push('    const custom = event as CustomEvent<{ value?: unknown }>;');
+  lines.push("    const fromDetail: string = custom.detail && typeof custom.detail.value === 'string' ? custom.detail.value : '';");
+  lines.push('    const target = event.target as HTMLInputElement | HTMLSelectElement | null;');
+  lines.push("    const value: string = fromDetail || (target && 'value' in target ? String(target.value) : '');");
+  lines.push('    this.setUiScenary(value);');
+  lines.push('  }');
+  lines.push('');
+  lines.push(...renderApplyUrlScenary(model));
+  lines.push('');
+  lines.push(...renderSyncScenaryQuery(model));
+  return lines;
+}
+
+function renderApplyUrlScenary(model: ScaffoldModel): string[] {
+  const fieldTargets = new Map<string, { propName: string; stateKey: string }[]>();
+  for (const scene of model.scenaries) {
+    for (const key of scene.preconditions) {
+      const input = model.stateByKey.get(key);
+      if (!input) continue;
+      const field = key.split('.').pop() || '';
+      if (!field) continue;
+      const list = fieldTargets.get(field) || [];
+      if (!list.some(item => item.stateKey === key)) list.push({ propName: input.name, stateKey: key });
+      fieldTargets.set(field, list);
+    }
+  }
+  const lines = [
+    '  private applyUrlScenary(): void {',
+    '    const params = new URLSearchParams(window.location.search);',
+  ];
+  for (const [field, targets] of fieldTargets) {
+    const rawName = `raw${toPascalCase(field)}`;
+    lines.push(`    const ${rawName}: string = params.get('${escapeSingle(field)}') || '';`);
+    lines.push(`    if (${rawName}) {`);
+    for (const target of targets) {
+      lines.push(`      if (!this.${target.propName}) {`);
+      lines.push(`        this.${target.propName} = ${rawName};`);
+      lines.push(`        setState('${target.stateKey}', ${rawName});`);
+      lines.push('      }');
+    }
+    lines.push('    }');
+  }
+  lines.push(`    const requested: string = params.get('scenary') || '${escapeSingle(baseScenaryValue(model))}';`);
+  lines.push('    this.setUiScenary(requested);');
+  lines.push('  }');
+  return lines;
+}
+
+function renderSyncScenaryQuery(model: ScaffoldModel): string[] {
+  const base = baseScenaryValue(model);
+  return [
+    '  private syncScenaryQuery(value: string): void {',
+    '    const url = new URL(window.location.href);',
+    `    if (value === '${escapeSingle(base)}') url.searchParams.delete('scenary');`,
+    "    else url.searchParams.set('scenary', value);",
+    "    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);",
+    '  }',
+  ];
+}
+
 function renderSetter(model: ScaffoldModel, action: DefsAction): string[] {
   const state = model.stateByKey.get(action.stateKey!)!;
   const lines = [
@@ -1012,6 +1150,10 @@ function renderSetter(model: ScaffoldModel, action: DefsAction): string[] {
     `    setState('${state.stateKey}', value);`,
   ];
   if (action.prefill) lines.push(...renderPrefill(model, action.prefill, '    '));
+  const detail = model.scenaries.find(scene => scene.kind === 'detail');
+  if (detail && (detail.preconditions || []).includes(state.stateKey)) {
+    lines.push(`    if (value) this.setUiScenary('${escapeSingle(detail.value)}');`);
+  }
   lines.push('    this.requestUpdate();');
   lines.push('  }');
   lines.push('');
@@ -1071,6 +1213,7 @@ function propertyType(model: ScaffoldModel, state: DefsState): string {
     case 'actionError':
       return 'string';
     case 'actionStatus':
+    case 'uiScenary':
       return state.valueSet!.map(v => `'${v}'`).join(' | ');
     case 'commandOutput':
       return `${toPascalCase(state.contractRef!.commandName)}Output | null`;
@@ -1091,6 +1234,8 @@ function propertyInit(model: ScaffoldModel, state: DefsState): string {
       return `'${escapeSingle(String(state.defaultValue ?? ''))}'`;
     case 'actionStatus':
       return `'${escapeSingle(String(state.defaultValue ?? 'idle'))}'`;
+    case 'uiScenary':
+      return `'${escapeSingle(String(state.defaultValue ?? 'base'))}'`;
     case 'commandOutput':
       return 'null';
     case 'queryResult':
@@ -1124,6 +1269,10 @@ function queryFallback(model: ScaffoldModel, state: DefsState): string {
 }
 
 function stateDoc(state: DefsState): string {
+  if (state.kind === 'uiScenary') {
+    const values = state.valueSet?.length ? ` — values: ${state.valueSet.join('|')}` : '';
+    return `state ${state.stateKey}${values}`;
+  }
   const parts = [`state ${state.name} — ${state.kind}`];
   if (state.valueSet?.length) parts.push(`, values: ${state.valueSet.join('|')}`);
   if (state.kind === 'queryResult') parts.push(`, outputShape: ${state.outputShape}`);

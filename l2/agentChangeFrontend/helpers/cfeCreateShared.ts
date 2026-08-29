@@ -3,6 +3,13 @@
 import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
 import { commandMemberNames, dedupeSharedStateNames } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMemberNames.js';
 import {
+  deriveUiScenaries,
+  destructiveCommandIds,
+  isDestructiveCommandName,
+  UI_SCENARY_DEFS_CONTRACT,
+  type CfeUiScenaryCommand,
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeUiScenary.js';
+import {
   assertArray,
   assertRecord,
   assertString,
@@ -991,6 +998,7 @@ function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace,
     ? primaryOperation.data.accessPattern
     : {};
   const selection = readString(accessPattern.selection);
+  const accessKind = readString(accessPattern.kind);
   const rulesApplied = unique(bffCall.uses.flatMap(id => operations.find(op => op.operationId === id)?.rulesApplied || []));
   const contractKey = `${workspace.workspaceId}--${bffCall.bffId}`;
   // The l4 shape of each input, keyed by name: the wire `type` (bffCallCommandShape only keeps
@@ -1050,6 +1058,7 @@ function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace,
     producedFields,
     rulesApplied,
     ...(selection ? { selection } : {}),
+    ...(accessKind ? { accessKind } : {}),
     origin: {
       source: 'l4/workspace-bffCall',
       ownerId: `bffCall:${contractKey}`,
@@ -1573,9 +1582,9 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
 }
 
 /**
- * page11: `definition` is intent prose (no fields, no routines) plus a sibling `bindings` export the
- * gates read. page21/31 stay an object (`pageObjective` included). Shared states/actions do not carry
- * `selection`, per-input `required`/`source`/`sourceRef` — that is why bindings stay structured.
+ * page11: `definition` is intent prose (no fields, no routines). The structured map lives once on the
+ * workspace shared defs (`dataBindings`); gates read it from there (page11 sibling `bindings` is only
+ * a fallback for already-generated modules). page21/31 stay an object (`pageObjective` included).
  */
 export function pageLayoutDefsExport(
   genome: string,
@@ -1584,7 +1593,7 @@ export function pageLayoutDefsExport(
   objective?: unknown,
 ): { definition: unknown; extras: { name: string; value: unknown }[] } {
   if (genome === 'page11') {
-    return { definition: page11DefinitionProse(prepared), extras: [{ name: 'bindings', value: dataBindings }] };
+    return { definition: page11DefinitionProse(prepared), extras: [] };
   }
   return {
     definition: {
@@ -1613,7 +1622,7 @@ export function page11DefinitionProse(prepared: Pick<CfePreparedPage, 'page' | '
   if (purpose) parts.push(/[.!?]$/u.test(purpose) ? purpose : `${purpose}.`);
   if (category) parts.push(`Its UX experience is ${category}.`);
   parts.push('The page extends the shared base class of this workspace: the shared travels in this pipeline and already carries the states, actions and handlers the page inherits. Render the experience around that intent — do not list fields and do not list routines.');
-  return parts.join(' ');
+  return parts.join('\n');
 }
 
 // Expand the LLM's minimal semantic composition into the full internal layout the rest of the pipeline
@@ -2137,15 +2146,112 @@ export async function saveMaterializeVerifySummary(
 export interface UnresolvedMaterializeItem { planId: string; outputPath: string | null; firstError: string }
 
 /**
+ * Move blocked items whose shipped file the finalize repair just made compile-clean out of `broken`
+ * and into `passed`/`repaired`. Last verdict wins: `finalizeGeneratedPages` reads this afterwards.
+ *
+ * Only refs the round actually tried to repair are in `nowCleanRefs` — a blocked item the gate never
+ * reproduced (Monaco-vs-tsc) stays broken so MATERIALIZE-VERDICT-UNREPRODUCED still names it.
+ */
+export function absolveCleanItemsFromVerdict(
+  verdict: Record<string, unknown>,
+  nowCleanRefs: Set<string>,
+): Record<string, unknown> {
+  if (nowCleanRefs.size === 0 || !Array.isArray(verdict.broken)) return verdict;
+  const stillBroken: unknown[] = [];
+  const absolved: MaterializeVerifyPassed[] = [];
+  for (const entry of verdict.broken) {
+    if (!isRecord(entry)) continue;
+    const outputPath = typeof entry.outputPath === 'string' ? entry.outputPath : '';
+    if (outputPath && nowCleanRefs.has(outputPath)) {
+      const planId = readString(entry.planId);
+      if (planId) absolved.push({ planId, typecheck: readString(entry.typecheck) || 'passed' });
+    } else {
+      stillBroken.push(entry);
+    }
+  }
+  if (absolved.length === 0) return verdict;
+  const passed = Array.isArray(verdict.passed) ? [...verdict.passed] : [];
+  const repaired = Array.isArray(verdict.repaired) ? [...verdict.repaired] : [];
+  const passedIds = new Set(passed.filter(isRecord).map(item => readString(item.planId)));
+  const repairedIds = new Set(repaired.filter(isRecord).map(item => readString(item.planId)));
+  for (const item of absolved) {
+    if (!passedIds.has(item.planId)) passed.push(item);
+    if (!repairedIds.has(item.planId)) repaired.push(item);
+  }
+  return {
+    ...verdict,
+    allClear: stillBroken.length === 0,
+    blockedCount: stillBroken.length,
+    brokenCount: stillBroken.length,
+    passedCount: passed.length,
+    repairedCount: repaired.length,
+    broken: stillBroken,
+    passed,
+    repaired,
+  };
+}
+
+function summaryEntryAsBroken(entry: unknown, severity: 'blocked' | 'declared'): MaterializeVerifyBrokenTrace | null {
+  if (!isRecord(entry) || !readString(entry.planId)) return null;
+  return {
+    planId: readString(entry.planId),
+    defPath: readString(entry.defPath),
+    outputPath: typeof entry.outputPath === 'string' ? entry.outputPath : null,
+    typecheck: readString(entry.typecheck) || 'not-applicable',
+    errors: Array.isArray(entry.errors) ? entry.errors.map(String) : (entry.firstError ? [String(entry.firstError)] : []),
+    warnings: Array.isArray(entry.warnings) ? entry.warnings.map(String) : [],
+    severity,
+  };
+}
+
+function summaryEntryAsPassed(entry: unknown): MaterializeVerifyPassed | null {
+  if (!isRecord(entry) || !readString(entry.planId)) return null;
+  return { planId: readString(entry.planId), typecheck: readString(entry.typecheck) };
+}
+
+/**
+ * Persist `absolveCleanItemsFromVerdict` onto every materialize summary of this module.
+ * Returns how many blocked items were moved. The summary file name is still the phase's
+ * (slot planId of a finalize repair is the ROUND id — never the item's materialize planId).
+ */
+export async function rewriteMaterializeVerdictsNowClean(moduleName: string, nowCleanRefs: Set<string>): Promise<number> {
+  if (!moduleName || nowCleanRefs.size === 0) return 0;
+  const project = mls.actualProject || 0;
+  if (!project) return 0;
+  let moved = 0;
+  for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || String(file.folder || '') !== `${moduleName}/trace/frontend-materialize-verify`) continue;
+    if (!String(file.shortName || '').endsWith('-summary')) continue;
+    try {
+      const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
+      if (!isRecord(verdict) || !Array.isArray(verdict.broken) || verdict.broken.length === 0) continue;
+      const next = absolveCleanItemsFromVerdict(verdict, nowCleanRefs);
+      if (next === verdict) continue;
+      const planId = readString(next.lastRoundPlanId) || readString(next.phase);
+      if (!planId) continue;
+      const broken = (Array.isArray(next.broken) ? next.broken : []).map(entry => summaryEntryAsBroken(entry, 'blocked')).filter((item): item is MaterializeVerifyBrokenTrace => !!item);
+      const declared = (Array.isArray(next.declared) ? next.declared : []).map(entry => summaryEntryAsBroken(entry, 'declared')).filter((item): item is MaterializeVerifyBrokenTrace => !!item);
+      const passed = (Array.isArray(next.passed) ? next.passed : []).map(summaryEntryAsPassed).filter((item): item is MaterializeVerifyPassed => !!item);
+      const repaired = (Array.isArray(next.repaired) ? next.repaired : []).map(summaryEntryAsPassed).filter((item): item is MaterializeVerifyPassed => !!item);
+      const attempt = typeof next.attempt === 'number' && Number.isInteger(next.attempt) ? next.attempt : 1;
+      await saveMaterializeVerifySummary(moduleName, planId, attempt, passed, broken, { declared, repaired });
+      moved += verdict.broken.length - broken.length;
+    } catch { /* an unreadable verdict is left as-is */ }
+  }
+  return moved;
+}
+
+/**
  * What the materialization verdicts of ONE module still list as blocking, for the closing gate to answer for.
  *
  * The finalize gate re-derives everything from Monaco and knew nothing about these files. In run01 of
  * 102047 the pages verdict closed with three `blocked` items whose shipped .ts does not compile, the
  * module gate reported no blocking Monaco error, and the run went `completed` with `pagesDone` naming all
- * three pages — while `tsc` finds five errors in exactly those files. The verdict is written BEFORE the
- * finalize repair rounds, so it is a SUSPECT LIST the gate must answer for, never a verdict of its own:
- * the gate recompiles the module anyway, and a suspect the gate cannot reproduce is the fidelity gap,
- * recorded as such.
+ * three pages — while `tsc` finds five errors in exactly those files. The materialize write is a SUSPECT
+ * LIST the gate must answer for: a suspect the gate cannot reproduce is the fidelity gap, recorded as
+ * such. After a finalize repair round actually fixes a file, that item is rewritten here so the last
+ * verdict is the one `finalizeGeneratedPages` reads.
  */
 export async function readUnresolvedMaterializeItems(moduleName: string): Promise<UnresolvedMaterializeItem[]> {
   const items: UnresolvedMaterializeItem[] = [];
@@ -2295,7 +2401,8 @@ export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; o
   // of 102047 three genome variants of `taskCatalogue` ended `blocked` (their shipped .ts does not
   // compile) and the report still listed the page in `pagesDone` — the run declared itself ready and the
   // publish would fail on the build. Degrading with a record is the house rule; what the record must not
-  // do is say "pronto".
+  // do is say "pronto". Finalize repair rewrites the verdict of the item it actually fixed BEFORE this
+  // runs, so a page that is clean at the last gate can return to pagesDone.
   const unresolved = await readUnresolvedMaterializeItems(moduleName);
   const incompletePages: CfeIncompletePage[] = validPages
     .map(page => ({ page, blocked: unresolved.filter(item => unresolvedItemBelongsToPage(item.outputPath, page.moduleName, page.pageId)) }))
@@ -3551,13 +3658,37 @@ function buildContentOrganism(pageId: string, role: string, order: number, i18n:
   };
 }
 
+function commandsForUiScenary(prepared: CfePreparedPage): CfeUiScenaryCommand[] {
+  return prepared.commands.map(command => ({
+    commandName: readString(command.commandName),
+    kind: readString(command.kind) === 'query' ? 'query' : 'command',
+    accessKind: readString(command.accessKind),
+    selection: readString(command.selection),
+    outputShape: readString(command.outputShape),
+    input: commandFieldRecords(command.input).map(field => ({
+      name: field.name,
+      required: field.required === true,
+      presentation: field.presentation || '',
+      source: field.source || '',
+    })),
+  })).filter(command => command.commandName);
+}
+
 function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
   const businessContextRefs = collectBusinessContextRefs(prepared.operations);
-  const states = sharedStates(prepared, layout);
+  const scenaryCommands = commandsForUiScenary(prepared);
+  const scenaries = deriveUiScenaries(prepared.page.pageId, scenaryCommands);
+  const destructiveIds = destructiveCommandIds(scenaryCommands);
+  const states = sharedStates(prepared, layout, scenaries);
   // State names share the class namespace with action method/handler names; dedupe BEFORE
   // sharedActions so the derived setter names follow the renamed state (see cfeMemberNames.ts —
   // real case: projectDetail updateWorkTask.status vs operation updateWorkTaskStatus).
-  dedupeSharedStateNames(states, commandMemberNames(prepared.commands));
+  const reserved = commandMemberNames(prepared.commands);
+  reserved.add('setUiScenary');
+  reserved.add('handleUiScenaryChange');
+  reserved.add('applyUrlScenary');
+  reserved.add('syncScenaryQuery');
+  dedupeSharedStateNames(states, reserved);
   const actions = sharedActions(prepared, states);
   const initialLoads = prepared.commands
     .filter(command => readString(command.kind) === 'query')
@@ -3595,7 +3726,13 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
     },
     states,
     actions,
+    // Scene values + preconditions. Format documented in UI_SCENARY_DEFS_CONTRACT.
+    scenaries,
+    destructiveCommandIds: destructiveIds,
     initialLoads,
+    // Workspace command map (kind/selection/per-input source). Emitted once here so page11 defs stay
+    // prose: the gates read it from shared, with a page11 sibling `bindings` fallback for old modules.
+    dataBindings: layout.dataBindings,
     businessContextRefs,
     navigationRefs: prepared.navigationRefs,
     i18nMeta: prepared.i18nMeta,
@@ -3608,13 +3745,20 @@ function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefini
   };
 }
 
-function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinition): Record<string, unknown>[] {
+function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinition, scenaries: { value: string; kind: string; commandName?: string; preconditions: string[] }[] = []): Record<string, unknown>[] {
   const states = new Map<string, Record<string, unknown>>();
   addState(states, {
     stateKey: `ui.${prepared.page.pageId}.status`,
     name: 'status',
     kind: 'pageStatus',
     defaultValue: '',
+  });
+  addState(states, {
+    stateKey: `ui.${prepared.page.pageId}.scenary`,
+    name: 'uiScenary',
+    kind: 'uiScenary',
+    valueSet: (scenaries.length ? scenaries : [{ value: 'base' }]).map(scene => scene.value),
+    defaultValue: 'base',
   });
 
   // The wave that owns the failures of the entities that still live outside MDM. Named, not boolean, so
@@ -3907,6 +4051,7 @@ function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLay
         ...(field.presentation ? { presentation: field.presentation } : {}),
       })),
       ...(readString(command.selection) ? { selection: readString(command.selection) } : {}),
+      ...(isDestructiveCommandName(commandName) ? { destructive: true } : {}),
     } : binding;
   });
 
@@ -4371,6 +4516,9 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
   const entity = entities.get(primaryEntity);
   const kind = operation.kind === 'query' || operation.kind === 'view' ? 'query' : 'command';
   const commandName = operation.commandName || operation.operationId;
+  const accessPattern = isRecord(operation.data) && isRecord(operation.data.accessPattern) ? operation.data.accessPattern : {};
+  const selection = readString(accessPattern.selection);
+  const accessKind = readString(accessPattern.kind);
   // Prefer the l4 canonical outputShape (Option 3); fall back to the legacy l4-field-list inference.
   const canonical = readCanonicalOutputShape(operation);
   const outputShape = canonical
@@ -4391,6 +4539,8 @@ function commandFromOperation(operation: CfeOperationDef, entities: Map<string, 
     ...(canonical ? { canonicalOutputShape: canonical } : {}),
     input: kind === 'query' ? queryInput(operation, entity, entities) : commandInput(operation, entity, entities),
     output,
+    ...(selection ? { selection } : {}),
+    ...(accessKind ? { accessKind } : {}),
     origin: {
       source: 'l4/operations',
       ownerId: `operation:${operation.operationId}`,
@@ -4562,7 +4712,10 @@ async function saveFrontendDefs(
   extras: { name: string; value: unknown }[] = [],
 ): Promise<void> {
   const header = `/// <mls fileReference="${toDisplayRef(fileInfo)}" enhancement="_blank"/>\n\n`;
-  await saveStorContent(fileInfo, `${header}${renderFrontendDefsBody(exportName, definition, pipeline, extras)}`);
+  const contractComment = isRecord(definition) && Array.isArray(definition.scenaries)
+    ? `/**\n * ${UI_SCENARY_DEFS_CONTRACT.replace(/\n/g, '\n * ')}\n */\n`
+    : '';
+  await saveStorContent(fileInfo, `${header}${contractComment}${renderFrontendDefsBody(exportName, definition, pipeline, extras)}`);
 }
 
 export function renderFrontendDefsBody(

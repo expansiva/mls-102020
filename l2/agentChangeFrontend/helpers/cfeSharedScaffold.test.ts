@@ -274,3 +274,73 @@ void test('catalogueLocales: sem declarados o default é o catálogo; sem defaul
   // Duplicata declarada nunca vira dois catálogos.
   assert.deepEqual(catalogueLocales('pt', ['pt-br', 'pt-br']), ['pt-br']);
 });
+
+function definitionWithScenary(): Record<string, unknown> {
+  const defs = definition();
+  const states = defs.states as Record<string, unknown>[];
+  states.push(
+    { stateKey: 'ui.things.scenary', name: 'uiScenary', kind: 'uiScenary', valueSet: ['base', 'detail', 'createThing'], defaultValue: 'base' },
+    {
+      stateKey: 'ui.things.input.listThings.thingId', name: 'listThingsThingId', kind: 'input',
+      source: 'routeParam', presentation: 'route',
+      contractRef: { commandName: 'listThings', direction: 'input', field: 'nameFilter' },
+      defaultValue: '',
+    },
+  );
+  const actions = defs.actions as Record<string, unknown>[];
+  actions.push({
+    actionId: 'set.listThingsThingId', kind: 'stateSetter',
+    stateKey: 'ui.things.input.listThings.thingId',
+    methodName: 'setListThingsThingId', handlerName: 'handleListThingsThingIdChange',
+  });
+  defs.scenaries = [
+    { value: 'base', kind: 'base', commandName: 'listThings', preconditions: [] },
+    { value: 'detail', kind: 'detail', commandName: 'listThings', preconditions: ['ui.things.input.listThings.thingId'] },
+    { value: 'createThing', kind: 'command', commandName: 'createThing', preconditions: [] },
+  ];
+  return defs;
+}
+
+test('generateSharedScaffold emits uiScenary, URL guard, command success returns to base', () => {
+  const result = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', definitionWithScenary(), CONTRACT);
+  assert.equal(result.reason, undefined);
+  const code = result.code!;
+  assert.match(code, /\/\*\* state ui\.things\.scenary — values: base\|detail\|createThing \*\//);
+  assert.match(code, /@property\(\) uiScenary: 'base' \| 'detail' \| 'createThing' = 'base';/);
+  assert.match(code, /this\.applyUrlScenary\(\);/);
+  assert.match(code, /setUiScenary\(value: string\): void/);
+  assert.match(code, /if \(!allowed\.includes\(value\)\) \{/);
+  assert.match(code, /console\.warn\('setUiScenary: unknown value \\'' \+ value \+ '\\''\);/);
+  // URL / setter without the id degrades to base; with the id the requested scene stands.
+  assert.match(code, /if \(value === 'detail' && \(!this\.listThingsThingId\)\) next = 'base';/);
+  assert.match(code, /const rawThingId: string = params\.get\('thingId'\) \|\| '';/);
+  assert.match(code, /const requested: string = params\.get\('scenary'\) \|\| 'base';/);
+  assert.match(code, /window\.history\.replaceState\(/);
+  assert.match(code, /url\.searchParams\.delete\('scenary'\)/);
+  // Command success returns to the base scene (feedback stays on the action status state).
+  assert.match(code, /this\.setUiScenary\('base'\);/);
+  // Selecting the inspect id also opens detail.
+  assert.match(code, /if \(value\) this\.setUiScenary\('detail'\);/);
+});
+
+test('generateSharedScaffold emits a constant uiScenary when the page has one scene', () => {
+  const defs = definition();
+  defs.actions = (defs.actions as Record<string, unknown>[]).filter(action => {
+    const id = String(action.actionId || '');
+    const ref = String(action.commandRef || '');
+    const key = String(action.stateKey || '');
+    return !id.includes('createThing') && !ref.includes('createThing') && !key.includes('createThing');
+  });
+  defs.states = (defs.states as Record<string, unknown>[]).filter(state => {
+    const key = String(state.stateKey || '');
+    return !key.includes('createThing');
+  });
+  (defs.states as Record<string, unknown>[]).push({
+    stateKey: 'ui.things.scenary', name: 'uiScenary', kind: 'uiScenary', valueSet: ['base'], defaultValue: 'base',
+  });
+  defs.scenaries = [{ value: 'base', kind: 'base', commandName: 'listThings', preconditions: [] }];
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', defs, CONTRACT).code!;
+  assert.match(code, /@property\(\) uiScenary: 'base' = 'base';/);
+  assert.match(code, /setUiScenary\(value: string\): void/);
+  assert.match(code, /const allowed: string\[\] = \['base'\];/);
+});

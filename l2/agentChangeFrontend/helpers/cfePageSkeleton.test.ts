@@ -207,3 +207,54 @@ test('a split page keeps exactly the shape of an unsplit one', () => {
 test('bails when the requested organism is not in the plan', () => {
   assert.match(buildPageSkeleton({ ...INPUT, organisms: ORGANISMS, current: 9 }).reason ?? '', /no organism 9/u);
 });
+
+const SCENARY_DEFS = {
+  ...SHARED_DEFS_DATA,
+  states: [{ name: 'uiScenary', kind: 'uiScenary', valueSet: ['base', 'detail', 'decideTaskStatus'] }],
+  scenaries: [
+    { value: 'base', kind: 'base', commandName: 'qryList', preconditions: [] },
+    { value: 'detail', kind: 'detail', commandName: 'qryInspect', preconditions: ['ui.p.input.qryInspect.id'] },
+    { value: 'decideTaskStatus', kind: 'command', commandName: 'cmdDecideTaskStatus', preconditions: ['ui.p.input.cmdDecideTaskStatus.taskId'] },
+  ],
+};
+
+function scenaryInput(overrides: Partial<typeof INPUT> = {}) {
+  return { ...INPUT, sharedDefsData: SCENARY_DEFS, ...overrides };
+}
+
+test('skeleton with uiScenary emits the host, one Scene per value, bound setter and stubs', () => {
+  const code = buildPageSkeleton(scenaryInput()).code ?? '';
+  assert.match(code, /import '\/_102020_\/l2\/molecules\/ml-scenary\.js';/u);
+  assert.equal((code.match(/<molecules--ml-scenary-102020\b/g) || []).length, 1);
+  assert.match(code, /\.value=\$\{this\.uiScenary\}/u);
+  assert.match(code, /@change=\$\{this\.handleUiScenaryChange\}/u);
+  assert.match(code, /<Scene value="base" title=\$\{msg\['scenary\.base'\]\}>/u);
+  assert.match(code, /<Scene value="detail" title=\$\{msg\['scenary\.detail'\]\} nav="back">/u);
+  assert.match(code, /<Scene value="decideTaskStatus" title=\$\{msg\['scenary\.decideTaskStatus'\]\}>/u);
+  assert.match(code, /\$\{this\.renderScenaryBase\(\)\}/u);
+  assert.match(code, /\$\{this\.renderScenaryDetail\(\)\}/u);
+  assert.match(code, /\$\{this\.renderScenaryDecideTaskStatus\(\)\}/u);
+  assert.match(code, /renderScenaryBase\(\) \{\n    \/\* to implement \*\/\n    return html``;/u);
+  assert.match(code, /renderScenaryDetail\(\) \{\n    \/\* to implement \*\/\n    return html``;/u);
+  assert.match(code, /renderScenaryDecideTaskStatus\(\) \{\n    \/\* to implement \*\/\n    return html``;/u);
+  assert.match(code, /'scenary\.base': 'Base',/u);
+  assert.match(code, /'scenary\.decideTaskStatus': 'Decide Task Status',/u);
+  assert.match(code, /'scenary\.back': 'Back',/u);
+  assert.ok(!code.includes("title=\"Base\""), 'scene title is a msg key, never a literal');
+  assert.equal((code.match(/nav="back"/g) || []).length, 1, 'nav=back only on the detail scene');
+});
+
+test('skeleton without uiScenary keeps the host-less shape of today', () => {
+  const code = buildPageSkeleton(INPUT).code ?? '';
+  assert.ok(!code.includes('molecules--ml-scenary-102020'));
+  assert.ok(!code.includes("import '/_102020_/l2/molecules/ml-scenary.js'"));
+  assert.ok(!code.includes('renderScenaryBase'));
+  assert.match(code, /return html``;/u);
+});
+
+test('organism files never wrap themselves in ml-scenary even when the shared exposes uiScenary', () => {
+  const code = buildPageSkeleton({ ...scenaryInput(), organisms: ORGANISMS, current: 1 }).code ?? '';
+  assert.ok(!code.includes('molecules--ml-scenary-102020'));
+  assert.ok(!code.includes("import '/_102020_/l2/molecules/ml-scenary.js'"));
+  assert.match(code, /export function renderOverview\(host: Host\) \{/u);
+});

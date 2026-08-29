@@ -91,7 +91,7 @@ void test('agentCfeCreateLayout expands a composition into the full L4-derived l
   assert.deepEqual(organisms[1].userActions, ['createProductCmd']);
 });
 
-void test('page11 defs export is prose plus bindings; page21 stays an object with pageObjective', async () => {
+void test('page11 defs export is multiline prose without bindings; page21 stays an object with pageObjective', async () => {
   const mod = await loadCreateShared() as unknown as {
     pageLayoutDefsExport: (genome: string, prepared: unknown, bindings: unknown[], objective?: unknown) => { definition: unknown; extras: { name: string; value: unknown }[] };
     page11DefinitionProse: (prepared: unknown) => string;
@@ -105,10 +105,11 @@ void test('page11 defs export is prose plus bindings; page21 stays an object wit
   const bindings = [{ command: 'listOrders', kind: 'query', inputs: [] }];
   const page11 = mod.pageLayoutDefsExport('page11', prepared, bindings);
   assert.equal(typeof page11.definition, 'string');
-  assert.match(String(page11.definition), /extends the shared base class/);
-  assert.doesNotMatch(String(page11.definition), /listOrders|baseClassName|dataBindings/);
-  assert.equal(page11.extras[0]?.name, 'bindings');
-  assert.deepEqual(page11.extras[0]?.value, bindings);
+  const prose = String(page11.definition);
+  assert.match(prose, /extends the shared base class/);
+  assert.doesNotMatch(prose, /listOrders|baseClassName|dataBindings/);
+  assert.match(prose, /\n/);
+  assert.equal(page11.extras.length, 0);
 
   const page21 = mod.pageLayoutDefsExport('page21', prepared, bindings, { goal: 'decidir o próximo pedido' });
   assert.equal(typeof page21.definition, 'object');
@@ -120,8 +121,16 @@ void test('page11 defs export is prose plus bindings; page21 stays an object wit
 
   const body = mod.renderFrontendDefsBody('definition', page11.definition, [{ id: 'x', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/orders.ts' }], page11.extras);
   assert.match(body, /export const definition = `/);
-  assert.match(body, /export const bindings = /);
+  assert.match(body, /This page is Pedidos\.\nIt is for: o gerente\./);
+  assert.doesNotMatch(body, /export const bindings = /);
   assert.match(body, /export const pipeline = /);
+
+  const escaped = mod.renderFrontendDefsBody('definition', 'See `${oops}` and `tick`.', []);
+  assert.match(escaped, /\\\$\{oops\}/);
+  assert.match(escaped, /\\`tick\\`/);
+
+  const helperSrc = readFileSync(new URL('../../helpers/cfeCreateShared.ts', import.meta.url), 'utf8');
+  assert.match(helperSrc, /dataBindings: layout\.dataBindings/);
 });
 
 // Coverage guarantee: if the model's `uses` omit a command, expansion must still surface it (else

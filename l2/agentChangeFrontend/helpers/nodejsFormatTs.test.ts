@@ -19,6 +19,7 @@ import {
   collectMissingI18nBlockIssues,
   collectPageCatalogueIssues,
   collectPageCustomElementTagIssues,
+  collectPageScenaryIssues,
   collectPageTemplateHygieneIssues,
   insertGeneratedTsLineBreaks,
   stripAllWhitespace,
@@ -54,6 +55,8 @@ test('format×gates: the textual gates report the same findings on raw and forma
   assert.deepEqual(collectMissingI18nBlockIssues(formatted, 'page'), collectMissingI18nBlockIssues(FIXTURE, 'page'));
   assert.deepEqual(collectChartEventIssues(formatted), collectChartEventIssues(FIXTURE));
   assert.deepEqual(collectPageCustomElementTagIssues(formatted, FIXTURE_PATH), collectPageCustomElementTagIssues(FIXTURE, FIXTURE_PATH));
+  const scenaryShared = { states: [{ kind: 'uiScenary', name: 'uiScenary', valueSet: ['base'] }], scenaries: [{ value: 'base', kind: 'base' }] };
+  assert.deepEqual(collectPageScenaryIssues(formatted, scenaryShared), collectPageScenaryIssues(FIXTURE, scenaryShared));
 });
 
 test('format×gates: a defective page keeps its finding after formatting', () => {

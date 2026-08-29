@@ -25,9 +25,9 @@ export interface ParsedDefs {
   artifact: Record<string, unknown> | unknown[] | string | null;
   data: unknown;
   /**
-   * Sibling `export const bindings` on a page11 defs (prose `definition`). Never dumped into the
-   * materialize prompt — gates and the split plan read it. Null when the file has no such export
-   * (page21/31 keep `dataBindings` inside the definition object).
+   * Sibling `export const bindings` on a legacy page11 defs. New page11 files omit it: the map lives
+   * on the workspace shared defs (`dataBindings`). Gates prefer shared, then this fallback.
+   * page21/31 keep `dataBindings` inside the definition object.
    */
   bindings: unknown[] | null;
   /** First pipeline item — what a defs with a single artifact always meant. */
@@ -143,6 +143,22 @@ export function materializePlanIdFromPipelineId(id: string): string {
 
 export function describeVerifyBuckets(counts: { blocked: number; repaired: number; declared: number }): string {
   return `blocked=${counts.blocked} repaired=${counts.repaired} declared=${counts.declared}`;
+}
+
+/**
+ * Round N+1 of verify only re-checks items that still had a finding. An item that is clean now and was
+ * not already in `passed` is a repair — including the repair-bucket case that never lands in `broken`
+ * (quality findings with no compile error). Counting only `previous.broken` reported `repairedCount: 0`
+ * while those items were actually fixed.
+ */
+export function selectRepairedThisRound<T extends { planId: string }>(
+  attempt: number,
+  passedNow: T[],
+  previousPassed: { planId: string }[] | null | undefined,
+): T[] {
+  if (attempt <= 1) return [];
+  const alreadyPassed = new Set((previousPassed ?? []).map(item => item.planId));
+  return passedNow.filter(item => !alreadyPassed.has(item.planId));
 }
 
 /** The shared items considered by isSystemicSharedFailure — used to report how many failed. */
@@ -1259,8 +1275,9 @@ export function trimDefinitionForPrompt(itemType: string, data: unknown): unknow
     return rest;
   }
   if (itemType === 'l2_shared') {
-    const { origin, ...rest } = data as Record<string, unknown>;
+    const { origin, dataBindings, ...rest } = data as Record<string, unknown>;
     void origin;
+    void dataBindings;
     return rest;
   }
   return data;
@@ -1425,24 +1442,32 @@ export function parseDefs(src: string): ParsedDefs {
 
 /**
  * What the deterministic page gates read. page21/31: the definition object (has `dataBindings`).
- * page11: the sibling `bindings` export plus `pageId` taken from the page outputPath (the prose
- * definition has neither).
+ * page11: the workspace shared map, with the sibling `bindings` export as fallback for old modules;
+ * `pageId` is taken from the page outputPath (the prose definition has neither).
  */
-export function pageDefinitionForChecks(parsed: ParsedDefs): unknown {
+export function pageDefinitionForChecks(parsed: ParsedDefs, sharedData?: unknown): unknown {
   if (typeof parsed.data === 'string') {
-    return { pageId: pageIdFromParsed(parsed), dataBindings: parsed.bindings ?? [] };
+    return { pageId: pageIdFromParsed(parsed), dataBindings: page11StructuredBindings(parsed.bindings, sharedData) };
   }
   return parsed.data;
 }
 
-/** Command ids the split plan needs — from the definition object or the page11 sibling export. */
-export function bindingCommandsOf(data: unknown, siblingBindings?: unknown[] | null): string[] {
+/** Command ids the split plan needs — page21/31 object, else shared map, else page11 sibling export. */
+export function bindingCommandsOf(data: unknown, siblingBindings?: unknown[] | null, sharedData?: unknown): string[] {
   const rows = typeof data === 'string'
-    ? (Array.isArray(siblingBindings) ? siblingBindings : [])
+    ? page11StructuredBindings(siblingBindings, sharedData)
     : (isRecord(data) && Array.isArray(data.dataBindings)
       ? data.dataBindings
-      : (Array.isArray(siblingBindings) ? siblingBindings : []));
+      : page11StructuredBindings(siblingBindings, sharedData));
   return rows.filter(isRecord).map(binding => String(binding.command ?? '')).filter(Boolean);
+}
+
+/** Shared first (new page11), page11 sibling `bindings` as fallback (already-generated modules). */
+function page11StructuredBindings(siblingBindings: unknown[] | null | undefined, sharedData?: unknown): unknown[] {
+  if (isRecord(sharedData) && Array.isArray(sharedData.dataBindings) && sharedData.dataBindings.length) {
+    return sharedData.dataBindings;
+  }
+  return Array.isArray(siblingBindings) ? siblingBindings : [];
 }
 
 function pageIdFromParsed(parsed: ParsedDefs): string {
@@ -2580,6 +2605,66 @@ export function expectedPageCustomElementTag(outputPath: string): string | null 
 
 function toKebabFolder(value: string): string {
   return value.replace(/([a-z0-9])([A-Z])/gu, '$1-$2').toLowerCase();
+}
+
+export const ML_SCENARY_TAG = 'molecules--ml-scenary-102020';
+
+/** Shared values the page must render as `<Scene value>`. Empty = old shared, gate is silent. */
+export function sharedUiScenaryValues(sharedDefinition: unknown): string[] {
+  if (!isRecord(sharedDefinition)) return [];
+  if (Array.isArray(sharedDefinition.scenaries)) {
+    const listed = sharedDefinition.scenaries.filter(isRecord).map(item => stringValue(item.value)).filter(Boolean);
+    if (listed.length) return listed;
+  }
+  const states = Array.isArray(sharedDefinition.states) ? sharedDefinition.states.filter(isRecord) : [];
+  const ui = states.find(item => stringValue(item.kind) === 'uiScenary' || stringValue(item.name) === 'uiScenary');
+  return ui && Array.isArray(ui.valueSet) ? ui.valueSet.map(value => String(value)).filter(Boolean) : [];
+}
+
+/**
+ * Cheap textual scenary gate. Findings are WARNINGS (the page still compiles and publishes);
+ * the skeleton is the deterministic path, this only records drift.
+ */
+export function collectPageScenaryIssues(pageCode: string, sharedDefinition: unknown): string[] {
+  const values = sharedUiScenaryValues(sharedDefinition);
+  if (!values.length) return [];
+  const issues: string[] = [];
+  const hosts = pageCode.match(new RegExp(`<${ML_SCENARY_TAG}\\b`, 'g')) || [];
+  if (hosts.length !== 1) {
+    issues.push(`page must contain exactly 1 <${ML_SCENARY_TAG}> (shared exposes uiScenary); found ${hosts.length}`);
+  }
+  if (hosts.length > 0 && !/import\s+['"]\/_102020_\/l2\/molecules\/ml-scenary\.js['"]/.test(pageCode)) {
+    issues.push(`page renders <${ML_SCENARY_TAG}> but is missing the side-effect import '/_102020_/l2/molecules/ml-scenary.js'`);
+  }
+  const scenes = [...pageCode.matchAll(/<Scene\b[^>]*>/g)].map(match => {
+    const attr = /\bvalue=(?:"([^"]*)"|'([^']*)')/.exec(match[0]);
+    return (attr?.[1] || attr?.[2] || '').trim();
+  }).filter(Boolean);
+  for (const value of values) {
+    if (!scenes.includes(value)) issues.push(`missing <Scene value="${value}"> declared in shared scenaries`);
+  }
+  if (formOutsideScene(pageCode)) {
+    issues.push('a <form is outside <Scene — every command form must live inside a Scene');
+  }
+  return issues;
+}
+
+function formOutsideScene(pageCode: string): boolean {
+  const stripped = pageCode.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const tokens = stripped.match(/<\/?Scene\b|<form\b/gi);
+  if (!tokens) return false;
+  let depth = 0;
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    if (lower.startsWith('<form')) {
+      if (depth < 1) return true;
+    } else if (lower.startsWith('</')) {
+      depth = Math.max(0, depth - 1);
+    } else {
+      depth += 1;
+    }
+  }
+  return false;
 }
 
 /** The LLM-emitted `@customElement` must match the path, or `mls.sites.setPage` cannot swap variants. */

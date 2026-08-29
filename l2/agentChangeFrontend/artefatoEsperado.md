@@ -44,11 +44,13 @@ page21/31 (`PAGE_TESTS_VARIANT = 'page11'` — decisão, não esquecimento).
   esqueleto determinístico (header, imports, bloco i18n, tag, classe) + LLM só preenche renders.
   Só métodos de render — sem `@property`, sem mutação de estado.
 - **page11** = baseline operacional. O `.defs.ts` emite `export const definition = \`…prosa…\``
-  (o que a página faz, para quem, motivação, e que **estende o shared** — sem campos e sem rotinas)
-  mais o irmão `export const bindings = […] as const` (só o código determinístico lê: gates e
-  split plan). A prosa entra no prompt do materialize verbatim; `bindings` nunca vai no prompt.
-  Estrutura (states/actions/handlers) vem do shared em `dependsFiles`. `baseClassName` o
-  esqueleto tira do shared defs.
+  (uma frase por linha: o que a página faz, para quem, motivação, e que **estende o shared** —
+  sem campos e sem rotinas). O mapa estruturado (`dataBindings`: kind/selection/inputs) vive
+  **uma vez** no shared defs do workspace; os gates e o split plan leem de lá. Módulos já
+  gerados ainda podem ter o irmão `export const bindings` no page11 — o leitor aceita as duas
+  origens (shared primeiro, page11 como fallback). A prosa entra no prompt do materialize
+  verbatim; o mapa nunca vai no prompt. Estrutura (states/actions/handlers) vem do shared.
+  `baseClassName` o esqueleto tira do shared defs.
 - **page21/31** = goal-first (`pageObjective`, botões contextuais por transição de lifecycle —
   nunca `<select>` de enum). O `definition` **continua objeto** (`pageId`, `dataBindings`,
   `pageObjective`, …) — só o page11 mudou.
@@ -98,10 +100,11 @@ níveis:
    disciplina de headings, feedback de mutação, `@chartclick` morto, enum ligado a `<input>` de texto,
    célula de enum com código cru, coluna `*Id` ao lado de title/name. Os 6 gates ancorados em
    `dataBindings` (`collectPageExperienceIssues`, seleção, botão disabled, feedback de mutação,
-   initialLoad, vocabulário técnico) leem o objeto do page21/31 ou o irmão `bindings` do page11 —
-   nenhum vira no-op porque a prosa substituiu o `definition`. `collectMissingImageRenderIssues`
-   continua regex no texto bruto do `.defs.ts` (agora prosa + JSON de `bindings`); campo de imagem
-   que só existe no shared/contrato já não aparecia no defs reduzido. São **repara, declara** (ou
+   initialLoad, vocabulário técnico) leem o objeto do page21/31 ou o mapa do shared (page11),
+   com o irmão `bindings` de um page11 legado como fallback — nenhum vira no-op porque a prosa
+   substituiu o `definition`. `collectMissingImageRenderIssues` continua regex no texto bruto
+   do `.defs.ts` da página (prosa; o JSON de bindings saiu do page11). Campo de imagem que só
+   existe no shared/contrato já não aparecia no defs reduzido. São **repara, declara** (ou
    **declara**, quando a fase não reescreve o defs).
 3. **Closing gate** (`finalize-create`): compila o módulo INTEIRO; 1 repair por arquivo, máx 2
    rodadas; handoff para `agentAddLanguage` só depois do verde **de blocking**. Erro em `.test.ts`

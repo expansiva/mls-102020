@@ -124,6 +124,47 @@ void test('D3: o fechamento lê os 3 itens ainda bloqueados do run01, com output
   assert.equal((await readUnresolvedMaterializeItems('outro')).length, 3);
 });
 
+void test('R1/R2: item limpo pelo finalize sai de broken; o que continua quebrado não', async () => {
+  const { absolveCleanItemsFromVerdict, rewriteMaterializeVerdictsNowClean, readUnresolvedMaterializeItems, unresolvedItemBelongsToPage } = await loadModule();
+  const page11 = '_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts';
+  const page21 = '_102047_/l2/todo/web/desktop/page21/taskCatalogue.ts';
+  // só o page11 foi de fato reparado nesta rodada — page21/page31 continuam blocked (D2)
+  const next = absolveCleanItemsFromVerdict({ ...RUN01_PAGES_VERDICT }, new Set([page11]));
+  assert.equal(next.brokenCount, 2);
+  assert.equal(next.allClear, false);
+  assert.equal(next.repairedCount, 1);
+  assert.deepEqual((next.repaired as { planId: string }[]).map(item => item.planId), ['materialize-taskcatalogue-l2-page']);
+  assert.equal((next.broken as { planId: string }[]).some(item => item.planId === 'materialize-taskcatalogue-l2-page'), false);
+  // um ref que o gate NÃO tentou reparar (fidelidade Monaco) não é absolvido
+  const untouched = { ...RUN01_PAGES_VERDICT };
+  const unreproduced = absolveCleanItemsFromVerdict(untouched, new Set());
+  assert.equal(unreproduced.brokenCount, 3);
+  assert.equal(unreproduced, untouched);
+
+  assert.equal(await rewriteMaterializeVerdictsNowClean('todo', new Set([page11])), 1);
+  const leftover = await readUnresolvedMaterializeItems('todo');
+  assert.deepEqual(leftover.map((item: { planId: string }) => item.planId).sort(), [
+    'materialize-taskcatalogue-page21-l2-page',
+    'materialize-taskcatalogue-page31-l2-page',
+  ]);
+  assert.equal(leftover.some((item: { outputPath: string | null }) => unresolvedItemBelongsToPage(item.outputPath, 'todo', 'taskCatalogue')), true);
+  // page21 sozinho não tira a página de incompletePages: os outros genomas ainda bloqueiam
+  assert.equal(leftover.some((item: { outputPath: string | null }) => item.outputPath === page21), true);
+});
+
+void test('R2: os três itens reparados pelo finalize esvaziam o veredito — a página volta a pagesDone', async () => {
+  const { rewriteMaterializeVerdictsNowClean, readUnresolvedMaterializeItems, unresolvedItemBelongsToPage } = await loadModule();
+  const nowClean = new Set([
+    '_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts',
+    '_102047_/l2/todo/web/desktop/page21/taskCatalogue.ts',
+    '_102047_/l2/todo/web/desktop/page31/taskCatalogue.ts',
+  ]);
+  assert.equal(await rewriteMaterializeVerdictsNowClean('todo', nowClean), 3);
+  const leftover = await readUnresolvedMaterializeItems('todo');
+  assert.equal(leftover.length, 0);
+  assert.equal(unresolvedItemBelongsToPage('_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts', 'todo', 'taskCatalogue'), true);
+});
+
 void test('D2: cada item bloqueado sabe de que página é — taskCatalogue sai de pagesDone, taskHub não', async () => {
   const { readUnresolvedMaterializeItems, unresolvedItemBelongsToPage } = await loadModule();
   const items = await readUnresolvedMaterializeItems('todo');

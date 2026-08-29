@@ -27,24 +27,24 @@ void test('groups array: name, molecule count and indexDefs reference, in input 
   assert.ok(numberIdx < textIdx, 'groups array preserves the given (skills/index.ts) order');
 });
 
-void test('markdown: one "### group (N moléculas)" section per group, purpose then Moléculas line', () => {
+void test('markdown: one "### group (N molecules)" section per group, purpose then Molecules line', () => {
   const text = syRenderProjectSkill(INPUT);
-  assert.match(text, /### groupEnterNumber \(3 moléculas\)\nAllows the user to input numeric values\.\nMoléculas: ml-floating-number-input, ml-number-input, ml-number-stepper/);
+  assert.match(text, /### groupEnterNumber \(3 molecules\)\nAllows the user to input numeric values\.\nMolecules: ml-floating-number-input, ml-number-input, ml-number-stepper/);
 });
 
 void test('the title names the actual group count generated, not a fixed pilot number', () => {
   const text = syRenderProjectSkill(INPUT);
-  assert.match(text, /# Molecules — catálogo do projeto mls-102040 \(2 grupos\)/);
+  assert.match(text, /# Molecules — catalog of project mls-102040 \(2 groups\)/);
 });
 
-void test('ends with "Este projeto não tem tema local." after a blank line', () => {
+void test('ends with "This project has no local theme." after a blank line', () => {
   const text = syRenderProjectSkill(INPUT);
-  assert.ok(text.includes('\n\nEste projeto não tem tema local.\n'));
+  assert.ok(text.includes('\n\nThis project has no local theme.\n'));
 });
 
-void test('a single group gets singular wording ("1 grupo")', () => {
+void test('a single group gets singular wording ("1 group")', () => {
   const text = syRenderProjectSkill({ ...INPUT, groups: [INPUT.groups[0]] });
-  assert.match(text, /\(1 grupo\)/);
+  assert.match(text, /\(1 group\)/);
 });
 
 // ⚠️ THE REGRESSION OF 2026-08-26. groupSelectOne's description in skills/index.ts contains markdown
@@ -59,12 +59,14 @@ void test('a backtick in the group description does not break out of the generat
   });
 
   const body = source.slice(source.indexOf('export const skill = `') + 'export const skill = `'.length);
-  const closing = body.indexOf('`');
+  const closing = body.lastIndexOf('`');
+  const inner = body.slice(0, closing);
   // everything before the closing delimiter must be ESCAPED backticks only — never a bare one
-  assert.equal(body.slice(0, closing).includes('\\`'), true, 'the prose backticks must be escaped');
+  assert.equal(inner.includes('\\`'), true, 'the prose backticks must be escaped');
+  assert.equal((inner.match(/\\`/g) || []).length, (inner.match(/`/g) || []).length, 'every inner backtick is escaped');
   assert.match(source, /\\`variant\\`/);
   // and the literal must close exactly once, at the end
-  assert.match(source, /\\`;\n?$/);
+  assert.match(source, /`;\n?$/);
 });
 
 void test('a ${ in the prose cannot become an interpolation', () => {

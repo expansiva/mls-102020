@@ -128,7 +128,7 @@ async function beforePromptStep(
     let repairHint: string | undefined;
     if (attempt >= 2) {
       const errors = await compileMlsPathAndGetErrors(item.outputPath);
-      if (errors.length) repairHint = buildCompileRepairHint(item.outputPath, errors.slice(0, 8));
+      if (errors.length) repairHint = buildCompileRepairHint(item.outputPath, errors.slice(0, 8), currentCode ?? undefined);
     }
     console.info(`[agentRenderEdit] ▶ ${a.page} render (attempt ${attempt}) → ${item.outputPath}`);
 

@@ -33,10 +33,12 @@ import {
   collectMissingI18nBlockIssues,
   collectContractFieldIssues,
   collectPageCustomElementTagIssues,
+  collectPageScenaryIssues,
   contractTsPathOf,
   countPage11Items,
   countSharedItems,
   describeVerifyBuckets,
+  selectRepairedThisRound,
   firstErrorSignature,
   isSystemicPageFailure,
   isSystemicSharedFailure,
@@ -222,9 +224,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   const currentIds = new Set(checkedItems.map(item => item.item.planId));
   const carriedDeclared = (previous?.declared ?? []).filter(item => !currentIds.has(item.planId));
   const carriedPassed = (previous?.passed ?? []).filter(item => !currentIds.has(item.planId));
-  const repairedThisRound = args.attempt > 1
-    ? passedNow.filter(item => (previous?.broken ?? []).some(entry => entry.planId === item.planId))
-    : [];
+  const repairedThisRound = selectRepairedThisRound(args.attempt, passedNow, previous?.passed);
   const repaired = [
     ...(previous?.repaired ?? []).filter(item => !currentIds.has(item.planId) || repairedThisRound.some(entry => entry.planId === item.planId)),
     ...repairedThisRound.filter(item => !(previous?.repaired ?? []).some(entry => entry.planId === item.planId)),
@@ -582,9 +582,13 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
       // budget is exhausted. Keep the result auditable in the trace and let the create-page stage
       // own a future layout regeneration.
       const parsedPage = parseDefs(defsContent);
-      const pageData = pageDefinitionForChecks(parsedPage);
       const sharedData = parseDefs(sharedDefs).data;
+      const pageData = pageDefinitionForChecks(parsedPage, sharedData);
       warnings.push(...validateGeneratedPageQuality(pageData, sharedData, content));
+      // ux03: scenary host/Scene/import. Degrades — the page still compiles and publishes; the
+      // finding stays on the verdict. Putting this in repairable would loop old pages that have
+      // no host yet.
+      warnings.push(...collectPageScenaryIssues(content, sharedData));
       // The reduced page defs carries no layout, so these judge the GENERATED CODE anchored on
       // dataBindings (supervisor decision B.1, 31/jul). Errors, not warnings: each is deterministic and
       // fixed by rewriting the .ts — exactly what the repair round does.
