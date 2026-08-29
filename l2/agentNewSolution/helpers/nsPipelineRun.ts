@@ -58,7 +58,17 @@ export function buildNsRunSummary(input: {
     }
   }
   const fast = isNs4FastMode(input.longMemory);
-  const rebuild = pipeline?.rebuiltFrom ? `/rebuild ${pipeline.rebuiltFrom}` : '';
+  const rebuild = pipeline?.rebuildAll
+    ? '/rebuild all'
+    : pipeline?.rebuiltFrom ? `/rebuild ${pipeline.rebuiltFrom}` : '';
+  if (pipeline?.rebuildAll) {
+    const { l1, l2, l4, l5 } = pipeline.rebuildAll.deleted;
+    degradations.push({
+      at: pipeline.rebuildAll.at,
+      kind: 'rebuild-all-wipe',
+      reason: `deleted l1=${l1} l2=${l2} l4=${l4} l5=${l5}; sanitized projectJson=${pipeline.rebuildAll.sanitized.projectJsonRemoved} configJson=${pipeline.rebuildAll.sanitized.configJsonRemoved}`,
+    });
+  }
   const command = [fast ? '/fast' : '', rebuild, pipeline?.sourcePrompt || ''].filter(Boolean).join(' ').trim();
   return {
     moduleName: input.moduleName,
@@ -71,6 +81,7 @@ export function buildNsRunSummary(input: {
     counts: {
       steps: stepCounts,
       skippedClarification: Boolean(skipped),
+      ...(pipeline?.rebuildAll ? { rebuildAllDeleted: pipeline.rebuildAll.deleted } : {}),
     },
     degradations,
   };

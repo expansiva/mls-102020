@@ -22,6 +22,16 @@ import {
 
 export interface Ns4E4GateIssue { code: string; path: string; message: string }
 export interface Ns4E4GateResult { ok: boolean; issues: Ns4E4GateIssue[] }
+export interface Ns4E4GateOptions {
+  requireRelationshipRealization?: boolean;
+  /** E1 prompt + scope. The user request, not the ontology notes the model wrote about itself. */
+  requestText?: string;
+}
+
+/** Suffixes of an on-demand artifact. `ExportItem` is the composition-only companion of `Export`. */
+const DERIVED_ARTIFACT_ID = /(?:Export|Report|Receipt|Snapshot|Csv|File)(?:Item)?$/u;
+const DERIVED_HISTORY = /hist[oó]rico|auditoria|versionamento|reprocesso|\baudit\b|\bhistory\b|\bversioning\b|\breprocess(?:ing)?\b/iu;
+const DERIVED_ARTIFACT_WORD = /exporta[cç][aã]o|\bexport\b|relat[oó]rio|\breport\b|recibo|\breceipt\b|snapshot|\bcsv\b|\bfile\b/iu;
 
 const MODULE_ID = /^[a-z][A-Za-z0-9]*$/;
 const ENTITY_ID = /^[A-Z][A-Za-z0-9]*$/;
@@ -33,7 +43,7 @@ export function validateNs4E4Review(
   review: Ns4E4Review,
   journeys?: Ns4E2Review,
   access?: Ns4E3Review,
-  options: { requireRelationshipRealization?: boolean } = {},
+  options: Ns4E4GateOptions = {},
 ): Ns4E4GateResult {
   const issues: Ns4E4GateIssue[] = [];
   const add = (code: string, path: string, message: string) => issues.push({ code, path, message });
@@ -143,6 +153,15 @@ export function validateNs4E4Review(
       : 'moduleDatabase';
     if (entity.storage.target !== expectedTarget) {
       add('NS4_E4_STORAGE_TARGET', `${path}.storage.target`, `${entity.kind}/${entity.ownership} must use storage target ${expectedTarget}, not ${entity.storage.target}.`);
+    }
+    if (options.requestText !== undefined
+      && entity.storage.target === 'moduleDatabase' && DERIVED_ARTIFACT_ID.test(entity.entityId)
+      && !requestPersistsDerivedArtifact(entity, options.requestText)) {
+      add(
+        'NS4_E4_DERIVED_PERSISTED',
+        `${path}.storage.target`,
+        `${entity.entityId} is an on-demand artifact (export/report/file/receipt/snapshot) stored as moduleDatabase. Use storage.target 'derived' (kind projection), or declare history/audit/versioning/reprocessing of that artifact in the request. An entity that only composes another derived artifact must not exist.`,
+      );
     }
     const expectedScope = expectedTarget === 'mdm' ? 'organization'
       : expectedTarget === 'moduleDatabase' ? 'module'
@@ -313,6 +332,7 @@ export function validateNs4E4Plan(
   plan: Ns4E4PlanDraft,
   journeys?: Ns4E2Review,
   access?: Ns4E3Review,
+  options: Ns4E4GateOptions = {},
 ): Ns4E4GateResult {
   const review: Ns4E4Review = {
     ...plan,
@@ -323,7 +343,7 @@ export function validateNs4E4Plan(
       useRules: [],
     })),
   };
-  return validateNs4E4Review(review, journeys, access, { requireRelationshipRealization: false });
+  return validateNs4E4Review(review, journeys, access, { requireRelationshipRealization: false, requestText: options.requestText });
 }
 
 /** Validates that the binding pass covered every frozen semantic relationship exactly once. */
@@ -585,4 +605,40 @@ function placeholderFields(entityId: string, idField: string | undefined, needsS
     });
   }
   return fields;
+}
+
+/**
+ * The E1 request the derived-artifact guard classifies against. Ontology notes are not the request:
+ * the model that invented an audit table will also invent audit prose about it.
+ */
+export function ns4E4RequestText(module: {
+  designContext?: { initialPrompt?: string; clarification?: { mainGoal?: string; boundaries?: string } };
+  businessScope?: {
+    mainGoal?: string;
+    inScope?: string[];
+    expectedOutcomes?: Array<{ title?: string; description?: string }>;
+  };
+} | null | undefined): string {
+  if (!module) return '';
+  const outcomes = (module.businessScope?.expectedOutcomes || [])
+    .flatMap(outcome => [outcome.title, outcome.description]);
+  return [
+    module.designContext?.initialPrompt,
+    module.designContext?.clarification?.mainGoal,
+    module.designContext?.clarification?.boundaries,
+    module.businessScope?.mainGoal,
+    ...(module.businessScope?.inScope || []),
+    ...outcomes,
+  ].filter(Boolean).join('\n');
+}
+
+function requestPersistsDerivedArtifact(entity: Ns4OntologyEntity, requestText: string): boolean {
+  if (!requestText || !DERIVED_HISTORY.test(requestText)) return false;
+  const blob = requestText.toLowerCase();
+  const needles = [
+    entity.entityId.toLowerCase(),
+    entity.title.toLowerCase(),
+  ].filter(Boolean);
+  if (needles.some(needle => blob.includes(needle))) return true;
+  return DERIVED_ARTIFACT_WORD.test(requestText);
 }

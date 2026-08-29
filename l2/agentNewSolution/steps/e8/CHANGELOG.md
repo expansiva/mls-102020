@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-29 — contentPage is a structural surface, not an E1 phrase
+
+Detection no longer matches four LLM wordings (`página informativa` / `institucional` /
+`campanha pública` / `landing page`). The door is: an E3 **external** profile with a
+`dataScope.mode: 'public'` grant **and** an E2 locate/inspect of an E4 `cardinality: 'singleton'`.
+The two real listaAssinatura E1 wordings (28/08 "Página informativa…" and 29/08 "Página pública
+da petição…") compile the same page; a management module (todo, run44) still does not.
+
 ## 2026-08-29 — categoria contentLanding e tier contentPage
 
 Página informativa/institucional/campanha pública (sinal explícito no E1) vira um lugar

@@ -71,10 +71,12 @@ import {
   Ns4E4ReviewEvent,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import {
+  ns4E4RequestText,
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
   validateNs4E4RelationshipBindings,
   validateNs4E4Review,
+  type Ns4E4GateOptions,
 } from '/_102020_/l2/agentNewSolution/steps/e4/gate.js';
 import { resolveNs4E4HookArgs, resolveNs4E4InvocationArgs } from '/_102020_/l2/agentNewSolution/steps/e4/hookArgs.js';
 import { decideNs4LaterCheckpoint, ns4E4SmartSignal } from '/_102020_/l2/agentNewSolution/helpers/ns4ReviewPolicy.js';
@@ -203,7 +205,7 @@ async function resumeRelationshipBindingFromValidDrafts(
   const [journeys, access] = await Promise.all([
     readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName),
   ]);
-  if (!validateNs4E4Plan(plan, journeys, access).ok) return null;
+  if (!validateNs4E4Plan(plan, journeys, access, await e4RequestOptions(args.moduleName)).ok) return null;
   const details: Ns4E4EntityDraft[] = [];
   for (const entity of plan.entities) {
     const detail = await readEntityDraft(args.moduleName, entity.entityId);
@@ -211,7 +213,7 @@ async function resumeRelationshipBindingFromValidDrafts(
     details.push(detail);
   }
   const review = assembleNs4E4Review(plan, details);
-  if (!validateNs4E4Review(review, journeys, access, { requireRelationshipRealization: false }).ok) return null;
+  if (!validateNs4E4Review(review, journeys, access, await e4RequestOptions(args.moduleName, { requireRelationshipRealization: false })).ok) return null;
   const runningPipeline = markNs4E4Running(pipeline, plan.reviewRound);
   await writeNs4Pipeline(runningPipeline);
   const mutationParent = findMutableParentStep(context, parentStep);
@@ -343,7 +345,7 @@ async function handlePlanResult(
   plan.moduleName = args.moduleName;
   plan.reviewRound = reviewRound;
   const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName)]);
-  const gate = validateNs4E4Plan(plan, journeys, access);
+  const gate = validateNs4E4Plan(plan, journeys, access, await e4RequestOptions(args.moduleName));
   if (!gate.ok) {
     const message = formatGate(gate.issues);
     await writeNs4E4PlanDraft(args.moduleName, plan);
@@ -470,7 +472,7 @@ async function finalizeOntology(
   }
   const review = assembleNs4E4Review(plan, details);
   const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName)]);
-  const gate = validateNs4E4Review(review, journeys, access, { requireRelationshipRealization: false });
+  const gate = validateNs4E4Review(review, journeys, access, await e4RequestOptions(args.moduleName, { requireRelationshipRealization: false }));
   if (!gate.ok) {
     const message = formatGate(gate.issues);
     await writeNs4E4Draft(args.moduleName, review);
@@ -511,7 +513,7 @@ async function openOntologyReview(
   journeys: Ns4E2Review,
   access: Ns4E3Review,
 ): Promise<mls.msg.AgentIntent[]> {
-  const gate = validateNs4E4Review(review, journeys, access);
+  const gate = validateNs4E4Review(review, journeys, access, await e4RequestOptions(review.moduleName));
   if (!gate.ok) throw new Error(formatGate(gate.issues));
   const draftPath = await writeNs4E4Draft(review.moduleName, review);
   await writeNs4Pipeline(markNs4E4WaitingHuman(await requirePipeline(review.moduleName), review.reviewRound, draftPath));
@@ -540,7 +542,7 @@ export async function beforeNs4E4ClarificationStep(
 ): Promise<HTMLElement> {
   const review = normalizeNs4E4Review(parseMaybeJson(json));
   const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(review.moduleName), readNs4ApprovedAccess(review.moduleName)]);
-  const gate = validateNs4E4Review(review, journeys, access);
+  const gate = validateNs4E4Review(review, journeys, access, await e4RequestOptions(review.moduleName));
   if (!gate.ok) {
     const message = formatGate(gate.issues);
     await recordNs4E4Failure(review.moduleName, message);
@@ -568,7 +570,7 @@ async function applyNs4E4Review(
   const mutationParent = findMutableParentStep(context, parentStep);
   if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
   const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(event.review.moduleName), readNs4ApprovedAccess(event.review.moduleName)]);
-  const gate = validateNs4E4Review(event.review, journeys, access);
+  const gate = validateNs4E4Review(event.review, journeys, access, await e4RequestOptions(event.review.moduleName));
   if (!gate.ok) throw new Error(formatGate(gate.issues));
   await writeNs4E4Draft(event.review.moduleName, event.review);
   if (event.action === 'approve') {
@@ -598,9 +600,9 @@ async function persistNs4E4(
   access: Ns4E3Review,
   autoReason?: string,
 ): Promise<Ns4PersistedE4> {
-  const gate = validateNs4E4Review(review, journeys, access);
-  if (!gate.ok) throw new Error(formatGate(gate.issues));
   const [moduleArtifact, pipeline] = await Promise.all([readNs4Module(moduleName), requirePipeline(moduleName)]);
+  const gate = validateNs4E4Review(review, journeys, access, { requestText: ns4E4RequestText(moduleArtifact) });
+  if (!gate.ok) throw new Error(formatGate(gate.issues));
   if (!moduleArtifact || moduleArtifact.module.moduleName !== moduleName) throw new Error(`Invalid module artifact for ${moduleName}.`);
   const approvedAt = new Date().toISOString();
   const artifacts = await buildNs4OntologyArtifacts(review, approvedBy, approvedAt);
@@ -851,6 +853,10 @@ function parseMaybeJson(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   const clean = value.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   try { return JSON.parse(clean); } catch { return value; }
+}
+
+async function e4RequestOptions(moduleName: string, extra: Ns4E4GateOptions = {}): Promise<Ns4E4GateOptions> {
+  return { ...extra, requestText: ns4E4RequestText(await readNs4Module(moduleName)) };
 }
 
 function formatGate(issues: Array<{ code: string; path: string; message: string }>): string {

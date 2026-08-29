@@ -24,8 +24,8 @@ export type Ns4WorkspaceContext = Ns4DerivedContext;
 
 
 /**
- * The E1 prose E8 may quote on a content page. Absent on management-only fixtures, so the
- * compiler keeps today's default (no contentPage).
+ * The E1 prose a contentPage may quote into organisms. Detection itself is structural
+ * (public external grant + singleton read) — this blob is copy, not the door.
  */
 export interface Ns4E8ModuleSignals {
   title: string;

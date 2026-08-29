@@ -2,7 +2,8 @@
 
 import { createStorFile } from '/_102027_/l2/libStor.js';
 import { extractNs4ClassicJsonObject, ns4ClassicDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
-import { listNs4RebuildDeletionKeys, normalizeNs4ModuleName } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
+import { listNs4RebuildDeletionKeys, normalizeNs4ModuleName, type Ns4RebuildAllReport } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
+import { planNs4RebuildAll } from '/_102020_/l2/agentNewSolution/helpers/ns4RebuildAll.js';
 import { readNs4AvailableContent } from '/_102020_/l2/agentNewSolution/helpers/ns4ContentRead.js';
 import { renderNs4TypedDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4TypedDefs.js';
 import type {
@@ -619,4 +620,22 @@ export async function archiveNs4ModuleForRebuild(moduleName: string): Promise<st
     archived.push(key);
   }
   return archived;
+}
+
+/**
+ * `/rebuild all`: recover-prompt is the caller's job. This applies the already-planned wipe through
+ * `libStor.deleteFile` (same channel as a total `/rebuild`) and writes the stripped project/config.
+ */
+export async function applyNs4RebuildAll(
+  plan: Extract<ReturnType<typeof planNs4RebuildAll>, { ok: true }>,
+): Promise<Ns4RebuildAllReport> {
+  const { deleteFile } = await import('/_102027_/l2/libStor.js');
+  for (const key of plan.keys) {
+    const file = mls.stor.files[key];
+    if (!file) continue;
+    await deleteFile(file);
+  }
+  if (plan.projectJson && plan.report.sanitized.projectJsonRemoved) await writeNs4L5Project(plan.projectJson);
+  if (plan.configJson && plan.report.sanitized.configJsonRemoved) await writeNs4L5Config(plan.configJson);
+  return plan.report;
 }

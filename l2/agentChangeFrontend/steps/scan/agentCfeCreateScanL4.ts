@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, rememberCreateUxVariants, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { agentBuildTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
+import { removeOrphanFrontendArtifacts } from '/_102020_/l2/agentChangeFrontend/helpers/cfeWorkspaceArtifacts.js';
 
 interface ScanArgs {
   command?: string;
@@ -45,6 +46,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       : '';
     const targetModule = requested || createContext.moduleNames.find(name => createContext.pages.some(page => page.moduleName === name));
     createContext.pages = targetModule ? createContext.pages.filter(page => page.moduleName === targetModule) : [];
+    const sweepModule = targetModule || (createContext.moduleNames.length === 1 ? createContext.moduleNames[0] : '');
+    const orphanNote = sweepModule ? await sweepOrphans(createContext.project, sweepModule) : '';
 
     if (createContext.pages.length === 0) {
       const reason = scanArgs.module
@@ -54,10 +57,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const materialize = createMaterializeStep(scanArgs, []);
         return [
           createAddStepIntent(context, parentStep, materialize),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason} Queued materialization freshness check.${buildTrace}`),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason} Queued materialization freshness check.${orphanNote}${buildTrace}`),
         ];
       }
-      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason}${buildTrace}`)];
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason}${orphanNote}${buildTrace}`)];
     }
 
     // Guaranteed defined once pages are non-empty (pages were filtered by this module).
@@ -127,7 +130,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       step,
       hookSequential,
       'completed',
-      `Scanned L4 once; module ${runModule}: queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}${buildTrace}`,
+      `Scanned L4 once; module ${runModule}: queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}${orphanNote}${buildTrace}`,
     );
     // Name the task after the single module it processes: "<module> - frontend".
     doneIntent.newTaskTitle = `${runModule} - frontend`;
@@ -137,6 +140,18 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
+  }
+}
+
+async function sweepOrphans(project: number, moduleName: string): Promise<string> {
+  try {
+    const result = await removeOrphanFrontendArtifacts(project, moduleName);
+    if (result.skipped) return ` Orphan sweep skipped (${result.skipped}).`;
+    if (result.removed.length === 0) return ' Orphan sweep: 0 removed.';
+    return ` Orphan sweep: ${result.removed.length} removed.`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return ` Orphan sweep failed: ${message}.`;
   }
 }
 

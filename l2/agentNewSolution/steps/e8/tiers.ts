@@ -30,8 +30,6 @@ const CATEGORY_PROCESS = 'processWizard';
 const CATEGORY_DASHBOARD = 'dashboardCommandCenter';
 const CATEGORY_CONTENT = 'contentLanding';
 
-/** Explicit E1 phrases only. A vague "nice page" is not enough — today's default stays. */
-const CONTENT_PAGE_SIGNAL = /p[áa]gina informativa|p[áa]gina institucional|campanha p[úu]blica|landing page/i;
 const MEMBER_ID_HINT = /^[a-z][A-Za-z0-9]*$/;
 
 /** A timestamp is recognized by its shape, never by a domain word: a date/datetime field named `<verb>At`. */
@@ -622,19 +620,35 @@ function uniqueAppend(existing: string[], extra: string[]): string[] {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Content page — only when E1 names an informative / institutional / public-campaign page.
+// Content page — public unauthenticated read of a singleton, not a phrase the LLM happened to use.
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * A content page is a PLACE for published presentation. The door is structural (E3+E4+E2), not E1
+ * prose: an external profile with a `public` grant (no login of their own to see the page) plus a
+ * locate/inspect of a singleton (a read that is not a collection). Phrase matching may agree, but
+ * never opens the door by itself — a management module that says "landing page" stays a catalogue.
+ */
 function contentPageRequested(sources: Ns4E8Sources): boolean {
-  const module = sources.module;
-  if (!module) return false;
-  const blob = [
-    module.title, module.purpose, module.mainGoal, module.boundaries,
-    ...(module.inScope || []),
-    ...(module.outOfScope || []),
-    ...(module.expectedOutcomes || []).flatMap(outcome => [outcome.title, outcome.description]),
-  ].join('\n');
-  return CONTENT_PAGE_SIGNAL.test(blob);
+  const singletons = new Set(
+    sources.ontology.entities
+      .filter(entity => entity.cardinality === 'singleton' && entity.kind !== 'projection' && entity.kind !== 'valueObject')
+      .map(entity => entity.entityId),
+  );
+  if (!singletons.size) return false;
+  const profileById = new Map(sources.access.profiles.map(profile => [profile.profileId, profile]));
+  const publicExternalActors = new Set<string>();
+  for (const grant of sources.access.grants) {
+    if (grant.dataScope?.mode !== 'public') continue;
+    const profile = profileById.get(grant.profileRef);
+    if (profile?.kind !== 'external') continue;
+    for (const actor of profile.actorRefs || []) publicExternalActors.add(actor);
+  }
+  if (!publicExternalActors.size) return false;
+  return sources.journeys.journeys.some(journey =>
+    publicExternalActors.has(journey.business.actorRef)
+    && journey.business.steps.some(step =>
+      (step.kind === 'inspect' || step.kind === 'locate') && singletons.has(step.entity)));
 }
 
 function contentSubjectEntity(context: Ns4E8TierContext): string {

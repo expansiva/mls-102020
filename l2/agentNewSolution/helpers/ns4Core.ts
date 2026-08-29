@@ -171,6 +171,8 @@ export interface Ns4PipelineState {
   /** Audit of the last explicit regeneration: which step it restarted from, and when. */
   rebuiltFrom?: Ns4RebuildFrom;
   rebuiltAt?: string;
+  /** Counts from `/rebuild all` (l1/l2/l4/l5 wipe). Survives on the regenerated pipeline for runNN_*.json. */
+  rebuildAll?: Ns4RebuildAllReport;
   steps: {
     e1: {
       status: Ns4E1Status;
@@ -307,15 +309,23 @@ export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' 
 
 /** Steps a partial rebuild can start from. e1 is not one of them: restarting at e1 IS a total rebuild. */
 export type Ns4RebuildFrom = 'e2' | 'e3' | 'e4' | 'e5' | 'e6' | 'e7' | 'e8' | 'e9' | 'e10';
+/** `/rebuild all` is its own mode: wipe l1/l2/l4 of the module, then regenerate from the stored prompt. */
+export type Ns4RebuildArg = Ns4RebuildFrom | 'all';
 
-const NS4_REBUILD_RE = /(^|\s)\/rebuild(?:\s+(e[2-9]|e10))?(?=\s|$)/i;
+export interface Ns4RebuildAllReport {
+  at: string;
+  deleted: { l1: number; l2: number; l4: number; l5: number };
+  sanitized: { projectJsonRemoved: number; configJsonRemoved: number };
+}
+
+const NS4_REBUILD_RE = /(^|\s)\/rebuild(?:\s+(all|e[2-9]|e10))?(?=\s|$)/i;
 
 export interface Ns4Invocation {
   fast: boolean;
   /** Explicit regeneration intent. Never inferred from prose — prose only produces a graceful stop. */
   rebuild: boolean;
-  /** Set only by `/rebuild <eN>`; empty means the whole module. */
-  rebuildFrom: Ns4RebuildFrom | '';
+  /** Set by `/rebuild all` or `/rebuild <eN>`; empty means the existing total rebuild (l4/l5 only). */
+  rebuildFrom: Ns4RebuildArg | '';
   prompt: string;
 }
 
@@ -323,9 +333,9 @@ export function parseNs4Invocation(value: string): Ns4Invocation {
   const raw = String(value || '');
   const fast = /(^|\s)\/fast(?=\s|$)/i.test(raw);
   const rebuildMatch = NS4_REBUILD_RE.exec(raw);
-  const rebuildFrom = (rebuildMatch?.[2] || '').toLowerCase() as Ns4RebuildFrom | '';
-  // The flag AND its argument leave the prompt: a leftover bare `e10` would end up in the business
-  // description the planner reads.
+  const rebuildFrom = (rebuildMatch?.[2] || '').toLowerCase() as Ns4RebuildArg | '';
+  // The flag AND its argument leave the prompt: a leftover bare `e10` or `all` would end up in the
+  // business description the planner reads — and `all` used to split the module token.
   const prompt = raw
     .replace(/(^|\s)\/fast(?=\s|$)/gi, '$1')
     .replace(new RegExp(NS4_REBUILD_RE.source, 'gi'), '$1')

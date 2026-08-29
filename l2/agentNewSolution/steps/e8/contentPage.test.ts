@@ -141,13 +141,49 @@ test('run44 management module does not gain a contentPage', () => {
   assert.equal(byTier.contentPage || 0, 0);
 });
 
-test('without the E1 content phrase the compiler does not invent a contentPage', () => {
+const WORDING_INFORMATIVA = {
+  inScope: [
+    'Página informativa com textos e imagens sobre a liberação de patinetes e scooters para jovens acima de 12 anos no condomínio, com supervisão dos responsáveis',
+  ],
+  boundaries: 'in: Página informativa com textos e imagens sobre a liberação de patinetes e scooters para jovens acima de 12 anos no condomínio, com supervisão dos responsáveis',
+};
+
+const WORDING_PAGINA_PUBLICA = {
+  inScope: ['Página pública da petição com textos e imagens'],
+  boundaries: 'in: Página pública da petição com textos e imagens; in: Coleta de CPF, nome e data de nascimento',
+};
+
+test('the two real E1 wordings of the same request compile the same contentPage', () => {
+  const informativa = listaSources();
+  informativa.module.inScope = WORDING_INFORMATIVA.inScope;
+  informativa.module.boundaries = WORDING_INFORMATIVA.boundaries;
+  const paginaPublica = listaSources();
+  paginaPublica.module.inScope = WORDING_PAGINA_PUBLICA.inScope;
+  paginaPublica.module.boundaries = WORDING_PAGINA_PUBLICA.boundaries;
+  const left = deriveNs4E8Model(informativa);
+  const right = deriveNs4E8Model(paginaPublica);
+  assert.deepEqual(
+    left.workspaces.map(workspace => `${workspace.workspaceId}:${workspace.tier}`),
+    right.workspaces.map(workspace => `${workspace.workspaceId}:${workspace.tier}`),
+  );
+  assert.equal(left.workspaces.some(workspace => workspace.tier === 'contentPage'), true);
+  assert.equal(right.workspaces.some(workspace => workspace.tier === 'contentPage'), true);
+});
+
+test('without the E1 content phrase the public singleton still gets a contentPage', () => {
   const sources = listaSources();
   sources.module.boundaries = 'in: Cadastro de petições; out: Nada.';
   sources.module.purpose = 'Manter o cadastro de petições.';
   sources.module.mainGoal = 'Cadastrar petições.';
   sources.module.expectedOutcomes = [{ outcomeId: 'cadastro', title: 'Cadastro', description: 'Lista e edita petições.' }];
   sources.module.inScope = ['Cadastro de petições'];
+  const model = deriveNs4E8Model(sources);
+  assert.equal(model.workspaces.some(workspace => workspace.tier === 'contentPage'), true);
+});
+
+test('a content phrase is not enough when the public singleton read is missing', () => {
+  const sources = listaSources();
+  sources.access.grants = sources.access.grants.filter(grant => grant.dataScope?.mode !== 'public');
   const model = deriveNs4E8Model(sources);
   assert.equal(model.workspaces.some(workspace => workspace.tier === 'contentPage'), false);
 });

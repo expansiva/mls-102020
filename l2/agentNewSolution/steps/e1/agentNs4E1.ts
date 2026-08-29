@@ -33,6 +33,7 @@ import {
   writeNs4Module,
   writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
+import { parseNs4RebuildAllReport, stampNs4RebuildAll } from '/_102020_/l2/agentNewSolution/helpers/ns4RebuildAll.js';
 import { validateNs4E1Module } from '/_102020_/l2/agentNewSolution/steps/e1/gate.js';
 import {
   NS4_FAST_SKIP_REASON,
@@ -268,12 +269,13 @@ async function persistNs4E1(
     // still reports it. The guard stays exactly as strict for every other collision.
     const allowedRebuild = rebuildModule === moduleName;
     if (!allowedResume && !allowedRebuild) {
-      throw new Error(`Módulo "${moduleName}" já existe e não pertence a uma retomada válida do agentNewSolution. Para regenerar, use "@@newSolution ${moduleName} /rebuild" (tudo) ou "@@newSolution ${moduleName} /rebuild e10" (a partir de um step).`);
+      throw new Error(`Módulo "${moduleName}" já existe e não pertence a uma retomada válida do agentNewSolution. Para regenerar, use "@@newSolution ${moduleName} /rebuild" (l4/l5), "@@newSolution ${moduleName} /rebuild all" (também l1/l2) ou "@@newSolution ${moduleName} /rebuild e10" (a partir de um step).`);
     }
   }
 
   const now = new Date().toISOString();
-  const running = isNs4Pipeline(existingPipeline)
+  const rebuildAll = parseNs4RebuildAllReport(memoryString(context, 'rebuildAllReport'));
+  const created = isNs4Pipeline(existingPipeline)
     ? {
       ...existingPipeline,
       sourcePrompt: existingPipeline.sourcePrompt || sourcePrompt,
@@ -282,6 +284,7 @@ async function persistNs4E1(
       updatedAt: now,
     }
     : createNs4Pipeline(moduleName, sourcePrompt, now, plan.presentation);
+  const running = rebuildAll ? stampNs4RebuildAll(created, rebuildAll) : created;
   await writeNs4Pipeline(running);
 
   const gate = validateNs4E1Module(artifact);

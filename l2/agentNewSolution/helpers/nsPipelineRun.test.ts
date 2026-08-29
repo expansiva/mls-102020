@@ -44,3 +44,38 @@ void test('NS run summary records skipped clarification defaults as a degradatio
   assert.match(summary.degradations[0].reason, /productLanguages=pt-BR/);
   assert.equal(summary.counts.skippedClarification, true);
 });
+
+void test('NS run summary records /rebuild all wipe counts as a degradation entry', () => {
+  const pipeline = {
+    schemaVersion: 'test',
+    flowId: 'agentNewSolution',
+    flowVersion: 'test',
+    moduleName: 'listaAssinatura',
+    sourcePrompt: 'Crie um módulo listaAssinatura',
+    presentation: { userLanguage: 'pt-BR' },
+    status: 'complete',
+    rebuiltAt: '2026-08-29T12:00:00.000Z',
+    rebuildAll: {
+      at: '2026-08-29T12:00:00.000Z',
+      deleted: { l1: 4, l2: 7, l4: 20, l5: 3 },
+      sanitized: { projectJsonRemoved: 1, configJsonRemoved: 2 },
+    },
+    steps: {
+      e1: { status: 'approved', updatedAt: '2026-08-29T12:01:00.000Z' },
+      e10: { status: 'approved', updatedAt: '2026-08-29T13:00:00.000Z' },
+    },
+    updatedAt: '2026-08-29T13:00:00.000Z',
+  } as unknown as Ns4PipelineState;
+  const summary = buildNsRunSummary({
+    pipeline,
+    moduleName: 'listaAssinatura',
+    verdict: 'completed',
+    reason: 'E10 validation passed',
+  });
+  assert.equal(summary.verdict, 'completed');
+  assert.match(summary.command, /\/rebuild all/);
+  const wipe = summary.degradations.find(item => item.kind === 'rebuild-all-wipe');
+  assert.ok(wipe);
+  assert.match(wipe?.reason || '', /l1=4 l2=7 l4=20 l5=3/);
+  assert.deepEqual(summary.counts.rebuildAllDeleted, { l1: 4, l2: 7, l4: 20, l5: 3 });
+});

@@ -62,6 +62,12 @@ Choose exactly one `storage.target` per entity:
 - `external`: platform/plugin-owned reference, ownership `external`, scope `platform`.
 - `embedded`: value object, kind `valueObject`, scope `none`.
 
+A result computed on demand — export, report, file, receipt, csv, snapshot, calculated summary —
+is `derived`. Persist it (`moduleDatabase`) only when the request explicitly asks for **history,
+audit, versioning or reprocessing of that artifact**. When in doubt, `derived`: a wrong derived
+projection is one extra read; a wrong persisted entity is a CRUD catalogue and a page. An entity
+that exists only to compose another derived artifact (the line items of an export) must not exist.
+
 Separate master data from operational state. Material may be MDM; inventory, adjustment and usage are
 transactions. Never put balances, accumulated totals or transaction history into MDM. Keep platform
 user ids as external references rather than duplicating users. Explain each decision in `storage.notes`.

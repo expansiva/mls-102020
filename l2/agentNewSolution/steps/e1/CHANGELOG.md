@@ -1,5 +1,10 @@
 # E1 changelog
 
+- 2026-08-29: `/rebuild all` recovers the stored prompt, wipes that module's l4/l1/l2 (and its l5
+  folder) through the same `deleteFile` channel as a total `/rebuild`, strips the module from
+  project.json/config.json, and stamps `rebuildAll` counts on the new pipeline. Without a
+  recoverable prompt it aborts and deletes nothing. `/rebuild` and `/rebuild eN` are unchanged.
+
 - 2026-08-29: Actor rule in the prompt: a demographic persona does not create an actor. "Qualquer
   pessoa" / "público" is one public actor plus the privileged actors the request names. listaAssinatura
   run01 had listed morador, responsável and visitante as three actors; that is the upstream source of

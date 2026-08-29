@@ -37,6 +37,7 @@ import {
   normalizeNs4E4Review,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import {
+  ns4E4RequestText,
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
   validateNs4E4RelationshipBindings,
@@ -176,6 +177,14 @@ test('E4 overview prompt declares singleton cardinality with a conservative defa
   assert.match(prompt, /Task, Pet, Order/u);
   assert.match(prompt, /omit the field/u);
   assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /cardinality/u);
+});
+
+test('E4 overview prompt stores on-demand artifacts as derived unless history is requested', () => {
+  const prompt = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
+  assert.match(prompt, /computed on demand/u);
+  assert.match(prompt, /When in doubt, `derived`/u);
+  assert.match(prompt, /history,\s*audit, versioning or reprocessing/u);
+  assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /on-demand export/u);
 });
 
 test('E4 ontology widget surfaces assumed enum-label decisions', () => {
@@ -467,6 +476,99 @@ test('E4 management fixture stays without cardinality after normalize', () => {
   assert.doesNotMatch(raw, /"cardinality"/u);
   const review = normalizeNs4E4Review(JSON.parse(raw));
   assert.ok(review.entities.every(entity => !('cardinality' in entity)));
+});
+
+const LISTA_REQUEST = [
+  'criar módulo listaAssinatura , deverá mostrar uma página bonita com textos e imagens',
+  'a opção de download das assinaturas do arquivo assinaturas.csv',
+  'qualquer pessoa pode assinar mas somente admin podem pegar o arquivo',
+].join('\n');
+
+function persistedExportReview() {
+  const review = structuredClone(normalizeNs4E4Review(LISTA_ASSINATURA_ONTOLOGY)) as any;
+  const exported = review.entities.find((entity: any) => entity.entityId === 'PetitionSignatureExport');
+  exported.entityId = 'SignatureExport';
+  exported.kind = 'core';
+  exported.ownership = 'moduleOwned';
+  exported.storage = {
+    target: 'moduleDatabase', scope: 'module', idField: 'signatureExportId',
+    notes: 'Registro transacional de uma geração autorizada de arquivo.',
+  };
+  exported.fields.unshift({
+    fieldId: 'signatureExportId', title: 'Export id', type: 'uuid', required: true,
+    description: 'Stable export id.', constraints: [],
+  });
+  review.entities.push({
+    entityId: 'SignatureExportItem', title: 'Item da exportação',
+    description: 'Permite auditar quais assinaturas válidas formaram cada arquivo gerado.',
+    kind: 'core', ownership: 'moduleOwned', party: 'none',
+    sourceRefs: exported.sourceRefs, lifecycleStates: [], lifecyclePredicates: [], useRules: [],
+    fields: [
+      {
+        fieldId: 'signatureExportItemId', title: 'Item id', type: 'uuid', required: true,
+        description: 'Stable item id.', constraints: [],
+      },
+      {
+        fieldId: 'signatureExportId', title: 'Export', type: 'uuid', required: true,
+        description: 'Parent export.', constraints: [],
+      },
+    ],
+    storage: {
+      target: 'moduleDatabase', scope: 'module', idField: 'signatureExportItemId',
+      notes: 'Linha de composição da exportação.',
+    },
+  });
+  review.relationships.forEach((relationship: any) => {
+    if (relationship.fromEntity === 'PetitionSignatureExport') relationship.fromEntity = 'SignatureExport';
+    if (relationship.toEntity === 'PetitionSignatureExport') relationship.toEntity = 'SignatureExport';
+    if (relationship.realization?.from?.entityId === 'PetitionSignatureExport') relationship.realization.from.entityId = 'SignatureExport';
+    if (relationship.realization?.to?.entityId === 'PetitionSignatureExport') relationship.realization.to.entityId = 'SignatureExport';
+    if (relationship.realization?.ownerEntity === 'PetitionSignatureExport') relationship.realization.ownerEntity = 'SignatureExport';
+  });
+  review.relationships.push({
+    relationshipId: 'exportItemBelongsToExport', fromEntity: 'SignatureExportItem', toEntity: 'SignatureExport',
+    type: 'manyToOne', required: true, description: 'Each item belongs to one export.',
+    persistence: { mode: 'moduleReference' },
+    realization: {
+      kind: 'fieldReference', ownerEntity: 'SignatureExportItem',
+      from: { entityId: 'SignatureExportItem', fieldIds: ['signatureExportId'] },
+      to: { entityId: 'SignatureExport', fieldIds: ['signatureExportId'] },
+      description: 'The item stores the export id.',
+    },
+  });
+  return normalizeNs4E4Review(review);
+}
+
+test('E4 flags persisted SignatureExport and SignatureExportItem from the listaAssinatura fixture', () => {
+  const clean = validateNs4E4Review(normalizeNs4E4Review(LISTA_ASSINATURA_ONTOLOGY), undefined, undefined, { requestText: LISTA_REQUEST });
+  assert.equal(clean.issues.some(issue => issue.code === 'NS4_E4_DERIVED_PERSISTED'), false, JSON.stringify(clean.issues));
+  assert.ok(!clean.issues.some(issue => issue.message.includes('PetitionSignature') && issue.code === 'NS4_E4_DERIVED_PERSISTED'));
+  assert.ok(!clean.issues.some(issue => issue.message.includes('PetitionSignatureCount')));
+
+  const gate = validateNs4E4Review(persistedExportReview(), undefined, undefined, {
+    requireRelationshipRealization: false, requestText: LISTA_REQUEST,
+  });
+  const flagged = gate.issues.filter(issue => issue.code === 'NS4_E4_DERIVED_PERSISTED').map(issue => issue.message);
+  assert.equal(flagged.some(message => message.includes('SignatureExport') && !message.includes('SignatureExportItem')), true, flagged.join('\n'));
+  assert.equal(flagged.some(message => message.includes('SignatureExportItem')), true, flagged.join('\n'));
+  assert.equal(flagged.some(message => message.includes('PetitionSignature') && !message.includes('Export')), false);
+  assert.match(flagged[0], /derived/);
+  assert.match(flagged[0], /history\/audit\/versioning\/reprocessing/);
+});
+
+test('E4 accepts an *Export entity when the request asks to keep its history', () => {
+  const gate = validateNs4E4Review(persistedExportReview(), undefined, undefined, {
+    requireRelationshipRealization: false,
+    requestText: `${LISTA_REQUEST}\nmanter o histórico e a auditoria de cada exportação gerada`,
+  });
+  assert.equal(gate.issues.some(issue => issue.code === 'NS4_E4_DERIVED_PERSISTED'), false, JSON.stringify(gate.issues));
+});
+
+test('E4 request text is the E1 prompt, not the ontology notes', () => {
+  assert.match(ns4E4RequestText({
+    designContext: { initialPrompt: LISTA_REQUEST, clarification: { mainGoal: 'Coletar assinaturas.', boundaries: 'in: download csv' } },
+    businessScope: { mainGoal: 'Coletar.', inScope: ['Download do csv'], expectedOutcomes: [{ title: 'Exportação', description: 'Admin baixa o csv.' }] },
+  }), /download das assinaturas/);
 });
 
 test('E4 flags an ownership rule when the entity has no owner field (petShop customerCanViewOnlyOwnPets)', () => {

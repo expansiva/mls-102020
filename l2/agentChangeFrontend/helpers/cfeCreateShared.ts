@@ -59,6 +59,7 @@ import {
   isCfeMaterializeVerifyFolder,
   isCfePipelineTraceLevel,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
+import { writeIfContentChanged } from '/_102020_/l2/agentChangeFrontend/helpers/cfeWorkspaceArtifacts.js';
 
 export { enumDisplayLabel, readEnumLabels };
 export type { CfeEnumLabel };
@@ -1125,7 +1126,9 @@ export async function saveContractDefs(prepared: CfePreparedPage): Promise<void>
   // F3 (v2): the contract of record is the l4 bffCall contract, byte-copied to l2 deterministically —
   // no LLM, no readCanonicalOutputShape, no per-page contract .defs.ts. The shared imports these .ts.
   if (prepared.contractCopies.length > 0) {
-    for (const copy of prepared.contractCopies) await saveStorContent(copy.fileInfo, copy.source);
+    // Projection of the current l4: rewrite when the generated text differs, including when the
+    // Monaco model still holds the previous generation (stor-only writes left compile on the old .ts).
+    for (const copy of prepared.contractCopies) await writeIfContentChanged(copy.fileInfo, copy.source);
     return;
   }
   await saveFrontendDefs(contractFileInfo(prepared.project, prepared.page), 'definition', prepared.commands, contractPipeline(prepared.project, prepared.page));

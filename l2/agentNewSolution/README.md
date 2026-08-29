@@ -22,6 +22,12 @@ Invocation:
   purpose — a previous run leaves drafts, pipeline traces and per-entity defs named after ITS
   ontology, and keeping any of them mixes two generations. `l2` is not touched: it belongs to
   agentChangeFrontend, which has its own rebuild;
+- `@@newSolution petShop /rebuild all` — terra-arrasada of THAT module: recover the original
+  prompt first (abort with no deletes if it is missing), then soft-delete `l4/petShop`,
+  `l1/petShop` and `l2/petShop`, drop `l5/petShop` and strip the module from `l5/project.json`
+  and `l5/config.json`, then generate again from the preserved prompt. Other modules stay.
+  Counts per layer go on the pipeline as `rebuildAll` (runNN_newsolution.json). `/rebuild` and
+  `/rebuild eN` do not do this;
 - `@@newSolution petShop /rebuild e10` — regenerate FROM a step (e2..e10): e1..e9 keep their
   approval and timestamps, e10 runs again. Use it to re-emit only the l5 contracts without paying
   E1-E9. Both forms stamp `rebuiltFrom`/`rebuiltAt` on the pipeline;

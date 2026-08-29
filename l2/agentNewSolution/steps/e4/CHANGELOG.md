@@ -1,5 +1,11 @@
 # E4 changelog
 
+- 2026-08-29: On-demand artifacts (`*Export`, `*Report`, `*Receipt`, `*Snapshot`, `*Csv`, `*File`,
+  and their `*Item` companions) stored as `moduleDatabase` are `NS4_E4_DERIVED_PERSISTED` unless
+  the E1 request explicitly asks to keep history/audit/versioning/reprocessing of that artifact.
+  When in doubt, `derived`. Ontology notes are not the request. Prompt says so; the gate classifies
+  each name before accusing and names the legitimate path.
+
 - 2026-08-29: Overview may declare `cardinality: 'singleton'` on an entity with one fixed instance
   (the campaign, the page). Optional in the type and in `e4-review.schema.json` (absence = today).
   The prompt says when in doubt omit the field. Gate `NS4_E4_SINGLETON_CREATE` rejects a singleton

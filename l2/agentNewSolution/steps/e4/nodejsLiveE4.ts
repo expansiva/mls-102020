@@ -16,6 +16,7 @@ import {
   Ns4E4PlanDraft,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import {
+  ns4E4RequestText,
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
   validateNs4E4RelationshipBindings,
@@ -51,6 +52,7 @@ async function main(): Promise<void> {
   const moduleArtifact = parseDefs(moduleSource) as Ns4ModuleArtifact;
   const journeys = normalizeNs4E2Review(JSON.parse(journeysSource), moduleName);
   const access = normalizeNs4E3Review(JSON.parse(accessSource), moduleName);
+  const requestText = ns4E4RequestText(moduleArtifact);
   const systemPrompt = promptTemplate.replace('{{platformSkill}}', platformSkill);
   const humanPrompt = [
     '## Explicit delivery mode for this run\nnew solution; new persistence design; no legacy database contract', '',
@@ -65,7 +67,7 @@ async function main(): Promise<void> {
   let response = await callCollabLlm(config, { model, systemPrompt, humanPrompt, maxTokens: 16_384 });
   responses.push(response);
   let plan = parsePlan(response, moduleName);
-  let gate = validateNs4E4Plan(plan, journeys, access);
+  let gate = validateNs4E4Plan(plan, journeys, access, { requestText });
   if (!gate.ok) {
     const feedback = gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n');
     response = await callCollabLlm(config, {
@@ -75,7 +77,7 @@ async function main(): Promise<void> {
     });
     responses.push(response);
     plan = parsePlan(response, moduleName);
-    gate = validateNs4E4Plan(plan, journeys, access);
+    gate = validateNs4E4Plan(plan, journeys, access, { requestText });
   }
   if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'));
   const details = await mapParallel(plan.entities, 20, async entity => {
@@ -134,7 +136,7 @@ async function main(): Promise<void> {
   }
   if (!bindingGate.ok) throw new Error(bindingGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'));
   const review = applyNs4E4RelationshipBindings(unboundReview, bindings);
-  const finalGate = validateNs4E4Review(review, journeys, access);
+  const finalGate = validateNs4E4Review(review, journeys, access, { requestText });
   if (!finalGate.ok) throw new Error(finalGate.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n'));
   process.stdout.write(`${JSON.stringify({
     ok: true, mode: 'dry-run', project, moduleName, model: response.model || null,

@@ -170,6 +170,7 @@ test('/rebuild is an explicit flag, and its step argument leaves the prompt with
   // e1 is not a partial target: restarting at e1 IS a total rebuild, so the token stays in the prompt.
   assert.deepEqual(parseNs4Invocation('petShop /rebuild e1'), { fast: false, rebuild: true, rebuildFrom: '', prompt: 'petShop e1' });
   assert.deepEqual(parseNs4Invocation('/rebuilder petShop'), { fast: false, rebuild: false, rebuildFrom: '', prompt: '/rebuilder petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild all'), { fast: false, rebuild: true, rebuildFrom: 'all', prompt: 'petShop' });
 });
 
 test('a prose rebuild naming an existing module is recognized — the msgtask3 incident', () => {

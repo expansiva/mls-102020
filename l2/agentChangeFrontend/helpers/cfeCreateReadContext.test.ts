@@ -9,7 +9,7 @@ const g = globalThis as unknown as Record<string, any>;
 // later test file in the same process doesn't inherit it.
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
-async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string; bffFieldEnumValues: (field: any, ops: any, entities: any) => string[]; bffFieldEnumLabels: (field: any, ops: any, entities: any) => { code: string; label: string }[]; createLayoutPromptContext: (prepared: any, genome: string, templateId: string) => any }> {
+async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; saveContractDefs: (prepared: any) => Promise<void>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string; bffFieldEnumValues: (field: any, ops: any, entities: any) => string[]; bffFieldEnumLabels: (field: any, ops: any, entities: any) => { code: string; label: string }[]; createLayoutPromptContext: (prepared: any, genome: string, templateId: string) => any }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   // libModel.ts runs init() -> mls.events.addEventListener at import time; the setup-l2 stub omits
@@ -183,6 +183,58 @@ test('preparePageCreate builds one command per bffCall and GENERATES the l2 cont
   assert.match(copy.source, /export const catalogListRoute = 'petShop\.catalog\.catalogList' as const;/);
   assert.match(copy.source, /export interface ProductDetailOutput \{/);
   assert.match(copy.source, /export const productDetailRoute = 'petShop\.catalog\.productDetail' as const;/);
+});
+
+test('saveContractDefs rewrites the existing contract when l4 renames a bffCall (content, not mtime)', async () => {
+  const { readCreateContext, preparePageCreate, saveContractDefs } = await loadModule();
+  installPetShopStor();
+  if (typeof g.mls.stor.getKeyToFile !== 'function') {
+    g.mls.stor.getKeyToFile = (info: { project: number; level: number; folder: string; shortName: string; extension: string }) =>
+      `${info.project}/${info.level}/${info.folder}/${info.shortName}${info.extension}`;
+  }
+  const writes: string[] = [];
+  g.mls.stor.localStor = {
+    setContent: async (file: { content?: string }, payload: { content: string }) => {
+      file.content = payload.content;
+      writes.push(payload.content);
+    },
+  };
+  g.mls.stor.addOrUpdateFile = async (params: Record<string, unknown>) => {
+    const info = { project: params.project, level: params.level, folder: params.folder, shortName: params.shortName, extension: params.extension };
+    const key = g.mls.stor.getKeyToFile(info);
+    const file = { ...info, status: 'new', content: '', getContent: async () => file.content };
+    g.mls.stor.files[key] = file;
+    return file;
+  };
+  const contractInfo = { project: PROJECT, level: 2, folder: 'petShop/web/contracts', shortName: 'catalog', extension: '.ts' };
+  const contractKey = g.mls.stor.getKeyToFile(contractInfo);
+  const stale = 'export interface CatalogListInput {}\nexport const catalogListRoute = "petShop.catalog.catalogList" as const;\n';
+  let modelValue = stale;
+  g.mls.stor.files[contractKey] = {
+    ...contractInfo, status: 'changed', content: stale, updatedAt: '2000-01-01T00:00:00.000Z',
+    getContent: async () => stale,
+  };
+  g.mls.editor = {
+    getKeyModel: (project: number, shortName: string, folder: string, level: number) => `${project}:${level}:${folder}:${shortName}`,
+    models: {
+      [`${PROJECT}:2:petShop/web/contracts:catalog`]: {
+        getValue: () => modelValue,
+        setValue: (value: string) => { modelValue = value; },
+      },
+    },
+  };
+
+  const ctx = await readCreateContext();
+  const catalog = ctx.journeys.find((j: { moduleName: string }) => j.moduleName === 'petShop')?.workspaces.find((w: { workspaceId: string }) => w.workspaceId === 'catalog');
+  assert.ok(catalog);
+  catalog.bffCalls[0].bffId = 'catalogListForShop';
+  const page = ctx.pages.find((p: { pageId: string }) => p.pageId === 'catalog')!;
+  const prepared = await preparePageCreate(page, ctx);
+  await saveContractDefs(prepared);
+
+  assert.match(modelValue, /export interface CatalogListForShopInput/);
+  assert.doesNotMatch(modelValue, /export interface CatalogListInput/);
+  assert.ok(writes.some(text => /CatalogListForShopInput/.test(text)), 'stor received the renamed contract');
 });
 
 test('initialLoads include parameterless lists, not getById keyed by selectedEntity', async () => {

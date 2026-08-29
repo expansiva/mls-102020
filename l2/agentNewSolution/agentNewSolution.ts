@@ -37,6 +37,7 @@ import {
   ns4AccessMatrixFile,
   ns4FileExists,
   archiveNs4ModuleForRebuild,
+  applyNs4RebuildAll,
   ns4ModuleFile,
   ns4OntologyIndexFile,
   ns4RulesFile,
@@ -48,7 +49,14 @@ import {
   readNs4Pipeline,
   writeNs4Module,
   writeNs4Pipeline,
+  readNs4L5Config,
+  readNs4L5Project,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
+import {
+  formatNs4RebuildAllNote,
+  planNs4RebuildAll,
+  recoverNs4RebuildAllPrompt,
+} from '/_102020_/l2/agentNewSolution/helpers/ns4RebuildAll.js';
 import {
   afterNs4E1PromptStep,
   beforeNs4E1ClarificationStep,
@@ -135,6 +143,7 @@ async function beforePromptImplicit(
   let resumeRound = '';
   let rebuildModule = '';
   let rebuildNote = '';
+  let rebuildAllReport = '';
   let taskTitle = 'new Solution';
   const existingModules = listNs4ModuleFolders();
   const existingModule = resolveNs4ExistingModuleToken(invocation.prompt, existingModules);
@@ -147,7 +156,7 @@ async function beforePromptImplicit(
       context,
       intended
         ? `Para regenerar, informe apenas o módulo: "@@newSolution ${intended} /rebuild${invocation.rebuildFrom ? ` ${invocation.rebuildFrom}` : ''}".`
-        : `Não existe módulo com esse nome para regenerar. Use "@@newSolution <módulo> /rebuild" com o nome de um módulo já gerado.`,
+        : `Não existe módulo com esse nome para regenerar. Use "@@newSolution <módulo> /rebuild" ou "@@newSolution <módulo> /rebuild all" com o nome de um módulo já gerado.`,
       'new Solution',
       true,
     )];
@@ -161,7 +170,7 @@ async function beforePromptImplicit(
       return [await statusTask(
         agent,
         context,
-        `Módulo "${intended}" já existe. Para regenerar, use "@@newSolution ${intended} /rebuild" (tudo) ou "@@newSolution ${intended} /rebuild e10" (a partir de um step). Nada foi alterado.`,
+        `Módulo "${intended}" já existe. Para regenerar, use "@@newSolution ${intended} /rebuild" (l4/l5), "@@newSolution ${intended} /rebuild all" (também l1/l2) ou "@@newSolution ${intended} /rebuild e10" (a partir de um step). Nada foi alterado.`,
         `plan ${intended}`,
         true,
       )];
@@ -251,7 +260,44 @@ async function beforePromptImplicit(
     }
     if (invocation.rebuild) {
       // Explicit intent, and only for a module this flow owns: `collision` above already refused the rest.
-      if (!invocation.rebuildFrom) {
+      if (invocation.rebuildFrom === 'all') {
+        const moduleArtifact = await readNs4Module(existingModule);
+        const recovered = recoverNs4RebuildAllPrompt({
+          initialPrompt: moduleArtifact?.designContext?.initialPrompt,
+          sourcePrompt: pipeline?.sourcePrompt,
+        });
+        if (!recovered.ok) {
+          return [await statusTask(
+            agent,
+            context,
+            `Módulo "${existingModule}": ${recovered.reason}`,
+            `plan ${existingModule}`,
+            true,
+          )];
+        }
+        let projectJson: unknown = null;
+        let configJson: unknown = null;
+        try { projectJson = await readNs4L5Project(); } catch { projectJson = null; }
+        try { configJson = await readNs4L5Config(); } catch { configJson = null; }
+        const plan = planNs4RebuildAll({
+          files: mls.stor.files,
+          project: mls.actualProject || 0,
+          moduleName: existingModule,
+          initialPrompt: recovered.prompt,
+          sourcePrompt: recovered.prompt,
+          projectJson,
+          configJson,
+        });
+        if (!plan.ok) {
+          return [await statusTask(agent, context, `Módulo "${existingModule}": ${plan.reason}`, `plan ${existingModule}`, true)];
+        }
+        const report = await applyNs4RebuildAll(plan);
+        rebuildModule = existingModule;
+        sourcePrompt = recovered.prompt;
+        taskTitle = `plan ${existingModule}`;
+        rebuildNote = formatNs4RebuildAllNote(existingModule, report);
+        rebuildAllReport = JSON.stringify(report);
+      } else if (!invocation.rebuildFrom) {
         // TOTAL: archive the module's whole l4/l5 so no draft, trace or per-entity defs from the previous
         // ontology survives into the new generation, then generate again from E1.
         const archived = await archiveNs4ModuleForRebuild(existingModule);
@@ -290,7 +336,7 @@ async function beforePromptImplicit(
       return [await statusTask(
         agent,
         context,
-        `Módulo "${existingModule}": especificação completa aprovada e pipeline encerrado. Para regenerar, use "@@newSolution ${existingModule} /rebuild" (tudo) ou "@@newSolution ${existingModule} /rebuild e10" (a partir de um step).`,
+        `Módulo "${existingModule}": especificação completa aprovada e pipeline encerrado. Para regenerar, use "@@newSolution ${existingModule} /rebuild" (l4/l5), "@@newSolution ${existingModule} /rebuild all" (também l1/l2) ou "@@newSolution ${existingModule} /rebuild e10" (a partir de um step).`,
         `plan ${existingModule}`,
       )];
     } else {
@@ -333,6 +379,7 @@ async function beforePromptImplicit(
         ...(resumeTarget ? { resumeTarget } : {}),
         ...(resumeRound ? { resumeRound } : {}),
         ...(rebuildNote ? { rebuildNote } : {}),
+        ...(rebuildAllReport ? { rebuildAllReport } : {}),
         ...(provenance ? { agentBuild: provenance } : {}),
       },
     },
