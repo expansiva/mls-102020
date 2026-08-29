@@ -92,6 +92,11 @@ export interface Ns4OntologyEntity {
   kind: Ns4EntityKind;
   ownership: Ns4EntityOwnership;
   /**
+   * A core entity with one fixed instance (a petition, an institutional page). OPTIONAL so L4
+   * written before this field keeps compiling. E8 skips the record catalogue when it is present.
+   */
+  cardinality?: 'singleton';
+  /**
    * Required by the gate for everything this generator now produces; OPTIONAL in the type so the L4
    * artifacts written before it (schema v6, no `party`) keep compiling — nothing is ever migrated.
    */
@@ -669,6 +674,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
     // defaulted to 'none': defaulting would answer the party question on the model's behalf and the gate
     // would have nothing to complain about — which is the exact silence that let a person become a table.
     ...(party(entity.party) ? { party: party(entity.party) } : {}),
+    ...(entity.cardinality === 'singleton' ? { cardinality: 'singleton' as const } : {}),
     sourceRefs: {
       journeyIds: strings(sourceRefs.journeyIds),
       featureIds: strings(sourceRefs.featureIds),

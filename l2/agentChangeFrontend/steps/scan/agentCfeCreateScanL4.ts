@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/scan/agentCfeCreateScanL4.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, rememberCreateUxVariants, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { agentBuildTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
 
 interface ScanArgs {
@@ -9,6 +9,7 @@ interface ScanArgs {
   materialize?: boolean;
   forceMaterialize?: boolean;
   module?: string;
+  uxVariants?: 'default' | 'all';
 }
 
 export function createAgent(): IAgentAsync {
@@ -29,6 +30,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const buildTrace = await agentBuildTrace('[agentCfeCreateScanL4]');
     const scanArgs = parseScanArgs(step.prompt);
     const createContext = await readCreateContext();
+    createContext.uxVariants = scanArgs.uxVariants === 'all' ? 'all' : 'default';
+    rememberCreateUxVariants(createContext.uxVariants);
 
     // One module per task: keeps a run small so it never blows the task payload size limit. If the CLI
     // named a module (e.g. "@@changeFrontend /rebuild all cafeFlow"), process exactly that one;

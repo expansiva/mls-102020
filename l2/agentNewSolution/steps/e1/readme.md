@@ -35,8 +35,10 @@ older flow version is not silently migrated. A single-token invocation is normal
 planner (`BuildFlowFsm23` resolves to `buildFlowFsm23`), preventing a valid resume from opening a new
 E1 tree because of capitalization alone.
 
-`/fast` uses the normal widget contract with automatic acceptance. The interactive and automatic paths
-therefore publish the same answer anchor and unlock the same compile step.
+`/fast` skips the E1 widget: the valid proposal is accepted as `approvedBy=auto`, the chosen defaults
+(product languages, module name, policy) are recorded on the clarification answer and on the pipeline
+(`autoReason` + `skippedDefaults`), and the same `e1-clarification-answer` anchor unlocks compile.
+Without `/fast` the widget still opens. `reviewPolicy.mode=automatic` still opens E1.
 
 `userLanguage` controls the clarification language only. The editable `productLanguages` answer owns
 the application's complete language list and is normalized into unique BCP-47 tags in

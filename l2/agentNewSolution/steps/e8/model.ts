@@ -6,16 +6,20 @@
  *
  * A screen is a place: the record catalogue of an entity (tier 1), an approved journey that is
  * itself a place (tier 2: distinct actor, eventDriven/contextRequired, or more than one entity),
- * or the hub of the dominant anchor when it has related lists or projection tiles (tier 3).
- * A journey of the same actor on an entity the catalogue already shows is hosted there
- * (`hostedStepRefs`); it is not a fourth kind of page.
+ * the hub of the dominant anchor when it has related lists or projection tiles (tier 3),
+ * or a content page (`contentPage`) when E1 names an informative/institutional/public-campaign
+ * page. A journey of the same actor on an entity the catalogue already shows is hosted there
+ * (`hostedStepRefs`); it is not another kind of page.
  */
 
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 
 export const NS4_E8_MODEL_VERSION = '2026-08-14-ns4-e8-model-v1' as const;
 
-export type Ns4WorkspaceTier = 'recordCatalogue' | 'journey' | 'hub' | 'projection';
+export type Ns4WorkspaceTier = 'recordCatalogue' | 'journey' | 'hub' | 'projection' | 'contentPage';
+
+/** Organisms of type `content` use these roles; they exist only on a `contentPage`. */
+export type Ns4E8ContentRole = 'hero' | 'richText' | 'imageSet' | 'ctaLink';
 
 /**
  * The only origins a page can render by, in the vocabulary the frontend actually reads from an
@@ -110,10 +114,12 @@ export interface Ns4E8BffCall {
   inputSources?: Array<{ inputId: string; bffId: string }>;
 }
 
-export type Ns4E8OrganismRole = 'primarySurface' | 'detailPanel' | 'filterControl' | 'contextualAction';
+export type Ns4E8OrganismRole = 'primarySurface' | 'detailPanel' | 'filterControl' | 'contextualAction' | Ns4E8ContentRole;
 
 export interface Ns4E8Organism {
   role: Ns4E8OrganismRole;
+  /** Present only on a content organism (hero/richText/imageSet/ctaLink). Never on a data-bound surface. */
+  type?: 'content';
   dataSource?: string;
   action?: string;
   /** A picker is a query rendered to choose the record another call consumes. summary is counts of that list, not a row. */
@@ -214,7 +220,7 @@ export interface Ns4E8Model {
   hubEntity: string;
   workspaces: Ns4E8ModelWorkspace[];
   operations: Ns4E8Operation[];
-  /** The menu lists places only: catalogues, hubs and projections. A journey is never a menu item. */
+  /** The menu lists places only: catalogues, hubs, projections and content pages. A journey is never a menu item. */
   menu: Ns4E8MenuEntry[];
   landings: Array<{ profileRef: string; workspaceId: string }>;
   systemDecisions: Ns4SystemDecision[];

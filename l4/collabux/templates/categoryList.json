@@ -550,6 +550,20 @@
       "i18n": {
         "en": "Filterable list paired with aggregates over the same filtered set."
       }
+    },
+    {
+      "categoryId": "contentLanding",
+      "name": "Content Landing",
+      "erpFrequency": "medium",
+      "description": "Página pública de apresentação ou campanha: conteúdo primeiro (textos e imagens), ação(ões) simples embutidas no final, sem cadastro CRUD. Distinto de processWizard (passo a passo operacional) e entityRecordManagement (manutenção de registros).",
+      "typicalEntities": ["Campaign", "Petition", "Landing", "Announcement"],
+      "commonOperations": ["viewContent", "submit", "count", "export"],
+      "experiences": {
+        "page11": "contentFirstConvert"
+      },
+      "i18n": {
+        "en": "Public presentation or campaign page: content first, simple embedded actions, no CRUD."
+      }
     }
   ]
 }

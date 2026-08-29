@@ -50,8 +50,15 @@ import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource, replaceDefsValue } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { navigationFromE8Menu } from '/_102020_/l2/agentChangeFrontend/helpers/cfeModuleNavigation.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
+import { pageSlotRecipe, pageSlotRecipes, primaryGenomeOf, type UxVariantsMode } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
+import { buildOrganismSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
 import { enumDisplayLabel, enumLabelFallbackWarnings, readEnumLabels, type CfeEnumLabel } from '/_102020_/l2/agentChangeFrontend/helpers/cfeEnumLabels.js';
 import { sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import {
+  cfePipelineTraceFileInfo,
+  isCfeMaterializeVerifyFolder,
+  isCfePipelineTraceLevel,
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 export { enumDisplayLabel, readEnumLabels };
 export type { CfeEnumLabel };
@@ -197,6 +204,8 @@ export interface CfeCreateContext {
   warnings: string[];
   /** E8 model.menu per module — places only. Empty when the L4 has no workspace-model. */
   menuByModule?: Record<string, Array<{ workspaceId: string; label: string }>>;
+  /** `variants:all` on @@changeFrontend restores the three exploration genomes. */
+  uxVariants?: UxVariantsMode;
 }
 
 export interface CfePreparedPage {
@@ -759,7 +768,18 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     modules: new Set([...declaredByModule].filter(([, types]) => types.has('workspace')).map(([moduleName]) => moduleName)),
     ids: new Set([...todoState.ownersByKey.values()].filter(owner => owner.ownerType === 'workspace' && owner.status === 'toCreate').map(owner => owner.ownerId)),
   };
-  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList, pendingWorkspaces), warnings, menuByModule };
+  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList, pendingWorkspaces), warnings, menuByModule, uxVariants: rememberedUxVariants() };
+}
+
+const CREATE_UX_VARIANTS_KEY = '__agentChangeFrontendUxVariants';
+
+function rememberedUxVariants(): UxVariantsMode {
+  const value = (window as unknown as Record<string, unknown>)[CREATE_UX_VARIANTS_KEY];
+  return value === 'all' ? 'all' : 'default';
+}
+
+export function rememberCreateUxVariants(mode: UxVariantsMode): void {
+  (window as unknown as Record<string, unknown>)[CREATE_UX_VARIANTS_KEY] = mode;
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
@@ -1173,8 +1193,9 @@ export async function savePageTestsFile(prepared: CfePreparedPage, runId?: strin
   // only 1 got a case, because projectId is produced by dashboardWorkspace).
   const cases = buildPageTestCases(prepared, runId ? moduleProducedByQuery(runId, prepared.page.moduleName) : undefined);
   if (cases.length === 0) return;
-  const fileInfo: FileInfo = { project: prepared.project, level: 2, folder: `${prepared.page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}`, shortName: prepared.page.pageId, extension: '.test.ts' };
-  await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases));
+  const genome = prepared.variantPlan[0]?.genome || PAGE_TESTS_VARIANT;
+  const fileInfo: FileInfo = { project: prepared.project, level: 2, folder: `${prepared.page.moduleName}/web/desktop/${genome}`, shortName: prepared.page.pageId, extension: '.test.ts' };
+  await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases, genome));
 }
 
 /**
@@ -1545,15 +1566,15 @@ function entityHasWeekdayField(entityId: string, entityFields: Record<string, st
   return (entityFields[entityId] || []).some(fieldId => /^(dayOfWeek|weekday)$/i.test(fieldId));
 }
 
-function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[]): string {
-  const header = `/// <mls fileReference="_${prepared.project}_/l2/${prepared.page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}/${prepared.page.pageId}.test.ts" enhancement="_blank"/>`;
+function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[], genome = PAGE_TESTS_VARIANT): string {
+  const header = `/// <mls fileReference="_${prepared.project}_/l2/${prepared.page.moduleName}/web/desktop/${genome}/${prepared.page.pageId}.test.ts" enhancement="_blank"/>`;
   // The workspace's actor rides in the envelope so the tests runner can execute the page's cases AS a
   // seeded identity for that actor. Without it every actor-scoped route is unrunnable headless: the
   // usecase reads the id from the session (a field worker sees the tasks assigned to THEM) and fails
   // 400 with no session (102045 run06: listAssignedTasks). Measured: it is what turns that case from
   // fail into pass, and unblocks the 2 commands of its page.
   const actor = readString(prepared.workspace?.actor);
-  const body = { moduleName: prepared.page.moduleName, page: prepared.page.pageId, variant: PAGE_TESTS_VARIANT, ...(actor ? { actor } : {}), cases };
+  const body = { moduleName: prepared.page.moduleName, page: prepared.page.pageId, variant: genome, ...(actor ? { actor } : {}), cases };
   return `${header}\n\n`
     + `// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\n`
     + `// TESTS_ENABLED is on).\n`
@@ -1586,11 +1607,12 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
   // authoritative, type-checked key set, read by the render from the shared .d.ts.
   const variant = prepared.variantPlan.find(item => item.genome === genome);
   const exported = pageLayoutDefsExport(genome, prepared, enrichedLayout.dataBindings, objective);
+  const splitOrganisms = await ensureRecipeSplitPlan(prepared, genome, enrichedLayout);
   await saveFrontendDefs(
     pageFileInfo(prepared.project, prepared.page, genome),
     'definition',
     exported.definition,
-    pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome, variant?.experienceSkill),
+    pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome, variant?.experienceSkill, splitOrganisms),
     exported.extras,
   );
   return enrichedLayout;
@@ -1607,7 +1629,8 @@ export function pageLayoutDefsExport(
   dataBindings: CfePageLayoutDefinition['dataBindings'],
   objective?: unknown,
 ): { definition: unknown; extras: { name: string; value: unknown }[] } {
-  if (genome === 'page11') {
+  const recipe = pageSlotRecipe(prepared.presentation?.categoryRef || '', genome);
+  if (recipe.defsFormat === 'prose') {
     return { definition: page11DefinitionProse(prepared), extras: [] };
   }
   return {
@@ -1755,13 +1778,7 @@ function expandCompositionOrganism(pageId: string, composition: CfeCompositionOr
 // trace/frontend-page-objective/{page}.json). Best-effort: a trace write must never fail the run.
 export async function savePageObjectiveTrace(prepared: CfePreparedPage, genome: string, objective: unknown): Promise<void> {
   if (!isRecord(objective)) return;
-  const fileInfo: FileInfo = {
-    project: prepared.project,
-    level: 2,
-    folder: `${prepared.page.moduleName}/trace/frontend-page-objective`,
-    shortName: prepared.page.pageId,
-    extension: '.json',
-  };
+  const fileInfo: FileInfo = cfePipelineTraceFileInfo(prepared.page.moduleName, prepared.page.pageId, 'frontend-page-objective', prepared.project);
   await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), pageId: prepared.page.pageId, genome, objective }, null, 2)}\n`);
 }
 
@@ -1952,8 +1969,9 @@ export function rememberCreateLayout(runId: string, pageId: string, genome: stri
 export async function reconcileCreateRunPage(runId: string, pageId: string): Promise<void> {
   const prepared = await prepareCreateRunPage(runId, pageId);
   const layouts = getCreateRun(runId).layoutsByPage.get(pageId);
-  const primary = layouts?.get('page11');
-  if (!primary) throw new Error(`primary layout page11 was not saved for ${pageId}`);
+  const primaryGenome = prepared.variantPlan[0]?.genome || 'page11';
+  const primary = layouts?.get(primaryGenome);
+  if (!primary) throw new Error(`primary layout ${primaryGenome} was not saved for ${pageId}`);
   const savedLayouts = prepared.variantPlan
     .map(variant => layouts?.get(variant.genome))
     .filter((layout): layout is CfePageLayoutDefinition => Boolean(layout));
@@ -1963,8 +1981,16 @@ export async function reconcileCreateRunPage(runId: string, pageId: string): Pro
 export function verifyCreateRunPrimaryLayouts(runId: string): string[] {
   const run = getCreateRun(runId);
   return run.context.pages
-    .filter(page => !run.layoutsByPage.get(page.pageId)?.has('page11'))
-    .map(page => `${page.pageId}: missing primary page11 layout`);
+    .filter(page => {
+      const categoryRef = readString(workspaceForPage(run.context, page)?.categoryRef);
+      const primary = pageSlotRecipes(categoryRef, run.context.uxVariants || 'default')[0]?.genome || 'page11';
+      return !run.layoutsByPage.get(page.pageId)?.has(primary);
+    })
+    .map(page => {
+      const categoryRef = readString(workspaceForPage(run.context, page)?.categoryRef);
+      const primary = pageSlotRecipes(categoryRef, run.context.uxVariants || 'default')[0]?.genome || 'page11';
+      return `${page.pageId}: missing primary ${primary} layout`;
+    });
 }
 
 export async function saveCreateLayoutFailureTrace(
@@ -1976,13 +2002,12 @@ export async function saveCreateLayoutFailureTrace(
   message: string,
 ): Promise<void> {
   const prepared = await prepareCreateRunPage(runId, pageId);
-  const fileInfo: FileInfo = {
-    project: prepared.project,
-    level: 2,
-    folder: `${prepared.page.moduleName}/trace/frontend-create-layout-errors`,
-    shortName: `${toSafeShortName(pageId)}--${toSafeShortName(genome)}`,
-    extension: '.json',
-  };
+  const fileInfo: FileInfo = cfePipelineTraceFileInfo(
+    prepared.page.moduleName,
+    `${toSafeShortName(pageId)}--${toSafeShortName(genome)}`,
+    'frontend-create-layout-errors',
+    prepared.project,
+  );
   await saveStorContent(fileInfo, `${JSON.stringify({
     savedAt: new Date().toISOString(),
     runId,
@@ -2031,8 +2056,7 @@ export async function saveMaterializeVerifyTrace(moduleName: string, planId: str
       console.warn(`[saveMaterializeVerifyTrace] no module could be derived for ${planId}; trace not written (never write to the project-root l2/trace)`);
       return null;
     }
-    const folder = `${module}/trace/frontend-materialize-verify`;
-    const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
+    const fileInfo = cfePipelineTraceFileInfo(module, shortName, 'frontend-materialize-verify', project);
     await saveStorContent(fileInfo, `${JSON.stringify({
       savedAt: new Date().toISOString(),
       planId,
@@ -2041,7 +2065,7 @@ export async function saveMaterializeVerifyTrace(moduleName: string, planId: str
       broken,
       agent: 'agentCfeMaterializePhase',
     }, null, 2)}\n`);
-    return `_${project}_/l2/${folder}/${shortName}.json`;
+    return `_${project}_/l4/${fileInfo.folder}/${shortName}.json`;
   } catch (error) {
     console.error(`[saveMaterializeVerifyTrace] ${error instanceof Error ? error.message : String(error)}`);
     return null;
@@ -2068,7 +2092,7 @@ export async function saveMaterializeItemFindings(moduleName: string, planId: st
   try {
     const project = mls.actualProject || 0;
     if (!project || !moduleName || !planId) return false;
-    const fileInfo: FileInfo = { project, level: 2, folder: `${moduleName}/trace/frontend-materialize-findings`, shortName: toSafeShortName(planId), extension: '.json' };
+    const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, toSafeShortName(planId), 'frontend-materialize-findings', project);
     await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), planId, attempt, findings }, null, 2)}\n`);
     return true;
   } catch (error) {
@@ -2082,8 +2106,10 @@ export async function readMaterializeItemFindings(moduleName: string, planId: st
   try {
     const project = mls.actualProject || 0;
     if (!project || !moduleName || !planId) return [];
-    const fileInfo: FileInfo = { project, level: 2, folder: `${moduleName}/trace/frontend-materialize-findings`, shortName: toSafeShortName(planId), extension: '.json' };
-    const record = await readJsonFile(fileInfo);
+    const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, toSafeShortName(planId), 'frontend-materialize-findings', project);
+    const record = await readJsonFile(fileInfo) ?? await readJsonFile({
+      project, level: 2, folder: `${moduleName}/trace/frontend-materialize-findings`, shortName: toSafeShortName(planId), extension: '.json',
+    });
     if (!isRecord(record) || record.attempt !== attempt || !Array.isArray(record.findings)) return [];
     return record.findings.map(String).filter(Boolean);
   } catch {
@@ -2127,12 +2153,11 @@ export async function saveMaterializeVerifySummary(
       console.warn(`[saveMaterializeVerifySummary] no module could be derived for ${planId}; verdict not written (never write to the project-root l2/trace)`);
       return null;
     }
-    const folder = `${module}/trace/frontend-materialize-verify`;
     const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
     const shortName = `${toSafeShortName(basePlanId)}-summary`;
     const declared = buckets.declared ?? [];
     const repaired = buckets.repaired ?? [];
-    const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
+    const fileInfo = cfePipelineTraceFileInfo(module, shortName, 'frontend-materialize-verify', project);
     await saveStorContent(fileInfo, `${JSON.stringify({
       savedAt: new Date().toISOString(),
       phase: basePlanId,
@@ -2165,7 +2190,7 @@ export async function saveMaterializeVerifySummary(
       })),
       agent: 'agentCfeMaterializePhase',
     }, null, 2)}\n`);
-    return `_${project}_/l2/${folder}/${shortName}.json`;
+    return `_${project}_/l4/${fileInfo.folder}/${shortName}.json`;
   } catch (error) {
     console.error(`[saveMaterializeVerifySummary] ${error instanceof Error ? error.message : String(error)}`);
     return null;
@@ -2249,8 +2274,8 @@ export async function rewriteMaterializeVerdictsNowClean(moduleName: string, now
   if (!project) return 0;
   let moved = 0;
   for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
-    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
-    if (file.extension !== '.json' || String(file.folder || '') !== `${moduleName}/trace/frontend-materialize-verify`) continue;
+    if (!file || file.project !== project || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || ''), moduleName)) continue;
     if (!String(file.shortName || '').endsWith('-summary')) continue;
     try {
       const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
@@ -2287,8 +2312,8 @@ export async function readUnresolvedMaterializeItems(moduleName: string): Promis
   const project = mls.actualProject || 0;
   if (!project || !moduleName) return items;
   for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
-    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
-    if (file.extension !== '.json' || String(file.folder || '') !== `${moduleName}/trace/frontend-materialize-verify`) continue;
+    if (!file || file.project !== project || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || ''), moduleName)) continue;
     if (!String(file.shortName || '').endsWith('-summary')) continue;
     try {
       const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
@@ -2311,8 +2336,8 @@ export async function readBlockedMaterializePlanIds(project: number): Promise<Se
   const blocked = new Set<string>();
   if (!project) return blocked;
   for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
-    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
-    if (file.extension !== '.json' || !String(file.folder || '').endsWith('/trace/frontend-materialize-verify')) continue;
+    if (!file || file.project !== project || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || ''))) continue;
     if (!String(file.shortName || '').endsWith('-summary')) continue;
     try {
       const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
@@ -2336,10 +2361,11 @@ export async function readMaterializeVerifySummary(moduleName: string, planId: s
     const project = mls.actualProject || 0;
     if (!project || !moduleName) return null;
     const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
-    const folder = `${moduleName}/trace/frontend-materialize-verify`;
     const shortName = `${toSafeShortName(basePlanId)}-summary`;
-    const fileInfo: FileInfo = { project, level: 2, folder, shortName, extension: '.json' };
-    const file = (mls.stor.files as Record<string, { status?: string; getContent?: () => Promise<string> } | undefined>)[mls.stor.getKeyToFile(fileInfo)];
+    const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, shortName, 'frontend-materialize-verify', project);
+    const legacyInfo: FileInfo = { project, level: 2, folder: `${moduleName}/trace/frontend-materialize-verify`, shortName, extension: '.json' };
+    const files = mls.stor.files as Record<string, { status?: string; getContent?: () => Promise<string> } | undefined>;
+    const file = files[mls.stor.getKeyToFile(fileInfo)] || files[mls.stor.getKeyToFile(legacyInfo)];
     if (!file || file.status === 'deleted' || !file.getContent) return null;
     const verdict = JSON.parse(String(await file.getContent()));
     if (!verdict || typeof verdict !== 'object') return null;
@@ -2371,13 +2397,12 @@ export async function listCreateRunLayoutFailureTraces(runId: string): Promise<s
   for (const page of run.context.pages) {
     const prepared = await prepareCreateRunPage(runId, page.pageId);
     for (const variant of prepared.variantPlan) {
-      const fileInfo: FileInfo = {
-        project: prepared.project,
-        level: 2,
-        folder: `${prepared.page.moduleName}/trace/frontend-create-layout-errors`,
-        shortName: `${toSafeShortName(page.pageId)}--${toSafeShortName(variant.genome)}`,
-        extension: '.json',
-      };
+      const fileInfo: FileInfo = cfePipelineTraceFileInfo(
+        prepared.page.moduleName,
+        `${toSafeShortName(page.pageId)}--${toSafeShortName(variant.genome)}`,
+        'frontend-create-layout-errors',
+        prepared.project,
+      );
       const trace = await readJsonFile(fileInfo);
       const record = isRecord(trace) ? trace : null;
       if (!record || readString(record.runId) !== runId) continue;
@@ -2758,10 +2783,6 @@ function normalizeOrder(value: unknown, path: string): number {
   throw new Error(`${path} must be an integer`);
 }
 
-// Exactly two genomes per page (flow.json genomePolicy): page11 is the baseline with the top
-// deterministic template pinned; page21 is goal-first with no pinned template — every scored
-// candidate is supplied only as inspiration. The module-level todoFrontend.variants count is
-// intentionally ignored (always page11 + page21).
 export const GOAL_FIRST_TEMPLATE_ID = 'goal_first';
 
 /** Experience skills live one folder per UX category, one .md per slot. */
@@ -2778,39 +2799,41 @@ function experienceSkillExists(categoryRef: string, genome: string): boolean {
 }
 
 /**
- * Three slots per workspace, all on the REDUCED defs (identity + wiring; no sections/layout):
- *  - page11: bespoke — no experience skill, the model choreographs from the contract;
- *  - page21/page31: the two contrasting experiences of the workspace's UX category.
+ * Slot plan from the category recipe (cfePageRecipe). Default is one genome; `variants:all`
+ * restores the three exploration slots. Management slots stay: page11 bespoke, page21/page31
+ * goal-first. contentLanding slots are prose + experience skill.
  *
  * Measured on 102045/clientManagement (31/jul): coherence ranked page31 > page21 > page11, and a REDUCED
  * defs + skill beat a complete defs + skill — the organisms of a complete defs drown the skill out.
  *
  * A category with no skill file degrades that slot to bespoke with a warning instead of putting a broken
- * path in the pipeline. Generating three slots is the learning phase: the user's pick is the metric, and
- * once telemetry matures a category the winner becomes the single default (hence `slots`, which lets a
- * caller ask for a subset instead of hardcoding three).
+ * path in the pipeline.
  */
-function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[], slots = MAX_UX_SLOTS): CfeLayoutVariantPlan[] {
+function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): CfeLayoutVariantPlan[] {
   const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands));
   const primary = candidates[0];
   const categoryRef = readString(workspaceForPage(context, page)?.categoryRef);
-  const plan: CfeLayoutVariantPlan[] = [
-    { genome: pageGenome(0), templateId: primary.id, template: primary as unknown as Record<string, unknown> },
-  ];
-  for (let index = 1; index < Math.max(1, slots); index += 1) {
-    const genome = pageGenome(index);
-    const hasSkill = experienceSkillExists(categoryRef, genome);
-    if (categoryRef && !hasSkill) {
-      recordCreateWarning(`${page.pageId}/${genome}: no experience skill for category '${categoryRef}' (${experienceSkillPath(categoryRef, genome)}) — slot degraded to bespoke`);
+  const slots = pageSlotRecipes(categoryRef, context.uxVariants || 'default');
+  return slots.map(slot => {
+    const hasSkill = slot.attachExperienceSkill && experienceSkillExists(categoryRef, slot.genome);
+    if (slot.attachExperienceSkill && categoryRef && !hasSkill) {
+      recordCreateWarning(`${page.pageId}/${slot.genome}: no experience skill for category '${categoryRef}' (${experienceSkillPath(categoryRef, slot.genome)}) — slot degraded to bespoke`);
     }
-    plan.push({
-      genome,
+    if (slot.templateMode === 'pinned') {
+      return {
+        genome: slot.genome,
+        templateId: primary.id,
+        template: primary as unknown as Record<string, unknown>,
+        ...(hasSkill ? { experienceSkill: experienceSkillPath(categoryRef, slot.genome) } : {}),
+      };
+    }
+    return {
+      genome: slot.genome,
       templateId: GOAL_FIRST_TEMPLATE_ID,
       template: { mode: 'goal-first', candidates: candidates as unknown as Record<string, unknown>[] },
-      ...(hasSkill ? { experienceSkill: experienceSkillPath(categoryRef, genome) } : {}),
-    });
-  }
-  return plan;
+      ...(hasSkill ? { experienceSkill: experienceSkillPath(categoryRef, slot.genome) } : {}),
+    };
+  });
 }
 
 // Machine-derivable UX signals for template scoring. Prose signals stay for the LLM.
@@ -4647,15 +4670,40 @@ function sharedPipeline(prepared: CfePreparedPage): unknown[] {
  * run, so a split written only into the defs would be wiped by the next @@changeFrontend. Reading it here
  * is what makes "reprocessar a página já encontra a definição" true.
  */
+async function ensureRecipeSplitPlan(
+  prepared: CfePreparedPage,
+  genome: string,
+  layout: CfePageLayoutDefinition,
+): Promise<{ n: number; organism: string; bindings: string[] }[]> {
+  const existing = readPageSplitOrganisms(prepared.project, prepared.page, genome);
+  const recipe = pageSlotRecipe(prepared.presentation?.categoryRef || '', genome);
+  if (!recipe.splitByOrganism) return existing;
+  const workspace = prepared.workspace;
+  if (!workspace || workspace.sections.length === 0) return existing;
+  const sections: SplitPlanSection[] = workspace.sections.map(section => ({
+    sectionId: section.sectionId,
+    organisms: section.organisms.map(organism => ({
+      role: organism.role,
+      dataSource: organism.dataSource,
+      action: organism.action,
+      attachTo: organism.attachTo,
+    })),
+  }));
+  const bindings = unique(layout.dataBindings.map(binding => readString(binding.command)).filter(Boolean));
+  const plan = buildOrganismSplitPlan(prepared.page.pageId, genome, sections, bindings, 'contentLanding');
+  if (!plan) return existing;
+  const fileInfo = cfePipelineTraceFileInfo(prepared.page.moduleName, prepared.page.pageId, `frontend-page-split/${genome}`, prepared.project);
+  const body = `${JSON.stringify(plan, null, 2)}\n`;
+  await saveStorContent(fileInfo, body);
+  const stored = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as { content?: string } | undefined;
+  if (stored) stored.content = body;
+  return plan.organisms;
+}
+
 function readPageSplitOrganisms(project: number, page: CfePagePlan, genome: string): { n: number; organism: string; bindings: string[] }[] {
-  const fileInfo: FileInfo = {
-    project,
-    level: 2,
-    folder: `${page.moduleName}/trace/frontend-page-split/${genome}`,
-    shortName: page.pageId,
-    extension: '.json',
-  };
-  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as { status?: string; content?: string } | undefined;
+  const fileInfo: FileInfo = cfePipelineTraceFileInfo(page.moduleName, page.pageId, `frontend-page-split/${genome}`, project);
+  const legacyInfo: FileInfo = { project, level: 2, folder: `${page.moduleName}/trace/frontend-page-split/${genome}`, shortName: page.pageId, extension: '.json' };
+  const file = (mls.stor.files[mls.stor.getKeyToFile(fileInfo)] || mls.stor.files[mls.stor.getKeyToFile(legacyInfo)]) as { status?: string; content?: string } | undefined;
   if (!file || file.status === 'deleted' || !file.content) return [];
   try {
     const plan = JSON.parse(file.content) as unknown;
@@ -4673,12 +4721,12 @@ function readPageSplitOrganisms(project: number, page: CfePagePlan, genome: stri
   }
 }
 
-function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11', experienceSkill?: string): unknown[] {
+function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11', experienceSkill?: string, splitOrganisms?: { n: number; organism: string; bindings: string[] }[]): unknown[] {
   const idSuffix = genome === 'page11' ? '' : `__${genome}`;
   const base = `_${project}_/l2/${page.moduleName}/web/desktop/${genome}`;
   // A split page materializes as N organisms + the page that imports their render functions. The organisms
   // depend only on the shared, so they run in parallel; the page depends on all of them.
-  const organisms = readPageSplitOrganisms(project, page, genome).map(item => ({
+  const organisms = (splitOrganisms && splitOrganisms.length > 0 ? splitOrganisms : readPageSplitOrganisms(project, page, genome)).map(item => ({
     id: `${page.pageId}${idSuffix}__O${item.n}`,
     type: 'l2_page_organism',
     organism: item.organism,
@@ -4719,7 +4767,7 @@ function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, 
     ],
     dependsOn: [`${page.pageId}__l2_shared`, ...organisms.map(item => item.id)],
     // Render skill first (HOW to write the Lit file), then the experience skill (WHICH experience to
-    // build). page11 has no experience skill — it is the bespoke slot.
+    // build). Management page11 is bespoke (no experience skill); contentLanding page11 attaches one.
     skills: experienceSkill ? [pageRenderSkillPath(genome), experienceSkill] : [pageRenderSkillPath(genome)],
     visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
     agent: 'agentCfeMaterializeGen',
@@ -4846,7 +4894,7 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
       labels: labelRecord,
     });
     const existingFrontend = isRecord(mod.frontend) ? mod.frontend : {};
-    const pageTests = frontendPageTestPaths(project, modulePages);
+    const pageTests = frontendPageTestPaths(project, context, modulePages);
     mod.frontend = {
       ...existingFrontend,
       layer: 'l2',
@@ -4862,16 +4910,49 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
 
 // Item 2a: project-relative resolver paths (compiled .js, _<id>_/... form used by
 // resolveProjectModuleImportUrl) of the generated page11 test files that exist on disk.
-function frontendPageTestPaths(project: number, pages: CfePagePlan[]): string[] {
-  return pages
-    .filter(page => hasPageTestsFile(project, page))
-    .map(page => `_${project}_/l2/${page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}/${page.pageId}.test.js`);
+function frontendPageTestPaths(project: number, context: CfeCreateContext, pages: CfePagePlan[]): string[] {
+  const paths: string[] = [];
+  for (const page of pages) {
+    const genome = pageTestsGenome(project, context, page);
+    if (!genome) continue;
+    paths.push(`_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.test.js`);
+  }
+  return paths;
 }
 
-function hasPageTestsFile(project: number, page: CfePagePlan): boolean {
-  const fileInfo: FileInfo = { project, level: 2, folder: `${page.moduleName}/web/desktop/${PAGE_TESTS_VARIANT}`, shortName: page.pageId, extension: '.test.ts' };
-  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+function pageTestsGenome(project: number, context: CfeCreateContext, page: CfePagePlan): string | null {
+  const planned = plannedGenomes(context, page);
+  const candidates = [...planned];
+  for (let index = 0; index < MAX_UX_VARIANTS; index++) {
+    const genome = pageGenome(index);
+    if (!candidates.includes(genome)) candidates.push(genome);
+  }
+  for (const genome of candidates) {
+    const fileInfo: FileInfo = { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.test.ts' };
+    const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+    if (file && file.status !== 'deleted') return genome;
+  }
+  return null;
+}
+
+function plannedGenomes(context: CfeCreateContext, page: CfePagePlan): string[] {
+  const categoryRef = readString(workspaceForPage(context, page)?.categoryRef);
+  return pageSlotRecipes(categoryRef, context.uxVariants || 'default').map(slot => slot.genome);
+}
+
+function pageHasStorFile(project: number, page: CfePagePlan, genome: string, extension: '.ts' | '.defs.ts'): boolean {
+  const info = extension === '.defs.ts' ? pageFileInfo(project, page, genome) : pageTsFileInfo(project, page, genome);
+  const file = mls.stor.files[mls.stor.getKeyToFile(info)];
   return !!file && file.status !== 'deleted';
+}
+
+function discoveredPageGenomes(project: number, page: CfePagePlan): string[] {
+  const genomes: string[] = [];
+  for (let index = 0; index < MAX_UX_VARIANTS; index++) {
+    const genome = pageGenome(index);
+    if (pageHasStorFile(project, page, genome, '.defs.ts') || pageHasStorFile(project, page, genome, '.ts')) genomes.push(genome);
+  }
+  return genomes;
 }
 
 function frontendConfigPages(project: number, context: CfeCreateContext, page: CfePagePlan, labels: Record<string, unknown>): Record<string, unknown>[] {
@@ -4880,27 +4961,26 @@ function frontendConfigPages(project: number, context: CfeCreateContext, page: C
   const primaryRoute = pageRoutePattern(page, operations);
   const baseRoute = `/${page.moduleName}/${page.pageId}`;
   const routeParams = primaryRoute.startsWith(baseRoute) ? primaryRoute.slice(baseRoute.length) : '';
+  const genomes = discoveredPageGenomes(project, page).filter(genome => plannedGenomes(context, page).includes(genome));
+  const primary = primaryGenomeOf(genomes.length > 0 ? genomes : plannedGenomes(context, page));
   const records: Record<string, unknown>[] = [{
     pageId: page.pageId,
     route: primaryRoute,
-    source: `l2/${page.moduleName}/web/desktop/page11/${page.pageId}.ts`,
-    definition: `l2/${page.moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
-    componentTag: frontendComponentTag(project, page, 'page11'),
+    source: `l2/${page.moduleName}/web/desktop/${primary}/${page.pageId}.ts`,
+    definition: `l2/${page.moduleName}/web/desktop/${primary}/${page.pageId}.defs.ts`,
+    componentTag: frontendComponentTag(project, page, primary),
     title,
   }];
-  for (let index = 1; index < MAX_UX_VARIANTS; index++) {
-    const genome = pageGenome(index);
-    const tsFile = mls.stor.files[mls.stor.getKeyToFile(pageTsFileInfo(project, page, genome))];
-    const defsFile = mls.stor.files[mls.stor.getKeyToFile(pageFileInfo(project, page, genome))];
-    if (!tsFile || tsFile.status === 'deleted' || !defsFile || defsFile.status === 'deleted') continue;
-    const variantId = genome;
+  for (const genome of genomes) {
+    if (genome === primary) continue;
+    if (!pageHasStorFile(project, page, genome, '.ts') || !pageHasStorFile(project, page, genome, '.defs.ts')) continue;
     records.push({
-      pageId: `${page.pageId}-${variantId}`,
-      route: `/${page.moduleName}/${page.pageId}-${variantId}${routeParams}`,
+      pageId: `${page.pageId}-${genome}`,
+      route: `/${page.moduleName}/${page.pageId}-${genome}${routeParams}`,
       source: `l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.ts`,
       definition: `l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.defs.ts`,
       componentTag: frontendComponentTag(project, page, genome),
-      title: `${title} - ${variantId.toUpperCase()}`,
+      title: `${title} - ${genome.toUpperCase()}`,
     });
   }
   return records;
@@ -5106,7 +5186,7 @@ async function setTodoFrontendStatuses(project: number, wanted: Set<string>, sta
 
 async function saveCreateReport(project: number, pages: CfePagePlan[], ownersDone: string[], skippedPages: string[], incompletePages: CfeIncompletePage[] = []): Promise<void> {
   for (const moduleName of unique([...pages, ...incompletePages.map(item => item.page)].map(page => page.moduleName))) {
-    const fileInfo: FileInfo = { project, level: 2, folder: `${moduleName}/trace`, shortName: 'frontend-create-report', extension: '.json' };
+    const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, 'frontend-create-report', '', project);
     await saveStorContent(fileInfo, `${JSON.stringify({
       savedAt: new Date().toISOString(),
       pagesDone: pages.filter(p => p.moduleName === moduleName).map(p => p.pageId),
@@ -5143,10 +5223,10 @@ async function savePageRegisterMarker(project: number, page: CfePagePlan, status
 }
 
 async function hasGeneratedDefs(project: number, page: CfePagePlan): Promise<boolean> {
-  const defsExist = [sharedFileInfo(project, page), pageFileInfo(project, page)].every(fileInfo => {
-    const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
-    return !!file && file.status !== 'deleted';
-  });
+  const shared = mls.stor.files[mls.stor.getKeyToFile(sharedFileInfo(project, page))];
+  const sharedOk = !!shared && shared.status !== 'deleted';
+  const pageDefsOk = discoveredPageGenomes(project, page).some(genome => pageHasStorFile(project, page, genome, '.defs.ts'));
+  const defsExist = sharedOk && pageDefsOk;
   // Contract exists either as the legacy per-page .defs.ts (v1), the generated per-workspace
   // `<pageId>.ts` (F3 v2), or the earlier per-bffCall `<pageId>.<bffId>.ts` files (back-compat).
   if (!defsExist || !hasPageContractArtifact(project, page)) return false;
@@ -5167,8 +5247,7 @@ function hasPageContractArtifact(project: number, page: CfePagePlan): boolean {
 }
 
 function hasMaterializedPageTs(project: number, page: CfePagePlan): boolean {
-  const file = mls.stor.files[mls.stor.getKeyToFile(pageTsFileInfo(project, page))];
-  return !!file && file.status !== 'deleted';
+  return discoveredPageGenomes(project, page).some(genome => pageHasStorFile(project, page, genome, '.ts'));
 }
 
 async function hasRegisteredFrontend(project: number, page: CfePagePlan): Promise<boolean> {
@@ -5195,12 +5274,9 @@ function frontendComponentTag(project: number, page: CfePagePlan, genome = 'page
   return convertFileToTag({ project, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId });
 }
 
-// page[ux][ui] genome. UX variants vary the UX digit and keep UI=1. Fixed at two genomes
-// (flow.json genomePolicy): page11 (baseline) and page21 (goal-first). page31+ is deprecated.
-// Three slots per workspace: page11 (bespoke) + page21/page31 (the two contrasting experiences of the
-// workspace's UX category). Was 2 before the 31/jul slot study.
+// page[ux][ui] genome. UX variants vary the UX digit and keep UI=1. Discovery still walks three
+// folders; how many are GENERATED is the category recipe (one by default, three with variants:all).
 const MAX_UX_VARIANTS = 3;
-const MAX_UX_SLOTS = MAX_UX_VARIANTS;
 function pageGenome(variantIndex: number): string { return `page${variantIndex + 1}1`; }
 
 function selectedTemplateId(prepared: CfePreparedPage, genome: string): string | undefined {
@@ -5211,8 +5287,12 @@ function contractFileInfo(project: number, page: CfePagePlan): FileInfo { return
 function sharedFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/shared`, shortName: page.pageId, extension: '.defs.ts' }; }
 function pageFileInfo(project: number, page: CfePagePlan, genome = 'page11'): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.defs.ts' }; }
 function pageTsFileInfo(project: number, page: CfePagePlan, genome = 'page11'): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.ts' }; }
-function pageCreateMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-create-pages`, shortName: page.pageId, extension: '.json' }; }
-function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/trace/frontend-register-pages`, shortName: page.pageId, extension: '.json' }; }
+function pageCreateMarkerFileInfo(project: number, page: CfePagePlan): FileInfo {
+  return cfePipelineTraceFileInfo(page.moduleName, page.pageId, 'frontend-create-pages', project);
+}
+function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInfo {
+  return cfePipelineTraceFileInfo(page.moduleName, page.pageId, 'frontend-register-pages', project);
+}
 
 function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string, folderModule = ''): CfeOperationDef | null {
   const operationId = readString(data.operationId);

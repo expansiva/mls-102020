@@ -758,31 +758,40 @@ test('addLanguage handoff preserves the region so en + en-AU can coexist', async
   assert.equal(mod.buildAddLanguageMessage(ctx(['pt-br']), pages), null);
 });
 
-// ---- three slots per workspace (31/jul slot study) ----
-// page11 bespoke + page21/page31 driven by the UX category's contrasting experience skills, all on the
-// REDUCED defs. A category with no skill file degrades that slot to bespoke instead of shipping a broken
-// pipeline path.
-test('slot plan: page11 bespoke, page21/page31 resolve the category experience skill', async () => {
-  const mod = await loadModule() as unknown as { buildLayoutVariantPlanForTest?: unknown };
-  void mod;
-  // Skill resolution reads the stor; install a fixture with only page21.md present for the category.
+// ---- recipe per category ----
+// Default: one genome (management → page31). variants:all restores page11 bespoke + page21/page31
+// experience skills. A category with no skill file degrades that slot to bespoke.
+test('slot plan default is one genome; variants:all restores three management slots', async () => {
   const key = (folder: string, shortName: string) => `102020/4/${folder}/${shortName}.md`;
   const priorFiles = g.mls.stor.files;
-  g.mls.stor.files = {
-    ...priorFiles,
-    [key('collabux/templates/financialTransactions', 'page21')]: { status: 'active' },
-  };
   try {
     const { readCreateContext, preparePageCreate } = await loadModule();
     installPetShopStor();
-    // installPetShopStor replaces the stor; re-add the skill fixture on top of it.
+    if (typeof g.mls.stor.getKeyToFile !== 'function') {
+      g.mls.stor.getKeyToFile = (info: { project: number; level: number; folder: string; shortName: string; extension: string }) =>
+        `${info.project}/${info.level}/${info.folder}/${info.shortName}${info.extension}`;
+    }
     g.mls.stor.files[key('collabux/templates/financialTransactions', 'page21')] = { status: 'active' };
+    g.mls.stor.files[key('collabux/templates/contentLanding', 'page11')] = { status: 'active' };
     const ctx = await readCreateContext();
     const page = ctx.pages.find((p: any) => p.pageId === 'catalog')!;
+    const catalogWs = ctx.journeys.find((j: any) => j.moduleName === 'petShop')?.workspaces.find((w: any) => w.workspaceId === 'catalog');
+    assert.ok(catalogWs, 'catalog workspace present');
     const prepared = await preparePageCreate(page, ctx);
-    const genomes = prepared.variantPlan.map((v: any) => v.genome);
-    assert.deepEqual(genomes, ['page11', 'page21', 'page31'], 'three slots are planned');
-    assert.equal(prepared.variantPlan[0].experienceSkill, undefined, 'page11 is bespoke');
+    assert.deepEqual(prepared.variantPlan.map((v: any) => v.genome), ['page31'], 'management default is the measured winner');
+    assert.equal(prepared.variantPlan[0].templateId, 'goal_first');
+
+    ctx.uxVariants = 'all';
+    const all = await preparePageCreate(page, ctx);
+    assert.deepEqual(all.variantPlan.map((v: any) => v.genome), ['page11', 'page21', 'page31']);
+    assert.equal(all.variantPlan[0].experienceSkill, undefined, 'page11 is bespoke');
+
+    catalogWs.categoryRef = 'contentLanding';
+    ctx.uxVariants = 'default';
+    const landing = await preparePageCreate(page, ctx);
+    assert.deepEqual(landing.variantPlan.map((v: any) => v.genome), ['page11']);
+    assert.equal(landing.variantPlan[0].experienceSkill, '_102020_/l4/collabux/templates/contentLanding/page11.md');
+    assert.notEqual(landing.variantPlan[0].templateId, 'goal_first');
   } finally {
     g.mls.stor.files = priorFiles;
   }

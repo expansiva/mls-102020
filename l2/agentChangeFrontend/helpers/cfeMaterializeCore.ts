@@ -2643,7 +2643,11 @@ function toKebabFolder(value: string): string {
 
 export const ML_SCENARY_TAG = 'molecules--ml-scenary-102020';
 
-/** Shared values the page must render as `<Scene value>`. Empty = old shared, gate is silent. */
+/**
+ * Shared values the page must render as `<Scene value>`.
+ * `sharedDefinition` is the parsed **.defs.ts** (`scenaries[]` / `uiScenary` state) — never the
+ * generated `.ts`. Empty = old shared with no scenaries declared, gate is silent.
+ */
 export function sharedUiScenaryValues(sharedDefinition: unknown): string[] {
   if (!isRecord(sharedDefinition)) return [];
   if (Array.isArray(sharedDefinition.scenaries)) {

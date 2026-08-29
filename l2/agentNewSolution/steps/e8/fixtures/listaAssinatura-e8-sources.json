@@ -1,0 +1,1449 @@
+{
+  "note": "Snapshot of listaAssinatura E8 inputs (copied from mls-102047 l4). Tests must not read mls-102047. Petition.cardinality=singleton is the E8 consume-path for T3.",
+  "journeys": {
+    "planId": "e2-review",
+    "moduleName": "listaAssinatura",
+    "userLanguage": "pt-BR",
+    "title": "Jornadas",
+    "reviewRound": 1,
+    "features": [
+      {
+        "featureId": "petitionPresentation",
+        "title": "Apresentação informativa da petição",
+        "priority": "now",
+        "journeyStepRefs": [
+          "signPetitionAsMorador.locatePetition",
+          "signPetitionAsMorador.inspectPetition",
+          "signPetitionAsResponsavelJovem.locatePetition",
+          "signPetitionAsResponsavelJovem.inspectPetition",
+          "signPetitionAsVisitante.locatePetition",
+          "signPetitionAsVisitante.inspectPetition"
+        ]
+      },
+      {
+        "featureId": "petitionSigning",
+        "title": "Coleta de assinaturas da petição",
+        "priority": "now",
+        "journeyStepRefs": [
+          "signPetitionAsMorador.locatePetition",
+          "signPetitionAsMorador.registerPetitionSignature",
+          "signPetitionAsResponsavelJovem.locatePetition",
+          "signPetitionAsResponsavelJovem.registerPetitionSignature",
+          "signPetitionAsVisitante.locatePetition",
+          "signPetitionAsVisitante.registerPetitionSignature"
+        ]
+      },
+      {
+        "featureId": "cpfValidation",
+        "title": "Validação de CPF e unicidade de assinatura",
+        "priority": "now",
+        "journeyStepRefs": [
+          "signPetitionAsMorador.registerPetitionSignature",
+          "signPetitionAsResponsavelJovem.registerPetitionSignature",
+          "signPetitionAsVisitante.registerPetitionSignature"
+        ]
+      },
+      {
+        "featureId": "publicSignatureCount",
+        "title": "Contador público de assinaturas válidas",
+        "priority": "now",
+        "journeyStepRefs": [
+          "signPetitionAsMorador.inspectPetition",
+          "signPetitionAsResponsavelJovem.inspectPetition",
+          "signPetitionAsVisitante.inspectPetition",
+          "exportPetitionSignatures.locatePetition",
+          "exportPetitionSignatures.inspectPetition"
+        ]
+      },
+      {
+        "featureId": "administratorSignatureExport",
+        "title": "Exportação administrativa de assinaturas",
+        "priority": "now",
+        "journeyStepRefs": [
+          "exportPetitionSignatures.locatePetition",
+          "exportPetitionSignatures.generateSignatureExport"
+        ]
+      }
+    ],
+    "systemDecisions": [],
+    "journeys": [
+      {
+        "journeyId": "exportPetitionSignatures",
+        "policyDecisions": [],
+        "business": {
+          "actorRef": "administradorCondominio",
+          "title": "Acompanhar adesão e exportar assinaturas",
+          "goal": "Acompanhar a adesão à petição e obter o arquivo de assinaturas válidas para administração do condomínio.",
+          "entry": {
+            "mode": "coldStart"
+          },
+          "steps": [
+            {
+              "stepId": "locatePetition",
+              "kind": "locate",
+              "entity": "Petition",
+              "title": "Localizar a petição publicada",
+              "description": "A petição pública do condomínio está selecionada para acompanhamento administrativo.",
+              "featureRefs": [
+                "publicSignatureCount",
+                "administratorSignatureExport"
+              ]
+            },
+            {
+              "stepId": "inspectPetition",
+              "kind": "inspect",
+              "entity": "Petition",
+              "title": "Acompanhar o total de assinaturas",
+              "description": "O total atualizado de assinaturas válidas da petição está visível.",
+              "featureRefs": [
+                "publicSignatureCount"
+              ]
+            },
+            {
+              "stepId": "generateSignatureExport",
+              "kind": "act",
+              "entity": "PetitionSignatureExport",
+              "title": "Baixar o arquivo de assinaturas",
+              "description": "O arquivo assinaturas.csv com todas as assinaturas válidas coletadas fica disponível para download.",
+              "featureRefs": [
+                "administratorSignatureExport"
+              ]
+            }
+          ],
+          "outcome": {
+            "statement": "O administrador acompanha a adesão e obtém o arquivo de assinaturas para uso administrativo.",
+            "evidence": [
+              "O total de assinaturas válidas é apresentado.",
+              "O arquivo assinaturas.csv é disponibilizado ao administrador.",
+              "O arquivo reúne as assinaturas válidas da petição."
+            ]
+          },
+          "useRules": [
+            "petitionMustBePublished"
+          ]
+        }
+      },
+      {
+        "journeyId": "signPetitionAsMorador",
+        "policyDecisions": [],
+        "business": {
+          "actorRef": "morador",
+          "title": "Conhecer e assinar a petição como morador",
+          "goal": "Conhecer a proposta de circulação supervisionada de patinetes e scooters e registrar uma assinatura válida.",
+          "entry": {
+            "mode": "coldStart"
+          },
+          "steps": [
+            {
+              "stepId": "locatePetition",
+              "kind": "locate",
+              "entity": "Petition",
+              "title": "Localizar a petição publicada",
+              "description": "A petição pública disponibilizada pelo conteúdo institucional do condomínio está selecionada.",
+              "featureRefs": [
+                "petitionPresentation",
+                "petitionSigning"
+              ]
+            },
+            {
+              "stepId": "inspectPetition",
+              "kind": "inspect",
+              "entity": "Petition",
+              "title": "Conhecer a proposta e a adesão atual",
+              "description": "Os textos, as imagens, a orientação de supervisão dos responsáveis e o total atual de assinaturas válidas estão visíveis.",
+              "featureRefs": [
+                "petitionPresentation",
+                "publicSignatureCount"
+              ]
+            },
+            {
+              "stepId": "registerPetitionSignature",
+              "kind": "act",
+              "entity": "PetitionSignature",
+              "title": "Registrar a assinatura",
+              "description": "Uma assinatura válida com CPF, nome e data de nascimento fica registrada na petição.",
+              "featureRefs": [
+                "petitionSigning",
+                "cpfValidation"
+              ]
+            }
+          ],
+          "outcome": {
+            "statement": "O morador conhece a proposta e sua manifestação de apoio é incluída uma única vez na petição.",
+            "evidence": [
+              "A proposta e a supervisão dos responsáveis foram apresentadas ao morador.",
+              "O total público reflete as assinaturas válidas coletadas.",
+              "A assinatura registrada possui CPF, nome e data de nascimento."
+            ]
+          },
+          "useRules": [
+            "petitionMustBePublished",
+            "cpfMustBeValid",
+            "petitionSignatureMustContainIdentityDetails",
+            "onePetitionSignaturePerCpf"
+          ]
+        }
+      },
+      {
+        "journeyId": "signPetitionAsResponsavelJovem",
+        "policyDecisions": [],
+        "business": {
+          "actorRef": "responsavelJovem",
+          "title": "Apoiar a petição como responsável por jovem",
+          "goal": "Conhecer a proposta e apoiar a circulação de jovens acima de 12 anos sob supervisão dos responsáveis.",
+          "entry": {
+            "mode": "coldStart"
+          },
+          "steps": [
+            {
+              "stepId": "locatePetition",
+              "kind": "locate",
+              "entity": "Petition",
+              "title": "Localizar a petição publicada",
+              "description": "A petição pública disponibilizada pelo conteúdo institucional do condomínio está selecionada.",
+              "featureRefs": [
+                "petitionPresentation",
+                "petitionSigning"
+              ]
+            },
+            {
+              "stepId": "inspectPetition",
+              "kind": "inspect",
+              "entity": "Petition",
+              "title": "Conhecer as condições da proposta",
+              "description": "Os textos, as imagens, a condição de supervisão dos responsáveis e o total atual de assinaturas válidas estão visíveis.",
+              "featureRefs": [
+                "petitionPresentation",
+                "publicSignatureCount"
+              ]
+            },
+            {
+              "stepId": "registerPetitionSignature",
+              "kind": "act",
+              "entity": "PetitionSignature",
+              "title": "Registrar o apoio à petição",
+              "description": "Uma assinatura válida com CPF, nome e data de nascimento fica registrada na petição.",
+              "featureRefs": [
+                "petitionSigning",
+                "cpfValidation"
+              ]
+            }
+          ],
+          "outcome": {
+            "statement": "O responsável por jovem registra seu apoio informado à proposta de uso supervisionado.",
+            "evidence": [
+              "As condições de supervisão foram apresentadas antes da assinatura.",
+              "A assinatura válida é contabilizada no total público.",
+              "Não há mais de uma assinatura válida para o mesmo CPF."
+            ]
+          },
+          "useRules": [
+            "petitionMustBePublished",
+            "cpfMustBeValid",
+            "petitionSignatureMustContainIdentityDetails",
+            "onePetitionSignaturePerCpf"
+          ]
+        }
+      },
+      {
+        "journeyId": "signPetitionAsVisitante",
+        "policyDecisions": [],
+        "business": {
+          "actorRef": "visitante",
+          "title": "Conhecer e assinar a petição como visitante",
+          "goal": "Acessar a proposta pública e registrar uma única assinatura válida.",
+          "entry": {
+            "mode": "coldStart"
+          },
+          "steps": [
+            {
+              "stepId": "locatePetition",
+              "kind": "locate",
+              "entity": "Petition",
+              "title": "Localizar a petição publicada",
+              "description": "A petição pública disponibilizada pelo conteúdo institucional do condomínio está selecionada.",
+              "featureRefs": [
+                "petitionPresentation",
+                "petitionSigning"
+              ]
+            },
+            {
+              "stepId": "inspectPetition",
+              "kind": "inspect",
+              "entity": "Petition",
+              "title": "Consultar a proposta e a adesão atual",
+              "description": "Os textos, as imagens, a orientação de supervisão dos responsáveis e o total atual de assinaturas válidas estão visíveis.",
+              "featureRefs": [
+                "petitionPresentation",
+                "publicSignatureCount"
+              ]
+            },
+            {
+              "stepId": "registerPetitionSignature",
+              "kind": "act",
+              "entity": "PetitionSignature",
+              "title": "Assinar a petição",
+              "description": "Uma assinatura válida com CPF, nome e data de nascimento fica registrada na petição.",
+              "featureRefs": [
+                "petitionSigning",
+                "cpfValidation"
+              ]
+            }
+          ],
+          "outcome": {
+            "statement": "O visitante pode apoiar a petição pública uma única vez com dados válidos.",
+            "evidence": [
+              "A proposta está disponível para consulta pública.",
+              "O CPF da assinatura é validado.",
+              "A assinatura válida aumenta o total exibido na petição."
+            ]
+          },
+          "useRules": [
+            "petitionMustBePublished",
+            "cpfMustBeValid",
+            "petitionSignatureMustContainIdentityDetails",
+            "onePetitionSignaturePerCpf"
+          ]
+        }
+      }
+    ]
+  },
+  "policyDecisionSelections": [
+    {
+      "decisionId": "moradorSignerAgeEligibility",
+      "generatedChoice": "A data de nascimento é informativa para identificar o signatário; qualquer pessoa pode assinar.",
+      "selectedChoice": "A data de nascimento é informativa para identificar o signatário; qualquer pessoa pode assinar.",
+      "selectedBy": "auto",
+      "selectedAt": "2026-08-29T18:16:24.522Z"
+    },
+    {
+      "decisionId": "moradorDuplicateCpfTreatment",
+      "generatedChoice": "A nova assinatura é recusada e a assinatura válida já registrada é preservada.",
+      "selectedChoice": "A nova assinatura é recusada e a assinatura válida já registrada é preservada.",
+      "selectedBy": "auto",
+      "selectedAt": "2026-08-29T18:16:24.522Z"
+    },
+    {
+      "decisionId": "responsavelSignerAgeEligibility",
+      "generatedChoice": "A data de nascimento é informativa para identificar o signatário; qualquer pessoa pode assinar.",
+      "selectedChoice": "A data de nascimento é informativa para identificar o signatário; qualquer pessoa pode assinar.",
+      "selectedBy": "auto",
+      "selectedAt": "2026-08-29T18:16:24.522Z"
+    },
+    {
+      "decisionId": "responsavelDuplicateCpfTreatment",
+      "generatedChoice": "A nova assinatura é recusada e a assinatura válida já registrada é preservada.",
+      "selectedChoice": "A nova assinatura é recusada e a assinatura válida já registrada é preservada.",
+      "selectedBy": "auto",
+      "selectedAt": "2026-08-29T18:16:24.522Z"
+    },
+    {
+      "decisionId": "visitanteSignerAgeEligibility",
+      "generatedChoice": "A data de nascimento é informativa para identificar o signatário; qualquer pessoa pode assinar.",
+      "selectedChoice": "A data de nascimento é informativa para identificar o signatário; qualquer pessoa pode assinar.",
+      "selectedBy": "auto",
+      "selectedAt": "2026-08-29T18:16:24.522Z"
+    },
+    {
+      "decisionId": "visitanteDuplicateCpfTreatment",
+      "generatedChoice": "A nova assinatura é recusada e a assinatura válida já registrada é preservada.",
+      "selectedChoice": "A nova assinatura é recusada e a assinatura válida já registrada é preservada.",
+      "selectedBy": "auto",
+      "selectedAt": "2026-08-29T18:16:24.522Z"
+    },
+    {
+      "decisionId": "signatureExportScope",
+      "generatedChoice": "O arquivo contém todas as assinaturas válidas coletadas na petição.",
+      "selectedChoice": "O arquivo contém todas as assinaturas válidas coletadas na petição.",
+      "selectedBy": "auto",
+      "selectedAt": "2026-08-29T18:16:24.522Z"
+    }
+  ],
+  "access": {
+    "moduleName": "listaAssinatura",
+    "userLanguage": "pt-BR",
+    "title": "Matriz de acesso da Lista de Assinaturas",
+    "profiles": [
+      {
+        "profileId": "morador",
+        "title": "Morador",
+        "kind": "internal",
+        "description": "Morador que consulta a proposta pública e pode registrar uma assinatura de apoio em seu próprio nome.",
+        "actorRefs": [
+          "morador"
+        ],
+        "landingIntent": "Conhecer a proposta, acompanhar a adesão pública e assinar a petição uma única vez."
+      },
+      {
+        "profileId": "responsavelJovem",
+        "title": "Responsável por jovem",
+        "kind": "internal",
+        "description": "Responsável que consulta as condições de supervisão e pode registrar seu apoio à petição.",
+        "actorRefs": [
+          "responsavelJovem"
+        ],
+        "landingIntent": "Consultar as condições da proposta, incluindo a supervisão dos responsáveis, e registrar uma assinatura única."
+      },
+      {
+        "profileId": "visitante",
+        "title": "Visitante",
+        "kind": "external",
+        "description": "Pessoa sem vínculo administrativo com o condomínio que pode consultar a proposta pública e assiná-la uma única vez.",
+        "actorRefs": [
+          "visitante"
+        ],
+        "landingIntent": "Conhecer a proposta pública, visualizar o total de adesões e registrar uma assinatura válida."
+      },
+      {
+        "profileId": "administradorCondominio",
+        "title": "Administrador do condomínio",
+        "kind": "internal",
+        "description": "Administrador responsável por acompanhar a adesão pública e obter a relação completa de assinaturas válidas para uso administrativo.",
+        "actorRefs": [
+          "administradorCondominio"
+        ],
+        "landingIntent": "Acompanhar o total de adesões e baixar o arquivo administrativo com as assinaturas válidas."
+      }
+    ],
+    "authorities": [
+      {
+        "authorityRef": "listaassinatura:consultar-publicacao",
+        "title": "Consultar proposta e adesão pública",
+        "description": "Permite consultar exclusivamente o conteúdo publicado da petição, as imagens disponibilizadas, as condições de supervisão e o total agregado de assinaturas válidas.",
+        "journeyStepRefs": [
+          "signPetitionAsMorador.locatePetition",
+          "signPetitionAsMorador.inspectPetition",
+          "signPetitionAsResponsavelJovem.locatePetition",
+          "signPetitionAsResponsavelJovem.inspectPetition",
+          "signPetitionAsVisitante.locatePetition",
+          "signPetitionAsVisitante.inspectPetition",
+          "exportPetitionSignatures.locatePetition",
+          "exportPetitionSignatures.inspectPetition"
+        ],
+        "informationNeeds": [
+          "Conteúdo publicado da proposta sobre patinetes e scooters",
+          "Orientação publicada de supervisão dos responsáveis",
+          "Total agregado de assinaturas válidas da petição"
+        ]
+      },
+      {
+        "authorityRef": "listaassinatura:assinar-peticao",
+        "title": "Registrar assinatura única na petição",
+        "description": "Permite informar CPF, nome e data de nascimento para registrar uma única assinatura válida na petição publicada.",
+        "journeyStepRefs": [
+          "signPetitionAsMorador.registerPetitionSignature",
+          "signPetitionAsResponsavelJovem.registerPetitionSignature",
+          "signPetitionAsVisitante.registerPetitionSignature"
+        ],
+        "informationNeeds": []
+      },
+      {
+        "authorityRef": "listaassinatura:exportar-assinaturas",
+        "title": "Exportar assinaturas válidas",
+        "description": "Permite obter o arquivo administrativo assinaturas.csv contendo todas as assinaturas válidas coletadas na petição.",
+        "journeyStepRefs": [
+          "exportPetitionSignatures.generateSignatureExport"
+        ],
+        "informationNeeds": [
+          "Arquivo administrativo com nome, CPF e data de nascimento das assinaturas válidas"
+        ]
+      }
+    ],
+    "grants": [
+      {
+        "profileRef": "morador",
+        "authorityRef": "listaassinatura:consultar-publicacao",
+        "reason": "O morador precisa conhecer a proposta publicada e acompanhar a quantidade pública de adesões antes ou depois de manifestar apoio.",
+        "dataScope": {
+          "mode": "public",
+          "description": "Somente a petição publicada e suas informações liberadas para consulta pública."
+        },
+        "disclosure": {
+          "mode": "fieldsOnly",
+          "description": "A consulta expõe apenas o conteúdo institucional publicado e o número agregado de assinaturas, sem identificar signatários.",
+          "allowedInformation": [
+            "Textos publicados da proposta",
+            "Imagens publicadas da proposta",
+            "Condição publicada de supervisão dos responsáveis",
+            "Total atual de assinaturas válidas"
+          ],
+          "deniedInformation": [
+            "Nome de signatários",
+            "CPF de signatários",
+            "Data de nascimento de signatários",
+            "Arquivo assinaturas.csv",
+            "Dados individuais de qualquer assinatura"
+          ]
+        },
+        "useRules": [
+          "petitionMustBePublished"
+        ]
+      },
+      {
+        "profileRef": "morador",
+        "authorityRef": "listaassinatura:assinar-peticao",
+        "reason": "O morador pode registrar seu apoio à petição com seus próprios dados de identificação.",
+        "dataScope": {
+          "mode": "own",
+          "description": "Somente os dados fornecidos pelo próprio morador durante o seu pedido de assinatura; não concede consulta a assinaturas existentes."
+        },
+        "disclosure": {
+          "mode": "fieldsOnly",
+          "description": "A assinatura aceita somente os dados necessários para a manifestação e retorna apenas o resultado do próprio registro.",
+          "allowedInformation": [
+            "CPF informado pelo próprio signatário",
+            "Nome informado pelo próprio signatário",
+            "Data de nascimento informada pelo próprio signatário",
+            "Confirmação ou recusa do registro da própria assinatura"
+          ],
+          "deniedInformation": [
+            "CPF de outros signatários",
+            "Nome de outros signatários",
+            "Data de nascimento de outros signatários",
+            "Lista de assinaturas",
+            "Detalhes de assinaturas já registradas"
+          ]
+        },
+        "useRules": [
+          "petitionMustBePublished",
+          "cpfMustBeValid",
+          "petitionSignatureMustContainIdentityDetails",
+          "onePetitionSignaturePerCpf"
+        ]
+      },
+      {
+        "profileRef": "responsavelJovem",
+        "authorityRef": "listaassinatura:consultar-publicacao",
+        "reason": "O responsável precisa avaliar a proposta e as condições de supervisão antes de apoiar a petição.",
+        "dataScope": {
+          "mode": "public",
+          "description": "Somente a petição publicada e suas informações liberadas para consulta pública."
+        },
+        "disclosure": {
+          "mode": "fieldsOnly",
+          "description": "A consulta mostra o conteúdo institucional e o total agregado, sem revelar dados pessoais de signatários.",
+          "allowedInformation": [
+            "Textos publicados da proposta",
+            "Imagens publicadas da proposta",
+            "Condição publicada de supervisão dos responsáveis",
+            "Total atual de assinaturas válidas"
+          ],
+          "deniedInformation": [
+            "Nome de signatários",
+            "CPF de signatários",
+            "Data de nascimento de signatários",
+            "Arquivo assinaturas.csv",
+            "Dados individuais de qualquer assinatura"
+          ]
+        },
+        "useRules": [
+          "petitionMustBePublished"
+        ]
+      },
+      {
+        "profileRef": "responsavelJovem",
+        "authorityRef": "listaassinatura:assinar-peticao",
+        "reason": "O responsável por jovem pode registrar seu apoio individual à proposta.",
+        "dataScope": {
+          "mode": "own",
+          "description": "Somente os dados informados pelo próprio responsável no momento de solicitar a sua assinatura."
+        },
+        "disclosure": {
+          "mode": "fieldsOnly",
+          "description": "A interação limita-se aos dados necessários para a própria assinatura e ao resultado do seu processamento.",
+          "allowedInformation": [
+            "CPF informado pelo próprio signatário",
+            "Nome informado pelo próprio signatário",
+            "Data de nascimento informada pelo próprio signatário",
+            "Confirmação ou recusa do registro da própria assinatura"
+          ],
+          "deniedInformation": [
+            "CPF de outros signatários",
+            "Nome de outros signatários",
+            "Data de nascimento de outros signatários",
+            "Lista de assinaturas",
+            "Detalhes de assinaturas já registradas"
+          ]
+        },
+        "useRules": [
+          "petitionMustBePublished",
+          "cpfMustBeValid",
+          "petitionSignatureMustContainIdentityDetails",
+          "onePetitionSignaturePerCpf"
+        ]
+      },
+      {
+        "profileRef": "visitante",
+        "authorityRef": "listaassinatura:consultar-publicacao",
+        "reason": "A proposta deve ser acessível a qualquer pessoa interessada em conhecê-la e acompanhar a adesão geral.",
+        "dataScope": {
+          "mode": "public",
+          "description": "Exclusivamente a petição publicada e o total agregado liberado ao público; nunca dados organizacionais ou pessoais."
+        },
+        "disclosure": {
+          "mode": "fieldsOnly",
+          "description": "A consulta pública não expõe a identidade nem dados de qualquer pessoa que assinou.",
+          "allowedInformation": [
+            "Textos publicados da proposta",
+            "Imagens publicadas da proposta",
+            "Condição publicada de supervisão dos responsáveis",
+            "Total atual de assinaturas válidas"
+          ],
+          "deniedInformation": [
+            "Nome de signatários",
+            "CPF de signatários",
+            "Data de nascimento de signatários",
+            "Arquivo assinaturas.csv",
+            "Dados individuais de qualquer assinatura"
+          ]
+        },
+        "useRules": [
+          "petitionMustBePublished"
+        ]
+      },
+      {
+        "profileRef": "visitante",
+        "authorityRef": "listaassinatura:assinar-peticao",
+        "reason": "Qualquer pessoa pode apoiar a petição, desde que informe dados válidos e ainda não tenha assinado com o mesmo CPF.",
+        "dataScope": {
+          "mode": "public",
+          "description": "Permite solicitar uma assinatura na petição pública, restrita aos dados enviados pelo próprio visitante e sem acesso a registros preexistentes."
+        },
+        "disclosure": {
+          "mode": "fieldsOnly",
+          "description": "O visitante fornece seus próprios dados e recebe somente a confirmação ou a recusa da própria tentativa de assinatura.",
+          "allowedInformation": [
+            "CPF informado pelo próprio signatário",
+            "Nome informado pelo próprio signatário",
+            "Data de nascimento informada pelo próprio signatário",
+            "Confirmação ou recusa do registro da própria assinatura"
+          ],
+          "deniedInformation": [
+            "CPF de outros signatários",
+            "Nome de outros signatários",
+            "Data de nascimento de outros signatários",
+            "Lista de assinaturas",
+            "Detalhes de assinaturas já registradas"
+          ]
+        },
+        "useRules": [
+          "petitionMustBePublished",
+          "cpfMustBeValid",
+          "petitionSignatureMustContainIdentityDetails",
+          "onePetitionSignaturePerCpf"
+        ]
+      },
+      {
+        "profileRef": "administradorCondominio",
+        "authorityRef": "listaassinatura:consultar-publicacao",
+        "reason": "O administrador acompanha a proposta publicada e o total geral de adesões para orientar a administração do condomínio.",
+        "dataScope": {
+          "mode": "public",
+          "description": "Consulta à petição publicada e ao seu total agregado de assinaturas válidas."
+        },
+        "disclosure": {
+          "mode": "fieldsOnly",
+          "description": "Esta capacidade de acompanhamento não revela assinaturas individuais; os dados pessoais são tratados apenas pela autorização específica de exportação.",
+          "allowedInformation": [
+            "Textos publicados da proposta",
+            "Imagens publicadas da proposta",
+            "Condição publicada de supervisão dos responsáveis",
+            "Total atual de assinaturas válidas"
+          ],
+          "deniedInformation": [
+            "Nome de signatários nesta consulta",
+            "CPF de signatários nesta consulta",
+            "Data de nascimento de signatários nesta consulta",
+            "Detalhes individuais de assinaturas nesta consulta"
+          ]
+        },
+        "useRules": [
+          "petitionMustBePublished"
+        ]
+      },
+      {
+        "profileRef": "administradorCondominio",
+        "authorityRef": "listaassinatura:exportar-assinaturas",
+        "reason": "O administrador do condomínio precisa obter a relação integral das assinaturas válidas para a finalidade administrativa declarada da petição.",
+        "dataScope": {
+          "mode": "organization",
+          "description": "Todas as assinaturas válidas da petição no contexto organizacional ativo do condomínio."
+        },
+        "disclosure": {
+          "mode": "fieldsOnly",
+          "description": "A exportação é limitada ao arquivo assinaturas.csv e aos dados indispensáveis das assinaturas válidas, sem incluir dados internos adicionais.",
+          "allowedInformation": [
+            "Nome do signatário",
+            "CPF do signatário",
+            "Data de nascimento do signatário",
+            "Indicação de assinatura válida",
+            "Arquivo assinaturas.csv"
+          ],
+          "deniedInformation": [
+            "Assinaturas recusadas ou inválidas",
+            "Dados de autenticação",
+            "Dados de sessão",
+            "Anotações internas",
+            "Informações administrativas não relacionadas à assinatura"
+          ]
+        },
+        "useRules": [
+          "petitionMustBePublished",
+          "exportContainsOnlyValidPetitionSignatures"
+        ]
+      }
+    ]
+  },
+  "ontology": {
+    "moduleName": "listaAssinatura",
+    "entities": [
+      {
+        "entityId": "Petition",
+        "title": "Petição",
+        "description": "Registro institucional da proposta pública sobre a liberação de patinetes e scooters para jovens acima de 12 anos no condomínio, incluindo os textos publicados, a orientação de supervisão dos responsáveis e referências a imagens armazenadas pela plataforma. A petição é o contexto selecionado para a apresentação pública, a contagem de adesões, o registro de assinaturas e a exportação administrativa.",
+        "kind": "core",
+        "ownership": "moduleOwned",
+        "party": "none",
+        "sourceRefs": {
+          "journeyIds": [
+            "signPetitionAsMorador",
+            "signPetitionAsResponsavelJovem",
+            "signPetitionAsVisitante",
+            "exportPetitionSignatures"
+          ],
+          "featureIds": [
+            "petitionPresentation",
+            "petitionSigning",
+            "publicSignatureCount",
+            "administratorSignatureExport"
+          ],
+          "authorityRefs": [
+            "listaassinatura:consultar-publicacao",
+            "listaassinatura:assinar-peticao",
+            "listaassinatura:exportar-assinaturas"
+          ]
+        },
+        "fields": [
+          {
+            "fieldId": "petitionId",
+            "title": "Identificador da petição",
+            "type": "uuid",
+            "required": true,
+            "description": "Identificador estável da petição, transportado como contexto entre as etapas conectadas.",
+            "constraints": [
+              {
+                "constraintId": "uniquePetitionId",
+                "kind": "unique",
+                "value": "true",
+                "description": "Cada petição possui um identificador estável exclusivo.",
+                "source": "inferred"
+              }
+            ]
+          },
+          {
+            "fieldId": "status",
+            "title": "Status",
+            "type": "string",
+            "required": true,
+            "description": "Situação do ciclo de vida da petição para edição, publicação e encerramento.",
+            "constraints": [
+              {
+                "constraintId": "petitionStatusEnum",
+                "kind": "enum",
+                "value": "[\"draft\",\"published\",\"closed\"]",
+                "description": "Estados permitidos para a petição.",
+                "source": "journey"
+              }
+            ],
+            "enum": [
+              "draft",
+              "published",
+              "closed"
+            ]
+          },
+          {
+            "fieldId": "title",
+            "title": "Título da petição",
+            "type": "string",
+            "required": true,
+            "description": "Título público que apresenta a proposta de liberação supervisionada de patinetes e scooters.",
+            "constraints": []
+          },
+          {
+            "fieldId": "proposalText",
+            "title": "Texto da proposta",
+            "type": "text",
+            "required": true,
+            "description": "Conteúdo institucional publicado que explica a proposta de circulação de patinetes e scooters para jovens acima de 12 anos no condomínio.",
+            "constraints": []
+          },
+          {
+            "fieldId": "supervisionGuidance",
+            "title": "Orientação de supervisão",
+            "type": "text",
+            "required": true,
+            "description": "Orientação publicada sobre a supervisão dos responsáveis durante a circulação dos jovens.",
+            "constraints": []
+          },
+          {
+            "fieldId": "imageReferences",
+            "title": "Referências das imagens",
+            "type": "json",
+            "required": true,
+            "description": "Referências às imagens da proposta mantidas no armazenamento de mídia da plataforma e exibidas na apresentação pública.",
+            "constraints": []
+          }
+        ],
+        "lifecycleStates": [
+          "draft",
+          "published",
+          "closed"
+        ],
+        "statusEnum": [
+          "draft",
+          "published",
+          "closed"
+        ],
+        "lifecycleLabels": [
+          {
+            "code": "draft",
+            "label": "Rascunho"
+          },
+          {
+            "code": "published",
+            "label": "Publicada"
+          },
+          {
+            "code": "closed",
+            "label": "Encerrada"
+          }
+        ],
+        "initialState": "draft",
+        "terminalStates": [
+          "closed"
+        ],
+        "lifecyclePredicates": [
+          {
+            "predicateId": "publishedForPublicAccess",
+            "description": "A petição está disponível para consulta pública, coleta de assinaturas e exportação administrativa somente quando está publicada.",
+            "stateIds": [
+              "published"
+            ],
+            "source": "journey"
+          }
+        ],
+        "useRules": [
+          "petitionMustBePublished"
+        ],
+        "storage": {
+          "target": "moduleDatabase",
+          "scope": "module",
+          "idField": "petitionId",
+          "notes": "A petição é um registro operacional de campanha do módulo, vinculado ao contexto organizacional ativo do condomínio. Os arquivos de imagem permanecem sob armazenamento e entrega de mídia da plataforma, referenciados pela petição sem recriar um repositório de arquivos."
+        },
+        "approvedBy": "auto",
+        "approvedAt": "2026-08-29T18:19:03.410Z",
+        "cardinality": "singleton"
+      },
+      {
+        "entityId": "PetitionSignature",
+        "title": "Assinatura da petição",
+        "description": "Manifestação individual de apoio de um signatário a uma petição específica. O registro é criado somente depois da validação do CPF e da confirmação de que ainda não existe assinatura válida para o mesmo CPF naquela petição; tentativas recusadas ou inválidas não são assinaturas válidas persistidas. Cada assinatura válida preserva a associação à petição e ao signatário identificado.",
+        "kind": "core",
+        "ownership": "moduleOwned",
+        "party": "none",
+        "sourceRefs": {
+          "journeyIds": [
+            "signPetitionAsMorador",
+            "signPetitionAsResponsavelJovem",
+            "signPetitionAsVisitante"
+          ],
+          "featureIds": [
+            "petitionSigning",
+            "cpfValidation",
+            "publicSignatureCount",
+            "administratorSignatureExport"
+          ],
+          "authorityRefs": [
+            "listaassinatura:assinar-peticao",
+            "listaassinatura:consultar-publicacao",
+            "listaassinatura:exportar-assinaturas"
+          ]
+        },
+        "fields": [
+          {
+            "fieldId": "petitionSignatureId",
+            "title": "Identificador da assinatura",
+            "type": "uuid",
+            "required": true,
+            "description": "Identificador estável da assinatura válida, mantido entre as etapas conectadas da jornada.",
+            "constraints": [
+              {
+                "constraintId": "uniquePetitionSignatureId",
+                "kind": "unique",
+                "value": "true",
+                "description": "Cada assinatura válida possui um identificador estável exclusivo.",
+                "source": "inferred"
+              }
+            ]
+          },
+          {
+            "fieldId": "status",
+            "title": "Situação",
+            "type": "string",
+            "required": true,
+            "description": "Situação de validade da assinatura para contagem pública e exportação administrativa.",
+            "constraints": [
+              {
+                "constraintId": "petitionSignatureStatusEnum",
+                "kind": "enum",
+                "value": "[\"valid\"]",
+                "description": "Estados permitidos para a assinatura.",
+                "source": "journey"
+              }
+            ],
+            "enum": [
+              "valid"
+            ]
+          },
+          {
+            "fieldId": "petitionId",
+            "title": "Petição",
+            "type": "uuid",
+            "required": true,
+            "description": "Referência à petição já selecionada no contexto da jornada de assinatura.",
+            "constraints": []
+          },
+          {
+            "fieldId": "petitionSignerId",
+            "title": "Signatário",
+            "type": "uuid",
+            "required": true,
+            "description": "Referência à pessoa signatária identificada por nome, CPF e data de nascimento.",
+            "constraints": []
+          }
+        ],
+        "lifecycleStates": [
+          "valid"
+        ],
+        "statusEnum": [
+          "valid"
+        ],
+        "lifecycleLabels": [
+          {
+            "code": "valid",
+            "label": "Válida"
+          }
+        ],
+        "initialState": "valid",
+        "lifecyclePredicates": [
+          {
+            "predicateId": "validForCountingAndExport",
+            "description": "Uma assinatura conta para a adesão pública e integra a exportação administrativa enquanto está no estado válida.",
+            "stateIds": [
+              "valid"
+            ],
+            "source": "journey"
+          }
+        ],
+        "useRules": [
+          "petitionMustBePublished",
+          "cpfMustBeValid",
+          "petitionSignatureMustContainIdentityDetails",
+          "onePetitionSignaturePerCpf"
+        ],
+        "storage": {
+          "target": "moduleDatabase",
+          "scope": "module",
+          "idField": "petitionSignatureId",
+          "notes": "A assinatura é um fato transacional do módulo. Ela é mantida separada do cadastro mestre da pessoa para preservar o vínculo histórico entre a manifestação válida, a petição e o signatário."
+        },
+        "approvedBy": "auto",
+        "approvedAt": "2026-08-29T18:19:03.410Z"
+      },
+      {
+        "entityId": "PetitionSignatureCount",
+        "title": "Total público de assinaturas",
+        "description": "Projeção calculada que apresenta, para uma petição publicada, o total agregado de assinaturas válidas. Não identifica nem expõe dados pessoais dos signatários.",
+        "kind": "projection",
+        "ownership": "derived",
+        "party": "none",
+        "sourceRefs": {
+          "journeyIds": [
+            "signPetitionAsMorador",
+            "signPetitionAsResponsavelJovem",
+            "signPetitionAsVisitante",
+            "exportPetitionSignatures"
+          ],
+          "featureIds": [
+            "publicSignatureCount"
+          ],
+          "authorityRefs": [
+            "listaassinatura:consultar-publicacao"
+          ]
+        },
+        "fields": [
+          {
+            "fieldId": "petitionId",
+            "title": "Identificador da petição",
+            "type": "uuid",
+            "required": true,
+            "description": "Identificador da petição publicada à qual o total agregado calculado se refere.",
+            "constraints": [
+              {
+                "constraintId": "uniquePetitionSignatureCountPetition",
+                "kind": "unique",
+                "value": "true",
+                "description": "Cada petição possui uma única projeção de total de assinaturas.",
+                "source": "inferred"
+              }
+            ]
+          },
+          {
+            "fieldId": "validSignatureTotal",
+            "title": "Total de assinaturas válidas",
+            "type": "integer",
+            "required": true,
+            "description": "Quantidade agregada e calculada de assinaturas válidas da petição, sem expor dados de signatários.",
+            "constraints": [
+              {
+                "constraintId": "validSignatureTotalMinimum",
+                "kind": "min",
+                "value": "0",
+                "description": "O total agregado de assinaturas válidas não pode ser negativo.",
+                "source": "inferred"
+              }
+            ]
+          }
+        ],
+        "lifecycleStates": [],
+        "lifecyclePredicates": [],
+        "useRules": [
+          "petitionMustBePublished"
+        ],
+        "storage": {
+          "target": "derived",
+          "scope": "none",
+          "notes": "Projeção derivada das assinaturas válidas vinculadas à petição. Não mantém saldo ou contador persistido em dados mestres."
+        },
+        "approvedBy": "auto",
+        "approvedAt": "2026-08-29T18:19:03.410Z"
+      },
+      {
+        "entityId": "PetitionSignatureExport",
+        "title": "Exportação de assinaturas da petição",
+        "description": "Projeção administrativa gerada para uma petição publicada que reúne todas as assinaturas válidas com nome, CPF e data de nascimento no arquivo assinaturas.csv. A entrega do arquivo utiliza os recursos de arquivo e download da plataforma e não cria armazenamento próprio de mídia no módulo.",
+        "kind": "projection",
+        "ownership": "derived",
+        "party": "none",
+        "sourceRefs": {
+          "journeyIds": [
+            "exportPetitionSignatures"
+          ],
+          "featureIds": [
+            "administratorSignatureExport"
+          ],
+          "authorityRefs": [
+            "listaassinatura:exportar-assinaturas"
+          ]
+        },
+        "fields": [
+          {
+            "fieldId": "petitionId",
+            "title": "Petição selecionada",
+            "type": "uuid",
+            "required": true,
+            "description": "Identificador da petição publicada selecionada pelo administrador, usado para derivar a exportação.",
+            "constraints": []
+          },
+          {
+            "fieldId": "signatureIds",
+            "title": "Assinaturas incluídas",
+            "type": "json",
+            "required": false,
+            "description": "Lista derivada de identificadores das assinaturas válidas da petição que compõem o arquivo assinaturas.csv; pode estar vazia quando não houver assinaturas válidas.",
+            "constraints": []
+          }
+        ],
+        "lifecycleStates": [],
+        "lifecyclePredicates": [],
+        "useRules": [
+          "petitionMustBePublished",
+          "exportContainsOnlyValidPetitionSignatures"
+        ],
+        "storage": {
+          "target": "derived",
+          "scope": "none",
+          "notes": "Resultado derivado sob demanda a partir da petição e de suas assinaturas válidas. A autorização de download é fornecida pelo RBAC da plataforma para o perfil de administrador do condomínio."
+        },
+        "approvedBy": "auto",
+        "approvedAt": "2026-08-29T18:19:03.410Z"
+      },
+      {
+        "entityId": "PetitionSigner",
+        "title": "Signatário da petição",
+        "description": "Pessoa natural identificada pelos dados necessários para assinar a petição: nome, CPF e data de nascimento. A data de nascimento é informativa para identificação e não impõe idade mínima para assinar. O CPF é a identidade usada para impedir mais de uma assinatura válida da mesma pessoa em uma petição.",
+        "kind": "mdm",
+        "ownership": "moduleOwned",
+        "party": "person",
+        "sourceRefs": {
+          "journeyIds": [
+            "signPetitionAsMorador",
+            "signPetitionAsResponsavelJovem",
+            "signPetitionAsVisitante"
+          ],
+          "featureIds": [
+            "petitionSigning",
+            "cpfValidation"
+          ],
+          "authorityRefs": [
+            "listaassinatura:assinar-peticao"
+          ]
+        },
+        "fields": [
+          {
+            "fieldId": "petitionSignerId",
+            "title": "Identificador do signatário",
+            "type": "uuid",
+            "required": true,
+            "description": "Identificador estável do registro mestre da pessoa signatária, transportado para as assinaturas relacionadas.",
+            "constraints": [
+              {
+                "constraintId": "uniquePetitionSignerId",
+                "kind": "unique",
+                "value": "true",
+                "description": "Cada registro mestre de signatário possui um identificador estável exclusivo.",
+                "source": "inferred"
+              }
+            ]
+          },
+          {
+            "fieldId": "fullName",
+            "title": "Nome completo",
+            "type": "string",
+            "required": true,
+            "description": "Nome completo informado pela pessoa que deseja assinar a petição.",
+            "constraints": [
+              {
+                "constraintId": "fullNameMinLength",
+                "kind": "minLength",
+                "value": "1",
+                "description": "O nome completo deve ser informado.",
+                "source": "journey"
+              }
+            ]
+          },
+          {
+            "fieldId": "cpf",
+            "title": "CPF",
+            "type": "string",
+            "required": true,
+            "description": "CPF da pessoa signatária, usado para identificá-la e impedir duplicidade de assinatura válida na mesma petição.",
+            "constraints": [
+              {
+                "constraintId": "cpfPattern",
+                "kind": "pattern",
+                "value": "^[0-9]{11}$",
+                "description": "O CPF deve ser armazenado como uma sequência normalizada de 11 dígitos numéricos.",
+                "source": "user"
+              },
+              {
+                "constraintId": "uniqueCpf",
+                "kind": "unique",
+                "value": "true",
+                "description": "Um CPF identifica um único registro mestre de pessoa signatária.",
+                "source": "inferred"
+              }
+            ]
+          },
+          {
+            "fieldId": "birthDate",
+            "title": "Data de nascimento",
+            "type": "date",
+            "required": true,
+            "description": "Data de nascimento informada para identificação da pessoa signatária, sem impor requisito de idade.",
+            "constraints": []
+          }
+        ],
+        "lifecycleStates": [],
+        "lifecyclePredicates": [],
+        "useRules": [
+          "cpfMustBeValid"
+        ],
+        "storage": {
+          "target": "mdm",
+          "scope": "organization",
+          "idField": "petitionSignerId",
+          "mdmType": "listaAssinatura.PetitionSigner",
+          "notes": "O signatário é uma pessoa natural e, portanto, é mantido como registro mestre organizacional reutilizável. O módulo não cria conta, sessão ou usuário de plataforma para a pessoa que assina publicamente."
+        },
+        "approvedBy": "auto",
+        "approvedAt": "2026-08-29T18:19:03.410Z"
+      }
+    ],
+    "relationships": [
+      {
+        "relationshipId": "petitionSignatureForPetition",
+        "fromEntity": "PetitionSignature",
+        "toEntity": "Petition",
+        "type": "manyToOne",
+        "required": true,
+        "description": "Cada assinatura válida pertence a uma única petição. A petição já selecionada na jornada é o contexto da assinatura, sem solicitar um identificador técnico ao signatário.",
+        "persistence": {
+          "mode": "moduleReference"
+        },
+        "realization": {
+          "kind": "fieldReference",
+          "ownerEntity": "PetitionSignature",
+          "from": {
+            "entityId": "PetitionSignature",
+            "fieldIds": [
+              "petitionId"
+            ]
+          },
+          "to": {
+            "entityId": "Petition",
+            "fieldIds": [
+              "petitionId"
+            ]
+          },
+          "description": "A assinatura armazena o identificador da petição selecionada na jornada."
+        }
+      },
+      {
+        "relationshipId": "petitionSignatureBySigner",
+        "fromEntity": "PetitionSignature",
+        "toEntity": "PetitionSigner",
+        "type": "manyToOne",
+        "required": true,
+        "description": "Cada assinatura válida está associada a uma pessoa signatária identificada por nome, CPF e data de nascimento.",
+        "persistence": {
+          "mode": "crossStoreReference"
+        },
+        "realization": {
+          "kind": "fieldReference",
+          "ownerEntity": "PetitionSignature",
+          "from": {
+            "entityId": "PetitionSignature",
+            "fieldIds": [
+              "petitionSignerId"
+            ]
+          },
+          "to": {
+            "entityId": "PetitionSigner",
+            "fieldIds": [
+              "petitionSignerId"
+            ]
+          },
+          "description": "A assinatura referencia o registro mestre organizacional da pessoa signatária."
+        }
+      },
+      {
+        "relationshipId": "signatureCountForPetition",
+        "fromEntity": "PetitionSignatureCount",
+        "toEntity": "Petition",
+        "type": "oneToOne",
+        "required": true,
+        "description": "O total público calculado corresponde a uma petição específica e considera exclusivamente suas assinaturas válidas.",
+        "persistence": {
+          "mode": "derivedJoin"
+        },
+        "realization": {
+          "kind": "derived",
+          "ownerEntity": "PetitionSignatureCount",
+          "from": {
+            "entityId": "PetitionSignatureCount",
+            "fieldIds": [
+              "petitionId"
+            ]
+          },
+          "to": {
+            "entityId": "Petition",
+            "fieldIds": [
+              "petitionId"
+            ]
+          },
+          "description": "A projeção é calculada por petição, agregando somente as assinaturas com status válido."
+        }
+      },
+      {
+        "relationshipId": "signatureExportForPetition",
+        "fromEntity": "PetitionSignatureExport",
+        "toEntity": "Petition",
+        "type": "manyToOne",
+        "required": true,
+        "description": "Cada exportação é gerada no contexto da petição já selecionada pelo administrador.",
+        "persistence": {
+          "mode": "derivedJoin"
+        },
+        "realization": {
+          "kind": "derived",
+          "ownerEntity": "PetitionSignatureExport",
+          "from": {
+            "entityId": "PetitionSignatureExport",
+            "fieldIds": [
+              "petitionId"
+            ]
+          },
+          "to": {
+            "entityId": "Petition",
+            "fieldIds": [
+              "petitionId"
+            ]
+          },
+          "description": "A exportação sob demanda é derivada para a petição selecionada pelo administrador."
+        }
+      },
+      {
+        "relationshipId": "signatureExportIncludesSignatures",
+        "fromEntity": "PetitionSignatureExport",
+        "toEntity": "PetitionSignature",
+        "type": "oneToMany",
+        "required": false,
+        "description": "A exportação reúne todas as assinaturas válidas da petição selecionada; uma petição sem assinaturas válidas produz uma exportação sem linhas de assinantes.",
+        "persistence": {
+          "mode": "derivedJoin"
+        },
+        "realization": {
+          "kind": "derived",
+          "ownerEntity": "PetitionSignatureExport",
+          "from": {
+            "entityId": "PetitionSignatureExport",
+            "fieldIds": [
+              "signatureIds"
+            ]
+          },
+          "to": {
+            "entityId": "PetitionSignature",
+            "fieldIds": [
+              "petitionSignatureId"
+            ]
+          },
+          "description": "A lista derivada contém os identificadores das assinaturas válidas da petição e pode ficar vazia."
+        }
+      }
+    ]
+  },
+  "useCases": [
+    {
+      "useCaseId": "generateSignatureExport",
+      "title": "Baixar o arquivo de assinaturas",
+      "kind": "command",
+      "compiledFrom": [
+        "exportPetitionSignatures.generateSignatureExport"
+      ],
+      "entityRefs": [
+        "Petition",
+        "PetitionSignature",
+        "PetitionSignatureExport"
+      ],
+      "useRules": [
+        "exportContainsOnlyValidPetitionSignatures",
+        "petitionMustBePublished"
+      ],
+      "transitionRefs": []
+    },
+    {
+      "useCaseId": "inspectPetition",
+      "title": "Conhecer a proposta e a adesão atual",
+      "kind": "query",
+      "compiledFrom": [
+        "exportPetitionSignatures.inspectPetition",
+        "signPetitionAsMorador.inspectPetition",
+        "signPetitionAsResponsavelJovem.inspectPetition",
+        "signPetitionAsVisitante.inspectPetition"
+      ],
+      "entityRefs": [
+        "Petition",
+        "PetitionSignatureCount"
+      ],
+      "useRules": [
+        "petitionMustBePublished"
+      ],
+      "transitionRefs": []
+    },
+    {
+      "useCaseId": "locatePetition",
+      "title": "Localizar a petição publicada",
+      "kind": "query",
+      "compiledFrom": [
+        "exportPetitionSignatures.locatePetition",
+        "signPetitionAsMorador.locatePetition",
+        "signPetitionAsResponsavelJovem.locatePetition",
+        "signPetitionAsVisitante.locatePetition"
+      ],
+      "entityRefs": [
+        "Petition"
+      ],
+      "useRules": [
+        "petitionMustBePublished"
+      ],
+      "transitionRefs": []
+    },
+    {
+      "useCaseId": "registerPetitionSignature",
+      "title": "Registrar a assinatura",
+      "kind": "command",
+      "compiledFrom": [
+        "signPetitionAsMorador.registerPetitionSignature",
+        "signPetitionAsResponsavelJovem.registerPetitionSignature",
+        "signPetitionAsVisitante.registerPetitionSignature"
+      ],
+      "entityRefs": [
+        "Petition",
+        "PetitionSignature",
+        "PetitionSigner"
+      ],
+      "useRules": [
+        "cpfMustBeValid",
+        "onePetitionSignaturePerCpf",
+        "petitionMustBePublished",
+        "petitionSignatureMustContainIdentityDetails"
+      ],
+      "transitionRefs": []
+    }
+  ],
+  "workflows": [],
+  "module": {
+    "title": "Lista de Assinaturas",
+    "purpose": "Apresentar a proposta de liberação de patinetes e scooters para jovens acima de 12 anos no condomínio, com supervisão dos responsáveis, e coletar assinaturas válidas da petição.",
+    "mainGoal": "Apresentar a proposta de liberação de patinetes e scooters para jovens acima de 12 anos, sob supervisão dos responsáveis, e coletar assinaturas válidas.",
+    "expectedOutcomes": [
+      {
+        "outcomeId": "propostaApresentada",
+        "title": "Proposta apresentada",
+        "description": "A petição é exibida de forma clara, com textos e imagens sobre a liberação de patinetes e scooters para jovens acima de 12 anos no condomínio, com supervisão dos responsáveis."
+      },
+      {
+        "outcomeId": "assinaturasValidas",
+        "title": "Assinaturas válidas coletadas",
+        "description": "Qualquer pessoa pode assinar informando CPF, nome e data de nascimento, com validação de CPF e no máximo uma assinatura por CPF."
+      },
+      {
+        "outcomeId": "adesaoVisivel",
+        "title": "Adesão visível",
+        "description": "O total de assinaturas coletadas até o momento permanece visível na petição."
+      },
+      {
+        "outcomeId": "exportacaoAdmin",
+        "title": "Exportação para administradores",
+        "description": "Somente administradores obtêm o arquivo assinaturas.csv com as assinaturas coletadas."
+      }
+    ],
+    "inScope": [
+      "Página informativa com textos e imagens sobre a liberação de patinetes e scooters para jovens acima de 12 anos no condomínio, com supervisão dos responsáveis",
+      "Formulário de assinatura com CPF, nome e data de nascimento",
+      "Validação de CPF",
+      "Limite de uma assinatura por CPF",
+      "Contador público do número de assinaturas até o momento",
+      "Qualquer pessoa pode assinar a petição",
+      "Download do arquivo assinaturas.csv restrito a administradores"
+    ],
+    "outOfScope": [
+      "Votação formal do condomínio",
+      "Gestão de autorizações individuais de uso de patinetes e scooters",
+      "Outros processos administrativos do condomínio"
+    ],
+    "boundaries": "in: Página informativa com textos e imagens sobre a liberação de patinetes e scooters para jovens acima de 12 anos no condomínio, com supervisão dos responsáveis; in: Formulário de assinatura com CPF, nome e data de nascimento; in: Validação de CPF; in: Limite de uma assinatura por CPF; in: Contador público do número de assinaturas até o momento; in: Qualquer pessoa pode assinar a petição; in: Download do arquivo assinaturas.csv restrito a administradores; out: Votação formal do condomínio; out: Gestão de autorizações individuais de uso de patinetes e scooters; out: Outros processos administrativos do condomínio"
+  }
+}

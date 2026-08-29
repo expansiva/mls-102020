@@ -21,7 +21,7 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
   step entities are L4 contracts, not optional examples.
 - Relationships are how coordination is compiled: a step that operates a record additionally requires
   every parent reached by a `required` `manyToOne`/`oneToOne` relationship, so declare those exactly.
-- Freeze every entity id, kind, ownership, lifecycle, source references and persistence decision here.
+- Freeze every entity id, kind, ownership, optional `cardinality`, lifecycle, source references and persistence decision here.
 - For every entity with lifecycle states, declare the single state in which a record is born as `initialState` and every state that ends its lifecycle as `terminalStates`; use only declared lifecycle state ids and never infer either meaning from the order of the list or from missing transitions.
 - Lifecycle states and every other closed-domain value (`initialState`, `terminalStates`, enum constraint values) are **stable English codes**: lowerCamel ASCII, no accent, no space, no hyphen (`active`, `inactive`, `cancelled`, `monday`). They are identifiers, not user-facing text. Never write them in the user's language (`ativo`, `vigente`, `segunda-feira`). Titles and descriptions stay in the user's language — that is what is translated.
 - Next to `lifecycleStates`, emit `lifecycleLabels` as an array of `{ "code", "label" }` objects — one per state, `code` equal to the state id, `label` in the user's language (`userLanguage`, default `en`). Example: `{ "code": "active", "label": "Ativo" }`. Do not put the label in the state id.
@@ -70,6 +70,19 @@ user ids as external references rather than duplicating users. Explain each deci
 Relationship persistence modes are `mdmRelationship`, `moduleReference`, `crossStoreReference`,
 `derivedJoin`, `externalReference` and `embedded`. Entity ids are PascalCase nouns; relationship ids
 are lowerCamel. Relationships may be `oneToOne`, `oneToMany`, `manyToOne` or `manyToMany`.
+
+## Cardinality
+
+Declare `cardinality: "singleton"` only when the module has **one fixed, known instance** of the
+entity (the campaign, the page, the module's own configuration). The request names it in the definite
+singular and **no journey creates further instances**.
+
+- Yes: the petition of a signature campaign (`Petition` in listaAssinatura) — one published text,
+  seeded, never a catalogue of petitions.
+- No: Task, Pet, Order — collections. Users create more records; omit the field.
+
+When in doubt, **omit the field**. A false singleton hides a needed catalogue; a false plural only
+keeps today's behaviour. Never emit any other cardinality value.
 
 ## Adjustment and repair
 

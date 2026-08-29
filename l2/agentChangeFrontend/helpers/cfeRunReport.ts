@@ -34,9 +34,9 @@ export function buildCfRunReport(report: CfRunReport): Record<string, unknown> {
 }
 
 export function cfRunLatestMlsPath(project: number, moduleName: string): string {
-  return `_${project}_/l4/${moduleName}/trace/cf-run.json`;
+  return `_${project}_/l4/${moduleName}/pipeline/trace/cf-run.json`;
 }
 
 export function cfRunSnapshotMlsPath(project: number, moduleName: string, stamp: string): string {
-  return `_${project}_/l4/${moduleName}/trace/cf-run-${stamp}.json`;
+  return `_${project}_/l4/${moduleName}/pipeline/trace/cf-run-${stamp}.json`;
 }

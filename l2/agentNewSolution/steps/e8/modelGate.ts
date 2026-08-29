@@ -154,6 +154,16 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
     workspaceIds.add(workspace.workspaceId);
     if (!workspace.title || !workspace.purpose) add('NS4_E8_LABEL', path, 'Workspace title and purpose are required in the user language.');
     if (!workspace.categoryRef) add('NS4_E8_CATEGORY', `${path}.categoryRef`, 'Every workspace chooses a page category.');
+    workspace.sections.forEach((section, sectionIndex) => {
+      section.organisms.forEach((organism, organismIndex) => {
+        if (organism.type === 'content' || isContentOrganismRole(organism.role)) {
+          if (workspace.tier !== 'contentPage') {
+            add('NS4_E8_CONTENT_ORGANISM', `${path}.sections[${sectionIndex}].organisms[${organismIndex}]`,
+              `Organism of type content is only allowed on a contentPage workspace.`);
+          }
+        }
+      });
+    });
     if (workspace.entity && !entities.has(workspace.entity)) add('NS4_E8_WORKSPACE_ENTITY', `${path}.entity`, `Unknown ontology entity ${workspace.entity}.`);
     workspace.profileRefs.forEach(profile => {
       if (!profiles.has(profile)) add('NS4_E8_PROFILE', `${path}.profileRefs`, `Unknown E3 profile ${profile}.`);
@@ -312,6 +322,12 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
     if (!workspaceIds.has(entry.workspaceId)) add('NS4_E8_MENU_WORKSPACE', `menu[${index}]`, `Unknown workspace ${entry.workspaceId}.`);
     if (entry.tier === 'journey') add('NS4_E8_MENU_JOURNEY', `menu[${index}]`, 'A journey is never a menu item; it is reached from a hub action, a related list or a notification.');
   });
+  const contentPlaces = model.workspaces.filter(workspace => workspace.tier === 'contentPage');
+  contentPlaces.forEach(workspace => {
+    if (!model.menu.some(entry => entry.workspaceId === workspace.workspaceId)) {
+      add('NS4_E8_MENU_WORKSPACE', 'menu', `Content page ${workspace.workspaceId} is a place and must appear in the menu.`);
+    }
+  });
   model.landings.forEach((landing, index) => {
     if (!profiles.has(landing.profileRef)) add('NS4_E8_LANDING_PROFILE', `landings[${index}]`, `Unknown E3 profile ${landing.profileRef}.`);
     if (!workspaceIds.has(landing.workspaceId)) add('NS4_E8_LANDING_WORKSPACE', `landings[${index}]`, `Unknown workspace ${landing.workspaceId}.`);
@@ -340,7 +356,7 @@ function redundantWorkspaceReason(
   if (entityIds.length !== 1) return null;
   if (!isCommandInspectLocateSummarySurface(workspace, operations)) return null;
   const container = model.workspaces.find(other => other.workspaceId !== workspace.workspaceId
-    && (other.tier === 'recordCatalogue' || other.tier === 'projection')
+    && (other.tier === 'recordCatalogue' || other.tier === 'projection' || other.tier === 'contentPage')
     && other.entity === entityIds[0]
     && workspace.actors.length > 0
     && workspace.actors.every(actor => other.actors.includes(actor)));
@@ -457,6 +473,11 @@ function dropFirst(
 ): Ns4E8Model['workspaces'][number]['sections'][number]['organisms'] {
   const index = organisms.findIndex(organism => organism.dataSource === reference || organism.action === reference);
   return index < 0 ? organisms : [...organisms.slice(0, index), ...organisms.slice(index + 1)];
+}
+
+const CONTENT_ORGANISM_ROLES = new Set(['hero', 'banner', 'richText', 'imageSet', 'ctaLink', 'showcase']);
+function isContentOrganismRole(role: string): boolean {
+  return CONTENT_ORGANISM_ROLES.has(role);
 }
 
 function decisionId(prefix: string, ...parts: string[]): string {

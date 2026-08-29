@@ -1,5 +1,10 @@
 # E1 changelog
 
+- 2026-08-29: Actor rule in the prompt: a demographic persona does not create an actor. "Qualquer
+  pessoa" / "público" is one public actor plus the privileged actors the request names. listaAssinatura
+  run01 had listed morador, responsável and visitante as three actors; that is the upstream source of
+  the three twin sign journeys E2 then emitted.
+
 - 2026-08-27: Languages are a user decision, never an LLM guess. The prompt example shows a single
   language, and `normalizeNs4E1Review` discards every `productLanguages` entry the user did not cite
   in the clarification answer or in the original prompt (falling back to `[userLanguage]`), recording

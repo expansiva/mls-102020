@@ -1333,7 +1333,7 @@ test('D4: CLI e agentRenderEdit passam o arquivo atual no hint de repair (não s
 // manda o esqueleto em branco e o modelo reescreve às cegas. Por isso o verify grava os achados em disco.
 test('D4: o verify grava os achados do item e o gen os lê antes de montar o hint', () => {
   const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
-  assert.match(phase, /saveMaterializeItemFindings\(moduleName, entry\.item\.planId, nextAttempt, \[\.\.\.entry\.blocking, \.\.\.entry\.repairable\]\)/u);
+  assert.match(phase, /saveMaterializeItemFindings\(moduleName, entry\.item\.planId, nextAttempt, \[\.\.\.entry\.blocking, \.\.\.entry\.repairable, \.\.\.entry\.warnings\]\)/u);
   const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
   assert.match(gen, /readMaterializeItemFindings\(moduleOfMlsPath\(outputPath\), planId, attempt\)/u);
   // e eles entram no hint junto com o que foi recomputado
@@ -1470,6 +1470,35 @@ test('shared scenary gate finds missing members only when defs has more than one
   assert.match(collectSharedScenaryIssues('export class X {}', SCENARY_SHARED).join(' | '), /setUiScenary/);
   assert.deepEqual(collectSharedScenaryIssues(withMembers, SCENARY_SHARED), []);
   assert.deepEqual(collectSharedScenaryIssues('export class X {}', { scenaries: [{ value: 'base', kind: 'base' }] }), []);
+});
+
+test('T3: scenary gate reads defs, not the generated .ts (run01: 4 scenaries, 0 members)', () => {
+  const defs = {
+    scenaries: [
+      { value: 'base', kind: 'base' },
+      { value: 'detail', kind: 'detail' },
+      { value: 'createPetition', kind: 'command' },
+      { value: 'updatePetition', kind: 'command' },
+    ],
+  };
+  const sharedTsWithoutMembers = 'export class ListaAssinaturaPetitionCatalogueBase { connectedCallback() {} }';
+  assert.match(collectSharedScenaryIssues(sharedTsWithoutMembers, defs).join(' | '), /setUiScenary/);
+  const pageOneScene = `
+import '/_102020_/l2/molecules/ml-scenary.js';
+html\`<molecules--ml-scenary-102020 .value=\${this.uiScenary}>
+  <Scene value="base">x</Scene>
+</molecules--ml-scenary-102020>\`;
+`;
+  const pageIssues = collectPageScenaryIssues(pageOneScene, defs).join(' | ');
+  assert.match(pageIssues, /missing <Scene value="detail">/);
+  assert.match(pageIssues, /missing <Scene value="createPetition">/);
+  assert.match(pageIssues, /@change/);
+});
+
+test('T3: verify persists warnings into frontend-materialize-findings (not only repairable)', () => {
+  const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
+  assert.match(phase, /persistAuditableFindings\(moduleName, args\.attempt, checkedItems\)/);
+  assert.match(phase, /\[\.\.\.entry\.blocking, \.\.\.entry\.repairable, \.\.\.entry\.warnings\]/);
 });
 
 test('scenary gate degrades in verify (warnings) and the page skills teach the host', () => {

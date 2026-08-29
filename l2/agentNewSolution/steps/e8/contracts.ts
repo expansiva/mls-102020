@@ -23,6 +23,20 @@ export type Ns4WorkspaceContext = Ns4DerivedContext;
 
 
 
+/**
+ * The E1 prose E8 may quote on a content page. Absent on management-only fixtures, so the
+ * compiler keeps today's default (no contentPage).
+ */
+export interface Ns4E8ModuleSignals {
+  title: string;
+  purpose: string;
+  mainGoal?: string;
+  expectedOutcomes?: Array<{ outcomeId?: string; title: string; description: string }>;
+  inScope?: string[];
+  outOfScope?: string[];
+  boundaries?: string;
+}
+
 /** The approved contracts every E8 derivation reads. */
 export interface Ns4E8Sources {
   journeys: Ns4E2Review;
@@ -31,6 +45,7 @@ export interface Ns4E8Sources {
   useCases: Ns4UseCaseArtifactV3[];
   workflows: Ns4WorkflowArtifactV2[];
   policyDecisionSelections?: Ns4PolicyDecisionSelection[];
+  module?: Ns4E8ModuleSignals;
 }
 
 export interface Ns4E8Edge {

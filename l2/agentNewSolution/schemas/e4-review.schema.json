@@ -320,6 +320,12 @@
             "none"
           ]
         },
+        "cardinality": {
+          "type": "string",
+          "enum": [
+            "singleton"
+          ]
+        },
         "sourceRefs": {
           "$ref": "#/$defs/sourceRefs"
         },

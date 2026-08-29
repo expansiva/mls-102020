@@ -3,7 +3,7 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution/helpers/ns4StepTree.js';
 import {
   isNs4Pipeline, markNs4E10Approved, markNs4E10Failed, markNs4E10PipelineDefect, markNs4E10Running, markNs4E10RuntimeFailed,
-  markNs4ModuleE10Approved, type Ns4PipelineState,
+  markNs4FastHandoff, markNs4ModuleE10Approved, type Ns4PipelineState,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import { readNs4ApprovedJourneys, readNs4ApprovedOntology } from '/_102020_/l2/agentNewSolution/helpers/ns4ApprovedArtifacts.js';
 import {
@@ -31,6 +31,14 @@ import type { Ns4ClassicOperation, Ns4ClassicSiteMap, Ns4ClassicWorkspace } from
 import { compileNs4E10Delivery, type Ns4E10Sources, type Ns4E10ValidationReport } from '/_102020_/l2/agentNewSolution/steps/e10/contracts.js';
 import { validateNs4E10 } from '/_102020_/l2/agentNewSolution/steps/e10/gate.js';
 import { agentBuildTrace } from '/_102020_/l2/agentNewSolution/helpers/ns4BuildStamp.js';
+import {
+  NS4_FAST_HANDOFF_AGENT,
+  NS4_FAST_HANDOFF_PLAN_ID,
+  decideNs4FastHandoff,
+  isNs4FastMode,
+} from '/_102020_/l2/agentNewSolution/helpers/ns4FastHandoff.js';
+import { buildNsRunSummary, saveNsRunSummary } from '/_102020_/l2/agentNewSolution/helpers/nsPipelineRun.js';
+import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
 
 interface Ns4E10Args { planId: 'e10-validation'; moduleName: string; }
 
@@ -52,6 +60,7 @@ export async function beforeNs4E10PromptStep(
       await writeNs4Pipeline(report.pipelineDefect
         ? markNs4E10PipelineDefect(failed, message, reportPath)
         : markNs4E10Failed(failed, message, report.repairStep || 'e8-workspaces', reportPath));
+      await persistNsRunSummary(context, moduleName, 'failed', message);
       return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
     }
     const delivery = await compileNs4E10Delivery(sources, report, await readNs4L5Config(), mls.actualProject || 0);
@@ -92,14 +101,19 @@ export async function beforeNs4E10PromptStep(
     await writeNs4Pipeline(markNs4E10Approved(await requirePipeline(moduleName), 'auto', approvedAt, reportPath, artifactPaths));
     const mutationParent = mutableParent(context, parent, step);
     const already = getAllSteps(context.task?.iaCompressed?.nextSteps).some(item => item.planning?.planId === 'e10-result');
-    return [...(already ? [] : [result(context, mutationParent, moduleName)]),
-      status(context, mutationParent, step, hookSequential, 'completed', already
-        ? 'E10 automatic completion was already recorded.'
-        : `E10 validation passed; ${artifactPaths.length - 1} L5 delivery artifacts were written and the solution was completed automatically.${
-          publishIssues.length ? ` PUBLISH CHECKLIST (${publishIssues.length}): ${publishIssues.slice(0, 8).join('; ')}` : ' Publish checklist clean.'
-        }${await agentBuildTrace('[agentNs4E10]')}`, 'input_output')];
+    const handoff = await dispatchChangeBackendHandoff(context, mutationParent, moduleName);
+    const extra = already ? [] : [result(context, mutationParent, moduleName)];
+    const base = already
+      ? 'E10 automatic completion was already recorded.'
+      : `E10 validation passed; ${artifactPaths.length - 1} L5 delivery artifacts were written and the solution was completed automatically.${
+        publishIssues.length ? ` PUBLISH CHECKLIST (${publishIssues.length}): ${publishIssues.slice(0, 8).join('; ')}` : ' Publish checklist clean.'
+      }`;
+    await persistNsRunSummary(context, moduleName, 'completed', base);
+    return [...extra, ...handoff.intents,
+      status(context, mutationParent, step, hookSequential, 'completed', `${base}${handoff.note}${await agentBuildTrace('[agentNs4E10]')}`, 'input_output')];
   } catch (error) {
     const message = errorMessage(error); if (moduleName) await runtimeFail(moduleName, message, reportPath);
+    if (moduleName) await persistNsRunSummary(context, moduleName, 'failed', message);
     return [status(context, parent, step, hookSequential, 'failed', message, 'input_output')];
   }
 }
@@ -174,6 +188,51 @@ async function collectProjectTypes(projectId: number, dependencies: readonly num
   return typeById;
 }
 
+async function dispatchChangeBackendHandoff(
+  context: mls.msg.ExecutionContext,
+  parent: mls.msg.AIAgentStep,
+  moduleName: string,
+): Promise<{ intents: mls.msg.AgentIntent[]; note: string }> {
+  const pipeline = await requirePipeline(moduleName);
+  const already = Boolean(pipeline.fastHandoff)
+    || getAllSteps(context.task?.iaCompressed?.nextSteps).some(item => item.planning?.planId === NS4_FAST_HANDOFF_PLAN_ID);
+  const decision = decideNs4FastHandoff({
+    fast: isNs4FastMode(context.task?.iaCompressed?.longMemory),
+    success: pipeline.status === 'complete' && pipeline.steps.e10?.status === 'approved',
+    alreadyDispatched: already,
+    moduleName,
+  });
+  if (!decision.dispatch) {
+    return { intents: [], note: already && isNs4FastMode(context.task?.iaCompressed?.longMemory) ? '; changeBackend: already dispatched' : '' };
+  }
+  const threadId = context.message?.threadId;
+  if (!threadId) return { intents: [], note: '; changeBackend: SKIPPED (no threadId)' };
+  try {
+    await sendThreadMessage(threadId, decision.message);
+    await writeNs4Pipeline(markNs4FastHandoff(pipeline, NS4_FAST_HANDOFF_AGENT, decision.message));
+    return {
+      intents: [handoffResult(context, parent, moduleName, decision.message)],
+      note: `; changeBackend: dispatched (${decision.message})`,
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { intents: [], note: `; changeBackend: DISPATCH FAILED (${reason}) — re-send manually: ${decision.message}` };
+  }
+}
+
+function handoffResult(
+  context: mls.msg.ExecutionContext,
+  parent: mls.msg.AIAgentStep,
+  moduleName: string,
+  message: string,
+): mls.msg.AgentIntentAddStep {
+  return addStep(context, parent, {
+    type: 'result', stepId: 0, interaction: null, stepTitle: 'Dispatch changeBackend (/fast)', status: 'completed', nextSteps: [],
+    result: JSON.stringify({ moduleName, to: NS4_FAST_HANDOFF_AGENT, message }, null, 2),
+    planning: { planId: NS4_FAST_HANDOFF_PLAN_ID, dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+  } as mls.msg.AIResultStep);
+}
+
 function resolveArgs(context: mls.msg.ExecutionContext, value: unknown): Ns4E10Args {
   const root = parse(value); const moduleName = isRecord(root) && text(root.moduleName) ? text(root.moduleName) : findE9Module(context) || memory(context, 'resumeModule');
   if (!isRecord(root) || root.planId !== 'e10-validation' || !moduleName) throw new Error('Invalid E10 step arguments or missing E9 module handoff.');
@@ -181,6 +240,23 @@ function resolveArgs(context: mls.msg.ExecutionContext, value: unknown): Ns4E10A
 }
 function findE9Module(context: mls.msg.ExecutionContext): string { const anchor = getAllSteps(context.task?.iaCompressed?.nextSteps).find(step => step.planning?.planId === 'e9-result'); const value = anchor?.type === 'result' ? parse(anchor.result) : null; return isRecord(value) ? text(value.moduleName) : ''; }
 async function requirePipeline(moduleName: string): Promise<Ns4PipelineState> { const pipeline = await readNs4Pipeline(moduleName); if (!isNs4Pipeline(pipeline)) throw new Error(`agentNewSolution v33 pipeline not found for ${moduleName}.`); return pipeline; }
+async function persistNsRunSummary(
+  context: mls.msg.ExecutionContext,
+  moduleName: string,
+  verdict: 'completed' | 'failed' | 'degraded',
+  reason: string,
+): Promise<void> {
+  try {
+    const pipeline = await readNs4Pipeline(moduleName);
+    await saveNsRunSummary(buildNsRunSummary({
+      pipeline: isNs4Pipeline(pipeline) ? pipeline : null,
+      moduleName,
+      longMemory: context.task?.iaCompressed?.longMemory,
+      verdict,
+      reason,
+    }));
+  } catch { /* the run summary must never fail E10 */ }
+}
 async function runtimeFail(moduleName: string, message: string, reportPath = ''): Promise<void> { try { const pipeline = await readNs4Pipeline(moduleName); if (isNs4Pipeline(pipeline)) await writeNs4Pipeline(markNs4E10RuntimeFailed(pipeline, message, reportPath || undefined)); } catch { /* task trace remains fallback */ } }
 function result(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, moduleName: string): mls.msg.AgentIntentAddStep { return addStep(context, parent, { type: 'result', stepId: 0, interaction: null, stepTitle: 'Finished solution approved', status: 'completed', nextSteps: [], result: JSON.stringify({ moduleName, completedStep: 'e10-validation', nextStep: 'complete', approved: true }, null, 2), planning: { planId: 'e10-result', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' } } as mls.msg.AIResultStep); }
 function addStep(context: mls.msg.ExecutionContext, parent: mls.msg.AIAgentStep, step: mls.msg.AIPayload): mls.msg.AgentIntentAddStep { return { type: 'add-step', messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', parentStepId: parent.stepId, step }; }

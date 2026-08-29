@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/steps/e3/gate.ts" enhancement="_blank"/>
 
 import { Ns4E2Review } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
+import { ns4E2JourneyOperationKey } from '/_102020_/l2/agentNewSolution/steps/e2/gate.js';
 import { Ns4E3Review } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
 
 export interface Ns4E3GateIssue {
@@ -116,7 +117,44 @@ export function validateNs4E3Review(review: Ns4E3Review, journeys?: Ns4E2Review)
     if (!grantedAuthorities.has(authorityRef)) add('NS4_E3_AUTHORITY_NO_GRANTS', 'grants', `Authority ${authorityRef} is not granted to any profile.`);
   });
 
+  addTwinJourneyIssues(review, journeys, add);
+
   return { ok: issues.length === 0, issues };
+}
+
+function addTwinJourneyIssues(review: Ns4E3Review, journeys: Ns4E2Review | undefined, add: AddIssue): void {
+  if (!journeys) return;
+  const groups = new Map<string, { journeyId: string; actorRef: string }[]>();
+  journeys.journeys.forEach(journey => {
+    const actorRef = journey.business.actorRef;
+    const operations = ns4E2JourneyOperationKey(journey);
+    if (!actorRef || !operations) return;
+    const access = actorAccessKey(actorRef, review);
+    const key = `${operations}\u0000${access}`;
+    const group = groups.get(key) || [];
+    group.push({ journeyId: journey.journeyId, actorRef });
+    groups.set(key, group);
+  });
+  groups.forEach((group, key) => {
+    const actors = [...new Set(group.map(item => item.actorRef))];
+    if (actors.length < 2) return;
+    const operations = key.split('\u0000')[0];
+    const journeyIds = [...new Set(group.map(item => item.journeyId))];
+    add(
+      'NS4_E3_TWIN_JOURNEYS',
+      'profiles.actorRefs',
+      `Journeys ${journeyIds.join(', ')} are twins: same operations (${operations}) and the same effective access with different actors (${actors.join(', ')}). A persona or demographic segment does not create an actor — the actors must merge.`,
+    );
+  });
+}
+
+function actorAccessKey(actorRef: string, review: Ns4E3Review): string {
+  const profileIds = new Set(review.profiles.filter(profile => profile.actorRefs.includes(actorRef)).map(profile => profile.profileId));
+  return review.grants
+    .filter(grant => profileIds.has(grant.profileRef))
+    .map(grant => `${grant.authorityRef}:${grant.dataScope.mode}`)
+    .sort()
+    .join(',');
 }
 
 type AddIssue = (code: string, path: string, message: string) => void;

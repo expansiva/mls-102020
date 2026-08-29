@@ -61,6 +61,7 @@ test('every ns4Fs *File builder shortName is free of dots', async () => {
     ns4AgentFile: ns4.ns4AgentFile('skills', 'coverageRepair', '.md'),
     ns4ModuleFile: ns4.ns4ModuleFile(m),
     ns4PipelineFile: ns4.ns4PipelineFile(m),
+    ns4PipelineJsonFile: ns4.ns4PipelineJsonFile(m, 'run01-newsolution'),
     ns4E2DraftFile: ns4.ns4E2DraftFile(m),
     ns4E2VersionedDraftFile: ns4.ns4E2VersionedDraftFile(m, 2),
     ns4E2ImpactReportFile: ns4.ns4E2ImpactReportFile(m),

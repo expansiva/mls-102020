@@ -1,5 +1,12 @@
 # E2 changelog
 
+- 2026-08-29: A demographic persona does not create an actor. The prompt forbids one journey per
+  morador/visitante/jovem/responsável when the operations and access are the same; "qualquer pessoa"
+  is one public actor. The structural gate rejects twin journeys (`NS4_E2_TWIN_JOURNEYS`): the same
+  `kind:entity` set with different `actorRef`. Coverage-judge rule 2 no longer demands a journey per
+  persona. Evidence: listaAssinatura run01 (`signPetitionAsMorador` / `AsResponsavelJovem` /
+  `AsVisitante`). Distinct-operation actors (petShop cliente vs admin) are not collapsed.
+
 - 2026-08-26: `smart` opens the journey widget when coverage recorded a Type B systemDecision or a
   journey still has policyDecisions; otherwise it auto-approves with `autoReason: nenhum finding A`.
   `/fast` and `automatic` still skip. Shared helper: `helpers/ns4ReviewPolicy.ts`.

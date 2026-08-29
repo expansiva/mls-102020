@@ -8,7 +8,7 @@ Each round first writes `pipeline/e4-ontology-plan-draft.json`, then details ent
 `parallel_dynamic` fan-out with `maxParallel: 20` into `pipeline/e4-entities/{EntityId}-draft.json`.
 Each worker submits its artifact in the strict internal `{type:"flexible",result:{…}}` envelope, so
 the orchestration protocol accepts healthy worker output without a provisional failure.
-The overview freezes lifecycle states, one explicit initial state, optional terminal states and named predicate-to-state mappings before the workers run;
+The overview freezes lifecycle states, one explicit initial state, optional terminal states, named predicate-to-state mappings and optional `cardinality: singleton` (one fixed instance; omit when in doubt) before the workers run;
 workers add fields, constraints and rule ids without redefining those meanings or duplicating rule descriptions.
 The deterministic finalizer repairs only missing/invalid entities once. It then starts one compact
 relationship-binding pass, which writes `pipeline/e4-relationship-bindings-draft.json` and maps every

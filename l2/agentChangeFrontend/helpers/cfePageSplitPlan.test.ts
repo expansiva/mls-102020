@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildSplitPlan, organismNameOf, type SplitPlanSection } from './cfePageSplitPlan.js';
+import { buildOrganismSplitPlan, buildSplitPlan, organismNameOf, type SplitPlanSection } from './cfePageSplitPlan.js';
 
 // The real l4 of 102045/projectDetailWorkspace — the page that actually blew the output cap.
 const SECTIONS: SplitPlanSection[] = [
@@ -66,4 +66,32 @@ test('organismNameOf produces a usable identifier fragment', () => {
   assert.equal(organismNameOf('delayRiskInsights'), 'delayRiskInsights');
   assert.equal(organismNameOf('sec_cost_kpis'), 'costKpis');
   assert.equal(organismNameOf('---'), 'section');
+});
+
+test('organism split keeps content organisms without bindings and names them by role', () => {
+  const plan = buildOrganismSplitPlan('home', 'page11', [
+    { sectionId: 'offer', organisms: [{ role: 'hero' }, { role: 'richText' }, { role: 'imageSet' }] },
+    { sectionId: 'convert', organisms: [{ role: 'ctaLink' }, { role: 'contextualAction', action: 'cmdSubscribe' }] },
+  ], ['cmdSubscribe'], 'contentLanding')!;
+  assert.deepEqual(plan.organisms.map(item => [item.organism, item.bindings]), [
+    ['hero', []],
+    ['richText', []],
+    ['imageSet', []],
+    ['ctaLink', []],
+    ['contextualAction', ['cmdSubscribe']],
+  ]);
+});
+
+test('organism split disambiguates repeated roles and still parks orphan bindings', () => {
+  const plan = buildOrganismSplitPlan('home', 'page11', [
+    { sectionId: 'a', organisms: [{ role: 'richText' }, { role: 'richText' }] },
+  ], ['qryProof'], 'contentLanding')!;
+  assert.deepEqual(plan.organisms.map(item => item.organism), ['richText', 'richText2', 'other']);
+  assert.deepEqual(plan.organisms[2].bindings, ['qryProof']);
+});
+
+test('organism split refuses a single organism', () => {
+  assert.equal(buildOrganismSplitPlan('home', 'page11', [
+    { sectionId: 'offer', organisms: [{ role: 'hero' }] },
+  ], [], 'contentLanding'), null);
 });

@@ -150,6 +150,7 @@ export type {
 export type {
   Ns4E8Edge,
   Ns4E8HubScore,
+  Ns4E8ModuleSignals,
   Ns4E8Sources,
   Ns4WorkspaceArtifact,
   Ns4WorkspaceContext,

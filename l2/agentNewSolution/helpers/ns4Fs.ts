@@ -44,6 +44,27 @@ export function ns4PipelineFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'pipeline', extension: '.json' };
 }
 
+export function ns4PipelineJsonFile(moduleName: string, shortName: string): Ns4FileInfo {
+  return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName, extension: '.json' };
+}
+
+export function listNs4PipelineJsonShortNames(moduleName: string): string[] {
+  const project = mls.actualProject || 0;
+  const folder = `${normalizeNs4ModuleName(moduleName)}/pipeline`;
+  const names: string[] = [];
+  for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string }[]) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || String(file.folder || '') !== folder) continue;
+    if (file.shortName) names.push(String(file.shortName));
+  }
+  return names;
+}
+
+export async function writeNs4Json(fileInfo: Ns4FileInfo, value: unknown): Promise<string> {
+  await writeNs4Text(fileInfo, `${JSON.stringify(value, null, 2)}\n`);
+  return displayPath(fileInfo);
+}
+
 export function ns4E2DraftFile(moduleName: string): Ns4FileInfo {
   return { project: mls.actualProject || 0, level: 4, folder: `${normalizeNs4ModuleName(moduleName)}/pipeline`, shortName: 'e2-journeys-draft', extension: '.json' };
 }

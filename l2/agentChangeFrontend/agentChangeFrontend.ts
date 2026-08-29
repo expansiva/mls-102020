@@ -2,15 +2,16 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { isUxVariantsToken, parseUxVariantsMode, type UxVariantsMode } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
 
 type CliCommand =
-  | { kind: 'rebuild-all'; materialize: true; reset: true; module?: string }
-  | { kind: 'rebuild-defs'; materialize: false; reset: true; module?: string }
-  | { kind: 'run'; materialize: true; reset: false; module?: string }
-  | { kind: 'help'; reason: string };
+  | { kind: 'rebuild-all'; materialize: true; reset: true; module?: string; fast: boolean; uxVariants: UxVariantsMode }
+  | { kind: 'rebuild-defs'; materialize: false; reset: true; module?: string; fast: boolean; uxVariants: UxVariantsMode }
+  | { kind: 'run'; materialize: true; reset: false; module?: string; fast: boolean; uxVariants: UxVariantsMode }
+  | { kind: 'help'; reason: string; fast: boolean; uxVariants: UxVariantsMode };
 
 // CLI keywords are never module names — 'all'/'defs' etc. after a command are options, not modules.
-const CLI_KEYWORDS = new Set(['rebuild', 'all', 'defs', 'run', 'help']);
+const CLI_KEYWORDS = new Set(['rebuild', 'all', 'defs', 'run', 'help', 'fast']);
 
 export function createAgent(): IAgentAsync {
   return {
@@ -40,7 +41,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
       taskTitle: 'agentChangeFrontend',
       threadId: context.message.threadId,
       userMessage: context.message.content,
-      longTermMemory: { taskName: 'agentChangeFrontend', flowName: 'agentChangeFrontend', version: 'create-v1', cliCommand: command.kind },
+      longTermMemory: { taskName: 'agentChangeFrontend', flowName: 'agentChangeFrontend', version: 'create-v1', cliCommand: command.kind, ...(command.fast ? { fastMode: 'true' } : {}) },
     },
   };
 
@@ -53,7 +54,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     'scan-create-l4',
     'agentCfeCreateScanL4',
     'Ler L4 e criar paginas pendentes',
-    { command: command.kind, reset, materialize: command.materialize, forceMaterialize: command.kind === 'rebuild-all', module: command.module },
+    { command: command.kind, reset, materialize: command.materialize, forceMaterialize: command.kind === 'rebuild-all', module: command.module, uxVariants: command.uxVariants },
     [],
     'sequential',
     'waiting_human_input',
@@ -66,19 +67,22 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
   return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'Root bootstrap completed without using the model payload.')];
 }
 
-function parseCliCommand(prompt: string): CliCommand {
-  const tokens = stripAgentPrefix(prompt).split(' ').filter(Boolean);
+export function parseCliCommand(prompt: string): CliCommand {
+  const rawTokens = stripAgentPrefix(prompt).split(' ').filter(Boolean);
+  const uxVariants = parseUxVariantsMode(rawTokens);
+  const tokens = rawTokens.filter(token => !isUxVariantsToken(token));
   const keywords = new Set(tokens.map(token => token.replace(/^\//, '').toLowerCase()).filter(token => CLI_KEYWORDS.has(token)));
   // Optional module: the first non-command token (no leading slash, not a CLI keyword). Case is
   // preserved because module names are canonical camelCase. "all"/"defs" are never modules.
-  const module = tokens.find(token => !token.startsWith('/') && !CLI_KEYWORDS.has(token.toLowerCase())) || undefined;
+  const module = tokens.find(token => !token.startsWith('/') && !CLI_KEYWORDS.has(token.toLowerCase()) && !isUxVariantsToken(token)) || undefined;
+  const fast = keywords.has('fast');
 
-  if (keywords.has('help')) return { kind: 'help', reason: '' };
+  if (keywords.has('help')) return { kind: 'help', reason: '', fast, uxVariants };
   if (keywords.has('rebuild')) {
-    if (keywords.has('defs')) return { kind: 'rebuild-defs', materialize: false, reset: true, module };
-    return { kind: 'rebuild-all', materialize: true, reset: true, module };
+    if (keywords.has('defs')) return { kind: 'rebuild-defs', materialize: false, reset: true, module, fast, uxVariants };
+    return { kind: 'rebuild-all', materialize: true, reset: true, module, fast, uxVariants };
   }
-  return { kind: 'run', materialize: true, reset: false, module };
+  return { kind: 'run', materialize: true, reset: false, module, fast, uxVariants };
 }
 
 // Strip the @@changeFrontend / @@agentChangeFrontend prefix, preserving original case (module names).
@@ -213,9 +217,9 @@ function createHelpStep(reason: string): mls.msg.AIPayload {
 const HELP_TEXT = `agentChangeFrontend
 
 Uso:
-@@changeFrontend /run [module]
-@@changeFrontend /rebuild all [module]
-@@changeFrontend /rebuild defs [module]
+@@changeFrontend /run [module] [variants:all]
+@@changeFrontend /rebuild all [module] [variants:all]
+@@changeFrontend /rebuild defs [module] [variants:all]
 @@changeFrontend /help
 
 Comandos:
@@ -226,4 +230,7 @@ Comandos:
 
 Modulo (opcional): cada run processa um unico modulo. Informe o nome do modulo apos o comando
 (ex: @@changeFrontend /rebuild all cafeFlow) para escolher qual; sem ele, assume o primeiro modulo
-com pendencias. 'all'/'defs' sao palavras do comando, nunca nome de modulo.`;
+com pendencias. 'all'/'defs' sao palavras do comando, nunca nome de modulo.
+
+variants:all (opcional): gera os 3 genomas de exploracao (page11+page21+page31). Sem ele, um genoma
+por pagina — contentLanding em page11, gestao em page31.`;

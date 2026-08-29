@@ -24,7 +24,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       throw new Error(`Primary layout validation failed:\n${failures.join('\n')}${details}`);
     }
     const details = layoutErrors.length ? `\n\nLayout worker errors (non-primary variants):\n${layoutErrors.join('\n')}` : '';
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `All primary page11 layouts were saved.${details}`)];
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `All primary layouts were saved.${details}`)];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);

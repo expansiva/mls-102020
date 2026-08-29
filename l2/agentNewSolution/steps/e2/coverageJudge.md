@@ -12,8 +12,11 @@ user outcomes.
 
 1. Every explicit in-scope user-facing capability, screen intent and outcome in E1 must be owned by
    at least one journey. Boundaries explicitly excluded by E1 are not requirements.
-2. Every in-scope actor or persona must have a journey that lets that actor achieve its promised
-   outcome. A handoff to an actor who is expected to use this system also requires a recipient journey;
+2. Every in-scope actor with distinct permissions or data scope must have a journey that lets that
+   actor achieve its promised outcome. A demographic persona (morador, visitante, jovem, responsável)
+   that shares operations and access with another actor is not a separate actor: the shared public
+   (or otherwise common) journey covers it. Do not raise a blocking issue asking for one journey per
+   persona. A handoff to an actor who is expected to use this system also requires a recipient journey;
    a producer handoff alone is insufficient.
 3. When an `act` or `decide` step needs an existing business record chosen by a person, an earlier
    step of the journey must locate, select or create that record. Examples include a client for a

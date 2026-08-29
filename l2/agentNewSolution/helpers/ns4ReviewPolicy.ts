@@ -6,7 +6,7 @@
  * guided always opens. smart opens on Type A, Type B / a relevant decision, or
  * when the stage has no classified signal; it skips only-C (or empty classified)
  * stages and records autoReason "nenhum finding A" next to approvedBy=auto.
- * E1 itself always opens.
+ * E1 still opens unless `/fast` (then it accepts the proposal and records the defaults).
  */
 
 export interface Ns4ReviewPolicyContext {

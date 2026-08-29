@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   buildNs4ModuleArtifact,
@@ -78,6 +79,42 @@ test('E2 preserves the exact hook args used to match prompt_ready', () => {
 test('E2 accepts connected contextOrLookup journeys', () => {
   const review = normalizeNs4E2Review(reviewInput);
   assert.deepEqual(validateNs4E2Review(review), { ok: true, issues: [] });
+});
+
+const listaAssinaturaE2 = JSON.parse(readFileSync(new URL('fixtures/listaAssinatura-e2-twins.json', import.meta.url), 'utf8'));
+const petShopDistinctActors = JSON.parse(readFileSync(new URL('fixtures/petShop-distinct-actors.json', import.meta.url), 'utf8'));
+
+test('E2 flags the listaAssinatura persona copies as twin journeys — same sign flow, three actors', () => {
+  const result = validateNs4E2Review(normalizeNs4E2Review(listaAssinaturaE2));
+  const twins = result.issues.filter(issue => issue.code === 'NS4_E2_TWIN_JOURNEYS');
+  assert.equal(twins.length, 1, result.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  assert.match(twins[0].message, /signPetitionAsMorador/);
+  assert.match(twins[0].message, /signPetitionAsResponsavelJovem/);
+  assert.match(twins[0].message, /signPetitionAsVisitante/);
+  assert.match(twins[0].message, /morador/);
+  assert.match(twins[0].message, /visitante/);
+  assert.match(twins[0].message, /locate:Petition/);
+  assert.match(twins[0].message, /act:PetitionSignature/);
+  assert.doesNotMatch(twins[0].message, /exportPetitionSignatures/);
+  assert.doesNotMatch(twins[0].message, /administradorCondominio/);
+});
+
+test('E2 accepts listaAssinatura when the three sign journeys share one public actor — admin remains', () => {
+  const collapsed = structuredClone(listaAssinaturaE2);
+  for (const journey of collapsed.journeys) {
+    if (journey.journeyId.startsWith('signPetitionAs')) journey.business.actorRef = 'publico';
+  }
+  const review = normalizeNs4E2Review(collapsed);
+  const result = validateNs4E2Review(review);
+  assert.equal(result.ok, true, result.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  const actors = [...new Set(review.journeys.map(journey => journey.business.actorRef))];
+  assert.deepEqual(actors.sort(), ['administradorCondominio', 'publico']);
+});
+
+test('E2 does not collapse petShop actors that have distinct operations', () => {
+  const result = validateNs4E2Review(normalizeNs4E2Review(petShopDistinctActors));
+  assert.equal(result.ok, true, result.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  assert.equal(result.issues.some(issue => issue.code === 'NS4_E2_TWIN_JOURNEYS'), false);
 });
 
 test('E2 rejects invented step kinds instead of silently normalizing them', () => {

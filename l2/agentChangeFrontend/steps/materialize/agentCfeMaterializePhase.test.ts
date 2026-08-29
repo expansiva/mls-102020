@@ -22,17 +22,20 @@ void test('agentCfeMaterializePhase declares the materialize phase/verify step a
   assert.match(flow, /"agentName": "agentCfeMaterializePhase"/);
 });
 
-// Verify traces/verdicts must ALWAYS be module-scoped (<module>/trace/...). A project-root fallback
-// (l2/trace/...) polluted the project root and the junk ended up committed in mls-102051.
+// Verify traces/verdicts must ALWAYS be module-scoped under l4/<module>/pipeline/trace.
+// A project-root fallback (l2/trace/...) polluted the project root and the junk ended up committed in mls-102051.
 void test('verify trace and verdict are module-scoped with no project-root fallback', () => {
   const src = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
+  const helper = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfePipelineTrace.ts'), 'utf8');
   // The caller's moduleName (derived from ALL items) is the first argument of both writers.
   assert.match(src, /export async function saveMaterializeVerifyTrace\(moduleName: string, planId: string/);
   assert.match(src, /export async function saveMaterializeVerifySummary\(/);
-  // No root fallback: the folder is always `${module}/trace/...`, never a bare 'trace/...'.
+  assert.match(src, /cfePipelineTraceFileInfo\(/);
+  assert.match(helper, /pipeline\/trace/);
+  // No root fallback: never a bare 'trace/...'.
   assert.doesNotMatch(src, /folder\s*=\s*module\s*\?/, 'root-fallback ternary must be gone');
   assert.doesNotMatch(src, /:\s*'trace\/frontend-materialize-verify'/, "bare 'trace/...' folder must never be used");
-  assert.equal((src.match(/const folder = `\$\{module\}\/trace\/frontend-materialize-verify`/g) || []).length, 2);
+  assert.doesNotMatch(src, /const folder = `\$\{module\}\/trace\/frontend-materialize-verify`/);
   // Without a derivable module both writers skip the write instead of polluting the root.
   assert.equal((src.match(/never write to the project-root l2\/trace/g) || []).length, 2);
   // The phase passes its own moduleName to the trace (not only to the verdict).

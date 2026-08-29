@@ -18,15 +18,21 @@ import { deriveE8HubScore, type Ns4E8Sources } from '/_102020_/l2/agentNewSoluti
 import { applyNs4HubComposition, defaultNs4HubComposition } from '/_102020_/l2/agentNewSolution/steps/e8/hubComposition.js';
 import {
   NS4_E8_MODEL_VERSION, isNs4OwnerHandleField,
-  type Ns4E8BffCall, type Ns4E8HubCatalogue, type Ns4E8HubCatalogueItem, type Ns4E8Input,
+  type Ns4E8BffCall, type Ns4E8ContentRole, type Ns4E8HubCatalogue, type Ns4E8HubCatalogueItem, type Ns4E8Input,
   type Ns4E8InputSource, type Ns4E8MenuEntry, type Ns4E8Model, type Ns4E8ModelWorkspace,
-  type Ns4E8Operation, type Ns4E8Section,
+  type Ns4E8Operation, type Ns4E8Organism, type Ns4E8Section,
 } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
+import { ns4E8CompositionProfile } from '/_102020_/l2/agentNewSolution/steps/e8/compositionProfiles.js';
 
 const CATEGORY_RECORD_CATALOGUE = 'entityRecordManagement';
 const CATEGORY_APPROVAL = 'approvalWorkflow';
 const CATEGORY_PROCESS = 'processWizard';
 const CATEGORY_DASHBOARD = 'dashboardCommandCenter';
+const CATEGORY_CONTENT = 'contentLanding';
+
+/** Explicit E1 phrases only. A vague "nice page" is not enough — today's default stays. */
+const CONTENT_PAGE_SIGNAL = /p[áa]gina informativa|p[áa]gina institucional|campanha p[úu]blica|landing page/i;
+const MEMBER_ID_HINT = /^[a-z][A-Za-z0-9]*$/;
 
 /** A timestamp is recognized by its shape, never by a domain word: a date/datetime field named `<verb>At`. */
 const TIMESTAMP_FIELD = /At$/;
@@ -43,23 +49,36 @@ export function deriveNs4E8Model(sources: Ns4E8Sources, reviewRound = 1): Ns4E8M
     operations.push(...built.operations);
     workspaces.push(built.workspace);
   }
+  const contentPage = buildContentPage(context);
+  if (contentPage) workspaces.push(contentPage);
   // Projections before journeys so a single-entity inspect can host on the view instead of a second page.
   for (const projection of context.standaloneProjections) {
     const built = buildProjectionWorkspace(projection, context);
-    if (built) { operations.push(...built.operations); workspaces.push(built.workspace); }
+    const tileOwner = contentPage && shouldTileProjectionOnContent(projection, contentPage, context)
+      ? contentPage : null;
+    if (tileOwner) {
+      if (built) absorbProjectionIntoContent(tileOwner, built.workspace);
+      else attachSynthesizedProjectionTile(tileOwner, projection, context, operations);
+    } else if (built) {
+      operations.push(...built.operations);
+      workspaces.push(built.workspace);
+    }
   }
   for (const journey of context.compiledJourneys) {
     const built = buildJourneyWorkspace(journey, context);
     operations.push(...built.operations);
-    const owner = ownerPlaceForJourney(journey, workspaces);
+    const owner = (contentPage && shouldHostJourneyOnContent(journey, contentPage, context) ? contentPage : null)
+      || ownerPlaceForJourney(journey, workspaces);
     if (owner) absorbJourneyIntoOwner(owner, journey, built);
     else workspaces.push(built.workspace);
   }
+  if (contentPage) linkLeftoverJourneysFromContent(contentPage, workspaces, context);
   // A record chosen on a screen needs a query on that same screen to choose it from.
   wireNs4ParentPickers(workspaces, operations, context, decisions);
   // The hub is built last: its catalogue points at calls of the workspaces that already exist.
   // A hub that only copies the anchor list (action/pending tiles) is not a place of its own.
-  if (context.hubEntity) {
+  // A contentPage of the same entity already is that public place.
+  if (context.hubEntity && !workspaces.some(workspace => workspace.tier === 'contentPage' && workspace.entity === context.hubEntity)) {
     const hub = buildHubWorkspace(context, workspaces);
     if (hubHasOwnSurface(hub)) workspaces.push(hub);
   }
@@ -147,6 +166,7 @@ function buildContext(sources: Ns4E8Sources, derived: Ns4DerivedContextGraph): N
 function isCatalogueEntity(entity: Ns4OntologyEntity): boolean {
   if (isNs4PlatformOwnedEntity(entity)) return false;
   if (entity.kind === 'projection' || entity.kind === 'valueObject') return false;
+  if (entity.cardinality === 'singleton') return false;
   return entity.storage.target === 'moduleDatabase' || entity.storage.target === 'mdm';
 }
 
@@ -545,7 +565,8 @@ function ownerPlaceForJourney(
   const entityIds = unique(journey.business.steps.map(step => step.entity));
   if (entityIds.length !== 1) return null;
   const owner = workspaces.find(workspace =>
-    (workspace.tier === 'recordCatalogue' || workspace.tier === 'projection') && workspace.entity === entityIds[0]);
+    (workspace.tier === 'recordCatalogue' || workspace.tier === 'projection' || workspace.tier === 'contentPage')
+    && workspace.entity === entityIds[0]);
   if (!owner) return null;
   if (!owner.actors.includes(journey.business.actorRef)) return null;
   return owner;
@@ -598,6 +619,218 @@ function uniqueAppend(existing: string[], extra: string[]): string[] {
     out.push(item);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Content page — only when E1 names an informative / institutional / public-campaign page.
+// ---------------------------------------------------------------------------------------------
+
+function contentPageRequested(sources: Ns4E8Sources): boolean {
+  const module = sources.module;
+  if (!module) return false;
+  const blob = [
+    module.title, module.purpose, module.mainGoal, module.boundaries,
+    ...(module.inScope || []),
+    ...(module.outOfScope || []),
+    ...(module.expectedOutcomes || []).flatMap(outcome => [outcome.title, outcome.description]),
+  ].join('\n');
+  return CONTENT_PAGE_SIGNAL.test(blob);
+}
+
+function contentSubjectEntity(context: Ns4E8TierContext): string {
+  const singles = context.sources.ontology.entities
+    .filter(entity => entity.cardinality === 'singleton' && entity.kind !== 'projection' && entity.kind !== 'valueObject')
+    .sort(byEntityId);
+  if (singles[0]) return singles[0].entityId;
+  return context.hubEntity;
+}
+
+function buildContentPage(context: Ns4E8TierContext): Ns4E8ModelWorkspace | null {
+  if (!contentPageRequested(context.sources)) return null;
+  const entityId = contentSubjectEntity(context);
+  if (!entityId) return null;
+  const profile = ns4E8CompositionProfile(CATEGORY_CONTENT);
+  const entity = context.entities.get(entityId);
+  const hostable = context.compiledJourneys.filter(journey =>
+    shouldHostJourneyOnContent(journey, { entity: entityId } as Ns4E8ModelWorkspace, context));
+  const hostedProfiles = unique(hostable.flatMap(journey =>
+    journey.business.steps.flatMap(step => context.profilesByStepRef.get(`${journey.journeyId}.${step.stepId}`) || [])));
+  const fallbackProfiles = unique([
+    ...hostedProfiles,
+    ...context.sources.access.profiles.map(item => item.profileId),
+  ]);
+  const actors = unique(fallbackProfiles.flatMap(ref => context.actorsByProfile.get(ref) || []));
+  return {
+    workspaceId: `${lowerCamel(entityId)}Landing`,
+    tier: 'contentPage',
+    title: context.sources.module?.title || entity?.title || entityId,
+    purpose: context.sources.module?.purpose || entity?.description || '',
+    kind: 'landing',
+    entity: entityId,
+    actors,
+    profileRefs: fallbackProfiles,
+    featureRefs: unique(hostable.flatMap(journey => journey.business.steps.flatMap(step => step.featureRefs))),
+    hostedStepRefs: [],
+    categoryRef: CATEGORY_CONTENT,
+    bffCalls: [],
+    sections: profile.contentOrganisms ? contentSectionsFromModule(context) : [],
+  };
+}
+
+function contentSectionsFromModule(context: Ns4E8TierContext): Ns4E8Section[] {
+  const module = context.sources.module;
+  if (!module) return [];
+  const sections: Ns4E8Section[] = [];
+  const push = (sectionId: string, intent: string, role: Ns4E8ContentRole) => {
+    if (!intent || sections.some(item => item.intent === intent && item.organisms[0]?.role === role)) return;
+    sections.push({
+      sectionId,
+      intent,
+      organisms: [contentOrganism(role)],
+    });
+  };
+  push('hero', module.title, 'hero');
+  push('purpose', module.purpose || module.mainGoal || '', 'richText');
+  (module.expectedOutcomes || []).forEach((outcome, index) => {
+    const text = outcome.description || outcome.title;
+    const id = outcome.outcomeId && MEMBER_ID_HINT.test(outcome.outcomeId)
+      ? outcome.outcomeId : `outcome${index + 1}`;
+    push(id, text, 'richText');
+  });
+  const imageSource = [
+    module.purpose, module.mainGoal, module.boundaries,
+    ...(module.inScope || []),
+    ...(module.expectedOutcomes || []).map(outcome => outcome.description),
+  ].find(text => text && /imagens?|images?/i.test(text));
+  if (imageSource) push('images', imageSource, 'imageSet');
+  return sections;
+}
+
+function contentOrganism(role: Ns4E8ContentRole): Ns4E8Organism {
+  return { role, type: 'content' };
+}
+
+function shouldHostJourneyOnContent(
+  journey: Ns4JourneyProposal, contentPage: Pick<Ns4E8ModelWorkspace, 'entity'>, context: Ns4E8TierContext,
+): boolean {
+  if (!ns4E8CompositionProfile(CATEGORY_CONTENT).hostedCommands) return false;
+  const mode = journey.business.entry.mode;
+  if (mode === 'eventDriven' || mode === 'contextRequired') return false;
+  const steps = journey.business.steps;
+  const decisive = [...steps].reverse().find(step => step.kind === 'act' || step.kind === 'decide');
+  if (!decisive) return false;
+  const entity = context.entities.get(decisive.entity);
+  if (entity?.kind === 'projection') return false;
+  if (steps.some(step => step.entity === contentPage.entity)) return true;
+  return (context.parentsOf.get(decisive.entity) || []).some(parent => parent.parent === contentPage.entity);
+}
+
+function shouldTileProjectionOnContent(
+  projection: Ns4OntologyEntity, contentPage: Ns4E8ModelWorkspace, context: Ns4E8TierContext,
+): boolean {
+  if (!ns4E8CompositionProfile(CATEGORY_CONTENT).tiles) return false;
+  const hostableIds = new Set(context.compiledJourneys
+    .filter(journey => shouldHostJourneyOnContent(journey, contentPage, context))
+    .map(journey => journey.journeyId));
+  if (!projection.sourceRefs.journeyIds.some(id => hostableIds.has(id))) return false;
+  const leftover = context.compiledJourneys.some(journey => {
+    if (shouldHostJourneyOnContent(journey, contentPage, context)) return false;
+    const decisive = [...journey.business.steps].reverse().find(step => step.kind === 'act' || step.kind === 'decide');
+    return decisive?.entity === projection.entityId;
+  });
+  return !leftover;
+}
+
+function absorbProjectionIntoContent(owner: Ns4E8ModelWorkspace, projection: Ns4E8ModelWorkspace): void {
+  owner.hostedStepRefs = uniqueAppend(owner.hostedStepRefs, projection.hostedStepRefs);
+  owner.featureRefs = uniqueAppend(owner.featureRefs, projection.featureRefs);
+  owner.profileRefs = unique([...owner.profileRefs, ...projection.profileRefs]);
+  owner.actors = unique([...owner.actors, ...projection.actors]);
+  const existing = new Set(owner.bffCalls.map(call => call.operationId));
+  for (const call of projection.bffCalls) {
+    if (existing.has(call.operationId)) continue;
+    owner.bffCalls.push(call);
+    existing.add(call.operationId);
+  }
+  if (owner.sections.some(section => section.sectionId === 'counter')) return;
+  const query = owner.bffCalls.find(call => call.kind === 'query' && call.entityRef === projection.entity)
+    || projection.bffCalls.find(call => call.kind === 'query');
+  if (!query) return;
+  owner.sections.push({
+    sectionId: 'counter',
+    intent: projection.purpose || projection.title,
+    organisms: [{ role: 'primarySurface', dataSource: query.bffId, usage: 'summary' }],
+  });
+}
+
+function attachSynthesizedProjectionTile(
+  owner: Ns4E8ModelWorkspace, projection: Ns4OntologyEntity, context: Ns4E8TierContext, operations: Ns4E8Operation[],
+): void {
+  if (owner.sections.some(section => section.sectionId === 'counter')) return;
+  const operationId = `view${projection.entityId}`;
+  if (!operations.some(operation => operation.operationId === operationId)) {
+    const idField = identityFieldOf(projection);
+    const parentId = (context.parentsOf.get(projection.entityId) || [])
+      .find(parent => parent.parent === owner.entity)?.fieldId;
+    const key = (idField && projection.fields.some(field => field.fieldId === idField) ? idField : '')
+      || (parentId && projection.fields.some(field => field.fieldId === parentId) ? parentId : '')
+      || projection.fields.find(field => /Id$/.test(field.fieldId))?.fieldId
+      || '';
+    operations.push({
+      operationId,
+      title: projection.title,
+      kind: 'query',
+      entityRef: projection.entityId,
+      entityRefs: unique([projection.entityId, owner.entity]),
+      accessPattern: { kind: 'list', pagination: 'optional' },
+      inputs: key ? [{
+        inputId: key,
+        fieldRef: { entityId: projection.entityId, fieldId: key },
+        source: 'selectedEntity',
+        required: false,
+        description: projection.description,
+      }] : [],
+      outputRefs: projection.fields.map(field => `${projection.entityId}.${field.fieldId}`),
+      useRules: [],
+      transitionRefs: [],
+      story: [projection.description || projection.title],
+    });
+  }
+  const bffId = `qry${projection.entityId}View`;
+  if (!owner.bffCalls.some(call => call.bffId === bffId)) {
+    owner.bffCalls.push({
+      bffId, kind: 'query', operationId, outputKind: 'paginated', entityRef: projection.entityId,
+    });
+  }
+  owner.sections.push({
+    sectionId: 'counter',
+    intent: projection.description || projection.title,
+    organisms: [{ role: 'primarySurface', dataSource: bffId, usage: 'summary' }],
+  });
+}
+
+function linkLeftoverJourneysFromContent(
+  contentPage: Ns4E8ModelWorkspace, workspaces: Ns4E8ModelWorkspace[], context: Ns4E8TierContext,
+): void {
+  const leftovers = workspaces.filter(workspace =>
+    workspace.tier === 'journey'
+    && workspace.workspaceId !== contentPage.workspaceId
+    && (workspace.entity === contentPage.entity
+      || workspace.bffCalls.some(call => call.entityRef === contentPage.entity)
+      || (context.compiledJourneys.find(journey => journey.journeyId === workspace.journeyRef)
+        ?.business.steps.some(step => step.entity === contentPage.entity))));
+  if (!leftovers.length) return;
+  const navigation = contentPage.navigation ? [...contentPage.navigation] : [];
+  leftovers.forEach((workspace, index) => {
+    if (navigation.some(item => item.targetWorkspaceId === workspace.workspaceId)) return;
+    navigation.push({
+      targetWorkspaceId: workspace.workspaceId,
+      label: workspace.title,
+      prominence: 'contextual',
+      order: navigation.length + index,
+    });
+  });
+  contentPage.navigation = navigation;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -883,7 +1116,7 @@ function buildLandings(workspaces: Ns4E8ModelWorkspace[], sources: Ns4E8Sources)
 }
 
 function tierRank(tier: Ns4WorkspaceTierValue): number {
-  return tier === 'hub' ? 0 : tier === 'projection' ? 1 : tier === 'recordCatalogue' ? 2 : 3;
+  return tier === 'contentPage' ? 0 : tier === 'hub' ? 1 : tier === 'projection' ? 2 : tier === 'recordCatalogue' ? 3 : 4;
 }
 type Ns4WorkspaceTierValue = Ns4E8ModelWorkspace['tier'];
 

@@ -148,6 +148,7 @@ export function transposeNs4ClassicWorkspace(
       intent: section.intent,
       organisms: section.organisms.map(organism => ({
         role: organism.role,
+        ...(organism.type ? { type: organism.type } : {}),
         ...(organism.dataSource ? { dataSource: organism.dataSource } : {}),
         ...(organism.action ? { action: organism.action } : {}),
         ...(organism.usage ? { usage: organism.usage } : {}),

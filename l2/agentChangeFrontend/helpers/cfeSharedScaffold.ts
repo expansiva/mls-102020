@@ -28,7 +28,7 @@ export type SharedLlmTemplate = {
 
 interface ContractField {
   name: string;
-  type: 'string' | 'number' | 'boolean' | 'array' | 'stringUnion';
+  type: 'string' | 'number' | 'boolean' | 'array' | 'stringUnion' | 'opaque';
   optional: boolean;
   /** first literal of a string-union type — the zero value for generated defaults */
   firstLiteral?: string;
@@ -153,8 +153,10 @@ export function renderUiScenaryMembers(
     if (!uiScenaryState(model)) return { code: null, reason: 'no uiScenary state' };
     return { code: renderUiScenary(model).join('\n') };
   } catch (error) {
-    if (error instanceof ScaffoldBail) return { code: null, reason: error.message };
-    throw error;
+    if (!(error instanceof ScaffoldBail)) throw error;
+    const fallback = buildScenaryOnlyModel(outputPath, data);
+    if (!fallback || !uiScenaryState(fallback)) return { code: null, reason: error.message };
+    return { code: renderUiScenary(fallback).join('\n') };
   }
 }
 
@@ -321,13 +323,15 @@ function parseInterfaceFields(interfaceName: string, body: string): ContractFiel
       if (!fm) bail(`contract interface ${interfaceName} has unparseable member: ${entry.slice(0, 60)}`);
       const rawType = fm[3].trim();
       const unionLiterals = parseStringUnion(rawType);
-      const type = rawType === 'string' ? 'string'
+      // Unknown shapes (Record<string, unknown>, string | null, named types) are opaque: the
+      // scaffold only needs a neutral default, not the field's structure. Bail stays for
+      // unparseable members and unbalanced braces.
+      const type: ContractField['type'] = rawType === 'string' ? 'string'
         : rawType === 'number' ? 'number'
         : rawType === 'boolean' ? 'boolean'
         : rawType.endsWith('[]') ? 'array'
         : unionLiterals ? 'stringUnion'
-        : null;
-      if (!type) bail(`contract field ${interfaceName}.${fm[1]} has unsupported type: ${rawType.slice(0, 40)}`);
+        : 'opaque';
       const field: ContractField = { name: fm[1], type, optional: fm[2] === '?' };
       if (unionLiterals) field.firstLiteral = unionLiterals[0];
       fields.push(field);
@@ -405,6 +409,62 @@ function buildModel(outputPath: string, data: unknown, contractSource: string, p
   };
   validateModel(model);
   return model;
+}
+
+/**
+ * Defs-only model for the scenary block. Contract parse/validate never runs: a bail there
+ * must not cancel re-injection of setUiScenary / handleUiScenaryChange / applyUrlScenary /
+ * syncScenaryQuery, which are a function of scenaries[] + uiScenary state, not of the wire types.
+ */
+function buildScenaryOnlyModel(outputPath: string, data: unknown): ScaffoldModel | null {
+  if (!isRecord(data)) return null;
+  const states: DefsState[] = [];
+  for (const raw of Array.isArray(data.states) ? data.states : []) {
+    if (!isRecord(raw)) continue;
+    try { states.push(parseState(raw)); } catch (error) {
+      if (error instanceof ScaffoldBail) continue;
+      throw error;
+    }
+  }
+  const scenaries = parseScenariesLenient(data.scenaries);
+  if (!states.some(state => state.kind === 'uiScenary') && !scenaries.length) return null;
+  return {
+    outputPath,
+    baseClassName: stringOf(data.baseClassName) || 'Base',
+    routePattern: stringOf(data.routePattern) || '/',
+    states,
+    actions: [],
+    scenaries,
+    initialLoads: [],
+    i18n: {},
+    defaultLocale: 'en',
+    runtimeLocales: ['en'],
+    previousText: new Map(),
+    contractTsPath: '',
+    contracts: [],
+    interfaces: new Map(),
+    stateByKey: new Map(states.map(state => [state.stateKey, state])),
+    actionById: new Map(),
+  };
+}
+
+function parseScenariesLenient(raw: unknown): DefsScenary[] {
+  if (!Array.isArray(raw)) return [];
+  const scenes: DefsScenary[] = [];
+  for (const item of raw) {
+    if (!isRecord(item)) continue;
+    const value = stringOf(item.value);
+    const kind = stringOf(item.kind);
+    if (!value) continue;
+    if (kind !== 'base' && kind !== 'detail' && kind !== 'command') continue;
+    scenes.push({
+      value,
+      kind,
+      commandName: stringOf(item.commandName) || undefined,
+      preconditions: stringArray(item.preconditions),
+    });
+  }
+  return scenes;
 }
 
 function parseScenaries(raw: unknown): DefsScenary[] {
@@ -1087,7 +1147,7 @@ function renderParams(model: ScaffoldModel, action: DefsAction, input: ContractI
     } else if (field.type === 'boolean') {
       requiredLines.push(`${indent}  ${field.name}: this.${state.name} === 'true',`);
     } else {
-      bail(`action ${action.actionId} required field ${field.name} has unsupported input type ${field.type}`);
+      requiredLines.push(`${indent}  ${field.name}: this.${state.name} as ${input.name}['${field.name}'],`);
     }
   }
   lines.push(`${indent}const params: ${input.name} = {`);
@@ -1119,7 +1179,9 @@ function renderParams(model: ScaffoldModel, action: DefsAction, input: ContractI
       lines.push(`${indent}  params.${field.name} = this.${state.name} === 'true';`);
       lines.push(`${indent}}`);
     } else {
-      bail(`action ${action.actionId} optional field ${field.name} has unsupported input type ${field.type}`);
+      lines.push(`${indent}if (this.${state.name} !== '' && this.${state.name} != null) {`);
+      lines.push(`${indent}  params.${field.name} = this.${state.name} as ${input.name}['${field.name}'];`);
+      lines.push(`${indent}}`);
     }
   }
   return lines;
@@ -1392,6 +1454,7 @@ function zeroValue(field: ContractField): string {
     case 'boolean': return 'false';
     case 'array': return '[]';
     case 'stringUnion': return `'${escapeSingle(field.firstLiteral ?? '')}'`;
+    case 'opaque': return 'null';
   }
 }
 

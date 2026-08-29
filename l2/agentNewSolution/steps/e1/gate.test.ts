@@ -378,6 +378,23 @@ test('resume module lookup canonicalizes a module token before the root planner'
   assert.equal(resolveNs4ExistingModuleToken('unknownModule', modules), '');
 });
 
+test('/fast E1 approval records autoReason and skippedDefaults on the pipeline', () => {
+  const running = createNs4Pipeline('petShop', 'petShop', '2026-08-29T10:00:00.000Z');
+  const approved = markNs4E1Approved(
+    running,
+    'auto',
+    'l4/petShop/module.defs.ts',
+    '2026-08-29T10:01:00.000Z',
+    'fast skipped clarification',
+    { productLanguages: ['pt-BR'], defaultLanguage: 'pt-BR', moduleName: 'petShop' },
+  );
+  assert.equal(approved.steps.e1.approvedBy, 'auto');
+  assert.equal(approved.steps.e1.autoReason, 'fast skipped clarification');
+  assert.deepEqual(approved.steps.e1.skippedDefaults, {
+    productLanguages: ['pt-BR'], defaultLanguage: 'pt-BR', moduleName: 'petShop',
+  });
+});
+
 test('resume is allowed only for a pipeline owned by agentNewSolution', () => {
   const running = createNs4Pipeline('petShop', 'petShop', '2026-08-04T10:00:00.000Z');
   const approved = markNs4E1Approved(running, 'auto', 'l4/petShop/module.defs.ts', '2026-08-04T10:01:00.000Z');

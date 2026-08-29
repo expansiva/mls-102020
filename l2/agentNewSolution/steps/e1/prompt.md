@@ -45,6 +45,11 @@ Rules:
   if the user did not request any language, `productLanguages` must be exactly `[userLanguage]`.
   NEVER add languages by market assumption. `defaultLanguage` must be in that list.
 - Propose at least one business actor and expected outcome. Actors are not E3 access profiles.
+  An actor exists only with different permissions or a different data scope. Demographic personas
+  ("morador", "visitante", "jovem", "responsável") that do the same things are the same actor. A
+  request that says "qualquer pessoa" / "público" / "anyone" is one public actor, plus privileged
+  actors the request names (admin, and so on). Do not list three signers and an admin when the
+  request is "anyone may sign, only admin may download".
 - Every value must be a useful editable default. Do not add prose or Markdown outside the JSON.
 
 ## Platform baseline

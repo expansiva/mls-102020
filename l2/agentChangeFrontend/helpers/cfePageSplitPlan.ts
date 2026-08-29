@@ -74,6 +74,53 @@ export function buildSplitPlan(
   return { pageId, genome, reason, organisms };
 }
 
+/**
+ * contentLanding: one pipeline item per organism (hero, richText, imageSet, form, counter…),
+ * including organisms with no binding of this page. The section-level split above would skip
+ * those and wait for an output-cap failure; this recipe materializes piece by piece from the start.
+ */
+export function buildOrganismSplitPlan(
+  pageId: string,
+  genome: string,
+  sections: SplitPlanSection[],
+  bindings: string[],
+  reason: string,
+): SplitPlan | null {
+  const known = new Set(bindings);
+  const usedNames = new Set<string>();
+  const organisms: SplitPlanOrganism[] = [];
+  for (const section of sections) {
+    for (const organism of section.organisms ?? []) {
+      const owned: string[] = [];
+      for (const ref of [organism.dataSource, organism.action, organism.attachTo]) {
+        if (ref && known.has(ref) && !owned.includes(ref)) owned.push(ref);
+      }
+      const base = organismNameOf(organism.role || section.sectionId);
+      organisms.push({ n: organisms.length + 1, organism: uniqueOrganismName(base, usedNames), bindings: owned });
+    }
+  }
+  if (organisms.length < 2) return null;
+
+  const covered = new Set(organisms.flatMap(item => item.bindings));
+  const orphans = bindings.filter(binding => !covered.has(binding));
+  if (orphans.length > 0) {
+    organisms.push({ n: organisms.length + 1, organism: uniqueOrganismName('other', usedNames), bindings: orphans });
+  }
+  return { pageId, genome, reason, organisms };
+}
+
+function uniqueOrganismName(base: string, used: Set<string>): string {
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
+  }
+  let n = 2;
+  while (used.has(`${base}${n}`)) n += 1;
+  const name = `${base}${n}`;
+  used.add(name);
+  return name;
+}
+
 /** `sec-delay-risk-insights` / `delayRiskInsights` -> `delayRiskInsights` (a valid identifier fragment). */
 export function organismNameOf(sectionId: string): string {
   const withoutPrefix = sectionId.replace(/^sec[-_]/u, '');

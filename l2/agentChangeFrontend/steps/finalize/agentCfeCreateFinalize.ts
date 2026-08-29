@@ -17,6 +17,7 @@ import { describeCompilerFidelity } from '/_102020_/l2/agentChangeFrontend/helpe
 import { saveCfRunReport } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunDossier.js';
 import { buildCfRunReport } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunReport.js';
 import { collectRunStepRecords } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunSteps.js';
+import { describeAgentCommand, saveCfeRunSummary, takeCfeDegradations } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 const AGENT_NAME = 'agentCfeCreateFinalize';
 
@@ -96,6 +97,45 @@ async function dispatchAddLanguage(agent: IAgentMeta, context: mls.msg.Execution
     console.error(`[${agent.agentName}] addLanguage handoff failed: ${reason}`);
     return `; addLanguage: DISPATCH FAILED (${reason}) — re-send manually: ${message}`;
   }
+}
+
+async function persistCfeRunSummary(
+  context: mls.msg.ExecutionContext,
+  result: { moduleName: string; pagesDone: unknown[]; ownersDone: unknown[]; skippedPages: unknown[]; incompletePages: unknown[] },
+  attempt: number,
+  compiled: { checked: number },
+  partitioned: { blocking: unknown[]; declared: unknown[] },
+  unreproduced: unknown[],
+  reason: string,
+  status: 'completed' | 'failed',
+): Promise<void> {
+  try {
+    const degradations = await takeCfeDegradations(result.moduleName);
+    const blocked = partitioned.blocking.length + unreproduced.length;
+    const verdict = status === 'failed' || blocked > 0
+      ? 'failed'
+      : (degradations.length || partitioned.declared.length || result.incompletePages.length ? 'degraded' : 'completed');
+    await saveCfeRunSummary({
+      moduleName: result.moduleName,
+      agent: 'agentChangeFrontend',
+      command: describeAgentCommand(context.task?.iaCompressed?.longMemory),
+      startedAt: null,
+      finishedAt: new Date().toISOString(),
+      verdict,
+      reason,
+      counts: {
+        planned: result.pagesDone.length + result.skippedPages.length + result.incompletePages.length,
+        generated: result.pagesDone.length,
+        ownersDone: result.ownersDone.length,
+        skipped: result.skippedPages.length,
+        blocked,
+        declared: partitioned.declared.length,
+        repairs: Math.max(0, attempt - 1),
+        compiled: compiled.checked,
+      },
+      degradations,
+    });
+  } catch { /* run summary must never fail finalize */ }
 }
 
 /** Which round this finalize is. 1 on the first pass; a repair round enqueues the next one with attempt+1. */
@@ -232,7 +272,8 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const shown = partitioned.blocking.slice(0, 12).join('\n');
       const more = partitioned.blocking.length > 12 ? `\n…(+${partitioned.blocking.length - 12} more)` : '';
       const fidelity = describeCompilerFidelity();
-      const writeDossier = async (summary: string, repairing: boolean): Promise<string | null> => saveCfRunReport(result.moduleName, buildCfRunReport({
+      const writeDossier = async (summary: string, repairing: boolean): Promise<string | null> => {
+        const ref = await saveCfRunReport(result.moduleName, buildCfRunReport({
         moduleName: result.moduleName,
         attempt,
         final: !repairing,
@@ -244,7 +285,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         agentBuild: await readAgentProvenance(),
         steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
         summary,
-      }));
+        }));
+        if (!repairing) await persistCfeRunSummary(context, result, attempt, compiled, partitioned, unreproduced, summary, 'failed');
+        return ref;
+      };
       if (attempt <= MAX_MODULE_COMPILE_REPAIRS && plan.slots.length > 0) {
         const failTrace = `MODULE-COMPILE-FAILED (${partitioned.blocking.length} blocking error(s) across ${compiled.checked} .ts of ${result.moduleName}${declaredNote}${verdictNote}) -> ${describeCompileRepairPlan(plan, attempt)}. ${fidelity}\n${shown}${more}\n${base}`;
         const reportRef = await writeDossier(failTrace, true);
@@ -292,6 +336,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
       summary: trace,
     }));
+    await persistCfeRunSummary(context, result, attempt, compiled, partitioned, unreproduced, trace, 'completed');
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
       reportRef ? `${trace} Run report: ${reportRef}.` : trace)];
   } catch (error) {

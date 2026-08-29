@@ -45,7 +45,7 @@ void test('the plan re-schedules whatever the last verify verdict still calls br
   assert.match(shared, /export async function readBlockedMaterializePlanIds\(project: number\): Promise<Set<string>>/);
   // Only a verdict that is NOT clear schedules work, and it is read from the stable summary file.
   assert.match(shared, /verdict\.allClear !== false/);
-  assert.match(shared, /endsWith\('\/trace\/frontend-materialize-verify'\)/);
+  assert.match(shared, /isCfeMaterializeVerifyFolder\(/);
   assert.match(shared, /endsWith\('-summary'\)/);
   // It reaches the planner and shows up as its own reason (never hidden inside 'up to date').
   assert.match(src, /planMaterialization\(candidates, args\.force === true, await readBlockedMaterializePlanIds\(generated\.project\)\)/);

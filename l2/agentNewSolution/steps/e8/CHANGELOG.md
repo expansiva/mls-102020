@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-29 — categoria contentLanding e tier contentPage
+
+Página informativa/institucional/campanha pública (sinal explícito no E1) vira um lugar
+`contentPage` com `categoryRef: contentLanding`. Organisms `type: content` (hero/richText/imageSet/ctaLink)
+só nesse workspace, com prosa verbatim do E1. Perfis de composição são dado
+(`compositionProfiles.ts`: contentLanding vs default). Entidade `cardinality: 'singleton'`
+não ganha `recordCatalogue`. R1/R2/R3 do default permanecem.
+
 ## 2026-08-29 — workspace só nasce quando é um lugar
 
 Jornada do mesmo ator sobre a entidade do catálogo (command/inspect/decide/locate) é hospedada no

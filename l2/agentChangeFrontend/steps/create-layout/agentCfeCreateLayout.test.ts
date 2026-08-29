@@ -111,6 +111,10 @@ void test('page11 defs export is multiline prose without bindings; page21 stays 
   assert.match(prose, /\n/);
   assert.equal(page11.extras.length, 0);
 
+  const landing21 = mod.pageLayoutDefsExport('page21', { ...prepared, presentation: { categoryRef: 'contentLanding' } }, bindings, { goal: 'ignored' });
+  assert.equal(typeof landing21.definition, 'string', 'contentLanding keeps prose defs on every genome');
+  assert.doesNotMatch(String(landing21.definition), /pageObjective|dataBindings/);
+
   const page21 = mod.pageLayoutDefsExport('page21', prepared, bindings, { goal: 'decidir o próximo pedido' });
   assert.equal(typeof page21.definition, 'object');
   const def21 = page21.definition as Record<string, unknown>;

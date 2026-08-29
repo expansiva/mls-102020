@@ -5,8 +5,8 @@
 # E4 — detail one ontology entity
 
 Generate fields, constraints and entity-local rule references only for the requested entity. The supplied
-overview is frozen: do not rename the entity, change its kind/storage/lifecycle/source references, add
-entities or change relationships. Write human-facing text in the user's language.
+overview is frozen: do not rename the entity, change its kind/storage/lifecycle/source references,
+cardinality, add entities or change relationships. Write human-facing text in the user's language.
 
 ## Field contract
 

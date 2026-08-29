@@ -77,9 +77,21 @@ one option. Then write journeys consistent with those selected choices. Attach t
   make every selected value the matching decision's `chosen`. A selection can add, remove or reshape
   journeys; never treat it as a local text patch.
 
+## Actors
+
+An actor exists only when it has **different permissions** (it can see or do something another actor
+cannot) or a **different data scope** (own records vs all records). A demographic persona does not
+create an actor: "morador", "visitante", "jovem", "responsável" who perform the same operations with
+the same access are **the same actor**. A request that says "qualquer pessoa" / "público" / "anyone"
+is **one** public actor (no login), plus the privileged actors the request names (admin, and so on).
+Do not emit `signPetitionAsMorador`, `signPetitionAsVisitante` and `signPetitionAsResponsavelJovem`
+as three journeys — that is one public signing journey.
+
 - Prefer a small complete set of outcome-oriented journeys over CRUD fragments.
-- Treat the complete approved E1 contract as a coverage checklist. Every explicit in-scope actor,
-  user-facing capability, screen intent and promised outcome must be owned by a journey. Do not let a
+- Treat the complete approved E1 contract as a coverage checklist. Every explicit in-scope actor
+  with distinct access or data scope, plus every user-facing capability, screen intent and promised
+  outcome, must be owned by a journey. Demographic personas that share operations are covered by the
+  one public (or otherwise shared) journey — do not mint one journey per persona. Do not let a
   producer handoff stand in for the recipient's journey when that recipient is expected to use the app.
 - Before returning the proposal, perform a silent coverage pass over E1. In particular, verify that
   external users can consume information promised to them, not merely that an internal actor can
@@ -107,6 +119,9 @@ evidence.
 
 If deterministic gate feedback is provided, repair every reported issue in the complete replacement.
 Preserve unaffected content. Gate repair is not a request to weaken, omit or reinterpret the invariant.
+A `NS4_E2_TWIN_JOURNEYS` finding names journeys that are the same flow for different personas: keep
+one journey, one actor (public when the request says anyone/qualquer pessoa), and retarget features
+and policy decisions onto it. Do not keep the extras under new ids.
 Coverage-judge feedback is equally binding: add the missing journey or the missing locate step
 described by every blocking issue, update features and handoffs consistently, and return the
 complete replacement proposal without dropping unaffected content.

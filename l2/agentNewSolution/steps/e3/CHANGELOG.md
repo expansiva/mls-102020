@@ -1,5 +1,12 @@
 # E3 changelog
 
+- 2026-08-29: Profiles follow the same actor rule as E2: a persona is not a profile. The prompt
+  forbids minting morador/visitante/jovem grants that copy the same authorities. The gate adds
+  `NS4_E3_TWIN_JOURNEYS` when supplied E2 journeys share operations **and** the same granted
+  `authorityRef:dataScope.mode` fingerprint across different actors. Distinct data scope
+  (own vs organization) or distinct authorities keep the actors. Repair feedback tells the model
+  to merge those actors onto one profile.
+
 - 2026-08-26: `smart` still opens the E3 widget — the access review has no A/B/C signal, so missing
   signal never hides the checkpoint. `/fast` and `automatic` still skip.
 

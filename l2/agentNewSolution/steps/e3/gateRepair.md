@@ -18,6 +18,9 @@ not widen access to make one disappear.
 - Never weaken an access limit to satisfy a finding. Narrowing is allowed; widening is not.
 - Keep stable ids: `profileId`, `authorityRef` and `actorRefs` stay as they are unless a finding is
   precisely about them.
+- A `NS4_E3_TWIN_JOURNEYS` finding means two or more journeys are the same flow for different
+  personas. Merge those actors onto one profile (public when the request says anyone/qualquer
+  pessoa). Do not invent extra authorities to make the personas look different.
 - Record what you changed in `changeSummary`, one entry per finding resolved.
 - Keep the user's language in every human-facing text.
 

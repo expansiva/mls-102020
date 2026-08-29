@@ -5,8 +5,9 @@
 // The screen list does NOT live in l5/project.json: this routine discovers the pages by
 // itself — l4 workflows/operations are the functional source of truth (pageId + title),
 // and a page is only registered when its l2 artifacts are materialized on disk
-// (contracts/<page>.ts + shared/<page>.ts + desktop/page11/<page>.ts).
-// Additional desktop/pageNN variants are registered as extra routes when materialized.
+// (contracts/<page>.ts + shared/<page>.ts + desktop/pageNN/<page>.ts).
+// The unsuffixed route uses page11 when that genome exists, otherwise the first remaining
+// genome. Additional desktop/pageNN variants are extra suffixed routes.
 // It merges the frontend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
 // shellTemplates, publication, clientShell (l5 customize overrides win), projects
 // (master frontend + libs) and modules[].frontend.pages / navigation.
@@ -259,12 +260,25 @@ function pageRoute(moduleName: string, pageId: string, routeParams: string[]): s
   return routeParams.reduce((route, param) => `${route}/:${param}?`, `/${moduleName}/${pageId}`);
 }
 
+function desktopGenomesWithTs(clientRoot: string, moduleName: string, pageId: string): string[] {
+  const desktopDir = path.join(clientRoot, 'l2', moduleName, 'web', 'desktop');
+  if (!fs.existsSync(desktopDir)) return [];
+  return fs.readdirSync(desktopDir)
+    .filter(name => /^page\d+$/.test(name))
+    .filter(layout => fs.existsSync(path.join(desktopDir, layout, `${pageId}.ts`)))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function primaryPageGenome(genomes: string[]): string {
+  return genomes.includes('page11') ? 'page11' : (genomes[0] || 'page11');
+}
+
 function isMaterialized(clientRoot: string, moduleName: string, pageId: string): boolean {
   const web = path.join(clientRoot, 'l2', moduleName, 'web');
   const sharedOk = fs.existsSync(path.join(web, 'shared', `${pageId}.ts`));
-  const pageOk = fs.existsSync(path.join(web, 'desktop/page11', `${pageId}.ts`));
+  const pageOk = desktopGenomesWithTs(clientRoot, moduleName, pageId).length > 0;
   // Contracts: legacy is one per-page `<pageId>.ts`; l4 v2 (F3) is one per bffCall `<pageId>.<bffId>.ts`.
-  // Accept either — a page is materialized when its shared+page11 exist and at least one contract does.
+  // Accept either — a page is materialized when its shared + a page genome exist and at least one contract does.
   const contractsDir = path.join(web, 'contracts');
   const contractOk = fs.existsSync(path.join(contractsDir, `${pageId}.ts`))
     || (fs.existsSync(contractsDir) && fs.readdirSync(contractsDir).some(name =>
@@ -272,12 +286,12 @@ function isMaterialized(clientRoot: string, moduleName: string, pageId: string):
   return sharedOk && pageOk && contractOk;
 }
 
-function discoverPageVariants(clientRoot: string, clientId: string, moduleName: string, page: DiscoveredPage): PageVariant[] {
+function discoverPageVariants(clientRoot: string, clientId: string, moduleName: string, page: DiscoveredPage, primaryGenome: string): PageVariant[] {
   const desktopDir = path.join(clientRoot, 'l2', moduleName, 'web', 'desktop');
   if (!fs.existsSync(desktopDir)) return [];
 
   const layouts = fs.readdirSync(desktopDir)
-    .filter(name => /^page\d+$/.test(name) && name !== 'page11')
+    .filter(name => /^page\d+$/.test(name) && name !== primaryGenome)
     .sort((a, b) => a.localeCompare(b));
 
   const variants: PageVariant[] = [];
@@ -335,7 +349,7 @@ function main(): void {
   if (discovered.length === 0) fail('no pages discovered from l4 workflows/operations');
   const pages = discovered.filter(page => {
     if (isMaterialized(clientRoot, moduleName, page.pageId)) return true;
-    warn(`page '${page.pageId}' skipped: l2 artifacts not materialized (contracts/shared/page11)`);
+    warn(`page '${page.pageId}' skipped: l2 artifacts not materialized (contracts/shared/pageNN)`);
     return false;
   });
   if (pages.length === 0) fail('no discovered page is materialized in l2; run the materialization first');
@@ -422,27 +436,37 @@ function main(): void {
     .map(landing => ({ actorId: landing.actorId, pageId: landing.pageId, route: `/${moduleName}/${landing.pageId}` })));
   if (landings.length > 0) (mod as ProjectModuleConfig & { landings?: unknown[] }).landings = landings;
 
-  const variantPages = pages.flatMap(page => discoverPageVariants(clientRoot, clientId, moduleName, page));
-  // Item 2a: publish the generated page11 <page>.test.ts files (resolver .js form) so the devenv
+  const variantPages = pages.flatMap(page => {
+    const primary = primaryPageGenome(desktopGenomesWithTs(clientRoot, moduleName, page.pageId));
+    return discoverPageVariants(clientRoot, clientId, moduleName, page, primary);
+  });
+  // Item 2a: publish the generated <page>.test.ts files (resolver .js form) so the devenv
   // monitor Tests runner can discover them from config.json (never importing the client directly).
-  const pageTests = pages
-    .filter(page => fs.existsSync(path.join(clientRoot, 'l2', moduleName, 'web', 'desktop', 'page11', `${page.pageId}.test.ts`)))
-    .map(page => `_${clientId}_/l2/${moduleName}/web/desktop/page11/${page.pageId}.test.js`);
+  const pageTests = pages.flatMap(page => {
+    const genomes = desktopGenomesWithTs(clientRoot, moduleName, page.pageId);
+    const withTests = ['page11', ...genomes].filter((genome, index, list) => list.indexOf(genome) === index)
+      .filter(genome => fs.existsSync(path.join(clientRoot, 'l2', moduleName, 'web', 'desktop', genome, `${page.pageId}.test.ts`)));
+    const genome = withTests[0];
+    return genome ? [`_${clientId}_/l2/${moduleName}/web/desktop/${genome}/${page.pageId}.test.js`] : [];
+  });
   mod.frontend = {
     layer: 'l2',
     ...(pageTests.length > 0 ? { pageTests } : {}),
     pages: [
-      ...pages.map((page): ProjectFrontendPageConfig => ({
+      ...pages.map((page): ProjectFrontendPageConfig => {
+        const primary = primaryPageGenome(desktopGenomesWithTs(clientRoot, moduleName, page.pageId));
+        return {
         pageId: page.pageId,
         route: pageRoute(moduleName, page.pageId, page.routeParams),
-        source: `l2/${moduleName}/web/desktop/page11/${page.pageId}.ts`,
-        definition: `l2/${moduleName}/web/desktop/page11/${page.pageId}.defs.ts`,
-        componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/page11`, shortName: page.pageId }),
+        source: `l2/${moduleName}/web/desktop/${primary}/${page.pageId}.ts`,
+        definition: `l2/${moduleName}/web/desktop/${primary}/${page.pageId}.defs.ts`,
+        componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/${primary}`, shortName: page.pageId }),
         title: labels[page.pageId] || page.label,
         // F5: actors that may reach this page; landing pages are public/pre-login (no actor gate).
         ...(page.actors.length ? { actors: page.actors } : {}),
         ...(page.landing ? { public: true } : {}),
-      } as ProjectFrontendPageConfig & { actors?: string[]; public?: boolean })),
+      } as ProjectFrontendPageConfig & { actors?: string[]; public?: boolean };
+      }),
       ...variantPages.map((page): ProjectFrontendPageConfig => ({
         pageId: page.routePageId,
         route: page.route,

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   buildNs4ModuleArtifact,
@@ -80,6 +81,91 @@ test('E3 preserves hook args byte-for-byte for prompt_ready matching', () => {
 test('E3 accepts a complete matrix with a limited external information view', () => {
   const review = normalizeNs4E3Review(reviewInput);
   assert.deepEqual(validateNs4E3Review(review, journeys), { ok: true, issues: [] });
+});
+
+const listaAssinaturaE2 = JSON.parse(readFileSync(new URL('../e2/fixtures/listaAssinatura-e2-twins.json', import.meta.url), 'utf8'));
+const listaAssinaturaE3 = JSON.parse(readFileSync(new URL('fixtures/listaAssinatura-e3-twins.json', import.meta.url), 'utf8'));
+const petShopDistinctActors = JSON.parse(readFileSync(new URL('../e2/fixtures/petShop-distinct-actors.json', import.meta.url), 'utf8'));
+
+test('E3 flags listaAssinatura twin sign journeys that grant the same access to different personas', () => {
+  const result = validateNs4E3Review(normalizeNs4E3Review(listaAssinaturaE3), normalizeNs4E2Review(listaAssinaturaE2));
+  const twins = result.issues.filter(issue => issue.code === 'NS4_E3_TWIN_JOURNEYS');
+  assert.ok(twins.length >= 1, result.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  const message = twins.map(issue => issue.message).join(' ');
+  assert.match(message, /signPetitionAsMorador/);
+  assert.match(message, /signPetitionAsResponsavelJovem/);
+  assert.doesNotMatch(message, /exportPetitionSignatures/);
+  assert.doesNotMatch(message, /administradorCondominio/);
+});
+
+test('E3 keeps petShop admin and cliente — distinct operations and distinct access', () => {
+  const matrix = {
+    planId: 'e3-access-review',
+    moduleName: 'petShop',
+    userLanguage: 'pt-BR',
+    title: 'Matriz',
+    reviewRound: 1,
+    profiles: [
+      { profileId: 'admin', title: 'Admin', kind: 'internal', description: 'Loja.', actorRefs: ['admin'], landingIntent: 'Operar.' },
+      { profileId: 'cliente', title: 'Cliente', kind: 'external', description: 'Dono do pet.', actorRefs: ['cliente'], landingIntent: 'Agendar.' },
+    ],
+    authorities: [
+      { authorityRef: 'petshop:admin', title: 'Operar', description: 'Agenda da loja.', journeyStepRefs: ['approveServiceAppointment.locatePendingServiceAppointment', 'approveServiceAppointment.approveServiceAppointment'], informationNeeds: [] },
+      { authorityRef: 'petshop:cliente', title: 'Agendar', description: 'Pedido do cliente.', journeyStepRefs: ['requestServiceAppointment.locatePet', 'requestServiceAppointment.createServiceAppointment'], informationNeeds: [] },
+    ],
+    grants: [
+      {
+        profileRef: 'admin', authorityRef: 'petshop:admin', reason: 'Opera a loja.',
+        dataScope: { mode: 'organization', description: 'Toda a agenda.' },
+        disclosure: { mode: 'fullRecord', description: 'Registro operacional.', allowedInformation: [], deniedInformation: [] }, useRules: [],
+      },
+      {
+        profileRef: 'cliente', authorityRef: 'petshop:cliente', reason: 'Pede horário.',
+        dataScope: { mode: 'own', description: 'Somente os próprios pets.' },
+        disclosure: { mode: 'fullRecord', description: 'Registros do cliente.', allowedInformation: [], deniedInformation: [] }, useRules: [],
+      },
+    ],
+    changeSummary: ['Inicial.'],
+  };
+  const result = validateNs4E3Review(normalizeNs4E3Review(matrix), normalizeNs4E2Review(petShopDistinctActors));
+  assert.equal(result.ok, true, result.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+});
+
+test('E3 does not collapse actors whose grants differ in data scope on the same operations', () => {
+  const twinOps = structuredClone(listaAssinaturaE2);
+  twinOps.journeys = twinOps.journeys.filter((journey: { journeyId: string }) => journey.journeyId !== 'exportPetitionSignatures');
+  twinOps.journeys[0].business.actorRef = 'owner';
+  twinOps.journeys[1].business.actorRef = 'manager';
+  twinOps.journeys = twinOps.journeys.slice(0, 2);
+  const matrix = {
+    planId: 'e3-access-review',
+    moduleName: 'listaAssinatura',
+    userLanguage: 'pt-BR',
+    title: 'Matriz',
+    reviewRound: 1,
+    profiles: [
+      { profileId: 'owner', title: 'Dono', kind: 'internal', description: 'Vê os seus.', actorRefs: ['owner'], landingIntent: 'Assinar a própria.' },
+      { profileId: 'manager', title: 'Gestor', kind: 'internal', description: 'Vê todas.', actorRefs: ['manager'], landingIntent: 'Acompanhar todas.' },
+    ],
+    authorities: [
+      { authorityRef: 'listaassinatura:assinar-peticao', title: 'Assinar', description: 'Registrar assinatura.', journeyStepRefs: ['signPetitionAsMorador.registerPetitionSignature', 'signPetitionAsResponsavelJovem.registerPetitionSignature'], informationNeeds: [] },
+    ],
+    grants: [
+      {
+        profileRef: 'owner', authorityRef: 'listaassinatura:assinar-peticao', reason: 'Assina a própria.',
+        dataScope: { mode: 'own', description: 'Somente a própria assinatura.' },
+        disclosure: { mode: 'fieldsOnly', description: 'Dados da própria assinatura.', allowedInformation: ['CPF'], deniedInformation: [] }, useRules: [],
+      },
+      {
+        profileRef: 'manager', authorityRef: 'listaassinatura:assinar-peticao', reason: 'Vê todas as assinaturas.',
+        dataScope: { mode: 'organization', description: 'Todas as assinaturas.' },
+        disclosure: { mode: 'fieldsOnly', description: 'Relação completa.', allowedInformation: ['CPF', 'Nome'], deniedInformation: [] }, useRules: [],
+      },
+    ],
+    changeSummary: ['Escopos distintos.'],
+  };
+  const result = validateNs4E3Review(normalizeNs4E3Review(matrix), normalizeNs4E2Review(twinOps));
+  assert.equal(result.issues.some(issue => issue.code === 'NS4_E3_TWIN_JOURNEYS'), false, result.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
 });
 
 test('E3 rejects authorities outside the collab-auth domain:code convention', () => {

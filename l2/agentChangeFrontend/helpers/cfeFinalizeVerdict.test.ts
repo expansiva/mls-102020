@@ -73,7 +73,7 @@ const RUN01_SHARED_VERDICT = {
 };
 
 function storFile(folder: string, shortName: string, content: unknown): Record<string, unknown> {
-  const file: Record<string, unknown> = { project: PROJECT, level: 2, folder, shortName, extension: '.json', status: 'changed' };
+  const file: Record<string, unknown> = { project: PROJECT, level: 4, folder, shortName, extension: '.json', status: 'changed' };
   file.source = JSON.stringify(content);
   file.getContent = async () => String(file.source);
   return file;
@@ -86,13 +86,13 @@ async function loadModule(): Promise<any> {
   if (!g.document) g.document = { documentElement: { lang: 'en' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   const files: Record<string, any> = {};
   const put = (file: Record<string, unknown>): void => { files[keyOf(file as any)] = file; };
-  put(storFile('todo/trace/frontend-materialize-verify', 'materialize-phase-pages-verify-summary', RUN01_PAGES_VERDICT));
-  put(storFile('todo/trace/frontend-materialize-verify', 'materialize-phase-shared-verify-summary', RUN01_SHARED_VERDICT));
+  put(storFile('todo/pipeline/trace/frontend-materialize-verify', 'materialize-phase-pages-verify-summary', RUN01_PAGES_VERDICT));
+  put(storFile('todo/pipeline/trace/frontend-materialize-verify', 'materialize-phase-shared-verify-summary', RUN01_SHARED_VERDICT));
   // outro módulo do mesmo projeto: não pode contaminar a leitura de `todo`
-  put(storFile('outro/trace/frontend-materialize-verify', 'materialize-phase-pages-verify-summary', RUN01_PAGES_VERDICT));
+  put(storFile('outro/pipeline/trace/frontend-materialize-verify', 'materialize-phase-pages-verify-summary', RUN01_PAGES_VERDICT));
   // o arquivo de achados que o verify grava para o slot de repair (pré-criado: o writer só cria quando
   // não existe, e criar de verdade puxaria o libStor do Studio)
-  put(storFile('todo/trace/frontend-materialize-findings', 'materialize-taskcatalogue-l2-page', {}));
+  put(storFile('todo/pipeline/trace/frontend-materialize-findings', 'materialize-taskcatalogue-l2-page', {}));
   g.mls = {
     ...(g.mls ?? {}),
     actualProject: PROJECT,

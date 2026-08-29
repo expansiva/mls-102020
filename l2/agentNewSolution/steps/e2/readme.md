@@ -50,7 +50,8 @@ plus `targetProfile` on a handoff, and every context is derived downstream by
 `helpers/ns4Context.ts` from that entity, the step kind, the order of the steps and the approved
 ontology. The gate is therefore structural only: identity, kind, a stable PascalCase `entity`,
 business-facing text that never asks for a raw id, feature references, the ordering of a preferred
-origin journey and the `locate` fallback of a `contextOrLookup` journey. Every `entity` is
+origin journey, the `locate` fallback of a `contextOrLookup` journey, and twin journeys (the same
+`kind:entity` set with different `actorRef` — a persona does not create an actor). Every `entity` is
 normalized once into a stable PascalCase identifier and that exact id is consumed by the E4
 entity/projection contract; localized display text stays in titles and descriptions.
 

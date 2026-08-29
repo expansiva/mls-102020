@@ -59,6 +59,7 @@ import {
   getContentByMlsPath,
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+import { cfePipelineTraceMlsPath, cfePipelineTraceMlsPathLegacy } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 interface MaterializePhaseArgs {
   planId: string;
@@ -247,6 +248,10 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   );
 
   if (toRepair.length === 0) {
+    // Warnings never block, but they MUST land in frontend-materialize-findings — that is the
+    // folder a human greps. Skipping this write is how run01 listed allClear while 7 shareds
+    // were missing the scenary members (the verify-summary `declared` list named them; findings did not).
+    await persistAuditableFindings(moduleName, args.attempt, checkedItems);
     const trace = checkedItems.map(checked => {
       const declared = checked.declared.length ? `; declared: ${checked.declared.join(' | ')}` : '';
       const warnings = checked.warnings.length ? `; UX warnings: ${checked.warnings.join(' | ')}` : '';
@@ -348,7 +353,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   // this an item broken only by those got an empty hint, which the gen agent cannot tell apart from a
   // first pass — it sends the blank skeleton and the model rewrites the file blind (run01/102047).
   for (const entry of toRepair) {
-    await saveMaterializeItemFindings(moduleName, entry.item.planId, nextAttempt, [...entry.blocking, ...entry.repairable]);
+    await saveMaterializeItemFindings(moduleName, entry.item.planId, nextAttempt, [...entry.blocking, ...entry.repairable, ...entry.warnings]);
   }
   const nextVerifyPlanId = `${args.planId}-v${nextAttempt}`;
   const nextVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
@@ -440,7 +445,8 @@ async function planSplitSteps(
 async function readSplitOrganisms(defPath: string | undefined, outputPath: string | null): Promise<{ n: number }[]> {
   const parsed = outputPath ? parseSplitOutput(outputPath) : null;
   if (!parsed || !defPath) return [];
-  const raw = await getContentByMlsPath(`_${parsed.project}_/l2/${parsed.moduleName}/trace/frontend-page-split/${parsed.genome}/${parsed.shortName}.json`);
+  const raw = await getContentByMlsPath(cfePipelineTraceMlsPath(parsed.project, parsed.moduleName, `frontend-page-split/${parsed.genome}`, `${parsed.shortName}.json`))
+    ?? await getContentByMlsPath(cfePipelineTraceMlsPathLegacy(parsed.project, parsed.moduleName, `frontend-page-split/${parsed.genome}`, `${parsed.shortName}.json`));
   if (!raw) return [];
   try {
     const plan = JSON.parse(raw) as { organisms?: { n: number }[] };
@@ -489,6 +495,15 @@ function toBrokenTrace(entry: BrokenItem, severity?: 'blocked' | 'repair' | 'dec
     warnings: entry.warnings,
     severity: resolved,
   };
+}
+
+/** Write every auditable finding (errors + warnings) into frontend-materialize-findings/. */
+async function persistAuditableFindings(moduleName: string, attempt: number, items: BrokenItem[]): Promise<void> {
+  for (const entry of items) {
+    const findings = [...entry.blocking, ...entry.repairable, ...entry.warnings];
+    if (!findings.length) continue;
+    await saveMaterializeItemFindings(moduleName, entry.item.planId, attempt, findings);
+  }
 }
 
 function withFindings(item: GenStepArgs, outputPath: string | null, typecheck: BrokenItem['typecheck'], findings: Partial<Pick<BrokenItem, 'blocking' | 'repairable' | 'declared' | 'warnings'>>): BrokenItem {

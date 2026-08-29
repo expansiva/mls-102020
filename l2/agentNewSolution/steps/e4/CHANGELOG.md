@@ -1,5 +1,11 @@
 # E4 changelog
 
+- 2026-08-29: Overview may declare `cardinality: 'singleton'` on an entity with one fixed instance
+  (the campaign, the page). Optional in the type and in `e4-review.schema.json` (absence = today).
+  The prompt says when in doubt omit the field. Gate `NS4_E4_SINGLETON_CREATE` rejects a singleton
+  whose E2 journey still creates records of that entity (`deriveNs4Contexts.creates`). E8 already
+  skips the record catalogue when the field is present.
+
 - 2026-08-26: `smart` skips the ontology widget when the only recorded decisions are Type C label
   backfills (or none) and writes `autoReason: nenhum finding A` next to `approvedBy=auto`. `/fast`
   and `automatic` still skip. A Type A finding would reopen the widget.

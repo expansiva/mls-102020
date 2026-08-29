@@ -2,6 +2,7 @@
 
 import {
   Ns4E2Review,
+  Ns4JourneyProposal,
   Ns4PolicyDecisionSelection,
 } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import { isNs4E2DemotionDecisionId } from '/_102020_/l2/agentNewSolution/steps/e2/coverageSignals.js';
@@ -116,6 +117,8 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
     });
   });
 
+  addTwinJourneyIssues(review.journeys, add);
+
   review.features.forEach((feature, index) => {
     if (feature.priority === 'now' && !feature.journeyStepRefs.length) {
       add('NS4_E2_NOW_FEATURE_UNMAPPED', `features[${index}].journeyStepRefs`, 'A now feature must map to at least one journey step.');
@@ -159,6 +162,35 @@ export function validateNs4E2PolicySelections(
     }
   });
   return { ok: issues.length === 0, issues };
+}
+
+/**
+ * Operation set of a journey: sorted unique `kind:entity`. Titles and step ids do not count —
+ * persona copies of the same flow (sign-as-morador vs sign-as-visitante) hash equal.
+ */
+export function ns4E2JourneyOperationKey(journey: Ns4JourneyProposal): string {
+  return [...new Set(journey.business.steps.map(step => `${step.kind}:${step.entity}`).filter(item => item !== ':'))].sort().join(',');
+}
+
+function addTwinJourneyIssues(journeys: Ns4JourneyProposal[], add: AddIssue): void {
+  const groups = new Map<string, Ns4JourneyProposal[]>();
+  journeys.forEach(journey => {
+    const key = ns4E2JourneyOperationKey(journey);
+    if (!key || !journey.business.actorRef) return;
+    const group = groups.get(key) || [];
+    group.push(journey);
+    groups.set(key, group);
+  });
+  groups.forEach((group, operations) => {
+    const actors = [...new Set(group.map(journey => journey.business.actorRef))];
+    if (actors.length < 2) return;
+    const journeyIds = group.map(journey => journey.journeyId);
+    add(
+      'NS4_E2_TWIN_JOURNEYS',
+      'journeys',
+      `Journeys ${journeyIds.join(', ')} are twins: same operations (${operations}) with different actors (${actors.join(', ')}). A persona or demographic segment does not create an actor — collapse them into one actor.`,
+    );
+  });
 }
 
 type AddIssue = (code: string, path: string, message: string) => void;

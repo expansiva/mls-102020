@@ -21,6 +21,8 @@ Key invariants:
 - authorities follow the lowercase collab-auth `domain:code` convention;
 - every `now` journey step is protected by at least one authority;
 - all E2 actor refs are represented by an access profile;
+- journeys that share operations and the same granted authorities across different actors are twins
+  (persona does not create an actor); distinct data scope keeps the actors;
 - external profiles cannot receive organization-wide scope;
 - limited disclosure enumerates allowed information;
 - read-only information needs may introduce safe future projections without granting a full business

@@ -169,6 +169,15 @@ test('E4 overview and entity prompts require stable English enum codes', () => {
   assert.match(entityPrompt, /Do not emit\s+`enumLabels` on the `status` field/u);
 });
 
+test('E4 overview prompt declares singleton cardinality with a conservative default', () => {
+  const prompt = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
+  assert.match(prompt, /cardinality:\s*"singleton"/u);
+  assert.match(prompt, /Petition/u);
+  assert.match(prompt, /Task, Pet, Order/u);
+  assert.match(prompt, /omit the field/u);
+  assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /cardinality/u);
+});
+
 test('E4 ontology widget surfaces assumed enum-label decisions', () => {
   const source = readFileSync(new URL('../../widgets/widgetNs4Ontology.ts', import.meta.url), 'utf8');
   assert.match(source, /this\.value\.systemDecisions\?\.length/);
@@ -412,6 +421,52 @@ test('E4 rejects kind core with ownership external — the combination the polic
   const issue = gate.issues.find(each => each.code === 'NS4_E4_OWNERSHIP_EXTERNAL_CORE');
   assert.ok(issue, JSON.stringify(gate.issues));
   assert.match(issue!.message, /external-reference field \(platformUserId\)/u);
+});
+
+test('E4 rejects singleton cardinality when a journey still creates instances of the entity', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].cardinality = 'singleton';
+  const creating = structuredClone(journeys) as any;
+  creating.journeys[0].business.steps = [{
+    stepId: 'captureProject', kind: 'act', entity: 'Project', title: 'Create a project.',
+    description: 'Project created.', featureRefs: ['projectManagement'],
+  }];
+  const gate = validateNs4E4Review(normalizeNs4E4Review(input), creating, access);
+  const issue = gate.issues.find(item => item.code === 'NS4_E4_SINGLETON_CREATE');
+  assert.ok(issue, JSON.stringify(gate.issues));
+  assert.match(issue!.message, /captureProject/);
+  assert.match(issue!.message, /Project/);
+
+  const locating = structuredClone(journeys);
+  const ok = validateNs4E4Review(normalizeNs4E4Review(input), locating, access);
+  assert.ok(!ok.issues.some(item => item.code === 'NS4_E4_SINGLETON_CREATE'), JSON.stringify(ok.issues));
+});
+
+const LISTA_ASSINATURA_ONTOLOGY = JSON.parse(
+  readFileSync(new URL('fixtures/listaAssinatura-e4-ontology-draft.json', import.meta.url), 'utf8'),
+) as unknown;
+
+test('E4 accepts listaAssinatura Petition as singleton and leaves PetitionSignature unmarked', () => {
+  const review = normalizeNs4E4Review(LISTA_ASSINATURA_ONTOLOGY);
+  const petition = review.entities.find(entity => entity.entityId === 'Petition');
+  const signature = review.entities.find(entity => entity.entityId === 'PetitionSignature');
+  assert.equal(petition?.cardinality, 'singleton');
+  assert.equal('cardinality' in (signature || {}), false);
+  const schema = JSON.parse(readFileSync(new URL('../../schemas/e4-review.schema.json', import.meta.url), 'utf8')) as any;
+  const entitySchema = schema.$defs.entity;
+  assert.equal(entitySchema.additionalProperties, false);
+  assert.deepEqual(entitySchema.properties.cardinality, { type: 'string', enum: ['singleton'] });
+  assert.ok(!entitySchema.required.includes('cardinality'));
+  const gate = validateNs4E4Review(review);
+  assert.ok(!gate.issues.some(issue => issue.code === 'NS4_E4_SINGLETON_CREATE'), JSON.stringify(gate.issues));
+  assert.ok(gate.ok, JSON.stringify(gate.issues));
+});
+
+test('E4 management fixture stays without cardinality after normalize', () => {
+  const raw = readFileSync(new URL('fixtures/petShop-e4-ontology-draft.json', import.meta.url), 'utf8');
+  assert.doesNotMatch(raw, /"cardinality"/u);
+  const review = normalizeNs4E4Review(JSON.parse(raw));
+  assert.ok(review.entities.every(entity => !('cardinality' in entity)));
 });
 
 test('E4 flags an ownership rule when the entity has no owner field (petShop customerCanViewOnlyOwnPets)', () => {

@@ -56,6 +56,7 @@ import {
 import { ensureSharedScenaryMembers, generateSharedScaffold, sharedLlmFallbackTemplate } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
 import { buildPageSkeleton } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSkeleton.js';
 import { buildSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
+import { cfePipelineTraceMlsPath, recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 interface ToolOutput {
   code: string;
@@ -150,7 +151,7 @@ async function materializeSharedDeterministic(
     const previousSource = await getContentByMlsPath(pipelineItem.outputPath);
     const scaffold = generateSharedScaffold(pipelineItem.outputPath, definitionData, contractSource, previousSource ?? undefined);
     if (!scaffold.code) {
-      console.info(`[agentCfeMaterializeGen] scaffold bail for ${pipelineItem.outputPath} (${scaffold.reason}) -> LLM`);
+      await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'scaffold-bail', String(scaffold.reason || 'unknown'), pipelineItem.outputPath);
       return null;
     }
     // A REPAIR round whose scaffold reproduces the file already on disk has nothing to repair with: the
@@ -186,7 +187,7 @@ async function materializeSharedDeterministic(
     if (compileErrors.length > 0) {
       // The scaffold is deterministic, so a compile error here is a defs/contract mismatch it could not
       // see. Hand the item to the LLM instead of failing: the file on disk is overwritten by its output.
-      console.info(`[agentCfeMaterializeGen] scaffold output did not compile for ${pipelineItem.outputPath} -> LLM (${compileErrors[0]})`);
+      await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'scaffold-compile-bail', compileErrors[0], pipelineItem.outputPath);
       return null;
     }
 
@@ -202,7 +203,7 @@ async function materializeSharedDeterministic(
     const trace = `deterministic scaffold: ${scaffold.code.length}b, no LLM call${typecheckPath ? ' + typecheck test' : ''}`;
     return [mkStatus(context, parentStep, step, hookSequential, 'completed', studioDiagnostics.length ? `${trace}. ${formatStudioDiagnostics(studioDiagnostics)}` : trace, 'input_output')];
   } catch (error) {
-    console.error(`[agentCfeMaterializeGen] deterministic shared failed (${formatError('materializeSharedDeterministic', error)}) -> LLM`);
+    await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'scaffold-exception-bail', formatError('materializeSharedDeterministic', error), pipelineItem.outputPath);
     return null;
   }
 }
@@ -428,7 +429,9 @@ async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineIte
   const built = buildPageSkeleton({
     outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource, sharedDefsData, previousSource, organisms, current,
   });
-  if (!built.code) console.info(`[agentCfeMaterializeGen] skeleton skipped for ${pipelineItem.outputPath}: ${built.reason}`);
+  if (!built.code) {
+    await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'skeleton-skip', String(built.reason || 'unknown'), pipelineItem.outputPath);
+  }
   return built.code ?? undefined;
 }
 
@@ -467,7 +470,7 @@ export async function writeSplitPlanFromL4(pipelineItem: PipelineItem, data: unk
   const plan = buildSplitPlan(parsed.shortName, genome, sections, bindings, reason);
   if (!plan) return false;
   return saveArtifactTextByMlsPath(
-    `_${parsed.project}_/l2/${moduleName}/trace/frontend-page-split/${genome}/${parsed.shortName}.json`,
+    cfePipelineTraceMlsPath(parsed.project, moduleName, `frontend-page-split/${genome}`, `${parsed.shortName}.json`),
     `${JSON.stringify(plan, null, 2)}\n`,
   );
 }
@@ -682,10 +685,7 @@ function mkStatus(
   traceMsg?: string,
   cleaner?: 'input' | 'input_output',
 ): mls.msg.AgentIntentUpdateStatus {
-  if (traceMsg) {
-    if (status === 'failed') console.error(`[${AGENT_NAME}] ${traceMsg}`);
-    else if (status === 'completed' && traceMsg.includes('Studio diagnostics')) console.warn(`[${AGENT_NAME}] ${traceMsg}`);
-  }
+  if (traceMsg && status === 'failed') console.error(`[${AGENT_NAME}] ${traceMsg}`);
   return {
     type: 'update-status',
     hookSequential,

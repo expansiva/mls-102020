@@ -431,6 +431,47 @@ test('ensureSharedScenaryMembers replaces a divergent handleUiScenaryChange with
   assert.match(result.code, /custom\.detail/);
 });
 
+test('T1: opaque contract types do not bail the scaffold', () => {
+  const contract = CONTRACT.replace(
+    '  total: number;\n}',
+    `  total: number;
+  imageReferences: Record<string, unknown>;
+  maybeName: string | null;
+  named: ImageReferencesValue;
+}`,
+  );
+  const parsed = parseContractInterfaces(contract).get('ListThingsOutput')!;
+  assert.deepEqual(parsed.fields.filter(field => field.type === 'opaque').map(field => field.name), [
+    'imageReferences', 'maybeName', 'named',
+  ]);
+  const result = generateSharedScaffold(SHARED_PATH, definition(), contract);
+  assert.equal(result.reason, undefined, result.reason);
+  const code = result.code!;
+  assert.match(code, /const LIST_THINGS_DATA_DEFAULT: ListThingsOutput = \{ things: \[\], total: 0, imageReferences: null, maybeName: null, named: null \};/);
+});
+
+test('T2: an unusable contract still injects the four scenary members from defs', () => {
+  const defs = definitionWithScenary();
+  const unusable = CONTRACT.replace(
+    'export interface ListThingsOutput {\n  things: { thingId: string; name: string }[];\n  total: number;\n}',
+    `export interface ListThingsOutput {
+  [key: string]: unknown;
+}`,
+  );
+  assert.match(generateSharedScaffold(SHARED_PATH, defs, unusable).reason || '', /unparseable member/);
+  const llmShared = `/// <mls fileReference="${SHARED_PATH}" enhancement="_102020_/l2/enhancementAura"/>
+export class DemoThingsBase {
+  connectedCallback(): void {}
+}
+`;
+  const result = ensureSharedScenaryMembers(llmShared, SHARED_PATH, defs, unusable);
+  assert.equal(result.injected, true, result.reason);
+  assert.match(result.code, /setUiScenary\(value: string\): void/);
+  assert.match(result.code, /handleUiScenaryChange\(event: Event\): void/);
+  assert.match(result.code, /private applyUrlScenary\(\): void/);
+  assert.match(result.code, /private syncScenaryQuery\(value: string\): void/);
+});
+
 test('T1/T2: every l2_shared write and LLM fallback uses ensureSharedScenaryMembers / sharedLlmFallbackTemplate', () => {
   const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
   const cli = readFileSync(new URL('../nodejsMaterializeL2.ts', import.meta.url), 'utf8');

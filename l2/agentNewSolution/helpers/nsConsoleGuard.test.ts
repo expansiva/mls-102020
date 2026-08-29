@@ -19,9 +19,7 @@ const ALLOWED: Record<string, { info?: number; log?: number; warn?: number; why:
   'agentChangeFrontend/helpers/cfeMaterializeStudio.ts': {
     warn: 1, why: 'per-file Monaco diagnostic line during materialize; not a provenance stamp',
   },
-  'agentChangeFrontend/steps/materialize/agentCfeMaterializeGen.ts': {
-    info: 3, warn: 1, why: 'scaffold bail/skip per page — still on the console; dedicated cleanup later',
-  },
+
 };
 
 function collect(dir: string, prefix: string): Map<string, Record<Kind, number>> {

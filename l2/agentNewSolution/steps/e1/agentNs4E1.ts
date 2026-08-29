@@ -34,6 +34,11 @@ import {
   writeNs4Pipeline,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
 import { validateNs4E1Module } from '/_102020_/l2/agentNewSolution/steps/e1/gate.js';
+import {
+  NS4_FAST_SKIP_REASON,
+  decideNs4E1Clarification,
+  ns4E1SkippedDefaults,
+} from '/_102020_/l2/agentNewSolution/helpers/ns4FastHandoff.js';
 
 interface Ns4PersistedE1 {
   artifact: Ns4ModuleArtifact;
@@ -43,6 +48,8 @@ interface Ns4PersistedE1 {
 interface Ns4ClarificationAnswer {
   review: Ns4E1Review;
   approvedBy: Ns4ApprovedBy;
+  skippedClarification?: boolean;
+  skippedDefaults?: ReturnType<typeof ns4E1SkippedDefaults>;
 }
 
 export async function loadNs4E1SystemPrompt(): Promise<string> {
@@ -115,7 +122,8 @@ export async function afterNs4E1PromptStep(
   if (!isRecord(payload) || payload.type !== 'clarification' || !isRecord(payload.json)) {
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', 'E1 returned an invalid clarification payload.')];
   }
-  const review = normalizeNs4E1Review(payload.json);
+  const plan = getNs4RootPlan(context);
+  const review = normalizeNs4E1Review(payload.json, e1ReviewFallback(plan));
   const gate = validateNs4E1Review(review);
   if (!gate.ok) {
     return [updateStatus(
@@ -123,7 +131,22 @@ export async function afterNs4E1PromptStep(
       gate.issues.filter(issue => issue.severity === 'error').map(issue => `${issue.code}: ${issue.message}`).join('\n'),
     )];
   }
-  return [];
+  if (decideNs4E1Clarification(isFast(context)) === 'open') return [];
+  const mutationParent = findMutableParentStep(context, parentStep);
+  const skippedDefaults = ns4E1SkippedDefaults(review);
+  return [
+    clarificationAnswerStep(context, mutationParent, {
+      review,
+      approvedBy: 'auto',
+      skippedClarification: true,
+      skippedDefaults,
+    }),
+    updateStatus(
+      context, mutationParent, step, hookSequential, 'completed',
+      `E1 /fast skipped clarification; defaults recorded: productLanguages=${skippedDefaults.productLanguages.join(',') || '(none)'} default=${skippedDefaults.defaultLanguage} module=${skippedDefaults.moduleName}.`,
+      'input_output',
+    ),
+  ];
 }
 
 export async function beforeNs4E1ClarificationStep(
@@ -135,15 +158,7 @@ export async function beforeNs4E1ClarificationStep(
   json: unknown,
 ): Promise<HTMLElement> {
   const plan = getNs4RootPlan(context);
-  const review = normalizeNs4E1Review(parseRecord(json), {
-    userLanguage: plan.presentation.userLanguage,
-    moduleName: plan.clarification.questions.moduleName.answer,
-    productLanguages: plan.clarification.questions.productLanguages.answer,
-    mainActors: plan.clarification.questions.mainActors.answer,
-    mainGoal: plan.clarification.questions.mainGoal.answer,
-    boundaries: plan.clarification.questions.boundaries.answer,
-    sourcePrompt: plan.userPrompt,
-  });
+  const review = normalizeNs4E1Review(parseRecord(json), e1ReviewFallback(plan));
   await import('/_102020_/l2/agentNewSolution/widgets/widgetNs4Intake.js');
   const wrapper = document.createElement('div');
   const element = document.createElement('widget-ns4-intake-102020');
@@ -214,7 +229,7 @@ async function compileNs4E1(
   try {
     const answer = getClarificationAnswer(context);
     if (!answer) throw new Error('E1 clarification answer not found.');
-    const saved = await persistNs4E1(context, answer.review, answer.approvedBy);
+    const saved = await persistNs4E1(context, answer);
     const mutationParent = findMutableParentStep(context, parentStep);
     // Discarded-language warnings must reach the step trace: silence here is how run02 shipped
     // en/es translations nobody asked for.
@@ -233,9 +248,9 @@ async function compileNs4E1(
 
 async function persistNs4E1(
   context: mls.msg.ExecutionContext,
-  review: Ns4E1Review,
-  approvedBy: Ns4ApprovedBy,
+  answer: Ns4ClarificationAnswer,
 ): Promise<Ns4PersistedE1> {
+  const { review, approvedBy } = answer;
   const plan = getNs4RootPlan(context);
   const sourcePrompt = plan.userPrompt || memoryString(context, 'sourcePrompt') || 'new module';
   const artifact = buildNs4ModuleArtifactFromReview(review, sourcePrompt, approvedBy, plan.presentation);
@@ -276,8 +291,33 @@ async function persistNs4E1(
     throw new Error(message || 'E1 module gate failed.');
   }
   const artifactPath = await writeNs4Module(moduleName, artifact);
-  await writeNs4Pipeline(markNs4E1Approved(running, approvedBy, artifactPath));
+  await writeNs4Pipeline(markNs4E1Approved(
+    running,
+    approvedBy,
+    artifactPath,
+    undefined,
+    answer.skippedClarification ? NS4_FAST_SKIP_REASON : undefined,
+    answer.skippedDefaults
+      ? {
+        productLanguages: answer.skippedDefaults.productLanguages,
+        defaultLanguage: answer.skippedDefaults.defaultLanguage,
+        moduleName: answer.skippedDefaults.moduleName,
+      }
+      : undefined,
+  ));
   return { artifact, artifactPath };
+}
+
+function e1ReviewFallback(plan: Ns4RootPlan) {
+  return {
+    userLanguage: plan.presentation.userLanguage,
+    moduleName: plan.clarification.questions.moduleName.answer,
+    productLanguages: plan.clarification.questions.productLanguages.answer,
+    mainActors: plan.clarification.questions.mainActors.answer,
+    mainGoal: plan.clarification.questions.mainGoal.answer,
+    boundaries: plan.clarification.questions.boundaries.answer,
+    sourcePrompt: plan.userPrompt,
+  };
 }
 
 async function recordNs4E1Failure(context: mls.msg.ExecutionContext, failure: string): Promise<void> {

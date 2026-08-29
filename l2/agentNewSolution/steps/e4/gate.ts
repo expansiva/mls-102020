@@ -1,5 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/steps/e4/gate.ts" enhancement="_blank"/>
 
+import { deriveNs4Contexts } from '/_102020_/l2/agentNewSolution/helpers/ns4Context.js';
 import {
   collectNs4RequiredJourneyBusinessObjects,
   Ns4E2Review,
@@ -53,6 +54,17 @@ export function validateNs4E4Review(
   const coveredFeatures = new Set<string>();
   const coveredAuthorities = new Set<string>();
   const entityIds = new Set<string>();
+  const createdByStep = new Map<string, string>();
+  if (journeys) {
+    for (const step of deriveNs4Contexts({
+      journeys,
+      ontology: { entities: review.entities, relationships: review.relationships },
+    }).steps) {
+      if (step.creates && step.entity && !createdByStep.has(step.entity)) {
+        createdByStep.set(step.entity, step.stepRef);
+      }
+    }
+  }
 
   review.entities.forEach((entity, entityIndex) => {
     const path = `entities[${entityIndex}]`;
@@ -104,6 +116,16 @@ export function validateNs4E4Review(
     // PARTY POLICY (Wagner, 18/ago/2026): every natural person and every organization is master data of
     // the ORGANIZATION, reused across modules — a future CRM depends on that single registry. The two
     // checks below are what make it mechanical instead of a prompt the model may or may not honour.
+    if (entity.cardinality === 'singleton') {
+      const createRef = createdByStep.get(entity.entityId);
+      if (createRef) {
+        add(
+          'NS4_E4_SINGLETON_CREATE',
+          `${path}.cardinality`,
+          `cardinality 'singleton' contradicts ${createRef}, which creates instances of ${entity.entityId}. Omit the field when a journey creates records of this entity.`,
+        );
+      }
+    }
     if (!entity.party) {
       add('NS4_E4_PARTY_MISSING', `${path}.party`, "Declare party: 'person' | 'organization' | 'none' — whether this entity IS a natural person or an organization.");
     } else if (entity.party !== 'none' && entity.storage.target !== 'mdm') {

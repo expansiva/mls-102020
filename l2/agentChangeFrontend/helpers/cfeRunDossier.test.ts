@@ -54,6 +54,6 @@ test('the last finalize dossier is distinguishable and has a stable path', () =>
   assert.equal(last.final, true);
   assert.equal(last.attempt, 2);
   assert.equal(last.repairRounds, 1);
-  assert.equal(cfRunLatestMlsPath(102047, 'petShop'), '_102047_/l4/petShop/trace/cf-run.json');
+  assert.equal(cfRunLatestMlsPath(102047, 'petShop'), '_102047_/l4/petShop/pipeline/trace/cf-run.json');
   assert.match(cfRunSnapshotMlsPath(102047, 'petShop', '2026-08-22T20-39-54-548Z'), /cf-run-2026-08-22T20-39-54-548Z\.json$/);
 });

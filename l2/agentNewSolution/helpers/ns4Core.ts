@@ -177,6 +177,8 @@ export interface Ns4PipelineState {
       artifactPath?: string;
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
+      autoReason?: string;
+      skippedDefaults?: { productLanguages: string[]; defaultLanguage: string; moduleName: string };
       error?: string;
       failedAt?: string;
       updatedAt: string;
@@ -297,6 +299,8 @@ export interface Ns4PipelineState {
     emitted: number;
     reasons?: Record<string, string>;
   };
+  /** Recorded when `/fast` dispatches the next agent, so a re-entry of E10 does not send twice. */
+  fastHandoff?: { to: string; message: string; at: string };
 }
 
 export type Ns4ExistingAction = 'new' | 'resume-e1' | 'resume-e2' | 'resume-e3' | 'resume-e4' | 'resume-e5' | 'resume-e6' | 'resume-e7' | 'resume-e8' | 'resume-e9' | 'resume-e10' | 'resume-next' | 'collision';
@@ -1027,17 +1031,37 @@ export function markNs4E1Approved(
   approvedBy: Ns4ApprovedBy,
   artifactPath: string,
   now = new Date().toISOString(),
+  autoReason?: string,
+  skippedDefaults?: { productLanguages: string[]; defaultLanguage: string; moduleName: string },
 ): Ns4PipelineState {
   return {
     ...state,
     status: 'inProgress',
     steps: {
       ...state.steps,
-      e1: { status: 'approved', artifactPath, approvedBy, approvedAt: now, updatedAt: now },
+      e1: {
+        status: 'approved',
+        artifactPath,
+        approvedBy,
+        approvedAt: now,
+        ...ns4AutoReason(autoReason),
+        ...(skippedDefaults ? { skippedDefaults } : {}),
+        updatedAt: now,
+      },
     },
     nextStep: 'e2-journeys',
     updatedAt: now,
   };
+}
+
+export function markNs4FastHandoff(
+  state: Ns4PipelineState,
+  to: string,
+  message: string,
+  now = new Date().toISOString(),
+): Ns4PipelineState {
+  if (state.fastHandoff) return state;
+  return { ...state, fastHandoff: { to, message, at: now }, updatedAt: now };
 }
 
 export function markNs4E2Running(

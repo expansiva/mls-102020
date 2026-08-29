@@ -14,6 +14,11 @@ APIs. Authentication, JWT issuance and runtime authority assignment belong to co
 - E2 actors describe business participation. E3 profiles describe recognizable access archetypes.
 - Split composite E2 actors into useful profiles when necessary, while preserving traceability through
   `actorRefs`. One E2 actorRef may be mapped by several profiles.
+- Do not mint a profile per demographic persona. A profile exists only when its grants differ in
+  permissions (authorities) or data scope from every other profile. "Morador", "visitante", "jovem"
+  and "responsável" who receive the same authorities and the same scope are **one** public (or
+  otherwise shared) profile. A request that says "qualquer pessoa" / "público" is one external
+  public profile, plus the privileged profiles the request names (admin, and so on).
 - `authorityRef` is the stable collab-auth JWT authority and MUST use lowercase `domain:code` syntax,
   for example `billing:mrk`. Treat codes as opaque identifiers; explain their meaning in title and
   description.
