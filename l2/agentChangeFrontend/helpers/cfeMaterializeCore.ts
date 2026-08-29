@@ -4,6 +4,8 @@
 // no DOM dependency so the Node runner and the Studio agent can reuse parser, ordering, staleness
 // and prompt assembly rules.
 
+import { SHARED_SCENARY_MEMBERS } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+
 export interface PipelineItem {
   id: string;
   type: string;                 // l2_contract | l2_shared | l2_page
@@ -1607,8 +1609,18 @@ ${skills}`;
  *        language-cached `msg` getter come pre-written, so the model stops re-deriving them (and stops
  *        getting them wrong: relative imports, prefixed DTO names, `nothing` without its import).
  *        Omitted on a repair round: there the file on disk already IS the skeleton, filled in.
+ * @param sharedTemplate l2_shared LLM fallback. Full scaffold (start from / keep these members) or
+ *        the deterministic scenary block when the scaffold bailed. Travels on repair too — the
+ *        current file is in the repair hint; this is what the four scenary members MUST look like.
  */
-export function buildHumanPrompt(data: unknown, contextSections: string[], outputPath: string, repairHint?: string, skeleton?: string): string {
+export function buildHumanPrompt(
+  data: unknown,
+  contextSections: string[],
+  outputPath: string,
+  repairHint?: string,
+  skeleton?: string,
+  sharedTemplate?: { code: string; mode: 'scaffold' | 'scenary-block' },
+): string {
   const lines = typeof data === 'string'
     ? ['## Definition', '', data, '']
     : ['## Definition', '', '```json', JSON.stringify(data, null, 2), '```', ''];
@@ -1626,6 +1638,28 @@ export function buildHumanPrompt(data: unknown, contextSections: string[], outpu
       '(never inline it) and add the copy you invent, with short keys — in EVERY locale below.', '',
       '```typescript', skeleton, '```', '',
     );
+  }
+  if (sharedTemplate) {
+    if (sharedTemplate.mode === 'scaffold') {
+      lines.push(
+        repairHint
+          ? '## Shared scaffold (reference — these members must survive the repair)'
+          : '## Shared scaffold — start from this file',
+        '',
+        repairHint
+          ? 'The file to fix is in the Repair section. The four scenary members below — setUiScenary, handleUiScenaryChange, applyUrlScenary, syncScenaryQuery — must come back BYTE FOR BYTE from this scaffold. Do not drop them to fix a local syntax error.'
+          : 'This is the deterministic shared. Fix only what does not compile. Keep setUiScenary, handleUiScenaryChange, applyUrlScenary and syncScenaryQuery BYTE FOR BYTE.',
+        '',
+        '```typescript', sharedTemplate.code, '```', '',
+      );
+    } else {
+      lines.push(
+        '## Required scenary members', '',
+        'The class MUST include these four methods. Copy them as-is: setUiScenary, handleUiScenaryChange, applyUrlScenary, syncScenaryQuery.',
+        '',
+        '```typescript', sharedTemplate.code, '```', '',
+      );
+    }
   }
   lines.push('## Output', '', `Generate ONLY the TypeScript for: ${outputPath}`, `Call ${GEN_TOOL_NAME} with the complete code.`);
   if (repairHint) lines.push('', repairHint);
@@ -2636,6 +2670,12 @@ export function collectPageScenaryIssues(pageCode: string, sharedDefinition: unk
   if (hosts.length > 0 && !/import\s+['"]\/_102020_\/l2\/molecules\/ml-scenary\.js['"]/.test(pageCode)) {
     issues.push(`page renders <${ML_SCENARY_TAG}> but is missing the side-effect import '/_102020_/l2/molecules/ml-scenary.js'`);
   }
+  if (values.length > 1 && hosts.length > 0) {
+    const hostOpen = pageCode.match(new RegExp(`<${ML_SCENARY_TAG}\\b[\\s\\S]*?>`));
+    if (hostOpen && !/@change\s*=/.test(hostOpen[0])) {
+      issues.push(`page host must bind @change when shared exposes ${values.length} scenaries`);
+    }
+  }
   const scenes = [...pageCode.matchAll(/<Scene\b[^>]*>/g)].map(match => {
     const attr = /\bvalue=(?:"([^"]*)"|'([^']*)')/.exec(match[0]);
     return (attr?.[1] || attr?.[2] || '').trim();
@@ -2647,6 +2687,23 @@ export function collectPageScenaryIssues(pageCode: string, sharedDefinition: unk
     issues.push('a <form is outside <Scene — every command form must live inside a Scene');
   }
   return issues;
+}
+
+/**
+ * Shared scenary gate. Only when the defs lists MORE THAN ONE scene — a single-value shared
+ * (taskHub) has nowhere to navigate, so missing members are not a finding.
+ * Warnings, same class as collectPageScenaryIssues: auditable, never blocking publish.
+ */
+export function collectSharedScenaryIssues(sharedCode: string, sharedDefinition: unknown): string[] {
+  const values = sharedUiScenaryValues(sharedDefinition);
+  if (values.length <= 1) return [];
+  const missing = SHARED_SCENARY_MEMBERS.filter(name => !hasSharedScenaryMember(sharedCode, name));
+  if (!missing.length) return [];
+  return [`shared exposes ${values.length} scenaries but is missing ${missing.join(', ')}`];
+}
+
+function hasSharedScenaryMember(sharedCode: string, name: string): boolean {
+  return new RegExp(`^[ \\t]*(?:private |public |protected )?${name}\\s*\\(`, 'm').test(sharedCode);
 }
 
 function formOutsideScene(pageCode: string): boolean {

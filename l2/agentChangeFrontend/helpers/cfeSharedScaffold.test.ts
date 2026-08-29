@@ -2,7 +2,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { catalogueLocales, generateSharedScaffold, parseContractInterfaces, parsePreviousI18n } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+import { readFileSync } from 'node:fs';
+import { catalogueLocales, ensureSharedScenaryMembers, generateSharedScaffold, parseContractInterfaces, parsePreviousI18n, renderUiScenaryMembers, sharedLlmFallbackTemplate } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
 import { collectMutationEnvelopeErrorIssues } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 
 const CONTRACT = `
@@ -343,4 +344,82 @@ test('generateSharedScaffold emits a constant uiScenary when the page has one sc
   assert.match(code, /@property\(\) uiScenary: 'base' = 'base';/);
   assert.match(code, /setUiScenary\(value: string\): void/);
   assert.match(code, /const allowed: string\[\] = \['base'\];/);
+});
+
+const SHARED_PATH = '_102045_/l2/demo/web/shared/things.ts';
+
+test('renderUiScenaryMembers is the same block the full scaffold emits', () => {
+  const defs = definitionWithScenary();
+  const full = generateSharedScaffold(SHARED_PATH, defs, CONTRACT).code!;
+  const members = renderUiScenaryMembers(SHARED_PATH, defs, CONTRACT).code!;
+  assert.match(members, /setUiScenary\(value: string\): void/);
+  assert.match(members, /handleUiScenaryChange\(event: Event\): void/);
+  assert.match(members, /private applyUrlScenary\(\): void/);
+  assert.match(members, /private syncScenaryQuery\(value: string\): void/);
+  assert.ok(full.includes(members), 'full scaffold must contain the members block verbatim');
+});
+
+test('shared LLM fallback template is the scaffold when it builds, else the scenary block', () => {
+  const defs = definitionWithScenary();
+  const template = sharedLlmFallbackTemplate(SHARED_PATH, defs, CONTRACT);
+  assert.equal(template.mode, 'scaffold');
+  assert.equal(template.code, generateSharedScaffold(SHARED_PATH, defs, CONTRACT).code);
+});
+
+test('ensureSharedScenaryMembers injects the four members into a shared that lost them', () => {
+  const defs = definitionWithScenary();
+  const full = generateSharedScaffold(SHARED_PATH, defs, CONTRACT).code!;
+  const members = renderUiScenaryMembers(SHARED_PATH, defs, CONTRACT).code!;
+  const stripped = full.replace(members, '');
+  assert.doesNotMatch(stripped, /setUiScenary\(value: string\)/);
+  const result = ensureSharedScenaryMembers(stripped, SHARED_PATH, defs, CONTRACT);
+  assert.equal(result.injected, true);
+  assert.match(result.code, /setUiScenary\(value: string\): void/);
+  assert.match(result.code, /handleUiScenaryChange\(event: Event\): void/);
+  assert.match(result.code, /custom\.detail/);
+  assert.match(result.code, /private applyUrlScenary\(\): void/);
+  assert.match(result.code, /private syncScenaryQuery\(value: string\): void/);
+});
+
+test('ensureSharedScenaryMembers is a no-op when the four members already match the scaffold', () => {
+  const defs = definitionWithScenary();
+  const full = generateSharedScaffold(SHARED_PATH, defs, CONTRACT).code!;
+  const result = ensureSharedScenaryMembers(full, SHARED_PATH, defs, CONTRACT);
+  assert.equal(result.injected, false);
+  assert.equal(result.code, full);
+});
+
+test('ensureSharedScenaryMembers replaces a divergent handleUiScenaryChange with the scaffold body', () => {
+  const defs = definitionWithScenary();
+  const full = generateSharedScaffold(SHARED_PATH, defs, CONTRACT).code!;
+  const degraded = full.replace(
+    /handleUiScenaryChange\(event: Event\): void \{[\s\S]*?\n  \}/,
+    `handleUiScenaryChange(event: Event): void {
+    const target = event.target as HTMLInputElement | HTMLSelectElement | null;
+    const value: string = target && 'value' in target ? String(target.value) : '';
+    this.setUiScenary(value);
+  }`,
+  );
+  assert.doesNotMatch(degraded, /custom\.detail/);
+  const result = ensureSharedScenaryMembers(degraded, SHARED_PATH, defs, CONTRACT);
+  assert.equal(result.injected, true);
+  assert.match(result.code, /custom\.detail/);
+});
+
+test('T1/T2: every l2_shared write and LLM fallback uses ensureSharedScenaryMembers / sharedLlmFallbackTemplate', () => {
+  const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
+  const cli = readFileSync(new URL('../nodejsMaterializeL2.ts', import.meta.url), 'utf8');
+  const scaffold = readFileSync(new URL('./cfeSharedScaffold.ts', import.meta.url), 'utf8');
+  assert.match(scaffold, /function renderUiScenary\(/);
+  assert.match(scaffold, /export function renderUiScenaryMembers/);
+  assert.match(scaffold, /renderUiScenary\(model\)\.join/);
+  assert.match(scaffold, /export function ensureSharedScenaryMembers/);
+  assert.match(scaffold, /export function sharedLlmFallbackTemplate/);
+  assert.match(gen, /sharedLlmFallbackTemplate/);
+  assert.match(gen, /ensureSharedScenaryMembers/);
+  assert.match(gen, /applySharedScenaryGuard/);
+  assert.match(cli, /sharedLlmFallbackTemplate/);
+  assert.match(cli, /function writeGeneratedArtifacts[\s\S]*ensureSharedScenaryMembers/);
+  assert.match(gen, /saveGeneratedTs\([\s\S]*guarded\.code/);
+  assert.match(gen, /saveGeneratedTs\([\s\S]*sharedGuard\.code/);
 });

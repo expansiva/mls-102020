@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -1456,12 +1456,28 @@ test('scenary gate records missing host, missing import, missing Scene and form 
   assert.match(collectPageScenaryIssues(missingScene, SCENARY_SHARED).join(' | '), /missing <Scene value="edit">/);
   const formOut = `${SCENARY_PAGE}\nhtml\`<form @submit=\${this.handleEdit}>out</form>\`;`;
   assert.match(collectPageScenaryIssues(formOut, SCENARY_SHARED).join(' | '), /form is outside/);
+  const noChange = SCENARY_PAGE.replace(' @change=${this.handleUiScenaryChange}', '');
+  assert.match(collectPageScenaryIssues(noChange, SCENARY_SHARED).join(' | '), /@change/);
+});
+
+test('shared scenary gate finds missing members only when defs has more than one scene', () => {
+  const withMembers = `
+    setUiScenary(value: string): void {}
+    handleUiScenaryChange(event: Event): void {}
+    private applyUrlScenary(): void {}
+    private syncScenaryQuery(value: string): void {}
+  `;
+  assert.match(collectSharedScenaryIssues('export class X {}', SCENARY_SHARED).join(' | '), /setUiScenary/);
+  assert.deepEqual(collectSharedScenaryIssues(withMembers, SCENARY_SHARED), []);
+  assert.deepEqual(collectSharedScenaryIssues('export class X {}', { scenaries: [{ value: 'base', kind: 'base' }] }), []);
 });
 
 test('scenary gate degrades in verify (warnings) and the page skills teach the host', () => {
   const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
   assert.match(phase, /warnings\.push\(\.\.\.collectPageScenaryIssues\(content, sharedData\)\)/);
   assert.doesNotMatch(phase, /repairable\.push\(\.\.\.collectPageScenaryIssues/);
+  assert.match(phase, /warnings\.push\(\.\.\.collectSharedScenaryIssues\(content, parseDefs\(defsContent\)\.data\)\)/);
+  assert.doesNotMatch(phase, /repairable\.push\(\.\.\.collectSharedScenaryIssues/);
   const page11 = readFileSync(new URL('../skills/genCfePage11RenderTs.ts', import.meta.url), 'utf8');
   const page21 = readFileSync(new URL('../skills/genCfePage21RenderTs.ts', import.meta.url), 'utf8');
   assert.match(page11, /## Scenary \(mandatory\)/);

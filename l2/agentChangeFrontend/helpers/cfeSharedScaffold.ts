@@ -18,6 +18,14 @@ export interface SharedScaffoldResult {
   reason?: string;
 }
 
+/** The four scenary members are one block. T1 (LLM template) and T2 (re-inject) both come from renderUiScenary. */
+export const SHARED_SCENARY_MEMBERS = ['setUiScenary', 'handleUiScenaryChange', 'applyUrlScenary', 'syncScenaryQuery'] as const;
+
+export type SharedLlmTemplate = {
+  code: string;
+  mode: 'scaffold' | 'scenary-block';
+};
+
 interface ContractField {
   name: string;
   type: 'string' | 'number' | 'boolean' | 'array' | 'stringUnion';
@@ -128,6 +136,59 @@ export function generateSharedScaffold(outputPath: string, data: unknown, contra
     if (error instanceof ScaffoldBail) return { code: null, reason: error.message };
     throw error;
   }
+}
+
+/**
+ * Just the scenary methods, from the same renderUiScenary the full scaffold uses.
+ * Survives a later render() bail: buildModel is enough.
+ */
+export function renderUiScenaryMembers(
+  outputPath: string,
+  data: unknown,
+  contractSource: string,
+  previousSource?: string,
+): SharedScaffoldResult {
+  try {
+    const model = buildModel(outputPath, data, contractSource, previousSource);
+    if (!uiScenaryState(model)) return { code: null, reason: 'no uiScenary state' };
+    return { code: renderUiScenary(model).join('\n') };
+  } catch (error) {
+    if (error instanceof ScaffoldBail) return { code: null, reason: error.message };
+    throw error;
+  }
+}
+
+/** Template for the l2_shared LLM fallback: full scaffold when we have it, else the scenary block. */
+export function sharedLlmFallbackTemplate(
+  outputPath: string,
+  data: unknown,
+  contractSource: string,
+  previousSource?: string,
+): SharedLlmTemplate | { code: null; reason: string } {
+  const scaffold = generateSharedScaffold(outputPath, data, contractSource, previousSource);
+  if (scaffold.code) return { code: scaffold.code, mode: 'scaffold' };
+  const members = renderUiScenaryMembers(outputPath, data, contractSource, previousSource);
+  if (members.code) return { code: members.code, mode: 'scenary-block' };
+  return { code: null, reason: members.reason || scaffold.reason || 'no shared template' };
+}
+
+/**
+ * After any l2_shared materialization: if the defs has uiScenary and the file is missing or
+ * diverged from the scaffold block, replace the four members as a set. Idempotent when they
+ * already match. Pure — the caller recompiles and undoes if the inject does not compile.
+ */
+export function ensureSharedScenaryMembers(
+  code: string,
+  outputPath: string,
+  data: unknown,
+  contractSource: string,
+): { code: string; injected: boolean; reason?: string } {
+  const members = renderUiScenaryMembers(outputPath, data, contractSource);
+  if (!members.code) return { code, injected: false, reason: members.reason };
+  if (!scenaryMembersNeedReplace(code, members.code)) return { code, injected: false };
+  const next = replaceScenaryMembers(code, members.code);
+  if (next === code) return { code, injected: false, reason: 'could not locate export class to inject scenary members' };
+  return { code: next, injected: true };
 }
 
 /**
@@ -1370,4 +1431,84 @@ function stringArray(value: unknown): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeMember(text: string): string {
+  return text.replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
+}
+
+function scenaryMembersNeedReplace(code: string, membersCode: string): boolean {
+  for (const name of SHARED_SCENARY_MEMBERS) {
+    const existing = extractClassMember(code, name);
+    const expected = extractClassMember(membersCode, name);
+    if (!existing || !expected) return true;
+    if (normalizeMember(existing) !== normalizeMember(expected)) return true;
+  }
+  return false;
+}
+
+function replaceScenaryMembers(code: string, membersCode: string): string {
+  const spans = SHARED_SCENARY_MEMBERS
+    .map(name => extractClassMemberSpan(code, name))
+    .filter((span): span is { start: number; end: number } => span !== null)
+    .sort((a, b) => b.start - a.start);
+  let next = code;
+  for (const span of spans) {
+    next = next.slice(0, span.start) + next.slice(span.end);
+  }
+  const classSpan = findExportClassBrace(next);
+  if (!classSpan) return code;
+  const insertAt = spans.length
+    ? Math.min(...spans.map(span => span.start))
+    : classSpan.close;
+  const at = Math.min(insertAt, next.length);
+  const block = membersCode.trimEnd() + '\n';
+  const before = next.slice(0, at).replace(/\s*$/u, '\n\n');
+  const after = next.slice(at).replace(/^\s*/u, '\n');
+  return before + block + after;
+}
+
+function findExportClassBrace(source: string): { open: number; close: number } | null {
+  const match = /export class [A-Za-z0-9_]+[^{]*\{/.exec(source);
+  if (!match) return null;
+  const open = match.index + match[0].length - 1;
+  const body = readBraceBody(source, open);
+  if (body === null) return null;
+  return { open, close: open + 1 + body.length };
+}
+
+function extractClassMember(source: string, name: string): string | null {
+  const span = extractClassMemberSpan(source, name);
+  return span ? source.slice(span.start, span.end).trim() : null;
+}
+
+function extractClassMemberSpan(source: string, name: string): { start: number; end: number } | null {
+  const defRe = new RegExp(`^[ \\t]*(?:private |public |protected )?(?:async )?${name}\\s*\\(`, 'gm');
+  const match = defRe.exec(source);
+  if (!match || match.index === undefined) return null;
+  let start = match.index;
+  const before = source.slice(0, start).replace(/\s+$/u, '');
+  const jsdoc = before.lastIndexOf('/**');
+  if (jsdoc >= 0 && before.slice(jsdoc).trim().startsWith('/**') && before.trimEnd().endsWith('*/')) {
+    const lineStart = source.lastIndexOf('\n', jsdoc);
+    start = lineStart >= 0 ? lineStart + 1 : jsdoc;
+  }
+  let i = match.index + match[0].length;
+  let depth = 1;
+  for (; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') {
+      depth--;
+      if (depth === 0) { i++; break; }
+    }
+  }
+  while (i < source.length && /[\s:]/.test(source[i])) i++;
+  while (i < source.length && source[i] !== '{') i++;
+  if (source[i] !== '{') return null;
+  const body = readBraceBody(source, i);
+  if (body === null) return null;
+  let end = i + 1 + body.length + 1;
+  if (source[end] === '\n') end++;
+  return { start, end };
 }

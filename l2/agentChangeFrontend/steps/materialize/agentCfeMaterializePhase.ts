@@ -34,6 +34,7 @@ import {
   collectContractFieldIssues,
   collectPageCustomElementTagIssues,
   collectPageScenaryIssues,
+  collectSharedScenaryIssues,
   contractTsPathOf,
   countPage11Items,
   countSharedItems,
@@ -530,6 +531,9 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     // Defs-level: rewriting the shared .ts cannot add an initialLoad the defs omitted. Warning
     // keeps the gap in the verdict; create-shared is what emits the list.
     warnings.push(...collectMissingInitialLoadIssues(parseDefs(defsContent).data));
+    // Multi-scene shared missing the four scenary members. Degrades — T2 should have injected
+    // them; this records drift when inject could not (scaffold bail / compile revert).
+    warnings.push(...collectSharedScenaryIssues(content, parseDefs(defsContent).data));
   }
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);

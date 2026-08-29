@@ -45,7 +45,7 @@ import {
 } from './helpers/cfeMaterializeCore.js';
 import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './helpers/nodejsMaterializeLlmClient.js';
 import { formatGeneratedTsCli } from './helpers/nodejsFormatTs.js';
-import { generateSharedScaffold } from './helpers/cfeSharedScaffold.js';
+import { ensureSharedScenaryMembers, generateSharedScaffold, sharedLlmFallbackTemplate } from './helpers/cfeSharedScaffold.js';
 import { buildPageSkeleton, organismShortName, type PageOrganism } from './helpers/cfePageSkeleton.js';
 import { buildSplitPlan, type SplitPlanSection } from './helpers/cfePageSplitPlan.js';
 
@@ -367,7 +367,7 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
 
   return {
     system: buildSystemPrompt(skillSections, item.outputPath, modelType),
-    human: buildHumanPrompt(trimDefinitionForPrompt(item.type, data), contextSections, item.outputPath, undefined, pageSkeletonFor(item, data)),
+    human: buildHumanPrompt(trimDefinitionForPrompt(item.type, data), contextSections, item.outputPath, undefined, pageSkeletonFor(item, data), sharedTemplateFor(item, data)),
     skillReport,
     depReport,
   };
@@ -405,6 +405,25 @@ function pageSkeletonFor(item: PipelineItem, data: unknown): string | undefined 
   });
   if (!built.code) console.warn(`  skeleton skipped for ${item.outputPath}: ${built.reason}`);
   return built.code ?? undefined;
+}
+
+function sharedTemplateFor(item: PipelineItem, data: unknown): { code: string; mode: 'scaffold' | 'scenary-block' } | undefined {
+  if (item.type !== 'l2_shared') return undefined;
+  const contractTsPath = isRecord(data) && isRecord(data.contractRef) && typeof data.contractRef.tsPath === 'string'
+    ? data.contractRef.tsPath
+    : '';
+  const contractSource = contractTsPath ? readIfExists(mlsToFs(contractTsPath)) : null;
+  if (!contractSource) {
+    console.log(`  shared LLM template skipped for ${item.outputPath} (no contract)`);
+    return undefined;
+  }
+  const previousSource = readIfExists(mlsToFs(item.outputPath)) ?? undefined;
+  const template = sharedLlmFallbackTemplate(item.outputPath, data, contractSource, previousSource);
+  if (!template.code) {
+    console.log(`  shared LLM template skipped for ${item.outputPath} (${template.reason})`);
+    return undefined;
+  }
+  return { code: template.code, mode: template.mode };
 }
 
 /**
@@ -928,9 +947,18 @@ function appendTrace(
 }
 
 function writeGeneratedArtifacts(item: PipelineItem, data: unknown, code: string): { typecheckRef: string | null } {
+  let out = code;
+  if (item.type === 'l2_shared') {
+    const contractTsPath = isRecord(data) && isRecord(data.contractRef) && typeof data.contractRef.tsPath === 'string'
+      ? data.contractRef.tsPath
+      : '';
+    const contractSource = contractTsPath ? readIfExists(mlsToFs(contractTsPath)) ?? '' : '';
+    const guarded = ensureSharedScenaryMembers(code, item.outputPath, data, contractSource);
+    out = guarded.code;
+  }
   const outAbs = mlsToFs(item.outputPath);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
-  fs.writeFileSync(outAbs, code);
+  fs.writeFileSync(outAbs, out);
 
   const typecheckCode = buildMaterializeTypecheckTest(item, data);
   const typecheckRef = typecheckCode ? testPathForOutputPath(item.outputPath) : null;

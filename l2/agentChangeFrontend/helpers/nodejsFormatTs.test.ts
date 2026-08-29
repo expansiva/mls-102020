@@ -120,7 +120,7 @@ test('wiring: both runtimes format BEFORE the textual gates and before the write
   const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
   assert.match(gen, /formatGeneratedTsInStudio\(applyHeader\(pipelineItem\.outputPath, normalizeGeneratedCode\(/u);
   assert.ok(
-    gen.indexOf('formatGeneratedTsInStudio(applyHeader(') < gen.indexOf('saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code)'),
+    gen.indexOf('formatGeneratedTsInStudio(applyHeader(') < gen.indexOf('saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.code)'),
     'Studio must format before saving',
   );
   // Both surfaces share the SAME pure line-break stage, so they cannot drift on what gets split.

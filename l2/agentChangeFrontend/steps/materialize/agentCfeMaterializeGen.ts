@@ -53,7 +53,7 @@ import {
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 // Deterministic l2_shared renderer (pure, import-free). Wired here so the Studio path stops paying the
 // LLM — and stops hitting its output cap — for a file that is a mechanical projection of the defs.
-import { generateSharedScaffold } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+import { ensureSharedScenaryMembers, generateSharedScaffold, sharedLlmFallbackTemplate } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
 import { buildPageSkeleton } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSkeleton.js';
 import { buildSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
 
@@ -95,9 +95,13 @@ async function beforePromptStep(
     // ~55k-token file in ONE tool call and the LLM path died with MAX_TOKENS_REACHED at 50000 after
     // 11m39s ($0.30), failing the whole task. The scaffold returns {code:null, reason} on any defs shape
     // it does not model, and then we fall through to the LLM exactly as before.
+    let sharedTemplate: { code: string; mode: 'scaffold' | 'scenary-block' } | undefined;
     if (genContext.pipelineItem.type === 'l2_shared') {
       const deterministic = await materializeSharedDeterministic(context, parentStep, step, hookSequential, genContext.pipelineItem, genContext.definitionData, genArgs.attempt ?? 1);
       if (deterministic) return deterministic;
+      // LLM fallback: send the scaffold (or the scenary block if the scaffold bailed) so the model
+      // does not write the shared from scratch and drop setUiScenary / applyUrlScenary.
+      sharedTemplate = await sharedTemplateForLlm(genContext.pipelineItem, genContext.definitionData);
     }
     // Repair rounds (attempt >= 2) arrive as fan-out slots carrying only compact refs — the
     // compiler errors are recomputed from disk HERE and injected into the LLM input (cleaned
@@ -109,7 +113,7 @@ async function beforePromptStep(
     // Deterministic page skeleton (i18n.md §4) — same helper the CLI uses, so both surfaces emit the
     // identical file shape. Only on the first attempt (see createPromptReadyIntent).
     const skeleton = repairHint ? undefined : await pageSkeletonFor(genContext.pipelineItem, genContext.siblings, genContext.definitionData);
-    return [createPromptReadyIntent(context, parentStep, hookSequential, args, genContext, repairHint, skeleton)];
+    return [createPromptReadyIntent(context, parentStep, hookSequential, args, genContext, repairHint, skeleton, sharedTemplate)];
   } catch (error) {
     const message = formatError('beforePromptStep', error);
     console.error(`[${agent.agentName}] ${message}`);
@@ -160,7 +164,8 @@ async function materializeSharedDeterministic(
     const parsed = parseMlsPath(pipelineItem.outputPath);
     if (!parsed) return null;
     consumeMaterializeStudioMessages();
-    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, scaffold.code);
+    const guarded = ensureSharedScenaryMembers(scaffold.code, pipelineItem.outputPath, definitionData, contractSource);
+    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, guarded.code);
     if (!saved) return null;
 
     const typecheckTest = buildMaterializeTypecheckTest(pipelineItem, definitionData);
@@ -248,8 +253,11 @@ async function afterPromptStep(
     // Formatted BEFORE the textual gates below and before the save, so the hygiene checks, the
     // compile and the phase verify (which re-reads from disk) all see exactly the bytes that were
     // written — the safe order the format×gates contract requires (cf_format_codigo_gerado).
-    const code = await formatGeneratedTsInStudio(applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code)));
-    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, code);
+    const formatted = await formatGeneratedTsInStudio(applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code)));
+    const sharedGuard = pipelineItem.type === 'l2_shared'
+      ? await applySharedScenaryGuard(pipelineItem, parsedDefs?.data, formatted)
+      : { code: formatted, injected: false, original: formatted };
+    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.code);
     if (!saved) {
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
     }
@@ -267,13 +275,22 @@ async function afterPromptStep(
     // it must see what the verify will see. Without the deps loaded it accepts a file the verify then
     // rejects, and the round is spent discovering that.
     await preloadItemTypecheckDeps(pipelineItem.type, pipelineItem.outputPath, defsContent);
-    const compileErrors = [
+    let compileErrors = [
       ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
       ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
       // bugpage21: catch the compiles-cleanly template defect in the TIGHTEST loop — right after this
       // worker saved its own .ts — instead of waiting for the phase verify round.
-      ...(pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism' ? [...collectPageTemplateHygieneIssues(code), ...collectChartEventIssues(code)] : []),
+      ...(pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism' ? [...collectPageTemplateHygieneIssues(sharedGuard.code), ...collectChartEventIssues(sharedGuard.code)] : []),
     ];
+    if (compileErrors.length > 0 && sharedGuard.injected) {
+      const reverted = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.original);
+      if (reverted) {
+        compileErrors = [
+          ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
+          ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
+        ];
+      }
+    }
     const studioDiagnostics = consumeMaterializeStudioMessages();
     // Which shared context this item was generated against (recorded by readContextSections). It
     // goes in the trace on EVERY outcome, so a raw-ts fallback is auditable instead of silent.
@@ -313,6 +330,7 @@ function createPromptReadyIntent(
   },
   repairHint?: string,
   skeleton?: string,
+  sharedTemplate?: { code: string; mode: 'scaffold' | 'scenary-block' },
 ): mls.msg.AgentIntentPromptReady {
   // The args of the slot travel VERBATIM: the server matches the waiting slot by exact string
   // (`q.args === args`), so re-serializing the parsed object silently changed the key order on a
@@ -332,10 +350,37 @@ function createPromptReadyIntent(
     systemPrompt: buildSystemPrompt(genContext.skillSections, genContext.pipelineItem.outputPath, DEFAULT_MODEL_TYPE),
     // The skeleton travels only on the FIRST attempt: on a repair the file on disk already is the
     // skeleton filled in, and re-sending the empty one would invite a rewrite from scratch.
-    humanPrompt: buildHumanPrompt(trimDefinitionForPrompt(genContext.pipelineItem.type, genContext.definitionData), genContext.contextSections, genContext.pipelineItem.outputPath, repairHint, repairHint ? undefined : skeleton),
+    // The shared template travels on repair too: the current file is in the hint; the scaffold is
+    // what the four scenary members must look like.
+    humanPrompt: buildHumanPrompt(trimDefinitionForPrompt(genContext.pipelineItem.type, genContext.definitionData), genContext.contextSections, genContext.pipelineItem.outputPath, repairHint, repairHint ? undefined : skeleton, sharedTemplate),
     tools: [GEN_TOOL as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: GEN_TOOL_NAME } },
   };
+}
+
+async function sharedTemplateForLlm(pipelineItem: PipelineItem, definitionData: unknown): Promise<{ code: string; mode: 'scaffold' | 'scenary-block' } | undefined> {
+  const contractTsPath = isRecord(definitionData) && isRecord(definitionData.contractRef) && typeof definitionData.contractRef.tsPath === 'string'
+    ? definitionData.contractRef.tsPath
+    : '';
+  const contractSource = contractTsPath ? await getContentByMlsPath(contractTsPath) : null;
+  if (!contractSource) return undefined;
+  const previousSource = await getContentByMlsPath(pipelineItem.outputPath);
+  const template = sharedLlmFallbackTemplate(pipelineItem.outputPath, definitionData, contractSource, previousSource ?? undefined);
+  if (!template.code) return undefined;
+  return { code: template.code, mode: template.mode };
+}
+
+async function applySharedScenaryGuard(
+  pipelineItem: PipelineItem,
+  definitionData: unknown,
+  code: string,
+): Promise<{ code: string; injected: boolean; original: string }> {
+  const contractTsPath = isRecord(definitionData) && isRecord(definitionData.contractRef) && typeof definitionData.contractRef.tsPath === 'string'
+    ? definitionData.contractRef.tsPath
+    : '';
+  const contractSource = contractTsPath ? (await getContentByMlsPath(contractTsPath)) ?? '' : '';
+  const guarded = ensureSharedScenaryMembers(code, pipelineItem.outputPath, definitionData, contractSource);
+  return { code: guarded.code, injected: guarded.injected, original: code };
 }
 
 // Rebuild the repair hint from disk for a fan-out repair slot: missing/empty artifact -> missing
