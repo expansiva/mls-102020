@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializePhase.test.ts" enhancement="_blank"/>
 
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -296,3 +296,169 @@ void test('R1: repaired counts a finding that cleared, not only an item that was
   // já estava em passed: não é transição
   assert.deepEqual(selectRepairedThisRound(2, passedNow, passedNow), []);
 });
+
+// ── split repair: residual plan + attempt reset (cf_split_reparo_em_loop) ─────
+const g = globalThis as unknown as Record<string, any>;
+const priorMls = g.mls;
+after(() => { g.mls = priorMls; });
+
+const SPLIT_PROJECT = 1;
+const SPLIT_MODULE = 'mod';
+const SPLIT_PAGE = 'landing';
+const SPLIT_GENOME = 'page11';
+const SPLIT_DEF = `_${SPLIT_PROJECT}_/l2/${SPLIT_MODULE}/web/desktop/${SPLIT_GENOME}/${SPLIT_PAGE}.defs.ts`;
+const SPLIT_OUT = `_${SPLIT_PROJECT}_/l2/${SPLIT_MODULE}/web/desktop/${SPLIT_GENOME}/${SPLIT_PAGE}.ts`;
+const SPLIT_PLAN = `_${SPLIT_PROJECT}_/l4/${SPLIT_MODULE}/pipeline/trace/frontend-page-split/${SPLIT_GENOME}/${SPLIT_PAGE}.json`;
+
+function parseMlsPathForStub(mlsPath: string) {
+  const match = /^_(\d+)_\/l(\d+)\/(.+)$/.exec(mlsPath);
+  if (!match) return null;
+  const rest = match[3];
+  const lastSlash = rest.lastIndexOf('/');
+  const folder = lastSlash >= 0 ? rest.slice(0, lastSlash) : '';
+  const filename = lastSlash >= 0 ? rest.slice(lastSlash + 1) : rest;
+  const extension = filename.endsWith('.defs.ts') ? '.defs.ts' : filename.includes('.') ? filename.slice(filename.lastIndexOf('.')) : '';
+  return {
+    project: Number(match[1]),
+    level: Number(match[2]),
+    folder,
+    shortName: filename.slice(0, filename.length - extension.length),
+    extension,
+  };
+}
+
+function installSplitStor(files: Record<string, string>): void {
+  if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
+  if (!g.document) g.document = { documentElement: { lang: 'en' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
+  const storFiles: Record<string, any> = {};
+  for (const [mlsPath, source] of Object.entries(files)) {
+    const info = parseMlsPathForStub(mlsPath)!;
+    storFiles[`${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`] = {
+      ...info, status: 'active', getContent: async () => source,
+    };
+  }
+  g.mls = {
+    actualProject: SPLIT_PROJECT,
+    events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
+    stor: {
+      files: storFiles,
+      getKeyToFile: (info: { project: number; level: number; folder: string; shortName: string; extension: string }) =>
+        `${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`,
+      convertFileReferenceToFile: (mlsPath: string) => parseMlsPathForStub(mlsPath),
+    },
+  };
+}
+
+function residualSplitFiles(): Record<string, string> {
+  return {
+    [SPLIT_DEF]: [
+      'export const definition = `',
+      `page: ${SPLIT_PAGE}`,
+      'uxExperience: contentLanding',
+      'The page extends the shared base class of this workspace.` as const;',
+      'export const pipeline = [{ id: "landing__l2_page", type: "l2_page", outputPath: "' + SPLIT_OUT + '" }] as const;',
+    ].join('\n'),
+    [SPLIT_PLAN]: JSON.stringify({
+      organisms: [
+        { n: 1, organism: 'hero' },
+        { n: 2, organism: 'richText' },
+      ],
+    }),
+  };
+}
+
+function brokenLanding() {
+  return [{
+    item: { planId: 'materialize-landing-l2-page', defPath: SPLIT_DEF, itemId: 'landing__l2_page' },
+    outputPath: SPLIT_OUT,
+    errors: ['output cap'],
+    blocking: ['output cap'],
+    repairable: [] as string[],
+    declared: [] as string[],
+    warnings: [] as string[],
+    typecheck: 'failed' as const,
+  }];
+}
+
+function splitContext() {
+  return {
+    message: { orderAt: 1, threadId: 't' },
+    task: { PK: 'task' },
+  } as any;
+}
+
+function splitAnchor() {
+  return { type: 'agent', stepId: 1 } as any;
+}
+
+async function loadPhase(): Promise<typeof import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializePhase.js')> {
+  installSplitStor({});
+  return import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializePhase.js');
+}
+
+function splitVerifyAttempt(intents: { type: string; step?: { agentName?: string; prompt?: string } }[]): number | null {
+  const verify = intents.find(intent => intent.type === 'add-step' && intent.step?.agentName === 'agentCfeMaterializePhase');
+  if (!verify?.step?.prompt) return null;
+  const parsed = JSON.parse(verify.step.prompt) as { attempt?: number };
+  return typeof parsed.attempt === 'number' ? parsed.attempt : null;
+}
+
+void test('T3.1: residual split plan with recipe off does not create split steps', async () => {
+  const { planSplitSteps } = await loadPhase();
+  installSplitStor(residualSplitFiles());
+  const got = await planSplitSteps(
+    splitContext(),
+    splitAnchor(),
+    { planId: 'materialize-phase-pages-verify', items: brokenLanding().map(entry => entry.item), attempt: 1, module: SPLIT_MODULE },
+    brokenLanding(),
+  );
+  assert.equal(got, null);
+});
+
+void test('T3.2: recipe with split still divides from a stored plan', async () => {
+  const { planSplitSteps } = await loadPhase();
+  installSplitStor(residualSplitFiles());
+  const got = await planSplitSteps(
+    splitContext(),
+    splitAnchor(),
+    { planId: 'materialize-phase-pages-verify', items: brokenLanding().map(entry => entry.item), attempt: 1, module: SPLIT_MODULE },
+    brokenLanding(),
+    { splitByOrganism: true },
+  );
+  assert.ok(got);
+  assert.ok(got.some(intent => intent.type === 'add-step' && JSON.stringify(intent).includes('-split-organisms')));
+  assert.equal(splitVerifyAttempt(got), 2);
+});
+
+void test('T3.3: split re-verify carries attempt and the verdict is final past the budget', async () => {
+  const { planSplitSteps, MATERIALIZE_REPAIR_ROUNDS } = await loadPhase();
+  installSplitStor(residualSplitFiles());
+  const origin = MATERIALIZE_REPAIR_ROUNDS;
+  const got = await planSplitSteps(
+    splitContext(),
+    splitAnchor(),
+    { planId: 'materialize-phase-pages-verify', items: brokenLanding().map(entry => entry.item), attempt: origin, module: SPLIT_MODULE },
+    brokenLanding(),
+    { splitByOrganism: true },
+  );
+  assert.ok(got);
+  const next = splitVerifyAttempt(got);
+  assert.equal(next, origin + 1);
+  assert.ok(next! > MATERIALIZE_REPAIR_ROUNDS);
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /const final = toRepair\.length === 0 \|\| args\.attempt > MATERIALIZE_REPAIR_ROUNDS \|\| systemic/);
+});
+
+void test('T3.4: no re-verify path hardcodes attempt: 1', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  const afterSplit = src.match(/Verify materialization \(after split\)[\s\S]{0,400}attempt:\s*([^,\n]+)/);
+  assert.ok(afterSplit, 'split re-verify must exist');
+  assert.equal(afterSplit[1].trim(), 'args.attempt + 1');
+  const afterRepair = src.match(/Verify materialization \(after repair\)[\s\S]{0,400}attempt:\s*([^,\n]+)/);
+  assert.ok(afterRepair, 'repair re-verify must exist');
+  assert.equal(afterRepair[1].trim(), 'nextAttempt');
+  const hardcoded = [...src.matchAll(/mode: 'verify'[\s\S]{0,220}attempt:\s*1/g)];
+  assert.equal(hardcoded.length, 1, 'only the initial phase verify starts the budget at 1');
+  assert.match(hardcoded[0][0], /items: runnable/);
+});
+

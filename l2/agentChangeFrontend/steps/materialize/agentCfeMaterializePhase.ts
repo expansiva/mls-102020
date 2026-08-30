@@ -61,6 +61,7 @@ import {
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import { cfePipelineTraceMlsPath, cfePipelineTraceMlsPathLegacy, recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
+import { pageSlotRecipe, type PageSlotRecipe } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
 
 interface MaterializePhaseArgs {
   planId: string;
@@ -105,7 +106,7 @@ const AGENT_NAME = 'agentCfeMaterializePhase';
 // real errors the earlier per-file check missed, and cross-file fixes (handler signatures, output shapes)
 // sometimes need one extra round to converge. The CLI feeds full tsc output into the prompt and converges
 // faster, so its budget stays at 2.
-const MATERIALIZE_REPAIR_ROUNDS = 3;
+export const MATERIALIZE_REPAIR_ROUNDS = 3;
 
 export function createAgent(): IAgentAsync {
   return {
@@ -404,20 +405,25 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
  *
  * Returns null when no broken item has a plan, and the caller falls through to the normal repair.
  */
-async function planSplitSteps(
+export async function planSplitSteps(
   context: mls.msg.ExecutionContext,
   anchor: mls.msg.AIAgentStep,
   args: MaterializeVerifyArgs,
   broken: BrokenItem[],
+  recipe?: Pick<PageSlotRecipe, 'splitByOrganism'>,
 ): Promise<mls.msg.AgentIntent[] | null> {
   const intents: mls.msg.AgentIntent[] = [];
   const verifyItems: GenStepArgs[] = [];
 
   for (const entry of broken) {
+    const parsed = entry.outputPath ? parseSplitOutput(entry.outputPath) : null;
+    if (!parsed) continue;
+    // Same criterion as ensureRecipeSplitPlan: a leftover trace/frontend-page-split plan is not a
+    // split request. Genome comes from the .ts path; categoryRef from the page defs.
+    const categoryRef = await readPageCategoryRef(entry.item.defPath);
+    if (!(recipe ?? pageSlotRecipe(categoryRef, parsed.genome)).splitByOrganism) continue;
     const organisms = await readSplitOrganisms(entry.item.defPath, entry.outputPath);
     if (!organisms.length) continue;
-    const parsed = parseSplitOutput(entry.outputPath!);
-    if (!parsed) continue;
 
     // The page's own itemId gives the base exactly (`<page>[__<genome>]__l2_page`), so the organism ids
     // are derived, never reconstructed from the planId — `safe()` lowercases and strips, and is lossy.
@@ -455,12 +461,31 @@ async function planSplitSteps(
     verifyPlanId,
     AGENT_NAME,
     'Verify materialization (after split)',
-    { mode: 'verify', planId: verifyPlanId, items: verifyItems, attempt: 1, module: args.module },
+    { mode: 'verify', planId: verifyPlanId, items: verifyItems, attempt: args.attempt + 1, module: args.module },
     verifyItems.filter(item => item.planId.endsWith('-page')).map(item => `${item.planId.replace(/-page$/u, '')}-split-page`),
     'sequential',
     'waiting_dependency',
   )));
   return intents;
+}
+
+/** categoryRef of the page defs — object `presentation` or the prose `uxExperience:` line. */
+async function readPageCategoryRef(defPath: string | undefined): Promise<string> {
+  if (!defPath) return '';
+  const raw = await getContentByMlsPath(defPath);
+  return raw ? categoryRefFromPageDefs(raw) : '';
+}
+
+function categoryRefFromPageDefs(src: string): string {
+  const parsed = parseDefs(src);
+  if (typeof parsed.data === 'string') {
+    const match = /^uxExperience:\s*(.+)$/m.exec(parsed.data);
+    return match ? match[1].trim() : '';
+  }
+  if (isRecord(parsed.data) && isRecord(parsed.data.presentation) && typeof parsed.data.presentation.categoryRef === 'string') {
+    return parsed.data.presentation.categoryRef.trim();
+  }
+  return '';
 }
 
 /** The organisms of a page's split plan, or [] when there is none. */
