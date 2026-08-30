@@ -67,7 +67,7 @@ export function deriveNs4E8Model(sources: Ns4E8Sources, reviewRound = 1): Ns4E8M
     operations.push(...built.operations);
     const owner = (contentPage && shouldHostJourneyOnContent(journey, contentPage, context) ? contentPage : null)
       || ownerPlaceForJourney(journey, workspaces);
-    if (owner) absorbJourneyIntoOwner(owner, journey, built);
+    if (owner) absorbJourneyIntoOwner(owner, journey, built, context);
     else workspaces.push(built.workspace);
   }
   if (contentPage) linkLeftoverJourneysFromContent(contentPage, workspaces, context);
@@ -572,7 +572,7 @@ function ownerPlaceForJourney(
 
 function absorbJourneyIntoOwner(
   owner: Ns4E8ModelWorkspace, journey: Ns4JourneyProposal,
-  built: { workspace: Ns4E8ModelWorkspace },
+  built: { workspace: Ns4E8ModelWorkspace }, context: Ns4E8TierContext,
 ): void {
   owner.hostedStepRefs = uniqueAppend(owner.hostedStepRefs, built.workspace.hostedStepRefs);
   owner.featureRefs = uniqueAppend(owner.featureRefs, built.workspace.featureRefs);
@@ -580,6 +580,16 @@ function absorbJourneyIntoOwner(
   const existingByOperation = new Map(owner.bffCalls.map(call => [call.operationId, call.bffId]));
   for (const call of built.workspace.bffCalls) {
     if (existingByOperation.has(call.operationId)) continue;
+    owner.bffCalls.push(call);
+    existingByOperation.set(call.operationId, call.bffId);
+  }
+  // Shared calls already live on the owner; exclusive E7 use cases of this journey must too.
+  const prefix = `${journey.journeyId}.`;
+  for (const useCase of context.sources.useCases) {
+    if (!useCase.compiledFrom.some(ref => ref.startsWith(prefix))) continue;
+    if (existingByOperation.has(useCase.useCaseId)) continue;
+    const call = built.workspace.bffCalls.find(item => item.operationId === useCase.useCaseId);
+    if (!call) continue;
     owner.bffCalls.push(call);
     existingByOperation.set(call.operationId, call.bffId);
   }

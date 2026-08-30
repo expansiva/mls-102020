@@ -42,9 +42,11 @@ void test('phases and register depend on the phase step, never on its fan-out', 
 void test('the plan re-schedules whatever the last verify verdict still calls broken', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializeL2.ts'), 'utf8');
   const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
-  assert.match(shared, /export async function readBlockedMaterializePlanIds\(project: number\): Promise<Set<string>>/);
+  assert.match(shared, /export async function readBlockedMaterializePlanIds\(project: number, opts\?: \{ finalOnly\?: boolean \}\): Promise<Set<string>>/);
   // Only a verdict that is NOT clear schedules work, and it is read from the stable summary file.
-  assert.match(shared, /verdict\.allClear !== false/);
+  const core = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeMaterializeCore.ts'), 'utf8');
+  assert.match(core, /verdict\.allClear !== false/);
+  assert.match(shared, /compileBlockedPlanIdsFromVerdict\(verdict, opts\?\.finalOnly === true\)/);
   assert.match(shared, /isCfeMaterializeVerifyFolder\(/);
   assert.match(shared, /endsWith\('-summary'\)/);
   // It reaches the planner and shows up as its own reason (never hidden inside 'up to date').

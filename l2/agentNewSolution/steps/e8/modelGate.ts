@@ -313,6 +313,15 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
         }
       });
     });
+    const hostedUseCases = new Set(model.workspaces.flatMap(workspace => workspace.bffCalls.map(call => call.operationId)));
+    sources.useCases.forEach(useCase => {
+      if (hostedUseCases.has(useCase.useCaseId)) return;
+      const originJourneys = uniqueStrings(useCase.compiledFrom.map(ref => ref.split('.')[0]).filter(Boolean));
+      if (!originJourneys.length) return;
+      if (originJourneys.every(journeyId => demotedJourneys.has(journeyId))) return;
+      add('NS4_E8_USECASE_UNHOSTED', 'workspaces',
+        `Use case ${useCase.useCaseId} from ${originJourneys.join(', ')} is not hosted by any workspace.`);
+    });
     model.workspaces.forEach((workspace, index) => {
       const redundant = redundantWorkspaceReason(workspace, model, operations, sources);
       if (redundant) add('NS4_E8_REDUNDANT_WORKSPACE', `workspaces[${index}]`, redundant);
@@ -478,6 +487,10 @@ function dropFirst(
 const CONTENT_ORGANISM_ROLES = new Set(['hero', 'banner', 'richText', 'imageSet', 'ctaLink', 'showcase']);
 function isContentOrganismRole(role: string): boolean {
   return CONTENT_ORGANISM_ROLES.has(role);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 function decisionId(prefix: string, ...parts: string[]): string {

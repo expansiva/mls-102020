@@ -46,7 +46,7 @@ import {
 import { callCollabLlm, parseGenResult, type LlmConfig, type LlmResult } from './helpers/nodejsMaterializeLlmClient.js';
 import { formatGeneratedTsCli } from './helpers/nodejsFormatTs.js';
 import { ensureSharedScenaryMembers, generateSharedScaffold, sharedLlmFallbackTemplate } from './helpers/cfeSharedScaffold.js';
-import { buildPageSkeleton, organismShortName, type PageOrganism } from './helpers/cfePageSkeleton.js';
+import { buildPageSkeleton, markMissingOrganisms, organismShortName, type PageOrganism } from './helpers/cfePageSkeleton.js';
 import { buildSplitPlan, type SplitPlanSection } from './helpers/cfePageSplitPlan.js';
 import { cfePipelineTraceMlsPath, cfePipelineTraceMlsPathLegacy } from './helpers/cfePipelineTrace.js';
 
@@ -397,12 +397,19 @@ function pageSkeletonFor(item: PipelineItem, data: unknown): string | undefined 
   // functions, and an organism builds only its own file (paginaDividida.md §3).
   const split = SPLIT_BY_OUTPUT.get(item.outputPath);
   const pagePath = split?.current ? item.outputPath.replace(/_O\d+\.ts$/u, '.ts') : item.outputPath;
+  const organisms = split?.current || !split?.organisms
+    ? split?.organisms
+    : markMissingOrganisms(split.organisms, pagePath, ref => readIfExists(mlsToFs(ref)) != null);
+  if (item.type === 'l2_page' && organisms?.some(entry => entry.missing)) {
+    const missing = organisms.filter(entry => entry.missing).map(entry => `_O${entry.n}`).join(', ');
+    console.warn(`  missing organism(s) ${missing} for ${item.outputPath} — page emitted with stubs`);
+  }
   // The previous content of THIS file — the organism's own .ts when building an organism, so a split
   // page does not lose the translations that live in its organisms.
   const previousSource = readIfExists(mlsToFs(item.outputPath)) ?? undefined;
   const built = buildPageSkeleton({
     outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource: shared, sharedDefsData, previousSource,
-    organisms: split?.organisms, current: split?.current,
+    organisms, current: split?.current,
   });
   if (!built.code) console.warn(`  skeleton skipped for ${item.outputPath}: ${built.reason}`);
   return built.code ?? undefined;

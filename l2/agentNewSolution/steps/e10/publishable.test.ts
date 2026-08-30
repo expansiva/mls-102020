@@ -9,8 +9,9 @@ import assert from 'node:assert/strict';
 import {
   DEFAULT_PROJECT_APP_ENV, PLATFORM_BLOCK_DEFAULTS, applyPlatformBlockDefaults,
   buildProjectsBlock, buildWorkspaceDependencies, collectProjectJsonIssues, collectPublishableConfigIssues,
-  ensureProjectAppEnv, ensureProjectType, readProjectTypeFromProjectJson,
+  ensureProjectAppEnv, ensureProjectModule, ensureProjectType, readProjectTypeFromProjectJson,
 } from './publishable.js';
+import { stripNs4ModuleFromProjectJson } from '/_102020_/l2/agentNewSolution/helpers/ns4RebuildAll.js';
 
 test('workspaceDependencies is exactly what the platform reports, deduped and never filtered', () => {
   assert.deepEqual(buildWorkspaceDependencies([102029, 102033, 102034, 102029]), ['102029', '102033', '102034']);
@@ -103,6 +104,24 @@ test('the checklist names the missing block instead of letting the publish fail 
 test('the module has to be listed in l5/project.json.modules', () => {
   assert.deepEqual(collectProjectJsonIssues({ modules: [{ moduleId: 'petShop' }] }, 'petShop'), []);
   assert.deepEqual(collectProjectJsonIssues({ modules: ['petShop'] }, 'petShop'), []);
+  assert.deepEqual(collectProjectJsonIssues({ modules: [{ moduleName: 'petShop' }] }, 'petShop'), []);
   assert.match(collectProjectJsonIssues({ modules: [] }, 'petShop')[0], /does not list 'petShop'/u);
   assert.match(collectProjectJsonIssues(null, 'petShop')[0], /missing or unreadable/u);
+});
+
+test('/rebuild all that strips then E10 re-lists the module leaves the checklist clean', () => {
+  const before = {
+    modules: [
+      { moduleName: 'todo', backend: { routeKeys: ['todo.taskCatalogue.qryListTask'] } },
+      { moduleName: 'listaAssinatura', backend: { routeKeys: ['listaAssinatura.petitionLanding.qryLocatePetition'] } },
+    ],
+  };
+  const stripped = stripNs4ModuleFromProjectJson(before, 'listaAssinatura');
+  assert.equal(stripped.removed, 1);
+  assert.match(collectProjectJsonIssues(stripped.value, 'listaAssinatura')[0], /does not list 'listaAssinatura'/u);
+  const restored = ensureProjectModule(stripped.value, 'listaAssinatura');
+  assert.equal(restored.changed, true);
+  assert.deepEqual(collectProjectJsonIssues(restored.projectJson, 'listaAssinatura'), []);
+  assert.equal((restored.projectJson.modules as Array<{ moduleName: string }>)[0].moduleName, 'todo');
+  assert.deepEqual(ensureProjectModule(restored.projectJson, 'listaAssinatura').changed, false);
 });

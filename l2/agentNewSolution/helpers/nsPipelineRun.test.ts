@@ -45,6 +45,33 @@ void test('NS run summary records skipped clarification defaults as a degradatio
   assert.equal(summary.counts.skippedClarification, true);
 });
 
+void test('a failed handoff is recorded as a degradation and degrades a completed run', () => {
+  const pipeline = {
+    schemaVersion: 'test',
+    flowId: 'agentNewSolution',
+    flowVersion: 'test',
+    moduleName: 'listaAssinatura',
+    sourcePrompt: 'lista',
+    presentation: { userLanguage: 'pt-BR' },
+    status: 'complete',
+    steps: { e10: { status: 'approved', updatedAt: '2026-08-29T01:00:00.000Z' } },
+    updatedAt: '2026-08-29T01:00:00.000Z',
+  } as unknown as Ns4PipelineState;
+  const summary = buildNsRunSummary({
+    pipeline,
+    moduleName: 'listaAssinatura',
+    verdict: 'completed',
+    reason: 'E10 validation passed',
+    extraDegradations: [{
+      at: '2026-08-29T01:00:01.000Z',
+      kind: 'fast-handoff-dispatch',
+      reason: 'Parent step cannot be modified — re-send manually: @@agentChangeBackend /fast /rebuild all listaAssinatura',
+    }],
+  });
+  assert.equal(summary.verdict, 'degraded');
+  assert.equal(summary.degradations[0].kind, 'fast-handoff-dispatch');
+});
+
 void test('NS run summary records /rebuild all wipe counts as a degradation entry', () => {
   const pipeline = {
     schemaVersion: 'test',

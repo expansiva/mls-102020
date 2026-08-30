@@ -54,7 +54,7 @@ import {
 // Deterministic l2_shared renderer (pure, import-free). Wired here so the Studio path stops paying the
 // LLM — and stops hitting its output cap — for a file that is a mechanical projection of the defs.
 import { ensureSharedScenaryMembers, generateSharedScaffold, sharedLlmFallbackTemplate } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
-import { buildPageSkeleton } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSkeleton.js';
+import { buildPageSkeleton, markMissingOrganisms, organismFileRef, type PageOrganism } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSkeleton.js';
 import { buildSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
 import { cfePipelineTraceMlsPath, recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
@@ -407,7 +407,7 @@ async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineIte
 
   // The organisms of a split page are the sibling items of the same defs — the page composes them and an
   // organism builds only its own file (paginaDividida.md §3).
-  const organisms = siblings
+  const organisms: PageOrganism[] = siblings
     .filter(item => item.type === 'l2_page_organism' && item.organism)
     .map(item => ({
       n: Number(/_O(\d+)\.ts$/u.exec(item.outputPath)?.[1] ?? 0),
@@ -422,12 +422,31 @@ async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineIte
   const pagePath = pipelineItem.type === 'l2_page_organism'
     ? pipelineItem.outputPath.replace(/_O\d+\.ts$/u, '.ts')
     : pipelineItem.outputPath;
+  let composed = organisms;
+  if (pipelineItem.type === 'l2_page' && organisms.length) {
+    const present = new Set<string>();
+    for (const organism of organisms) {
+      const ref = organismFileRef(pagePath, organism.n);
+      const content = await getContentByMlsPath(ref);
+      if (content && content.trim()) present.add(ref);
+    }
+    composed = markMissingOrganisms(organisms, pagePath, ref => present.has(ref));
+    for (const organism of composed) {
+      if (!organism.missing) continue;
+      await recordCfeDegradation(
+        moduleOfMlsPath(pagePath),
+        'missing-organism',
+        `organism _O${organism.n} (${organism.organism}) was not materialized`,
+        pagePath,
+      );
+    }
+  }
 
   // The previous content of THIS file — the organism's own .ts when building an organism, so a split page
   // does not lose the translations that live in its organisms.
   const previousSource = (await getContentByMlsPath(pipelineItem.outputPath)) ?? undefined;
   const built = buildPageSkeleton({
-    outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource, sharedDefsData, previousSource, organisms, current,
+    outputPath: pagePath, data, sharedTsRef: sharedRef, sharedSource, sharedDefsData, previousSource, organisms: composed, current,
   });
   if (!built.code) {
     await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'skeleton-skip', String(built.reason || 'unknown'), pipelineItem.outputPath);

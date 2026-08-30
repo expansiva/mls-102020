@@ -143,6 +143,52 @@ export function materializePlanIdFromPipelineId(id: string): string {
   return `materialize-${id.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase()}`;
 }
 
+/** Organism pipeline id (`petitionLanding__O7`) — a content block, not a compile barrier for the page. */
+export function isOrganismPipelineId(id: string): boolean {
+  return /__O\d+$/u.test(id);
+}
+
+/**
+ * Compile-blocked dependency that should skip a dependent. Organisms are excluded: a missing
+ * content block degrades the page, it does not cancel it.
+ */
+export function firstCompileBlockedDep(dependsOn: string[] | undefined, blocked: Set<string>): string | undefined {
+  return (dependsOn ?? [])
+    .filter(id => !isOrganismPipelineId(id))
+    .map(materializePlanIdFromPipelineId)
+    .find(planId => blocked.has(planId));
+}
+
+/**
+ * Plan ids a verify verdict still lists as compile-blocked.
+ *
+ * An intermediate repair round writes `allClear: false` as the normal in-progress state — that is
+ * not a barrier. `finalOnly` skips those. Declared/repair severity never skip: quality findings
+ * degrade with a name, they do not block the next phase.
+ */
+export function compileBlockedPlanIdsFromVerdict(verdict: unknown, finalOnly = false): string[] {
+  if (!isRecord(verdict) || verdict.allClear !== false || !Array.isArray(verdict.broken)) return [];
+  if (finalOnly && verdict.final === false) return [];
+  const declared = new Set<string>();
+  if (Array.isArray(verdict.declared)) {
+    for (const entry of verdict.declared) {
+      if (!isRecord(entry)) continue;
+      const planId = typeof entry.planId === 'string' ? entry.planId : '';
+      if (planId) declared.add(planId);
+    }
+  }
+  const ids: string[] = [];
+  for (const entry of verdict.broken) {
+    if (!isRecord(entry)) continue;
+    const planId = typeof entry.planId === 'string' ? entry.planId : '';
+    if (!planId || declared.has(planId)) continue;
+    const severity = typeof entry.severity === 'string' ? entry.severity : '';
+    if (severity && severity !== 'blocked') continue;
+    ids.push(planId);
+  }
+  return ids;
+}
+
 export function describeVerifyBuckets(counts: { blocked: number; repaired: number; declared: number }): string {
   return `blocked=${counts.blocked} repaired=${counts.repaired} declared=${counts.declared}`;
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-30 — exclusive use case of an absorbed journey stays on the owner
+
+R1/D1 absorption already copies the built journey's calls onto the owner place; exclusive E7
+commands (listaAssinatura `exportSignatures` on `petitionLanding`) are not dropped. Gate
+`NS4_E8_USECASE_UNHOSTED` (blocking, sibling of `STEP_UNHOSTED`) requires every approved E7 use
+case of a non-demoted journey to have a `bffCall` on some workspace. Demoted-only use cases stay
+the E9 coverage audit, not this gate.
+
 ## 2026-08-29 — contentPage is a structural surface, not an E1 phrase
 
 Detection no longer matches four LLM wordings (`página informativa` / `institucional` /

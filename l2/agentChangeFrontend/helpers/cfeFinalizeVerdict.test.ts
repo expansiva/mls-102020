@@ -184,6 +184,56 @@ void test('D2: cada item bloqueado sabe de que página é — taskCatalogue sai 
 // higiene de template; os detectores de defs (sortBy, enum, selection control, bloco i18n, tag,
 // contrato, tokens) chegam por este arquivo. Se o par save/read devolvesse [] em produção, o D4.3
 // seria inerte e as guardas textuais continuariam verdes — por isso o round-trip real.
+void test('T1: veredito intermediário allClear:false não barra; o final repaired tampouco', async () => {
+  const { readBlockedMaterializePlanIds, saveMaterializeVerifySummary } = await loadModule();
+  const shared = 'materialize-signercatalogue-l2-shared';
+  await saveMaterializeVerifySummary(
+    'todo',
+    'materialize-phase-shared-verify',
+    1,
+    [],
+    [{ planId: shared, defPath: '', outputPath: '_102047_/l2/todo/web/shared/signerCatalogue.ts', typecheck: 'failed', errors: ['does not compile'], warnings: [], severity: 'blocked' as const }],
+    { declared: [], repaired: [] },
+    false,
+  );
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT, { finalOnly: true })).has(shared), false);
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT)).has(shared), true);
+  await saveMaterializeVerifySummary(
+    'todo',
+    'materialize-phase-shared-verify-v2-v3-v4',
+    4,
+    [{ planId: shared, typecheck: 'passed' }],
+    [],
+    { declared: [], repaired: [{ planId: shared, typecheck: 'passed' }] },
+    true,
+  );
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT, { finalOnly: true })).has(shared), false);
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT)).has(shared), false);
+});
+
+void test('T2: declared de qualidade não entra no conjunto que skipBlockedDependents consulta', async () => {
+  const { readBlockedMaterializePlanIds, saveMaterializeVerifySummary } = await loadModule();
+  const shared = 'materialize-petitionlanding-l2-shared';
+  await saveMaterializeVerifySummary(
+    'todo',
+    'materialize-phase-shared-verify',
+    4,
+    [],
+    [],
+    { declared: [{
+      planId: shared,
+      defPath: '',
+      outputPath: '_102047_/l2/todo/web/shared/petitionLanding.ts',
+      typecheck: 'passed',
+      errors: ['cmdCaptureSignature error path does not read error.message (nor an i18n map keyed by error.code)'],
+      warnings: [],
+      severity: 'declared' as const,
+    }], repaired: [] },
+    true,
+  );
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT, { finalOnly: true })).has(shared), false);
+});
+
 void test('D4.3: os achados do verify chegam ao slot de repair, e só na tentativa para a qual foram gravados', async () => {
   const { saveMaterializeItemFindings, readMaterializeItemFindings } = await loadModule();
   const findings = [

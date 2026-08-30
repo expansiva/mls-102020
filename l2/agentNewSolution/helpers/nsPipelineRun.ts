@@ -40,6 +40,7 @@ export function buildNsRunSummary(input: {
   longMemory?: Record<string, unknown> | null;
   verdict: 'completed' | 'failed' | 'degraded';
   reason: string;
+  extraDegradations?: PipelineRunDegradation[];
 }): PipelineRunSummary {
   const pipeline = input.pipeline;
   const skipped = pipeline?.steps.e1?.skippedDefaults;
@@ -69,14 +70,16 @@ export function buildNsRunSummary(input: {
       reason: `deleted l1=${l1} l2=${l2} l4=${l4} l5=${l5}; sanitized projectJson=${pipeline.rebuildAll.sanitized.projectJsonRemoved} configJson=${pipeline.rebuildAll.sanitized.configJsonRemoved}`,
     });
   }
+  if (input.extraDegradations?.length) degradations.push(...input.extraDegradations);
   const command = [fast ? '/fast' : '', rebuild, pipeline?.sourcePrompt || ''].filter(Boolean).join(' ').trim();
+  const handoffFailed = (input.extraDegradations || []).some(item => item.kind === 'fast-handoff-dispatch');
   return {
     moduleName: input.moduleName,
     agent: 'agentNewSolution',
     command,
     startedAt: pipeline?.steps.e1?.updatedAt || pipeline?.updatedAt || null,
     finishedAt: new Date().toISOString(),
-    verdict: skipped && input.verdict === 'completed' ? 'degraded' : input.verdict,
+    verdict: input.verdict === 'completed' && (skipped || handoffFailed) ? 'degraded' : input.verdict,
     reason: input.reason,
     counts: {
       steps: stepCounts,

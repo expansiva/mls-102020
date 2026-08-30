@@ -8,12 +8,18 @@
 // (contracts/<page>.ts + shared/<page>.ts + desktop/pageNN/<page>.ts).
 // The unsuffixed route uses page11 when that genome exists, otherwise the first remaining
 // genome. Additional desktop/pageNN variants are extra suffixed routes.
-// It merges the frontend part of the workspace ProjectsConfig into mls-<clientId>/config.json:
+// It merges the frontend part of the workspace ProjectsConfig into mls-<clientId>/l5/config.json:
 // shellTemplates, publication, clientShell (l5 customize overrides win), projects
 // (master frontend + libs) and modules[].frontend.pages / navigation.
+// Multi-module: each l5/project.json module is composed from ITS own l2. A module whose l2 is
+// missing is skipped and its existing config.json entry is kept (in-progress generation). That
+// differs from the backend composer, which DROPS leftovers whose persistence dirs are gone —
+// a dead tableDefsDir crashes publish migration; a missing frontend l2 does not. Neither writer
+// may clobber the other's fields (backendControllers / persistenceModules stay untouched here).
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type {
   L5ProjectJson,
   ProjectFrontendPageConfig,
@@ -323,39 +329,140 @@ function discoverPageVariants(clientRoot: string, clientId: string, moduleName: 
   return variants;
 }
 
-function main(): void {
-  const clientId = (process.argv[2] || '').replace(/^mls-/, '');
-  if (!/^\d+$/.test(clientId)) fail('usage: tsx nodejsSaveConfigJson.ts <clientId>');
+export class FrontendConfigComposeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FrontendConfigComposeError';
+  }
+}
 
-  const clientRoot = path.join(ROOT, `mls-${clientId}`);
+export interface ComposeFrontendSkip {
+  moduleName: string;
+  reason: string;
+}
+
+export interface ComposeFrontendResult {
+  configPath: string;
+  composed: { moduleName: string; pageCount: number }[];
+  skipped: ComposeFrontendSkip[];
+}
+
+type ModuleWithLandings = ProjectModuleConfig & { landings?: unknown[] };
+
+function tryComposeModuleFrontend(
+  clientRoot: string,
+  clientId: string,
+  moduleName: string,
+  l5: L5ProjectJson,
+  designSystems: string[],
+): { ok: true; pageCount: number; apply: (mod: ModuleWithLandings) => void } | { ok: false; reason: string } {
+  const discovered = discoverPages(clientRoot, moduleName);
+  if (discovered.length === 0) return { ok: false, reason: 'no pages discovered from l4 workflows/operations' };
+  const pages = discovered.filter(page => {
+    if (isMaterialized(clientRoot, moduleName, page.pageId)) return true;
+    warn(`module '${moduleName}' page '${page.pageId}' skipped: l2 artifacts not materialized (contracts/shared/pageNN)`);
+    return false;
+  });
+  if (pages.length === 0) return { ok: false, reason: 'no discovered page is materialized in l2' };
+
+  const labels = (l5.customize || {}).navigationLabels || {};
+  const languages = discoverModuleLanguages(clientRoot, moduleName, l5);
+  // Ownership of `modules[].navigation`: THIS agent. agentNewSolution seeds a menu at e10 from
+  // model.menu (places only). That preview can point at pages that do not exist yet, so the menu
+  // here is rebuilt as E8 model.menu ∩ pages that materialized — order from E8, existence from CF.
+  // A materialized page that is not in model.menu stays routable and is not listed.
+  const e8Model = readDefsData(path.join(clientRoot, 'l4', moduleName, 'workspace-model.defs.ts'));
+  const e8Menu = (Array.isArray(e8Model?.menu) ? e8Model.menu as Record<string, unknown>[] : [])
+    .map(entry => ({ workspaceId: toSafeShortName(readString(entry?.workspaceId)), label: readString(entry?.label) }))
+    .filter(entry => entry.workspaceId);
+  const navigation = navigationFromE8Menu({
+    moduleName,
+    menu: e8Menu,
+    pages: pages.map(page => ({
+      pageId: page.pageId, label: page.label, actors: page.actors, landing: page.landing,
+    })),
+    labels,
+  }) as ProjectNavigationEntry[];
+
+  const pageIds = new Set(pages.map(page => page.pageId));
+  const siteMapForLandings = readDefsData(path.join(clientRoot, 'l4', moduleName, 'siteMap.defs.ts'))
+    || readDefsData(path.join(clientRoot, 'l4', moduleName, 'navigation.defs.ts'));
+  const landings = ((siteMapForLandings && Array.isArray(siteMapForLandings.landings) ? siteMapForLandings.landings as Record<string, unknown>[] : [])
+    .map(landing => ({ actorId: readString(landing?.actorId), pageId: toSafeShortName(readString(landing?.workspaceId)) }))
+    .filter(landing => landing.actorId && pageIds.has(landing.pageId))
+    .map(landing => ({ actorId: landing.actorId, pageId: landing.pageId, route: `/${moduleName}/${landing.pageId}` })));
+
+  const variantPages = pages.flatMap(page => {
+    const primary = primaryPageGenome(desktopGenomesWithTs(clientRoot, moduleName, page.pageId));
+    return discoverPageVariants(clientRoot, clientId, moduleName, page, primary);
+  });
+  const pageTests = pages.flatMap(page => {
+    const genomes = desktopGenomesWithTs(clientRoot, moduleName, page.pageId);
+    const withTests = ['page11', ...genomes].filter((genome, index, list) => list.indexOf(genome) === index)
+      .filter(genome => fs.existsSync(path.join(clientRoot, 'l2', moduleName, 'web', 'desktop', genome, `${page.pageId}.test.ts`)));
+    const genome = withTests[0];
+    return genome ? [`_${clientId}_/l2/${moduleName}/web/desktop/${genome}/${page.pageId}.test.js`] : [];
+  });
+  const frontend = {
+    layer: 'l2' as const,
+    ...(pageTests.length > 0 ? { pageTests } : {}),
+    pages: [
+      ...pages.map((page): ProjectFrontendPageConfig => {
+        const primary = primaryPageGenome(desktopGenomesWithTs(clientRoot, moduleName, page.pageId));
+        return {
+          pageId: page.pageId,
+          route: pageRoute(moduleName, page.pageId, page.routeParams),
+          source: `l2/${moduleName}/web/desktop/${primary}/${page.pageId}.ts`,
+          definition: `l2/${moduleName}/web/desktop/${primary}/${page.pageId}.defs.ts`,
+          componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/${primary}`, shortName: page.pageId }),
+          title: labels[page.pageId] || page.label,
+          ...(page.actors.length ? { actors: page.actors } : {}),
+          ...(page.landing ? { public: true } : {}),
+        } as ProjectFrontendPageConfig & { actors?: string[]; public?: boolean };
+      }),
+      ...variantPages.map((page): ProjectFrontendPageConfig => ({
+        pageId: page.routePageId,
+        route: page.route,
+        source: page.source,
+        definition: page.definition,
+        componentTag: page.componentTag,
+        title: page.title,
+      })),
+    ],
+  };
+
+  return {
+    ok: true,
+    pageCount: pages.length,
+    apply: (mod) => {
+      mod.basePath = mod.basePath || `/${moduleName}`;
+      mod.shellMode = mod.shellMode || 'spa';
+      mod.languages = languages;
+      mod.designSystems = [...designSystems];
+      mod.navigation = navigation;
+      if (landings.length > 0) mod.landings = landings;
+      mod.frontend = frontend;
+    },
+  };
+}
+
+export function composeFrontendRuntimeConfig(root: string, clientId: string): ComposeFrontendResult {
+  if (!/^\d+$/.test(clientId)) throw new FrontendConfigComposeError('usage: tsx nodejsSaveConfigJson.ts <clientId>');
+
+  const clientRoot = path.join(root, `mls-${clientId}`);
   const runtimeL5Path = path.join(clientRoot, 'l5', 'runtime.project.json');
   const l5Path = fs.existsSync(runtimeL5Path) ? runtimeL5Path : path.join(clientRoot, 'l5', 'project.json');
   const l5 = readJson<L5ProjectJson>(l5Path);
-  if (!l5) fail(`cannot read ${l5Path}`);
+  if (!l5) throw new FrontendConfigComposeError(`cannot read ${l5Path}`);
 
   const signature = l5.masters?.frontend;
-  if (!signature) fail('l5/project.json has no masters.frontend signature (run agentChangeFrontend or add it)');
+  if (!signature) throw new FrontendConfigComposeError('l5/project.json has no masters.frontend signature (run agentChangeFrontend or add it)');
   const runtimeId = String(signature.runtimeProject);
 
-  // Module resolution: from the l5 modules; multi-module needs the l4->module inference and
-  // is out of scope until a real multi-module client exists.
   const moduleNames = (l5.modules || []).map(m => m.moduleName).filter(Boolean);
-  if (moduleNames.length !== 1) fail(`expected exactly 1 module in l5/project.json, found ${moduleNames.length}`);
-  const moduleName = moduleNames[0];
-  const moduleLanguages = discoverModuleLanguages(clientRoot, moduleName, l5);
-  const moduleDesignSystems = discoverDesignSystemNames(clientRoot);
-
-  const discovered = discoverPages(clientRoot, moduleName);
-  if (discovered.length === 0) fail('no pages discovered from l4 workflows/operations');
-  const pages = discovered.filter(page => {
-    if (isMaterialized(clientRoot, moduleName, page.pageId)) return true;
-    warn(`page '${page.pageId}' skipped: l2 artifacts not materialized (contracts/shared/pageNN)`);
-    return false;
-  });
-  if (pages.length === 0) fail('no discovered page is materialized in l2; run the materialization first');
+  const designSystems = discoverDesignSystemNames(clientRoot);
 
   const customize = l5.customize || {};
-  // Single source of truth: l5/config.json (read by the Studio apps, the publish and the runtime).
   const configPath = path.join(clientRoot, 'l5', 'config.json');
   const config = (readJson<ProjectsConfig>(configPath) || {}) as ProjectsConfig;
 
@@ -386,14 +493,10 @@ function main(): void {
   config.projects = config.projects || {};
   config.projects[clientId] = { ...(config.projects[clientId] || {}), root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, clientId) };
   config.projects[runtimeId] = { root: `../mls-${runtimeId}`, type: 'master frontend' };
-  // The frontend app routes BFF calls to the backend runtime, so config.projects must list it. Register
-  // it here when absent (the app doesn't work without it, and the backend composer may not have run yet);
-  // never clobber a richer entry the backend composer contributes.
   const backendRuntimeId = l5.masters?.backend?.runtimeProject ? String(l5.masters.backend.runtimeProject) : '';
   if (backendRuntimeId) {
     config.projects[backendRuntimeId] = config.projects[backendRuntimeId] || { root: `../mls-${backendRuntimeId}`, type: 'master backend' };
   }
-  // Frontend shared libs used by the generated l2 code and by the master frontend.
   delete config.projects['102027'];
   delete config.projects['102036'];
   config.projects['102029'] = config.projects['102029'] || { root: '../mls-102029', type: 'lib' };
@@ -401,85 +504,52 @@ function main(): void {
 
   const client = config.projects[clientId];
   client.modules = client.modules || [];
-  let mod = client.modules.find(m => m.moduleId === moduleName);
-  if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' } as ProjectModuleConfig; client.modules.push(mod); }
-  mod.basePath = mod.basePath || `/${moduleName}`;
-  mod.shellMode = mod.shellMode || 'spa';
-  mod.languages = moduleLanguages;
-  mod.designSystems = moduleDesignSystems;
 
-  const labels = customize.navigationLabels || {};
-  // Ownership of `modules[].navigation`: THIS agent. agentNewSolution seeds a menu at e10 from
-  // model.menu (places only). That preview can point at pages that do not exist yet, so the menu
-  // here is rebuilt as E8 model.menu ∩ pages that materialized — order from E8, existence from CF.
-  // A materialized page that is not in model.menu stays routable and is not listed.
-  const e8Model = readDefsData(path.join(clientRoot, 'l4', moduleName, 'workspace-model.defs.ts'));
-  const e8Menu = (Array.isArray(e8Model?.menu) ? e8Model.menu as Record<string, unknown>[] : [])
-    .map(entry => ({ workspaceId: toSafeShortName(readString(entry?.workspaceId)), label: readString(entry?.label) }))
-    .filter(entry => entry.workspaceId);
-  mod.navigation = navigationFromE8Menu({
-    moduleName,
-    menu: e8Menu,
-    pages: pages.map(page => ({
-      pageId: page.pageId, label: page.label, actors: page.actors, landing: page.landing,
-    })),
-    labels,
-  }) as ProjectNavigationEntry[];
+  const composed: { moduleName: string; pageCount: number }[] = [];
+  const skipped: ComposeFrontendSkip[] = [];
 
-  // F5: landings (siteMap | navigation) -> initial route per actor. Only for pages that materialized.
-  const pageIds = new Set(pages.map(page => page.pageId));
-  const siteMapForLandings = readDefsData(path.join(clientRoot, 'l4', moduleName, 'siteMap.defs.ts'))
-    || readDefsData(path.join(clientRoot, 'l4', moduleName, 'navigation.defs.ts'));
-  const landings = ((siteMapForLandings && Array.isArray(siteMapForLandings.landings) ? siteMapForLandings.landings as Record<string, unknown>[] : [])
-    .map(landing => ({ actorId: readString(landing?.actorId), pageId: toSafeShortName(readString(landing?.workspaceId)) }))
-    .filter(landing => landing.actorId && pageIds.has(landing.pageId))
-    .map(landing => ({ actorId: landing.actorId, pageId: landing.pageId, route: `/${moduleName}/${landing.pageId}` })));
-  if (landings.length > 0) (mod as ProjectModuleConfig & { landings?: unknown[] }).landings = landings;
+  for (const moduleName of moduleNames) {
+    try {
+      const result = tryComposeModuleFrontend(clientRoot, clientId, moduleName, l5, designSystems);
+      if (!result.ok) {
+        warn(`module '${moduleName}' skipped: ${result.reason}`);
+        skipped.push({ moduleName, reason: result.reason });
+        continue;
+      }
+      let mod = client.modules.find(m => m.moduleId === moduleName) as ModuleWithLandings | undefined;
+      if (!mod) {
+        mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' };
+        client.modules.push(mod);
+      }
+      result.apply(mod);
+      composed.push({ moduleName, pageCount: result.pageCount });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      warn(`module '${moduleName}' skipped: ${reason}`);
+      skipped.push({ moduleName, reason });
+    }
+  }
 
-  const variantPages = pages.flatMap(page => {
-    const primary = primaryPageGenome(desktopGenomesWithTs(clientRoot, moduleName, page.pageId));
-    return discoverPageVariants(clientRoot, clientId, moduleName, page, primary);
-  });
-  // Item 2a: publish the generated <page>.test.ts files (resolver .js form) so the devenv
-  // monitor Tests runner can discover them from config.json (never importing the client directly).
-  const pageTests = pages.flatMap(page => {
-    const genomes = desktopGenomesWithTs(clientRoot, moduleName, page.pageId);
-    const withTests = ['page11', ...genomes].filter((genome, index, list) => list.indexOf(genome) === index)
-      .filter(genome => fs.existsSync(path.join(clientRoot, 'l2', moduleName, 'web', 'desktop', genome, `${page.pageId}.test.ts`)));
-    const genome = withTests[0];
-    return genome ? [`_${clientId}_/l2/${moduleName}/web/desktop/${genome}/${page.pageId}.test.js`] : [];
-  });
-  mod.frontend = {
-    layer: 'l2',
-    ...(pageTests.length > 0 ? { pageTests } : {}),
-    pages: [
-      ...pages.map((page): ProjectFrontendPageConfig => {
-        const primary = primaryPageGenome(desktopGenomesWithTs(clientRoot, moduleName, page.pageId));
-        return {
-        pageId: page.pageId,
-        route: pageRoute(moduleName, page.pageId, page.routeParams),
-        source: `l2/${moduleName}/web/desktop/${primary}/${page.pageId}.ts`,
-        definition: `l2/${moduleName}/web/desktop/${primary}/${page.pageId}.defs.ts`,
-        componentTag: convertFileToTag({ project: Number(clientId), folder: `${moduleName}/web/desktop/${primary}`, shortName: page.pageId }),
-        title: labels[page.pageId] || page.label,
-        // F5: actors that may reach this page; landing pages are public/pre-login (no actor gate).
-        ...(page.actors.length ? { actors: page.actors } : {}),
-        ...(page.landing ? { public: true } : {}),
-      } as ProjectFrontendPageConfig & { actors?: string[]; public?: boolean };
-      }),
-      ...variantPages.map((page): ProjectFrontendPageConfig => ({
-        pageId: page.routePageId,
-        route: page.route,
-        source: page.source,
-        definition: page.definition,
-        componentTag: page.componentTag,
-        title: page.title,
-      })),
-    ],
-  };
+  if (composed.length === 0) {
+    throw new FrontendConfigComposeError(
+      `no module could be composed from l2 (declared ${moduleNames.length}, skipped ${skipped.length}); project looks broken`,
+    );
+  }
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
-  console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${pages.length} page(s) for module '${moduleName}' → ${configPath}`);
+  const pageNote = composed.map(item => `${item.moduleName}: ${item.pageCount} page(s)`).join(', ');
+  console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${composed.length} module(s) (${pageNote}) → ${configPath}`);
+  return { configPath, composed, skipped };
 }
 
-main();
+function main(): void {
+  const clientId = (process.argv[2] || '').replace(/^mls-/, '');
+  try {
+    composeFrontendRuntimeConfig(ROOT, clientId);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+const entry = process.argv[1] ? path.resolve(process.argv[1]) : '';
+if (entry && entry === path.resolve(fileURLToPath(import.meta.url))) main();

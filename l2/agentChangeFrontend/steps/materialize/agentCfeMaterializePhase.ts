@@ -40,10 +40,10 @@ import {
   countSharedItems,
   describeVerifyBuckets,
   selectRepairedThisRound,
+  firstCompileBlockedDep,
   firstErrorSignature,
   isSystemicPageFailure,
   isSystemicSharedFailure,
-  materializePlanIdFromPipelineId,
   pageDefinitionForChecks,
   parseDefs,
   testPathForOutputPath,
@@ -156,7 +156,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     return [
       createAddStepIntent(context, step, fanout, parallelArgs, args.maxParallel ?? 10),
       createAddStepIntent(context, step, verify),
-      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', trace),
+      // Stay in_progress so auto-completion waits for fanout + verify + repair. Completing here
+      // unlocked the next phase while this one was still repairing (listaAssinatura 30/08).
+      createUpdateStatusIntent(context, parentStep, step, hookSequential, 'in_progress', trace),
     ];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -239,12 +241,16 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     ...checkedItems.filter(item => item.blocking.length === 0 && item.repairable.length > 0 && args.attempt > MATERIALIZE_REPAIR_ROUNDS).map(item => toBrokenTrace(item, 'declared')),
   ];
   const bucketsNote = describeVerifyBuckets({ blocked: blocked.length, repaired: repaired.length, declared: declaredTraces.length });
+  const blockingView = checkedItems.map(item => ({ outputPath: item.outputPath, errors: item.blocking }));
+  const systemic = isSystemicPageFailure(args.attempt, blockingView) || isSystemicSharedFailure(args.attempt, blockingView);
+  const final = toRepair.length === 0 || args.attempt > MATERIALIZE_REPAIR_ROUNDS || systemic;
   // ALWAYS write the stable verdict file (overwrites each round) so "was this phase resolved?" has one
   // place to look — passed items + any still-broken — instead of inferring it from the presence of
   // cryptic per-round trace files (102051 run19: no file meant "clean" AND "not run", indistinguishable).
   const summaryRef = await saveMaterializeVerifySummary(
     moduleName, args.planId, args.attempt, passed, blocked.map(item => toBrokenTrace(item, 'blocked')),
     { declared: declaredTraces, repaired },
+    final,
   );
 
   if (toRepair.length === 0) {
@@ -266,7 +272,6 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   // keeps only a short summary that points at that file (DynamoDB 400KB task cap).
   const traceRef = await saveMaterializeVerifyTrace(moduleName, args.planId, args.attempt, toRepair.map(item => toBrokenTrace(item)));
   const summary = `${bucketsNote}\n${summarizeBroken(toRepair, traceRef)}`;
-  const blockingView = checkedItems.map(item => ({ outputPath: item.outputPath, errors: item.blocking }));
 
   // Systemic failure: EVERY page11 item broken on the FIRST compile with the SAME first error is an
   // environment/config fault, not N code bugs. Distinct signatures go to the normal repair.
@@ -651,16 +656,14 @@ function pipelineItemForStep(defsContent: string, itemId?: string): PipelineItem
 
 /** Independents keep going: an item whose dependsOn is still compile-blocked is skipped, not the whole phase. */
 async function skipBlockedDependents(items: GenStepArgs[]): Promise<{ runnable: GenStepArgs[]; skipped: MaterializeSkippedDep[] }> {
-  const blocked = await readBlockedMaterializePlanIds(mls.actualProject || 0);
+  const blocked = await readBlockedMaterializePlanIds(mls.actualProject || 0, { finalOnly: true });
   if (blocked.size === 0) return { runnable: items, skipped: [] };
   const runnable: GenStepArgs[] = [];
   const skipped: MaterializeSkippedDep[] = [];
   for (const item of items) {
     const defsContent = await getContentByMlsPath(item.defPath);
     const pipelineItem = defsContent ? pipelineItemForStep(defsContent, item.itemId) : null;
-    const blockedDep = (pipelineItem?.dependsOn ?? [])
-      .map(materializePlanIdFromPipelineId)
-      .find(planId => blocked.has(planId));
+    const blockedDep = firstCompileBlockedDep(pipelineItem?.dependsOn, blocked);
     if (blockedDep) {
       skipped.push({
         planId: item.planId,

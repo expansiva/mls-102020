@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildPageSkeleton, I18N_UNTRANSLATED_MARKER, localesOf, organismRenderName, organismShortName, sharedI18nKeys } from './cfePageSkeleton.js';
+import { buildPageSkeleton, I18N_UNTRANSLATED_MARKER, localesOf, markMissingOrganisms, organismFileRef, organismRenderName, organismShortName, sharedI18nKeys } from './cfePageSkeleton.js';
 
 // The shared .ts no longer carries an i18n block: the catalogue is PLANNED in the shared defs and
 // EMITTED in the page, so the skeleton reads the defs.
@@ -227,6 +227,24 @@ test('a split page keeps exactly the shape of an unsplit one', () => {
   assert.match(code, /export class BuildFlowFsmDesktopPage11BillingSummaryWorkspacePage extends BuildFlowFsmBillingSummaryWorkspaceBase \{/u);
   assert.match(code, /protected get msg\(\): PageMessageType \{/u);
   assert.ok(!code.includes('super.msg'), 'the page extends the shared, as always');
+});
+
+test('T3: 14 planned organisms with 1 missing still emit a compiling page and a stub', () => {
+  const planned = Array.from({ length: 14 }, (_, index) => ({
+    n: index + 1,
+    organism: index === 0 ? 'hero' : `block${index + 1}`,
+    bindings: [] as string[],
+  }));
+  const pageRef = INPUT.outputPath;
+  const present = new Set([organismFileRef(pageRef, 1)]);
+  const marked = markMissingOrganisms(planned, pageRef, ref => present.has(ref));
+  assert.equal(marked.filter(item => item.missing).length, 13);
+  const code = buildPageSkeleton({ ...INPUT, organisms: marked }).code ?? '';
+  assert.match(code, /export class BuildFlowFsmDesktopPage11BillingSummaryWorkspacePage/u);
+  assert.match(code, /import \{ renderHero \} from '\/_102045_\/l2\/buildFlowFsm\/web\/desktop\/page11\/billingSummaryWorkspace_O1\.js';/u);
+  assert.doesNotMatch(code, /billingSummaryWorkspace_O2\.js/u);
+  assert.match(code, /function renderBlock2\(_host: BuildFlowFsmBillingSummaryWorkspaceBase\) \{ return nothing; \}/u);
+  assert.match(code, /MISSING — stub/u);
 });
 
 test('bails when the requested organism is not in the plan', () => {

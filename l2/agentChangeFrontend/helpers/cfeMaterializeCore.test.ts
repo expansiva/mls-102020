@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -1514,4 +1514,73 @@ test('scenary gate degrades in verify (warnings) and the page skills teach the h
   assert.match(page11, /molecules--ml-scenary-102020/);
   assert.match(page21, /this skill is the render skill for both page21 and page31/);
   assert.match(page11, /scenes inside the single scenary host; sections as cards WITHIN a scene/);
+});
+
+// listaAssinatura 30/08: pages skipped signerCatalogue because they read a repair-round summary
+// (allClear:false) 1m18s before the shared finished and landed in repaired.
+test('T1: an in-progress verdict does not block dependents; the final repaired one does not either', () => {
+  const shared = 'materialize-signercatalogue-l2-shared';
+  const intermediate = {
+    allClear: false,
+    final: false,
+    broken: [{ planId: shared, severity: 'blocked', firstError: 'shipped .ts does not compile' }],
+    repaired: [],
+    declared: [],
+  };
+  const final = {
+    allClear: true,
+    final: true,
+    broken: [],
+    repaired: [{ planId: shared, typecheck: 'passed' }],
+    declared: [],
+  };
+  assert.deepEqual(compileBlockedPlanIdsFromVerdict(intermediate, true), []);
+  assert.deepEqual(compileBlockedPlanIdsFromVerdict(final, true), []);
+  // A live planner (not skipBlockedDependents) still sees the last known compile break.
+  assert.deepEqual(compileBlockedPlanIdsFromVerdict(intermediate, false), [shared]);
+});
+
+test('T2: a declared quality finding never enters the skip set, even if it leaked into broken[]', () => {
+  const shared = 'materialize-petitionlanding-l2-shared';
+  const quality = 'cmdCaptureSignature error path does not read error.message (nor an i18n map keyed by error.code)';
+  assert.deepEqual(compileBlockedPlanIdsFromVerdict({
+    allClear: false,
+    final: true,
+    broken: [{ planId: shared, severity: 'declared', firstError: quality }],
+    declared: [{ planId: shared, severity: 'declared', firstError: quality }],
+  }, true), []);
+  assert.deepEqual(compileBlockedPlanIdsFromVerdict({
+    allClear: true,
+    final: true,
+    broken: [],
+    declared: [{ planId: shared, severity: 'declared', firstError: quality }],
+  }, true), []);
+  assert.deepEqual(compileBlockedPlanIdsFromVerdict({
+    allClear: false,
+    final: true,
+    broken: [{ planId: shared, severity: 'repair', firstError: quality }],
+  }, true), []);
+});
+
+test('T3: a blocked organism does not skip the page; a blocked shared still does', () => {
+  assert.equal(isOrganismPipelineId('petitionLanding__O7'), true);
+  assert.equal(isOrganismPipelineId('petitionLanding__l2_shared'), false);
+  assert.equal(isOrganismPipelineId('petitionLanding__l2_page'), false);
+  const blocked = new Set([
+    'materialize-petitionlanding-o7',
+    'materialize-signercatalogue-l2-shared',
+  ]);
+  assert.equal(firstCompileBlockedDep(
+    ['petitionLanding__l2_shared', 'petitionLanding__O1', 'petitionLanding__O7'],
+    blocked,
+  ), undefined);
+  assert.equal(firstCompileBlockedDep(
+    ['signerCatalogue__l2_shared'],
+    blocked,
+  ), 'materialize-signercatalogue-l2-shared');
+  assert.equal(compileBlockedPlanIdsFromVerdict({
+    allClear: false,
+    final: true,
+    broken: [{ planId: 'materialize-signercatalogue-l2-shared', severity: 'blocked' }],
+  }, true)[0], 'materialize-signercatalogue-l2-shared');
 });

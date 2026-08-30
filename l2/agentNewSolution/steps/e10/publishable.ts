@@ -146,13 +146,32 @@ export function ensureProjectType(
   return { projectJson: json, changed: true };
 }
 
+function projectJsonModuleListed(modules: unknown, moduleName: string): boolean {
+  if (!Array.isArray(modules)) return false;
+  return modules.some(item => (typeof item === 'string' && item === moduleName)
+    || (isRecord(item) && (item.moduleId === moduleName || item.name === moduleName || item.moduleName === moduleName)));
+}
+
+/**
+ * `/rebuild all` strips this module from l5/project.json; E10 puts the name back (studio list)
+ * without touching sibling entries or backend blocks other agents own.
+ */
+export function ensureProjectModule(
+  projectJson: unknown, moduleName: string,
+): { projectJson: Record<string, unknown>; changed: boolean } {
+  const json = isRecord(projectJson) ? { ...projectJson } : {};
+  const modules = Array.isArray(json.modules) ? [...json.modules] : [];
+  if (projectJsonModuleListed(modules, moduleName)) return { projectJson: { ...json, modules }, changed: false };
+  modules.push({ moduleName });
+  return { projectJson: { ...json, modules }, changed: true };
+}
+
 /** The module has to be listed in l5/project.json.modules — the studio reads that list, not the config. */
 export function collectProjectJsonIssues(projectJson: unknown, moduleName: string): PublishableIssue[] {
   if (!isRecord(projectJson)) return ['l5/project.json is missing or unreadable: the module cannot be published without it'];
-  const modules = Array.isArray(projectJson.modules) ? projectJson.modules : [];
-  const listed = modules.some(item => (typeof item === 'string' && item === moduleName)
-    || (isRecord(item) && (item.moduleId === moduleName || item.name === moduleName)));
-  return listed ? [] : [`l5/project.json: modules[] does not list '${moduleName}' — add it (the studio reads this list)`];
+  return projectJsonModuleListed(projectJson.modules, moduleName)
+    ? []
+    : [`l5/project.json: modules[] does not list '${moduleName}' — add it (the studio reads this list)`];
 }
 
 /**

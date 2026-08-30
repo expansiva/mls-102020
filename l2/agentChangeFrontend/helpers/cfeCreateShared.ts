@@ -53,7 +53,7 @@ import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/a
 import { pageSlotRecipe, pageSlotRecipes, primaryGenomeOf, type UxVariantsMode } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
 import { buildOrganismSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
 import { enumDisplayLabel, enumLabelFallbackWarnings, readEnumLabels, type CfeEnumLabel } from '/_102020_/l2/agentChangeFrontend/helpers/cfeEnumLabels.js';
-import { sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { compileBlockedPlanIdsFromVerdict, sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   cfePipelineTraceFileInfo,
   isCfeMaterializeVerifyFolder,
@@ -2147,6 +2147,7 @@ export async function saveMaterializeVerifySummary(
   passed: MaterializeVerifyPassed[],
   broken: MaterializeVerifyBrokenTrace[],
   buckets: MaterializeVerifySummaryBuckets = {},
+  final = true,
 ): Promise<string | null> {
   try {
     const project = mls.actualProject || 0;
@@ -2166,6 +2167,8 @@ export async function saveMaterializeVerifySummary(
       phase: basePlanId,
       lastRoundPlanId: planId,
       attempt,
+      // false while a repair round is still queued: that allClear:false is in-progress, not a barrier.
+      final,
       // allClear means nothing BLOCKS the next phase / a later plan. Declared findings stay named.
       allClear: broken.length === 0,
       blockedCount: broken.length,
@@ -2334,8 +2337,11 @@ export async function readUnresolvedMaterializeItems(moduleName: string): Promis
   return items;
 }
 
-/** Plan ids the last verify verdict still lists as blocking (compile of the shipped .ts). Declared-only is not here. */
-export async function readBlockedMaterializePlanIds(project: number): Promise<Set<string>> {
+/**
+ * Plan ids the last verify verdict still lists as compile-blocking.
+ * Declared-only is not here. `finalOnly` ignores a round that is still repairing (`final: false`).
+ */
+export async function readBlockedMaterializePlanIds(project: number, opts?: { finalOnly?: boolean }): Promise<Set<string>> {
   const blocked = new Set<string>();
   if (!project) return blocked;
   for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
@@ -2344,11 +2350,7 @@ export async function readBlockedMaterializePlanIds(project: number): Promise<Se
     if (!String(file.shortName || '').endsWith('-summary')) continue;
     try {
       const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
-      if (!verdict || verdict.allClear !== false || !Array.isArray(verdict.broken)) continue;
-      for (const item of verdict.broken) {
-        const planId = item && typeof item.planId === 'string' ? item.planId : '';
-        if (planId) blocked.add(planId);
-      }
+      for (const planId of compileBlockedPlanIdsFromVerdict(verdict, opts?.finalOnly === true)) blocked.add(planId);
     } catch { /* an unreadable verdict schedules nothing */ }
   }
   return blocked;

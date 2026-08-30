@@ -59,3 +59,42 @@ export function decideNs4FastHandoff(input: {
   }
   return { dispatch: true, message };
 }
+
+export type Ns4FastHandoffDegradation = { at: string; kind: 'fast-handoff-dispatch'; reason: string };
+
+export type Ns4FastHandoffSendResult = {
+  dispatched: boolean;
+  note: string;
+  degradation: Ns4FastHandoffDegradation | null;
+};
+
+/**
+ * Send + persist the `/fast` handoff. Never throws: a dispatch failure is a recorded
+ * degradation so the parent step can complete (the NS work is already on disk).
+ */
+export async function sendNs4FastHandoff(input: {
+  threadId: string | undefined;
+  message: string;
+  send: (threadId: string, message: string) => Promise<void>;
+  persist: () => Promise<void>;
+}): Promise<Ns4FastHandoffSendResult> {
+  if (!input.threadId) {
+    return { dispatched: false, note: '; changeBackend: SKIPPED (no threadId)', degradation: null };
+  }
+  try {
+    await input.send(input.threadId, input.message);
+    await input.persist();
+    return { dispatched: true, note: `; changeBackend: dispatched (${input.message})`, degradation: null };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      dispatched: false,
+      note: `; changeBackend: DISPATCH FAILED (${reason}) — re-send manually: ${input.message}`,
+      degradation: {
+        at: new Date().toISOString(),
+        kind: 'fast-handoff-dispatch',
+        reason: `${reason} — re-send manually: ${input.message}`,
+      },
+    };
+  }
+}

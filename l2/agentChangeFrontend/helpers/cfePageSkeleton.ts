@@ -31,6 +31,24 @@ export interface PageOrganism {
   organism: string;
   /** dataBinding commands this organism owns. */
   bindings: string[];
+  /** File is absent: the page emits a compiling stub instead of an import. */
+  missing?: boolean;
+}
+
+/** mls ref of organism n of this page (`…/petitionLanding.ts` → `…/petitionLanding_O7.ts`). */
+export function organismFileRef(pageOutputPath: string, n: number): string {
+  return pageOutputPath.replace(/\.ts$/u, `_O${n}.ts`);
+}
+
+/** Flag organisms whose shipped file is missing so the page skeleton can stub them. */
+export function markMissingOrganisms(
+  organisms: PageOrganism[],
+  pageOutputPath: string,
+  exists: (ref: string) => boolean,
+): PageOrganism[] {
+  return organisms.map(item => exists(organismFileRef(pageOutputPath, item.n))
+    ? { n: item.n, organism: item.organism, bindings: item.bindings }
+    : { n: item.n, organism: item.organism, bindings: item.bindings, missing: true });
 }
 
 export interface PageSkeletonInput {
@@ -154,7 +172,15 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
     : `import { ${baseClassName} } from '${sharedImport}';`);
   if (scenaries.length) lines.push(`import '/_102020_/l2/molecules/ml-scenary.js';`);
   for (const organism of current ? [] : organisms) {
+    if (organism.missing) continue;
     lines.push(`import { ${organismRenderName(organism.organism)} } from '/_${parsed.project}_/l2/${parsed.folder}/${organismShortName(parsed.shortName, organism.n)}.js';`);
+  }
+  const missingOrganisms = current ? [] : organisms.filter(item => item.missing);
+  if (missingOrganisms.length) {
+    lines.push('// Missing organism file(s): compiling stubs so the page still exists.');
+    for (const organism of missingOrganisms) {
+      lines.push(`function ${organismRenderName(organism.organism)}(_host: ${baseClassName}) { return nothing; }`);
+    }
   }
   lines.push(`// to implement: add \`import type { … } from '${sharedImport}';\` for the DTO types you use.`);
   // Charts are one import away, and the model has no other way to learn the path. The directive carries
@@ -266,7 +292,8 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
     if (organisms.length) {
       lines.push('    // Already implemented and imported above — CALL them, in the order that composes the page:');
       for (const organism of organisms) {
-        lines.push(`    //   ${organismRenderName(organism.organism)}(this)   [${organism.bindings.join(', ')}]`);
+        const missingNote = organism.missing ? '  MISSING — stub' : '';
+        lines.push(`    //   ${organismRenderName(organism.organism)}(this)   [${organism.bindings.join(', ')}]${missingNote}`);
       }
     }
     lines.push(`    ${MARKER}`);
@@ -280,7 +307,8 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
       if (scene.kind === 'base' && organisms.length) {
         lines.push('    // Already implemented and imported above — CALL them, in the order that composes the page:');
         for (const organism of organisms) {
-          lines.push(`    //   ${organismRenderName(organism.organism)}(this)   [${organism.bindings.join(', ')}]`);
+          const missingNote = organism.missing ? '  MISSING — stub' : '';
+          lines.push(`    //   ${organismRenderName(organism.organism)}(this)   [${organism.bindings.join(', ')}]${missingNote}`);
         }
       }
       lines.push(`    ${MARKER}`);

@@ -19,6 +19,7 @@ import {
   decideNs4FastHandoff,
   isNs4FastMode,
   ns4E1SkippedDefaults,
+  sendNs4FastHandoff,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4FastHandoff.js';
 
 test('/fast skips the E1 widget; without the flag the widget still opens', () => {
@@ -89,6 +90,37 @@ test('E1 after-prompt and E10 finalize wire the skip and the handoff', () => {
   assert.match(e1, /skippedClarification: true/);
   const e10 = readFileSync(fileURLToPath(new URL('../steps/e10/agentNs4E10.ts', import.meta.url)), 'utf8');
   assert.match(e10, /decideNs4FastHandoff/);
+  assert.match(e10, /sendNs4FastHandoff/);
   assert.match(e10, /NS4_FAST_HANDOFF_PLAN_ID/);
+  assert.doesNotMatch(e10, /function handoffResult/);
+  assert.doesNotMatch(e10, /handoffResult\(/);
+  assert.match(e10, /ensureProjectModule\(withType\.projectJson, moduleName\)/);
+  assert.match(e10, /collectProjectJsonIssues\(withModule\.projectJson, moduleName\)/);
   assert.equal(NS4_FAST_HANDOFF_PLAN_ID, 'fast-handoff-changeBackend');
+});
+
+test('a throwing handoff send degrades and never throws', async () => {
+  const result = await sendNs4FastHandoff({
+    threadId: 't1',
+    message: '@@agentChangeBackend /fast /rebuild all petShop',
+    send: async () => { throw new Error('Parent step cannot be modified'); },
+    persist: async () => { throw new Error('must not persist after send failure'); },
+  });
+  assert.equal(result.dispatched, false);
+  assert.equal(result.degradation?.kind, 'fast-handoff-dispatch');
+  assert.match(result.note, /DISPATCH FAILED/);
+  assert.match(result.note, /re-send manually: @@agentChangeBackend \/fast \/rebuild all petShop/);
+});
+
+test('handoff send persists only after the thread message lands', async () => {
+  const order: string[] = [];
+  const result = await sendNs4FastHandoff({
+    threadId: 't1',
+    message: '@@agentChangeBackend /fast /rebuild all petShop',
+    send: async () => { order.push('send'); },
+    persist: async () => { order.push('persist'); },
+  });
+  assert.deepEqual(order, ['send', 'persist']);
+  assert.equal(result.dispatched, true);
+  assert.equal(result.degradation, null);
 });

@@ -21,7 +21,9 @@ variance never blocks the run. E8 preview and E9 compilation both use the total 
 A workspace is a place. A journey of the same actor on an entity the catalogue already shows is
 hosted on that catalogue (`hostedStepRefs`) instead of becoming a second page. A hub is emitted only
 when its closed catalogue has a `relatedList` or `projectionTile`. `NS4_E8_STEP_UNHOSTED` requires
-every non-demoted journey step to be hosted somewhere; `NS4_E8_REDUNDANT_WORKSPACE` is the inverse
+every non-demoted journey step to be hosted somewhere; `NS4_E8_USECASE_UNHOSTED` is the same
+completeness for every approved E7 use case of those journeys (a `bffCall` on some workspace,
+including exclusive commands of an absorbed journey). `NS4_E8_REDUNDANT_WORKSPACE` is the inverse
 (a leftover journey or a hub that only copies the anchor list). Scene grouping stays a CF concern.
 When an external profile has a public-scope grant and a journey reads a singleton (locate/inspect),
 E8 emits one `contentPage` (`categoryRef: contentLanding`) that quotes E1 prose into `type: content`

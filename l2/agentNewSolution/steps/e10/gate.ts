@@ -241,7 +241,7 @@ function earliestRepair(steps: Ns4E10RepairStep[]): Ns4E10RepairStep | undefined
 }
 /** Every finding belongs to one named check, so the report keeps the A1-A8 contract it always had. */
 const CHECK_OF: Array<[RegExp, Ns4E10CheckSummary['checkId']]> = [
-  [/^NS4_E8_(MENU|LANDING|STEP_UNHOSTED|EMPTY_JOURNEY)/, 'A2-journeys'],
+  [/^NS4_E8_(MENU|LANDING|STEP_UNHOSTED|USECASE_UNHOSTED|EMPTY_JOURNEY)/, 'A2-journeys'],
   [/^NS4_E10_POLICY/, 'A3-decisions'],
   [/^NS4_E8_(DISCLOSURE|PICKER_SOURCE)/, 'A4-disclosure'],
   [/^NS4_E10_FSM/, 'A5-fsm'],
