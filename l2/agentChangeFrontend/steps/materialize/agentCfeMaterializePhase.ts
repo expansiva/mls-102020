@@ -44,6 +44,7 @@ import {
   firstErrorSignature,
   isSystemicPageFailure,
   isSystemicSharedFailure,
+  mlsL2ModuleName,
   pageDefinitionForChecks,
   parseDefs,
   testPathForOutputPath,
@@ -59,7 +60,7 @@ import {
   getContentByMlsPath,
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
-import { cfePipelineTraceMlsPath, cfePipelineTraceMlsPathLegacy } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
+import { cfePipelineTraceMlsPath, cfePipelineTraceMlsPathLegacy, recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 interface MaterializePhaseArgs {
   planId: string;
@@ -68,6 +69,7 @@ interface MaterializePhaseArgs {
   fanoutTitle: string;
   items: GenStepArgs[];
   maxParallel?: number;
+  module?: string;
 }
 
 interface MaterializeSkippedDep {
@@ -82,6 +84,7 @@ interface MaterializeVerifyArgs {
   items: GenStepArgs[];
   attempt: number;
   skipped?: MaterializeSkippedDep[];
+  module?: string;
 }
 
 interface BrokenItem {
@@ -124,11 +127,13 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     }
 
     const args = parsePhaseArgs(parsed);
-    if (args.items.length === 0) {
+    const moduleName = args.module || deriveVerifyModule(args.items);
+    const items = itemsInModule(args.items, moduleName);
+    if (items.length === 0) {
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'no materialization items in phase')];
     }
 
-    const { runnable, skipped } = await skipBlockedDependents(args.items);
+    const { runnable, skipped } = await skipBlockedDependents(items, moduleName);
     if (runnable.length === 0) {
       const skipNote = skipped.map(item => `${item.planId} (${item.reason})`).join('; ');
       return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
@@ -146,7 +151,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       verifyPlanId,
       AGENT_NAME,
       `Verify ${args.title}`,
-      { mode: 'verify', planId: verifyPlanId, items: runnable, attempt: 1, skipped },
+      { mode: 'verify', planId: verifyPlanId, items: runnable, attempt: 1, skipped, module: moduleName },
       [args.fanoutPlanId],
       'sequential',
       'waiting_dependency',
@@ -203,8 +208,13 @@ function appendVerifyTrace(intent: mls.msg.AgentIntent, note: string): mls.msg.A
 }
 
 async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: MaterializeVerifyArgs): Promise<mls.msg.AgentIntent[]> {
+  const moduleName = args.module || deriveVerifyModule(args.items.length ? args.items : (args.skipped ?? []).map(item => ({ planId: item.planId, defPath: item.defPath })));
+  const scopedItems = itemsInModule(args.items, moduleName);
+  const scopedSkipped = moduleName
+    ? (args.skipped ?? []).filter(item => mlsL2ModuleName(item.defPath) === moduleName || mlsL2ModuleName(item.outputPath || '') === moduleName)
+    : (args.skipped ?? []);
   const checkedItems: BrokenItem[] = [];
-  for (const item of args.items) {
+  for (const item of scopedItems) {
     const checked = await verifyItem(item);
     checkedItems.push(checked);
   }
@@ -214,7 +224,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   const passedNow: MaterializeVerifyPassed[] = checkedItems
     .filter(checked => checked.blocking.length === 0 && checked.repairable.length === 0)
     .map(checked => ({ planId: checked.item.planId, typecheck: checked.typecheck }));
-  const skippedDeclared: MaterializeVerifyBrokenTrace[] = (args.skipped ?? []).map(item => ({
+  const skippedDeclared: MaterializeVerifyBrokenTrace[] = scopedSkipped.map(item => ({
     planId: item.planId,
     defPath: item.defPath,
     outputPath: item.outputPath,
@@ -223,7 +233,6 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     warnings: [],
     severity: 'declared',
   }));
-  const moduleName = deriveVerifyModule(args.items.length ? args.items : (args.skipped ?? []).map(item => ({ planId: item.planId, defPath: item.defPath })));
   const previous = await readMaterializeVerifySummary(moduleName, args.planId);
   const currentIds = new Set(checkedItems.map(item => item.item.planId));
   const carriedDeclared = (previous?.declared ?? []).filter(item => !currentIds.has(item.planId));
@@ -265,7 +274,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     }).join('; ');
     const skipNote = skippedDeclared.length ? `; skipped ${skippedDeclared.length} blocked-dep item(s)` : '';
     const summaryNote = summaryRef ? ` verdict: ${summaryRef}` : '';
-    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${args.items.length} materialization item(s) verified (${bucketsNote}${skipNote}); typechecks: ${trace}.${summaryNote}`)];
+    return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `all ${scopedItems.length} materialization item(s) verified (${bucketsNote}${skipNote}); typechecks: ${trace}.${summaryNote}`)];
   }
 
   // Full detail (all errors + warnings per item) goes to the file system; the msg-task step trace
@@ -305,6 +314,14 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   }
 
   if (args.attempt > MATERIALIZE_REPAIR_ROUNDS) {
+    for (const item of blocked) {
+      await recordCfeDegradation(
+        moduleName,
+        'materialize-item-failed',
+        item.blocking[0] || `repair budget exhausted (${MATERIALIZE_REPAIR_ROUNDS}/${MATERIALIZE_REPAIR_ROUNDS})`,
+        item.outputPath ?? undefined,
+      );
+    }
     if (blocked.length === 0) {
       return [createUpdateStatusIntent(
         context,
@@ -365,7 +382,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     nextVerifyPlanId,
     AGENT_NAME,
     'Verify materialization (after repair)',
-    { mode: 'verify', planId: nextVerifyPlanId, items: toRepair.map(entry => entry.item), attempt: nextAttempt, skipped: args.skipped },
+    { mode: 'verify', planId: nextVerifyPlanId, items: toRepair.map(entry => entry.item), attempt: nextAttempt, skipped: scopedSkipped, module: moduleName },
     [repairPlanId],
     'sequential',
     'waiting_dependency',
@@ -438,7 +455,7 @@ async function planSplitSteps(
     verifyPlanId,
     AGENT_NAME,
     'Verify materialization (after split)',
-    { mode: 'verify', planId: verifyPlanId, items: verifyItems, attempt: 1 },
+    { mode: 'verify', planId: verifyPlanId, items: verifyItems, attempt: 1, module: args.module },
     verifyItems.filter(item => item.planId.endsWith('-page')).map(item => `${item.planId.replace(/-page$/u, '')}-split-page`),
     'sequential',
     'waiting_dependency',
@@ -655,8 +672,8 @@ function pipelineItemForStep(defsContent: string, itemId?: string): PipelineItem
 }
 
 /** Independents keep going: an item whose dependsOn is still compile-blocked is skipped, not the whole phase. */
-async function skipBlockedDependents(items: GenStepArgs[]): Promise<{ runnable: GenStepArgs[]; skipped: MaterializeSkippedDep[] }> {
-  const blocked = await readBlockedMaterializePlanIds(mls.actualProject || 0, { finalOnly: true });
+async function skipBlockedDependents(items: GenStepArgs[], moduleName = ''): Promise<{ runnable: GenStepArgs[]; skipped: MaterializeSkippedDep[] }> {
+  const blocked = await readBlockedMaterializePlanIds(mls.actualProject || 0, { finalOnly: true, moduleName: moduleName || undefined });
   if (blocked.size === 0) return { runnable: items, skipped: [] };
   const runnable: GenStepArgs[] = [];
   const skipped: MaterializeSkippedDep[] = [];
@@ -682,12 +699,15 @@ async function skipBlockedDependents(items: GenStepArgs[]): Promise<{ runnable: 
 // Module name from the verify items' `_<project>_/l2/<module>/...` defPath (one run = one module).
 function deriveVerifyModule(items: GenStepArgs[]): string {
   for (const item of items) {
-    const parts = String(item.defPath || '').split('/');
-    const l2Index = parts.indexOf('l2');
-    const moduleName = l2Index >= 0 ? parts[l2Index + 1] : '';
-    if (moduleName && moduleName !== 'trace') return moduleName;
+    const moduleName = mlsL2ModuleName(item.defPath);
+    if (moduleName) return moduleName;
   }
   return '';
+}
+
+function itemsInModule(items: GenStepArgs[], moduleName: string): GenStepArgs[] {
+  if (!moduleName) return items;
+  return items.filter(item => mlsL2ModuleName(item.defPath) === moduleName);
 }
 
 // Compile a file's dependency .d.ts (a page: its shared base class runtime .ts + the contract it
@@ -746,6 +766,7 @@ function parsePhaseArgs(parsed: Record<string, unknown>): MaterializePhaseArgs {
     fanoutTitle,
     items,
     maxParallel: typeof parsed.maxParallel === 'number' ? parsed.maxParallel : undefined,
+    module: readString(parsed.module) || undefined,
   };
 }
 
@@ -755,7 +776,9 @@ function parseVerifyArgs(parsed: Record<string, unknown>): MaterializeVerifyArgs
   const items = Array.isArray(parsed.items) ? parsed.items.map(readGenStepArgs) : [];
   const attempt = typeof parsed.attempt === 'number' && Number.isInteger(parsed.attempt) ? parsed.attempt : 1;
   const skipped = Array.isArray(parsed.skipped) ? parsed.skipped.map(readSkippedDep).filter(item => item.planId) : [];
-  return skipped.length ? { planId, items, attempt, skipped } : { planId, items, attempt };
+  const moduleName = readString(parsed.module);
+  const base = skipped.length ? { planId, items, attempt, skipped } : { planId, items, attempt };
+  return moduleName ? { ...base, module: moduleName } : base;
 }
 
 function readSkippedDep(value: unknown): MaterializeSkippedDep {

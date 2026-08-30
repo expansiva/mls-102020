@@ -42,7 +42,7 @@ void test('phases and register depend on the phase step, never on its fan-out', 
 void test('the plan re-schedules whatever the last verify verdict still calls broken', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializeL2.ts'), 'utf8');
   const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
-  assert.match(shared, /export async function readBlockedMaterializePlanIds\(project: number, opts\?: \{ finalOnly\?: boolean \}\): Promise<Set<string>>/);
+  assert.match(shared, /export async function readBlockedMaterializePlanIds\(project: number, opts\?: \{ finalOnly\?: boolean; moduleName\?: string \}\): Promise<Set<string>>/);
   // Only a verdict that is NOT clear schedules work, and it is read from the stable summary file.
   const core = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeMaterializeCore.ts'), 'utf8');
   assert.match(core, /verdict\.allClear !== false/);
@@ -50,10 +50,23 @@ void test('the plan re-schedules whatever the last verify verdict still calls br
   assert.match(shared, /isCfeMaterializeVerifyFolder\(/);
   assert.match(shared, /endsWith\('-summary'\)/);
   // It reaches the planner and shows up as its own reason (never hidden inside 'up to date').
-  assert.match(src, /planMaterialization\(candidates, args\.force === true, await readBlockedMaterializePlanIds\(generated\.project\)\)/);
+  assert.match(src, /planMaterialization\(candidates, args\.force === true, await readBlockedMaterializePlanIds\(generated\.project, \{ moduleName: moduleName \|\| undefined \}\)\)/);
   assert.match(src, /const verdictBroken = brokenPlanIds\.has\(materializePlanId\(item\)\)/);
   assert.match(src, /force \|\| scheduledDep \|\| verdictBroken \|\|/);
   assert.match(src, /\? 'last verify verdict: broken'/);
   // An unreadable verdict schedules nothing.
   assert.match(shared, /catch \{ \/\* an unreadable verdict schedules nothing \*\/ \}/);
+});
+
+void test('T2: the planner enumerates defs of the run module only', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializeL2.ts'), 'utf8');
+  const scan = readFileSync(path.join(HERE, '..', 'scan', 'agentCfeCreateScanL4.ts'), 'utf8');
+  assert.match(scan, /force: scanArgs.forceMaterialize === true, module: moduleName/);
+  assert.match(src, /readMaterializeCandidates\(generated.project, moduleName\)/);
+  assert.match(src, /listFrontendDefs\(project, moduleName\)/);
+  assert.match(src, /if \(!moduleName\) return \[\];/);
+  assert.match(src, /isFrontendMaterializeFolder\(folder, moduleName\)/);
+  assert.match(src, /moduleName && !folder.startsWith\(`\$\{moduleName\}\/`\)/);
+  assert.match(src, /createMaterializePhaseSteps\(context, step, todo, moduleName\)/);
+  assert.match(src, /module: moduleName \}/);
 });

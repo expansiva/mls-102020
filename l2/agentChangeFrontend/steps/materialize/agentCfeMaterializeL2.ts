@@ -38,6 +38,7 @@ export function createAgent(): IAgentAsync {
 
 interface MaterializeArgs {
   force?: boolean;
+  module?: string;
 }
 
 interface MaterializeCandidate {
@@ -55,10 +56,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   try {
     const args = parseArgs(step.prompt);
     const generated = await listGeneratedCreatePages();
-    const candidates = await readMaterializeCandidates(generated.project);
-    const planned = planMaterialization(candidates, args.force === true, await readBlockedMaterializePlanIds(generated.project));
+    const moduleName = args.module || inferRunModule(generated.pages);
+    const candidates = await readMaterializeCandidates(generated.project, moduleName);
+    const planned = planMaterialization(candidates, args.force === true, await readBlockedMaterializePlanIds(generated.project, { moduleName: moduleName || undefined }));
     const todo = planned.filter(item => item.stale);
-    const phasePlan = createMaterializePhaseSteps(context, step, todo);
+    const phasePlan = createMaterializePhaseSteps(context, step, todo, moduleName);
     const registerDeps = phasePlan.terminalPlanIds;
     // register/finalize recompute the ready/skipped set FRESH (post-materialization) inside
     // registerGeneratedFrontendPages/finalizeGeneratedPages — see their traces. Do NOT embed
@@ -82,7 +84,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       'sequential',
       'waiting_dependency',
     );
-    const trace = `pages=${generated.pages.length}; materialize=${todo.length}/${planned.length}; skippedPages=${generated.skippedPages.length}`;
+    const trace = `pages=${generated.pages.length}; module=${moduleName || '(none)'}; materialize=${todo.length}/${planned.length}; skippedPages=${generated.skippedPages.length}`;
     return [
       ...phasePlan.intents,
       createAddStepIntent(context, parentStep, register),
@@ -100,16 +102,27 @@ function parseArgs(prompt: string | undefined): MaterializeArgs {
   if (!prompt) return {};
   try {
     const parsed = JSON.parse(prompt);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as MaterializeArgs : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const record = parsed as Record<string, unknown>;
+    const moduleName = typeof record.module === 'string' ? record.module.trim() : '';
+    return {
+      force: record.force === true,
+      ...(moduleName ? { module: moduleName } : {}),
+    };
   } catch {
     return {};
   }
 }
 
-async function readMaterializeCandidates(project: number): Promise<MaterializeCandidate[]> {
+function inferRunModule(pages: { moduleName: string }[]): string {
+  const names = [...new Set(pages.map(page => page.moduleName).filter(Boolean))];
+  return names[0] || '';
+}
+
+async function readMaterializeCandidates(project: number, moduleName: string): Promise<MaterializeCandidate[]> {
   const candidates: MaterializeCandidate[] = [];
   const seenOutputs = new Set<string>();
-  for (const defPath of listFrontendDefs(project)) {
+  for (const defPath of listFrontendDefs(project, moduleName)) {
     const source = await getContentByMlsPath(defPath);
     const pipeline = source ? parsePipelineFromContent(source) : null;
     // EVERY item, not just the first: a split page carries N organisms plus the page in one defs
@@ -124,18 +137,20 @@ async function readMaterializeCandidates(project: number): Promise<MaterializeCa
   return candidates;
 }
 
-function listFrontendDefs(project: number): string[] {
+function listFrontendDefs(project: number, moduleName: string): string[] {
+  if (!moduleName) return [];
   const refs: string[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted' || file.extension !== '.defs.ts') continue;
     const folder = String(file.folder || '');
-    if (!isFrontendMaterializeFolder(folder)) continue;
+    if (!isFrontendMaterializeFolder(folder, moduleName)) continue;
     refs.push(toMlsRef(file));
   }
   return refs.sort();
 }
 
-function isFrontendMaterializeFolder(folder: string): boolean {
+function isFrontendMaterializeFolder(folder: string, moduleName?: string): boolean {
+  if (moduleName && !folder.startsWith(`${moduleName}/`)) return false;
   return /\/web\/contracts$/.test(folder)
     || /\/web\/shared$/.test(folder)
     || /\/web\/desktop\/page\d+$/.test(folder)
@@ -221,7 +236,7 @@ function modifiedMs(ref: string): number | null {
   return getFileModified(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
 }
 
-function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, planned: PlannedMaterializeItem[]): { intents: mls.msg.AgentIntentAddStep[]; terminalPlanIds: string[] } {
+function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, planned: PlannedMaterializeItem[], moduleName = ''): { intents: mls.msg.AgentIntentAddStep[]; terminalPlanIds: string[] } {
   const groups = groupByMaterializePhase(planned);
   const intents: mls.msg.AgentIntentAddStep[] = [];
   // The barrier is the PHASE, never its fan-out. A fan-out completes when the first pass of its items
@@ -246,7 +261,7 @@ function createMaterializePhaseSteps(context: mls.msg.ExecutionContext, parentSt
       phasePlanId,
       'agentCfeMaterializePhase',
       group.parentTitle,
-      { planId: phasePlanId, fanoutPlanId, title: group.parentTitle, fanoutTitle: group.progressTitle, items, maxParallel: 10 },
+      { planId: phasePlanId, fanoutPlanId, title: group.parentTitle, fanoutTitle: group.progressTitle, items, maxParallel: 10, module: moduleName },
       priorPhasePlanIds,
       'sequential',
       priorPhasePlanIds.length > 0 ? 'waiting_dependency' : 'waiting_human_input',

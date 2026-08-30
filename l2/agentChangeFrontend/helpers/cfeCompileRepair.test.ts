@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import {
   MAX_MODULE_COMPILE_REPAIRS, compileRepairSlotArgs, defsRefForGeneratedTs, describeCompileRepairPlan,
   groupModuleCompileErrors, partitionModuleCompileErrors,
-  compileErrorRef, planModuleCompileRepair,
+  compileErrorRef, excludeErrorsOnRefs, planModuleCompileRepair,
 } from './cfeCompileRepair.js';
 
 // Os 15 erros REAIS do run fe2 do petShop (22/08 01:59Z), no formato que compileModuleClosure produz
@@ -64,6 +64,21 @@ test('planModuleCompileRepair: nada repável ⇒ nenhum slot (o gate falha, e di
   const described = describeCompileRepairPlan(plan, 1);
   assert.match(described, /0 file\(s\) queued/);
   assert.match(described, /5 file\(s\) NOT repairable \(no defs on disk/);
+});
+
+test('excludeErrorsOnRefs: compile errors of a failed materialize item do not stay blocking', () => {
+  const failed = '_102047_/l2/todo/web/shared/taskCatalogue.ts';
+  const kept = '_102047_/l2/listaAssinatura/web/desktop/page11/petitionLanding.ts';
+  const out = excludeErrorsOnRefs([
+    `${failed}: error TS2554: Expected 1 arguments, but got 0.`,
+    `${kept}: error TS2304: Cannot find name 'x'`,
+    'compile worker unavailable',
+  ], new Set([failed]));
+  assert.deepEqual(out, [
+    `${kept}: error TS2304: Cannot find name 'x'`,
+    'compile worker unavailable',
+  ]);
+  assert.deepEqual(excludeErrorsOnRefs([`${failed}: boom`], new Set()), [`${failed}: boom`]);
 });
 
 test('partitionModuleCompileErrors: .test.ts is declared, shipped .ts stays blocking', () => {

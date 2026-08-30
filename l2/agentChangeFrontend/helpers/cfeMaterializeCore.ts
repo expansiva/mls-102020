@@ -166,6 +166,14 @@ export function firstCompileBlockedDep(dependsOn: string[] | undefined, blocked:
  * not a barrier. `finalOnly` skips those. Declared/repair severity never skip: quality findings
  * degrade with a name, they do not block the next phase.
  */
+/** `_102047_/l2/todo/web/shared/x.ts` -> `todo`. Empty when the ref is not an l2 module path. */
+export function mlsL2ModuleName(ref: string): string {
+  const parts = String(ref || '').split('/');
+  const at = parts.indexOf('l2');
+  const name = at >= 0 ? (parts[at + 1] ?? '') : '';
+  return name && name !== 'trace' ? name : '';
+}
+
 export function compileBlockedPlanIdsFromVerdict(verdict: unknown, finalOnly = false): string[] {
   if (!isRecord(verdict) || verdict.allClear !== false || !Array.isArray(verdict.broken)) return [];
   if (finalOnly && verdict.final === false) return [];

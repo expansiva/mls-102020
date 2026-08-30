@@ -1,13 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.ts" enhancement="_blank"/>
 
 /**
- * Recipe-per-category: which genomes to generate, how their defs look, whether the experience
- * skill is attached, whether to split by organism from the start.
- *
- * Default (no `variants:all`): one genome. contentLanding → page11 (prose + skill). Every other
- * category → page31 / goal-first (measured winner on 102045/clientManagement, 31/jul: page31 >
- * page21 > page11, reduced defs + skill beat a complete defs). `variants:all` restores the three
- * exploration slots. Management slots stay byte-identical to the previous three-slot plan.
+ * Category chooses the template of page21/page31 (`templateMode` / experience skill).
+ * It does not choose genome and does not reduce the set of screens: the three genomes are always
+ * three full-app proposals.
  */
 
 export type UxVariantsMode = 'default' | 'all';
@@ -24,17 +20,19 @@ export interface PageSlotRecipe {
   splitByOrganism: boolean;
 }
 
-const MANAGEMENT_SLOTS: PageSlotRecipe[] = [
-  { genome: 'page11', defsFormat: 'prose', templateMode: 'pinned', attachExperienceSkill: false, splitByOrganism: false },
-  { genome: 'page21', defsFormat: 'object', templateMode: 'goal-first', attachExperienceSkill: true, splitByOrganism: false },
-  { genome: 'page31', defsFormat: 'object', templateMode: 'goal-first', attachExperienceSkill: true, splitByOrganism: false },
-];
+const GENOMES = ['page11', 'page21', 'page31'] as const;
 
-function contentSlot(genome: string): PageSlotRecipe {
-  return { genome, defsFormat: 'prose', templateMode: 'pinned', attachExperienceSkill: true, splitByOrganism: true };
+function slot(genome: (typeof GENOMES)[number], categoryRef: string): PageSlotRecipe {
+  const content = categoryRef === CONTENT_LANDING_CATEGORY;
+  const page11 = genome === 'page11';
+  return {
+    genome,
+    defsFormat: 'prose',
+    templateMode: content || page11 ? 'pinned' : 'goal-first',
+    attachExperienceSkill: content || !page11,
+    splitByOrganism: false,
+  };
 }
-
-const CONTENT_SLOTS: PageSlotRecipe[] = ['page11', 'page21', 'page31'].map(contentSlot);
 
 export function isUxVariantsToken(token: string): boolean {
   return /^\/?variants[=:]all$/i.test(String(token || '').trim());
@@ -44,14 +42,13 @@ export function parseUxVariantsMode(tokens: string[]): UxVariantsMode {
   return tokens.some(isUxVariantsToken) ? 'all' : 'default';
 }
 
-export function pageSlotRecipes(categoryRef: string, variants: UxVariantsMode = 'default'): PageSlotRecipe[] {
-  const all = categoryRef === CONTENT_LANDING_CATEGORY ? CONTENT_SLOTS : MANAGEMENT_SLOTS;
-  if (variants === 'all') return all;
-  return categoryRef === CONTENT_LANDING_CATEGORY ? [CONTENT_SLOTS[0]] : [MANAGEMENT_SLOTS[2]];
+/** Always the three genomes. `variants` is accepted and ignored — the CLI still parses `variants:all`. */
+export function pageSlotRecipes(categoryRef: string, _variants: UxVariantsMode = 'default'): PageSlotRecipe[] {
+  return GENOMES.map(genome => slot(genome, categoryRef));
 }
 
 export function pageSlotRecipe(categoryRef: string, genome: string): PageSlotRecipe {
-  const all = categoryRef === CONTENT_LANDING_CATEGORY ? CONTENT_SLOTS : MANAGEMENT_SLOTS;
+  const all = pageSlotRecipes(categoryRef);
   return all.find(slot => slot.genome === genome) || all[0];
 }
 

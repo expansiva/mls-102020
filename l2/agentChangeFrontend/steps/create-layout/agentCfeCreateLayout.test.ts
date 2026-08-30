@@ -91,7 +91,7 @@ void test('agentCfeCreateLayout expands a composition into the full L4-derived l
   assert.deepEqual(organisms[1].userActions, ['createProductCmd']);
 });
 
-void test('page11 defs export is multiline prose without bindings; page21 stays an object with pageObjective', async () => {
+void test('page defs export is multiline prose on every genome, without bindings', async () => {
   const mod = await loadCreateShared() as unknown as {
     pageLayoutDefsExport: (genome: string, prepared: unknown, bindings: unknown[], objective?: unknown) => { definition: unknown; extras: { name: string; value: unknown }[] };
     page11DefinitionProse: (prepared: unknown) => string;
@@ -116,11 +116,8 @@ void test('page11 defs export is multiline prose without bindings; page21 stays 
   assert.doesNotMatch(String(landing21.definition), /pageObjective|dataBindings/);
 
   const page21 = mod.pageLayoutDefsExport('page21', prepared, bindings, { goal: 'decidir o próximo pedido' });
-  assert.equal(typeof page21.definition, 'object');
-  const def21 = page21.definition as Record<string, unknown>;
-  assert.equal(def21.pageId, 'orders');
-  assert.deepEqual(def21.pageObjective, { goal: 'decidir o próximo pedido' });
-  assert.deepEqual(def21.dataBindings, bindings);
+  assert.equal(typeof page21.definition, 'string', 'management page21 is prose too');
+  assert.doesNotMatch(String(page21.definition), /pageObjective|dataBindings/);
   assert.equal(page21.extras.length, 0);
 
   const body = mod.renderFrontendDefsBody('definition', page11.definition, [{ id: 'x', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/orders.ts' }], page11.extras);

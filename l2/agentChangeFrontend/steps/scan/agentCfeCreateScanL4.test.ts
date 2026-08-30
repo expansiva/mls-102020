@@ -16,3 +16,10 @@ void test('agentCfeCreateScanL4 declares the scan step agent contract', () => {
   assert.match(src, /beforePromptStep/);
   assert.match(flow, /"agentName": "agentCfeCreateScanL4"/);
 });
+
+void test('T2: o step de materialize leva o módulo do comando', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeCreateScanL4.ts'), 'utf8');
+  assert.match(src, /function createMaterializeStep\(scanArgs: ScanArgs, dependsOn: string\[\], moduleName = ''\)/);
+  assert.match(src, /createMaterializeStep\(scanArgs, \[\], requested \|\| sweepModule\)/);
+  assert.match(src, /createMaterializeStep\(scanArgs, \['verify-create-layouts'\], runModule\)/);
+});

@@ -63,6 +63,15 @@ export function compileErrorRef(error: string): string {
   return /(_\d+_\/l\d+\/[^\s:]+?\.ts)/su.exec(error)?.[1] ?? '';
 }
 
+/** Drop diagnostics whose shipped file is already a failed materialize item — they must not fail the run. */
+export function excludeErrorsOnRefs(errors: readonly string[], refs: ReadonlySet<string>): string[] {
+  if (refs.size === 0) return [...errors];
+  return errors.filter(error => {
+    const ref = compileErrorRef(error);
+    return !ref || !refs.has(ref);
+  });
+}
+
 export function groupModuleCompileErrors(errors: readonly string[]): Map<string, string[]> {
   const byRef = new Map<string, string[]>();
   for (const error of errors) {

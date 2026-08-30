@@ -248,7 +248,7 @@ void test('quality gates enter repair and are declared after the budget, they ne
 void test('a blocked shared skips only the pages that depend on it', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
   assert.match(src, /async function skipBlockedDependents/);
-  assert.match(src, /readBlockedMaterializePlanIds\(mls\.actualProject \|\| 0, \{ finalOnly: true \}\)/);
+  assert.match(src, /readBlockedMaterializePlanIds\(mls\.actualProject \|\| 0, \{ finalOnly: true, moduleName: moduleName \|\| undefined \}\)/);
   assert.match(src, /firstCompileBlockedDep\(pipelineItem\?\.dependsOn, blocked\)/);
   assert.match(src, /dependency \$\{blockedDep\} is blocked \(shipped \.ts does not compile\)/);
   assert.match(src, /skipped all \$\{skipped\.length\} item\(s\) whose dependency is blocked/);
@@ -261,6 +261,16 @@ void test('the phase stays in_progress until fanout+verify+repair finish', () =>
   assert.match(src, /createUpdateStatusIntent\(context, parentStep, step, hookSequential, 'in_progress', trace\)/);
   assert.match(src, /const final = toRepair\.length === 0 \|\| args\.attempt > MATERIALIZE_REPAIR_ROUNDS \|\| systemic/);
   assert.match(src, /saveMaterializeVerifySummary\(\s*moduleName, args\.planId, args\.attempt, passed, blocked\.map\(item => toBrokenTrace\(item, 'blocked'\)\),\s*\{ declared: declaredTraces, repaired \},\s*final/s);
+});
+
+void test('T1: a stuck item is recorded as a degradation and the phase still writes a final verdict', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /recordCfeDegradation\(/);
+  assert.match(src, /'materialize-item-failed'/);
+  assert.match(src, /args\.attempt > MATERIALIZE_REPAIR_ROUNDS/);
+  assert.match(src, /MATERIALIZE-CLI-PENDING/);
+  assert.match(src, /function itemsInModule/);
+  assert.match(src, /itemsInModule\(args\.items, moduleName\)/);
 });
 
 void test('the verify summary writes blocked, repaired and declared counts', () => {

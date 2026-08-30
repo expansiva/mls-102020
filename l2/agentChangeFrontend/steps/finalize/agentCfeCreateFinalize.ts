@@ -3,7 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, finalizeGeneratedPages, readUnresolvedMaterializeItems, rewriteMaterializeVerdictsNowClean } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import {
-  MAX_MODULE_COMPILE_REPAIRS, compileErrorRef, compileRepairSlotArgs, describeCompileRepairPlan, partitionModuleCompileErrors, planModuleCompileRepair,
+  MAX_MODULE_COMPILE_REPAIRS, compileErrorRef, compileRepairSlotArgs, describeCompileRepairPlan, excludeErrorsOnRefs, partitionModuleCompileErrors, planModuleCompileRepair,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileRepair.js';
 // `addMessage('@@agent …')` posts a message that spawns a NEW task through the target agent's own
 // beforePromptImplicit (no coupling to its internals) — the same handoff agentNewSolution uses to start
@@ -111,10 +111,10 @@ async function persistCfeRunSummary(
 ): Promise<void> {
   try {
     const degradations = await takeCfeDegradations(result.moduleName);
-    const blocked = partitioned.blocking.length + unreproduced.length;
+    const blocked = partitioned.blocking.length;
     const verdict = status === 'failed' || blocked > 0
       ? 'failed'
-      : (degradations.length || partitioned.declared.length || result.incompletePages.length ? 'degraded' : 'completed');
+      : (degradations.length || partitioned.declared.length || result.incompletePages.length || unreproduced.length ? 'degraded' : 'completed');
     await saveCfeRunSummary({
       moduleName: result.moduleName,
       agent: 'agentChangeFrontend',
@@ -252,12 +252,15 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ? `; incompletePages=${result.incompletePages.length} (${result.incompletePages.map(page => `${page.pageId}: ${page.reason}`).join(' | ')})`
       : '';
     const base = `pagesDone=${result.pagesDone.length}; ownersDone=${result.ownersDone.length}; skippedPages=${result.skippedPages.length}${incompleteNote}; ${result.configMsg}`;
-    const partitioned = partitionModuleCompileErrors(compiled.errors);
+    const unresolved = await readUnresolvedMaterializeItems(result.moduleName);
+    const unresolvedRefs = new Set(unresolved.map(item => item.outputPath).filter((ref): ref is string => !!ref));
+    const partitioned = partitionModuleCompileErrors(excludeErrorsOnRefs(compiled.errors, unresolvedRefs));
     // The materialize verdicts are the gate's suspect list. A suspect the whole-module compile cannot
     // reproduce is NOT absolved by that silence: it is the Monaco-vs-tsc fidelity gap, named here with the
     // error the verify did record. run01 of 102047 closed `completed` with five tsc errors in exactly the
-    // three files its own verdict had marked blocked.
-    const unreproduced = (await readUnresolvedMaterializeItems(result.moduleName))
+    // three files its own verdict had marked blocked. A page already failed by materialize is degraded,
+    // not a run failure — its errors were excluded above.
+    const unreproduced = unresolved
       .filter(item => !compiled.errors.some(error => item.outputPath && error.startsWith(`${item.outputPath}:`)));
     const verdictNote = unreproduced.length
       ? `; MATERIALIZE-VERDICT-UNREPRODUCED: ${unreproduced.length} item(s) the materialization verify recorded as blocked that this gate did not reproduce — the shipped .ts of each is the one the publish compiles: ${unreproduced.map(item => `${item.planId} @ ${item.outputPath ?? '(no output)'} — ${item.firstError || 'no error recorded'}`).join(' | ')}`

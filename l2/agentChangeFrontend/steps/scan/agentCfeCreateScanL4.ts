@@ -54,7 +54,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         ? `No todoFrontend=toCreate pages for module ${requested}${createContext.moduleNames.includes(requested) ? '' : ` (known modules: ${createContext.moduleNames.join(', ') || 'none'})`}.`
         : 'No todoFrontend=toCreate owners.';
       if (scanArgs.materialize !== false) {
-        const materialize = createMaterializeStep(scanArgs, []);
+        const materialize = createMaterializeStep(scanArgs, [], requested || sweepModule);
         return [
           createAddStepIntent(context, parentStep, materialize),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason} Queued materialization freshness check.${orphanNote}${buildTrace}`),
@@ -106,7 +106,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     ];
 
     if (scanArgs.materialize !== false) {
-      const materialize = createMaterializeStep(scanArgs, ['verify-create-layouts']);
+      const materialize = createMaterializeStep(scanArgs, ['verify-create-layouts'], runModule);
       intents.push(createAddStepIntent(context, parentStep, materialize));
     } else if (scanArgs.command === 'rebuild-defs') {
       // Defs-only rebuild: after the layout verification barrier, drop the derived .ts/.test.ts so
@@ -165,12 +165,12 @@ function parseScanArgs(prompt: string | undefined): ScanArgs {
   }
 }
 
-function createMaterializeStep(scanArgs: ScanArgs, dependsOn: string[]): mls.msg.AIAgentStep {
+function createMaterializeStep(scanArgs: ScanArgs, dependsOn: string[], moduleName = ''): mls.msg.AIAgentStep {
   return createAgentStepPayload(
     'materialize-create-l2',
     'agentCfeMaterializeL2',
     'Materializar frontend L2',
-    { planId: 'materialize-create-l2', force: scanArgs.forceMaterialize === true },
+    { planId: 'materialize-create-l2', force: scanArgs.forceMaterialize === true, module: moduleName },
     dependsOn,
     'sequential',
     dependsOn.length > 0 ? 'waiting_dependency' : 'waiting_human_input',

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, mlsL2ModuleName, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -1518,6 +1518,13 @@ test('scenary gate degrades in verify (warnings) and the page skills teach the h
 
 // listaAssinatura 30/08: pages skipped signerCatalogue because they read a repair-round summary
 // (allClear:false) 1m18s before the shared finished and landed in repaired.
+test('mlsL2ModuleName reads the l2 folder and ignores a trace leftover', () => {
+  assert.equal(mlsL2ModuleName('_102047_/l2/listaAssinatura/web/shared/x.ts'), 'listaAssinatura');
+  assert.equal(mlsL2ModuleName('_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts'), 'todo');
+  assert.equal(mlsL2ModuleName('_102047_/l2/trace/frontend-materialize-verify/x.json'), '');
+  assert.equal(mlsL2ModuleName('not-an-mls-path'), '');
+});
+
 test('T1: an in-progress verdict does not block dependents; the final repaired one does not either', () => {
   const shared = 'materialize-signercatalogue-l2-shared';
   const intermediate = {

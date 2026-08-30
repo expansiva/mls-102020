@@ -50,7 +50,7 @@ import { convertFileToTag } from '/_102020_/l2/utils.js';
 import { parseDefsSource, replaceDefsValue } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { navigationFromE8Menu } from '/_102020_/l2/agentChangeFrontend/helpers/cfeModuleNavigation.js';
 import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentChangeFrontend/uxTemplates/selectUxTemplates.js';
-import { pageSlotRecipe, pageSlotRecipes, primaryGenomeOf, type UxVariantsMode } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
+import { pageSlotRecipe, pageSlotRecipes, primaryGenomeOf, type PageSlotRecipe, type UxVariantsMode } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
 import { buildOrganismSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
 import { enumDisplayLabel, enumLabelFallbackWarnings, readEnumLabels, type CfeEnumLabel } from '/_102020_/l2/agentChangeFrontend/helpers/cfeEnumLabels.js';
 import { compileBlockedPlanIdsFromVerdict, sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
@@ -1622,9 +1622,9 @@ export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfeP
 }
 
 /**
- * page11: `definition` is intent prose (no fields, no routines). The structured map lives once on the
- * workspace shared defs (`dataBindings`); gates read it from there (page11 sibling `bindings` is only
- * a fallback for already-generated modules). page21/31 stay an object (`pageObjective` included).
+ * `definition` is intent prose on every genome (no fields, no routines). The structured map lives
+ * once on the workspace shared defs (`dataBindings`); gates read it from there (page11 sibling
+ * `bindings` is only a fallback for already-generated modules).
  */
 export function pageLayoutDefsExport(
   genome: string,
@@ -2340,13 +2340,14 @@ export async function readUnresolvedMaterializeItems(moduleName: string): Promis
 /**
  * Plan ids the last verify verdict still lists as compile-blocking.
  * Declared-only is not here. `finalOnly` ignores a round that is still repairing (`final: false`).
+ * `moduleName` keeps a neighbour module's leftover verdict from skipping items in this run.
  */
-export async function readBlockedMaterializePlanIds(project: number, opts?: { finalOnly?: boolean }): Promise<Set<string>> {
+export async function readBlockedMaterializePlanIds(project: number, opts?: { finalOnly?: boolean; moduleName?: string }): Promise<Set<string>> {
   const blocked = new Set<string>();
   if (!project) return blocked;
   for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
     if (!file || file.project !== project || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted') continue;
-    if (file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || ''))) continue;
+    if (file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || ''), opts?.moduleName)) continue;
     if (!String(file.shortName || '').endsWith('-summary')) continue;
     try {
       const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
@@ -2470,9 +2471,9 @@ export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; o
   const donePages = validPages.filter(page => !incompletePages.some(entry => entry.page === page));
   const ownersDone = await updateOwnerStatuses(context, donePages.flatMap(page => page.ownerIds), 'done');
   await saveCreateReport(context.project, donePages, ownersDone, skippedPages, incompletePages);
-  // Registration is NOT the lie: an incomplete page stays in the workspace config so the app still knows
-  // about it (and the CLI can finish it). What it loses is the `done` claim.
-  const configMsg = await saveFrontendWorkspaceConfig(context, validPages);
+  // A page that did not materialize is not in the app: it stays out of l5/config.json. Other modules
+  // already in the file are left alone — this writer still composes N modules on purpose.
+  const configMsg = await saveFrontendWorkspaceConfig(context, validPages, incompletePages.map(entry => entry.page.pageId));
   return {
     pagesDone: donePages.map(page => page.pageId),
     ownersDone,
@@ -2804,15 +2805,9 @@ function experienceSkillExists(categoryRef: string, genome: string): boolean {
 }
 
 /**
- * Slot plan from the category recipe (cfePageRecipe). Default is one genome; `variants:all`
- * restores the three exploration slots. Management slots stay: page11 bespoke, page21/page31
- * goal-first. contentLanding slots are prose + experience skill.
- *
- * Measured on 102045/clientManagement (31/jul): coherence ranked page31 > page21 > page11, and a REDUCED
- * defs + skill beat a complete defs + skill — the organisms of a complete defs drown the skill out.
- *
- * A category with no skill file degrades that slot to bespoke with a warning instead of putting a broken
- * path in the pipeline.
+ * Slot plan from the category recipe (cfePageRecipe): always the three genomes. Category only
+ * picks the template of page21/page31. A category with no skill file degrades that slot to
+ * bespoke with a warning instead of putting a broken path in the pipeline.
  */
 function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): CfeLayoutVariantPlan[] {
   const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands));
@@ -4673,16 +4668,19 @@ function sharedPipeline(prepared: CfePreparedPage): unknown[] {
  *
  * The MARKER is the source and this defs is its mirror: `pagePipeline` runs from scratch on every create
  * run, so a split written only into the defs would be wiped by the next @@changeFrontend. Reading it here
- * is what makes "reprocessar a página já encontra a definição" true.
+ * is what makes "reprocessar a página já encontra a definição" true — only while the recipe still splits.
+ * A residual marker from a previous recipe must not revive N organisms after `splitByOrganism` is off:
+ * that page is 1 item, `.ts` named like the `.defs.ts`. The trace file is left in place (`/rebuild all`
+ * already wipes the module folder).
  */
-async function ensureRecipeSplitPlan(
+export async function ensureRecipeSplitPlan(
   prepared: CfePreparedPage,
   genome: string,
   layout: CfePageLayoutDefinition,
+  recipe: Pick<PageSlotRecipe, 'splitByOrganism'> = pageSlotRecipe(prepared.presentation?.categoryRef || '', genome),
 ): Promise<{ n: number; organism: string; bindings: string[] }[]> {
+  if (!recipe.splitByOrganism) return [];
   const existing = readPageSplitOrganisms(prepared.project, prepared.page, genome);
-  const recipe = pageSlotRecipe(prepared.presentation?.categoryRef || '', genome);
-  if (!recipe.splitByOrganism) return existing;
   const workspace = prepared.workspace;
   if (!workspace || workspace.sections.length === 0) return existing;
   const sections: SplitPlanSection[] = workspace.sections.map(section => ({
@@ -4726,12 +4724,14 @@ function readPageSplitOrganisms(project: number, page: CfePagePlan, genome: stri
   }
 }
 
-function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11', experienceSkill?: string, splitOrganisms?: { n: number; organism: string; bindings: string[] }[]): unknown[] {
+export function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11', experienceSkill?: string, splitOrganisms?: { n: number; organism: string; bindings: string[] }[]): unknown[] {
   const idSuffix = genome === 'page11' ? '' : `__${genome}`;
   const base = `_${project}_/l2/${page.moduleName}/web/desktop/${genome}`;
   // A split page materializes as N organisms + the page that imports their render functions. The organisms
   // depend only on the shared, so they run in parallel; the page depends on all of them.
-  const organisms = (splitOrganisms && splitOrganisms.length > 0 ? splitOrganisms : readPageSplitOrganisms(project, page, genome)).map(item => ({
+  // `[]` is an explicit "this run does not split" (recipe off, or a residual marker we must ignore).
+  // Omit the arg to re-read the marker — that is the reprocess path, and only makes sense while split is on.
+  const organisms = (splitOrganisms ?? readPageSplitOrganisms(project, page, genome)).map(item => ({
     id: `${page.pageId}${idSuffix}__O${item.n}`,
     type: 'l2_page_organism',
     organism: item.organism,
@@ -4829,7 +4829,7 @@ async function updateL5FrontendSignature(project: number, pages: CfePagePlan[] =
   await saveStorContent(fileInfo, `${JSON.stringify(cfg, null, 2)}\n`);
 }
 
-async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: CfePagePlan[]): Promise<string> {
+async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: CfePagePlan[], omitPageIds: string[] = []): Promise<string> {
   const project = context.project;
   if (!project) return 'l5/config.json skipped: project unavailable';
   const l5 = await readProjectJson(project);
@@ -4874,6 +4874,7 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
   const labels = isRecord(customize.navigationLabels) ? customize.navigationLabels : {};
   const clientModules = Array.isArray(client.modules) ? client.modules.filter(isRecord) : [];
   client.modules = clientModules;
+  const omit = new Set(omitPageIds.filter(Boolean));
   const pagesByModule = new Map<string, CfePagePlan[]>();
   for (const page of pages) {
     if (!pagesByModule.has(page.moduleName)) pagesByModule.set(page.moduleName, []);
@@ -4881,6 +4882,7 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
   }
 
   for (const [moduleName, modulePages] of pagesByModule) {
+    const doneModulePages = modulePages.filter(page => !omit.has(page.pageId));
     let mod = clientModules.find(item => readString(item.moduleId) === moduleName);
     if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' }; clientModules.push(mod); }
     mod.basePath = readString(mod.basePath) || `/${moduleName}`;
@@ -4895,21 +4897,22 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
     mod.navigation = navigationFromE8Menu({
       moduleName,
       menu: context.menuByModule?.[moduleName] || [],
-      pages: modulePages.map(page => ({ pageId: page.pageId, label: page.pageName, actors: page.actorIds })),
+      pages: doneModulePages.map(page => ({ pageId: page.pageId, label: page.pageName, actors: page.actorIds })),
       labels: labelRecord,
     });
     const existingFrontend = isRecord(mod.frontend) ? mod.frontend : {};
-    const pageTests = frontendPageTestPaths(project, context, modulePages);
+    const pageTests = frontendPageTestPaths(project, context, doneModulePages);
     mod.frontend = {
       ...existingFrontend,
       layer: 'l2',
-      pages: mergeByKey(asRecords(existingFrontend.pages), modulePages.flatMap(page => frontendConfigPages(project, context, page, labels)), 'pageId'),
+      pages: mergeByKey(asRecords(existingFrontend.pages), doneModulePages.flatMap(page => frontendConfigPages(project, context, page, labels)), 'pageId')
+        .filter(item => !configPageIdOmitted(readString(item.pageId), omit)),
       ...(pageTests.length > 0 ? { pageTests } : {}),
     };
   }
 
   await saveWorkspaceConfig(project, config);
-  const pageCount = pages.reduce((sum, page) => sum + frontendConfigPages(project, context, page, labels).length, 0);
+  const pageCount = pages.filter(page => !omit.has(page.pageId)).reduce((sum, page) => sum + frontendConfigPages(project, context, page, labels).length, 0);
   return `l5/config.json frontend merged (${pageCount} page route(s), ${pagesByModule.size} module(s))`;
 }
 
@@ -4989,6 +4992,15 @@ function frontendConfigPages(project: number, context: CfeCreateContext, page: C
     });
   }
   return records;
+}
+
+function configPageIdOmitted(pageId: string, omit: Set<string>): boolean {
+  if (!pageId) return false;
+  if (omit.has(pageId)) return true;
+  for (const id of omit) {
+    if (id && pageId.startsWith(`${id}-`)) return true;
+  }
+  return false;
 }
 
 function mergeByKey(existing: Record<string, unknown>[], next: Record<string, unknown>[], key: string): Record<string, unknown>[] {

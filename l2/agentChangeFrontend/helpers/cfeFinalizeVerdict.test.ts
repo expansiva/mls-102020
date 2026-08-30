@@ -211,6 +211,64 @@ void test('T1: veredito intermediário allClear:false não barra; o final repair
   assert.equal((await readBlockedMaterializePlanIds(PROJECT)).has(shared), false);
 });
 
+void test('T1: três itens, um nunca converge — veredito final, dois passam, um blocked', async () => {
+  const { saveMaterializeVerifySummary, readMaterializeVerifySummary, readUnresolvedMaterializeItems, readBlockedMaterializePlanIds } = await loadModule();
+  const passed = [
+    { planId: 'materialize-petitionlanding-l2-page', typecheck: 'passed' },
+    { planId: 'materialize-signercatalogue-l2-page', typecheck: 'passed' },
+  ];
+  const broken = [{
+    planId: 'materialize-taskcatalogue-l2-page',
+    defPath: '_102047_/l2/todo/web/desktop/page11/taskCatalogue.defs.ts',
+    outputPath: '_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts',
+    typecheck: 'failed',
+    errors: ['TS2554 Expected 1 arguments, but got 0.'],
+    warnings: [],
+    severity: 'blocked' as const,
+  }];
+  await saveMaterializeVerifySummary(
+    'todo',
+    'materialize-phase-pages-verify',
+    1,
+    passed.slice(0, 1),
+    [...broken, { ...broken[0], planId: 'materialize-signercatalogue-l2-page', outputPath: '_102047_/l2/todo/web/desktop/page11/signerCatalogue.ts' }],
+    { declared: [], repaired: [] },
+    false,
+  );
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT, { finalOnly: true, moduleName: 'todo' })).size, 0);
+  await saveMaterializeVerifySummary(
+    'todo',
+    'materialize-phase-pages-verify-v2-v3-v4',
+    4,
+    passed,
+    broken,
+    { declared: [], repaired: [{ planId: 'materialize-signercatalogue-l2-page', typecheck: 'passed' }] },
+    true,
+  );
+  const summary = await readMaterializeVerifySummary('todo', 'materialize-phase-pages-verify-v2-v3-v4');
+  assert.equal(summary?.passed.map((item: { planId: string }) => item.planId).sort().join(','), passed.map(item => item.planId).sort().join(','));
+  const unresolved = await readUnresolvedMaterializeItems('todo');
+  assert.equal(unresolved.some((item: { planId: string }) => item.planId === 'materialize-taskcatalogue-l2-page'), true);
+  assert.equal(unresolved.some((item: { planId: string }) => item.planId === 'materialize-petitionlanding-l2-page'), false);
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT, { finalOnly: true, moduleName: 'todo' })).has('materialize-taskcatalogue-l2-page'), true);
+});
+
+void test('T2: veredito de outro módulo não entra no skip set deste run', async () => {
+  const { readBlockedMaterializePlanIds, saveMaterializeVerifySummary } = await loadModule();
+  const neighbour = 'materialize-taskcatalogue-l2-shared';
+  await saveMaterializeVerifySummary(
+    'todo',
+    'materialize-phase-shared-verify',
+    4,
+    [],
+    [{ planId: neighbour, defPath: '', outputPath: '_102047_/l2/todo/web/shared/taskCatalogue.ts', typecheck: 'failed', errors: ['does not compile'], warnings: [], severity: 'blocked' as const }],
+    { declared: [], repaired: [] },
+    true,
+  );
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT, { finalOnly: true, moduleName: 'listaAssinatura' })).has(neighbour), false);
+  assert.equal((await readBlockedMaterializePlanIds(PROJECT, { finalOnly: true, moduleName: 'todo' })).has(neighbour), true);
+});
+
 void test('T2: declared de qualidade não entra no conjunto que skipBlockedDependents consulta', async () => {
   const { readBlockedMaterializePlanIds, saveMaterializeVerifySummary } = await loadModule();
   const shared = 'materialize-petitionlanding-l2-shared';

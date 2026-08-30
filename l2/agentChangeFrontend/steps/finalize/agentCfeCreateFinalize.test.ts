@@ -67,8 +67,12 @@ void test('D2: uma página com item bloqueado não entra em pagesDone', () => {
   assert.match(src, /updateOwnerStatuses\(context, donePages\.flatMap/u);
   // o relatório registra a página incompleta com o motivo, em vez de omitir
   assert.match(src, /incompletePages: incompletePages\.filter\(item => item\.page\.moduleName === moduleName\)/u);
-  // e a REGISTRAÇÃO continua com todas as páginas válidas: o que se perde é a alegação de 'done'
-  assert.match(src, /saveFrontendWorkspaceConfig\(context, validPages\)/u);
+  // página que não materializou não entra no config; as que passaram, sim
+  assert.match(src, /saveFrontendWorkspaceConfig\(context, validPages, incompletePages\.map\(entry => entry\.page\.pageId\)\)/u);
+  assert.match(src, /function configPageIdOmitted/);
+  assert.match(src, /filter\(item => !configPageIdOmitted\(readString\(item\.pageId\), omit\)\)/);
+  const finalize = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
+  assert.match(finalize, /excludeErrorsOnRefs\(compiled\.errors, unresolvedRefs\)/u);
   // addLanguage só traduz o que ficou pronto
   assert.match(src, /buildAddLanguageMessage\(context, donePages\)/u);
 });

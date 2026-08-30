@@ -811,9 +811,9 @@ test('addLanguage handoff preserves the region so en + en-AU can coexist', async
 });
 
 // ---- recipe per category ----
-// Default: one genome (management → page31). variants:all restores page11 bespoke + page21/page31
-// experience skills. A category with no skill file degrades that slot to bespoke.
-test('slot plan default is one genome; variants:all restores three management slots', async () => {
+// Always three genomes. Category only picks the template of page21/page31. A category with no
+// skill file degrades that slot to bespoke.
+test('slot plan always has three genomes; category only picks the page21/page31 template', async () => {
   const key = (folder: string, shortName: string) => `102020/4/${folder}/${shortName}.md`;
   const priorFiles = g.mls.stor.files;
   try {
@@ -830,20 +830,17 @@ test('slot plan default is one genome; variants:all restores three management sl
     const catalogWs = ctx.journeys.find((j: any) => j.moduleName === 'petShop')?.workspaces.find((w: any) => w.workspaceId === 'catalog');
     assert.ok(catalogWs, 'catalog workspace present');
     const prepared = await preparePageCreate(page, ctx);
-    assert.deepEqual(prepared.variantPlan.map((v: any) => v.genome), ['page31'], 'management default is the measured winner');
-    assert.equal(prepared.variantPlan[0].templateId, 'goal_first');
-
-    ctx.uxVariants = 'all';
-    const all = await preparePageCreate(page, ctx);
-    assert.deepEqual(all.variantPlan.map((v: any) => v.genome), ['page11', 'page21', 'page31']);
-    assert.equal(all.variantPlan[0].experienceSkill, undefined, 'page11 is bespoke');
+    assert.deepEqual(prepared.variantPlan.map((v: any) => v.genome), ['page11', 'page21', 'page31']);
+    assert.equal(prepared.variantPlan[0].experienceSkill, undefined, 'page11 is bespoke');
+    assert.equal(prepared.variantPlan[1].templateId, 'goal_first');
+    assert.equal(prepared.variantPlan[2].templateId, 'goal_first');
 
     catalogWs.categoryRef = 'contentLanding';
-    ctx.uxVariants = 'default';
     const landing = await preparePageCreate(page, ctx);
-    assert.deepEqual(landing.variantPlan.map((v: any) => v.genome), ['page11']);
+    assert.deepEqual(landing.variantPlan.map((v: any) => v.genome), ['page11', 'page21', 'page31']);
     assert.equal(landing.variantPlan[0].experienceSkill, '_102020_/l4/collabux/templates/contentLanding/page11.md');
     assert.notEqual(landing.variantPlan[0].templateId, 'goal_first');
+    assert.notEqual(landing.variantPlan[1].templateId, 'goal_first');
   } finally {
     g.mls.stor.files = priorFiles;
   }
