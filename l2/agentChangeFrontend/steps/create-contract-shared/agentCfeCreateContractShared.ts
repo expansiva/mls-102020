@@ -2,6 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createUpdateStatusIntent, parseCreatePageArgs, prepareCreateRunPage, saveBaseSharedDefs, saveContractDefs, savePageTestsFile } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 export function createAgent(): IAgentAsync {
   return {
@@ -26,6 +27,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`[${agent.agentName}] ${message}`);
+    const failed = peekPageArgs(args || step.prompt);
+    await recordCfeDegradation(failed.moduleName, 'create-contract-shared-failed', message, failed.pageId || undefined);
+    // Fan-out children stay completed-with-trace: a 'failed' slot fails the whole task. The
+    // run summary reads the degradation and names this item; it does not look like success.
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `CREATE-CONTRACT-SHARED-FAILED: ${message}`)];
   }
 }
@@ -36,4 +41,16 @@ function parseArgs(value: string | undefined): { moduleName: string; pageId: str
   const runId = typeof parsed.runId === 'string' ? parsed.runId : '';
   if (!runId) throw new Error('missing create execution runId');
   return { moduleName, pageId, runId };
+}
+
+function peekPageArgs(value: string | undefined): { moduleName: string; pageId: string } {
+  try {
+    const parsed = JSON.parse(value || '{}') as Record<string, unknown>;
+    return {
+      moduleName: typeof parsed.moduleName === 'string' ? parsed.moduleName.trim() : '',
+      pageId: typeof parsed.pageId === 'string' ? parsed.pageId.trim() : '',
+    };
+  } catch {
+    return { moduleName: '', pageId: '' };
+  }
 }

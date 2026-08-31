@@ -183,6 +183,7 @@
       "progressTitle": "Criar contratos/shared {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
+          "moduleName": "string",
           "pageId": "string",
           "runId": "string"
         }
@@ -208,6 +209,7 @@
       "progressTitle": "Criar layouts {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
+          "moduleName": "string",
           "pageId": "string",
           "genome": "string",
           "templateId": "string",
@@ -239,6 +241,7 @@
       "progressTitle": "Reconciliar shared {{completed}}/{{total}}, falhas {{failed}}",
       "dynamicArgs": {
         "shape": {
+          "moduleName": "string",
           "pageId": "string",
           "runId": "string"
         }
