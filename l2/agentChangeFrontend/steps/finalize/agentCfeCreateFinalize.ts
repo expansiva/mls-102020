@@ -170,6 +170,17 @@ function moduleNameFromRepairing(refs: string[]): string {
   return '';
 }
 
+/** Run module from this step's prompt (command.module forwarded by materialize). Never the create-run cache. */
+function readFinalizeModule(prompt: string | undefined): string {
+  try {
+    const parsed = prompt ? JSON.parse(prompt) : null;
+    const moduleName = parsed && typeof parsed === 'object' ? String((parsed as Record<string, unknown>).module || '').trim() : '';
+    return moduleName;
+  } catch {
+    return '';
+  }
+}
+
 /** Is there a defs on disk for this ref? A file with no defs has no pipeline item to repair it. */
 function defsIsPresent(defPath: string): boolean {
   const match = /^_(\d+)_\/l(\d+)\/(.+)\/([^/]+)\.defs\.ts$/su.exec(defPath);
@@ -191,6 +202,7 @@ function buildCompileRepairRound(
   parentStep: mls.msg.AIAgentStep,
   slots: ReturnType<typeof planModuleCompileRepair>['slots'],
   attempt: number,
+  moduleName: string,
 ): mls.msg.AgentIntent[] {
   // Dynamic planIds, unique per round: unlockWaitingDependencySteps only releases on a COMPLETED step
   // per planId, so reusing 'finalize-create' would make the second round wait on the first forever.
@@ -220,7 +232,7 @@ function buildCompileRepairRound(
     nextPlanId,
     AGENT_NAME,
     'Fechar frontend (após repair)',
-    { planId: nextPlanId, attempt: attempt + 1, repairing: slots.map(slot => slot.ref) },
+    { planId: nextPlanId, attempt: attempt + 1, repairing: slots.map(slot => slot.ref), module: moduleName },
     [repairPlanId],
     'sequential',
     'waiting_dependency',
@@ -237,6 +249,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const attempt = readFinalizeAttempt(step.prompt);
     const repairing = readFinalizeRepairing(step.prompt);
     const repairModule = moduleNameFromRepairing(repairing);
+    const runModule = readFinalizeModule(step.prompt) || repairModule;
     // After a repair round: compile first, rewrite the materialize verdict of the files this round
     // actually fixed (match by outputPath — the slot planId is the ROUND id), THEN read pagesDone.
     let closure: { checked: number; errors: string[]; released: number } | null = null;
@@ -245,7 +258,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const stillBroken = new Set(partitionModuleCompileErrors(closure.errors).blocking.map(compileErrorRef).filter(Boolean));
       await rewriteMaterializeVerdictsNowClean(repairModule, new Set(repairing.filter(ref => !stillBroken.has(ref))));
     }
-    const result = await finalizeGeneratedPages();
+    const result = await finalizeGeneratedPages(runModule);
     // Closing gate: compile the WHOLE module, not just what this run touched (compileModuleClosure).
     const compiled = closure ?? await compileModuleClosure(result.moduleName);
     const incompleteNote = result.incompletePages.length
@@ -296,7 +309,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const failTrace = `MODULE-COMPILE-FAILED (${partitioned.blocking.length} blocking error(s) across ${compiled.checked} .ts of ${result.moduleName}${declaredNote}${verdictNote}) -> ${describeCompileRepairPlan(plan, attempt)}. ${fidelity}\n${shown}${more}\n${base}`;
         const reportRef = await writeDossier(failTrace, true);
         return [
-          ...buildCompileRepairRound(context, parentStep, plan.slots, attempt),
+          ...buildCompileRepairRound(context, parentStep, plan.slots, attempt, runModule || result.moduleName),
           createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed',
             reportRef ? `${failTrace} Run report: ${reportRef}.` : failTrace),
         ];

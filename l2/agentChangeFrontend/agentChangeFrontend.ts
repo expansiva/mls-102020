@@ -50,7 +50,7 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
     return [addMessageAI, createBootstrapAddStepIntent(context, createHelpStep(command.reason))];
   }
 
-  const reset = command.reset ? await resetFrontendDoneStatuses() : { updated: 0, owners: [] };
+  const reset = command.reset ? await resetFrontendDoneStatuses(command.module) : { updated: 0, owners: [] };
   if (command.kind === 'rebuild-all' && command.module) {
     await clearCfeLayerTrace(mls.actualProject || 0, command.module);
   }
@@ -104,7 +104,7 @@ function normalizePrompt(prompt: string): string {
 
 // Reset generation status in l5/{module}/todoFrontend.defs.ts (done -> toCreate). The l4 owner
 // defs are read-only for this agent; status lives only in the todo (mirrors agentChangeBackend).
-async function resetFrontendDoneStatuses(): Promise<{ updated: number; owners: string[] }> {
+async function resetFrontendDoneStatuses(moduleName?: string): Promise<{ updated: number; owners: string[] }> {
   const owners: string[] = [];
   const project = mls.actualProject || 0;
   for (const file of Object.values(mls.stor.files) as any[]) {
@@ -113,6 +113,9 @@ async function resetFrontendDoneStatuses(): Promise<{ updated: number; owners: s
     const content = String(await file.getContent());
     const parsed = parseDefsSource(content);
     if (!parsed) continue;
+    const fileFolder = String(file.folder || '');
+    const parsedModule = readString(parsed.data.moduleName) || fileFolder;
+    if (moduleName && parsedModule !== moduleName && fileFolder !== moduleName) continue;
     const todoOwners = Array.isArray(parsed.data.owners)
       ? parsed.data.owners.filter((o: unknown): o is Record<string, unknown> => !!o && typeof o === 'object' && !Array.isArray(o))
       : [];

@@ -58,6 +58,7 @@ import {
   cfePipelineTraceFileInfo,
   isCfeMaterializeVerifyFolder,
   isCfePipelineTraceLevel,
+  recordCfeDegradation,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 import { writeIfContentChanged } from '/_102020_/l2/agentChangeFrontend/helpers/cfeWorkspaceArtifacts.js';
 
@@ -711,16 +712,15 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   // Per MODULE: a project can hold one module written by ns4 (workspace owners) next to one written
   // by ns/ns3 (operation owners), and a project-wide answer would make each one read the other's rule.
   const declaredByModule = new Map<string, Set<CfeTodoOwnerType>>();
-  for (const owner of todoState.ownersByKey.values()) {
+  for (const owner of allCfeTodoOwners(todoState)) {
     if (!declaredByModule.has(owner.moduleName)) declaredByModule.set(owner.moduleName, new Set());
     declaredByModule.get(owner.moduleName)!.add(owner.ownerType);
   }
   const declaresType = (moduleName: string, type: CfeTodoOwnerType): boolean =>
     !!declaredByModule.get(moduleName)?.has(type);
-  const declaredTypes = new Set([...todoState.ownersByKey.values()].map(owner => owner.ownerType));
   const missingTodo: string[] = [];
   for (const operation of operations.values()) {
-    const todoOwner = todoState.ownersByKey.get(`operation:${operation.operationId}`);
+    const todoOwner = lookupCfeTodoOwner(todoState, operation.moduleName, `operation:${operation.operationId}`);
     if (!todoOwner) { if (declaresType(operation.moduleName, 'operation')) missingTodo.push(`operation:${operation.operationId}`); continue; }
     operation.todoStatus = todoOwner.status;
     if (operation.inlineStatusFrontend && operation.inlineStatusFrontend !== todoOwner.status) {
@@ -728,7 +728,7 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
     }
   }
   for (const workflow of workflows.values()) {
-    const todoOwner = todoState.ownersByKey.get(`workflow:${workflow.workflowId}`);
+    const todoOwner = lookupCfeTodoOwner(todoState, workflow.moduleName, `workflow:${workflow.workflowId}`);
     if (!todoOwner) { if (declaresType(workflow.moduleName, 'workflow')) missingTodo.push(`workflow:${workflow.workflowId}`); continue; }
     workflow.todoStatus = todoOwner.status;
     if (workflow.inlineStatusFrontend && workflow.inlineStatusFrontend !== todoOwner.status) {
@@ -737,16 +737,23 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   }
   for (const [moduleName, workspaces] of standaloneWorkspaces) {
     for (const workspace of workspaces) {
-      if (declaresType(moduleName, 'workspace') && !todoState.ownersByKey.has(`workspace:${workspace.workspaceId}`)) {
+      if (declaresType(moduleName, 'workspace') && !lookupCfeTodoOwner(todoState, moduleName, `workspace:${workspace.workspaceId}`)) {
         missingTodo.push(`workspace:${workspace.workspaceId}`);
       }
       if (!declaresType(moduleName, 'contract')) continue;
       for (const call of workspace.bffCalls) {
-        if (call.route && !todoState.ownersByKey.has(`contract:${call.route}`)) missingTodo.push(`contract:${call.route}`);
+        if (call.route && !lookupCfeTodoOwner(todoState, moduleName, `contract:${call.route}`)) missingTodo.push(`contract:${call.route}`);
       }
     }
   }
-  const extraTodo = [...todoState.ownersByKey.keys()].filter(key => !l4Keys[todoState.ownersByKey.get(key)!.ownerType].has(key));
+  const extraTodo: string[] = [];
+  const extraSeen = new Set<string>();
+  for (const owner of allCfeTodoOwners(todoState)) {
+    const key = `${owner.ownerType}:${owner.ownerId}`;
+    if (extraSeen.has(key)) continue;
+    extraSeen.add(key);
+    if (!l4Keys[owner.ownerType].has(key)) extraTodo.push(key);
+  }
   if (missingTodo.length || extraTodo.length || todoState.errors.length) {
     throw new Error([
       ...todoState.errors,
@@ -767,7 +774,7 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   // dialects can live in the same project without either reading the other's rule.
   const pendingWorkspaces = {
     modules: new Set([...declaredByModule].filter(([, types]) => types.has('workspace')).map(([moduleName]) => moduleName)),
-    ids: new Set([...todoState.ownersByKey.values()].filter(owner => owner.ownerType === 'workspace' && owner.status === 'toCreate').map(owner => owner.ownerId)),
+    ids: new Set(allCfeTodoOwners(todoState).filter(owner => owner.ownerType === 'workspace' && owner.status === 'toCreate').map(owner => owner.ownerId)),
   };
   return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList, pendingWorkspaces), warnings, menuByModule, uxVariants: rememberedUxVariants() };
 }
@@ -2448,12 +2455,20 @@ export function unresolvedItemBelongsToPage(outputPath: string | null, moduleNam
   return !!match && match[1] === moduleName && match[2].replace(/_O\d+$/u, '') === pageId;
 }
 
-export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; incompletePages: { pageId: string; reason: string }[]; configMsg: string; addLanguageMessage: string | null; moduleName: string }> {
+export async function finalizeGeneratedPages(runModule = ''): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; incompletePages: { pageId: string; reason: string }[]; configMsg: string; addLanguageMessage: string | null; moduleName: string }> {
   const context = await readCreateContext();
+  const knownModule = readString(runModule);
+  // The run module is an explicit argument (command.module). Never pick it from the create-run
+  // cache: that Map is append-only for the tab lifetime and .values() yields the oldest run.
+  if (knownModule) context.pages = context.pages.filter(page => page.moduleName === knownModule);
+  else recordCreateWarning('finalize has no run module; pages were not filtered. todoFrontend writes stay off until a module is known.');
   const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && await hasRegisteredFrontend(context.project, page) })));
   const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
   const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
-  const moduleName = validPages.length > 0 ? readString(validPages[0].moduleName) : '';
+  const moduleName = knownModule || (validPages.length > 0 ? readString(validPages[0].moduleName) : '');
+  if (!knownModule) {
+    await recordCfeDegradation(moduleName, 'missing-run-module', 'finalizeGeneratedPages called without a run module; context.pages were not filtered and todoFrontend was not written');
+  }
   // A page is DONE only when the materialization verdict on disk stopped blocking its artifacts. In run01
   // of 102047 three genome variants of `taskCatalogue` ended `blocked` (their shipped .ts does not
   // compile) and the report still listed the page in `pagesDone` — the run declared itself ready and the
@@ -2466,7 +2481,7 @@ export async function finalizeGeneratedPages(): Promise<{ pagesDone: string[]; o
     .filter(entry => entry.blocked.length > 0)
     .map(entry => ({ page: entry.page, reason: `${entry.blocked.length} materialization item(s) still blocked: ${entry.blocked.map(item => `${item.planId} (${item.firstError || 'no error recorded'})`).join('; ')}` }));
   const donePages = validPages.filter(page => !incompletePages.some(entry => entry.page === page));
-  const ownersDone = await updateOwnerStatuses(context, donePages.flatMap(page => page.ownerIds), 'done');
+  const ownersDone = await updateOwnerStatuses(context, donePages.flatMap(page => page.ownerIds), 'done', knownModule);
   await saveCreateReport(context.project, donePages, ownersDone, skippedPages, incompletePages);
   // A page that did not materialize is not in the app: it stays out of l5/config.json. Other modules
   // already in the file are left alone — this writer still composes N modules on purpose.
@@ -5103,8 +5118,8 @@ function buildLayoutsConfig(project: number, pages: CfePagePlan[], previous: Rec
 
 // Update generation status only in l5/{module}/todoFrontend.defs.ts. The l4 owner defs are
 // read-only for this agent (mirrors agentChangeBackend/todoBackend).
-async function updateOwnerStatuses(context: CfeCreateContext, ownerIds: string[], status: OwnerStatus): Promise<string[]> {
-  return setTodoFrontendStatuses(context.project, new Set(ownerIds), status);
+async function updateOwnerStatuses(context: CfeCreateContext, ownerIds: string[], status: OwnerStatus, runModule: string): Promise<string[]> {
+  return setTodoFrontendStatuses(context.project, new Set(ownerIds), status, runModule);
 }
 
 interface CfeTodoOwner { ownerType: CfeTodoOwnerType; ownerId: string; status: string; moduleName: string; workspaceId: string; }
@@ -5126,7 +5141,35 @@ function todoOwnerType(raw: string): CfeTodoOwnerType | '' {
 function todoStatusField(raw: Record<string, unknown>): typeof TODO_STATUS_FIELDS[number] {
   return TODO_STATUS_FIELDS.find(field => typeof raw[field] === 'string') || 'status';
 }
-interface CfeTodoState { files: number; moduleNames: string[]; ownersByKey: Map<string, CfeTodoOwner>; warnings: string[]; errors: string[]; }
+interface CfeTodoState {
+  files: number;
+  moduleNames: string[];
+  ownersByModule: Map<string, Map<string, CfeTodoOwner>>;
+  ownersByKey: Map<string, CfeTodoOwner>;
+  warnings: string[];
+  errors: string[];
+}
+
+function cfeOwnerHasKnownModule(moduleName: string): boolean {
+  return Boolean(moduleName) && moduleName !== 'unknown';
+}
+
+function lookupCfeTodoOwner(state: CfeTodoState, moduleName: string, key: string): CfeTodoOwner | undefined {
+  if (cfeOwnerHasKnownModule(moduleName)) return state.ownersByModule.get(moduleName)?.get(key);
+  return state.ownersByKey.get(key);
+}
+
+function allCfeTodoOwners(state: CfeTodoState): CfeTodoOwner[] {
+  const out: CfeTodoOwner[] = [];
+  for (const byKey of state.ownersByModule.values()) out.push(...byKey.values());
+  return out;
+}
+
+/** A CF run writes only the todoFrontend of the module it is running. */
+export function todoFrontendFileMatchesRunModule(fileFolder: string, parsedModuleName: string, runModule: string): boolean {
+  if (!runModule) return false;
+  return parsedModuleName === runModule || fileFolder === runModule;
+}
 
 function isOwnerStatus(status: string): boolean {
   return status === 'toCreate' || status === 'toUpdate' || status === 'toRemove' || status === 'inProgress' || status === 'done';
@@ -5137,6 +5180,7 @@ function isOwnerStatus(status: string): boolean {
 // skipped, not fatal — otherwise its stale owners would read as "absent from l4" and block every rebuild.
 // Empty validModules disables the filter (preserves behavior when the l4 scan found no module).
 async function readFrontendTodoState(project: number, validModules: Set<string>): Promise<CfeTodoState> {
+  const ownersByModule = new Map<string, Map<string, CfeTodoOwner>>();
   const ownersByKey = new Map<string, CfeTodoOwner>();
   const moduleNames = new Set<string>();
   const warnings: string[] = [];
@@ -5157,6 +5201,8 @@ async function readFrontendTodoState(project: number, validModules: Set<string>)
     const layer = readString(data.layer);
     if (layer && layer !== 'frontend') warnings.push(`todoFrontend ${String(file.folder || '')} has layer=${layer}; treating as frontend by filename`);
     if (moduleName) moduleNames.add(moduleName);
+    if (!ownersByModule.has(moduleName)) ownersByModule.set(moduleName, new Map());
+    const moduleOwners = ownersByModule.get(moduleName)!;
     const owners = Array.isArray(data.owners) ? data.owners.filter(isRecord) : [];
     for (const raw of owners) {
       const ownerType = todoOwnerType(readString(raw.ownerType));
@@ -5165,14 +5211,19 @@ async function readFrontendTodoState(project: number, validModules: Set<string>)
       if (!ownerType || !ownerId) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')} has invalid owner entry`); continue; }
       if (!isOwnerStatus(status)) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')}/${ownerType}:${ownerId} has invalid status "${status}"`); continue; }
       const key = `${ownerType}:${ownerId}`;
-      if (ownersByKey.has(key)) warnings.push(`duplicate todoFrontend owner ${key}; first entry kept`);
-      else ownersByKey.set(key, { ownerType, ownerId, status, moduleName, workspaceId: readString(raw.workspaceId) });
+      if (moduleOwners.has(key)) {
+        warnings.push(`duplicate todoFrontend owner ${key}; first entry kept`);
+        continue;
+      }
+      const value: CfeTodoOwner = { ownerType, ownerId, status, moduleName, workspaceId: readString(raw.workspaceId) };
+      moduleOwners.set(key, value);
+      if (!ownersByKey.has(key)) ownersByKey.set(key, value);
     }
   }
-  return { files, moduleNames: Array.from(moduleNames).sort(), ownersByKey, warnings, errors };
+  return { files, moduleNames: Array.from(moduleNames).sort(), ownersByModule, ownersByKey, warnings, errors };
 }
 
-async function setTodoFrontendStatuses(project: number, wanted: Set<string>, status: OwnerStatus): Promise<string[]> {
+async function setTodoFrontendStatuses(project: number, wanted: Set<string>, status: OwnerStatus, runModule: string): Promise<string[]> {
   const updated: string[] = [];
   for (const file of Object.values(mls.stor.files) as any[]) {
     if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
@@ -5180,6 +5231,9 @@ async function setTodoFrontendStatuses(project: number, wanted: Set<string>, sta
     const content = String(await file.getContent());
     const parsed = parseDefsSource(content);
     if (!parsed) continue;
+    const fileFolder = String(file.folder || '');
+    const parsedModuleName = readString(parsed.data.moduleName) || fileFolder;
+    if (!todoFrontendFileMatchesRunModule(fileFolder, parsedModuleName, runModule)) continue;
     const owners = Array.isArray(parsed.data.owners) ? parsed.data.owners.filter(isRecord) : [];
     let changed = false;
     for (const owner of owners) {
@@ -5190,7 +5244,7 @@ async function setTodoFrontendStatuses(project: number, wanted: Set<string>, sta
       changed = true;
     }
     if (changed) {
-      const fileInfo: FileInfo = { project: file.project, level: 5, folder: String(file.folder || ''), shortName: 'todoFrontend', extension: '.defs.ts' };
+      const fileInfo: FileInfo = { project: file.project, level: 5, folder: fileFolder, shortName: 'todoFrontend', extension: '.defs.ts' };
       await saveTodoDefs(fileInfo, content, parsed.exportName, parsed.data);
     }
   }

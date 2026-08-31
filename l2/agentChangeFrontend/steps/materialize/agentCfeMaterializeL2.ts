@@ -79,7 +79,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       'finalize-create',
       'agentCfeCreateFinalize',
       'Atualizar config e status',
-      { planId: 'finalize-create', materialized: todo.length },
+      { planId: 'finalize-create', materialized: todo.length, module: moduleName },
       ['register-frontend'],
       'sequential',
       'waiting_dependency',

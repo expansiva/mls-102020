@@ -55,7 +55,7 @@ void test('R2: o finalize reescreve o veredito do item que reparou antes de ler 
   assert.match(src, /repairing: slots\.map\(slot => slot\.ref\)/u);
   // o slot do finalize usa o planId da RODADA — a reescrita casa por outputPath, não por esse planId
   assert.match(src, /compileRepairSlotArgs\(slot, repairPlanId, attempt \+ 1\)/u);
-  assert.match(src, /await rewriteMaterializeVerdictsNowClean\(repairModule[\s\S]{0,400}await finalizeGeneratedPages\(\)/u);
+  assert.match(src, /await rewriteMaterializeVerdictsNowClean\(repairModule[\s\S]{0,400}await finalizeGeneratedPages\(runModule\)/u);
   // UNREPRODUCED permanece: só entra na nota o que o compile NÃO reproduziu
   assert.match(src, /MATERIALIZE-VERDICT-UNREPRODUCED/u);
 });
@@ -75,4 +75,17 @@ void test('D2: uma página com item bloqueado não entra em pagesDone', () => {
   assert.match(finalize, /excludeErrorsOnRefs\(compiled\.errors, unresolvedRefs\)/u);
   // addLanguage só traduz o que ficou pronto
   assert.match(src, /buildAddLanguageMessage\(context, donePages\)/u);
+});
+
+void test('F1: finalize takes the run module from the step prompt, never the create-run cache', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
+  const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');
+  const materialize = readFileSync(path.join(HERE, '..', 'materialize', 'agentCfeMaterializeL2.ts'), 'utf8');
+  assert.match(src, /readFinalizeModule\(step\.prompt\)/u);
+  assert.match(src, /finalizeGeneratedPages\(runModule\)/u);
+  assert.match(src, /repairing: slots\.map\(slot => slot\.ref\), module: moduleName/u);
+  assert.match(materialize, /planId: 'finalize-create', materialized: todo\.length, module: moduleName/u);
+  assert.match(shared, /export async function finalizeGeneratedPages\(runModule = ''\)/u);
+  assert.doesNotMatch(shared, /function currentCreateRunModule/u);
+  assert.doesNotMatch(src, /getCreateRuns\(\)/u);
 });

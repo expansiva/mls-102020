@@ -9,7 +9,7 @@ const g = globalThis as unknown as Record<string, any>;
 // later test file in the same process doesn't inherit it.
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
-async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; saveContractDefs: (prepared: any) => Promise<void>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string; bffFieldEnumValues: (field: any, ops: any, entities: any) => string[]; bffFieldEnumLabels: (field: any, ops: any, entities: any) => { code: string; label: string }[]; createLayoutPromptContext: (prepared: any, genome: string, templateId: string) => any }> {
+async function loadModule(): Promise<{ readCreateContext: () => Promise<any>; preparePageCreate: (page: any, ctx?: any) => Promise<any>; saveContractDefs: (prepared: any) => Promise<void>; deterministicLayoutFromBase: (prepared: any) => any; buildPageTestCases: (prepared: any) => any[]; validatePageLayout: (prepared: any, layout: any) => void; remapLayoutActionsToBff: (prepared: any, layout: any) => any; cfePageLayoutToolSchema: any; bffFieldTsType: (field: any, dir: 'input' | 'output', ops: any, entities: any) => string; bffFieldEnumValues: (field: any, ops: any, entities: any) => string[]; bffFieldEnumLabels: (field: any, ops: any, entities: any) => { code: string; label: string }[]; createLayoutPromptContext: (prepared: any, genome: string, templateId: string) => any; todoFrontendFileMatchesRunModule: (fileFolder: string, parsedModuleName: string, runModule: string) => boolean }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   // libModel.ts runs init() -> mls.events.addEventListener at import time; the setup-l2 stub omits
@@ -144,6 +144,30 @@ test('readCreateContext reads l4 v2: module-scoped operations, standalone worksp
   assert.ok(page, 'catalog page built from the workspace');
   // An orphan l5 todoFrontend for a module with no l4 (legacyPet) is ignored, not fatal.
   assert.equal(ctx.moduleNames.includes('legacyPet'), false);
+});
+
+test('todoFrontendFileMatchesRunModule: a run on B never writes A', async () => {
+  const { todoFrontendFileMatchesRunModule } = await loadModule();
+  assert.equal(todoFrontendFileMatchesRunModule('listaAssinatura', 'listaAssinatura', 'listaAssinatura2'), false);
+  assert.equal(todoFrontendFileMatchesRunModule('listaAssinatura2', 'listaAssinatura2', 'listaAssinatura2'), true);
+  assert.equal(todoFrontendFileMatchesRunModule('listaAssinatura2', '', 'listaAssinatura2'), true);
+  assert.equal(todoFrontendFileMatchesRunModule('listaAssinatura', 'listaAssinatura', ''), false);
+});
+
+test('homonym todoFrontend owners across modules do not warn duplicate and keep this module\'s status', async () => {
+  const { readCreateContext } = await loadModule();
+  installPetShopStor();
+  const files = g.mls.stor.files as Record<string, unknown>;
+  const next = Object.keys(files).length;
+  files[`f${next}`] = file(4, 'petShop2', 'module', '.defs.ts', defs('petShop2Module', JSON.stringify({ moduleName: 'petShop2', visualStyle: {}, languages: ['en'] })));
+  files[`f${next + 1}`] = file(5, 'petShop2', 'todoFrontend', '.defs.ts', defs('petShop2TodoFrontend', JSON.stringify({
+    moduleName: 'petShop2', layer: 'frontend', owners: [
+      { ownerType: 'operation', ownerId: 'browseCatalog', status: 'done' },
+    ],
+  })));
+  const ctx = await readCreateContext();
+  assert.equal(ctx.warnings.some((w: string) => w.includes('duplicate todoFrontend owner')), false);
+  assert.equal(ctx.operations.get('browseCatalog')?.todoStatus, 'toCreate');
 });
 
 test('orphan todoFrontend for a module absent from l4 does not block the run (module-rename leftover)', async () => {
