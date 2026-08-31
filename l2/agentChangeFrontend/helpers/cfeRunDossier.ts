@@ -23,7 +23,7 @@ export async function saveCfRunReport(moduleName: string, report: Record<string,
   // Latest FIRST: if the snapshot create fails, post-mortem still has the final state.
   const latestOk = await saveArtifactTextByMlsPath(latestPath, source);
   const snapshotOk = await saveArtifactTextByMlsPath(snapshotPath, source);
-  if (latestOk) return `l4/${module}/pipeline/trace/cf-run.json`;
-  if (snapshotOk) return `l4/${module}/pipeline/trace/cf-run-${stamp}.json`;
+  if (latestOk) return cfRunLatestMlsPath(project, module).replace(/^_\d+_\//, '');
+  if (snapshotOk) return cfRunSnapshotMlsPath(project, module, stamp).replace(/^_\d+_\//, '');
   return null;
 }

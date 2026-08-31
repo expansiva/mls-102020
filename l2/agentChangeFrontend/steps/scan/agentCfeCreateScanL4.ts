@@ -4,6 +4,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, rememberCreateUxVariants, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { agentBuildTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
 import { removeOrphanFrontendArtifacts } from '/_102020_/l2/agentChangeFrontend/helpers/cfeWorkspaceArtifacts.js';
+import { clearCfeLayerTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 interface ScanArgs {
   command?: string;
@@ -47,6 +48,9 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const targetModule = requested || createContext.moduleNames.find(name => createContext.pages.some(page => page.moduleName === name));
     createContext.pages = targetModule ? createContext.pages.filter(page => page.moduleName === targetModule) : [];
     const sweepModule = targetModule || (createContext.moduleNames.length === 1 ? createContext.moduleNames[0] : '');
+    if (scanArgs.command === 'rebuild-all' && sweepModule) {
+      await clearCfeLayerTrace(createContext.project, sweepModule);
+    }
     const orphanNote = sweepModule ? await sweepOrphans(createContext.project, sweepModule) : '';
 
     if (createContext.pages.length === 0) {

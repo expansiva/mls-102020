@@ -3,6 +3,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { isUxVariantsToken, parseUxVariantsMode, type UxVariantsMode } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
+import { clearCfeLayerTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 type CliCommand =
   | { kind: 'rebuild-all'; materialize: true; reset: true; module?: string; fast: boolean; uxVariants: UxVariantsMode }
@@ -50,6 +51,9 @@ async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.Executio
   }
 
   const reset = command.reset ? await resetFrontendDoneStatuses() : { updated: 0, owners: [] };
+  if (command.kind === 'rebuild-all' && command.module) {
+    await clearCfeLayerTrace(mls.actualProject || 0, command.module);
+  }
   const scanStep = createAgentStepPayload(
     'scan-create-l4',
     'agentCfeCreateScanL4',

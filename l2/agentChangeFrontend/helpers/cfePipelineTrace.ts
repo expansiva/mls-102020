@@ -1,13 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.ts" enhancement="_blank"/>
 
 /**
- * Single chokepoint for CF run records: everything that used to live under
- * `l2/<module>/trace/...` is written to `l4/<module>/pipeline/trace/...`.
+ * Single chokepoint for CF run records: written to `l4/<module>/pipeline/trace/l2/...`.
+ * The `/rebuild all` of this agent deletes that folder so a previous run cannot be reread.
  * shortName never contains a dot (Studio round-trip).
  */
 
 export const CFE_PIPELINE_TRACE_LEVEL = 4;
-export const CFE_PIPELINE_TRACE_LEVEL_LEGACY = 2;
+export const CFE_PIPELINE_TRACE_LAYER = 'l2';
 export const CFE_PIPELINE_AGENT_SLUG = 'changefrontend';
 
 type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
@@ -48,7 +48,7 @@ export function cfePipelineFolder(moduleName: string): string {
 }
 
 export function cfePipelineTraceFolder(moduleName: string, subpath = ''): string {
-  const base = `${cfePipelineFolder(moduleName)}/trace`;
+  const base = `${cfePipelineFolder(moduleName)}/trace/${CFE_PIPELINE_TRACE_LAYER}`;
   return subpath ? `${base}/${subpath}` : base;
 }
 
@@ -81,24 +81,53 @@ export function cfePipelineTraceMlsPath(project: number, moduleName: string, sub
   return `_${project}_/l4/${cfePipelineTraceFolder(moduleName, subpath)}/${fileName}`;
 }
 
-export function cfePipelineTraceMlsPathLegacy(project: number, moduleName: string, subpath: string, fileName: string): string {
-  return `_${project}_/l2/${moduleName}/trace/${subpath}/${fileName}`;
-}
-
 export function isCfeMaterializeVerifyFolder(folder: string, moduleName?: string): boolean {
   return isCfeTraceSubfolder(folder, 'frontend-materialize-verify', moduleName);
 }
 
 export function isCfeTraceSubfolder(folder: string, subpath: string, moduleName?: string): boolean {
   const value = String(folder || '');
-  if (moduleName) {
-    return value === cfePipelineTraceFolder(moduleName, subpath) || value === `${moduleName}/trace/${subpath}`;
-  }
-  return value.endsWith(`/pipeline/trace/${subpath}`) || value.endsWith(`/trace/${subpath}`);
+  if (moduleName) return value === cfePipelineTraceFolder(moduleName, subpath);
+  return value.endsWith(`/pipeline/trace/${CFE_PIPELINE_TRACE_LAYER}/${subpath}`);
 }
 
 export function isCfePipelineTraceLevel(level: number | undefined): boolean {
-  return level === CFE_PIPELINE_TRACE_LEVEL || level === CFE_PIPELINE_TRACE_LEVEL_LEGACY;
+  return level === CFE_PIPELINE_TRACE_LEVEL;
+}
+
+export function isCfeLayerTraceFolder(folder: string, moduleName: string): boolean {
+  if (!moduleName) return false;
+  const prefix = cfePipelineTraceFolder(moduleName);
+  return folder === prefix || folder.startsWith(`${prefix}/`);
+}
+
+export function listCfeLayerTraceKeys(
+  files: Record<string, { project?: number; level?: number; status?: string; folder?: string } | null | undefined>,
+  project: number,
+  moduleName: string,
+): string[] {
+  if (!project || !moduleName) return [];
+  const keys: string[] = [];
+  for (const [key, file] of Object.entries(files)) {
+    if (!file || file.project !== project || file.level !== CFE_PIPELINE_TRACE_LEVEL || file.status === 'deleted') continue;
+    if (!isCfeLayerTraceFolder(String(file.folder || ''), moduleName)) continue;
+    keys.push(key);
+  }
+  return keys;
+}
+
+/** Soft-delete `l4/<module>/pipeline/trace/l2/` of this module only. Used by `/rebuild all`. */
+export async function clearCfeLayerTrace(project: number, moduleName: string): Promise<string[]> {
+  if (!project || !moduleName) return [];
+  const { deleteFile } = await import('/_102027_/l2/libStor.js');
+  const deleted: string[] = [];
+  for (const key of listCfeLayerTraceKeys(mls.stor.files as Record<string, any>, project, moduleName)) {
+    const file = (mls.stor.files as Record<string, any>)[key];
+    if (!file) continue;
+    await deleteFile(file);
+    deleted.push(key);
+  }
+  return deleted;
 }
 
 export function describeAgentCommand(longMemory: Record<string, unknown> | null | undefined, fallback = ''): string {

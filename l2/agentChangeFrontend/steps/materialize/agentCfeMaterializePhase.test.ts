@@ -308,7 +308,7 @@ const SPLIT_PAGE = 'landing';
 const SPLIT_GENOME = 'page11';
 const SPLIT_DEF = `_${SPLIT_PROJECT}_/l2/${SPLIT_MODULE}/web/desktop/${SPLIT_GENOME}/${SPLIT_PAGE}.defs.ts`;
 const SPLIT_OUT = `_${SPLIT_PROJECT}_/l2/${SPLIT_MODULE}/web/desktop/${SPLIT_GENOME}/${SPLIT_PAGE}.ts`;
-const SPLIT_PLAN = `_${SPLIT_PROJECT}_/l4/${SPLIT_MODULE}/pipeline/trace/frontend-page-split/${SPLIT_GENOME}/${SPLIT_PAGE}.json`;
+const SPLIT_PLAN = `_${SPLIT_PROJECT}_/l4/${SPLIT_MODULE}/pipeline/trace/l2/frontend-page-split/${SPLIT_GENOME}/${SPLIT_PAGE}.json`;
 
 function parseMlsPathForStub(mlsPath: string) {
   const match = /^_(\d+)_\/l(\d+)\/(.+)$/.exec(mlsPath);

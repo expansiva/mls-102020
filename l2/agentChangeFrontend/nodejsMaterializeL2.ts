@@ -48,7 +48,7 @@ import { formatGeneratedTsCli } from './helpers/nodejsFormatTs.js';
 import { ensureSharedScenaryMembers, generateSharedScaffold, sharedLlmFallbackTemplate } from './helpers/cfeSharedScaffold.js';
 import { buildPageSkeleton, markMissingOrganisms, organismShortName, type PageOrganism } from './helpers/cfePageSkeleton.js';
 import { buildSplitPlan, type SplitPlanSection } from './helpers/cfePageSplitPlan.js';
-import { cfePipelineTraceMlsPath, cfePipelineTraceMlsPathLegacy } from './helpers/cfePipelineTrace.js';
+import { cfePipelineTraceMlsPath } from './helpers/cfePipelineTrace.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 let ROOT = process.env.MATERIALIZE_L2_ROOT ? path.resolve(process.env.MATERIALIZE_L2_ROOT) : path.resolve(HERE, '../../../');
@@ -106,7 +106,7 @@ function readPageSplit(pageOutputPath: string): PageSplit | null {
   const moduleName = parsed.folder.split('/')[0];
   const genome = parsed.folder.split('/').pop() || '';
   const ref = cfePipelineTraceMlsPath(parsed.project, moduleName, `frontend-page-split/${genome}`, `${parsed.shortName}.json`);
-  const raw = readIfExists(mlsToFs(ref)) ?? readIfExists(mlsToFs(cfePipelineTraceMlsPathLegacy(parsed.project, moduleName, `frontend-page-split/${genome}`, `${parsed.shortName}.json`)));
+  const raw = readIfExists(mlsToFs(ref));
   if (raw == null) return null;
   try {
     const plan = JSON.parse(raw) as PageSplit;
@@ -774,7 +774,7 @@ function splitHint(item: PipelineItem, detail: string): string {
   const genome = parsed.folder.split('/').pop() || '';
   const moduleName = parsed.folder.split('/')[0];
   return `\n  -> ${isMaxTokensFailure(detail) ? 'output cap hit' : 'timed out twice'}; the page does not fit in one call. SPLIT it: write`
-    + ` mls-${parsed.project}/l4/${moduleName}/pipeline/trace/frontend-page-split/${genome}/${parsed.shortName}.json`
+    + ` mls-${parsed.project}/l4/${moduleName}/pipeline/trace/l2/frontend-page-split/${genome}/${parsed.shortName}.json`
     + ` with { "organisms": [ { "n": 1, "organism": "<name>", "bindings": [...] }, … ] }`
     + ` — group by cohesion (a command with the list it acts on), not by count.`;
 }

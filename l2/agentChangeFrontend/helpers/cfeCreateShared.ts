@@ -2110,9 +2110,7 @@ export async function readMaterializeItemFindings(moduleName: string, planId: st
     const project = mls.actualProject || 0;
     if (!project || !moduleName || !planId) return [];
     const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, toSafeShortName(planId), 'frontend-materialize-findings', project);
-    const record = await readJsonFile(fileInfo) ?? await readJsonFile({
-      project, level: 2, folder: `${moduleName}/trace/frontend-materialize-findings`, shortName: toSafeShortName(planId), extension: '.json',
-    });
+    const record = await readJsonFile(fileInfo);
     if (!isRecord(record) || record.attempt !== attempt || !Array.isArray(record.findings)) return [];
     return record.findings.map(String).filter(Boolean);
   } catch {
@@ -2369,9 +2367,8 @@ export async function readMaterializeVerifySummary(moduleName: string, planId: s
     const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
     const shortName = `${toSafeShortName(basePlanId)}-summary`;
     const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, shortName, 'frontend-materialize-verify', project);
-    const legacyInfo: FileInfo = { project, level: 2, folder: `${moduleName}/trace/frontend-materialize-verify`, shortName, extension: '.json' };
     const files = mls.stor.files as Record<string, { status?: string; getContent?: () => Promise<string> } | undefined>;
-    const file = files[mls.stor.getKeyToFile(fileInfo)] || files[mls.stor.getKeyToFile(legacyInfo)];
+    const file = files[mls.stor.getKeyToFile(fileInfo)];
     if (!file || file.status === 'deleted' || !file.getContent) return null;
     const verdict = JSON.parse(String(await file.getContent()));
     if (!verdict || typeof verdict !== 'object') return null;
@@ -4705,8 +4702,7 @@ export async function ensureRecipeSplitPlan(
 
 function readPageSplitOrganisms(project: number, page: CfePagePlan, genome: string): { n: number; organism: string; bindings: string[] }[] {
   const fileInfo: FileInfo = cfePipelineTraceFileInfo(page.moduleName, page.pageId, `frontend-page-split/${genome}`, project);
-  const legacyInfo: FileInfo = { project, level: 2, folder: `${page.moduleName}/trace/frontend-page-split/${genome}`, shortName: page.pageId, extension: '.json' };
-  const file = (mls.stor.files[mls.stor.getKeyToFile(fileInfo)] || mls.stor.files[mls.stor.getKeyToFile(legacyInfo)]) as { status?: string; content?: string } | undefined;
+  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as { status?: string; content?: string } | undefined;
   if (!file || file.status === 'deleted' || !file.content) return [];
   try {
     const plan = JSON.parse(file.content) as unknown;

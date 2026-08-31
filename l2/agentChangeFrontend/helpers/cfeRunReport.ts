@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeRunReport.ts" enhancement="_blank"/>
 
+import { cfePipelineTraceMlsPath } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
+
 /**
  * Pure CF run-dossier shape. Kept off `cfeRunDossier.ts` so tests do not load Studio/mls.
  */
@@ -34,9 +36,9 @@ export function buildCfRunReport(report: CfRunReport): Record<string, unknown> {
 }
 
 export function cfRunLatestMlsPath(project: number, moduleName: string): string {
-  return `_${project}_/l4/${moduleName}/pipeline/trace/cf-run.json`;
+  return cfePipelineTraceMlsPath(project, moduleName, '', 'cf-run.json');
 }
 
 export function cfRunSnapshotMlsPath(project: number, moduleName: string, stamp: string): string {
-  return `_${project}_/l4/${moduleName}/pipeline/trace/cf-run-${stamp}.json`;
+  return cfePipelineTraceMlsPath(project, moduleName, '', `cf-run-${stamp}.json`);
 }

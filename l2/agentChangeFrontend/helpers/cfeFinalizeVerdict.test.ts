@@ -86,13 +86,13 @@ async function loadModule(): Promise<any> {
   if (!g.document) g.document = { documentElement: { lang: 'en' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
   const files: Record<string, any> = {};
   const put = (file: Record<string, unknown>): void => { files[keyOf(file as any)] = file; };
-  put(storFile('todo/pipeline/trace/frontend-materialize-verify', 'materialize-phase-pages-verify-summary', RUN01_PAGES_VERDICT));
-  put(storFile('todo/pipeline/trace/frontend-materialize-verify', 'materialize-phase-shared-verify-summary', RUN01_SHARED_VERDICT));
+  put(storFile('todo/pipeline/trace/l2/frontend-materialize-verify', 'materialize-phase-pages-verify-summary', RUN01_PAGES_VERDICT));
+  put(storFile('todo/pipeline/trace/l2/frontend-materialize-verify', 'materialize-phase-shared-verify-summary', RUN01_SHARED_VERDICT));
   // outro módulo do mesmo projeto: não pode contaminar a leitura de `todo`
-  put(storFile('outro/pipeline/trace/frontend-materialize-verify', 'materialize-phase-pages-verify-summary', RUN01_PAGES_VERDICT));
+  put(storFile('outro/pipeline/trace/l2/frontend-materialize-verify', 'materialize-phase-pages-verify-summary', RUN01_PAGES_VERDICT));
   // o arquivo de achados que o verify grava para o slot de repair (pré-criado: o writer só cria quando
   // não existe, e criar de verdade puxaria o libStor do Studio)
-  put(storFile('todo/pipeline/trace/frontend-materialize-findings', 'materialize-taskcatalogue-l2-page', {}));
+  put(storFile('todo/pipeline/trace/l2/frontend-materialize-findings', 'materialize-taskcatalogue-l2-page', {}));
   g.mls = {
     ...(g.mls ?? {}),
     actualProject: PROJECT,

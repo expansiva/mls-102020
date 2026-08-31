@@ -60,7 +60,7 @@ import {
   getContentByMlsPath,
   type GenStepArgs,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
-import { cfePipelineTraceMlsPath, cfePipelineTraceMlsPathLegacy, recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
+import { cfePipelineTraceMlsPath, recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 import { pageSlotRecipe, type PageSlotRecipe } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
 
 interface MaterializePhaseArgs {
@@ -492,8 +492,7 @@ function categoryRefFromPageDefs(src: string): string {
 async function readSplitOrganisms(defPath: string | undefined, outputPath: string | null): Promise<{ n: number }[]> {
   const parsed = outputPath ? parseSplitOutput(outputPath) : null;
   if (!parsed || !defPath) return [];
-  const raw = await getContentByMlsPath(cfePipelineTraceMlsPath(parsed.project, parsed.moduleName, `frontend-page-split/${parsed.genome}`, `${parsed.shortName}.json`))
-    ?? await getContentByMlsPath(cfePipelineTraceMlsPathLegacy(parsed.project, parsed.moduleName, `frontend-page-split/${parsed.genome}`, `${parsed.shortName}.json`));
+  const raw = await getContentByMlsPath(cfePipelineTraceMlsPath(parsed.project, parsed.moduleName, `frontend-page-split/${parsed.genome}`, `${parsed.shortName}.json`));
   if (!raw) return [];
   try {
     const plan = JSON.parse(raw) as { organisms?: { n: number }[] };
