@@ -64,6 +64,7 @@ export function validateNs4E4Review(
   const coveredFeatures = new Set<string>();
   const coveredAuthorities = new Set<string>();
   const entityIds = new Set<string>();
+  const declaredEntityIds = new Set(review.entities.map(entity => entity.entityId).filter(Boolean));
   const createdByStep = new Map<string, string>();
   if (journeys) {
     for (const step of deriveNs4Contexts({
@@ -145,6 +146,24 @@ export function validateNs4E4Review(
     // used: read as `core`, the backend materialized a local table of PEOPLE and seeded it.
     if (entity.kind === 'core' && entity.ownership === 'external') {
       add('NS4_E4_OWNERSHIP_EXTERNAL_CORE', `${path}.ownership`, "kind 'core' with ownership 'external' is undefined by the policy: a platform/plugin identity is not an entity of this module — keep it as an external-reference field (platformUserId) on the record that needs it, and if the entity IS a person or organization, model it as MDM.");
+    }
+    if (entity.kind === 'projection' && entity.ownership === 'derived') {
+      if (!entity.derivation) {
+        add(
+          'NS4_E4_DERIVATION_MISSING',
+          `${path}.derivation`,
+          `Derived projection ${entity.entityId} must declare derivation.from (source entity in this ontology), derivation.filter (predicate on the source fields, empty if none) and derivation.aggregate (count|sum|min|max|first|groupKey per output field) — a projection without a source is an incomplete model.`,
+        );
+      } else if (!declaredEntityIds.has(entity.derivation.from)) {
+        const siblingHidden = declaredEntityIds.size === 1 && entity.derivation.from !== entity.entityId;
+        if (!siblingHidden) {
+          add(
+            'NS4_E4_DERIVATION_FROM_UNKNOWN',
+            `${path}.derivation.from`,
+            `derivation.from '${entity.derivation.from}' is not an entity in this ontology.`,
+          );
+        }
+      }
     }
     const expectedTarget = entity.ownership === 'external' ? 'external'
       : entity.kind === 'mdm' ? 'mdm'

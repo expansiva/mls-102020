@@ -1,5 +1,12 @@
 # E4 changelog
 
+- 2026-08-31: Derived projections (`kind: projection`, `ownership: derived`) must declare
+  `derivation` (`from`, `filter`, `aggregate`) so the account is a model fact, not prose.
+  Optional on the type and in `e4-review.schema.json` — L4 written before the field keeps
+  compiling; nothing is migrated. The gate (`NS4_E4_DERIVATION_MISSING`,
+  `NS4_E4_DERIVATION_FROM_UNKNOWN`) is what new E4 runs hit. Prompt: a projection without a
+  source is an incomplete model.
+
 - 2026-08-29: On-demand artifacts (`*Export`, `*Report`, `*Receipt`, `*Snapshot`, `*Csv`, `*File`,
   and their `*Item` companions) stored as `moduleDatabase` are `NS4_E4_DERIVED_PERSISTED` unless
   the E1 request explicitly asks to keep history/audit/versioning/reprocessing of that artifact.

@@ -68,6 +68,17 @@ audit, versioning or reprocessing of that artifact**. When in doubt, `derived`: 
 projection is one extra read; a wrong persisted entity is a CRUD catalogue and a page. An entity
 that exists only to compose another derived artifact (the line items of an export) must not exist.
 
+A derived projection without a source is an incomplete model: **who declares the projection declares
+the account.** Every `kind: projection` + `ownership: derived` MUST emit `derivation`:
+
+- `from`: `entityId` of the persisted source (must exist in this ontology).
+- `filter`: predicate on declared fields of that source (`status = valid`). Empty string when unfiltered.
+- `aggregate`: one entry per output field of the projection. `op` is `count` | `sum` | `min` | `max` |
+  `first` | `groupKey`; add `sourceField` when the op reads a source column (`count` has none).
+
+Do not leave the formula in `description` or `storage.notes` only. The gate rejects a derived
+projection that omits `derivation`, and one whose `from` is not an entity in this ontology.
+
 Separate master data from operational state. Material may be MDM; inventory, adjustment and usage are
 transactions. Never put balances, accumulated totals or transaction history into MDM. Keep platform
 user ids as external references rather than duplicating users. Explain each decision in `storage.notes`.
@@ -147,6 +158,32 @@ sources establish that same meaning.
       "idField": "projectId",
       "mdmType": "lowerCamelModule.Project",
       "notes": "Organization master reused by transactions and reporting."
+    }
+  }, {
+    "entityId": "ActiveProjectCount",
+    "title": "Active project count",
+    "description": "How many projects are currently active.",
+    "kind": "projection",
+    "ownership": "derived",
+    "party": "none",
+    "sourceRefs": {
+      "journeyIds": ["registerProject"],
+      "featureIds": ["projectRegistration"],
+      "authorityRefs": ["buildflow:projectsetup"]
+    },
+    "lifecycleStates": [],
+    "lifecyclePredicates": [],
+    "derivation": {
+      "from": "Project",
+      "filter": "status = active",
+      "aggregate": [
+        { "fieldId": "activeCount", "op": "count" }
+      ]
+    },
+    "storage": {
+      "target": "derived",
+      "scope": "none",
+      "notes": "Calculated from Project; no table of its own."
     }
   }],
   "relationships": [{

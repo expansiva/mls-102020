@@ -376,6 +376,9 @@
             "pattern": "^[a-z][A-Za-z0-9]*$"
           }
         },
+        "derivation": {
+          "$ref": "#/$defs/derivation"
+        },
         "storage": {
           "type": "object",
           "additionalProperties": false,
@@ -438,6 +441,59 @@
           }
         }
       ]
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "filter",
+        "aggregate"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9]*$"
+        },
+        "filter": {
+          "type": "string"
+        },
+        "aggregate": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/derivationAggregate"
+          }
+        }
+      }
+    },
+    "derivationAggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fieldId",
+        "op"
+      ],
+      "properties": {
+        "fieldId": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "count",
+            "sum",
+            "min",
+            "max",
+            "first",
+            "groupKey"
+          ]
+        },
+        "sourceField": {
+          "type": "string",
+          "pattern": "^[a-z][A-Za-z0-9]*$"
+        }
+      }
     },
     "relationship": {
       "type": "object",

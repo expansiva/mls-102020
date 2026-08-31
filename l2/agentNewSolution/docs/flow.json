@@ -4,6 +4,10 @@
   "status": "e1-e10",
   "description": "Localized, dependency-driven compiler for permanent L4 product contracts and deterministic L5 delivery contracts.",
   "canonicalReferences": [
+    "mls-base/skills/00_index.md",
+    "mls-base/skills/agentNewSolution.md",
+    "mls-base/skills/certificacao.md",
+    "mls-base/skills/checklistPosRun.md",
     "mls-base/skills/collab_messages.md",
     "mls-base/skills/agentsBestPractices.md",
     "mls-base/skills/modelTypes.md",

@@ -21,6 +21,29 @@ export type Ns4EntityKind = 'core' | 'event' | 'supporting' | 'mdm' | 'projectio
  */
 export type Ns4EntityParty = 'person' | 'organization' | 'none';
 export type Ns4EntityOwnership = 'moduleOwned' | 'external' | 'derived';
+export type Ns4DerivationOp = 'count' | 'sum' | 'min' | 'max' | 'first' | 'groupKey';
+
+/** One output field of a derived projection, computed from the source named by `derivation.from`. */
+export interface Ns4DerivationAggregate {
+  fieldId: string;
+  op: Ns4DerivationOp;
+  /** Source-entity field when the op needs one (`sum`/`min`/`max`/`first`/`groupKey`). Absent for `count`. */
+  sourceField?: string;
+}
+
+/**
+ * How a derived projection is computed. OPTIONAL on the type so L4 written before this field keeps
+ * compiling — nothing is ever migrated. The E4 gate requires it on every `kind: projection` +
+ * `ownership: derived` this generator now produces.
+ */
+export interface Ns4EntityDerivation {
+  /** entityId of the persisted source; must exist in the same ontology. */
+  from: string;
+  /** Predicate on declared fields of the source (`status = valid`). Empty when unfiltered. */
+  filter: string;
+  /** One entry per output field of the projection. */
+  aggregate: Ns4DerivationAggregate[];
+}
 export type Ns4ConstraintSource = 'database' | 'journey' | 'user' | 'inferred' | 'legacyCode';
 export type Ns4StorageTarget = 'mdm' | 'moduleDatabase' | 'derived' | 'external' | 'embedded';
 export type Ns4StorageScope = 'organization' | 'module' | 'platform' | 'none';
@@ -101,6 +124,11 @@ export interface Ns4OntologyEntity {
    * artifacts written before it (schema v6, no `party`) keep compiling — nothing is ever migrated.
    */
   party?: Ns4EntityParty;
+  /**
+   * Required by the gate when `kind === 'projection'` and `ownership === 'derived'`; OPTIONAL in the
+   * type so L4 written before this field keeps compiling — nothing is ever migrated.
+   */
+  derivation?: Ns4EntityDerivation;
   sourceRefs: {
     journeyIds: string[];
     featureIds: string[];
@@ -626,6 +654,27 @@ function party(value: unknown): Ns4EntityParty | undefined {
   return value === 'person' || value === 'organization' || value === 'none' ? value : undefined;
 }
 
+function derivationOp(value: unknown): Ns4DerivationOp | undefined {
+  if (value === 'count' || value === 'sum' || value === 'min' || value === 'max'
+    || value === 'first' || value === 'groupKey') return value;
+  return undefined;
+}
+
+function normalizeDerivation(value: unknown): Ns4EntityDerivation | undefined {
+  const raw = record(value);
+  const from = text(raw.from);
+  if (!from) return undefined;
+  const aggregate = array(raw.aggregate).map(item => {
+    const entry = record(item);
+    const fieldId = text(entry.fieldId);
+    const op = derivationOp(entry.op);
+    if (!fieldId || !op) return undefined;
+    const sourceField = text(entry.sourceField);
+    return { fieldId, op, ...(sourceField ? { sourceField } : {}) };
+  }).filter((item): item is Ns4DerivationAggregate => !!item);
+  return { from, filter: text(raw.filter), aggregate };
+}
+
 function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity {
   const entity = record(value);
   const sourceRefs = record(entity.sourceRefs);
@@ -664,6 +713,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
   const idField = text(storage.idField)
     || fields.find(field => field.required && /Id$/.test(field.fieldId))?.fieldId
     || '';
+  const derivation = normalizeDerivation(entity.derivation);
   return {
     entityId,
     title: text(entity.title),
@@ -675,6 +725,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
     // would have nothing to complain about — which is the exact silence that let a person become a table.
     ...(party(entity.party) ? { party: party(entity.party) } : {}),
     ...(entity.cardinality === 'singleton' ? { cardinality: 'singleton' as const } : {}),
+    ...(derivation ? { derivation } : {}),
     sourceRefs: {
       journeyIds: strings(sourceRefs.journeyIds),
       featureIds: strings(sourceRefs.featureIds),
