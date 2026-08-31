@@ -16,8 +16,8 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   try {
-    const { pageId, runId } = parseArgs(args || step.prompt);
-    const prepared = await prepareCreateRunPage(runId, pageId);
+    const { moduleName, pageId, runId } = parseArgs(args || step.prompt);
+    const prepared = await prepareCreateRunPage(runId, pageId, moduleName);
     await saveContractDefs(prepared);
     await saveBaseSharedDefs(prepared);
     // runId lets the page tests see the whole module's reads (the runner's <seedRef> pool is per run).
@@ -30,10 +30,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
   }
 }
 
-function parseArgs(value: string | undefined): { pageId: string; runId: string } {
-  const { pageId } = parseCreatePageArgs(value);
+function parseArgs(value: string | undefined): { moduleName: string; pageId: string; runId: string } {
+  const { moduleName, pageId } = parseCreatePageArgs(value);
   const parsed = JSON.parse(value || '{}') as Record<string, unknown>;
   const runId = typeof parsed.runId === 'string' ? parsed.runId : '';
   if (!runId) throw new Error('missing create execution runId');
-  return { pageId, runId };
+  return { moduleName, pageId, runId };
 }

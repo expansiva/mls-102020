@@ -31,6 +31,7 @@ import {
   resetNs4PipelineForRebuild,
   resolveNs4ExistingAction,
   resolveNs4ExistingModuleToken,
+  formatNs4MissingRebuildModuleMessage,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import {
   listNs4ModuleFolders,
@@ -150,13 +151,14 @@ async function beforePromptImplicit(
 
   if (invocation.rebuild && !existingModule) {
     // Never create silently from a rebuild intent: the user believes the module is there.
-    const intended = detectNs4RebuildIntentModule(invocation.prompt, existingModules);
+    // Pass the original prompt so `/rebuild` is still visible to the intent detector.
+    const intended = detectNs4RebuildIntentModule(userPrompt || invocation.prompt, existingModules);
     return [await statusTask(
       agent,
       context,
       intended
         ? `Para regenerar, informe apenas o módulo: "@@newSolution ${intended} /rebuild${invocation.rebuildFrom ? ` ${invocation.rebuildFrom}` : ''}".`
-        : `Não existe módulo com esse nome para regenerar. Use "@@newSolution <módulo> /rebuild" ou "@@newSolution <módulo> /rebuild all" com o nome de um módulo já gerado.`,
+        : formatNs4MissingRebuildModuleMessage(existingModules),
       'new Solution',
       true,
     )];

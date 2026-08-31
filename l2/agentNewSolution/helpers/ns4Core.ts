@@ -345,6 +345,19 @@ export function parseNs4Invocation(value: string): Ns4Invocation {
 }
 
 /**
+ * Disk spelling of an existing module, or ''. Case-insensitive so a typed `listaassinatura2`
+ * matches `listaAssinatura2`. The return is always a member of the set — never the user's
+ * casing — because callers use it as a folder name.
+ */
+function canonicalNs4ExistingModule(token: string, existingModules: ReadonlySet<string>): string {
+  const wanted = normalizeNs4ModuleName(token).toLowerCase();
+  for (const name of existingModules) {
+    if (name.toLowerCase() === wanted) return name;
+  }
+  return '';
+}
+
+/**
  * A prompt that ASKS for a rebuild in prose and names an existing module.
  *
  * The incident this exists for: `rebuild all criar um site chamado petShop , em …`. The module name sits
@@ -356,16 +369,37 @@ export function parseNs4Invocation(value: string): Ns4Invocation {
  * ordinary creation prompt that happens to mention one ("um módulo de agenda para o petShop"); demanding
  * an explicit rebuild word keeps every prompt without one canonicalized exactly as before. The outcome is
  * only ever a message teaching the flag — nothing is written or deleted on this path.
+ *
+ * The rebuild word may be a flag (`/rebuild`, `/regenerar`): the slash sits where a start-or-space
+ * used to be required, so the canonical form never reached this helper.
  */
 export function detectNs4RebuildIntentModule(value: string, existingModules: ReadonlySet<string>): string {
   const raw = String(value || '');
-  if (!/(^|\s)(rebuild|regenerar|regerar|reconstruir)(\s|$)/i.test(raw)) return '';
+  if (!/(^|\s|\/)(rebuild|regenerar|regerar|reconstruir)(\s|$)/i.test(raw)) return '';
   for (const token of raw.split(/[^A-Za-z0-9]+/).filter(Boolean)) {
     if (!isNs4ModuleToken(token)) continue;
-    const normalized = normalizeNs4ModuleName(token);
-    if (existingModules.has(normalized)) return normalized;
+    const canonical = canonicalNs4ExistingModule(token, existingModules);
+    if (canonical) return canonical;
   }
   return '';
+}
+
+const NS4_EXISTING_MODULE_LIST_LIMIT = 12;
+
+function formatNs4ExistingModuleNames(
+  existingModules: ReadonlySet<string>,
+  limit = NS4_EXISTING_MODULE_LIST_LIMIT,
+): string {
+  const names = [...existingModules].sort((left, right) => left.localeCompare(right));
+  if (names.length === 0) return '';
+  const shown = names.slice(0, limit);
+  return shown.join(', ') + (names.length > limit ? ', …' : '');
+}
+
+export function formatNs4MissingRebuildModuleMessage(existingModules: ReadonlySet<string>): string {
+  const listed = formatNs4ExistingModuleNames(existingModules);
+  const listPart = listed ? ` Módulos existentes: ${listed}.` : '';
+  return `Não existe módulo com esse nome para regenerar.${listPart} Use "@@newSolution <módulo> /rebuild" ou "@@newSolution <módulo> /rebuild all" com o nome de um módulo já gerado.`;
 }
 
 export function createNs4E2Step(
@@ -907,8 +941,7 @@ export function resolveNs4ExistingModuleToken(
   existingModules: ReadonlySet<string>,
 ): string {
   if (!isNs4ModuleToken(value)) return '';
-  const normalized = normalizeNs4ModuleName(value);
-  return existingModules.has(normalized) ? normalized : '';
+  return canonicalNs4ExistingModule(value, existingModules);
 }
 
 export function normalizeNs4Clarification(value: unknown): Ns4Clarification {

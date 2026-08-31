@@ -22,6 +22,7 @@ import {
   markNs4E2Approved,
   markNs4E10Approved,
   detectNs4RebuildIntentModule,
+  formatNs4MissingRebuildModuleMessage,
   ns4RebuildRange,
   parseNs4Invocation,
   resetNs4PipelineForRebuild,
@@ -377,6 +378,37 @@ test('resume module lookup canonicalizes a module token before the root planner'
   assert.equal(resolveNs4ExistingModuleToken('buildFlowFsm23', modules), 'buildFlowFsm23');
   assert.equal(resolveNs4ExistingModuleToken('Build Flow FSM 23', modules), '');
   assert.equal(resolveNs4ExistingModuleToken('unknownModule', modules), '');
+});
+
+test('rebuild module lookup is case-insensitive and returns the disk spelling', () => {
+  const modules = new Set(['listaAssinatura2', 'todo']);
+  assert.equal(resolveNs4ExistingModuleToken('listaassinatura2', modules), 'listaAssinatura2');
+  assert.equal(resolveNs4ExistingModuleToken('LISTAASSINATURA2', modules), 'listaAssinatura2');
+  assert.equal(resolveNs4ExistingModuleToken('listaAssinatura2', modules), 'listaAssinatura2');
+  const parsed = parseNs4Invocation('listaassinatura2 /rebuild all');
+  assert.equal(parsed.rebuild, true);
+  assert.equal(parsed.rebuildFrom, 'all');
+  assert.equal(resolveNs4ExistingModuleToken(parsed.prompt, modules), 'listaAssinatura2');
+  assert.equal(resolveNs4ExistingModuleToken('missingModule', modules), '');
+});
+
+test('missing rebuild module message lists existing modules, capped', () => {
+  const modules = new Set(['todo', 'listaAssinatura2', 'listaAssinatura']);
+  const message = formatNs4MissingRebuildModuleMessage(modules);
+  assert.match(message, /Não existe módulo com esse nome para regenerar/);
+  assert.match(message, /Módulos existentes: listaAssinatura, listaAssinatura2, todo/);
+  const many = new Set(Array.from({ length: 13 }, (_, i) => `mod${String(i + 1).padStart(2, '0')}`));
+  const capped = formatNs4MissingRebuildModuleMessage(many);
+  assert.match(capped, /mod01, mod02/);
+  assert.match(capped, /…/);
+  assert.doesNotMatch(capped, /mod13/);
+});
+
+test('canonical /rebuild with a mis-cased module name suggests the disk module', () => {
+  const modules = new Set(['listaAssinatura2', 'todo']);
+  assert.equal(detectNs4RebuildIntentModule('listaassinatura2 /rebuild all', modules), 'listaAssinatura2');
+  assert.equal(detectNs4RebuildIntentModule('/rebuild all LISTAASSINATURA2', modules), 'listaAssinatura2');
+  assert.equal(detectNs4RebuildIntentModule('listaassinatura2 /regenerar', modules), 'listaAssinatura2');
 });
 
 test('/fast E1 approval records autoReason and skippedDefaults on the pipeline', () => {

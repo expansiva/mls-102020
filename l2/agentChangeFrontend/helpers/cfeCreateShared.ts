@@ -772,9 +772,17 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
   // ns4 tracks the page itself: a workspace owner marked toCreate IS the pending page. A module with
   // no workspace owners keeps deriving pendency from its pending operations (ns/ns3), so the two
   // dialects can live in the same project without either reading the other's rule.
+  // Workspace ids repeat across modules: a toCreate in B must not enqueue the homonym of A.
+  const pendingWorkspaceIds = new Map<string, Set<string>>();
+  for (const owner of allCfeTodoOwners(todoState)) {
+    if (owner.ownerType !== 'workspace' || owner.status !== 'toCreate') continue;
+    const ids = pendingWorkspaceIds.get(owner.moduleName) ?? new Set<string>();
+    ids.add(owner.ownerId);
+    pendingWorkspaceIds.set(owner.moduleName, ids);
+  }
   const pendingWorkspaces = {
     modules: new Set([...declaredByModule].filter(([, types]) => types.has('workspace')).map(([moduleName]) => moduleName)),
-    ids: new Set(allCfeTodoOwners(todoState).filter(owner => owner.ownerType === 'workspace' && owner.status === 'toCreate').map(owner => owner.ownerId)),
+    ids: pendingWorkspaceIds,
   };
   return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList, pendingWorkspaces), warnings, menuByModule, uxVariants: rememberedUxVariants() };
 }
@@ -1807,6 +1815,10 @@ interface CfeCreateRunCache {
   layoutsByPage: Map<string, Map<string, CfePageLayoutDefinition>>;
 }
 
+function createRunPageKey(moduleName: string, pageId: string): string {
+  return `${moduleName}:${pageId}`;
+}
+
 const CREATE_RUN_CACHE_KEY = '__agentChangeFrontendCreateRuns';
 
 function getCreateRuns(): Map<string, CfeCreateRunCache> {
@@ -1829,29 +1841,31 @@ export function startCreateRun(runId: string, context: CfeCreateContext): void {
   getCreateRuns().set(runId, { context, preparedByPage: new Map(), layoutsByPage: new Map() });
 }
 
-export async function prepareCreateRunPage(runId: string, pageId: string): Promise<CfePreparedPage> {
+export async function prepareCreateRunPage(runId: string, pageId: string, moduleName: string): Promise<CfePreparedPage> {
+  if (!moduleName) throw new Error(`missing moduleName for page ${pageId} in create execution ${runId}`);
   const run = getCreateRun(runId);
-  const cached = run.preparedByPage.get(pageId);
+  const key = createRunPageKey(moduleName, pageId);
+  const cached = run.preparedByPage.get(key);
   if (cached) return cached;
-  const page = run.context.pages.find(item => item.pageId === pageId);
-  if (!page) throw new Error(`page not found in create execution ${runId}: ${pageId}`);
+  const page = run.context.pages.find(item => item.pageId === pageId && item.moduleName === moduleName);
+  if (!page) throw new Error(`page not found in create execution ${runId}: ${moduleName}/${pageId}`);
   const prepared = await preparePageCreate(page, run.context);
-  run.preparedByPage.set(pageId, prepared);
+  run.preparedByPage.set(key, prepared);
   return prepared;
 }
 
-export async function listCreateRunLayoutArgs(runId: string): Promise<{ pageId: string; genome: string; templateId: string; runId: string }[]> {
+export async function listCreateRunLayoutArgs(runId: string): Promise<{ moduleName: string; pageId: string; genome: string; templateId: string; runId: string }[]> {
   const run = getCreateRun(runId);
-  const args: { pageId: string; genome: string; templateId: string; runId: string }[] = [];
+  const args: { moduleName: string; pageId: string; genome: string; templateId: string; runId: string }[] = [];
   for (const page of run.context.pages) {
-    const prepared = await prepareCreateRunPage(runId, page.pageId);
-    for (const variant of prepared.variantPlan) args.push({ pageId: page.pageId, genome: variant.genome, templateId: variant.templateId, runId });
+    const prepared = await prepareCreateRunPage(runId, page.pageId, page.moduleName);
+    for (const variant of prepared.variantPlan) args.push({ moduleName: page.moduleName, pageId: page.pageId, genome: variant.genome, templateId: variant.templateId, runId });
   }
   return args;
 }
 
-export function listCreateRunPageArgs(runId: string): { pageId: string; runId: string }[] {
-  return getCreateRun(runId).context.pages.map(page => ({ pageId: page.pageId, runId }));
+export function listCreateRunPageArgs(runId: string): { moduleName: string; pageId: string; runId: string }[] {
+  return getCreateRun(runId).context.pages.map(page => ({ moduleName: page.moduleName, pageId: page.pageId, runId }));
 }
 
 export function createLayoutPromptContext(prepared: CfePreparedPage, genome: string, templateId: string): Record<string, unknown> {
@@ -1969,19 +1983,20 @@ function goalFirstRenderVocabulary(): Record<string, unknown> {
   };
 }
 
-export function rememberCreateLayout(runId: string, pageId: string, genome: string, layout: CfePageLayoutDefinition): void {
+export function rememberCreateLayout(runId: string, pageId: string, genome: string, layout: CfePageLayoutDefinition, moduleName: string): void {
   const run = getCreateRun(runId);
-  const variants = run.layoutsByPage.get(pageId) || new Map<string, CfePageLayoutDefinition>();
+  const key = createRunPageKey(moduleName, pageId);
+  const variants = run.layoutsByPage.get(key) || new Map<string, CfePageLayoutDefinition>();
   variants.set(genome, layout);
-  run.layoutsByPage.set(pageId, variants);
+  run.layoutsByPage.set(key, variants);
 }
 
-export async function reconcileCreateRunPage(runId: string, pageId: string): Promise<void> {
-  const prepared = await prepareCreateRunPage(runId, pageId);
-  const layouts = getCreateRun(runId).layoutsByPage.get(pageId);
+export async function reconcileCreateRunPage(runId: string, pageId: string, moduleName: string): Promise<void> {
+  const prepared = await prepareCreateRunPage(runId, pageId, moduleName);
+  const layouts = getCreateRun(runId).layoutsByPage.get(createRunPageKey(moduleName, pageId));
   const primaryGenome = prepared.variantPlan[0]?.genome || 'page11';
   const primary = layouts?.get(primaryGenome);
-  if (!primary) throw new Error(`primary layout ${primaryGenome} was not saved for ${pageId}`);
+  if (!primary) throw new Error(`primary layout ${primaryGenome} was not saved for ${moduleName}/${pageId}`);
   const savedLayouts = prepared.variantPlan
     .map(variant => layouts?.get(variant.genome))
     .filter((layout): layout is CfePageLayoutDefinition => Boolean(layout));
@@ -1994,12 +2009,12 @@ export function verifyCreateRunPrimaryLayouts(runId: string): string[] {
     .filter(page => {
       const categoryRef = readString(workspaceForPage(run.context, page)?.categoryRef);
       const primary = pageSlotRecipes(categoryRef, run.context.uxVariants || 'default')[0]?.genome || 'page11';
-      return !run.layoutsByPage.get(page.pageId)?.has(primary);
+      return !run.layoutsByPage.get(createRunPageKey(page.moduleName, page.pageId))?.has(primary);
     })
     .map(page => {
       const categoryRef = readString(workspaceForPage(run.context, page)?.categoryRef);
       const primary = pageSlotRecipes(categoryRef, run.context.uxVariants || 'default')[0]?.genome || 'page11';
-      return `${page.pageId}: missing primary ${primary} layout`;
+      return `${page.moduleName}/${page.pageId}: missing primary ${primary} layout`;
     });
 }
 
@@ -2010,8 +2025,9 @@ export async function saveCreateLayoutFailureTrace(
   templateId: string,
   stage: 'beforePromptStep' | 'afterPromptStep',
   message: string,
+  moduleName: string,
 ): Promise<void> {
-  const prepared = await prepareCreateRunPage(runId, pageId);
+  const prepared = await prepareCreateRunPage(runId, pageId, moduleName);
   const fileInfo: FileInfo = cfePipelineTraceFileInfo(
     prepared.page.moduleName,
     `${toSafeShortName(pageId)}--${toSafeShortName(genome)}`,
@@ -2405,7 +2421,7 @@ export async function listCreateRunLayoutFailureTraces(runId: string): Promise<s
   const run = getCreateRun(runId);
   const traces: string[] = [];
   for (const page of run.context.pages) {
-    const prepared = await prepareCreateRunPage(runId, page.pageId);
+    const prepared = await prepareCreateRunPage(runId, page.pageId, page.moduleName);
     for (const variant of prepared.variantPlan) {
       const fileInfo: FileInfo = cfePipelineTraceFileInfo(
         prepared.page.moduleName,
@@ -2548,12 +2564,13 @@ export async function registerGeneratedFrontendPages(): Promise<{ pagesRegistere
   return { pagesRegistered: validPages.map(page => page.pageId), skippedPages };
 }
 
-export function parseCreatePageArgs(prompt: string | undefined): { pageId: string } {
+export function parseCreatePageArgs(prompt: string | undefined): { moduleName: string; pageId: string } {
   if (!prompt) throw new Error('missing page args');
   const parsed = JSON.parse(prompt);
   const pageId = isRecord(parsed) ? readString(parsed.pageId) : '';
-  if (!pageId) throw new Error(`invalid page args: ${prompt}`);
-  return { pageId };
+  const moduleName = isRecord(parsed) ? readString(parsed.moduleName) : '';
+  if (!pageId || !moduleName) throw new Error(`invalid page args: ${prompt}`);
+  return { moduleName, pageId };
 }
 
 export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, status: mls.msg.AIStepStatus, traceMsg?: string): mls.msg.AgentIntentUpdateStatus {
@@ -4392,7 +4409,7 @@ function contractTsPath(project: number, page: CfePagePlan): string { return `_$
 function buildPagePlans(
   workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string,
   journeys: CfeJourneyMap[] = [],
-  pendingWorkspaces: { modules: Set<string>; ids: Set<string> } = { modules: new Set(), ids: new Set() },
+  pendingWorkspaces: { modules: Set<string>; ids: Map<string, Set<string>> } = { modules: new Set(), ids: new Map() },
 ): CfePagePlan[] {
   const pendingWorkflows = Array.from(workflows.values()).filter(owner => owner.todoStatus === 'toCreate');
   const pendingOperations = Array.from(operations.values()).filter(owner => owner.todoStatus === 'toCreate');
@@ -4403,15 +4420,15 @@ function buildPagePlans(
   if (workspaces.length === 0 && !pageDriven.length) return buildLegacyPagePlans(pendingWorkflows, pendingOperations, moduleFallback);
   // The todo owns the page: pendency is the workspace's, and its operations come along whatever their
   // own status is — in this dialect an operation has no status of its own (it belongs to the backend).
-  const byPage: CfePagePlan[] = pageDriven.flatMap(journey => journey.workspaces)
-      .filter(ws => pendingWorkspaces.ids.has(ws.workspaceId))
+  const byPage: CfePagePlan[] = pageDriven.flatMap(journey => journey.workspaces
+      .filter(ws => pendingWorkspaces.ids.get(journey.moduleName)?.has(ws.workspaceId))
       .map(ws => {
         const wsOps = ws.operationIds.map(id => operations.get(id)).filter((op): op is CfeOperationDef => !!op);
         const wsWf = ws.workflowId ? workflows.get(ws.workflowId) : undefined;
         return {
           pageId: toSafeShortName(ws.workspaceId),
           pageName: ws.title || humanizeId(ws.workspaceId),
-          moduleName: wsWf?.moduleName || wsOps[0]?.moduleName || moduleFallback,
+          moduleName: journey.moduleName || wsWf?.moduleName || wsOps[0]?.moduleName || moduleFallback,
           sourceKind: ws.kind === 'workflow' ? 'workflow' as const : 'operation' as const,
           // What this run will mark done: the page and every wire it writes.
           ownerIds: unique([`workspace:${ws.workspaceId}`, ...ws.bffCalls.map(call => `contract:${call.route}`).filter(key => key !== 'contract:')]),
@@ -4422,7 +4439,7 @@ function buildPagePlans(
           capabilities: unique([...(wsWf ? wsWf.capabilities.map(capability => readString(capability.capabilityId)) : []), ...wsOps.map(op => readString(op.capability?.capabilityId))]),
           origin: workspaceOrigin(ws, wsWf, wsOps),
         };
-      });
+      }));
   if (workspaces.length === 0) {
     return [...byPage, ...buildLegacyPagePlans(pendingWorkflows, pendingOperations, moduleFallback)]
       .sort((a, b) => `${a.moduleName}:${a.pageId}`.localeCompare(`${b.moduleName}:${b.pageId}`));
