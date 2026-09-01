@@ -28,7 +28,9 @@ The gate requires coverage of all E2 journeys, all `now` features, every require
 exist as an entity or projection with the same id. Entity and relationship references are closed, stored entities have identifiers,
 lifecycle entities have status and an initial state that is not terminal, lifecycle predicates and terminal states contain only exact declared states, closed-domain values (states and field enums) are stable English codes with user-language `enumLabels`/`lifecycleLabels` (optional on the type; a new run backfills a missing list with a humanized code and a non-blocking systemDecision), and persistent business entities form a connected graph. Persistence
 is explicit and closed: `mdm` for organization master records, `moduleDatabase` for transactions,
-`derived`, `external` or `embedded` for concepts without a module table. An on-demand export,
+`derived`, `external` or `embedded` for concepts without a module table. A derived projection
+must name its account (`derivation.from` / `filter` / `aggregate`); `NS4_E4_DERIVATION_MISSING`
+is the backstop. An on-demand export,
 report, file, receipt or snapshot is `derived` unless the request asks to persist its history;
 `NS4_E4_DERIVED_PERSISTED` is the backstop. Kind, scope, idField and
 mdmType must agree. Master data never carries mutable operational balances or transaction history.

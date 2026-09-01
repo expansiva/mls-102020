@@ -71,7 +71,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const runModule = createContext.pages[0].moduleName;
     const runId = `cfe-${context.message.orderAt}`;
     startCreateRun(runId, createContext);
-    const pageArgs = createContext.pages.map(page => JSON.stringify({ pageId: page.pageId, runId }));
+    const pageArgs = createContext.pages.map(page => JSON.stringify({ moduleName: page.moduleName, pageId: page.pageId, runId }));
     const contractSharedFanout = createAgentStepPayload(
       'create-contract-shared-fanout',
       'agentCfeCreateContractShared',

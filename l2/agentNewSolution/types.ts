@@ -82,12 +82,15 @@ export type {
 
 export type {
   Ns4ConstraintSource,
+  Ns4DerivationAggregate,
+  Ns4DerivationOp,
   Ns4E4EntityDraft,
   Ns4E4PlanDraft,
   Ns4E4RelationshipBinding,
   Ns4E4RelationshipBindingsDraft,
   Ns4E4Review,
   Ns4E4ReviewEvent,
+  Ns4EntityDerivation,
   Ns4EntityKind,
   Ns4EntityOwnership,
   Ns4FieldConstraint,

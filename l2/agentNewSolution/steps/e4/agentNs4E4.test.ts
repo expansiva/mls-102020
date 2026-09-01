@@ -90,7 +90,9 @@ const reviewInput = {
       entityId: 'ClientProjectSummary', title: 'Client project summary', description: 'Published related-project projection.', kind: 'projection', ownership: 'derived', party: 'none',
       sourceRefs: { journeyIds: [], featureIds: [], authorityRefs: ['buildflow:clientprojectview'] },
       fields: [{ fieldId: 'projectId', title: 'Project id', type: 'uuid', required: true, description: 'Related project.', constraints: [] }],
-      lifecycleStates: [], useRules: [], storage: { target: 'derived', scope: 'none', notes: 'Derived from published project data.' },
+      lifecycleStates: [], useRules: [],
+      derivation: { from: 'Project', filter: '', aggregate: [{ fieldId: 'projectId', op: 'groupKey', sourceField: 'projectId' }] },
+      storage: { target: 'derived', scope: 'none', notes: 'Derived from published project data.' },
     },
   ],
   relationships: [{
@@ -187,6 +189,31 @@ test('E4 overview prompt stores on-demand artifacts as derived unless history is
   assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /on-demand export/u);
 });
 
+test('E4 overview prompt requires a derived projection to declare derivation', () => {
+  const prompt = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
+  assert.match(prompt, /who declares the projection declares/u);
+  assert.match(prompt, /"from": "Project"/u);
+  assert.match(prompt, /"op": "count"/u);
+  assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /derivation/u);
+});
+
+test('E4 rejects a derived projection without derivation, and one whose from is unknown', () => {
+  const missing = structuredClone(reviewInput) as any;
+  delete missing.entities[1].derivation;
+  const missingGate = validateNs4E4Review(normalizeNs4E4Review(missing), journeys, access);
+  const missingIssue = missingGate.issues.find(issue => issue.code === 'NS4_E4_DERIVATION_MISSING');
+  assert.ok(missingIssue, JSON.stringify(missingGate.issues));
+  assert.match(missingIssue!.message, /derivation\.from/u);
+  assert.match(missingIssue!.message, /incomplete model/u);
+
+  const unknown = structuredClone(reviewInput) as any;
+  unknown.entities[1].derivation.from = 'NotAnEntity';
+  const unknownGate = validateNs4E4Review(normalizeNs4E4Review(unknown), journeys, access);
+  const unknownIssue = unknownGate.issues.find(issue => issue.code === 'NS4_E4_DERIVATION_FROM_UNKNOWN');
+  assert.ok(unknownIssue, JSON.stringify(unknownGate.issues));
+  assert.match(unknownIssue!.message, /NotAnEntity/u);
+});
+
 test('E4 ontology widget surfaces assumed enum-label decisions', () => {
   const source = readFileSync(new URL('../../widgets/widgetNs4Ontology.ts', import.meta.url), 'utf8');
   assert.match(source, /this\.value\.systemDecisions\?\.length/);
@@ -217,6 +244,7 @@ test('E2 and E4 share canonical PascalCase business object ids', () => {
   const matchingPlan = structuredClone(reviewInput) as any;
   matchingPlan.entities[0].entityId = 'ProjectPortfolio';
   matchingPlan.entities[0].storage.idField = 'projectPortfolioId';
+  matchingPlan.entities[1].derivation.from = 'ProjectPortfolio';
   matchingPlan.relationships[0].toEntity = 'ProjectPortfolio';
   assert.deepEqual(validateNs4E4Plan(normalizeNs4E4PlanDraft(matchingPlan), normalizedJourneys, access), {
     ok: true, issues: [],

@@ -426,6 +426,14 @@
       "useRules": [
         "petitionMustBePublished"
       ],
+      "derivation": {
+        "from": "PetitionSignature",
+        "filter": "status = valid",
+        "aggregate": [
+          { "fieldId": "petitionId", "op": "groupKey", "sourceField": "petitionId" },
+          { "fieldId": "validSignatureTotal", "op": "count" }
+        ]
+      },
       "storage": {
         "target": "derived",
         "scope": "none",
@@ -474,6 +482,14 @@
         "petitionMustBePublished",
         "exportContainsOnlyValidPetitionSignatures"
       ],
+      "derivation": {
+        "from": "PetitionSignature",
+        "filter": "status = valid",
+        "aggregate": [
+          { "fieldId": "petitionId", "op": "groupKey", "sourceField": "petitionId" },
+          { "fieldId": "signatureIds", "op": "first", "sourceField": "petitionSignatureId" }
+        ]
+      },
       "storage": {
         "target": "derived",
         "scope": "none",

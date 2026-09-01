@@ -22,7 +22,7 @@ export function createAgent(): IAgentAsync {
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   try {
     const layoutArgs = parseArgs(args || step.prompt);
-    const prepared = await prepareCreateRunPage(layoutArgs.runId, layoutArgs.pageId);
+    const prepared = await prepareCreateRunPage(layoutArgs.runId, layoutArgs.pageId, layoutArgs.moduleName);
     const systemPrompt = await buildSystemPrompt(layoutArgs.templateId);
     return [createPromptReadyIntent(
       context,
@@ -43,21 +43,21 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
-  let layoutArgs: { pageId: string; genome: string; templateId: string; runId: string } | undefined;
+  let layoutArgs: { moduleName: string; pageId: string; genome: string; templateId: string; runId: string } | undefined;
   try {
     layoutArgs = parseArgs(step.prompt);
     const payload = step.interaction?.payload?.[0];
     if (!payload) throw new Error('missing LLM payload');
     const output = extractCfePageLayoutOutput(payload);
     if (output.status !== 'ok') throw new Error(output.questions.join('; ') || `${AGENT_NAME} returned ${output.status}`);
-    const prepared = await prepareCreateRunPage(layoutArgs.runId, layoutArgs.pageId);
+    const prepared = await prepareCreateRunPage(layoutArgs.runId, layoutArgs.pageId, layoutArgs.moduleName);
     const objective = layoutArgs.templateId === GOAL_FIRST_TEMPLATE_ID ? output.result.objective : undefined;
     // The LLM returns a minimal semantic composition; expand it into the full render tree deterministically
     // from L4 before the (unchanged) save/repair/validate/reconcile pipeline runs.
     const fullLayout = expandLayoutComposition(prepared, output.result.pageLayout);
     const savedLayout = await savePageLayoutDefs(prepared, fullLayout, layoutArgs.genome, objective);
     if (objective !== undefined) await savePageObjectiveTrace(prepared, layoutArgs.genome, objective);
-    rememberCreateLayout(layoutArgs.runId, layoutArgs.pageId, layoutArgs.genome, savedLayout);
+    rememberCreateLayout(layoutArgs.runId, layoutArgs.pageId, layoutArgs.genome, savedLayout, layoutArgs.moduleName);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -73,21 +73,22 @@ async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCont
 async function saveFailureTrace(value: string | undefined, stage: 'beforePromptStep' | 'afterPromptStep', message: string): Promise<void> {
   try {
     const layoutArgs = parseArgs(value);
-    await saveCreateLayoutFailureTrace(layoutArgs.runId, layoutArgs.pageId, layoutArgs.genome, layoutArgs.templateId, stage, message);
+    await saveCreateLayoutFailureTrace(layoutArgs.runId, layoutArgs.pageId, layoutArgs.genome, layoutArgs.templateId, stage, message, layoutArgs.moduleName);
   } catch (traceError) {
     console.error(`[${AGENT_NAME}] could not persist layout failure trace: ${traceError instanceof Error ? traceError.message : String(traceError)}`);
   }
 }
 
-function parseArgs(value: string | undefined): { pageId: string; genome: string; templateId: string; runId: string } {
+function parseArgs(value: string | undefined): { moduleName: string; pageId: string; genome: string; templateId: string; runId: string } {
   if (!value) throw new Error('missing layout args');
   const parsed = JSON.parse(value) as Record<string, unknown>;
+  const moduleName = typeof parsed.moduleName === 'string' ? parsed.moduleName : '';
   const pageId = typeof parsed.pageId === 'string' ? parsed.pageId : '';
   const genome = typeof parsed.genome === 'string' ? parsed.genome : '';
   const templateId = typeof parsed.templateId === 'string' ? parsed.templateId : '';
   const runId = typeof parsed.runId === 'string' ? parsed.runId : '';
-  if (!pageId || !genome || !templateId || !runId) throw new Error(`invalid layout args: ${value}`);
-  return { pageId, genome, templateId, runId };
+  if (!moduleName || !pageId || !genome || !templateId || !runId) throw new Error(`invalid layout args: ${value}`);
+  return { moduleName, pageId, genome, templateId, runId };
 }
 
 async function buildSystemPrompt(templateId: string): Promise<string> {
