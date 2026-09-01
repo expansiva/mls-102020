@@ -277,7 +277,7 @@
         "i2-done  (route B) | i4-done  (route C) — see routes[]"
       ],
       "dependsOnNote": "ROUTE-DEPENDENT, and it must not be an AND. On route B the i4 step is never planted, so an anchor list containing i4-done would wait forever. The root plants ONE branch and wires i3 to that branch's anchor.",
-      "goal": "ROUTES B and C. Apply the change to the artifacts triage named, reading the current content and writing a delta — never regenerating from scratch. On route C the target is the shell only, in the shape the clarification chose. The .less edits use the design model; the .ts edits use the code model.",
+      "goal": "ROUTES B and C. Apply the change to the artifacts triage named, reading the current content and writing a delta — never regenerating from scratch. Injects moleculeGeneration, the molecule base (_102033_) and the group usage skill, so the model knows the platform's own mechanics (no Shadow DOM, live-slot projection timing) instead of guessing them. On route C the target is the shell only, in the shape the clarification chose. The .less edits use the design model; the .ts edits use the code model.",
       "input": [
         "context.json",
         "triage.json",

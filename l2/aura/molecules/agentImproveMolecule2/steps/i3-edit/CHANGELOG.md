@@ -1,5 +1,49 @@
 # CHANGELOG — i3-edit
 
+## 2026-09-01 — o contrato da BASE entrou no prompt (segundo capítulo de 17/08)
+
+**O mesmo defeito da entrada abaixo, num artefato diferente.** A de 17/08 registrou que o IM2 herdou
+as *referências* do `context.json` e parou de injetar o *conteúdo* dos contratos de grupo — medido
+pela `ml-currency-input`, que ganhou duas propriedades públicas em vez dos slots `Label`/`Helper` que
+o grupo já exigia. Esta entrada é a mesma causa, um nível acima: o contrato da **plataforma**
+(`moleculeGeneration` + a classe base `_102033_/moleculeBase.ts`) nunca chegou a este prompt, embora o
+NM2 já os injete há tempos em `n4-render` (`agentNm2Render.ts:17,91,101-102`).
+
+**O caso que motivou:** 6 runs do `agentImproveMolecule2` na `ml-record-form-table`
+(`mls-102040-temp`), entre 28/08 e 01/09. Os 5 primeiros consertaram de verdade; o 6º tentou consertar
+"campos abrem editáveis, deveriam abrir em leitura" varrendo `renderRoot` (este projeto não tem Shadow
+DOM — a varredura é inerte) e trocando `setAttribute('is-editing', ...)` por `toggleAttribute` (que
+REMOVE o atributo no caso `false`, reproduzindo exatamente o defeito). Os dois fatos que decidem o
+conserto certo — sem Shadow DOM, e a projeção de slot vivo move os nós em `update()`, antes de
+`updated()` rodar — vivem só em `moleculeBase.ts` e `stateLitElement.ts`, fora da janela do modelo.
+
+**O que mudou:**
+
+- `prompt.md` — nova seção `### The BASE`, inserida antes do contrato do grupo (a base é mais geral):
+  nomeia as duas consequências no vocabulário de quem está consertando, depois injeta
+  `{{moleculeGeneration}}` e `{{moleculeBase}}` na íntegra;
+- `agentIm2Edit.ts` — importa `moleculeGenerationSkill` (mesmo import direto do NM2) e lê
+  `moleculeBase` via o helper novo; as duas substituições entram na cadeia ao lado de `{{groupUsage}}`;
+- `helpers/imResolve.ts` — `readMoleculeBaseSource()`, no mesmo estilo defensivo de `readGroupSkill`
+  (best-effort, `''` em falha, nunca escreve);
+- **digital no trace**, nos dois pontos onde `trace-i3-edit-NN.json` é gravado (erro de apply e
+  resultado do gate): `skills: { moleculeGeneration: {loaded,chars,hash}, moleculeBase:
+  {loaded,chars,hash} }`, mesmo padrão FNV-1a que o `i2-triage` já usa para o contrato do grupo — sem
+  isso não dá para distinguir "a injeção não ajudou" de "a injeção não chegou".
+
+**Fora de escopo, por decisão explícita:** `i2-triage` e `i2a-definition` não recebem nada disto — a
+pergunta do triage é de roteamento, não de mecanismo. `moleculeGeneration.ts` e `moleculeBase.ts`
+continuam só-leitura: são contrato mantido à mão em `mls-102033`/`mls-102020`, igual à regra de 17/08.
+
+**Custo — pendente de medição real.** A adição é ~67 KB de prosa (42 KB `moleculeGeneration` + 25 KB
+`moleculeBase`) em todo run de rota B/C do `i3-edit`, sempre — inclusive num conserto de uma linha de
+`.less`. O código foi verificado localmente (typecheck escopado sem `l4` limpo nos arquivos tocados,
+`node scripts/run-tests.mjs --all l2` sem regressão nova — as falhas pré-existentes em
+`agentChangeFrontend`, `agentNewSolution`, `agentManageHeader` e `agentSyncMoleculeCatalog` foram
+confirmadas idênticas com e sem esta mudança, via `git stash`), mas os runs de aceite A1–A3 — que
+precisam do `mls-102020` publicado e de uma execução real no Studio — não foram executados nesta
+sessão. Os números de tokens/custo desta entrada ficam em aberto até essa medição.
+
 ## 2026-08-17 — os contratos do grupo voltaram ao prompt
 
 **Decisão registrada:** os agentes **leem** os contratos de criação e de uso do grupo e **nunca os

@@ -39,6 +39,27 @@ Return **targeted edits**, not rewritten files. Each edit quotes the exact text 
 
 {{userPrompt}}
 
+### The BASE — what every molecule in this platform inherits
+
+This is the platform your molecule runs on, not a suggestion. Two facts decide more repairs than any
+other, and both are invisible from the molecule's own file:
+
+- **there is no Shadow DOM.** `createRenderRoot()` returns `this`, so `renderRoot` IS the element.
+  A query against `renderRoot` and a query against `this` return the SAME nodes — reaching for
+  `renderRoot` to find something you could not find in `this` is a no-op, never a fix;
+- **live slots MOVE the consumer's nodes, and they move during `update()` — BEFORE `updated()` runs.**
+  So in the very update that first renders a projected region, the source element is already empty by
+  the time `updated()` executes. Code in `updated()` that walks from the source element reaches
+  nothing on that first pass, and only starts working from the second pass on. If a defect appears
+  ONLY the first time something is shown, this ordering is the first thing to suspect: anchor the walk
+  on an element that `render()` itself emits, not on the source whose children were moved away.
+
+{{moleculeGeneration}}
+
+#### The base class, verbatim
+
+{{moleculeBase}}
+
 ### The GROUP contract — what this group offers whoever uses it
 
 This is the authority on the **public surface**: the slots, the properties and the events. It is not

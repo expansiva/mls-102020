@@ -268,6 +268,28 @@ export async function readGroupSkill(reference: string): Promise<string> {
   }
 }
 
+/**
+ * The source of the platform's base class, `_102033_/l2/moleculeBase.ts`.
+ *
+ * Read, never written — same rule and same reason as readGroupSkill above: this is the class every
+ * molecule extends, maintained by hand in mls-102033, and an agent that could edit it could quietly
+ * change what the whole platform guarantees. It is injected (not just described) because one fact that
+ * decides many repairs — live-slot projection MOVES the consumer's nodes during `update()`, before
+ * `updated()` runs — exists only as a comment on this source, not in any skill: a defect that appears
+ * only on the first render and self-corrects afterward is this ordering, and a model cannot suspect an
+ * ordering it was never shown.
+ *
+ * Deliberately NOT `nmBaseFile()` from agentNewMolecule2/helpers/nmFs — importing a helper across the
+ * two agents couples flows that are meant to stay independent, so the path is a local literal instead.
+ */
+export async function readMoleculeBaseSource(): Promise<string> {
+  try {
+    return await readStorText({ project: 102033, level: 2, folder: '', shortName: 'moleculeBase', extension: '.ts' });
+  } catch {
+    return '';
+  }
+}
+
 /** Best-effort read of a file in another project. Returns '' when it is not reachable. */
 async function readParentSource(parentReference: string): Promise<string> {
   const m = parentReference.match(/^_?(\d+)_\/l(\d+)\/(.+)\/([^/]+)\.ts$/);

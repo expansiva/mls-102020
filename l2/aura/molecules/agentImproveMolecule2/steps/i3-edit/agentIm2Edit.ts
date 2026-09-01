@@ -14,6 +14,8 @@
 // works, so the run must leave it either changed and passing, or exactly as it was.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { skill as moleculeGenerationSkill } from '/_102020_/l2/aura/molecules/skills/moleculeGeneration.js';
+import { contractFingerprint } from '/_102020_/l2/aura/molecules/shared/contractFingerprint.js';
 import {
   compileStorLess,
   compileStorTs,
@@ -53,6 +55,7 @@ import {
   imWorkFile,
   readImAgentText,
   readGroupSkill,
+  readMoleculeBaseSource,
   readParentTs,
   writeImSource,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
@@ -160,6 +163,10 @@ async function beforePromptStep(
   // which is what this step needs, because it EDITS and does not generate. Creation's build rules are
   // the generator's, and the library traps this step must respect are already in its own prompt.
   const groupUsage = await readGroupSkill(ctx.groupSkill.usageReference);
+  // THE PLATFORM BASE — see readMoleculeBaseSource for why it is injected and never written. Same
+  // pattern agentNm2Render uses: moleculeGenerationSkill is a plain module import (no fetch cost to
+  // repeat), the base class source is read fresh from mls-102033.
+  const moleculeBase = await readMoleculeBaseSource();
 
   const systemPrompt = promptMd
     .split('{{tag}}').join(ctx.target.tag)
@@ -169,6 +176,8 @@ async function beforePromptStep(
     .split('{{triage}}').join(renderTriage(triage))
     .split('{{definitionChanges}}').join(renderDefinitionChanges(definition))
     .split('{{groupUsage}}').join(groupUsage || '(the group usage contract could not be read — rely on the molecule\'s own contract below)')
+    .split('{{moleculeGeneration}}').join(moleculeGenerationSkill)
+    .split('{{moleculeBase}}').join(moleculeBase || '(base class source unavailable)')
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage, choice))
     .split('{{parentSource}}').join(
@@ -216,6 +225,11 @@ async function afterPromptStep(
   const runKey = getImRunKey(context, parsedArgs.runKey);
   const { ctx, triage } = await readRun(runKey);
   const choice = await readJsonArtifact<ImInheritChoice>(imWorkFile(runKey, 'inherit'), false);
+  // WHICH platform-base skills the runtime actually served — same reasoning as i2-triage's
+  // `contractTrace`: `readMoleculeBaseSource` degrades a broken read to '' in silence, so `loaded:
+  // false` here is that failure, finally visible. Re-reading is free: `moleculeGenerationSkill` is a
+  // plain module import, and the stor read is cheap enough to repeat rather than thread through.
+  const skills = skillsTrace(moleculeGenerationSkill, await readMoleculeBaseSource());
 
   let edits: ImEdit[] = [];
   let extractError = '';
@@ -254,6 +268,7 @@ async function afterPromptStep(
       stage: 'apply',
       error: errorText,
       edits,
+      skills,
     });
     return retryOrFail(context, parentStep, step, hookSequential, runKey, attempt, errorText, edits);
   }
@@ -300,6 +315,7 @@ async function afterPromptStep(
     attempt,
     ok: gate.ok,
     touched: written.map(f => f.kind),
+    skills,
     ...(gate.ok ? {} : { error: errorText, edits }),
   });
 
@@ -353,6 +369,18 @@ async function compileOf(kind: ImArtifactKind, fileInfo: ReturnType<typeof imFil
   if (kind === 'ts' || kind === 'defs') return (await compileStorTs(fileInfo, source)).errors;
   if (kind === 'less') return compileStorLess(fileInfo, source);
   return [];
+}
+
+/**
+ * WHICH platform-base texts the runtime served, mirroring i2-triage's `contractTrace`: without this,
+ * "the injection didn't help" and "the injection never arrived" are indistinguishable from the trace
+ * alone.
+ */
+function skillsTrace(moleculeGeneration: string, moleculeBase: string): Record<string, unknown> {
+  return {
+    moleculeGeneration: { loaded: !!moleculeGeneration, ...contractFingerprint(moleculeGeneration) },
+    moleculeBase: { loaded: !!moleculeBase, ...contractFingerprint(moleculeBase) },
+  };
 }
 
 /**
