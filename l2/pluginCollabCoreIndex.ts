@@ -29,10 +29,73 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
             },
             {
                 category: 'Services',
+                scope: ['l1ServicesLeft'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_102020_/l2/aura/services/serviceApiExplorer'
+            },
+            {
+                category: 'Services',
+                scope: ['l1ServicesLeft'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_102020_/l2/aura/services/serviceL1Validator'
+            },
+            {
+                category: 'Services',
+                scope: ['l4ServicesRight'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_102020_/l2/aura/services/serviceSpecExplorer'
+            },
+            {
+                category: 'Services',
+                scope: ['l2ServicesLeft', 'l2ServicesRight'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_100554_serviceUnit'
+            },
+            {
+                category: 'Services',
+                scope: ['l2ServicesLeft', 'l2ServicesRight'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_100554_serviceSource' 
+            },
+            {
+                category: 'Services',
+                scope: ['l2ServicesLeft'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_102020_/l2/aura/services/serviceL2Validator'
+            },
+            {
+                category: 'Services',
                 scope: ['l5ServicesLeft'],
                 priority: 1,
                 auth: ['*'],
                 widget: '_102020_/l2/aura/services/serviceProject'
+            },
+            {
+                category: 'Services',
+                scope: ['l1ServicesLeft'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_100554_serviceProject'
+            },
+            {
+                category: 'Services',
+                scope: ['l1ServicesLeft', 'l1ServicesRight'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_100554_serviceSourceL1'
+            },
+            {
+                category: 'Services',
+                scope: ['l5ServicesLeft'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_100554_serviceSave'
             },
             {
                 category: 'Services',
