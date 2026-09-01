@@ -233,20 +233,11 @@ test('saveContractDefs rewrites the existing contract when l4 renames a bffCall 
   const contractInfo = { project: PROJECT, level: 2, folder: 'petShop/web/contracts', shortName: 'catalog', extension: '.ts' };
   const contractKey = g.mls.stor.getKeyToFile(contractInfo);
   const stale = 'export interface CatalogListInput {}\nexport const catalogListRoute = "petShop.catalog.catalogList" as const;\n';
-  let modelValue = stale;
-  g.mls.stor.files[contractKey] = {
+  const contractFile = {
     ...contractInfo, status: 'changed', content: stale, updatedAt: '2000-01-01T00:00:00.000Z',
-    getContent: async () => stale,
+    getContent: async () => contractFile.content,
   };
-  g.mls.editor = {
-    getKeyModel: (project: number, shortName: string, folder: string, level: number) => `${project}:${level}:${folder}:${shortName}`,
-    models: {
-      [`${PROJECT}:2:petShop/web/contracts:catalog`]: {
-        getValue: () => modelValue,
-        setValue: (value: string) => { modelValue = value; },
-      },
-    },
-  };
+  g.mls.stor.files[contractKey] = contractFile;
 
   const ctx = await readCreateContext();
   const catalog = ctx.journeys.find((j: { moduleName: string }) => j.moduleName === 'petShop')?.workspaces.find((w: { workspaceId: string }) => w.workspaceId === 'catalog');
@@ -256,9 +247,9 @@ test('saveContractDefs rewrites the existing contract when l4 renames a bffCall 
   const prepared = await preparePageCreate(page, ctx);
   await saveContractDefs(prepared);
 
-  assert.match(modelValue, /export interface CatalogListForShopInput/);
-  assert.doesNotMatch(modelValue, /export interface CatalogListInput/);
   assert.ok(writes.some(text => /CatalogListForShopInput/.test(text)), 'stor received the renamed contract');
+  assert.match(String(contractFile.content), /export interface CatalogListForShopInput/);
+  assert.doesNotMatch(String(contractFile.content), /export interface CatalogListInput \{\}/);
 });
 
 test('initialLoads include parameterless lists, not getById keyed by selectedEntity', async () => {
@@ -576,6 +567,57 @@ test('page tests: <seedRef> only for an entity id the page reads; domain fields 
   assert.equal(negative.params.thingId, '<seedRef>');
   assert.equal(Object.values(negative.params).includes('<seedRef>'), true);
   assert.equal(Object.values(negative.params).filter(v => v === '<seedRef>').length, 1, 'only the id is a seedRef');
+});
+
+test('page tests: an .ok entity-backed string is a seed marker, never a literal', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const write = {
+    commandName: 'cmdCreateWidget', kind: 'command', routeKey: 'anyModule.anyPage.cmdCreateWidget', outputShape: 'object',
+    input: [
+      { name: 'widgetId', required: true, presentation: 'form', type: 'string', l4Type: 'string' },
+      { name: 'codigoInterno', required: true, presentation: 'form', type: 'string', l4Type: 'string', fieldRef: 'Widget.codigoInterno', source: 'userInput' },
+      { name: 'notes', required: true, presentation: 'form', type: 'string', l4Type: 'string' },
+    ],
+    output: [],
+  };
+  const cases = buildPageTestCases(preparedFor([queryCommand({ producedFields: ['widgetId'] }), write]));
+  const ok = cases.find((c: any) => c.id === 'cmdCreateWidget.ok')!;
+  assert.equal(ok.params.codigoInterno, '<seedSpare>', 'create of an entity-backed string is a leftover, not an invented literal');
+  assert.notEqual(ok.params.codigoInterno, 'teste');
+  assert.equal(ok.params.notes, 'teste', 'free input with no fieldRef stays a literal');
+  assert.equal(ok.paramFieldRefs.codigoInterno, 'Widget.codigoInterno');
+  const negative = cases.find((c: any) => c.id === 'cmdCreateWidget.notes.required')!;
+  assert.equal(negative.params.codigoInterno, 'teste', 'negative cases do not change: remaining domain fields stay literals');
+});
+
+test('page tests: update of an entity-backed string uses the seeded row value, not a spare', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const write = {
+    commandName: 'saveThing', kind: 'command', routeKey: 'anyModule.anyPage.saveThing', outputShape: 'object',
+    input: [
+      { name: 'thingId', required: true, presentation: 'form', type: 'string', l4Type: 'string' },
+      { name: 'codigoInterno', required: true, presentation: 'form', type: 'string', l4Type: 'string', fieldRef: 'Widget.codigoInterno', source: 'userInput' },
+    ],
+    output: [],
+  };
+  const ok = buildPageTestCases(preparedFor([queryCommand(), write])).find((c: any) => c.id === 'saveThing.ok')!;
+  assert.equal(ok.params.codigoInterno, '<seedValue>');
+  assert.notEqual(ok.params.codigoInterno, 'teste');
+  assert.equal(ok.params.thingId, '<seedRef>');
+});
+
+test('page tests: a query search with fieldRef uses the seeded value, pagination stays a literal', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const list = queryCommand({
+    commandName: 'readThings',
+    input: [
+      { name: 'searchTerm', required: true, presentation: 'form', type: 'string', l4Type: 'string', fieldRef: 'Widget.name', source: 'userInput' },
+      { name: 'page', required: true, presentation: 'form', type: 'number', l4Type: 'integer', source: 'userInput' },
+    ],
+  });
+  const ok = buildPageTestCases(preparedFor([list])).find((c: any) => c.id === 'readThings.ok')!;
+  assert.equal(ok.params.searchTerm, '<seedValue>');
+  assert.equal(ok.params.page, 1);
 });
 
 test('page tests: an enum/state field takes the NEXT declared value, never <seedRef>', async () => {

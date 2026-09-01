@@ -138,6 +138,45 @@ test('verify/preload borrows the models it creates and gives them back at the sc
   assert.ok(stub.deleted.every(d => d.release === true && d.level === 2 && d.project === PROJECT));
 });
 
+test('compile syncs a resident model from stor (hooks no longer mirror mls.editor)', async () => {
+  const shortName = 'itemA';
+  const storContent = 'export const fromStor = 1;\n';
+  let modelValue = 'export const stale = 1;\n';
+  const keyModel = (project: number, name: string, folder: string, level: number) => `${project}:${level}:${folder}:${name}`;
+  const editorKey = keyModel(PROJECT, shortName, FOLDER, 2);
+  const fileKey = `${PROJECT}:2:${FOLDER}:${shortName}:.ts`;
+  const model = {
+    getVersionId: () => 1,
+    isDisposed: () => false,
+    getValue: () => modelValue,
+    setValue: (value: string) => { modelValue = value; },
+  };
+  g.mls = {
+    actualProject: PROJECT,
+    events: { addEventListener() { /* noop */ }, removeEventListener() { /* noop */ }, dispatch() { /* noop */ } },
+    stor: {
+      files: {
+        [fileKey]: {
+          project: PROJECT, level: 2, folder: FOLDER, shortName, extension: '.ts', status: 'changed',
+          getContent: async () => storContent,
+        },
+      },
+      getKeyToFile: (info: any) => `${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`,
+      localStor: { setContent: async () => undefined },
+    },
+    editor: {
+      models: { [editorKey]: { ts: { model, compilerResults: { errors: [], prodDTS: '' } } } },
+      getKeyModel: keyModel,
+      deleteModels: () => undefined,
+    },
+    l2: { typescript: { compile: async () => true } },
+  };
+  const studio = await loadModule();
+  studio.releaseBorrowedModelScope();
+  await studio.compileAndGetErrors(PROJECT, 2, FOLDER, shortName);
+  assert.equal(modelValue, storContent);
+});
+
 test('a model the Studio already had (file open in a tab) is never released', async () => {
   const stub = installStub();
   const studio = await loadModule();

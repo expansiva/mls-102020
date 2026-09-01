@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/scan/agentCfeCreateScanL4.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, rememberCreateUxVariants, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { cfeCreatePageArgs, createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, rememberCreateUxVariants, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { agentBuildTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
 import { removeOrphanFrontendArtifacts } from '/_102020_/l2/agentChangeFrontend/helpers/cfeWorkspaceArtifacts.js';
 import { clearCfeLayerTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
@@ -71,7 +71,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const runModule = createContext.pages[0].moduleName;
     const runId = `cfe-${context.message.orderAt}`;
     startCreateRun(runId, createContext);
-    const pageArgs = createContext.pages.map(page => JSON.stringify({ pageId: page.pageId, runId }));
+    const pageArgs = createContext.pages.map(page => JSON.stringify(cfeCreatePageArgs({ moduleName: page.moduleName, pageId: page.pageId, runId })));
     const contractSharedFanout = createAgentStepPayload(
       'create-contract-shared-fanout',
       'agentCfeCreateContractShared',

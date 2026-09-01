@@ -23,3 +23,9 @@ void test('T2: o step de materialize leva o módulo do comando', () => {
   assert.match(src, /createMaterializeStep\(scanArgs, \[\], requested \|\| sweepModule\)/);
   assert.match(src, /createMaterializeStep\(scanArgs, \['verify-create-layouts'\], runModule\)/);
 });
+
+void test('scan page-queue args carry moduleName', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeCreateScanL4.ts'), 'utf8');
+  assert.match(src, /JSON\.stringify\(cfeCreatePageArgs\(\{\s*moduleName:\s*page\.moduleName,\s*pageId:\s*page\.pageId,\s*runId\s*\}\)\)/);
+  assert.doesNotMatch(src, /JSON\.stringify\(\{\s*pageId:\s*page\.pageId,\s*runId\s*\}\)/);
+});

@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/helpers/ns4Clarification.ts" enhancement="_blank"/>
 
-import {
+import type {
   Ns4ClarificationFeedback,
   Ns4ClarificationIssue,
   Ns4ClarificationWidgetApi,

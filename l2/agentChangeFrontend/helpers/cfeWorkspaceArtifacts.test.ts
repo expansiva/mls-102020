@@ -111,32 +111,32 @@ test('orphan sweep non-regression: l4 == l2 ⇒ no deletions', async () => {
   assert.deepEqual(listOrphanFrontendArtifacts(files, { project: PROJECT, moduleName: MODULE, liveWorkspaceIds: new Set(LIVE) }), []);
 });
 
-test('writeIfContentChanged rewrites when the Monaco model is stale even if stor already matches', async () => {
+test('writeIfContentChanged compares stor content, not a Monaco model', async () => {
   const { writeIfContentChanged } = await loadArtifacts();
   const fileInfo = { project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'exportPetitionSignatures', extension: '.ts' };
   const key = `${fileInfo.project}:${fileInfo.level}:${fileInfo.folder}:${fileInfo.shortName}:${fileInfo.extension}`;
-  const modelKey = `${fileInfo.project}:${fileInfo.level}:${fileInfo.folder}:${fileInfo.shortName}`;
   const next = 'export interface QryLocatePetitionForAdministrationInput {}\n';
   const old = 'export interface QryLocatePetitionInput {}\n';
   let writes = 0;
-  let modelValue = old;
+  let stored = old;
+  const file = { ...fileInfo, status: 'changed', content: old, getContent: async () => stored };
   g.mls = {
     actualProject: PROJECT,
     stor: {
-      files: {
-        [key]: { ...fileInfo, status: 'changed', content: next, getContent: async () => next },
-      },
+      files: { [key]: file },
       getKeyToFile: (info: typeof fileInfo) => `${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`,
-      localStor: { setContent: async (_file: unknown, payload: { content: string }) => { writes += 1; modelValue = payload.content; } },
-    },
-    editor: {
-      getKeyModel: (project: number, shortName: string, folder: string, level: number) => `${project}:${level}:${folder}:${shortName}`,
-      models: { [modelKey]: { getValue: () => modelValue, setValue: (value: string) => { modelValue = value; } } },
+      localStor: {
+        setContent: async (_file: unknown, payload: { content: string }) => {
+          writes += 1;
+          stored = payload.content;
+          file.content = payload.content;
+        },
+      },
     },
   };
   assert.equal(await writeIfContentChanged(fileInfo, next), 'written');
   assert.equal(writes, 1);
-  assert.equal(modelValue, next);
+  assert.equal(stored, next);
   assert.equal(await writeIfContentChanged(fileInfo, next), 'unchanged');
   assert.equal(writes, 1);
 });

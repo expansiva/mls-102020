@@ -2,9 +2,9 @@
 
 // Contract .ts is a deterministic projection of the current l4 workspace. Rewrite when CONTENT
 // differs — never mtime (Studio sync flattens mtime; getFileModified returns MAX_SAFE_INTEGER for a
-// dirty file, so MAX vs MAX reads "fresh" forever). persist also mirrors the Monaco model: saveStor
-// alone left compile seeing the previous generation (listaAssinatura: shared imported
-// QryLocatePetitionForAdministrationInput, contract still exported QryLocatePetitionInput).
+// dirty file, so MAX vs MAX reads "fresh" forever). Hooks write stor only. Whoever compiles (Studio
+// `getGeneratedModel`) loads the model from stor on demand — mirroring Monaco here left the CLI
+// host reading `mls.editor` on the hook path.
 //
 // Orphan sweep: l2 artifacts whose workspace is gone from l4. Empty or unreadable l4 ⇒ delete nothing.
 
@@ -128,8 +128,6 @@ function workspaceIdFromDefs(content: string): string {
 }
 
 async function readVisibleContent(fileInfo: FileInfo): Promise<string | null> {
-  const model = editorTextModel(fileInfo);
-  if (model?.getValue) return String(model.getValue());
   try {
     const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as { status?: string; content?: string; getContent?: () => Promise<unknown> } | undefined;
     if (!file || file.status === 'deleted') return null;
@@ -149,22 +147,4 @@ async function persistVisibleContent(fileInfo: FileInfo, source: string): Promis
   storFile.updatedAt = new Date().toISOString();
   storFile.content = source;
   await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
-  const model = editorTextModel(fileInfo);
-  if (model?.getValue && model.getValue() !== source && model.setValue) model.setValue(source);
-}
-
-function editorTextModel(fileInfo: FileInfo): { getValue?: () => string; setValue?: (value: string) => void } | null {
-  try {
-    const editor = (mls as { editor?: { getKeyModel?: Function; models?: Record<string, any> } }).editor;
-    if (!editor?.getKeyModel || !editor.models) return null;
-    const key = editor.getKeyModel(fileInfo.project, fileInfo.shortName, fileInfo.folder, fileInfo.level);
-    const entry = editor.models[key];
-    if (!entry) return null;
-    if (entry.getValue) return entry;
-    if (entry.model?.getValue) return entry.model;
-    if (entry.ts?.model?.getValue) return entry.ts.model;
-    return null;
-  } catch {
-    return null;
-  }
 }
