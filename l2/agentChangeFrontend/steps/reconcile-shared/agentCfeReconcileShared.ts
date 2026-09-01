@@ -16,7 +16,7 @@ export function createAgent(): IAgentAsync {
 
 async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
   try {
-    const { moduleName, pageId, runId } = parseArgs(args || step.prompt);
+    const { moduleName, pageId, runId } = parseCreatePageArgs(args || step.prompt);
     await reconcileCreateRunPage(runId, pageId, moduleName);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed')];
   } catch (error) {
@@ -24,12 +24,4 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     console.error(`[${agent.agentName}] ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `CREATE-SHARED-RECONCILE-FAILED: ${message}`)];
   }
-}
-
-function parseArgs(value: string | undefined): { moduleName: string; pageId: string; runId: string } {
-  const { moduleName, pageId } = parseCreatePageArgs(value);
-  const parsed = JSON.parse(value || '{}') as Record<string, unknown>;
-  const runId = typeof parsed.runId === 'string' ? parsed.runId : '';
-  if (!runId) throw new Error('missing create execution runId');
-  return { moduleName, pageId, runId };
 }

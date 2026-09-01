@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-layout/agentCfeCreateLayout.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { GOAL_FIRST_TEMPLATE_ID, cfePageLayoutToolName, cfePageLayoutToolSchema, createLayoutPromptContext, createPromptReadyIntent, createUpdateStatusIntent, expandLayoutComposition, extractCfePageLayoutOutput, prepareCreateRunPage, rememberCreateLayout, saveCreateLayoutFailureTrace, savePageLayoutDefs, savePageObjectiveTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
+import { GOAL_FIRST_TEMPLATE_ID, cfeCreateLayoutArgs, cfePageLayoutToolName, cfePageLayoutToolSchema, createLayoutPromptContext, createPromptReadyIntent, createUpdateStatusIntent, expandLayoutComposition, extractCfePageLayoutOutput, prepareCreateRunPage, rememberCreateLayout, saveCreateLayoutFailureTrace, savePageLayoutDefs, savePageObjectiveTrace, type CfeCreateLayoutArgs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { readCfePrompt } from '/_102020_/l2/agentChangeFrontend/steps/create-layout/cfePromptFiles.js';
 import { skill as uxGuidanceSkill } from '/_102020_/l2/agentChangeFrontend/skills/uxGuidance.js';
 
@@ -43,7 +43,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
 }
 
 async function afterPromptStep(agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
-  let layoutArgs: { moduleName: string; pageId: string; genome: string; templateId: string; runId: string } | undefined;
+  let layoutArgs: CfeCreateLayoutArgs | undefined;
   try {
     layoutArgs = parseArgs(step.prompt);
     const payload = step.interaction?.payload?.[0];
@@ -79,7 +79,7 @@ async function saveFailureTrace(value: string | undefined, stage: 'beforePromptS
   }
 }
 
-function parseArgs(value: string | undefined): { moduleName: string; pageId: string; genome: string; templateId: string; runId: string } {
+function parseArgs(value: string | undefined): CfeCreateLayoutArgs {
   if (!value) throw new Error('missing layout args');
   const parsed = JSON.parse(value) as Record<string, unknown>;
   const moduleName = typeof parsed.moduleName === 'string' ? parsed.moduleName : '';
@@ -88,7 +88,7 @@ function parseArgs(value: string | undefined): { moduleName: string; pageId: str
   const templateId = typeof parsed.templateId === 'string' ? parsed.templateId : '';
   const runId = typeof parsed.runId === 'string' ? parsed.runId : '';
   if (!moduleName || !pageId || !genome || !templateId || !runId) throw new Error(`invalid layout args: ${value}`);
-  return { moduleName, pageId, genome, templateId, runId };
+  return cfeCreateLayoutArgs({ moduleName, pageId, genome, templateId, runId });
 }
 
 async function buildSystemPrompt(templateId: string): Promise<string> {

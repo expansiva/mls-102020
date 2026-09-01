@@ -589,7 +589,15 @@ async function getGeneratedModel(
   const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
   const slot = getModelSlot(extension);
   let modelBase = mls.editor.models[editorKey];
-  if (modelBase?.[slot]?.model) return modelBase[slot];
+  if (modelBase?.[slot]?.model) {
+    // Resident model (open tab, leftover from a previous compile): Monaco compiles against MEMORY,
+    // so a hook that only wrote stor would leave this buffer stale. Sync from stor here — the
+    // compile owns its inputs (same idea as CB addModels). Hooks must not touch mls.editor.
+    const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
+    const file = (mls.stor.files as Record<string, any>)[key];
+    if (file && file.status !== 'deleted') await syncModelFromStor(modelBase[slot], file);
+    return modelBase[slot];
+  }
   // OWNERSHIP, decided BEFORE getOrCreateModel can create anything — the same rule saveGeneratedTs
   // applies: no registry entry at all means the Studio does not have this file open, so a model created
   // below is ours to release. An entry that already exists belongs to a tab and is never disposed.
@@ -603,6 +611,17 @@ async function getGeneratedModel(
   modelBase = mls.editor.models[editorKey];
   if (owned && modelBase) borrowedByScope.set(editorKey, { project, shortName, folder, level });
   return modelBase?.[slot] ?? model ?? null;
+}
+
+async function syncModelFromStor(entry: any, file: { getContent?: () => Promise<unknown> }): Promise<void> {
+  const textModel = entry?.model && typeof entry.model.getValue === 'function' ? entry.model
+    : typeof entry?.getValue === 'function' ? entry
+    : null;
+  if (!textModel?.getValue || !textModel.setValue) return;
+  try {
+    const content = await file.getContent?.();
+    if (typeof content === 'string' && textModel.getValue() !== content) textModel.setValue(content);
+  } catch { /* best effort: compile still runs against whatever is already in the model */ }
 }
 
 function isGeneratedTsExtension(extension: string): boolean {

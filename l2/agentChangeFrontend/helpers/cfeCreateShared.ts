@@ -1141,8 +1141,8 @@ export async function saveContractDefs(prepared: CfePreparedPage): Promise<void>
   // F3 (v2): the contract of record is the l4 bffCall contract, byte-copied to l2 deterministically —
   // no LLM, no readCanonicalOutputShape, no per-page contract .defs.ts. The shared imports these .ts.
   if (prepared.contractCopies.length > 0) {
-    // Projection of the current l4: rewrite when the generated text differs, including when the
-    // Monaco model still holds the previous generation (stor-only writes left compile on the old .ts).
+    // Projection of the current l4: rewrite when the generated text differs (stor content, never mtime).
+    // Studio compile loads the model from stor on demand — hooks do not touch mls.editor.
     for (const copy of prepared.contractCopies) await writeIfContentChanged(copy.fileInfo, copy.source);
     return;
   }
@@ -1173,15 +1173,17 @@ export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<voi
 // Compiled outside the defs->materialize pipeline (no .defs.ts), like seeds.ts.
 const PAGE_TESTS_VARIANT = 'page11';
 const SEED_REF_MARKER = '<seedRef>';
+const SEED_VALUE_MARKER = '<seedValue>';
+const SEED_SPARE_MARKER = '<seedSpare>';
 
 interface PageTestCase {
   id: string;
   routine: string;
   params: Record<string, unknown>;
   /**
-   * Ontology fieldRef (`Task.taskId`) of each `<seedRef>` param, keyed by the input's wire name.
+   * Ontology fieldRef (`Task.taskId`) of each seed-marker param, keyed by the input's wire name.
    * The runner's pool is harvested under the output field name (usually the fieldId); matching by
-   * inputId alone misses `taskTaskId` vs `taskId`. Absent when no seedRef on the case.
+   * inputId alone misses `taskTaskId` vs `taskId`. Absent when no seed marker on the case.
    */
   paramFieldRefs?: Record<string, string>;
   // itemsKey names the collection the wire actually returns (e.g. "menuItems"), so the runner checks the
@@ -1337,7 +1339,7 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
       const expect = isList
         ? { ok: true, shape, minItems: 1, ...(itemsKey ? { itemsKey } : {}) }
         : { ok: true, shape };
-      cases.push({ id: `${commandName}.ok`, routine, ...seedRefCaseFields(requiredFields, harvestable), expect, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+      cases.push({ id: `${commandName}.ok`, routine, ...seedRefCaseFields(requiredFields, harvestable, { okCase: true }), expect, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
     } else if (deletesMasterData(prepared, command, commandName)) {
       // An operation that MUST NOT succeed does not get a success case — the case becomes the PROOF that
       // it fails, and fails readably. Master data is referenced by other records (and by other modules),
@@ -1355,7 +1357,7 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
     } else {
       // Command "ok" case writes -> mutating (runner isolates it in a rolled-back transaction).
       // A command returns its result object.
-      cases.push({ id: `${commandName}.ok`, routine, ...seedRefCaseFields(requiredFields, harvestable), expect: { ok: true, shape: 'object' }, mutating: true, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+      cases.push({ id: `${commandName}.ok`, routine, ...seedRefCaseFields(requiredFields, harvestable, { okCase: true, create: isCreateCommand(prepared, commandName) }), expect: { ok: true, shape: 'object' }, mutating: true, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
       for (const field of requiredFormFields) {
         cases.push({ id: `${commandName}.${field}.required`, routine, ...seedRefCaseFields(requiredFields.filter(other => other.name !== field), harvestable), expect: { ok: false, errorCode: 'VALIDATION_ERROR' }, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
       }
@@ -1425,35 +1427,70 @@ function isHarvestableSeed(field: PageTestField, harvestable: Set<string>): bool
   return seedRefAliases(field).some(alias => harvestable.has(alias));
 }
 
-function seedRefCaseFields(fields: PageTestField[], harvestable: Set<string>): Pick<PageTestCase, 'params' | 'paramFieldRefs'> {
-  const params = testParams(fields, harvestable);
+function isSeedMarker(value: unknown): boolean {
+  return value === SEED_REF_MARKER || value === SEED_VALUE_MARKER || value === SEED_SPARE_MARKER;
+}
+
+function isCreateCommand(prepared: CfePreparedPage, commandName: string): boolean {
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  if (operation?.kind && /create/i.test(operation.kind)) return true;
+  return /create/i.test(commandName);
+}
+
+function seedRefCaseFields(
+  fields: PageTestField[],
+  harvestable: Set<string>,
+  options?: { okCase?: boolean; create?: boolean },
+): Pick<PageTestCase, 'params' | 'paramFieldRefs'> {
+  const params = testParams(fields, harvestable, options);
   const paramFieldRefs: Record<string, string> = {};
   for (const field of fields) {
-    if (params[field.name] === SEED_REF_MARKER && field.fieldRef) paramFieldRefs[field.name] = field.fieldRef;
+    if (isSeedMarker(params[field.name]) && field.fieldRef) paramFieldRefs[field.name] = field.fieldRef;
   }
   return Object.keys(paramFieldRefs).length ? { params, paramFieldRefs } : { params };
 }
 
 /**
- * Params for one generated case. `<seedRef>` is emitted ONLY for an entity id the page itself reads
- * (the runner resolves it from harvested output); every other field gets a deterministic literal.
+ * Params for one generated case.
  *
- * Why: `<seedRef>` on a DOMAIN field is unsolvable — the runner omits the param and the command dies in
- * VALIDATION_ERROR before exercising anything (102051: 20 of 24 inconclusive cases). Worse, a negative
- * case then "passed" for the wrong reason: it meant to omit `name`, but the backend rejected the
- * unresolved `menuCategoryId` first, so `name` was never tested (29 vacuous passes).
+ * `<seedRef>` is an entity id the page itself reads (the runner resolves it from harvested output /
+ * seed anchors). A `.ok` input whose `fieldRef` points at an entity field is a marker, never an
+ * invented literal: `<seedValue>` (the seeded row) or `<seedSpare>` (a leftover for create). Literals
+ * stay only for free input with no entity counterpart (pagination, typed format, closed enum) and
+ * for negative `<field>.required` cases, which must not change.
  */
-function testParams(fields: PageTestField[], harvestable: Set<string>): Record<string, unknown> {
+function testParams(
+  fields: PageTestField[],
+  harvestable: Set<string>,
+  options?: { okCase?: boolean; create?: boolean },
+): Record<string, unknown> {
   const params: Record<string, unknown> = {};
   for (const field of fields) {
     // Runtime-resolved inputs (session actor, business context, active lifecycle instance, clock) are
     // derived by the backend, never sent by a client — a fake literal id here would only break a lookup.
     if (isRuntimeResolvedInputSource(field.source)) continue;
-    params[field.name] = isEntityReferenceField(field)
-      ? SEED_REF_MARKER
-      : testLiteralForField(field);
+    if (isEntityReferenceField(field)) {
+      params[field.name] = SEED_REF_MARKER;
+      continue;
+    }
+    if (options?.okCase && isEntityBackedPlainString(field)) {
+      params[field.name] = options.create ? SEED_SPARE_MARKER : SEED_VALUE_MARKER;
+      continue;
+    }
+    params[field.name] = testLiteralForField(field);
   }
   return params;
+}
+
+/** Plain string whose fieldRef names an entity field — the generator cannot invent a valid value. */
+function isEntityBackedPlainString(field: PageTestField): boolean {
+  if (!field.fieldRef || !field.fieldRef.includes('.')) return false;
+  if (isEntityReferenceField(field)) return false;
+  if (Array.isArray(field.enum) && field.enum.length > 0) return false;
+  const type = (field.l4Type || field.type || '').toLowerCase();
+  if (type && type !== 'string') return false;
+  if (formatKeyForField(field, type)) return false;
+  return true;
 }
 
 /** An entity-identifier field name (`stockItemId`, `id`). */
@@ -1599,10 +1636,11 @@ function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[], g
     + `// Data, not a runnable test module: no node:test import, so scripts/run-tests.mjs never captures it.\n`
     + `// Params valued "${SEED_REF_MARKER}" are ENTITY IDS this page itself reads: the runner resolves them at\n`
     + `// run time from the harvested output of this page's read queries (including the rows of any array in\n`
-    + `// the envelope). paramFieldRefs maps those params to the l4 fieldRef so the pool can match by ontology\n`
-    + `// field, not by the input's wire name. Every other param is a deterministic literal valid for its\n`
-    + `// declared l4 type, because a "${SEED_REF_MARKER}" on a domain field is unsolvable and the command would\n`
-    + `// die in VALIDATION_ERROR before testing anything. expect.itemsKey names the collection the wire returns\n`
+    + `// the envelope). "${SEED_VALUE_MARKER}" is the value of that field on a seeded row; "${SEED_SPARE_MARKER}"\n`
+    + `// is a leftover valid value for a create command (reusing a seeded unique value would collide).\n`
+    + `// paramFieldRefs maps those params to the l4 fieldRef so the pool can match by ontology field, not by\n`
+    + `// the input's wire name. Literals stay for free input with no entity counterpart (pagination, typed\n`
+    + `// format, closed enum). expect.itemsKey names the collection the wire returns\n`
     + `// for a paginated query (the runner assumes "items" when it is absent). "actor" is this page's l4 actor:\n`
     + `// the run executes these cases as the seeded platform identity of that actor, so a route that reads the\n`
     + `// actor id from the session is runnable headless.\n`
@@ -1854,18 +1892,39 @@ export async function prepareCreateRunPage(runId: string, pageId: string, module
   return prepared;
 }
 
-export async function listCreateRunLayoutArgs(runId: string): Promise<{ moduleName: string; pageId: string; genome: string; templateId: string; runId: string }[]> {
+export interface CfeCreatePageArgs {
+  moduleName: string;
+  pageId: string;
+  runId: string;
+}
+
+export interface CfeCreateLayoutArgs extends CfeCreatePageArgs {
+  genome: string;
+  templateId: string;
+}
+
+export function cfeCreatePageArgs(args: CfeCreatePageArgs): CfeCreatePageArgs {
+  return { moduleName: args.moduleName, pageId: args.pageId, runId: args.runId };
+}
+
+export function cfeCreateLayoutArgs(args: CfeCreateLayoutArgs): CfeCreateLayoutArgs {
+  return { moduleName: args.moduleName, pageId: args.pageId, runId: args.runId, genome: args.genome, templateId: args.templateId };
+}
+
+export async function listCreateRunLayoutArgs(runId: string): Promise<CfeCreateLayoutArgs[]> {
   const run = getCreateRun(runId);
-  const args: { moduleName: string; pageId: string; genome: string; templateId: string; runId: string }[] = [];
+  const args: CfeCreateLayoutArgs[] = [];
   for (const page of run.context.pages) {
     const prepared = await prepareCreateRunPage(runId, page.pageId, page.moduleName);
-    for (const variant of prepared.variantPlan) args.push({ moduleName: page.moduleName, pageId: page.pageId, genome: variant.genome, templateId: variant.templateId, runId });
+    for (const variant of prepared.variantPlan) {
+      args.push(cfeCreateLayoutArgs({ moduleName: page.moduleName, pageId: page.pageId, genome: variant.genome, templateId: variant.templateId, runId }));
+    }
   }
   return args;
 }
 
-export function listCreateRunPageArgs(runId: string): { moduleName: string; pageId: string; runId: string }[] {
-  return getCreateRun(runId).context.pages.map(page => ({ moduleName: page.moduleName, pageId: page.pageId, runId }));
+export function listCreateRunPageArgs(runId: string): CfeCreatePageArgs[] {
+  return getCreateRun(runId).context.pages.map(page => cfeCreatePageArgs({ moduleName: page.moduleName, pageId: page.pageId, runId }));
 }
 
 export function createLayoutPromptContext(prepared: CfePreparedPage, genome: string, templateId: string): Record<string, unknown> {
@@ -2564,13 +2623,14 @@ export async function registerGeneratedFrontendPages(): Promise<{ pagesRegistere
   return { pagesRegistered: validPages.map(page => page.pageId), skippedPages };
 }
 
-export function parseCreatePageArgs(prompt: string | undefined): { moduleName: string; pageId: string } {
+export function parseCreatePageArgs(prompt: string | undefined): CfeCreatePageArgs {
   if (!prompt) throw new Error('missing page args');
   const parsed = JSON.parse(prompt);
   const pageId = isRecord(parsed) ? readString(parsed.pageId) : '';
   const moduleName = isRecord(parsed) ? readString(parsed.moduleName) : '';
-  if (!pageId || !moduleName) throw new Error(`invalid page args: ${prompt}`);
-  return { moduleName, pageId };
+  const runId = isRecord(parsed) ? readString(parsed.runId) : '';
+  if (!pageId || !moduleName || !runId) throw new Error(`invalid page args: ${prompt}`);
+  return cfeCreatePageArgs({ moduleName, pageId, runId });
 }
 
 export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, status: mls.msg.AIStepStatus, traceMsg?: string): mls.msg.AgentIntentUpdateStatus {

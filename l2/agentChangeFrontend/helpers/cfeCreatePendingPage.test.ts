@@ -17,7 +17,7 @@ async function loadModule(): Promise<{
   startCreateRun: (runId: string, context: any) => void;
   listCreateRunPageArgs: (runId: string) => { moduleName: string; pageId: string; runId: string }[];
   prepareCreateRunPage: (runId: string, pageId: string, moduleName: string) => Promise<any>;
-  parseCreatePageArgs: (prompt: string | undefined) => { moduleName: string; pageId: string };
+  parseCreatePageArgs: (prompt: string | undefined) => { moduleName: string; pageId: string; runId: string };
 }> {
   if (!g.window) g.window = { addEventListener() {}, removeEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
   if (!g.document) g.document = { documentElement: { lang: 'pt-BR' }, addEventListener() {}, removeEventListener() {}, createElement: () => ({ style: {} }) };
