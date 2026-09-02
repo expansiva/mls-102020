@@ -184,13 +184,53 @@ markup. \`label\` is the scene's heading, ignored by a detail-row presentation.
 ## Customization
 
 \`data-class\` passes extra CSS classes, on the host (\`<component data-class="w-full mt-4">\`) or on
-a slot tag. Override \`--ml-*\` tokens on a parent element (e.g. \`--ml-primary: #7c3aed;\`):
+a slot tag.
 
-\`--ml-surface\` #fff · \`--ml-surface-dim\` #f5f5f5 · \`--ml-on-surface\` #1c1b1f ·
-\`--ml-on-surface-muted\` #49454f · \`--ml-on-surface-faint\` #79747e · \`--ml-primary\` #3b82f6 ·
-\`--ml-on-primary\` #fff · \`--ml-error\` #ef4444 · \`--ml-on-error\` #fff ·
-\`--ml-outline-variant\` #e2e8f0 · \`--ml-outline-focus\` #3b82f6 · \`--ml-outline-error\` #ef4444 ·
-\`--ml-radius-sm\` 6px · \`--ml-shadow-1\` 0 1px 3px rgba(0,0,0,.1) · \`--ml-font-family\` system-ui ·
-\`--ml-font-weight-medium\` 500 · \`--ml-transition\` 200ms ease ·
-\`--ml-focus-ring-color\` rgba(59,130,246,.4) · \`--ml-disabled-opacity\` 0.5
+---
+
+## Design Tokens
+
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom properties on a parent element:
+
+\`\`\`css
+.my-container {
+  --ml-primary: #7c3aed;
+  --ml-radius-sm: 10px;
+  --ml-font-family: 'Inter', sans-serif;
+}
+\`\`\`
+
+### Available tokens
+
+| Token | Default | Purpose |
+|-------|---------|---------|
+| \`--ml-border-style\` | \`solid\` | Border style |
+| \`--ml-border-width\` | \`1px\` | Border width |
+| \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
+| \`--ml-error\` | \`#ef4444\` | Error color |
+| \`--ml-error-dim\` | \`#fef2f2\` | Error background |
+| \`--ml-focus-ring-color\` | \`rgba(59, 130, 246, 0.4)\` | Focus ring color |
+| \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+| \`--ml-font-family\` | \`system-ui, -apple-system, sans-serif\` | Font family |
+| \`--ml-font-weight-medium\` | \`500\` | Medium font weight |
+| \`--ml-on-primary\` | \`#ffffff\` | Text on primary |
+| \`--ml-on-primary-container\` | \`#1c1b1f\` | Text on primary container |
+| \`--ml-on-surface\` | \`#1c1b1f\` | Primary text |
+| \`--ml-on-surface-faint\` | \`#79747e\` | Placeholder / tertiary text |
+| \`--ml-on-surface-muted\` | \`#49454f\` | Secondary text |
+| \`--ml-outline-error\` | \`#ef4444\` | Error border |
+| \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
+| \`--ml-outline-variant\` | \`#e2e8f0\` | Default border |
+| \`--ml-primary\` | \`#3b82f6\` | Primary action color |
+| \`--ml-primary-container\` | \`#dbeafe\` | Subtle primary fill (selected row, active chip) |
+| \`--ml-radius-md\` | \`var(--ml-radius-sm, 6px)\` | Medium radius |
+| \`--ml-radius-sm\` | \`6px\` | Small radius |
+| \`--ml-shadow-0\` | \`none\` | No elevation (pressed state) |
+| \`--ml-shadow-1\` | \`0 1px 3px rgba(0,0,0,.1)\` | Subtle shadow |
+| \`--ml-shadow-2\` | \`0 4px 6px rgba(0,0,0,.1)\` | Raised shadow |
+| \`--ml-surface\` | \`#ffffff\` | Component background |
+| \`--ml-surface-dim\` | \`#f5f5f5\` | Hover / secondary background |
+| \`--ml-surface-overlay\` | \`#ffffff\` | Light veil over content (loading, disabled area) |
+| \`--ml-surface-variant\` | \`#f5f5f5\` | Tinted alternate surface |
+| \`--ml-transition\` | \`200ms ease\` | Transition duration / easing |
 `;
