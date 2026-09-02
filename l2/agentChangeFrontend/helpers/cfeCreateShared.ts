@@ -6,6 +6,7 @@ import {
   deriveUiScenaries,
   destructiveCommandIds,
   isDestructiveCommandName,
+  isGetByIdQuery,
   UI_SCENARY_DEFS_CONTRACT,
   type CfeUiScenaryCommand,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeUiScenary.js';
@@ -61,6 +62,7 @@ import {
   recordCfeDegradation,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 import { writeIfContentChanged } from '/_102020_/l2/agentChangeFrontend/helpers/cfeWorkspaceArtifacts.js';
+import { sessionScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSessionScope.js';
 
 export { enumDisplayLabel, readEnumLabels };
 export type { CfeEnumLabel };
@@ -789,13 +791,13 @@ export async function readCreateContext(): Promise<CfeCreateContext> {
 
 const CREATE_UX_VARIANTS_KEY = '__agentChangeFrontendUxVariants';
 
-function rememberedUxVariants(): UxVariantsMode {
-  const value = (window as unknown as Record<string, unknown>)[CREATE_UX_VARIANTS_KEY];
+export function rememberedUxVariants(): UxVariantsMode {
+  const value = sessionScope()[CREATE_UX_VARIANTS_KEY];
   return value === 'all' ? 'all' : 'default';
 }
 
 export function rememberCreateUxVariants(mode: UxVariantsMode): void {
-  (window as unknown as Record<string, unknown>)[CREATE_UX_VARIANTS_KEY] = mode;
+  sessionScope()[CREATE_UX_VARIANTS_KEY] = mode;
 }
 
 export async function generatePageDefs(page: CfePagePlan): Promise<void> {
@@ -1170,6 +1172,8 @@ export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<voi
 //  - a required entity id that NO read of this page produces is unsatisfiable by construction: the case
 //    is not emitted (a case that can never pass is permanent noise on the panel).
 // Coverage: 1 "ok" case per BFF routine + 1 validation case per required command field.
+// A successful delete also emits a sibling `.gone` read-by-id (`ok:false`/`NOT_FOUND`) so the
+// case proves the row vanished, not only that the call answered.
 // Compiled outside the defs->materialize pipeline (no .defs.ts), like seeds.ts.
 const PAGE_TESTS_VARIANT = 'page11';
 const SEED_REF_MARKER = '<seedRef>';
@@ -1215,7 +1219,7 @@ export async function savePageTestsFile(prepared: CfePreparedPage, runId?: strin
   if (cases.length === 0) return;
   const genome = prepared.variantPlan[0]?.genome || PAGE_TESTS_VARIANT;
   const fileInfo: FileInfo = { project: prepared.project, level: 2, folder: `${prepared.page.moduleName}/web/desktop/${genome}`, shortName: prepared.page.pageId, extension: '.test.ts' };
-  await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases, genome));
+  await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases, genome, cases.untested));
 }
 
 /**
@@ -1248,8 +1252,10 @@ function moduleProducedByQuery(runId: string, moduleName: string): Map<string, s
   return produced;
 }
 
-export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: Map<string, string[]>): PageTestCase[] {
+export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: Map<string, string[]>): PageTestCase[] & { untested?: { id: string; reason: string }[] } {
   const cases: PageTestCase[] = [];
+  const untested: { id: string; reason: string }[] = [];
+  const deleteOkIds = new Set<string>();
   // What each READ routine of the page yields — the runner harvests exactly these, so this is the set of
   // ids a <seedRef> can resolve. From the l4 wire (producedFields), falling back to the declared output
   // names for the legacy per-operation path. Commands are excluded: they mutate and the runner isolates
@@ -1354,6 +1360,36 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
         mutating: true,
         ...(knownIssue ? { expectedFail: knownIssue } : {}),
       });
+    } else if (isDeleteCommand(prepared, commandName)) {
+      // Required-form negatives first so they stay before the row is deleted. Then `.ok` and, when
+      // the page exposes a get-by-id, the sibling `.gone` (Phase B: ok:false, so it runs after the
+      // delete). The pair is moved to the end of the file so later create/update cases are not
+      // left holding a deleted id.
+      for (const field of requiredFormFields) {
+        cases.push({ id: `${commandName}.${field}.required`, routine, ...seedRefCaseFields(requiredFields.filter(other => other.name !== field), harvestable), expect: { ok: false, errorCode: 'VALIDATION_ERROR' }, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+      }
+      const okFields = deleteCaseFields(requiredFields, harvestable, prepared, commandName);
+      const okId = `${commandName}.ok`;
+      deleteOkIds.add(okId);
+      cases.push({ id: okId, routine, ...okFields, expect: { ok: true, shape: 'object' }, mutating: true, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+      const get = findGetByIdForDelete(prepared, commandName, okFields.params);
+      if (get) {
+        const getName = readString(get.commandName);
+        const getRoutine = readString(get.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${getName}`;
+        cases.push({
+          id: `${commandName}.gone`,
+          routine: getRoutine,
+          params: okFields.params,
+          ...(okFields.paramFieldRefs ? { paramFieldRefs: okFields.paramFieldRefs } : {}),
+          mutating: false,
+          expect: { ok: false, errorCode: 'NOT_FOUND' },
+          ...(knownIssue ? { expectedFail: knownIssue } : {}),
+        });
+      } else {
+        const reason = 'page has no get-by-id query to read the deleted row back';
+        untested.push({ id: `${commandName}.gone`, reason });
+        recordCreateWarning(`${prepared.page.pageId}: no ${commandName}.gone case — ${reason}`);
+      }
     } else {
       // Command "ok" case writes -> mutating (runner isolates it in a rolled-back transaction).
       // A command returns its result object.
@@ -1363,7 +1399,7 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
       }
     }
   }
-  return cases;
+  return Object.assign(moveDeleteGonePairsLast(cases, deleteOkIds), { untested });
 }
 
 /**
@@ -1393,13 +1429,121 @@ function touchesExternalIdentity(prepared: CfePreparedPage, commandName: string)
  * `storage.target: 'mdm'`. A module-local entity keeps its positive delete case — nothing references it
  * across modules, so deleting it is legitimate and the test must keep proving it works.
  */
+function isDeleteCommand(prepared: CfePreparedPage, commandName: string): boolean {
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  return operation ? /delete|remove/i.test(operation.kind) || /^cmdDelete/.test(commandName) : /^cmdDelete/.test(commandName);
+}
+
 function deletesMasterData(prepared: CfePreparedPage, command: Record<string, unknown>, commandName: string): boolean {
   if (!prepared.mdmEntityIds?.length) return false;
+  if (!isDeleteCommand(prepared, commandName)) return false;
   const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
-  const isDelete = operation ? /delete|remove/i.test(operation.kind) || /^cmdDelete/.test(commandName) : /^cmdDelete/.test(commandName);
-  if (!isDelete) return false;
   const entity = operation?.entity || readString(command.entity);
   return !!entity && prepared.mdmEntityIds.includes(entity);
+}
+
+function asUiScenaryCommand(command: Record<string, unknown>): CfeUiScenaryCommand {
+  return {
+    commandName: readString(command.commandName),
+    kind: readString(command.kind),
+    accessKind: readString(command.accessKind),
+    selection: readString(command.selection),
+    outputShape: readString(command.outputShape),
+    input: commandFieldRecords(command.input),
+  };
+}
+
+function isReadByIdQuery(command: Record<string, unknown>): boolean {
+  if (readString(command.kind) !== 'query') return false;
+  if (isGetByIdQuery(asUiScenaryCommand(command))) return true;
+  const shape = normalizeOutputShape(command.outputShape);
+  if (shape === 'array' || shape === 'paginated') return false;
+  return commandFieldRecords(command.input).some(field => field.required && isEntityReferenceField(field));
+}
+
+function sameSeedIdentity(left: PageTestField, right: PageTestField): boolean {
+  if (left.fieldRef && right.fieldRef && left.fieldRef === right.fieldRef) return true;
+  if (left.name && left.name === right.name) return true;
+  const leftId = fieldIdOfFieldRef(left.fieldRef) || left.name;
+  const rightId = fieldIdOfFieldRef(right.fieldRef) || right.name;
+  return !!leftId && leftId === rightId;
+}
+
+function getByIdScore(command: Record<string, unknown>, deleteCommandName: string): number {
+  const name = readString(command.commandName);
+  const access = readString(command.accessKind).toLowerCase();
+  let score = 0;
+  if (access === 'getbyid') score += 4;
+  if (/^(qry)?get/i.test(name) || /detail$/i.test(name)) score += 2;
+  const stem = deleteCommandName.replace(/^cmdDelete/i, '').replace(/^cmdRemove/i, '');
+  if (stem && stem !== deleteCommandName && name.toLowerCase().includes(stem.toLowerCase())) score += 3;
+  return score;
+}
+
+function findGetByIdForDelete(
+  prepared: CfePreparedPage,
+  deleteCommandName: string,
+  deleteParams: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const deleteCommand = prepared.commands.find(item => readString(item.commandName) === deleteCommandName);
+  const deleteFields = commandFieldRecords(deleteCommand?.input);
+  const ranked: { command: Record<string, unknown>; score: number }[] = [];
+  for (const command of prepared.commands) {
+    if (readString(command.commandName) === deleteCommandName) continue;
+    if (!isReadByIdQuery(command)) continue;
+    const required = commandFieldRecords(command.input).filter(field => field.required && !isRuntimeResolvedInputSource(field.source));
+    if (required.length === 0) continue;
+    const covered = required.every(field => field.name in deleteParams && deleteFields.some(item => sameSeedIdentity(field, item)));
+    if (!covered) continue;
+    ranked.push({ command, score: getByIdScore(command, deleteCommandName) });
+  }
+  ranked.sort((left, right) => right.score - left.score);
+  return ranked[0]?.command;
+}
+
+function deleteEntityId(prepared: CfePreparedPage, commandName: string): string {
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  if (operation?.entity) return operation.entity;
+  const stripped = commandName.replace(/^cmdDelete/i, '').replace(/^cmdRemove/i, '');
+  return stripped && stripped !== commandName ? stripped : '';
+}
+
+function deleteCaseFields(
+  fields: PageTestField[],
+  harvestable: Set<string>,
+  prepared: CfePreparedPage,
+  commandName: string,
+): Pick<PageTestCase, 'params' | 'paramFieldRefs'> {
+  const base = seedRefCaseFields(fields, harvestable, { okCase: true });
+  const refs: Record<string, string> = { ...(base.paramFieldRefs || {}) };
+  const entity = deleteEntityId(prepared, commandName);
+  for (const field of fields) {
+    if (!isSeedMarker(base.params[field.name])) continue;
+    if (refs[field.name]) continue;
+    if (field.fieldRef) refs[field.name] = field.fieldRef;
+    else if (entity) refs[field.name] = `${entity}.${fieldIdOfFieldRef(field.fieldRef) || field.name}`;
+  }
+  return Object.keys(refs).length ? { params: base.params, paramFieldRefs: refs } : { params: base.params };
+}
+
+function moveDeleteGonePairsLast(cases: PageTestCase[], deleteOkIds: Set<string>): PageTestCase[] {
+  if (deleteOkIds.size === 0) return cases;
+  const rest: PageTestCase[] = [];
+  const tail: PageTestCase[] = [];
+  for (let i = 0; i < cases.length; i++) {
+    const current = cases[i];
+    if (!deleteOkIds.has(current.id)) {
+      rest.push(current);
+      continue;
+    }
+    tail.push(current);
+    const next = cases[i + 1];
+    if (next && next.id === current.id.replace(/\.ok$/, '.gone')) {
+      tail.push(next);
+      i += 1;
+    }
+  }
+  return [...rest, ...tail];
 }
 
 type PageTestField = {
@@ -1621,7 +1765,12 @@ function entityHasWeekdayField(entityId: string, entityFields: Record<string, st
   return (entityFields[entityId] || []).some(fieldId => /^(dayOfWeek|weekday)$/i.test(fieldId));
 }
 
-function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[], genome = PAGE_TESTS_VARIANT): string {
+function renderPageTestsFile(
+  prepared: CfePreparedPage,
+  cases: PageTestCase[],
+  genome = PAGE_TESTS_VARIANT,
+  untested?: { id: string; reason: string }[],
+): string {
   const header = `/// <mls fileReference="_${prepared.project}_/l2/${prepared.page.moduleName}/web/desktop/${genome}/${prepared.page.pageId}.test.ts" enhancement="_blank"/>`;
   // The workspace's actor rides in the envelope so the tests runner can execute the page's cases AS a
   // seeded identity for that actor. Without it every actor-scoped route is unrunnable headless: the
@@ -1630,6 +1779,7 @@ function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[], g
   // fail into pass, and unblocks the 2 commands of its page.
   const actor = readString(prepared.workspace?.actor);
   const body = { moduleName: prepared.page.moduleName, page: prepared.page.pageId, variant: genome, ...(actor ? { actor } : {}), cases };
+  const undeclared = (untested || []).map(item => `// untested: ${item.id} — ${item.reason}`).join('\n');
   return `${header}\n\n`
     + `// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\n`
     + `// TESTS_ENABLED is on).\n`
@@ -1644,6 +1794,7 @@ function renderPageTestsFile(prepared: CfePreparedPage, cases: PageTestCase[], g
     + `// for a paginated query (the runner assumes "items" when it is absent). "actor" is this page's l4 actor:\n`
     + `// the run executes these cases as the seeded platform identity of that actor, so a route that reads the\n`
     + `// actor id from the session is runnable headless.\n`
+    + (undeclared ? `${undeclared}\n` : '')
     + `export const pageTests = ${JSON.stringify(body, null, 2)} as const;\n`;
 }
 
@@ -1860,7 +2011,7 @@ function createRunPageKey(moduleName: string, pageId: string): string {
 const CREATE_RUN_CACHE_KEY = '__agentChangeFrontendCreateRuns';
 
 function getCreateRuns(): Map<string, CfeCreateRunCache> {
-  const browser = window as unknown as Record<string, unknown>;
+  const browser = sessionScope();
   const existing = browser[CREATE_RUN_CACHE_KEY];
   if (existing instanceof Map) return existing as Map<string, CfeCreateRunCache>;
   const runs = new Map<string, CfeCreateRunCache>();
@@ -2649,7 +2800,7 @@ export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, pare
 
 function recordCreateWarning(message: string): void {
   const full = `[agentChangeFrontend] ${message}`;
-  const w = window as any;
+  const w = sessionScope() as any;
   if (!Array.isArray(w.__agentChangeFrontendCreateDiagnostics)) w.__agentChangeFrontendCreateDiagnostics = [];
   w.__agentChangeFrontendCreateDiagnostics.push(full);
 }

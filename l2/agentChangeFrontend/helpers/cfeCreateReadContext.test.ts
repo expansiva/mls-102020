@@ -826,6 +826,112 @@ test('page tests: unsatisfiable date × seeded weekday is skipped and reported',
   assert.equal(due.find((c: any) => c.id === 'cmdCreateTask.ok').params.dueDate, '2026-01-01');
 });
 
+// ---- delete `.gone`: a successful delete is followed by a read that must 404 ----
+function ticketIdInput(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { name: 'ticketId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string', fieldRef: 'Ticket.ticketId', ...extra };
+}
+function ticketListCommand(): Record<string, unknown> {
+  return { commandName: 'qryListTicket', kind: 'query', routeKey: 'controleChamados.ticketCatalogue.qryListTicket', outputShape: 'paginated', producedFields: ['ticketId', 'title'], collectionField: 'tickets', input: [], output: [] };
+}
+function ticketGetCommand(): Record<string, unknown> {
+  return { commandName: 'qryGetTicket', kind: 'query', routeKey: 'controleChamados.ticketCatalogue.qryGetTicket', outputShape: 'object', accessKind: 'getById', producedFields: ['ticketId', 'title'], input: [ticketIdInput()], output: [] };
+}
+function ticketDeleteCommand(): Record<string, unknown> {
+  return { commandName: 'cmdDeleteTicket', kind: 'command', routeKey: 'controleChamados.ticketCatalogue.cmdDeleteTicket', outputShape: 'object', input: [ticketIdInput()], output: [] };
+}
+function ticketWriteCommand(commandName: string): Record<string, unknown> {
+  return { commandName, kind: 'command', routeKey: `controleChamados.ticketCatalogue.${commandName}`, outputShape: 'object', input: [ticketIdInput(), { name: 'title', required: true, presentation: 'form', type: 'string', l4Type: 'string' }], output: [] };
+}
+function ticketOperations(): Record<string, unknown>[] {
+  return [
+    { commandName: 'cmdCreateTicket', operationId: 'createTicket', kind: 'create', entity: 'Ticket', reads: [], writes: ['Ticket'] },
+    { commandName: 'cmdUpdateTicket', operationId: 'updateTicket', kind: 'update', entity: 'Ticket', reads: [], writes: ['Ticket'] },
+    { commandName: 'cmdDeleteTicket', operationId: 'deleteTicket', kind: 'delete', entity: 'Ticket', reads: [], writes: ['Ticket'] },
+    { commandName: 'qryGetTicket', operationId: 'getTicket', kind: 'get', entity: 'Ticket', reads: ['Ticket'], writes: [] },
+  ];
+}
+
+test('page tests: delete emits a consecutive .gone read-by-id as the last two cases', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const cases = buildPageTestCases(preparedForTests({
+    page: { moduleName: 'controleChamados', pageId: 'ticketCatalogue' },
+    commands: [ticketListCommand(), ticketGetCommand(), ticketWriteCommand('cmdCreateTicket'), ticketWriteCommand('cmdUpdateTicket'), ticketDeleteCommand()],
+    operations: ticketOperations(),
+  }));
+  const ids = cases.map((c: any) => c.id);
+  const okIdx = ids.indexOf('cmdDeleteTicket.ok');
+  const goneIdx = ids.indexOf('cmdDeleteTicket.gone');
+  assert.ok(okIdx >= 0, ids.join(', '));
+  assert.equal(goneIdx, okIdx + 1, '.gone is immediately after .ok');
+  assert.equal(okIdx, ids.length - 2, 'delete .ok is the penultimate case');
+  assert.equal(goneIdx, ids.length - 1, 'delete .gone is the last case');
+  const ok = cases[okIdx];
+  const gone = cases[goneIdx];
+  assert.deepEqual(gone.params, ok.params);
+  assert.deepEqual(gone.paramFieldRefs, ok.paramFieldRefs);
+  assert.equal(ok.params.ticketId, '<seedRef>');
+  assert.equal(ok.paramFieldRefs.ticketId, 'Ticket.ticketId');
+  assert.equal(gone.mutating, false);
+  assert.equal(gone.expect.ok, false);
+  assert.equal(gone.expect.errorCode, 'NOT_FOUND');
+  assert.equal(String(gone.id).endsWith('.required'), false);
+  assert.equal(ok.routine, 'controleChamados.ticketCatalogue.cmdDeleteTicket');
+  assert.equal(gone.routine, 'controleChamados.ticketCatalogue.qryGetTicket');
+  assert.equal('id' in gone && 'routine' in gone && 'params' in gone && 'expect' in gone && 'mutating' in gone, true);
+  assert.ok(ids.includes('cmdCreateTicket.ok') && ids.includes('cmdUpdateTicket.ok'), 'create/update stay in the file, before the delete pair');
+});
+
+test('page tests: delete without a get-by-id emits no sibling and declares why', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const w = g.window as { __agentChangeFrontendCreateDiagnostics?: string[] };
+  w.__agentChangeFrontendCreateDiagnostics = [];
+  const cases = buildPageTestCases(preparedForTests({
+    page: { moduleName: 'controleChamados', pageId: 'ticketCatalogue' },
+    commands: [ticketListCommand(), ticketDeleteCommand()],
+    operations: [{ commandName: 'cmdDeleteTicket', operationId: 'deleteTicket', kind: 'delete', entity: 'Ticket', reads: [], writes: ['Ticket'] }],
+  }));
+  assert.ok(cases.some((c: any) => c.id === 'cmdDeleteTicket.ok'));
+  assert.equal(cases.some((c: any) => c.id === 'cmdDeleteTicket.gone'), false, 'no invented get routine');
+  assert.ok(
+    (w.__agentChangeFrontendCreateDiagnostics || []).some((msg: string) => /cmdDeleteTicket\.gone/.test(msg) && /get-by-id/.test(msg)),
+    'skip is declared in generator diagnostics, not silent',
+  );
+  assert.ok(
+    (cases as { untested?: { id: string; reason: string }[] }).untested?.some(item => item.id === 'cmdDeleteTicket.gone' && /get-by-id/.test(item.reason)),
+    'reason is declared on the emitted set so the file can print it',
+  );
+});
+
+test('page tests: a page without delete emits no .gone case', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const cases = buildPageTestCases(preparedForTests({
+    commands: [ticketListCommand(), ticketGetCommand(), ticketWriteCommand('cmdCreateTicket')],
+    operations: [
+      { commandName: 'cmdCreateTicket', operationId: 'createTicket', kind: 'create', entity: 'Ticket', reads: [], writes: ['Ticket'] },
+      { commandName: 'qryGetTicket', operationId: 'getTicket', kind: 'get', entity: 'Ticket', reads: ['Ticket'], writes: [] },
+    ],
+  }));
+  assert.equal(cases.some((c: any) => String(c.id).endsWith('.gone')), false);
+  assert.ok(cases.some((c: any) => c.id === 'cmdCreateTicket.ok'));
+  assert.equal(((cases as { untested?: unknown[] }).untested || []).length, 0);
+});
+
+test('page tests: a master-data delete stays .notDeletable and gets no .gone', async () => {
+  const { buildPageTestCases } = await loadModule();
+  const cases = buildPageTestCases(preparedForTests({
+    commands: [
+      { commandName: 'qryListClient', kind: 'query', routeKey: 'm.x.qryListClient', outputShape: 'array', producedFields: ['clientId'], input: [], output: [] },
+      { commandName: 'qryGetClient', kind: 'query', routeKey: 'm.x.qryGetClient', outputShape: 'object', accessKind: 'getById', producedFields: ['clientId'], input: [{ name: 'clientId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string', fieldRef: 'Client.clientId' }], output: [] },
+      { commandName: 'cmdDeleteClient', kind: 'command', routeKey: 'm.x.cmdDeleteClient', input: [{ name: 'clientId', required: true, source: 'selectedEntity', presentation: 'selection', type: 'string', fieldRef: 'Client.clientId' }], output: [] },
+    ],
+    operations: [{ commandName: 'cmdDeleteClient', operationId: 'deleteClient', kind: 'delete', entity: 'Client', reads: [], writes: ['Client'] }],
+    mdmEntityIds: ['Client'],
+  }));
+  assert.ok(cases.some((c: any) => c.id === 'cmdDeleteClient.notDeletable'));
+  assert.equal(cases.some((c: any) => c.id === 'cmdDeleteClient.ok'), false);
+  assert.equal(cases.some((c: any) => c.id === 'cmdDeleteClient.gone'), false);
+});
+
 // ---- addLanguage handoff: the extra-locale task at the end of changeFrontend ----
 // The generated shared .ts carries ONE catalog (the module default); agentAddLanguage adds the others,
 // sending only the i18n block to a cheap translate model. A single-language module needs no extra task.

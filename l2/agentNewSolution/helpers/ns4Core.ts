@@ -610,6 +610,7 @@ export function createNs4E4RelationshipBindingStep(
   reviewRound: number,
   bindingRepairAttempt = 0,
   gateFeedback = '',
+  entityRepairRound = 0,
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e4-ontology-round-${reviewRound}-relationship-binding-${bindingRepairAttempt}`,
@@ -618,7 +619,9 @@ export function createNs4E4RelationshipBindingStep(
     'waiting_human_input',
     {
       planId: 'e4-ontology', stage: 'bindRelationships', moduleName, reviewRound, solutionMode: 'new',
-      bindingRepairAttempt, ...(gateFeedback ? { gateFeedback } : {}),
+      bindingRepairAttempt,
+      ...(entityRepairRound ? { entityRepairRound } : {}),
+      ...(gateFeedback ? { gateFeedback } : {}),
     },
   );
 }

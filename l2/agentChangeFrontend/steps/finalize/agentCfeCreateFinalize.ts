@@ -9,7 +9,6 @@ import {
 // beforePromptImplicit (no coupling to its internals) — the same handoff agentNewSolution uses to start
 // @@changeBackend/@@changeFrontend. The runtime strips the mention before the agent sees the payload
 // (aiAgentOrchestration.ts:48), so agentAddLanguage receives exactly its JSON args.
-import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
 import { compileMlsPathAndGetErrors, releaseBorrowedModelScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import { orderModuleCompile } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { agentBuildTrace, readAgentProvenance } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
@@ -90,7 +89,8 @@ async function dispatchAddLanguage(agent: IAgentMeta, context: mls.msg.Execution
   const threadId = context.message?.threadId;
   if (!threadId) return '; addLanguage: SKIPPED (no threadId)';
   try {
-    await sendThreadMessage(threadId, message);
+    const { addMessage } = await import('/_102025_/l2/collabMessagesHelper.js');
+    await addMessage(threadId, message);
     return `; addLanguage: dispatched (${message.slice('@@addLanguage '.length)})`;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);

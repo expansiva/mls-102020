@@ -40,7 +40,6 @@ import {
   type Ns4FastHandoffDegradation,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4FastHandoff.js';
 import { buildNsRunSummary, saveNsRunSummary, type PipelineRunDegradation } from '/_102020_/l2/agentNewSolution/helpers/nsPipelineRun.js';
-import { addMessage as sendThreadMessage } from '/_102025_/l2/collabMessagesHelper.js';
 
 interface Ns4E10Args { planId: 'e10-validation'; moduleName: string; }
 
@@ -220,7 +219,10 @@ async function dispatchChangeBackendHandoff(
     return sendNs4FastHandoff({
       threadId: context.message?.threadId,
       message: decision.message,
-      send: async (threadId, message) => { await sendThreadMessage(threadId, message); },
+      send: async (threadId, message) => {
+        const { addMessage } = await import('/_102025_/l2/collabMessagesHelper.js');
+        await addMessage(threadId, message);
+      },
       persist: () => writeNs4Pipeline(markNs4FastHandoff(pipeline, NS4_FAST_HANDOFF_AGENT, decision.message)).then(() => undefined),
     });
   } catch (error) {

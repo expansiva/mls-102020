@@ -37,6 +37,7 @@ import {
   ns4E4EntityDraftFile,
   ns4E4PlanDraftFile,
   ns4AgentFile,
+  ns4PipelineJsonFile,
   readNs4AgentText,
   readNs4Module,
   readNs4Pipeline,
@@ -45,6 +46,7 @@ import {
   writeNs4E4EntityDraft,
   writeNs4E4PlanDraft,
   writeNs4E4RelationshipBindingsDraft,
+  writeNs4Json,
   writeNs4Module,
   writeNs4OntologyEntity,
   writeNs4OntologyIndex,
@@ -65,12 +67,14 @@ import {
   normalizeNs4E4RelationshipBindings,
   normalizeNs4E4Review,
   Ns4E4EntityDraft,
+  Ns4E4EntityFeedback,
   Ns4E4PlanDraft,
   Ns4E4RelationshipBindingsDraft,
   Ns4E4Review,
   Ns4E4ReviewEvent,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import {
+  ns4E4BindingOwnerEscalation,
   ns4E4RequestText,
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
@@ -255,6 +259,11 @@ async function buildEntityPrompt(
   const touchingRelationships = plan.relationships.filter(rel => rel.fromEntity === entityId || rel.toEntity === entityId);
   const currentGate = currentDetail ? validateNs4E4EntityDraft(plan, currentDetail) : null;
   const upstreamRepairFeedback = memoryString(context, 'resumeFeedback');
+  const bindingOwnerFeedback = await readEntityFeedback(args.moduleName, entityId);
+  const entityRepairText = [
+    currentGate && !currentGate.ok ? formatGate(currentGate.issues) : '',
+    bindingOwnerFeedback,
+  ].filter(Boolean).join('\n');
   const humanPrompt = [
     '## Frozen target entity overview', JSON.stringify(target),
     '## All valid entity ids and storage targets', JSON.stringify(plan.entities.map(entity => ({ entityId: entity.entityId, storage: entity.storage.target }))),
@@ -263,8 +272,7 @@ async function buildEntityPrompt(
     '## Related E3 authorities and grants', JSON.stringify({ authorities: relatedAuthorities, grants: relatedGrants }),
     previousEntity ? `## Previous human-reviewed entity; preserve unaffected edits\n${JSON.stringify(stripNs4DerivedFieldUnions(previousEntity))}` : '',
     currentDetail ? `## Current entity draft\n${JSON.stringify(currentDetail)}` : '',
-    currentGate && !currentGate.ok
-      ? `## Entity gate repair required\n${formatGate(currentGate.issues)}` : '',
+    entityRepairText ? `## Entity gate repair required\n${entityRepairText}` : '',
     upstreamRepairFeedback ? `## Downstream E5 contract gaps to resolve where this entity is relevant\n${upstreamRepairFeedback}` : '',
     `## Required identity\nmoduleName=${plan.moduleName}; reviewRound=${plan.reviewRound}; entityId=${entityId}; userLanguage=${plan.userLanguage}`,
   ].filter(Boolean).join('\n\n');
@@ -363,6 +371,7 @@ async function handlePlanResult(
     return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message)];
   }
   await writeNs4E4PlanDraft(args.moduleName, plan);
+  await writeEntityFeedback(args.moduleName, []);
   const planRepairAttempt = args.repairAttempt || args.planRepairAttempt || 0;
   const parallel = parallelEntityStep(context, step, agent.agentName, plan, 0);
   return [
@@ -417,17 +426,38 @@ async function handleRelationshipBindingResult(
   if (!gate.ok) {
     const message = formatGate(gate.issues);
     const attempt = args.bindingRepairAttempt || 0;
+    const entityRepairRound = args.entityRepairRound || 0;
     if (attempt < MAX_RELATIONSHIP_BINDING_REPAIRS) {
       return [
         addStep(context, mutationParent, createNs4E4RelationshipBindingStep(
-          args.moduleName, plan.reviewRound, attempt + 1, message,
+          args.moduleName, plan.reviewRound, attempt + 1, message, entityRepairRound,
         )),
         updateStatus(context, mutationParent, step, hookSequential, 'completed', `Relationship binding gate requested repair ${attempt + 1}.`, 'input_output'),
+      ];
+    }
+    const ownerFeedback = ns4E4BindingOwnerEscalation(
+      unboundReview, gate.issues, entityRepairRound, MAX_ENTITY_REPAIR_ROUNDS,
+    );
+    if (ownerFeedback.length) {
+      await writeEntityFeedback(args.moduleName, ownerFeedback);
+      const affected = ownerFeedback.map(item => item.entityId);
+      const parallel = parallelEntityStep(context, step, 'agentNewSolution', plan, entityRepairRound + 1, affected);
+      return [
+        parallel,
+        addStep(context, mutationParent, createNs4E4FinalizeStep(
+          args.moduleName, plan.reviewRound, [String(parallel.step.planning?.planId || '')], entityRepairRound + 1, args.planRepairAttempt || 0,
+        )),
+        updateStatus(
+          context, mutationParent, step, hookSequential, 'completed',
+          `Relationship binding cannot add fields; entity repair started for ${affected.join(', ')}.`,
+          'input_output',
+        ),
       ];
     }
     await recordNs4E4Failure(args.moduleName, message);
     return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message, 'input_output')];
   }
+  await writeEntityFeedback(args.moduleName, []);
   const review = applyNs4E4RelationshipBindings(unboundReview, bindings);
   return openOntologyReview(context, mutationParent, step, hookSequential, review, pipeline, journeys, access);
 }
@@ -494,7 +524,9 @@ async function finalizeOntology(
     return openOntologyReview(context, mutationParent, step, hookSequential, review, pipeline, journeys, access);
   }
   return [
-    addStep(context, mutationParent, createNs4E4RelationshipBindingStep(args.moduleName, review.reviewRound)),
+    addStep(context, mutationParent, createNs4E4RelationshipBindingStep(
+      args.moduleName, review.reviewRound, 0, '', args.entityRepairRound || 0,
+    )),
     updateStatus(
       context, mutationParent, step, hookSequential, 'completed',
       `E4 assembled ${review.entities.length} entities; binding ${review.relationships.length} relationships to exact fields.`,
@@ -662,6 +694,30 @@ async function readNs4EntityWorkerTool(): Promise<mls.msg.LLMTool> {
   const schema = parseMaybeJson(raw);
   if (!isRecord(schema)) throw new Error('Invalid E4 entity worker tool schema.');
   return createNs4FlexibleWorkerTool('submitNs4E4Entity', 'Submit one E4 entity detail.', schema);
+}
+
+function entityFeedbackFile(moduleName: string) {
+  return ns4PipelineJsonFile(moduleName, 'e4-entity-feedback');
+}
+
+async function writeEntityFeedback(moduleName: string, feedback: Ns4E4EntityFeedback[]): Promise<void> {
+  await writeNs4Json(entityFeedbackFile(moduleName), feedback);
+}
+
+async function readEntityFeedback(moduleName: string, entityId: string): Promise<string> {
+  const parsed = parseMaybeJson(await readNs4Text(entityFeedbackFile(moduleName), false));
+  if (!Array.isArray(parsed)) return '';
+  return parsed
+    .filter(isEntityFeedback)
+    .filter(item => item.entityId === entityId)
+    .map(item => item.feedback)
+    .join('\n');
+}
+
+function isEntityFeedback(value: unknown): value is Ns4E4EntityFeedback {
+  return isRecord(value)
+    && typeof value.entityId === 'string' && !!value.entityId.trim()
+    && typeof value.feedback === 'string' && !!value.feedback.trim();
 }
 
 async function readPlanDraft(moduleName: string): Promise<Ns4E4PlanDraft> {

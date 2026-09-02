@@ -13,6 +13,7 @@ import {
   Ns4E4PlanDraft,
   Ns4E4RelationshipBindingsDraft,
   Ns4E4Review,
+  Ns4E4EntityFeedback,
   Ns4EnumLabel,
   Ns4OntologyEntity,
   Ns4OntologyField,
@@ -331,14 +332,19 @@ export function validateNs4E4Review(
   }
 
   if (options.requireRelationshipRealization !== false) {
+    const partyIds = review.entities
+      .filter(entity => entity.party && entity.party !== 'none')
+      .map(entity => entity.entityId);
+    const partySet = new Set(partyIds);
     review.entities.forEach((entity, entityIndex) => {
       const ownershipRules = entity.useRules.filter(ruleRequiresOwnerRelation);
       if (!ownershipRules.length) return;
-      if (entityDeclaresOwnerHandle(entity, review.relationships)) return;
+      if (entity.kind === 'projection' || entity.kind === 'valueObject') return;
+      if (entityReachesParty(entity.entityId, review, partySet)) return;
       add(
         'NS4_E4_OWNER_RELATION',
         `entities[${entityIndex}].useRules`,
-        `Rule ${ownershipRules.join(', ')} requires an owner relation on ${entity.entityId} (a customerId/ownerId field, or a relationship to Customer/Client/Owner realized by such a field) — without it the generated usecase cannot verify ownership.`,
+        ownerRelationMessage(entity.entityId, ownershipRules, partyIds),
       );
     });
   }
@@ -493,27 +499,95 @@ export function validateNs4E4EntityDraft(
   return validateNs4E4Review(review, undefined, undefined, { requireRelationshipRealization: false });
 }
 
-/** `customerCanViewOnlyOwnPets` and kin: the rule is only evaluable if the entity names its owner. */
+/** `customerCanViewOnlyOwnPets` and kin: the rule is only evaluable if the entity can reach a party. */
 function ruleRequiresOwnerRelation(ruleId: string): boolean {
   return /own(?:er|pets?)/i.test(ruleId);
 }
 
-function entityDeclaresOwnerHandle(entity: { entityId: string; fields: Ns4OntologyField[]; storage: { idField?: string } }, relationships: Ns4OntologyRelationship[]): boolean {
-  const idField = entity.storage.idField || `${entity.entityId.slice(0, 1).toLowerCase()}${entity.entityId.slice(1)}Id`;
-  if (entity.fields.some(field => /^(owner|customer|client)Id$/i.test(field.fieldId) || /OwnerId$/u.test(field.fieldId))) {
-    return true;
+function ownerRelationMessage(entityId: string, ownershipRules: string[], partyIds: string[]): string {
+  const rules = ownershipRules.join(', ');
+  if (!partyIds.length) {
+    return `${entityId} has ownership rule(s) \`${rules}\` but no person or organization entity is declared in this ontology.`;
   }
-  return relationships.some((rel) => {
-    if (rel.fromEntity !== entity.entityId && rel.toEntity !== entity.entityId) return false;
-    const other = rel.fromEntity === entity.entityId ? rel.toEntity : rel.fromEntity;
-    if (!/^(Customer|Client|Owner)$/u.test(other)) return false;
-    const realization = rel.realization;
-    if (!realization) return false;
-    const ownFields = realization.from.entityId === entity.entityId
-      ? realization.from.fieldIds
-      : realization.to.entityId === entity.entityId ? realization.to.fieldIds : [];
-    return ownFields.some(fieldId => fieldId !== idField && /Id$/u.test(fieldId));
+  return `${entityId} has ownership rule(s) \`${rules}\` but no path to a declared party entity (\`${partyIds.join(', ')}\`). Give it either a relationship realized as \`mdmRelationship\` to a party-reachable entity, or a field that realizes a \`fieldReference\` to one — without either, the generated usecase cannot verify ownership.`;
+}
+
+/**
+ * Binding-step findings that the entity fan-out can repair. Empty means fail the run: either the
+ * binding step can still fix the issue itself, or the entity-repair budget is already spent.
+ */
+export function ns4E4BindingOwnerEscalation(
+  review: Ns4E4Review,
+  issues: Ns4E4GateIssue[],
+  entityRepairRound: number,
+  maxEntityRepairRounds = 1,
+): Ns4E4EntityFeedback[] {
+  if (entityRepairRound >= maxEntityRepairRounds) return [];
+  return issues.flatMap(issue => {
+    if (issue.code !== 'NS4_E4_OWNER_RELATION') return [];
+    const match = /^entities\[(\d+)\]/u.exec(issue.path);
+    const entityId = match ? review.entities[Number(match[1])]?.entityId : '';
+    return entityId ? [{ entityId, feedback: issue.message }] : [];
   });
+}
+
+function entityIdField(entity: { entityId: string; storage: { idField?: string } }): string {
+  return entity.storage.idField || `${entity.entityId.slice(0, 1).toLowerCase()}${entity.entityId.slice(1)}Id`;
+}
+
+function entityReachesParty(entityId: string, review: Ns4E4Review, partyIds: Set<string>): boolean {
+  if (partyIds.has(entityId)) return true;
+  const seen = new Set<string>([entityId]);
+  const queue = [entityId];
+  while (queue.length) {
+    const current = queue.shift()!;
+    for (const next of ownershipNeighborIds(current, review)) {
+      if (seen.has(next)) continue;
+      if (partyIds.has(next)) return true;
+      seen.add(next);
+      queue.push(next);
+    }
+  }
+  return false;
+}
+
+function ownershipNeighborIds(entityId: string, review: Ns4E4Review): string[] {
+  const byId = new Map(review.entities.map(entity => [entity.entityId, entity]));
+  const entity = byId.get(entityId);
+  if (!entity) return [];
+  const neighbors: string[] = [];
+  for (const relationship of review.relationships) {
+    const other = ownershipHopTarget(entity, relationship, byId);
+    if (other) neighbors.push(other);
+  }
+  return neighbors;
+}
+
+/** One legal hop from `entity` toward a party: MDM link, non-id field reference, shared 1:1 id, or embed parent. */
+function ownershipHopTarget(
+  entity: Ns4OntologyEntity,
+  relationship: Ns4OntologyRelationship,
+  byId: Map<string, Ns4OntologyEntity>,
+): string | undefined {
+  if (relationship.fromEntity !== entity.entityId && relationship.toEntity !== entity.entityId) return undefined;
+  const otherId = relationship.fromEntity === entity.entityId ? relationship.toEntity : relationship.fromEntity;
+  const realization = relationship.realization;
+  if (!realization) return undefined;
+  if (realization.kind === 'derived' || realization.kind === 'externalReference') return undefined;
+  if (realization.kind === 'mdmRelationship') return otherId;
+  if (realization.kind === 'embedded') {
+    return entity.entityId !== realization.ownerEntity && otherId === realization.ownerEntity ? otherId : undefined;
+  }
+  if (realization.kind !== 'fieldReference' && realization.kind !== 'fieldCollection') return undefined;
+  const idField = entityIdField(entity);
+  const ownFields = realization.from.entityId === entity.entityId
+    ? realization.from.fieldIds
+    : realization.to.entityId === entity.entityId ? realization.to.fieldIds : [];
+  if (ownFields.some(fieldId => fieldId !== idField)) return otherId;
+  const other = byId.get(otherId);
+  const otherIdField = other ? entityIdField(other) : '';
+  if (idField && idField === otherIdField && ownFields.includes(idField)) return otherId;
+  return undefined;
 }
 
 /**

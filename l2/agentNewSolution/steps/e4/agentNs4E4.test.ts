@@ -37,6 +37,7 @@ import {
   normalizeNs4E4Review,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import {
+  ns4E4BindingOwnerEscalation,
   ns4E4RequestText,
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
@@ -149,6 +150,8 @@ test('E4 schedules a dedicated relationship binding pass with bounded repair sta
   const repair = createNs4E4RelationshipBindingStep('buildFlowFsm', 2, 1, 'unknown projectRef');
   assert.equal(repair.planning?.planId, 'e4-ontology-round-2-relationship-binding-1');
   assert.match(String(repair.prompt), /unknown projectRef/);
+  const afterEntityRepair = createNs4E4RelationshipBindingStep('buildFlowFsm', 2, 0, '', 1);
+  assert.match(String(afterEntityRepair.prompt), /"entityRepairRound":1/);
 });
 
 test('every E4 LLM prompt declares an active model alias explicitly', () => {
@@ -599,22 +602,224 @@ test('E4 request text is the E1 prompt, not the ontology notes', () => {
   }), /download das assinaturas/);
 });
 
-test('E4 flags an ownership rule when the entity has no owner field (petShop customerCanViewOnlyOwnPets)', () => {
-  const broken = structuredClone(reviewInput) as any;
-  broken.entities[0].useRules = ['customerCanViewOnlyOwnPets'];
-  const gate = validateNs4E4Review(normalizeNs4E4Review(broken), journeys, access);
-  const issue = gate.issues.find(item => item.code === 'NS4_E4_OWNER_RELATION');
-  assert.ok(issue, JSON.stringify(gate.issues));
-  assert.match(issue!.message, /customerCanViewOnlyOwnPets/);
-  assert.match(issue!.message, /Project/);
+function ownershipEntity(spec: {
+  entityId: string;
+  kind?: 'core' | 'mdm' | 'projection';
+  party?: 'person' | 'organization' | 'none';
+  fieldIds?: string[];
+  useRules?: string[];
+  derivation?: { from: string; filter: string; aggregate: Array<{ fieldId: string; op: 'groupKey'; sourceField: string }> };
+}): Record<string, unknown> {
+  const idField = `${spec.entityId.slice(0, 1).toLowerCase()}${spec.entityId.slice(1)}Id`;
+  const kind = spec.kind || 'core';
+  const isMdm = kind === 'mdm';
+  const isProjection = kind === 'projection';
+  const fieldIds = spec.fieldIds || [idField];
+  return {
+    entityId: spec.entityId,
+    title: spec.entityId,
+    description: `${spec.entityId} record.`,
+    kind,
+    ownership: isProjection ? 'derived' : 'moduleOwned',
+    party: spec.party || 'none',
+    sourceRefs: { journeyIds: ['manageProjects'], featureIds: ['projectManagement'], authorityRefs: ['buildflow:projectread'] },
+    fields: fieldIds.map(fieldId => ({
+      fieldId, title: fieldId, type: 'uuid', required: true, description: `${fieldId} field.`, constraints: [],
+    })),
+    lifecycleStates: [],
+    useRules: spec.useRules || [],
+    ...(spec.derivation ? { derivation: spec.derivation } : {}),
+    storage: isMdm
+      ? { target: 'mdm', scope: 'organization', idField, mdmType: `buildFlowFsm.${spec.entityId}`, notes: 'Organization master data.' }
+      : isProjection
+        ? { target: 'derived', scope: 'none', notes: 'Derived projection.' }
+        : { target: 'moduleDatabase', scope: 'module', idField, notes: 'Module persistence.' },
+  };
+}
 
-  const withField = structuredClone(reviewInput) as any;
-  withField.entities[0].useRules = ['customerCanViewOnlyOwnPets'];
-  withField.entities[0].fields.push({
-    fieldId: 'customerId', title: 'Customer', type: 'uuid', required: true, description: 'Owner of the record.', constraints: [],
+function ownershipRel(spec: {
+  relationshipId: string;
+  fromEntity: string;
+  toEntity: string;
+  kind: 'mdmRelationship' | 'fieldReference' | 'derived' | 'externalReference' | 'embedded';
+  fromFields: string[];
+  toFields: string[];
+  ownerEntity?: string;
+}): Record<string, unknown> {
+  return {
+    relationshipId: spec.relationshipId,
+    fromEntity: spec.fromEntity,
+    toEntity: spec.toEntity,
+    type: 'manyToOne',
+    required: spec.kind !== 'derived',
+    description: `${spec.fromEntity} relates to ${spec.toEntity}.`,
+    realization: {
+      kind: spec.kind,
+      ownerEntity: spec.ownerEntity || spec.fromEntity,
+      from: { entityId: spec.fromEntity, fieldIds: spec.fromFields },
+      to: { entityId: spec.toEntity, fieldIds: spec.toFields },
+      description: `${spec.kind} realization.`,
+    },
+  };
+}
+
+function ownershipReview(entities: Record<string, unknown>[], relationships: Record<string, unknown>[]) {
+  return normalizeNs4E4Review({
+    planId: 'e4-ontology-review', moduleName: 'buildFlowFsm', userLanguage: 'en', title: 'Business ontology',
+    reviewRound: 1, solutionMode: 'new', businessDomain: 'Construction operations',
+    entities, relationships, changeSummary: ['Ownership fixture.'],
   });
-  const ok = validateNs4E4Review(normalizeNs4E4Review(withField), journeys, access);
-  assert.ok(!ok.issues.some(item => item.code === 'NS4_E4_OWNER_RELATION'), JSON.stringify(ok.issues));
+}
+
+function ownerIssues(review: ReturnType<typeof ownershipReview>) {
+  return validateNs4E4Review(review, journeys, access).issues.filter(issue => issue.code === 'NS4_E4_OWNER_RELATION');
+}
+
+test('E4 treats an MDM relationship to a party as ownership', () => {
+  const review = ownershipReview([
+    ownershipEntity({ entityId: 'CustomerProfile', kind: 'mdm', party: 'person' }),
+    ownershipEntity({ entityId: 'Pet', kind: 'mdm', fieldIds: ['petId', 'name'], useRules: ['customerCanViewOnlyOwnPets'] }),
+  ], [
+    ownershipRel({
+      relationshipId: 'petBelongsToCustomerProfile', fromEntity: 'Pet', toEntity: 'CustomerProfile',
+      kind: 'mdmRelationship', fromFields: ['petId'], toFields: ['customerProfileId'],
+    }),
+  ]);
+  assert.deepEqual(ownerIssues(review), []);
+});
+
+test('E4 accepts a compound party name via fieldReference, not a hardcoded Customer|Client|Owner list', () => {
+  const review = ownershipReview([
+    ownershipEntity({ entityId: 'CustomerProfile', kind: 'mdm', party: 'person' }),
+    ownershipEntity({
+      entityId: 'Pet', fieldIds: ['petId', 'customerProfileId'], useRules: ['customerCanViewOnlyOwnPets'],
+    }),
+  ], [
+    ownershipRel({
+      relationshipId: 'petBelongsToCustomerProfile', fromEntity: 'Pet', toEntity: 'CustomerProfile',
+      kind: 'fieldReference', fromFields: ['customerProfileId'], toFields: ['customerProfileId'],
+    }),
+  ]);
+  assert.deepEqual(ownerIssues(review), []);
+});
+
+test('E4 ownership is transitive through a field hop then an MDM relationship', () => {
+  const review = ownershipReview([
+    ownershipEntity({ entityId: 'CustomerProfile', kind: 'mdm', party: 'person' }),
+    ownershipEntity({ entityId: 'Pet', kind: 'mdm', fieldIds: ['petId', 'name'] }),
+    ownershipEntity({
+      entityId: 'ServiceAppointment', fieldIds: ['serviceAppointmentId', 'petId'],
+      useRules: ['appointmentMustReferenceOwnPet'],
+    }),
+  ], [
+    ownershipRel({
+      relationshipId: 'petBelongsToCustomerProfile', fromEntity: 'Pet', toEntity: 'CustomerProfile',
+      kind: 'mdmRelationship', fromFields: ['petId'], toFields: ['customerProfileId'],
+    }),
+    ownershipRel({
+      relationshipId: 'appointmentIsForPet', fromEntity: 'ServiceAppointment', toEntity: 'Pet',
+      kind: 'fieldReference', fromFields: ['petId'], toFields: ['petId'],
+    }),
+  ]);
+  assert.deepEqual(ownerIssues(review), []);
+});
+
+test('E4 flags a missing path to a declared party and names both legal repairs', () => {
+  const review = ownershipReview([
+    ownershipEntity({ entityId: 'CustomerProfile', kind: 'mdm', party: 'person' }),
+    ownershipEntity({ entityId: 'Pet', kind: 'mdm', fieldIds: ['petId', 'name'], useRules: ['customerCanViewOnlyOwnPets'] }),
+  ], [
+    ownershipRel({
+      relationshipId: 'petBelongsToCustomerProfile', fromEntity: 'Pet', toEntity: 'CustomerProfile',
+      kind: 'derived', fromFields: ['petId'], toFields: ['customerProfileId'],
+    }),
+  ]);
+  const issues = ownerIssues(review);
+  assert.equal(issues.length, 1, JSON.stringify(issues));
+  assert.match(issues[0].message, /Pet/);
+  assert.match(issues[0].message, /customerCanViewOnlyOwnPets/);
+  assert.match(issues[0].message, /CustomerProfile/);
+  assert.match(issues[0].message, /mdmRelationship/);
+  assert.match(issues[0].message, /fieldReference/);
+});
+
+test('E4 does not accuse a projection of missing an owner handle', () => {
+  const review = ownershipReview([
+    ownershipEntity({ entityId: 'CustomerProfile', kind: 'mdm', party: 'person' }),
+    ownershipEntity({
+      entityId: 'PetCareStatus', kind: 'projection', fieldIds: ['petId'],
+      useRules: ['onlyOwnerCanViewPetCareStatus'],
+      derivation: { from: 'CustomerProfile', filter: '', aggregate: [{ fieldId: 'petId', op: 'groupKey', sourceField: 'customerProfileId' }] },
+    }),
+  ], [
+    ownershipRel({
+      relationshipId: 'statusIsForCustomer', fromEntity: 'PetCareStatus', toEntity: 'CustomerProfile',
+      kind: 'derived', fromFields: ['petId'], toFields: ['customerProfileId'],
+    }),
+  ]);
+  assert.deepEqual(ownerIssues(review), []);
+});
+
+test('E4 flags an ownership rule when no party entity is declared', () => {
+  const review = ownershipReview([
+    ownershipEntity({
+      entityId: 'Project', fieldIds: ['projectId', 'name', 'customerId'], useRules: ['customerCanViewOnlyOwnPets'],
+    }),
+  ], []);
+  const issues = ownerIssues(review);
+  assert.equal(issues.length, 1, JSON.stringify(issues));
+  assert.match(issues[0].message, /Project/);
+  assert.match(issues[0].message, /customerCanViewOnlyOwnPets/);
+  assert.match(issues[0].message, /no person or organization entity is declared/);
+});
+
+test('E4 does not count derived or externalReference as an ownership path', () => {
+  const derivedOnly = ownershipReview([
+    ownershipEntity({ entityId: 'CustomerProfile', kind: 'mdm', party: 'person' }),
+    ownershipEntity({ entityId: 'Pet', kind: 'mdm', fieldIds: ['petId', 'name'], useRules: ['customerCanViewOnlyOwnPets'] }),
+  ], [
+    ownershipRel({
+      relationshipId: 'petDerivedFromProfile', fromEntity: 'Pet', toEntity: 'CustomerProfile',
+      kind: 'derived', fromFields: ['petId'], toFields: ['customerProfileId'],
+    }),
+  ]);
+  assert.equal(ownerIssues(derivedOnly).length, 1, JSON.stringify(ownerIssues(derivedOnly)));
+
+  const externalOnly = ownershipReview([
+    ownershipEntity({ entityId: 'CustomerProfile', kind: 'mdm', party: 'person' }),
+    ownershipEntity({
+      entityId: 'Pet', fieldIds: ['petId', 'name'], useRules: ['customerCanViewOnlyOwnPets'],
+    }),
+  ], [
+    ownershipRel({
+      relationshipId: 'petExternalToProfile', fromEntity: 'Pet', toEntity: 'CustomerProfile',
+      kind: 'externalReference', fromFields: ['petId'], toFields: ['customerProfileId'],
+    }),
+  ]);
+  assert.equal(ownerIssues(externalOnly).length, 1, JSON.stringify(ownerIssues(externalOnly)));
+});
+
+test('E4 binding owner-relation exhaustion escalates typed entity feedback instead of failing', () => {
+  const review = ownershipReview([
+    ownershipEntity({ entityId: 'CustomerProfile', kind: 'mdm', party: 'person' }),
+    ownershipEntity({ entityId: 'Pet', kind: 'mdm', fieldIds: ['petId', 'name'], useRules: ['customerCanViewOnlyOwnPets'] }),
+  ], [
+    ownershipRel({
+      relationshipId: 'petBelongsToCustomerProfile', fromEntity: 'Pet', toEntity: 'CustomerProfile',
+      kind: 'derived', fromFields: ['petId'], toFields: ['customerProfileId'],
+    }),
+  ]);
+  const issues = ownerIssues(review);
+  const feedback = ns4E4BindingOwnerEscalation(review, issues, 0);
+  assert.deepEqual(feedback.map(item => item.entityId), ['Pet']);
+  assert.match(feedback[0].feedback, /mdmRelationship/);
+  assert.deepEqual(ns4E4BindingOwnerEscalation(review, issues, 1), []);
+  assert.deepEqual(ns4E4BindingOwnerEscalation(review, [{ code: 'NS4_E4_BINDING_MISSING', path: 'bindings', message: 'Missing.' }], 0), []);
+
+  const source = readFileSync(new URL('agentNs4E4.ts', import.meta.url), 'utf8');
+  assert.match(source, /ns4E4BindingOwnerEscalation/);
+  assert.match(source, /parallelEntityStep\(context, step, 'agentNewSolution', plan, entityRepairRound \+ 1, affected\)/);
+  assert.doesNotMatch(source, /\/todo\//);
 });
 
 test('E4 carries the party declaration into the entity artifact', async () => {
