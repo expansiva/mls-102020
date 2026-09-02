@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { getAuraEdit, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getContentByMlsPath } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import { pageDsCheckByDefs, restampPage, layoutHasRules, type PageDsCheck } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
@@ -59,6 +59,7 @@ const message_en = {
     editing: 'Editing…',
     editDone: 'Edit applied',
     editReview: 'Review change',
+    editSelected: 'selected on screen:',
     editPlanning: 'Analyzing…',
     editPlanTitle: 'Confirm the change',
     editPlanApply: 'Apply',
@@ -110,6 +111,7 @@ const messages: Record<string, MessageType> = {
         editing: 'Editando…',
         editDone: 'Edição aplicada',
         editReview: 'Revisar mudança',
+        editSelected: 'selecionado na tela:',
         editPlanning: 'Analisando…',
         editPlanTitle: 'Confirme a mudança',
         editPlanApply: 'Aplicar',
@@ -158,6 +160,7 @@ const messages: Record<string, MessageType> = {
         editing: 'Editando…',
         editDone: 'Edición aplicada',
         editReview: 'Revisar cambio',
+        editSelected: 'seleccionado en pantalla:',
         editPlanning: 'Analizando…',
         editPlanTitle: 'Confirme el cambio',
         editPlanApply: 'Aplicar',
@@ -634,6 +637,7 @@ export class PluginSelectPage extends StateLitElement {
         return html`
             <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
                 <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
+                ${this._renderSelectedElement()}
                 <textarea
                     rows="2"
                     class="${inputCls} resize-y"
@@ -706,6 +710,26 @@ export class PluginSelectPage extends StateLitElement {
                     >${this.msg.editPlanCancel}</button>
                 </div>
             </div>
+        `;
+    }
+
+    /**
+     * What the in-place editor has selected in the running app, when it has anything.
+     *
+     * The editor publishes it on `aura.edit.selection` (auraState) and this is the first thing to
+     * read it. Display only, on purpose: the request that reaches the agent is still exactly what the
+     * user typed. Feeding the selection INTO the prompt is a change to what the LLM sees, and it
+     * deserves its own decision — this line is what makes it obvious that the information is there.
+     */
+    private _renderSelectedElement() {
+        const selection = getAuraEdit().selection;
+        if (!selection) return nothing;
+        return html`
+            <span class="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1.5 min-w-0">
+                <span>${this.msg.editSelected}</span>
+                <code class="font-mono text-indigo-600 dark:text-indigo-400">&lt;${selection.tag}&gt;</code>
+                <span class="truncate opacity-70" title=${selection.literal}>${selection.literal}</span>
+            </span>
         `;
     }
 
