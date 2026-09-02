@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/plugins/helpers/headerPluginCore.ts" enhancement="_blank"/>
 
-// Pure core of the "Header" project plugin (pluginProjectHeader): reads what the project has, turns a
+// Pure core of the header editor (pluginHeaderEditor): reads what the project has, turns a
 // form into the agent's request, and computes the config/backup writes. No DOM and no mls calls, so
 // every rule here is testable in node — the widget stays a thin shell around it.
 //

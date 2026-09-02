@@ -1,16 +1,19 @@
-/// <mls fileReference="_102020_/l2/aura/plugins/pluginProjectHeader.ts" enhancement="_102027_/l2/enhancementLit" />
+/// <mls fileReference="_102020_/l2/aura/plugins/pluginHeaderEditor.ts" enhancement="_102027_/l2/enhancementLit" />
 
-// The header EDITOR of a project: opened by the Header knob of the l5 service (selectHeader), which
-// says WHICH header of the app is being edited (`profileName` + `variant`).
+// The header EDITOR of a project. It is opened by the Header knob (selectHeader) in the RIGHT-HAND
+// DETAILS panel (`openElementInServiceDetails`), pointed at one header of the app (`profileName` +
+// `variant`). It does not live in the knob column any more: that column is ~375px and this screen
+// carries a form, a brand and two bands.
 //
-// It is the UI for the two header agents, which until now were console-only. Sections:
-//   1. the header that is applied, rendered for real at band size;
-//   2. the brand mark: what is there, and three ways to change it (an .svg file, pasted markup, or
-//      agentGenerateLogo);
-//   3. the request, as ONE panel with tabs (Description | Actions | Navigation links) — each tab
-//      badged with what it holds, because a tab hides state and this state IS the request;
-//   4. generate -> PREVIEW -> apply / discard / go back to the previous one, in a pinned action bar
-//      (the draft band sits at the top of the request panel, so it stays put while tabs change).
+// It is the UI for the two header agents, which until now were console-only. Layout:
+//   * the bands on top, full width — a header is a wide thing: the applied one, and the draft when
+//     there is one (the draft is what Apply would write, so it reads before the form);
+//   * two columns below: the BRAND (mark + title + subtitle, written straight into the config) and
+//     the REQUEST as three badged groups (Description | Actions | Links);
+//   * a pinned action bar: generate -> PREVIEW -> apply / discard / go back to the previous one.
+//
+// `Definir como padrão` is NOT here: choosing which header the app boots is the knob's subject, and
+// two homes for one action is a bug generator (this screen has paid that three times).
 //
 // The locale and route selections are DATA (`props.locales` / `props.navLinks` on the profile), not
 // generated code: changing which links or languages a header offers is a config edit afterwards,
@@ -59,7 +62,6 @@ import {
   writeHeaderConfig,
 } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
 import {
-  activateHeaderProfile,
   applyBrandTexts,
   applyHeaderDraft,
   buildHeaderRequest,
@@ -126,10 +128,8 @@ const message_en = {
   apply: 'Apply',
   discard: 'Discard',
   revert: 'Back to the previous header',
-  setDefault: 'Set as default',
   isDefault: 'DEFAULT',
-  settingDefault: 'Setting…',
-  defaultNeedsPublish: 'This is now the default header. The app shows it after a publish.',
+  defaultName: 'default',
   save: 'Save',
   notes: 'Notes',
   invalid: 'Refused',
@@ -189,10 +189,8 @@ const messages: Record<string, MessageType> = {
     apply: 'Aplicar',
     discard: 'Descartar',
     revert: 'Voltar ao header anterior',
-    setDefault: 'Definir como padrão',
     isDefault: 'PADRÃO',
-    settingDefault: 'Definindo…',
-    defaultNeedsPublish: 'Este é o header padrão agora. O app mostra depois de publicar.',
+    defaultName: 'padrão',
     save: 'Salvar',
     notes: 'Notas',
     invalid: 'Recusado',
@@ -220,7 +218,8 @@ export const pluginData: mls.plugin.IPluginData = {
   },
 };
 
-type RequestTab = 'brief' | 'actions' | 'links';
+/** The three groups of the request. They were tabs while this screen lived in a 375px column. */
+type RequestGroup = 'brief' | 'actions' | 'links';
 
 const HEADER_ACTIONS = ['language', 'designSystem', 'modules', 'search', 'user'] as const;
 
@@ -263,10 +262,10 @@ const ICON = {
     </svg>`,
 } as const;
 /** The thread the agent tasks are opened in (same convention as the design-system plugin). */
-const THREAD_NAME = '_102020_/l2/aura/plugins/pluginProjectHeader';
+const THREAD_NAME = '_102020_/l2/aura/plugins/pluginHeaderEditor';
 
-@customElement('aura--plugins--plugin-project-header-102020')
-export class PluginProjectHeader extends PluginBaseModule {
+@customElement('aura--plugins--plugin-header-editor-102020')
+export class PluginHeaderEditor extends PluginBaseModule {
 
   @property({ type: Boolean }) autoPrepare = false;
   @property({ type: String }) msize = '';
@@ -299,7 +298,6 @@ export class PluginProjectHeader extends PluginBaseModule {
    */
   @state() private _appliedTag = '';
   @state() private _hasBackup = false;
-  @state() private _tab: RequestTab = 'brief';
   @state() private _markMode: 'none' | 'paste' | 'generate' = 'none';
   @state() private _markSvg = '';
   @state() private _markBrief = '';
@@ -351,7 +349,6 @@ export class PluginProjectHeader extends PluginBaseModule {
     this._markSvg = '';
     this._markBrief = '';
     this._notes = '';
-    this._tab = 'brief';
     // Empty the bands NOW: the reload is async, and until it lands the previous header's element
     // would still be sitting there, looking like the one just selected.
     for (const kind of ['applied', 'draft']) {
@@ -603,9 +600,6 @@ export class PluginProjectHeader extends PluginBaseModule {
       this._previewTag = preview.tag;
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
-      // Move to where the fix is: the reason lives on one tab, and it may be a hidden one.
-      const faulty = this._errorTab;
-      if (faulty) this._tab = faulty;
     } finally {
       this._busy = '';
     }
@@ -706,35 +700,6 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   // ── mark ──────────────────────────────────────────────────────────────────
-
-  /**
-   * Makes the header being edited the one the app boots (`activeProfile`).
-   *
-   * Only that key moves: the renderer, brand and props of every profile are already in place, which
-   * is the whole point of keeping several headers. The app only shows it after a publish, and the
-   * screen says so — otherwise "I set it and nothing changed" is the next question.
-   */
-  private async _setAsDefault(): Promise<void> {
-    const profileName = this._view?.profileName;
-    if (!profileName || this._view?.isActive) return;
-    this._error = '';
-    this._busy = this.msg.settingDefault;
-    try {
-      const config = await this._readClientConfig();
-      await this._writeClientConfig(activateHeaderProfile(config, profileName));
-      await this._reload();
-      this._warn = this.msg.defaultNeedsPublish;
-      this.dispatchEvent(new CustomEvent('header-activated', {
-        detail: { profileName },
-        bubbles: true,
-        composed: true,
-      }));
-    } catch (error) {
-      this._error = error instanceof Error ? error.message : String(error);
-    } finally {
-      this._busy = '';
-    }
-  }
 
   private async _saveMark(svgMarkup: string): Promise<void> {
     const errors = validateLogoSvg(svgMarkup);
@@ -986,12 +951,12 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   /**
-   * The tab an error belongs to, so the tab strip can point at it.
+   * The group an error belongs to, so its card can point at it.
    *
-   * The local gate rejects before the round trip, and its reason lives on ONE tab — with the message
-   * in the footer and the culprit hidden behind a tab, there is nothing to act on.
+   * The local gate rejects before the round trip and its reason lives in ONE group; with the message
+   * in the footer and nothing marked, there is nothing to act on.
    */
-  private get _errorTab(): RequestTab | undefined {
+  private get _errorGroup(): RequestGroup | undefined {
     if (!this._error) return undefined;
     if (/brand\.title|brief/iu.test(this._error)) return 'brief';
     if (/action/iu.test(this._error)) return 'actions';
@@ -1164,66 +1129,51 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   /**
-   * The request, as ONE panel with tabs instead of three stacked cards.
+   * The request, as three stacked groups.
    *
-   * Tabs hide state, and this state is what goes in the request — so every tab carries a badge with
-   * what it holds (a brief or not, how many actions, how many of the project's routes). Without it
-   * someone generates without ever opening "navigation links" and never notices.
+   * They were tabs while this screen lived in the ~375px knob column; here there is room, and a tab
+   * that hides a decision which goes into the request is a tab that costs a wrong generation. Each
+   * group keeps the badge the tab had (a brief or not, how many actions, how many of the routes), and
+   * the group an error belongs to is marked.
    */
-  private _renderRequest() {
-    const tabs: Array<{ id: RequestTab; label: string; badge: string }> = [
-      { id: 'brief', label: this.msg.tabBrief, badge: this._form.brief.trim() ? '✓' : '—' },
-      { id: 'actions', label: this.msg.actions, badge: String(this._form.actions.length) },
-      { id: 'links', label: this.msg.navLinks, badge: `${this._form.navLinks.length}/${this._routes.length}` },
-    ];
-    const faulty = this._errorTab;
+  private _renderGroups() {
+    const faulty = this._errorGroup;
+    const group = (id: RequestGroup, label: string, badge: string, body: unknown) => html`
+      <section class="rounded-lg border overflow-hidden
+        ${id === faulty
+          ? 'border-red-300 dark:border-red-900/70'
+          : 'border-gray-200 dark:border-gray-800'} bg-white dark:bg-gray-900/40">
+        <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+          <h3 class="text-xs font-semibold uppercase tracking-wider flex-1
+            ${id === faulty ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}">${label}</h3>
+          <span class="text-[10px] font-mono rounded px-1
+            ${id === faulty
+              ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+              : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}">${badge}</span>
+        </header>
+        <div class="p-3 flex flex-col gap-3">${body}</div>
+      </section>
+    `;
 
     return html`
-      <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
-        <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex-1">${this.msg.request}</h3>
-          ${this._previewTag
-            ? html`<span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${this._previewTag}</span>`
-            : nothing}
+      ${group('brief', this.msg.tabBrief, this._form.brief.trim() ? '✓' : '—', this._renderBriefPanel())}
+      ${group('actions', this.msg.actions, String(this._form.actions.length), this._renderActionList())}
+      ${group('links', this.msg.navLinks, `${this._form.navLinks.length}/${this._routes.length}`, this._renderRoutes())}
+    `;
+  }
+
+  /** The draft, at the top of the screen: it is what Apply would write, so it reads before the form. */
+  private _renderDraftBand() {
+    if (!this._previewTag) return nothing;
+    return html`
+      <section class="rounded-lg border border-indigo-300 dark:border-indigo-500/50 bg-indigo-50/40 dark:bg-indigo-500/5 overflow-hidden">
+        <header class="flex items-center gap-2 px-3 py-2 border-b border-indigo-200 dark:border-indigo-900/60">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex-1">${this.msg.draft}</h3>
+          <span class="text-[11px] font-mono text-indigo-400 dark:text-indigo-500/80">${this._previewTag}</span>
         </header>
-
-        ${this._previewTag ? html`
-          <div class="px-3 py-3 flex flex-col gap-2 border-b border-gray-200 dark:border-gray-800 bg-indigo-50/40 dark:bg-indigo-500/5">
-            <span class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">${this.msg.draft}</span>
-            ${this._renderBand('draft')}
-            ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
-          </div>
-        ` : nothing}
-
-        <div role="tablist" class="flex items-stretch gap-px px-3 pt-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
-          ${tabs.map((tab) => {
-            const active = this._tab === tab.id;
-            return html`
-              <button
-                type="button"
-                role="tab"
-                aria-selected=${String(active)}
-                class="flex items-center gap-1.5 rounded-t-md px-3 py-1.5 text-sm border border-b-0 -mb-px transition-colors
-                  ${active
-                    ? 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-medium'
-                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
-                @click=${() => { this._tab = tab.id; }}
-              >
-                <span class=${tab.id === faulty ? 'text-red-600 dark:text-red-400' : ''}>${tab.label}</span>
-                <span class="text-[10px] font-mono rounded px-1
-                  ${tab.id === faulty
-                    ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}">${tab.badge}</span>
-              </button>
-            `;
-          })}
-        </div>
-
-        <!-- One scroll here, not one per list: the panel is the scrolling area. -->
-        <div class="p-3 flex flex-col gap-3 max-h-96 overflow-y-auto">
-          ${this._tab === 'brief' ? this._renderBriefPanel() : nothing}
-          ${this._tab === 'actions' ? this._renderActionList() : nothing}
-          ${this._tab === 'links' ? this._renderRoutes() : nothing}
+        <div class="p-3 flex flex-col gap-2">
+          ${this._renderBand('draft')}
+          ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
         </div>
       </section>
     `;
@@ -1271,10 +1221,6 @@ export class PluginProjectHeader extends PluginBaseModule {
             ${this._busy || this.msg.generate}
           </button>
         `}
-        ${this._view && !this._view.isActive ? html`
-          <button type="button" class=${BUTTON} ?disabled=${!!this._busy}
-            @click=${() => void this._setAsDefault()}>${this.msg.setDefault}</button>
-        ` : nothing}
         ${this._hasBackup ? html`
           <button type="button" class="ml-auto text-sm underline text-gray-600 dark:text-gray-300" ?disabled=${!!this._busy}
             @click=${() => void this._revert()}>${this.msg.revert}</button>
@@ -1291,14 +1237,28 @@ export class PluginProjectHeader extends PluginBaseModule {
     }
     return html`
       <div class="flex flex-col gap-3 p-3 text-gray-800 dark:text-gray-100">
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <span class="w-5 h-5 text-gray-500 dark:text-gray-400">${pluginData.getSvg()}</span>
-          <h2 class="text-sm font-semibold flex-1">${this.msg.title}</h2>
-          <span class="text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
+          <h2 class="text-sm font-semibold">${this.msg.title}</h2>
+          <span class="text-sm text-gray-500 dark:text-gray-400">${this.variant || this.msg.defaultName}</span>
+          ${this._view?.isActive ? html`
+            <span class="text-[10px] font-semibold tracking-wider px-1.5 py-0.5 rounded
+              bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">${this.msg.isDefault}</span>
+          ` : nothing}
+          <span class="ml-auto text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
         </div>
+
+        <!-- A header is a wide thing: the bands take the full width, whatever it is. -->
         ${this._renderApplied()}
-        ${this._renderMark()}
-        ${this._renderRequest()}
+        ${this._renderDraftBand()}
+
+        <!-- Two columns where there is room, one where there is not: the brand is a small object and
+             the request is a tall form, so side by side they finally fit on one screen. -->
+        <div class="grid gap-3 lg:grid-cols-2 items-start">
+          <div class="flex flex-col gap-3">${this._renderMark()}</div>
+          <div class="flex flex-col gap-3">${this._renderGroups()}</div>
+        </div>
+
         ${this._renderActionBar()}
       </div>
     `;
