@@ -614,6 +614,44 @@ handleIcaStateChange(key: string, value: any) {
 
 To also react to a direct Lit binding (\`.is-editing=\${...}\`), combine with \`firstUpdated()\` + \`updated(changedProps)\` (see §11-B).
 
+### 11-C. HOW to write the propagation — two traps, both measured
+
+Propagating a boolean state to consumer components looks like one line and is not. Both traps below
+were measured on 2026-09-01 (\`ml-record-form-table\`), cost six agent runs, and are invisible from the
+molecule's own file. **Write the helper below instead of a bare \`setAttribute\` loop.**
+
+\`\`\`typescript
+/** Marks ONE consumer element. Both halves are load-bearing — see the two traps. */
+private marcar(el: Element, editing: boolean): void {
+  const valor = String(editing);
+  if (el.getAttribute('is-editing') === valor) return;   // trap 1
+  el.setAttribute('is-editing', valor);
+  (el as unknown as { requestUpdate?: () => void }).requestUpdate?.();   // trap 2
+}
+\`\`\`
+
+**Trap 1 — writing on every render is an infinite loop.** The base observes
+\`{ attributes: true, subtree: true }\` and schedules a re-render whenever a changed attribute sits
+INSIDE a slot tag. \`setAttribute\` produces a mutation record **even when the value is identical**,
+so marking on every cycle feeds the observer that causes the next cycle. It only shows up when a
+consumer component lives in a slot tag that is **not projected** — a \`<Detail>\` on a CLOSED row is
+exactly that; cells escape it because projection moves them out of the slot tag. **Guard on equality
+and the loop cannot start.**
+
+**Trap 2 — changing the VALUE of a boolean attribute does not re-render the consumer.** Lit's Boolean
+converter is \`v => v !== null\`, so \`"false"\` and \`"true"\` both reach the setter as the same
+\`true\`; \`requestUpdate(prop, oldValue)\` sees \`true → true\` and cancels the render. What tells the
+two strings apart is \`@propertyDataSource\`'s getter (\`"false"\` → \`false\`), and a getter is only
+consulted when a render happens. So the DOM ends up correct and the screen does not move — measured:
+\`is-editing="true"\` on all five fields, all five still read-only. Only presence changes
+(absent ↔ present) re-render on their own, which is why the first mark after mount appears to work.
+
+> ⚠️ **Never "fix" this with \`toggleAttribute\`.** Removing the attribute does flip presence, so it
+> looks like it works — but an ABSENT attribute is not \`false\` here: the getter falls back to
+> \`_prop\`, which the consumer's own field initializer already set. \`ml-enter-text\` defaults to
+> \`isEditing = true\`, so removing the attribute puts the field into EDIT mode. Write the string
+> explicitly, always.
+
 ### When to Use
 
 Use \`handleIcaStateChange\` when your molecule has:
@@ -1150,4 +1188,5 @@ The contract defines:
 | 2.8.0 | 06/15/2026 | §5/§11: documented \`@propertyDataSource\` as a two-way binding; anti-loop rule (no reassigning inside \`handleIcaStateChange\`); propagation-only pattern for children |
 | 2.9.0 | 06/15/2026 | §4: explicit imports + symbol→module table (\`state\`, \`unsafeHTML\`); fixed wrong \`unsafeHTML\` import in §13; added correct import in §8 and §14 skeleton; import-completeness checklist item; removed invalid \`@@state\`/\`@state({ type })\` block |
 | 2.10.0 | 07/17/2026 | Native event containment: \`change\`/\`input\` from internal \`<input>\`/\`<textarea>\`/\`<select>\` must call \`e.stopPropagation()\` (no Shadow DOM — they leak through the molecule tag). New §2 principle, containment block in §14 EVENT HANDLERS, fixed §11 enter-money example, §11-B checklist item |
+| 2.11.0 | 09/01/2026 | New §11-C: HOW to write the propagation to consumers, with the \`marcar()\` helper. Two traps measured on \`ml-record-form-table\`, both invisible from the molecule's own file: (1) marking on every render feeds the base's attribute MutationObserver and loops forever — guard on equality; (2) changing a boolean attribute's VALUE does not re-render the consumer (Lit's converter maps both strings to \`true\`), so an explicit \`requestUpdate()\` is required; and \`toggleAttribute\` is NOT the fix, since an absent attribute falls back to the consumer's own default (\`ml-enter-text\` defaults to editing) |
 `
