@@ -110,6 +110,17 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 priority: 10,
                 auth: ['*'],
                 widget: '_102020_serviceCollabMessages'
+            },
+            {
+                // NOT a panel: a module that plugs into the running app's edit slot (studioEditSlot,
+                // in the master frontend) and brings the in-place editor with it. Declared here so
+                // that 102033 never has to name this project — it asks the plugins what exists, the
+                // same way it does for services. See TASK-102033-studio-to-102020.
+                category: 'StudioTools',
+                scope: ['studioTools'],
+                priority: 1,
+                auth: ['*'],
+                widget: '_102020_/l2/aura/studio/studioEditTool'
             }
         ];
     }

@@ -10,6 +10,43 @@ export interface IAuraPage {
     extension: string;
 }
 
+/** The element the user has selected in the running app, as DATA. */
+export interface IAuraEditSelection {
+    tag: string;
+    /** File that would receive an edit; null while it could not be resolved. */
+    file: { project: number; shortName: string; folder: string } | null;
+    /** The element's class attribute, exactly as authored. */
+    literal: string;
+    editable: boolean;
+    /** Why it cannot be edited, already translated. */
+    refusal?: string;
+}
+
+/**
+ * What the in-place editor is doing, for whoever wants to act on it.
+ *
+ * A PROJECTION, not the editor's state: only the editor writes it, and only it can act on a step —
+ * applying one needs the Monaco models, the anchors and the write path. What everyone else wants is
+ * the three answers here.
+ *
+ * Everything is plain data on purpose. `setState` keeps every value it is given in a 10.000-entry
+ * log, so an element, a WeakRef or a model parked here would be pinned for the rest of the session —
+ * which would also defeat the WeakRef the undo stack uses precisely to avoid holding dead DOM.
+ */
+export interface IAuraEdit {
+    selection: IAuraEditSelection | null;
+    /** How deep the undo stack is, and what the next step in each direction would be (translated). */
+    history: { undo: number; redo: number; nextUndo: string; nextRedo: string };
+    /** Files with a local edit — "there is something to save", not "it is saved". */
+    dirty: string[];
+}
+
+export const EMPTY_AURA_EDIT: IAuraEdit = {
+    selection: null,
+    history: { undo: 0, redo: 0, nextUndo: '', nextRedo: '' },
+    dirty: [],
+};
+
 export interface IAuraState {
     actualProject: number | null;
     actualModule: string | null;
@@ -31,6 +68,16 @@ export interface IAuraState {
      */
     actualHeader: string | null;
     actualPage: IAuraPage | null;
+    /**
+     * The in-place editor's projection — a SIBLING of actualPage, deliberately not inside it.
+     *
+     * Three reasons, all properties of `actualPage` and none of them about the editor: it is
+     * persisted per project (an editing session must not survive a reload), switching module resets
+     * it to null (the selection would vanish through a mechanism nobody reads in the editor), and
+     * writing a nested field replaces the whole object — which would wake servicePreview,
+     * serviceGenome and selectPage on every click of the picker.
+     */
+    edit: IAuraEdit;
 }
 
 const STATE_KEY = 'aura';
@@ -109,6 +156,8 @@ export function AuraInitState(): void {
         // Read from l5/config.json by the Header knob; there is nothing to seed it from here.
         actualHeader: null,
         actualPage: getActualPage(),
+        // Nothing to seed: it is the running editor that fills this, and it starts empty.
+        edit: { ...EMPTY_AURA_EDIT },
     } satisfies IAuraState);
 }
 
@@ -183,6 +232,7 @@ export function setAuraStateFromPageSource(project: number, source: string): IAu
             actualDesignSystem: parsed.designSystem,
             actualHeader: null,
             actualPage: parsed.actualPage,
+            edit: { ...EMPTY_AURA_EDIT },
         } satisfies IAuraState);
     }
 
@@ -209,6 +259,49 @@ export function setAuraState<K extends keyof IAuraState>(key: K, value: IAuraSta
         // they carry still lands after this reset.
         if (previousModule !== (value as string | null)) setState(`${STATE_KEY}.actualPage`, null);
     }
+}
+
+// ─── The in-place editor's projection ─────────────────────────────────
+//
+// Written ONLY by the editor (mls-102020/l2/aura/studio/studioEditor.ts). Anyone else reads.
+//
+// Each setter writes its own leaf so the notification is precise: a change of selection wakes whoever
+// asked for `aura.edit.selection` and nobody else. Writing the `edit` object whole would wake all
+// three, which on a click-by-click signal is the difference between a subscription and a firehose.
+
+/**
+ * The state may not exist yet when the editor starts.
+ *
+ * `AuraInitState` is called by the SERVICES, and in the client app the editor can arm before any of
+ * them ran. It is NOT enough to call initState again: on an existing key it REPLACES the object,
+ * which would wipe the project/module/page that are already there.
+ */
+function ensureEditState(): void {
+    if (!getAuraState()) AuraInitState();
+    if (!getAuraState()?.edit) setState(`${STATE_KEY}.edit`, { ...EMPTY_AURA_EDIT });
+}
+
+export function setEditSelection(selection: IAuraEditSelection | null): void {
+    ensureEditState();
+    setState(`${STATE_KEY}.edit.selection`, selection);
+}
+
+export function setEditHistory(history: IAuraEdit['history']): void {
+    ensureEditState();
+    setState(`${STATE_KEY}.edit.history`, history);
+}
+
+/** Adds a file to the dirty list. Idempotent: the same file edited twice is still one entry. */
+export function addEditDirty(file: string): void {
+    ensureEditState();
+    const dirty = getAuraState()?.edit?.dirty ?? [];
+    if (dirty.includes(file)) return;
+    setState(`${STATE_KEY}.edit.dirty`, [...dirty, file]);
+}
+
+/** What the editor is on right now, for a consumer that reads instead of subscribing. */
+export function getAuraEdit(): IAuraEdit {
+    return getAuraState()?.edit ?? EMPTY_AURA_EDIT;
 }
 
 // ─── nav-3 menu titles ────────────────────────────────────────────────
@@ -266,7 +359,9 @@ const LS_KEY = 'AuraProjects';
 
 // actualHeader is deliberately out: it mirrors l5/config.json, so persisting it would mean
 // restoring a header that the config may no longer point at.
-type IAuraProjectEntry = Omit<IAuraState, 'actualProject' | 'actualHeader'>;
+// `edit` is out for a stronger reason: it is a live projection of an editing SESSION. Restoring a
+// selection into a page that may not even be mounted would hand every consumer a ghost.
+type IAuraProjectEntry = Omit<IAuraState, 'actualProject' | 'actualHeader' | 'edit'>;
 type AuraProjectsStore = Record<number, IAuraProjectEntry>;
 
 function readStore(): AuraProjectsStore {
