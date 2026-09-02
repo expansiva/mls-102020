@@ -3015,3 +3015,78 @@ export function applyTypedValue(
   const clamped = Math.min(spec.max, Math.max(spec.min, value));
   return replaceUtility(literal, token.raw, composeUtility(token, `[${clamped}${spec.unit}]`), token.index);
 }
+
+// --- Pointing at what the mouse cannot reach (TASK-102020-select-inert-elements) ---
+//
+// A disabled form control does not just ignore a click: the spec has the browser PREVENT the click
+// from being dispatched on the element, and since the element is what the hit test picked, the event
+// never exists — it does not propagate, and a capture listener on an ancestor sees nothing either.
+// Measured in the 102046 module: 31 buttons across 23 files can be disabled with the page sitting
+// idle, so roughly a quarter of the screens had an element the editor simply could not point at.
+//
+// The way in is `pointer-events: none` on those controls while the editor is armed, which lets the
+// click land on the ancestor. That alone would make clicking a button select its whole `<section>` —
+// wrong, and silently so. This is the other half: from the element that DID receive the event, walk
+// down to the deepest one whose box contains the pointer.
+//
+// It cannot be `document.elementFromPoint`: that respects `pointer-events: none` and would hand back
+// the very ancestor we are trying to see through. Geometry is the only thing that goes past it.
+//
+// Generic over the accessors on purpose: the rule is then verifiable against a tree of plain objects,
+// with no browser — the same way the structural anchoring was.
+
+export interface IPoint {
+  x: number;
+  y: number;
+}
+
+export interface IHitRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+export interface IHitTree<T> {
+  children: (node: T) => T[];
+  /** Null when the node has no box at all (never rendered). */
+  rect: (node: T) => IHitRect | null;
+  /** Nodes to walk past — the editor's own chrome. */
+  skip?: (node: T) => boolean;
+}
+
+/** Whether the point is inside the box, edges included. */
+export function containsPoint(rect: IHitRect, point: IPoint): boolean {
+  return point.x >= rect.left && point.x <= rect.right
+    && point.y >= rect.top && point.y <= rect.bottom;
+}
+
+/**
+ * The deepest descendant of `root` whose box contains the point — `root` itself when none does.
+ *
+ * Two rules that are not arbitrary:
+ *
+ * - a box with no AREA does not count. A wrapper of zero height still reports a position, and taking
+ *   it would select something the user cannot see, let alone click.
+ * - among siblings that both contain the point, the LAST one wins. Overlapping siblings are painted
+ *   in document order, so the last is the one under the pointer — and it is what the user thinks
+ *   they clicked.
+ */
+export function deepestAt<T>(root: T, point: IPoint, tree: IHitTree<T>): T {
+  let best = root;
+
+  const visit = (node: T): void => {
+    for (const child of tree.children(node)) {
+      if (tree.skip?.(child)) continue;
+      const rect = tree.rect(child);
+      if (!rect) continue;
+      if (rect.right <= rect.left || rect.bottom <= rect.top) continue;
+      if (!containsPoint(rect, point)) continue;
+      best = child;
+      visit(child);
+    }
+  };
+
+  visit(root);
+  return best;
+}

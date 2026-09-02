@@ -245,3 +245,45 @@ test('a step carries BOTH directions, because they are not the same anchor', () 
   // The count comes from the write itself, not from a guess.
   assert.ok(EDITOR.includes('findClassAttrs(newSource, to).findIndex'));
 });
+
+test('the pointer target is resolved by geometry, and the same way for hover and click', () => {
+  // The bug: a disabled control has its click PREVENTED — the event never exists, not for the
+  // element and not for its ancestors — so the armed stylesheet makes it transparent to hit-testing
+  // and the click lands on an ancestor. Walking down by geometry is what turns that back into the
+  // button the user clicked.
+  const code = codeLines(EDITOR);
+
+  const inside = (name: string, end = '\n  }'): string => {
+    const start = EDITOR.indexOf(name);
+    assert.notEqual(start, -1, name);
+    return EDITOR.slice(start, EDITOR.indexOf(end, start));
+  };
+
+  assert.ok(inside('private resolvePointerTarget').includes('deepestAt('), 'geometry, not the target');
+  // NEVER elementFromPoint: it respects the very `pointer-events: none` we put there and would hand
+  // back the ancestor we are trying to see through.
+  assert.equal(code.some((line) => line.includes('elementFromPoint')), false);
+
+  // Both paths, or the outline points at one element and the click selects another.
+  assert.ok(inside('private onHostClick', '\n  };').includes('this.resolvePointerTarget(e, target)'), 'click');
+  const hover = inside('private onHostMouseMove', '\n  };');
+  assert.ok(hover.includes('this.resolvePointerTarget(e, target)'), 'hover');
+  // And the hover cache has to compare the RESOLVED element: the pointer can cross a disabled button
+  // without `e.target` ever changing.
+  assert.ok(hover.includes('hovered === this.lastHoveredEl'), 'the cache compares what was resolved');
+  assert.equal(hover.includes('target === this.lastHoveredEl'), false);
+});
+
+test('the two pointer-events rules live in the stylesheet the editor removes', () => {
+  const styles = EDITOR.slice(EDITOR.indexOf('private injectStyles'), EDITOR.indexOf('private drawSelection'));
+
+  // Scoped to the shell: the editor's own chrome sits on the body, outside it, so the panel's
+  // disabled chips keep behaving like buttons.
+  assert.match(styles, /collab-aura-shell :disabled \{ pointer-events: none; \}/u);
+  // The toast sits over the app's bottom strip and used to swallow clicks there while it was up.
+  assert.match(styles, /\.se-status \{[\s\S]*?pointer-events: none/u);
+
+  // Both are in THIS stylesheet, and this stylesheet goes away when the editor disarms — the client
+  // page must not keep an editor rule after that.
+  assert.ok(codeLines(EDITOR).some((line) => line.includes('document.getElementById(STYLE_ID)?.remove()')));
+});

@@ -47,6 +47,7 @@ import {
   splitUtilities,
   utilityLabel,
   utilityOptions,
+  type IHitTree,
   STYLE_CATEGORIES,
   addableProperties,
   addableProperty,
@@ -54,6 +55,8 @@ import {
   diffLiterals,
   newRoleOptions,
   classAttrSpan,
+  containsPoint,
+  deepestAt,
   readTypedValue,
   typedValueSpec,
   pasteCategories,
@@ -1780,4 +1783,105 @@ test('the insertion point survives an open tag that already has other attributes
   const written = `${source.slice(0, button.insertAt)} class="p-4"${source.slice(button.insertAt)}`;
   assert.match(written, /<button class="p-4" type="button"/u);
   assert.equal(scanTemplateElements(written).find((element) => element.tag === 'button')?.literal, 'p-4');
+});
+
+// --- Pointing at what the mouse cannot reach ---
+
+interface Box {
+  name: string;
+  rect: { left: number; top: number; right: number; bottom: number } | null;
+  kids?: Box[];
+  chrome?: boolean;
+}
+
+/** The tree the editor walks, as plain objects: no DOM, and the rule is the same one. */
+const TREE: IHitTree<Box> = {
+  children: (node) => node.kids ?? [],
+  rect: (node) => node.rect,
+  skip: (node) => Boolean(node.chrome),
+};
+
+const box = (name: string, left: number, top: number, right: number, bottom: number, kids?: Box[]): Box =>
+  ({ name, rect: { left, top, right, bottom }, kids });
+
+/** The shape of the bug: a section with a small disabled button inside it. */
+const SECTION = box('section', 0, 0, 400, 200, [
+  box('h2', 8, 8, 392, 40),
+  box('p', 8, 48, 392, 80),
+  box('button', 8, 90, 120, 130),
+]);
+
+test('the click that lands on the ancestor comes back as the button', () => {
+  // The whole point. A disabled button never dispatches, so the event arrives on the section — and
+  // selecting the section would be silently wrong.
+  assert.equal(deepestAt(SECTION, { x: 60, y: 110 }, TREE).name, 'button');
+  assert.equal(deepestAt(SECTION, { x: 200, y: 20 }, TREE).name, 'h2');
+  assert.equal(deepestAt(SECTION, { x: 200, y: 160 }, TREE).name, 'section', 'no child there');
+});
+
+test('a box with no area is not what the pointer is on', () => {
+  // A wrapper of zero height still reports a position. Taking it would select something the user
+  // cannot see, let alone click.
+  const withEmptyWrapper: Box = {
+    name: 'root',
+    rect: { left: 0, top: 0, right: 100, bottom: 100 },
+    kids: [
+      { name: 'collapsed', rect: { left: 0, top: 50, right: 100, bottom: 50 } },
+      { name: 'zeroWidth', rect: { left: 50, top: 0, right: 50, bottom: 100 } },
+      box('real', 40, 40, 60, 60),
+    ],
+  };
+  assert.equal(deepestAt(withEmptyWrapper, { x: 50, y: 50 }, TREE).name, 'real');
+});
+
+test('a node that was never rendered has no box and is skipped', () => {
+  const tree: Box = {
+    name: 'root',
+    rect: { left: 0, top: 0, right: 100, bottom: 100 },
+    kids: [{ name: 'ghost', rect: null, kids: [box('inside', 10, 10, 90, 90)] }],
+  };
+  // The ghost is skipped, and so is everything under it: with no box of its own there is no evidence
+  // the pointer is anywhere near its children.
+  assert.equal(deepestAt(tree, { x: 50, y: 50 }, TREE).name, 'root');
+});
+
+test('between siblings that overlap, the last one wins', () => {
+  // They are painted in document order, so the last is the one under the pointer — and the one the
+  // user believes they clicked.
+  const overlap: Box = {
+    name: 'root',
+    rect: { left: 0, top: 0, right: 100, bottom: 100 },
+    kids: [box('under', 0, 0, 80, 80), box('over', 20, 20, 100, 100)],
+  };
+  assert.equal(deepestAt(overlap, { x: 50, y: 50 }, TREE).name, 'over');
+  assert.equal(deepestAt(overlap, { x: 10, y: 10 }, TREE).name, 'under', 'where only the first is');
+});
+
+test("the editor's own chrome is walked past, children and all", () => {
+  const withChrome: Box = {
+    name: 'root',
+    rect: { left: 0, top: 0, right: 100, bottom: 100 },
+    kids: [
+      { name: 'panel', chrome: true, rect: { left: 0, top: 0, right: 100, bottom: 100 }, kids: [box('chip', 10, 10, 30, 30)] },
+      box('appContent', 40, 40, 60, 60),
+    ],
+  };
+  assert.equal(deepestAt(withChrome, { x: 20, y: 20 }, TREE).name, 'root', 'not the chip');
+  assert.equal(deepestAt(withChrome, { x: 50, y: 50 }, TREE).name, 'appContent');
+});
+
+test('the edges of a box count as inside it', () => {
+  // A one-pixel-off rule shows up as "the outline flickers at the border", which is the kind of bug
+  // nobody reports precisely.
+  assert.equal(deepestAt(SECTION, { x: 8, y: 90 }, TREE).name, 'button', 'top-left corner');
+  assert.equal(deepestAt(SECTION, { x: 120, y: 130 }, TREE).name, 'button', 'bottom-right corner');
+  assert.equal(containsPoint({ left: 0, top: 0, right: 10, bottom: 10 }, { x: 10, y: 10 }), true);
+  assert.equal(containsPoint({ left: 0, top: 0, right: 10, bottom: 10 }, { x: 11, y: 5 }), false);
+});
+
+test('depth wins over breadth: the deepest containing node is the answer', () => {
+  const deep = box('a', 0, 0, 100, 100, [box('b', 10, 10, 90, 90, [box('c', 20, 20, 80, 80, [box('d', 30, 30, 70, 70)])])]);
+  assert.equal(deepestAt(deep, { x: 50, y: 50 }, TREE).name, 'd');
+  assert.equal(deepestAt(deep, { x: 25, y: 25 }, TREE).name, 'c');
+  assert.equal(deepestAt(deep, { x: 5, y: 5 }, TREE).name, 'a');
 });

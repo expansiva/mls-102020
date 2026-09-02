@@ -58,6 +58,7 @@ import {
   applyAnimationOption,
   NOT_LOCATED,
   classAttrSpan,
+  deepestAt,
   editScope,
   describeMissingLiteral,
   findClassAttrs,
@@ -492,12 +493,21 @@ export class StudioEditor {
     if (this.currentMode() === 'text') return;
 
     const target = e.target as HTMLElement | null;
-    if (!target || this.isControl(target) || target === this.host) return;
+    if (!target || this.isControl(target)) return;
+
+    // What the pointer is really on, which is not always what got the event: a disabled control
+    // never dispatches, so the click arrives on an ancestor (see resolvePointerTarget).
+    //
+    // The host itself is checked AFTER resolving, not before: when everything between the host and
+    // the element is transparent to hit-testing (a disabled `fieldset` around the page), the event
+    // lands on the host, and refusing it there would leave that whole subtree unreachable. Still the
+    // host after the descent means the pointer really is on empty region, and that selects nothing.
+    const pointerTarget = this.resolvePointerTarget(e, target);
+    if (pointerTarget === this.host) return;
 
     // A new click means the user moved on from whatever the last message said.
     this.statusText = '';
-
-    const selectableEl = this.resolveSelectableElement(target);
+    const selectableEl = this.resolveSelectableElement(pointerTarget);
     this.selectedEl = selectableEl;
     // Forget the hover cache: the mousemove handler skips redraws while the pointer stays on the
     // same element, so without this the hover outline would not come back over the element just
@@ -511,7 +521,7 @@ export class StudioEditor {
     // the text path below does not wait for it.
     void this.showClassPanel(selectableEl);
 
-    const textResult = this.findClickedTextNode(e, target);
+    const textResult = this.findClickedTextNode(e, pointerTarget);
     if (!textResult) return;
 
     // Preferred path: the i18n key emitted by the t() helper (data-i18n-key) — deterministic, no
@@ -539,15 +549,40 @@ export class StudioEditor {
     if (this.currentMode() === 'off') return;
 
     const target = e.target as HTMLElement | null;
-    if (!target || target === this.lastHoveredEl) return;
-    if (this.isControl(target) || target === this.host) return;
-    // The span being edited already has its own outline; a hover box on top just fights it.
-    if (this.editSpan && (target === this.editSpan || this.editSpan.contains(target))) return;
+    if (!target || this.isControl(target)) return;
 
-    this.lastHoveredEl = target;
-    if (this.mode === 'inspect') this.drawBoxModel(target);
-    else this.drawHover(target);
+    // Resolved FIRST, and the cache compares the resolved element: the pointer can move across a
+    // disabled button without `e.target` ever changing, and comparing the raw target would keep the
+    // outline on the ancestor. It also has to be the same resolution the click uses, or the outline
+    // points at one element and the click selects another.
+    const hovered = this.resolvePointerTarget(e, target);
+    if (hovered === this.host || hovered === this.lastHoveredEl) return;
+    // The span being edited already has its own outline; a hover box on top just fights it.
+    if (this.editSpan && (hovered === this.editSpan || this.editSpan.contains(hovered))) return;
+
+    this.lastHoveredEl = hovered;
+    if (this.mode === 'inspect') this.drawBoxModel(hovered);
+    else this.drawHover(hovered);
   };
+
+  /**
+   * The element the pointer is really over, disabled controls included.
+   *
+   * `e.target` is what the browser could dispatch to, and that is not always what the user is
+   * pointing at: a disabled form control has its click PREVENTED (the event never exists, not even
+   * for the ancestors), so the armed stylesheet makes those transparent to hit-testing and the event
+   * lands on an ancestor. Walking down by geometry is what turns that ancestor back into the button
+   * the user actually clicked — `document.elementFromPoint` cannot, because it respects the very
+   * `pointer-events: none` we put there.
+   */
+  private resolvePointerTarget(e: MouseEvent, target: HTMLElement): HTMLElement {
+    return deepestAt(target, { x: e.clientX, y: e.clientY }, {
+      children: (el) => Array.from(el.children) as HTMLElement[],
+      rect: (el) => el.getBoundingClientRect(),
+      // Our own chrome, and the span of a text edit in flight (it replaces the node being edited).
+      skip: (el) => el.classList.contains(CONTROL_CLASS) || el === this.editSpan,
+    });
+  }
 
   private onHostMouseLeave = (): void => {
     if (this.currentMode() === 'off') return;
@@ -1734,6 +1769,16 @@ export class StudioEditor {
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
+      /* A disabled control kills the click for ITSELF AND for every ancestor (the spec has the
+         browser prevent the dispatch, so the event never exists) — which left every disabled button
+         unselectable. Transparent to hit-testing, the click lands on an ancestor and
+         resolvePointerTarget walks back down to the button by geometry.
+
+         Scoped to the shell: the editor's own chrome lives on the body, outside it, so the panel's
+         disabled chips keep behaving like buttons. And the rule lives in THIS stylesheet, which the
+         editor removes on detach — the client page must not keep it after disarming. */
+      collab-aura-shell :disabled { pointer-events: none; }
+
       .se-overlay {
         position: fixed; top: 0; left: 0;
         width: 100%; height: 100%;
@@ -1763,6 +1808,9 @@ export class StudioEditor {
          app-wide notification — but positioned against the VIEWPORT, or a scrolling page would leave
          it at the bottom of the content (see positionChrome). */
       .se-status {
+        /* It sits over the app's own bottom strip: without this it swallowed clicks there for the
+           five seconds it is up. The marking layer has had it from the start; this one had not. */
+        pointer-events: none;
         position: fixed; bottom: 12px; left: 50%;
         transform: translateX(-50%);
         z-index: 99991;
