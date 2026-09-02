@@ -5,12 +5,13 @@
 // `variant`). It does not live in the knob column any more: that column is ~375px and this screen
 // carries a form, a brand and two bands.
 //
-// It is the UI for the two header agents, which until now were console-only. Layout:
-//   * the bands on top, full width — a header is a wide thing: the applied one, and the draft when
-//     there is one (the draft is what Apply would write, so it reads before the form);
-//   * two columns below: the BRAND (mark + title + subtitle, written straight into the config) and
-//     the REQUEST as three badged groups (Description | Actions | Links);
-//   * a pinned action bar: generate -> PREVIEW -> apply / discard / go back to the previous one.
+// It is the UI for the two header agents, which until now were console-only. Three sections stacked
+// at full width, in the order the work happens:
+//   1. HEADER — the applied header, rendered for real at band size;
+//   2. BRAND — mark + title + subtitle, written straight into the config (no model involved);
+//   3. GENERATE — the draft it produced and the request in tabs (Description | Actions | Links),
+//      each tab badged with what it holds;
+// plus a pinned action bar: generate -> PREVIEW -> apply / discard / go back to the previous one.
 //
 // `Definir como padrão` is NOT here: choosing which header the app boots is the knob's subject, and
 // two homes for one action is a bug generator (this screen has paid that three times).
@@ -96,7 +97,7 @@ const message_en = {
   markPaste: 'Paste SVG markup',
   markGenerate: 'Generate with AI',
   markBrief: 'What should the mark evoke?',
-  request: 'Changes',
+  request: 'Generate header',
   brief: 'What the header should look like',
   brandTitle: 'Brand title',
   brandSubtitle: 'Subtitle',
@@ -159,7 +160,7 @@ const messages: Record<string, MessageType> = {
     markPaste: 'Colar markup SVG',
     markGenerate: 'Gerar com IA',
     markBrief: 'O que a marca deve evocar?',
-    request: 'Alterações',
+    request: 'Gerar header',
     brief: 'Como o header deve ser',
     brandTitle: 'Título da marca',
     brandSubtitle: 'Subtítulo',
@@ -218,8 +219,7 @@ export const pluginData: mls.plugin.IPluginData = {
   },
 };
 
-/** The three groups of the request. They were tabs while this screen lived in a 375px column. */
-type RequestGroup = 'brief' | 'actions' | 'links';
+type RequestTab = 'brief' | 'actions' | 'links';
 
 const HEADER_ACTIONS = ['language', 'designSystem', 'modules', 'search', 'user'] as const;
 
@@ -298,6 +298,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
    */
   @state() private _appliedTag = '';
   @state() private _hasBackup = false;
+  @state() private _tab: RequestTab = 'brief';
   @state() private _markMode: 'none' | 'paste' | 'generate' = 'none';
   @state() private _markSvg = '';
   @state() private _markBrief = '';
@@ -349,6 +350,7 @@ export class PluginHeaderEditor extends PluginBaseModule {
     this._markSvg = '';
     this._markBrief = '';
     this._notes = '';
+    this._tab = 'brief';
     // Empty the bands NOW: the reload is async, and until it lands the previous header's element
     // would still be sitting there, looking like the one just selected.
     for (const kind of ['applied', 'draft']) {
@@ -600,6 +602,9 @@ export class PluginHeaderEditor extends PluginBaseModule {
       this._previewTag = preview.tag;
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
+      // Move to where the fix is: the reason lives on one tab, and it may be a hidden one.
+      const faulty = this._errorTab;
+      if (faulty) this._tab = faulty;
     } finally {
       this._busy = '';
     }
@@ -951,12 +956,12 @@ export class PluginHeaderEditor extends PluginBaseModule {
   }
 
   /**
-   * The group an error belongs to, so its card can point at it.
+   * The tab an error belongs to, so the tab strip can point at it.
    *
-   * The local gate rejects before the round trip and its reason lives in ONE group; with the message
-   * in the footer and nothing marked, there is nothing to act on.
+   * The local gate rejects before the round trip and its reason lives on ONE tab; with the message in
+   * the footer and the culprit hidden behind a tab, there is nothing to act on.
    */
-  private get _errorGroup(): RequestGroup | undefined {
+  private get _errorTab(): RequestTab | undefined {
     if (!this._error) return undefined;
     if (/brand\.title|brief/iu.test(this._error)) return 'brief';
     if (/action/iu.test(this._error)) return 'actions';
@@ -1129,51 +1134,69 @@ export class PluginHeaderEditor extends PluginBaseModule {
   }
 
   /**
-   * The request, as three stacked groups.
+   * The generation section: the draft it produced, and the request in three tabs.
    *
-   * They were tabs while this screen lived in the ~375px knob column; here there is room, and a tab
-   * that hides a decision which goes into the request is a tab that costs a wrong generation. Each
-   * group keeps the badge the tab had (a brief or not, how many actions, how many of the routes), and
-   * the group an error belongs to is marked.
+   * Full width, stacked under Header and Brand — the two-column try put a short card (Brand) beside a
+   * tall one, which left half the panel empty and made the tall side read as a separate page.
+   *
+   * Tabs hide state and this state IS the request, so each tab carries a badge with what it holds (a
+   * brief or not, how many actions, how many of the project's routes) and the tab an error belongs to
+   * is marked — otherwise someone generates without ever opening Links and never notices.
    */
-  private _renderGroups() {
-    const faulty = this._errorGroup;
-    const group = (id: RequestGroup, label: string, badge: string, body: unknown) => html`
-      <section class="rounded-lg border overflow-hidden
-        ${id === faulty
-          ? 'border-red-300 dark:border-red-900/70'
-          : 'border-gray-200 dark:border-gray-800'} bg-white dark:bg-gray-900/40">
+  private _renderRequest() {
+    const tabs: Array<{ id: RequestTab; label: string; badge: string }> = [
+      { id: 'brief', label: this.msg.tabBrief, badge: this._form.brief.trim() ? '✓' : '—' },
+      { id: 'actions', label: this.msg.actions, badge: String(this._form.actions.length) },
+      { id: 'links', label: this.msg.navLinks, badge: `${this._form.navLinks.length}/${this._routes.length}` },
+    ];
+    const faulty = this._errorTab;
+
+    return html`
+      <section class="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 overflow-hidden">
         <header class="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
-          <h3 class="text-xs font-semibold uppercase tracking-wider flex-1
-            ${id === faulty ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'}">${label}</h3>
-          <span class="text-[10px] font-mono rounded px-1
-            ${id === faulty
-              ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
-              : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}">${badge}</span>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex-1">${this.msg.request}</h3>
+          ${this._previewTag
+            ? html`<span class="text-[11px] font-mono text-gray-400 dark:text-gray-500">${this._previewTag}</span>`
+            : nothing}
         </header>
-        <div class="p-3 flex flex-col gap-3">${body}</div>
-      </section>
-    `;
 
-    return html`
-      ${group('brief', this.msg.tabBrief, this._form.brief.trim() ? '✓' : '—', this._renderBriefPanel())}
-      ${group('actions', this.msg.actions, String(this._form.actions.length), this._renderActionList())}
-      ${group('links', this.msg.navLinks, `${this._form.navLinks.length}/${this._routes.length}`, this._renderRoutes())}
-    `;
-  }
+        <!-- The draft belongs to this section: it is what Generate produced and what Apply writes. -->
+        ${this._previewTag ? html`
+          <div class="px-3 py-3 flex flex-col gap-2 border-b border-gray-200 dark:border-gray-800 bg-indigo-50/40 dark:bg-indigo-500/5">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">${this.msg.draft}</span>
+            ${this._renderBand('draft')}
+            ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
+          </div>
+        ` : nothing}
 
-  /** The draft, at the top of the screen: it is what Apply would write, so it reads before the form. */
-  private _renderDraftBand() {
-    if (!this._previewTag) return nothing;
-    return html`
-      <section class="rounded-lg border border-indigo-300 dark:border-indigo-500/50 bg-indigo-50/40 dark:bg-indigo-500/5 overflow-hidden">
-        <header class="flex items-center gap-2 px-3 py-2 border-b border-indigo-200 dark:border-indigo-900/60">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 flex-1">${this.msg.draft}</h3>
-          <span class="text-[11px] font-mono text-indigo-400 dark:text-indigo-500/80">${this._previewTag}</span>
-        </header>
-        <div class="p-3 flex flex-col gap-2">
-          ${this._renderBand('draft')}
-          ${this._notes ? html`<p class="text-sm text-gray-600 dark:text-gray-300">${this.msg.notes}: ${this._notes}</p>` : nothing}
+        <div role="tablist" class="flex items-stretch gap-px px-3 pt-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+          ${tabs.map((tab) => {
+            const active = this._tab === tab.id;
+            return html`
+              <button
+                type="button"
+                role="tab"
+                aria-selected=${String(active)}
+                class="flex items-center gap-1.5 rounded-t-md px-3 py-1.5 text-sm border border-b-0 -mb-px transition-colors
+                  ${active
+                    ? 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-medium'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}"
+                @click=${() => { this._tab = tab.id; }}
+              >
+                <span class=${tab.id === faulty ? 'text-red-600 dark:text-red-400' : ''}>${tab.label}</span>
+                <span class="text-[10px] font-mono rounded px-1
+                  ${tab.id === faulty
+                    ? 'bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'}">${tab.badge}</span>
+              </button>
+            `;
+          })}
+        </div>
+
+        <div class="p-3 flex flex-col gap-3">
+          ${this._tab === 'brief' ? this._renderBriefPanel() : nothing}
+          ${this._tab === 'actions' ? this._renderActionList() : nothing}
+          ${this._tab === 'links' ? this._renderRoutes() : nothing}
         </div>
       </section>
     `;
@@ -1235,6 +1258,8 @@ export class PluginHeaderEditor extends PluginBaseModule {
     if (!this._projectId) {
       return html`<p class="text-sm italic p-3 text-gray-500 dark:text-gray-400">${this.msg.noProject}</p>`;
     }
+    // Sections stacked at FULL width, in the order the work happens: what is applied, the brand, then
+    // the generation. Side by side, a short Brand card next to a tall request left the panel lopsided.
     return html`
       <div class="flex flex-col gap-3 p-3 text-gray-800 dark:text-gray-100">
         <div class="flex items-center gap-2 flex-wrap">
@@ -1247,18 +1272,9 @@ export class PluginHeaderEditor extends PluginBaseModule {
           ` : nothing}
           <span class="ml-auto text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
         </div>
-
-        <!-- A header is a wide thing: the bands take the full width, whatever it is. -->
         ${this._renderApplied()}
-        ${this._renderDraftBand()}
-
-        <!-- Two columns where there is room, one where there is not: the brand is a small object and
-             the request is a tall form, so side by side they finally fit on one screen. -->
-        <div class="grid gap-3 lg:grid-cols-2 items-start">
-          <div class="flex flex-col gap-3">${this._renderMark()}</div>
-          <div class="flex flex-col gap-3">${this._renderGroups()}</div>
-        </div>
-
+        ${this._renderMark()}
+        ${this._renderRequest()}
         ${this._renderActionBar()}
       </div>
     `;
