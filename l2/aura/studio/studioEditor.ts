@@ -1170,7 +1170,21 @@ export class StudioEditor {
         && !sibling.classList.contains(CONTROL_CLASS));
       const index = siblings.indexOf(node);
       if (index < 0) return [];
-      path.push({ tag: node.tagName.toLowerCase(), index, count: siblings.length });
+
+      // The literal narrows the same-tag siblings to the ones that also carry the same class, which
+      // is what lets the walker tell the branches of a `${cond ? … : …}` apart (matchStep). Both
+      // pairs travel: with no literal match on the source side the walker falls back to the tag pair,
+      // which is exactly the resolution that existed before this.
+      const literal = node.getAttribute('class');
+      const sameLiteral = siblings.filter((sibling) => sibling.getAttribute('class') === literal);
+      path.push({
+        tag: node.tagName.toLowerCase(),
+        index,
+        count: siblings.length,
+        literal,
+        literalIndex: sameLiteral.indexOf(node),
+        literalCount: sameLiteral.length,
+      });
     }
     return path;
   }

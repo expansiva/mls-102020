@@ -2084,6 +2084,16 @@ export interface ITemplateElement {
   parent: number;
   /** Inside a `${...}`: one source node may render many times (a `.map()`), or none (a ternary). */
   inExpression: boolean;
+  /**
+   * Offset of the INNERMOST `${...}` holding this element, or -1 when it is static.
+   *
+   * `inExpression` says "this may not render"; this says WITH WHOM. Two elements sharing it are
+   * alternatives of the same expression — the two branches of a ternary — so the walker can treat
+   * them as one position that produces 0..N nodes instead of two positions that always do
+   * (TASK-102020-anchor-expressions). Innermost, because a ternary inside a `.map()` is a choice
+   * within each repetition, not a sibling of the repetition.
+   */
+  expression: number;
 }
 
 const VOID_TAGS = new Set([
@@ -2176,17 +2186,24 @@ export function scanTemplateElements(source: string): ITemplateElement[] {
   /** Open elements, innermost last. Reset per top-level template. */
   const stack: number[] = [];
   /** Nesting of template/expression contexts, innermost last. */
-  const contexts: { kind: 'template' | 'expr'; braces: number }[] = [];
+  const contexts: { kind: 'template' | 'expr'; braces: number; id: number }[] = [];
 
   const inTemplate = (): boolean => contexts[contexts.length - 1]?.kind === 'template';
   const underExpression = (): boolean => contexts.some((context) => context.kind === 'expr');
+  /** The innermost `${...}` in scope, by offset. -1 while the scan is in plain markup. */
+  const expressionId = (): number => {
+    for (let level = contexts.length - 1; level >= 0; level -= 1) {
+      if (contexts[level].kind === 'expr') return contexts[level].id;
+    }
+    return -1;
+  };
 
   let i = 0;
   while (i < source.length) {
     if (!contexts.length) {
       const next = source.indexOf('html`', i);
       if (next === -1) break;
-      contexts.push({ kind: 'template', braces: 0 });
+      contexts.push({ kind: 'template', braces: 0, id: -1 });
       stack.length = 0;
       i = next + 'html`'.length;
       continue;
@@ -2195,7 +2212,7 @@ export function scanTemplateElements(source: string): ITemplateElement[] {
     const ch = source[i];
 
     if (inTemplate()) {
-      if (ch === '$' && source[i + 1] === '{') { contexts.push({ kind: 'expr', braces: 0 }); i += 2; continue; }
+      if (ch === '$' && source[i + 1] === '{') { contexts.push({ kind: 'expr', braces: 0, id: i }); i += 2; continue; }
       if (ch === '`') { contexts.pop(); i += 1; continue; }
       if (ch !== '<') { i += 1; continue; }
 
@@ -2238,6 +2255,7 @@ export function scanTemplateElements(source: string): ITemplateElement[] {
         end: selfClosing ? j + 1 : source.length,
         parent: stack.length ? stack[stack.length - 1] : -1,
         inExpression: underExpression(),
+        expression: expressionId(),
       });
       if (!selfClosing) stack.push(elements.length - 1);
       i = j + 1;
@@ -2254,7 +2272,7 @@ export function scanTemplateElements(source: string): ITemplateElement[] {
       i += 1;
       continue;
     }
-    if (source.startsWith('html`', i)) { contexts.push({ kind: 'template', braces: 0 }); i += 'html`'.length; continue; }
+    if (source.startsWith('html`', i)) { contexts.push({ kind: 'template', braces: 0, id: -1 }); i += 'html`'.length; continue; }
     if (ch === '`') {
       // A plain template literal in the expression — skip it, including its own ${...} nesting.
       i += 1;
@@ -2384,6 +2402,18 @@ export interface IDomPathStep {
   index: number;
   /** How many same-tag siblings there are. */
   count: number;
+  /**
+   * The element's own class attribute (null when it has none), and its position among the siblings
+   * that share BOTH the tag and that literal.
+   *
+   * Optional because a caller may not have it — and then the resolution is exactly what it was before
+   * this existed. When it IS there it is the strongest signal available: measured on the 102 real
+   * pages, of the 515 elements whose same-tag siblings include some that live inside a `${...}` (and
+   * therefore may not render at all), the literal alone identifies 321.
+   */
+  literal?: string | null;
+  literalIndex?: number;
+  literalCount?: number;
 }
 
 export type StructuralAnchor =
@@ -2407,6 +2437,53 @@ export type StructuralAnchor =
  * A root that is mounted somewhere is not a top-level candidate any more: it is a child of its call
  * site, not of the page.
  */
+interface ISourceSlot {
+  /** What this position can produce: one element for a static, the branches for an expression. */
+  candidates: number[];
+  /** -1 for something that always renders; the expression offset otherwise. */
+  expression: number;
+  /** Where it appears among the siblings. */
+  order: number;
+}
+
+/**
+ * The siblings of a tag as POSITIONS, not as elements.
+ *
+ * The difference is the whole point of TASK-102020-anchor-expressions: a static element renders
+ * exactly once, while everything sharing one `${...}` is a set of alternatives that together produce
+ * 0..N nodes. Counting them as two independent elements is what made a section with
+ * `[<div> estático, ternário(<div>, <div>)]` unresolvable — the template said three, the DOM had two.
+ *
+ * A helper template mounted by `${this.renderX()}` counts as static: only unconditional calls are
+ * detected (findTemplateCalls requires `${` immediately before `this.`), and those always render.
+ */
+function slotsWithTag(tree: ITemplateTree, parent: number, tag: string): ISourceSlot[] {
+  const byExpression = new Map<number, ISourceSlot>();
+  const slots: ISourceSlot[] = [];
+
+  for (const index of childrenWithTag(tree, parent, tag)) {
+    const expression = tree.elements[index].expression;
+    const order = tree.elements[index].openStart;
+    // A mounted root keeps the order of its CALL, which childrenWithTag already sorted by; its own
+    // offset lives in another method, so it must not be used to group anything.
+    const mounted = tree.links.some((link) => link.root === index && link.parent === parent);
+    if (expression < 0 || mounted) {
+      slots.push({ candidates: [index], expression: -1, order });
+      continue;
+    }
+    const existing = byExpression.get(expression);
+    if (existing) {
+      existing.candidates.push(index);
+      continue;
+    }
+    const slot: ISourceSlot = { candidates: [index], expression, order };
+    byExpression.set(expression, slot);
+    slots.push(slot);
+  }
+
+  return slots;
+}
+
 function childrenWithTag(tree: ITemplateTree, parent: number, tag: string): number[] {
   const mounted = new Set(tree.links.map((link) => link.root));
   const found: { index: number; order: number }[] = [];
@@ -2438,6 +2515,89 @@ function childrenWithTag(tree: ITemplateTree, parent: number, tag: string): numb
  * Templates of helper methods are roots of their own here (they are reached through a `${this.x()}`,
  * invisible structurally), so a path crossing into one fails and the caller falls back to counting.
  */
+/**
+ * Which source node produced the DOM element this step describes.
+ *
+ * Read in order — each rule is stronger than the one below it:
+ *
+ * 1. the LITERAL narrows the universe (same tag AND same class attribute). When it leaves nothing it
+ *    is not trusted at all (a composed `class="a ${x}"`, a `classMap`, a preview still applied), and
+ *    the universe stays what it was — the rule below then behaves exactly as it did before;
+ * 2. one candidate left: it is the answer, and it rendered as many times as the DOM shows;
+ * 3. the counts line up: position decides;
+ * 4. SLOTS: statics always render, expressions may not. With one expression among the siblings the
+ *    DOM sequence is reconstructable — hand one index to each static and the remainder to the
+ *    expression, then see who owns the index being looked for.
+ *
+ * Null when none of it settles the question. That is not a failure to fix later: guessing here writes
+ * an edit into the wrong element, and the honest message ("select the element around it") is a better
+ * answer than a silent mistake.
+ */
+function matchStep(
+  tree: ITemplateTree,
+  parent: number,
+  step: IDomPathStep,
+): { chosen: number; renders: number } | null {
+  const all = slotsWithTag(tree, parent, step.tag);
+  const hasLiteral = step.literal !== undefined && typeof step.literalCount === 'number';
+
+  let universe = all;
+  let count = step.count;
+  let index = step.index;
+
+  if (hasLiteral) {
+    const filtered = all
+      .map((slot) => ({
+        ...slot,
+        candidates: slot.candidates.filter((candidate) => tree.elements[candidate].literal === step.literal),
+      }))
+      .filter((slot) => slot.candidates.length > 0);
+    if (filtered.length) {
+      universe = filtered;
+      count = step.literalCount ?? step.count;
+      index = step.literalIndex ?? step.index;
+    }
+  }
+
+  const flat = universe.flatMap((slot) => slot.candidates);
+  if (!flat.length || count < 1) return null;
+
+  // Every position pointing at the SAME source node: one line of code behind several DOM nodes. It
+  // happens two ways — a `.map()` (one candidate, many nodes) and a helper mounted N times
+  // (`${this.card(a)}${this.card(b)}`, which is N positions holding the same root). Both have to be
+  // reported as such, because editing it hits all of them.
+  if (new Set(flat).size === 1) return { chosen: flat[0], renders: Math.max(count, flat.length) };
+  if (flat.length === count && index < flat.length) return { chosen: flat[index], renders: 1 };
+
+  const statics = universe.filter((slot) => slot.expression < 0);
+  const dynamic = universe.filter((slot) => slot.expression >= 0);
+  const extra = count - statics.length;
+  // Fewer nodes in the DOM than the template has statics: the premise ("a static renders once") does
+  // not hold here (a `<template>`, something a script removed). Nothing to reconstruct.
+  if (extra < 0) return null;
+
+  if (extra === 0) {
+    if (statics.length !== count || index >= statics.length) return null;
+    return { chosen: statics[index].candidates[0], renders: 1 };
+  }
+  // Two expressions both producing nodes: how many each one produced is unknowable from here.
+  if (dynamic.length !== 1) return null;
+
+  let cursor = 0;
+  for (const slot of universe) {
+    const size = slot.expression < 0 ? 1 : extra;
+    if (index < cursor + size) {
+      if (slot.expression < 0) return { chosen: slot.candidates[0], renders: 1 };
+      // The expression owns this index. One branch: it is a `.map()` and it rendered `extra` nodes.
+      if (slot.candidates.length === 1) return { chosen: slot.candidates[0], renders: extra };
+      // Several branches of the same expression, same tag, same literal — genuinely ambiguous.
+      return null;
+    }
+    cursor += size;
+  }
+  return null;
+}
+
 export function resolveStructuralAnchor(
   tree: ITemplateTree,
   path: readonly IDomPathStep[],
@@ -2449,25 +2609,16 @@ export function resolveStructuralAnchor(
   let renders = 1;
 
   for (const step of path) {
-    const candidates = childrenWithTag(tree, parent, step.tag);
+    const match = matchStep(tree, parent, step);
+    // Both cases mean the same thing to the user, and the counting fallback runs next anyway.
+    if (!match) return { ok: false, reason: NOT_LOCATED };
 
-    let chosen: number;
-    if (candidates.length === step.count && step.index < candidates.length) {
-      chosen = candidates[step.index];
-      // The counts can match while every candidate is the SAME source node: a helper called N times
-      // (`${this.renderCard(a)}` … `${this.renderCard(b)}`) mounts one template N times. Editing it
-      // still hits all N, so it has to be reported as such.
-      if (new Set(candidates).size === 1 && step.count > 1) renders = Math.max(renders, step.count);
-    } else if (candidates.length === 1) {
-      chosen = candidates[0];
-      if (step.count > 1) renders = Math.max(renders, step.count);
-    } else {
-      // Both cases mean the same thing to the user, and the counting fallback runs next anyway.
-      return { ok: false, reason: NOT_LOCATED };
-    }
+    // One source node behind several DOM nodes: a `.map()`, or a helper mounted N times
+    // (`${this.renderCard(a)}` … `${this.renderCard(b)}`). Editing it hits all N, so it is reported.
+    if (match.renders > 1) renders = Math.max(renders, match.renders);
 
-    current = tree.elements[chosen];
-    parent = chosen;
+    current = tree.elements[match.chosen];
+    parent = match.chosen;
   }
 
   if (!current) return { ok: false, reason: NOT_LOCATED };

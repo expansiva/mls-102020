@@ -1885,3 +1885,172 @@ test('depth wins over breadth: the deepest containing node is the answer', () =>
   assert.equal(deepestAt(deep, { x: 25, y: 25 }, TREE).name, 'c');
   assert.equal(deepestAt(deep, { x: 5, y: 5 }, TREE).name, 'a');
 });
+
+// --- Siblings that live inside a `${...}` (TASK-102020-anchor-expressions) ---
+//
+// The two shapes below are the ones that failed in the real `changeOrderCatalogue`, reduced to what
+// matters: a section whose same-tag siblings are branches of one ternary.
+
+/** The list section: a static header div, and a ternary between "loading" and the table. */
+const CONDITIONAL_LIST = [
+  'renderList() {',
+  '  return html`<section class="box">',
+  '    <div class="head"><h2 class="title">Orders</h2></div>',
+  '    ${this.loading',
+  '      ? html`<div class="animate-pulse">loading</div>`',
+  '      : html`<div class="overflow-x-auto"><table class="min-w-full"><tbody>'
+  + '${this.rows.map((row) => html`<tr class="row"><td class="cell">${row.id}</td></tr>`)}'
+  + '</tbody></table></div>`}',
+  '  </section>`;',
+  '}',
+].join('\n');
+
+/** The delete section: a static <p> with NO class, and a ternary of <p> for success/error. */
+const CONDITIONAL_DELETE = [
+  'renderDelete() {',
+  '  return html`<section class="box">',
+  '    <h2 class="title">Delete</h2>',
+  '    <p>Delete this order</p>',
+  '    <button class="danger">Delete</button>',
+  '    ${this.state === "success"',
+  '      ? html`<p class="ok">done</p>`',
+  '      : this.state === "error" ? html`<p class="err">failed</p>` : nothing}',
+  '  </section>`;',
+  '}',
+].join('\n');
+
+/** A step as the editor builds it: both pairs, the literal one and the tag one. */
+function step(tag: string, literal: string | null, at: { index: number; count: number; literalIndex?: number; literalCount?: number }) {
+  return {
+    tag,
+    index: at.index,
+    count: at.count,
+    literal,
+    literalIndex: at.literalIndex ?? 0,
+    literalCount: at.literalCount ?? 1,
+  };
+}
+
+test('the row of a table under a CONDITIONAL wrapper resolves', () => {
+  // The bug was never in the row: it was one level above, in the `<div class="overflow-x-auto">`.
+  // Under the section the template has three divs — one static and two branches of the same ternary —
+  // while the DOM has two, so the old rule (candidates === dom count, or a single candidate) refused.
+  const tree = treeOf(CONDITIONAL_LIST);
+
+  const anchor = resolveStructuralAnchor(tree, [
+    step('section', 'box', { index: 0, count: 1 }),
+    step('div', 'overflow-x-auto', { index: 1, count: 2 }),
+    step('table', 'min-w-full', { index: 0, count: 1 }),
+    step('tbody', null, { index: 0, count: 1 }),
+    step('tr', 'row', { index: 1, count: 3, literalIndex: 1, literalCount: 3 }),
+  ]);
+
+  assert.equal(anchor.ok, true);
+  assert.equal(anchor.ok && anchor.element.literal, 'row');
+  // One source line behind three rows — the panel has to say so.
+  assert.equal(anchor.ok && anchor.renders, 3);
+});
+
+test('without the literal in the path, that same row is lost — which is the bug', () => {
+  // The fixture reproduces the failure, so the test above is not proving something that always worked.
+  const tree = treeOf(CONDITIONAL_LIST);
+  const anchor = resolveStructuralAnchor(tree, [
+    { tag: 'section', index: 0, count: 1 },
+    { tag: 'div', index: 1, count: 2 },
+    { tag: 'table', index: 0, count: 1 },
+    { tag: 'tbody', index: 0, count: 1 },
+    { tag: 'tr', index: 1, count: 3 },
+  ]);
+  assert.equal(anchor.ok, false);
+  assert.deepEqual(anchor.ok === false && anchor.reason, NOT_LOCATED);
+});
+
+test('a static element with NO class resolves next to conditional siblings of its tag', () => {
+  // The other half of the bug: three <p> in the template (one static, two branches), one in the DOM.
+  const tree = treeOf(CONDITIONAL_DELETE);
+  const anchor = resolveStructuralAnchor(tree, [
+    step('section', 'box', { index: 0, count: 1 }),
+    step('p', null, { index: 0, count: 1 }),
+  ]);
+  assert.equal(anchor.ok, true);
+  assert.equal(anchor.ok && anchor.element.literal, null);
+  assert.equal(anchor.ok && anchor.element.tag, 'p');
+});
+
+test('and the branch that DID render resolves too, by its own literal', () => {
+  const tree = treeOf(CONDITIONAL_DELETE);
+  // The DOM now has two <p>: the static one and the success message.
+  const anchor = resolveStructuralAnchor(tree, [
+    step('section', 'box', { index: 0, count: 1 }),
+    step('p', 'ok', { index: 1, count: 2 }),
+  ]);
+  assert.equal(anchor.ok, true);
+  assert.equal(anchor.ok && anchor.element.literal, 'ok');
+});
+
+test('when the literal cannot tell them apart, the SLOT can', () => {
+  // Two <p> with no class at all: one static, one in a ternary. The literal is null on both, so it
+  // narrows nothing — but a static always renders, and with one node in the DOM the ternary rendered
+  // nothing. That is the shape of 137 of the elements measured in the real pages.
+  const tree = treeOf([
+    'render() {',
+    '  return html`<section class="box">',
+    '    <p>always here</p>',
+    '    ${this.extra ? html`<p>sometimes</p>` : nothing}',
+    '  </section>`;',
+    '}',
+  ].join('\n'));
+
+  const anchor = resolveStructuralAnchor(tree, [
+    step('section', 'box', { index: 0, count: 1 }),
+    step('p', null, { index: 0, count: 1 }),
+  ]);
+  assert.equal(anchor.ok, true);
+  assert.equal(anchor.ok && anchor.element.inExpression, false, 'the static one');
+});
+
+test('two expressions both producing nodes stay ambiguous, and say so', () => {
+  // Guessing here writes the edit into the wrong element. The honest message ("select the element
+  // around it") is a better answer than a silent mistake.
+  const tree = treeOf([
+    'render() {',
+    '  return html`<section class="box">',
+    '    ${this.a ? html`<p>one</p>` : nothing}',
+    '    ${this.b ? html`<p>two</p>` : nothing}',
+    '  </section>`;',
+    '}',
+  ].join('\n'));
+
+  const anchor = resolveStructuralAnchor(tree, [
+    step('section', 'box', { index: 0, count: 1 }),
+    step('p', null, { index: 0, count: 1 }),
+  ]);
+  assert.equal(anchor.ok, false);
+});
+
+test('the scanner says WHICH expression holds each element', () => {
+  // `inExpression` says "this may not render"; `expression` says with whom — which is what turns two
+  // branches into one position instead of two.
+  const tree = treeOf(CONDITIONAL_DELETE);
+  const paragraphs = tree.elements.filter((element) => element.tag === 'p');
+  assert.equal(paragraphs.length, 3);
+
+  const [staticP, success, error] = paragraphs;
+  assert.equal(staticP.expression, -1, 'the static one belongs to no expression');
+  assert.equal(staticP.inExpression, false);
+  assert.ok(success.expression > 0);
+  assert.equal(success.expression, error.expression, 'both branches of the same ternary');
+
+  // Innermost, not outermost: a ternary inside a `.map()` is a choice within each repetition.
+  const nested = treeOf([
+    'render() {',
+    '  return html`<ul class="l">${this.rows.map((r) => html`<li class="i">${r.ok ? html`<b class="y">y</b>` : html`<i class="n">n</i>`}</li>`)}</ul>`;',
+    '}',
+  ].join('\n'));
+  const li = nested.elements.find((element) => element.tag === 'li');
+  const bold = nested.elements.find((element) => element.tag === 'b');
+  const italic = nested.elements.find((element) => element.tag === 'i');
+  assert.ok(li && bold && italic);
+  assert.equal(bold.expression, italic.expression, 'the two branches share their own ternary');
+  assert.notEqual(bold.expression, li.expression, 'not the map that repeats them');
+});
