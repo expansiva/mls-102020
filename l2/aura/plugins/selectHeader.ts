@@ -119,6 +119,8 @@ export class PluginSelectHeader extends StateLitElement {
 
   private msg: MessageType = message_en;
   private _mounted = new Map<string, string>();
+  /** True while THIS panel has the editor open on the right — what to refresh, and what to close. */
+  private _editorOpen = false;
 
   createRenderRoot() { return this; }
 
@@ -126,14 +128,26 @@ export class PluginSelectHeader extends StateLitElement {
     if (changed.has('projectId')) {
       this._entries = [];
       this._creating = '';
+      // Another project: whatever is open on the right belongs to the previous one.
+      if (this._editorOpen) void this._closeEditor();
       if (this.projectId) void this._load(this.projectId);
     }
-    // Moving the knob elsewhere must not leave ANOTHER header's editor open on the right, next to a
-    // preview that is no longer its own.
     if (changed.has('value') && changed.get('value') !== undefined) {
       this._creating = '';
-      void clearServiceDetails();
+      // Turning the knob to another header FOLLOWS with the open editor, instead of making the user
+      // click Edit again. Closing it belongs to leaving the Header knob (disconnectedCallback), not
+      // to moving inside it.
+      if (this._editorOpen) void this._followSelection();
     }
+  }
+
+  /**
+   * The Header knob is gone (another knob, or the service was closed): the editor on the right has no
+   * subject any more, so it goes with it.
+   */
+  disconnectedCallback(): void {
+    if (this._editorOpen) void this._closeEditor();
+    super.disconnectedCallback();
   }
 
   updated() {
@@ -430,7 +444,28 @@ export class PluginSelectHeader extends StateLitElement {
       this.dispatchEvent(new CustomEvent('header-activated', { detail, bubbles: true, composed: true }));
       if (this.projectId) void this._load(this.projectId);
     });
+    this._editorOpen = true;
     await openElementInServiceDetails(element);
+  }
+
+  /**
+   * Re-opens the editor for whatever header the knob now points at.
+   *
+   * The details host clears the wrapper of the tag and appends the new node, so this replaces the
+   * editor instead of stacking one — and a fresh instance is exactly what a different header needs
+   * (a reused one would carry the previous header's draft and borrowed tag).
+   */
+  private async _followSelection(): Promise<void> {
+    const entry = this._selected;
+    // On the list (0) or on the Add slot there is no header to follow: what is open stays open, which
+    // is what "only close when leaving the knob" means.
+    if (!entry) return;
+    await this._openEditor(entry);
+  }
+
+  private async _closeEditor(): Promise<void> {
+    this._editorOpen = false;
+    await clearServiceDetails();
   }
 
   /** Makes this header the one the app boots. One click, so it belongs to the knob, not the editor. */
