@@ -1,0 +1,86 @@
+{
+  "flowId": "agentChooseMolecules2",
+  "schemaVersion": "2026-09-02-choosemolecules2-v1",
+  "specFirst": "Written BEFORE the code, per skills/agentsBestPractices.md §1. This file, spec.md and README.md are the design record. The plan was approved by the product owner on 2026-09-02 (session plan: binary-purring-lobster) and is restated here; when behaviour must change, change this file first, then the code.",
+  "description": "Given an explicit catalogProject and the reference of an existing page .defs.ts, decides which molecule (group + tag) serves each region of that page and rewrites the SAME .defs.ts in place — a `molecule: { group, tag }` field on the relevant dataBindings/inputs, plus the chosen molecules' source files and usage contract appended to pipeline[0].dependsFiles/skills. Writes nothing else: no report, no l4 artifact, no trace file. A sibling of agentChooseMolecules (the probe that only measures), built to actually annotate a page.",
+  "principles": [
+    "ZERO ARTIFACT RULE. The only file this agent ever writes is the target .defs.ts (steps/c3-patch). Every handoff between steps travels through the task tree's own step `result` field (helpers/cm2Types.cm2ReadC1Result / cm2ReadGroupResult) — never a file. No report.json, no c1-groups.json, no per-attempt trace, no l4 folder anywhere, in any project.",
+    "EXPLICIT CATALOG, NO DISCOVERY. catalogProject arrives in the mention argument. There is no dependency search, no chChooseCatalog, no 'more than one catalog reachable' ambiguity — all of that existed in the probe only because it never received the project.",
+    "REGIONS ARE DETERMINISTIC, NEVER INVENTED. helpers/cm2Regions.extractRegions walks the target's own dataBindings[]/inputs[] (kind 'query' -> a view region; a command input with presentation 'form' -> an entry region). No LLM ever decides what counts as a region — c1-groups only decides which GROUP covers a region already handed to it.",
+    "THE CATALOG IS THE ONLY SOURCE OF TAGS. Same anti-invention gate as agentChooseMolecules, imported unchanged from its steps/c1-groups/gate.ts and steps/c2-molecules/gate.ts — a tag outside the group's published list is refused by a deterministic gate, never completed by code.",
+    "ONE CATALOG LEVEL PER PROMPT. c1 sees level 1 (the group list); each c2 sees level 2 of ONE group. Same funnel and the same reason as the probe (flow.json.principles there): the whole catalog does not fit a prompt.",
+    "PERSISTED SHAPE IS MINIMAL. The .defs.ts only ever gets `molecule: { group, tag }` — no reason, no scenarioUsed, no gate history. Those exist transiently inside the run (LLM output, gate checks) and are never written anywhere."
+  ],
+  "decisions": {
+    "argument": "The whole mention is one JSON object, '{\"catalogProject\": N, \"target\": \"...\"}', parsed with plain JSON.parse (helpers/cm2Entry.cm2ParseEntry) — the same choice agentChangeFrontend's 'only-materialize' command already made for a single flat-object argument. Both keys required; no free prose, no optional-prefix-plus-prose shape (unlike agentChooseMolecules's chParseEntry), so there is no reason to reach for mls.common.safeParseArgs or hand-rolled brace-matching.",
+    "bootstrap": "Deterministic (skipRootLLM: true on the initial add-message-ai), same gesture as agentChangeFrontend.ts's beforePromptImplicit. There is no c0-classify: nothing here needs classifying, and the run does not want to spend a call on it.",
+    "regionGranularity": "One region per query dataBinding (a view/search/table need) and one region per 'form' input of a command dataBinding (an entry need). 'selection'/'route' inputs are never regions — they are populated by selecting a row elsewhere or by the URL, never typed by hand.",
+    "typeResolution": "Field types come from the sibling web/contracts/{page} file: its .defs.ts first (source of truth), a regex fallback over its compiled .ts when the .defs.ts is not on disk (confirmed necessary on a real client project, mls-102046, where only the .ts was present locally). An unresolved type is honestly 'unknown', never guessed from the field name — same rule the catalog's own usage guidance already states.",
+    "patchTarget": "The SAME file passed in target — page11, page12 or any future genome sharing the { definition, pipeline } shape. This agent does not decide which genome gets molecules; whoever calls it decides which file to point at.",
+    "modelType": "reasoning + x-tool-strict on both LLM steps (c1-groups, c2-molecules), per skills/modelTypes.md and the agentChooseMolecules precedent. No classifier model anywhere.",
+    "retry": "One retry with the gate errors in the prompt (CM2_MAX_ATTEMPTS = 2), same budget as the probe. A c2 that still fails after 2 attempts records ok:false and completes — c3-patch leaves that group's regions untouched rather than failing the whole run.",
+    "idempotency": "c3-patch compares the rewritten source to the original before writing; a rerun that changes nothing touches no file at all. A region already annotated is reconciled (overwritten or removed), never duplicated."
+  },
+  "conventions": {
+    "target": "An import-style reference to a page .defs.ts, e.g. '_102046_/l2/buildFlowFsm/web/desktop/page11/approveChangeOrder.defs' — decoded by agentChooseMolecules's chFileRefFromImport (reused, not duplicated). Must resolve to extension '.defs.ts'.",
+    "contractPath": "Derived from target: same project/level, folder truncated at and including its 'web' segment plus 'contracts', same shortName. Generic across any device/layout naming (page11, page21, mobile, ...).",
+    "handoff": "c1's result carries { catalogProject, target, regions, groups } forward; each c2's result carries { group, ok, choices, usageContract }. Both are read back via getAllSteps + planId match on the done-anchor (helpers/cm2Types.cm2ReadStepResult) — the exact mechanism agentChooseMolecules's own fan-out already uses to read c1, generalized to every subsequent read in this agent.",
+    "writesNothingElse": "No molecule, no usage contract, no group index, no todoFrontend/statusFrontend change, no config.json, no materialization. This agent only annotates a page's own .defs.ts — turning that annotation into rendered markup is a future render skill's job, out of scope here."
+  },
+  "treeOverview": [
+    "(root) agentChooseMolecules2 — deterministic bootstrap, no LLM",
+    "  c1-groups            level 1 -> deterministic regions, LLM decides group or none",
+    "  c1r-fanout            the root again: plants one c2 per chosen group, plus c3-patch",
+    "    c2-<group>          level 2 of that group -> LLM decides molecule per region (anti-invention gate)",
+    "  c3-patch              deterministic: rewrites the target .defs.ts — the run's only write"
+  ],
+  "steps": [
+    {
+      "planId": "c1-groups",
+      "agentName": "agentCm2Groups",
+      "model": "reasoning",
+      "dependsOn": [],
+      "goal": "Extract regions deterministically from the target's dataBindings/inputs (+ sibling contract types) and ask the LLM which published group covers each, or none.",
+      "gate": { "file": "reused from agentChooseMolecules/steps/c1-groups/gate.ts", "onFail": "retry 1 with errors in the prompt; a 2nd failure fails the step" },
+      "doneAnchor": "c1-done",
+      "result": "{ catalogProject, target, regions: ChRegion[], groups: string[] } — read back by c1r-fanout and c3-patch, never written to disk"
+    },
+    {
+      "planId": "c1r-fanout",
+      "agentName": "agentChooseMolecules2 (root)",
+      "model": "none (deterministic)",
+      "dependsOn": ["c1-done"],
+      "goal": "Read c1's result from the task tree and plant one c2 per DISTINCT group, plus c3-patch depending on all of them. With no group chosen, c3-patch still runs alone.",
+      "doneAnchor": "none"
+    },
+    {
+      "planId": "c2-<groupfolder>",
+      "agentName": "agentCm2Molecules",
+      "model": "reasoning",
+      "dependsOn": [],
+      "goal": "For ONE group: choose the molecule for each region c1 assigned to it. Never fails the run — a gate that refuses twice records ok:false and completes anyway.",
+      "gate": { "file": "reused from agentChooseMolecules/steps/c2-molecules/gate.ts (anti-invention, unchanged)", "onFail": "retry 1 with errors in the prompt; a 2nd failure records ok:false and completes" },
+      "doneAnchor": "c2-<groupfolder>-done",
+      "result": "{ group, ok, choices: [{region, tag}], usageContract } — never written to disk"
+    },
+    {
+      "planId": "c3-patch",
+      "agentName": "agentCm2Patch",
+      "model": "none (deterministic)",
+      "dependsOn": ["every c2-<groupfolder>-done"],
+      "goal": "Join c1's regions with every c2 group's accepted choices, patch definition + pipeline, and rewrite the target .defs.ts. Skips the write entirely when nothing changed.",
+      "doneAnchor": "none (terminal step)"
+    }
+  ],
+  "artifacts": {
+    "the target .defs.ts (rewritten in place)": "the ONLY file this agent writes — molecule: {group, tag} on dataBindings[]/inputs[], plus pipeline[0].dependsFiles/skills appended with the chosen molecules' source files and usage contract"
+  },
+  "outOfScope": [
+    "a molecule-aware render skill (e.g. a future genCfePage12RenderTs.ts) that actually turns `molecule` annotations into markup — this agent only annotates",
+    "running materialization (agentCfeMaterializeGen) or touching todoFrontend/statusFrontend/config.json",
+    "deciding molecules for 'selection'/'route' inputs or page-level cross-cutting needs (notifications, workflow progress) — v2",
+    "creating the target file (page12 or any new genome) — the caller decides which file to point this agent at",
+    "catalog dependency discovery — the caller must know which project's catalog answers, and pass it explicitly"
+  ],
+  "notBuilt": {}
+}
