@@ -137,3 +137,5 @@ export function changeDetail(scenes: SceneRecord[], previous: string | null, nex
 }
 
 // gb13 aceite: retrato do desktop, sem commit
+
+// gb13 aceite 2: segunda alteracao sem commit
