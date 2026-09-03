@@ -1,5 +1,34 @@
 # n5-less — CHANGELOG
 
+## 2026-09-02 — o vocabulário do modo NEUTRAL virou os PAPÉIS do design system
+
+A folha base passou a consumir os papéis que o `designSystem.ts` do projeto define
+(`--surface-bg`, `--text-strong`, `--button-primary-bg`, `--status-error-bg`…) em vez do
+vocabulário `--ml-*`. Motivo: o `--ml-*` não tem lugar no `designSystem.ts`, então uma folha
+escrita só nele **nunca respeita o tema do cliente** — o `getCssVars()` do runtime emite
+`--<papel>` em `:root`, e nada emitia `--ml-*`. Medições e evidência em `todo/moleculetokens/`.
+
+**O que mudou aqui:**
+
+- `NM_NEUTRAL_TOKEN_VOCABULARY` (a tabela `--ml-*` com contagens) foi **removida** e substituída
+  pela skill compartilhada `skills/tokenVocabulary`, que o `agentImproveMolecule2/i3-edit` também
+  recebe — criar e consertar passam a seguir uma regra só.
+- O exemplo do modo NEUTRAL virou `var(--text-strong, #1c1b1f)` / `var(--surface-bg, #ffffff)`.
+- **Gate, `token_consumption`:** exigia `var(--ml-`. Isso **reprovaria uma folha correta** — dos
+  2 grupos já migrados, o `groupnotifyuser` tem 122 sítios de papel do DS e só 24 de `--ml-*`, e
+  uma molécula sem holdout nenhum teria zero. Passou a exigir `var(--<qualquer token>`, que é o
+  que o check sempre quis defender ("aparência vem de token, não de literal"). Verificado nos 4
+  casos: folha migrada real ✅, folha só-DS ✅ (antes reprovava), cor literal solta 🔴, token
+  nenhum 🔴 — o check **não** afrouxou.
+- `color_literal` **não precisou mudar**: o `bareColorLiterals()` já removia `var(--<qualquer>)`,
+  não só `var(--ml-`.
+
+O modo THEMED segue intacto: a variante define os próprios `--ml-*` com os valores do tema, é
+auto-contida e vive sob outra tag (`...-brutal`), então os dois vocabulários coexistem de propósito.
+
+O nome do papel é validado fora do gate, por `harness/check-ds-tokens.mjs` (papel fora do
+`DEFAULT_TOKENS_TEMPLATE` é reprovado como `DESCONHECIDO`).
+
 ## 2026-07-29 — created (control item 3.7)
 
 Gate covers 15 codes with 22 tests, and is SPLIT in two halves because the two validated corpora

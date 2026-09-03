@@ -163,13 +163,24 @@ export function runNm2LessGate(
     if (bare.length) {
       issues.push({
         code: 'color_literal',
-        message: `these colours are hardcoded outside a token: ${bare.slice(0, 6).join(', ')} — in a project with no theme every appearance value must be written as var(--ml-<token>, <literal>), so a theme can override it later`,
+        message: `these colours are hardcoded outside a token: ${bare.slice(0, 6).join(', ')} — in a project with no theme every appearance value must be written as var(<token>, <literal>), so the project's design system can override it later`,
       });
     }
-    if (!/var\(\s*--ml-/.test(content)) {
+    // The base sheet now consumes the design-system ROLES (`--surface-bg`,
+    // `--text-strong`, `--button-primary-bg`…), which are what the project's
+    // `designSystem.ts` defines — see skills/tokenVocabulary. The `--ml-*` survived
+    // only for what the DS does not cover (border width/style, focus-ring thickness,
+    // disabled opacity, status borders, a molecule's internal geometry).
+    //
+    // So requiring `var(--ml-` here would reject a CORRECT sheet: of the 2 groups
+    // migrated so far, groupnotifyuser has 122 design-system role sites and only 24
+    // `--ml-*`, and a molecule with no holdout at all would have zero. What this check
+    // defends is "appearance comes from a token, not a literal" — so consuming ANY
+    // token is enough. The role NAME is validated by harness/check-ds-tokens.mjs.
+    if (!/var\(\s*--[\w-]+/.test(content)) {
       issues.push({
         code: 'token_consumption',
-        message: 'the sheet consumes no --ml-* token — appearance must come from tokens (146 of the 147 base sheets do), otherwise the molecule can never be themed',
+        message: 'the sheet consumes no token at all — appearance must come from tokens (a design-system role like var(--surface-bg, #ffffff), or an --ml-* for what the design system does not cover), otherwise the molecule can never follow the project theme',
       });
     }
   }
