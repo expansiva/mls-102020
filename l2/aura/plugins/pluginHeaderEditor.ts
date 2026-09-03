@@ -1,16 +1,20 @@
-/// <mls fileReference="_102020_/l2/aura/plugins/pluginProjectHeader.ts" enhancement="_102027_/l2/enhancementLit" />
+/// <mls fileReference="_102020_/l2/aura/plugins/pluginHeaderEditor.ts" enhancement="_102027_/l2/enhancementLit" />
 
-// The header EDITOR of a project: opened by the Header knob of the l5 service (selectHeader), which
-// says WHICH header of the app is being edited (`profileName` + `variant`).
+// The header EDITOR of a project. It is opened by the Header knob (selectHeader) in the RIGHT-HAND
+// DETAILS panel (`openElementInServiceDetails`), pointed at one header of the app (`profileName` +
+// `variant`). It does not live in the knob column any more: that column is ~375px and this screen
+// carries a form, a brand and two bands.
 //
-// It is the UI for the two header agents, which until now were console-only. Sections:
-//   1. the header that is applied, rendered for real at band size;
-//   2. the brand mark: what is there, and three ways to change it (an .svg file, pasted markup, or
-//      agentGenerateLogo);
-//   3. the request, as ONE panel with tabs (Description | Actions | Navigation links) — each tab
-//      badged with what it holds, because a tab hides state and this state IS the request;
-//   4. generate -> PREVIEW -> apply / discard / go back to the previous one, in a pinned action bar
-//      (the draft band sits at the top of the request panel, so it stays put while tabs change).
+// It is the UI for the two header agents, which until now were console-only. Three sections stacked
+// at full width, in the order the work happens:
+//   1. HEADER — the applied header, rendered for real at band size;
+//   2. BRAND — mark + title + subtitle, written straight into the config (no model involved);
+//   3. GENERATE — the draft it produced and the request in tabs (Description | Actions | Links),
+//      each tab badged with what it holds;
+// plus a pinned action bar: generate -> PREVIEW -> apply / discard / go back to the previous one.
+//
+// `Definir como padrão` is NOT here: choosing which header the app boots is the knob's subject, and
+// two homes for one action is a bug generator (this screen has paid that three times).
 //
 // The locale and route selections are DATA (`props.locales` / `props.navLinks` on the profile), not
 // generated code: changing which links or languages a header offers is a config edit afterwards,
@@ -59,7 +63,6 @@ import {
   writeHeaderConfig,
 } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
 import {
-  activateHeaderProfile,
   applyBrandTexts,
   applyHeaderDraft,
   buildHeaderRequest,
@@ -94,7 +97,7 @@ const message_en = {
   markPaste: 'Paste SVG markup',
   markGenerate: 'Generate with AI',
   markBrief: 'What should the mark evoke?',
-  request: 'Changes',
+  request: 'Generate header',
   brief: 'What the header should look like',
   brandTitle: 'Brand title',
   brandSubtitle: 'Subtitle',
@@ -126,10 +129,8 @@ const message_en = {
   apply: 'Apply',
   discard: 'Discard',
   revert: 'Back to the previous header',
-  setDefault: 'Set as default',
   isDefault: 'DEFAULT',
-  settingDefault: 'Setting…',
-  defaultNeedsPublish: 'This is now the default header. The app shows it after a publish.',
+  defaultName: 'default',
   save: 'Save',
   notes: 'Notes',
   invalid: 'Refused',
@@ -159,7 +160,7 @@ const messages: Record<string, MessageType> = {
     markPaste: 'Colar markup SVG',
     markGenerate: 'Gerar com IA',
     markBrief: 'O que a marca deve evocar?',
-    request: 'Alterações',
+    request: 'Gerar header',
     brief: 'Como o header deve ser',
     brandTitle: 'Título da marca',
     brandSubtitle: 'Subtítulo',
@@ -189,10 +190,8 @@ const messages: Record<string, MessageType> = {
     apply: 'Aplicar',
     discard: 'Descartar',
     revert: 'Voltar ao header anterior',
-    setDefault: 'Definir como padrão',
     isDefault: 'PADRÃO',
-    settingDefault: 'Definindo…',
-    defaultNeedsPublish: 'Este é o header padrão agora. O app mostra depois de publicar.',
+    defaultName: 'padrão',
     save: 'Salvar',
     notes: 'Notas',
     invalid: 'Recusado',
@@ -263,10 +262,10 @@ const ICON = {
     </svg>`,
 } as const;
 /** The thread the agent tasks are opened in (same convention as the design-system plugin). */
-const THREAD_NAME = '_102020_/l2/aura/plugins/pluginProjectHeader';
+const THREAD_NAME = '_102020_/l2/aura/plugins/pluginHeaderEditor';
 
-@customElement('aura--plugins--plugin-project-header-102020')
-export class PluginProjectHeader extends PluginBaseModule {
+@customElement('aura--plugins--plugin-header-editor-102020')
+export class PluginHeaderEditor extends PluginBaseModule {
 
   @property({ type: Boolean }) autoPrepare = false;
   @property({ type: String }) msize = '';
@@ -707,35 +706,6 @@ export class PluginProjectHeader extends PluginBaseModule {
 
   // ── mark ──────────────────────────────────────────────────────────────────
 
-  /**
-   * Makes the header being edited the one the app boots (`activeProfile`).
-   *
-   * Only that key moves: the renderer, brand and props of every profile are already in place, which
-   * is the whole point of keeping several headers. The app only shows it after a publish, and the
-   * screen says so — otherwise "I set it and nothing changed" is the next question.
-   */
-  private async _setAsDefault(): Promise<void> {
-    const profileName = this._view?.profileName;
-    if (!profileName || this._view?.isActive) return;
-    this._error = '';
-    this._busy = this.msg.settingDefault;
-    try {
-      const config = await this._readClientConfig();
-      await this._writeClientConfig(activateHeaderProfile(config, profileName));
-      await this._reload();
-      this._warn = this.msg.defaultNeedsPublish;
-      this.dispatchEvent(new CustomEvent('header-activated', {
-        detail: { profileName },
-        bubbles: true,
-        composed: true,
-      }));
-    } catch (error) {
-      this._error = error instanceof Error ? error.message : String(error);
-    } finally {
-      this._busy = '';
-    }
-  }
-
   private async _saveMark(svgMarkup: string): Promise<void> {
     const errors = validateLogoSvg(svgMarkup);
     if (errors.length > 0) {
@@ -988,8 +958,8 @@ export class PluginProjectHeader extends PluginBaseModule {
   /**
    * The tab an error belongs to, so the tab strip can point at it.
    *
-   * The local gate rejects before the round trip, and its reason lives on ONE tab — with the message
-   * in the footer and the culprit hidden behind a tab, there is nothing to act on.
+   * The local gate rejects before the round trip and its reason lives on ONE tab; with the message in
+   * the footer and the culprit hidden behind a tab, there is nothing to act on.
    */
   private get _errorTab(): RequestTab | undefined {
     if (!this._error) return undefined;
@@ -1164,11 +1134,14 @@ export class PluginProjectHeader extends PluginBaseModule {
   }
 
   /**
-   * The request, as ONE panel with tabs instead of three stacked cards.
+   * The generation section: the draft it produced, and the request in three tabs.
    *
-   * Tabs hide state, and this state is what goes in the request — so every tab carries a badge with
-   * what it holds (a brief or not, how many actions, how many of the project's routes). Without it
-   * someone generates without ever opening "navigation links" and never notices.
+   * Full width, stacked under Header and Brand — the two-column try put a short card (Brand) beside a
+   * tall one, which left half the panel empty and made the tall side read as a separate page.
+   *
+   * Tabs hide state and this state IS the request, so each tab carries a badge with what it holds (a
+   * brief or not, how many actions, how many of the project's routes) and the tab an error belongs to
+   * is marked — otherwise someone generates without ever opening Links and never notices.
    */
   private _renderRequest() {
     const tabs: Array<{ id: RequestTab; label: string; badge: string }> = [
@@ -1187,6 +1160,7 @@ export class PluginProjectHeader extends PluginBaseModule {
             : nothing}
         </header>
 
+        <!-- The draft belongs to this section: it is what Generate produced and what Apply writes. -->
         ${this._previewTag ? html`
           <div class="px-3 py-3 flex flex-col gap-2 border-b border-gray-200 dark:border-gray-800 bg-indigo-50/40 dark:bg-indigo-500/5">
             <span class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">${this.msg.draft}</span>
@@ -1219,8 +1193,7 @@ export class PluginProjectHeader extends PluginBaseModule {
           })}
         </div>
 
-        <!-- One scroll here, not one per list: the panel is the scrolling area. -->
-        <div class="p-3 flex flex-col gap-3 max-h-96 overflow-y-auto">
+        <div class="p-3 flex flex-col gap-3">
           ${this._tab === 'brief' ? this._renderBriefPanel() : nothing}
           ${this._tab === 'actions' ? this._renderActionList() : nothing}
           ${this._tab === 'links' ? this._renderRoutes() : nothing}
@@ -1271,10 +1244,6 @@ export class PluginProjectHeader extends PluginBaseModule {
             ${this._busy || this.msg.generate}
           </button>
         `}
-        ${this._view && !this._view.isActive ? html`
-          <button type="button" class=${BUTTON} ?disabled=${!!this._busy}
-            @click=${() => void this._setAsDefault()}>${this.msg.setDefault}</button>
-        ` : nothing}
         ${this._hasBackup ? html`
           <button type="button" class="ml-auto text-sm underline text-gray-600 dark:text-gray-300" ?disabled=${!!this._busy}
             @click=${() => void this._revert()}>${this.msg.revert}</button>
@@ -1289,12 +1258,19 @@ export class PluginProjectHeader extends PluginBaseModule {
     if (!this._projectId) {
       return html`<p class="text-sm italic p-3 text-gray-500 dark:text-gray-400">${this.msg.noProject}</p>`;
     }
+    // Sections stacked at FULL width, in the order the work happens: what is applied, the brand, then
+    // the generation. Side by side, a short Brand card next to a tall request left the panel lopsided.
     return html`
       <div class="flex flex-col gap-3 p-3 text-gray-800 dark:text-gray-100">
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap">
           <span class="w-5 h-5 text-gray-500 dark:text-gray-400">${pluginData.getSvg()}</span>
-          <h2 class="text-sm font-semibold flex-1">${this.msg.title}</h2>
-          <span class="text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
+          <h2 class="text-sm font-semibold">${this.msg.title}</h2>
+          <span class="text-sm text-gray-500 dark:text-gray-400">${this.variant || this.msg.defaultName}</span>
+          ${this._view?.isActive ? html`
+            <span class="text-[10px] font-semibold tracking-wider px-1.5 py-0.5 rounded
+              bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">${this.msg.isDefault}</span>
+          ` : nothing}
+          <span class="ml-auto text-xs font-mono text-gray-400 dark:text-gray-500">#${this._projectId}</span>
         </div>
         ${this._renderApplied()}
         ${this._renderMark()}

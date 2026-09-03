@@ -53,6 +53,7 @@ function forbiddenImportReason(spec: string): string | null {
   if (/(?:^|\/)monaco(?:-editor)?(?:\/|$)/.test(spec)) return `static import of monaco (${spec})`;
   if (spec === 'lit' || spec.startsWith('lit/')) return `static import of lit (${spec})`;
   if (/(?:^|\/)widgets\//.test(spec)) return `static import of widgets (${spec})`;
+  if (spec.includes('collabMessagesHelper')) return `static import of collabMessagesHelper (${spec})`;
   if (spec.includes('mls.editor')) return `static import of mls.editor (${spec})`;
   return null;
 }
@@ -171,6 +172,7 @@ void test('guard goes red on a static widgets import (mutation of the detector)'
   const poisoned = [
     'import { showNs4ClarificationError } from "/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js";',
     'import { Widget } from "/_102020_/l2/agentNewSolution/widgets/clarification.js";',
+    'import { addMessage } from "/_102025_/l2/collabMessagesHelper.js";',
     'export function beforeNs4E1PromptStep() { return window.location; }',
   ].join('\n');
 
@@ -178,5 +180,6 @@ void test('guard goes red on a static widgets import (mutation of the detector)'
     .map(forbiddenImportReason)
     .filter((reason): reason is string => Boolean(reason));
   assert.ok(importHits.some(reason => reason.includes('widgets')), importHits.join('\n'));
+  assert.ok(importHits.some(reason => reason.includes('collabMessagesHelper')), importHits.join('\n'));
   assert.deepEqual(globalOffences(poisoned), ['window']);
 });

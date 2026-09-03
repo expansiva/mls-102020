@@ -26,15 +26,24 @@ import {
   slugVariant,
 } from '/_102020_/l2/aura/agentManageHeader/helpers/generateHeaderCore.js';
 import {
+  activateHeaderProfile,
   listProjectHeaders,
   readProjectRoutes,
   type ProjectHeaderEntry,
 } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
-import { ensureProjectLoaded, readHeaderConfig } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
+import {
+  ensureProjectLoaded,
+  readHeaderConfig,
+  writeHeaderConfig,
+} from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
+import { openElementInServiceDetails, clearServiceDetails } from '/_102027_/l2/libCommom.js';
 import { bandBootConfig, mountHeaderBand, projectTokensCss } from '/_102020_/l2/aura/plugins/helpers/headerBandPreview.js';
 import { readRawSource } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
-import '/_102020_/l2/aura/plugins/pluginProjectHeader.js';
+import '/_102020_/l2/aura/plugins/pluginHeaderEditor.js';
+
+/** Tag of the editor this panel opens in the details area (it defines itself on import). */
+const HEADER_EDITOR_TAG = 'aura--plugins--plugin-header-editor-102020';
 
 /// **collab_i18n_start**
 const message_en = {
@@ -47,7 +56,12 @@ const message_en = {
   addDesc: 'Name it and generate — the current header is not touched.',
   loading: 'Loading headers…',
   none: 'This app has no header of its own yet.',
-  active: 'ACTIVE',
+  active: 'DEFAULT',
+  edit: 'Edit',
+  setDefault: 'Set as default',
+  settingDefault: 'Setting…',
+  creatingOnTheRight: 'Describe and generate it in the panel on the right.',
+  needsPublish: 'Set as default. The app shows it after a publish.',
   nameLabel: 'Name',
   namePlaceholder: 'e.g. christmas',
   create: 'Create and generate',
@@ -68,7 +82,12 @@ const messages: Record<string, MessageType> = {
     addDesc: 'Dê um nome e gere — o header atual não é tocado.',
     loading: 'Carregando headers…',
     none: 'Este app ainda não tem header próprio.',
-    active: 'ATIVO',
+    active: 'PADRÃO',
+    edit: 'Editar',
+    setDefault: 'Definir como padrão',
+    settingDefault: 'Definindo…',
+    creatingOnTheRight: 'Descreva e gere no painel da direita.',
+    needsPublish: 'Definido como padrão. O app mostra depois de publicar.',
     nameLabel: 'Nome',
     namePlaceholder: 'ex. natal',
     create: 'Criar e gerar',
@@ -89,6 +108,9 @@ export class PluginSelectHeader extends StateLitElement {
   @state() private _routes: Array<{ label: string; href: string }> = [];
   @state() private _loading = false;
   @state() private _error = '';
+  @state() private _busy = '';
+  /** Non-blocking outcome: it IS the default now, but the app only shows it after a publish. */
+  @state() private _notice = '';
   /** Per profile: why activating it would be a downgrade (stale routes/tokens). Empty = healthy. */
   @state() private _health: Record<string, string[]> = {};
   @state() private _newName = '';
@@ -97,6 +119,8 @@ export class PluginSelectHeader extends StateLitElement {
 
   private msg: MessageType = message_en;
   private _mounted = new Map<string, string>();
+  /** True while THIS panel has the editor open on the right — what to refresh, and what to close. */
+  private _editorOpen = false;
 
   createRenderRoot() { return this; }
 
@@ -104,12 +128,32 @@ export class PluginSelectHeader extends StateLitElement {
     if (changed.has('projectId')) {
       this._entries = [];
       this._creating = '';
+      // Another project: whatever is open on the right belongs to the previous one.
+      if (this._editorOpen) void this._closeEditor();
       if (this.projectId) void this._load(this.projectId);
+    }
+    if (changed.has('value') && changed.get('value') !== undefined) {
+      this._creating = '';
+      // Turning the knob to another header FOLLOWS with the open editor, instead of making the user
+      // click Edit again. Closing it belongs to leaving the Header knob (disconnectedCallback), not
+      // to moving inside it.
+      if (this._editorOpen) void this._followSelection();
     }
   }
 
+  /**
+   * The Header knob is gone (another knob, or the service was closed): the editor on the right has no
+   * subject any more, so it goes with it.
+   */
+  disconnectedCallback(): void {
+    if (this._editorOpen) void this._closeEditor();
+    super.disconnectedCallback();
+  }
+
   updated() {
-    if (this._isAll) void this._mountBands();
+    // Both scenarios show real bands: the list one per header, the edit one for the selected header.
+    // _mountBands queries by profile, so it finds whichever hosts this render put on the page.
+    void this._mountBands();
   }
 
   // ── data ──────────────────────────────────────────────────────────────────
@@ -195,6 +239,8 @@ export class PluginSelectHeader extends StateLitElement {
         throw new Error(`"${slug}" already exists in this app`);
       }
       this._creating = slug;
+      // Same editor, same panel: a header being created is a header being edited.
+      void this._openEditor({ profileName: slug, variant: slug } as ProjectHeaderEntry, true);
     } catch (error) {
       this._error = error instanceof Error ? error.message : String(error);
     }
@@ -306,6 +352,14 @@ export class PluginSelectHeader extends StateLitElement {
     `;
   }
 
+  private _renderNotice() {
+    return html`
+      <p class="rounded-md border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-950/30 px-2.5 py-1.5 text-xs text-indigo-800 dark:text-indigo-300">
+        ${this._notice}
+      </p>
+    `;
+  }
+
   private _renderError() {
     return html`
       <p class="rounded-md border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/40 px-2.5 py-1.5 text-sm text-red-700 dark:text-red-300">
@@ -314,23 +368,134 @@ export class PluginSelectHeader extends StateLitElement {
     `;
   }
 
-  /** Edit one header: the editor, pointed at that profile and that variant. */
+  /**
+   * One header: what it looks like, and the two things you can do to it from here.
+   *
+   * The editing itself opens in the details panel on the right (`_openEditor`): this column is ~375px
+   * and the editor needs a form, a brand and a preview — squeezed in here every field ended up half a
+   * word wide. `Definir como padrão` stays: choosing WHICH header is the knob's own subject.
+   */
   private _renderEdit() {
     const entry = this._selected;
     if (!entry) return this._frame(this.msg.none);
+    const reasons = this._health[entry.profileName] ?? [];
     return html`
       <div class="flex flex-col gap-3">
         ${this._navHeader(entry.variant || this.msg.defaultName, this.msg.desc, this.value ?? 0)}
-        <aura--plugins--plugin-project-header-102020
-          autoPrepare="true"
-          .project=${this.projectId ?? 0}
-          .profileName=${entry.profileName}
-          .variant=${entry.variant ?? ''}
-          @header-applied=${() => { if (this.projectId) void this._load(this.projectId); }}
-          @header-activated=${() => { if (this.projectId) void this._load(this.projectId); }}
-        ></aura--plugins--plugin-project-header-102020>
+        ${this._error ? this._renderError() : nothing}
+        ${this._notice ? this._renderNotice() : nothing}
+
+        <div class="flex items-center gap-2">
+          ${entry.isActive ? html`
+            <span class="text-[10px] font-semibold tracking-wider px-1.5 py-0.5 rounded
+              bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">${this.msg.active}</span>
+          ` : nothing}
+          <span class="text-[11px] font-mono text-gray-400 dark:text-gray-500 truncate">${entry.tag}</span>
+        </div>
+
+        <div
+          data-band=${entry.profileName}
+          class="rounded-md border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-950"
+          style="height:${AURA_HEADER_HEIGHT_PX}px;pointer-events:none"
+        ></div>
+
+        ${reasons.length ? html`
+          <ul class="rounded-md border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-300 flex flex-col gap-0.5">
+            ${reasons.map((reason) => html`<li>${reason}</li>`)}
+          </ul>` : nothing}
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <button type="button"
+            class="rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+            ?disabled=${!!this._busy}
+            @click=${() => void this._openEditor(entry)}>${this.msg.edit}</button>
+          ${entry.isActive ? nothing : html`
+            <button type="button"
+              class="rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+              ?disabled=${!!this._busy}
+              @click=${() => void this._setDefault(entry)}>${this._busy || this.msg.setDefault}</button>
+          `}
+        </div>
       </div>
     `;
+  }
+
+  /**
+   * Opens the editor in the right-hand details panel, pointed at one header.
+   *
+   * The listeners go on the ELEMENT, not left to bubble: the details host appends the live node into
+   * its own DOM tree, so nothing dispatched in there reaches this panel any more.
+   */
+  private async _openEditor(entry: ProjectHeaderEntry, isNew = false): Promise<void> {
+    if (!this.projectId) return;
+    const element = document.createElement(HEADER_EDITOR_TAG) as HTMLElement & {
+      project?: number; profileName?: string; variant?: string;
+    };
+    element.setAttribute('autoPrepare', 'true');
+    element.project = this.projectId;
+    element.profileName = entry.profileName;
+    element.variant = entry.variant ?? '';
+    element.addEventListener('header-applied', () => {
+      if (isNew) void this._onCreated();
+      else if (this.projectId) void this._load(this.projectId);
+    });
+    element.addEventListener('header-activated', (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      this.dispatchEvent(new CustomEvent('header-activated', { detail, bubbles: true, composed: true }));
+      if (this.projectId) void this._load(this.projectId);
+    });
+    this._editorOpen = true;
+    await openElementInServiceDetails(element);
+  }
+
+  /**
+   * Re-opens the editor for whatever header the knob now points at.
+   *
+   * The details host clears the wrapper of the tag and appends the new node, so this replaces the
+   * editor instead of stacking one — and a fresh instance is exactly what a different header needs
+   * (a reused one would carry the previous header's draft and borrowed tag).
+   */
+  private async _followSelection(): Promise<void> {
+    const entry = this._selected;
+    // On the list (0) or on the Add slot there is no header to follow: what is open stays open, which
+    // is what "only close when leaving the knob" means.
+    if (!entry) return;
+    await this._openEditor(entry);
+  }
+
+  private async _closeEditor(): Promise<void> {
+    this._editorOpen = false;
+    await clearServiceDetails();
+  }
+
+  /** Makes this header the one the app boots. One click, so it belongs to the knob, not the editor. */
+  private async _setDefault(entry: ProjectHeaderEntry): Promise<void> {
+    if (!this.projectId || entry.isActive) return;
+    this._busy = this.msg.settingDefault;
+    this._error = '';
+    this._notice = '';
+    try {
+      const config = await readHeaderConfig(this.projectId);
+      await writeHeaderConfig(this.projectId, activateHeaderProfile(config, entry.profileName));
+      // 1-based over ALL profiles of the region, not over the filtered list: a `studio` profile in
+      // between would make the filtered index point at the wrong header.
+      const index = listProjectHeaders(config, this.projectId)
+        .findIndex((item) => item.profileName === entry.profileName) + 1;
+      if (index > 0) {
+        try { mls.sites.setHeader(index); } catch { /* no shell in this window */ }
+      }
+      await this._load(this.projectId);
+      this._notice = this.msg.needsPublish;
+      this.dispatchEvent(new CustomEvent('header-activated', {
+        detail: { profileName: entry.profileName },
+        bubbles: true,
+        composed: true,
+      }));
+    } catch (error) {
+      this._error = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._busy = '';
+    }
   }
 
   /**
@@ -344,13 +509,7 @@ export class PluginSelectHeader extends StateLitElement {
       return html`
         <div class="flex flex-col gap-3">
           ${this._navHeader(this._creating, this.msg.addDesc, this.value ?? 0)}
-          <aura--plugins--plugin-project-header-102020
-            autoPrepare="true"
-            .project=${this.projectId ?? 0}
-            .profileName=${this._creating}
-            .variant=${this._creating}
-            @header-applied=${() => void this._onCreated()}
-          ></aura--plugins--plugin-project-header-102020>
+          <p class="text-sm text-gray-500 dark:text-gray-400">${this.msg.creatingOnTheRight}</p>
         </div>
       `;
     }

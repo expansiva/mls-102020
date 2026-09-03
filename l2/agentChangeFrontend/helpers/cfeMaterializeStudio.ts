@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.ts" enhancement="_blank"/>
 
 import { parseDefs, checkSharedDtsProvenance, contractTsPathOf, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stampSharedDtsArtifact, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { sessionScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSessionScope.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 
 declare const mls: any;
@@ -507,7 +508,7 @@ export function extractToolCallArgs<T>(raw: unknown, toolName: string): T | null
 }
 
 async function getEsbuild(): Promise<any> {
-  const w = window as any;
+  const w = sessionScope() as any;
   const url = 'https://cdn.jsdelivr.net/npm/esbuild-wasm@0.25.4/esm/browser.js';
   if (!w.__cfeEsbuildInstance) w.__cfeEsbuildInstance = import(url);
   const esbuild = await w.__cfeEsbuildInstance;

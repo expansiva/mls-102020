@@ -1,8 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeCreateAgentGraph.test.ts" enhancement="_blank"/>
 
-// CF hooks must load on a host without Monaco (CLI collab-msg). Studio compile stays in *Studio
-// modules; prompt hooks never read mls.editor, never decide by compilerResults, and never call
-// createStorFile(..., true).
+// CF hooks must load on a host without Monaco or a DOM (CLI collab-msg). Studio compile stays in
+// *Studio modules; prompt hooks never read mls.editor, never decide by compilerResults, never call
+// createStorFile(..., true), and never name window/document/indexedDB.
 
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
@@ -16,7 +16,7 @@ const PROJECT_ROOT = path.resolve(CF_ROOT, '../..');
 
 const IMPORT_FROM = /\b(?:import|export)\s+(type\s+)?(?:([\s\S]*?)\s+from\s+)?['"]([^'"]+)['"]/g;
 
-const FORBIDDEN_IDENTS = /\bmonaco\b|\bmls\.editor\b|\bcompilerResults\b/g;
+const FORBIDDEN_IDENTS = /\bmonaco\b|\bmls\.editor\b|\bcompilerResults\b|\b(?:window|document|indexedDB)\b/g;
 
 type Offence = { file: string; reason: string };
 
@@ -51,6 +51,7 @@ function staticImportSpecifiers(source: string): string[] {
 
 function forbiddenImportReason(spec: string): string | null {
   if (/(?:^|\/)monaco(?:-editor)?(?:\/|$)/.test(spec)) return `static import of monaco (${spec})`;
+  if (spec.includes('collabMessagesHelper')) return `static import of collabMessagesHelper (${spec})`;
   if (spec.includes('mls.editor')) return `static import of mls.editor (${spec})`;
   return null;
 }
@@ -80,8 +81,12 @@ function stripStrings(source: string): string {
     .replace(/"(?:\\.|[^"\\])*"/g, '""');
 }
 
+function stripRegexLiterals(source: string): string {
+  return source.replace(/\/(?:\\.|[^/\n])+\/[gimsuy]*/g, '""');
+}
+
 function identOffences(source: string): string[] {
-  const scanned = stripStrings(stripComments(source));
+  const scanned = stripRegexLiterals(stripStrings(stripComments(source)));
   const found: string[] = [];
   FORBIDDEN_IDENTS.lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -148,7 +153,7 @@ function walkHookGraph(entries: string[]): { files: string[]; offences: Offence[
   return { files, offences };
 }
 
-void test('CF createAgent hook graph has no monaco/mls.editor/compilerResults/createStorFile(true)', () => {
+void test('CF createAgent hook graph has no monaco/mls.editor/compilerResults/createStorFile(true)/window/document/indexedDB', () => {
   const entries = listCreateAgentFiles(CF_ROOT);
   assert.ok(entries.some(file => path.basename(file) === 'agentChangeFrontend.ts'), 'root createAgent missing');
   assert.ok(entries.some(file => path.basename(file) === 'agentCfeMaterializeGen.ts'), 'materialize gen createAgent missing');
@@ -164,13 +169,14 @@ void test('CF createAgent hook graph has no monaco/mls.editor/compilerResults/cr
   assert.deepEqual(offences, [], offences.map(item => `${item.file}: ${item.reason}`).join('\n'));
 });
 
-void test('guard goes red on monaco/mls.editor/compilerResults/createStorFile(true) (mutation of the detector)', () => {
+void test('guard goes red on forbidden import AND forbidden global (mutation of the detector)', () => {
   const poisoned = [
     'import { compile } from "monaco-editor";',
+    'import { addMessage } from "/_102025_/l2/collabMessagesHelper.js";',
     'export async function afterPromptStep() {',
     '  const errors = mls.editor.models.x.compilerResults.errors;',
     '  await createStorFile({ source: "x" }, true, false, false);',
-    '  return errors;',
+    '  return window.location.href;',
     '}',
   ].join('\n');
 
@@ -178,8 +184,10 @@ void test('guard goes red on monaco/mls.editor/compilerResults/createStorFile(tr
     .map(forbiddenImportReason)
     .filter((reason): reason is string => Boolean(reason));
   assert.ok(importHits.some(reason => reason.includes('monaco')), importHits.join('\n'));
+  assert.ok(importHits.some(reason => reason.includes('collabMessagesHelper')), importHits.join('\n'));
   const idents = identOffences(poisoned);
   assert.ok(idents.includes('mls.editor'), idents.join(','));
   assert.ok(idents.includes('compilerResults'), idents.join(','));
+  assert.ok(idents.includes('window'), idents.join(','));
   assert.equal(createStorFileNeedModelTrue(poisoned), true);
 });

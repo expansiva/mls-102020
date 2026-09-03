@@ -205,6 +205,12 @@ export interface Ns4E4RelationshipBindingsDraft {
   bindings: Ns4E4RelationshipBinding[];
 }
 
+/** Binding-gate finding that the entity fan-out must repair — travels as a typed payload, not a loose string. */
+export interface Ns4E4EntityFeedback {
+  entityId: string;
+  feedback: string;
+}
+
 export interface Ns4E4Review {
   planId: 'e4-ontology-review';
   moduleName: string;
