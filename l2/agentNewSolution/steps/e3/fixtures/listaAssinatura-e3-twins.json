@@ -1,0 +1,343 @@
+{
+  "planId": "e3-access-review",
+  "moduleName": "listaAssinatura",
+  "userLanguage": "pt-BR",
+  "title": "Matriz de acesso da Lista de Assinaturas",
+  "reviewRound": 1,
+  "profiles": [
+    {
+      "profileId": "morador",
+      "title": "Morador",
+      "kind": "internal",
+      "description": "Morador que consulta a proposta pública e pode registrar uma assinatura de apoio em seu próprio nome.",
+      "actorRefs": [
+        "morador"
+      ],
+      "landingIntent": "Conhecer a proposta, acompanhar a adesão pública e assinar a petição uma única vez."
+    },
+    {
+      "profileId": "responsavelJovem",
+      "title": "Responsável por jovem",
+      "kind": "internal",
+      "description": "Responsável que consulta as condições de supervisão e pode registrar seu apoio à petição.",
+      "actorRefs": [
+        "responsavelJovem"
+      ],
+      "landingIntent": "Consultar as condições da proposta, incluindo a supervisão dos responsáveis, e registrar uma assinatura única."
+    },
+    {
+      "profileId": "visitante",
+      "title": "Visitante",
+      "kind": "external",
+      "description": "Pessoa sem vínculo administrativo com o condomínio que pode consultar a proposta pública e assiná-la uma única vez.",
+      "actorRefs": [
+        "visitante"
+      ],
+      "landingIntent": "Conhecer a proposta pública, visualizar o total de adesões e registrar uma assinatura válida."
+    },
+    {
+      "profileId": "administradorCondominio",
+      "title": "Administrador do condomínio",
+      "kind": "internal",
+      "description": "Administrador responsável por acompanhar a adesão pública e obter a relação completa de assinaturas válidas para uso administrativo.",
+      "actorRefs": [
+        "administradorCondominio"
+      ],
+      "landingIntent": "Acompanhar o total de adesões e baixar o arquivo administrativo com as assinaturas válidas."
+    }
+  ],
+  "authorities": [
+    {
+      "authorityRef": "listaassinatura:consultar-publicacao",
+      "title": "Consultar proposta e adesão pública",
+      "description": "Permite consultar exclusivamente o conteúdo publicado da petição, as imagens disponibilizadas, as condições de supervisão e o total agregado de assinaturas válidas.",
+      "journeyStepRefs": [
+        "signPetitionAsMorador.locatePetition",
+        "signPetitionAsMorador.inspectPetition",
+        "signPetitionAsResponsavelJovem.locatePetition",
+        "signPetitionAsResponsavelJovem.inspectPetition",
+        "signPetitionAsVisitante.locatePetition",
+        "signPetitionAsVisitante.inspectPetition",
+        "exportPetitionSignatures.locatePetition",
+        "exportPetitionSignatures.inspectPetition"
+      ],
+      "informationNeeds": [
+        "Conteúdo publicado da proposta sobre patinetes e scooters",
+        "Orientação publicada de supervisão dos responsáveis",
+        "Total agregado de assinaturas válidas da petição"
+      ]
+    },
+    {
+      "authorityRef": "listaassinatura:assinar-peticao",
+      "title": "Registrar assinatura única na petição",
+      "description": "Permite informar CPF, nome e data de nascimento para registrar uma única assinatura válida na petição publicada.",
+      "journeyStepRefs": [
+        "signPetitionAsMorador.registerPetitionSignature",
+        "signPetitionAsResponsavelJovem.registerPetitionSignature",
+        "signPetitionAsVisitante.registerPetitionSignature"
+      ],
+      "informationNeeds": []
+    },
+    {
+      "authorityRef": "listaassinatura:exportar-assinaturas",
+      "title": "Exportar assinaturas válidas",
+      "description": "Permite obter o arquivo administrativo assinaturas.csv contendo todas as assinaturas válidas coletadas na petição.",
+      "journeyStepRefs": [
+        "exportPetitionSignatures.generateSignatureExport"
+      ],
+      "informationNeeds": [
+        "Arquivo administrativo com nome, CPF e data de nascimento das assinaturas válidas"
+      ]
+    }
+  ],
+  "grants": [
+    {
+      "profileRef": "morador",
+      "authorityRef": "listaassinatura:consultar-publicacao",
+      "reason": "O morador precisa conhecer a proposta publicada e acompanhar a quantidade pública de adesões antes ou depois de manifestar apoio.",
+      "dataScope": {
+        "mode": "public",
+        "description": "Somente a petição publicada e suas informações liberadas para consulta pública."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "A consulta expõe apenas o conteúdo institucional publicado e o número agregado de assinaturas, sem identificar signatários.",
+        "allowedInformation": [
+          "Textos publicados da proposta",
+          "Imagens publicadas da proposta",
+          "Condição publicada de supervisão dos responsáveis",
+          "Total atual de assinaturas válidas"
+        ],
+        "deniedInformation": [
+          "Nome de signatários",
+          "CPF de signatários",
+          "Data de nascimento de signatários",
+          "Arquivo assinaturas.csv",
+          "Dados individuais de qualquer assinatura"
+        ]
+      },
+      "useRules": [
+        "petitionMustBePublished"
+      ]
+    },
+    {
+      "profileRef": "morador",
+      "authorityRef": "listaassinatura:assinar-peticao",
+      "reason": "O morador pode registrar seu apoio à petição com seus próprios dados de identificação.",
+      "dataScope": {
+        "mode": "own",
+        "description": "Somente os dados fornecidos pelo próprio morador durante o seu pedido de assinatura; não concede consulta a assinaturas existentes."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "A assinatura aceita somente os dados necessários para a manifestação e retorna apenas o resultado do próprio registro.",
+        "allowedInformation": [
+          "CPF informado pelo próprio signatário",
+          "Nome informado pelo próprio signatário",
+          "Data de nascimento informada pelo próprio signatário",
+          "Confirmação ou recusa do registro da própria assinatura"
+        ],
+        "deniedInformation": [
+          "CPF de outros signatários",
+          "Nome de outros signatários",
+          "Data de nascimento de outros signatários",
+          "Lista de assinaturas",
+          "Detalhes de assinaturas já registradas"
+        ]
+      },
+      "useRules": [
+        "petitionMustBePublished",
+        "cpfMustBeValid",
+        "petitionSignatureMustContainIdentityDetails",
+        "onePetitionSignaturePerCpf"
+      ]
+    },
+    {
+      "profileRef": "responsavelJovem",
+      "authorityRef": "listaassinatura:consultar-publicacao",
+      "reason": "O responsável precisa avaliar a proposta e as condições de supervisão antes de apoiar a petição.",
+      "dataScope": {
+        "mode": "public",
+        "description": "Somente a petição publicada e suas informações liberadas para consulta pública."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "A consulta mostra o conteúdo institucional e o total agregado, sem revelar dados pessoais de signatários.",
+        "allowedInformation": [
+          "Textos publicados da proposta",
+          "Imagens publicadas da proposta",
+          "Condição publicada de supervisão dos responsáveis",
+          "Total atual de assinaturas válidas"
+        ],
+        "deniedInformation": [
+          "Nome de signatários",
+          "CPF de signatários",
+          "Data de nascimento de signatários",
+          "Arquivo assinaturas.csv",
+          "Dados individuais de qualquer assinatura"
+        ]
+      },
+      "useRules": [
+        "petitionMustBePublished"
+      ]
+    },
+    {
+      "profileRef": "responsavelJovem",
+      "authorityRef": "listaassinatura:assinar-peticao",
+      "reason": "O responsável por jovem pode registrar seu apoio individual à proposta.",
+      "dataScope": {
+        "mode": "own",
+        "description": "Somente os dados informados pelo próprio responsável no momento de solicitar a sua assinatura."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "A interação limita-se aos dados necessários para a própria assinatura e ao resultado do seu processamento.",
+        "allowedInformation": [
+          "CPF informado pelo próprio signatário",
+          "Nome informado pelo próprio signatário",
+          "Data de nascimento informada pelo próprio signatário",
+          "Confirmação ou recusa do registro da própria assinatura"
+        ],
+        "deniedInformation": [
+          "CPF de outros signatários",
+          "Nome de outros signatários",
+          "Data de nascimento de outros signatários",
+          "Lista de assinaturas",
+          "Detalhes de assinaturas já registradas"
+        ]
+      },
+      "useRules": [
+        "petitionMustBePublished",
+        "cpfMustBeValid",
+        "petitionSignatureMustContainIdentityDetails",
+        "onePetitionSignaturePerCpf"
+      ]
+    },
+    {
+      "profileRef": "visitante",
+      "authorityRef": "listaassinatura:consultar-publicacao",
+      "reason": "A proposta deve ser acessível a qualquer pessoa interessada em conhecê-la e acompanhar a adesão geral.",
+      "dataScope": {
+        "mode": "public",
+        "description": "Exclusivamente a petição publicada e o total agregado liberado ao público; nunca dados organizacionais ou pessoais."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "A consulta pública não expõe a identidade nem dados de qualquer pessoa que assinou.",
+        "allowedInformation": [
+          "Textos publicados da proposta",
+          "Imagens publicadas da proposta",
+          "Condição publicada de supervisão dos responsáveis",
+          "Total atual de assinaturas válidas"
+        ],
+        "deniedInformation": [
+          "Nome de signatários",
+          "CPF de signatários",
+          "Data de nascimento de signatários",
+          "Arquivo assinaturas.csv",
+          "Dados individuais de qualquer assinatura"
+        ]
+      },
+      "useRules": [
+        "petitionMustBePublished"
+      ]
+    },
+    {
+      "profileRef": "visitante",
+      "authorityRef": "listaassinatura:assinar-peticao",
+      "reason": "Qualquer pessoa pode apoiar a petição, desde que informe dados válidos e ainda não tenha assinado com o mesmo CPF.",
+      "dataScope": {
+        "mode": "public",
+        "description": "Permite solicitar uma assinatura na petição pública, restrita aos dados enviados pelo próprio visitante e sem acesso a registros preexistentes."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "O visitante fornece seus próprios dados e recebe somente a confirmação ou a recusa da própria tentativa de assinatura.",
+        "allowedInformation": [
+          "CPF informado pelo próprio signatário",
+          "Nome informado pelo próprio signatário",
+          "Data de nascimento informada pelo próprio signatário",
+          "Confirmação ou recusa do registro da própria assinatura"
+        ],
+        "deniedInformation": [
+          "CPF de outros signatários",
+          "Nome de outros signatários",
+          "Data de nascimento de outros signatários",
+          "Lista de assinaturas",
+          "Detalhes de assinaturas já registradas"
+        ]
+      },
+      "useRules": [
+        "petitionMustBePublished",
+        "cpfMustBeValid",
+        "petitionSignatureMustContainIdentityDetails",
+        "onePetitionSignaturePerCpf"
+      ]
+    },
+    {
+      "profileRef": "administradorCondominio",
+      "authorityRef": "listaassinatura:consultar-publicacao",
+      "reason": "O administrador acompanha a proposta publicada e o total geral de adesões para orientar a administração do condomínio.",
+      "dataScope": {
+        "mode": "public",
+        "description": "Consulta à petição publicada e ao seu total agregado de assinaturas válidas."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "Esta capacidade de acompanhamento não revela assinaturas individuais; os dados pessoais são tratados apenas pela autorização específica de exportação.",
+        "allowedInformation": [
+          "Textos publicados da proposta",
+          "Imagens publicadas da proposta",
+          "Condição publicada de supervisão dos responsáveis",
+          "Total atual de assinaturas válidas"
+        ],
+        "deniedInformation": [
+          "Nome de signatários nesta consulta",
+          "CPF de signatários nesta consulta",
+          "Data de nascimento de signatários nesta consulta",
+          "Detalhes individuais de assinaturas nesta consulta"
+        ]
+      },
+      "useRules": [
+        "petitionMustBePublished"
+      ]
+    },
+    {
+      "profileRef": "administradorCondominio",
+      "authorityRef": "listaassinatura:exportar-assinaturas",
+      "reason": "O administrador do condomínio precisa obter a relação integral das assinaturas válidas para a finalidade administrativa declarada da petição.",
+      "dataScope": {
+        "mode": "organization",
+        "description": "Todas as assinaturas válidas da petição no contexto organizacional ativo do condomínio."
+      },
+      "disclosure": {
+        "mode": "fieldsOnly",
+        "description": "A exportação é limitada ao arquivo assinaturas.csv e aos dados indispensáveis das assinaturas válidas, sem incluir dados internos adicionais.",
+        "allowedInformation": [
+          "Nome do signatário",
+          "CPF do signatário",
+          "Data de nascimento do signatário",
+          "Indicação de assinatura válida",
+          "Arquivo assinaturas.csv"
+        ],
+        "deniedInformation": [
+          "Assinaturas recusadas ou inválidas",
+          "Dados de autenticação",
+          "Dados de sessão",
+          "Anotações internas",
+          "Informações administrativas não relacionadas à assinatura"
+        ]
+      },
+      "useRules": [
+        "petitionMustBePublished",
+        "exportContainsOnlyValidPetitionSignatures"
+      ]
+    }
+  ],
+  "changeSummary": [
+    "Proposta inicial da matriz de acesso.",
+    "A consulta pública foi separada da coleta de assinaturas e da exportação administrativa para impedir que dados pessoais sejam expostos pela petição.",
+    "A exportação com nome, CPF e data de nascimento foi restrita exclusivamente ao Administrador do condomínio.",
+    "A assinatura foi limitada aos dados fornecidos pelo próprio signatário e preserva as regras de CPF válido e uma assinatura por CPF."
+  ]
+}

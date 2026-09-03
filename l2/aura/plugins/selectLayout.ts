@@ -1,0 +1,597 @@
+/// <mls fileReference="_102020_/l2/aura/plugins/selectLayout.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
+
+import { html, nothing } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
+import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { getConfigProject, updateConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import '/_102020_/l2/aura/plugins/navHeader.js';
+import '/_102020_/l2/aura/plugins/selectLayoutRules.js';
+
+// ─── i18n ─────────────────────────────────────────────────────────────
+/// **collab_i18n_start**
+const message_en = {
+    title: 'UX · User Experience',
+    allTitle: 'All Layouts',
+    desc: 'The layout defines the structural arrangement of UI elements on the page.',
+    standard: 'Standard',
+    standardDesc: 'Classic top-header with full-width content area.',
+    compact: 'Compact',
+    compactDesc: 'Condensed layout optimized for dense information display.',
+    tabs: 'Tabs',
+    tabsDesc: 'Tab-based navigation separating content into distinct sections.',
+    sidebar: 'Sidebar',
+    sidebarDesc: 'Persistent side navigation alongside a main content area.',
+    bento: 'Bento Grids',
+    bentoDesc: 'Mosaic-style grid of cards with variable sizes and positions.',
+    adding: 'Adding…',
+    addTitle: 'New Layout',
+    addDesc: 'Create a new layout: pick a base skill (or custom) and configure its component rules.',
+    chooseSkill: 'Layout skill',
+    custom: 'Custom',
+    nameLabel: 'Name',
+    skillLabel: 'Skill path',
+    namePlaceholder: 'e.g. compactSidebar',
+    skillPlaceholder: '_102020_/l2/skills/layout/…',
+    saveLayout: 'Save layout',
+    saveError: 'Could not save the layout.',
+    moleculesHeader: 'Molecules',
+    useMoleculesLabel: 'Use molecules',
+    useMoleculesDesc: 'Molecules are the ready-made web components pages are built from. When on, the generator picks a molecule per element; when off, pages of this layout get only the configured layout rules (no web components).',
+    moleculesOn: 'On',
+    moleculesOff: 'Off',
+};
+type MessageType = typeof message_en;
+const messages: Record<string, MessageType> = {
+    en: message_en,
+    pt: {
+        title: 'UX · User Experience',
+        allTitle: 'Todos os Layouts',
+        desc: 'O layout define o arranjo estrutural dos elementos na página.',
+        standard: 'Padrão',
+        standardDesc: 'Cabeçalho superior com área de conteúdo em largura total.',
+        compact: 'Compacto',
+        compactDesc: 'Layout condensado otimizado para exibição densa de informações.',
+        tabs: 'Abas',
+        tabsDesc: 'Navegação por abas que separa o conteúdo em seções distintas.',
+        sidebar: 'Barra Lateral',
+        sidebarDesc: 'Navegação lateral persistente ao lado de uma área de conteúdo principal.',
+        bento: 'Bento Grids',
+        bentoDesc: 'Grade mosaico de cards com tamanhos e posições variáveis.',
+        adding: 'Adicionando…',
+        addTitle: 'Novo Layout',
+        addDesc: 'Crie um novo layout: escolha uma skill base (ou custom) e configure as rules de componentes.',
+        chooseSkill: 'Skill do layout',
+        custom: 'Custom',
+        nameLabel: 'Nome',
+        skillLabel: 'Caminho da skill',
+        namePlaceholder: 'ex.: compactSidebar',
+        skillPlaceholder: '_102020_/l2/skills/layout/…',
+        saveLayout: 'Salvar layout',
+        saveError: 'Não foi possível salvar o layout.',
+        moleculesHeader: 'Moléculas',
+        useMoleculesLabel: 'Usar moléculas',
+        useMoleculesDesc: 'Moléculas são os web components prontos com que as páginas são montadas. Quando ligado, o gerador escolhe uma molécula por elemento; quando desligado, as páginas deste layout recebem apenas as regras de layout configuradas (sem web components).',
+        moleculesOn: 'Ligado',
+        moleculesOff: 'Desligado',
+    },
+    es: {
+        title: 'UX · User Experience',
+        allTitle: 'Todos los Layouts',
+        desc: 'El layout define la disposición estructural de los elementos en la página.',
+        standard: 'Estándar',
+        standardDesc: 'Cabecera superior con área de contenido de ancho completo.',
+        compact: 'Compacto',
+        compactDesc: 'Layout condensado optimizado para mostrar información densa.',
+        tabs: 'Pestañas',
+        tabsDesc: 'Navegación por pestañas que separa el contenido en secciones distintas.',
+        sidebar: 'Barra Lateral',
+        sidebarDesc: 'Navegación lateral persistente junto a un área de contenido principal.',
+        bento: 'Bento Grids',
+        bentoDesc: 'Cuadrícula mosaico de tarjetas con tamaños y posiciones variables.',
+        adding: 'Agregando…',
+        addTitle: 'Nuevo Layout',
+        addDesc: 'Cree un nuevo layout: elija una skill base (o custom) y configure sus reglas de componentes.',
+        chooseSkill: 'Skill del layout',
+        custom: 'Custom',
+        nameLabel: 'Nombre',
+        skillLabel: 'Ruta de la skill',
+        namePlaceholder: 'ej.: compactSidebar',
+        skillPlaceholder: '_102020_/l2/skills/layout/…',
+        saveLayout: 'Guardar layout',
+        saveError: 'No se pudo guardar el layout.',
+        moleculesHeader: 'Moléculas',
+        useMoleculesLabel: 'Usar moléculas',
+        useMoleculesDesc: 'Las moléculas son los web components listos con los que se construyen las páginas. Cuando está activado, el generador elige una molécula por elemento; cuando está desactivado, las páginas de este layout reciben solo las reglas de layout configuradas (sin web components).',
+        moleculesOn: 'Activado',
+        moleculesOff: 'Desactivado',
+    },
+};
+/// **collab_i18n_end**
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+interface ILayoutOption {
+    value: number;
+    name: string;
+    skill: string;
+    // When false the genome flow skips molecule resolution for this layout's pages
+    // (only the configured layout rules apply). Default true; absent key = true.
+    useMolecules: boolean;
+}
+
+// Presets for the "Add layout" form: each sets the layout name + its render skill.
+const LAYOUT_PRESETS: { name: string; skill: string }[] = [
+    { name: 'standard', skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutStandard.ts' },
+    { name: 'compact',  skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutCompact.ts' },
+    { name: 'sidebar',  skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutSidebar.ts' },
+    { name: 'tabs',     skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutTabs.ts' },
+    { name: 'bento',    skill: '_102020_/l2/aura/agentImplementGenome/skills/layout/genCfePageLayoutBento.ts' },
+];
+
+// ─── Component ───────────────────────────────────────────────────────
+
+@customElement('aura--plugins--select-layout-102020')
+export class PluginSelectLayout extends StateLitElement {
+
+    @property({ attribute: false }) value: number | null = 0;
+
+    @state() private _layoutOptions: ILayoutOption[] = [];
+
+    // ─── "Add layout" form state ──────────────────────────────────────
+    @state() private _addPreset: string | null = null;   // preset name | 'custom' | null
+    @state() private _addName: string = '';
+    @state() private _addSkill: string = '';
+    @state() private _addRules: Record<string, string> = {};
+    @state() private _addUseMolecules: boolean = true;
+    @state() private _addSaving: boolean = false;
+    @state() private _addError: string = '';
+
+    /** The "+ Add layout" knob slot value (highest layout index + 1). */
+    private get _addValue(): number {
+        return this._layoutOptions.reduce((m, o) => Math.max(m, o.value), 0) + 1;
+    }
+
+    connectedCallback() {
+        super.connectedCallback();
+        this._loadProjectConfig();
+    }
+
+    private async _loadProjectConfig(): Promise<void> {
+        const project = getAuraState().actualProject;
+        if (!project) return;
+        try {
+            const config: any = await getConfigProject(project);
+            const layoutsMap: Record<number, { name: string; skill: string; useMolecules?: boolean }> = config?.layouts ?? {};
+            this._layoutOptions = Object.entries(layoutsMap)
+                .map(([k, v]) => ({ value: Number(k), name: v.name, skill: v.skill, useMolecules: v.useMolecules !== false }))
+                .sort((a, b) => a.value - b.value);
+        } catch { /* no project config */ }
+        // @ts-ignore
+        this.requestUpdate();
+    }
+
+    private get msg(): MessageType {
+        return messages[this.getMessageKey(messages)];
+    }
+
+    private _getLayoutLabel(name: string): string {
+        return (this.msg[name as keyof MessageType] as string) ?? name;
+    }
+
+    private _getLayoutDesc(name: string): string {
+        return (this.msg[`${name}Desc` as keyof MessageType] as string) ?? '';
+    }
+
+    createRenderRoot() { return this; }
+
+    render() {
+        const addValue = this._addValue;
+        const max = addValue;                 // last navigable slot is "+ Add layout"
+        const v = this.value ?? 0;
+        const isAll = v === 0;
+        const isAdd = v === addValue;
+        const selectedOption = this._layoutOptions.find(o => o.value === v);
+
+        if (isAll) {
+            return html`
+                <div class="flex flex-col gap-3">
+                    <aura--plugins--nav-header-102020
+                        .fixedLabel=${this.msg.title}
+                        .itemName=${this.msg.allTitle}
+                        .desc=${this.msg.desc}
+                        .value=${0}
+                        .min=${0}
+                        .max=${max}
+                        @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                    ></aura--plugins--nav-header-102020>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        ${this._layoutOptions.map(opt => this._renderLayoutCard(opt, false))}
+                    </div>
+                </div>
+            `;
+        }
+
+        if (isAdd) {
+            return html`
+                <div class="flex flex-col gap-3">
+                    <aura--plugins--nav-header-102020
+                        .fixedLabel=${this.msg.title}
+                        .itemName=${this.msg.addTitle}
+                        .desc=${this.msg.addDesc}
+                        .value=${addValue}
+                        .min=${0}
+                        .max=${max}
+                        @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                    ></aura--plugins--nav-header-102020>
+                    ${this._renderAddForm()}
+                </div>
+            `;
+        }
+
+        if (!selectedOption) return nothing;
+        return html`
+            <div class="flex flex-col gap-3">
+                <aura--plugins--nav-header-102020
+                    .fixedLabel=${this.msg.title}
+                    .itemName=${this._getLayoutLabel(selectedOption.name)}
+                    .desc=${this.msg.desc}
+                    .value=${v}
+                    .min=${0}
+                    .max=${max}
+                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                ></aura--plugins--nav-header-102020>
+
+                ${this._renderLayoutCard(selectedOption, true)}
+                ${this._renderMoleculesSection(selectedOption)}
+            </div>
+        `;
+    }
+
+    // ─── Molecules section ─────────────────────────────────────────────
+    // Per-layout "Use molecules" flag, presented as its own section (à la "Rules for
+    // components"): header + short explanation + on/off toggle. Persisted in
+    // config.layouts[value].useMolecules — the single source of truth the genome flow reads.
+    private _renderMoleculesSection(opt: ILayoutOption) {
+        return html`
+            <div class="flex flex-col gap-2">
+                <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">${this.msg.moleculesHeader}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${this.msg.useMoleculesDesc}</span>
+                <div class="flex items-center gap-2.5 pt-0.5">
+                    ${this._renderToggle(opt.useMolecules, (checked) => this._onToggleUseMolecules(opt.value, checked))}
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-300">
+                        ${this.msg.useMoleculesLabel}
+                        <span class="ml-1 text-[10px] font-semibold ${opt.useMolecules ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}">
+                            · ${opt.useMolecules ? this.msg.moleculesOn : this.msg.moleculesOff}
+                        </span>
+                    </span>
+                </div>
+            </div>
+        `;
+    }
+
+    // Reusable on/off switch (used by the selected layout and the "Add layout" form).
+    private _renderToggle(on: boolean, onChange: (checked: boolean) => void) {
+        return html`
+            <button
+                type="button"
+                role="switch"
+                aria-checked=${on}
+                class="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors cursor-pointer
+                    ${on ? 'bg-indigo-500 dark:bg-indigo-600' : 'bg-gray-300 dark:bg-gray-700'}"
+                @click=${() => onChange(!on)}
+            >
+                <span class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-4' : 'translate-x-0.5'}"></span>
+            </button>
+        `;
+    }
+
+    private async _onToggleUseMolecules(value: number, checked: boolean): Promise<void> {
+        const projectId = getAuraState().actualProject;
+        if (projectId == null) return;
+        try {
+            const config: any = await getConfigProject(projectId);
+            const layout = config?.layouts?.[String(value)];
+            if (!layout) return;
+            layout.useMolecules = checked;
+            await updateConfigProject(projectId, config);
+            await this._loadProjectConfig();
+        } catch { /* leave the UI as-is on failure */ }
+    }
+
+    private _renderLayoutCard(opt: ILayoutOption, isSelected: boolean) {
+        const label = this._getLayoutLabel(opt.name);
+        const desc = this._getLayoutDesc(opt.name);
+
+        return html`
+            <div
+                class="
+                    rounded-xl border p-2.5 transition-all flex flex-col gap-2 cursor-pointer
+                    ${isSelected
+                        ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 shadow-sm'
+                        : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'}
+                "
+                @click=${() => this._dispatchSelect(opt.value)}
+            >
+                <div class="w-full aspect-[4/3] rounded-lg overflow-hidden
+                    ${isSelected ? 'bg-indigo-100 dark:bg-indigo-900/30' : 'bg-gray-100 dark:bg-gray-800'}
+                ">
+                    ${this._renderDiagram(opt.name, isSelected)}
+                </div>
+                <div class="flex flex-col gap-0.5">
+                    <div class="flex items-center gap-1.5">
+                        ${isSelected ? html`<div class="w-1.5 h-1.5 rounded-full bg-indigo-500 dark:bg-indigo-400 shrink-0"></div>` : nothing}
+                        <span class="text-xs font-semibold
+                            ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}
+                        ">${label}</span>
+                    </div>
+                    <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-snug">${desc}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderDiagram(name: string, selected: boolean) {
+        const header  = selected ? '#818cf8' : '#9ca3af';
+        const content = selected ? '#c7d2fe' : '#e5e7eb';
+        const sidebar = selected ? '#a5b4fc' : '#d1d5db';
+        const darkHeader  = selected ? '#4f46e5' : '#4b5563';
+        const darkContent = selected ? '#3730a3' : '#374151';
+        const darkSidebar = selected ? '#4338ca' : '#374151';
+
+        if (name === 'standard') return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="72" height="12" rx="2" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="4" width="72" height="12" rx="2" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="4" y="20" width="72" height="36" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="20" width="72" height="36" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+            </svg>`;
+
+        if (name === 'compact') return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="72" height="8" rx="2" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="4" width="72" height="8" rx="2" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="4" y="15" width="72" height="6" rx="1" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="15" width="72" height="6" rx="1" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="24" width="72" height="6" rx="1" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="24" width="72" height="6" rx="1" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="33" width="72" height="6" rx="1" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="33" width="72" height="6" rx="1" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="42" width="72" height="6" rx="1" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="42" width="72" height="6" rx="1" fill="${darkContent}" class="hidden dark:block"/>
+            </svg>`;
+
+        if (name === 'tabs') return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="16" height="12" rx="2" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="4" width="16" height="12" rx="2" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="22" y="4" width="16" height="12" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="22" y="4" width="16" height="12" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="40" y="4" width="16" height="12" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="40" y="4" width="16" height="12" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="12" width="72" height="44" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="12" width="72" height="44" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="12" width="16" height="4" rx="0" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="12" width="16" height="4" rx="0" fill="${darkHeader}" class="hidden dark:block"/>
+            </svg>`;
+
+        if (name === 'sidebar') return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="18" height="52" rx="2" fill="${sidebar}" class="dark:hidden"/>
+                <rect x="4" y="4" width="18" height="52" rx="2" fill="${darkSidebar}" class="hidden dark:block"/>
+                <rect x="26" y="4" width="50" height="52" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="26" y="4" width="50" height="52" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+            </svg>`;
+
+        if (name === 'bento') return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4"  width="44" height="26" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="4"  width="44" height="26" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="52" y="4" width="24" height="12" rx="2" fill="${header}" class="dark:hidden"/>
+                <rect x="52" y="4" width="24" height="12" rx="2" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="52" y="18" width="24" height="12" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="52" y="18" width="24" height="12" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="4" y="34"  width="24" height="22" rx="2" fill="${header}" class="dark:hidden"/>
+                <rect x="4" y="34"  width="24" height="22" rx="2" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="32" y="34" width="44" height="22" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="32" y="34" width="44" height="22" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+            </svg>`;
+
+        return html`
+            <svg viewBox="0 0 80 60" xmlns="http://www.w3.org/2000/svg" class="w-full h-full">
+                <rect x="4" y="4" width="72" height="52" rx="2" fill="${content}" class="dark:hidden"/>
+                <rect x="4" y="4" width="72" height="52" rx="2" fill="${darkContent}" class="hidden dark:block"/>
+                <rect x="16" y="20" width="48" height="4" rx="1" fill="${header}" class="dark:hidden"/>
+                <rect x="16" y="20" width="48" height="4" rx="1" fill="${darkHeader}" class="hidden dark:block"/>
+                <rect x="24" y="28" width="32" height="4" rx="1" fill="${header}" class="dark:hidden"/>
+                <rect x="24" y="28" width="32" height="4" rx="1" fill="${darkHeader}" class="hidden dark:block"/>
+            </svg>`;
+    }
+
+    // ─── "Add layout" form ────────────────────────────────────────────
+
+    private _renderAddForm() {
+        const projectId = getAuraState().actualProject;
+        const isCustom = this._addPreset === 'custom';
+        const hasChoice = this._addPreset != null;
+        const canSave = !!this._addName.trim() && !!this._addSkill.trim() && !this._addSaving;
+
+        return html`
+            <div class="flex flex-col gap-4">
+                <!-- Skill preset picker -->
+                <div class="flex flex-col gap-1.5">
+                    <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.chooseSkill}</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        ${LAYOUT_PRESETS.map(p => this._renderPresetChip(p.name, p.skill, this._getLayoutLabel(p.name)))}
+                        ${this._renderPresetChip('custom', '', this.msg.custom)}
+                    </div>
+                </div>
+
+                <!-- Name + skill path (editable in custom; shown read-only-ish for presets) -->
+                ${hasChoice ? html`
+                    <div class="flex flex-col gap-2">
+                        <label class="flex flex-col gap-1">
+                            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">${this.msg.nameLabel}</span>
+                            <input
+                                type="text"
+                                class="text-sm px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100"
+                                .value=${this._addName}
+                                placeholder=${this.msg.namePlaceholder}
+                                ?readonly=${!isCustom}
+                                @input=${(e: Event) => { this._addName = (e.target as HTMLInputElement).value; }}
+                            />
+                        </label>
+                        <label class="flex flex-col gap-1">
+                            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">${this.msg.skillLabel}</span>
+                            <input
+                                type="text"
+                                class="text-xs px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-mono"
+                                .value=${this._addSkill}
+                                placeholder=${this.msg.skillPlaceholder}
+                                ?readonly=${!isCustom}
+                                @input=${(e: Event) => { this._addSkill = (e.target as HTMLInputElement).value; }}
+                            />
+                        </label>
+                    </div>
+                ` : nothing}
+
+                <!-- Component rules editor (draft mode) -->
+                ${hasChoice && projectId != null ? html`
+                    <aura--plugins--select-layout-rules-102020
+                        .projectId=${projectId}
+                        .draft=${true}
+                        .initialRules=${this._addRules}
+                        @rules-changed=${this._onAddRulesChanged}
+                    ></aura--plugins--select-layout-rules-102020>
+                ` : nothing}
+
+                <!-- Molecules (per-layout flag) -->
+                ${hasChoice ? html`
+                    <div class="flex flex-col gap-2">
+                        <span class="text-sm font-semibold text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-700 pb-1.5">${this.msg.moleculesHeader}</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500 leading-snug">${this.msg.useMoleculesDesc}</span>
+                        <div class="flex items-center gap-2.5 pt-0.5">
+                            ${this._renderToggle(this._addUseMolecules, (checked) => { this._addUseMolecules = checked; })}
+                            <span class="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                ${this.msg.useMoleculesLabel}
+                                <span class="ml-1 text-[10px] font-semibold ${this._addUseMolecules ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-400 dark:text-gray-500'}">
+                                    · ${this._addUseMolecules ? this.msg.moleculesOn : this.msg.moleculesOff}
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                ` : nothing}
+
+                <!-- Save -->
+                ${hasChoice ? html`
+                    <div class="flex flex-col gap-2">
+                        <button
+                            class="
+                                self-start text-sm px-3 py-1.5 rounded
+                                bg-indigo-500 dark:bg-indigo-600 text-white
+                                hover:bg-indigo-600 dark:hover:bg-indigo-500
+                                disabled:opacity-50 disabled:cursor-not-allowed
+                                transition-colors cursor-pointer
+                            "
+                            ?disabled=${!canSave}
+                            @click=${this._onSaveNewLayout}
+                        >
+                            ${this._addSaving ? this.msg.adding : this.msg.saveLayout}
+                        </button>
+                        ${this._addError ? html`
+                            <div class="rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/10 px-2.5 py-1.5">
+                                <span class="text-xs text-red-600 dark:text-red-400 font-mono">${this._addError}</span>
+                            </div>
+                        ` : nothing}
+                    </div>
+                ` : nothing}
+            </div>
+        `;
+    }
+
+    private _renderPresetChip(name: string, skill: string, label: string) {
+        const active = this._addPreset === name;
+        return html`
+            <button
+                class="
+                    text-xs px-2.5 py-1 rounded-full border transition-colors cursor-pointer
+                    ${active
+                        ? 'border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-300'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'}
+                "
+                @click=${() => this._selectPreset(name, skill)}
+            >${label}</button>
+        `;
+    }
+
+    private _selectPreset(name: string, skill: string) {
+        this._addPreset = name;
+        this._addError = '';
+        if (name === 'custom') {
+            this._addName = '';
+            this._addSkill = '';
+        } else {
+            this._addName = name;
+            this._addSkill = skill;
+        }
+    }
+
+    private _onAddRulesChanged(e: CustomEvent) {
+        this._addRules = { ...(e.detail?.rules ?? {}) };
+    }
+
+    private async _onSaveNewLayout(): Promise<void> {
+        const projectId = getAuraState().actualProject;
+        if (projectId == null) return;
+
+        const name = this._addName.trim();
+        const skill = this._addSkill.trim();
+        if (!name || !skill) return;
+
+        this._addSaving = true;
+        this._addError = '';
+        try {
+            const config: any = await getConfigProject(projectId);
+            if (!config) throw new Error('project config not found');
+
+            const current = config.layouts;
+            const layouts: Record<string, any> = (current && typeof current === 'object' && !Array.isArray(current)) ? current : {};
+            const newIndex = this._addValue;
+            layouts[newIndex] = { name, skill, rules: { ...this._addRules }, useMolecules: this._addUseMolecules };
+            config.layouts = layouts;
+            await updateConfigProject(projectId, config);
+
+            // Refresh options and notify the host so it rebuilds the layout knob
+            // (new entry + fresh "+ Add" slot) and selects the freshly created layout.
+            await this._loadProjectConfig();
+            this._resetAddForm();
+            this.dispatchEvent(new CustomEvent('layout-created', {
+                detail: { value: newIndex },
+                bubbles: true,
+                composed: true,
+            }));
+        } catch (err) {
+            this._addError = `${this.msg.saveError} ${(err as Error)?.message ?? ''}`.trim();
+        } finally {
+            this._addSaving = false;
+        }
+    }
+
+    private _resetAddForm() {
+        this._addPreset = null;
+        this._addName = '';
+        this._addSkill = '';
+        this._addRules = {};
+        this._addUseMolecules = true;
+        this._addError = '';
+    }
+
+    private _dispatchSelect(value: number) {
+        this.dispatchEvent(new CustomEvent('select-layout', {
+            detail: { value },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+}

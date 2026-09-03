@@ -1,0 +1,1492 @@
+{
+  "planId": "e4-ontology-review",
+  "moduleName": "petShop",
+  "userLanguage": "pt-BR",
+  "title": "Ontologia de negócio",
+  "reviewRound": 1,
+  "solutionMode": "new",
+  "businessDomain": "Operação presencial de pet shop com agendamento e acompanhamento de atendimentos",
+  "entities": [
+    {
+      "entityId": "Customer",
+      "title": "Cliente",
+      "description": "Pessoa cadastrada no pet shop, associada à conta autenticada, que possui a própria lista de pets e solicita atendimentos presenciais.",
+      "kind": "mdm",
+      "ownership": "moduleOwned",
+      "party": "person",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerCustomer",
+          "registerPetAndRequestFirstAppointment",
+          "requestAppointmentForPet",
+          "consultPetServiceHistory"
+        ],
+        "featureIds": [
+          "customerRegistration",
+          "petRegistration",
+          "appointmentScheduling",
+          "petServiceHistory"
+        ],
+        "authorityRefs": [
+          "petshop:cliente",
+          "petshop:admin"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "customerId",
+          "title": "Identificador do cliente",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do cadastro mestre do cliente, reutilizado pelos registros relacionados.",
+          "constraints": [
+            {
+              "constraintId": "uniqueCustomerId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada cadastro de cliente possui um identificador exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "authenticatedAccountId",
+          "title": "Conta autenticada",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência à conta autenticada da plataforma associada ao cadastro do cliente.",
+          "constraints": [
+            {
+              "constraintId": "uniqueAuthenticatedAccountId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Uma conta autenticada da plataforma fica associada a apenas um cadastro de cliente.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "fullName",
+          "title": "Nome completo",
+          "type": "string",
+          "required": true,
+          "description": "Nome do cliente apresentado em seu cadastro e nos atendimentos presenciais.",
+          "constraints": []
+        },
+        {
+          "fieldId": "status",
+          "title": "Situação",
+          "type": "string",
+          "required": true,
+          "description": "Situação atual do cadastro do cliente no pet shop.",
+          "constraints": [
+            {
+              "constraintId": "customerStatusValues",
+              "kind": "enum",
+              "value": "[\"ativo\",\"inativo\"]",
+              "description": "A situação do cliente pode ser ativo ou inativo.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "ativo",
+            "inativo"
+          ]
+        }
+      ],
+      "lifecycleStates": [
+        "ativo",
+        "inativo"
+      ],
+      "statusEnum": [
+        "ativo",
+        "inativo"
+      ],
+      "initialState": "ativo",
+      "terminalStates": [
+        "inativo"
+      ],
+      "lifecyclePredicates": [
+        {
+          "predicateId": "activeCustomer",
+          "description": "Cliente apto a manter pets, solicitar agendamentos e consultar seus atendimentos.",
+          "stateIds": [
+            "ativo"
+          ],
+          "source": "journey"
+        }
+      ],
+      "useRules": [
+        "activeCustomer",
+        "customerRecordMustBelongToAuthenticatedClient"
+      ],
+      "storage": {
+        "target": "mdm",
+        "scope": "organization",
+        "idField": "customerId",
+        "mdmType": "petShop.Customer",
+        "notes": "Cadastro mestre da pessoa cliente, reutilizado por pets, agendamentos e atendimentos. A autenticação permanece no diretório da plataforma e é apenas referenciada neste registro; o usuário da plataforma não é uma entidade do módulo."
+      }
+    },
+    {
+      "entityId": "Pet",
+      "title": "Pet",
+      "description": "Animal da lista do cliente, com histórico de atendimentos, pendências e registros visuais opcionais dos serviços.",
+      "kind": "mdm",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerPetAndRequestFirstAppointment",
+          "requestAppointmentForPet",
+          "consultPetServiceHistory",
+          "startServiceExecution",
+          "completeServiceExecution"
+        ],
+        "featureIds": [
+          "petRegistration",
+          "appointmentScheduling",
+          "petServiceHistory",
+          "serviceProgressTracking",
+          "serviceImages"
+        ],
+        "authorityRefs": [
+          "petshop:cliente",
+          "petshop:admin"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "petId",
+          "title": "Identificador do pet",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do cadastro mestre do pet, usado nos atendimentos e consultas relacionados.",
+          "constraints": [
+            {
+              "constraintId": "uniquePetId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada cadastro de pet possui um identificador estável e exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "name",
+          "title": "Nome do pet",
+          "type": "string",
+          "required": true,
+          "description": "Nome usado pelo cliente e pela equipe para identificar o pet na lista e nos atendimentos.",
+          "constraints": []
+        },
+        {
+          "fieldId": "status",
+          "title": "Situação do cadastro",
+          "type": "string",
+          "required": true,
+          "description": "Indica se o pet está ativo para novos agendamentos ou inativo.",
+          "constraints": [
+            {
+              "constraintId": "petStatusEnum",
+              "kind": "enum",
+              "value": "[\"ativo\",\"inativo\"]",
+              "description": "A situação do pet segue os estados previstos para seu cadastro.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "ativo",
+            "inativo"
+          ]
+        }
+      ],
+      "lifecycleStates": [
+        "ativo",
+        "inativo"
+      ],
+      "statusEnum": [
+        "ativo",
+        "inativo"
+      ],
+      "initialState": "ativo",
+      "terminalStates": [
+        "inativo"
+      ],
+      "lifecyclePredicates": [
+        {
+          "predicateId": "activePet",
+          "description": "Pet apto a receber novos agendamentos e a ser consultado na lista do cliente.",
+          "stateIds": [
+            "ativo"
+          ],
+          "source": "journey"
+        }
+      ],
+      "useRules": [
+        "activePet"
+      ],
+      "storage": {
+        "target": "mdm",
+        "scope": "organization",
+        "idField": "petId",
+        "mdmType": "petShop.Pet",
+        "notes": "Cadastro mestre do animal, reutilizado pelos pedidos e pelo histórico. Não concentra andamento, totais nem imagens operacionais; esses fatos ficam nos registros transacionais do atendimento."
+      }
+    },
+    {
+      "entityId": "ServiceOffering",
+      "title": "Serviço",
+      "description": "Item do catálogo de serviços presenciais do pet shop, selecionado no agendamento e apresentado na comunicação institucional.",
+      "kind": "mdm",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "discoverPetShop",
+          "registerPetAndRequestFirstAppointment",
+          "requestAppointmentForPet"
+        ],
+        "featureIds": [
+          "institutionalHome",
+          "appointmentScheduling"
+        ],
+        "authorityRefs": [
+          "petshop:cliente",
+          "petshop:admin"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "serviceOfferingId",
+          "title": "Identificador do serviço",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do item do catálogo de serviços da organização.",
+          "constraints": [
+            {
+              "constraintId": "uniqueServiceOfferingId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada serviço do catálogo possui um identificador estável exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "name",
+          "title": "Nome do serviço",
+          "type": "string",
+          "required": true,
+          "description": "Nome do serviço exibido no catálogo institucional e selecionado durante o agendamento.",
+          "constraints": []
+        },
+        {
+          "fieldId": "description",
+          "title": "Descrição do serviço",
+          "type": "text",
+          "required": false,
+          "description": "Descrição informativa do serviço apresentada no catálogo institucional.",
+          "constraints": []
+        },
+        {
+          "fieldId": "status",
+          "title": "Situação",
+          "type": "string",
+          "required": true,
+          "description": "Indica se o serviço está disponível para divulgação e novos pedidos de agendamento.",
+          "constraints": [
+            {
+              "constraintId": "serviceOfferingStatusEnum",
+              "kind": "enum",
+              "value": "[\"disponivel\",\"indisponivel\"]",
+              "description": "A situação do serviço deve ser disponível ou indisponível.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "disponivel",
+            "indisponivel"
+          ]
+        }
+      ],
+      "lifecycleStates": [
+        "disponivel",
+        "indisponivel"
+      ],
+      "statusEnum": [
+        "disponivel",
+        "indisponivel"
+      ],
+      "initialState": "disponivel",
+      "terminalStates": [
+        "indisponivel"
+      ],
+      "lifecyclePredicates": [
+        {
+          "predicateId": "bookableServiceOffering",
+          "description": "Serviço aplicável para novos pedidos de agendamento e para divulgação institucional.",
+          "stateIds": [
+            "disponivel"
+          ],
+          "source": "journey"
+        }
+      ],
+      "useRules": [
+        "bookableServiceOffering"
+      ],
+      "storage": {
+        "target": "mdm",
+        "scope": "organization",
+        "idField": "serviceOfferingId",
+        "mdmType": "petShop.ServiceOffering",
+        "notes": "Catálogo mestre da organização. Não armazena agenda, execução nem pagamento."
+      }
+    },
+    {
+      "entityId": "Appointment",
+      "title": "Agendamento",
+      "description": "Pedido de atendimento presencial de um pet, com serviço e horário solicitados, decisão do administrador e indicação de que leva, busca e pagamento ocorrem na loja.",
+      "kind": "core",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "discoverPetShop",
+          "registerPetAndRequestFirstAppointment",
+          "requestAppointmentForPet",
+          "decideAppointmentRequest",
+          "startServiceExecution",
+          "consultPetServiceHistory"
+        ],
+        "featureIds": [
+          "appointmentScheduling",
+          "appointmentApproval",
+          "serviceProgressTracking"
+        ],
+        "authorityRefs": [
+          "petshop:cliente",
+          "petshop:admin"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "appointmentId",
+          "title": "Identificador do agendamento",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do pedido de agendamento, mantido entre as etapas conectadas.",
+          "constraints": [
+            {
+              "constraintId": "uniqueAppointmentId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada pedido de agendamento possui um identificador estável e exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "customerId",
+          "title": "Cliente solicitante",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência de contexto ao cliente que solicita o atendimento para seu pet.",
+          "constraints": []
+        },
+        {
+          "fieldId": "petId",
+          "title": "Pet atendido",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência de contexto ao pet previamente selecionado na lista do cliente.",
+          "constraints": []
+        },
+        {
+          "fieldId": "serviceOfferingId",
+          "title": "Serviço solicitado",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência de contexto ao serviço do catálogo selecionado para o pet.",
+          "constraints": []
+        },
+        {
+          "fieldId": "scheduledAt",
+          "title": "Data e horário solicitados",
+          "type": "datetime",
+          "required": true,
+          "description": "Data e horário para os quais o cliente solicita o atendimento presencial.",
+          "constraints": []
+        },
+        {
+          "fieldId": "status",
+          "title": "Situação do pedido",
+          "type": "string",
+          "required": true,
+          "description": "Situação da solicitação, que registra se ela aguarda decisão, foi confirmada ou foi recusada.",
+          "constraints": [
+            {
+              "constraintId": "appointmentStatusEnum",
+              "kind": "enum",
+              "value": "[\"solicitado\",\"confirmado\",\"recusado\"]",
+              "description": "A situação do pedido é solicitado, confirmado ou recusado.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "solicitado",
+            "confirmado",
+            "recusado"
+          ]
+        },
+        {
+          "fieldId": "inStoreService",
+          "title": "Atendimento na loja",
+          "type": "boolean",
+          "required": true,
+          "description": "Indica que o atendimento é presencial na loja, onde o cliente leva e busca o pet e realiza o pagamento.",
+          "constraints": [
+            {
+              "constraintId": "mustBeInStoreService",
+              "kind": "custom",
+              "value": "true",
+              "description": "O atendimento solicitado é realizado presencialmente na loja.",
+              "source": "journey"
+            }
+          ]
+        }
+      ],
+      "lifecycleStates": [
+        "solicitado",
+        "confirmado",
+        "recusado"
+      ],
+      "statusEnum": [
+        "solicitado",
+        "confirmado",
+        "recusado"
+      ],
+      "initialState": "solicitado",
+      "terminalStates": [
+        "confirmado",
+        "recusado"
+      ],
+      "lifecyclePredicates": [
+        {
+          "predicateId": "pendingAppointmentDecision",
+          "description": "Pedido em aberto, ainda aguardando confirmação ou recusa do administrador.",
+          "stateIds": [
+            "solicitado"
+          ],
+          "source": "journey"
+        },
+        {
+          "predicateId": "confirmedAppointment",
+          "description": "Pedido confirmado e apto a ter a execução do serviço iniciada na loja.",
+          "stateIds": [
+            "confirmado"
+          ],
+          "source": "journey"
+        },
+        {
+          "predicateId": "refusedAppointment",
+          "description": "Pedido encerrado como recusado e ainda consultável pelo cliente.",
+          "stateIds": [
+            "recusado"
+          ],
+          "source": "journey"
+        },
+        {
+          "predicateId": "decidedAppointment",
+          "description": "Pedido que já recebeu decisão definitiva de confirmação ou recusa.",
+          "stateIds": [
+            "confirmado",
+            "recusado"
+          ],
+          "source": "journey"
+        }
+      ],
+      "useRules": [
+        "appointmentMustReferenceClientPet",
+        "appointmentWithinAvailableHours",
+        "appointmentCannotUseBlockedPeriod",
+        "appointmentDecisionRequiredBeforeServiceStart"
+      ],
+      "storage": {
+        "target": "moduleDatabase",
+        "scope": "module",
+        "idField": "appointmentId",
+        "notes": "Registro operacional do pedido. A decisão e a situação pertencem a este fato transacional, não ao cadastro mestre do cliente ou do pet."
+      }
+    },
+    {
+      "entityId": "ServiceExecution",
+      "title": "Execução do serviço",
+      "description": "Atendimento presencial vinculado ao agendamento confirmado e ao pet, com início, término, imagens opcionais de antes e depois, retirada e quitação na loja.",
+      "kind": "core",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "startServiceExecution",
+          "completeServiceExecution",
+          "recordPickupAndInStorePayment",
+          "consultPetServiceHistory"
+        ],
+        "featureIds": [
+          "serviceProgressTracking",
+          "serviceCompletion",
+          "serviceImages",
+          "inStorePickupPayment",
+          "petServiceHistory"
+        ],
+        "authorityRefs": [
+          "petshop:cliente",
+          "petshop:admin"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "serviceExecutionId",
+          "title": "Identificador da execução do serviço",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável da execução de atendimento, carregado entre as etapas conectadas.",
+          "constraints": [
+            {
+              "constraintId": "uniqueServiceExecutionId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada execução de serviço possui um identificador estável exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "status",
+          "title": "Situação do atendimento",
+          "type": "string",
+          "required": true,
+          "description": "Situação operacional do atendimento presencial para acompanhamento do cliente e operação administrativa.",
+          "constraints": [
+            {
+              "constraintId": "serviceExecutionStatusEnum",
+              "kind": "enum",
+              "value": "[\"iniciada\",\"concluida\",\"encerrada\"]",
+              "description": "A situação deve corresponder a um estado válido do ciclo de vida da execução.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "iniciada",
+            "concluida",
+            "encerrada"
+          ]
+        },
+        {
+          "fieldId": "customerId",
+          "title": "Cliente",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência ao cliente vinculado ao pet recebido para este atendimento, selecionada no contexto do agendamento.",
+          "constraints": []
+        },
+        {
+          "fieldId": "petId",
+          "title": "Pet",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência ao pet atendido, preservada para acompanhamento e consulta do histórico.",
+          "constraints": []
+        },
+        {
+          "fieldId": "appointmentId",
+          "title": "Agendamento",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência ao agendamento confirmado que deu origem a este atendimento.",
+          "constraints": []
+        },
+        {
+          "fieldId": "startedAt",
+          "title": "Data e hora de início",
+          "type": "datetime",
+          "required": true,
+          "description": "Data e hora em que o administrador registra o recebimento do pet e o início do serviço na loja.",
+          "constraints": []
+        },
+        {
+          "fieldId": "completedAt",
+          "title": "Data e hora de conclusão",
+          "type": "datetime",
+          "required": false,
+          "description": "Data e hora em que o administrador registra o término do serviço executado.",
+          "constraints": []
+        },
+        {
+          "fieldId": "beforeImages",
+          "title": "Imagens de antes",
+          "type": "json",
+          "required": false,
+          "description": "Referências às imagens opcionais registradas antes da execução do serviço no armazenamento de mídia da plataforma.",
+          "constraints": []
+        },
+        {
+          "fieldId": "afterImages",
+          "title": "Imagens de depois",
+          "type": "json",
+          "required": false,
+          "description": "Referências às imagens opcionais registradas após a execução do serviço no armazenamento de mídia da plataforma.",
+          "constraints": []
+        },
+        {
+          "fieldId": "pickedUpAt",
+          "title": "Data e hora da retirada",
+          "type": "datetime",
+          "required": false,
+          "description": "Data e hora em que o pet é retirado presencialmente na loja.",
+          "constraints": []
+        },
+        {
+          "fieldId": "paidInStore",
+          "title": "Pagamento presencial quitado",
+          "type": "boolean",
+          "required": true,
+          "description": "Indica se a quitação presencial do atendimento foi registrada na loja.",
+          "constraints": []
+        },
+        {
+          "fieldId": "paidInStoreAt",
+          "title": "Data e hora da quitação presencial",
+          "type": "datetime",
+          "required": false,
+          "description": "Data e hora em que o pagamento presencial é registrado na retirada do pet.",
+          "constraints": []
+        }
+      ],
+      "lifecycleStates": [
+        "iniciada",
+        "concluida",
+        "encerrada"
+      ],
+      "statusEnum": [
+        "iniciada",
+        "concluida",
+        "encerrada"
+      ],
+      "initialState": "iniciada",
+      "terminalStates": [
+        "encerrada"
+      ],
+      "lifecyclePredicates": [
+        {
+          "predicateId": "startedServiceExecution",
+          "description": "Atendimento já iniciado na recepção do pet e em andamento para consulta do cliente.",
+          "stateIds": [
+            "iniciada"
+          ],
+          "source": "journey"
+        },
+        {
+          "predicateId": "completedServiceAwaitingPickup",
+          "description": "Serviço concluído e ainda aguardando retirada e pagamento presencial na loja.",
+          "stateIds": [
+            "concluida"
+          ],
+          "source": "journey"
+        },
+        {
+          "predicateId": "closedServiceExecution",
+          "description": "Atendimento encerrado operacionalmente após retirada e quitação presencial.",
+          "stateIds": [
+            "encerrada"
+          ],
+          "source": "journey"
+        },
+        {
+          "predicateId": "unfinishedServiceExecution",
+          "description": "Execução ainda não encerrada, seja em andamento ou aguardando retirada.",
+          "stateIds": [
+            "iniciada",
+            "concluida"
+          ],
+          "source": "journey"
+        },
+        {
+          "predicateId": "historicalServiceExecution",
+          "description": "Últimas execuções concluídas ou encerradas que compõem o histórico do pet.",
+          "stateIds": [
+            "concluida",
+            "encerrada"
+          ],
+          "source": "journey"
+        }
+      ],
+      "useRules": [
+        "appointmentDecisionRequiredBeforeServiceStart",
+        "serviceCompletionRequiresStart",
+        "serviceImagesAreOptional",
+        "pickupAndPaymentRequireCompletedService",
+        "clientCanInspectOnlyOwnRelatedServiceRecords"
+      ],
+      "storage": {
+        "target": "moduleDatabase",
+        "scope": "module",
+        "idField": "serviceExecutionId",
+        "notes": "Fato operacional do atendimento. Imagens opcionais de antes e depois usam o armazenamento de mídia da plataforma e permanecem associadas a esta execução, sem entidade própria de arquivo."
+      }
+    },
+    {
+      "entityId": "PendingItem",
+      "title": "Pendência",
+      "description": "Projeção das pendências abertas de um pet, reunindo pedidos ainda não encerrados e atendimentos que ainda exigem ação, como decisão, execução ou retirada.",
+      "kind": "projection",
+      "ownership": "derived",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "consultPetServiceHistory"
+        ],
+        "featureIds": [
+          "petServiceHistory"
+        ],
+        "authorityRefs": [
+          "petshop:cliente",
+          "petshop:admin"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "petId",
+          "title": "Pet",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência de identidade do pet ao qual a pendência calculada pertence, usada para apresentar somente as pendências do pet selecionado.",
+          "constraints": []
+        },
+        {
+          "fieldId": "appointmentId",
+          "title": "Agendamento de origem",
+          "type": "uuid",
+          "required": false,
+          "description": "Referência de identidade do agendamento em aberto que origina a pendência, quando aplicável.",
+          "constraints": []
+        },
+        {
+          "fieldId": "serviceExecutionId",
+          "title": "Atendimento de origem",
+          "type": "uuid",
+          "required": false,
+          "description": "Referência de identidade do atendimento que origina a pendência, quando aplicável.",
+          "constraints": []
+        },
+        {
+          "fieldId": "title",
+          "title": "Título da pendência",
+          "type": "string",
+          "required": true,
+          "description": "Título calculado que identifica de forma compreensível a ação ou situação pendente para consulta.",
+          "constraints": []
+        },
+        {
+          "fieldId": "description",
+          "title": "Descrição da pendência",
+          "type": "text",
+          "required": false,
+          "description": "Descrição calculada com o contexto disponível da pendência, como decisão aguardada, execução em andamento ou retirada e pagamento pendentes.",
+          "constraints": []
+        }
+      ],
+      "lifecycleStates": [],
+      "lifecyclePredicates": [],
+      "useRules": [],
+      "storage": {
+        "target": "derived",
+        "scope": "none",
+        "notes": "Leitura calculada a partir de agendamentos em aberto e execuções não encerradas. Não é cadastro mestre nem histórico transacional próprio."
+      }
+    },
+    {
+      "entityId": "BusinessHours",
+      "title": "Horário de atendimento",
+      "description": "Grade regular de horários em que o pet shop atende, usada como referência para novos pedidos e para o planejamento de indisponibilidades.",
+      "kind": "mdm",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerBusinessHours",
+          "planScheduleUnavailability"
+        ],
+        "featureIds": [
+          "availabilityManagement"
+        ],
+        "authorityRefs": [
+          "petshop:admin"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "businessHoursId",
+          "title": "Identificador do horário de atendimento",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do registro mestre de horário de atendimento da organização.",
+          "constraints": [
+            {
+              "constraintId": "uniqueBusinessHoursId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada registro de horário de atendimento possui um identificador estável e exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "status",
+          "title": "Situação",
+          "type": "string",
+          "required": true,
+          "description": "Indica se o horário regular está vigente ou inativo para uso na agenda.",
+          "constraints": [
+            {
+              "constraintId": "businessHoursStatusValues",
+              "kind": "enum",
+              "value": "[\"vigente\",\"inativo\"]",
+              "description": "A situação do horário de atendimento deve ser vigente ou inativo.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "vigente",
+            "inativo"
+          ]
+        },
+        {
+          "fieldId": "dayOfWeek",
+          "title": "Dia da semana",
+          "type": "string",
+          "required": true,
+          "description": "Dia da semana ao qual se aplica o intervalo regular de atendimento.",
+          "constraints": [
+            {
+              "constraintId": "businessHoursDayOfWeekValues",
+              "kind": "enum",
+              "value": "[\"segunda-feira\",\"terça-feira\",\"quarta-feira\",\"quinta-feira\",\"sexta-feira\",\"sábado\",\"domingo\"]",
+              "description": "O dia informado deve corresponder a um dia da semana.",
+              "source": "inferred"
+            }
+          ],
+          "enum": [
+            "segunda-feira",
+            "terça-feira",
+            "quarta-feira",
+            "quinta-feira",
+            "sexta-feira",
+            "sábado",
+            "domingo"
+          ]
+        },
+        {
+          "fieldId": "startTime",
+          "title": "Horário de início",
+          "type": "string",
+          "required": true,
+          "description": "Horário em que o intervalo regular de atendimento começa no dia informado.",
+          "constraints": [
+            {
+              "constraintId": "businessHoursStartTimeFormat",
+              "kind": "pattern",
+              "value": "^([01]\\d|2[0-3]):[0-5]\\d$",
+              "description": "O horário de início deve ser informado no formato de 24 horas HH:mm.",
+              "source": "journey"
+            }
+          ]
+        },
+        {
+          "fieldId": "endTime",
+          "title": "Horário de término",
+          "type": "string",
+          "required": true,
+          "description": "Horário em que o intervalo regular de atendimento termina no dia informado.",
+          "constraints": [
+            {
+              "constraintId": "businessHoursEndTimeFormat",
+              "kind": "pattern",
+              "value": "^([01]\\d|2[0-3]):[0-5]\\d$",
+              "description": "O horário de término deve ser informado no formato de 24 horas HH:mm.",
+              "source": "journey"
+            }
+          ]
+        }
+      ],
+      "lifecycleStates": [
+        "vigente",
+        "inativo"
+      ],
+      "statusEnum": [
+        "vigente",
+        "inativo"
+      ],
+      "initialState": "vigente",
+      "terminalStates": [
+        "inativo"
+      ],
+      "lifecyclePredicates": [
+        {
+          "predicateId": "applicableBusinessHours",
+          "description": "Horários de atendimento aplicáveis à validação da agenda e ao planejamento de bloqueios.",
+          "stateIds": [
+            "vigente"
+          ],
+          "source": "journey"
+        }
+      ],
+      "useRules": [
+        "applicableBusinessHours"
+      ],
+      "storage": {
+        "target": "mdm",
+        "scope": "organization",
+        "idField": "businessHoursId",
+        "mdmType": "petShop.BusinessHours",
+        "notes": "Cadastro mestre da grade regular da organização. Não guarda ocupação pontual, pedidos nem saldos de agenda."
+      }
+    },
+    {
+      "entityId": "AvailabilityBlock",
+      "title": "Período ocupado",
+      "description": "Bloqueio antecipado da agenda por uma hora específica ou por um dia inteiro, inclusive para férias, impedindo novos pedidos naquele intervalo.",
+      "kind": "core",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "planScheduleUnavailability"
+        ],
+        "featureIds": [
+          "availabilityManagement"
+        ],
+        "authorityRefs": [
+          "petshop:admin"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "availabilityBlockId",
+          "title": "Identificador do período ocupado",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do registro de indisponibilidade da agenda.",
+          "constraints": [
+            {
+              "constraintId": "uniqueAvailabilityBlockId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada período ocupado possui um identificador estável exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "status",
+          "title": "Situação",
+          "type": "string",
+          "required": true,
+          "description": "Situação atual do bloqueio de disponibilidade.",
+          "constraints": [
+            {
+              "constraintId": "availabilityBlockStatusEnum",
+              "kind": "enum",
+              "value": "[\"vigente\",\"cancelado\"]",
+              "description": "O bloqueio pode estar vigente ou cancelado.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "vigente",
+            "cancelado"
+          ]
+        },
+        {
+          "fieldId": "businessHoursId",
+          "title": "Horários de atendimento de referência",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência aos horários de atendimento consultados e selecionados pelo administrador para planejar a indisponibilidade.",
+          "constraints": []
+        },
+        {
+          "fieldId": "blockDate",
+          "title": "Data do bloqueio",
+          "type": "date",
+          "required": true,
+          "description": "Data em que a agenda ficará indisponível.",
+          "constraints": []
+        },
+        {
+          "fieldId": "blockGranularity",
+          "title": "Abrangência do bloqueio",
+          "type": "string",
+          "required": true,
+          "description": "Indica se a indisponibilidade ocupa uma hora específica ou o dia inteiro.",
+          "constraints": [
+            {
+              "constraintId": "availabilityBlockGranularityEnum",
+              "kind": "enum",
+              "value": "[\"hora\",\"diaInteiro\"]",
+              "description": "O administrador pode bloquear uma hora específica ou um dia inteiro.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "hora",
+            "diaInteiro"
+          ]
+        },
+        {
+          "fieldId": "blockedHour",
+          "title": "Hora bloqueada",
+          "type": "string",
+          "required": false,
+          "description": "Hora específica que ficará indisponível quando o bloqueio for por hora.",
+          "constraints": [
+            {
+              "constraintId": "blockedHourTimeFormat",
+              "kind": "format",
+              "value": "time",
+              "description": "A hora específica do bloqueio é informada em formato de horário.",
+              "source": "journey"
+            }
+          ]
+        }
+      ],
+      "lifecycleStates": [
+        "vigente",
+        "cancelado"
+      ],
+      "statusEnum": [
+        "vigente",
+        "cancelado"
+      ],
+      "initialState": "vigente",
+      "terminalStates": [
+        "cancelado"
+      ],
+      "lifecyclePredicates": [
+        {
+          "predicateId": "activeAvailabilityBlock",
+          "description": "Período ocupado que permanece bloqueado para novos pedidos de agendamento.",
+          "stateIds": [
+            "vigente"
+          ],
+          "source": "journey"
+        }
+      ],
+      "useRules": [
+        "availabilityBlockMustFitBusinessCalendar",
+        "appointmentCannotUseBlockedPeriod"
+      ],
+      "storage": {
+        "target": "moduleDatabase",
+        "scope": "module",
+        "idField": "availabilityBlockId",
+        "notes": "Registro operacional de indisponibilidade. A ocupação não é acumulada no cadastro mestre de horários."
+      }
+    },
+    {
+      "entityId": "InstitutionalHome",
+      "title": "Página institucional",
+      "description": "Projeção pública das informações institucionais, do funcionamento presencial e dos serviços divulgados pelo pet shop.",
+      "kind": "projection",
+      "ownership": "derived",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "discoverPetShop"
+        ],
+        "featureIds": [
+          "institutionalHome"
+        ],
+        "authorityRefs": [
+          "petshop:cliente"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "institutionalDescription",
+          "title": "Descrição institucional",
+          "type": "text",
+          "required": false,
+          "description": "Apresentação pública derivada das informações institucionais divulgadas pelo pet shop.",
+          "constraints": []
+        },
+        {
+          "fieldId": "businessHoursSummary",
+          "title": "Funcionamento presencial",
+          "type": "text",
+          "required": false,
+          "description": "Resumo público derivado dos horários de atendimento presencial cadastrados.",
+          "constraints": []
+        },
+        {
+          "fieldId": "serviceOfferings",
+          "title": "Serviços divulgados",
+          "type": "json",
+          "required": false,
+          "description": "Lista derivada dos serviços do catálogo divulgados na página institucional.",
+          "constraints": []
+        }
+      ],
+      "lifecycleStates": [],
+      "lifecyclePredicates": [],
+      "useRules": [],
+      "storage": {
+        "target": "derived",
+        "scope": "none",
+        "notes": "Leitura institucional derivada do catálogo publicado e das informações de funcionamento presencial. Não modela página, menu nem formulário; também não recria infraestrutura de mídia ou de internacionalização da plataforma."
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "petBelongsToCustomer",
+      "fromEntity": "Pet",
+      "toEntity": "Customer",
+      "type": "manyToOne",
+      "required": true,
+      "description": "Cada pet pertence a um único cliente e compõe a lista desse cliente.",
+      "persistence": {
+        "mode": "mdmRelationship"
+      },
+      "realization": {
+        "kind": "mdmRelationship",
+        "ownerEntity": "Pet",
+        "from": {
+          "entityId": "Pet",
+          "fieldIds": [
+            "petId"
+          ]
+        },
+        "to": {
+          "entityId": "Customer",
+          "fieldIds": [
+            "customerId"
+          ]
+        },
+        "description": "A associação é mantida pela relação MDM entre as identidades do pet e do cliente."
+      }
+    },
+    {
+      "relationshipId": "appointmentBelongsToCustomer",
+      "fromEntity": "Appointment",
+      "toEntity": "Customer",
+      "type": "manyToOne",
+      "required": true,
+      "description": "Cada pedido de agendamento fica vinculado ao cliente que solicita o atendimento.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "Appointment",
+        "from": {
+          "entityId": "Appointment",
+          "fieldIds": [
+            "customerId"
+          ]
+        },
+        "to": {
+          "entityId": "Customer",
+          "fieldIds": [
+            "customerId"
+          ]
+        },
+        "description": "Appointment.customerId referencia a identidade MDM do cliente solicitante."
+      }
+    },
+    {
+      "relationshipId": "appointmentForPet",
+      "fromEntity": "Appointment",
+      "toEntity": "Pet",
+      "type": "manyToOne",
+      "required": true,
+      "description": "Cada pedido de agendamento é feito para um pet previamente selecionado da lista do cliente.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "Appointment",
+        "from": {
+          "entityId": "Appointment",
+          "fieldIds": [
+            "petId"
+          ]
+        },
+        "to": {
+          "entityId": "Pet",
+          "fieldIds": [
+            "petId"
+          ]
+        },
+        "description": "Appointment.petId referencia a identidade MDM do pet selecionado."
+      }
+    },
+    {
+      "relationshipId": "appointmentUsesServiceOffering",
+      "fromEntity": "Appointment",
+      "toEntity": "ServiceOffering",
+      "type": "manyToOne",
+      "required": true,
+      "description": "Cada pedido associa o pet a um serviço do catálogo previamente selecionado.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "Appointment",
+        "from": {
+          "entityId": "Appointment",
+          "fieldIds": [
+            "serviceOfferingId"
+          ]
+        },
+        "to": {
+          "entityId": "ServiceOffering",
+          "fieldIds": [
+            "serviceOfferingId"
+          ]
+        },
+        "description": "Appointment.serviceOfferingId referencia o serviço selecionado no catálogo MDM."
+      }
+    },
+    {
+      "relationshipId": "serviceExecutionBelongsToCustomer",
+      "fromEntity": "ServiceExecution",
+      "toEntity": "Customer",
+      "type": "manyToOne",
+      "required": true,
+      "description": "A execução do atendimento permanece vinculada ao cliente do pet recebido na loja.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "ServiceExecution",
+        "from": {
+          "entityId": "ServiceExecution",
+          "fieldIds": [
+            "customerId"
+          ]
+        },
+        "to": {
+          "entityId": "Customer",
+          "fieldIds": [
+            "customerId"
+          ]
+        },
+        "description": "ServiceExecution.customerId referencia o cliente vinculado ao atendimento."
+      }
+    },
+    {
+      "relationshipId": "serviceExecutionForPet",
+      "fromEntity": "ServiceExecution",
+      "toEntity": "Pet",
+      "type": "manyToOne",
+      "required": true,
+      "description": "A execução mantém vínculo direto com o pet atendido, permitindo histórico e acompanhamento na web.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "ServiceExecution",
+        "from": {
+          "entityId": "ServiceExecution",
+          "fieldIds": [
+            "petId"
+          ]
+        },
+        "to": {
+          "entityId": "Pet",
+          "fieldIds": [
+            "petId"
+          ]
+        },
+        "description": "ServiceExecution.petId referencia o pet atendido."
+      }
+    },
+    {
+      "relationshipId": "serviceExecutionForAppointment",
+      "fromEntity": "ServiceExecution",
+      "toEntity": "Appointment",
+      "type": "manyToOne",
+      "required": true,
+      "description": "A execução nasce do agendamento confirmado selecionado pelo administrador.",
+      "persistence": {
+        "mode": "moduleReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "ServiceExecution",
+        "from": {
+          "entityId": "ServiceExecution",
+          "fieldIds": [
+            "appointmentId"
+          ]
+        },
+        "to": {
+          "entityId": "Appointment",
+          "fieldIds": [
+            "appointmentId"
+          ]
+        },
+        "description": "ServiceExecution.appointmentId referencia o agendamento confirmado que originou a execução."
+      }
+    },
+    {
+      "relationshipId": "pendingItemForPet",
+      "fromEntity": "PendingItem",
+      "toEntity": "Pet",
+      "type": "manyToOne",
+      "required": true,
+      "description": "Cada pendência apresentada na consulta pertence ao pet selecionado pelo cliente.",
+      "persistence": {
+        "mode": "derivedJoin"
+      },
+      "realization": {
+        "kind": "derived",
+        "ownerEntity": "PendingItem",
+        "from": {
+          "entityId": "PendingItem",
+          "fieldIds": [
+            "petId"
+          ]
+        },
+        "to": {
+          "entityId": "Pet",
+          "fieldIds": [
+            "petId"
+          ]
+        },
+        "description": "A projeção calcula pendências por pet a partir de agendamentos abertos e execuções não encerradas."
+      }
+    },
+    {
+      "relationshipId": "pendingItemFromAppointment",
+      "fromEntity": "PendingItem",
+      "toEntity": "Appointment",
+      "type": "manyToOne",
+      "required": false,
+      "description": "A pendência pode corresponder a um pedido ainda em aberto ou recém-decidido e não encerrado operacionalmente.",
+      "persistence": {
+        "mode": "derivedJoin"
+      },
+      "realization": {
+        "kind": "derived",
+        "ownerEntity": "PendingItem",
+        "from": {
+          "entityId": "PendingItem",
+          "fieldIds": [
+            "appointmentId"
+          ]
+        },
+        "to": {
+          "entityId": "Appointment",
+          "fieldIds": [
+            "appointmentId"
+          ]
+        },
+        "description": "A projeção preenche appointmentId quando a pendência é derivada de um agendamento aplicável."
+      }
+    },
+    {
+      "relationshipId": "pendingItemFromServiceExecution",
+      "fromEntity": "PendingItem",
+      "toEntity": "ServiceExecution",
+      "type": "manyToOne",
+      "required": false,
+      "description": "A pendência pode corresponder a um atendimento em andamento ou aguardando retirada e pagamento na loja.",
+      "persistence": {
+        "mode": "derivedJoin"
+      },
+      "realization": {
+        "kind": "derived",
+        "ownerEntity": "PendingItem",
+        "from": {
+          "entityId": "PendingItem",
+          "fieldIds": [
+            "serviceExecutionId"
+          ]
+        },
+        "to": {
+          "entityId": "ServiceExecution",
+          "fieldIds": [
+            "serviceExecutionId"
+          ]
+        },
+        "description": "A projeção preenche serviceExecutionId quando a pendência é derivada de uma execução em andamento ou não encerrada."
+      }
+    },
+    {
+      "relationshipId": "availabilityBlockReferencesBusinessHours",
+      "fromEntity": "AvailabilityBlock",
+      "toEntity": "BusinessHours",
+      "type": "manyToOne",
+      "required": true,
+      "description": "O período ocupado é registrado a partir da grade de horários de atendimento consultada pelo administrador.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "AvailabilityBlock",
+        "from": {
+          "entityId": "AvailabilityBlock",
+          "fieldIds": [
+            "businessHoursId"
+          ]
+        },
+        "to": {
+          "entityId": "BusinessHours",
+          "fieldIds": [
+            "businessHoursId"
+          ]
+        },
+        "description": "AvailabilityBlock.businessHoursId referencia a grade regular de horários usada para planejar o bloqueio."
+      }
+    },
+    {
+      "relationshipId": "institutionalHomeListsServiceOfferings",
+      "fromEntity": "InstitutionalHome",
+      "toEntity": "ServiceOffering",
+      "type": "oneToMany",
+      "required": false,
+      "description": "A leitura institucional apresenta os serviços divulgados do catálogo do pet shop.",
+      "persistence": {
+        "mode": "derivedJoin"
+      },
+      "realization": {
+        "kind": "derived",
+        "ownerEntity": "InstitutionalHome",
+        "from": {
+          "entityId": "InstitutionalHome",
+          "fieldIds": [
+            "serviceOfferings"
+          ]
+        },
+        "to": {
+          "entityId": "ServiceOffering",
+          "fieldIds": [
+            "serviceOfferingId"
+          ]
+        },
+        "description": "A lista institucional é derivada dos ServiceOffering com status disponível para divulgação."
+      }
+    }
+  ],
+  "changeSummary": [
+    "Visão inicial da ontologia de negócio para o pet shop, sem contrato de banco legado."
+  ]
+}

@@ -1,0 +1,124 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/shared/widgetThemeConfirmation.less" enhancement="enhancementStyle"/>
+
+widget-theme-confirmation-102020 {
+  display: block;
+
+  .tc {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .tc-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .tc-preview {
+    display: flex;
+    align-items: flex-end;
+    padding: 0.75rem;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+  }
+
+  .tc-preview-name {
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.75);
+    color: #0f172a;
+  }
+
+  .tc-section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+  }
+
+  .tc-swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+
+  .tc-swatch {
+    width: 8rem;
+  }
+
+  .tc-chip {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 3rem;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    font-size: 0.7rem;
+    font-family: monospace;
+  }
+
+  .tc-swatch-label {
+    margin-top: 0.25rem;
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  .tc-swatch-token {
+    color: #94a3b8;
+    font-size: 0.7rem;
+    font-family: monospace;
+  }
+
+  .tc-signature {
+    border-collapse: collapse;
+    width: 100%;
+
+    th,
+    td {
+      text-align: left;
+      padding: 0.35rem 0.5rem;
+      border-bottom: 1px solid #eef2f7;
+      font-size: 0.85rem;
+    }
+
+    th {
+      width: 30%;
+      color: #64748b;
+      font-weight: 600;
+    }
+  }
+
+  .tc-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .tc-btn {
+    padding: 0.45rem 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    cursor: pointer;
+    font-weight: 600;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .tc-confirm {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: #fff;
+  }
+
+  .empty {
+    padding: 1rem;
+    color: #94a3b8;
+  }
+}

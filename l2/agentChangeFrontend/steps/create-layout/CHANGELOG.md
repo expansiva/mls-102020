@@ -1,0 +1,60 @@
+<!-- mls fileReference="_102020_/l2/agentChangeFrontend/steps/create-layout/CHANGELOG.md" enhancement="_blank" -->
+
+# Changelog
+
+- 2026-07-31 (3 slots por workspace + defs reduzido + skill de experiencia) — item A de
+. Evidencia: teste real dos slots em 102045/clientManagement
+  (31/jul) rankeou page31 > page21 > page11 e mostrou que **defs reduzido + skill vence defs completo +
+  skill** (os organisms do defs completo afogam o skill). Mudancas:
+  (1) `buildLayoutVariantPlan` passa a planejar TRES slots (MAX_UX_VARIANTS 2 -> 3): page11 bespoke (so a
+  skill de render, o modelo coreografa do contrato) e page21/page31 com as duas experiencias contrastantes
+  da categoria UX do workspace. Aceita `slots` como parametro para gerar subconjunto quando a telemetria
+  colapsar uma categoria no vencedor.
+  (2) A skill sai de `presentation.categoryRef` do workspace l4 ->
+  `_102020_/l4/collabux/templates/<categoryRef>/<genome>.md`. A EXISTENCIA do arquivo e verificada no
+  stor: categoria sem skill degrada o slot para bespoke com aviso no trace, nunca caminho quebrado.
+  (3) defs REDUZIDO: pageId, pageName, baseClassName, actor, purpose, presentation, dataBindings (+
+  pageObjective nos slots goal-first). `sections`/`layout`/`origin`/`templateId`/`visualStyle` saem do
+  ARQUIVO (antes so eram filtrados do prompt por trimDefinitionForPrompt). O layout continua sendo
+  construido — validacao, reconciliacao do shared e state refs derivam dele — apenas nao viaja ao render.
+  (4) `purpose` REAL do workspace l4 no lugar do placeholder "Executar <nome>." (fallback so quando o l4
+  nao tem purpose).
+  (5) `presentation` (categoryRef + experienceRef) no defs no lugar do visualStyle texto-livre — contrato
+  T5 do improveNewSolution, agora com dono, para galeria/telemetria rotularem sem abrir o .md.
+  Verificado com dados reais do 102045: purpose real, presentation={categoryRef:'financialTransactions'},
+  page11 bespoke e page21/page31 resolvendo `financialTransactions/page21.md` e `page31.md`. Em projeto
+  sem `presentation` (102051) os tres slots saem bespoke, sem aviso (nao ha categoria a resolver).
+  REGRESSAO CONHECIDA: `validateGeneratedPageQuality` lia `pageDefinition.layout.sections` e vira no-op
+  com o defs reduzido — perde os checks de feedback i18n de mutacao e id editavel. Os checks do item B
+  (vocabulario tecnico, paginacao como campo, heading==label) NAO cobrem esses dois; se forem necessarios,
+  precisam ser reescritos sobre o .ts gerado.
+
+- 2026-07-22 (composition-only tool contract): the layout tool no longer asks the model for the full
+  section→organism→intention→field tree. It now returns a minimal SEMANTIC COMPOSITION: `pageLayout =
+  { pageId, layoutId, sections[] }`, each section `{ id, order, organisms[] }`, each organism `{ id,
+  organismName, purpose, order }` + optional `{ displayHint, uses, notes }`. `uses` = the bffCall ids
+  (shared.actions) the organism surfaces. The concrete intentions/fields/columns/actions are expanded
+  deterministically from L4 by `expandLayoutComposition` (called in agentCfeCreateLayout.afterPromptStep,
+  before the unchanged save/repair/validate/reconcile pipeline), reusing the same builders as the
+  deterministic seed (buildQueryOrganism/buildCommandOrganism/buildContentOrganism). Rationale (run16/run17
+  + user): the deep rigid tree was hard for the LLM, kept drifting on a non-strict primary model
+  (design->claude-sonnet, ajv-only) with "organisms/N must NOT have additional properties", and did not
+  drive page quality — beauty comes from composition + displayHint + pageObjective, which the model still
+  owns. The internal CfePageLayoutDefinition and everything downstream (reconcile/shared derivation,
+  render skills, validators, materialize) are UNCHANGED — they still receive the full expanded tree.
+  Shared states/actions were already derived from L4 commands (sharedStates), so the model's field
+  enumeration was redundant. Also added an optional, flat, lint-clean `objective` to the result schema
+  (page21 goal-first) — it was previously emitted by the prompt but rejected by the closed result schema.
+  Verified: lint clean; tool strict-ready; proxy ajv accepts a minimal composition (+objective) and now
+  rejects the old intention-tree shape; expansion unit test builds L4-derived columns/fields from `uses`;
+  full agentChangeFrontend suite green; live @ code+design schema-accepted. Prompts (prompt.md,
+  promptGoalFirst.md) rewritten to request the composition only.
+- 2026-07-22 (allow displayHint on organisms): added `displayHint` (optional) to the organism tool schema, the CfeLayoutOrganism type and normalizeLayoutOrganism — mirroring intent.displayHint. Root cause of 102051 run16 TOOL_ARGS_SCHEMA failures: the prompt (promptGoalFirst §32) tells the model to set displayHint on organisms and the page21 render skill reads it, but the organism schema omitted it. On the primary "design" model (claude-sonnet-4-6, supports_tool_strict=false → ajv-only, no native strict to block drift) the strict tool-args gate rejected every layout with "sections/N/organisms/N must NOT have additional properties"; the reasoning-alias fallback (grok) then emitted a 111-token stub (one section, no organisms → "must have required property 'order'/'organisms'"), so both legs failed. Fixing the primary means the fallback is not triggered. Verified: proxy's own validateToolCallArguments accepts an organism with displayHint (and still without); lint clean; new offline regression tests (schema exposes displayHint + normalization preserves it) green; live @ code+design schema-accepted. NOTE: this depends on the model volunteering only known-but-unlisted keys — a model without native strict that invents a brand-new key would still hard-fail the ajv gate; the systemic answer remains native strict on the provider (only grok/xai currently honors it; anthropic models run ajv-only).
+- 2026-07-22 (drop i18n from the tool contract): removed `pageLayout.i18n` from `cfePageLayoutToolSchema` (helpers/cfeCreateShared.ts) and both prompts. Root cause of run13 102051 TOOL_ARGS_SCHEMA failures: i18n is a dynamic key->label map, but lintToolSchema requires every object to be `additionalProperties:false` (a closed empty object), while the prompt REQUIRED the model to fill i18n — so ajv (x-tool-strict) rejected every layout with `/result/pageLayout/i18n must NOT have additional properties`. i18n cannot be expressed as a strict-clean open map, so it is no longer part of the contract: repairMissingLayoutI18n (savePageLayoutDefs, runs before validatePageLayout) already backfills every referenced titleKey/labelKey/emptyKey with a humanized fallback, and validatePageLayout asserts exactly that same key set. Removing i18n (the only `type:object`-without-properties node) also makes the WHOLE tool strict-ready (strictIncompatibilityReason === null), so native strict now engages on capable providers and structurally blocks unknown-key drift too (fixes the co-occurring `sections/N/organisms/M must NOT have additional properties`). The prompt-context field was renamed `i18n`->`localeMeta` so the model does not mirror it back as a rejected output key. Trade-off (accepted): labels are humanized-key fallbacks instead of model-authored natural-language text. Verified: lintToolSchema clean, ajv accepts layout without i18n / rejects with i18n / rejects organism drift (proxy's own validateToolCallArguments), all agentChangeFrontend unit tests green. Live @ code+design (x-tool-strict:true, real llm.collab.codes/xai grok) passed 3x each — the provider honors native strict with the new schema (no schema rejection), which is the same mechanism that blocks organism drift. Caveat: the live test builds a trivial one-section page; the complex run13 pages (dashboardWorkspace) were NOT regenerated, so confirm on the next full 102051 regen. The run13 `FALLBACK_EXCEPTION` "fetch failed" was transient xai infra, not schema.
+- 2026-07-16 (item 4 — drop contract from page context): pagePipeline dependsFiles slimmed further to [shared .ts, designSystem.ts] — the contracts .ts was removed. Rationale: genCfeSharedTs re-exports EVERY contract DTO (Input/Output/OutputItem), so pages import all DTO types from the shared module; field names come from the page's own layout defs (fieldCatalog); the contract file still exists on disk and compiles via the shared dependency (page -> shared -> contract), so nothing about compilation changes. Verified against generated 102051: no page11/page21 .ts imports web/contracts (all import DTO types from web/shared re-exports). Render skills genCfePage11RenderTs/genCfePage21RenderTs updated to import DTO types EXCLUSIVELY from shared (contract fallback removed) and genCfeSharedTs mandates re-exporting every contract type. Takes effect on next defs regeneration; live validation on regen.
+- 2026-07-16 (v5 context diet): pagePipeline dependsFiles slimmed to [shared .ts, contracts .ts, designSystem.ts]. The shared .defs.ts and contracts .defs.ts are generator inputs, not render inputs — the state/action mapping now reaches the page LLM via the shared compiled .d.ts JSDoc (see steps/materialize CHANGELOG). Takes effect on the next defs regeneration.
+
+- 2026-07-14: replaced the multi-variant create-page call with one LLM call per pinned page/genome/template.
+- 2026-07-15: added the explicit userActions coverage rule to the prompt and repairMissingOperationUserActions. The validator only counts organism.userActions, but the LLM represented browse* queries as queryList intentions without repeating the actionId in userActions (102051: menuManagement/stockManagement page11 failed with "layout does not represent operation"). An operation referenced by an organism's intentions is now added to that organism's userActions with a warning.
+- 2026-07-15: added shared.fieldCatalog to the layout prompt context and a closed-vocabulary prompt rule. The reduced context had no query output/entity field names, so the LLM invented column fields (orderNumber, currentLevel...) and every 102051 page11 failed strict validation. Unknown fields are now also dropped by repairUnknownLayoutFields with a warning instead of failing the variant.
+- 2026-07-15: goal-first page21 (schemaVersion v4). The fan-out now always runs two genomes per page — page11 (pinned template, unchanged baseline) and page21 (templateId 'goal_first'). page21 uses a new prompt (promptGoalFirst.md) selected by templateId in buildSystemPrompt: it first synthesizes a page objective (actor, primaryDecision, criticalActions with presentation, antiPatterns), then designs a layout with no pinned template, using every scored candidate only as inspiration and richer displayHints (master-detail, contextual-transition-actions, card-board). The goal-first branch also receives a TRIMMED userJourney (goalFirstUserJourney): recommendedStages and the commandForm-biased guidance are dropped (they pre-encode the stacked-form shape page21 escapes); microUserFlow/operationsInOrder/lifecycle are kept. page11 still gets the full userJourney. The objective rides in result.objective (schema already relaxed via allowAdditionalProperties, zero schema change), is embedded as page21 defs.pageObjective and written to trace/frontend-page-objective/{page}.json. page21 materializes through skills/genCfePage21RenderTs.ts. Rationale: the baseline "list on top + stacked commandForm per operation" produced poor UX (e.g. 102051 kitchenQueue status transition as a separate form with a <select>); page11 stays the safe baseline while page21 carries the UX improvement. page11 quick-wins (transition-as-buttons in buildPageUserJourney, selectUxTemplates weighting) were intentionally NOT applied to avoid regressing pages that render acceptably. The module-level todoFrontend.variants count is now ignored (MAX_UX_VARIANTS=2); page31+ is deprecated. Verified: mls-base tsc clean. Generation path itself was NOT exercised.

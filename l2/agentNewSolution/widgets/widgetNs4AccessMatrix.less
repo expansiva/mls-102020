@@ -1,0 +1,74 @@
+/// <mls fileReference="_102020_/l2/agentNewSolution/widgets/widgetNs4AccessMatrix.less" enhancement="enhancementStyle"/>
+
+widget-ns4-access-matrix-102020 {
+  display: block;
+  color: #172033;
+
+  * { box-sizing: border-box; }
+  h2, h3, h4, p, dl, dd { margin: 0; }
+  ul { margin: 8px 0 0; padding-left: 20px; }
+  li { line-height: 1.45; margin: 4px 0; }
+  code { color: #475569; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  button:focus-visible, textarea:focus-visible, input:focus-visible { outline: 3px solid #a5b4fc; outline-offset: 2px; }
+
+  .ns4-access-matrix { display: grid; gap: 16px; }
+  header { align-items: flex-start; display: flex; gap: 16px; justify-content: space-between; }
+  header p { color: #64748b; margin-top: 6px; max-width: 780px; }
+  header .ns4-step { color: #4f46e5; font-size: 12px; font-weight: 650; margin: 0 0 5px; }
+  header > span { background: #eef2ff; border-radius: 999px; color: #3730a3; font-size: 12px; padding: 6px 10px; white-space: nowrap; }
+  .ns4-feedback { border: 1px solid; border-radius: 10px; display: grid; gap: 5px; padding: 11px 13px; }
+  .ns4-feedback strong, .ns4-feedback span, .ns4-feedback li { font-size: 13px; line-height: 1.4; }
+  .ns4-feedback.is-error { background: #fff1f2; border-color: #fda4af; color: #9f1239; }
+  .ns4-feedback.is-ok { background: #ecfdf5; border-color: #86efac; color: #166534; }
+
+  .ns4-matrix-card, .ns4-details, footer {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px;
+  }
+  .ns4-matrix-card h3 { margin-bottom: 10px; }
+  .ns4-table-scroll { overflow-x: auto; }
+  table { border-collapse: separate; border-spacing: 0; min-width: 720px; width: 100%; }
+  th, td { border-bottom: 1px solid #e2e8f0; padding: 9px; text-align: center; vertical-align: middle; }
+  thead th { background: #f8fafc; color: #475569; font-size: 12px; position: sticky; top: 0; }
+  th:first-child { min-width: 250px; text-align: left; }
+  tbody th strong, tbody th code { display: block; }
+  tbody th code { margin-top: 3px; }
+  .ns4-none { color: #94a3b8; }
+  .ns4-grant { align-items: center; border: 1px solid transparent; border-radius: 999px; cursor: pointer; display: inline-flex; font-size: 11px; gap: 6px; padding: 6px 9px; white-space: nowrap; }
+  .ns4-grant input { accent-color: currentColor; margin: 0; }
+  .ns4-grant.full { background: #dcfce7; color: #166534; }
+  .ns4-grant.limited { background: #fef3c7; color: #92400e; }
+  .ns4-grant.selected { border-color: #4338ca; box-shadow: 0 0 0 2px #e0e7ff; }
+
+  .ns4-details { display: grid; gap: 12px; }
+  .ns4-details-head { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+  .ns4-details-head p { color: #64748b; margin-top: 3px; }
+  .ns4-details-head > div:last-child { align-items: end; display: grid; gap: 7px; justify-items: end; }
+  .ns4-close { background: #fff; border: 1px solid #cbd5e1; border-radius: 7px; color: #475569; cursor: pointer; font: inherit; font-size: 12px; padding: 6px 9px; }
+  .ns4-detail-grid, .ns4-detail-lists { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ns4-detail-grid article, .ns4-detail-lists article { background: #f8fafc; border-radius: 9px; padding: 11px; }
+  .ns4-detail-grid h4, .ns4-detail-lists h4 { color: #475569; font-size: 12px; margin-bottom: 5px; }
+  .ns4-detail-grid p { line-height: 1.4; margin-top: 3px; }
+
+  footer { display: grid; gap: 12px; }
+  footer label, footer label span { display: grid; gap: 6px; }
+  textarea { border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; min-height: 105px; padding: 10px; resize: vertical; width: 100%; }
+  footer > div { display: flex; gap: 10px; justify-content: flex-end; }
+  footer button { border: 1px solid #cbd5e1; border-radius: 8px; cursor: pointer; font: inherit; padding: 9px 14px; }
+  footer button:disabled { cursor: not-allowed; opacity: .55; }
+  footer button.secondary { background: #fff; color: #334155; }
+  footer button.secondary.is-active { background: #4338ca; border-color: #4338ca; color: #fff; }
+  footer button.primary { background: #4338ca; border-color: #4338ca; color: #fff; }
+  footer button.cancel { background: #fff; border-color: #fecaca; color: #b91c1c; margin-right: auto; }
+  .ns4-dialog-backdrop { align-items: center; background: rgb(15 23 42 / .46); display: flex; inset: 0; justify-content: center; padding: 20px; position: fixed; z-index: 20; }
+  .ns4-cancel-dialog { background: #fff; border-radius: 12px; box-shadow: 0 20px 50px rgb(15 23 42 / .28); display: grid; gap: 12px; max-width: 460px; padding: 20px; width: 100%; }
+  .ns4-cancel-dialog p { color: #475569; }
+  .ns4-cancel-dialog > div { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+  .ns4-cancel-dialog button { background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; cursor: pointer; padding: 9px 12px; }
+  .ns4-cancel-dialog button.danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+
+  @media (max-width: 760px) {
+    header, .ns4-details-head { display: grid; }
+    .ns4-detail-grid, .ns4-detail-lists { grid-template-columns: 1fr; }
+    footer > div { display: grid; }
+  }
+}

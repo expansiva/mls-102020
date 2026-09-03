@@ -1,0 +1,27 @@
+{
+  "moduleName": "buildFlowFsm38",
+  "journeys": [
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "inspect" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "inspect" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "locate" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "locate" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "inspect" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "inspect" }, { "kind": "act" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "inspect" }] } },
+    { "business": { "steps": [{ "kind": "inspect" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "inspect" }] } },
+    { "business": { "steps": [{ "kind": "locate" }, { "kind": "locate" }, { "kind": "inspect" }, { "kind": "act" }] } }
+  ],
+  "expectedStepKindHistogram": {
+    "locate": 16,
+    "inspect": 8,
+    "act": 10,
+    "decide": 0,
+    "handoff": 0
+  }
+}

@@ -1,0 +1,1215 @@
+/// <mls fileReference="_102020_/l2/aura/plugins/selectPage.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
+
+import { html, nothing } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
+import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import { getAuraEdit, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { getContentByMlsPath } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+import { pageDsCheckByDefs, restampPage, layoutHasRules, type PageDsCheck } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
+import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
+import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
+import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
+import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
+import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
+import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
+import { getState, setState } from '/_102029_/l2/collabState.js';
+import { parseExportValue } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
+import '/_102020_/l2/aura/plugins/navHeader.js';
+import '/_102020_/l2/aura/plugins/pageVisualEdit.js';
+
+// ─── i18n ─────────────────────────────────────────────────────────────
+/// **collab_i18n_start**
+const message_en = {
+    title: 'Pages',
+    desc: 'Pages of the selected module. Filtered by active device when one is selected.',
+    allTitle: 'All Pages',
+    allDesc: 'All pages found for the selected module and device.',
+    customTitle: 'New Page',
+    customDesc: 'Create a new page in this module.',
+    noModule: 'No module selected.',
+    noPages: 'No pages found for this module.',
+    noResults: 'No pages match your search.',
+    createNew: 'New Page',
+    searchPlaceholder: 'Search pages…',
+    inDevelopment: 'In development',
+    devices: 'Devices',
+    notCreated: 'Pages have not been created for this layout / design system combination.',
+    generatePages: 'Generate pages',
+    outdated: 'Outdated',
+    review: 'Review',
+    reviewIntro: 'Molecules used by this page changed since it was generated:',
+    markReviewed: 'Mark as reviewed',
+    saving: 'Saving…',
+    staleIntro: 'The selection no longer reflects the design system:',
+    staleReasonRules: "The page's rules changed.",
+    staleReasonRemoved: 'A molecule it uses was removed.',
+    staleReasonIncompatible: 'A molecule it uses is no longer compatible.',
+    staleReasonNoStamp: 'The page predates DS versioning.',
+    regeneratePage: 'Regenerate page',
+    regenerating: 'Regenerating…',
+    regenerated: 'Task started',
+    followTask: 'Follow task',
+    missingVariation: 'This page has not been generated for the current layout / design system yet.',
+    generatePage: 'Generate page',
+    notGenerated: 'Not generated',
+    editPage: 'Edit page (visual)',
+    editPlaceholder: 'Describe a visual change (e.g. hide the phone field)…',
+    editImagePlaceholder: 'Reference image URL (optional)',
+    editApply: 'Apply edit',
+    editing: 'Editing…',
+    editDone: 'Edit applied',
+    editReview: 'Review change',
+    editSelected: 'selected on screen:',
+    editPlanning: 'Analyzing…',
+    editPlanTitle: 'Confirm the change',
+    editPlanApply: 'Apply',
+    editPlanCancel: 'Cancel',
+    editImageRef: 'Reference image',
+    editWhatChanged: 'What changed',
+    editNoPlan: 'No actionable change was produced from the request.',
+};
+type MessageType = typeof message_en;
+const messages: Record<string, MessageType> = {
+    en: message_en,
+    pt: {
+        title: 'Páginas',
+        desc: 'Páginas do módulo selecionado. Filtradas pelo device ativo quando um estiver selecionado.',
+        allTitle: 'Todas as Páginas',
+        allDesc: 'Todas as páginas encontradas para o módulo e device selecionados.',
+        customTitle: 'Nova Página',
+        customDesc: 'Crie uma nova página neste módulo.',
+        noModule: 'Nenhum módulo selecionado.',
+        noPages: 'Nenhuma página encontrada para este módulo.',
+        noResults: 'Nenhuma página corresponde à sua busca.',
+        createNew: 'Nova Página',
+        searchPlaceholder: 'Buscar páginas…',
+        inDevelopment: 'Em desenvolvimento',
+        devices: 'Dispositivos',
+        notCreated: 'As páginas não foram criadas para esta combinação de layout / design system.',
+        generatePages: 'Gerar páginas',
+        outdated: 'Desatualizada',
+        review: 'Revisar',
+        reviewIntro: 'Moléculas usadas por esta página mudaram desde a geração:',
+        markReviewed: 'Marcar como revisada',
+        saving: 'Salvando…',
+        staleIntro: 'A seleção não reflete mais o design system:',
+        staleReasonRules: 'As regras da página mudaram.',
+        staleReasonRemoved: 'Uma molécula usada foi removida.',
+        staleReasonIncompatible: 'Uma molécula usada ficou incompatível.',
+        staleReasonNoStamp: 'A página é anterior ao versionamento do DS.',
+        regeneratePage: 'Refazer página',
+        regenerating: 'Refazendo…',
+        regenerated: 'Task iniciada',
+        followTask: 'Acompanhar task',
+        missingVariation: 'Esta página ainda não foi gerada para o layout / design system atual.',
+        generatePage: 'Gerar página',
+        notGenerated: 'Não gerada',
+        editPage: 'Editar página (visual)',
+        editPlaceholder: 'Descreva uma mudança visual (ex.: esconda o campo telefone)…',
+        editImagePlaceholder: 'URL de imagem de referência (opcional)',
+        editApply: 'Aplicar edição',
+        editing: 'Editando…',
+        editDone: 'Edição aplicada',
+        editReview: 'Revisar mudança',
+        editSelected: 'selecionado na tela:',
+        editPlanning: 'Analisando…',
+        editPlanTitle: 'Confirme a mudança',
+        editPlanApply: 'Aplicar',
+        editPlanCancel: 'Cancelar',
+        editImageRef: 'Imagem de referência',
+        editWhatChanged: 'O que mudou',
+        editNoPlan: 'Nenhuma mudança aplicável foi produzida a partir do pedido.',
+    },
+    es: {
+        title: 'Páginas',
+        desc: 'Páginas del módulo seleccionado. Filtradas por dispositivo activo cuando hay uno seleccionado.',
+        allTitle: 'Todas las Páginas',
+        allDesc: 'Todas las páginas encontradas para el módulo y dispositivo seleccionados.',
+        customTitle: 'Nueva Página',
+        customDesc: 'Cree una nueva página en este módulo.',
+        noModule: 'Ningún módulo seleccionado.',
+        noPages: 'No se encontraron páginas para este módulo.',
+        noResults: 'Ninguna página coincide con su búsqueda.',
+        createNew: 'Nueva Página',
+        searchPlaceholder: 'Buscar páginas…',
+        inDevelopment: 'En desarrollo',
+        devices: 'Dispositivos',
+        notCreated: 'Las páginas no se han creado para esta combinación de layout / design system.',
+        generatePages: 'Generar páginas',
+        outdated: 'Desactualizada',
+        review: 'Revisar',
+        reviewIntro: 'Las moléculas usadas por esta página cambiaron desde su generación:',
+        markReviewed: 'Marcar como revisada',
+        saving: 'Guardando…',
+        staleIntro: 'La selección ya no refleja el design system:',
+        staleReasonRules: 'Las reglas de la página cambiaron.',
+        staleReasonRemoved: 'Una molécula usada fue eliminada.',
+        staleReasonIncompatible: 'Una molécula usada ya no es compatible.',
+        staleReasonNoStamp: 'La página es anterior al versionado del DS.',
+        regeneratePage: 'Regenerar página',
+        regenerating: 'Regenerando…',
+        regenerated: 'Tarea iniciada',
+        followTask: 'Seguir tarea',
+        missingVariation: 'Esta página aún no fue generada para el layout / design system actual.',
+        generatePage: 'Generar página',
+        notGenerated: 'No generada',
+        editPage: 'Editar página (visual)',
+        editPlaceholder: 'Describe un cambio visual (p. ej. oculta el campo teléfono)…',
+        editImagePlaceholder: 'URL de imagen de referencia (opcional)',
+        editApply: 'Aplicar edición',
+        editing: 'Editando…',
+        editDone: 'Edición aplicada',
+        editReview: 'Revisar cambio',
+        editSelected: 'seleccionado en pantalla:',
+        editPlanning: 'Analizando…',
+        editPlanTitle: 'Confirme el cambio',
+        editPlanApply: 'Aplicar',
+        editPlanCancel: 'Cancelar',
+        editImageRef: 'Imagen de referencia',
+        editWhatChanged: 'Qué cambió',
+        editNoPlan: 'No se produjo ningún cambio aplicable a partir de la solicitud.',
+    },
+};
+/// **collab_i18n_end**
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+interface IModule {
+    name: string;
+    path: string;
+}
+
+interface IPageEntry {
+    name: string;
+    devices: string[];
+    file: mls.stor.IFileInfo;
+    // false = listed from the source (page11) but not generated for the current layout/DS variation.
+    exists: boolean;
+}
+
+// ─── Constants ───────────────────────────────────────────────────────
+
+const DEVICE_SUB_PATHS: Record<number, string> = {
+    1: 'web/desktop',
+    2: 'web/mobile',
+    3: 'android',
+    4: 'ios',
+};
+
+const DEVICE_LABELS: Record<string, string> = {
+    'web/desktop': 'Web Desktop',
+    'web/mobile': 'Web Mobile',
+    'android': 'Android',
+    'ios': 'iOS',
+};
+
+// ─── Component ───────────────────────────────────────────────────────
+
+@customElement('aura--plugins--select-page-102020')
+export class PluginSelectPage extends StateLitElement {
+
+    @property({ attribute: false }) selectedModule: IModule | null = null;
+    @property({ attribute: false }) value: number | null = null;
+    @property({ attribute: false }) reloadToken: number = 0;
+
+    @state() private _pages: IPageEntry[] = [];
+    @state() private _search: string = '';
+    @state() private _activeDevice: string | null = null;
+    @state() private _pagesNotCreated: boolean = false;
+    // page name → DS-version check: status ('stale' | 'review' | 'fresh') + what changed / why.
+    @state() private _checkByName: Record<string, PageDsCheck> = {};
+    // 'pipeline' = defs with no layout tree (current generator) -> agentManagePage2 panel.
+    @state() private _shapeByName: Record<string, 'genome' | 'pipeline'> = {};
+    // page currently being re-stamped (disables its button).
+    @state() private _busyPage: string | null = null;
+
+    private _threadCache = new Map<string, Promise<any>>();
+    private _taskInfoByName = new Map<string, { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }>();
+    // Edit-page drafts per page (non-reactive: typing must not trigger a re-render that wipes input).
+    private _editDraft = new Map<string, string>();
+    private _editImg = new Map<string, string>();
+    // Confirm-before-apply (TASK-102020-edit-2). Maps mutated with requestUpdate() (like the drafts):
+    private _editPlan = new Map<string, { operations: Array<{ kind: string; target: string; description: string }>; request: string; imageUrl?: string }>(); // gate plan awaiting confirmation
+    private _planning = new Set<string>();            // plan phase (gate) in flight
+    private _planError = new Map<string, string>();   // gate rejection / plan error
+    private _editNotes = new Map<string, string>();   // applied edit's one-line note (done state)
+    private _unsubTasks: (() => void) | undefined;
+
+    connectedCallback() {
+        super.connectedCallback();
+        this._unsubTasks = subscribeTaskManager(() => this.requestUpdate());
+        this._loadPages();
+    }
+
+    disconnectedCallback() {
+        super.disconnectedCallback();
+        this._unsubTasks?.();
+    }
+
+    willUpdate(changed: Map<string, unknown>) {
+        if (changed.has('selectedModule') || changed.has('reloadToken')) {
+            this._search = '';
+            this._loadPages();
+        }
+        if (changed.has('value')) {
+            this._search = '';
+        }
+    }
+
+    private get msg(): MessageType {
+        return messages[this.getMessageKey(messages)];
+    }
+
+    private get _isAll(): boolean { return this.value === 0; }
+    private get _isCustom(): boolean { return this.value !== null && this.value > this._pages.length; }
+    private get _selectedPage(): IPageEntry | null {
+        if (this.value === null || this.value <= 0 || this.value > this._pages.length) return null;
+        return this._pages[this.value - 1];
+    }
+
+    // ─── Page Loading ─────────────────────────────────────────────────
+
+    private get _modulePath(): string | null {
+        return this.selectedModule?.path ?? getAuraState().actualModule ?? null;
+    }
+
+    private get _moduleName(): string | null {
+        return this.selectedModule?.name ?? getAuraState().actualModule ?? null;
+    }
+
+    private async _loadPages(): Promise<void> {
+        this._pages = [];
+        this._pagesNotCreated = false;
+        const modulePath = this._modulePath;
+        if (!modulePath) {
+            this._dispatchConfig();
+            return;
+        }
+
+        const project = getAuraState().actualProject;
+        const activeDevicePath = getAuraState().actualDevice;
+
+        this._activeDevice = activeDevicePath ? (DEVICE_LABELS[activeDevicePath] ?? null) : null;
+
+        // The page variation folder is page<layout><designSystem> (e.g. page11 =
+        // layout 1, DS 1). Build it from the current aura selection.
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        const variation = `page${layout}${ds}`;
+
+        // Pages live in the project config.json (l0), written by the register step.
+        let pages: any[] = [];
+        try {
+            const content = await getContentByMlsPath(`_${project}_/l0/config.json`);
+            if (!content) throw new Error('config.json not found');
+            const config = JSON.parse(content);
+            const moduleDef = config?.projects?.[String(project)]?.modules
+                ?.find((m: any) => m.moduleId === modulePath);
+            pages = moduleDef?.frontend?.pages ?? [];
+        } catch { /* fall through to the stor scan below */ }
+
+        // Fallback: config.json absent or without this module (register step not run yet) →
+        // derive the pages from the physical files in {module}/web/{device}/page11 (always
+        // present after create). Synthetic entries mirror the config shape (pageId + source).
+        if (!pages.length) pages = this._scanPagesFromStor(project, modulePath);
+
+        const pageMap = new Map<string, { devices: Set<string>; file: mls.stor.IFileInfo; exists: boolean }>();
+        let candidateCount = 0;
+
+        for (const page of pages) {
+            // source: e.g. "l2/cafeFlow/web/desktop/page11/dashboardGerente.ts"
+            const source: string = page.source ?? '';
+            const relative = source.replace(/^\.?\//, '').replace(/\.ts$/, '');
+            const levelMatch = relative.match(/^l(\d+)\/(.+)$/);
+            if (!levelMatch) continue;
+
+            const level = parseInt(levelMatch[1], 10);
+            const afterLevel = levelMatch[2];
+            const lastSlash = afterLevel.lastIndexOf('/');
+            if (lastSlash < 0) continue;
+
+            const rawFolder = afterLevel.substring(0, lastSlash);
+            const shortName = afterLevel.substring(lastSlash + 1);
+            if (!shortName) continue;
+
+            let devicePath: string | null = null;
+            for (const dp of Object.values(DEVICE_SUB_PATHS)) {
+                if (rawFolder.includes(`/${dp}/`) || rawFolder.endsWith(`/${dp}`)) { devicePath = dp; break; }
+            }
+            if (!devicePath) continue;
+
+            if (activeDevicePath && devicePath !== activeDevicePath) continue;
+
+            // Swap the source's variation segment (e.g. page11) for the current one.
+            const variationFolder = rawFolder.replace(/page\d+(\/|$)/, `${variation}$1`);
+            candidateCount++;
+
+            // The page list is owned by the config (or, without one, by the page11 scan):
+            // the source (page11) is the source of truth, so a page not yet generated for
+            // the current layout/DS variation still shows. Its file always points at the
+            // variation path — selecting a missing one leads the preview to its own
+            // "not found" state instead of silently rendering the page11 version.
+            const exists = this._fileExists(project, level, variationFolder, shortName);
+            if (!exists && !this._fileExists(project, level, rawFolder, shortName)) continue;
+
+            const name = page.pageId || shortName;
+            if (!pageMap.has(name)) {
+                const file = { project, folder: variationFolder, shortName, level, extension: '.ts' } as mls.stor.IFileInfo;
+                pageMap.set(name, { devices: new Set(), file, exists });
+            }
+            pageMap.get(name)!.devices.add(devicePath);
+        }
+
+        this._pages = Array.from(pageMap.entries())
+            .map(([name, { devices, file, exists }]) => ({ name, devices: Array.from(devices).sort(), file, exists }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        // Config lists pages for this module/device, but none exist for the
+        // current variation → offer to generate them.
+        this._pagesNotCreated = candidateCount > 0 && this._pages.length === 0;
+
+        this._dispatchConfig();
+        this.requestUpdate();
+        this._autoSelectActivePage();
+        this._loadPageStatus();
+        this._loadPageShapes();
+    }
+
+    /**
+     * Which edit flow each page belongs to. A defs that carries `definition.layout.sections` is a
+     * genome defs and keeps the structural flow below (agentManagePage). The defs the current
+     * frontend pipeline produces has no layout tree at all, so its visual edits are patches on the
+     * rendered `.ts` — that is agentManagePage2, hosted by the pageVisualEdit panel.
+     */
+    private async _loadPageShapes(): Promise<void> {
+        this._shapeByName = {};
+        const module = this._modulePath;
+        const project = getAuraState().actualProject;
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        if (!module || !project) return;
+
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+        const results = await Promise.all(this._pages.filter(p => p.exists).map(async (p) => {
+            const shortName = p.file?.shortName ?? p.name;
+            const ref = `_${project}_/l2/${module}/web/${device}/page${layout}${ds}/${shortName}.defs.ts`;
+            try {
+                const src = await getContentByMlsPath(ref);
+                if (!src) {
+                    // No defs to classify: offer no edit panel rather than the wrong one.
+                    console.warn(`[selectPage] defs not found, edit panel disabled for ${shortName}: ${ref}`);
+                    return [p.name, null] as const;
+                }
+                const definition = parseExportValue(src, 'definition');
+                return [p.name, definition?.layout?.sections ? 'genome' : 'pipeline'] as const;
+            } catch (error) {
+                console.warn(`[selectPage] could not classify ${shortName}:`, error);
+                return [p.name, null] as const;
+            }
+        }));
+        const map: Record<string, 'genome' | 'pipeline'> = {};
+        for (const [name, shape] of results) if (shape) map[name] = shape;
+        this._shapeByName = map;
+        this.requestUpdate();
+    }
+
+    /** Fallback page source: scan the stor for {module}/web/{device}/page11/*.ts pages and
+     *  return entries in the config.json shape ({ pageId, source }). Used when l0/config.json
+     *  is missing or has no entry for the module (frontend register step not run yet). */
+    private _scanPagesFromStor(project: number | null, modulePath: string): Array<{ pageId: string; source: string }> {
+        if (!project) return [];
+        const out: Array<{ pageId: string; source: string }> = [];
+        const seen = new Set<string>();
+        for (const f of Object.values(mls.stor.files) as any[]) {
+            if (!f || f.project !== project || f.level !== 2 || f.status === 'deleted') continue;
+            if (f.extension !== '.ts' || typeof f.shortName !== 'string' || !f.shortName) continue;
+            const folder = String(f.folder || '');
+            if (!folder.startsWith(`${modulePath}/web/`) || !/\/page11$/.test(folder)) continue;
+            const key = `${folder}/${f.shortName}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ pageId: f.shortName, source: `l2/${folder}/${f.shortName}.ts` });
+        }
+        return out.sort((a, b) => a.pageId.localeCompare(b.pageId));
+    }
+
+    // Compute each page's DS-version check (stale / review / fresh + details). Only meaningful
+    // for non-default design systems (the default DS / origin pages carry no stamp).
+    private async _loadPageStatus(): Promise<void> {
+        this._checkByName = {};
+        const module = this._modulePath;
+        const project = getAuraState().actualProject;
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        if (!module || !project || this._pages.length === 0) return;
+        // Gate (L6): only check staleness when the layout actually has rules configured.
+        if (!(await layoutHasRules(project, layout))) return;
+
+        const results = await Promise.all(this._pages.filter(p => p.exists).map(async (p) => {
+            try {
+                const check = await pageDsCheckByDefs(
+                    { project: p.file.project, folder: p.file.folder ?? '', shortName: p.file.shortName },
+                    module,
+                    layout,
+                    ds,
+                );
+                return [p.name, check] as const;
+            } catch {
+                return [p.name, null] as const;
+            }
+        }));
+
+        const map: Record<string, PageDsCheck> = {};
+        for (const [name, check] of results) if (check) map[name] = check;
+        this._checkByName = map;
+        this.requestUpdate();
+    }
+
+    private _renderStatusBadge(pageName: string) {
+        const status = this._checkByName[pageName]?.status;
+        if (status === 'stale') return html`
+            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                ${this.msg.outdated}
+            </span>`;
+        if (status === 'review') return html`
+            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400">
+                ${this.msg.review}
+            </span>`;
+        return nothing;
+    }
+
+    // Re-fire the select event for the page already active in the state, so the
+    // preview repaints when this component (re)loads.
+    private _autoSelectActivePage(): void {
+        const activePage = getAuraState().actualPage;
+        if (!activePage) return;
+        const index = this._pages.findIndex(p =>
+            p.file.shortName === activePage.shortName &&
+            p.file.project === activePage.project
+        );
+        if (index < 0) return;
+        this._dispatchSelect(index + 1);
+    }
+
+    private _fileExists(project: number | null, level: number, folder: string, shortName: string): boolean {
+        try {
+            if (!project) return false;
+            const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension: '.ts' });
+            const file = (mls.stor.files as Record<string, any>)[key];
+            return !!file && file.status !== 'deleted';
+        } catch {
+            return false;
+        }
+    }
+
+    private _dispatchConfig() {
+        const labels: Record<number, string> = { 0: 'All' };
+        this._pages.forEach((p, i) => { labels[i + 1] = p.name; });
+        labels[this._pages.length + 1] = '+';
+        this.dispatchEvent(new CustomEvent('page-config', {
+            detail: {
+                min: 0,
+                max: this._pages.length + 1,
+                labels,
+                pages: this._pages.map(p => ({ name: p.name, file: p.file })),
+            },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+
+    createRenderRoot() { return this; }
+
+    render() {
+        if (!this._modulePath) return this._renderNoModule();
+        if (this._pagesNotCreated) return this._renderNotCreated();
+        if (this._isAll) return this._renderAll();
+        if (this._isCustom) return this._renderCustom();
+        return this._renderSelected();
+    }
+
+    // ─── Scenario renders ─────────────────────────────────────────────
+
+    private _renderNoModule() {
+        return html`
+            <div class="flex flex-col gap-3">
+                ${this._renderHeader()}
+                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
+                    <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.noModule}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderHeader(value = 0, max = 1) {
+        return html`
+            <aura--plugins--nav-header-102020
+                .fixedLabel=${this.msg.title}
+                .itemName=${this.msg.allTitle}
+                .desc=${this.msg.desc}
+                .value=${value}
+                .min=${0}
+                .max=${max}
+                @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+            ></aura--plugins--nav-header-102020>
+        `;
+    }
+
+    private _renderSelected() {
+        const page = this._selectedPage;
+        const max = this._pages.length + 1;
+        return html`
+            <div class="flex flex-col gap-3">
+                <aura--plugins--nav-header-102020
+                    .fixedLabel=${this.msg.title}
+                    .itemName=${page?.name ?? ''}
+                    .desc=${this.msg.desc}
+                    .value=${this.value ?? 0}
+                    .min=${0}
+                    .max=${max}
+                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                ></aura--plugins--nav-header-102020>
+                ${page ? this._renderPageDetail(page) : nothing}
+            </div>
+        `;
+    }
+
+    private _renderPageDetail(page: IPageEntry) {
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-3 py-2.5 flex flex-col gap-2">
+                <div class="flex items-baseline gap-1">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">${this._moduleName}/</span>
+                    <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">${page.name}</span>
+                    <span class="ml-auto">${this._renderStatusBadge(page.name)}</span>
+                </div>
+                <div class="flex items-center gap-1 flex-wrap">
+                    <span class="text-xs text-gray-400 dark:text-gray-600">${this.msg.devices}:</span>
+                    ${page.devices.map(d => html`
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
+                            ${DEVICE_LABELS[d] ?? d}
+                        </span>
+                    `)}
+                </div>
+            </div>
+            ${page.exists ? html`${this._renderDsVersionPanel(page)}${this._renderEditPanel(page)}` : this._renderMissingPanel(page)}
+        `;
+    }
+
+    // Pointed VISUAL edit of an existing page (agentManagePage). The gate rejects out-of-scope
+    // requests (backend/new data/new state); accepted edits update the defs + pageAdjustments and
+    // the page is re-materialized in delta mode.
+    private _renderEditPanel(page: IPageEntry) {
+        // Pages of the current frontend pipeline have no layout tree in their defs: their visual edit
+        // is a patch on the rendered .ts (agentManagePage2), not an edit of a structural definition.
+        // The panel below stays for genome defs.
+        //
+        // Until the shape is known, NO panel is offered. Defaulting to either flow means offering the
+        // wrong agent: the genome one writes `visualStyle` into the definition, which on a pipeline
+        // page is junk the renderer never reads.
+        const shape = this._shapeByName[page.name];
+        if (!shape) return nothing;
+        if (shape === 'pipeline') {
+            const layout = getAuraState().actualLayout ?? 1;
+            const ds = getAuraState().actualDesignSystem ?? 1;
+            const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+            return html`
+                <aura--plugins--page-visual-edit-102020
+                    .module=${this._modulePath ?? ''}
+                    .page=${page.file?.shortName ?? page.name}
+                    .layout=${layout}
+                    .ds=${ds}
+                    .device=${device}
+                ></aura--plugins--page-visual-edit-102020>
+            `;
+        }
+
+        const plan = this._editPlan.get(page.name);
+        // Confirmation panel — the gate's interpreted operations awaiting the user's approval.
+        if (plan) return this._renderEditConfirm(page, plan);
+
+        const task = getTask(`edit:${page.name}`);
+        const running = task?.status === 'running';
+        const planning = this._planning.has(page.name);
+        const busy = running || planning;
+        const note = this._editNotes.get(page.name);
+        const planErr = this._planError.get(page.name);
+        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
+        return html`
+            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
+                ${this._renderSelectedElement()}
+                <textarea
+                    rows="2"
+                    class="${inputCls} resize-y"
+                    placeholder=${this.msg.editPlaceholder}
+                    .value=${this._editDraft.get(page.name) ?? ''}
+                    @input=${(e: Event) => this._editDraft.set(page.name, (e.target as HTMLTextAreaElement).value)}
+                ></textarea>
+                <input
+                    type="text"
+                    class="${inputCls}"
+                    placeholder=${this.msg.editImagePlaceholder}
+                    .value=${this._editImg.get(page.name) ?? ''}
+                    @input=${(e: Event) => this._editImg.set(page.name, (e.target as HTMLInputElement).value)}
+                />
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${busy}
+                    @click=${() => this._onPlanEdit(page)}
+                >${planning ? this.msg.editPlanning : running ? this.msg.editing : this.msg.editReview}</button>
+                ${running || task?.status === 'done' ? html`
+                    <div class="flex items-center gap-2 text-xs">
+                        ${running ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.editing}</span>` : nothing}
+                        ${task?.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.editDone}</span>` : nothing}
+                        ${this._taskInfoByName.get(page.name)?.task ? html`
+                            <button class="ml-auto text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                                @click=${() => this._openTask(page.name)}>${this.msg.followTask}</button>
+                        ` : nothing}
+                    </div>
+                ` : nothing}
+                ${note ? html`
+                    <div class="text-xs text-emerald-700 dark:text-emerald-300 rounded bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5">
+                        <span class="font-semibold">${this.msg.editWhatChanged}:</span> ${note}
+                    </div>
+                ` : nothing}
+                ${planErr ? html`
+                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${planErr}</div>
+                ` : nothing}
+                ${task?.status === 'error' && task.message ? html`
+                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${task.message}</div>
+                ` : nothing}
+            </div>
+        `;
+    }
+
+    // The gate's plan, shown for confirmation before anything is written (TASK-102020-edit-2).
+    private _renderEditConfirm(page: IPageEntry, plan: { operations: Array<{ kind: string; target: string; description: string }>; request: string; imageUrl?: string }) {
+        return html`
+            <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">${this.msg.editPlanTitle}</span>
+                <div class="flex flex-col gap-1">
+                    ${plan.operations.map(op => html`
+                        <div class="flex items-baseline gap-1.5 text-xs text-gray-700 dark:text-gray-200">
+                            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${op.kind === 'structural'
+                                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
+                                : 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'}">${op.kind}</span>
+                            ${op.target ? html`<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">@${op.target}</span>` : nothing}
+                            <span class="leading-snug">${op.description}</span>
+                        </div>
+                    `)}
+                </div>
+                ${plan.imageUrl ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500 truncate">${this.msg.editImageRef}: ${plan.imageUrl}</span>` : nothing}
+                <div class="flex items-center gap-2">
+                    <button
+                        class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors cursor-pointer"
+                        @click=${() => this._onApplyPlan(page)}
+                    >${this.msg.editPlanApply}</button>
+                    <button
+                        class="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 transition-colors cursor-pointer"
+                        @click=${() => this._onCancelPlan(page)}
+                    >${this.msg.editPlanCancel}</button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * What the in-place editor has selected in the running app, when it has anything.
+     *
+     * The editor publishes it on `aura.edit.selection` (auraState) and this is the first thing to
+     * read it. Display only, on purpose: the request that reaches the agent is still exactly what the
+     * user typed. Feeding the selection INTO the prompt is a change to what the LLM sees, and it
+     * deserves its own decision — this line is what makes it obvious that the information is there.
+     */
+    private _renderSelectedElement() {
+        const selection = getAuraEdit().selection;
+        if (!selection) return nothing;
+        return html`
+            <span class="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1.5 min-w-0">
+                <span>${this.msg.editSelected}</span>
+                <code class="font-mono text-indigo-600 dark:text-indigo-400">&lt;${selection.tag}&gt;</code>
+                <span class="truncate opacity-70" title=${selection.literal}>${selection.literal}</span>
+            </span>
+        `;
+    }
+
+    // Phase A — PLAN: run only the gate (planOnly) and show the interpreted operations for the user
+    // to confirm before anything is written. A gate rejection surfaces inline (no defs touched).
+    private async _onPlanEdit(page: IPageEntry) {
+        const module = this._modulePath;
+        const layout = getAuraState().actualLayout;
+        const ds = getAuraState().actualDesignSystem;
+        if (!module || layout == null || ds == null) return;
+        const request = (this._editDraft.get(page.name) ?? '').trim();
+        if (!request) return;
+        const imageUrl = (this._editImg.get(page.name) ?? '').trim();
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+        const pageShort = page.file?.shortName ?? page.name;
+
+        if (this._planning.has(page.name) || getTask(`edit:${page.name}`)?.status === 'running') return;
+        this._planError.delete(page.name);
+        this._editNotes.delete(page.name);
+        this._planning.add(page.name);
+        this.requestUpdate();
+
+        const prompt = JSON.stringify({ module, page: pageShort, layout, ds, device, request, imageUrl: imageUrl || undefined, planOnly: true });
+        try {
+            const res = await this._executeAgent('agentManagePage', prompt, (data) => {
+                this._taskInfoByName.set(page.name, data);
+                this.requestUpdate();
+            });
+            if (res.failure) this._planError.set(page.name, res.failure);
+            else if (res.plan?.length) this._editPlan.set(page.name, { operations: res.plan as any, request, imageUrl: imageUrl || undefined });
+            else this._planError.set(page.name, this.msg.editNoPlan);
+        } catch (e: any) {
+            this._planError.set(page.name, e?.message ?? 'error');
+        } finally {
+            this._planning.delete(page.name);
+            this.requestUpdate();
+        }
+    }
+
+    // Phase B — APPLY: send the approved operations (skips the gate), edit the defs + re-render.
+    private async _onApplyPlan(page: IPageEntry) {
+        const plan = this._editPlan.get(page.name);
+        if (!plan) return;
+        const module = this._modulePath;
+        const layout = getAuraState().actualLayout;
+        const ds = getAuraState().actualDesignSystem;
+        if (!module || layout == null || ds == null) return;
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+        const pageShort = page.file?.shortName ?? page.name;
+
+        const taskKey = `edit:${page.name}`;
+        if (getTask(taskKey)?.status === 'running') return;
+
+        const prompt = JSON.stringify({ module, page: pageShort, layout, ds, device, request: plan.request, imageUrl: plan.imageUrl, operations: plan.operations });
+        const prevPause = getState('preview.pausePreview');
+        setState('preview.pausePreview', true);
+        setTask(taskKey, { status: 'running', startedAt: Date.now() });
+        this._editPlan.delete(page.name);   // leave the confirm panel; show progress on the input panel
+        this.requestUpdate();
+        try {
+            // Edit applied AND the page .ts re-rendered by agentManagePage's own render step
+            // (agentRenderEdit, delta-aware). Preview repaints on the .ts write.
+            const res = await this._executeAgent('agentManagePage', prompt, (data) => {
+                this._taskInfoByName.set(page.name, data);
+                this.requestUpdate();
+            });
+            if (res.failure) {
+                setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: res.failure });
+                return;
+            }
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
+            if (res.notes) this._editNotes.set(page.name, res.notes);
+            this._editDraft.delete(page.name);
+            this._editImg.delete(page.name);
+        } catch (e: any) {
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
+        } finally {
+            setState('preview.pausePreview', prevPause ?? false);
+            await this._loadPages();
+        }
+    }
+
+    // Cancel the pending plan → back to the request input (draft preserved so it can be refined).
+    private _onCancelPlan(page: IPageEntry) {
+        this._editPlan.delete(page.name);
+        this._planError.delete(page.name);
+        this.requestUpdate();
+    }
+
+    // Page listed from the source (page11) but absent in the current layout/DS
+    // variation: explain why the preview shows nothing and offer to generate it.
+    private _renderMissingPanel(page: IPageEntry) {
+        const task = getTask(`regenerate:${page.name}`);
+        const running = task?.status === 'running';
+        return html`
+            <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">${this.msg.missingVariation}</span>
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${running}
+                    @click=${() => this._onRegenerate(page)}
+                >${running ? this.msg.regenerating : this.msg.generatePage}</button>
+                ${task && task.status === 'error' ? html`
+                    <span class="text-xs text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>
+                ` : nothing}
+            </div>
+        `;
+    }
+
+    // ─── DS-version panel (review / stale) ────────────────────────────
+
+    private _renderDsVersionPanel(page: IPageEntry) {
+        const check = this._checkByName[page.name];
+        if (!check) return nothing;
+        if (check.status === 'review') return this._renderReviewPanel(page, check);
+        if (check.status === 'stale') return this._renderStalePanel(page, check);
+        return nothing;
+    }
+
+    private _renderReviewPanel(page: IPageEntry, check: PageDsCheck) {
+        return html`
+            <div class="rounded-lg border border-sky-200 dark:border-sky-800/40 bg-sky-50 dark:bg-sky-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-sky-700 dark:text-sky-300">${this.msg.reviewIntro}</span>
+                <div class="flex flex-col gap-1.5">
+                    ${check.changed.map(m => html`
+                        <div class="flex flex-col">
+                            <span class="text-xs text-gray-700 dark:text-gray-300">${this._humanizeGroup(m.group)}</span>
+                            <span class="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate">${m.tag}</span>
+                        </div>
+                    `)}
+                </div>
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-sky-500 dark:bg-sky-600 text-white hover:bg-sky-600 dark:hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${this._busyPage === page.name}
+                    @click=${() => this._onMarkReviewed(page)}
+                >${this._busyPage === page.name ? this.msg.saving : this.msg.markReviewed}</button>
+            </div>
+        `;
+    }
+
+    private _renderStalePanel(page: IPageEntry, check: PageDsCheck) {
+        const reason = {
+            'rules': this.msg.staleReasonRules,
+            'molecule-removed': this.msg.staleReasonRemoved,
+            'molecule-incompatible': this.msg.staleReasonIncompatible,
+            'no-stamp': this.msg.staleReasonNoStamp,
+        }[check.staleReason ?? 'no-stamp'];
+        const mol = check.staleMolecule;
+        const task = getTask(`regenerate:${page.name}`);
+        const running = task?.status === 'running';
+        return html`
+            <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5 flex flex-col gap-2">
+                <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">${this.msg.staleIntro}</span>
+                <span class="text-xs text-amber-600 dark:text-amber-400">${reason}</span>
+                ${mol ? html`<span class="text-[10px] font-mono text-gray-400 dark:text-gray-500 truncate">${mol.tag}</span>` : nothing}
+                <button
+                    class="self-start text-sm px-3 py-1.5 rounded-md bg-amber-500 dark:bg-amber-600 text-white hover:bg-amber-600 dark:hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    ?disabled=${running}
+                    @click=${() => this._onRegenerate(page)}
+                >${running ? this.msg.regenerating : this.msg.regeneratePage}</button>
+                ${task ? html`
+                    <div class="flex items-center gap-2 text-xs">
+                        ${task.status === 'running' ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.regenerating}</span>` : nothing}
+                        ${task.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.regenerated}</span>` : nothing}
+                        ${task.status === 'error' ? html`<span class="text-red-500 dark:text-red-400 truncate">${task.message ?? 'error'}</span>` : nothing}
+                        ${this._taskInfoByName.get(page.name)?.task ? html`
+                            <button class="ml-auto text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
+                                @click=${() => this._openTask(page.name)}>${this.msg.followTask}</button>
+                        ` : nothing}
+                    </div>
+                ` : nothing}
+            </div>
+        `;
+    }
+
+    private _humanizeGroup(group: string): string {
+        return group.replace(/^group/, '').replace(/([A-Z])/g, ' $1').trim() || group;
+    }
+
+    private async _onMarkReviewed(page: IPageEntry) {
+        const module = this._modulePath;
+        const layout = getAuraState().actualLayout ?? 1;
+        const ds = getAuraState().actualDesignSystem ?? 1;
+        if (!module) return;
+        this._busyPage = page.name;
+        this.requestUpdate();
+        await restampPage(
+            { project: page.file.project, folder: page.file.folder ?? '', shortName: page.file.shortName },
+            module,
+            layout,
+            ds,
+            new Date().toISOString(),
+        );
+        this._busyPage = null;
+        await this._loadPageStatus();
+    }
+
+    // Regenerate this single page through the DS-implementation agent (pages: [page]).
+    private async _onRegenerate(page: IPageEntry) {
+        const module = this._modulePath;
+        const layout = getAuraState().actualLayout;
+        const ds = getAuraState().actualDesignSystem;
+        if (!module || layout == null || ds == null) return;
+        // The agent's `device` is the segment after web/ (e.g. 'desktop'); aura stores 'web/desktop'.
+        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
+
+        const taskKey = `regenerate:${page.name}`;
+        if (getTask(taskKey)?.status === 'running') return;
+
+        const materialize = true; // the button regenerates the rendered .ts page too
+        // The agent matches on page shortNames; page.name may be a pageId/path, so send the file shortName.
+        const pageShort = page.file?.shortName ?? page.name;
+        const prompt = JSON.stringify({ module, layout, ds, device, pages: [pageShort], materialize });
+        // Pause the preview while the agent rewrites the defs (avoids repaint thrash); restore after.
+        const prevPause = getState('preview.pausePreview');
+        setState('preview.pausePreview', true);
+        setTask(taskKey, { status: 'running', startedAt: Date.now() });
+        try {
+            // 1) DS-implementation: rewrite the page defs (page{layout}{ds}/<page>.defs.ts).
+            await this._executeAgent('agentImplementGenome', prompt, (data) => {
+                this._taskInfoByName.set(page.name, data);
+                this.requestUpdate(); // surface "Follow task" as soon as the task exists
+            });
+            // 2) Materialize: read the now-stale defs and generate the .ts page. Unpause first
+            //    so the .ts write repaints the preview with the new result.
+            if (materialize) {
+                setState('preview.pausePreview', prevPause ?? false);
+                await this._executeAgent('agentMaterializeL2', '{}');
+            }
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
+        } catch (e: any) {
+            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
+        } finally {
+            setState('preview.pausePreview', prevPause ?? false);
+            await this._loadPages(); // re-scan: refreshes existence in the variation + DS status
+        }
+    }
+
+    private async _executeAgent(
+        agentName: string,
+        prompt: string,
+        onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
+    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string; plan?: any[]; notes?: string }> {
+        // Thread host: selectPage lives in serviceGenome since the knob move (D4).
+        const fullName = '_102020_/l2/serviceGenome';
+        let threadPromise = this._threadCache.get(fullName);
+        if (!threadPromise) {
+            threadPromise = (async () => {
+                let thread = await getThreadByName(fullName);
+                if (!thread) thread = await createThread(fullName, [], 'company');
+                return thread;
+            })();
+            this._threadCache.set(fullName, threadPromise);
+        }
+        const thread = await threadPromise;
+        const userId = getUserId();
+        const threadId = thread?.threadId;
+        if (!userId || !threadId) return { taskId: '' };
+
+        const moduleAgent = await loadAgent(agentName);
+        if (!moduleAgent) throw new Error('Invalid agent');
+        const context = getTemporaryContext(threadId, userId, prompt);
+
+        let taskId = '';
+        let task: mls.msg.TaskData | undefined;
+        let message: mls.msg.Message | undefined;
+        // The stream drives the WHOLE flow (hooks + intents), not just task creation. Capture the
+        // last step failure (mkFail → update-status 'failed' + traceMsg, e.g. the gate's rejection
+        // reason) or a stream error, so callers can surface it instead of silently swallowing it.
+        let failure: string | undefined;
+        // PLAN phase surfaces the gate's operations via a completed step's `PLAN:<json>` traceMsg;
+        // the edit step surfaces its one-line note via `NOTES:<text>`. Both ride the same channel.
+        let plan: any[] | undefined;
+        let notes: string | undefined;
+        for await (const event of executeBeforePromptStream(moduleAgent, context)) {
+            if (event.type === 'task-created') {
+                taskId = event.taskId; task = event.task; message = event.message;
+                onTaskCreated?.({ taskId, task, message });
+            } else if (event.type === 'hook-done') {
+                for (const intent of event.intents ?? []) {
+                    const i = intent as any;
+                    if (i?.type !== 'update-status') continue;
+                    if (i.status === 'failed' && i.traceMsg) failure = String(i.traceMsg);
+                    else if (i.status === 'completed' && typeof i.traceMsg === 'string') {
+                        if (i.traceMsg.startsWith('PLAN:')) { try { plan = JSON.parse(i.traceMsg.slice(5)); } catch { /* ignore */ } }
+                        else if (i.traceMsg.startsWith('NOTES:')) notes = i.traceMsg.slice(6);
+                    }
+                }
+            } else if (event.type === 'error') {
+                failure = String(event.error);
+            }
+        }
+        return { taskId, task, message, failure, plan, notes };
+    }
+
+    private async _openTask(pageName: string) {
+        const info = this._taskInfoByName.get(pageName);
+        if (!info?.task) return;
+        await import('/_102025_/l2/collabMessagesTaskInfo.js');
+        const el = document.createElement('collab-messages-task-info-102025');
+        el.setAttribute('messageId', info.message?.createAt ?? '');
+        if (info.task.PK) el.setAttribute('taskId', info.task.PK);
+        (el as any)['task'] = info.task;
+        (el as any)['message'] = info.message;
+        openElementInServiceDetails(el);
+    }
+
+    private _renderAll() {
+        const q = this._search.toLowerCase();
+        const filtered = this._pages
+            .map((p, i) => ({ p, selectValue: i + 1 }))
+            .filter(({ p }) => !q || p.name.toLowerCase().includes(q));
+        const max = this._pages.length + 1;
+        const activePage = getAuraState().actualPage;
+
+        return html`
+            <div class="flex flex-col gap-3">
+                <aura--plugins--nav-header-102020
+                    .fixedLabel=${this.msg.title}
+                    .itemName=${this.msg.allTitle}
+                    .desc=${this.msg.allDesc}
+                    .value=${0}
+                    .min=${0}
+                    .max=${max}
+                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                ></aura--plugins--nav-header-102020>
+
+                ${this._activeDevice ? html`
+                    <div class="flex items-center gap-1.5 px-1">
+                        <div class="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></div>
+                        <span class="text-xs text-indigo-600 dark:text-indigo-400 font-medium">${this._activeDevice}</span>
+                    </div>
+                ` : nothing}
+
+                <button
+                    class="
+                        self-end text-sm px-2.5 py-1 rounded
+                        bg-indigo-500 dark:bg-indigo-600 text-white
+                        hover:bg-indigo-600 dark:hover:bg-indigo-500
+                        transition-colors whitespace-nowrap cursor-pointer
+                    "
+                    @click=${() => this._dispatchSelect(max)}
+                >+ ${this.msg.createNew}</button>
+
+                <input
+                    type="text"
+                    .value=${this._search}
+                    placeholder=${this.msg.searchPlaceholder}
+                    class="
+                        w-full text-sm px-2.5 py-1.5 rounded-md
+                        border border-gray-200 dark:border-gray-700
+                        bg-white dark:bg-gray-900
+                        text-gray-700 dark:text-gray-300
+                        placeholder-gray-400 dark:placeholder-gray-600
+                        focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600
+                    "
+                    @input=${(e: Event) => { this._search = (e.target as HTMLInputElement).value; }}
+                />
+
+                ${this._pages.length === 0
+                    ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noPages}</span>`
+                    : filtered.length === 0
+                        ? html`<span class="text-sm text-gray-400 dark:text-gray-600 italic">${this.msg.noResults}</span>`
+                        : html`
+                            <div class="flex flex-col gap-1.5">
+                                ${filtered.map(({ p, selectValue }) => {
+                                    const isActive = !!activePage
+                                        && p.file.shortName === activePage.shortName
+                                        && p.file.project === activePage.project;
+                                    return this._renderPageCard(p, selectValue, isActive);
+                                })}
+                            </div>
+                        `}
+            </div>
+        `;
+    }
+
+    private _renderCustom() {
+        const max = this._pages.length + 1;
+        return html`
+            <div class="flex flex-col gap-3">
+                <aura--plugins--nav-header-102020
+                    .fixedLabel=${this.msg.title}
+                    .itemName=${this.msg.customTitle}
+                    .desc=${this.msg.customDesc}
+                    .value=${max}
+                    .min=${0}
+                    .max=${max}
+                    @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
+                ></aura--plugins--nav-header-102020>
+                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
+                    <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.inDevelopment}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderNotCreated() {
+        return html`
+            <div class="flex flex-col gap-3">
+                ${this._renderHeader()}
+
+                ${this._activeDevice ? html`
+                    <div class="flex items-center gap-1.5 px-1">
+                        <div class="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0"></div>
+                        <span class="text-xs text-indigo-600 dark:text-indigo-400 font-medium">${this._activeDevice}</span>
+                    </div>
+                ` : nothing}
+
+                <div class="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/10 px-3 py-2.5">
+                    <span class="text-sm text-amber-600 dark:text-amber-400">${this.msg.notCreated}</span>
+                </div>
+
+                <button
+                    class="
+                        self-start text-sm px-3 py-1.5 rounded
+                        bg-indigo-500 dark:bg-indigo-600 text-white
+                        hover:bg-indigo-600 dark:hover:bg-indigo-500
+                        transition-colors whitespace-nowrap cursor-pointer
+                    "
+                    @click=${() => this._dispatchGenerate()}
+                >${this.msg.generatePages}</button>
+            </div>
+        `;
+    }
+
+    // ─── Shared helpers ───────────────────────────────────────────────
+
+    private _renderPageCard(page: IPageEntry, selectValue: number, isActive = false) {
+        return html`
+            <div
+                class="
+                    rounded-lg border px-3 py-2.5 flex items-center gap-2
+                    cursor-pointer transition-colors
+                    ${isActive
+                        ? 'border-emerald-200 dark:border-emerald-700/50 bg-emerald-50 dark:bg-emerald-900/10 hover:bg-emerald-100 dark:hover:bg-emerald-900/20'
+                        : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 hover:bg-gray-100 dark:hover:bg-gray-800/70'}
+                "
+                @click=${() => this._dispatchSelect(selectValue)}
+            >
+                ${isActive ? html`<div class="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 shrink-0"></div>` : nothing}
+                <div class="flex-1 flex items-baseline gap-1 min-w-0">
+                    <span class="text-[10px] text-gray-400 dark:text-gray-600 shrink-0">${this._moduleName}/</span>
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">${page.name}</span>
+                </div>
+                <div class="flex items-center gap-1 shrink-0">
+                    ${!page.exists ? html`
+                        <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400">
+                            ${this.msg.notGenerated}
+                        </span>` : nothing}
+                    ${this._renderStatusBadge(page.name)}
+                    ${page.devices.map(d => html`
+                        <span class="text-[10px] font-medium px-1 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                            ${DEVICE_LABELS[d]?.replace('Web ', '') ?? d}
+                        </span>
+                    `)}
+                </div>
+            </div>
+        `;
+    }
+
+    private _dispatchSelect(value: number) {
+        const entry = value > 0 && value <= this._pages.length ? this._pages[value - 1] : null;
+        this.dispatchEvent(new CustomEvent('select-page', {
+            detail: { value, file: entry?.file ?? null },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+
+    private _dispatchGenerate() {
+        this.dispatchEvent(new CustomEvent('generate-pages', {
+            detail: {
+                module: this._modulePath,
+                device: getAuraState().actualDevice,
+                layout: getAuraState().actualLayout,
+                designSystem: getAuraState().actualDesignSystem,
+            },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+}

@@ -1,0 +1,14 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewMolecule2/n4-render.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ts"],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "minLength": 200,
+      "description": "The COMPLETE molecule .ts, starting at the first import. Raw TypeScript only — no markdown fences, no mls header (code owns it). Semantic ml-* classes for appearance; Tailwind utilities for layout only."
+    }
+  }
+}

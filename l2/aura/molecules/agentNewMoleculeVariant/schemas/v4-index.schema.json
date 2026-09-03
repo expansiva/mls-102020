@@ -1,0 +1,14 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewMoleculeVariant/v4-index.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ts"],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "minLength": 200,
+      "description": "The COMPLETE group index showcase page (index.ts): a Lit StateLitElement with hero + showcase cards + reference table, including the triple-slash header. Raw TypeScript only — no markdown fences, no commentary outside code."
+    }
+  }
+}

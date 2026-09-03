@@ -1,0 +1,29 @@
+{
+  "orgName": "expansiva",
+  "projectType": "lib",
+  "designSystems": [
+    {
+      "dsIndex": "0",
+      "dsName": "localDesignSystem",
+      "widgetIOName": "_100554_configDsDefault"
+    }
+  ],
+  "languages": [
+    {
+      "language": "en",
+      "name": "English",
+      "path": "/"
+    },
+    {
+      "language": "pt",
+      "name": "Portuguese(Brazil)",
+      "path": "/pt"
+    }
+  ],
+  "plugins": {},
+  "reasons": {},
+  "services": [],
+  "links": [],
+  "servicesConfigEnabled": false,
+  "appEnv": "presentation"
+}

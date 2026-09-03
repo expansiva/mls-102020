@@ -1,0 +1,44 @@
+{
+  "previous": {
+    "schemaVersion": "2026-08-12-ns4-e7-validation-report-v4",
+    "moduleName": "buildFlowFsm38",
+    "attempts": [
+      {
+        "round": 0,
+        "checkedAt": "2026-08-13T02:21:30.000Z",
+        "valid": 26,
+        "invalid": 1,
+        "results": [
+          {
+            "useCaseId": "reviewStatusReport",
+            "status": "invalid",
+            "issues": [
+              {
+                "code": "NS4_E7_FIXTURE_INITIAL_FINDING",
+                "path": "reviewStatusReport",
+                "message": "Reduced run 38 initial finding."
+              }
+            ]
+          }
+        ],
+        "lifecycleIssues": []
+      }
+    ],
+    "finalStatus": "repairing",
+    "updatedAt": "2026-08-13T02:21:30.000Z"
+  },
+  "nextAttempt": {
+    "round": 1,
+    "checkedAt": "2026-08-13T02:21:57.580Z",
+    "valid": 27,
+    "invalid": 0,
+    "results": [
+      {
+        "useCaseId": "reviewStatusReport",
+        "status": "valid",
+        "issues": []
+      }
+    ],
+    "lifecycleIssues": []
+  }
+}

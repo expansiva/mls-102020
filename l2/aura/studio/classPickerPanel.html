@@ -1,0 +1,54 @@
+<!-- Playground for the picker panel. The two states worth looking at while styling it: an element
+     with classes, and an element with none (where the "+" is the whole point).
+     `position: static` is set inline on purpose — the real panel is fixed to the corner of the app
+     region, which would stack the two examples on top of each other here. -->
+<div style="display:flex; flex-wrap:wrap; gap:16px; background:#0f1720; padding:16px; min-height:100%;">
+
+  <aura--studio--class-picker-102020 id="withClasses"
+    style="position:static; display:block; max-height:none;"></aura--studio--class-picker-102020>
+
+  <aura--studio--class-picker-102020 id="empty"
+    style="position:static; display:block; max-height:none;"></aura--studio--class-picker-102020>
+
+</div>
+
+<script type="module">
+  const roles = ['--surface-bg', '--surface-alt-bg', '--text-muted', '--text-strong', '--border-default'];
+  const values = {
+    '--surface-bg': '#ffffff',
+    '--surface-alt-bg': '#f8fafc',
+    '--text-muted': '#64748b',
+    '--text-strong': '#0f172a',
+    '--border-default': '#e2e8f0',
+  };
+
+  // Everything the editor feeds the panel. Keeping the playground honest about the contract is half
+  // its value: if the panel needs something new, it stops rendering here first.
+  const feed = (el, literal) => {
+    el.builtClasses = new Set(['p-2', 'p-3', 'p-4', 'rounded-md', 'text-sm', 'font-semibold', 'shadow-sm']);
+    el.dsRoles = roles;
+    el.resolveVar = (cssVar) => values[cssVar] ?? '';
+    el.jitLive = true;
+    el.target = {
+      tag: literal ? 'button' : 'div',
+      fileLabel: 'changeOrderCatalogue (buildFlowFsm/web/desktop/page11)',
+      literal,
+      editable: true,
+      childCount: 3,
+      canRemoveLast: true,
+      undo: literal ? 'p-3 → p-4' : '',
+      redo: '',
+    };
+    el.hidden = false;
+  };
+
+  customElements.whenDefined('aura--studio--class-picker-102020').then(() => {
+    feed(document.getElementById('withClasses'), 'inline-flex items-center gap-2 rounded-md p-3 text-sm font-semibold');
+    feed(document.getElementById('empty'), '');
+  });
+
+  // The panel only ASKS; here the answers are printed so the contract is visible while styling.
+  for (const intent of ['picker-apply', 'picker-preview', 'picker-close', 'picker-undo', 'picker-redo', 'picker-status']) {
+    document.addEventListener(intent, (e) => console.info(intent, e.detail));
+  }
+</script>

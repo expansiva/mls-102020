@@ -1,0 +1,25 @@
+{
+  "type": "flexible",
+  "result": {
+    "schemaVersion": "2026-08-11-ns4-workspace-detail-v1",
+    "moduleName": "sampleModule",
+    "workspaceId": "projectWorkspace",
+    "skeletonHash": "sha256:sample",
+    "scenarios": [
+      {
+        "scenarioId": "projectList",
+        "organisms": [
+          {
+            "role": "list",
+            "fragmentRef": "projectList",
+            "sliceId": "projectList",
+            "fieldRefs": [{ "entityId": "Project", "fieldId": "name" }],
+            "intent": "Show projects.",
+            "usage": ""
+          }
+        ],
+        "commandInputs": []
+      }
+    ]
+  }
+}

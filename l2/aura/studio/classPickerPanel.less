@@ -1,0 +1,167 @@
+/// <mls fileReference="_102020_/l2/aura/studio/classPickerPanel.less" enhancement="_102027_/l2/enhancementStyle"/>
+// The picker's looks, in the shape this project uses: a .less scoped by the tag, compiled into the
+// component's constructor by the enhancement (processCssLit -> loadStyle).
+//
+// TWO RULES THAT ARE NOT TASTE
+//
+// 1. EVERY class is prefixed `acp-`. This panel renders in the LIGHT DOM of the CLIENT's page, so its
+//    class names share a namespace with the app's own CSS. Measured: the real pages use `block` ~317
+//    times, so `.block { display: block }` is in their built stylesheet — and the panel used to have a
+//    `class="block"` of its own. On top of that the Tailwind JIT scans the live DOM in studio mode, so
+//    any name that happens to be a utility becomes one. The prefix closes both directions.
+//
+// 2. The colours are FIXED, never the design system's. This is chrome sitting on top of the page it
+//    edits: following the client's DS would camouflage the tool in exactly the thing being edited. The
+//    only DS values here are the swatches, and those are read at runtime from the resolved role.
+
+aura--studio--class-picker-102020 {
+  & {
+    /* FIXED, not absolute: absolute inside the service element anchors the bottom edge to the end
+       of the whole scrollable content, so on a page with scroll the panel sat below the fold. The
+       editor re-pins it to the visible part of the app region on every scroll (positionChrome). */
+    position: fixed; bottom: 12px; right: 12px;
+    z-index: 99992;
+    width: 340px; max-width: calc(100% - 24px);
+    max-height: 55%; overflow: auto;
+    background: #1f2933; color: #f5f7fa;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    font-family: "Segoe UI", sans-serif; font-size: 12px;
+  }
+  &[hidden] { display: none !important; }
+
+  .acp-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(245,247,250,0.12);
+    position: sticky; top: 0; background: #1f2933;
+  }
+  .acp-tag { font-family: monospace; color: #7fb3ff; }
+  .acp-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b8c2cc; }
+  .acp-close { background: transparent; border: 0; color: #b8c2cc; font-size: 16px; line-height: 1; cursor: pointer; }
+  .acp-history {
+    flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+    color: #b8c2cc; font-size: 14px; line-height: 1; padding: 0 2px;
+  }
+  .acp-history:hover:not([disabled]) { color: #f5f7fa; }
+  .acp-history[disabled] { opacity: 0.3; cursor: default; }
+
+  .acp-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid rgba(245,247,250,0.12); }
+  .acp-tab {
+    background: transparent; border: 0; cursor: pointer; color: #9aa5b1; font-size: 12px;
+    padding: 4px 8px; border-radius: 4px 4px 0 0; border-bottom: 2px solid transparent;
+  }
+  .acp-tab:hover { color: #e6edf3; }
+  .acp-tab.acp-active { color: #f5f7fa; border-bottom-color: #4287f5; }
+
+  .acp-note { padding: 6px 10px; border-bottom: 1px solid rgba(245,247,250,0.08); color: #cbd5e1; line-height: 1.35; }
+  .acp-note.acp-warning { background: rgba(245,166,35,0.14); color: #ffd8a1; }
+  .acp-note.acp-refusal { background: rgba(229,57,53,0.16); color: #ffc9c7; }
+
+  /* One group has to read as one group: the room below the chips is what separates it from the
+     next label, and the rule is only there to help — space does the work. */
+  .acp-rows { padding: 4px 4px 10px; }
+  .acp-block { display: block; padding: 9px 6px; }
+  .acp-block + .acp-block { border-top: 1px solid rgba(245,247,250,0.10); }
+  .acp-block.acp-readonly { opacity: 0.75; }
+  .acp-label {
+    display: block; margin-bottom: 6px; color: #b8c2cc; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .acp-reason { display: block; margin-top: 4px; color: #9aa5b1; line-height: 1.3; }
+  .acp-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+
+  /* The "+" is not another property of the element: it is the end of the list. */
+  .acp-block.acp-add { margin-top: 6px; border-top-color: rgba(245,247,250,0.18); }
+
+  .acp-chip {
+    font-family: monospace; font-size: 11px; padding: 2px 6px; cursor: pointer;
+    color: #e6edf3; background: rgba(245,247,250,0.08);
+    border: 1px solid rgba(245,247,250,0.18); border-radius: 3px;
+  }
+  .acp-chip:hover:not([disabled]) { background: rgba(66,135,245,0.35); }
+  .acp-chip.acp-current { background: #4287f5; border-color: #4287f5; color: #fff; cursor: default; }
+  .acp-chip[disabled]:not(.acp-current) { opacity: 0.45; cursor: not-allowed; }
+  .acp-chip.acp-jit { border-style: dashed; }
+  .acp-chip.acp-more { letter-spacing: 1px; padding: 2px 8px; }
+  .acp-star { color: #ffd8a1; }
+
+  .acp-crumb { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid rgba(245,247,250,0.08); }
+  .acp-here { color: #f5f7fa; }
+  .acp-link { background: transparent; border: 0; cursor: pointer; color: #7fb3ff; font-size: 12px; padding: 0; }
+  .acp-link:hover { text-decoration: underline; }
+  .acp-advanced { display: block; margin: 6px 6px 2px; }
+
+  .acp-switch { display: flex; align-items: center; gap: 6px; padding: 8px 6px 2px; color: #9aa5b1; cursor: pointer; }
+  .acp-switch input { cursor: pointer; }
+  .acp-hint { display: block; padding: 0 8px 6px 24px; color: #8a94a0; font-size: 10px; line-height: 1.4; }
+
+  .acp-custom { display: inline-flex; align-items: center; gap: 4px; }
+  .acp-custom input {
+    width: 68px; padding: 2px 4px; font-family: monospace; font-size: 11px;
+    color: #e6edf3; background: #2c3742;
+    border: 1px solid rgba(245,247,250,0.25); border-radius: 3px;
+  }
+  .acp-unit { color: #9aa5b1; font-size: 11px; }
+
+  /* The role palette: a swatch, the name, the value — expanded inline. */
+  .acp-swatch {
+    flex: 0 0 auto; width: 12px; height: 12px; border-radius: 2px;
+    /* The border is what makes #ffffff visible on a dark panel. */
+    border: 1px solid rgba(245,247,250,0.35);
+  }
+  .acp-swatch.acp-empty {
+    border-style: dashed;
+    background: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(245,247,250,0.25) 3px, rgba(245,247,250,0.25) 4px);
+  }
+  .acp-role-btn, .acp-role-item {
+    display: flex; align-items: center; gap: 6px; width: 100%;
+    padding: 3px 6px; cursor: pointer; text-align: left;
+    font-family: inherit; font-size: 11px; color: #e6edf3;
+    background: rgba(245,247,250,0.08);
+    border: 1px solid rgba(245,247,250,0.18); border-radius: 3px;
+  }
+  .acp-role-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .acp-role-item { background: transparent; border-color: transparent; border-radius: 0; }
+  .acp-role-item:hover { background: rgba(66,135,245,0.28); }
+  .acp-role-item.acp-current { background: rgba(66,135,245,0.18); }
+  .acp-role-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acp-role-value { flex: 0 0 auto; font-family: monospace; color: #9aa5b1; }
+  .acp-head-row { display: flex; align-items: baseline; gap: 6px; }
+  .acp-head-row .acp-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acp-remove {
+    flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+    color: #9aa5b1; font-size: 13px; line-height: 1; padding: 0 2px;
+  }
+  .acp-remove:hover:not([disabled]) { color: #fca5a5; }
+  .acp-remove[disabled] { opacity: 0.3; cursor: not-allowed; }
+
+  /* Copy/paste of a style */
+  .acp-copy {
+    flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+    color: #7fb3ff; font-family: inherit; font-size: 11px; padding: 0;
+  }
+  .acp-copy:hover { text-decoration: underline; }
+  .acp-block.acp-paste { background: rgba(66,135,245,0.10); }
+  .acp-paste-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .acp-paste-actions .acp-link { margin-left: auto; }
+  .acp-diff-row { display: flex; gap: 6px; align-items: baseline; margin-top: 4px; }
+  .acp-dir {
+    flex: 0 0 34px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .acp-dir.acp-in { color: #86efac; }
+  .acp-dir.acp-out { color: #fca5a5; }
+  .acp-toks { display: flex; flex-wrap: wrap; gap: 3px; }
+  .acp-tok {
+    font-family: monospace; font-size: 10px; padding: 1px 4px; border-radius: 3px;
+    background: rgba(245,247,250,0.08); color: #e6edf3;
+  }
+  .acp-tok.acp-out { text-decoration: line-through; opacity: 0.7; }
+  /* Place is the one thing a paste may legitimately have to hold back — so it is never silent. */
+  .acp-tok.acp-place { outline: 1px dashed rgba(245,166,35,0.85); }
+
+  .acp-role-list {
+    display: block; width: 100%; margin-top: 2px; max-height: 190px; overflow: auto;
+    border: 1px solid rgba(245,247,250,0.18); border-radius: 3px; background: #232e39;
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "flowId": "agentImplementGenome",
+  "schemaVersion": "2026-06-17",
+  "description": "Aplica um design system a um modulo: deriva page{layout}{ds} a partir de page11. Modelo de grupos em barreira (à la agentNewSolution / agentsgrouping.md): o orquestrador enumera as paginas e cria 1 step por pagina por grupo, com dependsOn ligando os grupos. O barrier do step 'register' (dependsOn TODOS os gen) é como sabemos que todas as paginas terminaram — nativo do framework, sem tracker em memoria.",
+  "entry": "{ module, layout, ds, device? }  (device default 'desktop')",
+  "source": {
+    "orchestrator": "_102020_/l2/aura/agentImplementGenome/agentImplementGenome.ts (buildPlannedTree em afterPromptStep)",
+    "planning": "_102020_/l2/aura/agentImplementGenome/planning.ts (mkAgentStep/makePlanId/parseStepArgs/saveFile)",
+    "deterministicCore": "_102020_/l2/aura/helpers/dsMatch/* (derivePaths, groupCatalog, agent1[group-por-elemento], layoutElements, buildMoleculeCatalog, matchVariant, resolveRulesForPage, resolveMolecules, dsVersion, buildGlobalCss, registerPageGenome)"
+  },
+  "steps": [
+    {
+      "planId": "(root)",
+      "agentName": "agentImplementGenome",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "Orquestrador. beforePromptImplicit confirma o request (LLM minimo); afterPromptStep lista as paginas de page11 e cria os steps select/gen/register."
+    },
+    {
+      "planId": "select:<page>",
+      "agentName": "agentSelectGroups",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": [],
+      "initialStatus": "waiting_human_input",
+      "goal": "Agent1 (LLM). Lê `definition.layout` (page11) e escolhe o GRUPO de molécula por ELEMENTO (id de field/filter/action/container); grava page{layout}{ds}/<page>.defs.ts com `groupSelections` ([{id,group}]). NÃO escolhe variante.",
+      "perPage": true
+    },
+    {
+      "planId": "variant:<page>",
+      "agentName": "agentSelectVariant",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["select:<page>"],
+      "goal": "Agent2 (LLM). Filtra as variantes do grupo por ESTILO (filterCompatibleVariants) e escolhe por ELEMENTO a que casa SEMANTICAMENTE (field/inputType/purpose × descrições das candidatas), ou `none` (mesmo com 1 candidata — melhor sem molécula do que incoerente). Grava `variantSelections` ([{id,group,tag}]).",
+      "perPage": true
+    },
+    {
+      "planId": "gen:<page>",
+      "agentName": "agentGenDefs",
+      "type": "agent",
+      "executionMode": "parallel_static",
+      "dependsOn": ["variant:<page>"],
+      "goal": "Fase E, DETERMINÍSTICO (sem LLM, sem matchVariant). Importa o defs page11, lê `variantSelections` e COLOCA a `molecule` escolhida por elemento (lookup no catálogo por tag); reescreve skills/dependsFiles, carimba pageVersion; grava page{layout}{ds}/<page>.defs.ts.",
+      "perPage": true
+    },
+    {
+      "planId": "reconcile-tokens",
+      "agentName": "agentReconcileTokens",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": ["gen:<page> (TODAS as paginas)"],
+      "goal": "LLM, UMA vez por DS (barrier em todos os gen). Coleta o vocabulário --ml-* dos grupos usados (união das usage skills) e mapeia cada --ml-* -> expressão --ds-* (direct/derived/keep). Grava o tokenReconciliation (map + version p/ staleness + usedGroups + pinned) na entrada do designSystem.ts (fonte única; o render aplica o map no :root). Skip via cache se o hash (dsTokens/vocab) não mudou.",
+      "barrier": "dependsOn de TODOS os gen; roda 1x por DS (não por pagina)"
+    },
+    {
+      "planId": "register",
+      "agentName": "agentRegisterGenome",
+      "type": "agent",
+      "executionMode": "sequential",
+      "dependsOn": ["reconcile-tokens"],
+      "goal": "Terminal, SEM LLM (so beforePromptStep -> completed). Roda buildGlobalCss, que emite styles/<ds>/global.css com os --ds-* + os --ml-*: var(--ds-*) do tokenReconciliation no :root.",
+      "barrier": "depende do reconcile-tokens (que por sua vez tem barrier em todos os gen)"
+    }
+  ]
+}

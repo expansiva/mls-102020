@@ -1,0 +1,34 @@
+{
+  "$id": "https://collab.codes/schemas/agentSyncMoleculeCatalog/s3-indexts-create.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["indexTs", "scenarios"],
+  "properties": {
+    "indexTs": {
+      "type": "string",
+      "minLength": 200,
+      "description": "The COMPLETE index.ts of the group showcase page, starting at the mls header. Raw TypeScript only — no markdown fences. Must import and display every molecule of the group. The renderReferenceTable() method must be EXACTLY the 3-line delegating call described in the OVERRIDE section of the prompt — never hand-written table markup."
+    },
+    "scenarios": {
+      "type": "array",
+      "description": "The 'Quick reference' decision table, as DATA — one entry per row you would otherwise have hand-written as a rows/headers table.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scenario", "recommended"],
+        "properties": {
+          "scenario": {
+            "type": "string",
+            "description": "A short description of a realistic use case, e.g. 'Simple quantity input' or 'Free typing with a mask'."
+          },
+          "recommended": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "The SHORT names (no group prefix — copy them exactly from the 'Available molecules' list) of every molecule of THIS group that fits this scenario. A name not in that list is dropped, never guessed."
+          }
+        }
+      }
+    }
+  }
+}

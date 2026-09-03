@@ -1,0 +1,14 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewMolecule2/n7-index.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["indexTs"],
+  "properties": {
+    "indexTs": {
+      "type": "string",
+      "minLength": 200,
+      "description": "The COMPLETE index.ts of the group showcase page, starting at the mls header. Raw TypeScript only — no markdown fences. It must import and display every molecule of the group."
+    }
+  }
+}

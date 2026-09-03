@@ -1,0 +1,19 @@
+{
+  "$id": "https://collab.codes/schemas/agentImproveMolecule2/i7-summary.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "findings"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 30,
+      "description": "The human summary, in the user's language, as markdown. What changed and where, in a few lines. Do NOT include the coherence findings here — they go in the `findings` array, one entry each."
+    },
+    "findings": {
+      "type": "array",
+      "description": "EVERY coherence finding you were given, one entry each, rewritten in the user's language. Same order, same count — a finding you leave out is a defect nobody hears about. Say which ones this run caused. Empty only when you were given none.",
+      "items": { "type": "string", "minLength": 10 }
+    }
+  }
+}

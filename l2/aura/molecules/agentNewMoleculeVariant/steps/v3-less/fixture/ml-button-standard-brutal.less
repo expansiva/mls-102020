@@ -1,0 +1,127 @@
+/// <mls fileReference="_102054_/l2/molecules/grouptriggeraction/ml-button-standard-brutal.less" enhancement="_102020_/l2/enhancementStyleAura" />
+
+// =============================================================================
+// BUTTON STANDARD — BRUTALISM
+// Estratégia D: o render() herdado do 102040 emite classes ml-*; este .less é
+// COMPLETO (o .less base não alcança a tag -brutal) e redefine toda a aparência.
+// Cantos retos, borders grossas, sombra offset sólida, sem transparência.
+// Layout (padding, gap, flex) vem do Tailwind no template.
+// =============================================================================
+grouptriggeraction--ml-button-standard-brutal {
+  display: inline-block;
+
+  // ---- tokens do tema brutal ----
+  --ml-font-family: 'JetBrains Mono', 'SF Mono', 'Courier New', monospace;
+  --ml-font-weight-medium: 700;
+  --ml-radius-sm: 0;
+  --ml-border-width: 3px;
+  --ml-border-style: solid;
+  --ml-outline-variant: #000000;
+  --ml-primary: #3b82f6;
+  --ml-on-primary: #ffffff;
+  --ml-surface: #ffffff;
+  --ml-surface-dim: #f0f0f0;
+  --ml-on-surface: #000000;
+  --ml-error: #ef4444;
+  --ml-shadow-1: 4px 4px 0 #000000;
+  --ml-shadow-2: 2px 2px 0 #000000;
+  --ml-disabled-opacity: 0.4;
+  --ml-text-transform: uppercase;   // novo token — assinatura do brutal
+  --ml-letter-spacing: 0.05em;      // novo token — assinatura do brutal
+
+  .ml-button {
+    position: relative;
+    border-radius: var(--ml-radius-sm, 0);
+    border: var(--ml-border-width, 3px) var(--ml-border-style, solid) var(--ml-outline-variant, #000000);
+    font-family: var(--ml-font-family, 'JetBrains Mono', 'SF Mono', 'Courier New', monospace);
+    font-weight: var(--ml-font-weight-medium, 700);
+    text-transform: var(--ml-text-transform, uppercase);
+    letter-spacing: var(--ml-letter-spacing, 0.05em);
+    cursor: pointer;
+    box-shadow: var(--ml-shadow-1, 4px 4px 0 #000000);
+    transition: none;
+
+    // hover cinético: o botão "afunda" na direção da sombra
+    &:not(.ml-disabled):hover {
+      box-shadow: var(--ml-shadow-2, 2px 2px 0 #000000);
+      transform: translate(2px, 2px);
+    }
+    &:not(.ml-disabled):active {
+      box-shadow: 0 0 0 #000000;
+      transform: translate(4px, 4px);
+    }
+    &:focus-visible {
+      outline: 3px solid #000000;
+      outline-offset: 2px;
+    }
+  }
+
+  // ---- variants ----
+  .ml-button-primary {
+    background: var(--ml-primary, #3b82f6);
+    color: var(--ml-on-primary, #ffffff);
+    &:not(.ml-disabled):hover {
+      background: #2563eb;
+    }
+  }
+
+  .ml-button-secondary {
+    background: var(--ml-surface, #ffffff);
+    color: var(--ml-on-surface, #000000);
+    &:not(.ml-disabled):hover {
+      background: var(--ml-surface-dim, #f0f0f0);
+    }
+  }
+
+  .ml-button-danger {
+    background: var(--ml-error, #ef4444);
+    color: var(--ml-on-primary, #ffffff);
+    &:not(.ml-disabled):hover {
+      background: #dc2626;
+    }
+  }
+
+  .ml-button-ghost {
+    background: transparent;
+    color: var(--ml-on-surface, #000000);
+    border-color: var(--ml-outline-variant, #000000);
+    box-shadow: none;
+    &:not(.ml-disabled):hover {
+      background: var(--ml-surface-dim, #f0f0f0);
+      box-shadow: none;
+      transform: none;
+    }
+    &:not(.ml-disabled):active {
+      background: #e0e0e0;
+      box-shadow: none;
+      transform: none;
+    }
+  }
+
+  .ml-button-link {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: var(--ml-on-surface, #000000);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-decoration-thickness: 2px;
+    &:not(.ml-disabled):hover {
+      color: var(--ml-primary, #3b82f6);
+      box-shadow: none;
+      transform: none;
+    }
+    &:not(.ml-disabled):active {
+      box-shadow: none;
+      transform: none;
+    }
+  }
+
+  .ml-disabled {
+    opacity: var(--ml-disabled-opacity, 0.4);
+    cursor: not-allowed;
+    pointer-events: none;
+    box-shadow: 2px 2px 0 #999999;
+    border-color: #999999;
+  }
+}

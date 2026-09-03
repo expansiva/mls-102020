@@ -1,0 +1,46 @@
+ <!-- Normal com valor inicial -->
+ <div style="display:flex; flex-wrap: wrap; background: #1a202e; justify-content:center;  height:100%;">
+  <aura--widgets--aura-select-knob-102020
+    min="1"
+    max="9"
+    value="3"
+    step="1"
+    label="Device"
+    active
+    selected
+
+  ></aura--widgets--aura-select-knob-102020>
+
+  <!-- Sem valor selecionado (número oculto) -->
+  <aura--widgets--aura-select-knob-102020
+    min="1"
+    max="9"
+    step="1"
+    label="Layout"
+  ></aura--widgets--aura-select-knob-102020>
+
+
+  <div width="40px" height:"40px">
+  <!-- Range e step customizados -->
+    <aura--widgets--aura-select-knob-102020
+      min="0"
+      max="20"
+      value="1"
+      step="1"
+      selected
+      label="Style"
+      style="--knob-scale: 0.7"
+      show-ticks
+    ></aura--widgets--aura-select-knob-102020>
+  </div>
+
+  <!-- Disabled -->
+  <aura--widgets--aura-select-knob-102020
+    min="1"
+    max="9"
+    value="7"
+    step="1"
+    label="Language"
+    disabled
+  ></aura--widgets--aura-select-knob-102020>
+ <div>

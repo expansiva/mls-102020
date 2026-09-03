@@ -1,0 +1,47 @@
+{
+  "$id": "https://collab.codes/schemas/agentChooseMolecules/c1-groups.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "regions"
+  ],
+  "properties": {
+    "regions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "One entry per REGION of the page: an interaction a single molecule could serve — a field, a list, a table, an upload. Not a layout section: 'header' is not a region, 'the country field' is. Cover the whole definition; two regions may end up on the same molecule.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "region",
+          "need",
+          "group",
+          "reason"
+        ],
+        "properties": {
+          "region": {
+            "type": "string",
+            "minLength": 2,
+            "description": "Short name of the region, in the user's language, UNIQUE within this answer. It is the key the next step answers against, so 'CPF' and 'telefone' rather than 'campo 1' and 'campo 2'."
+          },
+          "need": {
+            "type": "string",
+            "minLength": 3,
+            "description": "What this region has to do, in one line. The next step sees ONLY this — not the full definition — so it must carry what decides the choice: long list, free value, comparison of attributes, range, and so on."
+          },
+          "group": {
+            "type": "string",
+            "description": "The name of the group that covers this region, copied EXACTLY from the group list you were given. When NO group in that list covers it, answer the single word 'none' — never the closest-looking group, and never a group that is not in the list."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 10,
+            "description": "One sentence, in the user's language, saying why this group — or, on 'none', what the region needs and no listed group offers. On 'none' this is the whole answer the reader gets."
+          }
+        }
+      }
+    }
+  }
+}

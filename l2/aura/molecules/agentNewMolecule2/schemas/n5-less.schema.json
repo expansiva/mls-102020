@@ -1,0 +1,14 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewMolecule2/n5-less.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lessContent"],
+  "properties": {
+    "lessContent": {
+      "type": "string",
+      "minLength": 80,
+      "description": "The COMPLETE .less for the molecule, scoped under its tag. Raw LESS only — no markdown fences, no mls header (code owns it), no commentary outside CSS comments."
+    }
+  }
+}

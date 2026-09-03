@@ -1,0 +1,301 @@
+/// <mls fileReference="_102020_/l2/aura/molecules/shared/widgetDefsClarification.less" enhancement="enhancementStyle"/>
+
+widget-defs-clarification-102020 {
+  display: block;
+
+  .dfc {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1rem;
+  }
+
+  .dfc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .dfc-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .dfc-group-chip {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #2563eb;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 999px;
+    padding: 0.1rem 0.5rem;
+  }
+
+  .dfc-intro {
+    margin: 0;
+    color: #64748b;
+    font-size: 0.85rem;
+  }
+
+  .dfc-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .dfc-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .dfc-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+  }
+
+  .dfc-value {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    cursor: pointer;
+
+    &:hover:not(.is-locked) {
+      border-color: #cbd5e1;
+      background: #f8fafc;
+    }
+
+    &.is-locked {
+      cursor: default;
+    }
+  }
+
+  .dfc-value-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .dfc-pencil {
+    color: #94a3b8;
+    flex: none;
+  }
+
+  .dfc-row-readonly .dfc-readonly-value {
+    padding: 0.4rem 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+    color: #475569;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    word-break: break-all;
+  }
+
+  .dfc-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .dfc-input,
+  .dfc-textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+  }
+
+  .dfc-textarea {
+    resize: vertical;
+  }
+
+  .dfc-edit-actions {
+    display: flex;
+    gap: 0.35rem;
+  }
+
+  .dfc-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .dfc-section {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    overflow: hidden;
+  }
+
+  .dfc-section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    background: #f8fafc;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .dfc-section-title {
+    font-weight: 600;
+    flex: 1;
+  }
+
+  .dfc-count {
+    font-size: 0.7rem;
+    color: #64748b;
+    background: #e2e8f0;
+    border-radius: 999px;
+    padding: 0 0.4rem;
+  }
+
+  .dfc-toggle {
+    color: #94a3b8;
+    font-size: 0.7rem;
+  }
+
+  .dfc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem 0.65rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .dfc-item-content {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .dfc-item-index {
+    color: #94a3b8;
+    font-variant-numeric: tabular-nums;
+    flex: none;
+  }
+
+  .dfc-item-text {
+    flex: 1;
+    cursor: pointer;
+
+    &:hover {
+      color: #2563eb;
+    }
+  }
+
+  .dfc-item-actions {
+    display: flex;
+    gap: 0.15rem;
+    flex: none;
+  }
+
+  .dfc-icon {
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0 0.15rem;
+
+    &:hover {
+      color: #2563eb;
+    }
+  }
+
+  .dfc-btn {
+    padding: 0.35rem 0.85rem;
+    border-radius: 0.375rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    cursor: pointer;
+    font-weight: 600;
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  .dfc-add {
+    margin: 0 0.65rem 0.5rem;
+    font-weight: 500;
+    font-size: 0.8rem;
+  }
+
+  .dfc-save,
+  .dfc-confirm {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+
+  .dfc-axes {
+    padding-bottom: 0.5rem;
+  }
+
+  .dfc-axes-header {
+    cursor: default;
+  }
+
+  .dfc-axes-hint {
+    margin: 0.35rem 0.65rem 0.5rem;
+    font-size: 0.75rem;
+    color: #64748b;
+  }
+
+  .dfc-axis {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.15rem 0.65rem 0.35rem;
+  }
+
+  .dfc-axis-label {
+    flex: 0 0 40%;
+    font-size: 0.8rem;
+    color: #475569;
+  }
+
+  .dfc-axis-select {
+    flex: 1;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    padding: 0.3rem 0.4rem;
+    font: inherit;
+    background: #fff;
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+
+  .dfc-warning {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #b45309;
+  }
+
+  .dfc-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+  }
+
+  .dfc-empty {
+    padding: 1rem;
+    color: #94a3b8;
+  }
+}

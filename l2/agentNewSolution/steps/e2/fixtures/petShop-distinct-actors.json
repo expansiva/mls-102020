@@ -1,0 +1,95 @@
+{
+  "planId": "e2-review",
+  "moduleName": "petShop",
+  "userLanguage": "pt-BR",
+  "title": "Revisar jornadas de negócio",
+  "reviewRound": 1,
+  "journeys": [
+    {
+      "journeyId": "requestServiceAppointment",
+      "policyDecisions": [],
+      "business": {
+        "actorRef": "cliente",
+        "title": "Solicitar agendamento",
+        "goal": "Pedir um horário para o próprio pet.",
+        "entry": { "mode": "coldStart" },
+        "steps": [
+          {
+            "stepId": "locatePet",
+            "kind": "locate",
+            "entity": "Pet",
+            "title": "Localizar o pet.",
+            "description": "O pet do cliente está selecionado.",
+            "featureRefs": ["clientBooking"]
+          },
+          {
+            "stepId": "createServiceAppointment",
+            "kind": "act",
+            "entity": "ServiceAppointment",
+            "title": "Solicitar o agendamento.",
+            "description": "O pedido de horário fica registrado.",
+            "featureRefs": ["clientBooking"]
+          }
+        ],
+        "outcome": {
+          "statement": "O cliente pediu um horário para o próprio pet.",
+          "evidence": ["O pedido exibe o pet selecionado."]
+        },
+        "useRules": []
+      }
+    },
+    {
+      "journeyId": "approveServiceAppointment",
+      "policyDecisions": [],
+      "business": {
+        "actorRef": "admin",
+        "title": "Aprovar agendamento",
+        "goal": "Decidir um pedido de horário da loja.",
+        "entry": { "mode": "coldStart" },
+        "steps": [
+          {
+            "stepId": "locatePendingServiceAppointment",
+            "kind": "locate",
+            "entity": "ServiceAppointment",
+            "title": "Localizar o pedido pendente.",
+            "description": "O pedido pendente está selecionado.",
+            "featureRefs": ["storeScheduling"]
+          },
+          {
+            "stepId": "approveServiceAppointment",
+            "kind": "decide",
+            "entity": "ServiceAppointment",
+            "title": "Aprovar o pedido.",
+            "description": "O horário fica confirmado.",
+            "featureRefs": ["storeScheduling"]
+          }
+        ],
+        "outcome": {
+          "statement": "A loja decidiu o pedido de horário.",
+          "evidence": ["A decisão fica visível no pedido."]
+        },
+        "useRules": []
+      }
+    }
+  ],
+  "features": [
+    {
+      "featureId": "clientBooking",
+      "title": "Pedido do cliente",
+      "priority": "now",
+      "journeyStepRefs": [
+        "requestServiceAppointment.locatePet",
+        "requestServiceAppointment.createServiceAppointment"
+      ]
+    },
+    {
+      "featureId": "storeScheduling",
+      "title": "Agenda da loja",
+      "priority": "now",
+      "journeyStepRefs": [
+        "approveServiceAppointment.locatePendingServiceAppointment",
+        "approveServiceAppointment.approveServiceAppointment"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+/// <mls fileReference="_102020_/l2/pluginFindTask.less" enhancement="_102020_/l2/enhancementStyle"/>
+
+plugin-find-task-102020 {
+
+    font-family: Arial, sans-serif;
+    padding: 20px;
+    font-size: var(--font-size-12);
+
+    display: block;
+
+    input,
+    select,
+    textarea {
+        width: 100%;
+        display: block;
+        font-size: 1rem;
+        line-height: 1.5;
+        color: #000000;
+        background-color: #fff;
+        background-clip: padding-box;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        outline: none;
+    }
+
+    button {
+        background-color: @info-color;
+        border-radius: 8px;
+        border: none;
+        box-shadow: 0px 1px 3px 0px @grey-color;
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        gap: .2rem;
+        font-weight: 700;
+        align-items: center;
+        height: 40px;
+        width: max-content;
+        transition: height 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+        padding: 0.5rem;
+        color: #ffffff;
+        cursor: pointer;
+
+        .loader {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ccc;
+            border-top: 2px solid #333;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+    }
+
+    .error {
+        color: @error-color;
+    }
+
+    .section {
+        margin-bottom: 20px;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+
+        >div {
+            margin-bottom: 1rem;
+            ;
+        }
+    }
+
+}
+
+

@@ -1,0 +1,1246 @@
+/// <mls fileReference="_102020_/l2/aura/services/preview/servicePreview.ts" enhancement="_102027_/l2/enhancementLit.ts"/>
+
+import { html, css } from 'lit';
+import { customElement, property, state, query } from 'lit/decorators.js';
+import { globalState, setState, initState, getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
+import { convertFileToTag } from '/_102020_/l2/utils.js';
+import { getTokensCss, getTokensLess, removeTokensFromSource } from '/_102027_/l2/designSystemBase.js';
+import { readModuleLanguages } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
+import { getLastOpenedFiles } from '/_102027_/l2/libCommom.js';
+import { compileStyleUsingStorFile } from '/_102027_/l2/libCompileStyle.js';
+import { createModel } from '/_102027_/l2/libModel.js';
+import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
+import { getThreadByName } from '/_102025_/l2/collabMessagesIndexedDB.js';
+import { loadAgent, executeBeforePrompt } from '/_102027_/l2/aiAgentOrchestration.js';
+import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
+import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
+
+
+import { getDependenciesByHtml, dsThemeForFolder } from '/_102020_/l2/aura/services/preview/buildFile.js';
+
+import '/_102025_/l2/collabMessagesPrompt.js';
+
+import '/_102027_/l2/collabSpliterVerticalVarFixed.js';
+import '/_102027_/l2/collabSpliterHorizontalVarFixed.js';
+
+import { PreviewModeAura } from '/_102020_/l2/aura/services/preview/previewModeAura.js';
+import { AuraInitState, getAuraState, getActualLanguage, setActualLanguage, saveAuraProject } from '/_102020_/l2/aura/helpers/auraState.js';
+import { IJSONDependence } from '/_102027_/l2/libCompile.js';
+import { OpenedFileL2 } from '/_102027_/l2/libCommom.js';
+import { ServiceBase, IService, IToolbarContent, IServiceMenu, IOptions } from '/_102027_/l2/serviceBase.js';
+
+/// **collab_i18n_start**
+const message_pt = {
+  loading: 'Carregando preview...',
+  promptPlaceholder: 'Digite aqui @@ para agentes',
+  dark: ' escuro',
+  light: 'claro',
+  pause: 'Preview pausado',
+  run: 'Preview executando',
+}
+
+const message_en = {
+  loading: 'Loading preview...',
+  promptPlaceholder: 'Type here @@ for agents',
+  pause: 'Preview paused',
+  run: 'Preview running',
+  dark: 'dark',
+  light: 'light',
+}
+
+type MessageType = typeof message_en;
+
+const messages: { [key: string]: MessageType } = {
+  'en': message_en,
+  'pt': message_pt
+}
+/// **collab_i18n_end**
+
+@customElement('aura--services--preview--service-preview-102020')
+export class ServicePreview extends ServiceBase {
+
+  private msg: MessageType = messages['en'];
+  private languages: ILanguage = {};
+  private tasksInProgress: Map<string, Set<mls.msg.ExecutionContext>> = new Map();
+  private monacoEditor: HTMLElement | undefined;
+  private _ed1: monaco.editor.IStandaloneCodeEditor | undefined;
+  private threadCache = new Map<string, Promise<mls.msg.ThreadPerformanceCache | undefined>>();
+
+  @query('iframe') elPreview: HTMLIFrameElement | undefined;
+
+  @property() modePreview: PreviewMode = 'Desktop';
+  @property({ type: Boolean }) watch: boolean = true;
+  @property({ type: Boolean }) light: boolean = true;
+  @property() msize: string = '';
+  @property() lang: string = 'en';
+
+  @state() actualFiles: mls.stor.IInfo | undefined;
+  @state() actualModels: mls.editor.IModels = { defs: undefined, html: undefined, style: undefined, test: undefined, ts: undefined };
+  @state() actualTheme: string = 'Default';
+
+  @state() project: number = 0;
+  @state() shortName: string = '';
+  @state() folder: string = '';
+
+  @state() hasErrorLess: boolean = false;
+
+  get page(): string {
+    return `_${this.project}_${this.folder ? this.folder + '/' : ''}${this.shortName}`;
+  }
+
+  get confE() { return `l${this.level}_${this.position}`; }
+
+  get isL3(): boolean { return this.level === 3; }
+  get isL4(): boolean { return this.level === 4; }
+
+  constructor() {
+    super();
+    (window as any).preview = {
+      editor: undefined,
+      iframe: undefined,
+      refresh: undefined
+    };
+    this.initStatesPreview();
+    this.initStatesPreviewL3();
+    this.initStatesPreviewL4();
+  }
+
+  public details: IService = {
+    icon: '&#xf06e',
+    state: 'foreground',
+    position: 'right',
+    tooltip: 'Aura Preview',
+    visible: true,
+    widget: '_102020_/l2/aura/services/preview/servicePreview',
+    level: [2, 3, 4]
+  }
+
+  public onClickMain(op: string): void {
+    if (this.menu.setMode) this.menu.setMode('initial');
+  }
+
+  public onClickTabs(index: number) {
+
+    if (index === PreviewType.Desktop) {
+      this.modePreview = 'Desktop';
+    }
+    if (index === PreviewType.Mobile) {
+      this.modePreview = 'Mobile';
+    }
+
+    this.modePreview = PreviewType[index] as PreviewMode;
+    this.updatePreviewMode();
+  }
+
+
+  public onClickTools(op: string) {
+
+    if (op === 'watchPreview') this.toogleWatch();
+    else if (op === 'languages') this.onChangeLanguage();
+    else if (op === 'darkLight') this.toggleDarkLight();
+  }
+
+
+  public menu: IServiceMenu = {
+    title: 'Example',
+    main: {},
+    tools: {
+      darkLight: {
+        type: 'cycle',
+        selected: 0,
+        options: [
+          { text: this.msg.light, icon: 'f185' },
+          { text: this.msg.dark, icon: 'f186' },
+        ]
+      },
+      languages: {
+        type: 'dropdown',
+        selected: 0,
+        options: []
+      },
+      watchPreview: {
+        type: 'cycle',
+        selected: 0,
+        options: [
+          { text: this.msg.run, icon: 'f04c' },
+          { text: this.msg.pause, icon: 'f04b' },
+        ]
+      },
+    },
+    tabs: {
+      group: 'Mode',
+      type: 'full',
+      selected: 0,
+      options: [
+        { text: 'Desktop', icon: 'f390' },
+        { text: 'Mobile', icon: 'f3cf' },
+      ]
+    },
+    onClickMain: this.onClickMain.bind(this),
+    onClickTabs: this.onClickTabs.bind(this),
+    onClickTools: this.onClickTools.bind(this),
+  }
+
+  async onServiceClick(visible: boolean, reinit: boolean, el: IToolbarContent | null) {
+
+    if (visible) {
+      await this.setActualFileInfos();
+      this.createPreview();
+    }
+
+  }
+
+  private setEvents() {
+    mls.events.addEventListener([2, 3, 4], ['FileAction'], this.onFileAction.bind(this));
+    mls.events.addEventListener([2, 3, 4], ['styleChanged' as any], this.onStyleChanged.bind(this));
+  }
+
+  handleIcaStateChange(key: string, value: any) {
+    if (key === 'preview.language') {
+      this.changeLanguagePreview(value);
+    }
+    if (key === 'preview.file') {
+      this.changeFilePreview(value)
+    }
+    if (key === 'aura.actualLanguage' && value) {
+      this.changeLanguagePreview(value);
+    }
+    if (key === 'aura.actualModule') {
+      // Module changed → reload the module's languages and its effective language.
+      this.setLanguages();
+    }
+  }
+
+  private initStatesPreview() {
+    const pendingReselect = getState('preview.pendingReselect')
+    initState('preview', { pausePreview: !this.watch, service: this, language: this.lang, pendingReselect });
+  }
+
+  private initStatesPreviewL3() {
+    initState('previewL3', {
+      selectedElement: null,       // selector do elemento selecionado
+      selectedTagName: '',
+      selectedAttributes: {},
+      selectedStyles: {},
+      selectedRect: null,
+      breadcrumb: [],
+      editMode: 'select',          // 'select' | 'text' | 'drag' | 'inspect'
+      hoveredElement: null,
+      panelVisible: true,
+    });
+  }
+
+  private initStatesPreviewL4() {
+    initState('previewL4', {
+      selectedElement: null,
+      selectedTagName: '',
+      selectedAttributes: {},
+      selectedStyles: {},
+      selectedRect: null,
+      breadcrumb: [],
+      editMode: 'select',
+      hoveredElement: null,
+      panelVisible: true,
+    });
+  }
+
+  // Implementations
+
+  private toogleWatch() {
+    this.watch = this.menu.tools.watchPreview.selected === 0;
+    if (this.watch) {
+      this.createPreview();
+    }
+  }
+
+  private toggleDarkLight() {
+    this.light = !this.light;
+    if (!mls.actual[this.level].left || !this.watch) return this.light;
+
+    if (this._previewMode === 'shared') {
+      const htmlEl: HTMLHtmlElement | undefined = this.getIframePreviewHTML();
+      if (htmlEl) {
+        if (this.light) {
+          htmlEl.removeAttribute('data-theme');
+          htmlEl.classList.remove('dark');
+        } else {
+          htmlEl.setAttribute('data-theme', 'dark');
+          htmlEl.classList.add('dark');
+        }
+      }
+    } else {
+      // Isolated (opaque origin): via postMessage.
+      this._postToPreview({ type: 'setDarkMode', dark: !this.light });
+    }
+
+    this.onStyleChanged();
+    return this.light;
+  }
+
+  private async changeFilePreview(file: mls.stor.IFileInfo) {
+    const { project, shortName, folder } = file;
+
+    if (this.actualFiles &&
+      this.actualFiles.ts &&
+      this.actualFiles.ts.folder === folder &&
+      this.actualFiles.ts.project === project &&
+      this.actualFiles.ts.shortName === shortName
+    ) return;
+
+    await this.setActualFiles(project, shortName, folder)
+    setState('preview.pausePreview', false);
+    if (!this.watch && this.menu.selectTool) this.menu.selectTool('watchPreview');
+    this.createPreview();
+  }
+
+  private async changeLanguagePreview(lang: string) {
+
+    const hasLang = Object.values(this.languages).findIndex((item) => item.acronym === lang);
+
+    if (hasLang === -1) {
+      await this.setLanguages();
+    }
+    if (this._previewMode === 'shared') {
+      const htmlEl: HTMLHtmlElement | undefined = this.getIframePreviewHTML();
+      if (htmlEl) htmlEl.lang = lang;
+    } else {
+      this._postToPreview({ type: 'setLang', lang });
+    }
+    this.lang = lang;
+    const variation = Object.values(this.languages).findIndex((item) => item.acronym === lang)
+    globalState.globalVariation = !isNaN(variation) ? variation : 0;
+    this.menu.tools.languages.selected = variation;
+    if (this.menu.refresh) this.menu.refresh('tools');
+    if (window.top) (window.top.window as any).globalVariation = !isNaN(variation) ? variation : 0;
+    this.createPreview();
+
+  }
+
+
+  private onChangeLanguage() {
+
+    if (this.menu.tools.languages.selected === undefined) return;
+    const opMenu = this.menu.tools.languages.options[this.menu.tools.languages.selected as number].text;
+    const lang = this.languages[opMenu].acronym;
+    const module = getAuraState()?.actualModule;
+    if (module) {
+      setActualLanguage(module, lang);
+      saveAuraProject();
+    }
+    setState('preview.language', lang);
+
+    return true;
+  }
+
+  private getIframePreviewHTML(): HTMLHtmlElement | undefined {
+    if (!(window as any).preview.iframe) throw new Error('Preview not created yet');
+    const htmlEl = (window as any).preview.iframe
+      ?.contentDocument
+      ?.querySelector('html') as HTMLHtmlElement;
+    return htmlEl;
+  }
+
+  private onStyleChanged() {
+
+    if (!this.actualFiles || !this.actualFiles.ts || !this.actualFiles.less || !this.watch) return;
+
+    if (!this.actualFiles.less.hasError && this.hasErrorLess) {
+      this.updateLoadingToFalseIfNoTasksRunning();
+      this.createPreview();
+      this.hasErrorLess = false;
+    }
+    else if (this.actualFiles.less.hasError) this.hasErrorLess = true;
+
+    this.addStyles();
+
+  }
+
+  private onFileAction(ev: mls.events.IEvent) {
+
+    if (![2, 3, 4].includes(ev.level) || (ev.type !== 'FileAction') || !ev.desc) return;
+    const fileAction = JSON.parse(ev.desc) as mls.events.IFileAction;
+    const eventsValid = ['open', 'openBackground', 'statusOrErrorChanged', 'changed', 'new', 'modeCreated', 'editorChanged', 'openLink', 'editorEvents'];
+
+    try {
+      if (!eventsValid.includes(fileAction.action)) return;
+
+      if (fileAction.action === 'open' || (fileAction.action as any) === 'openBackground') {
+        setState('preview.pausePreview', false);
+        if (!this.watch && this.menu.selectTool) this.menu.selectTool('watchPreview');
+      }
+
+      if (fileAction.action as any === 'open') {
+        this.createPreview();
+        return;
+      }
+
+      if (this.menu && this.menu.closeMenu) this.menu.closeMenu();
+      const rp = getState('preview.pausePreview');
+      if (this.watch && !rp) {
+        this.createPreview();
+      }
+
+
+    } catch (e) {
+      console.info(e);
+    }
+
+  }
+
+
+  private async setActualFileInfos() {
+
+    this.setLastOpenedFile();
+    if (this.level === 2) {
+      if (!mls.actual[this.level].left) return;
+      const { project, shortName, folder } = mls.actual[this.level].left as mls.stor.IFileInfo;
+      this.project = project;
+      this.shortName = shortName;
+      this.folder = folder;
+    }
+
+    if (this.level === 3 || this.level === 4) {
+      const base = mls.actual[this.level].getStorFileBase();
+      let { project, shortName, folder } = base;
+      if (!project || !shortName) {
+        AuraInitState();
+        const page = getAuraState().actualPage;
+        if (page) {
+          project = page.project;
+          shortName = page.shortName;
+          folder = page.folder ?? '';
+        }
+      }
+      this.project = project;
+      this.shortName = shortName;
+      this.folder = folder;
+    }
+
+    await this.setActualFiles(this.project, this.shortName, this.folder);
+    await this.setActualModels();
+
+
+  }
+
+  private setLastOpenedFile() {
+
+    const lastFileOpened = getLastOpenedFiles(mls.actualProject || 0);
+    if (this.level === 2) {
+      const levelKey = String(this.level);
+      if (!lastFileOpened || !lastFileOpened[levelKey as any]) {
+        this.clearPreview();
+        return;
+      }
+      const lastFileLeft = (lastFileOpened[levelKey as any] as OpenedFileL2).left;
+      if (!lastFileLeft) {
+        this.clearPreview();
+        return;
+      }
+      mls.actual[this.level].setFullName(lastFileLeft);
+    }
+  }
+
+  private async setActualFiles(project: number, shortName: string, folder: string) {
+    const storLevel = (this.isL3 || this.isL4) ? 2 : this.level;
+    const files = await mls.stor.getFiles({
+      folder,
+      project,
+      shortName,
+      loadContent: true,
+      level: storLevel
+    });
+    this.actualFiles = { ...files };
+  }
+
+  private async setActualModels() {
+    if (!this.actualFiles) return;
+
+    if (!this.actualModels.ts && this.actualFiles.ts) {
+      this.actualModels.ts = await this.actualFiles.ts.getOrCreateModel();
+    }
+
+    if (!this.actualModels?.html && this.actualFiles.html) {
+      this.actualModels.html = await this.actualFiles.html.getOrCreateModel();
+    }
+
+    if (!this.actualModels?.style && this.actualFiles.less) {
+      this.actualModels.style = await this.actualFiles.less.getOrCreateModel();
+      let src = this.actualModels.style.model.getValue();
+      const lessTokens = await getTokensLess(this.actualFiles.less.project, 'Default');
+      const lineTokens = `\n\n//Start Less Tokens\n${lessTokens}\n//End Less Tokens\n`;
+      src = removeTokensFromSource(src);
+      src = src.trim().concat(lineTokens);
+      this.actualModels.style.model.setValue(src);
+    }
+
+  }
+
+  private _creatingPreview = false;
+
+  private createPreview() {
+    // Re-entrancy guard: loading file infos below can fire FileAction events
+    // that would call createPreview() again -> infinite iframe recreation.
+    if (this._creatingPreview) return;
+    this._createPreviewAsync().catch((e: any) => {
+      console.error('[servicePreview] createPreview failed:', e);
+      this.loading = false;
+    });
+  }
+
+  private async _createPreviewAsync() {
+    this._creatingPreview = true;
+    try {
+      await this._doCreatePreview();
+    } finally {
+      this._creatingPreview = false;
+    }
+  }
+
+  private async _doCreatePreview() {
+
+    this.initStatesPreview();
+    this.initStatesPreviewL3();
+    this.clearPreview();
+
+    const container = this.querySelector('#preview-container') as HTMLElement;
+    if (!container) return;
+    container.innerHTML = '';
+    this.loading = true;
+
+    // Load the CURRENT file infos before deciding the mode (sandbox/src cannot
+    // change after load). Uses a loader that does NOT fire FileAction events
+    // (setLastOpenedFile would re-enter createPreview).
+    await this._ensureActualFilesForMode();
+
+    const mode = this._resolvePreviewMode();
+    this._previewMode = mode;
+
+    const wrapper = document.createElement('div');
+    wrapper.classList.add('preview-wrapper');
+    wrapper.classList.add(this.modePreview === 'Mobile' ? 'preview-mobile' : 'preview-desktop');
+
+    const iframe = document.createElement('iframe');
+    iframe.classList.add('preview-iframe');
+
+    if (mode === 'shared') {
+      // SHARED mode (same-origin): access to parent.mls etc.
+      // NO process isolation (a loop can freeze — mitigated by
+      // Layer 1 / the notify circuit breaker).
+      iframe.src = '/_102020_/l2/aura/services/preview/servicePreview';
+      iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+    } else {
+      // ISOLATED mode (opaque origin): a freeze does NOT freeze the app.
+      iframe.setAttribute('sandbox', 'allow-scripts');
+    }
+
+    wrapper.appendChild(iframe);
+    container.appendChild(wrapper);
+    (window as any).preview.iframe = iframe;
+
+    this.configureTools(true);
+    if (this.actualFiles && this.actualFiles.html) this.setModel(this.actualFiles.html);
+
+    if (mode === 'shared') {
+      iframe.addEventListener('load', async () => {
+        try {
+          await this.writePreviewContent(iframe);
+        } catch (e: any) {
+          console.error('[servicePreview] writePreviewContent error:', e);
+        } finally {
+          this.loading = false;
+        }
+        const htmlEl = iframe.contentDocument?.querySelector('html');
+        if (htmlEl) {
+          htmlEl.lang = this.lang;
+          if (!this.light) {
+            htmlEl.setAttribute('data-theme', 'dark');
+            htmlEl.classList.add('dark');
+          }
+        }
+      });
+    } else {
+      this._startWatchdog(iframe);
+      await this._renderIsolated(iframe);
+    }
+  }
+
+  /**
+   * Decides the preview mode per file:
+   *  B) explicit flag in .html  -> <meta name="mls-preview" content="shared|isolated">
+   *  A) by .ts enhancement      -> enhancementAgent* => shared
+   *  default                    -> isolated (safe)
+   */
+  private _resolvePreviewMode(): 'shared' | 'isolated' {
+
+    return 'shared';
+    // TODO: Change language dont work in mode 'isolated', for now return only 'shared' mode;
+      /*
+    // B) explicit override
+    const html = this.actualFiles?.htmlContent || '';
+    const flag = html.match(/<meta\s+name=["']mls-preview["']\s+content=["'](shared|isolated)["']/i);
+    if (flag) return (flag[1].toLowerCase() === 'shared') ? 'shared' : 'isolated';
+
+    // L3/L4 visual editor needs direct DOM access to the iframe (selection,
+    // inspection, inline editing) -> always shared. Loop protection there
+    // relies on Layer 1 (the notify circuit breaker).
+    if (this.level === 3 || this.level === 4) return 'shared';
+
+    // A) by enhancement — read the PREVIEWED file's .ts content (per-file,
+    // loaded by getFiles({loadContent:true})). Do NOT use a monaco model:
+    // setActualModels() only sets actualModels.ts once and never refreshes it,
+    // so it would return a stale file's source (e.g. the open editor file).
+    const tsSrc = this.actualFiles?.tsContent || '';
+    if (/enhancement\s*=\s*["'][^"']*enhancementAgent/i.test(tsSrc)) return 'shared';
+
+    return 'isolated';
+    */
+  }
+
+  /**
+   * Loads actualFiles/actualModels for the current file WITHOUT calling
+   * setLastOpenedFile() — that path fires FileAction events which would
+   * re-enter createPreview() and recreate the iframe in a loop.
+   * mls.actual is already set by the caller (onServiceClick) or by the
+   * FileAction that triggered this preview.
+   */
+  private async _ensureActualFilesForMode() {
+    if (this.level === 2) {
+      if (!mls.actual[this.level].left) return;
+      const { project, shortName, folder } = mls.actual[this.level].left as mls.stor.IFileInfo;
+      this.project = project;
+      this.shortName = shortName;
+      this.folder = folder;
+    }
+
+    if (this.level === 3 || this.level === 4) {
+      const base = mls.actual[this.level].getStorFileBase();
+      let { project, shortName, folder } = base;
+      if (!project || !shortName) {
+        AuraInitState();
+        const page = getAuraState().actualPage;
+        if (page) {
+          project = page.project;
+          shortName = page.shortName;
+          folder = page.folder ?? '';
+        }
+      }
+      this.project = project;
+      this.shortName = shortName;
+      this.folder = folder;
+    }
+
+    await this.setActualFiles(this.project, this.shortName, this.folder);
+    await this.setActualModels();
+  }
+
+  // ===========================================================================
+  // PHASE 1 — Isolated render (srcdoc + opaque origin) + watchdog
+  // ===========================================================================
+
+  private async _renderIsolated(iframe: HTMLIFrameElement) {
+
+    // setActualFileInfos() was already called by _createPreviewAsync before
+    // resolving the mode, so actualFiles/actualModels are up to date.
+    if (!this.actualFiles || !this.actualFiles.html || !this.actualFiles.htmlContent) {
+      iframe.srcdoc = `<!DOCTYPE html><body style="font-family:sans-serif;color:#888;padding:24px">.html não encontrado/vazio: ${this.page}</body>`;
+      this.loading = false;
+      return;
+    }
+
+    const ret = await getDependenciesByHtml(this.actualFiles.html, this.actualFiles.htmlContent, this.actualTheme, true);
+    const aura = new PreviewModeAura(ret, iframe, String(this.level), false, this.actualFiles.html, this.actualModels);
+    const styles = await this._getCompiledStyles();
+    const srcdoc = await aura.buildSrcdoc(this.actualFiles.htmlContent, styles);
+
+    iframe.srcdoc = srcdoc;
+    this.loading = false;
+  }
+
+  private async _getCompiledStyles(): Promise<{ id: string; css: string }[]> {
+    const out: { id: string; css: string }[] = [];
+    try {
+      const id = convertFileToTag({ project: this.project, shortName: this.shortName, folder: this.folder });
+      const less = await compileStyleUsingStorFile(this.shortName, this.project, this.folder, this.actualTheme);
+      if (less) out.push({ id, css: less });
+      const dsTheme = await dsThemeForFolder(this.project, this.folder);
+      const tokens = await getTokensCss(this.project, dsTheme ?? this.actualTheme);
+      if (tokens) out.push({ id: this.getIdTokens(), css: tokens });
+      // NOTE: page variations resolve their tokens by the page's DS (dsThemeForFolder);
+      // everything else uses the editor's active theme. Single token channel — the old
+      // per-DS global.css (IJSONDependence.dsGlobalCss) is gone.
+    } catch (e: any) {
+      console.info('Erro _getCompiledStyles: ' + (e?.message || e));
+    }
+    return out;
+  }
+
+  private _previewMode: 'shared' | 'isolated' = 'isolated';
+
+  // ---- Watchdog: heartbeat ping/pong + automatic recovery ----
+  private _pingTimer: any = null;
+  private _checkTimer: any = null;
+  private _lastPong = 0;
+  private _gotFirstContact = false;
+  private _onPreviewMessage: ((e: MessageEvent) => void) | null = null;
+  private _onVisibility: (() => void) | null = null;
+
+  private _startWatchdog(iframe: HTMLIFrameElement) {
+    this._stopWatchdog();
+    this._lastPong = performance.now();
+    this._gotFirstContact = false;
+
+    this._onPreviewMessage = (e: MessageEvent) => {
+      const d: any = e.data || {};
+      if (d.type === 'pong' || d.type === 'ready') {
+        this._lastPong = performance.now();
+        this._gotFirstContact = true;
+        if (d.type === 'ready') this._applyIframeViewState(iframe);
+      }
+    };
+    window.addEventListener('message', this._onPreviewMessage);
+
+    // In the background the browser throttles timers (ping/pong nearly stop).
+    // When the tab becomes visible again, reset the heartbeat clock to avoid
+    // a false-positive "loop" detection.
+    this._onVisibility = () => {
+      if (!document.hidden) this._lastPong = performance.now();
+    };
+    document.addEventListener('visibilitychange', this._onVisibility);
+
+    let id = 0;
+    this._pingTimer = setInterval(() => {
+      try { iframe.contentWindow?.postMessage({ type: 'ping', id: ++id }, '*'); } catch (e) { }
+    }, 1000);
+
+    this._checkTimer = setInterval(() => {
+      // Do not evaluate while the tab is hidden (throttled timers => false positive).
+      if (document.hidden) return;
+      // Only flag a loop after the first contact (avoids a false positive on a
+      // heavy initial render that hasn't sent 'ready' yet).
+      if (this._gotFirstContact && performance.now() - this._lastPong > 2500) {
+        console.warn('[servicePreview] preview frozen (no heartbeat) — loop detected in the component.');
+        this._showHangMessage();
+      }
+    }, 500);
+  }
+
+  /**
+   * Infinite loop detected: stops the watchdog (no auto-recreation), removes
+   * the frozen iframe and shows a message in place of the preview, with a
+   * manual reload option.
+   */
+  private _showHangMessage() {
+    this._stopWatchdog();
+
+    const container = this.querySelector('#preview-container') as HTMLElement;
+    if (!container) return;
+    container.innerHTML = '';
+    if ((window as any).preview) (window as any).preview.iframe = undefined;
+    this.loading = false;
+
+    const box = document.createElement('div');
+    box.style.cssText = 'padding:24px;font-family:system-ui,sans-serif;display:flex;flex-direction:column;gap:12px;align-items:flex-start;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:600;font-size:14px;color:#b91c1c;';
+    title.textContent = '⚠️ Loop infinito detectado no componente';
+    const desc = document.createElement('div');
+    desc.style.cssText = 'font-size:12px;color:#555;max-width:520px;';
+    desc.textContent = 'O componente entrou em um laço que travaria a página. A execução foi isolada e interrompida. Corrija o componente e recarregue o preview.';
+    const btn = document.createElement('button');
+    btn.textContent = 'Recarregar preview';
+    btn.style.cssText = 'padding:6px 12px;cursor:pointer;';
+    btn.addEventListener('click', () => this.createPreview());
+
+    box.appendChild(title);
+    box.appendChild(desc);
+    box.appendChild(btn);
+    container.appendChild(box);
+  }
+
+  private _stopWatchdog() {
+    if (this._pingTimer) clearInterval(this._pingTimer);
+    if (this._checkTimer) clearInterval(this._checkTimer);
+    if (this._onPreviewMessage) window.removeEventListener('message', this._onPreviewMessage);
+    if (this._onVisibility) document.removeEventListener('visibilitychange', this._onVisibility);
+    this._pingTimer = this._checkTimer = this._onPreviewMessage = this._onVisibility = null;
+  }
+
+  private _applyIframeViewState(iframe: HTMLIFrameElement) {
+    try {
+      iframe.contentWindow?.postMessage({ type: 'setLang', lang: this.lang }, '*');
+      iframe.contentWindow?.postMessage({ type: 'setDarkMode', dark: !this.light }, '*');
+    } catch (e) { }
+  }
+
+  private _postToPreview(msg: any) {
+    try {
+      const iframe = (window as any).preview?.iframe as HTMLIFrameElement | undefined;
+      iframe?.contentWindow?.postMessage(msg, '*');
+    } catch (e) { }
+  }
+
+  private async writePreviewContent(iframe: HTMLIFrameElement) {
+
+    await this.setActualFileInfos();
+
+    if (!this.actualFiles || !this.actualFiles.html) {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) doc.body.innerHTML = `<div style="padding:24px;font-family:sans-serif;color:#888;">.html file not found: ${this.page}</div>`;
+      return;
+    }
+    if (!this.actualFiles.htmlContent) {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) doc.body.innerHTML = `<div style="padding:24px;font-family:sans-serif;color:#888;">.html content is empty: ${this.page}</div>`;
+      return;
+    }
+
+
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) return;
+
+      const domVirtual = document.createElement('div');
+      domVirtual.innerHTML = this.actualFiles.htmlContent;
+      doc.body.innerHTML = '';
+
+      if (this.isL3) {
+        const l3P = document.createElement('aura--services--preview--preview-editor-l3-102020');
+        l3P.innerHTML = domVirtual.innerHTML;
+        doc.body.appendChild(l3P);
+
+      } else if (this.isL4) {
+        const l4P = document.createElement('preview-editor-l4-102020');
+        l4P.innerHTML = domVirtual.innerHTML;
+        doc.body.appendChild(l4P);
+
+
+      } else {
+        const l2P = document.createElement('preview-editor-l2-102020');
+        l2P.innerHTML = domVirtual.innerHTML;
+        doc.body.appendChild(l2P);
+      }
+
+      let ret = await getDependenciesByHtml(this.actualFiles.html, this.actualFiles.htmlContent, this.actualTheme, true);
+      await this.modeSinglePage(ret, iframe);
+
+    } catch (e) {
+      console.error('Error writing preview content:', e);
+    }
+  }
+
+  private async modeSinglePage(json: IJSONDependence, iframe: HTMLIFrameElement) {
+    if (!this.actualFiles || !this.actualFiles.html) return;
+    const c = new PreviewModeAura(json, iframe, String(this.level), false, this.actualFiles.html, this.actualModels);
+    await c.init();
+  }
+
+  private updatePreviewMode() {
+
+    if (!this.elPreview) return;
+    const wrapper = this.querySelector('.preview-wrapper') as HTMLElement;
+    if (!wrapper) {
+      this.createPreview();
+      return;
+    }
+
+    wrapper.classList.remove('preview-desktop', 'preview-mobile');
+    wrapper.classList.add(this.modePreview === 'Mobile' ? 'preview-mobile' : 'preview-desktop');
+  }
+
+  private clearPreview() {
+
+    // Opaque origin: cannot touch contentDocument; just remove the iframe.
+    this._stopWatchdog();
+    const container = this.querySelector('#preview-container') as HTMLElement;
+    if (!container) return;
+    container.innerHTML = '';
+    if ((window as any).preview) (window as any).preview.iframe = undefined;
+    this.configureTools(false);
+    this.pruneDeadStateSubscribers();
+  }
+
+  /**
+  * Removes state subscribers whose realm is dead (elements of a destroyed preview
+  * iframe). Destroying an iframe does NOT fire disconnectedCallback, so molecules
+  * never unsubscribe; the next notify would hit them and crash inside their dead
+  * realm (getState resolves no state manager there), aborting the whole notify
+  * queue — live components lose their notifications.
+  * Criterion: element with ownerDocument.defaultView === null. isConnected is NOT
+  * reliable here (orphans stay connected to the dead iframe's document).
+  * Hygiene only: any internal failure must never affect the preview flow.
+  */
+  private pruneDeadStateSubscribers() {
+    try {
+      const gsm: any = (globalState as any).globalStateManagment;
+      const map: any = gsm?.componentMap;
+      if (!(map instanceof Map)) return;
+      for (const [key, set] of Array.from(map as Map<string, Set<any>>)) {
+        if (!(set instanceof Set)) continue;
+        for (const c of Array.from(set)) {
+          const isDeadElement = !!c && c.nodeType === 1 && !!c.ownerDocument && !c.ownerDocument.defaultView;
+          if (isDeadElement) set.delete(c);
+        }
+        if (set.size === 0) map.delete(key);
+      }
+    } catch (e: any) {
+      console.info('[servicePreview] pruneDeadStateSubscribers skipped:', e?.message);
+    }
+  }
+
+
+  // Languages
+
+  private async setLanguages() {
+
+    AuraInitState();
+    const project = mls.actualProject;
+    const module = getAuraState()?.actualModule ?? null;
+
+    // Languages come from the module (l4/<module>/module.defs.ts). Without a selected
+    // module the preview must not break — minimal fallback menu.
+    let codes: string[] = ['en'];
+    if (project && module) {
+      try { codes = await readModuleLanguages(project, module); } catch { codes = ['en']; }
+    }
+
+    this.languages = {};
+    codes.forEach((code) => {
+      const name = findLanguageByCode(code)?.name ?? code;
+      this.languages[name] = { acronym: code, name };
+    });
+
+    const languagesOptions = Object.keys(this.languages).map((lg) => {
+      const obj = this.languages[lg];
+      const icon = findLanguageByCode(obj.acronym)?.svg || '';
+      const newOpt: IOptions = {
+        text: obj.name,
+        icon,
+      }
+      return newOpt;
+    });
+
+    if (this.menu.tools.languages) this.menu.tools.languages.options = languagesOptions;
+
+    // Per-module language; module without a saved language falls back to the 1st of module.defs.
+    const stateLang = (module ? getActualLanguage(module) : null) || document.documentElement.lang || undefined;
+    const entries = Object.values(this.languages);
+    let idx = -1;
+    if (stateLang) {
+      const normalized = stateLang.toLowerCase();
+      idx = entries.findIndex(l => l.acronym.toLowerCase() === normalized);
+      if (idx < 0) {
+        const base = normalized.split('-')[0];
+        idx = entries.findIndex(l => l.acronym.split('-')[0].toLowerCase() === base);
+      }
+    }
+    if (idx < 0) idx = 0;
+    if (entries[idx]) {
+      this.lang = entries[idx].acronym;
+      this.menu.tools.languages.selected = idx;
+      globalState.globalVariation = idx;
+      if (window.top) (window.top.window as any).globalVariation = idx;
+    }
+
+    if (this.menu.refresh) this.menu.refresh();
+  }
+
+  private configureTools(enabled: boolean) {
+    const tools = this.nav3Service?.querySelector('collab-nav-3-menu .tools') as HTMLElement;
+    if (!tools) return;
+    tools.style.opacity = enabled ? '1' : '.2';
+    tools.style.pointerEvents = enabled ? 'all' : 'none';
+  }
+
+  // Styles
+
+  private async addStyles() {
+
+    const iframe = (window as any).preview?.iframe as HTMLIFrameElement | undefined;
+    if (!iframe) return;
+
+    const id = convertFileToTag({ project: this.project, shortName: this.shortName, folder: this.folder });
+    const newLess = await compileStyleUsingStorFile(this.shortName, this.project, this.folder, this.actualTheme);
+    const dsTheme = await dsThemeForFolder(this.project, this.folder);
+    const tokens = await getTokensCss(this.project, dsTheme ?? this.actualTheme);
+
+    if (this._previewMode === 'shared') {
+      const iframeHtml = iframe.contentDocument;
+      if (!iframeHtml) return;
+      if (newLess) {
+        const oldStyle = iframeHtml.head.querySelector(`style[id=${id}]`);
+        const newStyle = document.createElement('style');
+        newStyle.id = id;
+        newStyle.textContent = newLess;
+        iframeHtml.head.appendChild(newStyle);
+        if (oldStyle) oldStyle.remove();
+      }
+      this.mountTokens(tokens || '');
+    } else {
+      if (newLess) this._postToPreview({ type: 'setStyle', id, css: newLess });
+      this._postToPreview({ type: 'setStyle', id: this.getIdTokens(), css: tokens || '' });
+    }
+  }
+
+  private mountTokens(tokens: string): void {
+    try {
+      const iframe = (window as any).preview.iframe;
+      if (!iframe || !iframe.contentDocument) return;
+      this.removeOlderTokens(iframe);
+      const css = tokens || '';
+      if (!css) return;
+      const style = document.createElement('style');
+      style.textContent = css;
+      style.id = this.getIdTokens();
+      iframe.contentDocument.head.appendChild(style);
+
+    } catch (e: any) {
+      console.info('Error mountTokens: ' + e.message);
+    }
+  }
+
+  private removeOlderTokens(ifr: HTMLIFrameElement) {
+    const id = this.getIdTokens();
+    if (!ifr.contentDocument || !id) return;
+    const st = ifr.contentDocument.head.querySelectorAll(`#${id}`);
+    st.forEach((s) => s.remove());
+  }
+
+  private getIdTokens() {
+    return '_' + this.project + '_ds_tokens';
+  }
+
+  // Editor 
+
+  private createEditor() {
+    if (!this.monacoEditor) {
+      this.monacoEditor = document.createElement('mls-editor-100529');
+      this.monacoEditor.setAttribute('ismls2', 'true');
+
+    }
+    if (this._ed1) return;
+
+    this._ed1 = monaco.editor.create(this.monacoEditor, mls.editor.conf[this.confE] as monaco.editor.IEditorOptions);
+    monaco.languages.typescript.javascriptDefaults.setCompilerOptions({
+      noImplicitAny: true
+    });
+
+    (this.monacoEditor as any)['mlsEditor'] = this._ed1;
+    (window as any).preview.editor = this._ed1;
+
+  }
+
+  private async setModel(storFile: mls.stor.IFileInfo) {
+    try {
+      const model = await this.createModelIfNeeded(storFile);
+      if (!this._ed1 || !model) return;
+      this._ed1.setModel(model);
+    } catch (e: any) {
+      this.setError(`[setModel] Error:' + (e.message ? e.message : 'Not found model`);
+    }
+
+  }
+
+  private async createModelIfNeeded(storFile: mls.stor.IFileInfo): Promise<monaco.editor.ITextModel | undefined> {
+    const keyModel = mls.editor.getKeyModel(storFile.project, storFile.shortName, storFile.folder, storFile.level);
+    const models = mls.editor.models[keyModel];
+    if (!models?.html) {
+      const model = await createModel(storFile, true, true);
+      return model?.model;
+    }
+    return models.html.model;
+  }
+
+  // Tasks 
+
+  async handleSend(value: string, opt: { isSpecialMention: boolean, agentName: string }) {
+
+    if (!this.actualFiles || !this.actualFiles.ts) {
+      this.setError('Erro page not selected');
+      return;
+    }
+
+    if (!opt.isSpecialMention || !opt.agentName) {
+      this.setError('Please select a agent first ex: @@Improve');
+      return;
+    }
+
+    if (!value) {
+      this.setError('Error: Invalid prompt');
+      return;
+    }
+
+    this.loading = true;
+    const fullName = `_${this.project}_/l${this.level}/${this.folder ? this.folder + '/' : ''} ${this.shortName}`;
+
+    try {
+      await this.fireCollab(opt.agentName, JSON.stringify({ fullName, page: this.page, prompt: value, position: 'left' }), fullName);
+      this.loading = false;
+    } catch (err: any) {
+      this.setError('Error on send message:' + err.message);
+      this.loading = false;
+    }
+
+  }
+
+  private onTaskChange = async (e: Event) => {
+
+    if (this.tasksInProgress.size === 0) return;
+    const customEvent = e as CustomEvent;
+    const message: mls.msg.Message = customEvent.detail.context.message;
+    const task: mls.msg.TaskData = customEvent.detail.context.task;
+    const { content, createAt, senderId, threadId } = message;
+    const createAt2 = customEvent.detail.oldContextCreateAt ? customEvent.detail.oldContextCreateAt : createAt;
+
+    let contextChangedByPage = Array.from(this.tasksInProgress).find((item) => {
+      const [key, value] = item;
+      return key === this.page
+    });
+
+    if (!contextChangedByPage) return;
+
+    const tasks = this.tasksInProgress.get(this.page);
+    if (!tasks) return;
+    let contextChanged = Array.from(tasks).find((item) =>
+      item.message.content === content &&
+      item.message.senderId === senderId &&
+      item.message.createAt === createAt2 &&
+      item.message.threadId === threadId
+    );
+
+    if (!task && contextChanged || (contextChanged && task && (task.status === 'failed' || task.status === 'done'))) {
+      tasks.delete(contextChanged);
+      if (tasks.size === 0) this.tasksInProgress.delete(this.page);
+    }
+
+    if (!this.tasksInProgress.get(this.page) || this.tasksInProgress.get(this.page)?.size === 0) {
+      this.updateLoadingToFalseIfNoTasksRunning();
+      this.createPreview();
+    }
+
+  };
+
+  private updateLoadingToFalseIfNoTasksRunning() {
+    if (this.tasksInProgress.size === 0) this.loading = false;
+    const actual = this.tasksInProgress.get(this.page);
+    if (!actual) this.loading = false;
+    else if (actual.size === 0) this.loading = false;
+  }
+
+  private async fireCollab(agentName: string, prompt: string, fullName: string) {
+
+    fullName = fullName ? fullName : this.page;
+
+    let threadPromise = this.threadCache.get(fullName);
+
+    if (!threadPromise) {
+      threadPromise = (async () => {
+        let thread = await getThreadByName(fullName);
+        if (!thread) {
+          thread = await createThread(fullName, [], 'company');
+        }
+        return thread;
+      })();
+      this.threadCache.set(fullName, threadPromise);
+    }
+
+    const thread = await threadPromise;
+    const userId = getUserId();
+    if (!userId) return;
+
+    const threadId = thread?.threadId;
+    if (!threadId) {
+      this.setError('Cannot find thread');
+      return;
+    }
+
+    const moduleAgent = await loadAgent(agentName);
+    if (!moduleAgent) throw new Error('Invalid agent');
+    const context = getTemporaryContext(threadId, userId, prompt);
+
+    if (!this.tasksInProgress.get(fullName)) {
+      this.tasksInProgress.set(fullName, new Set());
+    }
+    this.tasksInProgress.get(fullName)?.add(context);
+    await executeBeforePrompt(moduleAgent, context);
+  }
+
+  // Life cycle
+
+  async firstUpdated(changedProperties: Map<PropertyKey, unknown>) {
+    super.firstUpdated(changedProperties);
+    this.createEditor();
+    this.setLanguages();
+    this.configureTools(false);
+    subscribe('preview.language', this);
+    subscribe('preview.file', this);
+    subscribe('aura.actualLanguage', this);
+    subscribe('aura.actualModule', this);
+    window.addEventListener('task-change', this.onTaskChange);
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    (window as any).preview.refresh = this.createPreview.bind(this);
+    this.setEvents();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.clearPreview();
+    unsubscribe('preview.language', this);
+    unsubscribe('preview.file', this);
+    unsubscribe('aura.actualLanguage', this);
+    unsubscribe('aura.actualModule', this);
+    window.removeEventListener('task-change', this.onTaskChange);
+  }
+
+  updated(changedProperties: Map<string | number | symbol, unknown>): void {
+    super.updated(changedProperties);
+    const hasMsize = changedProperties.has('msize');
+
+    if (changedProperties.has('modePreview')) {
+      this.updatePreviewMode();
+    }
+  }
+
+  render() {
+    this.style.display = 'block';
+    const lang = this.getMessageKey(messages);
+    this.msg = messages[lang];
+
+    return html`<collab-spliter-vertical-var-fixed-102027 msize=${this.msize} withresize="false" fixedheight="100" complementcolor="var(--page-bg)">
+
+                <collab-spliter-horizontal-var-fixed-102027
+                    slot="top"
+                    complementcolor="var(--page-bg);"
+                    fixedwidth="30%"
+                    fixedvisible= "closed" 
+                >
+                    <div slot="left" style="height:100%;" id="preview-container"></div>
+                    <div slot="right" style="height:100%;" id="preview-details"></div>
+                </collab-spliter-horizontal-var-fixed-102027>
+                <div slot="bottom">
+                    <collab-messages-prompt-102025
+                        acceptAutoCompleteAgents="true"
+                        scope="l${this.level}_preview"  
+                        placeholder="${this.msg.promptPlaceholder}"
+                        .onSend=${this.handleSend.bind(this)}
+                    ></collab-messages-prompt-102025>
+                </div>
+            </collab-spliter-vertical-var-fixed-102027>`;
+  }
+
+}
+
+
+
+enum PreviewType {
+  'Desktop' = 0,
+  'Mobile' = 1,
+}
+
+type PreviewMode = 'Desktop' | 'Mobile'
+
+interface ILanguage {
+  [key: string]: { acronym: string, name: string }
+}

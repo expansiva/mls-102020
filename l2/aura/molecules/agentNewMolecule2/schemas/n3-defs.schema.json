@@ -1,0 +1,14 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewMolecule2/n3-defs.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["skillMd"],
+  "properties": {
+    "skillMd": {
+      "type": "string",
+      "minLength": 120,
+      "description": "The molecule contract as markdown, with exactly these sections in this order: '# Metadata' (only a '- TagName:' line), '# Objective', '# Responsibilities', '# Constraints', '# Notes'. Observable behaviour only — no code, no framework names, no CSS. Raw markdown, no fences."
+    }
+  }
+}

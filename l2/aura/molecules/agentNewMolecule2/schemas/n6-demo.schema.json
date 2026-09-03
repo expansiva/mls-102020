@@ -1,0 +1,40 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewMolecule2/n6-demo.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["html", "examples"],
+  "properties": {
+    "html": {
+      "type": "string",
+      "minLength": 200,
+      "description": "The playground page as an HTML FRAGMENT (no doctype/html/head/body/style/link/script/footer). Must include the playground state widget carrying state='playgroundDinamicState' and one card per example."
+    },
+    "examples": {
+      "type": "array",
+      "minItems": 6,
+      "description": "At least 6 distinct scenarios. Each example's state feeds the playground state; its key is what the page binds with {{playground.<key>.<property>}}.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "state"],
+        "properties": {
+          "name": { "type": "string", "description": "Short scenario name, also the state key (camelCase, e.g. 'loading', 'noIcon')." },
+          "state": {
+            "type": "array",
+            "description": "State entries for this scenario. Empty when the scenario needs no state.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["stateName", "value"],
+              "properties": {
+                "stateName": { "type": "string", "description": "Exactly 'playground.<exampleKey>.<property>'." },
+                "value": { "type": "string", "description": "JSON value as a string ('true', '42', '\"Revenue\"')." }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

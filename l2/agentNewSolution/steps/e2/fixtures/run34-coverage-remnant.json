@@ -1,0 +1,22 @@
+{
+  "planId": "e2-coverage-judge",
+  "moduleName": "buildFlowFsm34",
+  "reviewRound": 1,
+  "complete": false,
+  "summary": "Resta uma bifurcação estável de produto.",
+  "policyDecisionImpacts": [],
+  "issues": [
+    {
+      "issueId": "approvedChangeOrdersNotIncludedInProjectCostControl",
+      "severity": "blocking",
+      "category": "missingOutcomeCoverage",
+      "sourceEvidence": "Ordens de mudança aprovadas aparecem apenas no faturamento.",
+      "finding": "Elas não entram na visão de custo do projeto.",
+      "repairInstruction": "Adicione uma jornada de custo do projeto se esta escolha for revista.",
+      "relatedJourneyIds": ["manageChangeOrder"],
+      "question": "Ordens de mudança aprovadas entram na visão de custo do projeto?",
+      "alternatives": ["não, apenas no faturamento", "sim, incluir no custo do projeto"],
+      "defaultChoice": "não, apenas no faturamento"
+    }
+  ]
+}

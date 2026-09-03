@@ -1,0 +1,30 @@
+# ====================
+# macOS
+# ====================
+.DS_Store
+**/.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+.apdisk
+/node_modules/
+/dist/
+/obj/
+.collab-fs.json
+
+# --- collab-vm (gitReposSetup) ---
+/.env
+.collab-fs-trash/
+!*.js
+!*.mjs

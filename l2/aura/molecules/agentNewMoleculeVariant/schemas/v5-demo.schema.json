@@ -1,0 +1,38 @@
+{
+  "$id": "https://collab.codes/schemas/agentNewMoleculeVariant/v5-demo.schema.json",
+  "version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["html", "examples"],
+  "properties": {
+    "html": {
+      "type": "string",
+      "minLength": 200,
+      "description": "The complete demo page html for the variant molecule. Raw HTML only — no markdown fences. May contain the literal placeholder 'playgroundDinamicState' where dynamic state belongs."
+    },
+    "examples": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "state"],
+        "properties": {
+          "name": { "type": "string" },
+          "state": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["stateName", "value"],
+              "properties": {
+                "stateName": { "type": "string", "description": "playground.<key>.<prop>" },
+                "value": { "type": "string", "description": "JSON-encoded value according to the property type" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

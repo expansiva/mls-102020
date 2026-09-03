@@ -1,0 +1,648 @@
+/// <mls fileReference="_102020_/l2/aura/services/serviceProject.ts" enhancement="_102027_/l2/enhancementLit"/>
+
+import { html, nothing } from 'lit';
+import { customElement, state } from 'lit/decorators.js';
+import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
+import { AuraInitState, getAuraState, setAuraState, saveAuraProject, getActualLanguage, setActualLanguage, projectScopeTitle } from '/_102020_/l2/aura/helpers/auraState.js';
+import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { readModuleLanguages } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
+import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
+
+import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
+import '/_102020_/l2/aura/plugins/selectDesignSystem.js';
+import '/_102020_/l2/aura/plugins/selectModule.js';
+import '/_102020_/l2/aura/plugins/selectLanguage.js';
+// Device is off the knob row for now (the value is kept: the Assets panels read it). The import
+// stays so putting the knob back is two lines in _renderKnobRow and the details switch.
+import '/_102020_/l2/aura/plugins/selectDevice.js';
+import '/_102020_/l2/aura/plugins/selectHeader.js';
+import { listProjectHeaders } from '/_102020_/l2/aura/plugins/helpers/headerPluginCore.js';
+import { ensureProjectLoaded, tryReadHeaderConfig } from '/_102020_/l2/aura/plugins/helpers/headerConfigIo.js';
+import '/_102020_/l2/aura/plugins/selectAssetsComponents.js';
+import '/_102020_/l2/aura/plugins/selectAssetsPlugins.js';
+import '/_102020_/l2/aura/plugins/selectAssetsMedia.js';
+
+// ─── i18n ─────────────────────────────────────────────────────────────
+// Display-only: the "designSystem" knob reads UI (full name on the tooltip). Internally
+// everything is still designSystem (config keys, folders, args).
+/// **collab_i18n_start**
+const message_en = {
+    svcTitle: 'Project',
+    designSystem: 'UI',
+    designSystemFull: 'User Interface (design system)',
+    header: 'Header',
+    headerFull: 'Header of the client app (one active, others kept)',
+    module: 'Module',
+    language: 'Language',
+    device: 'Device',
+    assets: 'Assets',
+};
+type MessageType = typeof message_en;
+const messages: Record<string, MessageType> = {
+    en: message_en,
+    pt: {
+        svcTitle: 'Projeto',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
+        header: 'Header',
+        headerFull: 'Header do app do cliente (um ativo, os outros guardados)',
+        module: 'Módulo',
+        language: 'Idioma',
+        device: 'Dispositivo',
+        assets: 'Assets',
+    },
+    es: {
+        svcTitle: 'Proyecto',
+        designSystem: 'UI',
+        designSystemFull: 'User Interface (design system)',
+        header: 'Header',
+        headerFull: 'Header de la app del cliente (uno activo, los demás guardados)',
+        module: 'Módulo',
+        language: 'Idioma',
+        device: 'Dispositivo',
+        assets: 'Assets',
+    },
+};
+/// **collab_i18n_end**
+
+// ─── Types ───────────────────────────────────────────────────────────
+
+interface IModule {
+    name: string;
+    path: string;
+}
+
+interface IKnobConfig {
+    key: string;
+    min: number;
+    max: number;
+    labels: Record<number, string>;
+    disabled?: boolean;
+}
+
+// ─── Static configs ───────────────────────────────────────────────────
+
+const DEVICE_CONFIG: IKnobConfig = {
+    key: 'device',
+    min: 1,
+    max: 4,
+    labels: { 1: 'Web D', 2: 'Web M', 3: 'Android', 4: 'iOS' },
+};
+
+const ASSETS_CONFIG: IKnobConfig = {
+    key: 'assets',
+    min: 1,
+    max: 3,
+    labels: { 1: 'Components', 2: 'Plugins', 3: 'Media' },
+};
+
+const DISABLED_CONFIG = (key: string): IKnobConfig => ({
+    key,
+    min: 1,
+    max: 1,
+    labels: {},
+    disabled: true,
+});
+
+const DEVICE_PATH_MAP: Record<number, string> = {
+    1: 'web/desktop',
+    2: 'web/mobile',
+    3: 'android',
+    4: 'ios',
+};
+
+// ─── Service ─────────────────────────────────────────────────────────
+
+@customElement('aura--services--service-project-102020')
+export class ServiceProject102020 extends ServiceBase {
+
+    public details: IService = {
+        icon: '&#xf1b2',
+        state: 'foreground',
+        position: 'left',
+        tooltip: 'Project',
+        visible: true,
+        widget: '_102020_/l2/aura/services/serviceProject',
+        level: [5],
+    };
+
+    public onClickMain(op: string): void {
+        if (this.menu.setMode) this.menu.setMode('initial');
+    }
+
+    public menu: IServiceMenu = {
+        title: '',
+        main: {},
+        tools: {},
+        tabs: undefined,
+        onClickMain: this.onClickMain.bind(this),
+    };
+
+    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
+        this._moduleReloadToken += 1; // re-check the module variations on each service (re)open
+        this._initDsConfig();          // a DS may have been created/renamed elsewhere
+        this._updateMenuTitle();
+    }
+
+    /** nav-3 menu title: the project this service is acting on. */
+    private _updateMenuTitle(): void {
+        this.menu.title = projectScopeTitle();
+        this.menu.updateTitle?.();
+    }
+
+    // ─── State ────────────────────────────────────────────────────────
+
+    @state() private msg: MessageType = message_en;
+
+    @state() private _modules: IModule[] = [];
+    @state() private _moduleConfig: IKnobConfig = DISABLED_CONFIG('module');
+    @state() private _moduleReloadToken: number = 0;
+
+    @state() private _dsValue: number | null = null;
+    @state() private _headerValue: number | null = 0;
+    @state() private _moduleValue: number | null = null;
+    @state() private _langValue: number | null = null;
+    @state() private _deviceValue: number | null = 1;
+    @state() private _assetsValue: number | null = 1;
+
+    @state() private _selectedKnob: string = 'module';
+
+    @state() private _dsConfig: IKnobConfig = DISABLED_CONFIG('designSystem');
+    @state() private _headerConfig: IKnobConfig = DISABLED_CONFIG('header');
+    @state() private _langConfig: IKnobConfig = DISABLED_CONFIG('language');
+    @state() private _deviceConfig: IKnobConfig = { ...DEVICE_CONFIG };
+    @state() private _assetsConfig: IKnobConfig = { ...ASSETS_CONFIG };
+
+    // ─── Module Loading ───────────────────────────────────────────────
+
+    private async _loadModules() {
+        const project = getAuraState().actualProject;
+        if (!project) return;
+        try {
+            const config: any = await getConfigProject(project);
+            const rawModules: any[] = config?.modules ?? [];
+            // project.json modules are `{ moduleName, module: { moduleName, businessDomain, … } }`.
+            // `name` is the identifier (folder / actualModule); `path` is the secondary display line.
+            const modules: IModule[] = rawModules.map((m: any) => ({
+                name: m.moduleName ?? m.name ?? '',
+                path: m.path ?? m.module?.businessDomain ?? m.module?.moduleName ?? '',
+            }));
+            this._modules = modules;
+            this._moduleConfig = this._buildModuleConfig(modules);
+            const actualModule = getAuraState().actualModule;
+            const idx = actualModule ? modules.findIndex(m => m.name === actualModule) : -1;
+            this._moduleValue = idx >= 0 ? idx + 1 : 0;
+            this._initLangConfig();
+        } catch {
+            this._modules = [];
+            this._moduleConfig = DISABLED_CONFIG('module');
+        }
+        const actualDevice = getAuraState().actualDevice;
+        if (actualDevice) {
+            const entry = Object.entries(DEVICE_PATH_MAP).find(([, v]) => v === actualDevice);
+            this._deviceValue = entry ? Number(entry[0]) : 1;
+        }
+        this.requestUpdate();
+    }
+
+    private _buildModuleConfig(modules: IModule[]): IKnobConfig {
+        const labels: Record<number, string> = { 0: 'All' };
+        modules.forEach((m, i) => { labels[i + 1] = m.name; });
+        labels[modules.length + 1] = 'Custom';
+        return { key: 'module', min: 0, max: modules.length + 1, labels };
+    }
+
+    // ─── Design System (project scope) ────────────────────────────────
+
+    /** DS knob from designSystem.ts (dsIndex → themeName): 0=All, dsIndex…=edit, last '+'=Add.
+     *  Always the ACTIVE project — the DS is a property of the project one is working on. */
+    private async _initDsConfig(): Promise<void> {
+        const project = getAuraState().actualProject;
+        if (!project) {
+            this._dsConfig = DISABLED_CONFIG('designSystem');
+            this.requestUpdate();
+            return;
+        }
+        try {
+            const dsMap = await dsIndexNameMap(project);
+            const keys = Object.keys(dsMap).map(Number).sort((a, b) => a - b);
+            const labels: Record<number, string> = { 0: 'All' };
+            keys.forEach(k => { labels[k] = dsMap[String(k)]; });
+            const customKey = keys.length ? keys[keys.length - 1] + 1 : 1;
+            labels[customKey] = '+';
+            this._onDsConfig(new CustomEvent('ds-config', {
+                detail: { min: 0, max: customKey, labels },
+            }));
+        } catch { /* ignore */ }
+    }
+
+    private _onDsConfig(e: CustomEvent) {
+        this._dsConfig = { key: 'designSystem', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
+        const actualDs = getAuraState().actualDesignSystem;
+        if (actualDs !== null && actualDs > 0 && actualDs < e.detail.max) {
+            this._dsValue = actualDs;
+        } else if (this._dsValue === null) {
+            this._dsValue = 0;
+        }
+        this.requestUpdate();
+    }
+
+    private async _onDsCreated(value: number) {
+        // A new design system was persisted. Rebuild the knob (new entry + fresh "+" slot),
+        // then select it.
+        await this._initDsConfig();
+        this._setKnobValue('designSystem', value);
+    }
+
+    /** Tell the runtime shell (mls.sites) which content variation is active — layout 2 + ds 1 →
+     *  setPage(21). The DS knob lives only here, so this is the one place that keeps the shell
+     *  from drifting on a DS change. No-op until the base registers its handlers. */
+    private _notifySitesPage(ds: number): void {
+        const layout = getAuraState().actualLayout ?? 1;
+        try { mls.sites.setPage(Number(`${layout}${ds}`)); } catch { /* base not registered */ }
+    }
+
+    // ─── Header (project scope) ───────────────────────────────────────
+
+    /**
+     * Header knob from `l5/config.json`: 0=All, 1..N=each header OF THIS PROJECT, last '+'=Add.
+     *
+     * Profiles pointing at a master's band (`studio`) are left out: they are not editable here, and
+     * a slot that opens nothing is worse than no slot.
+     */
+    private async _initHeaderConfig(preselect = true): Promise<void> {
+        const project = getAuraState().actualProject;
+        if (!project) {
+            this._headerConfig = DISABLED_CONFIG('header');
+            this.requestUpdate();
+            return;
+        }
+        await ensureProjectLoaded(project);
+        const config = await tryReadHeaderConfig(project);
+        const entries = listProjectHeaders(config, project).filter(e => e.isProjectHeader);
+        const labels: Record<number, string> = { 0: 'All' };
+        entries.forEach((entry, i) => { labels[i + 1] = entry.variant || 'default'; });
+        labels[entries.length + 1] = '+';
+        this._headerConfig = { key: 'header', min: 0, max: entries.length + 1, labels };
+
+        // The header the app boots is the state, not a preference: it comes from l5/config.json.
+        const active = entries.find(entry => entry.isActive);
+        setAuraState('actualHeader', active?.profileName ?? null);
+        // Open ON the active header instead of the list: that is the one being worked on.
+        const activeIndex = active ? entries.indexOf(active) + 1 : 0;
+        if (preselect) this._headerValue = activeIndex;
+        else if (this._headerValue === null || this._headerValue > entries.length + 1) this._headerValue = activeIndex;
+        this.requestUpdate();
+    }
+
+    /** Another header became the default (from the editor): keep the view, refresh the labels. */
+    private async _onHeaderActivated(profileName: string) {
+        setAuraState('actualHeader', profileName || null);
+        await this._initHeaderConfig(false);
+    }
+
+    /** The panel rebuilt the list (renamed, deleted, activated): take its labels. */
+    private _onHeaderConfig(e: CustomEvent) {
+        this._headerConfig = { key: 'header', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
+        if (this._headerValue === null || this._headerValue > e.detail.max) this._headerValue = 0;
+        this.requestUpdate();
+    }
+
+    /** A header was created: rebuild the knob (new entry + fresh '+' slot), then select it. */
+    private async _onHeaderCreated(value: number) {
+        await this._initHeaderConfig();
+        this._setKnobValue('header', value);
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────
+
+    private get _selectedModule(): IModule | null {
+        if (this._moduleValue === null || this._moduleValue <= 0 || this._moduleValue > this._modules.length) return null;
+        return this._modules[this._moduleValue - 1];
+    }
+
+    private get _moduleSelected(): boolean {
+        return this._moduleValue !== null
+            && this._moduleValue > 0
+            && this._moduleValue <= this._modules.length;
+    }
+
+    // Stable IProject reference for the selectLanguage plugin — a fresh object literal on
+    // every render would retrigger the plugin's willUpdate (identity change) in a loop.
+    private _projectRef: { project: number; name: string; doSelect: boolean } | null = null;
+    private get _selectedProjectRef(): { project: number; name: string; doSelect: boolean } | null {
+        const project = getAuraState().actualProject;
+        if (!project) return (this._projectRef = null);
+        if (this._projectRef?.project !== project) this._projectRef = { project, name: '', doSelect: true };
+        return this._projectRef;
+    }
+
+    // Language knob config comes from the selected module's l4/<module>/module.defs.ts.
+    private async _initLangConfig(): Promise<void> {
+        const project = getAuraState().actualProject;
+        const module = this._selectedModule?.name ?? null;
+        if (!project || !module) {
+            this._langConfig = DISABLED_CONFIG('language');
+            this._langValue = null;
+            this.requestUpdate();
+            return;
+        }
+        try {
+            const languages = await readModuleLanguages(project, module);
+            const labels: Record<number, string> = { 0: 'All' };
+            languages.forEach((lang, i) => { labels[i + 1] = lang; });
+            labels[languages.length + 1] = '+';
+            this._onLangConfig(new CustomEvent('lang-config', {
+                detail: { min: 0, max: languages.length + 1, labels },
+            }));
+        } catch {
+            this._langConfig = DISABLED_CONFIG('language');
+            this.requestUpdate();
+        }
+    }
+
+    private _onLangConfig(e: CustomEvent) {
+        this._langConfig = { key: 'language', min: e.detail.min, max: e.detail.max, labels: e.detail.labels };
+        const actualLanguage = getActualLanguage(this._selectedModule?.name);
+        if (actualLanguage) {
+            const entry = Object.entries(e.detail.labels as Record<number, string>).find(([, v]) => v === actualLanguage);
+            this._langValue = entry ? Number(entry[0]) : 0;
+        } else {
+            if (this._langValue === null) this._langValue = 0;
+        }
+        this.requestUpdate();
+    }
+
+    private get _knobValues(): Record<string, number | null> {
+        return {
+            designSystem: this._dsValue,
+            module: this._moduleValue,
+            language: this._langValue,
+            header: this._headerValue,
+            device: this._deviceValue,
+            assets: this._assetsValue,
+        };
+    }
+
+    private _getKnobConfig(key: string): IKnobConfig {
+        switch (key) {
+            // Project scope — unlike the others, NOT gated on a selected module.
+            case 'designSystem': return this._dsConfig;
+            // Project scope as well: a header belongs to the app, not to a module.
+            case 'header': return this._headerConfig;
+            case 'module': return this._moduleConfig;
+            case 'language':
+                return this._moduleSelected ? this._langConfig : DISABLED_CONFIG('language');
+            case 'device':
+                return this._moduleSelected ? this._deviceConfig : DISABLED_CONFIG('device');
+            case 'assets':
+                return this._moduleSelected ? this._assetsConfig : DISABLED_CONFIG('assets');
+            default: return DISABLED_CONFIG(key);
+        }
+    }
+
+    private _setKnobValue(key: string, value: number | null) {
+        switch (key) {
+            case 'designSystem':
+                this._dsValue = value;
+                // The "+" slot (new DS) must not be persisted; every real DS up to and
+                // including max is a valid selection.
+                if (value !== null && value > 0 && value <= this._dsConfig.max
+                    && this._dsConfig.labels[value] !== '+') {
+                    setAuraState('actualDesignSystem', value);
+                    saveAuraProject();
+                    this._notifySitesPage(value);
+                }
+                break;
+            case 'header':
+                this._headerValue = value;
+                break;
+            case 'module': {
+                this._moduleValue = value;
+                this._langValue = null;
+                this._initLangConfig();
+                break;
+            }
+            case 'language': {
+                this._langValue = value;
+                const langCode = (value !== null && value > 0 && value < this._langConfig.max)
+                    ? this._langConfig.labels[value] ?? null
+                    : null;
+                const module = this._selectedModule?.name;
+                if (langCode && module) {
+                    setActualLanguage(module, langCode);
+                    saveAuraProject();
+                }
+                break;
+            }
+            case 'device':
+                this._deviceValue = value;
+                setAuraState('actualDevice', value !== null ? DEVICE_PATH_MAP[value] ?? null : null);
+                saveAuraProject();
+                break;
+            case 'assets':
+                this._assetsValue = value;
+                break;
+        }
+        this.requestUpdate();
+    }
+
+    // ─── Event Handlers ───────────────────────────────────────────────
+
+    private _onKnobChange(key: string, e: CustomEvent) {
+        this._selectedKnob = key;
+        this._setKnobValue(key, e.detail.value);
+    }
+
+    private _onKnobClick(key: string) {
+        this._selectedKnob = key;
+        this.requestUpdate();
+    }
+
+    // ─── Lifecycle ────────────────────────────────────────────────────
+
+    connectedCallback() {
+        super.connectedCallback();
+        AuraInitState();
+        this._loadModules();
+        this._initDsConfig();
+        this._initHeaderConfig();
+        this._updateMenuTitle();
+    }
+
+    // ─── Render ───────────────────────────────────────────────────────
+
+    createRenderRoot() { return this; }
+
+    render() {
+        const lang = this.getMessageKey(messages);
+        this.msg = messages[lang];
+
+        return html`
+            <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
+                ${this._renderKnobRow()}
+                ${this._renderDetailsRow()}
+            </div>
+        `;
+    }
+
+    // ─── Knob Row ─────────────────────────────────────────────────────
+
+    private _renderKnobRow() {
+        return html`
+            <div class="
+                flex items-center justify-center
+                px-2 py-3
+                border-b border-gray-200 dark:border-gray-800
+                gap-0
+            " style="--knob-scale: 0.5">
+                ${this._renderKnobItem('designSystem')}
+                ${this._renderKnobItem('header')}
+                ${this._renderKnobItem('module')}
+                ${this._renderKnobItem('language')}
+                ${this._renderKnobItem('assets')}
+            </div>
+        `;
+    }
+
+    private _renderKnobItem(key: string) {
+        const config = this._getKnobConfig(key);
+        const value = this._knobValues[key];
+        const isContext = this._selectedKnob === key;
+        const isDisabled = config.disabled ?? false;
+        const label = this.msg[key as keyof MessageType] || key;
+        const fullLabel = this.msg[`${key}Full` as keyof MessageType] || label; // tooltip: name in full
+
+        return html`
+            <div title=${fullLabel} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
+                <aura--widgets--aura-select-knob-102020
+                    .min=${config.min}
+                    .max=${config.max}
+                    .value=${value}
+                    .step=${1}
+                    .active=${true}
+                    .disabled=${isDisabled}
+                    .selected=${isContext}
+                    .showTicks=${false}
+                    @knob-change=${(e: CustomEvent) => this._onKnobChange(key, e)}
+                ></aura--widgets--aura-select-knob-102020>
+
+                <div
+                    class="flex flex-col items-center gap-0.5 cursor-pointer"
+                    @click=${() => this._onKnobClick(key)}
+                >
+                    <span class="
+                        text-[9px] font-semibold uppercase tracking-wider
+                        ${isContext
+                            ? 'text-gray-700 dark:text-gray-200'
+                            : 'text-gray-400 dark:text-gray-600'}
+                        transition-colors duration-200
+                    ">${label}</span>
+
+                    <div class="
+                        w-full h-0.5 rounded-full
+                        transition-all duration-200
+                        ${isContext
+                            ? 'bg-cyan-400 shadow-[0_0_4px_1px_rgba(34,211,238,0.6),0_0_8px_2px_rgba(34,211,238,0.3)]'
+                            : 'bg-transparent'}
+                    "></div>
+                </div>
+            </div>
+        `;
+    }
+
+    // ─── Details Row ──────────────────────────────────────────────────
+
+    private _renderDetailsRow() {
+        return html`
+            <div class="flex flex-col flex-1">
+                <div class="flex flex-col gap-3 px-4 py-4 flex-1"
+                    @select-assets=${(e: CustomEvent) => this._setKnobValue('assets', e.detail.value)}
+                    @lang-config=${(e: CustomEvent) => this._onLangConfig(e)}
+                    @select-language=${(e: CustomEvent) => this._setKnobValue('language', e.detail.value)}
+                    @header-config=${(e: CustomEvent) => this._onHeaderConfig(e)}
+                    @select-header=${(e: CustomEvent) => this._setKnobValue('header', e.detail.value)}
+                    @header-created=${(e: CustomEvent) => this._onHeaderCreated(e.detail.value)}
+                    @header-activated=${(e: CustomEvent) => this._onHeaderActivated(e.detail.profileName)}
+                    @ds-config=${(e: CustomEvent) => this._onDsConfig(e)}
+                    @select-ds=${(e: CustomEvent) => this._setKnobValue('designSystem', e.detail.value)}
+                    @ds-created=${(e: CustomEvent) => this._onDsCreated(e.detail.value)}
+                >
+                    ${this._renderContextStatusArea()}
+                </div>
+            </div>
+        `;
+    }
+
+    private _renderContextStatusArea() {
+        switch (this._selectedKnob) {
+            case 'designSystem':
+                // DS = styling. The editor reads/writes the entries of the project's
+                // designSystem.ts. Knob: 0=All, 1..N=edit, last=Add.
+                return html`
+                    <aura--plugins--select-design-system-102020
+                        .projectId=${getAuraState().actualProject}
+                        .value=${this._dsValue}
+                    ></aura--plugins--select-design-system-102020>
+                `;
+            case 'header':
+                // Headers of the app: 0=list (which one is active), 1..N=edit one, last=Add.
+                return html`
+                    <aura--plugins--select-header-102020
+                        .projectId=${getAuraState().actualProject}
+                        .value=${this._headerValue}
+                    ></aura--plugins--select-header-102020>
+                `;
+            case 'module':
+                return html`
+                    <aura--plugins--select-module-102020
+                        .modules=${this._modules}
+                        .value=${this._moduleValue}
+                        .reloadToken=${this._moduleReloadToken}
+                        @select-module=${(e: CustomEvent) => this._setKnobValue('module', e.detail.value)}
+                    ></aura--plugins--select-module-102020>
+                `;
+            case 'language': {
+                return html`
+                    <aura--plugins--select-language-102020
+                        .selectedProject=${this._selectedProjectRef}
+                        .selectedModule=${this._selectedModule?.name ?? getAuraState().actualModule}
+                        .value=${this._langValue}
+                    ></aura--plugins--select-language-102020>
+                `;
+            }
+            case 'assets':
+                return this._renderAssetsPanel();
+            default:
+                return nothing;
+        }
+    }
+
+    private _renderAssetsPanel() {
+        switch (this._assetsValue) {
+            case 1:
+                return html`
+                    <aura--plugins--select-assets-components-102020
+                        .selectedModule=${this._selectedModule}
+                        .device=${this._deviceValue}
+                    ></aura--plugins--select-assets-components-102020>
+                `;
+            case 2:
+                return html`
+                    <aura--plugins--select-assets-plugins-102020
+                        .selectedModule=${this._selectedModule}
+                        .device=${this._deviceValue}
+                    ></aura--plugins--select-assets-plugins-102020>
+                `;
+            case 3:
+                return html`
+                    <aura--plugins--select-assets-media-102020
+                        .selectedModule=${this._selectedModule}
+                        .device=${this._deviceValue}
+                    ></aura--plugins--select-assets-media-102020>
+                `;
+            default:
+                return nothing;
+        }
+    }
+}
