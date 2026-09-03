@@ -24,6 +24,5 @@
   "reasons": {},
   "services": [],
   "links": [],
-  "servicesConfigEnabled": false,
-  "appEnv": "presentation"
+  "servicesConfigEnabled": false
 }

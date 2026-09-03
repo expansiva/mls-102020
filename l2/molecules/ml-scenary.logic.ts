@@ -135,3 +135,5 @@ export function changeDetail(scenes: SceneRecord[], previous: string | null, nex
   const scene = scenes.find(item => item.value === next);
   return { value: next, previous, title: scene?.title || '' };
 }
+
+// gb13 aceite: retrato do desktop, sem commit
