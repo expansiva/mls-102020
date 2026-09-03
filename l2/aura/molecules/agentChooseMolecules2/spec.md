@@ -81,6 +81,21 @@ guessed from the field name. The known platform gap (`agentChangeFrontend/flow.j
 often degrades to plain `string` instead of a literal union) is not something this agent tries to work
 around; it decides with what the contract actually publishes.
 
+## Project context (c2 only): the other declared fact besides the contract
+
+Measured case (2026-09, `_102046_` / `approveChangeOrder`): `groupEnterMoney` publishes two locale-bound
+siblings, `ml-currency-input` (en-US) and `ml-enter-money-br` (pt-BR). A `changeAmount` field whose
+`need` only says `type: number` gives c2 nothing to break the tie with, and the correct, honest answer
+at that point really is `none` — the whole family is built to prefer that over a guess. But the target
+project already states a fact that WOULD have settled it: its declared language in `l5/project.json`.
+
+So `steps/c2-molecules` (only c2 — group choice at c1 does not need locale) also reads the TARGET
+project's own `l5/project.json` (`helpers/cm2ProjectContext.ts`) and, when it declares at least one
+language, adds a short "Project context" section to the prompt stating it verbatim. Absent or
+unreadable `l5/project.json` → the section is omitted entirely, never padded with a default. This is
+still a DECLARED fact, not an inference: the same category of input the contract's own field types
+already are, just sourced from `l5` instead of `web/contracts`.
+
 ## Invariants
 
 1. **Never a tag from outside the catalog.** Same gate as the probe

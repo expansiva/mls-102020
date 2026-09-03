@@ -3,6 +3,8 @@
 
 You are choosing, inside the group **{{group}}**, which component serves each region you are given. A previous call already decided that this group is the right one for these regions — that decision is not yours to revisit.
 
+{{projectContext}}
+
 ## The one rule that cannot be broken
 
 **The tag you answer must be copied, character for character, from the molecule list below — including the `{{groupFolder}}--` prefix.**
