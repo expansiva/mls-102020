@@ -15,6 +15,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as moleculeGenerationSkill } from '/_102020_/l2/aura/molecules/skills/moleculeGeneration.js';
+import { skill as tokenVocabularySkill } from '/_102020_/l2/aura/molecules/skills/tokenVocabulary.js';
 import { contractFingerprint } from '/_102020_/l2/aura/molecules/shared/contractFingerprint.js';
 import {
   compileStorLess,
@@ -177,6 +178,7 @@ async function beforePromptStep(
     .split('{{definitionChanges}}').join(renderDefinitionChanges(definition))
     .split('{{groupUsage}}').join(groupUsage || '(the group usage contract could not be read — rely on the molecule\'s own contract below)')
     .split('{{moleculeGeneration}}').join(moleculeGenerationSkill)
+    .split('{{tokenVocabulary}}').join(tokenVocabularySkill)
     .split('{{moleculeBase}}').join(moleculeBase || '(base class source unavailable)')
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage, choice))

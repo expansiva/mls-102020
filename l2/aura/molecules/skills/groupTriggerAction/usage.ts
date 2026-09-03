@@ -105,24 +105,60 @@ The component's visual styling can be customized by overriding \`--ml-*\` CSS cu
 
 | Token | Default | Purpose |
 |-------|---------|---------|
-| \`--ml-surface\` | \`#ffffff\` | Component background |
-| \`--ml-surface-dim\` | \`#f5f5f5\` | Hover background |
-| \`--ml-on-surface\` | \`#1c1b1f\` | Primary text |
-| \`--ml-on-surface-muted\` | \`#49454f\` | Secondary text |
-| \`--ml-on-surface-faint\` | \`#79747e\` | Placeholder |
-| \`--ml-primary\` | \`#3b82f6\` | Primary action color |
-| \`--ml-on-primary\` | \`#ffffff\` | Text on primary |
-| \`--ml-error\` | \`#ef4444\` | Error color |
-| \`--ml-on-error\` | \`#ffffff\` | Text on error |
-| \`--ml-outline-variant\` | \`#e2e8f0\` | Default border |
-| \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
-| \`--ml-outline-error\` | \`#ef4444\` | Error border |
-| \`--ml-radius-sm\` | \`6px\` | Default radius |
-| \`--ml-shadow-1\` | \`0 1px 3px rgba(0,0,0,0.1)\` | Subtle shadow |
-| \`--ml-font-family\` | \`system-ui, sans-serif\` | Font family |
-| \`--ml-font-weight-medium\` | \`500\` | Medium weight |
-| \`--ml-transition\` | \`200ms ease\` | Transition |
-| \`--ml-focus-ring-color\` | \`rgba(59,130,246,0.4)\` | Focus ring |
-| \`--ml-disabled-opacity\` | \`0.5\` | Disabled opacity |
+| \`--ml-border-style\` | \`solid\` | Border style |
+| \`--ml-border-width\` | \`1px\` | Border width |
+| \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
+| \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+
+---
+
+## Design System Roles
+
+These are roles of the **project design system**. The client defines them in
+\`l2/designSystem.ts\` (through the Design System plugin), with night mode and the
+\`-hover\`/\`-focus\`/\`-disabled\` variants — and the molecule follows the theme
+automatically. The Default column is what the molecule renders when the project has
+**no** design system.
+
+The \`--ml-*\` in the \`## Design Tokens\` section, by contrast, have **no** place in
+\`designSystem.ts\` — they can only be adjusted by overriding the variable in CSS.
+
+| Role | Default (no DS) | Purpose |
+|------|-----------------|---------|
+| \`--border-default\` | \`#e2e8f0\` | Structural border — inputs, tables, cards, floating panels |
+| \`--border-default-disabled\` | \`#e2e8f0\` | Structural border — inputs, tables, cards, floating panels — disabled state |
+| \`--border-default-focus\` | \`#e2e8f0\` | Structural border — inputs, tables, cards, floating panels — focus state |
+| \`--border-default-hover\` | \`#e2e8f0\` | Structural border — inputs, tables, cards, floating panels — hover state |
+| \`--button-danger-bg\` | \`#ef4444\` | Destructive action fill |
+| \`--button-danger-bg-hover\` | \`#ff4a4a\` | Destructive action fill — hover state |
+| \`--button-danger-text\` | \`#ffffff\` | Label on the destructive action |
+| \`--button-primary-bg\` | \`#3b82f6\` | Primary action fill |
+| \`--button-primary-bg-hover\` | \`#408fff\` | Primary action fill — hover state |
+| \`--button-primary-text\` | \`#ffffff\` | Label on the primary action |
+| \`--button-secondary-bg\` | \`#ffffff\` | Secondary action fill |
+| \`--button-secondary-bg-hover\` | \`#f5f5f5\` | Secondary action fill — hover state |
+| \`--button-secondary-border\` | \`#e2e8f0\` | Secondary action border |
+| \`--button-secondary-border-hover\` | \`#e2e8f0\` | Secondary action border — hover state |
+| \`--button-secondary-text\` | \`#1c1b1f\` | Label on the secondary action |
+| \`--focus-ring\` | \`rgba(59, 130, 246, 0.4)\` | Keyboard focus ring |
+| \`--font-family-primary\` | \`system-ui, -apple-system, sans-serif\` | Primary font stack |
+| \`--font-weight-bold\` | \`500\` | Emphasis font weight |
+| \`--link-text\` | \`#3b82f6\` | Link colour |
+| \`--link-text-hover\` | \`#3b82f6\` | Link colour — hover state |
+| \`--radius-small\` | \`6px\` | Small corner radius |
+| \`--selected-bg\` | \`#f5f5f5\` | Selected item fill |
+| \`--selected-bg-hover\` | \`#f5f5f5\` | Selected item fill — hover state |
+| \`--selected-border\` | \`#3b82f6\` | Selected / focused border |
+| \`--selected-border-hover\` | \`#3b82f6\` | Selected / focused border — hover state |
+| \`--selected-text\` | \`#3b82f6\` | Selected item text |
+| \`--selected-text-hover\` | \`#3b82f6\` | Selected item text — hover state |
+| \`--shadow-medium\` | \`0 4px 6px rgba(0, 0, 0, 0.1)\` | Raised elevation |
+| \`--shadow-small\` | \`0 1px 3px rgba(0, 0, 0, 0.1)\` | Subtle elevation |
+| \`--surface-alt-bg\` | \`#f5f5f5\` | Subtle surface — zebra rows, row hover, skeleton, section headers |
+| \`--surface-bg\` | \`#ffffff\` | Elevated surface — cards, panels, modals, floating menus |
+| \`--text-muted\` | \`#49454f\` | Secondary text and placeholders |
+| \`--text-muted-disabled\` | \`#79747e\` | Secondary text and placeholders — disabled state |
+| \`--text-strong\` | \`#1c1b1f\` | Most prominent text — titles, emphasized labels |
+| \`--transition-fast\` | \`200ms ease\` | Fast transition |
 
 `;
