@@ -27,6 +27,7 @@ import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/h
 import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
 import {
   bareColorLiterals,
+  divergentTokenFallbacks,
   declaresPortal,
   extractAbsoluteMlClasses,
   extractMlClassesFromLess,
@@ -200,6 +201,13 @@ export function runNm2LessGate(
     // `--ml-*`, and a molecule with no holdout at all would have zero. What this check
     // defends is "appearance comes from a token, not a literal" — so consuming ANY
     // token is enough. The role NAME is validated by harness/check-ds-tokens.mjs.
+    // One token, ONE fallback — see divergentTokenFallbacks for what a real run did without this.
+    for (const { token, values } of divergentTokenFallbacks(content)) {
+      issues.push({
+        code: 'fallback_divergence',
+        message: `'${token}' is read with ${values.length} different fallbacks (${values.map(v => `"${v}"`).join(' vs ')}) — the fallback is what renders with NO design system, so one token must mean one value. Pick one and use it at every site`,
+      });
+    }
     if (!/var\(\s*--[\w-]+/.test(content)) {
       issues.push({
         code: 'token_consumption',

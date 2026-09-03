@@ -19,6 +19,61 @@ export function extractMlClassesFromLess(less: string): string[] {
   return Array.from(found).sort();
 }
 
+// Every `var(--token, fallback)` read in a sheet, with the line it sits on. The fallback scan
+// respects nested parens, so `rgba(0, 0, 0, .1)` and `color-mix(in srgb, var(--x) 12%, …)` come out
+// whole instead of being cut at the first `)`.
+export function tokenFallbacks(less: string): Array<{ token: string; fallback: string | null; line: number }> {
+  const out: Array<{ token: string; fallback: string | null; line: number }> = [];
+  const re = /var\(\s*(--[a-zA-Z0-9_-]+)\s*(,)?/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(less))) {
+    const line = less.slice(0, match.index).split('\n').length;
+    if (!match[2]) { out.push({ token: match[1], fallback: null, line }); continue; }
+    let i = re.lastIndex, depth = 0;
+    const start = i;
+    while (i < less.length) {
+      const char = less[i];
+      if (char === '(') depth++;
+      else if (char === ')') { if (depth === 0) break; depth--; }
+      i++;
+    }
+    out.push({ token: match[1], fallback: less.slice(start, i).trim(), line });
+  }
+  return out;
+}
+
+/** Comparison by VALUE, not by spelling: `#fff` == `#ffffff`, `rgba(0,0,0,.1)` == `rgba(0, 0, 0, 0.1)`. */
+export function normalizeTokenValue(value: string): string {
+  return String(value).trim().toLowerCase().replace(/\s+/g, ' ')
+    .replace(/#([0-9a-f])([0-9a-f])([0-9a-f])\b/g, (_, r, g, b) => `#${r}${r}${g}${g}${b}${b}`)
+    .replace(/rgba?\(([^)]*)\)/g, (_, inner: string) => `rgba(${inner.split(',').map(part => {
+      let piece = part.trim();
+      if (/^\.\d/.test(piece)) piece = `0${piece}`;          // .4 -> 0.4
+      if (/^\d+\.0+$/.test(piece)) piece = piece.split('.')[0]; // 1.0 -> 1
+      return piece;
+    }).join(',')})`);
+}
+
+// The same token read with DIFFERENT fallbacks. That is a defect: the fallback is what the molecule
+// renders when the project has no design system, so one token must mean one value — otherwise the
+// same role paints two shades in the same component.
+//
+// MEASURED on the 2026-09-03 Studio run: `ml-button-group` read `--border-subtle` as `#d1d5db` on one
+// line and `#e5e7eb` NINE LINES LATER. The rule was already written in skills/tokenVocabulary, but
+// prose alone did not hold — and inside one sheet this is fully decidable, so it belongs here.
+export function divergentTokenFallbacks(less: string): Array<{ token: string; values: string[] }> {
+  const byToken = new Map<string, Map<string, string>>();
+  for (const site of tokenFallbacks(less)) {
+    if (site.fallback === null) continue;
+    if (!byToken.has(site.token)) byToken.set(site.token, new Map());
+    byToken.get(site.token)!.set(normalizeTokenValue(site.fallback), site.fallback);
+  }
+  return [...byToken.entries()]
+    .filter(([, values]) => values.size > 1)
+    .map(([token, values]) => ({ token, values: [...values.values()] }))
+    .sort((a, b) => a.token.localeCompare(b.token));
+}
+
 // True when a `*` appears in SELECTOR position (`* {`, `.a > * {`, `*, *::before {`).
 // Comments and attribute selectors ([class*="x"]) are scrubbed first, and only the text that
 // precedes a `{` is inspected — so `calc(a * b)` in a declaration never trips it.

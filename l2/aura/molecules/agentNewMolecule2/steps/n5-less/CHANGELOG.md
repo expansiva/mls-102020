@@ -1,5 +1,47 @@
 # n5-less — CHANGELOG
 
+## 2026-09-03 (b) — o fallback passou a ser CONSULTADO, e a escala de tamanho entrou no vocabulário
+
+Três correções vindas do 2º run do Studio (o mesmo em que o conserto de família foi validado).
+
+**1. `fallback_divergence` — código de gate novo.** O run leu `--border-subtle` como `#d1d5db`
+numa linha e `#e5e7eb` **nove linhas depois, no mesmo arquivo**. A regra "um papel, um fallback"
+já estava escrita em `skills/tokenVocabulary`, mas prosa não sustentou — e dentro de UMA folha
+isso é totalmente decidível. `divergentTokenFallbacks()` (em `shared/moleculeInspect.ts`, com
+`tokenFallbacks()` e `normalizeTokenValue()`) compara por VALOR, não por grafia (`#fff` ==
+`#ffffff`). Verificado: pega o defeito real do `ml-button-group` e não gera falso positivo no
+`ml-notify-modal`.
+
+**2. A tabela de fallbacks canônicos entra no prompt (ramo NEUTRAL).** Antes a skill dava o
+vocabulário e **não os valores**, então cada run inventava sua paleta neutra: as duas moléculas
+do run divergiram em 6 papéis (`text-default` `#37323d` vs `#374151`). Agora
+`canonicalFallbackTable()` lê o `DEFAULT_TOKENS_TEMPLATE` — a mesma constante que GERA o
+`designSystem.ts` de um projeto — e injeta 80 linhas `papel → fallback`. Isso fecha a lição A7
+(2026-07-31): era o ramo NEUTRAL exigindo "todo valor por token" sem nunca receber a tabela de
+valores, enquanto o THEMED recebia a do tema.
+
+⚠️ **Armadilha resolvida no caminho:** as escalas do template carregam expressão LESS
+(`calc(@space-base-unit * 2)`). O runtime reescreve `@token` em `var(--token)` quando compila o
+design system, mas a folha da molécula é compilada sozinha — `@space-base-unit` não existe lá.
+Verificado: `var(--font-size-12, calc(@font-base-unit * 3))` **não compila**
+(`NameError: variable @font-base-unit is undefined`). O `resolveScale()` resolve contra a unidade
+base e entrega valor concreto (`font-size-12` → `0.75rem`, `space-8` → `0.5rem`); os
+`*-base-unit` saem da tabela, por serem interno da escala.
+
+**3. `font-size-*`, `line-height-*`, `space-*` e `breakpoint-*` entraram na skill.** Estavam
+omitidos de propósito (layout é Tailwind no `.ts`), e o run mostrou o custo: o `ml-button-group`
+**cunhou** `--ml-button-group-{xs,sm,md,lg}-font-size` para uma escala que o
+`font-size-12/16/20/24` já cobria — token cunhado só se ajusta por CSS na mão, papel do DS segue
+o tema do projeto. A skill agora lista os quatro grupos, com a ressalva de quando são
+necessários: quando o RENDER põe o tamanho numa classe (`.ml-button-size-sm`) e o valor tem de
+sair da folha.
+
+**Achado colateral, NÃO corrigido:** o check novo encontrou uma divergência **pré-existente** em
+`mls-102040/.../ml-pagination-control.less` — `--ml-pagination-press-shadow` vale
+`rgba(0,0,0,0.08)` no nav e `rgba(0,0,0,0.1)` na página (confirmado no git, anterior à
+migração). São duas intensidades deliberadas sob um token só, o que é erro de modelagem do
+autor: precisaria de dois tokens. Fica para decisão de quem mantém a molécula.
+
 ## 2026-09-03 — classe de FAMÍLIA interpolada (achado no run do Studio)
 
 O run de 03/09 (`ml-modal-alert`, sincronizado em `mls-102053-temp`) expôs um defeito do

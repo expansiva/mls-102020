@@ -72,6 +72,20 @@ Shape, elevation, motion, typography:
 \`font-weight-lighter\` · \`font-weight-light\` · \`font-weight-normal\` · \`font-weight-bold\` ·
 \`font-weight-bolder\` — **there is no weight 500**; for emphasis use \`font-weight-bold\`.
 
+Size, spacing and breakpoints — the design system HAS these, and they are easy to miss:
+\`font-size-12\` · \`font-size-16\` · \`font-size-20\` · \`font-size-24\` · \`font-size-40\` ·
+\`font-size-48\` · \`font-size-64\` (the number is the pixel size) ·
+\`line-height-small\` · \`line-height-medium\` · \`line-height-large\` ·
+\`space-8\` … \`space-64\` (also the pixel value) ·
+\`breakpoint-small\` · \`breakpoint-medium\` · \`breakpoint-large\`
+
+Normally you do NOT need them: layout, padding and text size come from the Tailwind utilities in
+the markup, and the sheet must not redefine layout. But when the RENDER puts a size in a class —
+a size scale like \`.ml-button-size-sm\`, or a class whose only job is the font size — the value
+has to come from this sheet, and then it comes from these roles. **Do not coin
+\`--ml-<molecule>-sm-font-size\` for something \`font-size-12\` already covers**: a coined token is
+adjustable only by hand-written CSS, while a role follows the project's design system.
+
 **Every COLOUR role accepts the \`-hover\`, \`-focus\` and \`-disabled\` variants** —
 \`var(--button-primary-bg-hover, …)\`, \`var(--text-muted-disabled, …)\`. Use them instead of
 \`filter: brightness()\` when the state is a colour change.
@@ -102,9 +116,11 @@ Still consumed with a fallback: \`var(--ml-nrs-knob-size, 20px)\`.
    could ever override it.
 2. **Every \`var()\` carries a fallback.** \`var(--surface-bg)\` with no fallback leaves the
    molecule with no background in a project that has no design system.
-3. **One role, ONE fallback.** If two places use \`--text-muted\`, the fallback must be the same
-   value in both. The checker rejects divergence — that is the defect that left
-   \`--ml-surface-variant\` with 6 different values across the library.
+3. **One role, ONE fallback, and it is LOOKED UP, not invented.** The prompt gives you the
+   canonical fallback of every role — use it verbatim. Reading the same token with two different
+   fallbacks is **rejected by a deterministic gate**: it happened for real, with
+   \`--border-subtle\` read as \`#d1d5db\` and then \`#e5e7eb\` nine lines later in the same sheet.
+   Across the library, this is the defect that left \`--ml-surface-variant\` with 6 values.
 4. **A border takes a border role; a background takes a background role; text takes a text
    role.** There are only 4 border roles: if what you want is not there, it is a section-3
    case — do not borrow a text role to paint a border.
