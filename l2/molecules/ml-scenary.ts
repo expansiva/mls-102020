@@ -5,9 +5,9 @@
 // =============================================================================
 // This molecule does NOT contain business logic, i18n, or URL access.
 import { html, TemplateResult, nothing } from 'lit';
-import { customElement, state } from 'lit/decorators.js';
+import { state } from 'lit/decorators.js';
 import { propertyDataSource } from '/_102029_/l2/collabDecorators.js';
-import { MoleculeAuraElement } from '/_102033_/l2/moleculeBase.js';
+import { defineMoleculeOnce, MoleculeAuraElement } from '/_102033_/l2/moleculeBase.js';
 import { cn } from '/_102033_/l2/shared/molecules/cn.js';
 import {
   changeDetail,
@@ -25,7 +25,8 @@ import {
   type SceneRecord,
 } from '/_102020_/l2/molecules/ml-scenary.logic.js';
 
-@customElement('molecules--ml-scenary-102020')
+export const ML_SCENARY_TAG = 'molecules--ml-scenary-102020';
+
 export class MlScenaryMolecule extends MoleculeAuraElement {
   slotTags = ['Scene'];
   protected usesLiveSlots = true;
@@ -258,3 +259,5 @@ export class MlScenaryMolecule extends MoleculeAuraElement {
     `;
   }
 }
+
+defineMoleculeOnce(ML_SCENARY_TAG, MlScenaryMolecule);
