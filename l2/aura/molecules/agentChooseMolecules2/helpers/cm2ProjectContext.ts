@@ -40,6 +40,8 @@ export function formatProjectContext(languages: string[]): string {
   return [
     '## Project context',
     '',
-    `This project declares language(s): ${languages.join(', ')}. Use this fact — never a field name or a habit — to pick between locale-specific siblings (e.g. a BR-formatted vs a US-formatted input). The absence of a matching declared fact is itself a reason to answer 'none' rather than guess.`,
+    `This project declares language(s): ${languages.join(', ')}.`,
+    '',
+    "Use this fact ONLY to break a tie between siblings that differ by locale formatting (e.g. a BR-formatted vs a US-formatted money/date/phone input) — never from a field name or a habit. It has NO bearing on any other kind of choice: do not let it make you more cautious about regions that have nothing to do with locale. If a need is genuinely about locale formatting and no declared language matches either sibling, that specific need is answered 'none' — everything else is judged exactly as the rest of this prompt says.",
   ].join('\n');
 }
