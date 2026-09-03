@@ -1,5 +1,59 @@
 # n5-less — CHANGELOG
 
+## 2026-09-03 — classe de FAMÍLIA interpolada (achado no run do Studio)
+
+O run de 03/09 (`ml-modal-alert`, sincronizado em `mls-102053-temp`) expôs um defeito do
+`extractMlClassesFromTs` que **degradou o resultado**, e o seu espelho.
+
+O render constrói três famílias por interpolação:
+
+```ts
+`ml-modal-alert-${this.presentationState}`   // -entering, -closing, -visible
+`ml-modal-alert-type-${kind}`                // -error, -info, -success, -warning
+`ml-modal-alert-position-${this.position}`
+```
+
+O regex `ml-[a-z0-9]+(?:-[a-z0-9]+)*` para no `$`, então cada família contribuía o **prefixo
+sem o hífen final** — `ml-modal-alert-type` — que passa a parecer classe literal. Resultado: o
+inventário ficou errado nos DOIS sentidos, e ele é ao mesmo tempo o `{{mlInventory}}` mostrado
+ao modelo E a lista que o check `unknown_classes` cobra.
+
+- **continha** `ml-modal-alert` e `ml-modal-alert-type`, que o render nunca emite;
+- **omitia** `ml-modal-alert-type-error`, `-entering` e as outras 4, que ele emite.
+
+O que custou, medido nos artefatos do run: a tentativa 1 estilizou as 6 classes corretamente, o
+gate a reprovou como "inventadas", e a tentativa 2 trocou por
+`.ml-modal-alert-panel[aria-label="info notification"]` — **seletor ancorado em prosa em inglês
+traduzível**, num projeto com decisão de i18n por cópia — e perdeu o styling dos estados
+`entering`/`closing`. E o espelho passou: o arquivo final tem `.ml-modal-alert { … }`, regra
+morta que o check aceitou porque o prefixo estava no inventário.
+
+**O conserto:**
+
+- `moleculeInspect.ts` — novo `extractMlClassPrefixes()` devolve as famílias **com o hífen
+  final** (é o que distingue família de classe literal). O `extractMlClassesFromTs()` passa a
+  remover o artefato de prefixo, a menos que o mesmo nome ocorra também como literal de verdade
+  (`occursAsLiteralClass()`).
+- `gate.ts` — `unknown_classes` aceita literal **ou** variante de família; e o código novo
+  `family_prefix` reprova quem estiliza o prefixo pelado, que é a regra morta.
+- `agentNm2Less.ts` — o `{{mlInventory}}` passa a listar as famílias como
+  `` `.ml-modal-alert-type-*` (family: the render appends the variant) ``, para o modelo saber
+  que a família existe E que o sufixo é dinâmico.
+
+**Verificado contra os artefatos reais do run:** reavaliando a tentativa 1, `unknown_classes`
+cai de 6 para **0** e o `family_prefix` pega `ml-modal-alert` — ou seja, ela seria reprovada
+pelo motivo certo (uma regra morta) em vez do errado. Reavaliando o arquivo final,
+`family_prefix` pega a regra morta que ficou gravada.
+
+**Não resolve a interpolação para valores concretos** (`${this.presentationState}` → as 4
+variantes). Daria inventário exato, mas exige ler a união de tipos do campo — e o `${kind}` vem
+do retorno de um método. É type-checking do render: frágil e desproporcional. O risco residual
+da abordagem por prefixo é aceitar `.ml-modal-alert-type-banana`, que é inofensivo (a regra só
+não faz nada).
+
+Compatibilidade: o `n4-render/gate.ts` só usa `mlClasses.length`, e a amostra `GOOD` do teste
+não tem interpolação — mesma saída.
+
 ## 2026-09-02 — o vocabulário do modo NEUTRAL virou os PAPÉIS do design system
 
 A folha base passou a consumir os papéis que o `designSystem.ts` do projeto define

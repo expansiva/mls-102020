@@ -37,7 +37,7 @@ import {
 import { MoleculePlan, NM_MAX_ATTEMPTS } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmIdentityFromPlan, normalizeLessContent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTemplates.js';
-import { declaresPortal, extractMlClassesFromTs } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+import { declaresPortal, extractMlClassPrefixes, extractMlClassesFromTs } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 import {
   buildVToolInstruction,
   createVToolSchema,
@@ -89,6 +89,9 @@ async function beforePromptStep(
   const groupSkill = await loadGroupSkill(ctx);
   const portal = declaresPortal(renderTs);
   const inventory = extractMlClassesFromTs(renderTs);
+  // Interpolated families are listed as `.ml-foo-*`: the model must know the family exists AND
+  // that its suffix is dynamic. Listing the bare prefix instead sends it to style a dead class.
+  const families = extractMlClassPrefixes(renderTs);
 
   const systemPrompt = promptMd
     .split('{{tag}}').join(plan.tag)
@@ -99,7 +102,10 @@ async function beforePromptStep(
     .split('{{lessAuthoringSkill}}').join(lessAuthoringSkill)
     .split('{{modeSection}}').join(await buildModeSection(ctx))
     .split('{{renderTs}}').join(renderTs)
-    .split('{{mlInventory}}').join(inventory.map(cls => `\`.${cls}\``).join(', ') || '(none — the render emits no ml-* class, which is a bug)')
+    .split('{{mlInventory}}').join([
+      ...inventory.map(cls => `\`.${cls}\``),
+      ...families.map(prefix => `\`.${prefix}*\` (family: the render appends the variant)`),
+    ].join(', ') || '(none — the render emits no ml-* class, which is a bug)')
     .split('{{groupCanonical}}').join(plan.groupCanonical)
     .split('{{groupSkill}}').join(groupSkill)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the molecule source is insufficient to produce the sheet')}`;

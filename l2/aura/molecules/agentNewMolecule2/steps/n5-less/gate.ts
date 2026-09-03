@@ -30,6 +30,7 @@ import {
   declaresPortal,
   extractAbsoluteMlClasses,
   extractMlClassesFromLess,
+  extractMlClassPrefixes,
   extractMlClassesFromTs,
   hasUniversalSelector,
   setsPositionOrOverflow,
@@ -100,12 +101,34 @@ export function runNm2LessGate(
     });
   }
 
+  // Two kinds of class the render emits, and they need different treatment:
+  //   literal   `'ml-alert-overlay'`        -> exact match
+  //   family    `\`ml-alert-type-${kind}\`` -> prefix match; the suffix is only known at runtime
+  // Before 2026-09-03 this check knew only the first kind, so every interpolated class was reported
+  // as invented — see the note in extractMlClassesFromTs for what that cost a real run.
   const inventory = new Set(extractMlClassesFromTs(options.renderTs));
-  const unknown = extractMlClassesFromLess(content).filter(cls => !inventory.has(cls));
+  const families = extractMlClassPrefixes(options.renderTs);
+  const styled = extractMlClassesFromLess(content);
+
+  // Styling the family PREFIX itself matches nothing: the render always appends a suffix. This is
+  // the mirror defect of the one above, and it shipped in the same run (`.ml-modal-alert { … }`,
+  // a dead rule the old check accepted because the prefix was in the inventory).
+  const bareFamily = styled.filter(cls => !inventory.has(cls) && families.includes(`${cls}-`));
+  if (bareFamily.length) {
+    issues.push({
+      code: 'family_prefix',
+      message: `these are class FAMILY prefixes, not classes — the render always appends a suffix, so the rule matches nothing: ${bareFamily.join(', ')}. Style the concrete variants (e.g. '${bareFamily[0]}-<value>') or drop the rule`,
+    });
+  }
+
+  const unknown = styled.filter(cls =>
+    !inventory.has(cls)
+    && !bareFamily.includes(cls)
+    && !families.some(prefix => cls.startsWith(prefix) && cls.length > prefix.length));
   if (unknown.length) {
     issues.push({
       code: 'unknown_classes',
-      message: `these .ml-* classes are not emitted by the molecule's render (invented?): ${unknown.join(', ')} — style ONLY the classes the .ts emits`,
+      message: `these .ml-* classes are not emitted by the molecule's render (invented?): ${unknown.join(', ')} — style ONLY the classes the .ts emits${families.length ? `, or a variant of one of its families (${families.map(p => `${p}*`).join(', ')})` : ''}`,
     });
   }
 

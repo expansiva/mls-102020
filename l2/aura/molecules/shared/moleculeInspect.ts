@@ -95,7 +95,41 @@ export function bareColorLiterals(less: string): string[] {
 export function extractMlClassesFromTs(renderTs: string): string[] {
   const found = new Set<string>();
   for (const match of renderTs.match(/(?<![\w/-])ml-[a-z0-9]+(?:-[a-z0-9]+)*/g) || []) found.add(match);
+
+  // A render may build a class FAMILY by interpolation (`\`ml-alert-type-${kind}\``). The regex
+  // above stops at the `$`, so the family contributes its PREFIX WITHOUT the trailing dash —
+  // `ml-alert-type` — which then looks like a literal class the render never emits. Measured on the
+  // 2026-09-03 Studio run (ml-modal-alert, 3 interpolation sites): the inventory reported
+  // `ml-modal-alert-type` and `ml-modal-alert` (neither exists) and omitted
+  // `ml-modal-alert-type-error` and `ml-modal-alert-entering` (both do). Since this list is BOTH
+  // shown to the model as `{{mlInventory}}` and enforced by the n5-less gate, the run was told to
+  // style a dead class, forbidden from styling the real ones, and ended up keying appearance on
+  // `[aria-label="error notification"]` — a selector anchored on translatable prose.
+  //
+  // So drop a prefix-only artifact, unless the same name ALSO occurs as a real literal.
+  for (const prefix of extractMlClassPrefixes(renderTs)) {
+    const bare = prefix.slice(0, -1);
+    if (!occursAsLiteralClass(renderTs, bare)) found.delete(bare);
+  }
   return [...found].sort();
+}
+
+// The interpolated class FAMILIES the render builds. The trailing dash is KEPT: it is what tells a
+// family (`ml-alert-type-`) apart from a literal class (`ml-alert-type`). The concrete suffixes are
+// only known at runtime, so callers match by prefix instead of resolving them — deliberately: the
+// suffix comes from a field's type union or a method's return type, and resolving that would mean
+// type-checking the render.
+export function extractMlClassPrefixes(renderTs: string): string[] {
+  const found = new Set<string>();
+  for (const m of renderTs.matchAll(/(?<![\w/-])(ml-[a-z0-9]+(?:-[a-z0-9]+)*-)\$\{/g)) found.add(m[1]);
+  return [...found].sort();
+}
+
+/** True when `name` appears as a class on its own — not as the prefix of a longer name, and not
+ *  immediately followed by an interpolation (`ml-foo-${…}`, which makes it a family prefix). */
+function occursAsLiteralClass(renderTs: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![\\w/-])${escaped}(?![a-z0-9-])`).test(renderTs);
 }
 
 // ml-* classes the render positions with `absolute`/`fixed`. A stylesheet must NOT set
