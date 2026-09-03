@@ -30,6 +30,7 @@ import type {
 import { navigationFromE8Menu } from './helpers/cfeModuleNavigation.js';
 // Relative path (not /_102029_/...) because this file runs standalone via tsx at publish:
 // tsx resolves relative .ts, but does not swap .js→.ts for path-mapped (/_XXX_/) runtime imports.
+import { emitMlsDepJson } from '../../../mls-102029/l2/mlsDepManifest.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 const ROOT = process.env.SAVE_CONFIG_ROOT ? path.resolve(process.env.SAVE_CONFIG_ROOT) : path.resolve(HERE, '../../../');
@@ -537,6 +538,10 @@ export function composeFrontendRuntimeConfig(root: string, clientId: string): Co
   }
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
+  emitMlsDepJson(path.join(clientRoot, 'mlsDep.json'), config, l5, {
+    read: (file) => fs.readFileSync(file, 'utf8'),
+    write: (file, source) => fs.writeFileSync(file, source),
+  });
   const pageNote = composed.map(item => `${item.moduleName}: ${item.pageCount} page(s)`).join(', ');
   console.log(`[nodejsSaveRuntimeConfig:frontend] composed ${composed.length} module(s) (${pageNote}) → ${configPath}`);
   return { configPath, composed, skipped };

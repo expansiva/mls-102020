@@ -245,3 +245,25 @@ test('zero resolvable modules fail the compose', () => {
     assert.equal(fs.existsSync(path.join(clientRoot, 'l5', 'config.json')), false);
   });
 });
+
+test('mlsDep.json is the l5 list union both runtimeProject masters, and a second compose is a no-op', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      workspaceDependencies: [CLIENT_ID, '102020', '102021', '102027', '102029', '102036', '102025'],
+    }, null, 2)}\n`);
+
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const dest = path.join(clientRoot, 'mlsDep.json');
+    const first = fs.readFileSync(dest, 'utf8');
+    const parsed = JSON.parse(first) as { workspaceDependencies: string[] };
+    assert.ok(parsed.workspaceDependencies.includes('102033'));
+    assert.ok(parsed.workspaceDependencies.includes('102034'));
+    assert.ok(parsed.workspaceDependencies.includes(CLIENT_ID));
+    assert.ok(parsed.workspaceDependencies.includes('102020'));
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.equal(fs.readFileSync(dest, 'utf8'), first);
+  });
+});

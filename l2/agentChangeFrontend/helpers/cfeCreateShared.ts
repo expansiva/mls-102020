@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
+import { emitMlsDepJsonIfHostDisk } from '/_102029_/l2/mlsDepManifest.js';
 import { commandMemberNames, dedupeSharedStateNames } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMemberNames.js';
 import {
   deriveUiScenaries,
@@ -5151,6 +5152,7 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
   }
 
   await saveWorkspaceConfig(project, config);
+  emitMlsDepJsonIfHostDisk(project, config, l5);
   const pageCount = pages.filter(page => !omit.has(page.pageId)).reduce((sum, page) => sum + frontendConfigPages(project, context, page, labels).length, 0);
   return `l5/config.json frontend merged (${pageCount} page route(s), ${pagesByModule.size} module(s))`;
 }

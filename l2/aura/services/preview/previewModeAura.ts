@@ -4,6 +4,9 @@ import { IJSONDependence } from '/_102027_/l2/libCompile.js';
 import { setErrorOnModel, getPath } from '/_102027_/l2/utils.js';
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
 
+/** O pouco de `window.preview` (host Studio) que este arquivo consome. */
+type PreviewHost = { preview?: { iframe?: HTMLIFrameElement } };
+
 export class PreviewModeAura {
 
     private level: string | undefined;
@@ -489,7 +492,11 @@ customElements.define=function(n,c,o){if(!customElements.get(n))return window['o
     private addGlobalCss(globalCss: string) {
         if (!globalCss) return
         try {
-            const iframe = window.preview.iframe;
+            // `window.preview` é global do HOST (Studio, mls-100554) — este projeto
+            // não o declara nem depende dele. O gate do push compila o 102020
+            // sozinho, sem o 100554 no fecho, então lê-se pelo contrato mínimo
+            // que se usa aqui em vez de contar com a declaração alheia.
+            const iframe = (window as unknown as PreviewHost).preview?.iframe;
             if (!iframe || !iframe.contentDocument) return;
             const oldStyle = iframe.contentDocument.querySelector('style#global_css');
             if (oldStyle) oldStyle.remove();
