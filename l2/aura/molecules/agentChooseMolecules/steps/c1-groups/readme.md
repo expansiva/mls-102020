@@ -43,22 +43,13 @@ line must carry — whether the collection is only read or also maintained, and 
 (in the row, in a panel beside the list, in a screen of its own). That last axis alone separates five
 molecules of `groupViewTable`, and it is what battery case V3 asked for and did not get.
 
-A field region also carries **which record it belongs to** — `a field of a record of the <collection>
-collection` — so the line is self-contained for a c2 that never sees the collection's own region. It is
-**added** to the field's own facts and never replaces them: the first version of this rule emptied the
-lines until all four fields read alike but for the type word, so the prompt now carries a right/wrong
-pair and a swap test (two fields of one record that could trade `need` lines have lines too thin). It
-says nothing about a cell, a panel or a screen — that is the container molecule's decision, a call later.
-
-What the context did NOT buy, measured: the molecules did not change. The c2 read "a record of the users
-collection" as "a registration form" and used it to confirm the form-sized siblings. Neither
-`groupEnterBoolean` nor `groupEnterDate` has a scenario row for a field rendered in the data row of a
-collection, so there was no other answer to give — a catalog gap, not a funnel one.
-
-Two runs in, the rule has changed no choice, and the cost of keeping it is inside the noise (+915 input
-tokens on c1, against a per-run reasoning spread larger than that). So it stays as the CHANNEL while the
-missing scenario row is the CONTENT: the next move is editorial, in the two entry groups, and only if the
-choice still does not move afterwards should the rule be removed.
+A field region does NOT say which record it belongs to, and that was TRIED AND REMOVED — three runs, zero
+choices changed (CHANGELOG 2026-09-04 c/d/e). The rule cannot work here, for a reason worth keeping: the
+`need` line is forbidden from naming a cell or a screen, because the container molecule is chosen a call
+later, so a scenario row keyed on "the data row of a collection" is unreachable from anything the line is
+allowed to say — and the one molecule such a row could recommend describes ITSELF as a preference
+control, which the c2 prompt tells the model to weigh over the table. "A boolean in a data column" is a
+molecule-identity problem, not a funnel one.
 
 The field carve-out is a HEURISTIC, and its flaw is one of order: whether a field needs a molecule
 depends on the molecule chosen for the container (a read-only table renders text in its cells), and that

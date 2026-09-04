@@ -1,5 +1,49 @@
 # CHANGELOG — c1-groups
 
+## 2026-09-04 (e) — a cláusula do contexto do campo foi REVERTIDA, e o motivo é reutilizável
+
+Três runs, zero escolha mudada. O último (`cadastro-usuario-03`) foi o decisivo: rodou **com** a linha de
+cenário nova no `groupEnterBoolean` — `catalogChars` do `c2` booleano subiu 2.626 → **2.729**, provando que
+a linha estava no prompt — e o `ativo` **continuou** em `ml-boolean-segmented`, citando a linha antiga.
+
+**O motivo que o `c2` escreveu fecha a questão, e são dois blocos independentes:**
+
+> "O campo exige uma decisão explícita de sim/não **no formulário do registro**; as duas opções lado a
+> lado tornam o estado ativo inequívoco, **em vez de usar um controle de preferência** ou de
+> configurações."
+
+1. **a linha `need` não pode dizer "coluna".** Ela diz *"campo de um registro da coleção usuários"*, e o
+   prompt **proíbe** dizer célula/painel/tela porque o contêiner é escolhido uma chamada depois. Chavear
+   a linha de cenário em *"data row of a collection"* foi erro de desenho meu: o cenário ficou
+   inalcançável a partir de tudo o que a `need` está autorizada a carregar;
+2. **e a molécula que a linha recomendava se autodescreve como o contrário.** A `ml-checkbox-preference`
+   se chama *preference* e seu objetivo diz *"Provide a boolean **preference** control"*. O prompt do
+   `c2` manda começar pelas recomendadas **e desempatar pela descrição** — o modelo seguiu a instrução
+   corretamente, e a descrição venceu a tabela. A linha nova era uma **quarta contradição da família
+   §12.6**, criada pela minha própria mão: tabela recomendando molécula cuja descrição a desmente.
+
+**Revertido:** o prompt volta a 6.979 chars (o estado que produzia linhas boas — *"Campo de data de
+nascimento, somente data."*) e a linha de cenário saiu do `groupEnterBoolean`, que voltou a 4 linhas nas
+duas cópias.
+
+**O que NÃO foi revertido, e é o que sobrou de valor:** a seção *"The fields of a record the user
+MAINTAINS are regions"* fica — é ela que faz sair `ml-enter-text`, `ml-date-picker` e a molécula de
+booleano em vez de nada.
+
+🔑 **O achado que substitui a cláusula: "booleano em coluna de dados" não se resolve no chooser.** Não é
+redação de `need` nem de cenário — é **identidade de molécula**. As saídas reais: (a) uma molécula cuja
+identidade seja booleano de célula, ou reescrever o objetivo da `ml-checkbox-preference` para não ser
+"preference"; (b) a tabela renderizar o booleano ela mesma, sem molécula aninhada — que para coluna de
+checkbox é discutivelmente o correto; (c) aceitar a `ml-boolean-segmented`.
+
+⚠️ **E a ressalva de método, que vale mais que as três:** ninguém olhou a página renderizada. A premissa
+*"segmented é largo demais para uma célula"* saiu de leitura de descrição, minha inclusive. Fechar isso
+pede montar a tela e ver — é a lição já registrada na migração de slots vivos (*ler não substitui medir*),
+e três emendas de prompt foram gastas antes de eu aplicá-la.
+
+**Custo de aprender isto:** 4 runs (US$ 0,63) e 5 versões de prompt, das quais **duas** ficaram — a
+capacidade não é região (5.731) e o campo do registro mantido é região (6.979).
+
 ## 2026-09-04 (d) — o contexto do registro SOMA aos fatos do campo, não os substitui
 
 A cláusula (c) pegou mecanicamente — as quatro linhas passaram a citar o registro — e **deslocou o
