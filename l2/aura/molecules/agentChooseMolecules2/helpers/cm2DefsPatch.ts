@@ -161,10 +161,20 @@ export interface Cm2MoleculeChoice {
 }
 
 /**
+ * The address prefix of a PAGE-LEVEL region — one that serves the whole page and belongs to no single
+ * dataBinding (helpers/cm2Regions.ts's `page` kind). Unambiguous by construction: every binding id
+ * this platform generates starts with `binding.`, so nothing can collide with `page::`.
+ */
+export const CM2_PAGE_REGION_PREFIX = 'page::';
+
+/**
  * Sets or removes `molecule: { group, tag }` on exactly the dataBindings/inputs that were extracted as
  * regions this run (helpers/cm2Regions.ts) — never touches a `selection`/`route` input, which was
  * never a region and never entered `choices`. A region present in `choices` with a `null` value means
  * the gate/LLM found nothing — the field is removed (reconciliation), never written as `molecule: null`.
+ *
+ * A `page::<role>` region has no binding node to carry the field, so it lands in the root
+ * `pageMolecules[]` array as `{ role, group, tag }` — see writePageMolecule.
  */
 export function applyMoleculeChoices(
   definitionJson: Record<string, unknown>,
@@ -177,6 +187,12 @@ export function applyMoleculeChoices(
   for (const regionId of regionIds) {
     if (!choices.has(regionId)) continue;
     const choice = choices.get(regionId) ?? null;
+
+    if (regionId.startsWith(CM2_PAGE_REGION_PREFIX)) {
+      writePageMolecule(cloned, regionId.slice(CM2_PAGE_REGION_PREFIX.length), choice);
+      continue;
+    }
+
     const separator = regionId.indexOf('::');
     const bindingId = separator < 0 ? regionId : regionId.slice(0, separator);
     const inputName = separator < 0 ? '' : regionId.slice(separator + 2);
@@ -192,6 +208,39 @@ export function applyMoleculeChoices(
     else delete target.molecule;
   }
   return cloned;
+}
+
+/**
+ * The root `pageMolecules[]` entry for one page-level role, reconciled in place.
+ *
+ * ⚠️ ROOT, not nested under `presentation` (which is where `categoryRef` lives). `presentation` is
+ * agentChangeFrontend's object; putting this agent's output inside it would leave it exposed to a
+ * partial rewrite of that object by its owner. At the root, `pageMolecules` is unambiguously this
+ * agent's output — the same clarity of ownership `molecule` has inside a binding, which had no
+ * alternative location.
+ *
+ * An ARRAY with a `role`, not one field per role (`moleculeFeedback`, `moleculeConfirmation`, ...):
+ * the destructive-confirmation and workflow-progress roles are already known gaps (flow.json.knownGaps),
+ * and a role vocabulary grows without changing the shape. The vocabulary is CLOSED and extended
+ * deliberately — today it holds `feedback` only.
+ *
+ * `definition` carries no `satisfies` (unlike `pipeline`, which is `as const`), so a new root key
+ * cannot break the generated project's typecheck.
+ */
+function writePageMolecule(definitionJson: Record<string, unknown>, role: string, choice: Cm2MoleculeChoice | null): void {
+  if (!role) return;
+  const existing = Array.isArray(definitionJson.pageMolecules) ? definitionJson.pageMolecules : [];
+  // Everything but this role survives untouched — a rerun reconciles one role without dropping another.
+  const kept = existing.filter(item => !isRecord(item) || item.role !== role);
+
+  if (!choice) {
+    // No molecule for this role: drop the entry, and the whole array when it was the last one — never
+    // an empty `pageMolecules: []` left behind, and never `{ role, group: null }`.
+    if (kept.length) definitionJson.pageMolecules = kept;
+    else delete definitionJson.pageMolecules;
+    return;
+  }
+  definitionJson.pageMolecules = [...kept, { role, group: choice.group, tag: choice.tag }];
 }
 
 export interface Cm2PipelineAddition {
