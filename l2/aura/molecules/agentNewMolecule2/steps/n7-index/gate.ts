@@ -10,10 +10,13 @@
 import { MoleculePlan } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
+import { contractItemsMissing, contractItemsUsed, usageContractItems } from '/_102020_/l2/aura/molecules/shared/usageContract.js';
 
 export interface NmIndexGateOptions {
   indexTag: string;        // 'molecules--<group>--index-<project>'
   groupMolecules: string[]; // every molecule shortName of the group, including the new one
+  /** The group's usage skill text (or the loader's degraded placeholder). Empty/degraded skips the check. */
+  groupUsageSkill?: string;
 }
 
 export function runNm2IndexGate(
@@ -67,6 +70,17 @@ export function runNm2IndexGate(
         message: `the showcase container must carry the theme background: '${ctx.theme.info.background.css}'`,
       });
     }
+  }
+
+  // The showcase must demonstrate the molecule's OWN contract (usage skill Properties/Events), not just
+  // the mold's envelope (name/value/isEditing/@change). See shared/usageContract.ts for why.
+  const contract = usageContractItems(options.groupUsageSkill || '');
+  if (contract.size && !contractItemsUsed(content, plan.group, contract).length) {
+    const sample = contractItemsMissing(options.groupUsageSkill || '', content, plan.group).slice(0, 5).join(', ');
+    issues.push({
+      code: 'contract_not_demonstrated',
+      message: `the showcase never uses any property or event from the group's usage contract beyond the mold's envelope (name/value/isEditing/@change) — e.g. ${sample}; read the group usage skill's Properties and Events tables and add them to at least one card`,
+    });
   }
 
   return issues;

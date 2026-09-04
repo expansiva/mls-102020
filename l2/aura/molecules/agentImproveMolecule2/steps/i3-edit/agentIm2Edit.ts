@@ -16,6 +16,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as moleculeGenerationSkill } from '/_102020_/l2/aura/molecules/skills/moleculeGeneration.js';
 import { skill as tokenVocabularySkill } from '/_102020_/l2/aura/molecules/skills/tokenVocabulary.js';
+import { canonicalFallbackRows } from '/_102020_/l2/aura/molecules/skills/canonicalFallbacks.js';
 import { contractFingerprint } from '/_102020_/l2/aura/molecules/shared/contractFingerprint.js';
 import {
   compileStorLess,
@@ -81,6 +82,33 @@ export function createAgent(): IAgentAsync {
     beforePromptStep,
     afterPromptStep,
   };
+}
+
+// The VALUES of the design-system roles, the companion of skills/tokenVocabulary (which carries only
+// the NAMES). Same shared table agentNewMolecule2/n5-less injects — see skills/canonicalFallbacks for
+// the run that measured what its absence costs.
+//
+// ⚠️ THE PROSE HERE IS THE OPPOSITE OF n5-less's, and that is the whole point of not sharing it.
+// n5-less creates a sheet: nothing to preserve, so the canonical value is simply the right one. This
+// step EDITS a sheet that already exists, and the rule of this agent is the DELTA — rewriting the
+// fallback of a role the sheet already reads is an unrequested visual change, however "canonical" the
+// new value is. The table is for a role the edit INTRODUCES.
+function canonicalFallbackTable(): string {
+  return [
+    '#### The canonical fallback of each role — for a role you are INTRODUCING',
+    '',
+    'For a role the sheet ALREADY reads, keep the fallback the sheet already uses — changing it is an',
+    'unrequested visual change. Use the canonical value only for a role you are INTRODUCING.',
+    '',
+    'When you do introduce one, write the fallback exactly as listed instead of inventing a neutral:',
+    'two sheets that pick their own values disagree on what the library looks like with no design',
+    'system, and the gate rejects a sheet that reads the same token with two different fallbacks.',
+    '',
+    'The `-hover`/`-focus`/`-disabled` variants are not listed: use the base role value as the',
+    'fallback when you read a variant, unless the render needs a visibly different one.',
+    '',
+    canonicalFallbackRows(),
+  ].join('\n');
 }
 
 async function beforePromptStep(
@@ -179,6 +207,7 @@ async function beforePromptStep(
     .split('{{groupUsage}}').join(groupUsage || '(the group usage contract could not be read — rely on the molecule\'s own contract below)')
     .split('{{moleculeGeneration}}').join(moleculeGenerationSkill)
     .split('{{tokenVocabulary}}').join(tokenVocabularySkill)
+    .split('{{canonicalFallbacks}}').join(canonicalFallbackTable())
     .split('{{moleculeBase}}').join(moleculeBase || '(base class source unavailable)')
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage, choice))

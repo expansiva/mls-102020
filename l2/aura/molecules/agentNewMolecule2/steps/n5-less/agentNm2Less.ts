@@ -16,7 +16,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as lessAuthoringSkill } from '/_102020_/l2/aura/molecules/skills/lessAuthoring/index.js';
 import { skill as tokenVocabularySkill } from '/_102020_/l2/aura/molecules/skills/tokenVocabulary.js';
-import { DEFAULT_TOKENS_TEMPLATE } from '/_102029_/l2/designSystemBase.js';
+import { canonicalFallbackRows } from '/_102020_/l2/aura/molecules/skills/canonicalFallbacks.js';
 import {
   NM_AGENT_FOLDER,
   compileStorLess,
@@ -264,9 +264,11 @@ async function loadGroupSkill(ctx: MoleculeContext): Promise<string> {
 // only for what the design system does not cover — see section 3 of the skill.
 // Evidence and measurements in todo/moleculetokens/.
 
-// The canonical fallback of every design-system role, read from DEFAULT_TOKENS_TEMPLATE — the same
-// constant that GENERATES a project's designSystem.ts. Injected into the NEUTRAL branch so the
-// fallback is looked up instead of invented.
+// The canonical fallback of every design-system role. The TABLE lives in
+// skills/canonicalFallbacks — shared with agentImproveMolecule2/i3-edit, which writes the same kind
+// of sheet and must not disagree with this one about what the library looks like with no design
+// system. Only the prose below is this agent's: n5-less CREATES the sheet, so there is nothing to
+// preserve and the canonical value is simply the right one (i3-edit's caveat is the opposite).
 //
 // This completes lesson A7 (2026-07-31): the NEUTRAL branch demanded "every appearance value goes
 // through a token" while only the THEMED branch received a value table, which made compliance luck.
@@ -274,37 +276,7 @@ async function loadGroupSkill(ctx: MoleculeContext): Promise<string> {
 // session disagreed on the fallback of 6 roles (`text-default` #37323d vs #374151), and one sheet
 // disagreed with ITSELF on `--border-subtle` nine lines apart. The gate now rejects the intra-sheet
 // case; this table is what makes different sheets converge.
-//
-// Only the base roles are listed: the `-hover`/`-focus`/`-disabled` variants follow the same value
-// pattern and listing all 176 keys would bury the table.
 function canonicalFallbackTable(): string {
-  // The scale tokens carry LESS expressions (`calc(@space-base-unit * 2)`). The runtime rewrites
-  // `@token` into `var(--token)` when it compiles the design system, but a molecule sheet is
-  // compiled on its own — `@space-base-unit` is undefined there and `lessc` fails with a NameError.
-  // Verified: `var(--font-size-12, calc(@font-base-unit * 3))` does not compile. So resolve the
-  // expression against its base unit and hand over a concrete value.
-  const resolveScale = (value: string, source: Record<string, string>): string => {
-    const match = value.match(/^calc\(\s*@([\w-]+)\s*\*\s*([\d.]+)\s*\)$/);
-    if (!match) return value;
-    const base = source[match[1]];
-    const baseMatch = base?.match(/^([\d.]+)([a-z%]*)$/);
-    if (!baseMatch) return value;
-    const amount = Number(baseMatch[1]) * Number(match[2]);
-    return `${Number(amount.toFixed(4))}${baseMatch[2]}`;
-  };
-
-  const rows: string[] = [];
-  const push = (source: Record<string, string>, skipStates: boolean): void => {
-    for (const [name, value] of Object.entries(source)) {
-      if (name.startsWith('_dark-')) continue;
-      if (skipStates && /-(hover|focus|disabled)$/.test(name)) continue;
-      if (/-base-unit$/.test(name)) continue; // an internal of the scale, never read by a sheet
-      rows.push(`| \`--${name}\` | \`${resolveScale(value, source)}\` |`);
-    }
-  };
-  push(DEFAULT_TOKENS_TEMPLATE.color, true);
-  push(DEFAULT_TOKENS_TEMPLATE.global, false);
-  push(DEFAULT_TOKENS_TEMPLATE.typography, false);
   return [
     '### The canonical fallback of each role — LOOK IT UP, do not invent it',
     '',
@@ -315,9 +287,7 @@ function canonicalFallbackTable(): string {
     'The `-hover`/`-focus`/`-disabled` variants are not listed: use the base role value as the',
     'fallback when you read a variant, unless the render needs a visibly different one.',
     '',
-    '| Role | Fallback |',
-    '|------|----------|',
-    ...rows,
+    canonicalFallbackRows(),
   ].join('\n');
 }
 

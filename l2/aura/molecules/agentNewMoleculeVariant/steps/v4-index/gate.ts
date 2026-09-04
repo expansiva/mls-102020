@@ -9,8 +9,10 @@
 import { VariantContext } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vContext.js';
 import { groupIndexTag } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/helpers/vTemplates.js';
 import { VGateIssue } from '/_102020_/l2/aura/molecules/agentNewMoleculeVariant/steps/v1-bootstrap/gate.js';
+import { contractItemsMissing, contractItemsUsed, usageContractItems } from '/_102020_/l2/aura/molecules/shared/usageContract.js';
 
-export function runIndexGate(indexTs: string, ctx: VariantContext): VGateIssue[] {
+/** groupUsageSkill: the group's usage skill text (or the loader's degraded placeholder). Empty/degraded skips the check. */
+export function runIndexGate(indexTs: string, ctx: VariantContext, groupUsageSkill = ''): VGateIssue[] {
   const issues: VGateIssue[] = [];
 
   if (!indexTs.trim()) {
@@ -45,6 +47,17 @@ export function runIndexGate(indexTs: string, ctx: VariantContext): VGateIssue[]
   const bgCss = ctx.theme.info.background.css.replace(/\s+/g, ' ').replace(/;$/, '').trim();
   if (bgCss && !indexTs.replace(/\s+/g, ' ').includes(bgCss)) {
     issues.push({ code: 'background', message: `index.ts page container must carry the theme background: '${ctx.theme.info.background.css}'` });
+  }
+
+  // The showcase must demonstrate the molecule's OWN contract (usage skill Properties/Events), not just
+  // the mold's envelope (name/value/isEditing/@change). See shared/usageContract.ts for why.
+  const contract = usageContractItems(groupUsageSkill);
+  if (contract.size && !contractItemsUsed(indexTs, ctx.variant.group, contract).length) {
+    const sample = contractItemsMissing(groupUsageSkill, indexTs, ctx.variant.group).slice(0, 5).join(', ');
+    issues.push({
+      code: 'contract_not_demonstrated',
+      message: `the showcase never uses any property or event from the group's usage contract beyond the mold's envelope (name/value/isEditing/@change) — e.g. ${sample}; read the group usage skill's Properties and Events tables and add them to at least one card`,
+    });
   }
 
   return issues;

@@ -85,6 +85,8 @@ below says *how* to choose and what is forbidden.
 
 {{tokenVocabulary}}
 
+{{canonicalFallbacks}}
+
 ### Its own contract — what THIS molecule promises
 
 {{contract}}

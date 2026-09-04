@@ -142,7 +142,9 @@ async function afterPromptStep(
     extractError = error instanceof Error ? error.message : String(error);
   }
 
-  const issues = extractError ? [{ code: 'extract', message: extractError }] : runIndexGate(indexTs, ctx);
+  const groupEntry = skills.find(s => s.name === ctx.origin.groupCanonical);
+  const groupUsageSkill = groupEntry ? await loadUsageSkill(groupEntry.skillUsageReference).catch(() => '') : '';
+  const issues = extractError ? [{ code: 'extract', message: extractError }] : runIndexGate(indexTs, ctx, groupUsageSkill);
   const errorText = issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
 
   if (issues.length === 0) {
