@@ -101,13 +101,20 @@ void test('applyMoleculeChoices leaves a region untouched when it was never answ
 
 void test('applyPipelineSkills appends to skills/dependsFiles of entry 0 only, deduplicated', () => {
   const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  const once = applyPipelineSkills(parsed.pipelineJson, [{ usageRef: '/_102040_/l2/molecules/groupselectone/usage', componentFiles: ['/_102040_/l2/molecules/groupselectone/ml-select-one'] }]);
-  const twice = applyPipelineSkills(once, [{ usageRef: '/_102040_/l2/molecules/groupselectone/usage', componentFiles: ['/_102040_/l2/molecules/groupselectone/ml-select-one'] }]);
+  // PIPELINE form on both: no leading slash, with extension (see cm2Types.cm2PipelineRef).
+  const addition = {
+    usageRef: '_102020_/l2/aura/molecules/skills/groupSelectOne/usage.ts',
+    componentFiles: ['_102040_/l2/molecules/groupselectone/ml-select-one.ts'],
+  };
+  const once = applyPipelineSkills(parsed.pipelineJson, [addition]);
+  const twice = applyPipelineSkills(once, [addition]);
   const entry = twice[0] as any;
-  assert.equal(entry.skills.filter((s: string) => s === '/_102040_/l2/molecules/groupselectone/usage').length, 1);
-  assert.equal(entry.dependsFiles.filter((s: string) => s === '/_102040_/l2/molecules/groupselectone/ml-select-one').length, 1);
+  assert.equal(entry.skills.filter((s: string) => s === addition.usageRef).length, 1);
+  assert.equal(entry.dependsFiles.filter((s: string) => s === addition.componentFiles[0]).length, 1);
   // The original skill/dependsFile survive the patch.
   assert.ok(entry.skills.includes('_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts'));
+  // Nothing this agent adds to a pipeline array may carry a leading slash — materialize drops those.
+  for (const value of [...entry.skills, ...entry.dependsFiles]) assert.equal(value.startsWith('/'), false, value);
 });
 
 const CONTRACT_DEFS_SOURCE = `export const definition = [

@@ -93,13 +93,44 @@ export interface Cm2GroupResult {
   usageContract: string;
 }
 
-/** '/_102040_/l2/molecules/groupselectone/ml-select-one' from catalogProject + a published tag —
- * always derivable (the catalog itself proves the file exists, via the group's own molecules[].tag). */
+/**
+ * TWO REFERENCE FORMS EXIST AND THEY ARE NOT INTERCHANGEABLE.
+ *
+ * - IMPORT form: '/_102020_/l2/aura/molecules/skills/groupEnterMoney/usage' — leading slash, NO
+ *   extension. What `await import()` takes, and what the catalog itself publishes in `usageContract`.
+ * - PIPELINE form: '_102020_/l2/aura/molecules/skills/groupEnterMoney/usage.ts' — NO leading slash,
+ *   WITH extension. What `pipeline[].skills` / `pipeline[].dependsFiles` take.
+ *
+ * ⚠️ MEASURED (l2/{module}/trace/frontend-materialize-context, 2026-09-03): writing the import form
+ * into a pipeline array silently drops the entry. Of 6 skills requested, only the 2 already in pipeline
+ * form were read; of 8 dependsFiles, only 2. agentCfeMaterializeGen's readSections/readContextSections
+ * skip an entry whose content comes back empty (`if (!content) continue`), so a usage contract that
+ * never reached the model looks EXACTLY like one that was never listed. Both defects were present at
+ * once in every failing entry (slash AND missing extension), so the trace alone cannot say which one
+ * did it — but the platform's own generator settles the target form: across every .defs.ts it wrote in
+ * a real client project, not one pipeline reference carries a leading slash.
+ *
+ * cm2PipelineRef converts, and every reference this agent puts in a pipeline array goes through it.
+ */
+const CM2_FULL_EXTENSIONS = ['.ts', '.md', '.json', '.less', '.html'];
+
+export function cm2PipelineRef(reference: string): string {
+  const trimmed = (reference || '').trim();
+  if (!trimmed) return '';
+  const withoutSlash = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+  // '.defs' is a HALF extension in this platform ('index.defs' is shortName 'index' + '.defs.ts'), so
+  // it must still get the '.ts' — hence a full-extension allowlist rather than a bare /\.\w+$/ test.
+  return CM2_FULL_EXTENSIONS.some(extension => withoutSlash.endsWith(extension)) ? withoutSlash : `${withoutSlash}.ts`;
+}
+
+/** '_102040_/l2/molecules/groupselectone/ml-select-one.ts' (PIPELINE form — see cm2PipelineRef) from
+ * catalogProject + a published tag; always derivable, since the catalog's own molecules[].tag proves
+ * the file exists. */
 export function cm2ComponentReference(catalogProject: number, tag: string): string {
   const separator = tag.indexOf('--');
   const groupFolder = separator < 0 ? tag : tag.slice(0, separator);
   const shortName = separator < 0 ? tag : tag.slice(separator + 2);
-  return `/_${catalogProject}_/l2/molecules/${groupFolder}/${shortName}`;
+  return cm2PipelineRef(`_${catalogProject}_/l2/molecules/${groupFolder}/${shortName}`);
 }
 
 /** The result JSON of the step whose planning.planId === anchor, or null when it hasn't landed yet. */
