@@ -16,14 +16,30 @@ shape — the same file `page11`, `page21`, `page31` or a future `page12` all sh
 
 ## What it changes
 
-- `definition.dataBindings[]` (a `query` binding) and `definition.dataBindings[].inputs[]` (a `form`
-  input) each get a `molecule: { group, tag }` field when a molecule was chosen — nothing more:
+Four kinds of need are decided, and each is written where it belongs — never anything more than
+`{ group, tag }`:
+
+- a **query** binding gets `molecule` on itself — the surface that lists (and selects) its rows;
+- a **command** binding gets `molecule` on itself — the control that executes it. A binding is a query
+  or a command, never both, so the two share the address without ambiguity;
+- a **`form` input** of a command gets `molecule` on that input — the control the user types into;
   ```json
   "molecule": { "group": "groupSelectOne", "tag": "groupselectone--ml-select-one" }
   ```
-- `pipeline[0].dependsFiles`/`pipeline[0].skills` get the chosen molecules' own source files and their
-  group's usage contract appended (deduplicated) — files that already exist in the catalog project;
-  nothing new is generated.
+- a **page-wide** need, belonging to no single binding, goes to the root `pageMolecules[]` with its
+  role. Today one role exists — `feedback`, the surface reporting success/error for every command:
+  ```json
+  "pageMolecules": [
+    { "role": "feedback", "group": "groupNotifyUser", "tag": "groupnotifyuser--ml-toast-notification" }
+  ]
+  ```
+
+`selection`/`route` inputs are never annotated — they are filled by picking a row elsewhere or by the
+URL, never typed, so there is nothing for a molecule to serve.
+
+And `pipeline[0].dependsFiles`/`pipeline[0].skills` get the chosen molecules' own source files and
+their group's usage contract appended (deduplicated), in pipeline form — no leading slash, with
+extension. Those files already exist in the catalog project; nothing new is generated.
 
 **Nothing else is ever written.** No report, no trace, no `l4` folder in any project. See `flow.json`'s
 "ZERO ARTIFACT RULE".

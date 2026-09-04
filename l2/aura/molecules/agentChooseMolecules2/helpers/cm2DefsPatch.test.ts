@@ -99,6 +99,48 @@ void test('applyMoleculeChoices leaves a region untouched when it was never answ
   assert.equal('molecule' in (patched.dataBindings as any[])[0], false);
 });
 
+void test('a page:: region lands in the root pageMolecules[] — it has no binding node to carry it', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  const patched = applyMoleculeChoices(
+    parsed.definitionJson,
+    ['page::feedback'],
+    new Map([['page::feedback', { group: 'groupNotifyUser', tag: 'groupnotifyuser--ml-toast-notification' }]]),
+  );
+  assert.deepEqual(patched.pageMolecules, [{ role: 'feedback', group: 'groupNotifyUser', tag: 'groupnotifyuser--ml-toast-notification' }]);
+  // The bindings are untouched by a page-level choice.
+  assert.equal('molecule' in (patched.dataBindings as any[])[0], false);
+});
+
+void test('a rerun reconciles one role in place, and keeps the other roles', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  parsed.definitionJson.pageMolecules = [
+    { role: 'feedback', group: 'stale', tag: 'stale--tag' },
+    { role: 'confirmation', group: 'keptGroup', tag: 'kept--tag' },
+  ];
+  const patched = applyMoleculeChoices(
+    parsed.definitionJson,
+    ['page::feedback'],
+    new Map([['page::feedback', { group: 'groupNotifyUser', tag: 'groupnotifyuser--ml-toast-notification' }]]),
+  );
+  assert.deepEqual(patched.pageMolecules, [
+    { role: 'confirmation', group: 'keptGroup', tag: 'kept--tag' },
+    { role: 'feedback', group: 'groupNotifyUser', tag: 'groupnotifyuser--ml-toast-notification' },
+  ]);
+});
+
+void test('answering none for the last page role deletes pageMolecules entirely — never an empty array', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  parsed.definitionJson.pageMolecules = [{ role: 'feedback', group: 'g', tag: 't' }];
+  const patched = applyMoleculeChoices(parsed.definitionJson, ['page::feedback'], new Map([['page::feedback', null]]));
+  assert.equal('pageMolecules' in patched, false);
+});
+
+void test('a page:: role is never written as null, and an unknown page role writes nothing', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  const noRole = applyMoleculeChoices(parsed.definitionJson, ['page::'], new Map([['page::', { group: 'g', tag: 't' }]]));
+  assert.equal('pageMolecules' in noRole, false);
+});
+
 void test('applyPipelineSkills appends to skills/dependsFiles of entry 0 only, deduplicated', () => {
   const parsed = parsePageDefsSource(PAGE_SOURCE)!;
   // PIPELINE form on both: no leading slash, with extension (see cm2Types.cm2PipelineRef).

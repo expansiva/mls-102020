@@ -123,7 +123,9 @@ function readCriticalActions(value: unknown): Cm2CriticalAction[] {
   return out;
 }
 
-function countSelectionInputs(definitionJson: Record<string, unknown>): number {
+/** Exported: helpers/cm2Regions states this same fact in the surface region's need line, and one
+ * source of truth beats two counters that can drift. */
+export function countSelectionInputs(definitionJson: Record<string, unknown>): number {
   const bindings = Array.isArray(definitionJson.dataBindings) ? definitionJson.dataBindings : [];
   let count = 0;
   for (const binding of bindings) {
