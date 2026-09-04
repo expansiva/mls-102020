@@ -24,7 +24,7 @@ export interface Ns4ClassicBffCall {
   kind: 'query' | 'command';
   uses: Array<{ operationId: string }>;
   input: Array<{ name: string; from: string; required?: boolean; source: string; sourceRef?: string; type: string; enumValues?: string[] }>;
-  output: { kind: 'object' | 'list'; fields: Ns4ClassicField[] };
+  output: { kind: 'object' | 'list' | 'paginated'; fields: Ns4ClassicField[] };
   route: string;
 }
 export interface Ns4ClassicWorkspace {
@@ -52,17 +52,19 @@ export interface Ns4ClassicOperation {
   rulesApplied: string[];
   story: { actor: string; goal: string; steps: string[]; outcome: string };
   accessPattern: { kind: string; description: string; entity: string; keyField: string; pagination: string; selection: string; output: string[] };
-  outputShape: { kind: 'object' | 'list'; fields: Array<{ name: string; type: string; required: boolean; fieldRef: string }> };
-  inputs: Array<{ inputId: string; fieldRef: string; required: boolean; source: string; description: string; enumValues?: string[] }>;
+  outputShape: {
+    kind: 'object' | 'list' | 'paginated';
+    fields: Array<{ name: string; type: string; required: boolean; fieldRef?: string; item?: { fields: Array<{ name: string; type: string; required: boolean; fieldRef: string }> } }>;
+  };
+  inputs: Array<{ inputId: string; fieldRef: string; required: boolean; source: string; description: string; enumValues?: string[]; type?: string }>;
   pageId: string;
   commandName: string;
   bffName: string;
   /**
    * Carried verbatim from the model when the operation is a master-data catalogue
-   * operation. Unlike `pagination` — emitted as `none` because the module never
-   * projects page meta — this one must survive to the consumer: it is what lets the
-   * backend generator route the lifecycle pair to the MDM facade and keep the list
-   * active-only. Optional, so a consumer that ignores it is unaffected.
+   * operation. It is what lets the backend generator route the lifecycle pair to
+   * the MDM facade and keep the list active-only. Optional, so a consumer that
+   * ignores it is unaffected.
    */
   mdm?: Ns4E8MdmSemantics;
 }
@@ -87,6 +89,7 @@ export function transposeNs4ClassicOperation(
   const owner = model.workspaces.find(workspace => workspace.bffCalls.some(call => call.operationId === operation.operationId));
   const call = owner?.bffCalls.find(item => item.operationId === operation.operationId);
   const list = operation.accessPattern.kind === 'list';
+  const paginated = isPaginated(operation.accessPattern.pagination, call?.outputKind);
   const outputFields = (entity?.fields || []).map(field => ({
     name: field.fieldId, type: classicType(field.type), required: field.required,
     fieldRef: `${operation.entityRef}.${field.fieldId}`,
@@ -109,13 +112,13 @@ export function transposeNs4ClassicOperation(
       description: operation.title,
       entity: operation.entityRef,
       keyField: `${operation.entityRef}.${identityFieldOf(entity)}`,
-      // Pagination stays declared as none until a call actually projects the page meta; a shape the
-      // module never emits would only make the wire lie about itself.
-      pagination: 'none',
+      pagination: operation.accessPattern.pagination ?? (paginated ? 'optional' : 'none'),
       selection: list ? 'single' : 'none',
       output: outputFields.map(field => field.fieldRef),
     },
-    outputShape: { kind: list ? 'list' : 'object', fields: outputFields },
+    outputShape: paginated
+      ? paginatedOutputShape(collectionFieldName(operation.entityRef), outputFields)
+      : { kind: list ? 'list' : 'object', fields: outputFields },
     inputs: operation.inputs.map(input => ({
       inputId: input.inputId,
       fieldRef: `${input.fieldRef.entityId}.${input.fieldRef.fieldId}`,
@@ -123,6 +126,7 @@ export function transposeNs4ClassicOperation(
       source: input.source,
       description: input.description,
       ...(input.enumValues?.length ? { enumValues: input.enumValues } : {}),
+      ...(input.type ? { type: input.type } : {}),
     })),
     ...(operation.mdm ? { mdm: operation.mdm } : {}),
     pageId: owner?.workspaceId || '',
@@ -170,13 +174,18 @@ function transposeCall(
   model: Ns4E8Model, workspaceId: string, call: Ns4E8BffCall, operation: Ns4E8Operation | undefined, ontology: Ns4E4Review,
 ): Ns4ClassicBffCall {
   const entity = ontology.entities.find(item => item.entityId === call.entityRef);
-  const list = call.outputKind === 'paginated' || operation?.accessPattern.kind === 'list';
-  const fields = (entity?.fields || []).map(field => ({
+  const paginated = isPaginated(operation?.accessPattern.pagination, call.outputKind);
+  const list = !paginated && (call.outputKind === 'list' || operation?.accessPattern.kind === 'list');
+  const collection = paginated || list;
+  const itemFields = (entity?.fields || []).map(field => ({
     name: field.fieldId,
-    from: ns4ClassicFrom(call.operationId, list ? `$items.${field.fieldId}` : field.fieldId),
+    from: ns4ClassicFrom(call.operationId, collection ? `$items.${field.fieldId}` : field.fieldId),
     type: classicType(field.type),
     required: field.required,
   }));
+  const fields = paginated
+    ? paginatedBffFields(call.operationId, collectionFieldName(call.entityRef), itemFields)
+    : itemFields;
   return {
     bffId: call.bffId,
     kind: call.kind,
@@ -189,13 +198,13 @@ function transposeCall(
       // `source` alone is an unusable label: the consumer needs the call the picker reads FROM, and it
       // is the one thing only this workspace knows. Absent when the value is not chosen on the page.
       ...(inputSourceOf(call, input.inputId) ? { sourceRef: inputSourceOf(call, input.inputId) } : {}),
-      // 2. The type comes from the ontology field the input names, never from a lucky match against
-      // an output projection path (a list output is `$items.`-prefixed and would never match).
-      type: classicType(fieldTypeOf(ontology, input.fieldRef.entityId, input.fieldRef.fieldId)),
+      // Type is the input's own override (`page`/`pageSize` are numbers) or the ontology field the
+      // input names — never a lucky match against an output projection path.
+      type: input.type || classicType(fieldTypeOf(ontology, input.fieldRef.entityId, input.fieldRef.fieldId)),
       ...(input.enumValues?.length ? { enumValues: input.enumValues } : {}),
     })),
     // One call carries at most one collection: composition is several calls on one page.
-    output: { kind: list ? 'list' : 'object', fields },
+    output: { kind: paginated ? 'paginated' : list ? 'list' : 'object', fields },
     route: `${model.moduleName}.${workspaceId}.${call.bffId}`,
   };
 }
@@ -215,7 +224,18 @@ export function buildNs4ClassicContractSource(args: {
 }): string {
   const pascal = upperCamel(args.call.bffId);
   const inputFields = args.call.input.map(input => `  ${input.name}${input.required ? '' : '?'}: ${tsType(input.type, input.enumValues)};`);
-  const outputFields = args.call.output.fields.map(field => `  ${field.name}${field.required ? '' : '?'}: ${tsType(field.type)};`);
+  const arrayField = args.call.output.kind === 'paginated'
+    ? args.call.output.fields.find(field => field.item?.fields?.length)
+    : undefined;
+  const outputBlock = arrayField
+    ? paginatedContractOutput(pascal, arrayField, args.call.output.fields.filter(field => field !== arrayField))
+    : [
+      `export interface ${pascal}Output {`,
+      ...(args.call.output.fields.length
+        ? args.call.output.fields.map(field => `  ${field.name}${field.required ? '' : '?'}: ${tsType(field.type)};`)
+        : ['  // sem projeção declarada']),
+      '}',
+    ];
   return [
     `/// <mls fileReference="${args.fileRef}" enhancement="_blank"/>`,
     '',
@@ -226,13 +246,26 @@ export function buildNs4ClassicContractSource(args: {
     ...(inputFields.length ? inputFields : ['  // sem inputs públicos (resolvidos por contexto)']),
     '}',
     '',
-    `export interface ${pascal}Output {`,
-    ...(outputFields.length ? outputFields : ['  // sem projeção declarada']),
-    '}',
+    ...outputBlock,
     '',
     `export const ${args.call.bffId}Route = '${args.call.route}' as const;`,
     '',
   ].join('\n');
+}
+
+function paginatedContractOutput(pascal: string, arrayField: Ns4ClassicField, meta: Ns4ClassicField[]): string[] {
+  const itemName = `${pascal}OutputItem`;
+  const itemFields = (arrayField.item?.fields || []).map(field => `  ${field.name}${field.required ? '' : '?'}: ${tsType(field.type)};`);
+  return [
+    `export interface ${itemName} {`,
+    ...(itemFields.length ? itemFields : ['  // sem colunas']),
+    '}',
+    '',
+    `export interface ${pascal}Output {`,
+    `  ${arrayField.name}: ${itemName}[];`,
+    ...meta.map(field => `  ${field.name}${field.required === false ? '?' : ''}: ${tsType(field.type)};`),
+    '}',
+  ];
 }
 
 export function buildNs4ClassicSiteMap(model: Ns4E8Model, classic: Ns4ClassicWorkspace[]): Ns4ClassicSiteMap {
@@ -272,6 +305,43 @@ export function buildNs4ClassicSiteMap(model: Ns4E8Model, classic: Ns4ClassicWor
 function identityFieldOf(entity: Ns4OntologyEntity | undefined): string {
   return entity?.storage.idField || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId || '';
 }
+
+function isPaginated(pagination: string | undefined, outputKind?: string): boolean {
+  return pagination === 'optional' || pagination === 'required' || outputKind === 'paginated';
+}
+
+/** Declared collection name on the wire — never the generic `items`. */
+export function collectionFieldName(entityId: string): string {
+  const base = entityId ? entityId.slice(0, 1).toLowerCase() + entityId.slice(1) : 'records';
+  if (base.endsWith('s')) return base;
+  if (/[^aeiou]y$/i.test(base)) return `${base.slice(0, -1)}ies`;
+  return `${base}s`;
+}
+
+function paginatedOutputShape(
+  arrayName: string,
+  itemFields: Array<{ name: string; type: string; required: boolean; fieldRef: string }>,
+): Ns4ClassicOperation['outputShape'] {
+  return {
+    kind: 'paginated',
+    fields: [
+      { name: arrayName, type: 'array', required: true, item: { fields: itemFields } },
+      { name: 'total', type: 'number', required: true },
+      { name: 'page', type: 'number', required: true },
+      { name: 'pageSize', type: 'number', required: true },
+    ],
+  };
+}
+
+function paginatedBffFields(operationId: string, arrayName: string, itemFields: Ns4ClassicField[]): Ns4ClassicField[] {
+  return [
+    { name: arrayName, from: ns4ClassicFrom(operationId, '$items'), type: 'array', required: true, item: { fields: itemFields } },
+    { name: 'total', from: ns4ClassicFrom(operationId, 'total'), type: 'number', required: true },
+    { name: 'page', from: ns4ClassicFrom(operationId, 'page'), type: 'number', required: true },
+    { name: 'pageSize', from: ns4ClassicFrom(operationId, 'pageSize'), type: 'number', required: true },
+  ];
+}
+
 function classicType(type: Ns4OntologyField['type']): string {
   if (type === 'json') return 'json';
   if (type === 'number' || type === 'integer' || type === 'money') return 'number';

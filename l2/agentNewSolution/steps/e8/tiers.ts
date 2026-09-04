@@ -518,6 +518,8 @@ function sortableFieldIds(entity: Ns4OntologyEntity): string[] {
  * is required, `l4OperationInputs` drops an empty fieldRef, and `NS4_E8_INPUT_FIELD` demands a resolvable
  * ontology field. The closed domain lives on `enumValues` (`sortBy` = field ids, `sortOrder` = asc|desc),
  * not on that borrowed field; CF must prefer the input's enumValues over the fieldRef enum.
+ * `page`/`pageSize` borrow the identity field and carry `type: 'number'` so the wire is numeric
+ * rather than the borrowed field's type. Default 20 / cap 200 live in the runtime, not here.
  */
 function catalogueListInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContext): Ns4E8Input[] {
   const inputs: Ns4E8Input[] = [];
@@ -541,6 +543,19 @@ function catalogueListInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContex
     inputs.push({
       inputId: 'sortOrder', fieldRef, source: 'userInput', required: false, enumValues: ['asc', 'desc'],
       description: label(context, 'Direção da ordenação.', 'Sort direction.'),
+    });
+  }
+  const idField = identityFieldOf(entity);
+  const pageField = (idField ? entity.fields.find(field => field.fieldId === idField) : undefined) || entity.fields[0];
+  if (pageField) {
+    const fieldRef = { entityId: entity.entityId, fieldId: pageField.fieldId };
+    inputs.push({
+      inputId: 'page', fieldRef, source: 'userInput', required: false, type: 'number',
+      description: label(context, 'Página da listagem (a partir de 1).', 'Listing page (1-based).'),
+    });
+    inputs.push({
+      inputId: 'pageSize', fieldRef, source: 'userInput', required: false, type: 'number',
+      description: label(context, 'Tamanho da página (omisso = 20, teto 200).', 'Page size (default 20, cap 200).'),
     });
   }
   return inputs;

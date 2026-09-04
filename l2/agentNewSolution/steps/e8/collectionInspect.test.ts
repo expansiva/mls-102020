@@ -129,7 +129,7 @@ test('leftover getById on a collection inspect is a registrar, never a failure',
       outputRefs: ['Task.taskId'], useRules: [], transitionRefs: [], story: [], useCaseId: 'inspectTaskSummary',
     }, {
       operationId: 'locateTasks', title: 'Localizar', kind: 'query', entityRef: 'Task', entityRefs: ['Task'],
-      accessPattern: { kind: 'list' }, inputs: [], outputRefs: ['Task.taskId'], useRules: [], transitionRefs: [], story: [],
+      accessPattern: { kind: 'list', pagination: 'optional' }, inputs: [], outputRefs: ['Task.taskId'], useRules: [], transitionRefs: [], story: [],
       useCaseId: 'locateTasks',
     }, {
       operationId: 'inspectTaskDetails', title: 'Detalhes', kind: 'query', entityRef: 'Task', entityRefs: ['Task'],
