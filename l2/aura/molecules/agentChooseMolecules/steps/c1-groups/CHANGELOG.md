@@ -1,5 +1,49 @@
 # CHANGELOG — c1-groups
 
+## 2026-09-04 (b) — o campo do registro mantido volta a ser região
+
+A emenda da manhã engoliu demais, e o run `crud-cadastro-usuario` mediu isso. Enunciado com os campos
+nomeados (*"…Campos do registro: nome (texto), data de nascimento (data), e-mail (texto), ativo
+(sim/não)"*) voltou com **uma região só** — a coleção — e os quatro campos como prosa dentro da linha
+`need`. Molécula certa (`ml-inline-edit-table`), zero moléculas de campo, e a `ml-inline-edit-table`
+declara no próprio objetivo que *"the page owns the VALUES"*: sem molécula de entrada por campo, o que
+foi escolhido não monta.
+
+**A frase culpada era o critério positivo**, escrito pensando em ação e não em conteúdo aninhado:
+*"something the user fills, picks or reads **that is not content of its neighbour**"*. Um campo dentro de
+uma célula **é** conteúdo do vizinho, então o critério o excluía. Somado ao bullet da coleção mantida, a
+leitura do modelo ficou consistente: a coleção é a região e tudo dentro dela é descrição dela.
+
+O que estava conflado, e agora está separado no texto:
+
+| | precisa de molécula própria? | é região? |
+|---|---|---|
+| **capacidade** do contêiner (ordenar, selecionar, salvar) | não | não |
+| **conteúdo aninhado** (campo na célula) | **sim** | **sim** |
+
+- o critério positivo passou a ser *"whether a component has to be CHOSEN, **not where it sits on the
+  screen**"*, com a frase explícita de que região aninhada continua região;
+- seção nova **`### The fields of a record the user MAINTAINS are regions`**: coleção = uma região com os
+  verbos no `need`, **mais** uma região por campo nomeado, com o tipo do campo no `need`.
+
+**Os dois limites vieram no mesmo texto, porque cada um é um sobre-disparo previsível na outra direção:**
+coluna de coleção que o usuário **só lê** não é região (nada é preenchido ali), e **campo que o enunciado
+não nomeia não se inventa** — *"cadastro de usuário"* sozinho continua sendo uma região.
+
+⚠️ **É heurística, e o furo é de ORDEM.** Se um campo precisa de molécula depende da molécula escolhida
+para o contêiner — em tabela só de leitura a célula é texto —, e isso só se sabe **depois** do `c2`,
+enquanto as regiões nascem no `c1`. O texto contorna pedindo o sinal ao enunciado ("registro que o
+usuário cria ou edita"), não à molécula. O conserto estrutural é a região com `parent` + `slot`, que
+muda schema, gate e `rows[]`, e não se justifica na sonda: o `agentChooseMolecules2` já tem a estrutura
+(`query` → a coleção, cada `input` de `form` → o campo, com o tipo declarado pelo contrato).
+
+**Nota do run que sustenta a escolha:** a linha `need` do `c1` já vinha carregando os tipos dos campos
+(*"nome e e-mail em texto, data de nascimento em data e ativo em sim/não"*). A informação estava no
+artefato; faltava região para pendurá-la. Os três grupos necessários estão publicados no catálogo
+(`groupEnterText`, `groupEnterDate`, `groupEnterBoolean`).
+
+Instruções: 5.731 → **6.979 chars** — é o marcador de versão do prompt no `prompt-c1-groups-01.json`.
+
 ## 2026-09-04 — capacidade não é região, e a manutenção da coleção entra na linha `need`
 
 Terceira ocorrência do mesmo modo de falha, agora fora da bateria. O run `cadastro-usuarios`

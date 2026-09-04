@@ -22,7 +22,15 @@ Not inventing regions is harder than finding them, and it is the mistake made mo
 
 The verbs are not discarded — they are what decides the component inside the group, so write them into the `need` line. What must not happen is a region for each one.
 
-**A region of its own is a component the screen would really have besides the other:** something the user fills, picks or reads that is not content of its neighbour. An action with no collection behind it — signing in, advancing a wizard — is a region. A verb that only exists because a collection is there is not.
+**The test is whether a component has to be CHOSEN, not where it sits on the screen.** A verb a component performs on its own content needs no component of its own, so it is not a region. Something the user fills, picks or reads needs one, and stays a region even when it sits INSIDE another region. An action with no collection behind it — signing in, advancing a wizard — is a region. A verb that only exists because a collection is there is not.
+
+### The fields of a record the user MAINTAINS are regions
+
+When the definition names the fields of a record the user creates or edits — `name (text)`, `date of birth (date)`, `active (yes/no)` — **each field is a region**, even though the collection they belong to is a single region. A component that maintains records owns the flow and the editing mode, not the fields: the field that types a name and the field that picks a date are separate components. Name only the collection and nobody downstream is left to answer what edits each field.
+
+So keep both: **one region for the collection**, with the maintenance verbs in its `need` line, **and one region per named field**, whose `need` line carries that field's own type and whatever the definition says about it.
+
+Two limits on this. **Columns of a collection the user only READS are not regions** — nothing is filled there, and the component that shows the collection renders them itself. And **never invent a field the definition does not name**: a definition that says only `user registration` has one region, not a guess at what a user record contains.
 
 ## Then: the group, or `none`
 

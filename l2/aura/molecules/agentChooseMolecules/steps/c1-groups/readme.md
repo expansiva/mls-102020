@@ -27,7 +27,9 @@ Two questions, in order.
    **capability is not a region**: a verb acting on the content of a neighbouring region (select rows,
    save the cell, create/edit/delete a record of the list beside it) belongs to that region's `need`
    line. Superdecomposition is this step's recurrent defect — three occurrences measured (V1, V5 and
-   `cadastro-usuarios`), all of them a capability that arrived as a verb.
+   `cadastro-usuarios`), all of them a capability that arrived as a verb. But a **named field of a
+   record the user maintains IS a region**, nested or not: the capability needs no component, the field
+   needs one. The test is whether a component has to be chosen, never where it sits on the screen.
 2. **Which published group serves each one, or none?** The group list is the only source of group
    names, and it is deliberately partial in the pilot (6 of 32).
 
@@ -40,6 +42,13 @@ The two halves are one rule: verbs the prompt keeps out of their own region are 
 line must carry — whether the collection is only read or also maintained, and where one record opens
 (in the row, in a panel beside the list, in a screen of its own). That last axis alone separates five
 molecules of `groupViewTable`, and it is what battery case V3 asked for and did not get.
+
+The field carve-out is a HEURISTIC, and its flaw is one of order: whether a field needs a molecule
+depends on the molecule chosen for the container (a read-only table renders text in its cells), and that
+is known only after c2, while regions are born in c1. The prompt takes the signal from the definition
+("a record the user creates or edits") instead of from the molecule. The structural fix — a region with
+`parent` + `slot` — is not this probe's: `agentChooseMolecules2` already has the shape, from a typed
+contract rather than from prose.
 
 ## Invariants
 
