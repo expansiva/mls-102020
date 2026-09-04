@@ -1,5 +1,48 @@
 # CHANGELOG — c1-groups
 
+## 2026-09-04 (d) — o contexto do registro SOMA aos fatos do campo, não os substitui
+
+A cláusula (c) pegou mecanicamente — as quatro linhas passaram a citar o registro — e **deslocou o
+conteúdo em vez de somar**. Medido no `cadastro-usuarios-02`:
+
+| campo | antes (6.979) | depois (7.651) |
+|---|---|---|
+| nome | "Campo de texto para o **nome do usuário**." | "campo de texto do registro da coleção cadastro de usuários" |
+| data de nascimento | "Campo de data **de nascimento, somente data**." | "campo de data do registro da coleção cadastro de usuários" |
+| ativo | "Campo sim/não para informar **se o usuário está ativo**." | "campo sim/não do registro da coleção cadastro de usuários" |
+
+As quatro linhas ficaram **intercambiáveis a menos da palavra do tipo**, e "de nascimento" — o fato que
+decidiria entre digitar e navegar um calendário 30 anos atrás — saiu da linha. Não houve dano no run
+porque o `c2` também vê o **nome da região**, e foi de lá que a justificativa dele tirou o "nascimento";
+mas a linha `need` é o contrato entre os passos por desenho, e ela foi esvaziada.
+
+**Causa: `Say no more than that`.** A frase existia para proibir layout e foi lida como "a linha é só
+isto" — o parágrafo novo virou o gabarito da linha inteira. Consertado em três movimentos:
+
+- **`ALSO`** e **"Added to the field's own facts, never in place of them"**, explícitos;
+- **um par certo/errado**, porque a regra abstrata já falhou uma vez aqui: `date of birth, date only, a
+  field of a record of the users collection` contra `a date field of a record of the users collection`;
+- **o teste do troca-linhas**: *se dois campos do mesmo registro pudessem trocar as linhas `need` e
+  nenhuma ficasse errada, as duas estão magras demais*. É verificável pelo próprio modelo e ataca
+  exatamente o modo de falha medido;
+- a proibição de layout saiu para **parágrafo próprio**, para não voltar a ser lida como escopo da linha.
+
+⚠️ **O que este run também mostrou, e NÃO é conserto de prompt.** As escolhas não mudaram, e a razão é o
+inverso do previsto: o `c2` leu *"registro da coleção cadastro de usuários"* como **"formulário de
+cadastro"** e usou isso para reforçar os irmãos de formulário (*"decisão explícita de sim/não em um
+formulário de cadastro"*). A cláusula não podia entregar densidade — dizer célula/painel/tela é proibido,
+porque o `c1` não sabe. E **não há linha de cenário para campo na linha de dados de uma coleção**:
+`groupEnterBoolean` tem formulário / acordo legal / listas densas de preferência / configurações, e
+`groupEnterDate` tem espaço restrito / campo padrão de formulário / atalhos / calendário sempre visível.
+Linha de tabela não é nenhum dos dois. **É vão de catálogo (§12.6), e o `c2` escolheu bem dentro do que
+lhe foi oferecido.**
+
+**A cláusula (c) fica EM OBSERVAÇÃO.** Benefício medido até aqui: zero mudança de escolha. O que ela
+entrega é uma linha `need` autocontida, que o desenho pede. Se depois deste conserto ela continuar sem
+mudar nada, o honesto é removê-la e recuperar os chars.
+
+Instruções: 7.651 → **7.778 chars**.
+
 ## 2026-09-04 (c) — a linha `need` do campo diz de que registro ele é
 
 O run `cadastro-usuarios` com a cláusula (b) saiu na forma prevista — 5 regiões, 4 grupos, 5/5 moléculas,

@@ -43,11 +43,18 @@ line must carry — whether the collection is only read or also maintained, and 
 (in the row, in a panel beside the list, in a screen of its own). That last axis alone separates five
 molecules of `groupViewTable`, and it is what battery case V3 asked for and did not get.
 
-A field region also carries **which record it belongs to** — `field of a record of the <collection>
-collection` — because the c2 that picks the field never sees the collection's own region, and density is
-what separates the siblings of the entry groups (measured 2026-09-04: a yes/no field inside a maintained
-collection got the form-sized sibling, not the dense one). It says nothing about a cell, a panel or a
-screen: that is the container molecule's decision, made a call later.
+A field region also carries **which record it belongs to** — `a field of a record of the <collection>
+collection` — so the line is self-contained for a c2 that never sees the collection's own region. It is
+**added** to the field's own facts and never replaces them: the first version of this rule emptied the
+lines until all four fields read alike but for the type word, so the prompt now carries a right/wrong
+pair and a swap test (two fields of one record that could trade `need` lines have lines too thin). It
+says nothing about a cell, a panel or a screen — that is the container molecule's decision, a call later.
+
+What the context did NOT buy, measured: the molecules did not change. The c2 read "a record of the users
+collection" as "a registration form" and used it to confirm the form-sized siblings. Neither
+`groupEnterBoolean` nor `groupEnterDate` has a scenario row for a field rendered in the data row of a
+collection, so there was no other answer to give — a catalog gap, not a funnel one. The rule stays for
+the self-contained line; if it never changes a choice, it should be removed.
 
 The field carve-out is a HEURISTIC, and its flaw is one of order: whether a field needs a molecule
 depends on the molecule chosen for the container (a read-only table renders text in its cells), and that

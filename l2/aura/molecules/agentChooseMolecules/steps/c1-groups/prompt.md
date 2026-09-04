@@ -30,7 +30,9 @@ When the definition names the fields of a record the user creates or edits — `
 
 So keep both: **one region for the collection**, with the maintenance verbs in its `need` line, **and one region per named field**, whose `need` line carries that field's own type and whatever the definition says about it.
 
-**And a field's `need` line has to say which record it belongs to.** The next call sees that line and nothing else, and the component that edits a field among the rows of a collection is not the one that edits the same field on a form of its own — what fits a dense row is not what fits a full page. So when the field belongs to a record of a collection that is another region, say so: `field of a record of the <collection> collection`, using the collection region's own name. Say no more than that: whether that record is edited in the row, in a panel or in a screen of its own is a later call's decision, not yours, so never write cell, panel or screen into the line.
+**A field's `need` line ALSO says which record it belongs to** — `…, a field of a record of the <collection> collection`, naming the collection's own region. **Added to the field's own facts, never in place of them.** `date of birth, date only, a field of a record of the users collection` is the line; `a date field of a record of the users collection` threw away the part that decides. **Test it by swapping:** if two fields of the same record could trade `need` lines and neither line would become wrong, both are too thin — put back what the definition says about each one.
+
+What the record context must NOT carry is layout. Whether the record is edited in the row, in a panel or in a screen of its own is a later call's decision, not yours, so never write cell, panel or screen into the line.
 
 Two limits on this. **Columns of a collection the user only READS are not regions** — nothing is filled there, and the component that shows the collection renders them itself. And **never invent a field the definition does not name**: a definition that says only `user registration` has one region, not a guess at what a user record contains.
 
