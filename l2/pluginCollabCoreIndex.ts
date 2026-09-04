@@ -112,6 +112,13 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 widget: '_102020_serviceCollabMessages'
             },
             {
+                category: 'Services',
+                scope: ['l3ServicesLeft'],
+                priority: 2,
+                auth: ['*'],
+                widget: '_102020_/l2/aura/services/serviceScenario'
+            },
+            {
                 // NOT a panel: a module that plugs into the running app's edit slot (studioEditSlot,
                 // in the master frontend) and brings the in-place editor with it. Declared here so
                 // that 102033 never has to name this project — it asks the plugins what exists, the

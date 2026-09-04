@@ -27,9 +27,25 @@ test('the modes are the three documented ones', async () => {
   assert.deepEqual(listLiveUpdateModes(), ['hotSwap', 'reload', 'off']);
 });
 
-test('hotSwap is the default', async () => {
+test('the default is OFF while the hot swap is suspended', async () => {
+  // Suspended on 2026-09-02: the hot swap is inconsistent and throwing in the running app, and an
+  // edit that reports "applied live" while the screen disagrees is worse than one that says nothing
+  // happened. The edit is unaffected — file written, module recompiled; what is suspended is
+  // re-registering the compiled class.
   const { getLiveUpdateMode } = await load();
-  assert.equal(getLiveUpdateMode(), 'hotSwap');
+  assert.equal(getLiveUpdateMode(), 'off');
+});
+
+test('a stored hotSwap does not resurrect it, and a stored reload still counts', async () => {
+  // `getLiveUpdateMode` reads localStorage first, so whoever ever ran `set('hotSwap')` would keep the
+  // broken behaviour across every reload — which is not what "disabled for now" means. The rule is
+  // tested through `resolveStoredMode` because the getter memoises: after its first answer no stored
+  // value is ever read again.
+  const { resolveStoredMode } = await load();
+  assert.equal(resolveStoredMode('hotSwap'), 'off', 'suspended');
+  assert.equal(resolveStoredMode('reload'), 'reload', 'not suspended, so honoured');
+  assert.equal(resolveStoredMode('turbo'), 'off', 'nonsense falls back');
+  assert.equal(resolveStoredMode(null), 'off', 'nothing stored');
 });
 
 test('setting a mode persists it, so it survives the reload the `reload` mode causes', async () => {

@@ -135,7 +135,7 @@ test('a pasted style is written like every other edit, and its preview is HELD',
   for (const write of ['pushEditOperations', 'persistLocalEdit', 'setContent']) {
     assert.equal(codeLines(PANEL).some((line) => line.includes(write)), false, `${write} belongs to the editor`);
   }
-  assert.ok(PANEL.includes("this.applyLiteral(literal, t('status.pasted'"), 'the paste goes out as picker-apply');
+  assert.ok(PANEL.includes("this.applyLiteral(result, t('status.pasted'"), 'the paste goes out as picker-apply');
 
   // An animation preview undoes itself after a moment; a paste preview must NOT — the eyes are on the
   // summary while the pointer is on the button, and a result that vanishes mid-read is a bug report.

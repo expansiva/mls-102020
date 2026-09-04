@@ -47,7 +47,29 @@ export interface ILiveUpdateMode {
 export type LiveUpdateModeName = 'hotSwap' | 'reload' | 'off';
 
 const STORAGE_KEY = 'studioLiveUpdateMode';
-const DEFAULT_MODE: LiveUpdateModeName = 'hotSwap';
+
+/**
+ * OFF for now, on purpose (2026-09-02).
+ *
+ * The hot swap is inconsistent and throwing in the running app, and an edit that reports "applied
+ * live" while the screen disagrees is worse than one that says nothing happened. The edit itself is
+ * unaffected: the class/text is already on the element, the file is written and the module is
+ * recompiled — what is suspended is only re-registering the compiled class in the custom element
+ * registry, which is what a remount would have needed.
+ *
+ * To put it back: `DEFAULT_MODE = 'hotSwap'` and drop `SUSPENDED_MODES`.
+ */
+const DEFAULT_MODE: LiveUpdateModeName = 'off';
+
+/**
+ * Modes a PERSISTED choice cannot resurrect.
+ *
+ * `getLiveUpdateMode` reads localStorage first, so anyone who ever ran
+ * `studioLiveUpdate.set('hotSwap')` would keep the broken behaviour across reloads — which is not
+ * what "disabled for now" means. Switching it on from devtools in the current session still works
+ * (setLiveUpdateMode assigns directly); only the stored value is ignored.
+ */
+const SUSPENDED_MODES = new Set<LiveUpdateModeName>(['hotSwap']);
 
 /**
  * Does nothing but tell the truth — the baseline. Inline because nobody needs to edit it; the modes
@@ -78,6 +100,17 @@ export function isLiveUpdateMode(name: string): name is LiveUpdateModeName {
 
 let activeMode: LiveUpdateModeName | undefined;
 
+/**
+ * Which mode a stored choice resolves to — the suspension rule, on its own so it can be tested.
+ *
+ * Pure because `getLiveUpdateMode` memoises: once it has answered, no stored value is read again, so
+ * a test of the getter can only ever see the first answer.
+ */
+export function resolveStoredMode(stored: string | null): LiveUpdateModeName {
+  if (!stored || !isLiveUpdateMode(stored) || SUSPENDED_MODES.has(stored)) return DEFAULT_MODE;
+  return stored;
+}
+
 export function getLiveUpdateMode(): LiveUpdateModeName {
   if (activeMode) return activeMode;
   // Read once, lazily: the `reload` mode reloads the page, so a choice that did not survive the
@@ -88,7 +121,10 @@ export function getLiveUpdateMode(): LiveUpdateModeName {
   } catch {
     // Private mode / blocked storage — the default is fine.
   }
-  activeMode = stored && isLiveUpdateMode(stored) ? stored : DEFAULT_MODE;
+  activeMode = resolveStoredMode(stored);
+  if (stored && activeMode !== stored) {
+    console.warn(`[studioLiveUpdate] stored mode "${stored}" is not usable; using "${activeMode}"`);
+  }
   return activeMode;
 }
 

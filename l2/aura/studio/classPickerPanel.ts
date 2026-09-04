@@ -24,6 +24,9 @@
 import { html, nothing, type TemplateResult } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import { getState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
+import { getActualLanguage, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { currentLanguage, describePageFolder } from '/_102020_/l2/aura/studio/studioEditTarget.js';
 import {
   ADD_GROUPS,
   ANIMATION_GROUPS,
@@ -84,6 +87,16 @@ export interface IPickerTarget {
   tag: string;
   /** File that receives the edit, already formatted for display. */
   fileLabel: string;
+  /**
+   * The same file, structured — the identity of the page ON SCREEN.
+   *
+   * The Info tab needs module and variation, and the folder is where they are. Asking `auraState`
+   * instead was wrong twice over: `actualLayout` is written only by the genome knob and
+   * `actualDesignSystem` only by the project knob, and even with `studioAuraSeed` filling both on
+   * studio entry, the state answers "what the Studio is pointing at" while this tab asks "what is on
+   * screen". Absent while the anchor could not be resolved.
+   */
+  file?: { project: number; shortName: string; folder: string };
   /** The element's class attribute — the panel's whole input. */
   literal: string;
   /** False when the anchor could not be resolved: everything is read-only. */
@@ -146,7 +159,7 @@ export class ClassPickerPanel extends StateLitElement {
   @property({ attribute: false }) resolveVar: (cssVar: string) => string = () => '';
   @property({ type: Boolean }) jitLive = false;
 
-  @state() private tab: 'classes' | 'animations' = 'classes';
+  @state() private tab: 'classes' | 'animations' | 'info' = 'classes';
   @state() private screen: AnimationScreen = 'root';
   /** Group whose "custom value" input is open. */
   @state() private customEditing: string | null = null;
@@ -164,14 +177,14 @@ export class ClassPickerPanel extends StateLitElement {
    * and pasting on another is the whole gesture.
    */
   @state() private clipboard: IStyleClipboard | null = null;
-  /** Hold this element's place instead of taking the source's (see the paste block). */
-  @state() private keepPlace = false;
   /** Group of the "+" whose properties are showing. */
   @state() private addGroup: AddGroup | null = null;
   /** Property whose design-system palette is open in the "+" (colour does not seed a value). */
   @state() private addColor: string | null = null;
   /** Token index whose typed-value input is open. */
   @state() private typedEditing: number | null = null;
+  /** State keys the scenario panel is currently simulating — see renderScenarioBadge. */
+  @state() private simulatedKeys: string[] = [];
 
   // The looks live in classPickerPanel.less, compiled into this constructor by the enhancement
   // (processCssLit -> loadStyle). Two things that file explains and this one depends on: every class
@@ -180,6 +193,35 @@ export class ClassPickerPanel extends StateLitElement {
 
 
   // ─── Lifecycle ─────────────────────────────────────────────────────────────
+
+  private static readonly SCENARIO_KEY = 'aura.scenario.simulated';
+
+  connectedCallback(): void {
+    super.connectedCallback();
+    this.readScenario();
+    subscribe(ClassPickerPanel.SCENARIO_KEY, this);
+  }
+
+  disconnectedCallback(): void {
+    unsubscribe(ClassPickerPanel.SCENARIO_KEY, this);
+    super.disconnectedCallback();
+  }
+
+  /**
+   * The notify contract of collabState: it looks for this method (or a plain function).
+   *
+   * The base class has its own, for the attribute-bound subscriptions it manages; this one is for the
+   * key subscribed by hand above, so the base's behaviour has to be kept.
+   */
+  handleIcaStateChange(key: string, value: unknown): void {
+    super.handleIcaStateChange(key, value);
+    if (key === ClassPickerPanel.SCENARIO_KEY) this.readScenario();
+  }
+
+  private readScenario(): void {
+    const simulated = getState(ClassPickerPanel.SCENARIO_KEY) as string[] | undefined;
+    this.simulatedKeys = Array.isArray(simulated) ? simulated : [];
+  }
 
   protected willUpdate(changed: Map<string, unknown>): void {
     // A new selection drops what belonged to the previous one: a switch nobody applied yet, and any
@@ -205,20 +247,24 @@ export class ClassPickerPanel extends StateLitElement {
     return html`
       <div class="acp-head">
         <span class="acp-tag">${target.tag}</span>
+        ${this.renderScenarioBadge()}
         ${this.historyButton('undo')}
         ${this.historyButton('redo')}
-        <span class="acp-file" title=${t('panel.fileTitle')}>${target.fileLabel || t('panel.noFile')}</span>
-        <button type="button" class="acp-copy" title=${t('panel.copyStyleTitle')}
-          @click=${this.onCopy}>${t('panel.copyStyle')}</button>
+        ${this.renderCopyIcon()}
+        ${this.renderPasteIcon()}
+        <span class="acp-spacer"></span>
         <button type="button" class="acp-close" title=${t('panel.close')} @click=${this.onClose}>&times;</button>
       </div>
       <div class="acp-tabs">
         ${this.tabButton('classes', 'panel.tabClasses')}
         ${this.tabButton('animations', 'panel.tabAnimations')}
+        ${this.tabButton('info', 'panel.tabInfo')}
       </div>
       ${target.refusal ? html`<div class="acp-note acp-refusal">${tr(target.refusal)}</div>` : nothing}
       ${target.warning ? html`<div class="acp-note acp-warning">${tr(target.warning)}</div>` : nothing}
-      ${this.tab === 'animations' ? this.renderAnimations() : this.renderClasses()}
+      ${this.tab === 'animations' ? this.renderAnimations() : nothing}
+      ${this.tab === 'info' ? this.renderInfo() : nothing}
+      ${this.tab === 'classes' ? this.renderClasses() : nothing}
     `;
   }
 
@@ -236,9 +282,26 @@ export class ClassPickerPanel extends StateLitElement {
     >${direction === 'undo' ? '\u21B6' : '\u21B7'}</button>`;
   }
 
-  private tabButton(id: 'classes' | 'animations', label: string) {
+  private tabButton(id: 'classes' | 'animations' | 'info', label: string) {
     return html`<button type="button" class="acp-tab ${this.tab === id ? 'acp-active' : ''}"
       @click=${() => { this.tab = id; this.preview(null); }}>${t(label)}</button>`;
+  }
+
+  /**
+   * A badge while the page is in a SIMULATED state (TASK-102020-scenario-panel).
+   *
+   * The scenario panel puts the page into a chosen state so the branches that are normally invisible
+   * can be edited — and two message `<p>`s look identical. Without this, editing the class of the
+   * error branch while believing it is the success one is an easy mistake, and the picker is exactly
+   * where the user is looking when they make it.
+   *
+   * This is the one thing the panel SUBSCRIBES to: everything else it needs comes from the editor,
+   * one call away, and reading a projection of that would be a second source of truth.
+   */
+  private renderScenarioBadge() {
+    if (!this.simulatedKeys.length) return nothing;
+    return html`<span class="acp-scenario" title=${this.simulatedKeys.join('\n')}
+      >${t('panel.scenario', { count: this.simulatedKeys.length })}</span>`;
   }
 
   // ─── Classes tab ───────────────────────────────────────────────────────────
@@ -253,7 +316,6 @@ export class ClassPickerPanel extends StateLitElement {
   private renderClasses() {
     const tokens = splitUtilities(this.target?.literal ?? '');
     return html`<div class="acp-rows">
-      ${this.renderPaste()}
       ${tokens.length
     ? tokens.map((token) => this.renderClassBlock(token))
     : html`<div class="acp-block acp-readonly"><span class="acp-reason">${t('panel.noClasses')}</span></div>`}
@@ -430,85 +492,78 @@ export class ClassPickerPanel extends StateLitElement {
   }
 
   /**
-   * The copied style, and what pasting it would do to THIS element.
+   * Copy and paste, as two icons in the header.
    *
-   * The summary runs in two directions on purpose. Pasting replaces, so it also REMOVES what the
-   * target had and the source does not — that is the difference between "ficou igual" and "ficou
-   * parecido", and it is the half nobody expects unless it is on screen before the click.
+   * They used to be a text button plus a whole block in the classes tab, with the summary of what
+   * would enter and leave. The gesture is two clicks on two different elements and it does not need a
+   * section of its own — so what is left on screen is the pair of icons, and the summary goes to the
+   * console while this is being tried out (see logPaste).
    */
-  private renderPaste() {
-    const clip = this.clipboard;
-    if (!clip) return nothing;
+  private renderCopyIcon() {
+    const has = Boolean(this.literal.trim());
+    return html`<button type="button" class="acp-icon" ?disabled=${!has}
+      title=${has ? t('panel.copyStyleTitle') : t('status.nothingToCopy')}
+      @click=${this.onCopy}>\u29C9</button>`;
+  }
 
+  /**
+   * Paste: the whole style, so the target ends up identical to the source.
+   *
+   * That is the decision this feature was built on (2026-09-01) and it is why one icon is enough. The
+   * two narrower variants — only the looks, and keeping this element's place — have no button any
+   * more; what they WOULD produce is printed next to the summary, so they stay visible while we
+   * decide whether they deserve to come back.
+   */
+  private renderPasteIcon() {
+    const clip = this.clipboard;
     const editable = this.target?.editable ?? false;
-    const full = this.pasteResult();
-    const looks = pasteCategories(this.literal, clip.literal, ['appearance']);
-    const diff = diffLiterals(this.literal, full);
-    const identical = full === this.literal;
-    // The toggle is offered when there IS a place to argue about: one this element would lose, or one
-    // the source would bring along (the `max-w-6xl` of a container).
-    const place = new Set([
-      ...classesInCategories(this.literal, ['place']),
-      ...classesInCategories(clip.literal, ['place']),
-    ]);
+    const result = clip ? pasteStyle(this.literal, clip.literal) : '';
+    const nothingToDo = !clip || !editable || result === this.literal;
 
-    return html`<div class="acp-block acp-paste">
-      <span class="acp-label" title=${clip.literal}>${t('panel.pasteTitle', { tag: clip.tag })}</span>
-      <span class="acp-paste-actions">
-        <button type="button" class="acp-chip" ?disabled=${!editable || identical}
-          title=${t('panel.pasteTitleHint')}
-          @mouseenter=${() => this.previewLiteral(full)}
-          @mouseleave=${() => this.previewLiteral(null)}
-          @click=${() => this.applyPaste(full)}>${t('panel.paste')}</button>
-        <button type="button" class="acp-chip" ?disabled=${!editable || looks === this.literal}
-          title=${t('panel.pasteLooksHint')}
-          @mouseenter=${() => this.previewLiteral(looks)}
-          @mouseleave=${() => this.previewLiteral(null)}
-          @click=${() => this.applyPaste(looks)}>${t('panel.pasteLooks')}</button>
-        <button type="button" class="acp-link" @click=${() => { this.clipboard = null; }}>${t('panel.pasteForget')}</button>
-      </span>
-      ${identical
-    ? html`<span class="acp-reason">${t('panel.pasteSame')}</span>`
-    : html`
-        ${diff.added.length ? this.renderDiffRow('in', diff.added, place) : nothing}
-        ${diff.removed.length ? this.renderDiffRow('out', diff.removed, place) : nothing}`}
-      ${place.size ? html`
-        <label class="acp-switch">
-          <input type="checkbox" .checked=${this.keepPlace} ?disabled=${!editable}
-            @change=${(e: Event) => { this.keepPlace = (e.target as HTMLInputElement).checked; }}>
-          ${t('panel.keepPlace')}
-        </label>
-        <small class="acp-hint">${t('panel.keepPlaceHint')}</small>` : nothing}
-    </div>`;
+    return html`<button type="button" class="acp-icon" ?disabled=${nothingToDo}
+      title=${clip ? t('panel.pasteFromTitle', { tag: clip.tag }) : t('panel.pasteEmpty')}
+      @mouseenter=${() => { if (!nothingToDo) this.previewLiteral(result); }}
+      @mouseleave=${() => this.previewLiteral(null)}
+      @click=${() => this.onPaste()}>\u{1F4CB}</button>`;
   }
 
-  /** One direction of the summary: what comes in, or what goes out. */
-  private renderDiffRow(direction: 'in' | 'out', classes: string[], place: Set<string>) {
-    return html`<span class="acp-diff-row">
-      <span class="acp-dir acp-${direction}">${t(direction === 'in' ? 'panel.pasteEnters' : 'panel.pasteLeaves')}</span>
-      <span class="acp-toks">${classes.map((cls) => {
-    // Same honesty as the chips: a class with no rule in the BUILT css works here and only reaches
-    // the client on the next publish. Pasting must not be the way that slips through.
-    const jitOnly = direction === 'in' && !this.builtClasses.has(cls);
-    return html`<span class="acp-tok acp-${direction} ${place.has(cls) ? 'acp-place' : ''}"
-      title=${jitOnly ? `${cls} — ${t('panel.publishNote')}` : cls}
-      >${cls}${jitOnly ? html`<span class="acp-star">*</span>` : nothing}</span>`;
-  })}</span>
-    </span>`;
-  }
-
-  /** What pasting the clipboard onto this element would produce, with the toggle taken into account. */
-  private pasteResult(): string {
+  private onPaste(): void {
     const clip = this.clipboard;
-    if (!clip) return this.literal;
-    // Nothing held back: the result IS the source's literal, which is what "ficar igual" means.
-    if (!this.keepPlace) return pasteStyle(this.literal, clip.literal);
-    return pasteStyle(
-      this.literal,
-      clip.literal,
-      classesInCategories(this.literal, ['place']),
-      classesInCategories(clip.literal, ['place']),
-    );
+    if (!clip) return;
+    const result = pasteStyle(this.literal, clip.literal);
+    if (result === this.literal) return;
+    this.logPaste(clip, result);
+    this.applyLiteral(result, t('status.pasted', { tag: clip.tag }));
+  }
+
+  /**
+   * What the on-screen summary used to say, in the console — English, like every other developer
+   * diagnostic in these modules.
+   *
+   * `removes` is the half nobody expects: pasting REPLACES, so the target also loses what it had and
+   * the source has not. And `alternatives` keeps the two variants that lost their button measurable:
+   * `looksOnly` brings colour/border/radius/shadow/typography only, `keepingPlace` holds this
+   * element's own width/position/span instead of taking the source's.
+   */
+  private logPaste(clip: IStyleClipboard, result: string): void {
+    const diff = diffLiterals(this.literal, result);
+    console.info('[picker] paste', {
+      from: clip.tag,
+      adds: diff.added,
+      removes: diff.removed,
+      // Not in the built css: works here, reaches the client on the next publish.
+      jitOnly: diff.added.filter((cls) => !this.builtClasses.has(cls)),
+      place: classesInCategories(result, ['place']),
+      alternatives: {
+        looksOnly: pasteCategories(this.literal, clip.literal, ['appearance']),
+        keepingPlace: pasteStyle(
+          this.literal,
+          clip.literal,
+          classesInCategories(this.literal, ['place']),
+          classesInCategories(clip.literal, ['place']),
+        ),
+      },
+    });
   }
 
   private onCopy = (): void => {
@@ -521,10 +576,6 @@ export class ClassPickerPanel extends StateLitElement {
     this.clipboard = { literal, tag };
     this.status(t('status.copied', { tag }));
   };
-
-  private applyPaste(literal: string): void {
-    this.applyLiteral(literal, t('status.pasted', { tag: this.clipboard?.tag ?? '' }));
-  }
 
   /**
    * The design-system roles as a palette: a swatch, the role name, the colour.
@@ -567,6 +618,71 @@ export class ClassPickerPanel extends StateLitElement {
       <span class="acp-role-name">${roleLabel(option)}</span>
       <span class="acp-role-value">${value}</span>
     `;
+  }
+
+  // ─── Info tab ──────────────────────────────────────────────────────────────
+
+  /**
+   * What is being edited: the page, and the element.
+   *
+   * It exists because the header was carrying the file name and running out of room — and because the
+   * answers people actually need while editing ("which variation is this?", "which file does this
+   * land in?", "why can't I edit it?") were spread between a tooltip and a status strip.
+   *
+   * The page half comes from the aura state, which is the only source that has it: the editor knows
+   * the FILE it writes to, not the module/variation/language the Studio is pointing at. Read at
+   * render time rather than subscribed — this tab is only on screen while it is open, and the panel
+   * re-renders on every selection and every edit.
+   */
+  private renderInfo() {
+    const target = this.target;
+    const aura = getAuraState();
+    // The file the editor resolved is the page ON SCREEN; the aura state is the fallback, because it
+    // is filled by the Studio's knobs and can be empty (see IPickerTarget.file).
+    const file = target?.file;
+    const identity = describePageFolder(file?.folder ?? '');
+    const project = file?.project ?? aura?.actualPage?.project;
+    const module = identity.module || aura?.actualModule || '';
+    const name = file?.shortName || aura?.actualPage?.shortName || '';
+    const layout = identity.layout ?? aura?.actualLayout;
+    const ds = identity.designSystem ?? aura?.actualDesignSystem;
+    const variation = layout && ds ? `page${layout}${ds}` : '';
+    // The language the page is RENDERING in — the same source the text editor treats as the truth.
+    const language = currentLanguage() || getActualLanguage() || '';
+    const tokens = splitUtilities(this.literal);
+
+    return html`<div class="acp-rows">
+      <div class="acp-block">
+        <span class="acp-label">${t('panel.infoPage')}</span>
+        ${this.infoRow('panel.infoProject', project ? String(project) : '')}
+        ${this.infoRow('panel.infoModule', module)}
+        ${this.infoRow('panel.infoName', name)}
+        ${this.infoRow('panel.infoDevice', identity.device)}
+        ${this.infoRow('panel.infoVariation', variation)}
+        ${this.infoRow('panel.infoLanguage', language)}
+        ${this.infoRow('panel.infoFile', target?.fileLabel ?? '')}
+      </div>
+      <div class="acp-block">
+        <span class="acp-label">${t('panel.infoElement')}</span>
+        ${this.infoRow('panel.infoTag', target?.tag ?? '')}
+        ${this.infoRow('panel.infoClasses', String(tokens.length))}
+        ${this.infoRow('panel.infoChildren', String(target?.childCount ?? 0))}
+        ${this.infoRow('panel.infoEditable', t(target?.editable ? 'panel.infoYes' : 'panel.infoNo'))}
+        ${target?.refusal ? this.infoRow('panel.infoRefusal', tr(target.refusal)) : nothing}
+        ${target?.warning ? this.infoRow('panel.infoWarning', tr(target.warning)) : nothing}
+        ${this.simulatedKeys.length
+    ? this.infoRow('panel.infoScenario', String(this.simulatedKeys.length))
+    : nothing}
+      </div>
+    </div>`;
+  }
+
+  /** One `label: value` line. An empty value shows a dash — saying nothing would read as a bug. */
+  private infoRow(label: string, value: string) {
+    return html`<span class="acp-info-row">
+      <span class="acp-info-label">${t(label)}</span>
+      <span class="acp-info-value" title=${value}>${value || '\u2014'}</span>
+    </span>`;
   }
 
   // ─── Animations tab ────────────────────────────────────────────────────────
