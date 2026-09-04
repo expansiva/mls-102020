@@ -43,6 +43,32 @@ mudar nada, o honesto é removê-la e recuperar os chars.
 
 Instruções: 7.651 → **7.778 chars**.
 
+✅ **Rodou (`cadastro-usuarios-03`) e o deslocamento acabou.** As linhas voltaram na forma aditiva que o
+par de exemplos prescreve — `data de nascimento, somente data sem horário, campo de um registro da coleção
+cadastro de usuários`; `estado ativo sim/não, valor booleano, campo de um registro da coleção…` — e o teste
+do troca-linhas passa: nenhuma das quatro serve para outro campo.
+
+❌ **E as moléculas continuam as mesmas** (`ml-boolean-segmented`, `ml-date-picker`). A cláusula (c) teve
+agora uma chance limpa, com o deslocamento consertado, e **mudou zero escolha em dois runs**. A condição de
+observação que este CHANGELOG registrou está cumprida.
+
+⚠️ **Mas o argumento de custo que eu usei para a condição estava ERRADO, e medir desfez.** c1: 23.543 →
+24.458 tokens de input (+915, +3,9%) para os +799 chars; e o custo da chamada variou US$ 0,0533 / 0,0637 /
+0,0559 entre os três runs — **a variação de raciocínio entre runs é maior que a mudança**. "Recuperar os
+chars" não é um argumento real; a decisão é de ORDEM DE TRABALHO, não de preço.
+
+**A cláusula é o CANAL, o cenário que falta é o CONTEÚDO.** Não existe linha de cenário para campo
+renderizado na linha de dados de uma coleção, então não há o que a linha `need` acione. Removê-la agora
+significa recolocá-la depois. **Fica**, e o próximo movimento é editorial: a linha nova no
+`groupEnterBoolean` e no `groupEnterDate`, e então rodar o C1 de novo. Se a escolha ainda não se mover, a
+cláusula morre com evidência de que o caminho inteiro é sem saída — e não de que um run não a usou.
+
+🔑 **E o conserto editorial é viável sem tocar no gerador:** `syExtract` lê os `scenarios` de volta do
+`index.defs.ts` já gerado (*"resync must not clobber them"*) e só os colhe do `index.ts` no primeiro sync.
+Edição à mão no `index.defs.ts` **sobrevive** ao resync. Cuidado com o cabeçalho do arquivo, que diz *"Do
+not change – automatically generated code"* enquanto o comentário do próprio campo diz *"EDITORIAL … Edit
+it HERE"* — as duas frases convivem no mesmo arquivo e só a segunda vale para `scenarios`.
+
 ## 2026-09-04 (c) — a linha `need` do campo diz de que registro ele é
 
 O run `cadastro-usuarios` com a cláusula (b) saiu na forma prevista — 5 regiões, 4 grupos, 5/5 moléculas,

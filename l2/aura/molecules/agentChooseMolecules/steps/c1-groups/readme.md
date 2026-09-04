@@ -53,8 +53,12 @@ says nothing about a cell, a panel or a screen — that is the container molecul
 What the context did NOT buy, measured: the molecules did not change. The c2 read "a record of the users
 collection" as "a registration form" and used it to confirm the form-sized siblings. Neither
 `groupEnterBoolean` nor `groupEnterDate` has a scenario row for a field rendered in the data row of a
-collection, so there was no other answer to give — a catalog gap, not a funnel one. The rule stays for
-the self-contained line; if it never changes a choice, it should be removed.
+collection, so there was no other answer to give — a catalog gap, not a funnel one.
+
+Two runs in, the rule has changed no choice, and the cost of keeping it is inside the noise (+915 input
+tokens on c1, against a per-run reasoning spread larger than that). So it stays as the CHANNEL while the
+missing scenario row is the CONTENT: the next move is editorial, in the two entry groups, and only if the
+choice still does not move afterwards should the rule be removed.
 
 The field carve-out is a HEURISTIC, and its flaw is one of order: whether a field needs a molecule
 depends on the molecule chosen for the container (a read-only table renders text in its cells), and that
