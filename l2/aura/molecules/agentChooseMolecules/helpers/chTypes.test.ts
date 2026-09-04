@@ -16,6 +16,8 @@ import {
   chIsNone,
   chMeasurePrompt,
   chParseModelType,
+  chUniqueRunKey,
+  CH_MAX_RUN_SEQ,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 
 void test('the fixed anchors follow the family convention', () => {
@@ -133,4 +135,43 @@ void test('no provider line means NOT MEASURED, never zero', () => {
   assert.equal(chParseUsage(['starting at x', 'finished at y']), null);
   assert.equal(chParseUsage(undefined), null);
   assert.equal(chParseUsage('provider: inputTokens:1'), null);
+});
+
+// ---- the run folder is unique, because losing a previous report loses the comparison ----
+
+/** `taken` reads a set instead of a stor, which is the whole point of the helper being pure. */
+const takenIn = (...keys: string[]) => (runKey: string) => keys.includes(runKey);
+
+void test('the FIRST run of a slug keeps the clean name — an existing folder is never renamed', () => {
+  assert.equal(chUniqueRunKey('cadastro-usuarios', takenIn()), 'cadastro-usuarios');
+});
+
+void test('a slug already used gets a sequence, and the sequence skips what is taken', () => {
+  assert.equal(chUniqueRunKey('cadastro-usuarios', takenIn('cadastro-usuarios')), 'cadastro-usuarios-02');
+  assert.equal(
+    chUniqueRunKey('cadastro-usuarios', takenIn('cadastro-usuarios', 'cadastro-usuarios-02')),
+    'cadastro-usuarios-03',
+  );
+});
+
+void test('the suffix is budgeted INSIDE the 40-character slug cap — the runKey is also a file path', () => {
+  const long = 'a'.repeat(40);
+  const sequenced = chUniqueRunKey(long, takenIn(long));
+  assert.equal(sequenced.length, 40);
+  assert.match(sequenced, /^[a-z0-9][a-z0-9-]{0,39}$/);
+  assert.equal(sequenced, `${'a'.repeat(37)}-02`);
+});
+
+void test('a stem left ending in a dash by the truncation does not produce a double dash', () => {
+  const slug = `${'a'.repeat(36)}-bbb`;
+  assert.equal(chUniqueRunKey(slug, takenIn(slug)), `${'a'.repeat(36)}-02`);
+});
+
+void test('an empty base still names a folder rather than writing to the run root', () => {
+  assert.equal(chUniqueRunKey('', takenIn()), 'run');
+});
+
+void test('a slug with every sequence taken refuses out loud instead of overwriting', () => {
+  const all = ['x', ...Array.from({ length: CH_MAX_RUN_SEQ - 1 }, (_, i) => `x-${String(i + 2).padStart(2, '0')}`)];
+  assert.throws(() => chUniqueRunKey('x', takenIn(...all)), /already has 99 runs/);
 });

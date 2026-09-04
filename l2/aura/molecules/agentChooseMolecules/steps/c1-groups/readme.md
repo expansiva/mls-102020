@@ -43,6 +43,12 @@ line must carry — whether the collection is only read or also maintained, and 
 (in the row, in a panel beside the list, in a screen of its own). That last axis alone separates five
 molecules of `groupViewTable`, and it is what battery case V3 asked for and did not get.
 
+A field region also carries **which record it belongs to** — `field of a record of the <collection>
+collection` — because the c2 that picks the field never sees the collection's own region, and density is
+what separates the siblings of the entry groups (measured 2026-09-04: a yes/no field inside a maintained
+collection got the form-sized sibling, not the dense one). It says nothing about a cell, a panel or a
+screen: that is the container molecule's decision, made a call later.
+
 The field carve-out is a HEURISTIC, and its flaw is one of order: whether a field needs a molecule
 depends on the molecule chosen for the container (a read-only table renders text in its cells), and that
 is known only after c2, while regions are born in c1. The prompt takes the signal from the definition

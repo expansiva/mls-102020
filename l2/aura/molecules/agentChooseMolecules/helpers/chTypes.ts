@@ -44,6 +44,35 @@ export function chGroupDoneAnchor(groupName: string): string {
   return `${chGroupPlanId(groupName)}-done`;
 }
 
+/** How many runs one slug can hold before the caller has to clean up l4. Two digits, to fit the slug cap. */
+export const CH_MAX_RUN_SEQ = 99;
+
+/**
+ * The l4 folder of a run, made UNIQUE by a sequence.
+ *
+ * ⚠️ THE SLUG ALONE COLLIDES, and it cost a measurement. The runKey is derived from the definition, so two
+ * runs of the same page produce the same folder and the second one OVERWRITES the first in silence — on
+ * 2026-09-04 a re-run of 'cadastro-usuarios' took the pre-amendment baseline with it (recovered from the
+ * fs trash, which is luck, not a design). The report is the only thing a probe run produces, so losing the
+ * previous one loses the comparison the run existed to make.
+ *
+ * The FIRST run of a slug keeps the clean name: a folder that already exists is never renamed, so whoever
+ * scored an old run still finds it where they left it. From the second on, '-02', '-03' … is appended.
+ *
+ * Pure — the caller supplies `taken`, which is what makes this testable with no stor. The suffix is
+ * budgeted inside nmRunKey's 40-character cap, because the slug is also a file path.
+ */
+export function chUniqueRunKey(base: string, taken: (runKey: string) => boolean): string {
+  const slug = base || 'run';
+  if (!taken(slug)) return slug;
+  const stem = slug.slice(0, 37).replace(/-+$/g, '') || 'run';
+  for (let seq = 2; seq <= CH_MAX_RUN_SEQ; seq += 1) {
+    const candidate = `${stem}-${String(seq).padStart(2, '0')}`;
+    if (!taken(candidate)) return candidate;
+  }
+  throw new Error(`[chUniqueRunKey] '${stem}' already has ${CH_MAX_RUN_SEQ} runs in l4 — remove the old ones or change the definition`);
+}
+
 /**
  * The catalog's own spelling for a group the model named, or '' when it named one that does not exist.
  *

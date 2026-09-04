@@ -1,5 +1,33 @@
 # CHANGELOG — c1-groups
 
+## 2026-09-04 (c) — a linha `need` do campo diz de que registro ele é
+
+O run `cadastro-usuarios` com a cláusula (b) saiu na forma prevista — 5 regiões, 4 grupos, 5/5 moléculas,
+0 gate, 0 retry, US$ 0,15 — e **duas das quatro escolhas de campo são suspeitas, pela mesma causa**:
+
+| campo | escolhido | pela linha | o irmão que a linha `need` não deixou competir |
+|---|---|---|---|
+| `ativo` | `ml-boolean-segmented` | *"…segmented control **in forms**"* | `ml-toggle-icon` — *"compact … for **dense** preference lists"* |
+| `data de nascimento` | `ml-date-picker` | *"**Standard form field** with a dropdown calendar"* | `ml-compact-calendar` — *"**Space-constrained** layouts"* |
+
+O `c2` do booleano recebeu *"Campo sim/não para informar se o usuário está ativo."* e nada mais. As
+regiões de campo são **irmãs** da região da coleção, então o passo que escolhe o campo não sabe que o
+campo vive dentro do contêiner que **outro** `c2` escolheu — e densidade/espaço é justamente o eixo que
+separa os irmãos nesses dois grupos. Duas das três escolhas limpas confirmam que o resto está certo: o
+`groupEnterText` não tem molécula de e-mail, e *"Simple single‑line text"* é a linha correta para nome e
+e-mail.
+
+**É a terceira vez que o defeito é o mesmo: o discriminador existia e não chegou a quem decide.** Então
+o conserto é o mesmo de sempre, e continua não pedindo schema: a linha `need` do campo passa a dizer de
+que registro ele é — `campo de um registro da coleção <nome da região da coleção>`.
+
+⚠️ **E ela diz só isso, de propósito.** O prompt proíbe escrever *célula*, *painel* ou *tela* na linha:
+onde o registro é editado depende da molécula que o `c2` da coleção vai escolher — com detalhe em cena
+própria o campo está num formulário, não numa célula —, e no `c1` isso ainda não se sabe. A linha entrega
+o **contexto** ("é um registro de uma coleção"), não o layout; quem lê decide o peso que dá.
+
+Instruções: 6.979 → **7.651 chars** — o marcador de versão do prompt no `prompt-c1-groups-01.json`.
+
 ## 2026-09-04 (b) — o campo do registro mantido volta a ser região
 
 A emenda da manhã engoliu demais, e o run `crud-cadastro-usuario` mediu isso. Enunciado com os campos

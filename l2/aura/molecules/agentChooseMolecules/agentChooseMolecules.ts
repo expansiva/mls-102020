@@ -34,7 +34,9 @@ import {
   chDoneAnchor,
   chGroupDoneAnchor,
   chGroupPlanId,
+  chUniqueRunKey,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import { chRunKeyTaken } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chCatalog.js';
 import { checkChRootPlan, getChRootPlan, normalizeChRootPlan } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chRootPlan.js';
 
 const AGENT_NAME = CH_AGENT_NAME;
@@ -127,7 +129,8 @@ async function afterPromptStep(
       return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', gate.errors.join('\n'))];
     }
 
-    const runKey = nmRunKey(plan.runKey, 'choose');
+    // Sequenced here and NOWHERE else: every step receives it in its args, so the folder is decided once.
+    const runKey = chUniqueRunKey(nmRunKey(plan.runKey, 'choose'), chRunKeyTaken);
     return [
       addStep(context, step, {
         planId: CH_PLAN_C1,
