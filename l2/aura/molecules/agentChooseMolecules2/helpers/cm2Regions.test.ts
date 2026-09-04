@@ -52,6 +52,14 @@ void test('an entry region need carries the resolved type, never inferred from t
   assert.match(entryRegion.need, /type: string/);
 });
 
+void test('an entry region need also carries required-ness and how many fields the command types', () => {
+  const [, entryRegion] = extractRegions(APPROVE_CHANGE_ORDER_DEFINITION, CONTRACT_TYPES);
+  // 'status' is the ONLY form input of cmdApproveChangeOrderDecision — the other two are
+  // selection/route, which are never regions. A one-field command is a single decision, not a form.
+  assert.match(entryRegion.need, /required/);
+  assert.match(entryRegion.need, /1 typed field\(s\) in this command/);
+});
+
 void test('a field the contract does not resolve is honestly "unknown", not guessed', () => {
   const regions = extractRegions(APPROVE_CHANGE_ORDER_DEFINITION, {});
   const entryRegion = regions.find(region => region.id.endsWith('::status'));

@@ -43,14 +43,22 @@ export function extractRegions(definitionJson: Record<string, unknown>, contract
     }
 
     if (bindingRaw.kind !== 'command' || !Array.isArray(bindingRaw.inputs)) continue;
-    for (const inputRaw of bindingRaw.inputs) {
-      if (!isRecord(inputRaw) || inputRaw.presentation !== 'form') continue;
+    // Counted once per command: a command with ONE form field is a single decision, one with five is a
+    // form — that changes which sibling fits, and it is a fact the defs already states.
+    const formInputs = bindingRaw.inputs.filter(item => isRecord(item) && item.presentation === 'form');
+    for (const inputRaw of formInputs) {
+      if (!isRecord(inputRaw)) continue;
       const inputName = typeof inputRaw.name === 'string' ? inputRaw.name : '';
       if (!inputName) continue;
       // Never inferred from the field name — an undeclared type is honestly 'unknown', not a guess
       // (agentChooseMolecules's own rule: "with no declared value set, use text rather than inventing").
       const type = contractTypes[command]?.input?.[inputName] || 'unknown';
-      const need = `${description || `field of command '${command}'`} — field '${inputName}' (type: ${type}).`;
+      const facts = [
+        `type: ${type}`,
+        inputRaw.required === true ? 'required' : 'optional',
+        `${formInputs.length} typed field(s) in this command`,
+      ].join(', ');
+      const need = `${description || `field of command '${command}'`} — field '${inputName}' (${facts}).`;
       regions.push({ id: `${id}::${inputName}`, need });
     }
   }
