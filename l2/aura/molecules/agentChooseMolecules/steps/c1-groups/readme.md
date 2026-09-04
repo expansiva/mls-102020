@@ -23,7 +23,11 @@ design being measured: one catalog level per prompt (`flow.json.principles`).
 Two questions, in order.
 
 1. **What are the regions?** One interaction a single component could serve — a field, a list, a table,
-   an attachment. A form is as many regions as it has fields; a header is not a region at all.
+   an attachment. A form is as many regions as it has fields; a header is not a region at all. And a
+   **capability is not a region**: a verb acting on the content of a neighbouring region (select rows,
+   save the cell, create/edit/delete a record of the list beside it) belongs to that region's `need`
+   line. Superdecomposition is this step's recurrent defect — three occurrences measured (V1, V5 and
+   `cadastro-usuarios`), all of them a capability that arrived as a verb.
 2. **Which published group serves each one, or none?** The group list is the only source of group
    names, and it is deliberately partial in the pilot (6 of 32).
 
@@ -31,6 +35,11 @@ The `need` line is the part that is easy to underrate: it is **all** the next ca
 it does not say "long list, the user types to filter, only values from the list", nothing downstream can
 tell `ml-combobox` from `ml-select-one-autocomplete` — and that tie is one of the things the pilot
 measures.
+
+The two halves are one rule: verbs the prompt keeps out of their own region are the verbs the `need`
+line must carry — whether the collection is only read or also maintained, and where one record opens
+(in the row, in a panel beside the list, in a screen of its own). That last axis alone separates five
+molecules of `groupViewTable`, and it is what battery case V3 asked for and did not get.
 
 ## Invariants
 
