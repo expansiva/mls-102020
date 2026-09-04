@@ -77,6 +77,14 @@ the difference between a repair and a mess:
 
 {{groupUsage}}
 
+### The token vocabulary of the appearance
+
+If the edit touches the `.less`, it goes through tokens — and the vocabulary is CLOSED. The two
+tables in the group contract above say *which* tokens this molecule already uses; the skill
+below says *how* to choose and what is forbidden.
+
+{{tokenVocabulary}}
+
 ### Its own contract — what THIS molecule promises
 
 {{contract}}

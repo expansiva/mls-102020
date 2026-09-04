@@ -27,9 +27,11 @@ import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/h
 import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
 import {
   bareColorLiterals,
+  divergentTokenFallbacks,
   declaresPortal,
   extractAbsoluteMlClasses,
   extractMlClassesFromLess,
+  extractMlClassPrefixes,
   extractMlClassesFromTs,
   hasUniversalSelector,
   setsPositionOrOverflow,
@@ -100,12 +102,34 @@ export function runNm2LessGate(
     });
   }
 
+  // Two kinds of class the render emits, and they need different treatment:
+  //   literal   `'ml-alert-overlay'`        -> exact match
+  //   family    `\`ml-alert-type-${kind}\`` -> prefix match; the suffix is only known at runtime
+  // Before 2026-09-03 this check knew only the first kind, so every interpolated class was reported
+  // as invented — see the note in extractMlClassesFromTs for what that cost a real run.
   const inventory = new Set(extractMlClassesFromTs(options.renderTs));
-  const unknown = extractMlClassesFromLess(content).filter(cls => !inventory.has(cls));
+  const families = extractMlClassPrefixes(options.renderTs);
+  const styled = extractMlClassesFromLess(content);
+
+  // Styling the family PREFIX itself matches nothing: the render always appends a suffix. This is
+  // the mirror defect of the one above, and it shipped in the same run (`.ml-modal-alert { … }`,
+  // a dead rule the old check accepted because the prefix was in the inventory).
+  const bareFamily = styled.filter(cls => !inventory.has(cls) && families.includes(`${cls}-`));
+  if (bareFamily.length) {
+    issues.push({
+      code: 'family_prefix',
+      message: `these are class FAMILY prefixes, not classes — the render always appends a suffix, so the rule matches nothing: ${bareFamily.join(', ')}. Style the concrete variants (e.g. '${bareFamily[0]}-<value>') or drop the rule`,
+    });
+  }
+
+  const unknown = styled.filter(cls =>
+    !inventory.has(cls)
+    && !bareFamily.includes(cls)
+    && !families.some(prefix => cls.startsWith(prefix) && cls.length > prefix.length));
   if (unknown.length) {
     issues.push({
       code: 'unknown_classes',
-      message: `these .ml-* classes are not emitted by the molecule's render (invented?): ${unknown.join(', ')} — style ONLY the classes the .ts emits`,
+      message: `these .ml-* classes are not emitted by the molecule's render (invented?): ${unknown.join(', ')} — style ONLY the classes the .ts emits${families.length ? `, or a variant of one of its families (${families.map(p => `${p}*`).join(', ')})` : ''}`,
     });
   }
 
@@ -163,13 +187,31 @@ export function runNm2LessGate(
     if (bare.length) {
       issues.push({
         code: 'color_literal',
-        message: `these colours are hardcoded outside a token: ${bare.slice(0, 6).join(', ')} — in a project with no theme every appearance value must be written as var(--ml-<token>, <literal>), so a theme can override it later`,
+        message: `these colours are hardcoded outside a token: ${bare.slice(0, 6).join(', ')} — in a project with no theme every appearance value must be written as var(<token>, <literal>), so the project's design system can override it later`,
       });
     }
-    if (!/var\(\s*--ml-/.test(content)) {
+    // The base sheet now consumes the design-system ROLES (`--surface-bg`,
+    // `--text-strong`, `--button-primary-bg`…), which are what the project's
+    // `designSystem.ts` defines — see skills/tokenVocabulary. The `--ml-*` survived
+    // only for what the DS does not cover (border width/style, focus-ring thickness,
+    // disabled opacity, status borders, a molecule's internal geometry).
+    //
+    // So requiring `var(--ml-` here would reject a CORRECT sheet: of the 2 groups
+    // migrated so far, groupnotifyuser has 122 design-system role sites and only 24
+    // `--ml-*`, and a molecule with no holdout at all would have zero. What this check
+    // defends is "appearance comes from a token, not a literal" — so consuming ANY
+    // token is enough. The role NAME is validated by harness/check-ds-tokens.mjs.
+    // One token, ONE fallback — see divergentTokenFallbacks for what a real run did without this.
+    for (const { token, values } of divergentTokenFallbacks(content)) {
+      issues.push({
+        code: 'fallback_divergence',
+        message: `'${token}' is read with ${values.length} different fallbacks (${values.map(v => `"${v}"`).join(' vs ')}) — the fallback is what renders with NO design system, so one token must mean one value. Pick one and use it at every site`,
+      });
+    }
+    if (!/var\(\s*--[\w-]+/.test(content)) {
       issues.push({
         code: 'token_consumption',
-        message: 'the sheet consumes no --ml-* token — appearance must come from tokens (146 of the 147 base sheets do), otherwise the molecule can never be themed',
+        message: 'the sheet consumes no token at all — appearance must come from tokens (a design-system role like var(--surface-bg, #ffffff), or an --ml-* for what the design system does not cover), otherwise the molecule can never follow the project theme',
       });
     }
   }

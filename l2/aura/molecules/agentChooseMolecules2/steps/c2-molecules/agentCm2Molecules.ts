@@ -10,7 +10,8 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { isRecord } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { buildVToolInstruction, createVToolSchema, extractVToolOutput, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
-import { chCanonicalGroup } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import { chCanonicalGroup, chFileRefFromImport } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import { formatProjectContext, readCm2ProjectLanguages } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2ProjectContext.js';
 import { ChGroupCatalog, readChGroupCatalog, readChLevel1 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chCatalog.js';
 import { ChMoleculesOutput, buildChChoices, normalizeChMoleculesOutput, runChMoleculesGate } from '/_102020_/l2/aura/molecules/agentChooseMolecules/steps/c2-molecules/gate.js';
 import {
@@ -101,12 +102,20 @@ async function beforePromptStep(
   const exampleTag = resolved.catalog.molecules[0].tag;
   const shortExample = exampleTag.split('--').pop() || exampleTag;
 
+  // The target project's OWN declared facts (l5/project.json), e.g. language — never invented. This is
+  // what lets a locale-specific tie (a BR-formatted vs a US-formatted sibling) resolve instead of
+  // falling back to 'none' for lack of any signal (helpers/cm2ProjectContext.ts).
+  const targetProject = parsed.target ? chFileRefFromImport(parsed.target)?.project : undefined;
+  const projectLanguages = targetProject ? await readCm2ProjectLanguages(targetProject) : [];
+  const projectContext = formatProjectContext(projectLanguages);
+
   const systemPrompt = promptMd
     .split('{{catalog}}').join(resolved.catalog.skill)
     .split('{{groupFolder}}').join(cm2GroupFolder(resolved.group))
     .split('{{tagExample}}').join(exampleTag)
     .split('{{shortExample}}').join(shortExample)
     .split('{{group}}').join(resolved.group)
+    .split('{{projectContext}}').join(projectContext)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the regions cannot be answered from the list you were given')}`;
 
   const humanPrompt = [

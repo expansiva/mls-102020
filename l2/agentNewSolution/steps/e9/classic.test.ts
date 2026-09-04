@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { deriveNs4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/tiers.js';
-import { compileNs4ClassicL4, transposeNs4ClassicOperation } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
+import { collectionFieldName, compileNs4ClassicL4, transposeNs4ClassicOperation } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
 import { ns4ClassicDefsSource, parseNs4ClassicDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
 // The consumers' OWN parsers. If these read the emission, the wave changed nothing in them.
 import { parseWorkspaceDefs } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
@@ -37,8 +37,13 @@ test('the backend parses every emitted workspace with its own parser, unchanged'
       assert.equal(call.route, `${model.moduleName}.${workspace.workspaceId}.${call.bffId}`);
       const projection = resolveBffProjection(call);
       // One call, at most one collection — the item 0 (b) constraint, held by construction.
-      assert.ok(projection.kind === 'object' || projection.kind === 'list');
+      assert.ok(projection.kind === 'object' || projection.kind === 'list' || projection.kind === 'paginated');
       if (projection.kind === 'list') assert.ok(projection.itemFields.length, `${call.bffId} projects an empty list`);
+      else if (projection.kind === 'paginated') {
+        assert.ok(projection.itemFields.length, `${call.bffId} projects an empty page`);
+        assert.ok(projection.arrayFieldName && projection.arrayFieldName !== 'items', `${call.bffId} must declare the collection, never items`);
+        assert.deepEqual(projection.topFields.map(field => field.name), ['total', 'page', 'pageSize']);
+      }
       else assert.ok(projection.topFields.length || call.kind === 'command');
       const traced = [...projection.itemFields, ...projection.topFields];
       assert.equal(traced.every(field => field.operationId === call.uses[0].operationId), true,
@@ -78,7 +83,7 @@ test('a query declares the output shape the frontend expects from its access pat
     const shape = frontendOutputShapeForOperation(operation);
     const call = l4.workspaces.flatMap(workspace => workspace.bffCalls).find(item => item.uses[0].operationId === operation.operationId);
     if (!call) continue;
-    const expected = call.output.kind === 'list' ? 'array' : 'object';
+    const expected = call.output.kind === 'paginated' ? 'paginated' : call.output.kind === 'list' ? 'array' : 'object';
     assert.equal(shape, expected, `${operation.operationId} disagrees with its call about the wire shape`);
   }
 });
@@ -285,4 +290,52 @@ test('a catalogue list contract types search as string and sortBy as a closed en
   const workspace = l4.workspaces.find(item => item.workspaceId === 'changeOrderCatalogue')!;
   const recordList = workspace.sections.find(section => section.sectionId === 'recordList')!;
   assert.equal(recordList.organisms.find(organism => organism.role === 'filterControl')?.attachTo, 'qryListChangeOrder');
+});
+
+test('a catalogue list is paginated: declared collection + meta, page/pageSize are optional numbers', async () => {
+  const { model, l4 } = await compile();
+  const listClient = l4.operations.find(operation => operation.operationId === 'listClient')!;
+  assert.equal(listClient.accessPattern.pagination, 'optional');
+  assert.equal(listClient.outputShape.kind, 'paginated');
+  assert.equal(listClient.outputShape.fields[0]?.name, 'clients');
+  assert.equal(listClient.outputShape.fields[0]?.type, 'array');
+  assert.deepEqual(listClient.outputShape.fields.slice(1).map(field => field.name), ['total', 'page', 'pageSize']);
+  assert.equal(listClient.inputs.find(input => input.inputId === 'page')?.type, 'number');
+  assert.equal(listClient.inputs.find(input => input.inputId === 'pageSize')?.type, 'number');
+  assert.equal(listClient.inputs.find(input => input.inputId === 'page')?.required, false);
+
+  const clientCall = l4.workspaces.flatMap(workspace => workspace.bffCalls)
+    .find(call => call.bffId === 'qryListClient' && call.route.includes('clientCatalogue'))!;
+  assert.equal(clientCall.output.kind, 'paginated');
+  assert.equal(clientCall.output.fields[0]?.name, 'clients');
+  assert.equal(clientCall.input.find(input => input.name === 'page')?.type, 'number');
+  assert.equal(clientCall.input.find(input => input.name === 'pageSize')?.type, 'number');
+
+  const parsed = parseWorkspaceDefs(
+    l4.workspaces.find(item => item.workspaceId === 'clientCatalogue') as unknown as Record<string, unknown>,
+    model.moduleName,
+  )!;
+  const projection = resolveBffProjection(parsed.bffCalls.find(call => call.bffId === 'qryListClient')!);
+  assert.equal(projection.kind, 'paginated');
+  assert.equal(projection.arrayFieldName, 'clients');
+  assert.deepEqual(projection.topFields.map(field => field.name), ['total', 'page', 'pageSize']);
+
+  const clientContract = l4.contracts.find(item => item.bffId === 'qryListClient' && item.workspaceId === 'clientCatalogue')!;
+  assert.match(clientContract.source, /page\?: number;/);
+  assert.match(clientContract.source, /pageSize\?: number;/);
+  assert.match(clientContract.source, /export interface QryListClientOutputItem \{/);
+  assert.match(clientContract.source, /clients: QryListClientOutputItem\[\];/);
+  assert.match(clientContract.source, /total: number;/);
+  assert.equal(frontendOutputShapeForOperation(listClient), 'paginated');
+
+  const getClient = l4.operations.find(operation => operation.operationId === 'getClient')!;
+  assert.equal(getClient.outputShape.kind, 'object');
+  assert.equal(frontendOutputShapeForOperation(getClient), 'object');
+});
+
+test('the declared collection name is the entity, never the generic items', () => {
+  assert.equal(collectionFieldName('Client'), 'clients');
+  assert.equal(collectionFieldName('ChangeOrder'), 'changeOrders');
+  assert.equal(collectionFieldName('Company'), 'companies');
+  assert.equal(collectionFieldName('Status'), 'status');
 });

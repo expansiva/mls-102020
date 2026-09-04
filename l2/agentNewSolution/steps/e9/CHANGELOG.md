@@ -1,5 +1,13 @@
 # E9 changelog
 
+## 2026-09-04 — paginated is no longer collapsed to list
+
+E9 used to force `pagination: 'none'` and `output.kind: 'list'` because the module never projected
+page meta — declaring a shape the wire did not emit would lie. The runtime now counts and offsets,
+so the transposition propagates `accessPattern.pagination`, keeps `outputKind: 'paginated'`, and
+emits the canonical envelope: declared collection name (never `items`) + `total`/`page`/`pageSize`.
+`page`/`pageSize` inputs carry `type: 'number'`. Older l4 with `pagination: 'none'` is untouched.
+
 ## 2026-08-25 — enumValues da lista e attachTo do filterControl atravessam
 
 `search`/`sortBy`/`sortOrder` da lista de catálogo levam `enumValues` no input clássico; o contrato
@@ -19,10 +27,9 @@ the pipeline (and the English count in the step status). No gap strips both fiel
 catálogo de dado mestre. É o que permite ao gerador de backend rotear `cmdInactivate`/`cmdReactivate`
 para a fachada de ciclo de vida do MDM e honrar a list active-only.
 
-Diferente de `pagination` — emitido deliberadamente como `none` porque o módulo nunca projeta meta de
-página — este filtro é real e **precisa** sobreviver até o consumidor. O campo é opcional, então
-consumidor que o ignora não muda de comportamento: `classic.test.ts` prova isso rodando os parsers
-PRÓPRIOS do agentChangeBackend e do agentChangeFrontend sobre a emissão nova.
+O bloco é opcional, então consumidor que o ignora não muda de comportamento: `classic.test.ts`
+prova isso rodando os parsers PRÓPRIOS do agentChangeBackend e do agentChangeFrontend sobre a
+emissão nova.
 
 ## 2026-08-14 — Parte C: transpilador do formato clássico
 
@@ -33,8 +40,8 @@ PRÓPRIOS do agentChangeBackend e do agentChangeFrontend sobre a emissão nova.
 - A origem que a tela renderiza sai em `operations[].inputs[].source`, no vocabulário de fronteira
   do cliente (`userInput`/`selectedEntity`/`routeParam` renderizam; o resto é resolvido em runtime).
 - Uma call carrega no máximo uma coleção; composição é várias calls na mesma página.
-- Paginação sai declarada como `none` enquanto nenhuma call projetar o meta da página — declarar uma
-  forma que o módulo não emite só faria o contrato mentir sobre si mesmo.
+- Paginação sai declarada como `none` **só** quando o modelo não pagina; a partir de 2026-09-04 a
+  meta é projetada e `paginated` atravessa.
 - `classic.test.ts` roda os PARSERS DOS PRÓPRIOS CONSUMIDORES sobre a emissão
   (`parseWorkspaceDefs` e `resolveBffProjection` do 102021; `parseWorkspaceBffCalls`,
   `bffCallCommandShape`, `parseWorkspaceSections` e `frontendOutputShapeForOperation` do CFE).

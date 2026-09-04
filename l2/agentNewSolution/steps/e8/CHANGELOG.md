@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-04 — catalogue list synthesizes optional page/pageSize; every list is paged
+
+`catalogueListInputs` emits `page`/`pageSize` (optional numbers, fieldRef borrowed from identity,
+same pattern as sortBy). Default 20 / cap 200 live in the runtime. Gate `NS4_E8_LIST_WITHOUT_PAGINATION`
+is blocking: a list without `pagination: optional|required` fails. Paging five rows costs nothing;
+an unpaged thousands-row table is the defect a generator must not judge per entity.
+
 ## 2026-08-30 — exclusive use case of an absorbed journey stays on the owner
 
 R1/D1 absorption already copies the built journey's calls onto the owner place; exclusive E7

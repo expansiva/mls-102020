@@ -51,6 +51,8 @@ export interface Ns4E8Input {
   description: string;
   /** The literal union of an enumerated field, carried from the approved ontology. */
   enumValues?: string[];
+  /** Present when the input is not the borrowed fieldRef's type (`page`/`pageSize` are numbers). */
+  type?: 'number' | 'boolean' | 'string';
 }
 
 /**

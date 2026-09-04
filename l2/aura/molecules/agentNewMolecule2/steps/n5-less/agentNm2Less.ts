@@ -6,8 +6,8 @@
 // so a rule fixed once applies to both paths. What differs between the two agents is the MODE:
 //
 // - no theme  -> a NEUTRAL base sheet: every appearance value goes through a token with a literal
-//                fallback (`var(--ml-on-surface, #1c1b1f)`), so a future theme can override it. This
-//                is what the 147 base sheets of mls-102040 do.
+//                fallback (`var(--text-strong, #1c1b1f)`) — a design-system ROLE, so the project's
+//                designSystem.ts can override it. See skills/tokenVocabulary.
 // - a theme   -> the sheet IS the theme's appearance: it carries the token VALUES and takes an
 //                explicit motion stance, like the 84 validated sheets of mls-102054/102055.
 //
@@ -15,6 +15,8 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as lessAuthoringSkill } from '/_102020_/l2/aura/molecules/skills/lessAuthoring/index.js';
+import { skill as tokenVocabularySkill } from '/_102020_/l2/aura/molecules/skills/tokenVocabulary.js';
+import { DEFAULT_TOKENS_TEMPLATE } from '/_102029_/l2/designSystemBase.js';
 import {
   NM_AGENT_FOLDER,
   compileStorLess,
@@ -36,7 +38,7 @@ import {
 import { MoleculePlan, NM_MAX_ATTEMPTS } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTypes.js';
 import { MoleculeContext } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmContext.js';
 import { nmIdentityFromPlan, normalizeLessContent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmTemplates.js';
-import { declaresPortal, extractMlClassesFromTs } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+import { declaresPortal, extractMlClassPrefixes, extractMlClassesFromTs } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 import {
   buildVToolInstruction,
   createVToolSchema,
@@ -88,6 +90,9 @@ async function beforePromptStep(
   const groupSkill = await loadGroupSkill(ctx);
   const portal = declaresPortal(renderTs);
   const inventory = extractMlClassesFromTs(renderTs);
+  // Interpolated families are listed as `.ml-foo-*`: the model must know the family exists AND
+  // that its suffix is dynamic. Listing the bare prefix instead sends it to style a dead class.
+  const families = extractMlClassPrefixes(renderTs);
 
   const systemPrompt = promptMd
     .split('{{tag}}').join(plan.tag)
@@ -98,7 +103,10 @@ async function beforePromptStep(
     .split('{{lessAuthoringSkill}}').join(lessAuthoringSkill)
     .split('{{modeSection}}').join(await buildModeSection(ctx))
     .split('{{renderTs}}').join(renderTs)
-    .split('{{mlInventory}}').join(inventory.map(cls => `\`.${cls}\``).join(', ') || '(none — the render emits no ml-* class, which is a bug)')
+    .split('{{mlInventory}}').join([
+      ...inventory.map(cls => `\`.${cls}\``),
+      ...families.map(prefix => `\`.${prefix}*\` (family: the render appends the variant)`),
+    ].join(', ') || '(none — the render emits no ml-* class, which is a bug)')
     .split('{{groupCanonical}}').join(plan.groupCanonical)
     .split('{{groupSkill}}').join(groupSkill)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the molecule source is insufficient to produce the sheet')}`;
@@ -245,32 +253,73 @@ async function loadGroupSkill(ctx: MoleculeContext): Promise<string> {
 // exactly one file are molecule-specific ON PURPOSE (`--ml-nrs-knob-size` belongs to the number range
 // slider, `--ml-gradient-1..7` to the charts), so a gate rejecting unknown tokens would reject good
 // molecules. Hence: the prompt teaches the shared names, and inventing a prefixed one stays legal.
-const NM_NEUTRAL_TOKEN_VOCABULARY = [
-  '### The token vocabulary of the base sheets',
-  '',
-  'These are the `--ml-*` names the library already shares (the number is how many of the ~147 base',
-  'sheets use each one). **Use the token of the role when one exists** — do not coin a new name for a',
-  'role that is already covered.',
-  '',
-  '| role | tokens |',
-  '|---|---|',
-  '| surface | `--ml-surface` (145), `--ml-surface-dim` (113) — the recessed surface of rails, footers and empty states, `--ml-surface-variant`, `--ml-surface-overlay` |',
-  '| text on surface | `--ml-on-surface` (146), `--ml-on-surface-muted` (143), `--ml-on-surface-faint` (82) |',
-  '| outline | `--ml-outline-variant` (144), `--ml-outline-focus` (86), `--ml-outline-error` (99) |',
-  '| focus ring | `--ml-focus-ring-color` (122), `--ml-focus-ring-width` (121) |',
-  '| primary | `--ml-primary` (116), `--ml-on-primary` (68), `--ml-primary-container` (8) — **the tinted background of a SELECTED row/item**, `--ml-on-primary-container` |',
-  '| semantic | `--ml-error` (126), `--ml-success` (12), `--ml-warning` (6), each with `-dim` (tinted background) and `-border` variants |',
-  '| shape | `--ml-radius-sm` (31), `--ml-radius-md` (15), `--ml-radius-full` (4), `--ml-border-width` (59), `--ml-border-style` (59) |',
-  '| elevation | `--ml-shadow-0` (2), `--ml-shadow-1` (11), `--ml-shadow-2` (13) |',
-  '| motion | `--ml-transition` (51) |',
-  '| typography | `--ml-font-family` (144), `--ml-font-weight-medium` (140) |',
-  '| state | `--ml-disabled-opacity` (138) |',
-  '',
-  'If the molecule genuinely needs a value no role above covers — a knob size, a track height, a chart',
-  'gradient — coin a token PREFIXED with the molecule, as the library does: `--ml-nrs-knob-size`,',
-  '`--ml-spinner-duration`, `--ml-gradient-1`. Still consumed with a fallback:',
-  '`var(--ml-nrs-knob-size, 20px)`.',
-].join('\n');
+// The token vocabulary of a BASE sheet lives in the shared skill
+// `skills/tokenVocabulary` — the same text agentImproveMolecule2/i3-edit receives,
+// so that creating and fixing follow ONE rule.
+//
+// Before this version the list here was the library's `--ml-*` vocabulary. It was
+// replaced by the design-system ROLES (`surface-bg`, `text-strong`,
+// `button-primary-bg`…), which are what the project's `designSystem.ts` defines and
+// therefore what makes the molecule follow the client's theme. The `--ml-*` survived
+// only for what the design system does not cover — see section 3 of the skill.
+// Evidence and measurements in todo/moleculetokens/.
+
+// The canonical fallback of every design-system role, read from DEFAULT_TOKENS_TEMPLATE — the same
+// constant that GENERATES a project's designSystem.ts. Injected into the NEUTRAL branch so the
+// fallback is looked up instead of invented.
+//
+// This completes lesson A7 (2026-07-31): the NEUTRAL branch demanded "every appearance value goes
+// through a token" while only the THEMED branch received a value table, which made compliance luck.
+// The 2026-09-03 run showed the cost of the missing half — two molecules generated in the same
+// session disagreed on the fallback of 6 roles (`text-default` #37323d vs #374151), and one sheet
+// disagreed with ITSELF on `--border-subtle` nine lines apart. The gate now rejects the intra-sheet
+// case; this table is what makes different sheets converge.
+//
+// Only the base roles are listed: the `-hover`/`-focus`/`-disabled` variants follow the same value
+// pattern and listing all 176 keys would bury the table.
+function canonicalFallbackTable(): string {
+  // The scale tokens carry LESS expressions (`calc(@space-base-unit * 2)`). The runtime rewrites
+  // `@token` into `var(--token)` when it compiles the design system, but a molecule sheet is
+  // compiled on its own — `@space-base-unit` is undefined there and `lessc` fails with a NameError.
+  // Verified: `var(--font-size-12, calc(@font-base-unit * 3))` does not compile. So resolve the
+  // expression against its base unit and hand over a concrete value.
+  const resolveScale = (value: string, source: Record<string, string>): string => {
+    const match = value.match(/^calc\(\s*@([\w-]+)\s*\*\s*([\d.]+)\s*\)$/);
+    if (!match) return value;
+    const base = source[match[1]];
+    const baseMatch = base?.match(/^([\d.]+)([a-z%]*)$/);
+    if (!baseMatch) return value;
+    const amount = Number(baseMatch[1]) * Number(match[2]);
+    return `${Number(amount.toFixed(4))}${baseMatch[2]}`;
+  };
+
+  const rows: string[] = [];
+  const push = (source: Record<string, string>, skipStates: boolean): void => {
+    for (const [name, value] of Object.entries(source)) {
+      if (name.startsWith('_dark-')) continue;
+      if (skipStates && /-(hover|focus|disabled)$/.test(name)) continue;
+      if (/-base-unit$/.test(name)) continue; // an internal of the scale, never read by a sheet
+      rows.push(`| \`--${name}\` | \`${resolveScale(value, source)}\` |`);
+    }
+  };
+  push(DEFAULT_TOKENS_TEMPLATE.color, true);
+  push(DEFAULT_TOKENS_TEMPLATE.global, false);
+  push(DEFAULT_TOKENS_TEMPLATE.typography, false);
+  return [
+    '### The canonical fallback of each role — LOOK IT UP, do not invent it',
+    '',
+    'Write the fallback exactly as listed. Two sheets that pick their own neutral values disagree on',
+    'what the library looks like with no design system, and the gate rejects a sheet that reads the',
+    'same token with two different fallbacks.',
+    '',
+    'The `-hover`/`-focus`/`-disabled` variants are not listed: use the base role value as the',
+    'fallback when you read a variant, unless the render needs a visibly different one.',
+    '',
+    '| Role | Fallback |',
+    '|------|----------|',
+    ...rows,
+  ].join('\n');
+}
 
 async function buildModeSection(ctx: MoleculeContext): Promise<string> {
   if (!ctx.theme.present || !ctx.theme.info) {
@@ -281,16 +330,18 @@ async function buildModeSection(ctx: MoleculeContext): Promise<string> {
       'goes through a token, with a sensible literal as the FALLBACK:',
       '',
       '```less',
-      '.ml-text { color: var(--ml-on-surface, #1c1b1f); }',
-      '.ml-surface-bg { background: var(--ml-surface, #ffffff); }',
+      '.ml-text { color: var(--text-strong, #1c1b1f); }',
+      '.ml-surface-bg { background: var(--surface-bg, #ffffff); }',
       '```',
       '',
       'Never write a bare colour (`color: #1c1b1f`) — a deterministic gate rejects it, because nothing',
-      'could ever override it. Do NOT define the tokens (`--ml-x: value`) and do NOT invent a visual',
+      'could ever override it. Do NOT define the tokens (`--x: value`) and do NOT invent a visual',
       'style: pick neutral, conventional values as fallbacks. Mentioning themes, palettes or a named',
       'style anywhere in this file is wrong.',
       '',
-      NM_NEUTRAL_TOKEN_VOCABULARY,
+      tokenVocabularySkill,
+      '',
+      canonicalFallbackTable(),
     ].join('\n');
   }
   const info = ctx.theme.info;
