@@ -19,6 +19,7 @@ import { ChGroupsOutput, buildChRegions, chDistinctGroups, normalizeChGroupsOutp
 import { cm2ContractFileFromTarget } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Entry.js';
 import { parseContractTypesFromCompiledTs, parseContractTypesFromDefsSource, parsePageDefsSource } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2DefsPatch.js';
 import { Cm2Region, extractRegions } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Regions.js';
+import { extractPageContext, formatPageContext } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2PageContext.js';
 import { CM2_AGENT_FOLDER, CM2_MAX_ATTEMPTS, CM2_PLAN_C1, Cm2GroupsResult, cm2DoneAnchor, cm2ParseStepArgs, readCm2AgentText } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Types.js';
 
 const AGENT_NAME = 'agentCm2Groups';
@@ -39,6 +40,8 @@ export function createAgent(): IAgentAsync {
 interface LoadedContext {
   level1: ChLevel1;
   regions: Cm2Region[];
+  /** The target's own declared intent — see helpers/cm2PageContext.ts. '' when it declares none. */
+  pageContext: string;
 }
 
 async function loadContext(catalogProject: number, target: string): Promise<LoadedContext | string> {
@@ -55,7 +58,8 @@ async function loadContext(catalogProject: number, target: string): Promise<Load
 
   const contractTypes = await loadContractTypes(targetFile);
   const regions = extractRegions(parsedPage.definitionJson, contractTypes);
-  return { level1, regions };
+  const pageContext = formatPageContext(extractPageContext(parsedPage.definitionJson));
+  return { level1, regions, pageContext };
 }
 
 /** Best-effort: the .defs.ts is the source of truth when present; the compiled .ts is the fallback
@@ -95,7 +99,7 @@ async function beforePromptStep(
   if (typeof loaded === 'string') {
     return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', loaded)];
   }
-  const { level1, regions } = loaded;
+  const { level1, regions, pageContext } = loaded;
 
   // Nothing to decide: the honest, cheap path — complete now with an empty answer, no LLM call.
   if (!regions.length) {
@@ -119,6 +123,7 @@ async function beforePromptStep(
   const systemPrompt = promptMd
     .split('{{catalog}}').join(level1.skill)
     .split('{{groupNames}}').join(groupNames.join(', '))
+    .split('{{pageContext}}').join(pageContext)
     .split('{{regions}}').join(regions.map(region => `- id: ${region.id}\n  need: ${region.need}`).join('\n'))
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the regions cannot be answered from the group list you were given')}`;
 

@@ -22,3 +22,19 @@ reescrito com linha de `import` nova e um componente Lit inteiro, então uma que
 de todas as moléculas do grupo, não só a nova. Agora escreve, chama `compileStorTs` e os erros entram
 no gate como código `compile`. A falha continua NÃO bloqueando o pipeline (âncora com ok:false e o
 n8-summary reporta), que é a decisão D5.
+
+## 2026-09-04 — `contract_not_demonstrated`
+
+Medido num run real: a vitrine gerada de `grouptriggeraction` trouxe 6 instâncias da molécula e ZERO
+`data-variant` — a propriedade que o `usage.ts` do grupo chama de "the only way to change how the
+button looks". O molde (`skills/indexGroupPage.ts`) entrega uma tag fechada, com atributos e comentário
+de slot, e nunca menciona que existe uma segunda camada (o contrato do `usage.ts`) — então o modelo
+nunca chega lá.
+
+O gate agora reprova se a página usa **zero** itens do contrato do grupo (tabelas `Properties`/`Events`
+do usage skill) fora do envelope que o próprio molde entrega (`name`/`value`/`isEditing`/`@change`). O
+parsing e a normalização (`icon-position` → `iconposition`, para casar com `.iconPosition`) vivem em
+`shared/usageContract.ts`, compartilhado com o `s3-indexts` e o `v4-index` — os três importam o mesmo
+molde e não podem divergir na detecção. Medido nos 31 `index.ts` de grupo da biblioteca: 28 passam, 3
+reprovam (`groupviewtable`, `groupenterboolean`, `groupnavigatesection` — ver o todo para por que os dois
+últimos são discutíveis). Uma skill de uso vazia ou degradada nunca reprova.

@@ -3,6 +3,8 @@
 
 You are choosing, inside the group **{{group}}**, which component serves each region you are given. A previous call already decided that this group is the right one for these regions — that decision is not yours to revisit.
 
+{{pageContext}}
+
 {{projectContext}}
 
 ## The one rule that cannot be broken
@@ -15,9 +17,12 @@ You are choosing, inside the group **{{group}}**, which component serves each re
 
 ## Choosing
 
-1. If a row of the quick-reference table matches the region's need, start from the components it recommends.
-2. Break the tie by the description: what the need insists on — a declared type, an enum, a range, several values at once — is usually the exact thing that separates two siblings.
-3. Say which row you used in `scenarioUsed`, copied exactly, or `none` when no row applied.
+1. Pick the **most specific** row of the quick-reference table that the evidence supports, and start from the components it recommends.
+2. ⚠️ **The catch-all row is the trap.** Several groups open their table with a broad row ("general listing with sorting and pagination", "plain editing", ...) that recommends almost every component in the group. Landing there decides nothing — it is the row to use only when every more specific row has been ruled out. The page context above is what rules them in or out: a declared presentation like *master-detail*, *contextual-transition-actions* or *card-board*, a `usageFrequency` that implies density, an information hierarchy that leads with a summary, an anti-pattern that forbids a whole shape — each of those points at a SPECIFIC row. Read them before settling for the broad one.
+3. Break the remaining tie by the layout axes and the full description of each sibling: what the evidence insists on — a declared type, an enum, a range, several values at once, a density, a read-only surface vs an editable one — is usually the exact thing that separates two siblings.
+4. Say which row you used in `scenarioUsed`, copied exactly, or `none` when no row applied.
+
+The region's `need` line is mechanical here: it carries the field's declared type and the query's declared output, and nothing about presentation. It is NOT the whole evidence — the page context above carries the intent, and the two are read together. A choice that only honours the field type, while contradicting a presentation the page already declared, is the wrong choice.
 
 ## When this group has nothing for a region
 

@@ -10,6 +10,7 @@
 
 import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
 import { syMoleculesNotShown } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syMigrateIndexTs.js';
+import { contractItemsMissing, contractItemsUsed, usageContractItems } from '/_102020_/l2/aura/molecules/shared/usageContract.js';
 
 export interface SyCreateGateOptions {
   indexTag: string;
@@ -19,6 +20,8 @@ export interface SyCreateGateOptions {
   groupMoleculeShortNames: string[];
   /** Lowercase folder of the group — the tag prefix, needed to look for a real `<folder--shortName>` instance. */
   groupFolder: string;
+  /** The group's usage skill text (or the loader's degraded placeholder). Empty/degraded skips the check. */
+  groupUsageSkill?: string;
 }
 
 export function runSyCreateIndexTsGate(indexTs: string, options: SyCreateGateOptions): NmGateIssue[] {
@@ -93,6 +96,17 @@ export function runSyCreateIndexTsGate(indexTs: string, options: SyCreateGateOpt
     issues.push({
       code: 'reference_table_handwritten',
       message: 'index.ts must not hand-write the reference table (<table>, headers.map(...), or a rows array) — the markup and data both come from renderCatalogReferenceTable/index.defs.ts',
+    });
+  }
+
+  // The showcase must demonstrate the molecule's OWN contract (usage skill Properties/Events), not just
+  // the mold's envelope (name/value/isEditing/@change). See shared/usageContract.ts for why.
+  const contract = usageContractItems(options.groupUsageSkill || '');
+  if (contract.size && !contractItemsUsed(content, options.groupFolder, contract).length) {
+    const sample = contractItemsMissing(options.groupUsageSkill || '', content, options.groupFolder).slice(0, 5).join(', ');
+    issues.push({
+      code: 'contract_not_demonstrated',
+      message: `the showcase never uses any property or event from the group's usage contract beyond the mold's envelope (name/value/isEditing/@change) — e.g. ${sample}; read the group usage skill's Properties and Events tables and add them to at least one card`,
     });
   }
 

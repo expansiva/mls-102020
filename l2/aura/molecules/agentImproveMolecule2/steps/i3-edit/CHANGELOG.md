@@ -1,5 +1,70 @@
 # CHANGELOG — i3-edit
 
+## 2026-09-04 — a tabela canônica de fallbacks chegou ao prompt, e o `fallback_divergence` ao gate
+
+**O IM2 escrevia `.less` de molécula base sem receber os VALORES dos papéis do design system.** Ele e
+o `n5-less` do NM2 seguem a mesma skill (`skills/tokenVocabulary`), que dá os NOMES dos papéis e as
+regras — mas só o NM2 recebia a tabela de valores (`canonicalFallbackTable()`). O IM2 tirava os
+valores da seção `## Design System Roles` da `usage.ts` do grupo, uma tabela que vai ser removida;
+sem este ajuste a remoção o deixaria cego.
+
+**A medição que motivou:** o run do Studio de 03/09. Duas moléculas geradas na mesma sessão
+discordaram do fallback de 6 papéis (`--text-default` `#37323d` vs `#374151`), e uma folha discordou
+**de si mesma** sobre `--border-subtle` — `#d1d5db` na linha 126, `#e5e7eb` na 135. Depois de injetar
+a tabela canônica no NM2, o run seguinte deu **0 divergência** em 92 sítios `var()`. O IM2 não tinha
+nem a tabela nem o check.
+
+**O que mudou:**
+
+- `skills/canonicalFallbacks.ts` (novo) — `canonicalFallbackRows()`, a tabela `papel -> fallback` lida
+  do `DEFAULT_TOKENS_TEMPLATE` (a mesma constante que GERA o `designSystem.ts` de um projeto). Saiu do
+  `agentNm2Less.ts` para cá em vez de ser duplicada: os dois agentes escrevem o mesmo tipo de folha e
+  divergir sobre "como a biblioteca é sem design system" é justamente o defeito que estamos consertando.
+  Resolve as expressões LESS do template (`calc(@font-base-unit * 3)` -> `0.75rem`, porque uma folha de
+  molécula compila sozinha e `@font-base-unit` é indefinido lá) e omite as variantes
+  `-hover`/`-focus`/`-disabled` e as chaves `_dark-`. Verificado: 80 linhas (44 papéis de cor + 20
+  `global` + 19 `typography` − 3 `*-base-unit`, que são internos da escala);
+- `agentNm2Less.ts` — passa a importar de lá; a prosa dele fica onde estava e o texto injetado é
+  byte-a-byte o de antes;
+- `agentIm2Edit.ts` — `canonicalFallbackTable()` local (só a prosa) + `{{canonicalFallbacks}}` na
+  cadeia de substituição, ao lado de `{{tokenVocabulary}}`;
+- `prompt.md` — `{{canonicalFallbacks}}` depois de `{{tokenVocabulary}}`, na seção
+  `### The token vocabulary of the appearance`;
+- `gate.ts` — código de erro `fallback_divergence`, num bloco irmão do `if (file.kind === 'ts')`.
+
+**⚠️ A PROSA DO IM2 É O INVERSO DA DO NM2, e é por isso que só a tabela é compartilhada.** O NM2 cria
+a folha: não há nada a preservar, o valor do template é o certo. O IM2 edita uma folha que já existe,
+e a regra deste agente é o DELTA — "corrigir" o fallback de um papel que a folha já lê é mudança
+visual que ninguém pediu, por mais canônico que seja o valor novo. O texto do IM2 diz, em inglês,
+que a tabela vale só para um papel que a edição está INTRODUZINDO.
+
+**O gate julga o DELTA, e a ordenação é o que faz isso funcionar.** O detector
+(`shared/moleculeInspect.divergentTokenFallbacks`, já existia e é o mesmo do NM2) devolve objetos, e o
+`introduced()` compara strings — então cada achado é dobrado numa chave estável por token, com os
+valores **ordenados e normalizados**. Sem ordenar, o `divergentTokenFallbacks` devolve os valores em
+ordem de aparição: inserir um sítio no topo do arquivo inverte a chave, o `introduced()` vê string
+nova e reprova uma divergência **pré-existente**. Provado nos dois lados na
+`grouptriggeraction/ml-pagination-control.less`, que já lê `--ml-pagination-press-shadow` com
+`rgba(0,0,0,0.08)` e `rgba(0,0,0,0.1)`:
+
+| caso | esperado | resultado |
+|------|----------|-----------|
+| arquivo inalterado (divergência pré-existente) | 0 | 0 ✅ |
+| edição insere um sítio no topo, invertendo a ordem da chave | 0 | 0 ✅ (sem ordenar: 1 ❌) |
+| edição introduz divergência nova em `--border-default` | 1 | 1 ✅ |
+| edição acrescenta um 3º valor ao token que já divergia | 1 | 1 ✅ |
+
+**Verificação.** O `gate.test.ts` deste passo não roda fora do Studio (importa pelo alias
+`/_102020_/…` e falha na resolução de módulo, antes e depois desta mudança). Os 4 arquivos tocados
+parseiam (`esbuild transformSync`, `loader: 'ts'` — o `tsc` do mls-base não serve, 1847 erros de
+sintaxe em `l4` abortam a análise semântica), o `prompt.md` não tem placeholder órfão, e a tabela dos
+4 casos acima foi produzida rodando o `runImEditGate` real com os módulos vizinhos stubados.
+
+**Fora de escopo, por decisão explícita:** a seção `## Design System Roles` da `usage.ts` **não** foi
+removida — é o passo seguinte, e dependia deste. O `mls-102029/l2/designSystemBase.ts` não foi tocado
+(o template não é nosso para alterar — decisão do Lucas, 02/09). Nenhuma `usage.ts` foi regenerada, e
+o registro de tokens de geometria (`--ml-spinner-*`) continua com a forma em aberto.
+
 ## 2026-09-01 — o contrato da BASE entrou no prompt (segundo capítulo de 17/08)
 
 **O mesmo defeito da entrada abaixo, num artefato diferente.** A de 17/08 registrou que o IM2 herdou

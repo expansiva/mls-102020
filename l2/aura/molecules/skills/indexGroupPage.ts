@@ -53,7 +53,8 @@ A single line containing only the custom element tag:
         </div>
         <p class="text-xs text-slate-400 mb-5">One-line context description</p>
         <{groupname}--{component} name="card-{x}" .value=\${this.cardX} .isEditing=\${true}
-          @change=\${(e: CustomEvent) => { this.cardX = e.detail.value; }}>
+          @change=\${(e: CustomEvent) => { this.cardX = e.detail.value; }}
+          {the molecule's own properties and event bindings, from the group usage skill's Properties and Events tables}>
           <!-- Populate all available slot tags with realistic content (Label, Helper, Item, etc.) -->
         </{groupname}--{component}>
       </div>
@@ -65,6 +66,12 @@ A single line containing only the custom element tag:
 
 Accent bar colors rotate through: violet, emerald, amber, rose, sky, indigo, purple, teal, orange, pink — one distinct color per card.
 A group may show the same component more than once when different configurations deserve separate illustration.
+
+The attributes shown above are the showcase ENVELOPE — every card has them. They are NOT the molecule's
+contract. Read the group usage skill's **Properties** and **Events** tables and add those on top: the
+tone/variant attribute, the sizes, the molecule's own events. A card that carries only the envelope
+demonstrates nothing about the molecule. Measured on a real run: a showcase for a button group shipped
+with no \`data-variant\` on any card, so all three instances rendered in the default tone.
 
 ## renderReferenceTable()
 

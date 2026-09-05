@@ -49,7 +49,9 @@ step count and would stop measuring what the design claims.
 
 ## What it measures
 
-Every run leaves `l4/agentChooseMolecules/<runKey>/report.json` with:
+Every run leaves `l4/agentChooseMolecules/<runKey>/report.json` with — and **`<runKey>` is sequenced**, so a
+second run of the same definition writes `<runKey>-02` instead of overwriting the first report
+(`flow.json.conventions.runFolder`; before 2026-09-04 it overwrote it in silence):
 
 - the regions c1 found, and the group it gave each one (or `null`);
 - the molecule c2 chose per region, the quick-reference scenario it used, and its reasoning;

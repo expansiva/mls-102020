@@ -10,7 +10,7 @@ import { readStorText, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/a
 import { nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import { chFileRefFromImport } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import { Cm2MoleculeChoice, Cm2PipelineAddition, applyMoleculeChoices, applyPipelineSkills, parsePageDefsSource, serializePageDefsSource } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2DefsPatch.js';
-import { CM2_AGENT_FOLDER, cm2ComponentReference, cm2GroupDoneAnchor, cm2ParseStepArgs, cm2ReadC1Result, cm2ReadGroupResult } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Types.js';
+import { CM2_AGENT_FOLDER, cm2ComponentReference, cm2GroupDoneAnchor, cm2ParseStepArgs, cm2PipelineRef, cm2ReadC1Result, cm2ReadGroupResult } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Types.js';
 
 const AGENT_NAME = 'agentCm2Patch';
 
@@ -66,7 +66,9 @@ async function beforePromptStep(
         continue;
       }
       choices.set(choice.region, { group, tag: choice.tag });
-      const addition = additionsByGroup.get(group) || { usageRef: groupResult.usageContract, componentFiles: [] };
+      // The catalog publishes usageContract in IMPORT form ('/_102020_/.../usage'); a pipeline array
+      // needs PIPELINE form ('_102020_/.../usage.ts') or materialize drops it — see cm2PipelineRef.
+      const addition = additionsByGroup.get(group) || { usageRef: cm2PipelineRef(groupResult.usageContract), componentFiles: [] };
       addition.componentFiles.push(cm2ComponentReference(catalogProject, choice.tag));
       additionsByGroup.set(group, addition);
     }

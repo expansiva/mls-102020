@@ -12,6 +12,26 @@ A region is **one interaction that a single component could serve** — a field 
 - Two regions may end up on the same group, and even on the same component. That is normal — name both.
 - Cover the whole definition. A part you cannot serve is still a region: it is a region with group `none`.
 
+### What a component already does is not a region of its own
+
+Not inventing regions is harder than finding them, and it is the mistake made most here. When the definition names, **as a verb**, something done to the content of a region beside it, that verb belongs to that region: it goes into its `need` line, never into a region of its own.
+
+- `an orders table with sorting, pagination and selection of several rows for batch actions` is **one** region. Sorting and selecting are things the table does — a region for the selection would put two components on one element of the screen.
+- `a stock table where the user corrects the quantity in the cell and saves` is **one** region. Saving is half of editing in the cell.
+- A screen that **lists records and maintains them** — create, edit, delete, open one record at a time — over the same collection is **one** region, not one per verb. Some components are built for exactly that whole flow, and a definition cut into `the list` + `create` + `edit` + `delete` no longer describes it: the next call is then asked for a list, answers with one, and the component that served all four is never looked at.
+
+The verbs are not discarded — they are what decides the component inside the group, so write them into the `need` line. What must not happen is a region for each one.
+
+**The test is whether a component has to be CHOSEN, not where it sits on the screen.** A verb a component performs on its own content needs no component of its own, so it is not a region. Something the user fills, picks or reads needs one, and stays a region even when it sits INSIDE another region. An action with no collection behind it — signing in, advancing a wizard — is a region. A verb that only exists because a collection is there is not.
+
+### The fields of a record the user MAINTAINS are regions
+
+When the definition names the fields of a record the user creates or edits — `name (text)`, `date of birth (date)`, `active (yes/no)` — **each field is a region**, even though the collection they belong to is a single region. A component that maintains records owns the flow and the editing mode, not the fields: the field that types a name and the field that picks a date are separate components. Name only the collection and nobody downstream is left to answer what edits each field.
+
+So keep both: **one region for the collection**, with the maintenance verbs in its `need` line, **and one region per named field**, whose `need` line carries that field's own type and whatever the definition says about it.
+
+Two limits on this. **Columns of a collection the user only READS are not regions** — nothing is filled there, and the component that shows the collection renders them itself. And **never invent a field the definition does not name**: a definition that says only `user registration` has one region, not a guess at what a user record contains.
+
 ## Then: the group, or `none`
 
 The groups this project publishes are listed below, and **they are the only ones that exist**. Copy the name exactly as written there.
@@ -28,6 +48,8 @@ The next call sees **only** the region name and its `need` line — never this d
 - whether a value outside the list is allowed;
 - whether the options are compared by several attributes at once;
 - whether it is a single value, several values, a range, or a hierarchy;
+- whether a collection is only read, or also **maintained** by the user (created, edited, deleted) — and, when it is maintained, where one record opens: in the row itself, in a panel beside the list, or in a screen of its own that replaces the list;
+- which of the region's own verbs the definition insists on (sorting, paginating, selecting several, grouping, editing in the cell) — the verbs you did not turn into regions belong here;
 - anything the user's own words insist on (a flag beside the name, +/- buttons, a mask).
 
 Write it in one line, in {{userLanguage}}, using the user's vocabulary. Do not add requirements the definition does not state.

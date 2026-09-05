@@ -137,6 +137,7 @@ async function afterPromptStep(
   const { ctx, plan } = await readArtifacts(runKey);
   const identity = nmIdentityFromPlan(plan);
   const groupMolecules = scanGroupMolecules(ctx, plan);
+  const groupUsageSkill = await loadGroupUsageSkill(ctx);
 
   let indexTs = '';
   let extractError = '';
@@ -161,7 +162,7 @@ async function afterPromptStep(
   const issues = extractError
     ? [{ code: 'extract', message: extractError }]
     : [
-      ...runNm2IndexGate(indexTs, plan, ctx, { indexTag: nmGroupIndexTag(identity), groupMolecules }),
+      ...runNm2IndexGate(indexTs, plan, ctx, { indexTag: nmGroupIndexTag(identity), groupMolecules, groupUsageSkill }),
       ...compileErrors.map(message => ({ code: 'compile', message })),
     ];
   const errorText = issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');

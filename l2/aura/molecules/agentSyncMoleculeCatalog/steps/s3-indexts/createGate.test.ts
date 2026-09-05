@@ -123,3 +123,38 @@ void test('nome que é prefixo de outro não conta como import do irmão', () =>
   const codes = runSyCreateIndexTsGate(GOOD, options).map(issue => issue.code);
   assert.ok(codes.includes('molecule_missing'), 'o irmão de nome mais longo não foi importado e tem de ser cobrado');
 });
+
+// A showcase that only carries the mold's envelope (name/value/isEditing/@change) demonstrates nothing
+// about the molecule's own contract (decision of 2026-09-04).
+const USAGE_SKILL = `
+## Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| \`data-variant\` | \`string\` | \`'primary'\` | Visual tone |
+
+## Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`action\` | \`{}\` | Fired when the button is clicked |
+`;
+
+void test('a showcase using only the mold envelope fails contract_not_demonstrated when a usage skill exists', () => {
+  const codes = runSyCreateIndexTsGate(GOOD, { ...OPTIONS, groupUsageSkill: USAGE_SKILL }).map(issue => issue.code);
+  assert.ok(codes.includes('contract_not_demonstrated'));
+});
+
+void test('a showcase using a contract property beyond the envelope passes', () => {
+  const withVariant = GOOD.replace(
+    '<groupenterdatetime--ml-datetime-picker></groupenterdatetime--ml-datetime-picker>',
+    '<groupenterdatetime--ml-datetime-picker data-variant="secondary"></groupenterdatetime--ml-datetime-picker>',
+  );
+  const codes = runSyCreateIndexTsGate(withVariant, { ...OPTIONS, groupUsageSkill: USAGE_SKILL }).map(issue => issue.code);
+  assert.ok(!codes.includes('contract_not_demonstrated'));
+});
+
+void test('sem skill de uso (ou placeholder degradado) o check nunca dispara', () => {
+  assert.ok(!runSyCreateIndexTsGate(GOOD, { ...OPTIONS, groupUsageSkill: '' }).map(i => i.code).includes('contract_not_demonstrated'));
+  assert.ok(!runSyCreateIndexTsGate(GOOD, { ...OPTIONS, groupUsageSkill: '(this group has no usage skill)' }).map(i => i.code).includes('contract_not_demonstrated'));
+});

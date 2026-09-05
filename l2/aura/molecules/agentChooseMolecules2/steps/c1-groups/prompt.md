@@ -3,9 +3,18 @@
 
 You are deciding, for each REGION of a page listed below, **which GROUP of a component library serves it**. You do not choose the component itself: a later call does that, one group at a time, reading the list of components of that group. You have not seen those lists and must not guess what is in them.
 
+{{pageContext}}
+
 ## The regions
 
-Each region below was extracted from the page's own data contract — a query that loads a list, or a form field of a command. Do not invent, merge, split or rename any of them. For each one, echo `region` and `need` back **exactly** as given, in the same order.
+Each region below was extracted from the page's own data contract, and is one of three kinds — its `need` line says which:
+
+- a **surface**: a query that loads rows, which the user reads and may have to pick from;
+- an **entry**: one form field of a command, which the user types into;
+- a **trigger**: the control that EXECUTES a command — an action, not a field. Every command has exactly one, including a command with no typed field of its own;
+- a **page** need (its id starts with `page::`): something the whole page needs, belonging to no single field or action — today only `page::feedback`, the one surface that reports success/error for every command of the page.
+
+Do not invent, merge, split or rename any of them. For each one, echo `region` and `need` back **exactly** as given, in the same order.
 
 {{regions}}
 

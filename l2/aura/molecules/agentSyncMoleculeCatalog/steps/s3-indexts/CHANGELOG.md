@@ -1,5 +1,20 @@
 # s3-indexts — CHANGELOG
 
+- **2026-09-04 (`contract_not_demonstrated`)** — measured on a real run: the showcase generated for
+  `grouptriggeraction` shipped 6 instances of the button group and ZERO `data-variant` — the property the
+  group's usage skill calls "the only way to change how the button looks". The mold
+  (`skills/indexGroupPage.ts`) hands the model a closed, complete-looking tag and never mentions that a
+  second layer (the usage skill's `Properties`/`Events` tables) exists on top of it, so the model never
+  reaches for it.
+
+  The gate now reproves a page that uses **zero** contract items beyond the mold's own envelope
+  (`name`/`value`/`isEditing`/`@change`). Detection lives in `shared/usageContract.ts`, shared with
+  `agentNewMolecule2`'s `n7-index` and `agentNewMoleculeVariant`'s `v4-index` — the three import the same
+  mold and must not diverge on what counts as coverage. Measured across the 31 group `index.ts` files of
+  the library: 28 pass, 3 reprove (`groupviewtable`, `groupenterboolean`, `groupnavigatesection` — the
+  last two mostly document the envelope itself, so they are a known, accepted floor). An empty or degraded
+  usage skill never reproves.
+
 - **2026-08-27 (G4)** — Third trigger added: **regenerate** an existing, already-migrated `index.ts`
   whose `renderShowcaseCards()` (still static Lit code) doesn't show every molecule of the group —
   measured on `mls-102053`'s `groupViewHierarchy` (`the G4 decision of 2026-08-27`). Runs the

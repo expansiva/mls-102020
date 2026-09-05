@@ -57,6 +57,17 @@ export function chWorkFile(runKey: string, shortName: string): NmFileInfo {
 }
 
 export const chInputFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'input');
+
+/**
+ * Is this run folder already claimed? Asked by the root, once, so a re-run of the same definition gets its
+ * own folder instead of overwriting the previous report (helpers/chTypes.chUniqueRunKey).
+ *
+ * `input.json` is the marker because c1 writes it on attempt 1, before anything else in the folder: a run
+ * that died before that wrote no measurement, so reusing its slug loses nothing.
+ */
+export function chRunKeyTaken(runKey: string): boolean {
+  return nmFileExists(chInputFileInfo(runKey));
+}
 export const chGroupsFileInfo = (runKey: string): NmFileInfo => chWorkFile(runKey, 'c1-groups');
 /**
  * The consolidated report of a run.

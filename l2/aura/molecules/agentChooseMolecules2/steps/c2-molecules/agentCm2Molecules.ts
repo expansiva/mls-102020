@@ -8,10 +8,12 @@
 // agentChooseMolecules2.ts for the run's overall "zero artifact" rule.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { isRecord } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { isRecord, readStorText } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { buildVToolInstruction, createVToolSchema, extractVToolOutput, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import { chCanonicalGroup, chFileRefFromImport } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import { formatProjectContext, readCm2ProjectLanguages } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2ProjectContext.js';
+import { extractPageContext, formatPageContext } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2PageContext.js';
+import { parsePageDefsSource } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2DefsPatch.js';
 import { ChGroupCatalog, readChGroupCatalog, readChLevel1 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chCatalog.js';
 import { ChMoleculesOutput, buildChChoices, normalizeChMoleculesOutput, runChMoleculesGate } from '/_102020_/l2/aura/molecules/agentChooseMolecules/steps/c2-molecules/gate.js';
 import {
@@ -70,6 +72,19 @@ async function resolveGroup(context: mls.msg.ExecutionContext, catalogProject: n
   return { group, catalog, regions };
 }
 
+/** The target's declared page intent, or '' when the file cannot be read or declares none of it.
+ * Best-effort by design: missing page context degrades the choice, it never fails the step. */
+async function readPageContext(target: string | undefined): Promise<string> {
+  if (!target) return '';
+  const targetFile = chFileRefFromImport(target);
+  if (!targetFile) return '';
+  const source = await readStorText(targetFile, false);
+  if (!source) return '';
+  const parsedDefs = parsePageDefsSource(source);
+  if (!parsedDefs) return '';
+  return formatPageContext(extractPageContext(parsedDefs.definitionJson));
+}
+
 async function beforePromptStep(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
@@ -105,9 +120,15 @@ async function beforePromptStep(
   // The target project's OWN declared facts (l5/project.json), e.g. language — never invented. This is
   // what lets a locale-specific tie (a BR-formatted vs a US-formatted sibling) resolve instead of
   // falling back to 'none' for lack of any signal (helpers/cm2ProjectContext.ts).
-  const targetProject = parsed.target ? chFileRefFromImport(parsed.target)?.project : undefined;
-  const projectLanguages = targetProject ? await readCm2ProjectLanguages(targetProject) : [];
+  const targetFile = parsed.target ? chFileRefFromImport(parsed.target) : null;
+  const projectLanguages = targetFile ? await readCm2ProjectLanguages(targetFile.project) : [];
   const projectContext = formatProjectContext(projectLanguages);
+
+  // The target page's OWN declared intent (purpose, categoryRef, pageObjective). Read FRESH from the
+  // target here rather than carried through c1's result: it is the same file c1 read, and threading a
+  // ~2KB block through the task record would bloat every step that reads that result.
+  // This is the evidence that separates 11 near-siblings — see helpers/cm2PageContext.ts's header.
+  const pageContext = await readPageContext(parsed.target);
 
   const systemPrompt = promptMd
     .split('{{catalog}}').join(resolved.catalog.skill)
@@ -115,6 +136,7 @@ async function beforePromptStep(
     .split('{{tagExample}}').join(exampleTag)
     .split('{{shortExample}}').join(shortExample)
     .split('{{group}}').join(resolved.group)
+    .split('{{pageContext}}').join(pageContext)
     .split('{{projectContext}}').join(projectContext)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the regions cannot be answered from the list you were given')}`;
 

@@ -68,9 +68,23 @@ ${cards}
 `;
 }
 
-function gate(source: string, themed = false, groupMolecules = GROUP) {
-  return runNm2IndexGate(source, PLAN, ctx(themed), { indexTag: INDEX_TAG, groupMolecules });
+function gate(source: string, themed = false, groupMolecules = GROUP, groupUsageSkill = '') {
+  return runNm2IndexGate(source, PLAN, ctx(themed), { indexTag: INDEX_TAG, groupMolecules, groupUsageSkill });
 }
+
+const USAGE_SKILL = `
+## Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| \`data-variant\` | \`string\` | \`'primary'\` | Visual tone |
+
+## Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`action\` | \`{}\` | Fired when the button is clicked |
+`;
 
 test('a showcase listing every molecule of the group passes', () => {
   assert.deepEqual(gate(indexTs()), []);
@@ -115,4 +129,25 @@ test('a molecule of the group missing from the showcase is reported by name', ()
 
 test('a group whose only molecule is the new one passes', () => {
   assert.deepEqual(gate(indexTs({ molecules: ['ml-kpi-card'] }), false, ['ml-kpi-card']), []);
+});
+
+// A showcase that only carries the mold's envelope (name/value/isEditing/@change) demonstrates nothing
+// about the molecule's own contract (decision of 2026-09-04).
+test('a showcase using only the mold envelope fails contract_not_demonstrated when a usage skill exists', () => {
+  const issues = gate(indexTs(), false, GROUP, USAGE_SKILL);
+  assert.ok(issues.some(issue => issue.code === 'contract_not_demonstrated'));
+});
+
+test('a showcase using a contract property beyond the envelope passes', () => {
+  const withVariant = indexTs().replace(
+    '<groupviewmetric--ml-kpi-card></groupviewmetric--ml-kpi-card>',
+    '<groupviewmetric--ml-kpi-card data-variant="secondary"></groupviewmetric--ml-kpi-card>',
+  );
+  const issues = gate(withVariant, false, GROUP, USAGE_SKILL);
+  assert.ok(!issues.some(issue => issue.code === 'contract_not_demonstrated'));
+});
+
+test('no usage skill (or the degraded placeholder) never triggers the check', () => {
+  assert.ok(!gate(indexTs(), false, GROUP, '').some(issue => issue.code === 'contract_not_demonstrated'));
+  assert.ok(!gate(indexTs(), false, GROUP, '(this group has no usage skill)').some(issue => issue.code === 'contract_not_demonstrated'));
 });
