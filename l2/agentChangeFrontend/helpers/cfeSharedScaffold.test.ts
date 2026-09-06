@@ -489,3 +489,86 @@ test('T1/T2: every l2_shared write and LLM fallback uses ensureSharedScenaryMemb
   assert.match(gen, /saveGeneratedTs\([\s\S]*guarded\.code/);
   assert.match(gen, /saveGeneratedTs\([\s\S]*sharedGuard\.code/);
 });
+
+// ---------------------------------------------------------------------------
+// cf_teste_gerado_assercao_tipo: input with valueSet is a union (plus ''); without stays string.
+// Fixture id 900001 — invented, not a disposable generated app.
+
+const ENUM_CONTRACT = `
+export interface ListThingsInput {
+  nameFilter?: string;
+  sortBy?: "open" | "closed";
+  page?: number;
+}
+export interface ListThingsOutput {
+  things: { thingId: string; name: string; status: "open" | "closed" }[];
+  total: number;
+}
+export const listThingsRoute = 'demo.things.listThings' as const;
+
+export interface CreateThingInput {
+  name: string;
+  status: "open" | "closed";
+}
+export interface CreateThingOutput {}
+export const createThingRoute = 'demo.things.createThing' as const;
+`;
+
+function definitionWithInputEnums(): Record<string, unknown> {
+  const defs = definition();
+  const states = defs.states as Record<string, unknown>[];
+  states.push(
+    {
+      stateKey: 'ui.things.input.listThings.sortBy', name: 'listThingsSortBy', kind: 'input',
+      source: 'userInput', presentation: 'form',
+      contractRef: { commandName: 'listThings', direction: 'input', field: 'sortBy' },
+      valueSet: ['open', 'closed'], defaultValue: '',
+    },
+    {
+      stateKey: 'ui.things.input.createThing.status', name: 'createThingStatus', kind: 'input',
+      source: 'userInput', presentation: 'form',
+      contractRef: { commandName: 'createThing', direction: 'input', field: 'status' },
+      valueSet: ['open', 'closed'], defaultValue: '',
+    },
+  );
+  const actions = defs.actions as Record<string, unknown>[];
+  const listThings = actions.find(action => action.actionId === 'listThings') as Record<string, unknown>;
+  listThings.inputStateKeys = [...(listThings.inputStateKeys as string[]), 'ui.things.input.listThings.sortBy'];
+  const createThing = actions.find(action => action.actionId === 'createThing') as Record<string, unknown>;
+  createThing.inputStateKeys = [...(createThing.inputStateKeys as string[]), 'ui.things.input.createThing.status'];
+  actions.push(
+    {
+      actionId: 'set.createThingStatus', kind: 'stateSetter',
+      stateKey: 'ui.things.input.createThing.status',
+      methodName: 'setCreateThingStatus', handlerName: 'handleCreateThingStatusChange',
+    },
+  );
+  defs.contractRef = {
+    tsPath: '_900001_/l2/demo/web/contracts/things.ts',
+    contracts: [
+      { commandName: 'listThings', routeConst: 'listThingsRoute' },
+      { commandName: 'createThing', routeConst: 'createThingRoute' },
+    ],
+  };
+  return defs;
+}
+
+test('input with valueSet emits the union plus empty; input without valueSet stays string; no contract-field cast', () => {
+  const result = generateSharedScaffold('_900001_/l2/demo/web/shared/things.ts', definitionWithInputEnums(), ENUM_CONTRACT);
+  assert.equal(result.reason, undefined, result.reason);
+  const code = result.code!;
+  // (a) enumerated input is the union + ''; free input stays string
+  assert.match(code, /@property\(\) createThingStatus: 'open' \| 'closed' \| '' = '';/);
+  assert.match(code, /@property\(\) listThingsSortBy: 'open' \| 'closed' \| '' = '';/);
+  assert.match(code, /@property\(\) createThingName: string = '';/);
+  assert.match(code, /@property\(\) listThingsNameFilter: string = '';/);
+  // (b) the body does not cast that field onto the contract
+  assert.doesNotMatch(code, /as CreateThingInput\['status'\]/);
+  assert.doesNotMatch(code, /as ListThingsInput\['sortBy'\]/);
+  assert.match(code, /status: \(this\.createThingStatus === '' \? undefined : this\.createThingStatus\)!,/);
+  assert.match(code, /params\.sortBy = this\.listThingsSortBy;/);
+  // write doors coerce; out-of-set does not enter state
+  assert.match(code, /setCreateThingStatus\(value: string\): void/);
+  assert.match(code, /const allowed: string\[\] = \['open', 'closed', ''\];/);
+  assert.match(code, /if \(typeof value === 'string' && \['open', 'closed', ''\]\.includes\(value\)\)/);
+});

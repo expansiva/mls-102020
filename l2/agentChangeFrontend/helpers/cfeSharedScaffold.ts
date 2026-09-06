@@ -878,7 +878,16 @@ function renderStateChange(model: ScaffoldModel): string[] {
   ];
   for (const state of model.states) {
     lines.push(`      case '${state.stateKey}':`);
-    lines.push(`        this.${state.name} = ${castExpression(model, state)};`);
+    const enumValues = inputEnumValues(state);
+    if (enumValues) {
+      lines.push(`        if (typeof value === 'string' && [${inputEnumAllowedLit(enumValues)}].includes(value)) {`);
+      lines.push(`          this.${state.name} = value as typeof this.${state.name};`);
+      lines.push('        } else {');
+      lines.push(`          console.warn('handleIcaStateChange: unknown value for ${state.name}');`);
+      lines.push('        }');
+    } else {
+      lines.push(`        this.${state.name} = ${castExpression(model, state)};`);
+    }
     lines.push('        break;');
   }
   lines.push('      default:');
@@ -898,7 +907,14 @@ function renderInitStateValue(model: ScaffoldModel): string[] {
   ];
   for (const state of model.states) {
     lines.push(`      case '${state.stateKey}':`);
-    lines.push(`        this.${state.name} = ${castExpression(model, state)};`);
+    const enumValues = inputEnumValues(state);
+    if (enumValues) {
+      lines.push(`        this.${state.name} = typeof value === 'string' && [${inputEnumAllowedLit(enumValues)}].includes(value)`);
+      lines.push(`          ? (value as typeof this.${state.name})`);
+      lines.push(`          : ${propertyInit(model, state)};`);
+    } else {
+      lines.push(`        this.${state.name} = ${castExpression(model, state)};`);
+    }
     lines.push('        break;');
   }
   lines.push('      default:');
@@ -1139,8 +1155,13 @@ function renderParams(model: ScaffoldModel, action: DefsAction, input: ContractI
     if (field.type === 'string') {
       requiredLines.push(`${indent}  ${field.name}: this.${state.name},`);
     } else if (field.type === 'stringUnion') {
-      // Input states are plain strings; the contract narrows to a literal union — cast at the seam.
-      requiredLines.push(`${indent}  ${field.name}: this.${state.name} as ${input.name}['${field.name}'],`);
+      if (inputEnumValues(state)) {
+        // Empty is legitimate state, not a contract value. `!` keeps `const params: Input`
+        // compiling (optional fields are assigned on the same object below).
+        requiredLines.push(`${indent}  ${field.name}: (this.${state.name} === '' ? undefined : this.${state.name})!,`);
+      } else {
+        requiredLines.push(`${indent}  ${field.name}: this.${state.name} as ${input.name}['${field.name}'],`);
+      }
     } else if (field.type === 'number') {
       lines.push(`${indent}const ${field.name}Num = Number(this.${state.name});`);
       requiredLines.push(`${indent}  ${field.name}: Number.isNaN(${field.name}Num) ? 0 : ${field.name}Num,`);
@@ -1163,7 +1184,10 @@ function renderParams(model: ScaffoldModel, action: DefsAction, input: ContractI
       lines.push(`${indent}}`);
     } else if (field.type === 'stringUnion') {
       lines.push(`${indent}if (this.${state.name}) {`);
-      lines.push(`${indent}  params.${field.name} = this.${state.name} as ${input.name}['${field.name}'];`);
+      // After the truthy check, '' is gone; the remaining union assigns to the contract field.
+      lines.push(inputEnumValues(state)
+        ? `${indent}  params.${field.name} = this.${state.name};`
+        : `${indent}  params.${field.name} = this.${state.name} as ${input.name}['${field.name}'];`);
       lines.push(`${indent}}`);
     } else if (field.type === 'number') {
       lines.push(`${indent}if (this.${state.name} !== '') {`);
@@ -1205,8 +1229,7 @@ function renderUiScenary(model: ScaffoldModel): string[] {
     `  setUiScenary(value: string): void {`,
     `    const allowed: string[] = [${allowedLit}];`,
     `    if (!allowed.includes(value)) {`,
-    // Split so this generator is not a console.warn call site (nsConsoleGuard).
-    `      console${'.warn'}('setUiScenary: unknown value \\'' + value + '\\'');`,
+    `      console.warn('setUiScenary: unknown value \\'' + value + '\\'');`,
     '      return;',
     '    }',
     '    let next: string = value;',
@@ -1290,12 +1313,22 @@ function renderSyncScenaryQuery(model: ScaffoldModel): string[] {
 
 function renderSetter(model: ScaffoldModel, action: DefsAction): string[] {
   const state = model.stateByKey.get(action.stateKey!)!;
+  const enumValues = inputEnumValues(state);
   const lines = [
     `  /** setter for state ${state.stateKey} */`,
     `  ${action.methodName}(value: string): void {`,
-    `    this.${state.name} = value;`,
-    `    setState('${state.stateKey}', value);`,
   ];
+  if (enumValues) {
+    lines.push(`    const allowed: string[] = [${inputEnumAllowedLit(enumValues)}];`);
+    lines.push('    if (!allowed.includes(value)) {');
+    lines.push(`      console.warn('${action.methodName}: unknown value \\'' + value + '\\'');`);
+    lines.push('      return;');
+    lines.push('    }');
+    lines.push(`    this.${state.name} = value as typeof this.${state.name};`);
+  } else {
+    lines.push(`    this.${state.name} = value;`);
+  }
+  lines.push(`    setState('${state.stateKey}', value);`);
   if (action.prefill) lines.push(...renderPrefill(model, action.prefill, '    '));
   const detail = model.scenaries.find(scene => scene.kind === 'detail');
   if (detail && (detail.preconditions || []).includes(state.stateKey)) {
@@ -1317,9 +1350,12 @@ function renderPrefill(model: ScaffoldModel, prefill: DefsPrefill, indent: strin
   const source = model.stateByKey.get(prefill.sourceStateKey)!;
   const output = outputInterfaceOf(model, source.contractRef!.commandName);
   const fieldTypes = new Map(output.fields.map(f => [f.name, f.type]));
-  const copyExpr = (itemVar: string, field: DefsPrefillField): string => (
-    fieldTypes.get(field.itemField) === 'string' ? `${itemVar}.${field.itemField}` : `String(${itemVar}.${field.itemField})`
-  );
+  const copyExpr = (itemVar: string, field: DefsPrefillField): string => {
+    const srcType = fieldTypes.get(field.itemField);
+    // stringUnion is already the contract literals — String() would widen it back to string.
+    if (srcType === 'string' || srcType === 'stringUnion') return `${itemVar}.${field.itemField}`;
+    return `String(${itemVar}.${field.itemField})`;
+  };
   const lines: string[] = [];
   if (prefill.sourceOutputShape === 'array') {
     lines.push(`${indent}const collection =`);
@@ -1353,12 +1389,26 @@ function renderPrefill(model: ScaffoldModel, prefill: DefsPrefill, indent: strin
 // ---------------------------------------------------------------------------
 // Type/value mapping
 
+/** Enumerated input: defs `valueSet` plus `''` (legitimate initial empty). Null when the input is a free string. */
+function inputEnumValues(state: DefsState): string[] | null {
+  if (state.kind !== 'input' || !state.valueSet?.length) return null;
+  return state.valueSet.includes('') ? [...state.valueSet] : [...state.valueSet, ''];
+}
+
+function inputEnumAllowedLit(values: string[]): string {
+  return values.map(value => `'${escapeSingle(value)}'`).join(', ');
+}
+
 function propertyType(model: ScaffoldModel, state: DefsState): string {
   switch (state.kind) {
     case 'pageStatus':
-    case 'input':
     case 'actionError':
       return 'string';
+    case 'input': {
+      const values = inputEnumValues(state);
+      if (values) return values.map(value => `'${escapeSingle(value)}'`).join(' | ');
+      return 'string';
+    }
     case 'actionStatus':
     case 'uiScenary':
       return state.valueSet!.map(v => `'${v}'`).join(' | ');
