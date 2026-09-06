@@ -36,6 +36,8 @@ import {
   NS4_FAST_HANDOFF_PLAN_ID,
   decideNs4FastHandoff,
   isNs4FastMode,
+  isNs4NochainMode,
+  ns4NochainSuppressedNote,
   sendNs4FastHandoff,
   type Ns4FastHandoffDegradation,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4FastHandoff.js';
@@ -209,11 +211,15 @@ async function dispatchChangeBackendHandoff(
       || getAllSteps(context.task?.iaCompressed?.nextSteps).some(item => item.planning?.planId === NS4_FAST_HANDOFF_PLAN_ID);
     const decision = decideNs4FastHandoff({
       fast: isNs4FastMode(context.task?.iaCompressed?.longMemory),
+      nochain: isNs4NochainMode(context.task?.iaCompressed?.longMemory),
       success: pipeline.status === 'complete' && pipeline.steps.e10?.status === 'approved',
       alreadyDispatched: already,
       moduleName,
     });
     if (!decision.dispatch) {
+      if (decision.suppressed) {
+        return { note: `; ${ns4NochainSuppressedNote(moduleName)}`, degradation: null };
+      }
       return { note: already && isNs4FastMode(context.task?.iaCompressed?.longMemory) ? '; changeBackend: already dispatched' : '', degradation: null };
     }
     return sendNs4FastHandoff({

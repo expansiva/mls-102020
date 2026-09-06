@@ -159,19 +159,28 @@ test('product languages are normalized, ordered and deduplicated independently o
 });
 
 test('/fast is a standalone flag and is removed from the business prompt', () => {
-  assert.deepEqual(parseNs4Invocation('petShop /fast'), { fast: true, rebuild: false, rebuildFrom: '', prompt: 'petShop' });
-  assert.deepEqual(parseNs4Invocation('/fastlane petShop'), { fast: false, rebuild: false, rebuildFrom: '', prompt: '/fastlane petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /fast'), { fast: true, rebuild: false, rebuildFrom: '', nochain: false, prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('/fastlane petShop'), { fast: false, rebuild: false, rebuildFrom: '', nochain: false, prompt: '/fastlane petShop' });
+});
+
+test('/nochain is a standalone flag, removed from the prompt, and does not match /nochainlane', () => {
+  assert.deepEqual(parseNs4Invocation('petShop'), { fast: false, rebuild: false, rebuildFrom: '', nochain: false, prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /fast'), { fast: true, rebuild: false, rebuildFrom: '', nochain: false, prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /fast /nochain'), { fast: true, rebuild: false, rebuildFrom: '', nochain: true, prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /fast /nochain /rebuild all'), { fast: true, rebuild: true, rebuildFrom: 'all', nochain: true, prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('/nochain petShop'), { fast: false, rebuild: false, rebuildFrom: '', nochain: true, prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('/nochainlane petShop'), { fast: false, rebuild: false, rebuildFrom: '', nochain: false, prompt: '/nochainlane petShop' });
 });
 
 test('/rebuild is an explicit flag, and its step argument leaves the prompt with it', () => {
-  assert.deepEqual(parseNs4Invocation('petShop /rebuild'), { fast: false, rebuild: true, rebuildFrom: '', prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild'), { fast: false, rebuild: true, rebuildFrom: '', nochain: false, prompt: 'petShop' });
   // The argument must not survive in the prompt: the planner would read `e10` as business description.
-  assert.deepEqual(parseNs4Invocation('petShop /rebuild e10'), { fast: false, rebuild: true, rebuildFrom: 'e10', prompt: 'petShop' });
-  assert.deepEqual(parseNs4Invocation('petShop /rebuild e2 /fast'), { fast: true, rebuild: true, rebuildFrom: 'e2', prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild e10'), { fast: false, rebuild: true, rebuildFrom: 'e10', nochain: false, prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild e2 /fast'), { fast: true, rebuild: true, rebuildFrom: 'e2', nochain: false, prompt: 'petShop' });
   // e1 is not a partial target: restarting at e1 IS a total rebuild, so the token stays in the prompt.
-  assert.deepEqual(parseNs4Invocation('petShop /rebuild e1'), { fast: false, rebuild: true, rebuildFrom: '', prompt: 'petShop e1' });
-  assert.deepEqual(parseNs4Invocation('/rebuilder petShop'), { fast: false, rebuild: false, rebuildFrom: '', prompt: '/rebuilder petShop' });
-  assert.deepEqual(parseNs4Invocation('petShop /rebuild all'), { fast: false, rebuild: true, rebuildFrom: 'all', prompt: 'petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild e1'), { fast: false, rebuild: true, rebuildFrom: '', nochain: false, prompt: 'petShop e1' });
+  assert.deepEqual(parseNs4Invocation('/rebuilder petShop'), { fast: false, rebuild: false, rebuildFrom: '', nochain: false, prompt: '/rebuilder petShop' });
+  assert.deepEqual(parseNs4Invocation('petShop /rebuild all'), { fast: false, rebuild: true, rebuildFrom: 'all', nochain: false, prompt: 'petShop' });
 });
 
 test('a prose rebuild naming an existing module is recognized — the msgtask3 incident', () => {
