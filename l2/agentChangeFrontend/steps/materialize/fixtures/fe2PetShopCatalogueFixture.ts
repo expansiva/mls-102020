@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/fixtures/fe2PetShopCatalogue.fixture.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/fixtures/fe2PetShopCatalogueFixture.ts" enhancement="_blank"/>
 
 // Recortes VERBATIM do run fe2 do petShop (22/08/2026 01:59Z) — a task falhou no gate
 // MODULE-COMPILE-FAILED com 15 erros em 5 arquivos. Cada constante abaixo é o pedaço que produziu uma

@@ -4,11 +4,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, mlsL2ModuleName, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
-import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGate.fixture.js';
+import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGateFixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
-} from '../steps/materialize/fixtures/fe2PetShopCatalogue.fixture.js';
-import { RUN01_TASK_CATALOGUE_DTS, RUN01_TASK_CATALOGUE_SHARED } from '../steps/materialize/fixtures/run01TaskCatalogueDts.fixture.js';
+} from '../steps/materialize/fixtures/fe2PetShopCatalogueFixture.js';
+import { RUN01_TASK_CATALOGUE_DTS, RUN01_TASK_CATALOGUE_SHARED } from '../steps/materialize/fixtures/run01TaskCatalogueDtsFixture.js';
 
 // bugpage21: the EXACT shape generated into
 // mls-102051/l2/cafeFlow/web/desktop/page21/shiftWorkspace.ts — `: nothing` in the template with a

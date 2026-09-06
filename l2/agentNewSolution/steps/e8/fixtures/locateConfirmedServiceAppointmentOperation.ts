@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e8/fixtures/locateConfirmedServiceAppointment.operation.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e8/fixtures/locateConfirmedServiceAppointmentOperation.ts" enhancement="_blank"/>
 
 export const operationLocateConfirmedServiceAppointment = {
   "operationId": "locateConfirmedServiceAppointment",

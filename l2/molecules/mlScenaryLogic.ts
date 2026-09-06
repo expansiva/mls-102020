@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/molecules/ml-scenary.logic.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/molecules/mlScenaryLogic.ts" enhancement="_blank"/>
 
 // Pure visibility / navigation helpers for ml-scenary. Kept off the Lit class so T5
 // can run in node:test without importing lit (setup-l2 has no TreeWalker).

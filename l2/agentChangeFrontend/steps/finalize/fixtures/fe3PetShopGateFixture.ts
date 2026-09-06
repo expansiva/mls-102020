@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/finalize/fixtures/fe3PetShopGate.fixture.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/finalize/fixtures/fe3PetShopGateFixture.ts" enhancement="_blank"/>
 
 // Recortes VERBATIM do working tree do petShop após o run fe3 (22/08/2026). O gate fechou "done"
 // e o `tsc -p tsconfig.frontend.json` do mls-base ainda vê 8 erros. Nada aqui é inventado.
