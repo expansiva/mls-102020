@@ -21,7 +21,7 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
   step entities are L4 contracts, not optional examples.
 - Relationships are how coordination is compiled: a step that operates a record additionally requires
   every parent reached by a `required` `manyToOne`/`oneToOne` relationship, so declare those exactly.
-- Freeze every entity id, kind, ownership, optional `cardinality`, lifecycle, source references and persistence decision here.
+- Freeze every entity id, kind, ownership, optional `cardinality`, optional `mutability`, lifecycle, source references and persistence decision here.
 - For every entity with lifecycle states, declare the single state in which a record is born as `initialState` and every state that ends its lifecycle as `terminalStates`; use only declared lifecycle state ids and never infer either meaning from the order of the list or from missing transitions.
 - Lifecycle states and every other closed-domain value (`initialState`, `terminalStates`, enum constraint values) are **stable English codes**: lowerCamel ASCII, no accent, no space, no hyphen (`active`, `inactive`, `cancelled`, `monday`). They are identifiers, not user-facing text. Never write them in the user's language (`ativo`, `vigente`, `segunda-feira`). Titles and descriptions stay in the user's language — that is what is translated.
 - Next to `lifecycleStates`, emit `lifecycleLabels` as an array of `{ "code", "label" }` objects — one per state, `code` equal to the state id, `label` in the user's language (`userLanguage`, default `en`). Example: `{ "code": "active", "label": "Ativo" }`. Do not put the label in the state id.
@@ -73,11 +73,20 @@ the account.** Every `kind: projection` + `ownership: derived` MUST emit `deriva
 
 - `from`: `entityId` of the persisted source (must exist in this ontology).
 - `filter`: predicate on declared fields of that source (`status = valid`). Empty string when unfiltered.
+  Only field ids that exist on `from`. Never invent an intermediate field.
 - `aggregate`: one entry per output field of the projection. `op` is `count` | `sum` | `min` | `max` |
   `first` | `groupKey`; add `sourceField` when the op reads a source column (`count` has none).
+  `sourceField` must be a declared field of `from`.
+- `signBy` on a `sum` only: `{ "field": "<enum field of from>", "negativeValues": ["<code>"] }`.
+  Rows whose `field` value is in `negativeValues` enter the sum negative; omit when every row is
+  positive. Use this for a balance or position whose sign depends on a type — a movement with
+  `direction: in|out` summing `quantity` uses
+  `{ "fieldId": "netQuantity", "op": "sum", "sourceField": "quantity", "signBy": { "field": "direction", "negativeValues": ["out"] } }`.
+  Never invent a signed source column to carry the sign.
 
 Do not leave the formula in `description` or `storage.notes` only. The gate rejects a derived
-projection that omits `derivation`, and one whose `from` is not an entity in this ontology.
+projection that omits `derivation`, one whose `from` is not an entity in this ontology, and one
+whose `sourceField` or `filter` names a field that `from` does not declare.
 
 Separate master data from operational state. Material may be MDM; inventory, adjustment and usage are
 transactions. Never put balances, accumulated totals or transaction history into MDM. Keep platform
@@ -100,6 +109,19 @@ singular and **no journey creates further instances**.
 
 When in doubt, **omit the field**. A false singleton hides a needed catalogue; a false plural only
 keeps today's behaviour. Never emit any other cardinality value.
+
+## Mutability
+
+Declare `mutability: "appendOnly"` when the journey or a policy decision says the record **is not
+altered or deleted after it is registered** (a fact, a posting, a meter reading, a signature).
+`editable`, or omit the field, otherwise.
+
+- Yes: a stock movement (`InventoryMovement`) — once registered it is a fact; correction is a
+  compensating movement, never an edit of the original row.
+- No: Product, Ticket, Task — master data and work items stay editable; omit the field.
+
+When in doubt, **omit the field**. A false `appendOnly` hides a legitimate correction; a false
+`editable` only keeps today's behaviour. Never emit any other mutability value.
 
 ## Adjustment and repair
 

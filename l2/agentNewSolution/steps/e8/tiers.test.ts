@@ -13,9 +13,26 @@ import {
 } from '/_102020_/l2/agentNewSolution/steps/e8/hubComposition.js';
 
 const run44 = JSON.parse(readFileSync(new URL('fixtures/run44-tier-model.json', import.meta.url), 'utf8')) as any;
+const todo = JSON.parse(readFileSync(new URL('fixtures/todo-e8-sources.json', import.meta.url), 'utf8')) as any;
+const lista = JSON.parse(readFileSync(new URL('fixtures/listaAssinatura-e8-sources.json', import.meta.url), 'utf8')) as any;
+const controleEstoque = JSON.parse(readFileSync(new URL('fixtures/controleEstoque-e8-sources.json', import.meta.url), 'utf8')) as any;
 const sources = (): any => structuredClone({
   journeys: run44.journeys, access: run44.access, ontology: run44.ontology,
   useCases: run44.useCases, workflows: run44.workflows,
+});
+const todoSources = (): any => structuredClone({
+  journeys: todo.journeys, access: todo.access, ontology: todo.ontology,
+  useCases: todo.useCases, workflows: todo.workflows,
+});
+const listaSources = (): any => structuredClone({
+  journeys: lista.journeys, access: lista.access, ontology: lista.ontology,
+  useCases: lista.useCases, workflows: lista.workflows,
+  policyDecisionSelections: lista.policyDecisionSelections, module: lista.module,
+});
+const controleEstoqueSources = (): any => structuredClone({
+  journeys: controleEstoque.journeys, access: controleEstoque.access, ontology: controleEstoque.ontology,
+  useCases: controleEstoque.useCases, workflows: controleEstoque.workflows,
+  policyDecisionSelections: controleEstoque.policyDecisionSelections, module: controleEstoque.module,
 });
 
 test('the fixture is the shape the live reader returns, not a snapshot of one normalization', () => {
@@ -536,6 +553,154 @@ test('a journey that already produced get{Entity} keeps it; the catalogue does n
   assert.equal(matches[0].accessPattern.kind, 'getById');
   const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'invoiceCatalogue')!;
   assert.equal(catalogue.bffCalls.some(call => call.operationId === 'getInvoice'), true);
+});
+
+test('an appendOnly catalogue has no update, delete, inactivate or reactivate, and its recordForm has no contextual action', () => {
+  const input = controleEstoqueSources();
+  const movement = input.ontology.entities.find((entity: any) => entity.entityId === 'InventoryMovement');
+  assert.equal(movement.mutability, 'appendOnly');
+  assert.equal(normalizeNs4E4Review(structuredClone(input.ontology)).entities
+    .find(entity => entity.entityId === 'InventoryMovement')?.mutability, 'appendOnly');
+
+  const model = deriveNs4E8Model(input);
+  const ids = model.operations.map(operation => operation.operationId);
+  assert.equal(ids.includes('updateInventoryMovement'), false);
+  assert.equal(ids.includes('deleteInventoryMovement'), false);
+  assert.equal(ids.includes('inactivateInventoryMovement'), false);
+  assert.equal(ids.includes('reactivateInventoryMovement'), false);
+  assert.equal(ids.includes('createInventoryMovement'), true);
+  assert.equal(ids.includes('listInventoryMovement'), true);
+  assert.equal(ids.includes('getInventoryMovement'), true);
+  assert.equal(ids.includes('confirmStockEntry'), true, 'journey operations on the same entity stay');
+
+  const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'inventoryMovementCatalogue')!;
+  const bffIds = catalogue.bffCalls.map(call => call.bffId);
+  assert.equal(bffIds.includes('cmdUpdateInventoryMovement'), false);
+  assert.equal(bffIds.includes('cmdDeleteInventoryMovement'), false);
+  assert.ok(bffIds.includes('cmdCreateInventoryMovement'));
+  assert.ok(bffIds.includes('qryListInventoryMovement'));
+  assert.ok(bffIds.includes('qryGetInventoryMovement'));
+
+  const recordForm = catalogue.sections.find(section => section.sectionId === 'recordForm')!;
+  assert.deepEqual(recordForm.organisms.filter(organism => organism.role === 'contextualAction'), []);
+  assert.deepEqual(recordForm.organisms.filter(organism => organism.role === 'primarySurface').map(organism => organism.action),
+    ['cmdCreateInventoryMovement']);
+  const recordList = catalogue.sections.find(section => section.sectionId === 'recordList')!;
+  assert.equal(recordList.organisms.some(organism => organism.role === 'contextualAction'), false);
+
+  assert.equal(model.operations.length, 15);
+  assert.equal(model.workspaces.reduce((count, workspace) => count + workspace.bffCalls.length, 0), 20);
+
+  const product = model.operations.map(operation => operation.operationId);
+  assert.equal(product.includes('updateProduct'), true);
+  assert.equal(product.includes('inactivateProduct'), true);
+  assert.equal(product.includes('reactivateProduct'), true);
+
+  const gate = validateNs4E8Model(model, input);
+  assert.equal(gate.issues.filter(issue => issue.code === 'NS4_E8_ORGANISM_ACTION').length, 0, JSON.stringify(gate.issues));
+});
+
+test('an entity without mutability keeps today\'s catalogue (update and removal)', () => {
+  const run44Model = deriveNs4E8Model(sources());
+  const changeOrder = run44Model.workspaces.find(workspace => workspace.workspaceId === 'changeOrderCatalogue')!;
+  assert.deepEqual(changeOrder.bffCalls.map(call => call.bffId),
+    ['qryListChangeOrder', 'cmdCreateChangeOrder', 'cmdUpdateChangeOrder', 'cmdDeleteChangeOrder', 'qryGetChangeOrder', 'qryProjectPicker']);
+
+  const todoModel = deriveNs4E8Model(todoSources());
+  assert.equal(todo.ontology.entities.every((entity: any) => !entity.mutability), true);
+  const taskIds = todoModel.operations.map(operation => operation.operationId);
+  assert.equal(taskIds.includes('updateTask'), true);
+  assert.equal(taskIds.includes('deleteTask'), true);
+
+  const listaModel = deriveNs4E8Model(listaSources());
+  const signature = lista.ontology.entities.find((entity: any) => entity.entityId === 'PetitionSignature');
+  assert.equal('mutability' in (signature || {}), false);
+  const signatureIds = listaModel.operations.map(operation => operation.operationId);
+  assert.equal(signatureIds.includes('updatePetitionSignature'), true);
+  assert.equal(signatureIds.includes('deletePetitionSignature'), true);
+});
+
+test('appendOnly is decided only inside buildRecordCatalogue', () => {
+  const source = readFileSync(new URL('tiers.ts', import.meta.url), 'utf8');
+  const start = source.indexOf('function buildRecordCatalogue(');
+  const end = source.indexOf('\nfunction isMdmEntity(', start);
+  assert.ok(start >= 0 && end > start, 'buildRecordCatalogue bounds');
+  const inside = source.slice(start, end);
+  const outside = source.slice(0, start) + source.slice(end);
+  assert.match(inside, /mutability === 'appendOnly'/);
+  assert.doesNotMatch(outside, /mutability === 'appendOnly'/);
+});
+
+test('a query whose use case reads a derived projection joined to the step entity puts those fields on outputRefs', () => {
+  const model = deriveNs4E8Model(controleEstoqueSources());
+  const overview = model.operations.find(operation => operation.operationId === 'inspectStockOverview')!;
+  const detail = model.operations.find(operation => operation.operationId === 'inspectProductStock')!;
+  const expected = ['Product.productId', 'Product.name', 'Product.minimumStock', 'CurrentStockBalance.currentQuantity'];
+  assert.deepEqual(overview.outputRefs, expected);
+  assert.deepEqual(detail.outputRefs, expected);
+  assert.equal(overview.outputRefs.filter(ref => ref.endsWith('.productId')).length, 1, 'join key is not repeated');
+
+  const entry = model.operations.find(operation => operation.operationId === 'recordStockEntry')!;
+  assert.equal(entry.kind, 'command');
+  assert.equal(entry.outputRefs.some(ref => ref.startsWith('CurrentStockBalance.')), false, 'commands do not project the read');
+
+  const locate = model.operations.find(operation => operation.operationId === 'locateProduct')!;
+  assert.deepEqual(locate.outputRefs, ['Product.productId', 'Product.name', 'Product.minimumStock']);
+});
+
+test('every derived projection a query reads and E4 can join appears in outputRefs — and nowhere else invents one', () => {
+  const cases: Array<{ name: string; input: () => any }> = [
+    { name: 'controleEstoque', input: controleEstoqueSources },
+    { name: 'run44', input: sources },
+    { name: 'listaAssinatura', input: listaSources },
+  ];
+  for (const { name, input } of cases) {
+    const src = input();
+    const model = deriveNs4E8Model(src);
+    const projections = new Set(src.ontology.entities.filter((entity: any) => entity.kind === 'projection').map((entity: any) => entity.entityId));
+    for (const operation of model.operations) {
+      if (operation.kind !== 'query' || !operation.useCaseId) continue;
+      const useCase = src.useCases.find((item: any) => item.useCaseId === operation.useCaseId);
+      if (!useCase) continue;
+      for (const entityId of useCase.entityRefs) {
+        if (!projections.has(entityId) || entityId === operation.entityRef) continue;
+        const joined = src.ontology.relationships.some((relationship: any) => {
+          if (relationship.realization?.kind !== 'derived') return false;
+          const ends = [relationship.fromEntity, relationship.toEntity, relationship.realization.from?.entityId, relationship.realization.to?.entityId];
+          return ends.includes(entityId) && ends.includes(operation.entityRef);
+        });
+        const refs = operation.outputRefs.filter(ref => ref.startsWith(`${entityId}.`));
+        if (joined) {
+          const projection = src.ontology.entities.find((entity: any) => entity.entityId === entityId);
+          const joinIds = new Set<string>();
+          for (const relationship of src.ontology.relationships) {
+            if (relationship.realization?.kind !== 'derived') continue;
+            if (relationship.realization.from?.entityId === entityId) {
+              for (const fieldId of relationship.realization.from.fieldIds) joinIds.add(fieldId);
+            }
+            if (relationship.realization.to?.entityId === entityId) {
+              for (const fieldId of relationship.realization.to.fieldIds) joinIds.add(fieldId);
+            }
+          }
+          const expected = projection.fields.map((field: any) => field.fieldId).filter((fieldId: string) => !joinIds.has(fieldId));
+          assert.deepEqual(refs.map(ref => ref.slice(entityId.length + 1)).sort(), [...expected].sort(), `${name}.${operation.operationId} missing joined ${entityId}`);
+        } else {
+          assert.deepEqual(refs, [], `${name}.${operation.operationId} projected unjoined ${entityId}`);
+        }
+      }
+    }
+  }
+});
+
+test('a projection in entityRefs with no derived join is omitted and recorded', () => {
+  const input = controleEstoqueSources();
+  input.ontology.relationships = input.ontology.relationships.filter((item: any) => item.relationshipId !== 'stockBalanceForProduct');
+  const model = deriveNs4E8Model(input);
+  const overview = model.operations.find(operation => operation.operationId === 'inspectStockOverview')!;
+  assert.deepEqual(overview.outputRefs, ['Product.productId', 'Product.name', 'Product.minimumStock']);
+  const decision = model.systemDecisions.find(item => item.findingRef === 'NS4_E8_PROJECTION_UNJOINED:inspectStockOverview:CurrentStockBalance:Product');
+  assert.ok(decision, 'unjoined read is a systemDecision, not an error');
+  assert.equal(decision!.chosen, 'omitFromOutput');
 });
 
 test('a delete over an mdm entity is a blocking finding even if it arrives from elsewhere', () => {

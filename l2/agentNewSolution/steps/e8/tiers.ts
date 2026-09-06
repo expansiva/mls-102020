@@ -63,7 +63,7 @@ export function deriveNs4E8Model(sources: Ns4E8Sources, reviewRound = 1): Ns4E8M
     }
   }
   for (const journey of context.compiledJourneys) {
-    const built = buildJourneyWorkspace(journey, context);
+    const built = buildJourneyWorkspace(journey, context, decisions);
     operations.push(...built.operations);
     const owner = (contentPage && shouldHostJourneyOnContent(journey, contentPage, context) ? contentPage : null)
       || ownerPlaceForJourney(journey, workspaces);
@@ -279,44 +279,61 @@ function buildRecordCatalogue(
   const actors = unique(profileRefs.flatMap(profileRef => context.actorsByProfile.get(profileRef) || []));
   const idField = identityFieldOf(entity);
   const listInputs = catalogueListInputs(entity, context);
+  const appendOnly = entity.mutability === 'appendOnly';
+  const listOperation: Ns4E8Operation = {
+    operationId: `list${entity.entityId}`, title: label(context, `Listar ${entity.title}`, `List ${entity.title}`),
+    kind: 'query', entityRef: entity.entityId, entityRefs: [entity.entityId],
+    accessPattern: { kind: 'list', pagination: 'optional' }, inputs: listInputs,
+    outputRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
+    useRules: [], transitionRefs: [], story: [label(context, 'Encontrar o registro.', 'Find the record.')],
+    // Master data lists hide deactivated records unless the caller asks for them,
+    // which is what makes every foreign-key picker active-only for free.
+    ...(isMdmEntity(entity)
+      ? { mdm: { activeFilterInput: 'includeInactive' as const, situationOutput: 'active' as const } }
+      : {}),
+  };
+  const createOperation: Ns4E8Operation = {
+    operationId: `create${entity.entityId}`, title: label(context, `Criar ${entity.title}`, `Create ${entity.title}`),
+    kind: 'command', entityRef: entity.entityId, entityRefs: catalogueEntityRefs(entity, context),
+    accessPattern: { kind: 'create' }, inputs: catalogueInputs(entity, context, 'create'),
+    outputRefs: [`${entity.entityId}.${idField}`], useRules: entity.useRules, transitionRefs: [],
+    story: [label(context, 'Informar os dados do novo registro.', 'Fill in the new record.')],
+  };
+  const updateOperation: Ns4E8Operation | undefined = appendOnly ? undefined : {
+    operationId: `update${entity.entityId}`, title: label(context, `Atualizar ${entity.title}`, `Update ${entity.title}`),
+    kind: 'command', entityRef: entity.entityId, entityRefs: catalogueEntityRefs(entity, context),
+    accessPattern: { kind: 'update' }, inputs: catalogueInputs(entity, context, 'update'),
+    outputRefs: [`${entity.entityId}.${idField}`], useRules: entity.useRules, transitionRefs: [],
+    story: [label(context, 'Corrigir os dados do registro escolhido.', 'Correct the chosen record.')],
+  };
+  const removals = appendOnly ? [] : removalOperations(entity, context);
   const operations: Ns4E8Operation[] = [
-    {
-      operationId: `list${entity.entityId}`, title: label(context, `Listar ${entity.title}`, `List ${entity.title}`),
-      kind: 'query', entityRef: entity.entityId, entityRefs: [entity.entityId],
-      accessPattern: { kind: 'list', pagination: 'optional' }, inputs: listInputs,
-      outputRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
-      useRules: [], transitionRefs: [], story: [label(context, 'Encontrar o registro.', 'Find the record.')],
-      // Master data lists hide deactivated records unless the caller asks for them,
-      // which is what makes every foreign-key picker active-only for free.
-      ...(isMdmEntity(entity)
-        ? { mdm: { activeFilterInput: 'includeInactive' as const, situationOutput: 'active' as const } }
-        : {}),
-    },
-    {
-      operationId: `create${entity.entityId}`, title: label(context, `Criar ${entity.title}`, `Create ${entity.title}`),
-      kind: 'command', entityRef: entity.entityId, entityRefs: catalogueEntityRefs(entity, context),
-      accessPattern: { kind: 'create' }, inputs: catalogueInputs(entity, context, 'create'),
-      outputRefs: [`${entity.entityId}.${idField}`], useRules: entity.useRules, transitionRefs: [],
-      story: [label(context, 'Informar os dados do novo registro.', 'Fill in the new record.')],
-    },
-    {
-      operationId: `update${entity.entityId}`, title: label(context, `Atualizar ${entity.title}`, `Update ${entity.title}`),
-      kind: 'command', entityRef: entity.entityId, entityRefs: catalogueEntityRefs(entity, context),
-      accessPattern: { kind: 'update' }, inputs: catalogueInputs(entity, context, 'update'),
-      outputRefs: [`${entity.entityId}.${idField}`], useRules: entity.useRules, transitionRefs: [],
-      story: [label(context, 'Corrigir os dados do registro escolhido.', 'Correct the chosen record.')],
-    },
-    ...removalOperations(entity, context),
+    listOperation,
+    createOperation,
+    ...(updateOperation ? [updateOperation] : []),
+    ...removals,
     getByIdOperation(entity, context),
   ];
-  const removalCalls: Ns4E8BffCall[] = removalOperations(entity, context).map(operation => ({
+  const listCall: Ns4E8BffCall = {
+    bffId: `qryList${entity.entityId}`, kind: 'query', operationId: `list${entity.entityId}`,
+    outputKind: 'paginated', entityRef: entity.entityId,
+  };
+  const createCall: Ns4E8BffCall = {
+    bffId: `cmdCreate${entity.entityId}`, kind: 'command', operationId: `create${entity.entityId}`,
+    outputKind: 'object', entityRef: entity.entityId,
+  };
+  const updateCall: Ns4E8BffCall | undefined = updateOperation ? {
+    bffId: `cmdUpdate${entity.entityId}`, kind: 'command', operationId: `update${entity.entityId}`,
+    outputKind: 'object', entityRef: entity.entityId,
+  } : undefined;
+  const removalCalls: Ns4E8BffCall[] = removals.map(operation => ({
     bffId: `cmd${upperFirst(operation.operationId)}`, kind: 'command' as const,
     operationId: operation.operationId, outputKind: 'object' as const, entityRef: entity.entityId,
   }));
   const bffCalls: Ns4E8BffCall[] = [
-    { bffId: `qryList${entity.entityId}`, kind: 'query', operationId: `list${entity.entityId}`, outputKind: 'paginated', entityRef: entity.entityId },
-    { bffId: `cmdCreate${entity.entityId}`, kind: 'command', operationId: `create${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
-    { bffId: `cmdUpdate${entity.entityId}`, kind: 'command', operationId: `update${entity.entityId}`, outputKind: 'object', entityRef: entity.entityId },
+    listCall,
+    createCall,
+    ...(updateCall ? [updateCall] : []),
     ...removalCalls,
     // Named get{Entity} (bff qryGet{Entity}): locate* is already a list, inspect* is a journey
     // screen. No organism consumes this call — it exists for a future id lookup, not the page.
@@ -324,13 +341,19 @@ function buildRecordCatalogue(
   ];
   const removalActions = removalCalls.map(call => ({ role: 'contextualAction' as const, action: call.bffId }));
   const listFilters = listInputs.length
-    ? [{ role: 'filterControl' as const, attachTo: bffCalls[0].bffId }]
+    ? [{ role: 'filterControl' as const, attachTo: listCall.bffId }]
     : [];
+  const recordFormOrganisms = [
+    { role: 'primarySurface' as const, action: createCall.bffId },
+    ...(updateCall ? [{ role: 'contextualAction' as const, action: updateCall.bffId }] : []),
+  ];
   const sections: Ns4E8Section[] = [
     { sectionId: 'recordList', intent: label(context, `Localizar ${entity.title}.`, `Find ${entity.title}.`),
-      organisms: [{ role: 'primarySurface', dataSource: bffCalls[0].bffId }, ...listFilters, ...removalActions] },
-    { sectionId: 'recordForm', intent: label(context, `Criar ou corrigir ${entity.title}.`, `Create or correct ${entity.title}.`),
-      organisms: [{ role: 'primarySurface', action: bffCalls[1].bffId }, { role: 'contextualAction', action: bffCalls[2].bffId }] },
+      organisms: [{ role: 'primarySurface', dataSource: listCall.bffId }, ...listFilters, ...removalActions] },
+    { sectionId: 'recordForm', intent: appendOnly
+      ? label(context, `Criar ${entity.title}.`, `Create ${entity.title}.`)
+      : label(context, `Criar ou corrigir ${entity.title}.`, `Create or correct ${entity.title}.`),
+      organisms: recordFormOrganisms },
   ];
   return {
     operations,
@@ -877,7 +900,7 @@ function linkLeftoverJourneysFromContent(
 // ---------------------------------------------------------------------------------------------
 
 function buildJourneyWorkspace(
-  journey: Ns4JourneyProposal, context: Ns4E8TierContext,
+  journey: Ns4JourneyProposal, context: Ns4E8TierContext, decisions: Ns4SystemDecision[],
 ): { workspace: Ns4E8ModelWorkspace; operations: Ns4E8Operation[] } {
   const steps = journey.business.steps;
   const bffCalls: Ns4E8BffCall[] = [];
@@ -897,7 +920,7 @@ function buildJourneyWorkspace(
       bffId, kind: query ? 'query' : 'command', operationId: useCase.useCaseId,
       outputKind: step.kind === 'locate' || collection ? 'paginated' : 'object', entityRef: step.entity,
     });
-    operations.push(buildJourneyOperation(journey, step, useCase, context, providedEarlier, index));
+    operations.push(buildJourneyOperation(journey, step, useCase, context, providedEarlier, index, decisions));
     sections.push({
       sectionId: step.stepId,
       intent: step.description || step.title,
@@ -937,6 +960,7 @@ function journeyOrganism(step: Ns4JourneyStep, bffId: string, collection = false
 function buildJourneyOperation(
   journey: Ns4JourneyProposal, step: Ns4JourneyStep, useCase: Ns4UseCaseArtifactV3,
   context: Ns4E8TierContext, providedEarlier: Set<string>, stepIndex = 0,
+  decisions: Ns4SystemDecision[] = [],
 ): Ns4E8Operation {
   const stepRef = `${journey.journeyId}.${step.stepId}`;
   const entity = context.entities.get(step.entity);
@@ -960,10 +984,81 @@ function buildJourneyOperation(
     entityRef: step.entity, entityRefs: useCase.entityRefs,
     accessPattern: journeyAccessPattern(step, journey.business.steps, stepIndex),
     inputs: uniqueBy(assignInputIds(inputs), input => input.inputId),
-    outputRefs: (entity?.fields || []).map(field => `${step.entity}.${field.fieldId}`),
+    outputRefs: query
+      ? queryOutputRefs(step, useCase, entity, context, decisions)
+      : (entity?.fields || []).map(field => `${step.entity}.${field.fieldId}`),
     useRules: useCase.useRules, transitionRefs: useCase.transitionRefs,
     story: [step.title, step.description].filter(Boolean),
     useCaseId: useCase.useCaseId,
+  };
+}
+
+/**
+ * A locate/inspect projects the step entity plus every derived projection the use case already
+ * reads and E4 knows how to join. The join key stays on the step entity; a projection in
+ * entityRefs with no derived relationship is recorded, not projected.
+ */
+function queryOutputRefs(
+  step: Ns4JourneyStep, useCase: Ns4UseCaseArtifactV3, entity: Ns4OntologyEntity | undefined,
+  context: Ns4E8TierContext, decisions: Ns4SystemDecision[],
+): string[] {
+  const refs = (entity?.fields || []).map(field => `${step.entity}.${field.fieldId}`);
+  for (const entityId of useCase.entityRefs) {
+    if (entityId === step.entity) continue;
+    const candidate = context.entities.get(entityId);
+    if (candidate?.kind !== 'projection') continue;
+    const link = derivedRelationshipBetween(context.sources.ontology.relationships, entityId, step.entity);
+    if (!link) {
+      decisions.push(unjoinedProjectionDecision(useCase.useCaseId, entityId, step.entity, context));
+      continue;
+    }
+    const joinIds = joinFieldIdsOn(link, entityId);
+    for (const field of candidate.fields) {
+      if (joinIds.has(field.fieldId)) continue;
+      refs.push(`${entityId}.${field.fieldId}`);
+    }
+  }
+  return refs;
+}
+
+function derivedRelationshipBetween(
+  relationships: Ns4OntologyRelationship[], left: string, right: string,
+): Ns4OntologyRelationship | undefined {
+  return relationships.find(relationship => {
+    if (relationship.realization?.kind !== 'derived') return false;
+    const ends = new Set([
+      relationship.fromEntity, relationship.toEntity,
+      relationship.realization.from.entityId, relationship.realization.to.entityId,
+    ]);
+    return ends.has(left) && ends.has(right);
+  });
+}
+
+function joinFieldIdsOn(relationship: Ns4OntologyRelationship, entityId: string): Set<string> {
+  const realization = relationship.realization;
+  if (!realization) return new Set();
+  const ids: string[] = [];
+  if (realization.from.entityId === entityId) ids.push(...realization.from.fieldIds);
+  if (realization.to.entityId === entityId) ids.push(...realization.to.fieldIds);
+  return new Set(ids);
+}
+
+function unjoinedProjectionDecision(
+  useCaseId: string, projectionId: string, stepEntity: string, context: Ns4E8TierContext,
+): Ns4SystemDecision {
+  return {
+    decisionId: `unjoinedProjection${useCaseId}${projectionId}${stepEntity}`,
+    stage: 'e8-workspaces',
+    question: context.portuguese
+      ? `O usecase ${useCaseId} lê a projeção ${projectionId} sem relacionamento derived com ${stepEntity}: o E4 não sabe juntar. Omitir da saída?`
+      : `Use case ${useCaseId} reads projection ${projectionId} with no derived relationship to ${stepEntity}: E4 cannot join them. Omit from the output?`,
+    chosen: 'omitFromOutput',
+    alternatives: ['omitFromOutput', 'declareDerivedRelationship'],
+    decidedBy: 'system',
+    findingRef: `NS4_E8_PROJECTION_UNJOINED:${useCaseId}:${projectionId}:${stepEntity}`,
+    changeHint: context.portuguese
+      ? `Declare no E4 um relacionamento com realization.kind derived entre ${projectionId} e ${stepEntity}.`
+      : `Declare an E4 relationship with realization.kind derived between ${projectionId} and ${stepEntity}.`,
   };
 }
 

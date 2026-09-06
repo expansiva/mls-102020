@@ -1,5 +1,15 @@
 # E9 changelog
 
+## 2026-09-06 — outputShape is typed from operation.outputRefs
+
+`transposeNs4ClassicOperation` (and the bffCall / TS contract that follow it) builds
+`outputFields` from `operation.outputRefs`, not from `entityRef.fields`. A derived
+projection E8 placed on a query therefore appears on the wire (`currentQuantity: number`
+on `inspectStockOverview`). Name collisions are prefixed with the entity in lowerCamel.
+An `outputRef` that does not resolve is `NS4_E9_OUTPUT_REF_UNKNOWN` (blocking, repair
+returns to E8) — never a silent `unknown`. A catalogue command whose `outputRefs` is
+only the identity still projects the entity fields it always did.
+
 ## 2026-09-04 — paginated is no longer collapsed to list
 
 E9 used to force `pagination: 'none'` and `output.kind: 'list'` because the module never projected

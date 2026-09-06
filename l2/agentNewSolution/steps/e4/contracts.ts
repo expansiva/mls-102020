@@ -29,6 +29,12 @@ export interface Ns4DerivationAggregate {
   op: Ns4DerivationOp;
   /** Source-entity field when the op needs one (`sum`/`min`/`max`/`first`/`groupKey`). Absent for `count`. */
   sourceField?: string;
+  /**
+   * Sign of a `sum` from an enum on the source. OPTIONAL so L4 written before this field keeps
+   * compiling — nothing is ever migrated. Only valid with `op: 'sum'`; `field` is an enum of
+   * `derivation.from`, and rows whose value is in `negativeValues` enter the sum negative.
+   */
+  signBy?: { field: string; negativeValues: string[] };
 }
 
 /**
@@ -119,6 +125,12 @@ export interface Ns4OntologyEntity {
    * written before this field keeps compiling. E8 skips the record catalogue when it is present.
    */
   cardinality?: 'singleton';
+  /**
+   * Whether records of this entity may be corrected or removed after they exist. OPTIONAL so L4
+   * written before this field keeps compiling — nothing is ever migrated; absent = editable.
+   * `appendOnly` is a fact, a posting, a meter reading, a signature: E8 emits no update/delete.
+   */
+  mutability?: 'editable' | 'appendOnly';
   /**
    * Required by the gate for everything this generator now produces; OPTIONAL in the type so the L4
    * artifacts written before it (schema v6, no `party`) keep compiling — nothing is ever migrated.
@@ -660,10 +672,25 @@ function party(value: unknown): Ns4EntityParty | undefined {
   return value === 'person' || value === 'organization' || value === 'none' ? value : undefined;
 }
 
+function mutability(value: unknown): Ns4OntologyEntity['mutability'] | undefined {
+  if (value === 'editable' || value === 'appendOnly') return value;
+  const raw = text(value);
+  // Keep an illegal token so the gate can name it; omit when the model said nothing (absent = editable).
+  return raw ? raw as Ns4OntologyEntity['mutability'] : undefined;
+}
+
 function derivationOp(value: unknown): Ns4DerivationOp | undefined {
   if (value === 'count' || value === 'sum' || value === 'min' || value === 'max'
     || value === 'first' || value === 'groupKey') return value;
   return undefined;
+}
+
+function normalizeSignBy(value: unknown): { field: string; negativeValues: string[] } | undefined {
+  const raw = record(value);
+  const field = text(raw.field);
+  const negativeValues = strings(raw.negativeValues);
+  if (!field || !negativeValues.length) return undefined;
+  return { field, negativeValues };
 }
 
 function normalizeDerivation(value: unknown): Ns4EntityDerivation | undefined {
@@ -676,7 +703,8 @@ function normalizeDerivation(value: unknown): Ns4EntityDerivation | undefined {
     const op = derivationOp(entry.op);
     if (!fieldId || !op) return undefined;
     const sourceField = text(entry.sourceField);
-    return { fieldId, op, ...(sourceField ? { sourceField } : {}) };
+    const signBy = normalizeSignBy(entry.signBy);
+    return { fieldId, op, ...(sourceField ? { sourceField } : {}), ...(signBy ? { signBy } : {}) };
   }).filter((item): item is Ns4DerivationAggregate => !!item);
   return { from, filter: text(raw.filter), aggregate };
 }
@@ -731,6 +759,7 @@ function normalizeEntity(value: unknown, moduleName: string): Ns4OntologyEntity 
     // would have nothing to complain about — which is the exact silence that let a person become a table.
     ...(party(entity.party) ? { party: party(entity.party) } : {}),
     ...(entity.cardinality === 'singleton' ? { cardinality: 'singleton' as const } : {}),
+    ...(mutability(entity.mutability) ? { mutability: mutability(entity.mutability) } : {}),
     ...(derivation ? { derivation } : {}),
     sourceRefs: {
       journeyIds: strings(sourceRefs.journeyIds),

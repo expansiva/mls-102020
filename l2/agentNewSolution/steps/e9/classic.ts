@@ -17,6 +17,15 @@ import type {
 } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 
 export const NS4_CLASSIC_WORKSPACE_VERSION = '2026-08-14-ns4-classic-workspace-v6' as const;
+export const NS4_E9_OUTPUT_REF_UNKNOWN = 'NS4_E9_OUTPUT_REF_UNKNOWN' as const;
+
+export class Ns4E9OutputRefError extends Error {
+  readonly code = NS4_E9_OUTPUT_REF_UNKNOWN;
+  constructor(ref: string) {
+    super(`${NS4_E9_OUTPUT_REF_UNKNOWN}: outputRef '${ref}' does not resolve to an ontology field`);
+    this.name = 'Ns4E9OutputRefError';
+  }
+}
 
 export interface Ns4ClassicField { name: string; from: string; type?: string; required?: boolean; item?: { fields: Ns4ClassicField[] }; }
 export interface Ns4ClassicBffCall {
@@ -90,10 +99,7 @@ export function transposeNs4ClassicOperation(
   const call = owner?.bffCalls.find(item => item.operationId === operation.operationId);
   const list = operation.accessPattern.kind === 'list';
   const paginated = isPaginated(operation.accessPattern.pagination, call?.outputKind);
-  const outputFields = (entity?.fields || []).map(field => ({
-    name: field.fieldId, type: classicType(field.type), required: field.required,
-    fieldRef: `${operation.entityRef}.${field.fieldId}`,
-  }));
+  const outputFields = resolveClassicOutputFields(operation, ontology);
   return {
     operationId: operation.operationId,
     title: operation.title,
@@ -177,10 +183,16 @@ function transposeCall(
   const paginated = isPaginated(operation?.accessPattern.pagination, call.outputKind);
   const list = !paginated && (call.outputKind === 'list' || operation?.accessPattern.kind === 'list');
   const collection = paginated || list;
-  const itemFields = (entity?.fields || []).map(field => ({
-    name: field.fieldId,
-    from: ns4ClassicFrom(call.operationId, collection ? `$items.${field.fieldId}` : field.fieldId),
-    type: classicType(field.type),
+  const outputFields = operation
+    ? resolveClassicOutputFields(operation, ontology)
+    : (entity?.fields || []).map(field => ({
+      name: field.fieldId, type: classicType(field.type), required: field.required,
+      fieldRef: `${call.entityRef}.${field.fieldId}`,
+    }));
+  const itemFields = outputFields.map(field => ({
+    name: field.name,
+    from: ns4ClassicFrom(call.operationId, collection ? `$items.${field.name}` : field.name),
+    type: field.type,
     required: field.required,
   }));
   const fields = paginated
@@ -216,6 +228,44 @@ function inputSourceOf(call: Ns4E8BffCall, inputId: string): string {
 function fieldTypeOf(ontology: Ns4E4Review, entityId: string, fieldId: string): Ns4OntologyField['type'] {
   return ontology.entities.find(entity => entity.entityId === entityId)
     ?.fields.find(field => field.fieldId === fieldId)?.type || 'string';
+}
+
+type ClassicOutputField = { name: string; type: string; required: boolean; fieldRef: string };
+
+/**
+ * The wire shape is what E8 declared in outputRefs. A catalogue command whose refs are only the
+ * identity still projects the entity fields it always did, so modules without a joined projection
+ * keep today's outputShape. An unknown ref is a blocking E9 finding, never a silent `unknown`.
+ */
+export function resolveClassicOutputFields(operation: Ns4E8Operation, ontology: Ns4E4Review): ClassicOutputField[] {
+  const entity = ontology.entities.find(item => item.entityId === operation.entityRef);
+  const ownFields = (entity?.fields || []).map(field => ({
+    name: field.fieldId, type: classicType(field.type), required: field.required,
+    fieldRef: `${operation.entityRef}.${field.fieldId}`,
+  }));
+  const refs = operation.outputRefs || [];
+  if (!refs.length) return ownFields;
+  const ownPrefix = `${operation.entityRef}.`;
+  const refsAreOwn = refs.every(ref => ref.startsWith(ownPrefix));
+  if (refsAreOwn && refs.length < ownFields.length) return ownFields;
+  return refs.map(ref => resolveOutputRef(ref, ontology)).reduce<ClassicOutputField[]>((fields, field) => {
+    const name = fields.some(item => item.name === field.name)
+      ? lowerCamel(field.fieldRef.slice(0, field.fieldRef.indexOf('.'))) + upperCamel(field.name)
+      : field.name;
+    fields.push({ ...field, name });
+    return fields;
+  }, []);
+}
+
+function resolveOutputRef(ref: string, ontology: Ns4E4Review): ClassicOutputField {
+  const dot = ref.indexOf('.');
+  if (dot <= 0) throw new Ns4E9OutputRefError(ref);
+  const entityId = ref.slice(0, dot);
+  const fieldId = ref.slice(dot + 1);
+  const field = ontology.entities.find(entity => entity.entityId === entityId)
+    ?.fields.find(item => item.fieldId === fieldId);
+  if (!field) throw new Ns4E9OutputRefError(ref);
+  return { name: fieldId, type: classicType(field.type), required: field.required, fieldRef: ref };
 }
 
 /** One TypeScript contract file per bffCall, byte-compatible with what the CFE reads today. */
@@ -357,6 +407,9 @@ function tsType(type: string | undefined, enumValues?: string[]): string {
 
 function upperCamel(value: string): string {
   return value ? value.slice(0, 1).toUpperCase() + value.slice(1) : '';
+}
+function lowerCamel(value: string): string {
+  return value ? value.slice(0, 1).toLowerCase() + value.slice(1) : '';
 }
 
 export interface Ns4ClassicL4 {

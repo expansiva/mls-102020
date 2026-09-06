@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-06 — query outputRefs include the derived projections the use case reads
+
+A locate/inspect operation's `outputRefs` is the step entity's fields plus every
+`kind: projection` in `useCase.entityRefs` that E4 joins to the step entity with
+`realization.kind: derived`. The join key is not repeated. A projection in
+`entityRefs` with no such relationship is omitted and recorded as
+`NS4_E8_PROJECTION_UNJOINED` (systemDecision, not an error). Commands are unchanged.
+
+## 2026-09-06 — appendOnly catalogue emits no update or removal
+
+An E4 entity with `mutability: appendOnly` still gets `list` / `create` / `getById`. It does not
+get `update`, `delete`, `inactivate` or `reactivate`, and its `recordForm` keeps only
+`cmdCreate*`. Absent `mutability` is today's catalogue. Journey operations on the same entity
+(`confirmStockEntry`) are unchanged.
+
 ## 2026-09-04 — catalogue list synthesizes optional page/pageSize; every list is paged
 
 `catalogueListInputs` emits `page`/`pageSize` (optional numbers, fieldRef borrowed from identity,

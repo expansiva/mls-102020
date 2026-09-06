@@ -197,6 +197,9 @@ test('E4 overview prompt requires a derived projection to declare derivation', (
   assert.match(prompt, /who declares the projection declares/u);
   assert.match(prompt, /"from": "Project"/u);
   assert.match(prompt, /"op": "count"/u);
+  assert.match(prompt, /Never invent an intermediate field/u);
+  assert.match(prompt, /signBy/u);
+  assert.match(prompt, /direction: in\|out/u);
   assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /derivation/u);
 });
 
@@ -215,6 +218,129 @@ test('E4 rejects a derived projection without derivation, and one whose from is 
   const unknownIssue = unknownGate.issues.find(issue => issue.code === 'NS4_E4_DERIVATION_FROM_UNKNOWN');
   assert.ok(unknownIssue, JSON.stringify(unknownGate.issues));
   assert.match(unknownIssue!.message, /NotAnEntity/u);
+});
+
+const DERIVATION_FIELD_CODES = [
+  'NS4_E4_DERIVATION_SOURCE_FIELD_UNKNOWN',
+  'NS4_E4_DERIVATION_SOURCE_FIELD_REQUIRED',
+  'NS4_E4_DERIVATION_FILTER_FIELD_UNKNOWN',
+  'NS4_E4_DERIVATION_SIGNBY',
+  'NS4_E4_DERIVATION_OUTPUT_FIELD',
+] as const;
+
+function issueOf(gate: { issues: Array<{ code: string; path: string; message: string; severity?: string }> }, code: string) {
+  return gate.issues.find(issue => issue.code === code);
+}
+
+test('E4 rejects invented sourceField, missing sourceField, unknown filter field, invalid signBy and unmatched output field', () => {
+  const unknownSource = structuredClone(reviewInput) as any;
+  unknownSource.entities[1].derivation.aggregate[0].sourceField = 'signedQuantity';
+  const unknownSourceGate = validateNs4E4Review(normalizeNs4E4Review(unknownSource), journeys, access);
+  const unknownSourceIssue = issueOf(unknownSourceGate, 'NS4_E4_DERIVATION_SOURCE_FIELD_UNKNOWN');
+  assert.ok(unknownSourceIssue, JSON.stringify(unknownSourceGate.issues));
+  assert.match(unknownSourceIssue!.path, /aggregate\[0\]\.sourceField/u);
+  assert.match(unknownSourceIssue!.message, /signedQuantity/u);
+  assert.match(unknownSourceIssue!.message, /projectId/u);
+
+  const missingSource = structuredClone(reviewInput) as any;
+  delete missingSource.entities[1].derivation.aggregate[0].sourceField;
+  const missingSourceGate = validateNs4E4Review(normalizeNs4E4Review(missingSource), journeys, access);
+  const missingSourceIssue = issueOf(missingSourceGate, 'NS4_E4_DERIVATION_SOURCE_FIELD_REQUIRED');
+  assert.ok(missingSourceIssue, JSON.stringify(missingSourceGate.issues));
+  assert.match(missingSourceIssue!.message, /groupKey/u);
+  assert.match(missingSourceIssue!.message, /projectId/u);
+
+  const unknownFilter = structuredClone(reviewInput) as any;
+  unknownFilter.entities[1].derivation.filter = 'notAField = x';
+  const unknownFilterGate = validateNs4E4Review(normalizeNs4E4Review(unknownFilter), journeys, access);
+  const unknownFilterIssue = issueOf(unknownFilterGate, 'NS4_E4_DERIVATION_FILTER_FIELD_UNKNOWN');
+  assert.ok(unknownFilterIssue, JSON.stringify(unknownFilterGate.issues));
+  assert.equal(unknownFilterIssue!.severity, undefined);
+  assert.match(unknownFilterIssue!.message, /notAField/u);
+  assert.match(unknownFilterIssue!.message, /projectId/u);
+
+  const badSignBy = structuredClone(reviewInput) as any;
+  badSignBy.entities[1].derivation.aggregate[0].signBy = { field: 'name', negativeValues: ['out'] };
+  const badSignByGate = validateNs4E4Review(normalizeNs4E4Review(badSignBy), journeys, access);
+  const badSignByIssue = issueOf(badSignByGate, 'NS4_E4_DERIVATION_SIGNBY');
+  assert.ok(badSignByIssue, JSON.stringify(badSignByGate.issues));
+  assert.match(badSignByIssue!.message, /signBy is only valid with op 'sum'/u);
+
+  const missingOutput = structuredClone(reviewInput) as any;
+  missingOutput.entities[1].derivation.aggregate[0].fieldId = 'missingOnProjection';
+  const missingOutputGate = validateNs4E4Review(normalizeNs4E4Review(missingOutput), journeys, access);
+  const missingOutputIssue = issueOf(missingOutputGate, 'NS4_E4_DERIVATION_OUTPUT_FIELD');
+  assert.ok(missingOutputIssue, JSON.stringify(missingOutputGate.issues));
+  assert.match(missingOutputIssue!.message, /missingOnProjection/u);
+  assert.match(missingOutputIssue!.message, /projectId/u);
+});
+
+test('E4 accepts a sum with signBy on a source enum and records an unrecognized filter without blocking', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].fields.push(
+    { fieldId: 'quantity', title: 'Quantity', type: 'number', required: true, description: 'Moved quantity.', constraints: [] },
+    {
+      fieldId: 'direction', title: 'Direction', type: 'string', required: true, description: 'Movement direction.',
+      constraints: [{ constraintId: 'directionEnum', kind: 'enum', value: '["in","out"]', description: 'In or out.', source: 'inferred' }],
+    },
+  );
+  input.entities[1].fields.push(
+    { fieldId: 'netQuantity', title: 'Net quantity', type: 'number', required: true, description: 'Signed total.', constraints: [] },
+  );
+  input.entities[1].derivation = {
+    from: 'Project',
+    filter: '',
+    aggregate: [
+      { fieldId: 'projectId', op: 'groupKey', sourceField: 'projectId' },
+      {
+        fieldId: 'netQuantity', op: 'sum', sourceField: 'quantity',
+        signBy: { field: 'direction', negativeValues: ['out'] },
+      },
+    ],
+  };
+  const green = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  assert.equal(green.issues.filter(issue => DERIVATION_FIELD_CODES.includes(issue.code as typeof DERIVATION_FIELD_CODES[number])).length, 0, JSON.stringify(green.issues));
+  assert.ok(green.ok, JSON.stringify(green.issues));
+
+  const preserved = normalizeNs4E4Review(input).entities[1].derivation;
+  assert.deepEqual(preserved?.aggregate[1].signBy, { field: 'direction', negativeValues: ['out'] });
+
+  input.entities[1].derivation.filter = 'quantity > 0';
+  const recorded = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  const warning = issueOf(recorded, 'NS4_E4_DERIVATION_FILTER_FIELD_UNKNOWN');
+  assert.ok(warning, JSON.stringify(recorded.issues));
+  assert.equal(warning!.severity, 'warning');
+  assert.equal(recorded.ok, true);
+});
+
+test('E4 flags signedQuantity on the controleEstoque ontology fixture', () => {
+  const draft = JSON.parse(readFileSync(new URL('fixtures/controleEstoque-e4-ontology-draft.json', import.meta.url), 'utf8'));
+  const review = normalizeNs4E4Review(draft);
+  const balance = review.entities.find(entity => entity.entityId === 'CurrentStockBalance');
+  assert.equal(balance?.derivation?.aggregate[1]?.sourceField, 'signedQuantity');
+  const gate = validateNs4E4Review(review);
+  const issue = gate.issues.find(item =>
+    item.code === 'NS4_E4_DERIVATION_SOURCE_FIELD_UNKNOWN'
+    && item.path.includes('derivation.aggregate[1].sourceField'),
+  );
+  assert.ok(issue, JSON.stringify(gate.issues));
+  assert.match(issue!.message, /signedQuantity/u);
+  assert.match(issue!.message, /quantity/u);
+});
+
+test('E4 existing ontology fixtures keep their derivation findings unchanged', () => {
+  const listaOntology = JSON.parse(readFileSync(new URL('fixtures/listaAssinatura-e4-ontology-draft.json', import.meta.url), 'utf8'));
+  const lista = validateNs4E4Review(normalizeNs4E4Review(listaOntology));
+  assert.ok(lista.ok, JSON.stringify(lista.issues));
+  assert.equal(lista.issues.filter(issue => DERIVATION_FIELD_CODES.includes(issue.code as typeof DERIVATION_FIELD_CODES[number])).length, 0);
+
+  const run44 = JSON.parse(readFileSync(new URL('../e8/fixtures/run44-tier-model.json', import.meta.url), 'utf8')) as { ontology: unknown };
+  const todo = JSON.parse(readFileSync(new URL('../e8/fixtures/todo-e8-sources.json', import.meta.url), 'utf8')) as { ontology: unknown };
+  for (const [name, ontology] of [['run44', run44.ontology], ['todo', todo.ontology]] as const) {
+    const gate = validateNs4E4Review(normalizeNs4E4Review(ontology));
+    const newFindings = gate.issues.filter(issue => DERIVATION_FIELD_CODES.includes(issue.code as typeof DERIVATION_FIELD_CODES[number]));
+    assert.equal(newFindings.length, 0, `${name}: ${JSON.stringify(newFindings)}`);
+  }
 });
 
 test('E4 ontology widget surfaces assumed enum-label decisions', () => {
@@ -507,6 +633,91 @@ test('E4 management fixture stays without cardinality after normalize', () => {
   assert.doesNotMatch(raw, /"cardinality"/u);
   const review = normalizeNs4E4Review(JSON.parse(raw));
   assert.ok(review.entities.every(entity => !('cardinality' in entity)));
+});
+
+test('E4 overview prompt declares appendOnly mutability with a conservative default', () => {
+  const prompt = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
+  assert.match(prompt, /mutability:\s*"appendOnly"/u);
+  assert.match(prompt, /InventoryMovement/u);
+  assert.match(prompt, /Product, Ticket, Task/u);
+  assert.match(prompt, /omit the field/u);
+  assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /mutability/u);
+});
+
+test('E4 review schema accepts optional mutability on an entity', () => {
+  const schema = JSON.parse(readFileSync(new URL('../../schemas/e4-review.schema.json', import.meta.url), 'utf8')) as any;
+  const entitySchema = schema.$defs.entity;
+  assert.equal(entitySchema.additionalProperties, false);
+  assert.deepEqual(entitySchema.properties.mutability, { type: 'string', enum: ['editable', 'appendOnly'] });
+  assert.ok(!entitySchema.required.includes('mutability'));
+});
+
+test('E4 preserves valid mutability and keeps an illegal token for the gate', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].mutability = 'appendOnly';
+  assert.equal(normalizeNs4E4Review(input).entities[0].mutability, 'appendOnly');
+
+  input.entities[0].mutability = 'editable';
+  assert.equal(normalizeNs4E4Review(input).entities[0].mutability, 'editable');
+
+  input.entities[0].mutability = 'readOnly';
+  assert.equal(normalizeNs4E4Review(input).entities[0].mutability, 'readOnly');
+
+  delete input.entities[0].mutability;
+  assert.equal('mutability' in normalizeNs4E4Review(input).entities[0], false);
+});
+
+test('E4 rejects a mutability value outside the vocabulary', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].mutability = 'readOnly';
+  const gate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  const issue = gate.issues.find(item => item.code === 'NS4_E4_MUTABILITY_VALUE');
+  assert.ok(issue, JSON.stringify(gate.issues));
+  assert.match(issue!.message, /readOnly/);
+  assert.notEqual(issue!.severity, 'warning');
+  assert.equal(gate.ok, false);
+});
+
+test('E4 rejects appendOnly on an mdm entity', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].kind = 'mdm';
+  input.entities[0].mutability = 'appendOnly';
+  input.entities[0].storage = {
+    target: 'mdm', scope: 'organization', idField: 'projectId', mdmType: 'buildFlowFsm.Project',
+    notes: 'Organization master.',
+  };
+  const gate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  const issue = gate.issues.find(item => item.code === 'NS4_E4_MUTABILITY_MDM');
+  assert.ok(issue, JSON.stringify(gate.issues));
+  assert.match(issue!.message, /Project/);
+  assert.match(issue!.message, /mdm/);
+  assert.notEqual(issue!.severity, 'warning');
+  assert.equal(gate.ok, false);
+});
+
+test('E4 records appendOnly next to more than one lifecycle state, without blocking', () => {
+  const input = structuredClone(reviewInput) as any;
+  input.entities[0].mutability = 'appendOnly';
+  input.entities[0].lifecycleStates = ['registered', 'cancelled'];
+  input.entities[0].initialState = 'registered';
+  input.entities[0].fields.push({
+    fieldId: 'status', title: 'Status', type: 'string', required: true, description: 'Lifecycle.',
+    constraints: [{ constraintId: 'projectStatusEnum', kind: 'enum', value: '["registered","cancelled"]', description: 'States.', source: 'inferred' }],
+  });
+  const gate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
+  const issue = gate.issues.find(item => item.code === 'NS4_E4_MUTABILITY_LIFECYCLE');
+  assert.ok(issue, JSON.stringify(gate.issues));
+  assert.equal(issue!.severity, 'warning');
+  assert.equal(gate.ok, true);
+  assert.equal(gate.issues.some(item => item.code === 'NS4_E4_MUTABILITY_VALUE'), false);
+  assert.equal(gate.issues.some(item => item.code === 'NS4_E4_MUTABILITY_MDM'), false);
+});
+
+test('E4 management fixture stays without mutability after normalize', () => {
+  const raw = readFileSync(new URL('fixtures/petShop-e4-ontology-draft.json', import.meta.url), 'utf8');
+  assert.doesNotMatch(raw, /"mutability"/u);
+  const review = normalizeNs4E4Review(JSON.parse(raw));
+  assert.ok(review.entities.every(entity => !('mutability' in entity)));
 });
 
 const LISTA_REQUEST = [
@@ -1144,6 +1355,17 @@ test('E4 enumLabels is optional, accepts a Portuguese label, and rejects orphan 
   ];
   const duplicate = validateNs4E4Review(normalizeNs4E4Review(input), journeys, access);
   assert.ok(duplicate.issues.some(issue => issue.code === 'NS4_E4_ENUM_LABEL_DUPLICATE'), JSON.stringify(duplicate.issues));
+});
+
+test('E4 review schema accepts optional signBy on a derivation aggregate', () => {
+  const schema = JSON.parse(readFileSync(new URL('../../schemas/e4-review.schema.json', import.meta.url), 'utf8')) as any;
+  const aggregate = schema.$defs.derivationAggregate;
+  assert.equal(aggregate.additionalProperties, false);
+  assert.ok(aggregate.properties.sourceField);
+  assert.equal(aggregate.properties.signBy.additionalProperties, false);
+  assert.deepEqual(aggregate.properties.signBy.required, ['field', 'negativeValues']);
+  assert.ok(!aggregate.required.includes('signBy'));
+  assert.ok(!aggregate.required.includes('sourceField'));
 });
 
 test('E4 tool schemas accept enumLabels as a closed object array', () => {

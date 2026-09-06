@@ -1,5 +1,20 @@
 # E4 changelog
 
+- 2026-09-06: Overview may declare `mutability: 'editable' | 'appendOnly'` on an entity whose
+  records are not altered or deleted after they exist (a fact, a posting, a meter reading, a
+  signature). Optional in the type and in `e4-review.schema.json` — L4 written before the field
+  keeps compiling; absent = editable. Gate: `NS4_E4_MUTABILITY_VALUE` (token outside the enum),
+  `NS4_E4_MUTABILITY_MDM` (appendOnly on master data), `NS4_E4_MUTABILITY_LIFECYCLE` (appendOnly
+  with more than one lifecycle state — registrar). Repair uses the existing overview loop. E8
+  skips update/delete on the catalogue when the field is `appendOnly`.
+
+- 2026-09-06: `derivation.aggregate[].sourceField` and `derivation.filter` must name declared
+  fields of `from`. A `sum` may carry optional `signBy: { field, negativeValues }` so a signed
+  total does not invent an intermediate column. Gates: `NS4_E4_DERIVATION_SOURCE_FIELD_UNKNOWN`,
+  `NS4_E4_DERIVATION_SOURCE_FIELD_REQUIRED`, `NS4_E4_DERIVATION_FILTER_FIELD_UNKNOWN`,
+  `NS4_E4_DERIVATION_SIGNBY`, `NS4_E4_DERIVATION_OUTPUT_FIELD`. Repair uses the existing overview
+  loop. An unrecognized filter form is recorded (`severity: warning`), not blocking.
+
 - 2026-08-31: Derived projections (`kind: projection`, `ownership: derived`) must declare
   `derivation` (`from`, `filter`, `aggregate`) so the account is a model fact, not prose.
   Optional on the type and in `e4-review.schema.json` — L4 written before the field keeps

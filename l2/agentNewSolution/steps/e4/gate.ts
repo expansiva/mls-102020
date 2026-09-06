@@ -21,7 +21,7 @@ import {
   Ns4RelationshipRealizationKind,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 
-export interface Ns4E4GateIssue { code: string; path: string; message: string }
+export interface Ns4E4GateIssue { code: string; path: string; message: string; severity?: 'warning' }
 export interface Ns4E4GateResult { ok: boolean; issues: Ns4E4GateIssue[] }
 export interface Ns4E4GateOptions {
   requireRelationshipRealization?: boolean;
@@ -47,7 +47,8 @@ export function validateNs4E4Review(
   options: Ns4E4GateOptions = {},
 ): Ns4E4GateResult {
   const issues: Ns4E4GateIssue[] = [];
-  const add = (code: string, path: string, message: string) => issues.push({ code, path, message });
+  const add = (code: string, path: string, message: string, severity?: 'warning') =>
+    issues.push({ code, path, message, ...(severity ? { severity } : {}) });
 
   if (!MODULE_ID.test(review.moduleName)) add('NS4_E4_MODULE_ID', 'moduleName', 'moduleName must be a lower-camel identifier.');
   if (review.solutionMode !== 'new') add('NS4_E4_SOLUTION_MODE', 'solutionMode', 'This E4 build currently accepts only the explicit new-solution mode.');
@@ -138,6 +139,29 @@ export function validateNs4E4Review(
         );
       }
     }
+    if (entity.mutability && entity.mutability !== 'editable' && entity.mutability !== 'appendOnly') {
+      add(
+        'NS4_E4_MUTABILITY_VALUE',
+        `${path}.mutability`,
+        `mutability '${entity.mutability}' is not in the vocabulary ('editable' | 'appendOnly'). Omit the field when the record is editable.`,
+      );
+    } else if (entity.mutability === 'appendOnly') {
+      if (entity.storage.target === 'mdm') {
+        add(
+          'NS4_E4_MUTABILITY_MDM',
+          `${path}.mutability`,
+          `mutability 'appendOnly' contradicts storage.target 'mdm' on ${entity.entityId}: master data is editable and retired by inactivation, never append-only.`,
+        );
+      }
+      if (entity.lifecycleStates.length > 1) {
+        add(
+          'NS4_E4_MUTABILITY_LIFECYCLE',
+          `${path}.mutability`,
+          `mutability 'appendOnly' on ${entity.entityId} sits next to ${entity.lifecycleStates.length} lifecycle states; more than one state suggests a transition, and a transition is an update. Recorded, not blocking.`,
+          'warning',
+        );
+      }
+    }
     if (!entity.party) {
       add('NS4_E4_PARTY_MISSING', `${path}.party`, "Declare party: 'person' | 'organization' | 'none' — whether this entity IS a natural person or an organization.");
     } else if (entity.party !== 'none' && entity.storage.target !== 'mdm') {
@@ -155,15 +179,19 @@ export function validateNs4E4Review(
           `${path}.derivation`,
           `Derived projection ${entity.entityId} must declare derivation.from (source entity in this ontology), derivation.filter (predicate on the source fields, empty if none) and derivation.aggregate (count|sum|min|max|first|groupKey per output field) — a projection without a source is an incomplete model.`,
         );
-      } else if (!declaredEntityIds.has(entity.derivation.from)) {
-        const siblingHidden = declaredEntityIds.size === 1 && entity.derivation.from !== entity.entityId;
-        if (!siblingHidden) {
-          add(
-            'NS4_E4_DERIVATION_FROM_UNKNOWN',
-            `${path}.derivation.from`,
-            `derivation.from '${entity.derivation.from}' is not an entity in this ontology.`,
-          );
+      } else {
+        const fromEntity = review.entities.find(item => item.entityId === entity.derivation?.from);
+        if (!fromEntity) {
+          const siblingHidden = declaredEntityIds.size === 1 && entity.derivation.from !== entity.entityId;
+          if (!siblingHidden) {
+            add(
+              'NS4_E4_DERIVATION_FROM_UNKNOWN',
+              `${path}.derivation.from`,
+              `derivation.from '${entity.derivation.from}' is not an entity in this ontology.`,
+            );
+          }
         }
+        validateDerivationDetails(entity, fromEntity, path, add);
       }
     }
     const expectedTarget = entity.ownership === 'external' ? 'external'
@@ -349,7 +377,7 @@ export function validateNs4E4Review(
     });
   }
 
-  return { ok: issues.length === 0, issues };
+  return { ok: issues.every(issue => issue.severity === 'warning'), issues };
 }
 
 /** Validates the frozen cross-entity decisions before expensive entity fan-out starts. */
@@ -682,19 +710,166 @@ function enumConstraintValues(raw: string): string[] {
     .filter(Boolean);
 }
 
+const PLAN_PLACEHOLDER_DESCRIPTION = [
+  'Plan-validation placeholder replaced by the entity detail pass.',
+  'Plan-validation lifecycle placeholder replaced by the entity detail pass.',
+];
+
+function isPlanPlaceholderEntity(entity: Ns4OntologyEntity): boolean {
+  return entity.fields.some(field =>
+    field.description === PLAN_PLACEHOLDER_DESCRIPTION[0]
+    || field.description === PLAN_PLACEHOLDER_DESCRIPTION[1],
+  );
+}
+
+function derivationFieldIds(entity: Ns4OntologyEntity): string[] {
+  return entity.fields.map(field => field.fieldId).filter(Boolean);
+}
+
+function derivationFieldList(entity: Ns4OntologyEntity): string {
+  const ids = derivationFieldIds(entity);
+  return ids.length ? ids.join(', ') : '(none)';
+}
+
+function derivationEnumCodes(entity: Ns4OntologyEntity, field: Ns4OntologyField): string[] {
+  if (field.enum?.length) return field.enum;
+  const fromConstraint = field.constraints
+    .filter(constraint => constraint.kind === 'enum')
+    .flatMap(constraint => enumConstraintValues(constraint.value));
+  if (fromConstraint.length) return fromConstraint;
+  if (isStatusFieldId(field.fieldId) && entity.lifecycleStates.length) return entity.lifecycleStates;
+  return [];
+}
+
+/** Left-hand identifiers of `field =`, `field !=`, `field in`. Anything else is unrecognized. */
+function parseDerivationFilterFields(filter: string): { fields: string[]; recognized: boolean } {
+  const trimmed = filter.trim();
+  if (!trimmed) return { fields: [], recognized: true };
+  const fields: string[] = [];
+  const pattern = /([a-z][A-Za-z0-9]*)\s*(?:!=|=|\bin\b)/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(trimmed))) fields.push(match[1]);
+  return { fields, recognized: fields.length > 0 };
+}
+
+function validateDerivationDetails(
+  entity: Ns4OntologyEntity,
+  fromEntity: Ns4OntologyEntity | undefined,
+  path: string,
+  add: (code: string, path: string, message: string, severity?: 'warning') => void,
+): void {
+  const derivation = entity.derivation;
+  if (!derivation) return;
+  const fromReady = !!fromEntity && !isPlanPlaceholderEntity(fromEntity);
+  const selfReady = !isPlanPlaceholderEntity(entity);
+
+  if (derivation.filter && fromReady && fromEntity) {
+    const parsed = parseDerivationFilterFields(derivation.filter);
+    if (!parsed.recognized) {
+      add(
+        'NS4_E4_DERIVATION_FILTER_FIELD_UNKNOWN',
+        `${path}.derivation.filter`,
+        `derivation.filter '${derivation.filter}' is not a simple field predicate (field = value, field != value, field in (...)); recorded, not blocking.`,
+        'warning',
+      );
+    } else {
+      const known = new Set(derivationFieldIds(fromEntity));
+      for (const fieldId of parsed.fields) {
+        if (!known.has(fieldId)) {
+          add(
+            'NS4_E4_DERIVATION_FILTER_FIELD_UNKNOWN',
+            `${path}.derivation.filter`,
+            `derivation.filter references '${fieldId}', which is not a field of ${fromEntity.entityId}. Declared fields: ${derivationFieldList(fromEntity)}.`,
+          );
+        }
+      }
+    }
+  }
+
+  derivation.aggregate.forEach((aggregate, aggregateIndex) => {
+    const aggregatePath = `${path}.derivation.aggregate[${aggregateIndex}]`;
+    const needsSource = aggregate.op === 'sum' || aggregate.op === 'min' || aggregate.op === 'max'
+      || aggregate.op === 'first' || aggregate.op === 'groupKey';
+    if (needsSource && !aggregate.sourceField) {
+      const fromHint = fromReady && fromEntity
+        ? ` naming a field of ${fromEntity.entityId} (${derivationFieldList(fromEntity)})`
+        : '';
+      add(
+        'NS4_E4_DERIVATION_SOURCE_FIELD_REQUIRED',
+        `${aggregatePath}.sourceField`,
+        `derivation.aggregate op '${aggregate.op}' for '${aggregate.fieldId}' requires sourceField${fromHint}.`,
+      );
+    }
+    if (aggregate.sourceField && fromReady && fromEntity) {
+      const known = new Set(derivationFieldIds(fromEntity));
+      if (!known.has(aggregate.sourceField)) {
+        add(
+          'NS4_E4_DERIVATION_SOURCE_FIELD_UNKNOWN',
+          `${aggregatePath}.sourceField`,
+          `derivation.aggregate sourceField '${aggregate.sourceField}' is not a field of ${fromEntity.entityId}. Declared fields: ${derivationFieldList(fromEntity)}.`,
+        );
+      }
+    }
+    if (aggregate.signBy) {
+      if (aggregate.op !== 'sum') {
+        add(
+          'NS4_E4_DERIVATION_SIGNBY',
+          `${aggregatePath}.signBy`,
+          `signBy is only valid with op 'sum', not '${aggregate.op}'.`,
+        );
+      } else if (fromReady && fromEntity) {
+        const signField = fromEntity.fields.find(field => field.fieldId === aggregate.signBy?.field);
+        if (!signField) {
+          add(
+            'NS4_E4_DERIVATION_SIGNBY',
+            `${aggregatePath}.signBy.field`,
+            `signBy.field '${aggregate.signBy.field}' is not a field of ${fromEntity.entityId}. Declared fields: ${derivationFieldList(fromEntity)}.`,
+          );
+        } else {
+          const codes = derivationEnumCodes(fromEntity, signField);
+          if (!codes.length) {
+            add(
+              'NS4_E4_DERIVATION_SIGNBY',
+              `${aggregatePath}.signBy.field`,
+              `signBy.field '${aggregate.signBy.field}' is not an enum field of ${fromEntity.entityId}. Declared fields: ${derivationFieldList(fromEntity)}.`,
+            );
+          } else {
+            const allowed = new Set(codes);
+            const unknown = aggregate.signBy.negativeValues.filter(value => !allowed.has(value));
+            if (unknown.length) {
+              add(
+                'NS4_E4_DERIVATION_SIGNBY',
+                `${aggregatePath}.signBy.negativeValues`,
+                `signBy.negativeValues ${unknown.map(value => `'${value}'`).join(', ')} are not in the enum of ${fromEntity.entityId}.${aggregate.signBy.field} (${codes.join(', ')}).`,
+              );
+            }
+          }
+        }
+      }
+    }
+    if (selfReady && aggregate.fieldId && !entity.fields.some(field => field.fieldId === aggregate.fieldId)) {
+      add(
+        'NS4_E4_DERIVATION_OUTPUT_FIELD',
+        `${aggregatePath}.fieldId`,
+        `derivation.aggregate fieldId '${aggregate.fieldId}' has no matching field on projection ${entity.entityId}. Declared fields: ${derivationFieldList(entity)}.`,
+      );
+    }
+  });
+}
+
 function placeholderFields(entityId: string, idField: string | undefined, needsStatus: boolean): Ns4OntologyField[] {
   const fields: Ns4OntologyField[] = [{
     fieldId: idField || `${entityId.slice(0, 1).toLowerCase()}${entityId.slice(1)}Value`,
     title: entityId,
     type: idField ? 'uuid' : 'string',
     required: true,
-    description: 'Plan-validation placeholder replaced by the entity detail pass.',
+    description: PLAN_PLACEHOLDER_DESCRIPTION[0],
     constraints: [],
   }];
   if (needsStatus && !fields.some(field => field.fieldId === 'status')) {
     fields.push({
       fieldId: 'status', title: 'Status', type: 'string', required: true,
-      description: 'Plan-validation lifecycle placeholder replaced by the entity detail pass.', constraints: [],
+      description: PLAN_PLACEHOLDER_DESCRIPTION[1], constraints: [],
     });
   }
   return fields;

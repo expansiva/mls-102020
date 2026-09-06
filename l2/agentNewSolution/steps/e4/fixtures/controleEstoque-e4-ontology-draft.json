@@ -1,0 +1,373 @@
+{
+  "planId": "e4-ontology-review",
+  "moduleName": "controleEstoque",
+  "userLanguage": "pt-BR",
+  "title": "Ontologia de negócio",
+  "reviewRound": 1,
+  "solutionMode": "new",
+  "businessDomain": "Controle operacional de estoque de produtos",
+  "entities": [
+    {
+      "entityId": "Product",
+      "title": "Produto",
+      "description": "Item do catálogo controlado pela organização, identificado para registrar movimentações e definir o estoque mínimo que orienta a reposição.",
+      "kind": "mdm",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerStockEntry",
+          "registerStockExit",
+          "monitorStockBalances",
+          "registerProduct"
+        ],
+        "featureIds": [
+          "productCatalog",
+          "currentStockBalance",
+          "lowStockAlert"
+        ],
+        "authorityRefs": [
+          "inventory:product-read",
+          "inventory:product-manage"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "productId",
+          "title": "Identificador do produto",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do produto, usado para localizá-lo no catálogo e associar suas movimentações e saldos calculados.",
+          "constraints": [
+            {
+              "constraintId": "uniqueProductId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada produto possui um identificador estável exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "name",
+          "title": "Nome do produto",
+          "type": "string",
+          "required": true,
+          "description": "Identificação do produto apresentada no catálogo para sua localização, consulta e seleção em movimentações.",
+          "constraints": []
+        },
+        {
+          "fieldId": "minimumStock",
+          "title": "Estoque mínimo",
+          "type": "number",
+          "required": true,
+          "description": "Quantidade mínima definida para o produto e utilizada para indicar a necessidade de reposição quando o saldo atual estiver abaixo dela.",
+          "constraints": [
+            {
+              "constraintId": "minimumStockNonNegative",
+              "kind": "min",
+              "value": "0",
+              "description": "O estoque mínimo do produto não pode ser negativo.",
+              "source": "inferred"
+            }
+          ]
+        }
+      ],
+      "lifecycleStates": [],
+      "lifecyclePredicates": [],
+      "useRules": [
+        "lowStockAlertBelowMinimum"
+      ],
+      "storage": {
+        "target": "mdm",
+        "scope": "organization",
+        "idField": "productId",
+        "mdmType": "controleEstoque.Product",
+        "notes": "Produto é um cadastro mestre da organização, reutilizável pelas movimentações e consultas de estoque. Saldos e histórico de movimentações não são persistidos no cadastro mestre."
+      }
+    },
+    {
+      "entityId": "InventoryMovement",
+      "title": "Movimentação de estoque",
+      "description": "Registro operacional definitivo de entrada ou saída de quantidade para um produto. Cada movimentação nasce registrada, compõe o saldo atual e não pode ser alterada nem excluída.",
+      "kind": "core",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerStockEntry",
+          "registerStockExit"
+        ],
+        "featureIds": [
+          "stockEntryRegistration",
+          "stockExitRegistration",
+          "currentStockBalance",
+          "lowStockAlert"
+        ],
+        "authorityRefs": [
+          "inventory:product-read",
+          "inventory:entry-record",
+          "inventory:exit-record"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "inventoryMovementId",
+          "title": "Identificador da movimentação",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável da movimentação de estoque, preservado entre as etapas conectadas da jornada.",
+          "constraints": [
+            {
+              "constraintId": "uniqueInventoryMovementId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada movimentação possui um identificador estável e exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "productId",
+          "title": "Produto",
+          "type": "uuid",
+          "required": true,
+          "description": "Produto previamente selecionado no catálogo ao qual a movimentação pertence.",
+          "constraints": []
+        },
+        {
+          "fieldId": "movementType",
+          "title": "Tipo de movimentação",
+          "type": "string",
+          "required": true,
+          "description": "Indica se a quantidade registrada representa uma entrada ou uma saída de estoque.",
+          "constraints": [
+            {
+              "constraintId": "movementTypeEnum",
+              "kind": "enum",
+              "value": "[\"entry\",\"exit\"]",
+              "description": "Tipos permitidos para a movimentação de estoque.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "entry",
+            "exit"
+          ],
+          "enumLabels": [
+            {
+              "code": "entry",
+              "label": "Entrada"
+            },
+            {
+              "code": "exit",
+              "label": "Saída"
+            }
+          ]
+        },
+        {
+          "fieldId": "quantity",
+          "title": "Quantidade",
+          "type": "number",
+          "required": true,
+          "description": "Quantidade de produto registrada na entrada ou na saída de estoque.",
+          "constraints": [
+            {
+              "constraintId": "quantityMustBePositive",
+              "kind": "custom",
+              "value": "greaterThanZero",
+              "description": "A quantidade de uma movimentação deve ser maior que zero.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "status",
+          "title": "Situação",
+          "type": "string",
+          "required": true,
+          "description": "Situação definitiva do lançamento de estoque.",
+          "constraints": [
+            {
+              "constraintId": "inventoryMovementStatusEnum",
+              "kind": "enum",
+              "value": "[\"registered\"]",
+              "description": "Situação permitida para a movimentação de estoque.",
+              "source": "journey"
+            }
+          ],
+          "enum": [
+            "registered"
+          ]
+        }
+      ],
+      "lifecycleStates": [
+        "registered"
+      ],
+      "statusEnum": [
+        "registered"
+      ],
+      "lifecycleLabels": [
+        {
+          "code": "registered",
+          "label": "Registrada"
+        }
+      ],
+      "initialState": "registered",
+      "lifecyclePredicates": [
+        {
+          "predicateId": "registeredMovement",
+          "description": "Uma movimentação registrada é um lançamento definitivo que participa do cálculo do saldo do produto.",
+          "stateIds": [
+            "registered"
+          ],
+          "source": "journey"
+        }
+      ],
+      "useRules": [
+        "inventoryMovementImmutable",
+        "stockCannotBecomeNegative",
+        "currentStockCalculatedFromMovements",
+        "lowStockAlertBelowMinimum"
+      ],
+      "storage": {
+        "target": "moduleDatabase",
+        "scope": "module",
+        "idField": "inventoryMovementId",
+        "notes": "Movimentação é um fato transacional imutável, mantido no banco do módulo para preservar o histórico de entradas e saídas e permitir o cálculo do saldo."
+      }
+    },
+    {
+      "entityId": "CurrentStockBalance",
+      "title": "Saldo atual de estoque",
+      "description": "Projeção calculada por produto que totaliza as entradas e saídas registradas, apresenta a quantidade atualmente disponível e permite indicar se ela está abaixo do estoque mínimo do produto.",
+      "kind": "projection",
+      "ownership": "derived",
+      "party": "none",
+      "derivation": {
+        "from": "InventoryMovement",
+        "filter": "status = registered",
+        "aggregate": [
+          {
+            "fieldId": "productId",
+            "op": "groupKey",
+            "sourceField": "productId"
+          },
+          {
+            "fieldId": "currentQuantity",
+            "op": "sum",
+            "sourceField": "signedQuantity"
+          }
+        ]
+      },
+      "sourceRefs": {
+        "journeyIds": [
+          "registerStockEntry",
+          "registerStockExit",
+          "monitorStockBalances"
+        ],
+        "featureIds": [
+          "currentStockBalance",
+          "lowStockAlert"
+        ],
+        "authorityRefs": [
+          "inventory:product-read",
+          "inventory:entry-record",
+          "inventory:exit-record"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "productId",
+          "title": "Produto",
+          "type": "uuid",
+          "required": true,
+          "description": "Produto ao qual o saldo calculado corresponde, usado como chave de agrupamento das movimentações registradas.",
+          "constraints": []
+        },
+        {
+          "fieldId": "currentQuantity",
+          "title": "Quantidade atual",
+          "type": "number",
+          "required": true,
+          "description": "Quantidade atualmente disponível, calculada pela soma das quantidades assinadas das movimentações registradas do produto.",
+          "constraints": []
+        }
+      ],
+      "lifecycleStates": [],
+      "lifecyclePredicates": [],
+      "useRules": [
+        "currentStockCalculatedFromMovements",
+        "lowStockAlertBelowMinimum"
+      ],
+      "storage": {
+        "target": "derived",
+        "scope": "none",
+        "notes": "Saldo é calculado sob demanda a partir das movimentações registradas; não mantém tabela própria nem saldo acumulado no cadastro de produto."
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "movementBelongsToProduct",
+      "fromEntity": "InventoryMovement",
+      "toEntity": "Product",
+      "type": "manyToOne",
+      "required": true,
+      "description": "Cada movimentação é registrada para um único produto previamente selecionado no catálogo.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "InventoryMovement",
+        "from": {
+          "entityId": "InventoryMovement",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "to": {
+          "entityId": "Product",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "description": "InventoryMovement.productId references the Product master identity for the selected product."
+      }
+    },
+    {
+      "relationshipId": "stockBalanceForProduct",
+      "fromEntity": "CurrentStockBalance",
+      "toEntity": "Product",
+      "type": "oneToOne",
+      "required": true,
+      "description": "Cada saldo calculado corresponde a um produto e permite consultar sua quantidade atual em conjunto com o estoque mínimo definido no cadastro.",
+      "persistence": {
+        "mode": "derivedJoin"
+      },
+      "realization": {
+        "kind": "derived",
+        "ownerEntity": "CurrentStockBalance",
+        "from": {
+          "entityId": "CurrentStockBalance",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "to": {
+          "entityId": "Product",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "description": "CurrentStockBalance is derived by grouping InventoryMovement records by productId; its productId joins the Product identity to present current quantity with minimum stock."
+      }
+    }
+  ],
+  "changeSummary": [
+    "Corrigida a definição do ciclo de vida da movimentação: ela nasce registrada e permanece como registro imutável, sem estado terminal.",
+    "Incluídos arrays explícitos de rótulos de ciclo de vida vazios para Produto e Saldo atual de estoque."
+  ],
+  "systemDecisions": []
+}

@@ -5,7 +5,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { deriveNs4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/tiers.js';
-import { collectionFieldName, compileNs4ClassicL4, transposeNs4ClassicOperation } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
+import {
+  collectionFieldName, compileNs4ClassicL4, NS4_E9_OUTPUT_REF_UNKNOWN, Ns4E9OutputRefError,
+  resolveClassicOutputFields, transposeNs4ClassicOperation,
+} from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
 import { ns4ClassicDefsSource, parseNs4ClassicDefsSource } from '/_102020_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
 // The consumers' OWN parsers. If these read the emission, the wave changed nothing in them.
 import { parseWorkspaceDefs } from '/_102021_/l2/agentChangeBackend/helpers/cbWorkspace.js';
@@ -13,9 +16,27 @@ import { resolveBffProjection } from '/_102021_/l2/agentChangeBackend/helpers/cb
 import { bffCallCommandShape, l4OperationInputs, parseWorkspaceBffCalls, parseWorkspaceSections, frontendOutputShapeForOperation } from '/_102020_/l2/agentChangeFrontend/helpers/cfeL4Contract.js';
 
 const run44 = JSON.parse(readFileSync(new URL('../e8/fixtures/run44-tier-model.json', import.meta.url), 'utf8')) as any;
+const todo = JSON.parse(readFileSync(new URL('../e8/fixtures/todo-e8-sources.json', import.meta.url), 'utf8')) as any;
+const lista = JSON.parse(readFileSync(new URL('../e8/fixtures/listaAssinatura-e8-sources.json', import.meta.url), 'utf8')) as any;
+const controleEstoque = JSON.parse(readFileSync(new URL('../e8/fixtures/controleEstoque-e8-sources.json', import.meta.url), 'utf8')) as any;
+const preNs01 = JSON.parse(readFileSync(new URL('fixtures/outputShape-pre-ns01.json', import.meta.url), 'utf8')) as Record<string, Record<string, string>>;
 const sources = (): any => structuredClone({
   journeys: run44.journeys, access: run44.access, ontology: run44.ontology,
   useCases: run44.useCases, workflows: run44.workflows,
+});
+const todoSources = (): any => structuredClone({
+  journeys: todo.journeys, access: todo.access, ontology: todo.ontology,
+  useCases: todo.useCases, workflows: todo.workflows,
+});
+const listaSources = (): any => structuredClone({
+  journeys: lista.journeys, access: lista.access, ontology: lista.ontology,
+  useCases: lista.useCases, workflows: lista.workflows,
+  policyDecisionSelections: lista.policyDecisionSelections, module: lista.module,
+});
+const controleEstoqueSources = (): any => structuredClone({
+  journeys: controleEstoque.journeys, access: controleEstoque.access, ontology: controleEstoque.ontology,
+  useCases: controleEstoque.useCases, workflows: controleEstoque.workflows,
+  policyDecisionSelections: controleEstoque.policyDecisionSelections, module: controleEstoque.module,
 });
 async function compile() {
   const input = sources();
@@ -338,4 +359,163 @@ test('the declared collection name is the entity, never the generic items', () =
   assert.equal(collectionFieldName('ChangeOrder'), 'changeOrders');
   assert.equal(collectionFieldName('Company'), 'companies');
   assert.equal(collectionFieldName('Status'), 'status');
+});
+
+function outputShapeKey(shape: { kind: string; fields: Array<any> }): string {
+  const parts = [shape.kind];
+  for (const field of shape.fields || []) {
+    if (field.item) {
+      parts.push(`${field.name}[]`);
+      for (const item of field.item.fields || []) {
+        parts.push(`${item.name}:${item.type}:${item.fieldRef || ''}:${item.required ? 1 : 0}`);
+      }
+    } else {
+      parts.push(`${field.name}:${field.type}:${field.fieldRef || ''}:${field.required ? 1 : 0}`);
+    }
+  }
+  return parts.join('|');
+}
+
+function fieldRefsOf(shape: { fields: Array<any> }): string[] {
+  const refs: string[] = [];
+  for (const field of shape.fields || []) {
+    if (field.fieldRef) refs.push(field.fieldRef);
+    for (const item of field.item?.fields || []) if (item.fieldRef) refs.push(item.fieldRef);
+  }
+  return refs;
+}
+
+function hasLinkedProjection(operation: { kind: string; entityRef: string; entityRefs: string[] }, ontology: any): boolean {
+  if (operation.kind !== 'query') return false;
+  const projections = new Set(ontology.entities.filter((entity: any) => entity.kind === 'projection').map((entity: any) => entity.entityId));
+  return operation.entityRefs.some(entityId => {
+    if (!projections.has(entityId) || entityId === operation.entityRef) return false;
+    return ontology.relationships.some((relationship: any) => {
+      if (relationship.realization?.kind !== 'derived') return false;
+      const ends = [relationship.fromEntity, relationship.toEntity, relationship.realization.from?.entityId, relationship.realization.to?.entityId];
+      return ends.includes(entityId) && ends.includes(operation.entityRef);
+    });
+  });
+}
+
+test('T3: operations without a joined projection keep the pre-change outputShape', async () => {
+  const cases: Array<{ name: string; input: () => any }> = [
+    { name: 'run44', input: sources },
+    { name: 'todo', input: todoSources },
+    { name: 'lista', input: listaSources },
+  ];
+  const drifted: string[] = [];
+  for (const { name, input } of cases) {
+    const src = input();
+    const model = deriveNs4E8Model(src);
+    const l4 = await compileNs4ClassicL4(model, src.ontology);
+    const snapshot = preNs01[name];
+    assert.ok(snapshot, `missing pre-ns01 snapshot for ${name}`);
+    for (const operation of l4.operations) {
+      const e8 = model.operations.find(item => item.operationId === operation.operationId)!;
+      if (hasLinkedProjection(e8, src.ontology)) continue;
+      const actual = outputShapeKey(operation.outputShape);
+      const expected = snapshot[operation.operationId];
+      if (actual !== expected) drifted.push(`${name}.${operation.operationId}`);
+    }
+  }
+  assert.deepEqual(drifted, [], `outputShape changed on operations without a joined projection:\n${drifted.join('\n')}`);
+});
+
+test('outputShape fieldRefs are exactly operation.outputRefs when a projection is on the wire', async () => {
+  const cases: Array<{ name: string; input: () => any }> = [
+    { name: 'run44', input: sources },
+    { name: 'todo', input: todoSources },
+    { name: 'lista', input: listaSources },
+    { name: 'controleEstoque', input: controleEstoqueSources },
+  ];
+  for (const { name, input } of cases) {
+    const src = input();
+    const model = deriveNs4E8Model(src);
+    const l4 = await compileNs4ClassicL4(model, src.ontology);
+    for (const operation of l4.operations) {
+      const e8 = model.operations.find(item => item.operationId === operation.operationId)!;
+      const refs = fieldRefsOf(operation.outputShape);
+      for (const ref of e8.outputRefs) {
+        assert.equal(refs.includes(ref), true, `${name}.${operation.operationId} dropped outputRef ${ref}`);
+      }
+      if (!hasLinkedProjection(e8, src.ontology)) continue;
+      assert.deepEqual([...refs].sort(), [...e8.outputRefs].sort(), `${name}.${operation.operationId} outputShape !== outputRefs`);
+    }
+  }
+});
+
+test('inspectStockOverview projects currentQuantity: number on the paginated item and on the TS contract', async () => {
+  const src = controleEstoqueSources();
+  const model = deriveNs4E8Model(src);
+  const l4 = await compileNs4ClassicL4(model, src.ontology);
+  const overview = l4.operations.find(operation => operation.operationId === 'inspectStockOverview')!;
+  assert.equal(overview.outputShape.kind, 'paginated');
+  const item = overview.outputShape.fields.find(field => field.item)?.item?.fields || [];
+  const quantity = item.find(field => field.name === 'currentQuantity');
+  assert.ok(quantity, 'paginated item must carry currentQuantity');
+  assert.equal(quantity!.type, 'number');
+  assert.equal(quantity!.fieldRef, 'CurrentStockBalance.currentQuantity');
+  assert.deepEqual(item.map(field => field.name), ['productId', 'name', 'minimumStock', 'currentQuantity']);
+
+  const detail = l4.operations.find(operation => operation.operationId === 'inspectProductStock')!;
+  assert.equal(detail.outputShape.kind, 'object');
+  assert.equal(detail.outputShape.fields.find(field => field.name === 'currentQuantity')?.type, 'number');
+
+  const contract = l4.contracts.find(item => item.bffId === 'qryInspectStockOverview')!;
+  assert.ok(contract, 'the overview query emits a contract');
+  assert.match(contract.source, /currentQuantity: number;/);
+});
+
+test('colliding outputRef names are prefixed with the entity in lowerCamel', () => {
+  const ontology = {
+    entities: [
+      { entityId: 'Product', fields: [
+        { fieldId: 'productId', type: 'uuid', required: true },
+        { fieldId: 'name', type: 'string', required: true },
+      ] },
+      { entityId: 'CurrentStockBalance', fields: [
+        { fieldId: 'productId', type: 'uuid', required: true },
+        { fieldId: 'name', type: 'string', required: false },
+        { fieldId: 'currentQuantity', type: 'number', required: true },
+      ] },
+    ],
+  };
+  const operation = {
+    operationId: 'inspectStockOverview',
+    title: 'Overview',
+    entityRef: 'Product',
+    entityRefs: ['Product', 'CurrentStockBalance'],
+    kind: 'query',
+    useRules: [],
+    story: [],
+    accessPattern: { kind: 'list', pagination: 'optional' },
+    inputs: [],
+    outputRefs: ['Product.productId', 'Product.name', 'CurrentStockBalance.name', 'CurrentStockBalance.currentQuantity'],
+  };
+  const fields = resolveClassicOutputFields(operation as any, ontology as any);
+  assert.deepEqual(fields.map(field => field.name), ['productId', 'name', 'currentStockBalanceName', 'currentQuantity']);
+  assert.equal(fields.find(field => field.name === 'currentStockBalanceName')?.fieldRef, 'CurrentStockBalance.name');
+});
+
+test('an unknown outputRef is a blocking E9 finding, never a silent unknown', () => {
+  const ontology = { entities: [{ entityId: 'Product', fields: [{ fieldId: 'productId', type: 'uuid', required: true }] }] };
+  const operation = {
+    operationId: 'inspectStockOverview',
+    title: 'Overview',
+    entityRef: 'Product',
+    entityRefs: ['Product'],
+    kind: 'query',
+    useRules: [],
+    story: [],
+    accessPattern: { kind: 'getById' },
+    inputs: [],
+    outputRefs: ['Product.productId', 'Product.noSuchField'],
+  };
+  assert.throws(
+    () => transposeNs4ClassicOperation({ workspaces: [], moduleName: 'x' } as any, operation as any, ontology as any),
+    (error: unknown) => error instanceof Ns4E9OutputRefError
+      && error.code === NS4_E9_OUTPUT_REF_UNKNOWN
+      && /Product\.noSuchField/.test(error.message),
+  );
 });

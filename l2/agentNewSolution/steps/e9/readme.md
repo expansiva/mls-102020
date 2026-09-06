@@ -20,6 +20,14 @@ The workspace index is authoritative for the module name, workspace set, menu gr
 - `contracts/<workspace>--<function>.defs.ts`: one composed view contract per workspace and one command contract per declared command;
 - a V4 access matrix with operation-to-authority realization.
 
+`outputShape` (and the TS contract of the matching bffCall) is typed from
+`operation.outputRefs`: each `Entity.field` is resolved in the E4 ontology
+(`fieldTypeOf` / `classicType`). A query may therefore carry fields of a
+`kind: projection` entity the use case reads, not only `entityRef.fields`.
+An unresolved `outputRef` is `NS4_E9_OUTPUT_REF_UNKNOWN` and fails E9
+(repair returns to E8). JSON ontology fields remain valid but compile as
+`unknown` with a warning when they *are* resolved.
+
 All artifacts carry their source hashes and omit timestamps. Recompiling unchanged inputs therefore produces byte-identical payloads.
 
 After emission, E9 audits approved E7 use-case drafts against written operations and records any

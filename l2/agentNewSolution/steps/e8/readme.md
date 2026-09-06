@@ -44,6 +44,9 @@ form from user-entered values; E8 does not invent a pre-existing record solely t
 A record catalogue synthesizes five operations from the ontology: `list`, `getById` (`get{Entity}` /
 `qryGet{Entity}`), `create`, `update`, and `delete` (or `inactivate`/`reactivate` when
 `storage.target` is `mdm`). `getById` is emitted even when no page consumes it.
+An entity with `mutability: appendOnly` keeps `list` / `create` / `getById` and drops `update` and
+every removal (`delete` or the mdm pair); its `recordForm` has only the create command. Absent
+`mutability` is editable. Master data cannot be `appendOnly` (E4 gate).
 
 An `inspect` of entity X that comes **before** a `locate` of the same X is a collection summary
 (counts of the listing), not getById of one row. E8 emits `accessPattern.kind: 'list'`, no identity

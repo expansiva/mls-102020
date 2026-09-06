@@ -8,7 +8,7 @@ Each round first writes `pipeline/e4-ontology-plan-draft.json`, then details ent
 `parallel_dynamic` fan-out with `maxParallel: 20` into `pipeline/e4-entities/{EntityId}-draft.json`.
 Each worker submits its artifact in the strict internal `{type:"flexible",result:{…}}` envelope, so
 the orchestration protocol accepts healthy worker output without a provisional failure.
-The overview freezes lifecycle states, one explicit initial state, optional terminal states, named predicate-to-state mappings and optional `cardinality: singleton` (one fixed instance; omit when in doubt) before the workers run;
+The overview freezes lifecycle states, one explicit initial state, optional terminal states, named predicate-to-state mappings, optional `cardinality: singleton` (one fixed instance; omit when in doubt) and optional `mutability: appendOnly` (a registered fact is not updated or deleted; omit when in doubt) before the workers run;
 workers add fields, constraints and rule ids without redefining those meanings or duplicating rule descriptions.
 The deterministic finalizer repairs only missing/invalid entities once. It then starts one compact
 relationship-binding pass, which writes `pipeline/e4-relationship-bindings-draft.json` and maps every
@@ -29,8 +29,10 @@ exist as an entity or projection with the same id. Entity and relationship refer
 lifecycle entities have status and an initial state that is not terminal, lifecycle predicates and terminal states contain only exact declared states, closed-domain values (states and field enums) are stable English codes with user-language `enumLabels`/`lifecycleLabels` (optional on the type; a new run backfills a missing list with a humanized code and a non-blocking systemDecision), and persistent business entities form a connected graph. Persistence
 is explicit and closed: `mdm` for organization master records, `moduleDatabase` for transactions,
 `derived`, `external` or `embedded` for concepts without a module table. A derived projection
-must name its account (`derivation.from` / `filter` / `aggregate`); `NS4_E4_DERIVATION_MISSING`
-is the backstop. An on-demand export,
+must name its account (`derivation.from` / `filter` / `aggregate`); `sourceField` and `filter`
+must be declared fields of `from`, and a `sum` whose sign depends on an enum uses `signBy`
+instead of inventing a column. `NS4_E4_DERIVATION_MISSING` and
+`NS4_E4_DERIVATION_SOURCE_FIELD_UNKNOWN` are the backstop. An on-demand export,
 report, file, receipt or snapshot is `derived` unless the request asks to persist its history;
 `NS4_E4_DERIVED_PERSISTED` is the backstop. Kind, scope, idField and
 mdmType must agree. Master data never carries mutable operational balances or transaction history.

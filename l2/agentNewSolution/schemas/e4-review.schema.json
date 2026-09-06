@@ -326,6 +326,13 @@
             "singleton"
           ]
         },
+        "mutability": {
+          "type": "string",
+          "enum": [
+            "editable",
+            "appendOnly"
+          ]
+        },
         "sourceRefs": {
           "$ref": "#/$defs/sourceRefs"
         },
@@ -492,6 +499,28 @@
         "sourceField": {
           "type": "string",
           "pattern": "^[a-z][A-Za-z0-9]*$"
+        },
+        "signBy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "field",
+            "negativeValues"
+          ],
+          "properties": {
+            "field": {
+              "type": "string",
+              "pattern": "^[a-z][A-Za-z0-9]*$"
+            },
+            "negativeValues": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         }
       }
     },
