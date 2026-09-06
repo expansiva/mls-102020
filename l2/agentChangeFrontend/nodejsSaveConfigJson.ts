@@ -9,7 +9,7 @@
 // The unsuffixed route uses page11 when that genome exists, otherwise the first remaining
 // genome. Additional desktop/pageNN variants are extra suffixed routes.
 // It merges the frontend part of the workspace ProjectsConfig into mls-<clientId>/l5/config.json:
-// shellTemplates, publication, clientShell (l5 customize overrides win), projects
+// shellTemplates, clientShell (l5 customize overrides win), projects
 // (master frontend + libs) and modules[].frontend.pages / navigation.
 // Multi-module: each l5/project.json module is composed from ITS own l2. A module whose l2 is
 // missing is skipped and its existing config.json entry is kept (in-progress generation). That
@@ -470,9 +470,7 @@ export function composeFrontendRuntimeConfig(root: string, clientId: string): Co
   config.defaultProjectId = config.defaultProjectId || clientId;
   config.shellTemplates = customize.shellTemplates
     || { spa: `./_${runtimeId}_/l2/shared/spa/index.html`, pwa: `./_${runtimeId}_/l2/shared/pwa/index.html` };
-  config.publication = customize.publication
-    || config.publication
-    || { defaultTarget: 'web', targets: { web: { assetBaseUrl: '', serveStaticFromServer: true, minify: false, sourcemap: true } } };
+  delete (config as { publication?: unknown }).publication;
   config.clientShell = customize.clientShell
     || config.clientShell
     || {
