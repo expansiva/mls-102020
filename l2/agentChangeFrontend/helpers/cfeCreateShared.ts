@@ -5082,9 +5082,7 @@ async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: Cfe
   config.shellTemplates = isRecord(customize.shellTemplates)
     ? customize.shellTemplates
     : (isRecord(config.shellTemplates) ? config.shellTemplates : { spa: `./_${runtimeId}_/l2/shared/spa/index.html`, pwa: `./_${runtimeId}_/l2/shared/pwa/index.html` });
-  config.publication = isRecord(customize.publication)
-    ? customize.publication
-    : (isRecord(config.publication) ? config.publication : { defaultTarget: 'web', targets: { web: { assetBaseUrl: '', serveStaticFromServer: true, minify: false, sourcemap: true } } });
+  delete config.publication;
   config.clientShell = isRecord(customize.clientShell)
     ? customize.clientShell
     : (isRecord(config.clientShell) ? config.clientShell : {

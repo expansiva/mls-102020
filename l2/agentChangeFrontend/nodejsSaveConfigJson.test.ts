@@ -193,6 +193,22 @@ test('T3 one-module: same pages shape as the previous single-module composer, id
   });
 });
 
+test('composer strips leftover publication from an old config.json', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      defaultProjectId: CLIENT_ID,
+      publication: { defaultTarget: 'web', targets: { web: { minify: true } } },
+    }, null, 2)}\n`);
+
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const config = readConfig(clientRoot);
+    assert.equal('publication' in config, false);
+  });
+});
+
 test('T3 CF pass keeps backendControllers and persistenceModules written by the CB', () => {
   withRoot((root, clientRoot) => {
     writeProjectJson(clientRoot, ['todo']);

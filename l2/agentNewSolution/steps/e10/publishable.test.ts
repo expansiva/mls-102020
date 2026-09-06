@@ -66,14 +66,13 @@ test('projectType is read from project.json and written only when absent', () =>
 });
 
 test('a platform block is filled from ONE source only when absent, and says so', () => {
-  const tuned = { publication: { defaultTarget: 'custom' } };
+  const tuned = { clientShell: { mode: 'pwa' } };
   const result = applyPlatformBlockDefaults(tuned);
   // The publisher's own block survives untouched…
-  assert.deepEqual(result.config.publication, { defaultTarget: 'custom' });
-  // …and the two that were missing arrive from the default, each with its finding.
+  assert.deepEqual(result.config.clientShell, { mode: 'pwa' });
+  // …and the one that was missing arrives from the default, with its finding.
   assert.deepEqual(result.config.shellTemplates, PLATFORM_BLOCK_DEFAULTS.shellTemplates);
-  assert.deepEqual(result.config.clientShell, PLATFORM_BLOCK_DEFAULTS.clientShell);
-  assert.equal(result.issues.length, 2, result.issues.join(' | '));
+  assert.equal(result.issues.length, 1, result.issues.join(' | '));
   assert.ok(result.issues.every(issue => /was missing and the platform default was written/u.test(issue)));
 });
 
