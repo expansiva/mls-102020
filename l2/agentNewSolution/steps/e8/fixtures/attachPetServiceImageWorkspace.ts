@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e8/fixtures/attachPetServiceImage.workspace.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e8/fixtures/attachPetServiceImageWorkspace.ts" enhancement="_blank"/>
 
 export const attachPetServiceImageWorkspace = {
   "workspaceId": "attachPetServiceImage",

@@ -18,7 +18,7 @@ import {
   stepEnabled,
   type SceneHostChild,
   type SceneInput,
-} from '/_102020_/l2/molecules/ml-scenary.logic.js';
+} from '/_102020_/l2/molecules/mlScenaryLogic.js';
 
 const THREE: SceneInput[] = [
   { value: 'list', title: 'List', nav: null, backTo: null, disabled: false },

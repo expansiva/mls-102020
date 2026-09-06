@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e8/fixtures/registerServiceStart.operation.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e8/fixtures/registerServiceStartOperation.ts" enhancement="_blank"/>
 
 export const operationRegisterServiceStart = {
   "operationId": "registerServiceStart",

@@ -22,6 +22,15 @@ export function isNs4FastMode(longMemory?: Record<string, unknown> | null): bool
   return longMemory?.fastMode === 'true';
 }
 
+export function isNs4NochainMode(longMemory?: Record<string, unknown> | null): boolean {
+  return longMemory?.nochainMode === 'true';
+}
+
+export function ns4NochainSuppressedNote(moduleName: string): string {
+  const module = String(moduleName || '').trim();
+  return module ? `handoff: suppressed by /nochain — next: @@agentChangeBackend /rebuild all ${module}` : '';
+}
+
 export function ns4E1SkippedDefaults(review: {
   module: { moduleName: string; title: string };
   localization: { productLanguages: readonly string[]; defaultLanguage: string };
@@ -49,15 +58,20 @@ export function buildNs4ChangeBackendHandoffMessage(moduleName: string): string 
 
 export function decideNs4FastHandoff(input: {
   fast: boolean;
+  nochain: boolean;
   success: boolean;
   alreadyDispatched: boolean;
   moduleName: string;
-}): { dispatch: boolean; message: string } {
+}): { dispatch: boolean; message: string; suppressed: boolean } {
   const message = buildNs4ChangeBackendHandoffMessage(input.moduleName);
   if (!input.fast || !input.success || input.alreadyDispatched || !message) {
-    return { dispatch: false, message: '' };
+    return { dispatch: false, message: '', suppressed: false };
   }
-  return { dispatch: true, message };
+  if (input.nochain) {
+    const module = String(input.moduleName || '').trim();
+    return { dispatch: false, message: `@@agentChangeBackend /rebuild all ${module}`, suppressed: true };
+  }
+  return { dispatch: true, message, suppressed: false };
 }
 
 export type Ns4FastHandoffDegradation = { at: string; kind: 'fast-handoff-dispatch'; reason: string };

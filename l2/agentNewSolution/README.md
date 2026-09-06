@@ -16,6 +16,7 @@ Invocation:
 
 - `@@newSolution petShop` — create a module or resume its next incomplete v19 step;
 - `@@newSolution petShop /fast` — auto-accept valid E1 through E6 proposals;
+- `@@newSolution petShop /fast /nochain` — same as `/fast` (skip E1 clarification, run E1–E10) but do not dispatch agentChangeBackend; the run summary names the next command;
 - E1 Follow-up mode **Automatic execution** — auto-accept valid E2 through E6 proposals (E1 still opens; `/fast` is not required);
 - `@@newSolution petShop /rebuild` — regenerate the module WHOLE: archives `l4/petShop` and
   `l5/petShop` through the platform soft-delete and generates again from E1. The whole folder on

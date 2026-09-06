@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/aura/helpers/auraStateEdit.stub.ts" enhancement="_blank" />
+/// <mls fileReference="_102020_/l2/aura/helpers/auraStateEditStub.ts" enhancement="_blank" />
 // The two browser globals `auraState` reaches for, stubbed BEFORE it is imported.
 //
 // A separate module because ES imports are hoisted: assignments written above an `import` still run

@@ -67,25 +67,25 @@ const configJson = {
 
 test('/rebuild all is its own parser mode and leaves the prompt', () => {
   assert.deepEqual(parseNs4Invocation('listaAssinatura /rebuild all'), {
-    fast: false, rebuild: true, rebuildFrom: 'all', prompt: 'listaAssinatura',
+    fast: false, rebuild: true, rebuildFrom: 'all', nochain: false, prompt: 'listaAssinatura',
   });
   assert.deepEqual(parseNs4Invocation('listaAssinatura /fast /rebuild all'), {
-    fast: true, rebuild: true, rebuildFrom: 'all', prompt: 'listaAssinatura',
+    fast: true, rebuild: true, rebuildFrom: 'all', nochain: false, prompt: 'listaAssinatura',
   });
   assert.deepEqual(parseNs4Invocation('/rebuild all listaAssinatura'), {
-    fast: false, rebuild: true, rebuildFrom: 'all', prompt: 'listaAssinatura',
+    fast: false, rebuild: true, rebuildFrom: 'all', nochain: false, prompt: 'listaAssinatura',
   });
 });
 
 test('/rebuild and /rebuild e10 do not become rebuild-all', () => {
   assert.deepEqual(parseNs4Invocation('listaAssinatura /rebuild'), {
-    fast: false, rebuild: true, rebuildFrom: '', prompt: 'listaAssinatura',
+    fast: false, rebuild: true, rebuildFrom: '', nochain: false, prompt: 'listaAssinatura',
   });
   assert.deepEqual(parseNs4Invocation('listaAssinatura /rebuild e10'), {
-    fast: false, rebuild: true, rebuildFrom: 'e10', prompt: 'listaAssinatura',
+    fast: false, rebuild: true, rebuildFrom: 'e10', nochain: false, prompt: 'listaAssinatura',
   });
   assert.deepEqual(parseNs4Invocation('/rebuildall listaAssinatura'), {
-    fast: false, rebuild: false, rebuildFrom: '', prompt: '/rebuildall listaAssinatura',
+    fast: false, rebuild: false, rebuildFrom: '', nochain: false, prompt: '/rebuildall listaAssinatura',
   });
 });
 

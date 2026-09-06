@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e8/fixtures/consultInstitutionalHome.workspace.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e8/fixtures/consultInstitutionalHomeWorkspace.ts" enhancement="_blank"/>
 
 export const consultInstitutionalHomeWorkspace = {
   "workspaceId": "consultInstitutionalHome",

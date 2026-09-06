@@ -376,6 +376,7 @@ async function beforePromptImplicit(
         flowName: 'agentNewSolution',
         sourcePrompt,
         ...(invocation.fast ? { fastMode: 'true' } : {}),
+        ...(invocation.nochain ? { nochainMode: 'true' } : {}),
         ...(resumeModule ? { resumeModule } : {}),
         ...(rebuildModule ? { rebuildModule } : {}),
         ...(resumeTarget ? { resumeTarget } : {}),

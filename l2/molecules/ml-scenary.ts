@@ -23,7 +23,7 @@ import {
   shouldEmitChange,
   stepEnabled,
   type SceneRecord,
-} from '/_102020_/l2/molecules/ml-scenary.logic.js';
+} from '/_102020_/l2/molecules/mlScenaryLogic.js';
 
 export const ML_SCENARY_TAG = 'molecules--ml-scenary-102020';
 

@@ -326,22 +326,26 @@ export interface Ns4Invocation {
   rebuild: boolean;
   /** Set by `/rebuild all` or `/rebuild <eN>`; empty means the existing total rebuild (l4/l5 only). */
   rebuildFrom: Ns4RebuildArg | '';
+  /** Suppress the next-agent handoff. Independent of `/fast`; `/nochainlane` does not match. */
+  nochain: boolean;
   prompt: string;
 }
 
 export function parseNs4Invocation(value: string): Ns4Invocation {
   const raw = String(value || '');
   const fast = /(^|\s)\/fast(?=\s|$)/i.test(raw);
+  const nochain = /(^|\s)\/nochain(?=\s|$)/i.test(raw);
   const rebuildMatch = NS4_REBUILD_RE.exec(raw);
   const rebuildFrom = (rebuildMatch?.[2] || '').toLowerCase() as Ns4RebuildArg | '';
   // The flag AND its argument leave the prompt: a leftover bare `e10` or `all` would end up in the
   // business description the planner reads — and `all` used to split the module token.
   const prompt = raw
     .replace(/(^|\s)\/fast(?=\s|$)/gi, '$1')
+    .replace(/(^|\s)\/nochain(?=\s|$)/gi, '$1')
     .replace(new RegExp(NS4_REBUILD_RE.source, 'gi'), '$1')
     .replace(/\s+/g, ' ')
     .trim();
-  return { fast, rebuild: !!rebuildMatch, rebuildFrom, prompt };
+  return { fast, rebuild: !!rebuildMatch, rebuildFrom, nochain, prompt };
 }
 
 /**

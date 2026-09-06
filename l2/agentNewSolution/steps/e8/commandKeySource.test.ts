@@ -10,10 +10,10 @@ import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contra
 const HERE = new URL('.', import.meta.url);
 
 test('fixtures are the real recordInStoreServiceAttendance commands-without-execution-read', () => {
-  const workspace = readFileSync(new URL('fixtures/recordInStoreServiceAttendance.workspace.ts', HERE), 'utf8');
-  const start = readFileSync(new URL('fixtures/registerServiceStart.operation.ts', HERE), 'utf8');
-  const locate = readFileSync(new URL('fixtures/locateConfirmedServiceAppointment.operation.ts', HERE), 'utf8');
-  const attach = readFileSync(new URL('fixtures/attachPetServiceImage.workspace.ts', HERE), 'utf8');
+  const workspace = readFileSync(new URL('fixtures/recordInStoreServiceAttendanceWorkspace.ts', HERE), 'utf8');
+  const start = readFileSync(new URL('fixtures/registerServiceStartOperation.ts', HERE), 'utf8');
+  const locate = readFileSync(new URL('fixtures/locateConfirmedServiceAppointmentOperation.ts', HERE), 'utf8');
+  const attach = readFileSync(new URL('fixtures/attachPetServiceImageWorkspace.ts', HERE), 'utf8');
   assert.match(workspace, /"workspaceId": "recordInStoreServiceAttendance"/);
   assert.match(workspace, /qryLocateConfirmedServiceAppointment/);
   assert.match(workspace, /cmdRegisterServiceStart/);

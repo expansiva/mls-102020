@@ -29,7 +29,7 @@ import {
   ns4E3DuplicateGrantPayload,
   ns4E3PetShopJourneysInput,
   ns4E3RepairedGrantPayload,
-} from '/_102020_/l2/agentNewSolution/steps/e3/fixtures/duplicateGrant.fixture.js';
+} from '/_102020_/l2/agentNewSolution/steps/e3/fixtures/duplicateGrantFixture.js';
 
 const journeys = normalizeNs4E2Review({
   planId: 'e2-review', moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', title: 'Jornadas', reviewRound: 1,
