@@ -1,5 +1,8 @@
 # E3 changelog
 
+- 2026-09-07: The access-matrix widget reads chrome from `presentation.phrases`
+  (`widget.accessMatrix.*`).
+
 - 2026-08-29: Profiles follow the same actor rule as E2: a persona is not a profile. The prompt
   forbids minting morador/visitante/jovem grants that copy the same authorities. The gate adds
   `NS4_E3_TWIN_JOURNEYS` when supplied E2 journeys share operations **and** the same granted

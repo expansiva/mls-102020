@@ -12,6 +12,7 @@ import type { Ns4E4Review } from '/_102020_/l2/agentNewSolution/steps/e4/contrac
 import type { Ns4UseCaseArtifactV3, Ns4WorkflowArtifactV2 } from '/_102020_/l2/agentNewSolution/steps/e7/contracts.js';
 import type { Ns4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 import type { Ns4ClassicL4 } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
+import type { Ns4Presentation } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 
 export const NS4_E10_VALIDATION_REPORT_VERSION = '2026-08-15-ns4-e10-validation-report-v2' as const;
 export const NS4_L5_TODO_FRONTEND_VERSION = '2026-08-13-ns4-todo-frontend-v1' as const;
@@ -25,6 +26,7 @@ export type Ns4E10RepairStep = 'e2-journeys' | 'e3-access-matrix' | 'e4-ontology
 export interface Ns4E10Sources {
   moduleName: string;
   userLanguage: string;
+  presentation?: Ns4Presentation;
   journeys: Ns4E2Review;
   journeyIndex: Ns4JourneyIndex;
   ontology: Ns4E4Review;

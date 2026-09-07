@@ -53,6 +53,18 @@ test('skipped E1 defaults are the review values, including product languages', (
   assert.equal(NS4_FAST_SKIP_REASON, 'fast skipped clarification');
 });
 
+test('skipped E1 defaults copy i18nWarnings so the run record is not silent', () => {
+  const defaults = ns4E1SkippedDefaults({
+    module: { moduleName: 'controleEstoque2', title: 'Controle de estoque' },
+    localization: { productLanguages: ['pt-BR'], defaultLanguage: 'pt-BR' },
+    reviewPolicy: { mode: 'smart' },
+    userLanguage: 'pt-BR',
+    i18nWarnings: ['localization.productLanguages: discarded en, es — languages are a user decision and the user did not cite them in the clarification answer or in the original prompt; kept pt-BR.'],
+  });
+  assert.deepEqual(defaults.productLanguages, ['pt-BR']);
+  assert.match(defaults.i18nWarnings?.[0] || '', /discarded en, es/);
+});
+
 test('NS /fast success emits the changeBackend intent once; other cases emit nothing', () => {
   assert.equal(
     buildNs4ChangeBackendHandoffMessage('petShop'),
@@ -111,6 +123,9 @@ test('E1 after-prompt and E10 finalize wire the skip and the handoff', () => {
   assert.match(e1, /decideNs4E1Clarification/);
   assert.match(e1, /ns4E1SkippedDefaults/);
   assert.match(e1, /skippedClarification: true/);
+  assert.match(e1, /e1ReviewFallback\(plan, \{ answerIsProposal: isFast\(context\) \}\)/);
+  assert.match(e1, /e1ReviewFallback\(plan\)/);
+  assert.match(e1, /i18nWarnings: answer\.skippedDefaults\.i18nWarnings/);
   const e10 = readFileSync(fileURLToPath(new URL('../steps/e10/agentNs4E10.ts', import.meta.url)), 'utf8');
   assert.match(e10, /decideNs4FastHandoff/);
   assert.match(e10, /sendNs4FastHandoff/);

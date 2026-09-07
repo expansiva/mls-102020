@@ -8,65 +8,15 @@ import {
   Ns4OntologyEntity,
   Ns4StorageTarget,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
+import { ns4WidgetLabels, type Ns4PhraseHolder, type Ns4WidgetLabelMap } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import { Ns4ClarificationAction, Ns4ClarificationEvent, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
 
-const labels = {
-  en: {
-    subtitle: 'Review the business data, constraints and relationships that frontend and backend will share.', step: 'Step', of: 'of',
-    round: 'Review', mode: 'New solution', changes: 'Changes in this round', entities: 'Entities',
-    fields: 'Fields', relationships: 'Relationships', lifecycle: 'Lifecycle', ruleRefs: 'Rule references', overview: 'Overview', descriptions: 'Descriptions',
-    source: 'Traceability', storage: 'Persistence destination', required: 'Required', optional: 'Optional', constraints: 'Field rules',
-    persistenceMap: 'Persistence map', persistenceHint: 'Confirm where every entity lives before approval. Select an entity to inspect its reason and fields.',
-    targetMdm: 'MDM · base records', targetModuleDatabase: 'Module database · transactions', targetDerived: 'Derived · no own table',
-    targetExternal: 'External · platform owned', targetEmbedded: 'Embedded · owned value', scope: 'Scope', mdmType: 'MDM type', idField: 'Identifier', reason: 'Reason',
-    fieldRulesHint: 'Click a field name or description to edit it in place.', crossStore: 'Cross-store',
-    sourceRelationships: 'As origin', destinationRelationships: 'As destination', noRelationships: 'No relationships for this table.', implementation: 'Field binding', editInPlace: 'Click to edit',
-    direct: 'Direct description edits', directHint: 'Titles and descriptions are safe to edit here. Structural changes use the separate request panel.',
-    entityTitle: 'Entity title', entityDescription: 'Entity description', fieldTitle: 'Field title', fieldDescription: 'Field description',
-    structural: 'What should change?', structuralHint: 'Use the LLM for entities, fields, types, relationships, lifecycle or constraints.',
-    placeholder: 'Example: add a client-facing published material-usage projection related to Project, without exposing internal costs.',
-    request: 'Generate another proposal', approve: 'Approve ontology', requiredAdjustment: 'Describe the structural change first.', empty: 'No ontology proposal available.', processingApproval: 'Validating ontology…', processingChanges: 'Preparing a new review…', processingCancel: 'Cancelling execution…', revise: 'Review the items below', cancel: 'Cancel execution', cancelTitle: 'Cancel this execution?', cancelText: 'Processing will end. The history and approved artifacts will be preserved.', keepWorking: 'Keep working',
-    assumedDecisions: 'Assumed decisions', changeHint: 'How to change later',
-  },
-  pt: {
-    subtitle: 'Revise os dados de negócio, restrições e relacionamentos compartilhados pelo frontend e backend.', step: 'Etapa', of: 'de',
-    round: 'Revisão', mode: 'Solução nova', changes: 'Alterações desta revisão', entities: 'Entidades',
-    fields: 'Campos', relationships: 'Relacionamentos', lifecycle: 'Ciclo de vida', ruleRefs: 'Referências de regras', overview: 'Visão geral', descriptions: 'Descrições',
-    source: 'Rastreabilidade', storage: 'Destino da persistência', required: 'Obrigatório', optional: 'Opcional', constraints: 'Regras do campo',
-    persistenceMap: 'Mapa de persistência', persistenceHint: 'Confirme onde cada entidade será armazenada antes de aprovar. Selecione uma entidade para ver o motivo e os campos.',
-    targetMdm: 'MDM · cadastros base', targetModuleDatabase: 'Banco do módulo · transações', targetDerived: 'Derivado · sem tabela própria',
-    targetExternal: 'Externo · mantido pela plataforma', targetEmbedded: 'Embutido · valor do proprietário', scope: 'Escopo', mdmType: 'Tipo MDM', idField: 'Identificador', reason: 'Motivo',
-    fieldRulesHint: 'Clique no nome ou na descrição de um campo para editá-lo na própria tabela.', crossStore: 'Entre armazenamentos',
-    sourceRelationships: 'Como origem', destinationRelationships: 'Como destino', noRelationships: 'Nenhum relacionamento para esta tabela.', implementation: 'Vínculo entre campos', editInPlace: 'Clique para editar',
-    direct: 'Edições diretas de descrição', directHint: 'Títulos e descrições podem ser editados aqui. Mudanças estruturais usam o painel separado.',
-    entityTitle: 'Título da entidade', entityDescription: 'Descrição da entidade', fieldTitle: 'Título do campo', fieldDescription: 'Descrição do campo',
-    structural: 'O que deve mudar?', structuralHint: 'Use a LLM para entidades, campos, tipos, relacionamentos, ciclos ou restrições.',
-    placeholder: 'Exemplo: adicione uma projeção publicada do uso de materiais para o cliente, relacionada ao projeto e sem custos internos.',
-    request: 'Gerar nova proposta', approve: 'Aprovar ontologia', requiredAdjustment: 'Descreva primeiro a alteração estrutural.', empty: 'Nenhuma proposta de ontologia disponível.', processingApproval: 'Validando ontologia…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…', revise: 'Revise os itens abaixo', cancel: 'Cancelar execução', cancelTitle: 'Cancelar esta execução?', cancelText: 'O processamento será encerrado. O histórico e os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
-    assumedDecisions: 'Decisões assumidas', changeHint: 'Como alterar depois',
-  },
-  es: {
-    subtitle: 'Revise los datos de negocio, restricciones y relaciones compartidos por frontend y backend.', step: 'Paso', of: 'de',
-    round: 'Revisión', mode: 'Solución nueva', changes: 'Cambios de esta revisión', entities: 'Entidades',
-    fields: 'Campos', relationships: 'Relaciones', lifecycle: 'Ciclo de vida', ruleRefs: 'Referencias de reglas', overview: 'Resumen', descriptions: 'Descripciones',
-    source: 'Trazabilidad', storage: 'Destino de persistencia', required: 'Obligatorio', optional: 'Opcional', constraints: 'Reglas del campo',
-    persistenceMap: 'Mapa de persistencia', persistenceHint: 'Confirme dónde vive cada entidad antes de aprobar. Seleccione una entidad para revisar su motivo y campos.',
-    targetMdm: 'MDM · datos maestros', targetModuleDatabase: 'Base del módulo · transacciones', targetDerived: 'Derivado · sin tabla propia',
-    targetExternal: 'Externo · mantenido por la plataforma', targetEmbedded: 'Embebido · valor del propietario', scope: 'Alcance', mdmType: 'Tipo MDM', idField: 'Identificador', reason: 'Motivo',
-    fieldRulesHint: 'Haga clic en el nombre o la descripción de un campo para editarlo en la tabla.', crossStore: 'Entre almacenamientos',
-    sourceRelationships: 'Como origen', destinationRelationships: 'Como destino', noRelationships: 'No hay relaciones para esta tabla.', implementation: 'Vínculo entre campos', editInPlace: 'Haga clic para editar',
-    direct: 'Ediciones directas de descripción', directHint: 'Títulos y descripciones se editan aquí. Los cambios estructurales usan el panel separado.',
-    entityTitle: 'Título de la entidad', entityDescription: 'Descripción de la entidad', fieldTitle: 'Título del campo', fieldDescription: 'Descripción del campo',
-    structural: '¿Qué debe cambiar?', structuralHint: 'Use la LLM para entidades, campos, tipos, relaciones, ciclos o restricciones.',
-    placeholder: 'Ejemplo: agregue una proyección publicada del uso de materiales para el cliente, relacionada con el proyecto y sin costos internos.',
-    request: 'Generar otra propuesta', approve: 'Aprobar ontología', requiredAdjustment: 'Describa primero el cambio estructural.', empty: 'No hay propuesta de ontología.', processingApproval: 'Validando ontología…', processingChanges: 'Preparando una nueva revisión…', processingCancel: 'Cancelando la ejecución…', revise: 'Revise los elementos a continuación', cancel: 'Cancelar ejecución', cancelTitle: '¿Cancelar esta ejecución?', cancelText: 'El procesamiento terminará. Se conservarán el historial y los artefactos aprobados.', keepWorking: 'Seguir trabajando',
-    assumedDecisions: 'Decisiones asumidas', changeHint: 'Cómo cambiar después',
-  },
-};
+type OntologyText = Ns4WidgetLabelMap<'ontology'>;
 
 @customElement('widget-ns4-ontology-102020')
 export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4ClarificationWidgetApi {
   @property({ type: Object }) value: Ns4E4Review | null = null;
+  @property({ type: Object }) presentation: Ns4PhraseHolder | undefined;
   @property({ type: Boolean }) readonly = false;
   @state() private selectedEntityId = '';
   @state() private activeTab: 'fields' | 'overview' | 'relationships' | 'descriptions' = 'fields';
@@ -81,10 +31,7 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
   private cancelOrigin: HTMLElement | null = null;
 
   private text() {
-    const language = this.value?.userLanguage?.toLowerCase() || 'en';
-    if (language.startsWith('pt')) return labels.pt;
-    if (language.startsWith('es')) return labels.es;
-    return labels.en;
+    return ns4WidgetLabels(this.presentation, 'ontology');
   }
 
   private selectedEntity(): Ns4OntologyEntity | undefined {
@@ -96,7 +43,7 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
     this.activeTab = 'fields';
   }
 
-  private storageLabel(target: Ns4StorageTarget, text: typeof labels.en): string {
+  private storageLabel(target: Ns4StorageTarget, text: OntologyText): string {
     if (target === 'mdm') return text.targetMdm;
     if (target === 'moduleDatabase') return text.targetModuleDatabase;
     if (target === 'derived') return text.targetDerived;
@@ -166,12 +113,12 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
     const index = controls.indexOf(document.activeElement as HTMLButtonElement);
     event.preventDefault(); controls[(index + (event.shiftKey ? controls.length - 1 : 1)) % controls.length]?.focus();
   }
-  private renderFeedback(text: typeof labels.en) {
+  private renderFeedback(text: OntologyText) {
     if (!this.msgError && !this.msgOk) return '';
     const error = Boolean(this.msgError);
     return html`<section class="ns4-feedback ${error ? 'is-error' : 'is-ok'}" role=${error ? 'alert' : 'status'} aria-live=${error ? 'assertive' : 'polite'} tabindex="-1">${error ? html`<strong>${text.revise}</strong>` : ''}<span>${this.msgError || this.msgOk}</span>${this.feedbackIssues.length ? html`<ul>${this.feedbackIssues.map(issue => html`<li>${issue.path ? html`<code>${issue.path}</code> — ` : ''}${issue.message}</li>`)}</ul>` : ''}</section>`;
   }
-  private renderCancelDialog(text: typeof labels.en) {
+  private renderCancelDialog(text: OntologyText) {
     if (!this.cancelOpen) return '';
     return html`<div class="ns4-dialog-backdrop"><section class="ns4-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="ns4-ontology-cancel-title" @keydown=${this.trapCancel}><h3 id="ns4-ontology-cancel-title">${text.cancelTitle}</h3><p>${text.cancelText}</p><div><button class="secondary ns4-cancel-stay" @click=${this.closeCancel}>${text.keepWorking}</button><button class="danger" @click=${() => { this.closeCancel(); this.submit('cancel'); }}>${text.cancel}</button></div></section></div>`;
   }
@@ -225,7 +172,7 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
       </section>`;
   }
 
-  private renderEntity(entity: Ns4OntologyEntity, text: typeof labels.en) {
+  private renderEntity(entity: Ns4OntologyEntity, text: OntologyText) {
     return html`<main>
       <div class="ns4-entity-head"><div><h3>${entity.title}</h3><code>${entity.entityId} · ${entity.kind} · ${entity.ownership}</code></div>
         <span class="ns4-target-badge target-${entity.storage.target}">${this.storageLabel(entity.storage.target, text)}</span></div>
@@ -242,7 +189,7 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
     </main>`;
   }
 
-  private renderFields(entity: Ns4OntologyEntity, text: typeof labels.en) {
+  private renderFields(entity: Ns4OntologyEntity, text: OntologyText) {
     return html`<section class="ns4-fields"><div class="ns4-section-title"><h3>${text.fields}</h3><p>${text.fieldRulesHint}</p></div><div class="ns4-table-scroll"><table>
       <thead><tr><th>Id</th><th>${text.fieldTitle}</th><th>${text.fieldDescription}</th><th>Type</th><th>Mode</th><th>${text.constraints}</th></tr></thead>
       <tbody>${entity.fields.map(field => html`<tr><td><code>${field.fieldId}</code></td>
@@ -255,7 +202,7 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
     </table></div></section>`;
   }
 
-  private renderOverview(entity: Ns4OntologyEntity, text: typeof labels.en) {
+  private renderOverview(entity: Ns4OntologyEntity, text: OntologyText) {
     return html`<section class="ns4-overview"><dl>
       <div><dt>${text.source}</dt><dd>${[...entity.sourceRefs.journeyIds, ...entity.sourceRefs.featureIds, ...entity.sourceRefs.authorityRefs].join(', ') || '—'}</dd></div>
       <div><dt>${text.storage}</dt><dd><strong>${this.storageLabel(entity.storage.target, text)}</strong> · ${text.scope}: ${entity.storage.scope}</dd></div>
@@ -267,14 +214,14 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
     </section>`;
   }
 
-  private renderRelationships(entity: Ns4OntologyEntity, text: typeof labels.en) {
+  private renderRelationships(entity: Ns4OntologyEntity, text: OntologyText) {
     const origin = this.value!.relationships.filter(item => item.fromEntity === entity.entityId);
     const destination = this.value!.relationships.filter(item => item.toEntity === entity.entityId);
     return html`<section class="ns4-relationships"><div class="ns4-relationship-group"><h3>${text.sourceRelationships}</h3>
       ${this.renderRelationshipList(origin, text)}</div><div class="ns4-relationship-group"><h3>${text.destinationRelationships}</h3>${this.renderRelationshipList(destination, text)}</div></section>`;
   }
 
-  private renderRelationshipList(relationships: Ns4E4Review['relationships'], text: typeof labels.en) {
+  private renderRelationshipList(relationships: Ns4E4Review['relationships'], text: OntologyText) {
     return relationships.length ? html`<div class="ns4-relationship-list">${relationships.map(relationship => {
       const from = this.value!.entities.find(item => item.entityId === relationship.fromEntity);
       const to = this.value!.entities.find(item => item.entityId === relationship.toEntity);
@@ -290,7 +237,7 @@ export class WidgetNs4Ontology102020 extends StateLitElement implements Ns4Clari
     })}</div>` : html`<p class="ns4-no-relationships">${text.noRelationships}</p>`;
   }
 
-  private renderDescriptions(entity: Ns4OntologyEntity, text: typeof labels.en) {
+  private renderDescriptions(entity: Ns4OntologyEntity, text: OntologyText) {
     return html`<section class="ns4-descriptions"><h3>${entity.title}</h3><code>${entity.entityId}</code><p>${entity.description || '—'}</p></section>`;
   }
 

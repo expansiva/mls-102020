@@ -3,12 +3,14 @@
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import { ns4WidgetLabels, type Ns4PhraseHolder } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import { Ns4E6Review, Ns4E6ReviewEvent } from '/_102020_/l2/agentNewSolution/steps/e6/contracts.js';
 import { Ns4ClarificationAction, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
 
 @customElement('widget-ns4-composition-102020')
 export class WidgetNs4Composition102020 extends StateLitElement implements Ns4ClarificationWidgetApi {
   @property({ type: Object }) value: Ns4E6Review | null = null;
+  @property({ type: Object }) presentation: Ns4PhraseHolder | undefined;
   @property({ type: Boolean }) readonly = false;
   @property({ type: String }) msgError = '';
   @property({ type: String }) msgOk = '';
@@ -19,43 +21,7 @@ export class WidgetNs4Composition102020 extends StateLitElement implements Ns4Cl
   private cancelOrigin: HTMLElement | null = null;
 
   private text() {
-    const language = this.value?.userLanguage?.toLowerCase() || 'en';
-    if (language.startsWith('pt')) return {
-      step: '👤 Etapa 6 de 6 — Módulos adicionais e plugins', review: 'Revisão',
-      empty: 'Nenhum módulo horizontal ou plugin adicional foi recomendado.',
-      horizontalModule: 'Módulo horizontal', plugin: 'Plugin', include: 'Incluir', defer: 'Deixar para depois',
-      adjustment: 'Quer mudar alguma coisa?', placeholder: 'Exemplo: adicione, remova ou adie uma recomendação e explique o motivo.',
-      request: 'Gerar nova proposta', approve: 'Aprovar análise', cancel: 'Cancelar execução',
-      adjustmentRequired: 'Descreva a alteração antes de gerar outra proposta.',
-      processingApproval: 'Validando análise…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…',
-      revise: 'Revise os itens abaixo', cancelTitle: 'Cancelar esta execução?',
-      cancelText: 'O processamento será encerrado. Os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
-      hint: 'Esta revisão é conservadora: uma lista vazia significa que o módulo pode seguir sem componentes adicionais.',
-    };
-    if (language.startsWith('es')) return {
-      step: '👤 Paso 6 de 6 — Módulos adicionales y plugins', review: 'Revisión',
-      empty: 'No se recomendó ningún módulo horizontal ni plugin adicional.',
-      horizontalModule: 'Módulo horizontal', plugin: 'Plugin', include: 'Incluir', defer: 'Dejar para después',
-      adjustment: '¿Desea cambiar algo?', placeholder: 'Ejemplo: agregue, quite o aplace una recomendación y explique el motivo.',
-      request: 'Generar otra propuesta', approve: 'Aprobar análisis', cancel: 'Cancelar ejecución',
-      adjustmentRequired: 'Describa el cambio antes de generar otra propuesta.',
-      processingApproval: 'Validando análisis…', processingChanges: 'Preparando otra revisión…', processingCancel: 'Cancelando ejecución…',
-      revise: 'Revise los elementos siguientes', cancelTitle: '¿Cancelar esta ejecución?',
-      cancelText: 'El procesamiento terminará. Los artefactos aprobados serán preservados.', keepWorking: 'Seguir trabajando',
-      hint: 'Esta revisión es conservadora: una lista vacía significa que el módulo puede continuar sin componentes adicionales.',
-    };
-    return {
-      step: '👤 Step 6 of 6 — Additional modules and plugins', review: 'Review',
-      empty: 'No additional horizontal module or plugin was recommended.',
-      horizontalModule: 'Horizontal module', plugin: 'Plugin', include: 'Include', defer: 'Defer',
-      adjustment: 'Would you like to change anything?', placeholder: 'Example: add, remove or defer a recommendation and explain why.',
-      request: 'Generate another proposal', approve: 'Approve analysis', cancel: 'Cancel execution',
-      adjustmentRequired: 'Describe the change before generating another proposal.',
-      processingApproval: 'Validating analysis…', processingChanges: 'Preparing another review…', processingCancel: 'Cancelling execution…',
-      revise: 'Review the items below', cancelTitle: 'Cancel this execution?',
-      cancelText: 'Processing will end. Approved artifacts will be preserved.', keepWorking: 'Keep working',
-      hint: 'This review is conservative: an empty list means the module can proceed without additional components.',
-    };
+    return ns4WidgetLabels(this.presentation, 'composition');
   }
 
   setFeedback(feedback: Ns4ClarificationFeedback | null): void {

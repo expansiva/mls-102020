@@ -5,6 +5,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { normalizeNs4E4Review } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
+import { NS4_DEFAULT_TITLES } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
+import { NS4_PHRASES } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import { deriveNs4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/tiers.js';
 import { resolveNs4E8ModelFindings, validateNs4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/modelGate.js';
 import {
@@ -206,7 +208,7 @@ test('an invalid hub composition falls back to the derived order and records the
   const issues = validateNs4HubComposition(hub.hubCatalogue!, invalid).issues;
   assert.ok(issues.length);
 
-  const resolution = resolveNs4HubCompositionFindings(hub, issues, true);
+  const resolution = resolveNs4HubCompositionFindings(hub, issues);
   assert.deepEqual(resolution.unresolved, []);
   assert.equal(resolution.systemDecisions[0].chosen, 'keepDerivedComposition');
   assert.deepEqual(
@@ -722,3 +724,46 @@ test('a delete over an mdm entity is a blocking finding even if it arrives from 
   // And the untouched model stays clean.
   assert.equal(validateNs4E8Model(model, input).issues.some(issue => issue.code === 'NS4_E8_MDM_DELETE'), false);
 });
+
+const ptPhrases = JSON.parse(readFileSync(new URL('../../helpers/fixtures/ns4-phrases-pt.json', import.meta.url), 'utf8'));
+const ptPresentation = () => ({ userLanguage: 'pt-BR', stepTitles: { ...NS4_DEFAULT_TITLES }, phrases: ptPhrases });
+
+test('controleEstoque with the PT catalogue reproduces today\'s synthesized user text', () => {
+  const model = deriveNs4E8Model({ ...controleEstoqueSources(), presentation: ptPresentation() });
+  const list = model.operations.find(operation => operation.operationId === 'listProduct')!;
+  assert.equal(list.title, 'Listar Produto');
+  assert.equal(list.story[0], 'Encontrar o registro.');
+  const create = model.operations.find(operation => operation.operationId === 'createProduct')!;
+  assert.equal(create.title, 'Criar Produto');
+  assert.equal(create.story[0], 'Informar os dados do novo registro.');
+  const catalogue = model.workspaces.find(workspace => workspace.workspaceId === 'productCatalogue')!;
+  assert.equal(catalogue.purpose, 'Cadastro de Produto.');
+  const search = model.operations.find(operation => operation.operationId === 'listProduct')!.inputs.find(input => input.inputId === 'search');
+  assert.equal(search?.description, 'Buscar por Nome do produto.');
+});
+
+test('without phrases the same sources emit English catalogue text and no empty user fields', () => {
+  const model = deriveNs4E8Model(controleEstoqueSources());
+  const list = model.operations.find(operation => operation.operationId === 'listProduct')!;
+  assert.equal(list.title, 'List Produto');
+  assert.equal(list.story[0], NS4_PHRASES['catalogue.list.story']);
+  for (const operation of model.operations) {
+    assert.ok(operation.title, `${operation.operationId} title`);
+    assert.ok(operation.story.every(item => item), `${operation.operationId} story`);
+    for (const input of operation.inputs) assert.ok(input.description !== undefined, `${operation.operationId}.${input.inputId}`);
+  }
+  for (const workspace of model.workspaces) {
+    assert.ok(workspace.purpose, workspace.workspaceId);
+    for (const section of workspace.sections) assert.ok(section.intent, `${workspace.workspaceId}.${section.sectionId}`);
+  }
+});
+
+test('run44 stays English without phrases — byte-identical to the previous en default', () => {
+  const model = deriveNs4E8Model(sources());
+  const list = model.operations.find(operation => operation.operationId === 'listChangeOrder')!;
+  assert.match(list.title, /^List /);
+  assert.equal(list.story[0], 'Find the record.');
+  const create = model.operations.find(operation => operation.operationId === 'createChangeOrder')!;
+  assert.equal(create.story[0], 'Fill in the new record.');
+});
+

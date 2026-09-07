@@ -26,10 +26,10 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
 - Lifecycle states and every other closed-domain value (`initialState`, `terminalStates`, enum constraint values) are **stable English codes**: lowerCamel ASCII, no accent, no space, no hyphen (`active`, `inactive`, `cancelled`, `monday`). They are identifiers, not user-facing text. Never write them in the user's language (`ativo`, `vigente`, `segunda-feira`). Titles and descriptions stay in the user's language — that is what is translated.
 - Next to `lifecycleStates`, emit `lifecycleLabels` as an array of `{ "code", "label" }` objects — one per state, `code` equal to the state id, `label` in the user's language (`userLanguage`, default `en`). Example: `{ "code": "active", "label": "Ativo" }`. Do not put the label in the state id.
 - Freeze every relationship here. Relationships must carry journey context: when a journey selects a
-  Project and later creates an order, usage, time log or invoice, the graph must make that selected
-  Project available. A future UI must never ask a human to type a raw foreign-key id supplied by an
+  `<MasterDataEntity>` and later creates a related record, the graph must make that selected
+  `<MasterDataEntity>` available. A future UI must never ask a human to type a raw foreign-key id supplied by an
   approved journey.
-- Keep the graph connected. Limited client information is a projection, not full underlying access.
+- Keep the graph connected. Limited related-record information is a projection, not full underlying access.
 - Make downstream rules implementable. Every durable fact explicitly required by E2 journeys, E3
   access contracts or their rule ids must have an owned field, lifecycle meaning, relationship, calculation input,
   identity association, exception/authorization record or projection. Do not defer missing business
@@ -42,7 +42,7 @@ text in the user's language. This run is `solutionMode: new`; never claim discov
 Declare `party` for EVERY entity: `person` when it is a natural person, `organization` when it is a
 company or institution, `none` for anything else. It is not a label — it decides the storage:
 
-- **Every party is MDM.** A client, a worker, a supplier, a contact, a carrier, a coordinator: `party` is
+- **Every party is MDM.** A worker, a supplier, a contact, a carrier, a coordinator: `party` is
   `person` or `organization`, so `kind` is `mdm`, `ownership` `moduleOwned`, scope `organization`, with
   `mdmType`. The record belongs to the organization and is reused across modules — a CRM built later reads
   the same registry. There is no exception for "this person also uses the platform".
@@ -53,44 +53,40 @@ company or institution, `none` for anything else. It is not a label — it decid
 
 Choose exactly one `storage.target` per entity:
 
-- `mdm`: stable organization registrations reused by transactions and reports—clients, projects,
-  regions, service/material catalogs and units. Use kind `mdm`, ownership `moduleOwned`, scope
+- `mdm`: stable organization registrations reused by transactions and reports — parties, catalogs and
+  units. Use kind `mdm`, ownership `moduleOwned`, scope
   `organization`, required uuid `idField`, and `mdmType` exactly `<moduleName>.<EntityId>`.
-- `moduleDatabase`: transactional/operational records—orders, executions, time logs, invoices,
+- `moduleDatabase`: transactional/operational records — orders, executions, time logs,
   movements and decisions. Use scope `module` and a uuid `idField`.
 - `derived`: calculated projection, kind `projection`, ownership `derived`, scope `none`.
 - `external`: platform/plugin-owned reference, ownership `external`, scope `platform`.
 - `embedded`: value object, kind `valueObject`, scope `none`.
 
-A result computed on demand — export, report, file, receipt, csv, snapshot, calculated summary —
-is `derived`. Persist it (`moduleDatabase`) only when the request explicitly asks for **history,
-audit, versioning or reprocessing of that artifact**. When in doubt, `derived`: a wrong derived
-projection is one extra read; a wrong persisted entity is a CRUD catalogue and a page. An entity
-that exists only to compose another derived artifact (the line items of an export) must not exist.
+A result computed from other records — a total, a count, a current position, a status derived from dates, an export, a report — is `derived` (`kind: projection` + `derivation`). Persist it only when the request explicitly asks for history, audit, versioning or reprocessing of that result. When in doubt, `derived`: a wrong derived projection is one extra read; a wrong persisted entity is a CRUD catalogue and a page. An entity that exists only to compose another derived artifact (the line items of an export) must not exist.
 
 A derived projection without a source is an incomplete model: **who declares the projection declares
 the account.** Every `kind: projection` + `ownership: derived` MUST emit `derivation`:
 
 - `from`: `entityId` of the persisted source (must exist in this ontology).
-- `filter`: predicate on declared fields of that source (`status = valid`). Empty string when unfiltered.
+- `filter`: predicate on declared fields of that source (`<fieldOfFrom> = <codeOfThatEnum>`). Empty string when unfiltered.
   Only field ids that exist on `from`. Never invent an intermediate field.
 - `aggregate`: one entry per output field of the projection. `op` is `count` | `sum` | `min` | `max` |
   `first` | `groupKey`; add `sourceField` when the op reads a source column (`count` has none).
   `sourceField` must be a declared field of `from`.
-- `signBy` on a `sum` only: `{ "field": "<enum field of from>", "negativeValues": ["<code>"] }`.
+- `signBy` on a `sum` only: `{ "field": "<enumFieldOfFrom>", "negativeValues": ["<codeOfThatEnum>"] }`.
   Rows whose `field` value is in `negativeValues` enter the sum negative; omit when every row is
-  positive. Use this for a balance or position whose sign depends on a type — a movement with
-  `direction: in|out` summing `quantity` uses
-  `{ "fieldId": "netQuantity", "op": "sum", "sourceField": "quantity", "signBy": { "field": "direction", "negativeValues": ["out"] } }`.
+  positive. Use this for a balance or position whose sign depends on a type — a movement whose type
+  enum lives on `from` summing `<fieldOfFrom>` uses
+  `{ "fieldId": "<outputField>", "op": "sum", "sourceField": "<fieldOfFrom>", "signBy": { "field": "<enumFieldOfFrom>", "negativeValues": ["<codeOfThatEnum>"] } }`.
+  The names in this example are placeholders. Use only field ids and enum codes that exist on `from`;
+  copying a placeholder literally fails the gate.
   Never invent a signed source column to carry the sign.
 
 Do not leave the formula in `description` or `storage.notes` only. The gate rejects a derived
 projection that omits `derivation`, one whose `from` is not an entity in this ontology, and one
 whose `sourceField` or `filter` names a field that `from` does not declare.
 
-Separate master data from operational state. Material may be MDM; inventory, adjustment and usage are
-transactions. Never put balances, accumulated totals or transaction history into MDM. Keep platform
-user ids as external references rather than duplicating users. Explain each decision in `storage.notes`.
+Keep platform user ids as external references rather than duplicating users. Explain each decision in `storage.notes`.
 `kind: core` with `ownership: external` is rejected: it is not a defined combination.
 
 Relationship persistence modes are `mdmRelationship`, `moduleReference`, `crossStoreReference`,
@@ -100,12 +96,11 @@ are lowerCamel. Relationships may be `oneToOne`, `oneToMany`, `manyToOne` or `ma
 ## Cardinality
 
 Declare `cardinality: "singleton"` only when the module has **one fixed, known instance** of the
-entity (the campaign, the page, the module's own configuration). The request names it in the definite
+entity (`<SingletonEntity>` — one known instance such as the module's own configuration). The request names it in the definite
 singular and **no journey creates further instances**.
 
-- Yes: the petition of a signature campaign (`Petition` in listaAssinatura) — one published text,
-  seeded, never a catalogue of petitions.
-- No: Task, Pet, Order — collections. Users create more records; omit the field.
+- Yes: `<SingletonEntity>` — one published text, seeded, never a catalogue of further instances.
+- No: `<MasterDataEntity>`, `<TransactionEntity>` — collections. Users create more records; omit the field.
 
 When in doubt, **omit the field**. A false singleton hides a needed catalogue; a false plural only
 keeps today's behaviour. Never emit any other cardinality value.
@@ -116,9 +111,9 @@ Declare `mutability: "appendOnly"` when the journey or a policy decision says th
 altered or deleted after it is registered** (a fact, a posting, a meter reading, a signature).
 `editable`, or omit the field, otherwise.
 
-- Yes: a stock movement (`InventoryMovement`) — once registered it is a fact; correction is a
-  compensating movement, never an edit of the original row.
-- No: Product, Ticket, Task — master data and work items stay editable; omit the field.
+- Yes: a registered fact (`<FactEntity>`) — once registered it is a fact; correction is a
+  compensating record, never an edit of the original row.
+- No: `<MasterDataEntity>` — master data and work items stay editable; omit the field.
 
 When in doubt, **omit the field**. A false `appendOnly` hides a legitimate correction; a false
 `editable` only keeps today's behaviour. Never emit any other mutability value.
@@ -127,7 +122,7 @@ When in doubt, **omit the field**. A false `appendOnly` hides a legitimate corre
 
 When a previous complete review and a human request are supplied, preserve its valid decisions and
 direct human edits unless the request requires changing them. Gate feedback is mandatory to repair.
-Return a complete replacement overview. `changeSummary` lists material differences only.
+Return a complete replacement overview. `changeSummary` lists substantive differences only.
 
 The request may be an E5 upstream-contract report. Resolve every ontology/data-related gap explicitly,
 including actor-to-business-record mappings, cost inputs, lifecycle predicates, required-work meaning,
@@ -138,7 +133,9 @@ remove unrelated entities, fields or relationships from the previous approved re
 
 Return exactly one JSON object without Markdown. Do not include `fields` or `useRules`. The values
 below illustrate the JSON shape only; never copy their lifecycle states or predicate unless supplied
-sources establish that same meaning.
+sources establish that same meaning. Angle-bracket names (`<MasterDataEntity>`, `<ComputedProjection>`,
+`<OwnerEntity>`, `<EntityId>`, `<journeyId>`, `<featureId>`, `<authorityRef>`) are placeholders — use
+only ids that exist in this module.
 
 {
   "planId": "e4-ontology-plan",
@@ -147,17 +144,17 @@ sources establish that same meaning.
   "title": "Business ontology",
   "reviewRound": 1,
   "solutionMode": "new",
-  "businessDomain": "Construction and remodeling operations",
+  "businessDomain": "The durable business of this module",
   "entities": [{
-    "entityId": "Project",
-    "title": "Project",
-    "description": "An engagement carrying client, scope, schedule and cost context.",
+    "entityId": "<MasterDataEntity>",
+    "title": "Master data",
+    "description": "An organization registration reused by later records.",
     "kind": "mdm",
     "ownership": "moduleOwned",
     "sourceRefs": {
-      "journeyIds": ["registerProject"],
-      "featureIds": ["projectRegistration"],
-      "authorityRefs": ["buildflow:projectsetup"]
+      "journeyIds": ["<journeyId>"],
+      "featureIds": ["<featureId>"],
+      "authorityRefs": ["<authorityRef>"]
     },
     "lifecycleStates": ["planned", "active", "completed", "cancelled"],
     "lifecycleLabels": [
@@ -169,34 +166,34 @@ sources establish that same meaning.
     "initialState": "planned",
     "terminalStates": ["completed", "cancelled"],
     "lifecyclePredicates": [{
-      "predicateId": "ongoingProject",
-      "description": "A project is ongoing while planned or active.",
+      "predicateId": "ongoing",
+      "description": "A record is ongoing while planned or active.",
       "stateIds": ["planned", "active"],
       "source": "journey"
     }],
     "storage": {
       "target": "mdm",
       "scope": "organization",
-      "idField": "projectId",
-      "mdmType": "lowerCamelModule.Project",
+      "idField": "recordId",
+      "mdmType": "lowerCamelModule.<MasterDataEntity>",
       "notes": "Organization master reused by transactions and reporting."
     }
   }, {
-    "entityId": "ActiveProjectCount",
-    "title": "Active project count",
-    "description": "How many projects are currently active.",
+    "entityId": "<ComputedProjection>",
+    "title": "Computed count",
+    "description": "How many source records are currently active.",
     "kind": "projection",
     "ownership": "derived",
     "party": "none",
     "sourceRefs": {
-      "journeyIds": ["registerProject"],
-      "featureIds": ["projectRegistration"],
-      "authorityRefs": ["buildflow:projectsetup"]
+      "journeyIds": ["<journeyId>"],
+      "featureIds": ["<featureId>"],
+      "authorityRefs": ["<authorityRef>"]
     },
     "lifecycleStates": [],
     "lifecyclePredicates": [],
     "derivation": {
-      "from": "Project",
+      "from": "<MasterDataEntity>",
       "filter": "status = active",
       "aggregate": [
         { "fieldId": "activeCount", "op": "count" }
@@ -205,16 +202,16 @@ sources establish that same meaning.
     "storage": {
       "target": "derived",
       "scope": "none",
-      "notes": "Calculated from Project; no table of its own."
+      "notes": "Calculated from <MasterDataEntity>; no table of its own."
     }
   }],
   "relationships": [{
-    "relationshipId": "projectBelongsToClient",
-    "fromEntity": "Project",
-    "toEntity": "Client",
+    "relationshipId": "childBelongsToOwner",
+    "fromEntity": "<MasterDataEntity>",
+    "toEntity": "<OwnerEntity>",
     "type": "manyToOne",
     "required": true,
-    "description": "Each project belongs to one client.",
+    "description": "Each child record belongs to one owner.",
     "persistence": { "mode": "mdmRelationship" }
   }],
   "changeSummary": ["Initial ontology overview."]

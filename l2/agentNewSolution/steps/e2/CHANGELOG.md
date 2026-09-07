@@ -1,5 +1,19 @@
 # E2 changelog
 
+- 2026-09-07: The journeys widget reads chrome from `presentation.phrases` (`widget.journeys.*`).
+
+- 2026-09-07: Capture-only demotion `question`/`chosen`/`alternatives` come from `ns4Text`
+  (`demotion.*` keys). English is the code default; the planner's `presentation.phrases` supplies
+  the run language.
+
+- 2026-09-06: A module with no decide step is valid. The generator prompt treats a decision as a
+  human choice between named outcomes in the request, not a confirmation, form validation or system
+  rule, and a locate→act sequence already qualifies as a process. `moduleWithoutDecide` is a
+  registrar (`systemDecision moduleWithoutDecidePolicy`) and no longer a blocking judge issue or a
+  repair instruction to add a `decide`. A decide step whose entity no act step writes is recorded as
+  `NS4_E2_DECIDE_ON_READ_MODEL` (warning + `demoteDecideToRule`). E4 remains the stage that can
+  confirm `kind: projection`.
+
 - 2026-08-29: A demographic persona does not create an actor. The prompt forbids one journey per
   morador/visitante/jovem/responsável when the operations and access are the same; "qualquer pessoa"
   is one public actor. The structural gate rejects twin journeys (`NS4_E2_TWIN_JOURNEYS`): the same

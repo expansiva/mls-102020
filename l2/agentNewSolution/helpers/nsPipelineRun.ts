@@ -46,11 +46,19 @@ export function buildNsRunSummary(input: {
   const skipped = pipeline?.steps.e1?.skippedDefaults;
   const degradations: PipelineRunDegradation[] = [];
   if (skipped) {
+    const at = pipeline?.steps.e1?.approvedAt || pipeline?.updatedAt || new Date().toISOString();
     degradations.push({
-      at: pipeline?.steps.e1?.approvedAt || pipeline?.updatedAt || new Date().toISOString(),
+      at,
       kind: 'clarification-skip-default',
       reason: `productLanguages=${skipped.productLanguages.join(',') || '(none)'} default=${skipped.defaultLanguage} module=${skipped.moduleName}`,
     });
+    for (const warning of skipped.i18nWarnings || []) {
+      degradations.push({
+        at,
+        kind: 'languages-provenance',
+        reason: warning,
+      });
+    }
   }
   const stepCounts: Record<string, string> = {};
   if (pipeline?.steps) {

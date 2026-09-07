@@ -14,7 +14,7 @@ Return only valid JSON in this shape:
   "json": {
     "planId": "e1-review",
     "reviewRound": 1,
-    "userLanguage": "pt-BR",
+    "userLanguage": "<userLanguage>",
     "reviewPolicy": { "mode": "smart" },
     "module": { "moduleName": "lowerCamelCase", "title": "Friendly title", "purpose": "Objective" },
     "strategy": {
@@ -27,7 +27,7 @@ Return only valid JSON in this shape:
       "mainGoal": "Objective", "actors": [{ "actorId": "stableId", "title": "Business actor", "kind": "internal | external | system", "expectedOutcome": "Expected result" }],
       "expectedOutcomes": [{ "outcomeId": "stableId", "title": "Outcome", "description": "Description" }], "inScope": ["..."], "outOfScope": ["..."]
     },
-    "localization": { "productLanguages": ["pt-BR"], "defaultLanguage": "pt-BR" },
+    "localization": { "productLanguages": ["<userLanguage>"], "defaultLanguage": "<userLanguage>" },
     "declaredConstraints": { "mandatoryIntegrations": [{ "dependencyId": "stableId", "title": "SAP", "kind": "externalSystem", "reason": "Explicit user requirement" }] },
     "changeSummary": ["Objective summary of this proposal"]
   }
@@ -46,10 +46,11 @@ Rules:
   NEVER add languages by market assumption. `defaultLanguage` must be in that list.
 - Propose at least one business actor and expected outcome. Actors are not E3 access profiles.
   An actor exists only with different permissions or a different data scope. Demographic personas
-  ("morador", "visitante", "jovem", "responsável") that do the same things are the same actor. A
-  request that says "qualquer pessoa" / "público" / "anyone" is one public actor, plus privileged
-  actors the request names (admin, and so on). Do not list three signers and an admin when the
-  request is "anyone may sign, only admin may download".
+  (`<PersonaA>`, `<PersonaB>` — demographic personas doing the same things are one actor) that do
+  the same things are the same actor. A request that says "anyone" / "the public" is one public
+  actor, plus privileged actors the request names (admin, and so on). Do not list three signers and
+  an admin when the request is "anyone may sign, only admin may download".
+- Examples are placeholders in English; write every human-facing value in the user's language (`userLanguage`).
 - Every value must be a useful editable default. Do not add prose or Markdown outside the JSON.
 
 ## Platform baseline

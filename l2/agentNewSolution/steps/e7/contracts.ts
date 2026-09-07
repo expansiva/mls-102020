@@ -13,6 +13,8 @@ import type { Ns4OntologyField } from '/_102020_/l2/agentNewSolution/steps/e4/co
 import { resolveNs4Findings, type Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4DerivedContextGraph } from '/_102020_/l2/agentNewSolution/helpers/ns4Context.js';
 import { shrinkNs4WorkflowToReachable } from '/_102020_/l2/agentNewSolution/steps/e7/reachability.js';
+import type { Ns4Presentation } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
+import { ns4Text } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 
 export const NS4_USE_CASE_DRAFT_VERSION = '2026-08-10-ns4-usecase-draft-minimal-v3' as const;
 export const NS4_USE_CASE_SCHEMA_VERSION = '2026-08-10-ns4-usecase-v3' as const;
@@ -43,6 +45,7 @@ export interface Ns4E7PlanDraft {
   userLanguage: string;
   useCases: Ns4E7PlanUseCase[];
   sourceHashes: Ns4E7SourceHashes;
+  presentation?: Ns4Presentation;
 }
 
 export interface Ns4UseCaseFieldRef {
@@ -229,6 +232,7 @@ export function buildNs4E7Plan(
   journeys: Ns4E2Review,
   sourceHashes: Ns4E7SourceHashes,
   contexts: Ns4DerivedContextGraph,
+  presentation?: Ns4Presentation,
 ): Ns4E7PlanDraft {
   const grouped = new Map<string, { kinds: Set<Ns4JourneyStepKind>; refs: string[]; titles: string[];
     requires: Set<string>; provides: Set<string> }>();
@@ -252,7 +256,7 @@ export function buildNs4E7Plan(
     compiledFrom: [...new Set(group.refs)].sort(),
     contexts: { requires: [...group.requires].sort(), provides: [...group.provides].sort() },
   }));
-  return { planId: 'e7-realization-plan', moduleName, userLanguage, useCases, sourceHashes };
+  return { planId: 'e7-realization-plan', moduleName, userLanguage, useCases, sourceHashes, ...(presentation ? { presentation } : {}) };
 }
 
 export function normalizeNs4UseCaseDraft(
@@ -323,7 +327,7 @@ export async function buildNs4WorkflowArtifacts(
       const transitions = byEntity.get(entityRef) || [];
       const workflowId = `${entityRef.slice(0, 1).toLowerCase()}${entityRef.slice(1)}Lifecycle`;
       const initialState = lifecycle.initialState || '';
-      const portuguese = plan.userLanguage.toLowerCase().startsWith('pt');
+      const presentation = plan.presentation;
       const base = {
         states: [...lifecycle.states],
         terminalStates: [...(lifecycle.terminalStates || [])],
@@ -336,14 +340,10 @@ export async function buildNs4WorkflowArtifacts(
           decisionId: `shrink${entityRef}${state.slice(0, 1).toUpperCase()}${state.slice(1)}`,
           findingRef: `workflow.state.unreachable:${entityRef}.${state}`,
           stage: 'e7',
-          question: portuguese
-            ? `Como o estado inalcançável ${entityRef}.${state} deve ser tratado?`
-            : `How should the unreachable ${entityRef}.${state} lifecycle state be handled?`,
+          question: ns4Text(presentation, 'workflow.unreachable.question', { entity: entityRef, state }),
           deterministicChoice: 'shrinkLifecycle',
           alternatives: ['operateState'],
-          changeHint: portuguese
-            ? `Adicione uma jornada/operação explícita no E2 que alcance ${entityRef}.${state} antes de restaurá-lo no workflow compilado; a ontologia E4 permanece inalterada.`
-            : `Add an explicit E2 journey/operation that reaches ${entityRef}.${state} before restoring it to the compiled workflow; the E4 ontology remains unchanged.`,
+          changeHint: ns4Text(presentation, 'workflow.unreachable.changeHint', { entity: entityRef, state }),
           apply: (artifact: typeof base) => {
             const next = shrinkNs4WorkflowToReachable(initialState, artifact.states.filter(item => item !== state), artifact.transitions
               .filter(transition => transition.toState !== state)
@@ -362,13 +362,9 @@ export async function buildNs4WorkflowArtifacts(
         decisionId: `dormant${entityRef}${predicate.predicateId.slice(0, 1).toUpperCase()}${predicate.predicateId.slice(1)}`,
         findingRef: `workflow.predicate.dead:${entityRef}.${predicate.predicateId}`,
         stage: 'e7',
-        question: portuguese
-          ? `O critério ${predicate.predicateId} não tem efeito nesta versão — nenhum estado que o satisfaz é alcançado.`
-          : `The ${predicate.predicateId} criterion has no effect in this version — none of its states is reachable.`,
+        question: ns4Text(presentation, 'workflow.predicate.question', { predicateId: predicate.predicateId }),
         deterministicChoice: 'leavePredicateDormant', alternatives: ['operateState'],
-        changeHint: portuguese
-          ? `Adicione no E2 uma jornada que alcance um dos estados ${predicate.stateIds.join(', ')}; a regra E5 e a ontologia E4 permanecem inalteradas.`
-          : `Add an E2 journey that reaches one of ${predicate.stateIds.join(', ')}; the E5 rule and E4 ontology remain unchanged.`,
+        changeHint: ns4Text(presentation, 'workflow.predicate.changeHint', { states: predicate.stateIds.join(', ') }),
         apply: (artifact: string[]) => artifact,
       })));
       decisions.push(...predicateResolution.systemDecisions);
@@ -376,13 +372,9 @@ export async function buildNs4WorkflowArtifacts(
         const omission = resolveNs4Findings(true, [{
           classification: 'C' as const, decisionId: `omit${entityRef}Workflow`,
           findingRef: `workflow.missing:${entityRef}`, stage: 'e7',
-          question: portuguese
-            ? `${entityRef} está sem fluxo de estados operado nesta versão.`
-            : `${entityRef} has no operated state flow in this version.`,
+          question: ns4Text(presentation, 'workflow.omit.question', { entity: entityRef }),
           deterministicChoice: 'omitWorkflow', alternatives: ['operateState'],
-          changeHint: portuguese
-            ? `Adicione no E2 uma jornada que opere uma transição de ${entityRef}; a ontologia E4 permanece inalterada.`
-            : `Add an E2 journey that operates a ${entityRef} transition; the E4 ontology remains unchanged.`,
+          changeHint: ns4Text(presentation, 'workflow.omit.changeHint', { entity: entityRef }),
           apply: () => false,
         }]);
         decisions.push(...omission.systemDecisions);

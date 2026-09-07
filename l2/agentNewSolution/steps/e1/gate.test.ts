@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildNs4PlannedSteps,
@@ -32,6 +34,7 @@ import {
   resolveNs4ExistingAction,
   resolveNs4ExistingModuleToken,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
+import { ns4E1SkippedDefaults } from '/_102020_/l2/agentNewSolution/helpers/ns4FastHandoff.js';
 import { validateNs4E1Module } from '/_102020_/l2/agentNewSolution/steps/e1/gate.js';
 import {
   buildNs4ModuleArtifactFromReview,
@@ -153,6 +156,100 @@ test('languages with user provenance pass untouched, by prompt mention or clarif
   assert.equal(answerReview.i18nWarnings, undefined);
 });
 
+test('under /fast the planner language answer is never a citation — controleEstoque2 incident', () => {
+  const payload = JSON.parse(readFileSync(fileURLToPath(new URL('./fixtures/controleEstoque2-root-plan.json', import.meta.url)), 'utf8'));
+  const sourcePrompt = payload.result.userPrompt;
+  const plan = normalizeNs4RootPlan(payload, sourcePrompt);
+  assert.equal(plan.clarification.questions.productLanguages.answer, 'pt-BR, en, es');
+  const review = normalizeNs4E1Review(e1ReviewBodyWithLanguages(['pt-BR', 'en', 'es']), {
+    userLanguage: plan.presentation.userLanguage,
+    productLanguages: plan.clarification.questions.productLanguages.answer,
+    sourcePrompt,
+    answerIsProposal: true,
+  });
+  assert.deepEqual(review.localization.productLanguages, ['pt-BR']);
+  assert.match(review.i18nWarnings?.[0] || '', /discarded en, es/);
+  const gate = validateNs4E1Review(review);
+  assert.equal(gate.ok, true);
+  assert.equal(gate.issues.some(issue => issue.severity === 'warning' && issue.code === 'NS4_E1_LANGUAGES_PROVENANCE'), true);
+  const defaults = ns4E1SkippedDefaults(review);
+  assert.deepEqual(defaults.productLanguages, ['pt-BR']);
+  assert.match(defaults.i18nWarnings?.[0] || '', /discarded en, es/);
+});
+
+test('under /fast the planner language answer is never a citation', () => {
+  const review = normalizeNs4E1Review(e1ReviewBodyWithLanguages(['pt-BR', 'en', 'es']), {
+    userLanguage: 'pt-BR',
+    productLanguages: 'pt-BR, en, es',
+    sourcePrompt: 'Criar um aplicativo de tarefas para minha equipe',
+    answerIsProposal: true,
+  });
+  assert.deepEqual(review.localization.productLanguages, ['pt-BR']);
+  assert.equal(review.i18nWarnings?.length, 1);
+  assert.match(review.i18nWarnings?.[0] || '', /discarded en, es/);
+});
+
+test('a request that names languages keeps them under /fast', () => {
+  const review = normalizeNs4E1Review(e1ReviewBodyWithLanguages(['pt-BR', 'en']), {
+    userLanguage: 'pt-BR',
+    productLanguages: 'pt-BR, en',
+    sourcePrompt: 'Criar um pet shop em português e inglês',
+    answerIsProposal: true,
+  });
+  assert.deepEqual(review.localization.productLanguages, ['pt-BR', 'en']);
+  assert.equal(review.i18nWarnings, undefined);
+});
+
+test('the human path is unchanged: a clarification answer remains a citation', () => {
+  const fallback = {
+    userLanguage: 'pt-BR',
+    productLanguages: 'pt-BR, en, es',
+    sourcePrompt: 'Criar um aplicativo de tarefas para minha equipe',
+  };
+  const omitted = normalizeNs4E1Review(e1ReviewBodyWithLanguages(['pt-BR', 'en', 'es']), fallback);
+  const explicit = normalizeNs4E1Review(e1ReviewBodyWithLanguages(['pt-BR', 'en', 'es']), { ...fallback, answerIsProposal: false });
+  assert.deepEqual(omitted.localization.productLanguages, ['pt-BR', 'en', 'es']);
+  assert.deepEqual(explicit.localization.productLanguages, ['pt-BR', 'en', 'es']);
+  assert.equal(omitted.i18nWarnings, undefined);
+  assert.equal(explicit.i18nWarnings, undefined);
+});
+
+test('touched E1 files stay English in comments and identifiers', () => {
+  const files = [
+    fileURLToPath(new URL('./contracts.ts', import.meta.url)),
+    fileURLToPath(new URL('./agentNs4E1.ts', import.meta.url)),
+    fileURLToPath(new URL('../../promptPlan.md', import.meta.url)),
+  ];
+  // Named leftover from the 31/08 provenance filter; not rewritten in this spec.
+  const legacyCommentExceptions = [
+    { file: 'contracts.ts', includes: "'inglês' also matches 'ingles'", since: '2026-08-27' },
+  ];
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    assert.doesNotMatch(source, /portuguese\s*\?/, file);
+    const base = file.split('/').pop() || file;
+    for (const line of source.split('\n')) {
+      const trimmed = line.trim();
+      const isComment = trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.startsWith('<!--');
+      if (!isComment) continue;
+      if (legacyCommentExceptions.some(item => item.file === base && trimmed.includes(item.includes))) continue;
+      assert.doesNotMatch(line, /[À-ÿ]/, `${file}: ${trimmed}`);
+    }
+    const stripped = source
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/`(?:\\.|[^`])*`/g, '')
+      .replace(/'(?:\\.|[^'\\])*'/g, '')
+      .replace(/"(?:\\.|[^"\\])*"/g, '');
+    assert.doesNotMatch(stripped, /[À-ÿ]/, file);
+  }
+  const planner = readFileSync(fileURLToPath(new URL('../../promptPlan.md', import.meta.url)), 'utf8');
+  assert.doesNotMatch(planner, /"answer": "pt-BR, en, es"/);
+  assert.match(planner, /never add a language the request\s+does not cite/);
+  assert.match(planner, /<BCP-47 tags the request cites, or exactly the user language>/);
+});
+
 test('product languages are normalized, ordered and deduplicated independently of widget language', () => {
   assert.deepEqual(normalizeNs4Languages('pt-br, EN; es, pt-BR'), ['pt-BR', 'en', 'es']);
   assert.deepEqual(normalizeNs4Languages('', 'pt-br'), ['pt-BR']);
@@ -196,7 +293,7 @@ test('a prose rebuild naming an existing module is recognized — the msgtask3 i
   assert.equal(detectNs4RebuildIntentModule('quero um modulo de agenda para o petShop', modules), '');
   // And a rebuild word naming nothing that exists stays empty.
   assert.equal(detectNs4RebuildIntentModule('rebuild all do modulo agenda', modules), '');
-  assert.equal(detectNs4RebuildIntentModule('regenerar o buildFlowFsm inteiro', modules), 'buildFlowFsm');
+  assert.equal(detectNs4RebuildIntentModule('regenerar o buildFlowFsm inteiro', modules), '');
 });
 
 test('a partial rebuild resets the interval EXPLICITLY, in the pipeline and in the artifact', () => {
@@ -404,8 +501,8 @@ test('rebuild module lookup is case-insensitive and returns the disk spelling', 
 test('missing rebuild module message lists existing modules, capped', () => {
   const modules = new Set(['todo', 'listaAssinatura2', 'listaAssinatura']);
   const message = formatNs4MissingRebuildModuleMessage(modules);
-  assert.match(message, /Não existe módulo com esse nome para regenerar/);
-  assert.match(message, /Módulos existentes: listaAssinatura, listaAssinatura2, todo/);
+  assert.match(message, /There is no module with that name to regenerate/);
+  assert.match(message, /Existing modules: listaAssinatura, listaAssinatura2, todo/);
   const many = new Set(Array.from({ length: 13 }, (_, i) => `mod${String(i + 1).padStart(2, '0')}`));
   const capped = formatNs4MissingRebuildModuleMessage(many);
   assert.match(capped, /mod01, mod02/);
@@ -417,7 +514,15 @@ test('canonical /rebuild with a mis-cased module name suggests the disk module',
   const modules = new Set(['listaAssinatura2', 'todo']);
   assert.equal(detectNs4RebuildIntentModule('listaassinatura2 /rebuild all', modules), 'listaAssinatura2');
   assert.equal(detectNs4RebuildIntentModule('/rebuild all LISTAASSINATURA2', modules), 'listaAssinatura2');
-  assert.equal(detectNs4RebuildIntentModule('listaassinatura2 /regenerar', modules), 'listaAssinatura2');
+  assert.equal(detectNs4RebuildIntentModule('listaassinatura2 /regenerar', modules), '');
+});
+
+test('prompt language is inferred from DisplayNames, not a two-language regex', () => {
+  assert.equal(createNs4Pipeline('mod', 'build a site in French').presentation.userLanguage, 'fr');
+  assert.equal(createNs4Pipeline('mod', 'criar um site em português').presentation.userLanguage, 'pt');
+  assert.equal(createNs4Pipeline('mod', 'esto es un modulo de agenda').presentation.userLanguage, 'en');
+  assert.equal(createNs4Pipeline('mod', 'build a pet shop site').presentation.userLanguage, 'en');
+  assert.equal(createNs4Pipeline('mod', 'pt-BR stock module').presentation.userLanguage, 'pt-BR');
 });
 
 test('/fast E1 approval records autoReason and skippedDefaults on the pipeline', () => {

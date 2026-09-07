@@ -217,6 +217,31 @@ export interface Ns4E4RelationshipBindingsDraft {
   bindings: Ns4E4RelationshipBinding[];
 }
 
+export interface Ns4E4DerivationBinding {
+  entityId: string;
+  derivation: Ns4EntityDerivation;
+}
+
+export interface Ns4E4DerivationBindingsDraft {
+  planId: 'e4-derivation-bindings';
+  moduleName: string;
+  reviewRound: number;
+  bindings: Ns4E4DerivationBinding[];
+  changeSummary?: string[];
+}
+
+export interface Ns4E4DerivationBindingIssue {
+  code: string;
+  path: string;
+  message: string;
+}
+
+export interface Ns4E4DerivationFieldIdChange {
+  entityId: string;
+  before: string[];
+  after: string[];
+}
+
 /** Binding-gate finding that the entity fan-out must repair — travels as a typed payload, not a loose string. */
 export interface Ns4E4EntityFeedback {
   entityId: string;
@@ -234,7 +259,7 @@ export interface Ns4E4Review {
   entities: Ns4OntologyEntity[];
   relationships: Ns4OntologyRelationship[];
   changeSummary: string[];
-  /** Type C backfills (missing enum/lifecycle labels). Empty when the model authored every label. */
+  /** Type C label backfills and Type B registrars such as NS4_E4_CORE_READ_ONLY. */
   systemDecisions?: Ns4SystemDecision[];
 }
 
@@ -570,6 +595,85 @@ export function applyNs4E4RelationshipBindings(
   }, review.moduleName);
 }
 
+export function normalizeNs4E4DerivationBindings(
+  value: unknown,
+  moduleName: string,
+  reviewRound: number,
+): Ns4E4DerivationBindingsDraft {
+  const root = record(value);
+  return {
+    planId: 'e4-derivation-bindings',
+    moduleName: text(root.moduleName) || moduleName,
+    reviewRound: positiveInteger(root.reviewRound, reviewRound),
+    bindings: array(root.bindings).map(item => {
+      const binding = record(item);
+      return {
+        entityId: text(binding.entityId),
+        derivation: normalizeDerivation(binding.derivation) || { from: '', filter: '', aggregate: [] },
+      };
+    }),
+    ...(strings(root.changeSummary).length ? { changeSummary: strings(root.changeSummary) } : {}),
+  };
+}
+
+export function applyNs4E4DerivationBindings(
+  plan: Ns4E4PlanDraft,
+  payload: unknown,
+): {
+  plan: Ns4E4PlanDraft;
+  issues: Ns4E4DerivationBindingIssue[];
+  fieldIdChanges: Ns4E4DerivationFieldIdChange[];
+} {
+  const issues: Ns4E4DerivationBindingIssue[] = [];
+  const fieldIdChanges: Ns4E4DerivationFieldIdChange[] = [];
+  const entities = plan.entities.map(entity => ({ ...entity }));
+  array(record(payload).bindings).forEach((item, index) => {
+    const binding = record(item);
+    const extra = Object.keys(binding).filter(key => key !== 'entityId' && key !== 'derivation');
+    if (extra.length) {
+      issues.push({
+        code: 'NS4_E4_DERIVATION_BINDING_SCOPE',
+        path: `bindings[${index}]`,
+        message: `A derivation binding may only replace derivation; extra keys: ${extra.join(', ')}.`,
+      });
+      return;
+    }
+    const entityId = text(binding.entityId);
+    const entityIndex = entities.findIndex(entity => entity.entityId === entityId);
+    if (entityIndex < 0) {
+      issues.push({
+        code: 'NS4_E4_DERIVATION_BINDING_SCOPE',
+        path: `bindings[${index}].entityId`,
+        message: `entityId '${entityId}' is not an entity in the frozen overview.`,
+      });
+      return;
+    }
+    const entity = entities[entityIndex];
+    if (entity.kind !== 'projection' || entity.ownership !== 'derived') {
+      issues.push({
+        code: 'NS4_E4_DERIVATION_BINDING_SCOPE',
+        path: `bindings[${index}].entityId`,
+        message: `entityId '${entityId}' is not a derived projection; derivation binding cannot change it.`,
+      });
+      return;
+    }
+    const derivation = normalizeDerivation(binding.derivation);
+    if (!derivation) {
+      issues.push({
+        code: 'NS4_E4_DERIVATION_BINDING_SCOPE',
+        path: `bindings[${index}].derivation`,
+        message: `bindings[${index}] did not supply a derivation for ${entityId}.`,
+      });
+      return;
+    }
+    const before = entity.derivation?.aggregate.map(entry => entry.fieldId) || [];
+    const after = derivation.aggregate.map(entry => entry.fieldId);
+    if (before.join('\0') !== after.join('\0')) fieldIdChanges.push({ entityId, before, after });
+    entities[entityIndex] = { ...entity, derivation };
+  });
+  return { plan: { ...plan, entities }, issues, fieldIdChanges };
+}
+
 export async function buildNs4OntologyArtifacts(
   review: Ns4E4Review,
   approvedBy: 'human' | 'auto',
@@ -693,7 +797,7 @@ function normalizeSignBy(value: unknown): { field: string; negativeValues: strin
   return { field, negativeValues };
 }
 
-function normalizeDerivation(value: unknown): Ns4EntityDerivation | undefined {
+export function normalizeDerivation(value: unknown): Ns4EntityDerivation | undefined {
   const raw = record(value);
   const from = text(raw.from);
   if (!from) return undefined;

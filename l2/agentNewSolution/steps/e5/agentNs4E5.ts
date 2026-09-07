@@ -12,8 +12,10 @@ import {
   createNs4E5Step, isNs4Pipeline, markNs4E5Approved, markNs4E5Failed, markNs4E5Running,
   markNs4E5WaitingHuman, markNs4ModuleE5Approved, plainNs4StepTitle, Ns4ApprovedBy,
   Ns4PipelineState,
+  NS4_DESCRIBE_REQUIRED_CHANGE,
+  NS4_TERMINAL_CANCEL_UNSUPPORTED,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
-import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
+import { bindNs4ClarificationWidget, showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
 import {
   readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4ApprovedArtifacts.js';
@@ -141,7 +143,8 @@ export async function beforeNs4E5ClarificationStep(
   if (!gate.ok) throw new Error(formatGate(gate.issues));
   await import('/_102020_/l2/agentNewSolution/widgets/widgetNs4Rules.js');
   const element = document.createElement('widget-ns4-rules-102020');
-  (element as unknown as { value: Ns4E5Review }).value = review;
+  const module = await readNs4Module(review.moduleName);
+  bindNs4ClarificationWidget(element, review, module?.presentation);
   element.addEventListener('ns4-rules-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E5ReviewEvent>).detail;
     void applyReview(context, parentStep, step, hookSequential, detail)
@@ -155,14 +158,14 @@ async function applyReview(
   hookSequential: number, event: Ns4E5ReviewEvent,
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution:e5] task invalid');
-  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
+  if (event.action === 'cancel') throw new Error(NS4_TERMINAL_CANCEL_UNSUPPORTED);
   const mutationParent = findParent(context, parentStep);
   if (event.action === 'approve') {
     const saved = await persist(event.review.moduleName, normalizeNs4E5Review(event.review), 'human');
     await applyIntents(context, [resultStep(context, mutationParent, saved, 'E5 rules approved'),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output')]);
   } else {
-    const adjustment = event.adjustment.trim(); if (!adjustment) throw new Error('Descreva a alteração desejada antes de enviar.');
+    const adjustment = event.adjustment.trim(); if (!adjustment) throw new Error(NS4_DESCRIBE_REQUIRED_CHANGE);
     const review = normalizeNs4E5Review(event.review); const nextRound = review.reviewRound + 1;
     const pipeline = await requirePipeline(review.moduleName);
     await writeNs4E5Draft(review.moduleName, review);

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-09-07 — widget phrases
+
+- The rules widget reads chrome from `presentation.phrases` (`widget.rules.*`).
+
 ## 2026-08-26 — reviewPolicy smart
 
 - `smart` still opens E5: the rules catalog has no A/B/C signal. `/fast` and `automatic` still skip.

@@ -1,5 +1,26 @@
 # E4 changelog
 
+- 2026-09-07: The ontology widget reads chrome from `presentation.phrases` (`widget.ontology.*`).
+
+- 2026-09-07: Removed `NS4_E4_PROJECT_PROJECTION_ORPHAN` — name-keyed special case of
+  `NS4_E4_ENTITY_ORPHAN`. A disconnected projection (any entity that is not a value object) is
+  flagged by the general graph check; the gate no longer looks at a field named `projectId` or an
+  entity named `Project`.
+
+- 2026-09-07: Domain nouns subtracted from `prompt.md` (measured 25 → 0; 223 → 218 lines). The
+  `derived` sentence now names a recomputable result (total, count, current position, status from
+  dates, export, report) as `kind: projection` + `derivation`. Examples use role placeholders
+  (`<MasterDataEntity>`, `<ComputedProjection>`). Gate `NS4_E4_CORE_READ_ONLY` records a core
+  `moduleDatabase` entity that journeys read and never write (warning + `systemDecision` `keepCore`
+  / `projection` / `masterData`); it does not block. Lexical `DERIVED_ARTIFACT_*` stays as a legacy
+  trigger until the bench proves recall.
+
+- 2026-09-06: A derivation whose `sourceField` / `signBy` / `filter` only become checkable after
+  entity detail now has its own post-fan-out compiler pass (`bindDerivations`) and repair budget
+  (`MAX_DERIVATION_BINDING_REPAIRS = 1`). Mixed overview+derivation failures stay on the overview
+  repair; a derivation-only failure no longer dies because that budget is already spent. Prompt
+  examples use `<placeholder>` ids so the model cannot copy a sample field or enum code.
+
 - 2026-09-06: Overview may declare `mutability: 'editable' | 'appendOnly'` on an entity whose
   records are not altered or deleted after they exist (a fact, a posting, a meter reading, a
   signature). Optional in the type and in `e4-review.schema.json` — L4 written before the field

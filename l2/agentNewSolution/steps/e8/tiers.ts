@@ -17,12 +17,14 @@ import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns
 import { deriveE8HubScore, type Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
 import { applyNs4HubComposition, defaultNs4HubComposition } from '/_102020_/l2/agentNewSolution/steps/e8/hubComposition.js';
 import {
-  NS4_E8_MODEL_VERSION, isNs4OwnerHandleField,
+  NS4_E8_MODEL_VERSION, isNs4OwnerHandleInput,
   type Ns4E8BffCall, type Ns4E8ContentRole, type Ns4E8HubCatalogue, type Ns4E8HubCatalogueItem, type Ns4E8Input,
   type Ns4E8InputSource, type Ns4E8MenuEntry, type Ns4E8Model, type Ns4E8ModelWorkspace,
   type Ns4E8Operation, type Ns4E8Organism, type Ns4E8Section,
 } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 import { ns4E8CompositionProfile } from '/_102020_/l2/agentNewSolution/steps/e8/compositionProfiles.js';
+import { ns4Text } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
+import type { Ns4Presentation } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 
 const CATEGORY_RECORD_CATALOGUE = 'entityRecordManagement';
 const CATEGORY_APPROVAL = 'approvalWorkflow';
@@ -105,7 +107,7 @@ export function deriveNs4E8Model(sources: Ns4E8Sources, reviewRound = 1): Ns4E8M
 interface Ns4E8TierContext {
   sources: Ns4E8Sources;
   derived: Ns4DerivedContextGraph;
-  portuguese: boolean;
+  presentation: Ns4Presentation | undefined;
   entities: Map<string, Ns4OntologyEntity>;
   hubEntity: string;
   catalogueEntities: Ns4OntologyEntity[];
@@ -145,7 +147,7 @@ function buildContext(sources: Ns4E8Sources, derived: Ns4DerivedContextGraph): N
 
   return {
     sources, derived,
-    portuguese: sources.journeys.userLanguage.toLowerCase().startsWith('pt'),
+    presentation: sources.presentation,
     entities,
     hubEntity: selectHubEntity(sources, derived),
     catalogueEntities: sources.ontology.entities.filter(isCatalogueEntity).sort(byEntityId),
@@ -281,11 +283,11 @@ function buildRecordCatalogue(
   const listInputs = catalogueListInputs(entity, context);
   const appendOnly = entity.mutability === 'appendOnly';
   const listOperation: Ns4E8Operation = {
-    operationId: `list${entity.entityId}`, title: label(context, `Listar ${entity.title}`, `List ${entity.title}`),
+    operationId: `list${entity.entityId}`, title: ns4Text(context.presentation, 'catalogue.list.title', { entity: entity.title }),
     kind: 'query', entityRef: entity.entityId, entityRefs: [entity.entityId],
     accessPattern: { kind: 'list', pagination: 'optional' }, inputs: listInputs,
     outputRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
-    useRules: [], transitionRefs: [], story: [label(context, 'Encontrar o registro.', 'Find the record.')],
+    useRules: [], transitionRefs: [], story: [ns4Text(context.presentation, 'catalogue.list.story')],
     // Master data lists hide deactivated records unless the caller asks for them,
     // which is what makes every foreign-key picker active-only for free.
     ...(isMdmEntity(entity)
@@ -293,18 +295,18 @@ function buildRecordCatalogue(
       : {}),
   };
   const createOperation: Ns4E8Operation = {
-    operationId: `create${entity.entityId}`, title: label(context, `Criar ${entity.title}`, `Create ${entity.title}`),
+    operationId: `create${entity.entityId}`, title: ns4Text(context.presentation, 'catalogue.create.title', { entity: entity.title }),
     kind: 'command', entityRef: entity.entityId, entityRefs: catalogueEntityRefs(entity, context),
     accessPattern: { kind: 'create' }, inputs: catalogueInputs(entity, context, 'create'),
     outputRefs: [`${entity.entityId}.${idField}`], useRules: entity.useRules, transitionRefs: [],
-    story: [label(context, 'Informar os dados do novo registro.', 'Fill in the new record.')],
+    story: [ns4Text(context.presentation, 'catalogue.create.story')],
   };
   const updateOperation: Ns4E8Operation | undefined = appendOnly ? undefined : {
-    operationId: `update${entity.entityId}`, title: label(context, `Atualizar ${entity.title}`, `Update ${entity.title}`),
+    operationId: `update${entity.entityId}`, title: ns4Text(context.presentation, 'catalogue.update.title', { entity: entity.title }),
     kind: 'command', entityRef: entity.entityId, entityRefs: catalogueEntityRefs(entity, context),
     accessPattern: { kind: 'update' }, inputs: catalogueInputs(entity, context, 'update'),
     outputRefs: [`${entity.entityId}.${idField}`], useRules: entity.useRules, transitionRefs: [],
-    story: [label(context, 'Corrigir os dados do registro escolhido.', 'Correct the chosen record.')],
+    story: [ns4Text(context.presentation, 'catalogue.update.story')],
   };
   const removals = appendOnly ? [] : removalOperations(entity, context);
   const operations: Ns4E8Operation[] = [
@@ -348,18 +350,18 @@ function buildRecordCatalogue(
     ...(updateCall ? [{ role: 'contextualAction' as const, action: updateCall.bffId }] : []),
   ];
   const sections: Ns4E8Section[] = [
-    { sectionId: 'recordList', intent: label(context, `Localizar ${entity.title}.`, `Find ${entity.title}.`),
+    { sectionId: 'recordList', intent: ns4Text(context.presentation, 'catalogue.section.recordList.intent', { entity: entity.title }),
       organisms: [{ role: 'primarySurface', dataSource: listCall.bffId }, ...listFilters, ...removalActions] },
     { sectionId: 'recordForm', intent: appendOnly
-      ? label(context, `Criar ${entity.title}.`, `Create ${entity.title}.`)
-      : label(context, `Criar ou corrigir ${entity.title}.`, `Create or correct ${entity.title}.`),
+      ? ns4Text(context.presentation, 'catalogue.section.recordForm.create.intent', { entity: entity.title })
+      : ns4Text(context.presentation, 'catalogue.section.recordForm.edit.intent', { entity: entity.title }),
       organisms: recordFormOrganisms },
   ];
   return {
     operations,
     workspace: {
       workspaceId, tier: 'recordCatalogue', title: entity.title,
-      purpose: label(context, `Cadastro de ${entity.title}.`, `${entity.title} record catalogue.`),
+      purpose: ns4Text(context.presentation, 'catalogue.purpose', { entity: entity.title }),
       kind: 'operation', entity: entity.entityId, actors, profileRefs, featureRefs: [],
       hostedStepRefs: [], categoryRef: CATEGORY_RECORD_CATALOGUE, bffCalls, sections,
     },
@@ -390,28 +392,26 @@ function removalOperations(entity: Ns4OntologyEntity, context: Ns4E8TierContext)
   if (!isMdmEntity(entity)) {
     return [{
       ...base,
-      operationId: `delete${entity.entityId}`, title: label(context, `Excluir ${entity.title}`, `Delete ${entity.title}`),
+      operationId: `delete${entity.entityId}`, title: ns4Text(context.presentation, 'catalogue.delete.title', { entity: entity.title }),
       accessPattern: { kind: 'delete' },
-      story: [label(context, 'Remover o registro escolhido.', 'Remove the chosen record.')],
+      story: [ns4Text(context.presentation, 'catalogue.delete.story')],
     }];
   }
   return [
     {
       ...base,
-      operationId: `inactivate${entity.entityId}`, title: label(context, `Desativar ${entity.title}`, `Deactivate ${entity.title}`),
+      operationId: `inactivate${entity.entityId}`, title: ns4Text(context.presentation, 'catalogue.inactivate.title', { entity: entity.title }),
       // A closed accessPattern vocabulary on the consumer side: the pair keeps the
       // kind that already means "mutate one identified record" and the meaning
       // travels in the mdm block.
       accessPattern: { kind: 'update' }, mdm: { lifecycle: 'inactivate' },
-      story: [label(context,
-        'Desativar o registro (preserva o histórico e as referências).',
-        'Deactivate the record (history and references are preserved).')],
+      story: [ns4Text(context.presentation, 'catalogue.inactivate.story')],
     },
     {
       ...base,
-      operationId: `reactivate${entity.entityId}`, title: label(context, `Reativar ${entity.title}`, `Reactivate ${entity.title}`),
+      operationId: `reactivate${entity.entityId}`, title: ns4Text(context.presentation, 'catalogue.reactivate.title', { entity: entity.title }),
       accessPattern: { kind: 'update' }, mdm: { lifecycle: 'reactivate' },
-      story: [label(context, 'Reativar um registro desativado.', 'Reactivate a deactivated record.')],
+      story: [ns4Text(context.presentation, 'catalogue.reactivate.story')],
     },
   ];
 }
@@ -422,12 +422,12 @@ function removalOperations(entity: Ns4OntologyEntity, context: Ns4E8TierContext)
  */
 function getByIdOperation(entity: Ns4OntologyEntity, context: Ns4E8TierContext): Ns4E8Operation {
   return {
-    operationId: `get${entity.entityId}`, title: label(context, `Obter ${entity.title}`, `Get ${entity.title}`),
+    operationId: `get${entity.entityId}`, title: ns4Text(context.presentation, 'catalogue.get.title', { entity: entity.title }),
     kind: 'query', entityRef: entity.entityId, entityRefs: [entity.entityId],
     accessPattern: { kind: 'getById' }, inputs: catalogueInputs(entity, context, 'identityOnly'),
     outputRefs: entity.fields.map(field => `${entity.entityId}.${field.fieldId}`),
     useRules: [], transitionRefs: [],
-    story: [label(context, 'Ler o registro pelo identificador.', 'Read the record by id.')],
+    story: [ns4Text(context.presentation, 'catalogue.get.story')],
     ...(isMdmEntity(entity) ? { mdm: { situationOutput: 'active' as const } } : {}),
   };
 }
@@ -447,16 +447,12 @@ function catalogueProfiles(
   decisions.push({
     decisionId: `catalogueAudience${entity.entityId}`,
     stage: 'e8-workspaces',
-    question: context.portuguese
-      ? `Nenhuma jornada opera ${entity.title}: quem mantém esse cadastro?`
-      : `No journey operates ${entity.title}: who maintains this catalogue?`,
+    question: ns4Text(context.presentation, 'catalogue.audience.question', { entity: entity.title }),
     chosen: 'internalProfiles',
     alternatives: ['internalProfiles', 'restrictToNamedProfile'],
     decidedBy: 'system',
     findingRef: `NS4_E8_CATALOGUE_AUDIENCE:${workspaceId}`,
-    changeHint: context.portuguese
-      ? `Adicione no E3 uma autoridade sobre ${entity.title} para restringir esse cadastro a um perfil específico.`
-      : `Add an E3 authority over ${entity.title} to restrict this catalogue to a named profile.`,
+    changeHint: ns4Text(context.presentation, 'catalogue.audience.changeHint', { entity: entity.title }),
   });
   return internal;
 }
@@ -552,7 +548,7 @@ function catalogueListInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContex
       inputId: 'search',
       fieldRef: { entityId: entity.entityId, fieldId: searchField.fieldId },
       source: 'userInput', required: false,
-      description: label(context, `Buscar por ${searchField.title}.`, `Search by ${searchField.title}.`),
+      description: ns4Text(context.presentation, 'catalogue.list.search', { field: searchField.title }),
     });
   }
   const sortFields = sortableFieldIds(entity);
@@ -561,11 +557,11 @@ function catalogueListInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContex
     const fieldRef = { entityId: entity.entityId, fieldId: firstSort.fieldId };
     inputs.push({
       inputId: 'sortBy', fieldRef, source: 'userInput', required: false, enumValues: sortFields,
-      description: label(context, 'Campo de ordenação da listagem.', 'Field to sort the listing by.'),
+      description: ns4Text(context.presentation, 'catalogue.list.sortBy'),
     });
     inputs.push({
       inputId: 'sortOrder', fieldRef, source: 'userInput', required: false, enumValues: ['asc', 'desc'],
-      description: label(context, 'Direção da ordenação.', 'Sort direction.'),
+      description: ns4Text(context.presentation, 'catalogue.list.sortOrder'),
     });
   }
   const idField = identityFieldOf(entity);
@@ -574,11 +570,11 @@ function catalogueListInputs(entity: Ns4OntologyEntity, context: Ns4E8TierContex
     const fieldRef = { entityId: entity.entityId, fieldId: pageField.fieldId };
     inputs.push({
       inputId: 'page', fieldRef, source: 'userInput', required: false, type: 'number',
-      description: label(context, 'Página da listagem (a partir de 1).', 'Listing page (1-based).'),
+      description: ns4Text(context.presentation, 'catalogue.list.page'),
     });
     inputs.push({
       inputId: 'pageSize', fieldRef, source: 'userInput', required: false, type: 'number',
-      description: label(context, 'Tamanho da página (omisso = 20, teto 200).', 'Page size (default 20, cap 200).'),
+      description: ns4Text(context.presentation, 'catalogue.list.pageSize'),
     });
   }
   return inputs;
@@ -973,7 +969,7 @@ function buildJourneyOperation(
     inputs.push({
       inputId: fieldId,
       fieldRef: { entityId: required.businessObject, fieldId },
-      source: journeyInputSource(required.businessObject, journey, context, providedEarlier),
+      source: requiredParentInputSource(required.businessObject, step.entity, journey, context, providedEarlier),
       required: true,
       description: parent?.title || required.businessObject,
     });
@@ -1049,16 +1045,12 @@ function unjoinedProjectionDecision(
   return {
     decisionId: `unjoinedProjection${useCaseId}${projectionId}${stepEntity}`,
     stage: 'e8-workspaces',
-    question: context.portuguese
-      ? `O usecase ${useCaseId} lê a projeção ${projectionId} sem relacionamento derived com ${stepEntity}: o E4 não sabe juntar. Omitir da saída?`
-      : `Use case ${useCaseId} reads projection ${projectionId} with no derived relationship to ${stepEntity}: E4 cannot join them. Omit from the output?`,
+    question: ns4Text(context.presentation, 'projection.unjoined.question', { useCaseId, projectionId, entity: stepEntity }),
     chosen: 'omitFromOutput',
     alternatives: ['omitFromOutput', 'declareDerivedRelationship'],
     decidedBy: 'system',
     findingRef: `NS4_E8_PROJECTION_UNJOINED:${useCaseId}:${projectionId}:${stepEntity}`,
-    changeHint: context.portuguese
-      ? `Declare no E4 um relacionamento com realization.kind derived entre ${projectionId} e ${stepEntity}.`
-      : `Declare an E4 relationship with realization.kind derived between ${projectionId} and ${stepEntity}.`,
+    changeHint: ns4Text(context.presentation, 'projection.unjoined.changeHint', { projectionId, entity: stepEntity }),
   };
 }
 
@@ -1076,6 +1068,17 @@ function journeyAccessPattern(
  * the hub anchor arrives through the URL, a record located earlier in the journey is picked on the
  * page, and a session-scoped profile carries its own record.
  */
+function requiredParentInputSource(
+  requiredEntityId: string, stepEntityId: string, journey: Ns4JourneyProposal,
+  context: Ns4E8TierContext, providedEarlier: Set<string>,
+): Ns4E8InputSource {
+  const fk = (context.parentsOf.get(stepEntityId) || []).find(parent => parent.parent === requiredEntityId);
+  if (fk && isNs4OwnerHandleInput({ fieldRef: { entityId: stepEntityId, fieldId: fk.fieldId } }, context.sources)) {
+    return 'actorSession';
+  }
+  return journeyInputSource(requiredEntityId, journey, context, providedEarlier);
+}
+
 function journeyInputSource(
   entityId: string, journey: Ns4JourneyProposal, context: Ns4E8TierContext, providedEarlier: Set<string>,
 ): Ns4E8InputSource {
@@ -1107,7 +1110,7 @@ function journeyFormInputs(
     return [{
       inputId: field.fieldId, fieldRef: { entityId: entity.entityId, fieldId: field.fieldId },
       source: 'userInput', required: true,
-      description: label(context, 'Decisão tomada.', 'The decision taken.'),
+      description: ns4Text(context.presentation, 'journey.decide.description'),
       enumValues: reachable.length ? reachable : (field.enum || []),
     }];
   }
@@ -1136,16 +1139,16 @@ function buildHubWorkspace(context: Ns4E8TierContext, workspaces: Ns4E8ModelWork
   const hub: Ns4E8ModelWorkspace = {
     workspaceId: `${lowerCamel(context.hubEntity)}Hub`, tier: 'hub',
     title: anchor?.title || context.hubEntity,
-    purpose: label(context, `Painel de ${anchor?.title || context.hubEntity}.`, `${anchor?.title || context.hubEntity} command centre.`),
+    purpose: ns4Text(context.presentation, 'hub.purpose', { entity: anchor?.title || context.hubEntity }),
     kind: 'landing', entity: context.hubEntity,
     actors: unique(workspaces.flatMap(workspace => workspace.actors)),
     profileRefs: unique(workspaces.flatMap(workspace => workspace.profileRefs)),
     featureRefs: [], hostedStepRefs: [], categoryRef: CATEGORY_DASHBOARD,
     bffCalls,
     sections: [
-      { sectionId: 'collection', intent: label(context, 'Carteira e busca.', 'Portfolio and search.'),
+      { sectionId: 'collection', intent: ns4Text(context.presentation, 'hub.section.collection.intent'),
         organisms: bffCalls.length ? [{ role: 'primarySurface', dataSource: bffCalls[0].bffId }] : [] },
-      { sectionId: 'record', intent: label(context, 'Registro selecionado e o que gira em volta dele.', 'The selected record and what revolves around it.'),
+      { sectionId: 'record', intent: ns4Text(context.presentation, 'hub.section.record.intent'),
         organisms: [] },
     ],
     hubCatalogue: catalogue,
@@ -1260,32 +1263,13 @@ function identityFieldOf(entity: Ns4OntologyEntity | undefined): string {
   return entity?.storage.idField || entity?.fields.find(field => /Id$/.test(field.fieldId))?.fieldId || '';
 }
 
-/**
- * The entity is owned by the authenticated actor when every grant whose authority operates it is
- * `dataScope.mode: 'own'`. Mixed own+organization keeps a person FK choosable (staff assigning).
- */
-function entityOwnedByActorSession(entityId: string, context: Ns4E8TierContext): boolean {
-  const modes = new Set<string>();
-  for (const authority of context.sources.access.authorities) {
-    const operates = authority.journeyStepRefs.some(ref => context.derived.byStepRef.get(ref)?.entity === entityId);
-    if (!operates) continue;
-    for (const grant of context.sources.access.grants) {
-      if (grant.authorityRef === authority.authorityRef && grant.dataScope?.mode) modes.add(grant.dataScope.mode);
-    }
-  }
-  return modes.size === 1 && modes.has('own');
-}
-
 function isRecordOwnerSessionField(
   entity: Ns4OntologyEntity, field: { fieldId: string }, context: Ns4E8TierContext,
 ): boolean {
-  return entityOwnedByActorSession(entity.entityId, context) && isNs4OwnerHandleField(field.fieldId);
+  return isNs4OwnerHandleInput({ fieldRef: { entityId: entity.entityId, fieldId: field.fieldId } }, context.sources);
 }
 function sameValues(left: string[], right: string[]): boolean {
   return left.length > 0 && left.length === right.length && left.every((value, index) => value === right[index]);
-}
-function label(context: Ns4E8TierContext, portuguese: string, english: string): string {
-  return context.portuguese ? portuguese : english;
 }
 function byEntityId(left: Ns4OntologyEntity, right: Ns4OntologyEntity): number {
   return left.entityId.localeCompare(right.entityId);

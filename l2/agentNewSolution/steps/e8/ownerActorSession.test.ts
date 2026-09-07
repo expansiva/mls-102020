@@ -43,14 +43,29 @@ function ownTaskSources(over: Record<string, unknown> = {}) {
         sourceRefs: { journeyIds: ['createTask'], featureIds: [], authorityRefs: ['todo:manage'] },
         fields: [
           field('taskId', { type: 'uuid' }),
-          field('ownerUserId', { type: 'uuid', description: 'Referência externa, preenchida a partir da pessoa autenticada.' }),
+          field('ownerUserId', { type: 'uuid', description: 'The authenticated person who owns the record.' }),
           field('title'),
-          field('assignedUserId', { type: 'uuid', required: false, description: 'Pessoa a quem a tarefa é atribuída.' }),
+          field('assignedUserId', { type: 'uuid', required: false, description: 'A person the actor chooses to assign.' }),
         ],
         lifecycleStates: [], lifecyclePredicates: [], useRules: ['ownTasksOnly'],
         storage: { target: 'moduleDatabase', scope: 'module', idField: 'taskId', notes: '' },
+      }, {
+        entityId: 'Person', title: 'Person', description: 'A natural person.', kind: 'mdm', ownership: 'moduleOwned', party: 'person',
+        sourceRefs: { journeyIds: [], featureIds: [], authorityRefs: [] },
+        fields: [field('personId', { type: 'uuid' }), field('name')],
+        lifecycleStates: [], lifecyclePredicates: [], useRules: [],
+        storage: { target: 'mdm', scope: 'organization', idField: 'personId', notes: '' },
       }],
-      relationships: [],
+      relationships: [{
+        relationshipId: 'taskOwnedByPerson', fromEntity: 'Task', toEntity: 'Person', type: 'manyToOne', required: true,
+        description: 'The record owner is a person.',
+        realization: {
+          kind: 'fieldReference', ownerEntity: 'Task',
+          from: { entityId: 'Task', fieldIds: ['ownerUserId'] },
+          to: { entityId: 'Person', fieldIds: ['personId'] },
+          description: 'ownerUserId stores the person identity.',
+        },
+      }],
     },
     useCases: [{
       useCaseId: 'captureTask', title: 'Informar os dados', kind: 'command',
@@ -68,7 +83,7 @@ test('own-scoped owner handle is actorSession; a person the user chooses stays u
 
   assert.equal(sourceOf('createTask', 'ownerUserId'), 'actorSession');
   assert.equal(sourceOf('updateTask', 'ownerUserId'), 'actorSession');
-  assert.equal(sourceOf('captureTask', 'ownerUserId'), 'actorSession');
+  assert.equal(sourceOf('captureTask', 'personId'), 'actorSession');
   assert.equal(sourceOf('createTask', 'title'), 'userInput');
   assert.equal(sourceOf('createTask', 'assignedUserId'), 'userInput');
   assert.equal(sourceOf('captureTask', 'assignedUserId'), 'userInput');
@@ -78,12 +93,12 @@ test('own-scoped owner handle is actorSession; a person the user chooses stays u
   assert.equal(gate.issues.some(issue => issue.code === 'NS4_E8_USERINPUT_FROM_SESSION'), false, gate.issues.map(issue => issue.message).join('; '));
 });
 
-test('an owner handle the user actually chooses (not own-scope) stays userInput', () => {
+test('a person FK the user actually chooses (not own-scope) is a picker', () => {
   const sources = ownTaskSources();
   sources.access.grants[0].dataScope.mode = 'organization';
   const model = deriveNs4E8Model(sources);
   const create = model.operations.find(operation => operation.operationId === 'createTask')!;
-  assert.equal(create.inputs.find(input => input.inputId === 'ownerUserId')?.source, 'userInput');
+  assert.equal(create.inputs.find(input => input.inputId === 'ownerUserId')?.source, 'selectedEntity');
 });
 
 function emptyModel(over: Partial<Ns4E8Model> = {}): Ns4E8Model {
@@ -150,26 +165,72 @@ test('the same owner handle as actorSession is silent; an assignee userInput is 
   assert.equal(gate.issues.some(issue => issue.code === 'NS4_E8_USERINPUT_FROM_SESSION'), false);
 });
 
-test('userInput whose description names the authenticated actor is a registrar even without an owner handle', () => {
-  const sources = ownTaskSources();
-  sources.ontology.entities[0].fields.push(field('authorId', {
-    type: 'uuid', description: 'Preenchida a partir da pessoa autenticada no diretório da plataforma.',
-  }));
-  const model = emptyModel({
-    operations: [{
-      operationId: 'createTask', title: 'Criar', kind: 'command', entityRef: 'Task', entityRefs: ['Task'],
-      accessPattern: { kind: 'create' },
-      inputs: [{
-        inputId: 'authorId', fieldRef: { entityId: 'Task', fieldId: 'authorId' },
-        source: 'userInput', required: true,
-        description: 'Preenchida a partir da pessoa autenticada no diretório da plataforma.',
+test('party: person + own grant on pacienteId is actorSession, never a field-name regex', () => {
+  const sources = {
+    journeys: {
+      moduleName: 'clinic', userLanguage: 'en', features: [],
+      journeys: [{
+        journeyId: 'bookAppointment', policyDecisions: [],
+        business: {
+          actorRef: 'patient', title: 'Book an appointment', goal: 'Book own appointment.',
+          entry: { mode: 'coldStart' },
+          steps: [{ stepId: 'captureAppointment', kind: 'act', entity: 'Appointment', title: 'Enter the data', description: 'Capture.', featureRefs: [] }],
+        },
       }],
-      outputRefs: [], useRules: [], transitionRefs: [], story: ['Criar'],
+    },
+    access: {
+      profiles: [{ profileId: 'patient', title: 'Patient', kind: 'external', description: '', actorRefs: ['patient'], landingIntent: '' }],
+      authorities: [{
+        authorityRef: 'clinic:book', title: 'Book', description: '',
+        journeyStepRefs: ['bookAppointment.captureAppointment'], informationNeeds: [],
+      }],
+      grants: [{
+        profileRef: 'patient', authorityRef: 'clinic:book', reason: '',
+        dataScope: { mode: 'own', description: 'Only the authenticated patient\'s records.' },
+        disclosure: { mode: 'fullRecord', description: '', allowedInformation: [], deniedInformation: [] },
+        useRules: ['ownAppointmentsOnly'],
+      }],
+    },
+    ontology: {
+      moduleName: 'clinic',
+      entities: [{
+        entityId: 'Patient', title: 'Patient', description: 'A natural person.', kind: 'mdm', ownership: 'moduleOwned', party: 'person',
+        sourceRefs: { journeyIds: [], featureIds: [], authorityRefs: [] },
+        fields: [field('pacienteId', { type: 'uuid' }), field('name')],
+        lifecycleStates: [], lifecyclePredicates: [], useRules: [],
+        storage: { target: 'mdm', scope: 'organization', idField: 'pacienteId', notes: '' },
+      }, {
+        entityId: 'Appointment', title: 'Appointment', description: 'A booking.', kind: 'core', ownership: 'moduleOwned', party: 'none',
+        sourceRefs: { journeyIds: ['bookAppointment'], featureIds: [], authorityRefs: ['clinic:book'] },
+        fields: [
+          field('appointmentId', { type: 'uuid' }),
+          field('pacienteId', { type: 'uuid', description: 'The authenticated patient.' }),
+          field('notes', { required: false }),
+        ],
+        lifecycleStates: [], lifecyclePredicates: [], useRules: ['ownAppointmentsOnly'],
+        storage: { target: 'moduleDatabase', scope: 'module', idField: 'appointmentId', notes: '' },
+      }],
+      relationships: [{
+        relationshipId: 'appointmentOfPatient', fromEntity: 'Appointment', toEntity: 'Patient', type: 'manyToOne', required: true,
+        description: 'The appointment belongs to a person.',
+        realization: {
+          kind: 'fieldReference', ownerEntity: 'Appointment',
+          from: { entityId: 'Appointment', fieldIds: ['pacienteId'] },
+          to: { entityId: 'Patient', fieldIds: ['pacienteId'] },
+          description: 'pacienteId stores the person identity.',
+        },
+      }],
+    },
+    useCases: [{
+      useCaseId: 'captureAppointment', title: 'Enter the data', kind: 'command',
+      compiledFrom: ['bookAppointment.captureAppointment'], entityRefs: ['Appointment'], useRules: [], transitionRefs: [],
     }],
-  });
-  const gate = validateNs4E8Model(model, sources);
-  const hit = gate.issues.filter(issue => issue.code === 'NS4_E8_USERINPUT_FROM_SESSION');
-  assert.equal(hit.length, 1);
-  assert.equal(hit[0].severity, 'warning');
-  assert.equal(gate.ok, true);
+    workflows: [],
+  } as any;
+  const model = deriveNs4E8Model(sources);
+  const sourceOf = (operationId: string, inputId: string) =>
+    model.operations.find(operation => operation.operationId === operationId)?.inputs.find(input => input.inputId === inputId)?.source;
+  assert.equal(sourceOf('createAppointment', 'pacienteId'), 'actorSession');
+  assert.equal(sourceOf('captureAppointment', 'pacienteId'), 'actorSession');
+  assert.equal(sourceOf('createAppointment', 'notes'), 'userInput');
 });

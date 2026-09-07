@@ -9,8 +9,10 @@ import {
   createNs4E6Step, isNs4Pipeline, markNs4E6Approved, markNs4E6Failed, markNs4E6Running,
   markNs4E6WaitingHuman, markNs4ModuleE6Approved, plainNs4StepTitle, Ns4ApprovedBy,
   Ns4PipelineState,
+  NS4_DESCRIBE_REQUIRED_CHANGE,
+  NS4_TERMINAL_CANCEL_UNSUPPORTED,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
-import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
+import { bindNs4ClarificationWidget, showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
 import {
   readNs4ApprovedJourneys, readNs4ApprovedOntology,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4ApprovedArtifacts.js';
@@ -134,7 +136,7 @@ export async function beforeNs4E6ClarificationStep(
   const gate = validateNs4E6Review(review, module); if (!gate.ok) throw new Error(formatGate(gate.issues));
   await import('/_102020_/l2/agentNewSolution/widgets/widgetNs4Composition.js');
   const element = document.createElement('widget-ns4-composition-102020');
-  (element as unknown as { value: Ns4E6Review }).value = review;
+  bindNs4ClarificationWidget(element, review, module.presentation);
   element.addEventListener('ns4-composition-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E6ReviewEvent>).detail;
     void applyReview(context, parentStep, step, hookSequential, detail)
@@ -148,14 +150,14 @@ async function applyReview(
   hookSequential: number, event: Ns4E6ReviewEvent,
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution:e6] task invalid');
-  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
+  if (event.action === 'cancel') throw new Error(NS4_TERMINAL_CANCEL_UNSUPPORTED);
   const mutationParent = findParent(context, parentStep);
   if (event.action === 'approve') {
     const saved = await persist(event.review.moduleName, normalizeNs4E6Review(event.review), 'human');
     await applyIntents(context, [resultStep(context, mutationParent, saved, 'E6 composition approved'),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', undefined, 'input_output')]);
   } else {
-    const adjustment = event.adjustment.trim(); if (!adjustment) throw new Error('Descreva a alteração desejada antes de enviar.');
+    const adjustment = event.adjustment.trim(); if (!adjustment) throw new Error(NS4_DESCRIBE_REQUIRED_CHANGE);
     const review = normalizeNs4E6Review(event.review); const nextRound = review.reviewRound + 1;
     const pipeline = await requirePipeline(review.moduleName);
     await writeNs4E6Draft(review.moduleName, review);

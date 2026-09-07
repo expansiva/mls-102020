@@ -1,5 +1,10 @@
 # E7 changelog
 
+## 2026-09-07 — lifecycle systemDecision copy from the phrase catalogue
+
+Unreachable-state, dormant-predicate and omitted-workflow `question`/`changeHint` read
+`ns4Text(plan.presentation, …)`. English is the code default.
+
 ## 2026-08-14 — contexts come from the derivation
 
 - `buildNs4E7Plan` and the plan/draft gates read `helpers/ns4Context.ts` instead of copying declared

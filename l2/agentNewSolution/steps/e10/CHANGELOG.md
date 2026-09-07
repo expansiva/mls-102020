@@ -1,5 +1,10 @@
 # E10 changelog
 
+## 2026-09-07 — dormant-command question from the phrase catalogue
+
+`NS4_E10_DORMANT_COMMAND` `question` reads `ns4Text(sources.presentation, 'dormant.question')`.
+English is the code default.
+
 ## 2026-08-26 — e10 não emite `publish*.conf.example`
 
 Publish local/remoto sai do `l5` (`.env` do mls-base / parâmetros no `package.json`). O gerador

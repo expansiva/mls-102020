@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-07 — catalogue and hub copy read `presentation.phrases`
+
+Synthesized operation `title`/`story`/`description`, section intents, hub purpose and
+`systemDecision` question/changeHint no longer branch on `userLanguage.startsWith('pt')`. They
+read `ns4Text(presentation, key, params)` from the planner-translated catalogue. Absent phrases
+are English.
+
+## 2026-09-07 — owner handle by form, never by field name
+
+`isNs4OwnerHandleInput(input, sources)` replaces `isNs4OwnerHandleField(fieldId)`. A write input
+is `actorSession` when its field points at a `party: person` entity (identity or foreign key) and
+every E3 grant that operates the record is `dataScope.mode: own` (or the session actor is that
+person). `pacienteId` / `alunoId` now match; `ownerId` / `customerId` without that form do not.
+The gate `NS4_E8_USERINPUT_FROM_SESSION` uses the same function; prose in `input.description` no
+longer decides.
+
 ## 2026-09-06 — query outputRefs include the derived projections the use case reads
 
 A locate/inspect operation's `outputRefs` is the step entity's fields plus every

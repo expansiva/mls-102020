@@ -15,6 +15,8 @@ import {
   Ns4ApprovedBy,
   Ns4ModuleArtifact,
   Ns4RootPlan,
+  NS4_DESCRIBE_REQUIRED_CHANGE,
+  NS4_TERMINAL_CANCEL_UNSUPPORTED,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import {
   buildNs4ModuleArtifactFromReview,
@@ -24,6 +26,7 @@ import {
   validateNs4E1Review,
 } from '/_102020_/l2/agentNewSolution/steps/e1/contracts.js';
 import {
+  bindNs4ClarificationWidget,
   showNs4ClarificationError,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
 import {
@@ -124,7 +127,7 @@ export async function afterNs4E1PromptStep(
     return [updateStatus(context, parentStep, step, hookSequential, 'failed', 'E1 returned an invalid clarification payload.')];
   }
   const plan = getNs4RootPlan(context);
-  const review = normalizeNs4E1Review(payload.json, e1ReviewFallback(plan));
+  const review = normalizeNs4E1Review(payload.json, e1ReviewFallback(plan, { answerIsProposal: isFast(context) }));
   const gate = validateNs4E1Review(review);
   if (!gate.ok) {
     return [updateStatus(
@@ -135,6 +138,7 @@ export async function afterNs4E1PromptStep(
   if (decideNs4E1Clarification(isFast(context)) === 'open') return [];
   const mutationParent = findMutableParentStep(context, parentStep);
   const skippedDefaults = ns4E1SkippedDefaults(review);
+  const warningNote = (review.i18nWarnings || []).map(item => `\nwarning: ${item}`).join('');
   return [
     clarificationAnswerStep(context, mutationParent, {
       review,
@@ -144,7 +148,7 @@ export async function afterNs4E1PromptStep(
     }),
     updateStatus(
       context, mutationParent, step, hookSequential, 'completed',
-      `E1 /fast skipped clarification; defaults recorded: productLanguages=${skippedDefaults.productLanguages.join(',') || '(none)'} default=${skippedDefaults.defaultLanguage} module=${skippedDefaults.moduleName}.`,
+      `E1 /fast skipped clarification; defaults recorded: productLanguages=${skippedDefaults.productLanguages.join(',') || '(none)'} default=${skippedDefaults.defaultLanguage} module=${skippedDefaults.moduleName}.${warningNote}`,
       'input_output',
     ),
   ];
@@ -163,7 +167,7 @@ export async function beforeNs4E1ClarificationStep(
   await import('/_102020_/l2/agentNewSolution/widgets/widgetNs4Intake.js');
   const wrapper = document.createElement('div');
   const element = document.createElement('widget-ns4-intake-102020');
-  (element as unknown as { value: Ns4E1Review }).value = review;
+  bindNs4ClarificationWidget(element, review, plan.presentation);
   element.addEventListener('ns4-intake-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E1ReviewEvent>).detail;
     void applyNs4E1Clarification(context, parentStep, step, hookSequential, detail)
@@ -186,10 +190,10 @@ async function applyNs4E1Clarification(
   if (!context.task) throw new Error('[agentNewSolution:e1] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
   if (event.action === 'cancel') {
-    throw new Error('O cancelamento terminal ainda depende do suporte cancelled no collab-messages; a execução foi mantida aberta.');
+    throw new Error(NS4_TERMINAL_CANCEL_UNSUPPORTED);
   }
   if (event.action === 'requestChanges') {
-    if (!event.adjustment.trim()) throw new Error('Descreva a alteração necessária antes de gerar outra proposta.');
+    if (!event.adjustment.trim()) throw new Error(NS4_DESCRIBE_REQUIRED_CHANGE);
     const nextRound = event.review.reviewRound + 1;
     const plan = getNs4RootPlan(context);
     await applyIntents(context, [
@@ -258,7 +262,7 @@ async function persistNs4E1(
   const moduleName = artifact.module.moduleName;
   const resumeModule = normalizeOptionalModuleName(memoryString(context, 'resumeModule'));
   if (resumeModule && moduleName !== resumeModule) {
-    throw new Error(`A retomada pertence ao módulo "${resumeModule}"; mantenha esse moduleName ou inicie uma nova execução.`);
+    throw new Error(`This resume belongs to module "${resumeModule}"; keep that moduleName or start a new run.`);
   }
   const rebuildModule = normalizeOptionalModuleName(memoryString(context, 'rebuildModule'));
   const existingPipeline = await readNs4Pipeline(moduleName);
@@ -269,7 +273,7 @@ async function persistNs4E1(
     // still reports it. The guard stays exactly as strict for every other collision.
     const allowedRebuild = rebuildModule === moduleName;
     if (!allowedResume && !allowedRebuild) {
-      throw new Error(`Módulo "${moduleName}" já existe e não pertence a uma retomada válida do agentNewSolution. Para regenerar, use "@@newSolution ${moduleName} /rebuild" (l4/l5), "@@newSolution ${moduleName} /rebuild all" (também l1/l2) ou "@@newSolution ${moduleName} /rebuild e10" (a partir de um step).`);
+      throw new Error(`Module "${moduleName}" already exists and is not a valid agentNewSolution resume. To regenerate, use "@@newSolution ${moduleName} /rebuild" (l4/l5), "@@newSolution ${moduleName} /rebuild all" (l1/l2 as well) or "@@newSolution ${moduleName} /rebuild e10" (from a step).`);
     }
   }
 
@@ -305,13 +309,14 @@ async function persistNs4E1(
         productLanguages: answer.skippedDefaults.productLanguages,
         defaultLanguage: answer.skippedDefaults.defaultLanguage,
         moduleName: answer.skippedDefaults.moduleName,
+        ...(answer.skippedDefaults.i18nWarnings?.length ? { i18nWarnings: answer.skippedDefaults.i18nWarnings } : {}),
       }
       : undefined,
   ));
   return { artifact, artifactPath };
 }
 
-function e1ReviewFallback(plan: Ns4RootPlan) {
+function e1ReviewFallback(plan: Ns4RootPlan, options?: { answerIsProposal?: boolean }) {
   return {
     userLanguage: plan.presentation.userLanguage,
     moduleName: plan.clarification.questions.moduleName.answer,
@@ -320,6 +325,7 @@ function e1ReviewFallback(plan: Ns4RootPlan) {
     mainGoal: plan.clarification.questions.mainGoal.answer,
     boundaries: plan.clarification.questions.boundaries.answer,
     sourcePrompt: plan.userPrompt,
+    ...(options?.answerIsProposal ? { answerIsProposal: true as const } : {}),
   };
 }
 

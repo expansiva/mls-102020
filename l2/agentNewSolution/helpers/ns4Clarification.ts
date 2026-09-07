@@ -1,5 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/helpers/ns4Clarification.ts" enhancement="_blank"/>
 
+import type { Ns4PhraseHolder } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import type {
   Ns4ClarificationFeedback,
   Ns4ClarificationIssue,
@@ -8,6 +9,16 @@ import type {
 
 interface Ns4ClarificationElement extends HTMLElement, Partial<Ns4ClarificationWidgetApi> {
   requestUpdate?: () => void;
+}
+
+export function bindNs4ClarificationWidget<T>(
+  element: HTMLElement,
+  value: T,
+  presentation?: Ns4PhraseHolder,
+): void {
+  const widget = element as HTMLElement & { value: T; presentation?: Ns4PhraseHolder };
+  widget.value = value;
+  widget.presentation = presentation;
 }
 
 export function setNs4ClarificationFeedback(

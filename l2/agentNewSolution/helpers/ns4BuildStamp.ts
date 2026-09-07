@@ -167,7 +167,7 @@ export async function readAgentProvenance(project: number = NS4_AGENT_PROJECT): 
 /**
  * One line for a step trace. Informational by contract — there is no warning path here (see the
  * header): the stamp records WHICH code ran, it does not judge it. Do not print to the console
- * (ns_console_limpo): the dossiê and the step status already carry it.
+ * (ns_console_limpo): the dossier and the step status already carry it.
  */
 export async function agentBuildTrace(logPrefix: string): Promise<string> {
   const described = describeProvenance(await readAgentProvenance());

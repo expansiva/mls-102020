@@ -4,8 +4,10 @@ import {
   NS4_FLOW_ID,
   NS4_FLOW_VERSION,
   NS4_MODULE_SCHEMA_VERSION,
+  foldNs4Text,
   normalizeNs4Languages,
   normalizeNs4ModuleName,
+  ns4LanguageMentioned,
   Ns4ApprovedBy,
   Ns4ModuleArtifact,
   Ns4Presentation,
@@ -66,7 +68,20 @@ export interface Ns4E1ReviewGate {
   issues: Ns4E1ReviewIssue[];
 }
 
-export function normalizeNs4E1Review(value: unknown, fallback: { userLanguage?: string; moduleName?: string; productLanguages?: string; mainActors?: string; mainGoal?: string; boundaries?: string; sourcePrompt?: string } = {}): Ns4E1Review {
+export function normalizeNs4E1Review(value: unknown, fallback: {
+  userLanguage?: string;
+  moduleName?: string;
+  productLanguages?: string;
+  mainActors?: string;
+  mainGoal?: string;
+  boundaries?: string;
+  sourcePrompt?: string;
+  /**
+   * Under `/fast` the clarification answer is the planner's own proposal, never a user citation.
+   * When true, language provenance comes only from `sourcePrompt` (and `userLanguage`).
+   */
+  answerIsProposal?: boolean;
+} = {}): Ns4E1Review {
   const root = record(value);
   const module = record(root.module);
   const strategy = record(root.strategy);
@@ -81,11 +96,13 @@ export function normalizeNs4E1Review(value: unknown, fallback: { userLanguage?: 
   // Languages are a user decision, never an LLM guess. When the caller supplies the provenance
   // context (clarification answer and/or the original prompt), every language the user did not cite
   // is discarded with a warning instead of silently reaching the l4 — run02 of 102047 shipped en/es
-  // for a pt-BR-only request and the CF finalize auto-dispatched @@addLanguage for both.
+  // for a pt-BR-only request and the CF finalize auto-dispatched @@addLanguage for both. Under `/fast`
+  // the planner answer is a proposal, not a citation (`answerIsProposal`), so only `sourcePrompt` cites.
   const provenanceKnown = fallback.sourcePrompt !== undefined || fallback.productLanguages !== undefined || Boolean(clarificationLanguagesAnswer);
   const i18nWarnings: string[] = [];
+  const provenanceAnswer = fallback.answerIsProposal ? '' : clarificationLanguagesAnswer;
   const languages = provenanceKnown
-    ? filterNs4LanguagesByProvenance(requestedLanguages, userLanguage, clarificationLanguagesAnswer, text(fallback.sourcePrompt), i18nWarnings)
+    ? filterNs4LanguagesByProvenance(requestedLanguages, userLanguage, provenanceAnswer, text(fallback.sourcePrompt), i18nWarnings)
     : requestedLanguages;
   const declaredDefault = normalizeNs4Languages(localization.defaultLanguage || languages[0], languages[0])[0];
   // A default that was itself discarded follows the list; any other mismatch keeps failing the gate.
@@ -299,53 +316,7 @@ function filterNs4LanguagesByProvenance(
 }
 
 function sameNs4Language(a: string, b: string): boolean {
-  return a.toLowerCase() === b.toLowerCase() || primaryNs4Subtag(a) === primaryNs4Subtag(b);
-}
-
-function primaryNs4Subtag(tag: string): string { return tag.split('-')[0].toLowerCase(); }
-
-function ns4LanguageMentioned(language: string, userLanguage: string, foldedText: string): boolean {
-  if (!foldedText.trim()) return false;
-  const tag = language.toLowerCase();
-  // A bare two-letter code is a common word elsewhere ('en' in Spanish, 'de' in Portuguese): only a
-  // tag with a region or with three letters counts as a textual citation.
-  if ((tag.includes('-') || tag.length >= 3) && ns4WordMentioned(foldedText, foldNs4Text(tag))) return true;
-  return ns4LanguageNames(language, userLanguage).some(name => ns4WordMentioned(foldedText, name));
-}
-
-/** Display names of the language in the user's language, its own language and English. */
-function ns4LanguageNames(language: string, userLanguage: string): string[] {
-  const primary = primaryNs4Subtag(language);
-  const names = new Set<string>();
-  for (const displayLanguage of [userLanguage, primary, 'en']) {
-    let displayNames: Intl.DisplayNames;
-    try { displayNames = new Intl.DisplayNames([displayLanguage], { type: 'language' }); } catch { continue; }
-    for (const target of [language, primary]) {
-      try {
-        const name = displayNames.of(target);
-        // `of` echoes unknown tags back: an echoed tag must not bypass the two-letter token rule.
-        if (name && name.toLowerCase() !== target.toLowerCase()) names.add(foldNs4Text(name));
-      } catch { /* invalid tag: it has no display name, only a literal tag citation can keep it */ }
-    }
-  }
-  return [...names];
-}
-
-function ns4WordMentioned(text: string, token: string): boolean {
-  if (!token) return false;
-  let index = text.indexOf(token);
-  while (index !== -1) {
-    const before = index > 0 ? text[index - 1] : ' ';
-    const after = index + token.length < text.length ? text[index + token.length] : ' ';
-    if (!/[\p{L}\p{N}-]/u.test(before) && !/[\p{L}\p{N}-]/u.test(after)) return true;
-    index = text.indexOf(token, index + 1);
-  }
-  return false;
-}
-
-/** Lower case without diacritics, so 'inglês' also matches 'ingles'. */
-function foldNs4Text(value: string): string {
-  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return a.toLowerCase() === b.toLowerCase() || a.split('-')[0].toLowerCase() === b.split('-')[0].toLowerCase();
 }
 
 function record(value: unknown): Record<string, any> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : {}; }

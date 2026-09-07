@@ -5,6 +5,7 @@ import {
 import type { Ns4E3Review } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
 import type { Ns4E4Review } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import type { Ns4UseCaseArtifactV3, Ns4WorkflowArtifactV2 } from '/_102020_/l2/agentNewSolution/steps/e7/contracts.js';
+import type { Ns4Presentation } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 
 
 export interface Ns4E8HubScore {
@@ -46,6 +47,7 @@ export interface Ns4E8Sources {
   workflows: Ns4WorkflowArtifactV2[];
   policyDecisionSelections?: Ns4PolicyDecisionSelection[];
   module?: Ns4E8ModuleSignals;
+  presentation?: Ns4Presentation;
 }
 
 export interface Ns4E8Edge {

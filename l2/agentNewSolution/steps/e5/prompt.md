@@ -25,17 +25,19 @@ Create the module's single human-maintainable business-rule catalog. A rule has 
 
 ## Output
 
+Examples are placeholders in English; write every human-facing value in the user's language (`userLanguage`).
+
 Return exactly one JSON object without Markdown:
 
 {
   "planId": "e5-rules-review",
   "moduleName": "lowerCamelModule",
-  "userLanguage": "pt-BR",
-  "title": "Regras de negócio",
+  "userLanguage": "<userLanguage>",
+  "title": "<localized title>",
   "reviewRound": 1,
   "rules": [{
-    "id": "clientAvailableForBusinessActivity",
-    "description": "Em um projeto, faturamento ou comunicação, só é permitido usar um cliente que esteja ativo, tenha nome e pelo menos um contato: e-mail ou telefone."
+    "id": "<ruleId>",
+    "description": "<rule description in the user's language>"
   }],
-  "changeSummary": ["Catálogo inicial de regras."]
+  "changeSummary": ["<change summary in the user's language>"]
 }

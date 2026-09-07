@@ -12,7 +12,9 @@
  * (`hostedStepRefs`); it is not another kind of page.
  */
 
+import { buildNs4ParentIndex, ns4FkParentOf } from '/_102020_/l2/agentNewSolution/helpers/ns4ForeignKeys.js';
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
+import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
 
 export const NS4_E8_MODEL_VERSION = '2026-08-14-ns4-e8-model-v1' as const;
 
@@ -29,11 +31,55 @@ export type Ns4E8ContentRole = 'hero' | 'richText' | 'imageSet' | 'ctaLink';
 export type Ns4E8InputSource = 'userInput' | 'selectedEntity' | 'routeParam' | 'actorSession' | 'systemDefault';
 
 /**
- * The record-owner handle: `ownerId` / `ownerUserId` / `customerId` / `clientId`, or a field
- * ending in `OwnerId`. Not every person FK — `assignedUserId` is a choice the actor makes.
+ * The record-owner handle: a field that points at a `party: person` entity (its own identity, or a
+ * foreign key to one) when every E3 grant that operates the record is `dataScope.mode: own` — or
+ * when the session actor is that person (an `own`/`assigned`/`related` grant). Never a field name.
  */
-export function isNs4OwnerHandleField(fieldId: string): boolean {
-  return /^(owner(?:User)?|customer|client)Id$/i.test(fieldId) || /OwnerId$/u.test(fieldId);
+export function isNs4OwnerHandleInput(
+  input: { fieldRef: Ns4E8FieldRef; inputId?: string },
+  sources: Ns4E8Sources,
+): boolean {
+  const ownerId = input.fieldRef.entityId;
+  const fieldId = input.fieldRef.fieldId;
+  const entities = new Map(sources.ontology.entities.map(entity => [entity.entityId, entity]));
+  const owner = entities.get(ownerId);
+  if (!owner) return false;
+  const parent = ns4FkParentOf(buildNs4ParentIndex(sources.ontology.relationships), ownerId, fieldId);
+  const referenced = parent ? entities.get(parent.parent) : undefined;
+  const person = referenced?.party === 'person' ? referenced : owner.party === 'person' ? owner : undefined;
+  if (!person) return false;
+  if (person.entityId === ownerId) {
+    const idField = person.storage?.idField
+      || person.fields.find(field => /Id$/.test(field.fieldId))?.fieldId
+      || '';
+    if (fieldId !== idField) return false;
+    // Pagination borrows the identity fieldRef (`page`/`pageSize`); that is not a handle.
+    if (input.inputId && input.inputId !== fieldId) return false;
+    return sources.access.grants.some(grant => {
+      const mode = grant.dataScope?.mode;
+      return mode === 'own' || mode === 'assigned' || mode === 'related';
+    });
+  }
+  return entityOwnedByOwnGrants(ownerId, sources);
+}
+
+function entityOwnedByOwnGrants(entityId: string, sources: Ns4E8Sources): boolean {
+  const modes = new Set<string>();
+  for (const authority of sources.access.authorities) {
+    const operates = authority.journeyStepRefs.some(ref => {
+      const dot = ref.lastIndexOf('.');
+      const journeyId = dot >= 0 ? ref.slice(0, dot) : ref;
+      const stepId = dot >= 0 ? ref.slice(dot + 1) : '';
+      const journey = sources.journeys.journeys.find(item => item.journeyId === journeyId);
+      const step = journey?.business.steps.find(item => item.stepId === stepId);
+      return step?.entity === entityId;
+    });
+    if (!operates) continue;
+    for (const grant of sources.access.grants) {
+      if (grant.authorityRef === authority.authorityRef && grant.dataScope?.mode) modes.add(grant.dataScope.mode);
+    }
+  }
+  return modes.size === 1 && modes.has('own');
 }
 
 export type Ns4E8AccessPatternKind = 'list' | 'getById' | 'create' | 'update' | 'delete' | 'transition' | 'commandInput';

@@ -5,7 +5,7 @@ import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution/helpers/ns4StepTree.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
-import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
+import { bindNs4ClarificationWidget, showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
 import {
   readNs4ApprovedAccess, readNs4ApprovedJourneys,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4ApprovedArtifacts.js';
@@ -20,6 +20,7 @@ import {
   markNs4ModuleE3Approved,
   Ns4ApprovedBy,
   Ns4PipelineState,
+  NS4_TERMINAL_CANCEL_UNSUPPORTED,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import {
   ns4E3DraftFile,
@@ -217,7 +218,8 @@ export async function beforeNs4E3ClarificationStep(
   }
   await import('/_102020_/l2/agentNewSolution/widgets/widgetNs4AccessMatrix.js');
   const element = document.createElement('widget-ns4-access-matrix-102020');
-  (element as unknown as { value: Ns4E3Review }).value = review;
+  const module = await readNs4Module(review.moduleName);
+  bindNs4ClarificationWidget(element, review, module?.presentation);
   element.addEventListener('ns4-access-matrix-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E3ReviewEvent>).detail;
     void applyNs4E3Review(context, parentStep, step, hookSequential, detail)
@@ -235,7 +237,7 @@ async function applyNs4E3Review(
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution:e3] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
-  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
+  if (event.action === 'cancel') throw new Error(NS4_TERMINAL_CANCEL_UNSUPPORTED);
   const journeys = await readNs4ApprovedJourneys(event.review.moduleName);
   if (event.action === 'approve') {
     const saved = await persistNs4E3(event.review.moduleName, event.review, 'human', journeys);

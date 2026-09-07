@@ -29,15 +29,17 @@ human clarification before realization. Do not redesign journeys, access, ontolo
 
 ## Output
 
+Examples are placeholders in English; write every human-facing value in the user's language (`userLanguage`).
+
 Return exactly one JSON object without Markdown:
 
 {
   "planId": "e6-composition-review",
   "moduleName": "lowerCamelModule",
-  "userLanguage": "pt-BR",
-  "title": "Módulos adicionais e plugins",
+  "userLanguage": "<userLanguage>",
+  "title": "<localized title>",
   "reviewRound": 1,
-  "analysisSummary": "O módulo pode seguir sem componentes adicionais neste momento.",
+  "analysisSummary": "<analysis summary in the user's language>",
   "recommendations": [],
-  "changeSummary": ["Análise inicial de composição."]
+  "changeSummary": ["<change summary in the user's language>"]
 }

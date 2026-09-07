@@ -11,12 +11,13 @@ import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution/helpers/ns4StepTree.js';
 import { createNs4FlexibleWorkerTool, unwrapNs4FlexibleWorkerPayload } from '/_102020_/l2/agentNewSolution/helpers/ns4WorkerTools.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
-import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
+import { bindNs4ClarificationWidget, showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
 import {
   readNs4ApprovedAccess, readNs4ApprovedJourneys, readNs4ApprovedOntology,
   readNs4ApprovedOntologyEntity,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4ApprovedArtifacts.js';
 import {
+  createNs4E4DerivationBindingStep,
   createNs4E4FinalizeStep,
   createNs4E4RelationshipBindingStep,
   createNs4E4RepairStep,
@@ -32,6 +33,7 @@ import {
   NS4_E4_MAX_PARALLEL,
   Ns4ApprovedBy,
   Ns4PipelineState,
+  NS4_TERMINAL_CANCEL_UNSUPPORTED,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import {
   ns4E4EntityDraftFile,
@@ -59,6 +61,7 @@ import {
 } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
 import {
   assembleNs4E4Review,
+  applyNs4E4DerivationBindings,
   applyNs4E4RelationshipBindings,
   buildNs4OntologyArtifacts,
   normalizeNs4E4EntityDraft,
@@ -74,7 +77,13 @@ import {
   Ns4E4ReviewEvent,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import {
+  applyNs4E4CoreReadOnlyDecisions,
   ns4E4BindingOwnerEscalation,
+  ns4E4BlockingDerivationIssues,
+  ns4E4DerivationOutputEscalation,
+  ns4E4EntityIdFromIssuePath,
+  ns4E4FinalizeDispatch,
+  ns4E4NonDerivationBlockingIssues,
   ns4E4RequestText,
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
@@ -87,7 +96,7 @@ import { decideNs4LaterCheckpoint, ns4E4SmartSignal } from '/_102020_/l2/agentNe
 
 interface Ns4E4Args {
   planId: 'e4-ontology';
-  stage?: 'plan' | 'finalize' | 'bindRelationships';
+  stage?: 'plan' | 'finalize' | 'bindRelationships' | 'bindDerivations';
   moduleName?: string;
   adjustment?: string;
   reviewRound?: number;
@@ -96,12 +105,14 @@ interface Ns4E4Args {
   entityRepairRound?: number;
   planRepairAttempt?: number;
   bindingRepairAttempt?: number;
+  derivationRepairAttempt?: number;
   gateFeedback?: string;
 }
 
 const MAX_PLAN_REPAIRS = 1;
 const MAX_ENTITY_REPAIR_ROUNDS = 1;
 const MAX_RELATIONSHIP_BINDING_REPAIRS = 1;
+const MAX_DERIVATION_BINDING_REPAIRS = 1;
 interface Ns4PersistedE4 {
   moduleName: string;
   solutionMode: 'new';
@@ -131,6 +142,9 @@ export async function beforeNs4E4PromptStep(
     }
     if (parsed.stage === 'bindRelationships') {
       return [await buildRelationshipBindingPrompt(context, parentStep, hookSequential, hookArgs, parsed)];
+    }
+    if (parsed.stage === 'bindDerivations') {
+      return [await buildDerivationBindingPrompt(context, parentStep, hookSequential, hookArgs, parsed)];
     }
     if (!parsed.stage && !parsed.adjustment && !parsed.gateFeedback) {
       const resumed = await resumeRelationshipBindingFromValidDrafts(
@@ -307,6 +321,54 @@ async function buildRelationshipBindingPrompt(
   return promptReady(context, parentStep, hookSequential, hookArgs, prompt, humanPrompt);
 }
 
+async function buildDerivationBindingPrompt(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  hookArgs: string,
+  args: Ns4E4Args & { moduleName: string },
+): Promise<mls.msg.AgentIntentPromptReady> {
+  const plan = await readPlanDraft(args.moduleName);
+  const details = await readAllEntityDrafts(plan);
+  const review = assembleNs4E4Review(plan, details);
+  const prompt = await readNs4AgentText('steps/e4', 'promptDerivations');
+  const [journeys, access] = await Promise.all([
+    readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName),
+  ]);
+  const gate = validateNs4E4Review(
+    review, journeys, access,
+    await e4RequestOptions(args.moduleName, { requireRelationshipRealization: false }),
+  );
+  const derivationIssues = ns4E4BlockingDerivationIssues(gate.issues);
+  const affectedIds = new Set(
+    derivationIssues.map(issue => ns4E4EntityIdFromIssuePath(review, issue.path)).filter(Boolean),
+  );
+  const projections = review.entities.filter(entity =>
+    entity.kind === 'projection' && entity.ownership === 'derived'
+    && (affectedIds.has(entity.entityId) || !affectedIds.size),
+  );
+  const byId = new Map(review.entities.map(entity => [entity.entityId, entity]));
+  const compact = projections.map(entity => {
+    const from = entity.derivation ? byId.get(entity.derivation.from) : undefined;
+    return {
+      entityId: entity.entityId,
+      derivation: entity.derivation,
+      fromFields: (from?.fields || []).map(field => ({
+        fieldId: field.fieldId,
+        type: field.type,
+        ...(field.enum?.length ? { enum: field.enum } : {}),
+      })),
+    };
+  });
+  const humanPrompt = [
+    `## Required identity\nmoduleName=${review.moduleName}; reviewRound=${review.reviewRound}`,
+    '## Projections with derivation issues, current derivation, and complete from fields',
+    JSON.stringify(compact),
+    args.gateFeedback ? `## Deterministic derivation gate repair required\n${args.gateFeedback}` : '',
+  ].filter(Boolean).join('\n\n');
+  return promptReady(context, parentStep, hookSequential, hookArgs, prompt, humanPrompt);
+}
+
 export async function afterNs4E4PromptStep(
   agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
@@ -324,6 +386,9 @@ export async function afterNs4E4PromptStep(
     if (entityId) return await handleEntityResult(context, mutationParent, step, hookSequential, args, entityId);
     if (args.stage === 'bindRelationships') {
       return await handleRelationshipBindingResult(context, mutationParent, step, hookSequential, args);
+    }
+    if (args.stage === 'bindDerivations') {
+      return await handleDerivationBindingResult(context, mutationParent, step, hookSequential, args);
     }
     return await handlePlanResult(agent, context, mutationParent, step, hookSequential, args);
   } catch (error) {
@@ -462,6 +527,97 @@ async function handleRelationshipBindingResult(
   return openOntologyReview(context, mutationParent, step, hookSequential, review, pipeline, journeys, access);
 }
 
+async function handleDerivationBindingResult(
+  context: mls.msg.ExecutionContext,
+  mutationParent: mls.msg.AIAgentStep,
+  step: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: Ns4E4Args & { moduleName: string },
+): Promise<mls.msg.AgentIntent[]> {
+  const plan = await readPlanDraft(args.moduleName);
+  const details = await readAllEntityDrafts(plan);
+  const payload = unwrapPayload(step.interaction?.payload?.[0]);
+  if (!isRecord(payload)) throw new Error(readE4FailureMessage(payload));
+  const applied = applyNs4E4DerivationBindings(plan, payload);
+  const attempt = args.derivationRepairAttempt || 0;
+  const entityRepairRound = args.entityRepairRound || 0;
+  const planRepairAttempt = args.planRepairAttempt || 0;
+  if (applied.issues.length) {
+    const message = formatGate(applied.issues);
+    if (attempt < MAX_DERIVATION_BINDING_REPAIRS) {
+      return [
+        addStep(context, mutationParent, createNs4E4DerivationBindingStep(
+          args.moduleName, plan.reviewRound, attempt + 1, message, entityRepairRound, planRepairAttempt,
+        )),
+        updateStatus(context, mutationParent, step, hookSequential, 'completed', `Derivation binding gate requested repair ${attempt + 1}.`, 'input_output'),
+      ];
+    }
+    await recordNs4E4Failure(args.moduleName, message);
+    return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message, 'input_output')];
+  }
+  await writeNs4E4PlanDraft(args.moduleName, applied.plan);
+  const review = assembleNs4E4Review(applied.plan, details);
+  const [journeys, access, pipeline] = await Promise.all([
+    readNs4ApprovedJourneys(args.moduleName), readNs4ApprovedAccess(args.moduleName), requirePipeline(args.moduleName),
+  ]);
+  const gate = validateNs4E4Review(
+    review, journeys, access,
+    await e4RequestOptions(args.moduleName, { requireRelationshipRealization: false }),
+  );
+  if (!gate.ok) {
+    const derivationIssues = ns4E4BlockingDerivationIssues(gate.issues);
+    const other = ns4E4NonDerivationBlockingIssues(gate.issues);
+    const message = formatGate(other.length ? gate.issues : derivationIssues);
+    if (!other.length) {
+      const ownerFeedback = ns4E4DerivationOutputEscalation(
+        review, gate.issues, applied.fieldIdChanges, entityRepairRound, MAX_ENTITY_REPAIR_ROUNDS,
+      );
+      if (ownerFeedback.length) {
+        await writeEntityFeedback(args.moduleName, ownerFeedback);
+        const affected = ownerFeedback.map(item => item.entityId);
+        const parallel = parallelEntityStep(context, step, 'agentNewSolution', applied.plan, entityRepairRound + 1, affected);
+        return [
+          parallel,
+          addStep(context, mutationParent, createNs4E4FinalizeStep(
+            args.moduleName, plan.reviewRound, [String(parallel.step.planning?.planId || '')],
+            entityRepairRound + 1, planRepairAttempt, attempt,
+          )),
+          updateStatus(
+            context, mutationParent, step, hookSequential, 'completed',
+            `Derivation binding needs projection fields; entity repair started for ${affected.join(', ')}.`,
+            'input_output',
+          ),
+        ];
+      }
+      if (attempt < MAX_DERIVATION_BINDING_REPAIRS) {
+        return [
+          addStep(context, mutationParent, createNs4E4DerivationBindingStep(
+            args.moduleName, plan.reviewRound, attempt + 1, formatGate(derivationIssues),
+            entityRepairRound, planRepairAttempt,
+          )),
+          updateStatus(context, mutationParent, step, hookSequential, 'completed', `Derivation binding gate requested repair ${attempt + 1}.`, 'input_output'),
+        ];
+      }
+    }
+    await recordNs4E4Failure(args.moduleName, message);
+    return [updateStatus(context, mutationParent, step, hookSequential, 'failed', message, 'input_output')];
+  }
+  await writeEntityFeedback(args.moduleName, []);
+  if (!review.relationships.length) {
+    return openOntologyReview(context, mutationParent, step, hookSequential, review, pipeline, journeys, access);
+  }
+  return [
+    addStep(context, mutationParent, createNs4E4RelationshipBindingStep(
+      args.moduleName, review.reviewRound, 0, '', entityRepairRound,
+    )),
+    updateStatus(
+      context, mutationParent, step, hookSequential, 'completed',
+      `E4 repaired derivations; binding ${review.relationships.length} relationships to exact fields.`,
+      'input_output',
+    ),
+  ];
+}
+
 async function readAllEntityDrafts(plan: Ns4E4PlanDraft): Promise<Ns4E4EntityDraft[]> {
   const details = await Promise.all(plan.entities.map(entity => readEntityDraft(plan.moduleName, entity.entityId)));
   if (details.some(detail => !detail)) throw new Error('E4 relationship binding cannot start before every entity detail exists.');
@@ -507,7 +663,21 @@ async function finalizeOntology(
     const message = formatGate(gate.issues);
     await writeNs4E4Draft(args.moduleName, review);
     const planRepairAttempt = args.planRepairAttempt || 0;
-    if (planRepairAttempt < MAX_PLAN_REPAIRS) {
+    const derivationRepairAttempt = args.derivationRepairAttempt || 0;
+    const dispatch = ns4E4FinalizeDispatch(
+      gate.issues, derivationRepairAttempt, planRepairAttempt,
+      MAX_DERIVATION_BINDING_REPAIRS, MAX_PLAN_REPAIRS,
+    );
+    if (dispatch.action === 'bindDerivations') {
+      return [
+        addStep(context, mutationParent, createNs4E4DerivationBindingStep(
+          args.moduleName, review.reviewRound, derivationRepairAttempt + 1,
+          formatGate(dispatch.issues), args.entityRepairRound || 0, planRepairAttempt,
+        )),
+        updateStatus(context, mutationParent, step, hookSequential, 'completed', 'Final aggregate gate requested one derivation binding repair.', 'input_output'),
+      ];
+    }
+    if (dispatch.action === 'planRepair') {
       return [
         addStep(context, mutationParent, createNs4E4RepairStep(
           args.moduleName, review.reviewRound, planRepairAttempt + 1, message,
@@ -547,6 +717,7 @@ async function openOntologyReview(
 ): Promise<mls.msg.AgentIntent[]> {
   const gate = validateNs4E4Review(review, journeys, access, await e4RequestOptions(review.moduleName));
   if (!gate.ok) throw new Error(formatGate(gate.issues));
+  review = applyNs4E4CoreReadOnlyDecisions(review, gate.issues);
   const draftPath = await writeNs4E4Draft(review.moduleName, review);
   await writeNs4Pipeline(markNs4E4WaitingHuman(await requirePipeline(review.moduleName), review.reviewRound, draftPath));
   const module = await readNs4Module(review.moduleName);
@@ -582,7 +753,8 @@ export async function beforeNs4E4ClarificationStep(
   }
   await import('/_102020_/l2/agentNewSolution/widgets/widgetNs4Ontology.js');
   const element = document.createElement('widget-ns4-ontology-102020');
-  (element as unknown as { value: Ns4E4Review }).value = review;
+  const module = await readNs4Module(review.moduleName);
+  bindNs4ClarificationWidget(element, review, module?.presentation);
   element.addEventListener('ns4-ontology-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E4ReviewEvent>).detail;
     void applyNs4E4Review(context, parentStep, step, hookSequential, detail)
@@ -600,7 +772,7 @@ async function applyNs4E4Review(
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution:e4] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
-  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
+  if (event.action === 'cancel') throw new Error(NS4_TERMINAL_CANCEL_UNSUPPORTED);
   const [journeys, access] = await Promise.all([readNs4ApprovedJourneys(event.review.moduleName), readNs4ApprovedAccess(event.review.moduleName)]);
   const gate = validateNs4E4Review(event.review, journeys, access, await e4RequestOptions(event.review.moduleName));
   if (!gate.ok) throw new Error(formatGate(gate.issues));
@@ -635,6 +807,7 @@ async function persistNs4E4(
   const [moduleArtifact, pipeline] = await Promise.all([readNs4Module(moduleName), requirePipeline(moduleName)]);
   const gate = validateNs4E4Review(review, journeys, access, { requestText: ns4E4RequestText(moduleArtifact) });
   if (!gate.ok) throw new Error(formatGate(gate.issues));
+  review = applyNs4E4CoreReadOnlyDecisions(review, gate.issues);
   if (!moduleArtifact || moduleArtifact.module.moduleName !== moduleName) throw new Error(`Invalid module artifact for ${moduleName}.`);
   const approvedAt = new Date().toISOString();
   const artifacts = await buildNs4OntologyArtifacts(review, approvedBy, approvedAt);
@@ -840,7 +1013,7 @@ function parseE4Args(value: unknown): Ns4E4Args {
   if (!isRecord(parsed) || parsed.planId !== 'e4-ontology') throw new Error('Invalid E4 step arguments.');
   return {
     planId: 'e4-ontology', solutionMode: 'new',
-    ...(parsed.stage === 'finalize' || parsed.stage === 'plan' || parsed.stage === 'bindRelationships' ? { stage: parsed.stage } : {}),
+    ...(parsed.stage === 'finalize' || parsed.stage === 'plan' || parsed.stage === 'bindRelationships' || parsed.stage === 'bindDerivations' ? { stage: parsed.stage } : {}),
     ...(typeof parsed.moduleName === 'string' && parsed.moduleName.trim() ? { moduleName: parsed.moduleName.trim() } : {}),
     ...(typeof parsed.adjustment === 'string' && parsed.adjustment.trim() ? { adjustment: parsed.adjustment.trim() } : {}),
     ...(typeof parsed.reviewRound === 'number' ? { reviewRound: parsed.reviewRound } : {}),
@@ -848,6 +1021,7 @@ function parseE4Args(value: unknown): Ns4E4Args {
     ...(typeof parsed.entityRepairRound === 'number' ? { entityRepairRound: parsed.entityRepairRound } : {}),
     ...(typeof parsed.planRepairAttempt === 'number' ? { planRepairAttempt: parsed.planRepairAttempt } : {}),
     ...(typeof parsed.bindingRepairAttempt === 'number' ? { bindingRepairAttempt: parsed.bindingRepairAttempt } : {}),
+    ...(typeof parsed.derivationRepairAttempt === 'number' ? { derivationRepairAttempt: parsed.derivationRepairAttempt } : {}),
     ...(typeof parsed.gateFeedback === 'string' && parsed.gateFeedback.trim() ? { gateFeedback: parsed.gateFeedback.trim() } : {}),
   };
 }

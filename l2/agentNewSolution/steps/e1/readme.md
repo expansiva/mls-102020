@@ -38,6 +38,8 @@ E1 tree because of capitalization alone.
 `/fast` skips the E1 widget: the valid proposal is accepted as `approvedBy=auto`, the chosen defaults
 (product languages, module name, policy) are recorded on the clarification answer and on the pipeline
 (`autoReason` + `skippedDefaults`), and the same `e1-clarification-answer` anchor unlocks compile.
+Product languages under `/fast` are only those the original prompt cites; the planner's proposed
+answer is not a citation, and a discard is recorded on `skippedDefaults.i18nWarnings`.
 Without `/fast` the widget still opens. `reviewPolicy.mode=automatic` still opens E1.
 
 `userLanguage` controls the clarification language only. The editable `productLanguages` answer owns

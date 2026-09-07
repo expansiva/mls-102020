@@ -45,6 +45,44 @@ void test('NS run summary records skipped clarification defaults as a degradatio
   assert.equal(summary.counts.skippedClarification, true);
 });
 
+void test('NS run summary records discarded languages as a languages-provenance degradation', () => {
+  const pipeline = {
+    schemaVersion: 'test',
+    flowId: 'agentNewSolution',
+    flowVersion: 'test',
+    moduleName: 'controleEstoque2',
+    sourcePrompt: 'criar o módulo controleEstoque2. controle de estoque',
+    presentation: { userLanguage: 'pt-BR' },
+    status: 'complete',
+    steps: {
+      e1: {
+        status: 'approved',
+        approvedAt: '2026-09-06T21:01:53.066Z',
+        updatedAt: '2026-09-06T21:01:53.066Z',
+        skippedDefaults: {
+          productLanguages: ['pt-BR'],
+          defaultLanguage: 'pt-BR',
+          moduleName: 'controleEstoque2',
+          i18nWarnings: ['localization.productLanguages: discarded en, es — languages are a user decision and the user did not cite them in the clarification answer or in the original prompt; kept pt-BR.'],
+        },
+      },
+    },
+    updatedAt: '2026-09-06T21:01:53.066Z',
+  } as unknown as Ns4PipelineState;
+  const summary = buildNsRunSummary({
+    pipeline,
+    moduleName: 'controleEstoque2',
+    longMemory: { fastMode: 'true' },
+    verdict: 'completed',
+    reason: 'E1 compiled',
+  });
+  const provenance = summary.degradations.find(item => item.kind === 'languages-provenance');
+  assert.ok(provenance);
+  assert.match(provenance?.reason || '', /discarded en, es/);
+  assert.equal(summary.degradations[0].kind, 'clarification-skip-default');
+  assert.match(summary.degradations[0].reason, /productLanguages=pt-BR/);
+});
+
 void test('NS run summary records /nochain on the command and does not degrade for it', () => {
   const pipeline = {
     schemaVersion: 'test',

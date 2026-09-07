@@ -38,7 +38,7 @@ export function recoverNs4RebuildAllPrompt(input: {
   if (source) return { ok: true, prompt: source };
   return {
     ok: false,
-    reason: 'Não foi possível recuperar o prompt original (nem designContext.initialPrompt em module.defs.ts, nem sourcePrompt no pipeline). Nada foi apagado.',
+    reason: 'Could not recover the original prompt (neither designContext.initialPrompt in module.defs.ts nor sourcePrompt on the pipeline). Nothing was deleted.',
   };
 }
 

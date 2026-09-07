@@ -6,6 +6,7 @@ import {
   Ns4E2Review,
   Ns4JourneyProposal,
 } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
+import type { Ns4Presentation } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 
 export interface Ns4E2CoveragePatch {
   planId: 'e2-coverage-patch';
@@ -24,6 +25,7 @@ export function normalizeNs4E2CoveragePatch(
   value: unknown,
   fallbackModule = '',
   fallbackRound = 1,
+  presentation?: Ns4Presentation,
 ): Ns4E2CoveragePatch {
   const source = record(value);
   const normalized = normalizeNs4E2Review({
@@ -31,7 +33,7 @@ export function normalizeNs4E2CoveragePatch(
     reviewRound: positiveInteger(source.reviewRound, fallbackRound),
     journeys: array(source.journeyUpserts),
     features: array(source.featureUpserts),
-  }, fallbackModule);
+  }, fallbackModule, presentation);
   return {
     planId: 'e2-coverage-patch',
     moduleName: normalized.moduleName,

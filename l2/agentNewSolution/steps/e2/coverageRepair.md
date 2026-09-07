@@ -14,10 +14,9 @@ numbered issue. Do not rewrite the complete draft.
 - `journeyUpserts` contains each complete new journey or complete replacement journey. An existing
   `journeyId` replaces that journey; a new id appends it. Omitted journeys remain unchanged.
 - `featureUpserts` contains each complete new or replacement feature affected by the journey changes.
-- For `moduleWithoutDecide`, either add a justified `decide` step naming its entity or
-  sustain the current no-decision policy by returning both upsert arrays empty. This consumes the
-  same single semantic repair budget; never invent an approval merely to satisfy the signal.
-  An existing `featureId` replaces that feature; omitted features remain unchanged.
+- An existing `featureId` replaces that feature; omitted features remain unchanged.
+- Never add a `decide` step to make a journey look like a process. A module with no decide step is
+  valid; coverage repair is not dispatched for that cause.
 - There are no deletions. Preserve all unaffected scope.
 - Resolve every numbered blocker, not only the first one.
 - Keep a journey named in `entry.preferredFromJourneyRef` earlier than the journey that names it. A

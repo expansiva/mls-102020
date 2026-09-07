@@ -1,0 +1,43 @@
+{
+  "planId": "e4-ontology-entity",
+  "moduleName": "controleEstoque2",
+  "reviewRound": 1,
+  "entityId": "Product",
+  "fields": [
+    {
+      "fieldId": "productId",
+      "title": "Identificador do produto",
+      "type": "uuid",
+      "required": true,
+      "description": "Identificador estável do produto no catálogo da organização, usado como referência nas movimentações e consultas de saldo.",
+      "constraints": [
+        {
+          "constraintId": "uniqueProductId",
+          "kind": "unique",
+          "value": "true",
+          "description": "Cada produto possui um identificador estável exclusivo.",
+          "source": "inferred"
+        }
+      ]
+    },
+    {
+      "fieldId": "name",
+      "title": "Nome do produto",
+      "type": "string",
+      "required": true,
+      "description": "Nome de identificação de negócio do produto exibido no catálogo e selecionado nas movimentações de estoque.",
+      "constraints": []
+    },
+    {
+      "fieldId": "minimumStock",
+      "title": "Estoque mínimo",
+      "type": "number",
+      "required": true,
+      "description": "Quantidade mínima cadastrada para o produto, usada para identificar saldos abaixo do mínimo.",
+      "constraints": []
+    }
+  ],
+  "useRules": [
+    "lowStockAlertThreshold"
+  ]
+}

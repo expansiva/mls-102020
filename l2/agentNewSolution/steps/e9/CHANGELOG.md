@@ -1,5 +1,10 @@
 # E9 changelog
 
+## 2026-09-07 — generated contract comments in English
+
+Empty input/output blocks emit `// no public inputs (resolved from context)` and
+`// no declared projection`.
+
 ## 2026-09-06 — outputShape is typed from operation.outputRefs
 
 `transposeNs4ClassicOperation` (and the bffCall / TS contract that follow it) builds

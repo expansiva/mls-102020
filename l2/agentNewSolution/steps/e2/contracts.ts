@@ -2,6 +2,8 @@
 
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import { collectNs4JourneyEntities, type Ns4DerivedContext } from '/_102020_/l2/agentNewSolution/helpers/ns4Context.js';
+import type { Ns4Presentation } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
+import { ns4Text } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import {
   analyzeNs4E2MechanicalCoverage,
   isNs4E2DemotionDecisionId,
@@ -249,10 +251,10 @@ export interface Ns4E2ImpactReport {
   affectedSteps: Array<'e3-access-matrix' | 'e4-ontology' | 'e5-rules' | 'e7-realization'>;
 }
 
-export function normalizeNs4E2Review(value: unknown, fallbackModule = ''): Ns4E2Review {
+export function normalizeNs4E2Review(value: unknown, fallbackModule = '', presentation?: Ns4Presentation): Ns4E2Review {
   const root = record(value);
   const userLanguage = text(root.userLanguage) || 'en';
-  const journeys = withNs4DemotionDecisions(array(root.journeys).map(normalizeJourney), userLanguage);
+  const journeys = withNs4DemotionDecisions(array(root.journeys).map(normalizeJourney), presentation);
   const features = array(root.features).map(item => {
     const feature = record(item);
     return {
@@ -464,8 +466,7 @@ export function normalizeNs4BusinessObjectId(value: unknown): string {
  * choice at the E2 checkpoint instead of shipping the same catalogue twice. The decision is
  * deterministic: it is recomputed on every round and is never authored by the generator.
  */
-export function withNs4DemotionDecisions(journeys: Ns4JourneyProposal[], userLanguage: string): Ns4JourneyProposal[] {
-  const portuguese = userLanguage.toLowerCase().startsWith('pt');
+export function withNs4DemotionDecisions(journeys: Ns4JourneyProposal[], presentation?: Ns4Presentation): Ns4JourneyProposal[] {
   const captureOnly = new Map(analyzeNs4E2MechanicalCoverage({ journeys }).captureOnlyJourneys
     .map(item => [item.journeyId, item.entity]));
   return journeys.map(journey => {
@@ -473,15 +474,13 @@ export function withNs4DemotionDecisions(journeys: Ns4JourneyProposal[], userLan
     const decisionId = ns4E2DemotionDecisionId(journey.journeyId);
     const kept = journey.policyDecisions.filter(decision => !isNs4E2DemotionDecisionId(decision.decisionId));
     if (!entity) return kept.length === journey.policyDecisions.length ? journey : { ...journey, policyDecisions: kept };
-    const chosen = portuguese ? `Tela de cadastro padrão de ${entity}` : `Standard ${entity} record catalogue`;
-    const alternative = portuguese ? `Manter ${journey.business.title} como jornada própria` : `Keep ${journey.business.title} as its own journey`;
+    const chosen = ns4Text(presentation, 'demotion.chosen', { entity });
+    const alternative = ns4Text(presentation, 'demotion.alternative', { journey: journey.business.title });
     return {
       ...journey,
       policyDecisions: [...kept, {
         decisionId,
-        question: portuguese
-          ? `${journey.business.title} não tem decisão nem repasse: vira a tela de cadastro padrão de ${entity}?`
-          : `${journey.business.title} has no decision and no handoff: should it become the standard ${entity} record catalogue?`,
+        question: ns4Text(presentation, 'demotion.question', { journey: journey.business.title, entity }),
         chosen,
         alternatives: [chosen, alternative],
       }],

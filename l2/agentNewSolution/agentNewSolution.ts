@@ -53,6 +53,7 @@ import {
   readNs4L5Config,
   readNs4L5Project,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Fs.js';
+import { ns4PlannerPhrasesAppendix } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import {
   formatNs4RebuildAllNote,
   planNs4RebuildAll,
@@ -135,7 +136,7 @@ async function beforePromptImplicit(
   const invocation = parseNs4Invocation(userPrompt || '');
   if (!invocation.prompt) {
     // error, i18n
-    return [await statusTask(agent, context, 'Informe o nome ou a descrição do módulo após @@newSolution.', 'new Solution', true)];
+    return [await statusTask(agent, context, 'Provide the module name or description after @@newSolution.', 'new Solution', true)];
   }
 
   let sourcePrompt = invocation.prompt;
@@ -157,7 +158,7 @@ async function beforePromptImplicit(
       agent,
       context,
       intended
-        ? `Para regenerar, informe apenas o módulo: "@@newSolution ${intended} /rebuild${invocation.rebuildFrom ? ` ${invocation.rebuildFrom}` : ''}".`
+        ? `To regenerate, pass only the module: "@@newSolution ${intended} /rebuild${invocation.rebuildFrom ? ` ${invocation.rebuildFrom}` : ''}".`
         : formatNs4MissingRebuildModuleMessage(existingModules),
       'new Solution',
       true,
@@ -172,7 +173,7 @@ async function beforePromptImplicit(
       return [await statusTask(
         agent,
         context,
-        `Módulo "${intended}" já existe. Para regenerar, use "@@newSolution ${intended} /rebuild" (l4/l5), "@@newSolution ${intended} /rebuild all" (também l1/l2) ou "@@newSolution ${intended} /rebuild e10" (a partir de um step). Nada foi alterado.`,
+        `Module "${intended}" already exists. To regenerate, use "@@newSolution ${intended} /rebuild" (l4/l5), "@@newSolution ${intended} /rebuild all" (l1/l2 as well) or "@@newSolution ${intended} /rebuild e10" (from a step). Nothing was changed.`,
         `plan ${intended}`,
         true,
       )];
@@ -255,7 +256,7 @@ async function beforePromptImplicit(
       return [await statusTask(
         agent,
         context,
-        `Módulo "${existingModule}" já existe, mas não possui pipeline do agentNewSolution. Nada foi alterado.`,
+        `Module "${existingModule}" already exists but has no agentNewSolution pipeline. Nothing was changed.`,
         `plan ${existingModule}`,
         true,
       )];
@@ -272,7 +273,7 @@ async function beforePromptImplicit(
           return [await statusTask(
             agent,
             context,
-            `Módulo "${existingModule}": ${recovered.reason}`,
+            `Module "${existingModule}": ${recovered.reason}`,
             `plan ${existingModule}`,
             true,
           )];
@@ -291,7 +292,7 @@ async function beforePromptImplicit(
           configJson,
         });
         if (!plan.ok) {
-          return [await statusTask(agent, context, `Módulo "${existingModule}": ${plan.reason}`, `plan ${existingModule}`, true)];
+          return [await statusTask(agent, context, `Module "${existingModule}": ${plan.reason}`, `plan ${existingModule}`, true)];
         }
         const report = await applyNs4RebuildAll(plan);
         rebuildModule = existingModule;
@@ -313,7 +314,7 @@ async function beforePromptImplicit(
         return [await statusTask(
           agent,
           context,
-          `Módulo "${existingModule}" não possui pipeline do agentNewSolution para regenerar a partir de ${invocation.rebuildFrom}.`,
+          `Module "${existingModule}" has no agentNewSolution pipeline to regenerate from ${invocation.rebuildFrom}.`,
           `plan ${existingModule}`,
           true,
         )];
@@ -338,7 +339,7 @@ async function beforePromptImplicit(
       return [await statusTask(
         agent,
         context,
-        `Módulo "${existingModule}": especificação completa aprovada e pipeline encerrado. Para regenerar, use "@@newSolution ${existingModule} /rebuild" (l4/l5), "@@newSolution ${existingModule} /rebuild all" (também l1/l2) ou "@@newSolution ${existingModule} /rebuild e10" (a partir de um step).`,
+        `Module "${existingModule}": complete specification approved and pipeline closed. To regenerate, use "@@newSolution ${existingModule} /rebuild" (l4/l5), "@@newSolution ${existingModule} /rebuild all" (l1/l2 as well) or "@@newSolution ${existingModule} /rebuild e10" (from a step).`,
         `plan ${existingModule}`,
       )];
     } else {
@@ -358,7 +359,7 @@ async function beforePromptImplicit(
     }
   }
 
-  const planPrompt = await readNs4AgentText('', 'promptPlan');
+  const planPrompt = `${await readNs4AgentText('', 'promptPlan')}\n\n${ns4PlannerPhrasesAppendix()}`;
   return [{
     type: 'add-message-ai',
     request: {

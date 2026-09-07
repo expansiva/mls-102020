@@ -10,7 +10,11 @@ Each worker submits its artifact in the strict internal `{type:"flexible",result
 the orchestration protocol accepts healthy worker output without a provisional failure.
 The overview freezes lifecycle states, one explicit initial state, optional terminal states, named predicate-to-state mappings, optional `cardinality: singleton` (one fixed instance; omit when in doubt) and optional `mutability: appendOnly` (a registered fact is not updated or deleted; omit when in doubt) before the workers run;
 workers add fields, constraints and rule ids without redefining those meanings or duplicating rule descriptions.
-The deterministic finalizer repairs only missing/invalid entities once. It then starts one compact
+The deterministic finalizer repairs only missing/invalid entities once. If the aggregate gate then
+fails only on derivation (`NS4_E4_DERIVATION_*`, not warnings), it starts one compact
+derivation-binding pass (`Bind ontology derivations`) with its own repair budget, which replaces
+only `plan.entities[].derivation` and re-runs the gate. Mixed overview+derivation failures stay on
+the overview repair. It then starts one compact
 relationship-binding pass, which writes `pipeline/e4-relationship-bindings-draft.json` and maps every
 semantic edge to exact existing endpoint fields or an explicit MDM/derived realization. Its gate rejects
 invented fields, missing edges and incompatible persistence strategies and allows one localized repair.
@@ -34,8 +38,10 @@ must be declared fields of `from`, and a `sum` whose sign depends on an enum use
 instead of inventing a column. `NS4_E4_DERIVATION_MISSING` and
 `NS4_E4_DERIVATION_SOURCE_FIELD_UNKNOWN` are the backstop. An on-demand export,
 report, file, receipt or snapshot is `derived` unless the request asks to persist its history;
-`NS4_E4_DERIVED_PERSISTED` is the backstop. Kind, scope, idField and
-mdmType must agree. Master data never carries mutable operational balances or transaction history.
+`NS4_E4_DERIVED_PERSISTED` is the lexical backstop. A core `moduleDatabase` entity that some journey
+reads and no journey writes is recorded as `NS4_E4_CORE_READ_ONLY` (warning + systemDecision
+`keepCore` / `projection` / `masterData`) and does not block the run. Kind, scope, idField and
+mdmType must agree. A value recomputable from other records is a projection.
 The widget groups entities by this destination, marks relationships that cross stores and displays the
 exact fields implementing every edge.
 

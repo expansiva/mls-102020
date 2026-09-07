@@ -11,8 +11,11 @@ export interface Ns4E2StepKindHistogram {
   handoff: number;
 }
 
+export type Ns4E2MechanicalFindingSeverity = 'registrar';
+
 export interface Ns4E2MechanicalCoverageFinding {
   signalId: typeof NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL;
+  severity: Ns4E2MechanicalFindingSeverity;
 }
 
 export interface Ns4E2MechanicalCoverageReport {
@@ -49,7 +52,7 @@ export function analyzeNs4E2MechanicalCoverage(source: Ns4E2StepSource): Ns4E2Me
   return {
     stepKindHistogram,
     findings: stepKindHistogram.decide === 0
-      ? [{ signalId: NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL }]
+      ? [{ signalId: NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL, severity: 'registrar' }]
       : [],
     captureOnlyJourneys: source.journeys.flatMap(journey => {
       const journeyId = typeof journey.journeyId === 'string' ? journey.journeyId : '';

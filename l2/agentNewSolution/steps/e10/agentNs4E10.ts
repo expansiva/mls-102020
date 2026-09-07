@@ -141,13 +141,14 @@ export async function afterNs4E10PromptStep(
 }
 
 async function loadSources(moduleName: string): Promise<Ns4E10Sources> {
-  const [journeys, ontology, journeyIndex, access, ontologyIndex, rules, useCaseIndex, workflowIndex, model] = await Promise.all([
+  const [journeys, ontology, journeyIndex, access, ontologyIndex, rules, useCaseIndex, workflowIndex, model, module] = await Promise.all([
     readNs4ApprovedJourneys(moduleName), readNs4ApprovedOntology(moduleName), readRequired<Ns4JourneyIndex>(ns4JourneyIndexFile(moduleName), 'journey index'),
     readRequired<Ns4AccessMatrixArtifact>(ns4AccessMatrixFile(moduleName), 'access matrix'),
     readRequired<Ns4OntologyIndexArtifact>(ns4OntologyIndexFile(moduleName), 'ontology index'), readRequired<Ns4RulesArtifact>(ns4RulesFile(moduleName), 'rules'),
     readRequired<Ns4UseCaseIndexArtifactV3>(ns4UseCaseIndexFile(moduleName), 'use-case index'),
     readRequired<Ns4WorkflowIndexArtifactV2 | Ns4WorkflowIndexArtifactV3>(ns4WorkflowIndexFile(moduleName), 'workflow index'),
     readApprovedModel(moduleName),
+    readNs4Module(moduleName),
   ]);
   const [useCases, workflows] = await Promise.all([
     Promise.all(useCaseIndex.useCases.map(entry => readRequired<Ns4UseCaseArtifactV3>(ns4UseCaseFile(moduleName, entry.useCaseId), `use case ${entry.useCaseId}`))),
@@ -164,7 +165,8 @@ async function loadSources(moduleName: string): Promise<Ns4E10Sources> {
     siteMap: await readRequired<Ns4ClassicSiteMap>(ns4SiteMapFile(moduleName), 'site map'),
   };
   return {
-    moduleName, userLanguage: model.userLanguage, journeys, journeyIndex, ontology, ontologyIndex, rules, access,
+    moduleName, userLanguage: model.userLanguage, ...(module?.presentation ? { presentation: module.presentation } : {}),
+    journeys, journeyIndex, ontology, ontologyIndex, rules, access,
     useCases, useCaseIndex, workflows, workflowIndex, model, saved,
   };
 }

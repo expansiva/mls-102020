@@ -1,0 +1,444 @@
+{
+  "planId": "e4-ontology-review",
+  "moduleName": "controleEstoque3",
+  "userLanguage": "pt-BR",
+  "title": "Ontologia de negócio do Controle de Estoque",
+  "reviewRound": 1,
+  "solutionMode": "new",
+  "businessDomain": "Controle de produtos, movimentações e saldo de estoque",
+  "entities": [
+    {
+      "entityId": "Product",
+      "title": "Produto",
+      "description": "Item cadastrado no catálogo da organização, identificado para movimentação de estoque e associado à sua quantidade mínima esperada.",
+      "kind": "mdm",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerStockEntry",
+          "registerStockExit",
+          "consultProductBalance",
+          "createProduct",
+          "maintainProduct"
+        ],
+        "featureIds": [
+          "productCatalog",
+          "stockEntryRecording",
+          "stockExitRecording",
+          "currentStockBalance",
+          "minimumStockAlert"
+        ],
+        "authorityRefs": [
+          "stock:manage-products",
+          "stock:record-entry",
+          "stock:record-exit",
+          "stock:view-balance"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "productId",
+          "title": "Identificador do produto",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do produto no catálogo da organização, usado nas movimentações e consultas de estoque.",
+          "constraints": [
+            {
+              "constraintId": "uniqueProductId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada produto possui um identificador estável e exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "name",
+          "title": "Nome do produto",
+          "type": "string",
+          "required": true,
+          "description": "Nome de identificação do produto exibido no catálogo e durante a seleção para movimentações e consultas.",
+          "constraints": [
+            {
+              "constraintId": "nameMinLength",
+              "kind": "minLength",
+              "value": "1",
+              "description": "O nome do produto deve ser informado.",
+              "source": "journey"
+            }
+          ]
+        },
+        {
+          "fieldId": "minimumStockQuantity",
+          "title": "Quantidade mínima de estoque",
+          "type": "number",
+          "required": true,
+          "description": "Quantidade mínima esperada para o produto, usada para indicar quando o saldo atual está abaixo do mínimo.",
+          "constraints": [
+            {
+              "constraintId": "minimumStockQuantityMin",
+              "kind": "min",
+              "value": "0",
+              "description": "A quantidade mínima de estoque não pode ser negativa.",
+              "source": "inferred"
+            }
+          ]
+        }
+      ],
+      "lifecycleStates": [],
+      "lifecyclePredicates": [],
+      "useRules": [],
+      "storage": {
+        "target": "mdm",
+        "scope": "organization",
+        "idField": "productId",
+        "mdmType": "controleEstoque3.Product",
+        "notes": "Cadastro mestre de produto pertencente à organização ativa e reutilizável pelas movimentações e consultas do módulo. Não é uma parte natural nem uma organização."
+      }
+    },
+    {
+      "entityId": "StockEntry",
+      "title": "Entrada de estoque",
+      "description": "Registro imutável de uma quantidade recebida para um produto da organização.",
+      "kind": "core",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "mutability": "appendOnly",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerStockEntry"
+        ],
+        "featureIds": [
+          "stockEntryRecording",
+          "currentStockBalance"
+        ],
+        "authorityRefs": [
+          "stock:record-entry"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "stockEntryId",
+          "title": "Identificador da entrada de estoque",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável da entrada de estoque registrada.",
+          "constraints": [
+            {
+              "constraintId": "uniqueStockEntryId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada entrada de estoque possui um identificador estável e exclusivo.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "productId",
+          "title": "Produto selecionado",
+          "type": "uuid",
+          "required": true,
+          "description": "Referência ao produto cadastrado selecionado para receber a entrada.",
+          "constraints": []
+        },
+        {
+          "fieldId": "quantity",
+          "title": "Quantidade de entrada",
+          "type": "number",
+          "required": true,
+          "description": "Quantidade recebida e registrada para o produto selecionado.",
+          "constraints": [
+            {
+              "constraintId": "quantityMustBePositive",
+              "kind": "custom",
+              "value": ">0",
+              "description": "A quantidade recebida deve ser maior que zero.",
+              "source": "inferred"
+            }
+          ]
+        }
+      ],
+      "lifecycleStates": [],
+      "lifecyclePredicates": [],
+      "useRules": [
+        "stockMovementImmutable",
+        "updateProductBalance"
+      ],
+      "storage": {
+        "target": "moduleDatabase",
+        "scope": "module",
+        "idField": "stockEntryId",
+        "notes": "Registro transacional próprio do módulo. Uma entrada registrada é um fato histórico e não pode ser alterada nem excluída."
+      }
+    },
+    {
+      "entityId": "StockExit",
+      "title": "Saída de estoque",
+      "description": "Registro imutável de uma quantidade retirada de um produto da organização.",
+      "kind": "core",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "mutability": "appendOnly",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerStockExit"
+        ],
+        "featureIds": [
+          "stockExitRecording",
+          "currentStockBalance",
+          "minimumStockAlert"
+        ],
+        "authorityRefs": [
+          "stock:record-exit"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "stockExitId",
+          "title": "Identificador da saída de estoque",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do registro de saída de estoque.",
+          "constraints": [
+            {
+              "constraintId": "uniqueStockExitId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada saída de estoque possui um identificador único.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "productId",
+          "title": "Produto",
+          "type": "uuid",
+          "required": true,
+          "description": "Produto cadastrado e selecionado para o qual a saída é registrada.",
+          "constraints": []
+        },
+        {
+          "fieldId": "quantity",
+          "title": "Quantidade de saída",
+          "type": "number",
+          "required": true,
+          "description": "Quantidade retirada do produto na saída registrada.",
+          "constraints": [
+            {
+              "constraintId": "quantityMustBePositive",
+              "kind": "custom",
+              "value": "greaterThanZero",
+              "description": "A quantidade de saída deve ser maior que zero.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "registeredAt",
+          "title": "Data e hora do registro",
+          "type": "datetime",
+          "required": true,
+          "description": "Data e hora em que a saída foi registrada como fato histórico imutável.",
+          "constraints": []
+        }
+      ],
+      "lifecycleStates": [],
+      "lifecyclePredicates": [],
+      "useRules": [
+        "stockMovementImmutable",
+        "stockExitMustNotExceedBalance",
+        "updateProductBalance",
+        "minimumStockAlert"
+      ],
+      "storage": {
+        "target": "moduleDatabase",
+        "scope": "module",
+        "idField": "stockExitId",
+        "notes": "Registro transacional próprio do módulo. Uma saída registrada é um fato histórico e não pode ser alterada nem excluída; sua criação depende da disponibilidade atual do produto."
+      }
+    },
+    {
+      "entityId": "ProductBalance",
+      "title": "Saldo atual do produto",
+      "description": "Estado operacional atual de disponibilidade de um produto, incluindo o saldo calculado a partir das entradas e saídas e a situação de alerta perante a quantidade mínima cadastrada.",
+      "kind": "core",
+      "ownership": "moduleOwned",
+      "party": "none",
+      "sourceRefs": {
+        "journeyIds": [
+          "registerStockEntry",
+          "registerStockExit",
+          "consultProductBalance",
+          "maintainProduct"
+        ],
+        "featureIds": [
+          "currentStockBalance",
+          "minimumStockAlert",
+          "stockEntryRecording",
+          "stockExitRecording",
+          "productCatalog"
+        ],
+        "authorityRefs": [
+          "stock:record-entry",
+          "stock:record-exit",
+          "stock:view-balance"
+        ]
+      },
+      "fields": [
+        {
+          "fieldId": "productBalanceId",
+          "title": "Identificador do saldo do produto",
+          "type": "uuid",
+          "required": true,
+          "description": "Identificador estável do estado atual de saldo de um produto.",
+          "constraints": [
+            {
+              "constraintId": "uniqueProductBalanceId",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada estado de saldo possui um identificador estável único.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "productId",
+          "title": "Produto",
+          "type": "uuid",
+          "required": true,
+          "description": "Produto selecionado ao qual este saldo atual se refere.",
+          "constraints": [
+            {
+              "constraintId": "uniqueProductBalanceProduct",
+              "kind": "unique",
+              "value": "true",
+              "description": "Cada produto possui somente um estado de saldo atual.",
+              "source": "inferred"
+            }
+          ]
+        },
+        {
+          "fieldId": "currentQuantity",
+          "title": "Saldo atual",
+          "type": "number",
+          "required": true,
+          "description": "Quantidade atualmente disponível do produto, materializada a partir das entradas e saídas registradas.",
+          "constraints": []
+        },
+        {
+          "fieldId": "belowMinimumStock",
+          "title": "Estoque abaixo do mínimo",
+          "type": "boolean",
+          "required": true,
+          "description": "Indica se o saldo atual está abaixo da quantidade mínima cadastrada para o produto.",
+          "constraints": []
+        }
+      ],
+      "lifecycleStates": [],
+      "lifecyclePredicates": [],
+      "useRules": [
+        "updateProductBalance",
+        "minimumStockAlert"
+      ],
+      "storage": {
+        "target": "moduleDatabase",
+        "scope": "module",
+        "idField": "productBalanceId",
+        "notes": "Estado operacional materializado por produto, mantido pelas movimentações para permitir validação atômica de saídas, consulta imediata do saldo e aviso imediato de estoque abaixo do mínimo. Não é um cadastro mestre e não preserva o histórico detalhado das movimentações."
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "stockEntryForProduct",
+      "fromEntity": "StockEntry",
+      "toEntity": "Product",
+      "type": "manyToOne",
+      "required": true,
+      "description": "Cada entrada de estoque é registrada para exatamente um produto cadastrado, disponibilizando o produto selecionado na jornada de entrada.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "StockEntry",
+        "from": {
+          "entityId": "StockEntry",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "to": {
+          "entityId": "Product",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "description": "StockEntry.productId referencia o identificador MDM do produto selecionado para a entrada."
+      }
+    },
+    {
+      "relationshipId": "stockExitForProduct",
+      "fromEntity": "StockExit",
+      "toEntity": "Product",
+      "type": "manyToOne",
+      "required": true,
+      "description": "Cada saída de estoque é registrada para exatamente um produto cadastrado, disponibilizando o produto selecionado na jornada de saída.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "StockExit",
+        "from": {
+          "entityId": "StockExit",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "to": {
+          "entityId": "Product",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "description": "StockExit.productId referencia o identificador MDM do produto selecionado para a saída."
+      }
+    },
+    {
+      "relationshipId": "productBalanceForProduct",
+      "fromEntity": "ProductBalance",
+      "toEntity": "Product",
+      "type": "oneToOne",
+      "required": true,
+      "description": "O saldo atual representa a disponibilidade de um único produto e permite consultar, junto ao produto selecionado, a quantidade mínima e a situação de alerta.",
+      "persistence": {
+        "mode": "crossStoreReference"
+      },
+      "realization": {
+        "kind": "fieldReference",
+        "ownerEntity": "ProductBalance",
+        "from": {
+          "entityId": "ProductBalance",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "to": {
+          "entityId": "Product",
+          "fieldIds": [
+            "productId"
+          ]
+        },
+        "description": "ProductBalance.productId referencia o produto cujo saldo atual materializado é mantido."
+      }
+    }
+  ],
+  "changeSummary": [
+    "Visão inicial da ontologia para uma solução nova, sem contrato de banco de dados legado.",
+    "Foram separados o cadastro mestre de produtos, os fatos imutáveis de entrada e saída e o estado operacional atual de saldo por produto.",
+    "O aviso de estoque mínimo será sustentado pela comparação entre o saldo atual e a quantidade mínima do produto, sem criar histórico de notificações não solicitado."
+  ],
+  "systemDecisions": []
+}

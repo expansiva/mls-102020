@@ -13,14 +13,14 @@ user outcomes.
 1. Every explicit in-scope user-facing capability, screen intent and outcome in E1 must be owned by
    at least one journey. Boundaries explicitly excluded by E1 are not requirements.
 2. Every in-scope actor with distinct permissions or data scope must have a journey that lets that
-   actor achieve its promised outcome. A demographic persona (morador, visitante, jovem, responsável)
-   that shares operations and access with another actor is not a separate actor: the shared public
-   (or otherwise common) journey covers it. Do not raise a blocking issue asking for one journey per
-   persona. A handoff to an actor who is expected to use this system also requires a recipient journey;
-   a producer handoff alone is insufficient.
+   actor achieve its promised outcome. A demographic persona (`<PersonaA>`, `<PersonaB>` — demographic
+   personas doing the same things are one actor) that shares operations and access with another actor
+   is not a separate actor: the shared public (or otherwise common) journey covers it. Do not raise a
+   blocking issue asking for one journey per persona. A handoff to an actor who is expected to use
+   this system also requires a recipient journey; a producer handoff alone is insufficient.
 3. When an `act` or `decide` step needs an existing business record chosen by a person, an earlier
-   step of the journey must locate, select or create that record. Examples include a client for a
-   project, a material for usage, a worker for assignment and a project for a change order.
+   step of the journey must locate, select or create that record. Examples include a related
+   `<Entity>` for an `<Record>`, a master for usage, a worker for assignment.
    A linear step that says "create or update" is blocking when only the update outcome needs an
    existing record: it hides two different preconditions and can compile into a raw-id or unbound
    update form.
@@ -56,9 +56,9 @@ user outcomes.
   creation produces the new record; maintenance locates the existing record before acting.
   Never request a record "only on the update path" inside one combined step, because that path cannot
   be represented by this contract.
-- For each existing policy decision with a material consequence, return its `decisionId`, concise
+- For each existing policy decision with a consequential impact, return its `decisionId`, concise
   `impact` and affected existing `relatedJourneyIds` in `policyDecisionImpacts`. Do not invent a
-  decision or change `chosen`; report a missing material decision as a blocking repair issue.
+  decision or change `chosen`; report a missing consequential decision as a blocking repair issue.
 - Emit `impact` only when the selected choice creates a dead state/journey, leaves a required
   dependency without a provider, or causes an irreversible loss. Pure preference or naming choices
   have no impact entry: the warning icon must remain a useful signal, not a decoration on every decision.
@@ -67,15 +67,17 @@ user outcomes.
 
 - The runtime supplies a computed `stepKindHistogram` and `findings`. Treat these as facts; do not
   recalculate or invent another mechanical signal.
-- When `findings` contains `moduleWithoutDecide`, emit exactly one blocking issue whose `issueId` and
-  `category` are both `moduleWithoutDecide`. Phrase its question and choices in business language,
-  using the original module request and the journeys to identify whether an approval, rejection,
-  acceptance or other decision outcome is material. Set `relatedJourneyIds` to at least one existing
-  journey where that decision would belong. The default choice must describe the current draft's
-  no-decision behavior; the repair instruction may ask the generator to add a `decide` step where
-  justified or sustain that current choice.
+- `moduleWithoutDecide` (`decide == 0`) is a REGISTRAR. A module with no decide step is valid and
+  common (facts, postings, readings). Never emit a `moduleWithoutDecide` issue, never ask the
+  generator to add a `decide` step, and never treat the absence of a decision as a coverage gap.
+  The runtime already records it as a system decision.
+- Confirming a form, validating captured data or applying a system rule is not a missing `decide`.
+  A `decide` step exists only when the original request names a human choice between alternative
+  outcomes (approve/reject, accept/decline, select one of).
 - When the histogram has `decide >= 1` and that finding is absent, do not emit a
   `moduleWithoutDecide` issue.
+
+Examples are placeholders in English; write every human-facing value in the user's language (`userLanguage`).
 
 Return JSON only with this exact envelope:
 
@@ -87,26 +89,26 @@ Return JSON only with this exact envelope:
     "moduleName": "lowerCamelModule",
     "reviewRound": 1,
     "complete": false,
-    "summary": "Short judgment summary in the user's communication language",
+    "summary": "<summary in the user's language>",
     "policyDecisionImpacts": [
       {
-        "decisionId": "changeOrderDecisionMode",
-        "impact": "A proposal-and-approval alternative requires an explicit decision journey before the order takes effect.",
-        "relatedJourneyIds": ["manageProjectChangeOrder"]
+        "decisionId": "<decisionId>",
+        "impact": "<impact in the user's language>",
+        "relatedJourneyIds": ["<journeyId>"]
       }
     ],
     "issues": [
       {
-        "issueId": "clientCannotConsumeBillingSummary",
+        "issueId": "<issueId>",
         "severity": "blocking",
         "category": "missingRecipientJourney",
-        "sourceEvidence": "E1 requires a client billing summary, but E2 only hands it off from an internal actor.",
-        "finding": "The client has no journey for consulting the published summary.",
-        "repairInstruction": "Add a client journey that locates an associated project and inspects its published billing summary without exposing the full project.",
-        "question": "Should clients consume the published billing summary in this application?",
-        "alternatives": ["no, internal publication only", "yes, add client consumption"],
-        "defaultChoice": "no, internal publication only",
-        "relatedJourneyIds": ["manageProjectBilling"]
+        "sourceEvidence": "<evidence in the user's language>",
+        "finding": "<finding in the user's language>",
+        "repairInstruction": "<repair instruction in the user's language>",
+        "question": "<question in the user's language>",
+        "alternatives": ["<alternative in the user's language>", "<alternative in the user's language>"],
+        "defaultChoice": "<alternative in the user's language>",
+        "relatedJourneyIds": ["<journeyId>"]
       }
     ]
   }

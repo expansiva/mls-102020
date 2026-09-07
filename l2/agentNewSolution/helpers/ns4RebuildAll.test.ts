@@ -164,7 +164,7 @@ test('without a recoverable prompt, nothing is selected for deletion', () => {
   assert.equal(plan.ok, false);
   if (plan.ok) return;
   assert.deepEqual(plan.keys, []);
-  assert.match(plan.reason, /Nada foi apagado/);
+  assert.match(plan.reason, /Nothing was deleted/);
   assert.equal(recoverNs4RebuildAllPrompt({}).ok, false);
 });
 

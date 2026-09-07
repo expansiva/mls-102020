@@ -22,7 +22,17 @@ import {
 } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import { collectNs4DemotedJourneyIds } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import { analyzeNs4E2MechanicalCoverage } from '/_102020_/l2/agentNewSolution/steps/e2/coverageSignals.js';
-import { validateNs4E2PolicySelections, validateNs4E2Review } from '/_102020_/l2/agentNewSolution/steps/e2/gate.js';
+import {
+  NS4_E2_DECIDE_ON_READ_MODEL,
+  validateNs4E2PolicySelections,
+  validateNs4E2Review,
+} from '/_102020_/l2/agentNewSolution/steps/e2/gate.js';
+import {
+  applyNs4E2RegistrarDecisions,
+  NS4_E2_CONVERT_TO_ACT_WITH_RULE_CHOICE,
+  NS4_E2_KEEP_DECIDE_STEP_CHOICE,
+  NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID,
+} from '/_102020_/l2/agentNewSolution/steps/e2/coverageJudge.js';
 import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution/steps/e2/hookArgs.js';
 
 const reviewInput = {
@@ -314,4 +324,50 @@ test('a journey with a decide step is never demoted', () => {
   });
   const review = normalizeNs4E2Review(withDecision);
   assert.deepEqual(collectNs4DemotedJourneyIds(review), []);
+});
+
+test('a decide step on an entity no step writes is recorded as NS4_E2_DECIDE_ON_READ_MODEL', () => {
+  const ce04b = normalizeNs4E2Review(JSON.parse(readFileSync(
+    new URL('fixtures/controleEstoque2-e2-journeys-draft-v1.json', import.meta.url), 'utf8',
+  )));
+  const gate = validateNs4E2Review(ce04b);
+  const hits = gate.issues.filter(issue => issue.code === NS4_E2_DECIDE_ON_READ_MODEL);
+  assert.equal(hits.length, 1, gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  assert.equal(hits[0].severity, 'warning');
+  assert.equal(gate.ok, true);
+  assert.equal(hits[0].path, 'journeys[1].business.steps[1]');
+  assert.match(hits[0].message, /decideStockAvailability/);
+  const recorded = applyNs4E2RegistrarDecisions(ce04b);
+  const decisions = recorded.systemDecisions.filter(decision => decision.findingRef === NS4_E2_DECIDE_ON_READ_MODEL);
+  assert.equal(decisions.length, 1);
+  assert.equal(decisions[0].chosen, NS4_E2_KEEP_DECIDE_STEP_CHOICE);
+  assert.ok(decisions[0].alternatives.includes(NS4_E2_CONVERT_TO_ACT_WITH_RULE_CHOICE));
+  assert.equal(decisions[0].decidedBy, 'system');
+  assert.match(decisions[0].decisionId, /^demoteDecideToRule/);
+
+  const ce04 = normalizeNs4E2Review(JSON.parse(readFileSync(
+    new URL('fixtures/controleEstoque-e2-journeys-draft.json', import.meta.url), 'utf8',
+  )));
+  const ce04Gate = validateNs4E2Review(ce04);
+  assert.equal(ce04Gate.issues.filter(issue => issue.code === NS4_E2_DECIDE_ON_READ_MODEL).length, 0);
+  assert.equal(applyNs4E2RegistrarDecisions(ce04).systemDecisions.filter(decision => decision.findingRef === NS4_E2_DECIDE_ON_READ_MODEL).length, 0);
+});
+
+test('fixtures with a real decide step gain no NS4_E2_DECIDE_ON_READ_MODEL record', () => {
+  const petShop = normalizeNs4E2Review(petShopDistinctActors);
+  assert.equal(validateNs4E2Review(petShop).issues.filter(issue => issue.code === NS4_E2_DECIDE_ON_READ_MODEL).length, 0);
+  assert.equal(applyNs4E2RegistrarDecisions(petShop).systemDecisions.filter(decision =>
+    decision.findingRef === NS4_E2_DECIDE_ON_READ_MODEL || decision.decisionId === NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID
+  ).length, 0);
+
+  const lista = normalizeNs4E2Review(listaAssinaturaE2);
+  assert.equal(validateNs4E2Review(lista).issues.filter(issue => issue.code === NS4_E2_DECIDE_ON_READ_MODEL).length, 0);
+
+  const run44 = normalizeNs4E2Review(JSON.parse(readFileSync(
+    new URL('../e8/fixtures/run44-tier-model.json', import.meta.url), 'utf8',
+  )).journeys);
+  assert.equal(validateNs4E2Review(run44).issues.filter(issue => issue.code === NS4_E2_DECIDE_ON_READ_MODEL).length, 0);
+  assert.equal(applyNs4E2RegistrarDecisions(run44).systemDecisions.filter(decision =>
+    decision.findingRef === NS4_E2_DECIDE_ON_READ_MODEL || decision.decisionId === NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID
+  ).length, 0);
 });

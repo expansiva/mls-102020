@@ -10,6 +10,8 @@
 import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4E8HubCatalogue, Ns4E8HubComposition, Ns4E8ModelWorkspace, Ns4E8NavigationTarget } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
+import { ns4Text } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
+import type { Ns4Presentation } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 
 export interface Ns4E8CompositionIssue { code: string; path: string; message: string; }
 export interface Ns4E8CompositionResult { ok: boolean; issues: Ns4E8CompositionIssue[]; }
@@ -126,7 +128,7 @@ export function applyNs4HubComposition(workspace: Ns4E8ModelWorkspace, compositi
  * the deterministic score order wins and the choice is recorded.
  */
 export function resolveNs4HubCompositionFindings(
-  workspace: Ns4E8ModelWorkspace, issues: Ns4E8CompositionIssue[], portuguese: boolean,
+  workspace: Ns4E8ModelWorkspace, issues: Ns4E8CompositionIssue[], presentation?: Ns4Presentation,
 ): Ns4ResolutionResult<Ns4E8ModelWorkspace> {
   if (!issues.length) return { artifact: workspace, systemDecisions: [], unresolved: [] };
   return resolveNs4Findings(workspace, [{
@@ -134,14 +136,10 @@ export function resolveNs4HubCompositionFindings(
     decisionId: `hubComposition${upperCamel(workspace.workspaceId)}`,
     findingRef: `NS4_E8_HUB_COMPOSITION:${workspace.workspaceId}`,
     stage: 'e8-workspaces',
-    question: portuguese
-      ? `A composição proposta para o painel de ${workspace.title} não respeitou o catálogo; usar a ordem padrão?`
-      : `The proposed composition for the ${workspace.title} dashboard did not respect the catalogue; use the default order?`,
+    question: ns4Text(presentation, 'hub.composition.question', { entity: workspace.title }),
     deterministicChoice: 'keepDerivedComposition',
     alternatives: ['reviewDashboardComposition'],
-    changeHint: portuguese
-      ? `Revisar a ordem e os destaques do painel de ${workspace.title} no próximo round.`
-      : `Review the order and highlights of the ${workspace.title} dashboard in the next round.`,
+    changeHint: ns4Text(presentation, 'hub.composition.changeHint', { entity: workspace.title }),
     apply: artifact => applyNs4HubComposition(artifact, defaultNs4HubComposition(artifact)),
   }]);
 }

@@ -7,10 +7,20 @@ import {
 } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import { isNs4E2DemotionDecisionId } from '/_102020_/l2/agentNewSolution/steps/e2/coverageSignals.js';
 
+export const NS4_E2_DECIDE_ON_READ_MODEL = 'NS4_E2_DECIDE_ON_READ_MODEL' as const;
+
+export interface Ns4E2DecideOnReadModelStep {
+  journeyId: string;
+  stepId: string;
+  entity: string;
+  path: string;
+}
+
 export interface Ns4E2GateIssue {
   code: string;
   path: string;
   message: string;
+  severity?: 'warning';
 }
 
 export interface Ns4E2GateResult {
@@ -28,9 +38,37 @@ const STEP_KINDS = new Set(['locate', 'inspect', 'act', 'decide', 'handoff']);
  * derived downstream by helpers/ns4Context.ts from the step entity, the step kind, the journey
  * sequence and the approved ontology.
  */
+/**
+ * A decide step whose entity no act step in the module writes has no state of its own to
+ * transition — the E2 stand-in for a projection, which E4 is the stage that can confirm.
+ */
+export function ns4E2DecideOnReadModelSteps(review: Ns4E2Review): Ns4E2DecideOnReadModelStep[] {
+  const written = new Set<string>();
+  review.journeys.forEach(journey => {
+    journey.business.steps.forEach(step => {
+      if (step.kind === 'act' && step.entity) written.add(step.entity);
+    });
+  });
+  const hits: Ns4E2DecideOnReadModelStep[] = [];
+  review.journeys.forEach((journey, journeyPosition) => {
+    journey.business.steps.forEach((step, stepPosition) => {
+      if (step.kind !== 'decide' || !step.entity || written.has(step.entity)) return;
+      hits.push({
+        journeyId: journey.journeyId,
+        stepId: step.stepId,
+        entity: step.entity,
+        path: `journeys[${journeyPosition}].business.steps[${stepPosition}]`,
+      });
+    });
+  });
+  return hits;
+}
+
 export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
   const issues: Ns4E2GateIssue[] = [];
-  const add = (code: string, path: string, message: string) => issues.push({ code, path, message });
+  const add = (code: string, path: string, message: string, severity?: 'warning') => {
+    issues.push({ code, path, message, ...(severity ? { severity } : {}) });
+  };
 
   if (!ID_PATTERN.test(review.moduleName)) add('NS4_E2_MODULE_ID', 'moduleName', 'moduleName must be lower-camel identifier.');
   if (!review.journeys.length) add('NS4_E2_NO_JOURNEYS', 'journeys', 'At least one business journey is required.');
@@ -128,7 +166,16 @@ export function validateNs4E2Review(review: Ns4E2Review): Ns4E2GateResult {
     });
   });
 
-  return { ok: issues.length === 0, issues };
+  ns4E2DecideOnReadModelSteps(review).forEach(hit => {
+    add(
+      NS4_E2_DECIDE_ON_READ_MODEL,
+      hit.path,
+      `Decide step ${hit.journeyId}.${hit.stepId} operates on ${hit.entity}, which no act step in the module writes, so the record has no state of its own to transition.`,
+      'warning',
+    );
+  });
+
+  return { ok: issues.every(issue => issue.severity === 'warning'), issues };
 }
 
 /**

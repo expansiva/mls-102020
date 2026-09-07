@@ -22,16 +22,18 @@ Judge by what the actor of this hub does most: the record's own state and the de
 it come before reference lists; a related list the actor edits every day comes before one they read
 once a month. Keep labels short, concrete and in the user's language.
 
+Examples are placeholders in English; write every human-facing value in the user's language (`userLanguage`).
+
 Return exactly one JSON object (no markdown):
 
 {
   "type": "flexible",
   "result": {
-    "workspaceId": "projectHub",
-    "title": "Painel do projeto",
-    "tileOrder": ["pendingChangeOrder", "relatedWorkTask", "tileProjectCostSummary"],
-    "primaryActionIds": ["actionApproveChangeOrder"],
-    "labels": [{ "itemId": "relatedWorkTask", "label": "Tarefas" }],
-    "menuGroups": [{ "groupId": "execution", "label": "Execução", "itemIds": ["relatedWorkTask"] }]
+    "workspaceId": "<workspaceId>",
+    "title": "<localized title>",
+    "tileOrder": ["<itemId>", "<itemId>", "<itemId>"],
+    "primaryActionIds": ["<itemId>"],
+    "labels": [{ "itemId": "<itemId>", "label": "<label>" }],
+    "menuGroups": [{ "groupId": "<groupId>", "label": "<label>", "itemIds": ["<itemId>"] }]
   }
 }

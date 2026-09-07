@@ -9,13 +9,20 @@ import {
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import {
   applyNs4E2PolicyDecisionImpacts,
+  applyNs4E2RegistrarDecisions,
   formatNs4E2CoverageRepairFeedback,
   normalizeNs4E2CoverageVerdict,
+  NS4_E2_ADD_DECISION_STEP_CHOICE,
+  NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID,
+  NS4_E2_NO_DECISION_STEP_CHOICE,
   resolveNs4E2CoverageFindings,
   resolveNs4E2CoverageJudgeFailure,
   validateNs4E2CoverageVerdict,
 } from '/_102020_/l2/agentNewSolution/steps/e2/coverageJudge.js';
-import { analyzeNs4E2MechanicalCoverage } from '/_102020_/l2/agentNewSolution/steps/e2/coverageSignals.js';
+import {
+  analyzeNs4E2MechanicalCoverage,
+  NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL,
+} from '/_102020_/l2/agentNewSolution/steps/e2/coverageSignals.js';
 import { normalizeNs4E2Review } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 
 test('E2 creates a bounded automated coverage-judge step', () => {
@@ -132,7 +139,14 @@ test('E2 coverage judge rejects fail-open and produces actionable repair feedbac
 
 test('run 34 remnant becomes one non-blocking system decision with the generated default', () => {
   const review = normalizeNs4E2Review({
-    moduleName: 'buildFlowFsm34', journeys: [], features: [],
+    moduleName: 'buildFlowFsm34', journeys: [{
+      journeyId: 'approveOrder', policyDecisions: [],
+      business: {
+        actorRef: 'manager', title: 'Approve', goal: 'Decide.', entry: { mode: 'coldStart' },
+        steps: [{ stepId: 'decideOrder', kind: 'decide', title: 'Decide.', description: 'Decided.', featureRefs: [] }],
+        outcome: { statement: 'Decided.', evidence: ['Visible.'] }, useRules: [],
+      },
+    }], features: [],
   });
   const verdict = normalizeNs4E2CoverageVerdict(JSON.parse(readFileSync(
     new URL('fixtures/run34-coverage-remnant.json', import.meta.url), 'utf8',
@@ -143,7 +157,9 @@ test('run 34 remnant becomes one non-blocking system decision with the generated
   assert.equal(resolved.systemDecisions[0]?.chosen, 'não, apenas no faturamento');
   assert.equal(resolved.systemDecisions[0]?.decidedBy, 'system');
   const widgetSource = readFileSync(new URL('../../widgets/widgetNs4Journeys.ts', import.meta.url), 'utf8');
-  assert.match(widgetSource, /Decisões assumidas/);
+  const ptPhrases = JSON.parse(readFileSync(new URL('../../helpers/fixtures/ns4-phrases-pt.json', import.meta.url), 'utf8')) as Record<string, string>;
+  assert.equal(ptPhrases['widget.journeys.assumedDecisions'], 'Decisões assumidas');
+  assert.match(widgetSource, /assumedDecisions/);
   assert.match(widgetSource, /this\.value\.systemDecisions\.length/);
 });
 
@@ -175,7 +191,7 @@ test('E2 coverage judge is the only stage that adds policy impacts', () => {
   assert.deepEqual(enriched.journeys[0].policyDecisions[0].relatedJourneyIds, ['manageChanges']);
 });
 
-test('S1 requires one business issue and becomes a visible policy choice after the single repair', () => {
+test('a module histogram with decide 0 yields a system decision and no blocking judge issue', () => {
   const review = normalizeNs4E2Review({
     moduleName: 'buildFlowFsm38', userLanguage: 'pt-BR', journeys: [{
       journeyId: 'manageProjectChangeOrder', policyDecisions: [],
@@ -187,36 +203,40 @@ test('S1 requires one business issue and becomes a visible policy choice after t
     }], features: [],
   });
   const signal = analyzeNs4E2MechanicalCoverage(review);
+  assert.deepEqual(signal.findings, [{ signalId: NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL, severity: 'registrar' }]);
   const verdict = normalizeNs4E2CoverageVerdict({
-    moduleName: 'buildFlowFsm38', reviewRound: 1, complete: false,
-    summary: 'A política de aprovação ainda não está explícita.', policyDecisionImpacts: [],
-    issues: [{
-      issueId: 'moduleWithoutDecide', severity: 'blocking', category: 'moduleWithoutDecide',
-      sourceEvidence: 'O módulo inteiro tem decide=0 e contém uma jornada de mudança.',
-      finding: 'Mudanças são registradas sem aprovação explícita.',
-      repairInstruction: 'Adicionar decisão de aprovação ou sustentar o registro direto.',
-      relatedJourneyIds: ['manageProjectChangeOrder'],
-      question: 'Ordens de mudança precisam de aprovação antes de afetar custo e faturamento?',
-      alternatives: ['Não — registradas diretamente (atual)', 'Sim — aprovação do gestor', 'Sim — aprovação do cliente'],
-      defaultChoice: 'Não — registradas diretamente (atual)',
-    }],
+    moduleName: 'buildFlowFsm38', reviewRound: 1, complete: true,
+    summary: 'Coverage is complete without a decide step.', policyDecisionImpacts: [], issues: [],
   });
   assert.deepEqual(validateNs4E2CoverageVerdict(verdict, 'buildFlowFsm38', 1, signal, review), { ok: true, errors: [] });
-  const resolved = resolveNs4E2CoverageFindings(review, verdict);
-  const decision = resolved.journeys[0].policyDecisions[0];
-  assert.equal(decision.decisionId, 'moduleWithoutDecidePolicy');
-  assert.equal(decision.chosen, 'Não — registradas diretamente (atual)');
-  assert.deepEqual(decision.alternatives, ['Sim — aprovação do gestor', 'Sim — aprovação do cliente']);
-  assert.equal(resolved.systemDecisions.length, 0);
+  const resolved = applyNs4E2RegistrarDecisions(review);
+  assert.equal(resolved.journeys[0].policyDecisions.filter(item => item.decisionId === NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID).length, 0);
+  assert.equal(resolved.systemDecisions.length, 1);
+  assert.equal(resolved.systemDecisions[0].decisionId, NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID);
+  assert.equal(resolved.systemDecisions[0].chosen, NS4_E2_NO_DECISION_STEP_CHOICE);
+  assert.ok(resolved.systemDecisions[0].alternatives.includes(NS4_E2_ADD_DECISION_STEP_CHOICE));
+  assert.equal(resolved.systemDecisions[0].decidedBy, 'system');
+  assert.equal(resolved.systemDecisions[0].findingRef, NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL);
+  assert.doesNotMatch(resolved.systemDecisions[0].question, /[À-ÿ]/);
 });
 
-test('S1 cannot be omitted by the judge or invented for a module that already decides', () => {
+test('the judge gate accepts a verdict without a moduleWithoutDecide issue when the signal is active', () => {
   const withoutDecide = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', journeys: [], features: [] });
   const active = analyzeNs4E2MechanicalCoverage(withoutDecide);
   const omitted = normalizeNs4E2CoverageVerdict({
-    moduleName: 'buildFlowFsm', reviewRound: 1, complete: true, summary: 'Completo.', issues: [], policyDecisionImpacts: [],
+    moduleName: 'buildFlowFsm', reviewRound: 1, complete: true, summary: 'Complete.', issues: [], policyDecisionImpacts: [],
   });
-  assert.equal(validateNs4E2CoverageVerdict(omitted, 'buildFlowFsm', 1, active, withoutDecide).ok, false);
+  assert.deepEqual(validateNs4E2CoverageVerdict(omitted, 'buildFlowFsm', 1, active, withoutDecide), { ok: true, errors: [] });
+
+  const leftover = normalizeNs4E2CoverageVerdict({
+    moduleName: 'buildFlowFsm', reviewRound: 1, complete: false, summary: 'Leftover retired category.', policyDecisionImpacts: [],
+    issues: [{
+      issueId: 'moduleWithoutDecide', severity: 'blocking', category: 'moduleWithoutDecide',
+      sourceEvidence: 'x', finding: 'x', repairInstruction: 'x', relatedJourneyIds: [],
+      question: 'x', alternatives: ['a', 'b'], defaultChoice: 'a',
+    }],
+  });
+  assert.deepEqual(validateNs4E2CoverageVerdict(leftover, 'buildFlowFsm', 1, active, withoutDecide), { ok: true, errors: [] });
 
   const healthy = normalizeNs4E2Review({
     moduleName: 'buildFlowFsm', journeys: [{ journeyId: 'approveOrder', policyDecisions: [], business: {
@@ -232,10 +252,13 @@ test('S1 cannot be omitted by the judge or invented for a module that already de
   assert.equal(validateNs4E2CoverageVerdict(invented, 'buildFlowFsm', 1, analyzeNs4E2MechanicalCoverage(healthy), healthy).ok, false);
 });
 
-test('judge exhaustion records that decision coverage was not evaluated instead of failing', () => {
+test('judge exhaustion records the same moduleWithoutDecidePolicy system decision', () => {
   const review = normalizeNs4E2Review({ moduleName: 'buildFlowFsm', userLanguage: 'pt-BR', journeys: [], features: [] });
   const resolved = resolveNs4E2CoverageJudgeFailure(review);
   assert.equal(resolved.systemDecisions.length, 1);
-  assert.match(resolved.systemDecisions[0].findingRef, /moduleWithoutDecide\.judgeUnavailable/);
-  assert.match(resolved.systemDecisions[0].chosen, /Não avaliada/);
+  assert.equal(resolved.systemDecisions[0].decisionId, NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID);
+  assert.equal(resolved.systemDecisions[0].findingRef, NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL);
+  assert.equal(resolved.systemDecisions[0].chosen, NS4_E2_NO_DECISION_STEP_CHOICE);
+  assert.equal(resolved.systemDecisions[0].decidedBy, 'system');
+  assert.doesNotMatch(JSON.stringify(resolved.systemDecisions[0]), /[À-ÿ]/);
 });

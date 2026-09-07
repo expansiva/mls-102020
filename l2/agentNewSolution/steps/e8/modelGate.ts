@@ -11,7 +11,7 @@ import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution/helpers/ns4Res
 import type { Ns4ResolutionFinding, Ns4ResolutionResult } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import { collectNs4DemotedJourneyIds } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
-import { isNs4OwnerHandleField, type Ns4E8BffCall, type Ns4E8Model, type Ns4E8ModelWorkspace, type Ns4E8Operation } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
+import { isNs4OwnerHandleInput, type Ns4E8BffCall, type Ns4E8Model, type Ns4E8ModelWorkspace, type Ns4E8Operation } from '/_102020_/l2/agentNewSolution/steps/e8/model.js';
 
 /**
  * How a broken organism reference can be repaired without an LLM. The gate DETECTS as strictly as
@@ -27,11 +27,13 @@ export interface Ns4E8ModelResult { ok: boolean; issues: Ns4E8ModelIssue[]; }
 
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
 
-/** Owner handle (`ownerId` / `ownerUserId`) or prose that names the authenticated actor. */
-function userInputLooksLikeSession(input: Ns4E8Model['operations'][number]['inputs'][number]): boolean {
+/** Owner handle by form (`party: person` + E3 `own`), never by field name or prose. */
+function userInputLooksLikeSession(
+  input: Ns4E8Model['operations'][number]['inputs'][number],
+  sources: Ns4E8Sources,
+): boolean {
   if (input.source !== 'userInput') return false;
-  if (isNs4OwnerHandleField(input.fieldRef.fieldId)) return true;
-  return /autenticad|authenticated|logged[- ]in|pessoa autenticada|actor session|usu[aá]rio autenticado/i.test(input.description);
+  return isNs4OwnerHandleInput(input, sources);
 }
 
 function isLandingWithoutPriorSelection(
@@ -96,10 +98,10 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
         add('NS4_E8_INPUT_FIELD', `${path}.inputs.${input.inputId}`, `Input ${input.inputId} has no resolvable ontology field (${input.fieldRef.entityId}.${input.fieldRef.fieldId}).`);
       }
       // Registrar, never A: synthesis should have set actorSession. A leftover userInput whose
-      // fieldRef/description still says "authenticated actor" is evidence, not a broken compile.
-      if (userInputLooksLikeSession(input)) {
+      // fieldRef is a party:person handle under an own grant is evidence, not a broken compile.
+      if (userInputLooksLikeSession(input, sources)) {
         add('NS4_E8_USERINPUT_FROM_SESSION', `${path}.inputs.${input.inputId}`,
-          `Input ${input.inputId} is userInput but fieldRef/description say it comes from the authenticated actor; it should be actorSession.`,
+          `Input ${input.inputId} is userInput but the field points at a party:person under an own grant; it should be actorSession.`,
           'warning');
       }
     });
@@ -238,7 +240,7 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
           || input.fieldRef.entityId;
         if (pickerEntities.has(parent) || parent === workspace.entity) return;
         add('NS4_E8_PICKER_SOURCE', `${path}.bffCalls.${call.bffId}.${input.inputId}`,
-          `A tela ${workspace.title} escolhe ${parent} sem uma consulta que o liste; nesta versão o registro vem de fora da tela. Revisar?`, 'warning');
+          `The ${workspace.title} screen chooses ${parent} without a query that lists it; in this version the record comes from outside the screen. Review?`, 'warning');
       });
     });
 
@@ -277,7 +279,7 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
         });
         if (feeder) {
           add('NS4_E8_COMMAND_KEY_AFTER_COMMAND', `${path}.bffCalls.${call.bffId}.${input.inputId}`,
-            `A tela ${workspace.workspaceId} só opera ${call.bffId} depois de ${feeder.bffId}, que produz ${keyRef}.`,
+            `The ${workspace.workspaceId} screen only operates ${call.bffId} after ${feeder.bffId}, which produces ${keyRef}.`,
             'warning');
           return;
         }
@@ -407,14 +409,14 @@ export function resolveNs4E8ModelFindings(model: Ns4E8Model, issues: Ns4E8ModelI
     question: issue.message,
     defaultChoice: 'keepDerivedModel',
     alternatives: ['reviewWorkspaceModel'],
-    changeHint: `Revisar ${issue.path} no modelo de workspaces do E8.`,
+    changeHint: `Review ${issue.path} in the E8 workspace model.`,
   } : {
     classification: 'A' as const,
     findingRef: `${issue.code}:${issue.path}`,
     stage: 'e8-workspaces',
     question: issue.message,
     alternatives: [],
-    changeHint: `Corrigir ${issue.path} no modelo de workspaces do E8.`,
+    changeHint: `Fix ${issue.path} in the E8 workspace model.`,
   }));
 }
 
@@ -423,25 +425,25 @@ function resolutionFinding(issue: Ns4E8ModelIssue, resolution: Ns4E8ModelResolut
   if (resolution.kind === 'wireLocalQuery') return {
     classification: 'C', decisionId: decisionId('e8WireLocalQuery', anchor),
     findingRef: `${issue.code}:${anchor}`, stage: 'e8-workspaces',
-    question: `O painel de ${resolution.entityRef} passa a ler a consulta na própria tela, em vez de outra tela.`,
+    question: `The ${resolution.entityRef} panel now reads the query on its own screen instead of another screen.`,
     deterministicChoice: 'wireLocalQuery', alternatives: ['reviewDashboardComposition'],
-    changeHint: `Revisar o painel de ${resolution.entityRef} em ${resolution.workspaceId}.`,
+    changeHint: `Review the ${resolution.entityRef} panel on ${resolution.workspaceId}.`,
     apply: artifact => wireLocalQuery(artifact, resolution),
   };
   if (resolution.kind === 'moveActionToNavigation') return {
     classification: 'C', decisionId: decisionId('e8ActionToNavigation', anchor),
     findingRef: `${issue.code}:${anchor}`, stage: 'e8-workspaces',
-    question: `A ação ${resolution.label} abre a tela do fluxo, não um comando embutido.`,
+    question: `The ${resolution.label} action opens the journey screen, not an embedded command.`,
     deterministicChoice: 'openJourneyScreen', alternatives: ['embedCommandInPage'],
-    changeHint: `A tela ${resolution.label} é alcançada a partir de ${resolution.workspaceId}.`,
+    changeHint: `The ${resolution.label} screen is reached from ${resolution.workspaceId}.`,
     apply: artifact => moveActionToNavigation(artifact, resolution),
   };
   return {
     classification: 'C', decisionId: decisionId('e8DropOrganism', anchor),
     findingRef: `${issue.code}:${anchor}`, stage: 'e8-workspaces',
-    question: `O painel ${resolution.reference} não pôde ser montado nesta versão e sai da tela ${resolution.workspaceId}.`,
+    question: `The ${resolution.reference} panel could not be built in this version and leaves the ${resolution.workspaceId} screen.`,
     deterministicChoice: 'dropUnbuildablePanel', alternatives: ['reviewDashboardComposition'],
-    changeHint: `Revisar o que ${resolution.reference} deveria mostrar em ${resolution.workspaceId}.`,
+    changeHint: `Review what ${resolution.reference} should show on ${resolution.workspaceId}.`,
     apply: artifact => dropOrganism(artifact, resolution),
   };
 }

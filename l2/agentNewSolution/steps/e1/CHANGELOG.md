@@ -1,5 +1,21 @@
 # E1 changelog
 
+- 2026-09-07: E1-E6 clarification widgets read chrome from `presentation.phrases`
+  (`widget.<name>.*`). The intake widget receives `plan.presentation` at mount.
+
+- 2026-09-07: The root planner translates `NS4_PHRASES` into `presentation.phrases` in the same
+  call that localizes `stepTitles`. The English catalogue is injected by code, not copied into
+  `promptPlan.md`. Missing, overlong or placeholder-stripped values fall back to English.
+
+- 2026-09-07: Pre-planner `userLanguage` uses `ns4LanguageMentioned` over every two-letter tag
+  `Intl.DisplayNames` names (not a pt/es regex). No match ⇒ `en`. `/rebuild` detection is the flag
+  and the word `rebuild` only; `regenerar` / `regerar` / `reconstruir` are not commands.
+
+- 2026-09-06: Under `/fast` the planner's language answer is a proposal, never a user citation.
+  Provenance is `sourcePrompt` only (`ns4LanguageMentioned`); uncited tags are discarded with
+  `NS4_E1_LANGUAGES_PROVENANCE` and the warning is copied onto `skippedDefaults` / the run
+  `languages-provenance` degradation. The planner example is a placeholder, not `pt-BR, en, es`.
+
 - 2026-08-29: `/rebuild all` recovers the stored prompt, wipes that module's l4/l1/l2 (and its l5
   folder) through the same `deleteFile` channel as a total `/rebuild`, strips the module from
   project.json/config.json, and stamps `rebuildAll` counts on the new pipeline. Without a

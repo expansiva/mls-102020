@@ -9,6 +9,7 @@ import { Ns4E3Review } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js
 import {
   applyNs4E4RelationshipBindings,
   assembleNs4E4Review,
+  Ns4E4DerivationFieldIdChange,
   Ns4E4EntityDraft,
   Ns4E4PlanDraft,
   Ns4E4RelationshipBindingsDraft,
@@ -30,6 +31,7 @@ export interface Ns4E4GateOptions {
 }
 
 /** Suffixes of an on-demand artifact. `ExportItem` is the composition-only companion of `Export`. */
+// Legacy lexical trigger; superseded by NS4_E4_CORE_READ_ONLY once the bench proves recall — see CHANGELOG 2026-09-06.
 const DERIVED_ARTIFACT_ID = /(?:Export|Report|Receipt|Snapshot|Csv|File)(?:Item)?$/u;
 const DERIVED_HISTORY = /hist[oó]rico|auditoria|versionamento|reprocesso|\baudit\b|\bhistory\b|\bversioning\b|\breprocess(?:ing)?\b/iu;
 const DERIVED_ARTIFACT_WORD = /exporta[cç][aã]o|\bexport\b|relat[oó]rio|\breport\b|recibo|\breceipt\b|snapshot|\bcsv\b|\bfile\b/iu;
@@ -78,6 +80,7 @@ export function validateNs4E4Review(
       }
     }
   }
+  const { readBy, writtenBy } = journeyReadWrite(journeys);
 
   review.entities.forEach((entity, entityIndex) => {
     const path = `entities[${entityIndex}]`;
@@ -210,6 +213,20 @@ export function validateNs4E4Review(
         `${path}.storage.target`,
         `${entity.entityId} is an on-demand artifact (export/report/file/receipt/snapshot) stored as moduleDatabase. Use storage.target 'derived' (kind projection), or declare history/audit/versioning/reprocessing of that artifact in the request. An entity that only composes another derived artifact must not exist.`,
       );
+    }
+    if (entity.kind === 'core'
+      && entity.storage.target === 'moduleDatabase'
+      && entity.cardinality !== 'singleton') {
+      const reads = readBy.get(entity.entityId) || [];
+      const writes = writtenBy.get(entity.entityId) || [];
+      if (reads.length > 0 && writes.length === 0) {
+        add(
+          'NS4_E4_CORE_READ_ONLY',
+          `${path}.storage.target`,
+          `${entity.entityId} is a core moduleDatabase entity read by ${reads.join(', ')}; no journey writes it: derived projection, or master data?`,
+          'warning',
+        );
+      }
     }
     const expectedScope = expectedTarget === 'mdm' ? 'organization'
       : expectedTarget === 'moduleDatabase' ? 'module'
@@ -349,13 +366,8 @@ export function validateNs4E4Review(
     relatedEntities.add(relationship.toEntity);
   });
   if (review.entities.length > 1) {
-    review.entities.filter(entity => entity.kind !== 'valueObject' && entity.kind !== 'projection').forEach(entity => {
+    review.entities.filter(entity => entity.kind !== 'valueObject').forEach(entity => {
       if (!relatedEntities.has(entity.entityId)) add('NS4_E4_ENTITY_ORPHAN', 'relationships', `Entity ${entity.entityId} is disconnected from the ontology graph.`);
-    });
-    review.entities.filter(entity => entity.kind === 'projection' && entity.fields.some(field => field.fieldId === 'projectId')).forEach(entity => {
-      if (entityIds.has('Project') && !relatedEntities.has(entity.entityId)) {
-        add('NS4_E4_PROJECT_PROJECTION_ORPHAN', 'relationships', `Project-related projection ${entity.entityId} must declare its relationship to Project.`);
-      }
     });
   }
 
@@ -538,6 +550,110 @@ function ownerRelationMessage(entityId: string, ownershipRules: string[], partyI
     return `${entityId} has ownership rule(s) \`${rules}\` but no person or organization entity is declared in this ontology.`;
   }
   return `${entityId} has ownership rule(s) \`${rules}\` but no path to a declared party entity (\`${partyIds.join(', ')}\`). Give it either a relationship realized as \`mdmRelationship\` to a party-reachable entity, or a field that realizes a \`fieldReference\` to one — without either, the generated usecase cannot verify ownership.`;
+}
+
+const DERIVATION_ISSUE_PREFIX = 'NS4_E4_DERIVATION_';
+
+export function ns4E4BlockingDerivationIssues(issues: Ns4E4GateIssue[]): Ns4E4GateIssue[] {
+  return issues.filter(issue => issue.code.startsWith(DERIVATION_ISSUE_PREFIX) && issue.severity !== 'warning');
+}
+
+export function ns4E4NonDerivationBlockingIssues(issues: Ns4E4GateIssue[]): Ns4E4GateIssue[] {
+  return issues.filter(issue => !issue.code.startsWith(DERIVATION_ISSUE_PREFIX) && issue.severity !== 'warning');
+}
+
+export type Ns4E4FinalizeDispatch =
+  | { action: 'pass' }
+  | { action: 'bindDerivations'; issues: Ns4E4GateIssue[] }
+  | { action: 'planRepair' }
+  | { action: 'fail' };
+
+export function ns4E4FinalizeDispatch(
+  issues: Ns4E4GateIssue[],
+  derivationRepairAttempt: number,
+  planRepairAttempt: number,
+  maxDerivationBindingRepairs = 1,
+  maxPlanRepairs = 1,
+): Ns4E4FinalizeDispatch {
+  const derivationIssues = ns4E4BlockingDerivationIssues(issues);
+  const other = ns4E4NonDerivationBlockingIssues(issues);
+  if (!derivationIssues.length && !other.length) return { action: 'pass' };
+  if (derivationIssues.length && !other.length && derivationRepairAttempt < maxDerivationBindingRepairs) {
+    return { action: 'bindDerivations', issues: derivationIssues };
+  }
+  if (planRepairAttempt < maxPlanRepairs) return { action: 'planRepair' };
+  return { action: 'fail' };
+}
+
+export function ns4E4EntityIdFromIssuePath(review: Ns4E4Review, path: string): string {
+  const match = /^entities\[(\d+)\]/u.exec(path);
+  return match ? review.entities[Number(match[1])]?.entityId || '' : '';
+}
+
+/**
+ * Records NS4_E4_CORE_READ_ONLY warnings as Type B system decisions (`keepCore`).
+ * Does not change the ontology and does not block the run.
+ */
+export function applyNs4E4CoreReadOnlyDecisions(review: Ns4E4Review, issues: Ns4E4GateIssue[]): Ns4E4Review {
+  const findings = issues.filter(issue => issue.code === 'NS4_E4_CORE_READ_ONLY');
+  if (!findings.length) return review;
+  const byId = new Map((review.systemDecisions || []).map(decision => [decision.decisionId, decision]));
+  for (const issue of findings) {
+    const entityId = ns4E4EntityIdFromIssuePath(review, issue.path);
+    if (!entityId) continue;
+    const decisionId = `coreReadOnly${entityId}`;
+    byId.set(decisionId, {
+      decisionId,
+      stage: 'e4',
+      question: issue.message,
+      chosen: 'keepCore',
+      alternatives: ['projection', 'masterData'],
+      decidedBy: 'system',
+      findingRef: `NS4_E4_CORE_READ_ONLY:${entityId}`,
+      changeHint: `Keep ${entityId} as core, or remodel it as a derived projection (kind projection + derivation) or as master data that a journey maintains.`,
+    });
+  }
+  return { ...review, systemDecisions: [...byId.values()] };
+}
+
+function journeyReadWrite(journeys?: Ns4E2Review): { readBy: Map<string, string[]>; writtenBy: Map<string, string[]> } {
+  const readBy = new Map<string, string[]>();
+  const writtenBy = new Map<string, string[]>();
+  if (!journeys) return { readBy, writtenBy };
+  const addRef = (map: Map<string, string[]>, entityId: string, ref: string) => {
+    const list = map.get(entityId);
+    if (list) list.push(ref);
+    else map.set(entityId, [ref]);
+  };
+  for (const journey of journeys.journeys) {
+    for (const step of journey.business.steps) {
+      if (!step.entity) continue;
+      const ref = `${journey.journeyId}.${step.stepId}`;
+      if (step.kind === 'inspect' || step.kind === 'locate') addRef(readBy, step.entity, ref);
+      if (step.kind === 'act' || step.kind === 'decide') addRef(writtenBy, step.entity, ref);
+    }
+  }
+  return { readBy, writtenBy };
+}
+
+/**
+ * OUTPUT_FIELD findings on projections whose repaired derivation changed an aggregate fieldId.
+ * Empty means fail the run: the entity-repair budget is spent, or the field list did not change.
+ */
+export function ns4E4DerivationOutputEscalation(
+  review: Ns4E4Review,
+  issues: Ns4E4GateIssue[],
+  fieldIdChanges: Ns4E4DerivationFieldIdChange[],
+  entityRepairRound: number,
+  maxEntityRepairRounds = 1,
+): Ns4E4EntityFeedback[] {
+  if (entityRepairRound >= maxEntityRepairRounds) return [];
+  const changed = new Set(fieldIdChanges.map(item => item.entityId));
+  return issues.flatMap(issue => {
+    if (issue.code !== 'NS4_E4_DERIVATION_OUTPUT_FIELD') return [];
+    const entityId = ns4E4EntityIdFromIssuePath(review, issue.path);
+    return entityId && changed.has(entityId) ? [{ entityId, feedback: issue.message }] : [];
+  });
 }
 
 /**

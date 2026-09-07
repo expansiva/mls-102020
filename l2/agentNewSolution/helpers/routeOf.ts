@@ -1,5 +1,7 @@
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import type { Ns4E8Edge, Ns4WorkspaceContext } from '/_102020_/l2/agentNewSolution/steps/e8/contracts.js';
+import { ns4Text } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
+import type { Ns4Presentation } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 
 /**
  * routeOf outlived the workspace model that used to feed it: the classic L4 format carries a call
@@ -41,6 +43,7 @@ export function routeOf(
   workspace: Ns4RouteWorkspace,
   scenario: Ns4WorkspaceScenario | undefined,
   graph: { workspaces: Ns4RouteWorkspace[]; edges: Ns4E8Edge[]; useCases: Ns4RouteUseCase[] },
+  presentation?: Ns4Presentation,
 ): Ns4RouteProjection {
   const moduleRoot = `/${lowerCamel(moduleName)}`;
   const hubs = graph.workspaces.filter(item => item.kind === 'hub').sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
@@ -77,7 +80,7 @@ export function routeOf(
     return projection(`${scenarioBase}/:${idField(target)}`, [...workspaceContextIds, target.contextId],
       scenario.selectionContexts.filter(item => item.contextId !== target.contextId).map(item => item.contextId), []);
   }
-  const decision = scenario.kind === 'collection' || scenario.kind === 'record' ? [] : [ambiguousTargetDecision(workspace, scenario, targetCandidates.length)];
+  const decision = scenario.kind === 'collection' || scenario.kind === 'record' ? [] : [ambiguousTargetDecision(workspace, scenario, targetCandidates.length, presentation)];
   return projection(scenarioBase, workspaceContextIds, scenario.selectionContexts.map(item => item.contextId), decision);
 }
 
@@ -97,16 +100,18 @@ function hubAnchor(workspace: Ns4RouteWorkspace): Ns4WorkspaceContext | undefine
       || left.contextId.localeCompare(right.contextId))[0];
 }
 
-function ambiguousTargetDecision(workspace: Ns4RouteWorkspace, scenario: Ns4WorkspaceScenario, count: number): Ns4SystemDecision {
+function ambiguousTargetDecision(
+  workspace: Ns4RouteWorkspace, scenario: Ns4WorkspaceScenario, count: number, presentation?: Ns4Presentation,
+): Ns4SystemDecision {
   return {
     decisionId: `e8RouteTarget${upperCamel(workspace.workspaceId)}${upperCamel(scenario.scenarioId)}`,
     stage: 'e8',
-    question: `Qual registro a tela ${scenario.title} deve abrir diretamente?`,
+    question: ns4Text(presentation, 'route.ambiguous.question', { title: scenario.title }),
     chosen: 'openWithoutDirectRecordLink',
     alternatives: ['defineUniqueScenarioTarget'],
     decidedBy: 'system',
     findingRef: `NS4_ROUTE_TARGET:${workspace.workspaceId}:${scenario.scenarioId}:${count}`,
-    changeHint: `A tela ${scenario.title} abre sem link direto de registro nesta versão; defina um único contexto-alvo para habilitá-lo.`,
+    changeHint: ns4Text(presentation, 'route.ambiguous.changeHint', { title: scenario.title }),
   };
 }
 

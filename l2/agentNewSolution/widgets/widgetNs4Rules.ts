@@ -3,12 +3,14 @@
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import { ns4WidgetLabels, type Ns4PhraseHolder } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import { Ns4E5Review, Ns4E5ReviewEvent, Ns4RuleDefinition } from '/_102020_/l2/agentNewSolution/steps/e5/contracts.js';
 import { Ns4ClarificationAction, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
 
 @customElement('widget-ns4-rules-102020')
 export class WidgetNs4Rules102020 extends StateLitElement implements Ns4ClarificationWidgetApi {
   @property({ type: Object }) value: Ns4E5Review | null = null;
+  @property({ type: Object }) presentation: Ns4PhraseHolder | undefined;
   @property({ type: Boolean }) readonly = false;
   @property({ type: String }) msgError = '';
   @property({ type: String }) msgOk = '';
@@ -21,40 +23,7 @@ export class WidgetNs4Rules102020 extends StateLitElement implements Ns4Clarific
   private cancelOrigin: HTMLElement | null = null;
 
   private text() {
-    const language = this.value?.userLanguage?.toLowerCase() || 'en';
-    if (language.startsWith('pt')) return {
-      step: '👤 Etapa 5 de 6 — Regras de negócio', review: 'Revisão', rules: 'regras', search: 'Buscar por ID ou descrição',
-      noRule: 'Nenhuma regra encontrada.', adjustment: 'O que deve mudar?',
-      placeholder: 'Exemplo: altere a regra clientAvailable para permitir somente um cliente ativo por projeto.',
-      request: 'Gerar nova proposta', approve: 'Aprovar regras', cancel: 'Cancelar execução',
-      adjustmentRequired: 'Descreva a alteração necessária antes de gerar outra proposta.',
-      processingApproval: 'Validando regras…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…',
-      revise: 'Revise os itens abaixo', cancelTitle: 'Cancelar esta execução?',
-      cancelText: 'O processamento será encerrado. Os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
-      hint: 'Cada regra permanente contém somente um ID estável e uma descrição de negócio.', edit: 'Clique para editar a descrição',
-    };
-    if (language.startsWith('es')) return {
-      step: '👤 Paso 5 de 6 — Reglas de negocio', review: 'Revisión', rules: 'reglas', search: 'Buscar por ID o descripción',
-      noRule: 'No se encontraron reglas.', adjustment: '¿Qué debe cambiar?',
-      placeholder: 'Ejemplo: cambie la regla clientAvailable para permitir solo un cliente activo por proyecto.',
-      request: 'Generar otra propuesta', approve: 'Aprobar reglas', cancel: 'Cancelar ejecución',
-      adjustmentRequired: 'Describa el cambio antes de generar otra propuesta.',
-      processingApproval: 'Validando reglas…', processingChanges: 'Preparando otra revisión…', processingCancel: 'Cancelando ejecución…',
-      revise: 'Revise los elementos siguientes', cancelTitle: '¿Cancelar esta ejecución?',
-      cancelText: 'El procesamiento terminará. Los artefactos aprobados serán preservados.', keepWorking: 'Seguir trabajando',
-      hint: 'Cada regla permanente contiene solo un ID estable y una descripción de negocio.', edit: 'Haga clic para editar la descripción',
-    };
-    return {
-      step: '👤 Step 5 of 6 — Business rules', review: 'Review', rules: 'rules', search: 'Search by ID or description',
-      noRule: 'No rules found.', adjustment: 'What should change?',
-      placeholder: 'Example: change clientAvailable to allow only one active client per project.',
-      request: 'Generate another proposal', approve: 'Approve rules', cancel: 'Cancel execution',
-      adjustmentRequired: 'Describe the required change before generating another proposal.',
-      processingApproval: 'Validating rules…', processingChanges: 'Preparing another review…', processingCancel: 'Cancelling execution…',
-      revise: 'Review the items below', cancelTitle: 'Cancel this execution?',
-      cancelText: 'Processing will end. Approved artifacts will be preserved.', keepWorking: 'Keep working',
-      hint: 'Each permanent rule contains only a stable ID and one business description.', edit: 'Click to edit the description',
-    };
+    return ns4WidgetLabels(this.presentation, 'rules');
   }
 
   setFeedback(feedback: Ns4ClarificationFeedback | null): void {

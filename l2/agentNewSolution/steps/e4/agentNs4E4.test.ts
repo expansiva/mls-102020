@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  createNs4E4DerivationBindingStep,
   createNs4E4FinalizeStep,
   createNs4E4RelationshipBindingStep,
   createNs4E4RepairStep,
@@ -27,6 +28,7 @@ import {
 import { normalizeNs4E3Review } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
 import {
   assembleNs4E4Review,
+  applyNs4E4DerivationBindings,
   applyNs4E4RelationshipBindings,
   buildNs4OntologyArtifacts,
   humanizeNs4EnumCode,
@@ -37,12 +39,17 @@ import {
   normalizeNs4E4Review,
 } from '/_102020_/l2/agentNewSolution/steps/e4/contracts.js';
 import {
+  applyNs4E4CoreReadOnlyDecisions,
   ns4E4BindingOwnerEscalation,
+  ns4E4BlockingDerivationIssues,
+  ns4E4EntityIdFromIssuePath,
+  ns4E4FinalizeDispatch,
+  ns4E4NonDerivationBlockingIssues,
   ns4E4RequestText,
+  validateNs4E4Review,
   validateNs4E4EntityDraft,
   validateNs4E4Plan,
   validateNs4E4RelationshipBindings,
-  validateNs4E4Review,
 } from '/_102020_/l2/agentNewSolution/steps/e4/gate.js';
 import { resolveNs4E4HookArgs, resolveNs4E4InvocationArgs } from '/_102020_/l2/agentNewSolution/steps/e4/hookArgs.js';
 
@@ -53,10 +60,12 @@ const journeys = normalizeNs4E2Review({
       actorRef: 'projectManager', title: 'Manage projects', goal: 'Manage a selected project.', entry: { mode: 'coldStart' }, useRules: [],
       steps: [{
         stepId: 'selectProject', kind: 'locate', entity: 'Project', title: 'Select a project.', description: 'Project selected.', featureRefs: ['projectManagement'],
+      }, {
+        stepId: 'updateProject', kind: 'act', entity: 'Project', title: 'Update the project.', description: 'Project updated.', featureRefs: ['projectManagement'],
       }], outcome: { statement: 'Project available.', evidence: ['Project selected.'] },
     },
   }],
-  features: [{ featureId: 'projectManagement', title: 'Projects', priority: 'now', journeyStepRefs: ['manageProjects.selectProject'] }],
+  features: [{ featureId: 'projectManagement', title: 'Projects', priority: 'now', journeyStepRefs: ['manageProjects.selectProject', 'manageProjects.updateProject'] }],
 });
 
 const access = normalizeNs4E3Review({
@@ -154,8 +163,19 @@ test('E4 schedules a dedicated relationship binding pass with bounded repair sta
   assert.match(String(afterEntityRepair.prompt), /"entityRepairRound":1/);
 });
 
+test('E4 schedules a dedicated derivation binding pass with bounded repair state', () => {
+  const repair = createNs4E4DerivationBindingStep('buildFlowFsm', 2, 1, "signBy.field 'direction'");
+  assert.equal(repair.planning?.planId, 'e4-ontology-round-2-derivation-binding-1');
+  assert.equal(repair.stepTitle, 'Bind ontology derivations · 2 · R1');
+  assert.match(String(repair.prompt), /"stage":"bindDerivations"/);
+  assert.match(String(repair.prompt), /signBy\.field 'direction'/);
+  const afterRounds = createNs4E4DerivationBindingStep('buildFlowFsm', 2, 1, 'feedback', 1, 1);
+  assert.match(String(afterRounds.prompt), /"entityRepairRound":1/);
+  assert.match(String(afterRounds.prompt), /"planRepairAttempt":1/);
+});
+
 test('every E4 LLM prompt declares an active model alias explicitly', () => {
-  for (const file of ['prompt.md', 'promptEntity.md', 'promptRelationships.md']) {
+  for (const file of ['prompt.md', 'promptEntity.md', 'promptRelationships.md', 'promptDerivations.md']) {
     const prompt = readFileSync(new URL(file, import.meta.url), 'utf8');
     assert.match(prompt, /<!--\s*modelType:\s*reasoning\s*-->/, `${file} must not fall back to the inactive cost alias`);
   }
@@ -178,28 +198,31 @@ test('E4 overview and entity prompts require stable English enum codes', () => {
 test('E4 overview prompt declares singleton cardinality with a conservative default', () => {
   const prompt = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
   assert.match(prompt, /cardinality:\s*"singleton"/u);
-  assert.match(prompt, /Petition/u);
-  assert.match(prompt, /Task, Pet, Order/u);
+  assert.match(prompt, /<SingletonEntity>/u);
+  assert.match(prompt, /<MasterDataEntity>/u);
+  assert.match(prompt, /<TransactionEntity>/u);
   assert.match(prompt, /omit the field/u);
   assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /cardinality/u);
 });
 
 test('E4 overview prompt stores on-demand artifacts as derived unless history is requested', () => {
   const prompt = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
-  assert.match(prompt, /computed on demand/u);
+  assert.match(prompt, /computed from other records/u);
   assert.match(prompt, /When in doubt, `derived`/u);
-  assert.match(prompt, /history,\s*audit, versioning or reprocessing/u);
+  assert.match(prompt, /history, audit, versioning or reprocessing/u);
   assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /on-demand export/u);
 });
 
 test('E4 overview prompt requires a derived projection to declare derivation', () => {
   const prompt = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
   assert.match(prompt, /who declares the projection declares/u);
-  assert.match(prompt, /"from": "Project"/u);
+  assert.match(prompt, /"from": "<MasterDataEntity>"/u);
   assert.match(prompt, /"op": "count"/u);
   assert.match(prompt, /Never invent an intermediate field/u);
   assert.match(prompt, /signBy/u);
-  assert.match(prompt, /direction: in\|out/u);
+  assert.match(prompt, /<enumFieldOfFrom>/u);
+  assert.match(prompt, /<codeOfThatEnum>/u);
+  assert.match(prompt, /placeholders/u);
   assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /derivation/u);
 });
 
@@ -367,8 +390,10 @@ test('E2 and E4 share canonical PascalCase business object ids', () => {
 
   const spacedJourneys = structuredClone(journeys) as any;
   spacedJourneys.journeys[0].business.steps[0].entity = 'Project portfolio';
+  spacedJourneys.journeys[0].business.steps[1].entity = 'Project portfolio';
   const normalizedJourneys = normalizeNs4E2Review(spacedJourneys);
   assert.equal(normalizedJourneys.journeys[0].business.steps[0].entity, 'ProjectPortfolio');
+  assert.equal(normalizedJourneys.journeys[0].business.steps[1].entity, 'ProjectPortfolio');
 
   const matchingPlan = structuredClone(reviewInput) as any;
   matchingPlan.entities[0].entityId = 'ProjectPortfolio';
@@ -508,7 +533,10 @@ test('E4 rejects disconnected business entities', () => {
   const broken = structuredClone(reviewInput);
   broken.relationships = [];
   const gate = validateNs4E4Review(normalizeNs4E4Review(broken), journeys, access);
-  assert.ok(gate.issues.some(issue => issue.code === 'NS4_E4_ENTITY_ORPHAN'));
+  const orphans = gate.issues.filter(issue => issue.code === 'NS4_E4_ENTITY_ORPHAN');
+  assert.ok(orphans.some(issue => issue.message.includes('Project')), JSON.stringify(gate.issues));
+  assert.ok(orphans.some(issue => issue.message.includes('ClientProjectSummary')), 'a disconnected projection is ENTITY_ORPHAN, not a name-keyed special case');
+  assert.equal(gate.issues.some(issue => issue.code === 'NS4_E4_PROJECT_PROJECTION_ORPHAN'), false);
 });
 
 test('E4 normalizes common relationship endpoint aliases into the canonical contract', () => {
@@ -638,8 +666,8 @@ test('E4 management fixture stays without cardinality after normalize', () => {
 test('E4 overview prompt declares appendOnly mutability with a conservative default', () => {
   const prompt = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
   assert.match(prompt, /mutability:\s*"appendOnly"/u);
-  assert.match(prompt, /InventoryMovement/u);
-  assert.match(prompt, /Product, Ticket, Task/u);
+  assert.match(prompt, /<FactEntity>/u);
+  assert.match(prompt, /<MasterDataEntity>/u);
   assert.match(prompt, /omit the field/u);
   assert.match(readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8'), /mutability/u);
 });
@@ -1423,4 +1451,331 @@ test('E4 rejects a Portuguese weekday or status and accepts the English code', (
   const weekday = enumCodeIssues(input);
   assert.ok(weekday.some(issue => issue.message.includes('segunda-feira')), JSON.stringify(weekday));
   assert.ok(!weekday.some(issue => issue.message.includes("'monday'")), JSON.stringify(weekday));
+});
+
+function assembleControleEstoque2Incident() {
+  const plan = normalizeNs4E4PlanDraft(JSON.parse(
+    readFileSync(new URL('fixtures/controleEstoque2-e4-plan-draft.json', import.meta.url), 'utf8'),
+  ));
+  const details = ['Product', 'StockMovement', 'ProductStockBalance'].map(entityId => normalizeNs4E4EntityDraft(
+    JSON.parse(readFileSync(
+      new URL(`fixtures/controleEstoque2-e4-entities/${entityId}-draft.json`, import.meta.url), 'utf8',
+    )),
+    plan.moduleName, plan.reviewRound, entityId,
+  ));
+  const review = assembleNs4E4Review(plan, details);
+  const gate = validateNs4E4Review(review, undefined, undefined, { requireRelationshipRealization: false });
+  return { plan, details, review, gate };
+}
+
+test('E4 finalize on the controleEstoque2 incident creates one derivation binding step, not plan repair', () => {
+  const { plan, gate } = assembleControleEstoque2Incident();
+  const signBy = gate.issues.find(issue => issue.code === 'NS4_E4_DERIVATION_SIGNBY');
+  assert.ok(signBy, JSON.stringify(gate.issues));
+  assert.match(signBy!.message, /signBy\.field 'direction'/u);
+  assert.match(signBy!.message, /stockMovementId, productId, movementType, quantity, recordedAt, status/u);
+  assert.equal(ns4E4NonDerivationBlockingIssues(gate.issues).length, 0, JSON.stringify(ns4E4NonDerivationBlockingIssues(gate.issues)));
+
+  const dispatch = ns4E4FinalizeDispatch(gate.issues, 0, 1);
+  assert.equal(dispatch.action, 'bindDerivations');
+  assert.ok(dispatch.action === 'bindDerivations' && dispatch.issues.some(issue => issue.code === 'NS4_E4_DERIVATION_SIGNBY'));
+
+  const feedback = dispatch.action === 'bindDerivations'
+    ? dispatch.issues.map(issue => `${issue.code} ${issue.path}: ${issue.message}`).join('\n')
+    : '';
+  const step = createNs4E4DerivationBindingStep(plan.moduleName, plan.reviewRound, 1, feedback, 0, 1);
+  assert.equal(step.planning?.planId, 'e4-ontology-round-1-derivation-binding-1');
+  assert.match(String(step.prompt), /"stage":"bindDerivations"/);
+  assert.match(String(step.prompt), /signBy\.field 'direction'/);
+  assert.match(String(step.prompt), /stockMovementId, productId, movementType, quantity, recordedAt, status/);
+  assert.doesNotMatch(String(step.prompt), /"stage":"plan"/);
+
+  const source = readFileSync(new URL('agentNs4E4.ts', import.meta.url), 'utf8');
+  assert.match(source, /const MAX_DERIVATION_BINDING_REPAIRS = 1/);
+  assert.match(source, /ns4E4FinalizeDispatch/);
+  assert.match(source, /handleDerivationBindingResult/);
+  assert.doesNotMatch(source, /\/todo\//);
+});
+
+test('E4 derivation binding with movementType/exit turns the incident review green', () => {
+  const { plan, details } = assembleControleEstoque2Incident();
+  const applied = applyNs4E4DerivationBindings(plan, {
+    planId: 'e4-derivation-bindings',
+    moduleName: plan.moduleName,
+    reviewRound: plan.reviewRound,
+    bindings: [{
+      entityId: 'ProductStockBalance',
+      derivation: {
+        from: 'StockMovement',
+        filter: '',
+        aggregate: [
+          { fieldId: 'productId', op: 'groupKey', sourceField: 'productId' },
+          {
+            fieldId: 'currentQuantity', op: 'sum', sourceField: 'quantity',
+            signBy: { field: 'movementType', negativeValues: ['exit'] },
+          },
+        ],
+      },
+    }],
+  });
+  assert.equal(applied.issues.length, 0, JSON.stringify(applied.issues));
+  assert.deepEqual(
+    applied.plan.entities.find(entity => entity.entityId === 'ProductStockBalance')?.derivation?.aggregate[1].signBy,
+    { field: 'movementType', negativeValues: ['exit'] },
+  );
+  const repaired = assembleNs4E4Review(applied.plan, details);
+  const gate = validateNs4E4Review(repaired, undefined, undefined, { requireRelationshipRealization: false });
+  assert.equal(ns4E4BlockingDerivationIssues(gate.issues).length, 0, JSON.stringify(gate.issues));
+  assert.equal(ns4E4FinalizeDispatch(gate.issues, 1, 1).action, 'pass');
+  assert.ok(gate.ok, JSON.stringify(gate.issues));
+});
+
+test('an issue outside NS4_E4_DERIVATION_* never dispatches the derivation binding step', () => {
+  const mixed = ns4E4FinalizeDispatch([
+    { code: 'NS4_E4_DERIVATION_SIGNBY', path: 'entities[2].derivation.aggregate[1].signBy.field', message: 'bad signBy' },
+    { code: 'NS4_E4_PARTY_MISSING', path: 'entities[0].party', message: 'Declare party.' },
+  ], 0, 0);
+  assert.equal(mixed.action, 'planRepair');
+
+  const onlyOther = ns4E4FinalizeDispatch([
+    { code: 'NS4_E4_PARTY_MISSING', path: 'entities[0].party', message: 'Declare party.' },
+  ], 0, 0);
+  assert.equal(onlyOther.action, 'planRepair');
+});
+
+test('a derivation binding payload that changes anything but derivation is rejected', () => {
+  const plan = normalizeNs4E4PlanDraft(reviewInput);
+  const applied = applyNs4E4DerivationBindings(plan, {
+    bindings: [{
+      entityId: 'ClientProjectSummary',
+      title: 'Renamed summary',
+      derivation: { from: 'Project', filter: '', aggregate: [{ fieldId: 'projectId', op: 'groupKey', sourceField: 'projectId' }] },
+    }],
+  });
+  assert.ok(applied.issues.some(issue => issue.code === 'NS4_E4_DERIVATION_BINDING_SCOPE'), JSON.stringify(applied.issues));
+  assert.equal(plan.entities.find(entity => entity.entityId === 'ClientProjectSummary')?.title, 'Client project summary');
+});
+
+test('finalize with no derivation issue creates no binding step and stays byte-identical on older fixtures', () => {
+  const green = ns4E4FinalizeDispatch([], 0, 0);
+  assert.equal(green.action, 'pass');
+  const reviewDispatch = ns4E4FinalizeDispatch(
+    validateNs4E4Review(normalizeNs4E4Review(reviewInput), journeys, access).issues, 0, 0,
+  );
+  assert.equal(reviewDispatch.action, 'pass');
+
+  const listaOntology = JSON.parse(readFileSync(new URL('fixtures/listaAssinatura-e4-ontology-draft.json', import.meta.url), 'utf8'));
+  const run44 = JSON.parse(readFileSync(new URL('../e8/fixtures/run44-tier-model.json', import.meta.url), 'utf8')) as { ontology: unknown };
+  const todo = JSON.parse(readFileSync(new URL('../e8/fixtures/todo-e8-sources.json', import.meta.url), 'utf8')) as { ontology: unknown };
+  const snapshot: Record<string, string> = {};
+  for (const [name, ontology] of [
+    ['listaAssinatura', listaOntology],
+    ['run44', run44.ontology],
+    ['todo', todo.ontology],
+  ] as const) {
+    const gate = validateNs4E4Review(normalizeNs4E4Review(ontology));
+    snapshot[name] = ns4E4FinalizeDispatch(gate.issues, 0, 0).action;
+    assert.notEqual(snapshot[name], 'bindDerivations', `${name}: ${JSON.stringify(gate.issues)}`);
+  }
+  assert.deepEqual(snapshot, { listaAssinatura: 'pass', run44: 'planRepair', todo: 'planRepair' });
+});
+
+test('no example in E4 derivation prompts names a real field or enum code', () => {
+  const allowed = new Set([
+    'ProjectionId', 'FromEntity', 'fieldOfFrom', 'enumFieldOfFrom', 'codeOfThatEnum',
+    'outputField', 'FactEntity', 'MasterDataEntity',
+  ]);
+  const exampleId = /"((?:fieldId|sourceField|field|from|entityId|filter)":\s*")([^"]+)"/g;
+  const placeholder = /^<([A-Za-z][A-Za-z0-9]*)>$/;
+  const filterForm = /^<([A-Za-z][A-Za-z0-9]*)> = <([A-Za-z][A-Za-z0-9]*)>$/;
+
+  const derivationsPrompt = readFileSync(new URL('promptDerivations.md', import.meta.url), 'utf8');
+  const fence = derivationsPrompt.match(/```json\n([\s\S]*?)```/);
+  assert.ok(fence, 'promptDerivations.md must show a JSON example');
+  for (const match of fence[1].matchAll(exampleId)) {
+    const value = match[2];
+    if (value === 'lowerCamelModule') continue;
+    const asPlaceholder = placeholder.exec(value);
+    const asFilter = filterForm.exec(value);
+    if (asPlaceholder) {
+      assert.ok(allowed.has(asPlaceholder[1]), `unexpected placeholder <${asPlaceholder[1]}>`);
+      continue;
+    }
+    if (asFilter) {
+      assert.ok(allowed.has(asFilter[1]) && allowed.has(asFilter[2]), `unexpected filter example ${value}`);
+      continue;
+    }
+    assert.fail(`example id is not a placeholder: ${value}`);
+  }
+  for (const extra of fence[1].matchAll(/"negativeValues":\s*\[\s*"([^"]+)"/g)) {
+    const inner = placeholder.exec(extra[1]);
+    assert.ok(inner && allowed.has(inner[1]), `enum example is not a placeholder: ${extra[1]}`);
+  }
+
+  const overview = readFileSync(new URL('prompt.md', import.meta.url), 'utf8');
+  const derivationSection = overview.slice(
+    overview.indexOf('A derived projection without a source'),
+    overview.indexOf('Do not leave the formula'),
+  );
+  const mutabilitySection = overview.slice(overview.indexOf('## Mutability'), overview.indexOf('## Adjustment'));
+  for (const section of [derivationSection, mutabilitySection, derivationsPrompt]) {
+    assert.match(section, /<enumFieldOfFrom>|<FactEntity>|<ProjectionId>/u);
+    assert.doesNotMatch(section, /\bInventoryMovement\b/);
+    assert.doesNotMatch(section, /\bdirection:\s*in\|out\b/);
+    assert.doesNotMatch(section, /"field": "direction"/);
+    assert.doesNotMatch(section, /\bnetQuantity\b/);
+  }
+  const entityPrompt = readFileSync(new URL('promptEntity.md', import.meta.url), 'utf8');
+  assert.doesNotMatch(entityPrompt, /\bInventoryMovement\b/);
+  assert.doesNotMatch(entityPrompt, /\bdirection:\s*in\|out\b/);
+});
+
+test('E4 derivation binding files keep English comments and identifiers', () => {
+  const agent = readFileSync(new URL('agentNs4E4.ts', import.meta.url), 'utf8');
+  const prompt = readFileSync(new URL('promptDerivations.md', import.meta.url), 'utf8');
+  const factory = readFileSync(new URL('../../helpers/ns4Core.ts', import.meta.url), 'utf8');
+  const excerpt = factory.slice(factory.indexOf('createNs4E4DerivationBindingStep'), factory.indexOf('export function createNs4E5Step'));
+  for (const source of [agent, prompt, excerpt]) {
+    const comments = [...source.matchAll(/\/\/.*$|\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->/gm)].map(item => item[0]).join('\n');
+    assert.doesNotMatch(comments, /[À-ÿ]/);
+    assert.doesNotMatch(source, /portuguese\s*\?/);
+  }
+});
+
+test('touched E4 gate and overview prompt stay English in comments and identifiers', () => {
+  const files = [
+    { name: 'gate.ts', source: readFileSync(new URL('gate.ts', import.meta.url), 'utf8') },
+    { name: 'prompt.md', source: readFileSync(new URL('prompt.md', import.meta.url), 'utf8') },
+  ];
+  // Named leftover: lexical DERIVED_* regexes (2026-08-29). Kept by ns08 T3; not rewritten here.
+  const legacyIdentifierExceptions = [
+    { file: 'gate.ts', includes: 'const DERIVED_HISTORY', since: '2026-08-29' },
+    { file: 'gate.ts', includes: 'const DERIVED_ARTIFACT_WORD', since: '2026-08-29' },
+  ];
+  for (const { name, source } of files) {
+    assert.doesNotMatch(source, /portuguese\s*\?/);
+    for (const line of source.split('\n')) {
+      const trimmed = line.trim();
+      const isComment = trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*') || trimmed.startsWith('<!--');
+      if (!isComment) continue;
+      assert.doesNotMatch(line, /[À-ÿ]/, trimmed);
+    }
+    const stripped = source
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/.*$/gm, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/`(?:\\.|[^`])*`/g, '')
+      .replace(/'(?:\\.|[^'\\])*'/g, '')
+      .replace(/"(?:\\.|[^"\\])*"/g, '')
+      .split('\n')
+      .filter(line => !legacyIdentifierExceptions.some(item => item.file === name && line.includes(item.includes)))
+      .join('\n');
+    assert.doesNotMatch(stripped, /[À-ÿ]/, name);
+  }
+});
+
+function coreReadOnlyIssues(ontology: unknown, journeys?: unknown) {
+  const review = normalizeNs4E4Review(ontology);
+  const e2 = journeys === undefined ? undefined : normalizeNs4E2Review(journeys);
+  return validateNs4E4Review(review, e2, undefined, { requireRelationshipRealization: false })
+    .issues.filter(issue => issue.code === 'NS4_E4_CORE_READ_ONLY');
+}
+
+function coreReadOnlyEntityIds(ontology: unknown, journeys?: unknown): string[] {
+  const review = normalizeNs4E4Review(ontology);
+  return coreReadOnlyIssues(ontology, journeys)
+    .map(issue => ns4E4EntityIdFromIssuePath(review, issue.path))
+    .filter(Boolean)
+    .sort();
+}
+
+test('E4 records CORE_READ_ONLY on ProductBalance from the controleEstoque3 incident and on no other entity', () => {
+  const ontology = JSON.parse(readFileSync(new URL('fixtures/controleEstoque3-e4-ontology-draft.json', import.meta.url), 'utf8'));
+  const journeys = JSON.parse(readFileSync(new URL('fixtures/controleEstoque3-e2-journeys-draft.json', import.meta.url), 'utf8'));
+  const review = normalizeNs4E4Review(ontology);
+  const e2 = normalizeNs4E2Review(journeys);
+  const gate = validateNs4E4Review(review, e2, undefined, { requireRelationshipRealization: false });
+  const flagged = gate.issues.filter(issue => issue.code === 'NS4_E4_CORE_READ_ONLY');
+  assert.deepEqual(flagged.map(issue => ns4E4EntityIdFromIssuePath(review, issue.path)), ['ProductBalance']);
+  assert.equal(flagged[0]?.severity, 'warning');
+  assert.equal(gate.ok, true);
+  assert.match(flagged[0]!.message, /ProductBalance/);
+  assert.match(flagged[0]!.message, /consultProductBalance\.inspectProductBalance/);
+  assert.match(flagged[0]!.message, /derived projection, or master data\?/);
+  assert.doesNotMatch(JSON.stringify(flagged), /[À-ÿ]/);
+
+  const recorded = applyNs4E4CoreReadOnlyDecisions(review, gate.issues);
+  const decision = recorded.systemDecisions?.find(item => item.findingRef === 'NS4_E4_CORE_READ_ONLY:ProductBalance');
+  assert.ok(decision, JSON.stringify(recorded.systemDecisions));
+  assert.equal(decision!.decidedBy, 'system');
+  assert.equal(decision!.chosen, 'keepCore');
+  assert.deepEqual(decision!.alternatives, ['projection', 'masterData']);
+  assert.match(decision!.question, /ProductBalance/);
+  assert.doesNotMatch(JSON.stringify(decision), /[À-ÿ]/);
+  assert.doesNotMatch(JSON.stringify(decision), /portuguese\s*\?/);
+});
+
+test('E4 CORE_READ_ONLY does not fire without journeys, on a singleton, or on an entity a journey writes', () => {
+  const ontology = JSON.parse(readFileSync(new URL('fixtures/controleEstoque3-e4-ontology-draft.json', import.meta.url), 'utf8'));
+  assert.deepEqual(coreReadOnlyEntityIds(ontology), []);
+
+  const listaOntology = JSON.parse(readFileSync(new URL('fixtures/listaAssinatura-e4-ontology-draft.json', import.meta.url), 'utf8'));
+  const listaJourneys = JSON.parse(readFileSync(new URL('../e8/fixtures/listaAssinatura-e8-sources.json', import.meta.url), 'utf8')).journeys;
+  assert.deepEqual(coreReadOnlyEntityIds(listaOntology, listaJourneys), []);
+  assert.equal(normalizeNs4E4Review(listaOntology).entities.find(entity => entity.entityId === 'Petition')?.cardinality, 'singleton');
+
+  const input = structuredClone(reviewInput) as any;
+  assert.deepEqual(coreReadOnlyEntityIds(input, journeys), []);
+});
+
+test('E4 lexical DERIVED_PERSISTED vs structural CORE_READ_ONLY recall on known fixtures', () => {
+  const listaJourneys = JSON.parse(readFileSync(new URL('../e8/fixtures/listaAssinatura-e8-sources.json', import.meta.url), 'utf8')).journeys;
+  const persisted = structuredClone(normalizeNs4E4Review(LISTA_ASSINATURA_ONTOLOGY)) as any;
+  const exported = persisted.entities.find((entity: { entityId: string }) => entity.entityId === 'PetitionSignatureExport');
+  exported.kind = 'core';
+  exported.ownership = 'moduleOwned';
+  exported.derivation = undefined;
+  exported.fields.unshift({
+    fieldId: 'petitionSignatureExportId', title: 'Export id', type: 'uuid', required: true,
+    description: 'Stable export id.', constraints: [],
+  });
+  exported.storage = {
+    target: 'moduleDatabase', scope: 'module', idField: 'petitionSignatureExportId',
+    notes: 'Persisted on-demand artifact.',
+  };
+  const lexical = validateNs4E4Review(persisted, normalizeNs4E2Review(listaJourneys), undefined, {
+    requireRelationshipRealization: false, requestText: LISTA_REQUEST,
+  });
+  const lexicalIds = lexical.issues.filter(issue => issue.code === 'NS4_E4_DERIVED_PERSISTED')
+    .map(issue => ns4E4EntityIdFromIssuePath(persisted, issue.path)).sort();
+  const structuralIds = lexical.issues.filter(issue => issue.code === 'NS4_E4_CORE_READ_ONLY')
+    .map(issue => ns4E4EntityIdFromIssuePath(persisted, issue.path)).sort();
+  assert.deepEqual(lexicalIds, ['PetitionSignatureExport']);
+  assert.deepEqual(structuralIds, [], 'export is written by generateSignatureExport; structural registrar does not fire');
+
+  const petShop = JSON.parse(readFileSync(new URL('fixtures/petShop-e4-ontology-draft.json', import.meta.url), 'utf8'));
+  const petShopLexical = validateNs4E4Review(normalizeNs4E4Review(petShop), undefined, undefined, {
+    requireRelationshipRealization: false, requestText: 'pet shop appointments and services',
+  });
+  assert.equal(petShopLexical.issues.some(issue => issue.code === 'NS4_E4_DERIVED_PERSISTED'), false);
+  assert.equal(petShopLexical.issues.some(issue => issue.code === 'NS4_E4_CORE_READ_ONLY'), false);
+});
+
+test('E4 CORE_READ_ONLY does not add warnings on entities that a journey writes in older fixtures', () => {
+  const run44 = JSON.parse(readFileSync(new URL('../e8/fixtures/run44-tier-model.json', import.meta.url), 'utf8')) as { ontology: unknown; journeys: unknown };
+  const todo = JSON.parse(readFileSync(new URL('../e8/fixtures/todo-e8-sources.json', import.meta.url), 'utf8')) as { ontology: unknown; journeys: unknown };
+  const controleEstoque = JSON.parse(readFileSync(new URL('../e8/fixtures/controleEstoque-e8-sources.json', import.meta.url), 'utf8')) as { ontology: unknown; journeys: unknown };
+  const lista = JSON.parse(readFileSync(new URL('../e8/fixtures/listaAssinatura-e8-sources.json', import.meta.url), 'utf8')) as { ontology?: unknown; journeys: unknown };
+  const table: Record<string, string[]> = {
+    run44: coreReadOnlyEntityIds(run44.ontology, run44.journeys),
+    todo: coreReadOnlyEntityIds(todo.ontology, todo.journeys),
+    controleEstoque: coreReadOnlyEntityIds(controleEstoque.ontology, controleEstoque.journeys),
+    listaAssinatura: coreReadOnlyEntityIds(lista.ontology || LISTA_ASSINATURA_ONTOLOGY, lista.journeys),
+  };
+  assert.deepEqual(table, {
+    run44: [],
+    todo: [],
+    controleEstoque: [],
+    listaAssinatura: [],
+  }, JSON.stringify(table));
 });

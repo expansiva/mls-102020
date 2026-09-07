@@ -8,6 +8,7 @@
 
 import { sha256Ns4, type Ns4PolicyDecision } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import type { Ns4SystemDecision } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
+import { ns4Text } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import { validateNs4E8Model } from '/_102020_/l2/agentNewSolution/steps/e8/modelGate.js';
 import { compileNs4ClassicL4 } from '/_102020_/l2/agentNewSolution/steps/e9/classic.js';
 import {
@@ -215,16 +216,13 @@ function validateSourceHashes(sources: Ns4E10Sources, add: Add): void {
 function dormantCommandDecisions(sources: Ns4E10Sources, add: Add): Ns4SystemDecision[] {
   const available = new Set(sources.workflows.flatMap(workflow => workflow.transitions.map(transition => transition.transitionId)));
   const decisions: Ns4SystemDecision[] = [];
-  const portuguese = sources.userLanguage.toLowerCase().startsWith('pt');
   for (const operation of sources.model.operations) {
     if (!operation.transitionRefs.length) continue;
     const missing = operation.transitionRefs.filter(ref => !available.has(ref));
     if (!missing.length) continue;
     const decision: Ns4SystemDecision = {
       decisionId: `e10Dormant${upperCamel(operation.operationId)}`, stage: 'e10-validation',
-      question: portuguese
-        ? `A ação ${operation.title} continua visível, mas a transição ${missing.join(', ')} não é alcançável nesta versão.`
-        : `The ${operation.title} action stays visible, but transition ${missing.join(', ')} is not reachable in this version.`,
+      question: ns4Text(sources.presentation, 'dormant.question', { title: operation.title, transitions: missing.join(', ') }),
       chosen: 'keepDormantCommand', alternatives: ['extendJourneyToReachRequiredState'], decidedBy: 'system',
       findingRef: `NS4_E10_DORMANT_COMMAND:${operation.operationId}`,
       changeHint: `Extend an approved journey so transition(s) ${missing.join(', ')} become reachable in E7.`,

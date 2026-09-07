@@ -8,7 +8,7 @@ import {
   NS4_FLOW_VERSION,
   createNs4E10Step, createNs4E1Step, createNs4E2CoverageJudgeStep, createNs4E2CoverageRepairStep,
   createNs4E2GateRepairStep, createNs4E2Step, createNs4E3Step, createNs4E4FinalizeStep,
-  createNs4E4RelationshipBindingStep, createNs4E4RepairStep, createNs4E4Step, createNs4E5Step,
+  createNs4E4DerivationBindingStep, createNs4E4RelationshipBindingStep, createNs4E4RepairStep, createNs4E4Step, createNs4E5Step,
   createNs4E6Step, createNs4E7Step, createNs4E8HubCompositionRepairStep, createNs4E8Step,
   createNs4E9Step, resolveNs4StepOwner, type Ns4StepOwner,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
@@ -30,6 +30,7 @@ const STEPS: Array<{ owner: Ns4StepOwner; step: mls.msg.AIAgentStep; label: stri
   { owner: 'e4', step: createNs4E4RepairStep('buildFlowFsm45', 1, 1, 'feedback'), label: 'E4 repair' },
   { owner: 'e4', step: createNs4E4FinalizeStep('buildFlowFsm45', 1, []), label: 'E4 finalize' },
   { owner: 'e4', step: createNs4E4RelationshipBindingStep('buildFlowFsm45', 1), label: 'E4 bindings' },
+  { owner: 'e4', step: createNs4E4DerivationBindingStep('buildFlowFsm45', 1, 1, 'feedback'), label: 'E4 derivation bindings' },
   { owner: 'e5', step: createNs4E5Step('buildFlowFsm45', 1), label: 'E5' },
   { owner: 'e6', step: createNs4E6Step('buildFlowFsm45', 1), label: 'E6' },
   { owner: 'e7', step: createNs4E7Step('buildFlowFsm45'), label: 'E7' },

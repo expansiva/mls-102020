@@ -283,7 +283,7 @@ export function buildNs4ClassicContractSource(args: {
       `export interface ${pascal}Output {`,
       ...(args.call.output.fields.length
         ? args.call.output.fields.map(field => `  ${field.name}${field.required ? '' : '?'}: ${tsType(field.type)};`)
-        : ['  // sem projeção declarada']),
+        : ['  // no declared projection']),
       '}',
     ];
   return [
@@ -293,7 +293,7 @@ export function buildNs4ClassicContractSource(args: {
     `// Contract of record: bffCall ${args.call.bffId} (${args.call.kind}); Output kind=${args.call.output.kind}; route ${args.call.route}.`,
     '',
     `export interface ${pascal}Input {`,
-    ...(inputFields.length ? inputFields : ['  // sem inputs públicos (resolvidos por contexto)']),
+    ...(inputFields.length ? inputFields : ['  // no public inputs (resolved from context)']),
     '}',
     '',
     ...outputBlock,

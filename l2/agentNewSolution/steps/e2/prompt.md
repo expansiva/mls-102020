@@ -26,14 +26,14 @@ carries are derived by code from the step `entity`, the step `kind`, the order o
 approved ontology. Your job is the narrative and the right entity — nothing about plumbing.
 
 1. Every step declares `entity`: the exact future ontology entity or projection id, in stable
-   PascalCase (`ProjectPortfolio`, never the display label `Project portfolio`). `title` and
+   PascalCase (`<EntityId>`, never the display label). `title` and
    `description` stay in the user's language; `description` states the observable result.
 2. Step `kind` is exactly one of `locate`, `inspect`, `act`, `decide` or `handoff`. Use `inspect`
    for reviewing ONE existing record; never invent synonyms such as `review`. Totals, counts and
    indicators of a listing are not an inspect of that record — they live on the listing, derived
    from the items already loaded. If the narrative names those indicators, put them as `inspect`
-   before the `locate` of the same entity (the compiler emits a list, never getById). "Overdue" /
-   atrasada is not a field: calendar day of `dueDate` before today and status is not `completed` or `cancelled`.
+   before the `locate` of the same entity (the compiler emits a list, never getById). "Overdue" is
+   not a field: calendar day of `dueDate` before today and status is not `completed` or `cancelled`.
 3. Order matters and is the only sequencing you declare: put the `locate` of a record before the
    step that operates on it. An `act` step whose entity no earlier step located is a creation; an
    `act` step after a `locate` of the same entity is a maintenance.
@@ -50,16 +50,24 @@ approved ontology. Your job is the narrative and the right entity — nothing ab
 
 ## A journey is a PROCESS
 
-A journey exists for a flow: a decision, a sequence where one step depends on the record another step
-selected, more than one actor, or a handoff. **Pure capture or pure maintenance of a record catalogue
-is NOT a journey** — the module already ships a standard catalogue screen (list, create, edit, delete)
-for every persisted business entity, derived from the ontology. Do not write `manageClients`,
-`registerMaterials` or any journey whose whole content is "create/edit one entity".
+A journey exists for a flow: a sequence where one step depends on the record another step selected,
+more than one actor, a handoff, **or** a decision the request actually contains. **Pure capture or
+pure maintenance of a record catalogue is NOT a journey** — the module already ships a standard
+catalogue screen (list, create, edit, delete) for every persisted business entity, derived from the
+ontology. Do not write `manageRecords`, `registerMasterData` or any journey whose whole content is
+"create/edit one entity".
 
-Write the journey when the record only makes sense inside the flow that produces it (a change order
-that is submitted and then approved, a daily log that closes a task), and let the catalogue own the
+Write the journey when the record only makes sense inside the flow that produces it (a submitted
+record that is then approved, a daily log that closes a task), and let the catalogue own the
 plain cases. A journey with no decide step, no handoff and a single entity is automatically recorded
 as a demotion choice at the review checkpoint.
+
+**A decision is not a confirmation.** A `decide` step exists only when a human chooses between
+alternative outcomes the request actually names (approve/reject, accept/decline, select one of).
+Confirming a form, validating captured data, "checking that a balance exists" and any rule the
+system applies are **not** `decide` — they are `act` with `useRules`. A module with no decide step
+is valid and common (facts, postings, readings). Never add a decide to make a journey look like a
+process or to avoid the catalogue demotion: a two-step locate→act already qualifies.
 
 ## Journey quality
 
@@ -76,16 +84,18 @@ one option. Then write journeys consistent with those selected choices. Attach t
 - When human policy selections are supplied for an adjustment round, rewrite the complete set and
   make every selected value the matching decision's `chosen`. A selection can add, remove or reshape
   journeys; never treat it as a local text patch.
+- A policy bifurcation is **not** a `decide` step. Record it as `policyDecisions` on the journey. A
+  `decide` step is only a human choice between named outcomes in the request. Timing, thresholds and
+  other product rules stay as policy or as `useRules` on an `act`.
 
 ## Actors
 
 An actor exists only when it has **different permissions** (it can see or do something another actor
 cannot) or a **different data scope** (own records vs all records). A demographic persona does not
-create an actor: "morador", "visitante", "jovem", "responsável" who perform the same operations with
-the same access are **the same actor**. A request that says "qualquer pessoa" / "público" / "anyone"
-is **one** public actor (no login), plus the privileged actors the request names (admin, and so on).
-Do not emit `signPetitionAsMorador`, `signPetitionAsVisitante` and `signPetitionAsResponsavelJovem`
-as three journeys — that is one public signing journey.
+create an actor: `<PersonaA>`, `<PersonaB>` who perform the same operations with the same access are
+**the same actor** (demographic personas doing the same things are one actor). A request that says
+"anyone" / "the public" is **one** public actor (no login), plus the privileged actors the request
+names (admin, and so on). Do not emit one journey per persona — that is one public journey.
 
 - Prefer a small complete set of outcome-oriented journeys over CRUD fragments.
 - Treat the complete approved E1 contract as a coverage checklist. Every explicit in-scope actor
@@ -97,8 +107,8 @@ as three journeys — that is one public signing journey.
   external users can consume information promised to them, not merely that an internal actor can
   publish or hand it off.
 - Every human-selectable business reference used by an `act` or `decide` step must exist as a step of
-  its own. Locate, select or create the client, material, worker, project or other referenced record
-  in the journey; never leave a later compiler to invent a UUID input or an unbound selector.
+  its own. Locate, select or create the referenced record in the journey; never leave a later
+  compiler to invent a UUID input or an unbound selector.
 - Name the credible business source for lookups in the journey: another journey, a shared catalog or
   a platform/horizontal capability. Do not invent a CRUD journey for every noun, but do not assume
   that required lookup data exists without an owner or source.
@@ -120,7 +130,7 @@ evidence.
 If deterministic gate feedback is provided, repair every reported issue in the complete replacement.
 Preserve unaffected content. Gate repair is not a request to weaken, omit or reinterpret the invariant.
 A `NS4_E2_TWIN_JOURNEYS` finding names journeys that are the same flow for different personas: keep
-one journey, one actor (public when the request says anyone/qualquer pessoa), and retarget features
+one journey, one actor (public when the request says anyone), and retarget features
 and policy decisions onto it. Do not keep the extras under new ids.
 Coverage-judge feedback is equally binding: add the missing journey or the missing locate step
 described by every blocking issue, update features and handoffs consistently, and return the
@@ -133,6 +143,11 @@ is located by an earlier step of the same journey.
 
 ## Output
 
+Examples are placeholders in English; write every human-facing value in the user's language (`userLanguage`).
+A module that only records facts has no decide step. Two journeys already make a process (locate the
+master, then act on the fact). Placeholders — use only ids that exist in the request; do not copy
+angle brackets.
+
 Return exactly one JSON object (no markdown):
 
 {
@@ -140,60 +155,57 @@ Return exactly one JSON object (no markdown):
   "result": {
     "planId": "e2-review",
     "moduleName": "lowerCamelModule",
-    "userLanguage": "pt-BR",
-    "title": "Revisar jornadas de negócio",
+    "userLanguage": "<userLanguage>",
+    "title": "<localized title>",
     "reviewRound": 1,
     "journeys": [
       {
-        "journeyId": "manageProjectChangeOrder",
+        "journeyId": "registerFact",
         "policyDecisions": [
           {
-            "decisionId": "changeOrderDecisionMode",
-            "question": "Como uma ordem de mudança passa a valer?",
-            "chosen": "O gerente decide a ordem diretamente durante o registro.",
-            "alternatives": ["Fluxo separado de proposta com aprovação ou recusa"]
+            "decisionId": "<decisionId>",
+            "question": "<question in the user's language>",
+            "chosen": "<chosen alternative in the user's language>",
+            "alternatives": ["<alternative in the user's language>"]
           }
         ],
         "business": {
-          "actorRef": "projectManager",
-          "title": "Criar e decidir ordem de mudança",
-          "goal": "Registrar e decidir uma mudança em um projeto ativo.",
-          "entry": {
-            "mode": "contextOrLookup",
-            "preferredFromJourneyRef": "manageProjects"
-          },
+          "actorRef": "<actorRef>",
+          "title": "<localized title>",
+          "goal": "<goal in the user's language>",
+          "entry": { "mode": "coldStart" },
           "steps": [
             {
-              "stepId": "locateProject",
+              "stepId": "locateMaster",
               "kind": "locate",
-              "entity": "Project",
-              "title": "Localizar o projeto ativo",
-              "description": "Um projeto ativo está selecionado.",
-              "featureRefs": ["changeOrderManagement"]
+              "entity": "<MasterDataEntity>",
+              "title": "<localized title>",
+              "description": "<observable result in the user's language>",
+              "featureRefs": ["<featureId>"]
             },
             {
-              "stepId": "captureChangeOrder",
+              "stepId": "recordFact",
               "kind": "act",
-              "entity": "ChangeOrder",
-              "title": "Informar a mudança e seus impactos",
-              "description": "A ordem de mudança fica registrada em rascunho.",
-              "featureRefs": ["changeOrderManagement"]
+              "entity": "<FactEntity>",
+              "title": "<localized title>",
+              "description": "<observable result in the user's language>",
+              "featureRefs": ["<featureId>"]
             }
           ],
           "outcome": {
-            "statement": "A ordem decidida produz efeitos controlados no projeto.",
-            "evidence": ["A ordem mantém vínculo com o projeto.", "A decisão e o responsável são observáveis."]
+            "statement": "<statement in the user's language>",
+            "evidence": ["<evidence in the user's language>"]
           },
-          "useRules": ["projectMustBeActive"]
+          "useRules": ["<ruleId>"]
         }
       }
     ],
     "features": [
       {
-        "featureId": "changeOrderManagement",
-        "title": "Gestão de ordens de mudança",
+        "featureId": "<featureId>",
+        "title": "<localized title>",
         "priority": "now",
-        "journeyStepRefs": ["manageProjectChangeOrder.locateProject", "manageProjectChangeOrder.captureChangeOrder"]
+        "journeyStepRefs": ["registerFact.locateMaster", "registerFact.recordFact"]
       }
     ]
   }

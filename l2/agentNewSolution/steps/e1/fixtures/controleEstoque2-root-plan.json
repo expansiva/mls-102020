@@ -1,0 +1,61 @@
+{
+  "type": "flexible",
+  "result": {
+    "validPrompt": true,
+    "invalidReason": "",
+    "userPrompt": "criar o módulo controleEstoque2. controle de estoque: produtos, entradas e saídas, saldo atual por produto e aviso quando o saldo ficar abaixo do mínimo. movimentação não pode ser alterada depois de registrada. um perfil: estoquista.",
+    "userLanguage": "pt-BR",
+    "titles": {
+      "e1-clarification": "Defina os detalhes iniciais",
+      "e1-compile": "Compile o entendimento",
+      "e2-journeys": "Veja as jornadas principais",
+      "e3-access-matrix": "Revise os acessos",
+      "e4-ontology": "Confira os conceitos",
+      "e5-rules": "Valide as regras",
+      "e6-behaviors": "Revise módulos e extensões",
+      "e7-realization": "Veja a solução tomar forma",
+      "e8-workspaces": "Explore os espaços de trabalho",
+      "e9-navigation-compiler": "Confira a navegação",
+      "e10-validation": "Valide o resultado final"
+    },
+    "clarification": {
+      "planId": "e1-clarification",
+      "userLanguage": "pt-BR",
+      "title": "Confirme os detalhes do controle de estoque",
+      "legends": [
+        "As sugestões abaixo são padrões editáveis e podem ser ajustadas."
+      ],
+      "questions": {
+        "moduleName": {
+          "type": "open",
+          "question": "Qual deve ser o nome do módulo?",
+          "answer": "controleEstoque2"
+        },
+        "productLanguages": {
+          "type": "open",
+          "question": "Quais idiomas o produto deve oferecer?",
+          "answer": "pt-BR, en, es"
+        },
+        "mainActors": {
+          "type": "open",
+          "question": "Quem usará principalmente o módulo?",
+          "answer": "Estoquista responsável por cadastrar produtos, registrar entradas e saídas e acompanhar os saldos"
+        },
+        "mainGoal": {
+          "type": "open",
+          "question": "Qual é o principal objetivo do módulo?",
+          "answer": "Controlar produtos e movimentações de estoque, consultar o saldo atual por produto e alertar quando o saldo ficar abaixo do mínimo"
+        },
+        "boundaries": {
+          "type": "open",
+          "question": "O que deve ficar dentro e fora do escopo do módulo?",
+          "answer": "Incluir produtos, estoque mínimo, entradas, saídas, saldos, alertas e histórico imutável de movimentações; deixar fora compras, vendas, fornecedores, pedidos e alterações posteriores em movimentações registradas"
+        }
+      }
+    }
+  },
+  "status": "completed",
+  "stepId": 2,
+  "interaction": null,
+  "nextSteps": null
+}

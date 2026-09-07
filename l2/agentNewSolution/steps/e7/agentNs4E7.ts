@@ -139,7 +139,7 @@ async function startE7(
 ): Promise<mls.msg.AgentIntent[]> {
   const bundle = await loadBundle(moduleName);
   if (bundle.pipeline.steps.e6?.status !== 'approved') throw new Error(`E6 approved pipeline not found for ${moduleName}.`);
-  const plan = buildNs4E7Plan(moduleName, bundle.module.presentation.userLanguage, bundle.journeys, bundle.sourceHashes, deriveNs4Contexts(bundle));
+  const plan = buildNs4E7Plan(moduleName, bundle.module.presentation.userLanguage, bundle.journeys, bundle.sourceHashes, deriveNs4Contexts(bundle), bundle.module.presentation);
   const gate = validateNs4E7Plan(plan, bundle);
   if (!gate.ok) throw new Error(formatGate(gate.issues));
   const planPath = await writeNs4E7PlanDraft(moduleName, plan);

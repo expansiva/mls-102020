@@ -16,6 +16,7 @@ export interface Ns4E1SkippedDefaults {
   title: string;
   reviewPolicy: string;
   userLanguage: string;
+  i18nWarnings?: string[];
 }
 
 export function isNs4FastMode(longMemory?: Record<string, unknown> | null): boolean {
@@ -36,6 +37,7 @@ export function ns4E1SkippedDefaults(review: {
   localization: { productLanguages: readonly string[]; defaultLanguage: string };
   reviewPolicy: { mode: string };
   userLanguage: string;
+  i18nWarnings?: string[];
 }): Ns4E1SkippedDefaults {
   return {
     productLanguages: [...review.localization.productLanguages],
@@ -44,6 +46,7 @@ export function ns4E1SkippedDefaults(review: {
     title: review.module.title,
     reviewPolicy: review.reviewPolicy.mode,
     userLanguage: review.userLanguage,
+    ...(review.i18nWarnings?.length ? { i18nWarnings: [...review.i18nWarnings] } : {}),
   };
 }
 

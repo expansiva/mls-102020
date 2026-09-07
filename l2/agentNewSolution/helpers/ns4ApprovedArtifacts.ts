@@ -48,7 +48,7 @@ export async function readNs4ApprovedJourneys(moduleName: string): Promise<Ns4E2
     reviewRound: pipeline.steps.e2?.reviewRound || 1,
     journeys,
     features: index.features,
-  }, moduleName);
+  }, moduleName, module.presentation);
 }
 
 export async function readNs4ApprovedAccess(moduleName: string): Promise<Ns4E3Review> {

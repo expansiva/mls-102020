@@ -3,6 +3,7 @@
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import { ns4WidgetLabels, type Ns4PhraseHolder } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import { Ns4E2Review, Ns4E2ReviewEvent, Ns4JourneyProposal } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
 import { Ns4ClarificationAction, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
 
@@ -31,6 +32,7 @@ type Ns4PolicyChange = {
 @customElement('widget-ns4-journeys-102020')
 export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4ClarificationWidgetApi {
   @property({ type: Object }) value: Ns4E2Review | null = null;
+  @property({ type: Object }) presentation: Ns4PhraseHolder | undefined;
   @property({ type: Boolean }) readonly = false;
 
   @state() private adjustment = '';
@@ -48,36 +50,7 @@ export class WidgetNs4Journeys102020 extends StateLitElement implements Ns4Clari
   private cancelOrigin: HTMLElement | null = null;
 
   private labels() {
-    const pt = this.value?.userLanguage?.toLowerCase().startsWith('pt');
-    return pt ? {
-      subtitle: 'Estas jornadas serão a fonte de verdade permanente do produto.',
-      actor: 'Ator', goal: 'Objetivo', steps: 'Passos',
-      rules: 'Regras', outcome: 'Resultado e evidências', filters: 'Filtros', impact: 'Impacto', noPolicyDecision: 'Nenhuma decisão de política foi informada para esta jornada.',
-      journeys: 'Jornadas', journeysFound: 'jornadas encontradas', selectJourney: 'Selecione uma jornada para revisar.',
-      allActors: 'Todos os atores', actorMap: 'Mapa de jornadas por ator', actors: 'atores', overview: 'Visão geral', actual: '(atual)',
-      rulesHelp: 'Regras que devem continuar verdadeiras em toda execução desta jornada.',
-      adjustment: 'O que deve mudar?', placeholder: 'Descreva a alteração necessária sem reescrever o que já está correto.',
-      requestChanges: 'Pedir mudanças', approve: 'Aprovar jornadas', round: 'Revisão', step: 'Etapa', of: 'de',
-      adjustmentRequired: 'Escreva o que precisa mudar antes de solicitar uma nova versão.',
-      processingApproval: 'Validando jornadas…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…',
-      revise: 'Revise os itens abaixo', cancel: 'Cancelar execução', cancelTitle: 'Cancelar esta execução?',
-      cancelText: 'O processamento será encerrado. O histórico e os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
-      assumedDecisions: 'Decisões assumidas', changeHint: 'Como alterar depois',
-    } : {
-      subtitle: 'These journeys will become the permanent source of truth for the product.',
-      actor: 'Actor', goal: 'Goal', steps: 'Steps',
-      rules: 'Rules', outcome: 'Outcome and evidence', filters: 'Filters', impact: 'Impact', noPolicyDecision: 'No policy decision was provided for this journey.',
-      journeys: 'Journeys', journeysFound: 'journeys found', selectJourney: 'Select a journey to review.',
-      allActors: 'All actors', actorMap: 'Journey map by actor', actors: 'actors', overview: 'Overview', actual: '(actual)',
-      rulesHelp: 'Rules that must remain true in every execution of this journey.',
-      adjustment: 'What should change?', placeholder: 'Describe the needed change without rewriting what is already correct.',
-      requestChanges: 'Request changes', approve: 'Approve journeys', round: 'Review', step: 'Step', of: 'of',
-      adjustmentRequired: 'Describe what must change before requesting another version.',
-      processingApproval: 'Validating journeys…', processingChanges: 'Preparing a new review…', processingCancel: 'Cancelling execution…',
-      revise: 'Review the items below', cancel: 'Cancel execution', cancelTitle: 'Cancel this execution?',
-      cancelText: 'Processing will end. The history and approved artifacts will be preserved.', keepWorking: 'Keep working',
-      assumedDecisions: 'Assumed decisions', changeHint: 'How to change later',
-    };
+    return ns4WidgetLabels(this.presentation, 'journeys');
   }
 
   setFeedback(feedback: Ns4ClarificationFeedback | null): void {

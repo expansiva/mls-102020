@@ -21,13 +21,13 @@ for a change. `/fast` persists those same generated choices and system decisions
 the gate and coverage judge, without creating the widget. A change request starts another generation
 round using the previous draft as context.
 
-After the structural gate, code computes the whole-module step-kind histogram. The only active
-aggregate signal is `moduleWithoutDecide`: `decide == 0` is sent to the existing judge together with
-the original request. The judge must turn that fact into one business-language question tied to an
-existing journey. The existing single semantic repair may add a justified `decide` step or explicitly
-sustain the current behavior with an empty patch. If the signal remains, it becomes a normal
-`policyDecision` in that journey, so the checkpoint shows the current choice and its alternatives.
-It never becomes a blocking gate.
+After the structural gate, code computes the whole-module step-kind histogram. `moduleWithoutDecide`
+(`decide == 0`) is a registrar: the runtime records a `systemDecision` (`moduleWithoutDecidePolicy`,
+chosen `noDecisionStepInThisModule`) and the judge must not emit a blocking issue for it. A module
+with no decide step is valid. A decide step whose entity no `act` step in the module writes is
+recorded as `NS4_E2_DECIDE_ON_READ_MODEL` (warning + `demoteDecideToRule` systemDecision). Neither
+signal fails the gate. E4 is the stage that knows whether that entity is `kind: projection`; E4 does
+not yet record that confirmation (pendency, not implemented here).
 
 The proposal LLM returns an internal `flexible` payload rather than a clarification. This prevents an
 ungated candidate from briefly opening the journey widget while the deterministic gate, repair and

@@ -15,10 +15,11 @@ APIs. Authentication, JWT issuance and runtime authority assignment belong to co
 - Split composite E2 actors into useful profiles when necessary, while preserving traceability through
   `actorRefs`. One E2 actorRef may be mapped by several profiles.
 - Do not mint a profile per demographic persona. A profile exists only when its grants differ in
-  permissions (authorities) or data scope from every other profile. "Morador", "visitante", "jovem"
-  and "responsável" who receive the same authorities and the same scope are **one** public (or
-  otherwise shared) profile. A request that says "qualquer pessoa" / "público" is one external
-  public profile, plus the privileged profiles the request names (admin, and so on).
+  permissions (authorities) or data scope from every other profile. `<PersonaA>` and `<PersonaB>`
+  (demographic personas doing the same things are one actor) who receive the same authorities and
+  the same scope are **one** public (or otherwise shared) profile. A request that says "anyone" /
+  "the public" is one external public profile, plus the privileged profiles the request names
+  (admin, and so on).
 - `authorityRef` is the stable collab-auth JWT authority and MUST use lowercase `domain:code` syntax,
   for example `billing:mrk`. Treat codes as opaque identifiers; explain their meaning in title and
   description.
@@ -34,8 +35,9 @@ sanctioned outputs:
 - ONE grant whose `dataScope` covers every step that profile performs, with the per-facet limits
   spelled out in `disclosure.allowedInformation`, `disclosure.deniedInformation` and `useRules`; or
 - DISTINCT authorities when the scopes are genuinely different capabilities. This is the same split
-  already described above for "a client may see the budget but not the whole project": a limited
-  information authority next to a related-record grant, each with its own single grant.
+  already described above for "an external actor may see a published summary but not the whole
+  `<Record>`": a limited information authority next to a related-record grant, each with its own
+  single grant.
 
 Splitting one pair into a public grant, an own grant and a related grant is not an option: the
 contract carries a single scope decision per pair, and downstream phases compile one projection from
@@ -49,9 +51,9 @@ it.
 - External profiles must never receive organization-wide scope.
 - `summaryOnly`, `fieldsOnly` and `aggregateOnly` must list `allowedInformation`. Use
   `deniedInformation` to make sensitive exclusions explicit.
-- A request such as "a client may see the budget but not the whole project" becomes a limited
-  information authority and a related-record grant. It must not grant full Project access. Later
-  phases will compile a backend projection from this approved boundary.
+- A request such as "an external actor may see a published summary but not the whole `<Record>`"
+  becomes a limited information authority and a related-record grant. It must not grant full
+  `<Entity>` access. Later phases will compile a backend projection from this approved boundary.
 - Frontend hiding is never a security boundary. Describe backend-enforceable intent.
 
 ## Coverage
@@ -67,10 +69,12 @@ it.
 
 When a human adjustment and previous draft are supplied, return a complete replacement matrix. Apply
 the request without dropping unaffected profiles, authorities, grants, scopes or disclosure limits.
-Populate `changeSummary` with the material differences in this round. Never weaken existing access
+Populate `changeSummary` with the substantive differences in this round. Never weaken existing access
 limits unless the human explicitly requested it.
 
 ## Output
+
+Examples are placeholders in English; write every human-facing value in the user's language (`userLanguage`).
 
 Return exactly one JSON object without Markdown:
 
@@ -79,46 +83,46 @@ Return exactly one JSON object without Markdown:
   "json": {
     "planId": "e3-access-review",
     "moduleName": "lowerCamelModule",
-    "userLanguage": "pt-BR",
-    "title": "Matriz de acesso",
+    "userLanguage": "<userLanguage>",
+    "title": "<localized title>",
     "reviewRound": 1,
     "profiles": [
       {
-        "profileId": "client",
-        "title": "Cliente",
+        "profileId": "<profileId>",
+        "title": "<localized title>",
         "kind": "external",
-        "description": "Cliente associado a um ou mais projetos.",
+        "description": "<description in the user's language>",
         "actorRefs": [],
-        "landingIntent": "Consultar informações publicadas dos próprios projetos."
+        "landingIntent": "<landing intent in the user's language>"
       }
     ],
     "authorities": [
       {
-        "authorityRef": "billing:mrk",
-        "title": "Consultar resumo financeiro publicado",
-        "description": "Permite solicitar apenas o resumo financeiro liberado para consulta.",
+        "authorityRef": "domain:code",
+        "title": "<localized title>",
+        "description": "<description in the user's language>",
         "journeyStepRefs": [],
-        "informationNeeds": ["Resumo de orçamento e faturamento publicado do projeto"]
+        "informationNeeds": ["<information need in the user's language>"]
       }
     ],
     "grants": [
       {
-        "profileRef": "client",
-        "authorityRef": "billing:mrk",
-        "reason": "O cliente precisa acompanhar os valores que foram liberados para ele.",
+        "profileRef": "<profileId>",
+        "authorityRef": "domain:code",
+        "reason": "<reason in the user's language>",
         "dataScope": {
           "mode": "related",
-          "description": "Somente projetos associados ao cliente autenticado."
+          "description": "<scope description in the user's language>"
         },
         "disclosure": {
           "mode": "summaryOnly",
-          "description": "Expõe um resumo financeiro específico, nunca o registro completo do projeto.",
-          "allowedInformation": ["Nome público do projeto", "Orçamento aprovado para divulgação", "Resumo de faturamento publicado"],
-          "deniedInformation": ["Margem interna", "Anotações internas", "Registro completo do projeto"]
+          "description": "<disclosure description in the user's language>",
+          "allowedInformation": ["<allowed information in the user's language>"],
+          "deniedInformation": ["<denied information in the user's language>"]
         },
-        "useRules": ["clientProjectAssociationRequired"]
+        "useRules": ["<ruleId>"]
       }
     ],
-    "changeSummary": ["Proposta inicial da matriz de acesso."]
+    "changeSummary": ["<change summary in the user's language>"]
   }
 }

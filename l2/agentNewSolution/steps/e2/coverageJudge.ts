@@ -1,11 +1,23 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/steps/e2/coverageJudge.ts" enhancement="_blank"/>
 
 import type { Ns4E2Review } from '/_102020_/l2/agentNewSolution/steps/e2/contracts.js';
-import { resolveNs4Findings } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
+import { resolveNs4Findings, type Ns4TypeBFinding } from '/_102020_/l2/agentNewSolution/helpers/ns4Resolve.js';
 import {
+  analyzeNs4E2MechanicalCoverage,
   NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL,
   Ns4E2MechanicalCoverageReport,
 } from '/_102020_/l2/agentNewSolution/steps/e2/coverageSignals.js';
+import {
+  NS4_E2_DECIDE_ON_READ_MODEL,
+  ns4E2DecideOnReadModelSteps,
+} from '/_102020_/l2/agentNewSolution/steps/e2/gate.js';
+
+export const NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID = 'moduleWithoutDecidePolicy' as const;
+export const NS4_E2_NO_DECISION_STEP_CHOICE = 'noDecisionStepInThisModule' as const;
+export const NS4_E2_ADD_DECISION_STEP_CHOICE = 'addDecisionStep' as const;
+export const NS4_E2_DEMOTE_DECIDE_TO_RULE_ID = 'demoteDecideToRule' as const;
+export const NS4_E2_KEEP_DECIDE_STEP_CHOICE = 'keepDecideStep' as const;
+export const NS4_E2_CONVERT_TO_ACT_WITH_RULE_CHOICE = 'convertToActWithRule' as const;
 
 export type Ns4E2CoverageCategory =
   | 'missingJourney'
@@ -125,27 +137,22 @@ export function validateNs4E2CoverageVerdict(
     if (!issue.defaultChoice) errors.push(`${path}.defaultChoice is required.`);
     if (issue.alternatives.length < 2) errors.push(`${path}.alternatives requires at least two choices.`);
     if (issue.defaultChoice && !issue.alternatives.includes(issue.defaultChoice)) errors.push(`${path}.defaultChoice must be one of alternatives.`);
-    if (issue.category === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL) {
-      if (issue.issueId !== NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL) errors.push(`${path}.issueId must be moduleWithoutDecide.`);
-      if (issue.severity !== 'blocking') errors.push(`${path}.severity must be blocking for moduleWithoutDecide.`);
-      if (!issue.relatedJourneyIds.length) errors.push(`${path}.relatedJourneyIds must identify the affected journey for moduleWithoutDecide.`);
-      const journeyIds = new Set(review?.journeys.map(journey => journey.journeyId) || []);
-      if (review) issue.relatedJourneyIds.forEach(journeyId => {
-        if (!journeyIds.has(journeyId)) errors.push(`${path}.relatedJourneyIds contains unknown journey ${journeyId}.`);
-      });
-    }
   });
 
   if (mechanicalCoverage) {
     const active = mechanicalCoverage.findings.some(finding => finding.signalId === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL);
     const matching = verdict.issues.filter(issue => issue.category === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL);
-    if (active && matching.length !== 1) errors.push('moduleWithoutDecide mechanical signal requires exactly one matching issue.');
     if (!active && matching.length) errors.push('moduleWithoutDecide issue is not allowed when the module contains a decide step.');
   }
 
-  const blockers = verdict.issues.filter(issue => issue.severity === 'blocking');
+  const blockers = verdict.issues.filter(issue =>
+    issue.severity === 'blocking' && issue.category !== NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL
+  );
   if (verdict.complete && blockers.length) errors.push('complete=true cannot contain blocking issues.');
-  if (!verdict.complete && !blockers.length) errors.push('complete=false requires at least one blocking issue.');
+  if (!verdict.complete && !blockers.length) {
+    const leftover = verdict.issues.some(issue => issue.category === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL);
+    if (!leftover) errors.push('complete=false requires at least one blocking issue.');
+  }
   const impactIds = new Set<string>();
   verdict.policyDecisionImpacts.forEach((impact, index) => {
     const path = `policyDecisionImpacts[${index}]`;
@@ -178,35 +185,7 @@ export function resolveNs4E2CoverageFindings(
   review: Ns4E2Review,
   verdict: Ns4E2CoverageVerdict,
 ): Ns4E2Review {
-  const moduleWithoutDecide = verdict.issues.find(issue =>
-    issue.severity === 'blocking' && issue.category === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL
-  );
-  let reviewWithPolicy = review;
-  if (moduleWithoutDecide) {
-    const existingJourneyIds = new Set(review.journeys.map(journey => journey.journeyId));
-    const ownerJourneyId = moduleWithoutDecide.relatedJourneyIds.find(journeyId => existingJourneyIds.has(journeyId));
-    if (ownerJourneyId) {
-      const decision = {
-        decisionId: 'moduleWithoutDecidePolicy',
-        question: moduleWithoutDecide.question,
-        chosen: moduleWithoutDecide.defaultChoice,
-        alternatives: moduleWithoutDecide.alternatives.filter(choice => choice !== moduleWithoutDecide.defaultChoice),
-        impact: moduleWithoutDecide.finding,
-        relatedJourneyIds: moduleWithoutDecide.relatedJourneyIds,
-      };
-      reviewWithPolicy = {
-        ...review,
-        journeys: review.journeys.map(journey => journey.journeyId !== ownerJourneyId ? journey : {
-          ...journey,
-          policyDecisions: [
-            ...journey.policyDecisions.filter(item => item.decisionId !== decision.decisionId),
-            decision,
-          ],
-        }),
-      };
-    }
-  }
-  const resolution = resolveNs4Findings(reviewWithPolicy, verdict.issues
+  const resolution = resolveNs4Findings(review, verdict.issues
     .filter(issue => issue.severity === 'blocking' && issue.category !== NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL)
     .map(issue => ({
       classification: 'B' as const,
@@ -217,37 +196,67 @@ export function resolveNs4E2CoverageFindings(
       alternatives: issue.alternatives,
       changeHint: issue.repairInstruction,
     })));
-  const byId = new Map(reviewWithPolicy.systemDecisions.map(decision => [decision.decisionId, decision]));
+  const byId = new Map(review.systemDecisions.map(decision => [decision.decisionId, decision]));
   resolution.systemDecisions.forEach(decision => byId.set(decision.decisionId, decision));
-  return { ...resolution.artifact, systemDecisions: [...byId.values()] };
+  return applyNs4E2RegistrarDecisions({ ...resolution.artifact, systemDecisions: [...byId.values()] });
 }
 
 export function resolveNs4E2CoverageJudgeFailure(review: Ns4E2Review): Ns4E2Review {
-  const portuguese = review.userLanguage.toLowerCase().startsWith('pt');
-  const resolution = resolveNs4Findings(review, [{
-    classification: 'B' as const,
-    findingRef: `${NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL}.judgeUnavailable`,
-    stage: 'e2',
-    question: portuguese
-      ? 'A necessidade de decisões ou aprovações nas jornadas do módulo foi avaliada nesta versão?'
-      : 'Was the need for decision or approval steps evaluated in this module version?',
-    defaultChoice: portuguese
-      ? 'Não avaliada; as jornadas atuais foram preservadas.'
-      : 'Not evaluated; the current journeys were preserved.',
-    alternatives: [portuguese
-      ? 'Reavaliar a cobertura de decisões em uma nova revisão.'
-      : 'Re-evaluate decision coverage in a new review.'],
-    changeHint: portuguese
-      ? 'Peça uma nova revisão do E2 para avaliar decisões e aprovações.'
-      : 'Request a new E2 review to evaluate decisions and approvals.',
-  }]);
+  return applyNs4E2RegistrarDecisions(review);
+}
+
+/**
+ * Deterministic registrars recorded after the structural gate / coverage judge. Neither is a
+ * blocking issue and neither may ask the generator to invent a decide step.
+ */
+export function applyNs4E2RegistrarDecisions(review: Ns4E2Review): Ns4E2Review {
+  const findings: Ns4TypeBFinding[] = [];
+  const known = new Set(review.systemDecisions.map(decision => decision.decisionId));
+  const mechanical = analyzeNs4E2MechanicalCoverage(review);
+  if (
+    mechanical.findings.some(finding => finding.signalId === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL)
+    && !known.has(NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID)
+  ) {
+    findings.push({
+      classification: 'B',
+      decisionId: NS4_E2_MODULE_WITHOUT_DECIDE_POLICY_ID,
+      findingRef: NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL,
+      stage: 'e2',
+      question: 'Does this module need a human decision step between named outcomes?',
+      defaultChoice: NS4_E2_NO_DECISION_STEP_CHOICE,
+      alternatives: [NS4_E2_ADD_DECISION_STEP_CHOICE],
+      changeHint: 'A module that only records facts has no decide step. Add a decide step only when the request names a human choice between outcomes.',
+    });
+  }
+  ns4E2DecideOnReadModelSteps(review).forEach(hit => {
+    const decisionId = demoteDecideToRuleDecisionId(hit.stepId);
+    if (known.has(decisionId)) return;
+    findings.push({
+      classification: 'B',
+      decisionId,
+      findingRef: NS4_E2_DECIDE_ON_READ_MODEL,
+      stage: 'e2',
+      question: 'A decide step operates on an entity that no act step writes. Keep it, or convert it to an act with a rule?',
+      defaultChoice: NS4_E2_KEEP_DECIDE_STEP_CHOICE,
+      alternatives: [NS4_E2_CONVERT_TO_ACT_WITH_RULE_CHOICE],
+      changeHint: 'The entity is never written in this module, so it has no state of its own to transition. Prefer an act that applies a rule.',
+    });
+  });
+  if (!findings.length) return review;
+  const resolution = resolveNs4Findings(review, findings);
   const byId = new Map(review.systemDecisions.map(decision => [decision.decisionId, decision]));
   resolution.systemDecisions.forEach(decision => byId.set(decision.decisionId, decision));
-  return { ...resolution.artifact, systemDecisions: [...byId.values()] };
+  return { ...review, systemDecisions: [...byId.values()] };
+}
+
+function demoteDecideToRuleDecisionId(stepId: string): string {
+  return `${NS4_E2_DEMOTE_DECIDE_TO_RULE_ID}${stepId.slice(0, 1).toUpperCase()}${stepId.slice(1)}`;
 }
 
 export function formatNs4E2CoverageRepairFeedback(verdict: Ns4E2CoverageVerdict): string {
-  const blockers = verdict.issues.filter(issue => issue.severity === 'blocking');
+  const blockers = verdict.issues.filter(issue =>
+    issue.severity === 'blocking' && issue.category !== NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL
+  );
   return [
     `Coverage judge: ${verdict.summary}`,
     `Mandatory repair checklist: ${blockers.length} blocking issue(s). Resolve every numbered item; preserve unaffected journeys.`,

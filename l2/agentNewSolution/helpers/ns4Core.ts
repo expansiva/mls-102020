@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/helpers/ns4Core.ts" enhancement="_blank"/>
 
+import { normalizeNs4Phrases, type Ns4PhraseKey } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
+
 export const NS4_FLOW_ID = 'agentNewSolution' as const;
 export const NS4_FLOW_VERSION = '2026-08-14-ns4-flow-v40' as const;
 export const NS4_E4_MAX_PARALLEL = 20 as const;
@@ -68,6 +70,7 @@ export interface Ns4Clarification {
 export interface Ns4Presentation {
   userLanguage: string;
   stepTitles: Record<Ns4PlanId, string>;
+  phrases?: Partial<Record<Ns4PhraseKey, string>>;
 }
 
 export interface Ns4RootPlan {
@@ -76,7 +79,13 @@ export interface Ns4RootPlan {
   userPrompt: string;
   presentation: Ns4Presentation;
   clarification: Ns4Clarification;
+  phraseWarnings?: string[];
 }
+
+export const NS4_TERMINAL_CANCEL_UNSUPPORTED =
+  'Terminal cancellation still depends on explicit collab-messages support; this review was kept open without changing the pipeline.';
+export const NS4_DESCRIBE_REQUIRED_CHANGE =
+  'Describe the required change before submitting.';
 
 export interface Ns4ModuleArtifact {
   schemaVersion: typeof NS4_MODULE_SCHEMA_VERSION;
@@ -180,7 +189,7 @@ export interface Ns4PipelineState {
       approvedBy?: Ns4ApprovedBy;
       approvedAt?: string;
       autoReason?: string;
-      skippedDefaults?: { productLanguages: string[]; defaultLanguage: string; moduleName: string };
+      skippedDefaults?: { productLanguages: string[]; defaultLanguage: string; moduleName: string; i18nWarnings?: string[] };
       error?: string;
       failedAt?: string;
       updatedAt: string;
@@ -370,16 +379,17 @@ function canonicalNs4ExistingModule(token: string, existingModules: ReadonlySet<
  * got a terminal error.
  *
  * BOTH signals are required. Scanning tokens for an existing module name on its own would hijack an
- * ordinary creation prompt that happens to mention one ("um módulo de agenda para o petShop"); demanding
+ * ordinary creation prompt that happens to mention one ("a schedule module for petShop"); demanding
  * an explicit rebuild word keeps every prompt without one canonicalized exactly as before. The outcome is
  * only ever a message teaching the flag — nothing is written or deleted on this path.
  *
- * The rebuild word may be a flag (`/rebuild`, `/regenerar`): the slash sits where a start-or-space
- * used to be required, so the canonical form never reached this helper.
+ * The rebuild word may be a flag (`/rebuild`): the slash sits where a start-or-space used to be
+ * required, so the canonical form never reached this helper. Natural-language synonyms are not a
+ * command; the status task names `/rebuild`.
  */
 export function detectNs4RebuildIntentModule(value: string, existingModules: ReadonlySet<string>): string {
   const raw = String(value || '');
-  if (!/(^|\s|\/)(rebuild|regenerar|regerar|reconstruir)(\s|$)/i.test(raw)) return '';
+  if (!/(^|\s|\/)rebuild(\s|$)/i.test(raw)) return '';
   for (const token of raw.split(/[^A-Za-z0-9]+/).filter(Boolean)) {
     if (!isNs4ModuleToken(token)) continue;
     const canonical = canonicalNs4ExistingModule(token, existingModules);
@@ -402,8 +412,8 @@ function formatNs4ExistingModuleNames(
 
 export function formatNs4MissingRebuildModuleMessage(existingModules: ReadonlySet<string>): string {
   const listed = formatNs4ExistingModuleNames(existingModules);
-  const listPart = listed ? ` Módulos existentes: ${listed}.` : '';
-  return `Não existe módulo com esse nome para regenerar.${listPart} Use "@@newSolution <módulo> /rebuild" ou "@@newSolution <módulo> /rebuild all" com o nome de um módulo já gerado.`;
+  const listPart = listed ? ` Existing modules: ${listed}.` : '';
+  return `There is no module with that name to regenerate.${listPart} Use "@@newSolution <module> /rebuild" or "@@newSolution <module> /rebuild all" with the name of a module that already exists.`;
 }
 
 export function createNs4E2Step(
@@ -596,6 +606,7 @@ export function createNs4E4FinalizeStep(
   dependsOn: string[],
   entityRepairRound = 0,
   planRepairAttempt = 0,
+  derivationRepairAttempt = 0,
 ): mls.msg.AIAgentStep {
   return createNs4AgentStep(
     `e4-ontology-round-${reviewRound}-finalize-${entityRepairRound}-${planRepairAttempt}`,
@@ -605,6 +616,7 @@ export function createNs4E4FinalizeStep(
     {
       planId: 'e4-ontology', stage: 'finalize', moduleName, reviewRound, solutionMode: 'new',
       entityRepairRound, planRepairAttempt,
+      ...(derivationRepairAttempt ? { derivationRepairAttempt } : {}),
     },
   );
 }
@@ -625,6 +637,29 @@ export function createNs4E4RelationshipBindingStep(
       planId: 'e4-ontology', stage: 'bindRelationships', moduleName, reviewRound, solutionMode: 'new',
       bindingRepairAttempt,
       ...(entityRepairRound ? { entityRepairRound } : {}),
+      ...(gateFeedback ? { gateFeedback } : {}),
+    },
+  );
+}
+
+export function createNs4E4DerivationBindingStep(
+  moduleName: string,
+  reviewRound: number,
+  derivationRepairAttempt = 0,
+  gateFeedback = '',
+  entityRepairRound = 0,
+  planRepairAttempt = 0,
+): mls.msg.AIAgentStep {
+  return createNs4AgentStep(
+    `e4-ontology-round-${reviewRound}-derivation-binding-${derivationRepairAttempt}`,
+    `Bind ontology derivations · ${reviewRound}${derivationRepairAttempt ? ` · R${derivationRepairAttempt}` : ''}`,
+    [],
+    'waiting_human_input',
+    {
+      planId: 'e4-ontology', stage: 'bindDerivations', moduleName, reviewRound, solutionMode: 'new',
+      derivationRepairAttempt,
+      ...(entityRepairRound ? { entityRepairRound } : {}),
+      ...(planRepairAttempt ? { planRepairAttempt } : {}),
       ...(gateFeedback ? { gateFeedback } : {}),
     },
   );
@@ -862,6 +897,8 @@ export function normalizeNs4RootPlan(payload: unknown, sourcePrompt: string): Ns
     if (!title || title.length >= 140) missingTitles.push(planId);
     stepTitles[planId] = title && title.length < 140 ? title : NS4_DEFAULT_TITLES[planId];
   }
+  const normalizedPhrases = normalizeNs4Phrases(record.phrases);
+  const phrases = Object.keys(normalizedPhrases.phrases).length ? normalizedPhrases.phrases : undefined;
   const validEnvelope = record.validPrompt === true
     && !!readString(record.userPrompt)
     && !!readString(record.userLanguage)
@@ -872,12 +909,13 @@ export function normalizeNs4RootPlan(payload: unknown, sourcePrompt: string): Ns
     validPrompt: validEnvelope && userPrompt.length >= 2,
     ...(invalidReason ? { invalidReason } : {}),
     userPrompt,
-    presentation: { userLanguage, stepTitles },
+    presentation: { userLanguage, stepTitles, ...(phrases ? { phrases } : {}) },
     clarification: normalizeNs4Clarification({
       ...asRecord(record.clarification),
       userLanguage,
       planId: 'e1-clarification',
     }),
+    ...(normalizedPhrases.warnings.length ? { phraseWarnings: normalizedPhrases.warnings } : {}),
   };
 }
 
@@ -1082,7 +1120,7 @@ export function markNs4E1Approved(
   artifactPath: string,
   now = new Date().toISOString(),
   autoReason?: string,
-  skippedDefaults?: { productLanguages: string[]; defaultLanguage: string; moduleName: string },
+  skippedDefaults?: { productLanguages: string[]; defaultLanguage: string; moduleName: string; i18nWarnings?: string[] },
 ): Ns4PipelineState {
   return {
     ...state,
@@ -1929,10 +1967,90 @@ function parseMaybeJson(value: unknown): unknown {
 }
 
 function inferNs4PromptLanguage(prompt: string): string {
-  const text = prompt.toLowerCase();
-  if (/\b(pt-br|portugu[eê]s|linguagem\s*:\s*pt)\b/.test(text)) return 'pt-BR';
-  if (/\b(es|español|castellano)\b/.test(text)) return 'es';
-  return 'en';
+  const folded = foldNs4Text(prompt);
+  const mentioned: string[] = [];
+  // Hyphenated tags only (`pt-BR`): a bare `pet` / `es` / `fr` is a common word, not a citation.
+  for (const token of prompt.split(/[^A-Za-z0-9-]+/)) {
+    if (!token.includes('-')) continue;
+    const tag = normalizeNs4LanguageTag(token);
+    if (tag && ns4LanguageMentioned(tag, tag, folded)) mentioned.push(tag);
+  }
+  for (const [name, tag] of ns4LanguageNameIndex()) {
+    if (ns4WordMentioned(folded, name)) mentioned.push(tag);
+  }
+  if (!mentioned.length) return 'en';
+  mentioned.sort((left, right) => right.length - left.length || left.localeCompare(right));
+  return mentioned[0];
+}
+
+/** Display names of the language in the user's language, its own language and English. */
+export function ns4LanguageMentioned(language: string, userLanguage: string, foldedText: string): boolean {
+  if (!foldedText.trim()) return false;
+  const tag = language.toLowerCase();
+  // A bare two-letter code is a common word elsewhere ('en' in Spanish, 'de' in Portuguese): only a
+  // tag with a region or with three letters counts as a textual citation.
+  if ((tag.includes('-') || tag.length >= 3) && ns4WordMentioned(foldedText, foldNs4Text(tag))) return true;
+  return ns4LanguageNames(language, userLanguage).some(name => ns4WordMentioned(foldedText, name));
+}
+
+function ns4LanguageNames(language: string, userLanguage: string): string[] {
+  const primary = primaryNs4Subtag(language);
+  const names = new Set<string>();
+  for (const displayLanguage of [userLanguage, primary, 'en']) {
+    let displayNames: Intl.DisplayNames;
+    try { displayNames = new Intl.DisplayNames([displayLanguage], { type: 'language' }); } catch { continue; }
+    for (const target of [language, primary]) {
+      try {
+        const name = displayNames.of(target);
+        // `of` echoes unknown tags back: an echoed tag must not bypass the two-letter token rule.
+        if (name && name.toLowerCase() !== target.toLowerCase()) names.add(foldNs4Text(name));
+      } catch { /* invalid tag: it has no display name, only a literal tag citation can keep it */ }
+    }
+  }
+  return [...names];
+}
+
+function ns4WordMentioned(text: string, token: string): boolean {
+  if (!token) return false;
+  let index = text.indexOf(token);
+  while (index !== -1) {
+    const before = index > 0 ? text[index - 1] : ' ';
+    const after = index + token.length < text.length ? text[index + token.length] : ' ';
+    if (!/[\p{L}\p{N}-]/u.test(before) && !/[\p{L}\p{N}-]/u.test(after)) return true;
+    index = text.indexOf(token, index + 1);
+  }
+  return false;
+}
+
+/** Lower case without diacritics, so a folded language name matches with or without marks. */
+export function foldNs4Text(value: string): string {
+  return value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function primaryNs4Subtag(tag: string): string { return tag.split('-')[0].toLowerCase(); }
+
+let languageNameIndex: Map<string, string> | undefined;
+
+/**
+ * Reverse map of DisplayNames language names → primary tag. The inventory is every two-letter
+ * tag `Intl.DisplayNames` actually names (not an authored list): unknown tags echo themselves
+ * and are skipped.
+ */
+function ns4LanguageNameIndex(): Map<string, string> {
+  if (languageNameIndex) return languageNameIndex;
+  const index = new Map<string, string>();
+  const a = 'a'.charCodeAt(0);
+  for (let i = 0; i < 26; i++) {
+    for (let j = 0; j < 26; j++) {
+      const tag = String.fromCharCode(a + i) + String.fromCharCode(a + j);
+      for (const name of ns4LanguageNames(tag, tag)) {
+        const current = index.get(name);
+        if (!current || tag.length < current.length) index.set(name, tag);
+      }
+    }
+  }
+  languageNameIndex = index;
+  return index;
 }
 
 function defaultNs4Presentation(prompt: string): Ns4Presentation {

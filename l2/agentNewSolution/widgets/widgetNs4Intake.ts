@@ -3,6 +3,7 @@
 import { html } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
+import { ns4WidgetLabels, type Ns4PhraseHolder } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import { Ns4E1Review, Ns4ReviewPolicy, Ns4SolutionStrategy, policyFor } from '/_102020_/l2/agentNewSolution/steps/e1/contracts.js';
 import { Ns4ClarificationAction, Ns4ClarificationEvent, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
 
@@ -16,6 +17,7 @@ const strategies: Array<{ id: Ns4SolutionStrategy; title: string; description: s
 @customElement('widget-ns4-intake-102020')
 export class WidgetNs4Intake102020 extends StateLitElement implements Ns4ClarificationWidgetApi {
   @property({ type: Object }) value: Ns4E1Review | null = null;
+  @property({ type: Object }) presentation: Ns4PhraseHolder | undefined;
   @property({ type: Boolean }) readonly = false;
   @state() private adjustment = '';
   @state() private submitting = false;
@@ -52,10 +54,7 @@ export class WidgetNs4Intake102020 extends StateLitElement implements Ns4Clarifi
 
   private selectReviewPolicy(mode: Ns4ReviewPolicy) { if (this.value && !this.readonly) this.patch({ reviewPolicy: { mode } }); }
   private labels() {
-    const language = this.value?.userLanguage?.toLowerCase() || 'en';
-    if (language.startsWith('pt')) return { adjustmentRequired: 'Escreva o que precisa mudar antes de gerar uma nova proposta.', processingApproval: 'Validando definição inicial…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…', revise: 'Revise os itens abaixo', cancel: 'Cancelar execução', cancelTitle: 'Cancelar esta execução?', cancelText: 'O processamento será encerrado. O histórico e os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando' };
-    if (language.startsWith('es')) return { adjustmentRequired: 'Describa qué debe cambiar antes de generar una propuesta nueva.', processingApproval: 'Validando definición inicial…', processingChanges: 'Preparando una nueva revisión…', processingCancel: 'Cancelando la ejecución…', revise: 'Revise los elementos a continuación', cancel: 'Cancelar ejecución', cancelTitle: '¿Cancelar esta ejecución?', cancelText: 'El procesamiento terminará. Se conservarán el historial y los artefactos aprobados.', keepWorking: 'Seguir trabajando' };
-    return { adjustmentRequired: 'Describe what should change before generating another proposal.', processingApproval: 'Validating initial definition…', processingChanges: 'Preparing a new review…', processingCancel: 'Cancelling execution…', revise: 'Review the items below', cancel: 'Cancel execution', cancelTitle: 'Cancel this execution?', cancelText: 'Processing will end. The history and approved artifacts will be preserved.', keepWorking: 'Keep working' };
+    return ns4WidgetLabels(this.presentation, 'intake');
   }
   setFeedback(feedback: Ns4ClarificationFeedback | null): void { this.feedbackIssues = feedback?.issues || []; this.msgError = feedback?.kind === 'error' ? feedback.message : ''; this.msgOk = feedback && feedback.kind !== 'error' ? feedback.message : ''; this.feedbackFocusPending = feedback?.kind === 'error'; }
   setSubmitting(submitting: boolean): void { this.submitting = submitting; }

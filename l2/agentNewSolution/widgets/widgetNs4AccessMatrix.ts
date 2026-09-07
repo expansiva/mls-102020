@@ -7,50 +7,15 @@ import {
   Ns4AccessGrant,
   Ns4E3Review,
 } from '/_102020_/l2/agentNewSolution/steps/e3/contracts.js';
+import { ns4WidgetLabels, type Ns4PhraseHolder, type Ns4WidgetLabelMap } from '/_102020_/l2/agentNewSolution/helpers/ns4Text.js';
 import { Ns4ClarificationAction, Ns4ClarificationEvent, Ns4ClarificationFeedback, Ns4ClarificationIssue, Ns4ClarificationWidgetApi } from './clarification.js';
 
-const labels = {
-  en: {
-    subtitle: 'Review who may perform each capability and exactly which information may be disclosed.', step: 'Step', of: 'of',
-    round: 'Review', profiles: 'Access profiles', internal: 'Internal', external: 'External',
-    actors: 'E2 actors', landing: 'Starting point', matrix: 'Profile × authority matrix', profileAccess: 'Authorities for this profile',
-    authority: 'Authority', noAccess: 'No access', full: 'Full record', limited: 'Limited',
-    details: 'Access details', reason: 'Business reason', scope: 'Data scope', disclosure: 'Disclosure boundary',
-    allowed: 'May expose', denied: 'Must not expose', ruleRefs: 'Rule references', journeySteps: 'Journey steps',
-    informationNeeds: 'Information needs', close: 'Close', adjustment: 'What should change?',
-    placeholder: 'Example: Add authority to view project budgets; some clients may see a summary without seeing the whole project.',
-    requestChanges: 'Generate another proposal', approve: 'Approve access matrix',
-    adjustmentRequired: 'Describe the required change before generating another proposal.', empty: 'No access matrix available.', processingApproval: 'Validating access matrix…', processingChanges: 'Preparing a new review…', processingCancel: 'Cancelling execution…', revise: 'Review the items below', cancel: 'Cancel execution', cancelTitle: 'Cancel this execution?', cancelText: 'Processing will end. The history and approved artifacts will be preserved.', keepWorking: 'Keep working',
-  },
-  pt: {
-    subtitle: 'Revise quem pode executar cada capacidade e exatamente quais informações podem ser expostas.', step: 'Etapa', of: 'de',
-    round: 'Revisão', profiles: 'Perfis de acesso', internal: 'Interno', external: 'Externo',
-    actors: 'Atores do E2', landing: 'Ponto de entrada', matrix: 'Matriz perfil × autoridade', profileAccess: 'Autoridades deste perfil',
-    authority: 'Autoridade', noAccess: 'Sem acesso', full: 'Registro completo', limited: 'Limitado',
-    details: 'Detalhes do acesso', reason: 'Motivo de negócio', scope: 'Escopo dos dados', disclosure: 'Limite de exposição',
-    allowed: 'Pode expor', denied: 'Não pode expor', ruleRefs: 'Referências de regras', journeySteps: 'Passos das jornadas',
-    informationNeeds: 'Necessidades de informação', close: 'Fechar', adjustment: 'O que deve mudar?',
-    placeholder: 'Exemplo: adicione autoridade para ver orçamentos; alguns clientes podem ver um resumo sem acessar o projeto inteiro.',
-    requestChanges: 'Gerar nova proposta', approve: 'Aprovar matriz de acesso',
-    adjustmentRequired: 'Descreva a alteração necessária antes de gerar outra proposta.', empty: 'Nenhuma matriz de acesso disponível.', processingApproval: 'Validando matriz de acesso…', processingChanges: 'Preparando nova revisão…', processingCancel: 'Cancelando execução…', revise: 'Revise os itens abaixo', cancel: 'Cancelar execução', cancelTitle: 'Cancelar esta execução?', cancelText: 'O processamento será encerrado. O histórico e os artefatos já aprovados serão preservados.', keepWorking: 'Continuar trabalhando',
-  },
-  es: {
-    subtitle: 'Revise quién puede ejecutar cada capacidad y exactamente qué información puede exponerse.', step: 'Paso', of: 'de',
-    round: 'Revisión', profiles: 'Perfiles de acceso', internal: 'Interno', external: 'Externo',
-    actors: 'Actores de E2', landing: 'Punto de entrada', matrix: 'Matriz perfil × autoridad', profileAccess: 'Autoridades de este perfil',
-    authority: 'Autoridad', noAccess: 'Sin acceso', full: 'Registro completo', limited: 'Limitado',
-    details: 'Detalles del acceso', reason: 'Motivo de negocio', scope: 'Alcance de datos', disclosure: 'Límite de exposición',
-    allowed: 'Puede exponer', denied: 'No puede exponer', ruleRefs: 'Referencias de reglas', journeySteps: 'Pasos de jornadas',
-    informationNeeds: 'Necesidades de información', close: 'Cerrar', adjustment: '¿Qué debe cambiar?',
-    placeholder: 'Ejemplo: agregue autoridad para ver presupuestos; algunos clientes pueden ver un resumen sin acceder al proyecto completo.',
-    requestChanges: 'Generar otra propuesta', approve: 'Aprobar matriz de acceso',
-    adjustmentRequired: 'Describa el cambio necesario antes de generar otra propuesta.', empty: 'No hay matriz de acceso disponible.', processingApproval: 'Validando matriz de acceso…', processingChanges: 'Preparando una nueva revisión…', processingCancel: 'Cancelando la ejecución…', revise: 'Revise los elementos a continuación', cancel: 'Cancelar ejecución', cancelTitle: '¿Cancelar esta ejecución?', cancelText: 'El procesamiento terminará. Se conservarán el historial y los artefactos aprobados.', keepWorking: 'Seguir trabajando',
-  },
-};
+type AccessMatrixText = Ns4WidgetLabelMap<'accessMatrix'>;
 
 @customElement('widget-ns4-access-matrix-102020')
 export class WidgetNs4AccessMatrix102020 extends StateLitElement implements Ns4ClarificationWidgetApi {
   @property({ type: Object }) value: Ns4E3Review | null = null;
+  @property({ type: Object }) presentation: Ns4PhraseHolder | undefined;
   @property({ type: Boolean }) readonly = false;
 
   @state() private adjustment = '';
@@ -65,10 +30,7 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement implements Ns4C
   private cancelOrigin: HTMLElement | null = null;
 
   private text() {
-    const language = this.value?.userLanguage?.toLowerCase() || 'en';
-    if (language.startsWith('pt')) return labels.pt;
-    if (language.startsWith('es')) return labels.es;
-    return labels.en;
+    return ns4WidgetLabels(this.presentation, 'accessMatrix');
   }
 
   setFeedback(feedback: Ns4ClarificationFeedback | null): void {
@@ -112,12 +74,12 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement implements Ns4C
     const index = controls.indexOf(document.activeElement as HTMLButtonElement);
     event.preventDefault(); controls[(index + (event.shiftKey ? controls.length - 1 : 1)) % controls.length]?.focus();
   }
-  private renderFeedback(text: typeof labels.en) {
+  private renderFeedback(text: AccessMatrixText) {
     if (!this.msgError && !this.msgOk) return '';
     const error = Boolean(this.msgError);
     return html`<section class="ns4-feedback ${error ? 'is-error' : 'is-ok'}" role=${error ? 'alert' : 'status'} aria-live=${error ? 'assertive' : 'polite'} tabindex="-1">${error ? html`<strong>${text.revise}</strong>` : ''}<span>${this.msgError || this.msgOk}</span>${this.feedbackIssues.length ? html`<ul>${this.feedbackIssues.map(issue => html`<li>${issue.path ? html`<code>${issue.path}</code> — ` : ''}${issue.message}</li>`)}</ul>` : ''}</section>`;
   }
-  private renderCancelDialog(text: typeof labels.en) {
+  private renderCancelDialog(text: AccessMatrixText) {
     if (!this.cancelOpen) return '';
     return html`<div class="ns4-dialog-backdrop"><section class="ns4-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="ns4-access-cancel-title" @keydown=${this.trapCancel}><h3 id="ns4-access-cancel-title">${text.cancelTitle}</h3><p>${text.cancelText}</p><div><button class="secondary ns4-cancel-stay" @click=${this.closeCancel}>${text.keepWorking}</button><button class="danger" @click=${() => { this.closeCancel(); this.submit('cancel'); }}>${text.cancel}</button></div></section></div>`;
   }
@@ -166,7 +128,7 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement implements Ns4C
     `;
   }
 
-  private renderDetails(grant: Ns4AccessGrant, text: typeof labels.en) {
+  private renderDetails(grant: Ns4AccessGrant, text: AccessMatrixText) {
     const profile = this.value!.profiles.find(item => item.profileId === grant.profileRef);
     const authority = this.value!.authorities.find(item => item.authorityRef === grant.authorityRef);
     return html`
@@ -188,7 +150,7 @@ export class WidgetNs4AccessMatrix102020 extends StateLitElement implements Ns4C
     `;
   }
 
-  private renderMatrix(selected: Ns4AccessGrant | undefined, text: typeof labels.en) {
+  private renderMatrix(selected: Ns4AccessGrant | undefined, text: AccessMatrixText) {
     return html`
       <section class="ns4-matrix-card">
         <h3>${text.matrix}</h3>

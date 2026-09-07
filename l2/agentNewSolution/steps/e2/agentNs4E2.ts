@@ -5,7 +5,7 @@ import { continuePoolingTask } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
 import { resolveNs4MutableParent } from '/_102020_/l2/agentNewSolution/helpers/ns4StepTree.js';
 import { msgApplyIntents } from '/_102036_/l2/shared/api.js';
-import { showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
+import { bindNs4ClarificationWidget, showNs4ClarificationError } from '/_102020_/l2/agentNewSolution/helpers/ns4Clarification.js';
 import {
   createNs4E2CoverageJudgeStep,
   createNs4E2CoverageRepairStep,
@@ -23,6 +23,7 @@ import {
   Ns4ApprovedBy,
   Ns4ModuleArtifact,
   Ns4PipelineState,
+  NS4_TERMINAL_CANCEL_UNSUPPORTED,
 } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
 import {
   readNs4AgentText,
@@ -55,6 +56,7 @@ import { validateNs4E2PolicySelections, validateNs4E2Review } from '/_102020_/l2
 import { resolveNs4E2HookArgs } from '/_102020_/l2/agentNewSolution/steps/e2/hookArgs.js';
 import { decideNs4LaterCheckpoint, ns4E2SmartSignal } from '/_102020_/l2/agentNewSolution/helpers/ns4ReviewPolicy.js';
 import {
+  applyNs4E2RegistrarDecisions,
   formatNs4E2CoverageRepairFeedback,
   applyNs4E2PolicyDecisionImpacts,
   normalizeNs4E2CoverageVerdict,
@@ -123,7 +125,7 @@ export async function beforeNs4E2PromptStep(
     if (parsed.stage === 'coverageJudge') {
       const draft = await readDraftFromStorage(moduleName);
       if (!draft) throw new Error(`E2 draft not found for coverage judge in ${moduleName}.`);
-      const normalizedDraft = normalizeNs4E2Review(draft, moduleName);
+      const normalizedDraft = normalizeNs4E2Review(draft, moduleName, moduleArtifact.presentation);
       const mechanicalCoverage = analyzeNs4E2MechanicalCoverage(normalizedDraft);
       const judgePrompt = await readNs4AgentText('steps/e2', 'coverageJudge');
       return [{
@@ -241,13 +243,13 @@ export async function afterNs4E2PromptStep(
     let review: Ns4E2Review;
     if (args.stage === 'coverageRepair') {
       const round = args.reviewRound || pipeline.steps.e2?.reviewRound || 1;
-      const storedDraft = normalizeNs4E2Review(await readDraftFromStorage(args.moduleName), args.moduleName);
-      const mechanicalCoverage = analyzeNs4E2MechanicalCoverage(storedDraft);
-      const allowNoOp = mechanicalCoverage.findings.some(finding =>
-        finding.signalId === NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL
-      ) && args.coverageIssueIds?.includes(NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL) === true;
-      const patch = normalizeNs4E2CoveragePatch(payload, args.moduleName, round);
-      const patchValidation = validateNs4E2CoveragePatch(patch, args.moduleName, round, allowNoOp);
+      const presentation = (await readNs4Module(args.moduleName))?.presentation;
+      const storedDraft = normalizeNs4E2Review(await readDraftFromStorage(args.moduleName), args.moduleName, presentation);
+      const patch = normalizeNs4E2CoveragePatch(payload, args.moduleName, round, presentation);
+      // Empty patches used to be allowed when the only coverage issue was moduleWithoutDecide
+      // (the generator could sustain no-decision with a no-op). That issue is no longer
+      // emitted, so coverageRepair is never dispatched for that cause.
+      const patchValidation = validateNs4E2CoveragePatch(patch, args.moduleName, round);
       if (!patchValidation.ok) {
         return await retryInvalidCoveragePatch(
           context, parentStep, step, hookSequential, args, pipeline, patchValidation.errors,
@@ -260,7 +262,7 @@ export async function afterNs4E2PromptStep(
         await recordNs4E2Failure(moduleName, message);
         return [updateStatus(context, parentStep, step, hookSequential, 'failed', message)];
       }
-      review = normalizeNs4E2Review(payload, args.moduleName);
+      review = normalizeNs4E2Review(payload, args.moduleName, (await readNs4Module(args.moduleName))?.presentation);
       review.moduleName = args.moduleName;
       review.reviewRound = args.reviewRound || review.reviewRound;
     }
@@ -339,7 +341,7 @@ async function afterNs4E2CoverageJudge(
   const judgeParent = findMutableParentStep(context, parentStep);
   const payload = unwrapPayload(step.interaction?.payload?.[0]);
   const storedDraft = await readDraftFromStorage(args.moduleName);
-  const originalReview = normalizeNs4E2Review(storedDraft, args.moduleName);
+  const originalReview = normalizeNs4E2Review(storedDraft, args.moduleName, (await readNs4Module(args.moduleName))?.presentation);
   const mechanicalCoverage = analyzeNs4E2MechanicalCoverage(originalReview);
   const verdict = normalizeNs4E2CoverageVerdict(payload, args.moduleName, round);
   const validation = validateNs4E2CoverageVerdict(
@@ -396,11 +398,11 @@ async function afterNs4E2CoverageJudge(
   if (!verdict.complete) {
     const feedback = formatNs4E2CoverageRepairFeedback(verdict);
     const currentIssueIds = verdict.issues
-      .filter(issue => issue.severity === 'blocking')
+      .filter(issue => issue.severity === 'blocking' && issue.category !== NS4_E2_MODULE_WITHOUT_DECIDE_SIGNAL)
       .map(issue => issue.issueId)
       .sort();
     const repeated = sameStringSet(currentIssueIds, args.coverageIssueIds || []);
-    if (!repeated && coverageRepairAttempt < MAX_E2_COVERAGE_REPAIRS) {
+    if (currentIssueIds.length && !repeated && coverageRepairAttempt < MAX_E2_COVERAGE_REPAIRS) {
       return [
         addStep(context, judgeParent, createNs4E2CoverageRepairStep(
           args.moduleName,
@@ -445,6 +447,7 @@ async function continueNs4E2AfterCoverageJudge(
   statusPrefix = 'E2 coverage reviewed',
 ): Promise<mls.msg.AgentIntent[]> {
   const round = args.reviewRound || pipeline.steps.e2?.reviewRound || 1;
+  review = applyNs4E2RegistrarDecisions(review);
   const draftPath = await writeNs4E2Draft(args.moduleName, review);
   await writeNs4E2VersionedDraft(args.moduleName, review.reviewRound, review);
   const reviewedPipeline = await requirePipeline(args.moduleName);
@@ -512,7 +515,11 @@ export async function beforeNs4E2ClarificationStep(
   hookSequential: number,
   json: unknown,
 ): Promise<HTMLElement> {
-  const review = normalizeNs4E2Review(parseMaybeJson(json));
+  const parsed = parseMaybeJson(json);
+  const parsedRecord = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  const parsedModule = typeof parsedRecord.moduleName === 'string' ? parsedRecord.moduleName : '';
+  const presentation = parsedModule ? (await readNs4Module(parsedModule))?.presentation : undefined;
+  const review = normalizeNs4E2Review(parsed, parsedModule, presentation);
   const gate = validateNs4E2Review(review);
   if (!gate.ok) {
     const message = gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
@@ -522,7 +529,7 @@ export async function beforeNs4E2ClarificationStep(
 
   await import('/_102020_/l2/agentNewSolution/widgets/widgetNs4Journeys.js');
   const element = document.createElement('widget-ns4-journeys-102020');
-  (element as unknown as { value: Ns4E2Review }).value = review;
+  bindNs4ClarificationWidget(element, review, presentation);
   element.addEventListener('ns4-journeys-review', (event: Event) => {
     const detail = (event as CustomEvent<Ns4E2ReviewEvent>).detail;
     void applyNs4E2Review(context, parentStep, step, hookSequential, detail)
@@ -540,7 +547,7 @@ async function applyNs4E2Review(
 ): Promise<void> {
   if (!context.task) throw new Error('[agentNewSolution:e2] task invalid');
   const mutationParent = findMutableParentStep(context, parentStep);
-  if (event.action === 'cancel') throw new Error('Cancelamento terminal ainda depende de suporte explícito do collab-messages; esta revisão foi mantida aberta sem alterar o pipeline.');
+  if (event.action === 'cancel') throw new Error(NS4_TERMINAL_CANCEL_UNSUPPORTED);
   if (event.action === 'approve') {
     const selectionGate = validateNs4E2PolicySelections(event.review, event.policyDecisionSelections, true);
     if (!selectionGate.ok) throw new Error(selectionGate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
@@ -583,6 +590,7 @@ async function persistNs4E2(
   requestedSelections: Array<Pick<Ns4PolicyDecisionSelection, 'decisionId' | 'selectedChoice'>> = [],
   autoReason?: string,
 ): Promise<Ns4PersistedE2> {
+  review = applyNs4E2RegistrarDecisions(review);
   const gate = validateNs4E2Review(review);
   if (!gate.ok) throw new Error(gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
   const moduleArtifact = await readNs4Module(moduleName);

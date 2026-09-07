@@ -78,8 +78,8 @@ deterministic backstop for a delete over master data arriving from any other pat
 
 ## The record owner is the session, never a form field
 
-An E3 grant with `dataScope.mode: 'own'` (and no other mode on that entity) binds the owner handle
-(`ownerId` / `ownerUserId` / `customerId` / `clientId`) to the authenticated actor. Catalogue and
-journey write inputs emit `source: 'actorSession'`. A person the actor actually chooses
-(`assignedUserId`) stays `userInput`. `NS4_E8_USERINPUT_FROM_SESSION` records a leftover `userInput`
-whose fieldRef or description still names the session — registrar, not a stop.
+An E3 grant with `dataScope.mode: 'own'` (and no other mode on that entity) binds the field that
+points at a `party: person` entity to the authenticated actor. Catalogue and journey write inputs
+emit `source: 'actorSession'`. A person the actor actually chooses stays `userInput`.
+`NS4_E8_USERINPUT_FROM_SESSION` records a leftover `userInput` whose fieldRef is that handle —
+registrar, not a stop.
