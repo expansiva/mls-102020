@@ -29,6 +29,8 @@ export interface PipelineRunSummary {
   reason: string;
   counts: Record<string, unknown>;
   degradations: PipelineRunDegradation[];
+  /** Informational scan notices (orphan/unparsable todo of a module outside this run). Not a verdict. */
+  scanWarnings?: string[];
 }
 
 const memoryDegradations: PipelineRunDegradation[] = [];

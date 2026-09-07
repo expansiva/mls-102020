@@ -110,7 +110,9 @@ async function persistCfeRunSummary(
   status: 'completed' | 'failed',
 ): Promise<void> {
   try {
-    const degradations = await takeCfeDegradations(result.moduleName);
+    const recorded = await takeCfeDegradations(result.moduleName);
+    const scanWarnings = recorded.filter(item => item.kind === 'scan-warning').map(item => item.reason);
+    const degradations = recorded.filter(item => item.kind !== 'scan-warning');
     const blocked = partitioned.blocking.length;
     const verdict = status === 'failed' || blocked > 0
       ? 'failed'
@@ -134,6 +136,7 @@ async function persistCfeRunSummary(
         compiled: compiled.checked,
       },
       degradations,
+      scanWarnings,
     });
   } catch { /* run summary must never fail finalize */ }
 }

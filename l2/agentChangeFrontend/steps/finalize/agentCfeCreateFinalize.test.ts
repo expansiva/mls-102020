@@ -77,6 +77,13 @@ void test('D2: uma página com item bloqueado não entra em pagesDone', () => {
   assert.match(src, /buildAddLanguageMessage\(context, donePages\)/u);
 });
 
+void test('scan-warning notices land on runNN_changefrontend.json as scanWarnings, not as degradations', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
+  assert.match(src, /item\.kind === 'scan-warning'/);
+  assert.match(src, /scanWarnings,/);
+  assert.match(src, /item\.kind !== 'scan-warning'/);
+});
+
 void test('F1: finalize takes the run module from the step prompt, never the create-run cache', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
   const shared = readFileSync(path.join(HERE, '..', '..', 'helpers', 'cfeCreateShared.ts'), 'utf8');

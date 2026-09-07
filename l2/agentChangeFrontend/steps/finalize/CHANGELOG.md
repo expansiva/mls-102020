@@ -2,6 +2,10 @@
 
 # Changelog
 
+- 2026-09-07: `persistCfeRunSummary` splits `kind: 'scan-warning'` out of `degradations[]` into
+  `scanWarnings[]` on `runNN_changefrontend.json` so an orphan/unparsable todo of another module
+  stays informational (CB parity) and does not flip the verdict to `degraded`.
+
 - 2026-08-26 (gates declaram) — closing gate still compiles `.test.ts` (detector stays loud) but
   those findings are `declared`, never `MODULE-COMPILE-FAILED`. Only shipped `.ts` errors block.
 
