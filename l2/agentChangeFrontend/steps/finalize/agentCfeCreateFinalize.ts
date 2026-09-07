@@ -9,10 +9,11 @@ import {
 // beforePromptImplicit (no coupling to its internals) — the same handoff agentNewSolution uses to start
 // @@changeBackend/@@changeFrontend. The runtime strips the mention before the agent sees the payload
 // (aiAgentOrchestration.ts:48), so agentAddLanguage receives exactly its JSON args.
-import { compileMlsPathAndGetErrors, releaseBorrowedModelScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+import { compileMlsPathAndGetErrors, compileModuleViaProjectTsc, monacoCompileAvailable, releaseBorrowedModelScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import { orderModuleCompile } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { agentBuildTrace, readAgentProvenance } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
-import { describeCompilerFidelity } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileFidelity.js';
+import { describeCompilerFidelity, describeModuleCompileClean } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCompileFidelity.js';
+import { tscGateOf, type CompileModuleTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeProjectTsc.js';
 import { saveCfRunReport } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunDossier.js';
 import { buildCfRunReport } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunReport.js';
 import { collectRunStepRecords } from '/_102020_/l2/agentChangeFrontend/helpers/cfeRunSteps.js';
@@ -20,8 +21,31 @@ import { describeAgentCommand, saveCfeRunSummary, takeCfeDegradations } from '/_
 
 const AGENT_NAME = 'agentCfeCreateFinalize';
 
+export interface CompileModuleClosureResult {
+  checked: number;
+  errors: string[];
+  released: number;
+  trace: CompileModuleTrace;
+}
+
+export interface CompileModuleClosureOpts {
+  runTsc?: (cwd: string) => Promise<string | null>;
+}
+
+function emptyClosure(path: CompileModuleTrace['path'], reason: string): CompileModuleClosureResult {
+  return {
+    checked: 0,
+    errors: [],
+    released: 0,
+    trace: { path, reason, rawDiagnostics: 0, afterFilter: 0, files: 0 },
+  };
+}
+
 /**
- * Whole-module compile — the closing gate the frontend lacked.
+ * Whole-module compile — the closing gate the frontend lacked. Monaco when the Studio worker
+ * exists (two passes, unchanged); otherwise one project `tsc`. `null` from the per-file compiler
+ * is "no capability", never a clean compile; tsc errors enter the same `${ref}: ${error}` list
+ * the repair rounds already consume.
  *
  * The materialization planner only processes STALE items (defs newer than .ts), and the verify only
  * checks the items of its own fan-out. A .ts that is broken but "up to date" is therefore invisible to
@@ -33,24 +57,34 @@ const AGENT_NAME = 'agentCfeCreateFinalize';
  * one unreadable model never hides the rest.
  *
  * CAVEAT: in the Studio this runs on the browser's Monaco worker, whose compilerOptions come from the
- * client's localStorage — a host without `strict` will not report TS7053 here (gap E of
- *, owned elsewhere). The CLI/publish tsc always does.
+ * client's localStorage — a host without `strict` will not report TS7053 here. The CLI/publish tsc
+ * always does, and is the gate on hosts without Monaco.
  */
-async function compileModuleClosure(moduleName: string): Promise<{ checked: number; errors: string[]; released: number }> {
+export async function compileModuleClosure(moduleName: string, opts?: CompileModuleClosureOpts): Promise<CompileModuleClosureResult> {
   const project = mls.actualProject || 0;
-  if (!project || !moduleName) return { checked: 0, errors: [], released: 0 };
+  if (!project || !moduleName) return emptyClosure('unavailable', 'no-files');
   const prefix = `${moduleName}/`;
   const unordered: string[] = [];
+  const files: Array<{ folder: string; shortName: string }> = [];
   for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string }[]) {
     if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
     if (file.extension !== '.ts' || !String(file.folder || '').startsWith(prefix)) continue;
+    files.push({ folder: String(file.folder), shortName: String(file.shortName) });
     unordered.push(`_${project}_/l2/${file.folder}/${file.shortName}${file.extension}`);
   }
   const refs = orderModuleCompile(unordered);
+  if (!refs.length) return emptyClosure(monacoCompileAvailable() ? 'monaco' : 'unavailable', 'no-files');
+
+  if (!monacoCompileAvailable()) {
+    const tsc = await compileModuleViaProjectTsc(project, moduleName, files, opts?.runTsc);
+    return { checked: refs.length, errors: tsc.errors, released: 0, trace: tsc.trace };
+  }
 
   const compile = async (ref: string): Promise<string[]> => {
     try {
-      return (await compileMlsPathAndGetErrors(ref)).map(error => `${ref}: ${error}`);
+      const errors = await compileMlsPathAndGetErrors(ref);
+      if (errors === null) return [];
+      return errors.map(error => `${ref}: ${error}`);
     } catch (error) {
       return [`${ref}: compile failed (${error instanceof Error ? error.message : String(error)})`];
     }
@@ -68,7 +102,12 @@ async function compileModuleClosure(moduleName: string): Promise<{ checked: numb
   // The whole module is loaded by now (~200 models on a 34-workspace module, enough for Monaco to warn
   // about listeners): give back everything this gate borrowed, in one go, at the end. The count travels
   // in the step trace, never in the console.
-  return { checked: refs.length, errors, released: releaseBorrowedModelScope() };
+  return {
+    checked: refs.length,
+    errors,
+    released: releaseBorrowedModelScope(),
+    trace: { path: 'monaco', rawDiagnostics: errors.length, afterFilter: errors.length, files: refs.length },
+  };
 }
 
 export function createAgent(): IAgentAsync {
@@ -99,11 +138,33 @@ async function dispatchAddLanguage(agent: IAgentMeta, context: mls.msg.Execution
   }
 }
 
+function compileGateFields(
+  compiled: CompileModuleClosureResult,
+  partitioned: { blocking: unknown[]; declared: unknown[] },
+  fidelity: string,
+  repairing?: boolean,
+): Record<string, unknown> {
+  return {
+    checked: compiled.checked,
+    errors: partitioned.blocking,
+    declared: partitioned.declared,
+    fidelity,
+    path: compiled.trace.path,
+    trace: {
+      rawDiagnostics: compiled.trace.rawDiagnostics,
+      afterFilter: compiled.trace.afterFilter,
+      files: compiled.trace.files,
+      ...(compiled.trace.reason ? { reason: compiled.trace.reason } : {}),
+    },
+    ...(repairing !== undefined ? { repairing } : {}),
+  };
+}
+
 async function persistCfeRunSummary(
   context: mls.msg.ExecutionContext,
   result: { moduleName: string; pagesDone: unknown[]; ownersDone: unknown[]; skippedPages: unknown[]; incompletePages: unknown[] },
   attempt: number,
-  compiled: { checked: number },
+  compiled: { checked: number; trace: CompileModuleTrace },
   partitioned: { blocking: unknown[]; declared: unknown[] },
   unreproduced: unknown[],
   reason: string,
@@ -117,6 +178,7 @@ async function persistCfeRunSummary(
     const verdict = status === 'failed' || blocked > 0
       ? 'failed'
       : (degradations.length || partitioned.declared.length || result.incompletePages.length || unreproduced.length ? 'degraded' : 'completed');
+    const tscGate = tscGateOf(compiled.trace.path);
     await saveCfeRunSummary({
       moduleName: result.moduleName,
       agent: 'agentChangeFrontend',
@@ -134,9 +196,11 @@ async function persistCfeRunSummary(
         declared: partitioned.declared.length,
         repairs: Math.max(0, attempt - 1),
         compiled: compiled.checked,
+        ...(tscGate ? { tscGate } : {}),
       },
       degradations,
       scanWarnings,
+      ...(tscGate ? { tscGate } : {}),
     });
   } catch { /* run summary must never fail finalize */ }
 }
@@ -255,7 +319,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     const runModule = readFinalizeModule(step.prompt) || repairModule;
     // After a repair round: compile first, rewrite the materialize verdict of the files this round
     // actually fixed (match by outputPath — the slot planId is the ROUND id), THEN read pagesDone.
-    let closure: { checked: number; errors: string[]; released: number } | null = null;
+    let closure: CompileModuleClosureResult | null = null;
     if (attempt > 1 && repairModule) {
       closure = await compileModuleClosure(repairModule);
       const stillBroken = new Set(partitionModuleCompileErrors(closure.errors).blocking.map(compileErrorRef).filter(Boolean));
@@ -290,7 +354,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       const plan = planModuleCompileRepair(partitioned.blocking, defsIsPresent);
       const shown = partitioned.blocking.slice(0, 12).join('\n');
       const more = partitioned.blocking.length > 12 ? `\n…(+${partitioned.blocking.length - 12} more)` : '';
-      const fidelity = describeCompilerFidelity();
+      const fidelity = describeCompilerFidelity(compiled.trace.path);
       const writeDossier = async (summary: string, repairing: boolean): Promise<string | null> => {
         const ref = await saveCfRunReport(result.moduleName, buildCfRunReport({
         moduleName: result.moduleName,
@@ -300,7 +364,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         ownersDone: result.ownersDone,
         skippedPages: result.skippedPages,
         repairRounds: attempt - 1,
-        gate: { checked: compiled.checked, errors: partitioned.blocking, declared: partitioned.declared, fidelity, repairing },
+        gate: compileGateFields(compiled, partitioned, fidelity, repairing),
         agentBuild: await readAgentProvenance(),
         steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
         summary,
@@ -332,11 +396,11 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     // (It also must not be dispatched once per repair round: the handoff spawns an independent task.)
     const addLanguage = await dispatchAddLanguage(agent, context, result.addLanguageMessage);
     const repaired = attempt > 1 ? `; repaired in ${attempt - 1} round(s)` : '';
-    const fidelity = describeCompilerFidelity();
+    const fidelity = describeCompilerFidelity(compiled.trace.path);
     const agentBuild = await readAgentProvenance();
     // Repeat the build stamp at the end: a post-mortem reads the LAST trace of the run first.
-    // Do NOT claim tsc-equivalence: the gate is Monaco; declare the difference (F2).
-    const trace = `${base}${addLanguage}; moduleCompile=${compiled.checked} file(s) with no blocking Monaco errors${declaredNote}${verdictNote}${repaired}; ${fidelity}; released ${compiled.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
+    // Do NOT claim tsc-equivalence: declare which compiler ran (F2).
+    const trace = `${base}${addLanguage}; moduleCompile=${compiled.checked} file(s) ${describeModuleCompileClean(compiled.trace.path)}${declaredNote}${verdictNote}${repaired}; ${fidelity}; released ${compiled.released} borrowed model(s)${await agentBuildTrace('[agentCfeCreateFinalize]')}`;
     const reportRef = await saveCfRunReport(result.moduleName, buildCfRunReport({
       moduleName: result.moduleName,
       attempt,
@@ -345,12 +409,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       ownersDone: result.ownersDone,
       skippedPages: result.skippedPages,
       repairRounds: attempt - 1,
-      gate: {
-        checked: compiled.checked,
-        errors: partitioned.blocking,
-        declared: partitioned.declared,
-        fidelity,
-      },
+      gate: compileGateFields(compiled, partitioned, fidelity),
       agentBuild,
       steps: collectRunStepRecords(context.task?.iaCompressed?.nextSteps),
       summary: trace,

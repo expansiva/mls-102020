@@ -181,8 +181,8 @@ async function materializeSharedDeterministic(
     // phase, and it is bounded (one per contract).
     try { await getCompiledDtsByMlsPath(contractTsPath); } catch { /* best-effort */ }
     const compileErrors = [
-      ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
-      ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
+      ...(await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName) ?? []),
+      ...(typecheckPath ? (await compileMlsPathAndGetErrors(typecheckPath) ?? []) : []),
     ];
     if (compileErrors.length > 0) {
       // The scaffold is deterministic, so a compile error here is a defs/contract mismatch it could not
@@ -277,8 +277,8 @@ async function afterPromptStep(
     // rejects, and the round is spent discovering that.
     await preloadItemTypecheckDeps(pipelineItem.type, pipelineItem.outputPath, defsContent);
     let compileErrors = [
-      ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
-      ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
+      ...(await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName) ?? []),
+      ...(typecheckPath ? (await compileMlsPathAndGetErrors(typecheckPath) ?? []) : []),
       // bugpage21: catch the compiles-cleanly template defect in the TIGHTEST loop — right after this
       // worker saved its own .ts — instead of waiting for the phase verify round.
       ...(pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism' ? [...collectPageTemplateHygieneIssues(sharedGuard.code), ...collectChartEventIssues(sharedGuard.code)] : []),
@@ -287,8 +287,8 @@ async function afterPromptStep(
       const reverted = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.original);
       if (reverted) {
         compileErrors = [
-          ...await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName),
-          ...(typecheckPath ? await compileMlsPathAndGetErrors(typecheckPath) : []),
+          ...(await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName) ?? []),
+          ...(typecheckPath ? (await compileMlsPathAndGetErrors(typecheckPath) ?? []) : []),
         ];
       }
     }
@@ -531,10 +531,10 @@ async function computeRepairHint(pipelineItem: PipelineItem, planId: string, att
   // loaded; the phase verify is the boundary that gives them back.
   const ownDefs = pipelineItem.defPath ? await getContentByMlsPath(pipelineItem.defPath) : null;
   await preloadItemTypecheckDeps(pipelineItem.type, outputPath, ownDefs);
-  const errors = [...await compileMlsPathAndGetErrors(outputPath)];
+  const errors = [...(await compileMlsPathAndGetErrors(outputPath) ?? [])];
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
-  if (testContent && testContent.trim()) errors.push(...await compileMlsPathAndGetErrors(testPath));
+  if (testContent && testContent.trim()) errors.push(...(await compileMlsPathAndGetErrors(testPath) ?? []));
   // bugpage21: the phase verify also rejects TEMPLATE-HYGIENE defects (an invented module-level helper
   // rendered by name, which paints the function source on screen). Those are NOT compiler errors, and a
   // repair slot carries only {planId, defPath, attempt} — so recompute them from disk HERE too, or the

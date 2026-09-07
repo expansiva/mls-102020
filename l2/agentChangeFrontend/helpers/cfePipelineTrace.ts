@@ -31,6 +31,8 @@ export interface PipelineRunSummary {
   degradations: PipelineRunDegradation[];
   /** Informational scan notices (orphan/unparsable todo of a module outside this run). Not a verdict. */
   scanWarnings?: string[];
+  /** Compile gate of this host: ran (project tsc) or unavailable. Omitted on Monaco. State, not an error. */
+  tscGate?: 'ran' | 'unavailable';
 }
 
 const memoryDegradations: PipelineRunDegradation[] = [];

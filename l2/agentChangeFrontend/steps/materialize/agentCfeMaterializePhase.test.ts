@@ -223,6 +223,34 @@ void test('todo host de fan-out do materialize nasce com onFailure wait_after_pr
   assert.equal((src.match(/createFanoutStep\(/g) || []).length, 5); // 4 chamadas + a declaração
 });
 
+void test('typecheck is unavailable when compileMlsPathAndGetErrors returns null, never passed', async () => {
+  const g = globalThis as unknown as Record<string, any>;
+  const prior = g.mls;
+  g.mls = {
+    actualProject: 0,
+    events: { addEventListener() { /* noop */ }, removeEventListener() { /* noop */ }, dispatch() { /* noop */ } },
+    stor: { files: {}, getKeyToFile: () => 'k' },
+    editor: {},
+    l2: {},
+  };
+  try {
+    const { typecheckFromCompile } = await import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializePhase.js');
+    assert.equal(typecheckFromCompile('export const x = 1;', null), 'unavailable');
+    assert.equal(typecheckFromCompile('export const x = 1;', []), 'passed');
+    assert.equal(typecheckFromCompile('export const x = 1;', ['TS2367: overlap']), 'failed');
+    assert.equal(typecheckFromCompile('', null), 'not-applicable');
+  } finally {
+    g.mls = prior;
+  }
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /typecheckFromCompile\(testContent, typecheckErrors\)/);
+  assert.match(src, /'unavailable'/);
+  assert.match(src, /typecheck: 'not-applicable' \| 'passed' \| 'failed' \| 'unavailable'/);
+  assert.match(src, /checked\.blocking\.length > 0/);
+  assert.doesNotMatch(src, /typecheck !== 'passed'/);
+  assert.doesNotMatch(src, /typecheck != 'passed'/);
+});
+
 void test('a .test.ts finding is declared, never blocking, and never queued for repair', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
   // O compile do .test.ts nomeia OS DOIS arquivos (o teste importa o .ts embarcado). O split e por

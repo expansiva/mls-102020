@@ -19,7 +19,7 @@ void test('agentCfeCreateFinalize declares the finalize step agent contract', ()
 
 void test('the finalize gate declares Monaco vs tsc fidelity and writes a cf-run dossier', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeCreateFinalize.ts'), 'utf8');
-  assert.match(src, /describeCompilerFidelity/);
+  assert.match(src, /describeCompilerFidelity\(compiled\.trace\.path\)/);
   assert.match(src, /saveCfRunReport/);
   assert.match(src, /buildCfRunReport/);
   assert.match(src, /cfeRunReport/);
@@ -27,10 +27,14 @@ void test('the finalize gate declares Monaco vs tsc fidelity and writes a cf-run
   assert.match(src, /final: !repairing/);
   assert.match(src, /collectRunStepRecords/);
   assert.match(src, /cfeRunSteps/);
-  assert.match(src, /no blocking Monaco errors/);
+  assert.match(src, /describeModuleCompileClean\(compiled\.trace\.path\)/);
   assert.match(src, /partitionModuleCompileErrors/);
   assert.match(src, /declared \$\{partitioned\.declared\.length\} \.test\.ts finding\(s\) \(never blocking\)/);
+  assert.match(src, /tscGateOf\(compiled\.trace\.path\)/);
+  assert.match(src, /path: compiled\.trace\.path/);
   assert.doesNotMatch(src, /file\(s\) clean/);
+  assert.doesNotMatch(src, /typeof Deno/);
+  assert.doesNotMatch(src, /"Deno" in globalThis/);
 });
 
 // D3/D2 (run01 do 102047, 28/ago) — o run fechou `completed` com `pagesDone` listando as 3 páginas
@@ -45,7 +49,7 @@ void test('D3: o gate responde pelos vereditos da materialização e nomeia o qu
   // e a nota tem de aparecer nos TRÊS desfechos do gate, inclusive no limpo
   const notes = src.match(/\$\{verdictNote\}/gu) ?? [];
   assert.equal(notes.length, 3, `verdictNote aparece ${notes.length}x`);
-  assert.match(src, /no blocking Monaco errors\$\{declaredNote\}\$\{verdictNote\}/u);
+  assert.match(src, /describeModuleCompileClean\(compiled\.trace\.path\)\}\$\{declaredNote\}\$\{verdictNote\}/u);
 });
 
 void test('R2: o finalize reescreve o veredito do item que reparou antes de ler pagesDone', () => {
@@ -95,4 +99,55 @@ void test('F1: finalize takes the run module from the step prompt, never the cre
   assert.match(shared, /export async function finalizeGeneratedPages\(runModule = ''\)/u);
   assert.doesNotMatch(shared, /function currentCreateRunModule/u);
   assert.doesNotMatch(src, /getCreateRuns\(\)/u);
+});
+
+const g = globalThis as unknown as Record<string, any>;
+const TSC2367 = "mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts(42,729): error TS2367: This comparison appears to be unintentional because the types '\"idle\" | \"success\" | \"error\"' and '\"loading\"' have no overlap.\nmls-102051/l5/runtimeConfig.ts(1,1): error TS2322: Type '\"x\"' is not assignable to type 'RuntimeConfig'.";
+
+function installHostMls(diskPath: ((info: { project: number; shortName: string }) => string) | null): void {
+  const folder = 'controleEstoque4/web/desktop/page31';
+  const shortName = 'stockMovementCatalogue';
+  const fileKey = `102047:2:${folder}:${shortName}:.ts`;
+  g.mls = {
+    actualProject: 102047,
+    events: { addEventListener() { /* noop */ }, removeEventListener() { /* noop */ }, dispatch() { /* noop */ } },
+    stor: {
+      files: {
+        [fileKey]: { project: 102047, level: 2, folder, shortName, extension: '.ts', status: 'changed' },
+      },
+      getKeyToFile: (info: any) => `${info.project}:${info.level}:${info.folder}:${info.shortName}:${info.extension}`,
+      ...(diskPath ? { diskPath } : {}),
+    },
+    editor: {},
+    l2: {},
+  };
+}
+
+void test('compileModuleClosure without Monaco and with injected tsc keeps the filtered error', async () => {
+  installHostMls(() => '/Volumes/x/collab/mls-base/mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts');
+  const { compileModuleClosure } = await import('/_102020_/l2/agentChangeFrontend/steps/finalize/agentCfeCreateFinalize.js');
+  const { describeCompilerFidelity } = await import('/_102020_/l2/agentChangeFrontend/helpers/cfeCompileFidelity.js');
+  const { tscGateOf } = await import('/_102020_/l2/agentChangeFrontend/helpers/cfeProjectTsc.js');
+  const result = await compileModuleClosure('controleEstoque4', { runTsc: async () => TSC2367 });
+  assert.equal(result.trace.path, 'project-tsc');
+  assert.equal(result.trace.rawDiagnostics, 2);
+  assert.equal(result.trace.afterFilter, 1);
+  assert.equal(result.errors.length, 1);
+  assert.match(result.errors[0], /stockMovementCatalogue\.ts: TS2367/);
+  assert.equal(tscGateOf(result.trace.path), 'ran');
+  assert.doesNotMatch(describeCompilerFidelity(result.trace.path), /Monaco/);
+});
+
+void test('compileModuleClosure without Monaco and without spawn is unavailable, not clean-Monaco', async () => {
+  installHostMls(() => '/Volumes/x/collab/mls-base/mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts');
+  const { compileModuleClosure } = await import('/_102020_/l2/agentChangeFrontend/steps/finalize/agentCfeCreateFinalize.js');
+  const { describeCompilerFidelity, describeModuleCompileClean } = await import('/_102020_/l2/agentChangeFrontend/helpers/cfeCompileFidelity.js');
+  const { tscGateOf } = await import('/_102020_/l2/agentChangeFrontend/helpers/cfeProjectTsc.js');
+  const result = await compileModuleClosure('controleEstoque4', { runTsc: async () => null });
+  assert.equal(result.trace.path, 'unavailable');
+  assert.equal(result.trace.reason, 'no-child-process');
+  assert.deepEqual(result.errors, []);
+  assert.equal(tscGateOf(result.trace.path), 'unavailable');
+  assert.doesNotMatch(describeCompilerFidelity(result.trace.path), /Monaco/);
+  assert.doesNotMatch(describeModuleCompileClean(result.trace.path), /Monaco/);
 });

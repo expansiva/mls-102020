@@ -46,6 +46,13 @@ void test('PipelineRunSummary carries scanWarnings as an informational field', (
   assert.match(src, /orphan\/unparsable todo of a module outside this run/);
 });
 
+void test('PipelineRunSummary records tscGate as ran or unavailable, omitted on monaco', () => {
+  const src = readFileSync(new URL('./cfePipelineTrace.ts', import.meta.url), 'utf8');
+  assert.match(src, /tscGate\?: 'ran' \| 'unavailable'/);
+  const finalize = readFileSync(new URL('../steps/finalize/agentCfeCreateFinalize.ts', import.meta.url), 'utf8');
+  assert.match(finalize, /\.\.\.\(tscGate \? \{ tscGate \} : \{\}\)/);
+});
+
 void test('describeAgentCommand keeps /fast and /rebuild from longMemory', () => {
   assert.equal(describeAgentCommand({ fastMode: 'true', cliCommand: 'rebuild-all' }), '/fast /rebuild all');
   assert.equal(describeAgentCommand({ cliCommand: 'rebuild-defs' }), '/rebuild defs');
