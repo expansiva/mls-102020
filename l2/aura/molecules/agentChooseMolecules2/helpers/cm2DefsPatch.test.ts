@@ -3,192 +3,168 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyMoleculeChoices,
-  applyPipelineSkills,
-  parseContractTypesFromCompiledTs,
-  parseContractTypesFromDefsSource,
+  applyPipelineMolecules,
+  cm2DefinitionKind,
+  isCm2MoleculeDependsFile,
+  isCm2UsageSkill,
   parsePageDefsSource,
   serializePageDefsSource,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2DefsPatch.js';
 
-// A trimmed but real shape of _102046_/l2/buildFlowFsm/web/desktop/page11/approveChangeOrder.defs.ts.
-const PAGE_SOURCE = `/// <mls fileReference="_102046_/l2/buildFlowFsm/web/desktop/page11/approveChangeOrder.defs.ts" enhancement="_blank"/>
+// The real v2 shape, copied from _102047_/l2/controleChamados/web/desktop/page21/commentOpenTicket.defs.ts.
+const PAGE_SOURCE = `/// <mls fileReference="_102047_/l2/controleChamados/web/desktop/page21/commentOpenTicket.defs.ts" enhancement="_blank"/>
 
-export const definition = {
-  "pageId": "approveChangeOrder",
-  "dataBindings": [
-    {
-      "id": "binding.approveChangeOrder.qryLocateChangeOrder",
-      "command": "qryLocateChangeOrder",
-      "kind": "query",
-      "inputs": []
-    },
-    {
-      "id": "binding.approveChangeOrder.cmdApproveChangeOrderDecision",
-      "command": "cmdApproveChangeOrderDecision",
-      "kind": "command",
-      "inputs": [
-        {
-          "name": "status",
-          "presentation": "form"
-        }
-      ]
-    }
-  ]
-};
+export const definition = \`page: Registrar comentário em chamado aberto
+actor: atendente
+purpose: Documentar o andamento do atendimento em um chamado aberto.
+uxExperience: processWizard
+The page extends the shared base class of this workspace: the shared travels in this pipeline and already carries the states, actions and handlers the page inherits. Render the experience around that intent — do not list fields and do not list routines.\`;
 
 export const pipeline = [
   {
-    "id": "approveChangeOrder__l2_page",
+    "id": "commentOpenTicket__page21__l2_page",
     "type": "l2_page",
-    "skills": [
-      "_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts"
-    ],
+    "outputPath": "_102047_/l2/controleChamados/web/desktop/page21/commentOpenTicket.ts",
+    "defPath": "_102047_/l2/controleChamados/web/desktop/page21/commentOpenTicket.defs.ts",
     "dependsFiles": [
-      "_102046_/l2/buildFlowFsm/web/shared/approveChangeOrder.ts"
-    ]
+      "_102047_/l2/controleChamados/web/shared/commentOpenTicketDts.txt",
+      "_102047_/l2/designSystem.ts"
+    ],
+    "dependsOn": [
+      "commentOpenTicket__l2_shared"
+    ],
+    "skills": [
+      "_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts",
+      "_102020_/l4/collabux/templates/processWizard/page21.md"
+    ],
+    "visualStyle": {},
+    "agent": "agentCfeMaterializeGen"
   }
 ] as const;
 `;
 
-void test('parses both exports of a page .defs.ts', () => {
+const USAGE = '_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts';
+const COMPONENT = '_102040_/l2/molecules/groupentertext/ml-multiline-text.ts';
+
+void test('reads the definition as PROSE and the pipeline as JSON', () => {
   const parsed = parsePageDefsSource(PAGE_SOURCE);
   assert.ok(parsed);
-  assert.equal(parsed!.definitionJson.pageId, 'approveChangeOrder');
-  assert.equal((parsed!.pipelineJson[0] as any).id, 'approveChangeOrder__l2_page');
+  assert.match(parsed!.definitionText, /^page: Registrar comentário em chamado aberto\n/u);
+  assert.match(parsed!.definitionText, /uxExperience: processWizard/u);
+  // The closing backtick is not part of the text, and neither is the ';'.
+  assert.equal(parsed!.definitionText.includes('`'), false);
+  assert.equal((parsed!.pipelineJson[0] as any).id, 'commentOpenTicket__page21__l2_page');
 });
 
-void test('round-trips byte-for-byte when nothing changes', () => {
+void test('round-trips byte-for-byte when the pipeline does not change', () => {
   const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  const rewritten = serializePageDefsSource(parsed, parsed.definitionJson, parsed.pipelineJson);
-  assert.equal(rewritten, PAGE_SOURCE);
+  assert.equal(serializePageDefsSource(parsed, parsed.pipelineJson), PAGE_SOURCE);
 });
 
-void test('returns null for a file that is not the { definition, pipeline } shape', () => {
-  assert.equal(parsePageDefsSource('export const somethingElse = {} as const;'), null);
+void test('the definition cannot be rewritten — it is not even a parameter of the serializer', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  const rewritten = serializePageDefsSource(parsed, applyPipelineMolecules(parsed.pipelineJson, [{ usageRef: USAGE, componentFiles: [COMPONENT] }]));
+  const definitionOf = (source: string) => source.slice(source.indexOf('export const definition'), source.indexOf('export const pipeline'));
+  assert.equal(definitionOf(rewritten), definitionOf(PAGE_SOURCE));
+});
+
+void test('cm2DefinitionKind tells the v1 object shape apart from the v2 prose', () => {
+  assert.equal(cm2DefinitionKind(PAGE_SOURCE), 'prose');
+  assert.equal(cm2DefinitionKind('export const definition = {\n  "pageId": "x"\n};\n'), 'object');
+  assert.equal(cm2DefinitionKind('export const definition = [];\n'), 'object');
+  assert.equal(cm2DefinitionKind('export const somethingElse = 1;'), 'none');
+});
+
+void test('refuses a v1 object definition instead of parsing it on a guess', () => {
+  const v1 = 'export const definition = {\n  "pageId": "x",\n  "dataBindings": []\n};\n\nexport const pipeline = [] as const;\n';
+  assert.equal(parsePageDefsSource(v1), null);
   assert.equal(parsePageDefsSource(''), null);
+  assert.equal(parsePageDefsSource('export const somethingElse = {} as const;'), null);
 });
 
-void test('applyMoleculeChoices sets molecule on the query binding and the form input, never on selection/route', () => {
+void test('a definition whose prose is never closed is refused, never read past its end', () => {
+  assert.equal(parsePageDefsSource('export const definition = `page: x\n\nexport const pipeline = [] as const;\n'), null);
+});
+
+void test('equips pipeline[0] with the chosen molecule and its group usage contract', () => {
   const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  const regionIds = ['binding.approveChangeOrder.qryLocateChangeOrder', 'binding.approveChangeOrder.cmdApproveChangeOrderDecision::status'];
-  const choices = new Map([
-    ['binding.approveChangeOrder.qryLocateChangeOrder', { group: 'groupViewTable', tag: 'groupviewtable--ml-data-table' }],
-    ['binding.approveChangeOrder.cmdApproveChangeOrderDecision::status', { group: 'groupSelectOne', tag: 'groupselectone--ml-select-one' }],
+  const patched = applyPipelineMolecules(parsed.pipelineJson, [{ usageRef: USAGE, componentFiles: [COMPONENT] }]);
+  const entry = patched[0] as any;
+  assert.ok(entry.dependsFiles.includes(COMPONENT));
+  assert.ok(entry.skills.includes(USAGE));
+  // What the generator put there survives, in its original order.
+  assert.deepEqual(entry.dependsFiles.slice(0, 2), [
+    '_102047_/l2/controleChamados/web/shared/commentOpenTicketDts.txt',
+    '_102047_/l2/designSystem.ts',
   ]);
-  const patched = applyMoleculeChoices(parsed.definitionJson, regionIds, choices);
-  const bindings = (patched.dataBindings as any[]);
-  assert.deepEqual(bindings[0].molecule, { group: 'groupViewTable', tag: 'groupviewtable--ml-data-table' });
-  assert.deepEqual(bindings[1].inputs[0].molecule, { group: 'groupSelectOne', tag: 'groupselectone--ml-select-one' });
-});
-
-void test('applyMoleculeChoices removes a stale molecule when the new answer is null (reconciliation)', () => {
-  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  (parsed.definitionJson.dataBindings as any[])[0].molecule = { group: 'stale', tag: 'stale--tag' };
-  const patched = applyMoleculeChoices(
-    parsed.definitionJson,
-    ['binding.approveChangeOrder.qryLocateChangeOrder'],
-    new Map([['binding.approveChangeOrder.qryLocateChangeOrder', null]]),
-  );
-  assert.equal('molecule' in (patched.dataBindings as any[])[0], false);
-});
-
-void test('applyMoleculeChoices leaves a region untouched when it was never answered (e.g. c1 said no group)', () => {
-  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  const patched = applyMoleculeChoices(parsed.definitionJson, ['binding.approveChangeOrder.qryLocateChangeOrder'], new Map());
-  assert.equal('molecule' in (patched.dataBindings as any[])[0], false);
-});
-
-void test('a page:: region lands in the root pageMolecules[] — it has no binding node to carry it', () => {
-  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  const patched = applyMoleculeChoices(
-    parsed.definitionJson,
-    ['page::feedback'],
-    new Map([['page::feedback', { group: 'groupNotifyUser', tag: 'groupnotifyuser--ml-toast-notification' }]]),
-  );
-  assert.deepEqual(patched.pageMolecules, [{ role: 'feedback', group: 'groupNotifyUser', tag: 'groupnotifyuser--ml-toast-notification' }]);
-  // The bindings are untouched by a page-level choice.
-  assert.equal('molecule' in (patched.dataBindings as any[])[0], false);
-});
-
-void test('a rerun reconciles one role in place, and keeps the other roles', () => {
-  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  parsed.definitionJson.pageMolecules = [
-    { role: 'feedback', group: 'stale', tag: 'stale--tag' },
-    { role: 'confirmation', group: 'keptGroup', tag: 'kept--tag' },
-  ];
-  const patched = applyMoleculeChoices(
-    parsed.definitionJson,
-    ['page::feedback'],
-    new Map([['page::feedback', { group: 'groupNotifyUser', tag: 'groupnotifyuser--ml-toast-notification' }]]),
-  );
-  assert.deepEqual(patched.pageMolecules, [
-    { role: 'confirmation', group: 'keptGroup', tag: 'kept--tag' },
-    { role: 'feedback', group: 'groupNotifyUser', tag: 'groupnotifyuser--ml-toast-notification' },
+  assert.deepEqual(entry.skills.slice(0, 2), [
+    '_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts',
+    '_102020_/l4/collabux/templates/processWizard/page21.md',
   ]);
-});
-
-void test('answering none for the last page role deletes pageMolecules entirely — never an empty array', () => {
-  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  parsed.definitionJson.pageMolecules = [{ role: 'feedback', group: 'g', tag: 't' }];
-  const patched = applyMoleculeChoices(parsed.definitionJson, ['page::feedback'], new Map([['page::feedback', null]]));
-  assert.equal('pageMolecules' in patched, false);
-});
-
-void test('a page:: role is never written as null, and an unknown page role writes nothing', () => {
-  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  const noRole = applyMoleculeChoices(parsed.definitionJson, ['page::'], new Map([['page::', { group: 'g', tag: 't' }]]));
-  assert.equal('pageMolecules' in noRole, false);
-});
-
-void test('applyPipelineSkills appends to skills/dependsFiles of entry 0 only, deduplicated', () => {
-  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
-  // PIPELINE form on both: no leading slash, with extension (see cm2Types.cm2PipelineRef).
-  const addition = {
-    usageRef: '_102020_/l2/aura/molecules/skills/groupSelectOne/usage.ts',
-    componentFiles: ['_102040_/l2/molecules/groupselectone/ml-select-one.ts'],
-  };
-  const once = applyPipelineSkills(parsed.pipelineJson, [addition]);
-  const twice = applyPipelineSkills(once, [addition]);
-  const entry = twice[0] as any;
-  assert.equal(entry.skills.filter((s: string) => s === addition.usageRef).length, 1);
-  assert.equal(entry.dependsFiles.filter((s: string) => s === addition.componentFiles[0]).length, 1);
-  // The original skill/dependsFile survive the patch.
-  assert.ok(entry.skills.includes('_102020_/l2/agentChangeFrontend/skills/genCfePage11RenderTs.ts'));
   // Nothing this agent adds to a pipeline array may carry a leading slash — materialize drops those.
   for (const value of [...entry.skills, ...entry.dependsFiles]) assert.equal(value.startsWith('/'), false, value);
 });
 
-const CONTRACT_DEFS_SOURCE = `export const definition = [
-  {
-    "commandName": "qryLocateChangeOrder",
-    "input": [],
-    "output": [
-      { "name": "changeOrderId", "type": "string" },
-      { "name": "changeAmount", "type": "number" }
-    ]
-  }
-];
-
-export const pipeline = [] as const;
-`;
-
-void test('parses field types from a contract .defs.ts (definition is an ARRAY here, not an object)', () => {
-  const types = parseContractTypesFromDefsSource(CONTRACT_DEFS_SOURCE);
-  assert.deepEqual(types, { qryLocateChangeOrder: { input: {}, output: { changeOrderId: 'string', changeAmount: 'number' } } });
+void test('running twice with the same choice changes nothing (idempotent)', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  const addition = { usageRef: USAGE, componentFiles: [COMPONENT] };
+  const once = serializePageDefsSource(parsed, applyPipelineMolecules(parsed.pipelineJson, [addition]));
+  const twice = serializePageDefsSource(parsePageDefsSource(once)!, applyPipelineMolecules(parsePageDefsSource(once)!.pipelineJson, [addition]));
+  assert.equal(twice, once);
 });
 
-const CONTRACT_TS_SOURCE = `export interface CmdApproveChangeOrderDecisionInput {
-  changeOrderChangeOrderId: string;
-  status: string;
-}
-export interface CmdApproveChangeOrderDecisionOutput {
-  changeOrderId: string;
-}
-`;
+void test('the same set chosen in another GROUP ORDER is still byte-identical — added entries are sorted', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  const a = { usageRef: USAGE, componentFiles: [COMPONENT] };
+  const b = { usageRef: '_102020_/l2/aura/molecules/skills/groupViewTable/usage.ts', componentFiles: ['_102040_/l2/molecules/groupviewtable/ml-data-table.ts'] };
+  const forwards = serializePageDefsSource(parsed, applyPipelineMolecules(parsed.pipelineJson, [a, b]));
+  const backwards = serializePageDefsSource(parsed, applyPipelineMolecules(parsed.pipelineJson, [b, a]));
+  assert.equal(forwards, backwards);
+});
 
-void test('falls back to regex-parsing the compiled contract .ts when no .defs.ts is on disk', () => {
-  const types = parseContractTypesFromCompiledTs(CONTRACT_TS_SOURCE);
-  assert.deepEqual(types.cmdApproveChangeOrderDecision.input, { changeOrderChangeOrderId: 'string', status: 'string' });
-  assert.deepEqual(types.cmdApproveChangeOrderDecision.output, { changeOrderId: 'string' });
+void test('a rerun that CHANGED its mind prunes the previous molecule instead of stacking both', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  const first = applyPipelineMolecules(parsed.pipelineJson, [{ usageRef: USAGE, componentFiles: [COMPONENT] }]);
+  const second = applyPipelineMolecules(first, [{
+    usageRef: '_102020_/l2/aura/molecules/skills/groupViewTable/usage.ts',
+    componentFiles: ['_102040_/l2/molecules/groupviewtable/ml-data-table.ts'],
+  }]);
+  const entry = second[0] as any;
+  assert.equal(entry.dependsFiles.includes(COMPONENT), false, 'the abandoned component must be gone');
+  assert.equal(entry.skills.includes(USAGE), false, 'the abandoned usage contract must be gone');
+  assert.ok(entry.dependsFiles.includes('_102040_/l2/molecules/groupviewtable/ml-data-table.ts'));
+  // And the generator's own entries are still there — pruning is by shape, never by position.
+  assert.ok(entry.dependsFiles.includes('_102047_/l2/designSystem.ts'));
+  assert.ok(entry.skills.includes('_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts'));
+});
+
+void test('choosing nothing CLEARS what a previous run had equipped', () => {
+  const parsed = parsePageDefsSource(PAGE_SOURCE)!;
+  const equipped = applyPipelineMolecules(parsed.pipelineJson, [{ usageRef: USAGE, componentFiles: [COMPONENT] }]);
+  const cleared = applyPipelineMolecules(equipped, []);
+  const entry = cleared[0] as any;
+  assert.deepEqual(entry.dependsFiles, [
+    '_102047_/l2/controleChamados/web/shared/commentOpenTicketDts.txt',
+    '_102047_/l2/designSystem.ts',
+  ]);
+  assert.deepEqual(entry.skills, [
+    '_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts',
+    '_102020_/l4/collabux/templates/processWizard/page21.md',
+  ]);
+});
+
+void test('only pipeline[0] is equipped — a split page\'s other items are untouched', () => {
+  const twoItems = [{ id: 'a', skills: [] }, { id: 'b', skills: ['keep.ts'], dependsFiles: [] }];
+  const patched = applyPipelineMolecules(twoItems, [{ usageRef: USAGE, componentFiles: [COMPONENT] }]);
+  assert.deepEqual(patched[1], { id: 'b', skills: ['keep.ts'], dependsFiles: [] });
+});
+
+void test('the pruning predicates recognize this agent\'s entries and nothing else', () => {
+  assert.equal(isCm2MoleculeDependsFile(COMPONENT), true);
+  assert.equal(isCm2MoleculeDependsFile('_102047_/l2/controleChamados/web/shared/commentOpenTicketDts.txt'), false);
+  assert.equal(isCm2MoleculeDependsFile('_102047_/l2/designSystem.ts'), false);
+  assert.equal(isCm2MoleculeDependsFile('_102047_/l2/controleChamados/web/shared/commentOpenTicket.ts'), false);
+  assert.equal(isCm2UsageSkill(USAGE), true);
+  assert.equal(isCm2UsageSkill('_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts'), false);
+  assert.equal(isCm2UsageSkill('_102020_/l4/collabux/templates/processWizard/page21.md'), false);
 });

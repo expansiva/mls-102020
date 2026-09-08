@@ -67,16 +67,3 @@ export function cm2ParseEntry(raw: string): Cm2Entry {
 
   return { catalogProject, target, targetFile, error: '' };
 }
-
-/**
- * The contract file's location, derived from the page's own: same project, same module (everything
- * up to and including the 'web' segment), folder 'contracts' instead of the device/layout, same
- * shortName (pageId). Generic across page11/page21/page31/future genomes — none of them touch this.
- */
-export function cm2ContractFileFromTarget(targetFile: NmFileInfo): NmFileInfo | null {
-  const parts = targetFile.folder.split('/');
-  const webIndex = parts.indexOf('web');
-  if (webIndex < 0) return null;
-  const folder = [...parts.slice(0, webIndex + 1), 'contracts'].join('/');
-  return { project: targetFile.project, level: targetFile.level, folder, shortName: targetFile.shortName, extension: targetFile.extension };
-}

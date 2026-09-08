@@ -1,9 +1,48 @@
 # agentChooseMolecules2 — spec
 
-**Status: production annotator.** Given an existing page `.defs.ts` and an explicit catalog project, it
-decides which molecule serves each region of that page and rewrites the same file — `definition` and
-`pipeline` — with the answer. It is a sibling of `agentChooseMolecules` (the probe that only measures
-whether the catalog is good enough for an LLM to choose from), built to actually annotate a page.
+**Status: production equipper. v2 since 2026-09-08.** Given an existing page `.defs.ts` and an explicit
+catalog project, it decides which molecule serves each region of that page and rewrites that file's
+**`pipeline`** with the answer — the chosen components in `dependsFiles`, their groups' usage contracts
+in `skills`. `export const definition` is read (it is the description the choice reasons over) and never
+written. It is a sibling of `agentChooseMolecules` (the probe that only measures whether the catalog is
+good enough for an LLM to choose from), built to actually equip a page.
+
+## v1 → v2: the file shape changed under it
+
+The page `.defs.ts` used to carry a JSON object with `dataBindings[]`/`inputs[]`, and v1 read the
+regions straight out of it. It now carries a **template literal of prose** (measured on
+`_102047_/l2/controleChamados`, all three genomes):
+
+```ts
+export const definition = `page: Registrar comentário em chamado aberto
+actor: atendente
+purpose: Documentar o andamento do atendimento em um chamado aberto.
+uxExperience: processWizard
+The page extends the shared base class of this workspace: ... do not list routines.`;
+```
+
+Two consequences, and together they are the whole redesign (`flow.json.decisions.definitionFormat`,
+`.whatIsWritten`):
+
+| | v1 (object definition) | v2 (prose definition) |
+|---|---|---|
+| regions | extracted deterministically from `dataBindings[]`/`inputs[]` | **named by c1 from the prose**, probe-style |
+| region kinds | four, derived (surface / entry / trigger / page) | whatever the prose supports — no derived kinds |
+| what is written | `molecule: { group, tag }` on bindings/inputs, `pageMolecules[]` at the root, **and** the pipeline | **the pipeline alone** |
+| the definition | rewritten (it was the same JSON value) | **read-only, spliced back byte for byte** |
+| field types | `web/contracts/{page}` contract, `.defs.ts` then compiled `.ts` | not read — there is no declared field to type |
+| region id | the write-back address of a node | a label: the c1→c2 join key and the summary, nothing more |
+
+**Where the structure went, for whoever needs it later.** It did not vanish: the workspace shared defs
+(`web/shared/{page}.defs.ts`) still publishes `dataBindings[]` with the same `inputs[]`/`presentation`
+shape, plus the `i18n` keys that name each list's columns and each form field, `scenaries`,
+`destructiveCommandIds` and `contractRef.tsPath`. The platform's own gates already follow it there
+(`cfeMaterializeCore.pageDefinitionForChecks`: *"page11: the workspace shared map... the prose
+definition has neither"*). Reading it was offered and **declined** by the product owner: the prose is
+the only evidence this agent uses. The consequence is accepted and stated in
+`flow.json.knownGaps.thinEvidence` — four labelled lines discriminate less than a typed binding list,
+so `none` is expected more often. That is this family's honest answer, not a defect, and the shared defs
+is the obvious first move if the choices come back too coarse.
 
 ## The three levels it walks
 
@@ -17,84 +56,62 @@ with one addition: this agent is the first in the family to reach level 3.
 | 3 | the group's `usage.ts` (referenced by level 2 as `usageContract`) | how to write the markup | **c3-patch — reference only, content never read or copied** |
 
 c3-patch never reads the usage.ts CONTENT — it only carries forward the reference string c2 already had
-in scope (`ChGroupCatalog.usageContract`), appending it to `pipeline[0].skills` so a future render step
-can read it when it actually composes markup. Reading and inlining that content is out of scope here.
+in scope (`ChGroupCatalog.usageContract`), appending it to `pipeline[0].skills` so the render step can
+read it when it actually composes markup.
 
-## What is different from the probe
+## What else is different from the probe
 
 | | agentChooseMolecules (probe) | agentChooseMolecules2 |
 |---|---|---|
 | catalog | discovered (active project + direct deps); refuses on 0 or >1 candidates | **explicit** — `catalogProject` in the argument, no search |
-| regions | invented by an LLM from free prose | **extracted deterministically** from `dataBindings[]`/`inputs[]` |
-| classifier | c0-classify (slug, language, titles) | **none** — deterministic bootstrap (`skipRootLLM`) |
-| output | `l4/agentChooseMolecules/<runKey>/report.json` + per-attempt traces | **the target `.defs.ts` itself**, rewritten — nothing else |
-| persisted molecule shape | n/a (never writes source) | `{ group, tag }` only — no reason, no scenarioUsed |
+| the description | free prose typed in the mention | **read from the target file** — its own `definition` |
+| classifier | c0-classify (slug, language, titles) | **none** — deterministic bootstrap (`skipRootLLM`); the language comes from the target project's declared `l5/project.json` |
+| output | `l4/agentChooseMolecules/<runKey>/report.json` + per-attempt traces | **the target's `pipeline`**, rewritten — nothing else |
 
 ## Which catalog answers the run
 
-Always `catalogProject`, verbatim. There is no search, no "active project" concept, no direct-dependency
-check, no ambiguity refusal — all three existed in the probe purely because it never received the
-project explicitly. If `catalogProject` does not publish `l2/molecules/skill.ts`, the run fails with a
-readable error naming the project; it never falls back to searching.
+Always `catalogProject`, verbatim. There is no search, no "active project" concept, no
+direct-dependency check, no ambiguity refusal — all three existed in the probe purely because it never
+received the project explicitly. If `catalogProject` does not publish `l2/molecules/skill.ts`, the run
+fails with a readable error naming the project; it never falls back to searching.
 
 ## The funnel, and why it is still a funnel
 
-Even though regions are already final by the time c1 runs, the whole catalog still does not fit a
-prompt — level 1 is ~1.5 KB, a single level 2 is 2–6 KB, all 32 groups would be ~90 KB (measured on the
-same catalog the probe measured). So: **one level per prompt, one group per c2 call**, unchanged from
-the probe. What the funnel no longer does is invent what a region IS — c1 here only ever answers
-"which group", starting from a region list that code already produced.
+The whole catalog does not fit a prompt — level 1 is ~1.5 KB, a single level 2 is 2–6 KB, all 32 groups
+would be ~90 KB (measured on the same catalog the probe measured). So: **one level per prompt, one group
+per c2 call**, unchanged from the probe.
 
-## Regions: extraction rules
+## Regions
 
-A region is the same unit the probe means by the word: one interaction a single molecule could serve.
-Here it is produced by `helpers/cm2Regions.extractRegions`, walking the target's `definition.dataBindings[]`:
+Named by c1 from the prose, so the rules are the probe's own and
+`steps/c1-groups/prompt.md` now carries them verbatim — both halves matter and only work together:
 
-- a binding with `kind: "query"` → **one view region**, id = the binding's own `id`, need = its
-  `description` plus the output field names resolved from the sibling contract;
-- a binding with `kind: "command"`, for each of its `inputs[]` with `presentation: "form"` → **one entry
-  region**, id = `${binding.id}::${input.name}`, need = the binding's description, the field name and
-  its resolved type;
-- `presentation: "selection"` (populated by picking a row elsewhere) and `presentation: "route"`
-  (populated by the URL) are **never regions** — nothing is typed by hand there, so there is nothing for
-  a molecule to serve.
+- **anti-superdecomposition**: a verb a component performs on its own content is not a region of its
+  own (a table with sorting and selection is ONE region; the verbs go into the `need` line);
+- **anti-invention**: a field the prose does not name is never a region. `purpose: Cadastro de Chamado.`
+  has one region, not a guessed list of what a ticket record contains. This is the half that carries the
+  weight in v2, because the prose names very little.
 
-The region `id` doubles as the write-back address: `helpers/cm2DefsPatch.applyMoleculeChoices` walks it
-back to the exact same `dataBinding`/`input` node. This is why c1 and c2 are instructed to echo `region`
-back byte-for-byte rather than rename it — the join key IS the file address.
+Two things the prompt says that the object definition made unnecessary: the four labels (`page:`,
+`actor:`, `purpose:`, `uxExperience:`) are named so the model knows what it is reading, and the closing
+paragraph — *"...do not list fields and do not list routines"* — is declared to be **addressed to a
+later generator, not to c1**, so it is not read as an instruction to name no regions.
 
-## Field types: the sibling contract
+## Project and page context (c2 only)
 
-`web/contracts/{page}.defs.ts` (same project/module, `web/contracts` instead of the page's own
-device/layout folder, same `shortName`). Read in this order:
+c2 never sees the definition, so the target's declared intent reaches it as a prompt section:
 
-1. `web/contracts/{page}.defs.ts` — `definition` is an ARRAY of bffCall commands
-   (`{ commandName, input: [{name,type,...}], output: [...] }`, per `agentChangeFrontend/spec.md`
-   "1. Contract"). Parsed the same JSON-slice way as the page file, just for an array value.
-2. **Fallback**: `web/contracts/{page}.ts` (the materialized DTOs) — a regex over
-   `export interface <PascalName>Input/Output { field: type; ... }`. Confirmed necessary: a real
-   client project (`mls-102046`) had no `.defs.ts` for its contracts checked out locally, only the
-   compiled `.ts`.
+- **page context** (`helpers/cm2PageContext.ts`): the prose's four labelled lines, with `uxExperience`
+  (`processWizard`, `entityRecordManagement`, `dashboardCommandCenter`, ...) as the declared experience
+  shape. It took over from v1's `presentation.categoryRef` as the fact that rules a *specific* scenario
+  row in or out — the measured defect it answers is c2 flip-flopping between 11 near-siblings when
+  nothing discriminates between them.
+- **project context** (`helpers/cm2ProjectContext.ts`): the target project's declared language(s) from
+  `l5/project.json`, used only to break a locale-formatting tie between siblings (a BR- vs a
+  US-formatted money input). Absent or unreadable → the section is omitted, never padded with a default.
 
-A field whose type cannot be resolved by either rung is `'unknown'` in the region's `need` line — never
-guessed from the field name. The known platform gap (`agentChangeFrontend/flow.json`: a `status` field
-often degrades to plain `string` instead of a literal union) is not something this agent tries to work
-around; it decides with what the contract actually publishes.
-
-## Project context (c2 only): the other declared fact besides the contract
-
-Measured case (2026-09, `_102046_` / `approveChangeOrder`): `groupEnterMoney` publishes two locale-bound
-siblings, `ml-currency-input` (en-US) and `ml-enter-money-br` (pt-BR). A `changeAmount` field whose
-`need` only says `type: number` gives c2 nothing to break the tie with, and the correct, honest answer
-at that point really is `none` — the whole family is built to prefer that over a guess. But the target
-project already states a fact that WOULD have settled it: its declared language in `l5/project.json`.
-
-So `steps/c2-molecules` (only c2 — group choice at c1 does not need locale) also reads the TARGET
-project's own `l5/project.json` (`helpers/cm2ProjectContext.ts`) and, when it declares at least one
-language, adds a short "Project context" section to the prompt stating it verbatim. Absent or
-unreadable `l5/project.json` → the section is omitted entirely, never padded with a default. This is
-still a DECLARED fact, not an inference: the same category of input the contract's own field types
-already are, just sourced from `l5` instead of `web/contracts`.
+Both are DECLARED facts, never inferences. c1 needs no page-context section: it receives the whole prose
+as its human prompt.
 
 ## Invariants
 
@@ -103,24 +120,32 @@ already are, just sourced from `l5` instead of `web/contracts`.
    the group prefix and must be copied in full.
 2. **Never a group outside level 1.** Same gate as the probe
    (`agentChooseMolecules/steps/c1-groups/gate.ts`), imported unchanged.
-3. **`none`/absent is a legal answer at both levels**, and it is written as the ABSENCE of a `molecule`
-   field — never `"molecule": null`. A region a previous run annotated and this run answers `none` for
-   has its `molecule` field removed (reconciliation), not overwritten with a null.
-4. **Nothing outside the target `.defs.ts` is ever written.** No `l4` artifact, no trace, no report, in
-   any project, at any point in the run. If a future implementation needs scratch data mid-run because
-   something does not fit the task tree's step `result`, that scratch file must be deleted by c3-patch
-   before the run completes — never left "just in case".
-5. **The patch spends no LLM call.** c3-patch aggregates c1 + every c2's task-tree result and rewrites
-   the file; it is pure arithmetic and JSON manipulation over what was already decided.
-6. **Idempotent.** A rerun that changes nothing does not touch the file (byte-equality check before
-   writing). A rerun that changes something reconciles in place — no duplicate `molecule` fields, no
-   duplicate `pipeline.skills`/`dependsFiles` entries (both de-duplicated via `Set`).
+3. **`none` is a legal answer at both levels**, and it is written as the ABSENCE of a pipeline entry —
+   never a placeholder.
+4. **The definition is never written.** It is not a parameter of `serializePageDefsSource`: it travels
+   back inside the parsed prefix, so no run can change what the page says it is.
+5. **Nothing outside the target's `pipeline` value is ever written.** No `l4` artifact, no trace, no
+   report, in any project, at any point in the run. If a future implementation needs scratch data
+   mid-run because something does not fit the task tree's step `result`, that scratch file must be
+   deleted by c3-patch before the run completes — never left "just in case".
+6. **The patch spends no LLM call.** c3-patch aggregates c1 + every c2's task-tree result and rewrites
+   the pipeline; it is pure arithmetic and JSON manipulation over what was already decided.
+7. **Idempotent, and self-correcting.** c3-patch PRUNES this agent's own previous entries before adding
+   the current ones (recognized by shape: `l2/molecules/<group>/<name>.ts` in dependsFiles,
+   `l2/aura/molecules/skills/<group>/usage.ts` in skills) and SORTS what it adds. So a rerun that chose
+   the same set writes nothing even if c1 returned the groups in another order; a rerun that changed its
+   mind replaces the old choice instead of stacking both; and a rerun that chose nothing clears what a
+   previous run had equipped. Everything the generator put in those arrays matches neither pattern and
+   survives untouched. A rerun that changes nothing does not touch the file (byte-equality check).
 
 ## What it does not do
 
-- Does not create the target file. `page12` (or any new genome) is created by whoever calls this agent;
-  this agent only annotates a `.defs.ts` that already exists in the `{ definition, pipeline }` shape.
+- Does not create the target file. The caller decides which file to point this agent at.
+- Does not read the workspace shared defs — offered and declined, see above.
+- Does not annotate the v1 object definition. A target still carrying it is refused with an error that
+  says so by name, never parsed on a guess.
 - Does not run materialization, touch `todoFrontend`/`statusFrontend`, or update `l5/config.json`.
 - Does not read or copy the level-3 `usage.ts` CONTENT — only its reference.
-- Does not decide molecules for `selection`/`route` inputs or for page-level cross-cutting needs
-  (success/error notifications, workflow-progress indicators) not tied to a single dataBinding — v2.
+- Does not persist the region→molecule mapping. There is no node left to carry it and `PipelineItem` is
+  a closed interface, so the render model receives the components and the usage contracts and composes
+  the page from them (`flow.json.knownGaps.mappingNotPersisted`).
