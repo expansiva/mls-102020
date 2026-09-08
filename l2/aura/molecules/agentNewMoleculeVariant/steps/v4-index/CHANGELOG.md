@@ -22,3 +22,15 @@
   attribute for search/combobox inputs. Prompt-only nudge (no gate/code change).
 
 - 2026-07-24: prompt.md — added "Write ALL code comments in English, regardless of the user's language" (LLM was drifting to Portuguese comments in some files).
+- 2026-09-04: gate.ts — added `contract_not_demonstrated`. The showcase must use at
+  least one property or event the group's usage skill documents, beyond the envelope
+  the `indexGroupPage` mold itself hands over (`name`/`value`/`isEditing`/`@change`).
+  Measured on a real NM2 run: a generated showcase carried 6 instances of a button
+  group with ZERO `data-variant` — the property the usage skill calls "the only way to
+  change how the button looks" — because the mold delivers a closed tag and never says
+  a second layer exists. Detection lives in `shared/usageContract.ts`, shared with
+  `n7-index` and `s3-indexts`: the three import the same mold, so they must not diverge
+  on what counts as coverage. An empty or degraded usage skill never fails. The mold
+  itself was fixed in the same pass (a gap for the contract layer plus a paragraph
+  saying the two layers are additive, not alternatives). Control:
+  todo/moleculetokens/todo-molde-vitrine-e-gate.md

@@ -1,5 +1,49 @@
 # CHANGELOG — c1-groups
 
+## 2026-09-04 (e) — a cláusula do contexto do campo foi REVERTIDA, e o motivo é reutilizável
+
+Três runs, zero escolha mudada. O último (`cadastro-usuario-03`) foi o decisivo: rodou **com** a linha de
+cenário nova no `groupEnterBoolean` — `catalogChars` do `c2` booleano subiu 2.626 → **2.729**, provando que
+a linha estava no prompt — e o `ativo` **continuou** em `ml-boolean-segmented`, citando a linha antiga.
+
+**O motivo que o `c2` escreveu fecha a questão, e são dois blocos independentes:**
+
+> "O campo exige uma decisão explícita de sim/não **no formulário do registro**; as duas opções lado a
+> lado tornam o estado ativo inequívoco, **em vez de usar um controle de preferência** ou de
+> configurações."
+
+1. **a linha `need` não pode dizer "coluna".** Ela diz *"campo de um registro da coleção usuários"*, e o
+   prompt **proíbe** dizer célula/painel/tela porque o contêiner é escolhido uma chamada depois. Chavear
+   a linha de cenário em *"data row of a collection"* foi erro de desenho meu: o cenário ficou
+   inalcançável a partir de tudo o que a `need` está autorizada a carregar;
+2. **e a molécula que a linha recomendava se autodescreve como o contrário.** A `ml-checkbox-preference`
+   se chama *preference* e seu objetivo diz *"Provide a boolean **preference** control"*. O prompt do
+   `c2` manda começar pelas recomendadas **e desempatar pela descrição** — o modelo seguiu a instrução
+   corretamente, e a descrição venceu a tabela. A linha nova era uma **quarta contradição da família
+   §12.6**, criada pela minha própria mão: tabela recomendando molécula cuja descrição a desmente.
+
+**Revertido:** o prompt volta a 6.979 chars (o estado que produzia linhas boas — *"Campo de data de
+nascimento, somente data."*) e a linha de cenário saiu do `groupEnterBoolean`, que voltou a 4 linhas nas
+duas cópias.
+
+**O que NÃO foi revertido, e é o que sobrou de valor:** a seção *"The fields of a record the user
+MAINTAINS are regions"* fica — é ela que faz sair `ml-enter-text`, `ml-date-picker` e a molécula de
+booleano em vez de nada.
+
+🔑 **O achado que substitui a cláusula: "booleano em coluna de dados" não se resolve no chooser.** Não é
+redação de `need` nem de cenário — é **identidade de molécula**. As saídas reais: (a) uma molécula cuja
+identidade seja booleano de célula, ou reescrever o objetivo da `ml-checkbox-preference` para não ser
+"preference"; (b) a tabela renderizar o booleano ela mesma, sem molécula aninhada — que para coluna de
+checkbox é discutivelmente o correto; (c) aceitar a `ml-boolean-segmented`.
+
+⚠️ **E a ressalva de método, que vale mais que as três:** ninguém olhou a página renderizada. A premissa
+*"segmented é largo demais para uma célula"* saiu de leitura de descrição, minha inclusive. Fechar isso
+pede montar a tela e ver — é a lição já registrada na migração de slots vivos (*ler não substitui medir*),
+e três emendas de prompt foram gastas antes de eu aplicá-la.
+
+**Custo de aprender isto:** 4 runs (US$ 0,63) e 5 versões de prompt, das quais **duas** ficaram — a
+capacidade não é região (5.731) e o campo do registro mantido é região (6.979).
+
 ## 2026-09-04 (d) — o contexto do registro SOMA aos fatos do campo, não os substitui
 
 A cláusula (c) pegou mecanicamente — as quatro linhas passaram a citar o registro — e **deslocou o
@@ -42,6 +86,32 @@ entrega é uma linha `need` autocontida, que o desenho pede. Se depois deste con
 mudar nada, o honesto é removê-la e recuperar os chars.
 
 Instruções: 7.651 → **7.778 chars**.
+
+✅ **Rodou (`cadastro-usuarios-03`) e o deslocamento acabou.** As linhas voltaram na forma aditiva que o
+par de exemplos prescreve — `data de nascimento, somente data sem horário, campo de um registro da coleção
+cadastro de usuários`; `estado ativo sim/não, valor booleano, campo de um registro da coleção…` — e o teste
+do troca-linhas passa: nenhuma das quatro serve para outro campo.
+
+❌ **E as moléculas continuam as mesmas** (`ml-boolean-segmented`, `ml-date-picker`). A cláusula (c) teve
+agora uma chance limpa, com o deslocamento consertado, e **mudou zero escolha em dois runs**. A condição de
+observação que este CHANGELOG registrou está cumprida.
+
+⚠️ **Mas o argumento de custo que eu usei para a condição estava ERRADO, e medir desfez.** c1: 23.543 →
+24.458 tokens de input (+915, +3,9%) para os +799 chars; e o custo da chamada variou US$ 0,0533 / 0,0637 /
+0,0559 entre os três runs — **a variação de raciocínio entre runs é maior que a mudança**. "Recuperar os
+chars" não é um argumento real; a decisão é de ORDEM DE TRABALHO, não de preço.
+
+**A cláusula é o CANAL, o cenário que falta é o CONTEÚDO.** Não existe linha de cenário para campo
+renderizado na linha de dados de uma coleção, então não há o que a linha `need` acione. Removê-la agora
+significa recolocá-la depois. **Fica**, e o próximo movimento é editorial: a linha nova no
+`groupEnterBoolean` e no `groupEnterDate`, e então rodar o C1 de novo. Se a escolha ainda não se mover, a
+cláusula morre com evidência de que o caminho inteiro é sem saída — e não de que um run não a usou.
+
+🔑 **E o conserto editorial é viável sem tocar no gerador:** `syExtract` lê os `scenarios` de volta do
+`index.defs.ts` já gerado (*"resync must not clobber them"*) e só os colhe do `index.ts` no primeiro sync.
+Edição à mão no `index.defs.ts` **sobrevive** ao resync. Cuidado com o cabeçalho do arquivo, que diz *"Do
+not change – automatically generated code"* enquanto o comentário do próprio campo diz *"EDITORIAL … Edit
+it HERE"* — as duas frases convivem no mesmo arquivo e só a segunda vale para `scenarios`.
 
 ## 2026-09-04 (c) — a linha `need` do campo diz de que registro ele é
 

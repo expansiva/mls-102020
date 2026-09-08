@@ -21,6 +21,7 @@ import {
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { deadShellMembers, offendingForeignWrite } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { diffSurface, groupVocabulary, readSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
+import { divergentTokenFallbacks, normalizeTokenValue } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 import { mlsHeaderOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
 import {
   findBaseInternals,
@@ -152,6 +153,43 @@ function introducedDefinition(file: ImEditedFile, inputs: ImEditGateInputs): str
   return out;
 }
 
+/**
+ * The same token read with two different fallbacks — but only the divergence this edit CREATED.
+ *
+ * `divergentTokenFallbacks` returns objects, and `introduced()` compares strings, so the finding is
+ * folded into one stable key per token. Two things make it stable, and both are the delta rule:
+ *
+ * - the values are SORTED. The detector returns them in order of APPEARANCE in the file, so inserting
+ *   a line above an existing site would reorder the key, `introduced()` would see a string it never
+ *   saw before, and a PRE-EXISTING divergence would be reported as this run's;
+ * - the values are NORMALIZED (`#fff` == `#ffffff`). The detector keeps the FIRST spelling it meets,
+ *   so a new site written `#FFF` above one written `#ffffff` would likewise mint a new key.
+ *
+ * Real case in the library: `grouptriggeraction/ml-pagination-control.less` reads
+ * `--ml-pagination-press-shadow` as `rgba(0,0,0,0.08)` and `rgba(0,0,0,0.1)`. Judging the FILE would
+ * block every edit to that molecule; judging the delta lets an unrelated fix through and still
+ * catches a divergence the fix itself introduces.
+ */
+function introducedFallbackDivergence(file: ImEditedFile): string[] {
+  const keyOf = (found: { token: string; values: string[] }): string =>
+    `${found.token} ${found.values.map(normalizeTokenValue).sort().join(' ')}`;
+  const keys = (source: string): string[] => divergentTokenFallbacks(source).map(keyOf);
+  const byKey = new Map(divergentTokenFallbacks(file.after).map(found => [keyOf(found), found]));
+
+  const out: string[] = [];
+  for (const key of introduced(keys, file)) {
+    const found = byKey.get(key);
+    if (!found) continue;
+    out.push(
+      issue(
+        'fallback_divergence',
+        `'${found.token}' is read with ${found.values.length} different fallbacks (${found.values.map(value => `"${value}"`).join(' vs ')}) — the fallback is what renders with NO design system, so one token must mean one value. Use at every site the fallback the sheet ALREADY used for this token`,
+      ),
+    );
+  }
+  return out;
+}
+
 export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
   const errors: string[] = [];
 
@@ -255,6 +293,17 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
           ),
         );
       }
+    }
+
+    // ONE TOKEN, ONE FALLBACK — the rule the shared skills/tokenVocabulary states and, until now, the
+    // NM2 gate alone defended. It arrives here (the NM2 one stays) because i3-edit now receives the
+    // canonical value table too (skills/canonicalFallbacks): the step that used to read values out of
+    // a doc section is now the likeliest producer of a divergence, and was the one without the net.
+    //
+    // DELTA, not file: see introducedFallbackDivergence for the molecule already in the library whose
+    // pre-existing divergence would otherwise freeze every edit to it.
+    if (file.kind === 'less') {
+      for (const error of introducedFallbackDivergence(file)) errors.push(error);
     }
   }
 

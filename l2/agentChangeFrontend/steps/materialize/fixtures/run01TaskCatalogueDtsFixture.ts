@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/fixtures/run01TaskCatalogueDts.fixture.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentChangeFrontend/steps/materialize/fixtures/run01TaskCatalogueDtsFixture.ts" enhancement="_blank"/>
 
 /**
  * The run01 (102047, 28/ago) pair that shipped a module which does not compile, copied VERBATIM.

@@ -106,3 +106,37 @@ test('missing theme background on the container is rejected', () => {
   const bad = VALID_INDEX.replace('class="font-sans" style="min-height:100vh; background: #f5f5f5;"', 'class="font-sans min-h-screen"');
   assert.ok(runIndexGate(bad, buildCtx()).some(i => i.code === 'background'));
 });
+
+// A showcase that only carries the mold's envelope (name/value/isEditing/@change) demonstrates nothing
+// about the molecule's own contract (decision of 2026-09-04).
+const USAGE_SKILL = `
+## Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| \`data-variant\` | \`string\` | \`'primary'\` | Visual tone |
+
+## Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`action\` | \`{}\` | Fired when the button is clicked |
+`;
+
+test('a showcase using only the mold envelope fails contract_not_demonstrated when a usage skill exists', () => {
+  const issues = runIndexGate(VALID_INDEX, buildCtx(), USAGE_SKILL);
+  assert.ok(issues.some(i => i.code === 'contract_not_demonstrated'));
+});
+
+test('a showcase using a contract property beyond the envelope passes', () => {
+  const withVariant = VALID_INDEX.replace(
+    '<grouptriggeraction--ml-split-button-brutal .isEditing=${true}></grouptriggeraction--ml-split-button-brutal>',
+    '<grouptriggeraction--ml-split-button-brutal .isEditing=${true} data-variant="secondary"></grouptriggeraction--ml-split-button-brutal>',
+  );
+  const issues = runIndexGate(withVariant, buildCtx(), USAGE_SKILL);
+  assert.ok(!issues.some(i => i.code === 'contract_not_demonstrated'));
+});
+
+test('no usage skill (default) never triggers the check', () => {
+  assert.ok(!runIndexGate(VALID_INDEX, buildCtx()).some(i => i.code === 'contract_not_demonstrated'));
+});

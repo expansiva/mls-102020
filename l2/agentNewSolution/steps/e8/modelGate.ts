@@ -110,6 +110,15 @@ export function validateNs4E8Model(model: Ns4E8Model, sources: Ns4E8Sources): Ns
       add('NS4_E8_MDM_DELETE', `${path}.accessPattern.kind`,
         `Operation ${operation.operationId} deletes master data entity ${operation.entityRef}: master data is referenced by other records and must be deactivated instead.`);
     }
+    // Every list is paged: a generator that skips pagination for a "small" entity will be wrong
+    // the day the table is large. Paging five rows costs nothing; unpaged thousands is the defect.
+    if (operation.accessPattern.kind === 'list') {
+      const pagination = operation.accessPattern.pagination;
+      if (pagination !== 'optional' && pagination !== 'required') {
+        add('NS4_E8_LIST_WITHOUT_PAGINATION', `${path}.accessPattern.pagination`,
+          `List ${operation.operationId} must declare pagination (optional or required); every list is paged.`);
+      }
+    }
     // Catalogue list only (no useCaseId): search/sort are synthesized there, not on journey locate.
     // Registrar, never A — a list without them still compiles; the page just cannot honour the prompt.
     if (operation.accessPattern.kind === 'list' && !operation.useCaseId) {

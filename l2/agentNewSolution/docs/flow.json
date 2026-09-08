@@ -91,6 +91,8 @@
   "invocation": {
     "new": "@@newSolution <description-or-moduleName>",
     "fast": "@@newSolution <description-or-moduleName> /fast",
+    "nochain": "@@newSolution <description-or-moduleName> /fast /nochain",
+    "nochainRule": "/nochain is an invocation flag, never inferred from the host. With /fast it skips E1 clarification and still completes E1-E10, but E10 does not dispatch the next agent. The run summary records `handoff: suppressed by /nochain — next: @@agentChangeBackend /rebuild all <module>` as a fact, not a degradation. /fast alone still chains. /nochain alone does not skip clarification and does not chain. /nochainlane does not match.",
     "resume": "@@newSolution <moduleName>",
     "resumeRule": "A v35-owned incomplete module starts a localized root plan and resumes at the first incomplete implemented step. Module-name lookup accepts an initial-capital or other canonical-equivalent spelling and retains the actual normalized folder name. Previous flow versions are not migrated; foreign or older modules are rejected.",
     "rebuild": "@@newSolution <moduleName> /rebuild",

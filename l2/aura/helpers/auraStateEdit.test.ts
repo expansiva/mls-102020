@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 // The browser globals go in FIRST: imports are hoisted, so the stubbing has to be an import of its
-// own (auraStateEdit.stub) or it would run after the module it is stubbing for.
-import { localStorageStub } from '/_102020_/l2/aura/helpers/auraStateEdit.stub.js';
+// own (auraStateEditStub) or it would run after the module it is stubbing for.
+import { localStorageStub } from '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 import {
   AuraInitState,
   EMPTY_AURA_EDIT,

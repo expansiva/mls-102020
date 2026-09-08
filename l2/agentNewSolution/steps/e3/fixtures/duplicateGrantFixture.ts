@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e3/fixtures/duplicateGrant.fixture.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentNewSolution/steps/e3/fixtures/duplicateGrantFixture.ts" enhancement="_blank"/>
 
 // Verbatim E3 payload from the first petShop run (module petShop, 2026-08-21):
 // three grants for the SAME cliente x petshop:cliente pair, one per access facet

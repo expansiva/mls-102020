@@ -10,8 +10,8 @@ import type { Ns4E8Sources } from '/_102020_/l2/agentNewSolution/steps/e8/contra
 const HERE = new URL('.', import.meta.url);
 
 test('fixtures are the real consultInstitutionalHome inspect-with-required-id landing', () => {
-  const workspace = readFileSync(new URL('fixtures/consultInstitutionalHome.workspace.ts', HERE), 'utf8');
-  const operation = readFileSync(new URL('fixtures/inspectInstitutionalPresentation.operation.ts', HERE), 'utf8');
+  const workspace = readFileSync(new URL('fixtures/consultInstitutionalHomeWorkspace.ts', HERE), 'utf8');
+  const operation = readFileSync(new URL('fixtures/inspectInstitutionalPresentationOperation.ts', HERE), 'utf8');
   assert.match(workspace, /"workspaceId": "consultInstitutionalHome"/);
   assert.match(workspace, /qryInspectInstitutionalPresentation/);
   assert.match(workspace, /"source": "selectedEntity"/);

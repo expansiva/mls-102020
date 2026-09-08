@@ -333,6 +333,7 @@ async function finishCreation(
   }
 
   const moleculeShortNames = syScanGroupMoleculeShortNames(folder);
+  const groupUsageSkill = await loadGroupUsageSkill(groupArgs.usageContract);
   const gateIssues = extractError
     ? [{ code: 'extract', message: extractError }]
     : [
@@ -343,6 +344,7 @@ async function finishCreation(
         sharedTableReference: SY_SHARED_TABLE_IMPORT,
         groupMoleculeShortNames: moleculeShortNames,
         groupFolder: folder,
+        groupUsageSkill,
       }),
       ...compileErrors.map(message => ({ code: 'compile', message })),
     ];
