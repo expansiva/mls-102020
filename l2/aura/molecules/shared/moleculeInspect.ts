@@ -74,6 +74,31 @@ export function divergentTokenFallbacks(less: string): Array<{ token: string; va
     .sort((a, b) => a.token.localeCompare(b.token));
 }
 
+// A coined `--ml-<prefix>-<concept>` token whose SUFFIX is a registered geometry concept
+// (skills/moleculeGeometry) — an alias of a token that already has a shared name, minted under the
+// molecule's own prefix instead. `concepts` is a parameter, not an import: this file stays a pure
+// text inspector with no dependency on the skills layer, and the caller (a gate) is the one that
+// already imports the registry to build its message.
+//
+// The prefix must be NON-EMPTY: the registry's own token (`--ml-spinner-size`) is the concept, not an
+// alias of it, and must never be flagged. Matching the whole concept string — not its last segment —
+// matters just as much: comparing only `-size` would flag `--ml-nrs-knob-size` and
+// `--ml-nrs-handle-size`, both legitimate, real tokens in the library.
+export function geometryAliasTokens(less: string, concepts: readonly string[]): Array<{ token: string; concept: string }> {
+  const found: Array<{ token: string; concept: string }> = [];
+  const seen = new Set<string>();
+  for (const concept of concepts) {
+    const re = new RegExp(`--ml-([a-z0-9]+(?:-[a-z0-9]+)*-)${escapeRegExp(concept)}(?![a-zA-Z0-9-])`, 'g');
+    for (const match of less.matchAll(re)) {
+      const token = `--ml-${match[1]}${concept}`;
+      if (seen.has(token)) continue;
+      seen.add(token);
+      found.push({ token, concept });
+    }
+  }
+  return found;
+}
+
 // True when a `*` appears in SELECTOR position (`* {`, `.a > * {`, `*, *::before {`).
 // Comments and attribute selectors ([class*="x"]) are scrubbed first, and only the text that
 // precedes a `{` is inspected — so `calc(a * b)` in a declaration never trips it.

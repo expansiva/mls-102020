@@ -21,7 +21,8 @@ import {
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { deadShellMembers, offendingForeignWrite } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { diffSurface, groupVocabulary, readSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
-import { divergentTokenFallbacks, normalizeTokenValue } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+import { divergentTokenFallbacks, geometryAliasTokens, normalizeTokenValue } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+import { GEOMETRY_REGISTRY } from '/_102020_/l2/aura/molecules/skills/moleculeGeometry.js';
 import { mlsHeaderOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
 import {
   findBaseInternals,
@@ -190,6 +191,29 @@ function introducedFallbackDivergence(file: ImEditedFile): string[] {
   return out;
 }
 
+/**
+ * A coined token whose suffix aliases a SHARED geometry concept (skills/moleculeGeometry) — but only
+ * the alias this edit INTRODUCED. Real molecule in the library that forces the delta rule here:
+ * `ml-button-group.less` (mls-102053-temp) already carries `--ml-button-group-spinner-size` and
+ * `-duration`. Judging the whole file would block any future edit to that molecule; judging the delta
+ * still catches a NEW alias the edit itself coins, and it is exactly this molecule that exercises it.
+ *
+ * Each finding is `'${token} ${concept}'` — the token and concept are read verbatim off the match, so
+ * unlike introducedFallbackDivergence there is nothing to sort: two edits producing the same alias
+ * always produce the same key, independent of what else changed in the file.
+ */
+function introducedGeometryAlias(file: ImEditedFile): string[] {
+  const keys = (source: string): string[] =>
+    geometryAliasTokens(source, GEOMETRY_REGISTRY.map(concept => concept.concept)).map(({ token, concept }) => `${token} ${concept}`);
+  return introduced(keys, file).map(key => {
+    const [token, concept] = key.split(' ');
+    return issue(
+      'geometry_alias',
+      `'${token}' renames a shared geometry concept the library already has a name for — use '--ml-${concept}' instead of coining a molecule-prefixed alias`,
+    );
+  });
+}
+
 export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
   const errors: string[] = [];
 
@@ -304,6 +328,10 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
     // pre-existing divergence would otherwise freeze every edit to it.
     if (file.kind === 'less') {
       for (const error of introducedFallbackDivergence(file)) errors.push(error);
+
+      // Same delta rule, same reason: a molecule that already coined an alias of a shared geometry
+      // concept is not this run's fault, but an alias the edit ITSELF introduces is.
+      for (const error of introducedGeometryAlias(file)) errors.push(error);
     }
   }
 

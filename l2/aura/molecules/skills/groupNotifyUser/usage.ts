@@ -125,38 +125,4 @@ The component's visual styling can be customized by overriding \`--ml-*\` CSS cu
 
 ---
 
-## Design System Roles
-
-These are roles of the **project design system**. The client defines them in
-\`l2/designSystem.ts\` (through the Design System plugin), with night mode and the
-\`-hover\`/\`-focus\`/\`-disabled\` variants — and the molecule follows the theme
-automatically. The Default column is what the molecule renders when the project has
-**no** design system.
-
-The \`--ml-*\` in the \`## Design Tokens\` section, by contrast, have **no** place in
-\`designSystem.ts\` — they can only be adjusted by overriding the variable in CSS.
-
-| Role | Default (no DS) | Purpose |
-|------|-----------------|---------|
-| \`--border-default\` | \`#e2e8f0\` | Structural border — inputs, tables, cards, floating panels |
-| \`--button-primary-bg\` | \`#3b82f6\` | Primary action fill |
-| \`--button-primary-text\` | \`#ffffff\` | Label on the primary action |
-| \`--focus-ring\` | \`rgba(59, 130, 246, 0.4)\` | Keyboard focus ring |
-| \`--font-family-primary\` | \`system-ui, -apple-system, sans-serif\` | Primary font stack |
-| \`--font-weight-bold\` | \`500\` | Emphasis font weight |
-| \`--link-text\` | \`#3b82f6\` | Link colour |
-| \`--selected-bg\` | \`#f5f5f5\` | Selected item fill |
-| \`--selected-border\` | \`#3b82f6\` | Selected / focused border |
-| \`--status-error-bg\` | \`#f5f5f5\` | Error surface |
-| \`--status-error-text\` | \`#ef4444\` | Error text and icon |
-| \`--status-success-bg\` | \`#ecfdf5\` | Success surface |
-| \`--status-success-text\` | \`#16a34a\` | Success text and icon |
-| \`--status-warning-bg\` | \`#fffbeb\` | Warning surface |
-| \`--status-warning-text\` | \`#d97706\` | Warning text and icon |
-| \`--surface-alt-bg\` | \`#f5f5f5\` | Subtle surface — zebra rows, row hover, skeleton, section headers |
-| \`--surface-bg\` | \`#ffffff\` | Elevated surface — cards, panels, modals, floating menus |
-| \`--text-muted\` | \`#49454f\` | Secondary text and placeholders |
-| \`--text-muted-disabled\` | \`#79747e\` | Secondary text and placeholders — disabled state |
-| \`--text-strong\` | \`#1c1b1f\` | Most prominent text — titles, emphasized labels |
-
 `;

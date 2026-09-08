@@ -11,6 +11,8 @@
 // Every rule here came from a measurement, not an opinion. The evidence is recorded in
 // todo/moleculetokens/.
 
+import { geometryRegistryRows } from '/_102020_/l2/aura/molecules/skills/moleculeGeometry.js';
+
 export const skill = `
 # Skill — The token vocabulary of a base \`.less\` sheet
 
@@ -106,9 +108,34 @@ Use exactly these names; the library already shares them:
 | status border — the DS has \`bg\`+\`text\` for all 5 statuses and **no border at all** | \`--ml-outline-error\`, \`--ml-success-border\`, \`--ml-warning-border\`, \`--ml-info-border\` |
 
 If the molecule needs a value neither the design system nor the table above covers — a knob
-size, a track height, a spinner duration — **coin a token PREFIXED with the molecule**, as the
-library already does: \`--ml-nrs-knob-size\`, \`--ml-spinner-duration\`, \`--ml-gradient-1\`.
-Still consumed with a fallback: \`var(--ml-nrs-knob-size, 20px)\`.
+size, a track height, a spinner duration — **coin a token**. Where you prefix it depends on the
+scope, and the library already draws the line: \`ml-number-range-slider.less\` uses BOTH families
+on the same sheet.
+
+| prefix | means | obligation |
+|---|---|---|
+| concept, no molecule name (\`--ml-spinner-size\`) | shared across molecules | **must be in the registry below** |
+| your molecule's name (\`--ml-nrs-knob-size\`) | specific to that molecule | free to coin |
+
+Before coining, check the registry below. If your concept is there, use that name. If it is not,
+coin with **YOUR MOLECULE's** name — never with the group's: a group prefix promises a reuse you
+are not delivering. Measured: the three \`--ml-table-*\` tokens are read by 1 molecule out of the
+13 in \`groupviewtable\`.
+
+### Shared geometry concepts — use these names
+
+${geometryRegistryRows()}
+
+Still consumed with a fallback, same as any other token: \`var(--ml-spinner-size, 16px)\`.
+
+**A token exists for what a project or a theme might want to change — not for every constant the
+sheet writes.** A value only the molecule's own author would ever decide is a literal, not a
+token — a fade's \`opacity: 0\` / \`opacity: 1\` is the clearest case (nobody configures "how
+opaque is the visible state"); an exit \`translateY\` is already debatable. Measured: a molecule
+tokenized exactly the opacity pair — \`var(--ml-alert-modal-visible-opacity, 1)\`,
+\`var(--ml-alert-modal-closing-opacity, 0)\` — on the SAME sheet where a neighboring
+\`--ml-alert-modal-exit-offset: 8px\` is a legitimate token. Same prefix, same molecule, one right
+and one wrong.
 
 ## 4. The five rules
 

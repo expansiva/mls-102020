@@ -1,5 +1,23 @@
 # CHANGELOG — i3-edit
 
+## 2026-09-08 — `geometry_alias`, pelo DELTA: token que renomeia um conceito já compartilhado
+
+Mesma causa raiz medida no `n5-less`: o `ml-button-group` cunhou `--ml-button-group-spinner-size`
+e `-duration` para o mesmo conceito que `ml-number-range-slider.less` já nomeia
+`--ml-spinner-size`/`-duration`, mesmos valores. `skills/moleculeGeometry.ts` (novo) registra os 4
+conceitos com recorrência provada; a `skills/tokenVocabulary` ganhou a convenção de dois níveis
+(prefixo de conceito é compartilhado, prefixo de molécula é livre) com a tabela do registro
+interpolada.
+
+**Aqui vale o DELTA, não o arquivo — e há um caso real que prova por quê.**
+`ml-button-group.less`, em `mls-102053-temp`, **já contém** os dois tokens infratores. Um check
+que julgasse o arquivo inteiro travaria qualquer conserto pedido nessa molécula, e ela é
+justamente uma das que usamos para testar o agente. `introducedGeometryAlias()` roda o detector
+compartilhado (`geometryAliasTokens`, em `shared/moleculeInspect.ts` — o mesmo que o `n5-less`
+usa, para os dois gates não divergirem) antes e depois, e só o que a EDIÇÃO introduziu vira erro.
+Verificado nos dois lados: `before === after` no `ml-button-group.less` real dá 0 erros; uma regra
+nova que lê um alias fresco dá 1.
+
 ## 2026-09-04 — a tabela canônica de fallbacks chegou ao prompt, e o `fallback_divergence` ao gate
 
 **O IM2 escrevia `.less` de molécula base sem receber os VALORES dos papéis do design system.** Ele e
