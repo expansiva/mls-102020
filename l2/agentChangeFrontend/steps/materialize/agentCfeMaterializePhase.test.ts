@@ -424,9 +424,10 @@ async function loadPhase(): Promise<typeof import('/_102020_/l2/agentChangeFront
   return import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializePhase.js');
 }
 
-function splitVerifyAttempt(intents: { type: string; step?: { agentName?: string; prompt?: string } }[]): number | null {
-  const verify = intents.find(intent => intent.type === 'add-step' && intent.step?.agentName === 'agentCfeMaterializePhase');
-  if (!verify?.step?.prompt) return null;
+function splitVerifyAttempt(intents: mls.msg.AgentIntent[]): number | null {
+  const verify = intents.find(intent =>
+    intent.type === 'add-step' && intent.step.type === 'agent' && intent.step.agentName === 'agentCfeMaterializePhase');
+  if (!verify || verify.type !== 'add-step' || verify.step.type !== 'agent' || !verify.step.prompt) return null;
   const parsed = JSON.parse(verify.step.prompt) as { attempt?: number };
   return typeof parsed.attempt === 'number' ? parsed.attempt : null;
 }
