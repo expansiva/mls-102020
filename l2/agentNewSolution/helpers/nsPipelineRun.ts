@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentNewSolution/helpers/nsPipelineRun.ts" enhancement="_blank"/>
 
 import type { Ns4PipelineState } from '/_102020_/l2/agentNewSolution/helpers/ns4Core.js';
-import { isNs4FastMode } from '/_102020_/l2/agentNewSolution/helpers/ns4FastHandoff.js';
+import { isNs4FastMode, isNs4NochainMode } from '/_102020_/l2/agentNewSolution/helpers/ns4FastHandoff.js';
 
 export const NS_PIPELINE_AGENT_SLUG = 'newsolution';
 
@@ -59,6 +59,7 @@ export function buildNsRunSummary(input: {
     }
   }
   const fast = isNs4FastMode(input.longMemory);
+  const nochain = isNs4NochainMode(input.longMemory);
   const rebuild = pipeline?.rebuildAll
     ? '/rebuild all'
     : pipeline?.rebuiltFrom ? `/rebuild ${pipeline.rebuiltFrom}` : '';
@@ -71,7 +72,7 @@ export function buildNsRunSummary(input: {
     });
   }
   if (input.extraDegradations?.length) degradations.push(...input.extraDegradations);
-  const command = [fast ? '/fast' : '', rebuild, pipeline?.sourcePrompt || ''].filter(Boolean).join(' ').trim();
+  const command = [fast ? '/fast' : '', nochain ? '/nochain' : '', rebuild, pipeline?.sourcePrompt || ''].filter(Boolean).join(' ').trim();
   const handoffFailed = (input.extraDegradations || []).some(item => item.kind === 'fast-handoff-dispatch');
   return {
     moduleName: input.moduleName,

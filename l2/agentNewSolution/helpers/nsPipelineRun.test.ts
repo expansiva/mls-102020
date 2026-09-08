@@ -45,6 +45,32 @@ void test('NS run summary records skipped clarification defaults as a degradatio
   assert.equal(summary.counts.skippedClarification, true);
 });
 
+void test('NS run summary records /nochain on the command and does not degrade for it', () => {
+  const pipeline = {
+    schemaVersion: 'test',
+    flowId: 'agentNewSolution',
+    flowVersion: 'test',
+    moduleName: 'petShop',
+    sourcePrompt: 'pet shop in pt-BR',
+    presentation: { userLanguage: 'pt-BR' },
+    status: 'complete',
+    steps: { e10: { status: 'approved', updatedAt: '2026-08-29T01:00:00.000Z' } },
+    updatedAt: '2026-08-29T01:00:00.000Z',
+  } as unknown as Ns4PipelineState;
+  const summary = buildNsRunSummary({
+    pipeline,
+    moduleName: 'petShop',
+    longMemory: { fastMode: 'true', nochainMode: 'true' },
+    verdict: 'completed',
+    reason: 'E10 validation passed; handoff: suppressed by /nochain — next: @@agentChangeBackend /rebuild all petShop',
+  });
+  assert.equal(summary.verdict, 'completed');
+  assert.match(summary.command, /\/fast/);
+  assert.match(summary.command, /\/nochain/);
+  assert.equal(summary.degradations.length, 0);
+  assert.match(summary.reason, /handoff: suppressed by \/nochain — next: @@agentChangeBackend \/rebuild all petShop/);
+});
+
 void test('a failed handoff is recorded as a degradation and degrades a completed run', () => {
   const pipeline = {
     schemaVersion: 'test',

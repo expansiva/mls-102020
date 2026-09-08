@@ -306,7 +306,12 @@ export function bffCallCommandShape(bffCall: CfeBffCall, operationInputs: Map<st
       source,
     };
   });
-  const outputFields = bffCall.output ? bffCall.output.fields.map(field => ({ name: field.name, type: field.type || 'string', required: field.required !== false })) : [];
+  const outputFields = bffCall.output ? bffCall.output.fields.map(field => ({
+    name: field.name,
+    type: field.type || (field.item ? 'array' : 'string'),
+    required: field.required !== false,
+    ...(field.item ? { item: field.item } : {}),
+  })) : [];
   const outputKind: CfeFrontendOutputShape = bffCall.output ? bffCall.output.kind : 'object';
   return {
     commandName: bffCall.bffId,

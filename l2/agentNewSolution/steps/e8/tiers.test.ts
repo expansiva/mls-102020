@@ -489,6 +489,11 @@ test('a catalogue list with a name/title field emits optional search, and sortab
   const clientCatalogue = model.workspaces.find(workspace => workspace.workspaceId === 'clientCatalogue')!;
   const clientList = clientCatalogue.sections.find(section => section.sectionId === 'recordList')!;
   assert.equal(clientList.organisms.find(organism => organism.role === 'filterControl')?.attachTo, 'qryListClient');
+
+  assert.equal(listClient.inputs.find(input => input.inputId === 'page')?.type, 'number');
+  assert.equal(listClient.inputs.find(input => input.inputId === 'pageSize')?.type, 'number');
+  assert.equal(listClient.inputs.find(input => input.inputId === 'page')?.required, false);
+  assert.equal(listChangeOrder.inputs.find(input => input.inputId === 'page')?.type, 'number');
 });
 
 test('a catalogue list missing search/sort is a registrar finding, not a stop', () => {
@@ -503,6 +508,20 @@ test('a catalogue list missing search/sort is a registrar finding, not a stop', 
   assert.equal(finding!.severity, 'warning');
   assert.equal(gate.ok, true);
   assert.equal(validateNs4E8Model(model, input).issues.some(issue => issue.code === 'NS4_E8_LIST_WITHOUT_SEARCH'), false);
+});
+
+test('a list without pagination is a blocking finding', () => {
+  const input = sources();
+  const model = deriveNs4E8Model(input);
+  assert.equal(validateNs4E8Model(model, input).issues.some(issue => issue.code === 'NS4_E8_LIST_WITHOUT_PAGINATION'), false);
+  const smuggled = structuredClone(model);
+  const list = smuggled.operations.find(operation => operation.operationId === 'listClient')!;
+  list.accessPattern = { kind: 'list' };
+  const gate = validateNs4E8Model(smuggled, input);
+  const finding = gate.issues.find(issue => issue.code === 'NS4_E8_LIST_WITHOUT_PAGINATION');
+  assert.ok(finding);
+  assert.notEqual(finding!.severity, 'warning');
+  assert.equal(gate.ok, false);
 });
 
 test('a journey that already produced get{Entity} keeps it; the catalogue does not duplicate', () => {

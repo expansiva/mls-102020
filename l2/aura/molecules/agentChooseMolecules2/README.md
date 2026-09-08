@@ -1,58 +1,85 @@
 # agentChooseMolecules2
 
-Given an existing page `.defs.ts` and the project whose molecule catalog answers, decides which
-molecule serves each region of that page and **rewrites the same file in place**. It is the sibling of
+Given an existing page `.defs.ts` and the project whose molecule catalog answers, decides which molecule
+serves each region of that page and **equips that file's `pipeline`** with them. It is the sibling of
 `agentChooseMolecules` (the probe that only measures whether the catalog is good enough) — this one
-actually annotates a page, and writes nothing else anywhere.
+actually equips a page, and writes nothing else anywhere.
 
 ```
-@@agentChooseMolecules2 {"catalogProject": 102040, "target": "_102046_/l2/buildFlowFsm/web/desktop/page11/approveChangeOrder.defs"}
+@@agentChooseMolecules2 {"catalogProject": 102040, "target": "_102047_/l2/controleChamados/web/desktop/page21/commentOpenTicket.defs"}
 ```
 
 Both keys are required. `catalogProject` is never discovered — no dependency search, no "more than one
 catalog reachable" refusal: whoever calls this agent already knows which project's catalog applies.
 `target` is the import-style reference of the page's own `.defs.ts` (its `definition` + `pipeline`
-shape — the same file `page11`, `page21`, `page31` or a future `page12` all share).
+shape — the same file `page11`, `page21` and `page31` all share).
 
-## What it changes
+## What it reads, and what it changes
 
-Four kinds of need are decided, and each is written where it belongs — never anything more than
-`{ group, tag }`:
+It reads `export const definition` — which is **prose** since 2026-09-08:
 
-- a **query** binding gets `molecule` on itself — the surface that lists (and selects) its rows;
-- a **command** binding gets `molecule` on itself — the control that executes it. A binding is a query
-  or a command, never both, so the two share the address without ambiguity;
-- a **`form` input** of a command gets `molecule` on that input — the control the user types into;
-  ```json
-  "molecule": { "group": "groupSelectOne", "tag": "groupselectone--ml-select-one" }
-  ```
-- a **page-wide** need, belonging to no single binding, goes to the root `pageMolecules[]` with its
-  role. Today one role exists — `feedback`, the surface reporting success/error for every command:
-  ```json
-  "pageMolecules": [
-    { "role": "feedback", "group": "groupNotifyUser", "tag": "groupnotifyuser--ml-toast-notification" }
-  ]
-  ```
+```ts
+export const definition = `page: Registrar comentário em chamado aberto
+actor: atendente
+purpose: Documentar o andamento do atendimento em um chamado aberto.
+uxExperience: processWizard
+The page extends the shared base class of this workspace: ... do not list routines.`;
+```
 
-`selection`/`route` inputs are never annotated — they are filled by picking a row elsewhere or by the
-URL, never typed, so there is nothing for a molecule to serve.
+and rewrites **only `pipeline[0]`** — the chosen molecules' own source files appended to
+`dependsFiles`, their groups' usage contracts to `skills`, in pipeline form (no leading slash, with
+extension):
 
-And `pipeline[0].dependsFiles`/`pipeline[0].skills` get the chosen molecules' own source files and
-their group's usage contract appended (deduplicated), in pipeline form — no leading slash, with
-extension. Those files already exist in the catalog project; nothing new is generated.
+```json
+"dependsFiles": [
+  "_102047_/l2/controleChamados/web/shared/commentOpenTicketDts.txt",
+  "_102047_/l2/designSystem.ts",
+  "_102040_/l2/molecules/groupentertext/ml-multiline-text.ts",
+  "_102040_/l2/molecules/groupviewtable/ml-data-table.ts"
+],
+"skills": [
+  "_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts",
+  "_102020_/l4/collabux/templates/processWizard/page21.md",
+  "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+  "_102020_/l2/aura/molecules/skills/groupViewTable/usage.ts"
+]
+```
 
-**Nothing else is ever written.** No report, no trace, no `l4` folder in any project. See `flow.json`'s
-"ZERO ARTIFACT RULE".
+Those two arrays are not an arbitrary choice — they are the two fields materialize actually reads
+(`agentCfeMaterializeGen`): `dependsFiles` becomes the `## Context files` sections of the render prompt
+and `skills` is concatenated into its system prompt. `PipelineItem` is a closed interface, so a new
+pipeline KEY would be dropped in silence.
+
+**`export const definition` is never written.** It is not even a parameter of the serializer: it travels
+back byte for byte inside the parsed prefix. And **nothing else in any project is written** — no report,
+no trace, no `l4` folder. See `flow.json`'s "ZERO ARTIFACT RULE".
+
+**A rerun reconciles.** c3-patch removes this agent's own previous entries before adding the current
+ones (recognized by shape, never by position: `l2/molecules/<group>/<name>.ts` and
+`l2/aura/molecules/skills/<group>/usage.ts`) and sorts what it adds. So changing the choice replaces it
+instead of stacking both, choosing nothing clears what was equipped, and a rerun that decided the same
+thing touches no bytes at all. What the generator put in those arrays survives untouched.
 
 ## The tree
 
 | step | model | what it does |
 |---|---|---|
 | (root) | — | deterministic bootstrap (`skipRootLLM`); no classifier |
-| c1-groups | `reasoning` | deterministic regions in (from `dataBindings`/`inputs` + the sibling contract) → the group of each, or `none` |
+| c1-groups | `reasoning` | the target's prose definition + level 1 → the regions and the group of each, or `none` |
 | c1r-fanout (root) | — | plants one c2 per chosen group, plus c3-patch |
 | c2-`<group>` | `reasoning` | level 2 of ONE group in → the molecule per region, or `none` (anti-invention gate) |
-| c3-patch | — | joins c1 + every c2, rewrites the target `.defs.ts` — the run's only write |
+| c3-patch | — | joins c1 + every c2, rewrites the target's `pipeline` — the run's only write |
+
+## v1 → v2 in one paragraph
+
+v1 walked the page's own `definition.dataBindings[]` to extract regions deterministically and wrote
+`molecule: { group, tag }` onto each binding/input plus a root `pageMolecules[]` array. The definition
+is prose now, so there is no node left to annotate and no binding list to walk: c1 names the regions
+from the prose (exactly as the probe does) and the pipeline is the whole output. The structural facts
+moved to the workspace shared defs (`web/shared/{page}.defs.ts`, which still has `dataBindings[]` plus
+`i18n` column/field labels, `scenaries` and `destructiveCommandIds`); reading it was offered and
+declined, so the prose is the only evidence — see `spec.md` §"v1 → v2" and
+`flow.json.knownGaps.thinEvidence` for the accepted cost.
 
 ## Reused from `agentChooseMolecules`, unchanged
 
@@ -60,21 +87,25 @@ extension. Those files already exist in the catalog project; nothing new is gene
   discovers a catalog, `catalogProject` is explicit).
 - `helpers/chTypes.ts`: `chFileRefFromImport`, `chCanonicalGroup`, `CH_*` gate-result helpers.
 - `steps/c1-groups/gate.ts` and `steps/c2-molecules/gate.ts`: the anti-invention gate, imported
-  verbatim. Only the source of the region list changes (deterministic here, LLM-invented there).
+  verbatim.
+- `steps/c1-groups/prompt.md`'s region rules: the probe's measured anti-superdecomposition and
+  anti-invention sections, carried over when the regions stopped being deterministic here.
 
 ## Files
 
 ```
 flow.json  spec.md  README.md              the design record — spec first
 agentChooseMolecules2.ts                   root: bootstrap, phase-1 planting, the fan-out
-helpers/cm2Entry.ts                        pure: the mention argument, the sibling contract path
-helpers/cm2Regions.ts                      pure: deterministic region extraction
-helpers/cm2DefsPatch.ts                    pure: parse / patch / serialize the target .defs.ts
-helpers/cm2Types.ts                        constants, step-args, task-tree result readers
+helpers/cm2Entry.ts                        pure: the mention argument
+helpers/cm2DefsPatch.ts                    pure: read the prose + pipeline, equip the pipeline, serialize
+helpers/cm2PageContext.ts                  pure: the prose's declared lines, as a c2 prompt section
+helpers/cm2ProjectContext.ts               the target project's declared language (l5/project.json)
+helpers/cm2Types.ts                        constants, step-args, task-tree result readers, reference forms
 schemas/                                   the two tool schemas (adapted from agentChooseMolecules)
 steps/c1-groups/  steps/c2-molecules/  steps/c3-patch/
 ```
 
-Tests: `cm2Entry.test.ts`, `cm2Regions.test.ts`, `cm2DefsPatch.test.ts` — all pure, no `mls.*` access,
-covering the parse→patch→serialize round-trip against a real page shape and the region-extraction
-rules (query → view region, form input → entry region, selection/route → never a region).
+Tests: `cm2Entry.test.ts`, `cm2DefsPatch.test.ts`, `cm2PageContext.test.ts`, `cm2ProjectContext.test.ts`,
+`cm2Types.test.ts` — all pure, no `mls.*` access. `cm2DefsPatch.test.ts` runs against the real v2 page
+shape and covers the parse→equip→serialize round trip, the idempotency and pruning rules, and the
+refusal of a v1 object definition.

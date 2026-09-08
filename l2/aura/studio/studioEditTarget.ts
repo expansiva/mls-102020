@@ -156,7 +156,6 @@ export async function resolveEditTarget(host: HTMLElement): Promise<StudioEditTa
  * Structural first, `module.js` second (resolveSharedTarget): the convention holds in every project
  * checked (102051, 102043) and costs no request, while 102051 has no `module.ts` at all — so the
  * original preview path (import module.js, read shared[device].sharedPath) would resolve nothing
-import type { IMessageRef } from '/_102020_/l2/aura/studio/studioMessages.js';
  * there.
  */
 export function deriveSharedFolder(folder: string): string | null {
@@ -345,4 +344,39 @@ export async function saveTarget(target: IStudioEditTarget, comment: string): Pr
   // the file dirty again, right after it was saved. Moving the baseline to what we just wrote makes
   // that late pass converge to "no change" and clear the local copy instead.
   target.model.originalCRC = mls.common.crc.crc32(saved).toString(16);
+}
+
+// --- The identity a page folder carries (TASK-102020-picker-state-lit, Info tab) ---
+
+export interface IPageIdentity {
+  /** First segment of the folder: `buildFlowFsm/web/desktop/page11` -> `buildFlowFsm`. */
+  module: string;
+  /** What sits between the module and the variation: `web/desktop`. */
+  device: string;
+  /** From the `page<layout><ds>` segment; null when the folder has no such segment. */
+  layout: number | null;
+  designSystem: number | null;
+}
+
+/**
+ * Module, device and variation, read from the folder of the page ON SCREEN.
+ *
+ * The folder is resolved by the editor for every selection and always says the truth about what is
+ * mounted — same rule `parseAuraPageSource` uses on the other side of the state.
+ *
+ * It stays the PRIMARY source even now that `studioAuraSeed` fills `auraState` on studio entry, and
+ * on purpose: the seed can be absent (an unresolvable page tag) or behind (a knob moved after it),
+ * while this folder came out of the very file the edit is about to be written into. The state is the
+ * fallback, not the truth, for anything the editor can answer itself.
+ */
+export function describePageFolder(folder: string): IPageIdentity {
+  const segments = (folder || '').split('/').filter(Boolean);
+  const variationAt = segments.findIndex((segment) => /^page\d\d$/u.test(segment));
+  const variation = variationAt >= 0 ? segments[variationAt] : '';
+  return {
+    module: segments[0] ?? '',
+    device: segments.slice(1, variationAt >= 0 ? variationAt : undefined).join('/'),
+    layout: variation ? Number(variation[4]) : null,
+    designSystem: variation ? Number(variation[5]) : null,
+  };
 }

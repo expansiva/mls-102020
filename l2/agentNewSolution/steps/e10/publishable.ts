@@ -33,17 +33,13 @@ export const PROJECT_ROOT_PREFIX = '../mls-';
  * The platform blocks E10 must NOT invent, with the default the platform ships.
  *
  * Kept here as ONE source (the step copies, never re-types them) and applied only when the block is
- * absent: a publisher who tuned `publication` or `clientShell` keeps their version, and the finding tells
+ * absent: a publisher who tuned `clientShell` keeps their version, and the finding tells
  * them a default was filled in.
  */
 export const PLATFORM_BLOCK_DEFAULTS: Record<string, unknown> = {
   shellTemplates: {
     spa: './_102033_/l2/shared/spa/index.html',
     pwa: './_102033_/l2/shared/pwa/index.html',
-  },
-  publication: {
-    defaultTarget: 'web',
-    targets: { web: { assetBaseUrl: '', serveStaticFromServer: true, minify: false, sourcemap: true } },
   },
   clientShell: {
     mode: 'spa',

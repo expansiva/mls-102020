@@ -57,9 +57,11 @@ regeneration.
 The catalogue `list` also synthesizes optional listing controls from the ontology, because E6 has no
 vocabulary for them (it is additional modules/plugins) and a journey step is not a catalogue: `search`
 when the entity has `title` or `name`, `sortBy`/`sortOrder` when it has dates, `*At` timestamps or
-closed enums. All three are optional `userInput`. `sortBy` is the closed enum of those field ids, not
-a free string. A `filterControl` with `attachTo` the list query is added on `recordList` when any of
-them exist. `NS4_E8_LIST_WITHOUT_SEARCH` / `_SORT` record a leftover empty list (registrar).
+closed enums, and always `page`/`pageSize` (numbers; default 20 / cap 200 live in the runtime). All
+are optional `userInput`. `sortBy` is the closed enum of those field ids, not a free string. A
+`filterControl` with `attachTo` the list query is added on `recordList` when search/sort exist.
+`NS4_E8_LIST_WITHOUT_SEARCH` / `_SORT` record a leftover empty list (registrar). Every list declares
+`pagination: optional`; `NS4_E8_LIST_WITHOUT_PAGINATION` is blocking.
 
 A record catalogue of an entity whose `storage.target` is `mdm` emits `inactivate`/`reactivate`
 instead of `delete`, and its list returns only active records unless the caller passes the optional
