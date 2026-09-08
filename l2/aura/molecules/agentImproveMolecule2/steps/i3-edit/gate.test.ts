@@ -138,6 +138,35 @@ test('the appearance detectors do not run on a .less — that file IS the appear
   assert.equal(result.ok, true);
 });
 
+// ---- geometry_alias: a coined token whose suffix is a shared concept (skills/moleculeGeometry) ----
+// The real molecule that forces the delta rule here: ml-button-group.less (mls-102053-temp) already
+// carries --ml-button-group-spinner-size/-duration. Judging the file would freeze any edit to it.
+
+test('THE DELTA RULE: a geometry alias the sheet ALREADY coined does not block an unrelated fix', () => {
+  const less = 'collab-x {\n  .ml-spinner { width: var(--ml-button-group-spinner-size, 1rem); }\n}';
+  const result = runImEditGate(inputs({
+    files: [file({ kind: 'less', before: less, after: less.replace('1rem', '1.25rem') })],
+  }));
+  assert.equal(result.ok, true);
+});
+
+test('a geometry alias the edit INTRODUCED is refused, naming the concept name to use', () => {
+  const before = 'collab-x {\n  .ml-row { color: black; }\n}';
+  const after = 'collab-x {\n  .ml-row { color: black; }\n  .ml-spinner { width: var(--ml-button-group-spinner-size, 16px); }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^geometry_alias: /.test(e)));
+  assert.match(result.errors.join('\n'), /--ml-button-group-spinner-size/);
+  assert.match(result.errors.join('\n'), /--ml-spinner-size/);
+});
+
+test('the registry token itself is never flagged as an alias', () => {
+  const before = 'collab-x {\n  .ml-row { color: black; }\n}';
+  const after = 'collab-x {\n  .ml-row { color: black; }\n  .ml-spinner { width: var(--ml-spinner-size, 16px); }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, true);
+});
+
 test('THE DELTA RULE for the compiler: a pre-existing error does not block', () => {
   const result = runImEditGate(
     inputs({ compileErrors: ['line 4: already broken'], compileErrorsBefore: ['line 4: already broken'] }),

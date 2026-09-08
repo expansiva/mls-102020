@@ -1,5 +1,25 @@
 # n5-less — CHANGELOG
 
+## 2026-09-08 — `geometry_alias`: token cunhado que renomeia um conceito já compartilhado
+
+Medido no run de 04/09 (o mesmo em que o `fallback_divergence` pegou a divergência real): o
+`ml-button-group` cunhou `--ml-button-group-spinner-size` e `-duration` com os MESMOS valores que
+`ml-number-range-slider.less` já dá a `--ml-spinner-size`/`-duration`, na biblioteca, à mão. A
+causa era a própria `skills/tokenVocabulary`: a §3 dava `--ml-spinner-duration` como exemplo de
+token PREFIXADO com a molécula — o oposto do que o nome ensina, já que ele não tem prefixo
+nenhum. A instrução estava incompleta, não errada por inteiro.
+
+**Conserto em duas partes.** `skills/moleculeGeometry.ts` — módulo novo, no molde do
+`canonicalFallbacks.ts` — registra os 4 conceitos com recorrência provada (spinner-size,
+spinner-duration, spinner-border-width, skeleton-duration) e a `skills/tokenVocabulary` passou a
+interpolar essa tabela sob a convenção de dois níveis: prefixo de CONCEITO é compartilhado e tem
+de estar no registro; prefixo de MOLÉCULA é livre. O gate ganhou o código `geometry_alias`:
+reprova um token cujo SUFIXO inteiro é um conceito do registro (comparar só o último segmento
+acusaria falso positivo — `--ml-nrs-knob-size` e `--ml-nrs-handle-size` são legítimos e existem
+na biblioteca). O detector (`geometryAliasTokens`, em `shared/moleculeInspect.ts`, compartilhado
+com o `i3-edit`) verificado contra a biblioteca inteira + as moléculas geradas: acusa exatamente
+os 2 sítios reais do `ml-button-group`, 0 falso positivo.
+
 ## 2026-09-03 (b) — o fallback passou a ser CONSULTADO, e a escala de tamanho entrou no vocabulário
 
 Três correções vindas do 2º run do Studio (o mesmo em que o conserto de família foi validado).

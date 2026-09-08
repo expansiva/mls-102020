@@ -271,6 +271,38 @@ test('the escape hatch: if the render puts the class on the host via classList, 
   assert.ok(!gate(less, false, renderTs).some(issue => issue.code === 'host_anchored_class'));
 });
 
+// ---- geometry_alias: a coined token whose suffix is a shared concept (skills/moleculeGeometry) ----
+// Measured: a Studio run coined --ml-button-group-spinner-size/-duration for the exact concept
+// ml-number-range-slider.less already names --ml-spinner-size/-duration, same values.
+
+test('a coined token aliasing a shared geometry concept is rejected, naming the concept name to use', () => {
+  const aliased = NEUTRAL.replace(
+    'color: var(--ml-on-surface-muted, #49454f);',
+    'color: var(--ml-on-surface-muted, #49454f);\n    width: var(--ml-kpi-card-spinner-size, 16px);',
+  );
+  const issues = gate(aliased);
+  const found = issues.find(issue => issue.code === 'geometry_alias');
+  assert.ok(found);
+  assert.ok(found?.message.includes('--ml-kpi-card-spinner-size'));
+  assert.ok(found?.message.includes('--ml-spinner-size'));
+});
+
+test('the registry token itself is never flagged — it IS the concept, not an alias of it', () => {
+  const direct = NEUTRAL.replace(
+    'color: var(--ml-on-surface-muted, #49454f);',
+    'color: var(--ml-on-surface-muted, #49454f);\n    width: var(--ml-spinner-size, 16px);',
+  );
+  assert.ok(!gate(direct).some(issue => issue.code === 'geometry_alias'));
+});
+
+test('a molecule-prefixed token with an UNRELATED suffix is free to coin', () => {
+  const unrelated = NEUTRAL.replace(
+    'color: var(--ml-on-surface-muted, #49454f);',
+    'color: var(--ml-on-surface-muted, #49454f);\n    width: var(--ml-kpi-card-badge-size, 8px);',
+  );
+  assert.ok(!gate(unrelated).some(issue => issue.code === 'geometry_alias'));
+});
+
 test('findHostAnchoredClasses is individually inspectable', () => {
   assert.deepEqual(findHostAnchoredClasses('tag {\n  &.ml-x { }\n}', ''), ['.ml-x']);
   assert.deepEqual(findHostAnchoredClasses('tag {\n  .a {\n    &.ml-x { }\n  }\n}', ''), []);

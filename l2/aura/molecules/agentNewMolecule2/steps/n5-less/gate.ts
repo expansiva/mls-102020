@@ -33,9 +33,11 @@ import {
   extractMlClassesFromLess,
   extractMlClassPrefixes,
   extractMlClassesFromTs,
+  geometryAliasTokens,
   hasUniversalSelector,
   setsPositionOrOverflow,
 } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+import { GEOMETRY_REGISTRY } from '/_102020_/l2/aura/molecules/skills/moleculeGeometry.js';
 
 // Pure LAYOUT utilities only — `.animate-spin`/`.w-full` stay allowed: a sheet legitimately anchors
 // on them (a mechanical spinner steps(), collapsed levels).
@@ -119,6 +121,17 @@ export function runNm2LessGate(
     issues.push({
       code: 'family_prefix',
       message: `these are class FAMILY prefixes, not classes — the render always appends a suffix, so the rule matches nothing: ${bareFamily.join(', ')}. Style the concrete variants (e.g. '${bareFamily[0]}-<value>') or drop the rule`,
+    });
+  }
+
+  // A coined token whose suffix is already a SHARED geometry concept (skills/moleculeGeometry) —
+  // the molecule minted its own name for something the library already names. MEASURED: a Studio run
+  // coined `--ml-button-group-spinner-size`/`-duration` for the exact concept
+  // `ml-number-range-slider.less` already names `--ml-spinner-size`/`-duration`, same values.
+  for (const { token, concept } of geometryAliasTokens(content, GEOMETRY_REGISTRY.map(g => g.concept))) {
+    issues.push({
+      code: 'geometry_alias',
+      message: `'${token}' renames a shared geometry concept the library already has a name for — use '--ml-${concept}' instead of coining a molecule-prefixed alias`,
     });
   }
 
