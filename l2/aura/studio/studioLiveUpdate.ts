@@ -103,13 +103,7 @@ export function setLiveUpdateMode(name: string): LiveUpdateModeName {
   return activeMode;
 }
 
-/**
- * Applies an already-persisted edit to the running app, using the active mode.
- *
- * Never throws: a failure here means the edit is in the source but the screen may show the old text
- * on a remount — worth reporting, never worth breaking the edit flow over.
- */
-export async function applyLiveUpdate(ctx: ILiveUpdateContext): Promise<ILiveUpdateResult> {
+async function applyLiveUpdateNow(ctx: ILiveUpdateContext): Promise<ILiveUpdateResult> {
   const name = getLiveUpdateMode();
   try {
     const mode = await LOADERS[name]();
@@ -117,6 +111,37 @@ export async function applyLiveUpdate(ctx: ILiveUpdateContext): Promise<ILiveUpd
   } catch (err) {
     return { ok: false, message: t('live.failed', { mode: name, error: (err as Error).message }) };
   }
+}
+
+/** Chain used to serialize `applyLiveUpdate` calls — never rejects, so one caller's failure never
+ *  breaks the chain for the callers queued behind it (see `serialize`). */
+let queue: Promise<void> = Promise.resolve();
+
+/**
+ * Runs `fn` after every previously queued call has settled, one at a time.
+ *
+ * Exported (not just inlined into `applyLiveUpdate`) so a test can prove the serialization itself,
+ * with fake work standing in for a real live-update mode.
+ */
+export function serialize<T>(fn: () => Promise<T>): Promise<T> {
+  const result = queue.then(fn);
+  queue = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+/**
+ * Applies an already-persisted edit to the running app, using the active mode.
+ *
+ * Never throws: a failure here means the edit is in the source but the screen may show the old text
+ * on a remount — worth reporting, never worth breaking the edit flow over.
+ *
+ * SERIALIZED: there are three independent call sites (two in studioEditor.ts, one in the watcher)
+ * and `import()` inside hotSwap is async, so two calls used to be able to interleave — see
+ * `withDefineGuard` in studioLiveUpdateHotSwap.ts for what that raced. Serializing is safe for every
+ * mode: `reload` throws the page away and `off` is instantaneous, so neither has anything to overlap.
+ */
+export function applyLiveUpdate(ctx: ILiveUpdateContext): Promise<ILiveUpdateResult> {
+  return serialize(() => applyLiveUpdateNow(ctx));
 }
 
 // Devtools handle. Assigned at import time so it exists as soon as anything armed the editor.

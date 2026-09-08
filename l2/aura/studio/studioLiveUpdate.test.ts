@@ -11,8 +11,15 @@ const localStorageStub = {
   getItem: (k: string) => storage.get(k) ?? null,
   setItem: (k: string, v: string) => { storage.set(k, v); },
 };
-(globalThis as { window?: unknown }).window = { localStorage: localStorageStub };
+// `reloadMode.apply` calls `window.setTimeout(() => location.reload(), ...)` — run it right away, the
+// delay is only cosmetic (lets the status strip paint before the page goes away).
+(globalThis as { window?: unknown }).window = {
+  localStorage: localStorageStub,
+  setTimeout: (fn: () => void) => { fn(); return 0; },
+};
 (globalThis as { localStorage?: unknown }).localStorage = localStorageStub;
+let reloadCount = 0;
+(globalThis as { location?: unknown }).location = { reload: () => { reloadCount += 1; } };
 
 type LiveUpdateModule = typeof import('/_102020_/l2/aura/studio/studioLiveUpdate.js');
 
@@ -71,4 +78,48 @@ test('applyLiveUpdate never throws — a broken mode becomes a reported failure'
   assert.equal(result.ok, true);
   // The words come from the catalog now; what this test guards is that a broken mode is REPORTED.
   assert.equal(result.message, t('live.off'));
+});
+
+// certificacao.md's "prove the neighbor is intact": `reload` and `off` must keep working once
+// `applyLiveUpdate` is serialized (T1) — the lock wraps every mode, it does not special-case hotSwap.
+test('reload mode still applies after the T1 serialization lock was added', async () => {
+  const { applyLiveUpdate, setLiveUpdateMode } = await load();
+  setLiveUpdateMode('reload');
+  const before = reloadCount;
+  const result = await applyLiveUpdate({
+    edited: { page: '_1_x' } as never,
+    page: { page: '_1_x' } as never,
+    pageTag: 'x-y-1',
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.message, t('live.reloading'));
+  assert.equal(reloadCount, before + 1, 'reload must still actually be scheduled');
+  setLiveUpdateMode('off');
+});
+
+// T1's second aceite: the lock itself serializes overlapping callers — proven directly on `serialize`,
+// with fake work standing in for a real live-update mode (going through a real mode would mean
+// stubbing the DOM/compiler pipeline just to observe ordering, which is not what this is testing).
+test('serialize runs queued calls one at a time, in the order they were queued', async () => {
+  const { serialize } = await load();
+  const order: string[] = [];
+  let running = false;
+
+  function task(name: string, ms: number): Promise<void> {
+    return serialize(async () => {
+      assert.equal(running, false, `${name} must not start while another queued call is still running`);
+      running = true;
+      order.push(`${name}:start`);
+      await new Promise(resolve => { setTimeout(resolve, ms); });
+      order.push(`${name}:end`);
+      running = false;
+    });
+  }
+
+  // B and C are queued WHILE A is still running (no awaiting A first) — exactly the overlap that used
+  // to let two `applyLiveUpdate` calls interleave.
+  const all = Promise.all([task('A', 30), task('B', 10), task('C', 0)]);
+  await all;
+
+  assert.deepEqual(order, ['A:start', 'A:end', 'B:start', 'B:end', 'C:start', 'C:end']);
 });
