@@ -41,6 +41,7 @@ import {
   imFileInfoFor,
   imTraceFileInfo,
   imWorkFile,
+  readGroupSkill,
   readImAgentText,
   writeImSource,
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imResolve.js';
@@ -83,6 +84,7 @@ async function beforePromptStep(
   const runKey = getImRunKey(context, parsedArgs.runKey);
   const ctx = await readContext(runKey);
   const { playgroundChanged, addedSlots } = await readPlaygroundResult(runKey);
+  const groupUsageSkill = await readGroupSkill(ctx.groupSkill.usageReference);
 
   const before = await readStorText(imFileInfoFor(ctx, 'groupIndex'), false);
   const plan = planIndexWork({
@@ -110,7 +112,7 @@ async function beforePromptStep(
       // fails whenever the import was present and no slot was added — see ImIndexGateInputs.
       workExpected: !!plan.missingImport || plan.missingSlots.length > 0,
       project: ctx.target.project, groupFolder: ctx.target.groupFolder,
-      shortName: ctx.target.shortName, tag: ctx.target.tag, addedSlots,
+      shortName: ctx.target.shortName, tag: ctx.target.tag, addedSlots, groupUsageSkill,
     });
     if (!gate.ok) {
       return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', gate.errors.join('\n'))];
@@ -139,6 +141,7 @@ async function beforePromptStep(
     .split('{{tag}}').join(ctx.target.tag)
     .split('{{userLanguage}}').join(ctx.userLanguage || 'the language of the request')
     .split('{{work}}').join(renderWork(plan))
+    .split('{{groupUsageSkill}}').join(groupUsageSkill)
     .split('{{index}}').join(`----- FILE: index -----\n${current}\n----- END FILE -----`)
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the showcase card cannot be updated from what is shown')}`;
 
@@ -175,6 +178,7 @@ async function afterPromptStep(
   const runKey = getImRunKey(context, parsedArgs.runKey);
   const ctx = await readContext(runKey);
   const { playgroundChanged, addedSlots } = await readPlaygroundResult(runKey);
+  const groupUsageSkill = await readGroupSkill(ctx.groupSkill.usageReference);
 
   // What is on disk now: the original plus the import this step may already have written.
   const before = await readStorText(imFileInfoFor(ctx, 'groupIndex'), false);
@@ -203,7 +207,7 @@ async function afterPromptStep(
       // strict reading is the right one: it was asked to write a card and must have written it.
       workExpected: true,
       project: ctx.target.project, groupFolder: ctx.target.groupFolder,
-      shortName: ctx.target.shortName, tag: ctx.target.tag, addedSlots,
+      shortName: ctx.target.shortName, tag: ctx.target.tag, addedSlots, groupUsageSkill,
     });
   const errorText = gate.errors.join('\n');
 

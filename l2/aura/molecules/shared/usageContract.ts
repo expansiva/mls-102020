@@ -48,6 +48,17 @@ export function contractItemsMissing(usageSkill: string, indexTs: string, group:
     .map(([, spelling]) => spelling);
 }
 
+/**
+ * Normalized key -> the spelling the skill wrote (e.g. `'datavariant' -> 'data-variant'`) — for a
+ * caller that already has a normalized item (from `usageContractItems`/`contractItemsUsed`, e.g. a
+ * `contract_regressed` check comparing a before/after pair) and needs to NAME it in a message. Never
+ * print the normalized key itself: it is not a real attribute (the 2026-09-04 defect this guards
+ * against — a gate suggesting `datavariant`/`iconposition`, which do not exist).
+ */
+export function contractSpellings(usageSkill: string): Map<string, string> {
+  return new Map(parseContract(usageSkill).entries());
+}
+
 /** Normalized key -> the spelling the skill wrote, so a message can quote the real name. */
 function parseContract(usageSkill: string): Map<string, string> {
   const items = new Map<string, string>();
