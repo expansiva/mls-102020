@@ -210,31 +210,28 @@ function parseAuraPageSource(project: number, source: string): ParsedAuraPage | 
 
 /**
  * Seed the Aura state from the running app's current page (studio-mode entry).
- * The Aura shell resolves the active route's page source and calls this so the studio
- * services (which read getAuraState()) operate on the page the user is looking at.
- * Fills actualProject + actualPage and the module/device/variation the folder implies.
+ *
+ * `studioAuraSeed` is the caller: when studio mode arms, it resolves the page MOUNTED in the app
+ * region from the DOM and hands the source path here, so the studio services (which all read
+ * `getAuraState()`) operate on the page the user is looking at instead of on nothing.
+ *
+ * Fills actualProject + actualPage and the module/device/variation the folder implies. The language
+ * is deliberately not here: the folder does not carry it (see seedAuraStateFromPage).
+ *
  * @returns the resolved page, or null when the source is not a recognizable aura page.
  */
 export function setAuraStateFromPageSource(project: number, source: string): IAuraPage | null {
     const parsed = parseAuraPageSource(project, source);
     if (!parsed) return null;
 
-    // Establish the full state shape once (initState never overwrites an existing key);
-    // the setAuraState calls below then apply the values and notify any live subscribers.
-    if (!getAuraState()) {
-        initState(STATE_KEY, {
-            actualProject: project,
-            actualModule: parsed.module,
-            actualLanguage: null,
-            actualLanguageByModule: null,
-            actualDevice: parsed.device,
-            actualLayout: parsed.layout,
-            actualDesignSystem: parsed.designSystem,
-            actualHeader: null,
-            actualPage: parsed.actualPage,
-            edit: { ...EMPTY_AURA_EDIT },
-        } satisfies IAuraState);
-    }
+    // The shape has to exist before the writes below: setState on a key that is not there notifies
+    // nobody. AuraInitState rather than an init of our own, for two reasons — it is already guarded
+    // (nothing happens when the state is there) and it is the one place that knows how to seed from
+    // localStorage. Our own initState here wrote `actualLanguageByModule: null`, and in a client app
+    // this function is the FIRST thing to touch the state, so nothing else would have restored it.
+    // Everything the DOM can prove is overwritten right below — a remembered module must never win
+    // over the module of the page on screen.
+    AuraInitState();
 
     setAuraState('actualProject', project);
     setAuraState('actualModule', parsed.module);
