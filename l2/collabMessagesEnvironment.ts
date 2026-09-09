@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/collabMessagesEnvironment.ts" enhancement="_blank"/> 
  
 import { CollabMessagesEnvironment, CollabProgramMenu, CollabProgramMenuItem } from '/_102036_/l2/environmentContract.js';
-import { IAgentMeta, IOpenClawIntegration, Thread, ToolsBeforeSendMessage, ExecutionContext, TaskData, Message } from '/_102036_/l2/shared/interfaces.js';
+import { IAgentMeta, IOpenClawIntegration, Thread, ToolsBeforeSendMessage, ExecutionContext, TaskData, Message, PushSubscriptionData } from '/_102036_/l2/shared/interfaces.js';
 
 import { loadAgent, executeBeforePrompt } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
@@ -15,7 +15,7 @@ export const collabEnvironment: CollabMessagesEnvironment = {
     getIntegrationsOpenClaw,
     setIntegrationsOpenClaw: (integrations: IOpenClawIntegration[]) => setIntegrationsOpenClaw(integrations),
     notifications: {
-        getFCMTokenForBackend,
+        getPushSubscriptionForBackend,
         getNotifySoundUrl,
         sendACK: (id: string) => sendACK(id),
         sendRequestMissed,
@@ -311,9 +311,12 @@ async function getNotifySoundUrl() {
     return './l3/_100529_/audio/collabNotification.mp3';
 }
 
-async function getFCMTokenForBackend() {
-    const token = await mls.events.getFCMTokenForBackend();
-    return token;
+async function getPushSubscriptionForBackend() {
+    const fn = (mls.events as {
+        getPushSubscriptionForBackend?: () => Promise<PushSubscriptionData | null>;
+    }).getPushSubscriptionForBackend;
+    if (typeof fn !== 'function') return null;
+    return fn();
 }
 
 async function sendRequestMissed() {
