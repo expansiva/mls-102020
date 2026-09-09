@@ -184,7 +184,7 @@ function introducedFallbackDivergence(file: ImEditedFile): string[] {
     out.push(
       issue(
         'fallback_divergence',
-        `'${found.token}' is read with ${found.values.length} different fallbacks (${found.values.map(value => `"${value}"`).join(' vs ')}) — the fallback is what renders with NO design system, so one token must mean one value. Use at every site the fallback the sheet ALREADY used for this token`,
+        `'${found.token}' is read with ${found.values.length} different fallbacks (${found.values.map(value => `"${value}"`).join(' vs ')}) — the fallback is what renders with NO design system, so one token must mean one value. Two sites needing two values are two different CONCEPTS: give the diverging site a different role, or leave it on its '--ml-*' token. Do NOT unify by changing a fallback — that is an unrequested visual change`,
       ),
     );
   }

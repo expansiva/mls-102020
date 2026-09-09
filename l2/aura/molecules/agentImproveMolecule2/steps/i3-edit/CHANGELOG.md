@@ -1,5 +1,95 @@
 # CHANGELOG — i3-edit
 
+## 2026-09-09 — a mensagem do `fallback_divergence` ensinava o conserto errado; e o ledger da biblioteca
+
+**O gate estava certo no diagnóstico e errado no conserto.** Ele disparava e mandava *"Use at every
+site the fallback the sheet ALREADY used for this token"* — instrução impossível numa MIGRAÇÃO, onde
+todo papel do DS é novo na folha. Sem saída obedecível, a LLM unificava por conta própria, mudando
+**valor**.
+
+**A medição que motivou:** o piloto de 08/09 no `groupEnterMoney` (2 moléculas, 51 sítios,
+`todo/moleculetokens/todo-gate-fallback-migracao.md`). O agente acertou 46 dos 51 sítios — a mecânica
+funciona. O gate reprovou a tentativa 1 das **três** runs, e as três tentativas 2 obedeceram à
+mensagem: **5 fallbacks alterados**, entre eles `--ml-outline-focus` `#3b82f6` virando
+`--border-default` `#e2e8f0`, que **apagou o destaque de foco de um campo** — a borda de foco passou
+a ler o mesmo papel e o mesmo valor da borda em repouso. Encadeamento visível no trace: na tentativa
+1 a LLM já escolhera o papel errado com o valor certo; o gate acusou o **papel**; a tentativa 2
+consertou o **valor**.
+
+E o gate enxergava só a folha: uma das duas ficou coerente consigo mesma em `--text-muted: #79747e`
+e divergente dos 13 sítios já migrados que leem `#49454f`. Só o `harness/check-ds-tokens.mjs`, que
+varre a biblioteca inteira, pegou — e o agente não tem esse verificador.
+
+**O que mudou:**
+
+- `gate.ts` — a mensagem do `fallback_divergence` passa a oferecer os dois consertos que existem no
+  contexto em que ela dispara: *dois sítios que precisam de dois valores são dois CONCEITOS* — dê ao
+  sítio divergente outro papel, ou deixe-o no `--ml-*`. E proíbe explicitamente o conserto que a
+  mensagem antiga induzia: *"Do NOT unify by changing a fallback"*. O detector e a chave estável não
+  mudaram;
+- `skills/libraryFallbacks.ts` (novo) — o **ledger**: o fallback que cada papel do DS já lê nas
+  folhas do `mls-102040`, o companheiro do `skills/canonicalFallbacks` (que dá o valor do TEMPLATE).
+  41 papéis, 0 ambíguos. Papel lido com dois valores na biblioteca é divergência pré-existente e
+  **não entra** numa tabela feita para ser seguida como verdade;
+- `harness/gen-library-fallbacks.mjs` (novo) — regenera o array. Dry-run por padrão, `--write`
+  explícito, e relata a contagem de ambíguos;
+- `agentIm2Edit.ts` — `libraryFallbackTable()` + `{{libraryFallbacks}}` na cadeia de substituição,
+  depois de `{{canonicalFallbacks}}`. E a prosa do `canonicalFallbackTable()` ganhou a distinção que
+  faltava (abaixo);
+- `prompt.md` — `{{libraryFallbacks}}` na seção `### The token vocabulary of the appearance`, mais a
+  regra de granularidade da edição (abaixo);
+- `gate.test.ts` — o caso do piloto: dois `--ml-*` com `#79747e` e `#49454f` colapsando em
+  `--text-muted` é reprovado, e a mensagem tem de nomear `different role` e `--ml-*`.
+
+**⚠️ "INTRODUZIR" queria dizer duas coisas, e o prompt não separava.** A prosa de 04/09 diz, com
+razão para o caso comum, que a tabela canônica vale só para um papel que a edição está INTRODUZINDO.
+Numa migração **todo papel é introduzido**, então ela mandava usar o valor do template
+(`--text-muted` -> `#5d6b7e`), o oposto da regra do fallback. São dois casos distintos:
+
+| | o que é | qual fallback |
+|---|---|---|
+| conceito novo | a folha ganha aparência que não tinha | o canônico do template |
+| renomeação (migração) | a folha já pintava isso com um `--ml-*` | **o valor que a folha já usava** |
+
+O texto injetado agora diz isso em inglês e aponta para o ledger. O piloto não caiu inteiro nesse
+buraco só porque o pedido do usuário dizia "mantenha os fallbacks" — prosa vencendo prosa não é rede.
+
+**⚠️ A DIVERGÊNCIA COM O `n5-less` É DELIBERADA — não "unifique" as duas mensagens.** O
+`n5-less/gate.ts` termina em *"Pick one and use it at every site"* e **está certo lá**: aquele agente
+CRIA a folha, não há valor anterior a preservar, escolher um é a resposta. Este agente EDITA, e a
+regra dele é o delta. É a mesma assimetria que a doc de `skills/canonicalFallbacks.ts` já registra
+entre os dois — só a TABELA é compartilhada, a prosa e agora também a mensagem do gate são de cada um.
+
+**⚠️ O ledger é MATERIALIZADO, não varrido em runtime.** O agente roda no Studio e não tem as 183
+folhas do `mls-102040` em disco. O array vive entre marcadores `GENERATED — start/end` e é
+regenerado pelo harness, nunca editado à mão.
+
+**A granularidade da edição, defeito separado do mesmo piloto.** O `ml-enter-money-br.less` saiu com
+as 46 linhas na coluna 0. Não é bug do `applyEdits`: aquela run emitiu **um `replace` de bloco
+inteiro** ancorado no seletor raiz, e o `alignReplacement` desloca o corpo pelo recuo da linha âncora
+— zero, na raiz. A doc dele diz que isso é deliberado: preserva estrutura RELATIVA, não inventa a que
+a LLM não mandou. A run irmã emitiu 14 `replace` por declaração e saiu intacta. Mesma tarefa, mesmo
+prompt. Por isso a regra foi para o `prompt.md`, onde o comportamento nasce, e o `alignReplacement`
+não foi tocado.
+
+**Verificado (09/09), com o `gate.ts` empacotado por esbuild resolvendo os aliases `/_102020_/`:**
+
+- o cenário do piloto reprova, e a mensagem traz `different role` e `--ml-*`, sem `ALREADY used`;
+- divergência **pré-existente** + edição não relacionada **passa** — a regra do delta continua de pé;
+- migração correta (`--text-muted-disabled` `#79747e` / `--text-muted` `#49454f`) **passa**;
+- varredura do detector nas **183 folhas** da biblioteca: **1 acusação, 0 falso positivo** — e é o
+  `--ml-pagination-press-shadow`, exatamente o caso pré-existente que a doc da função cita como razão
+  da regra do delta;
+- ledger: 41 papéis, 0 ambíguos, tabela de 43 linhas; gerador **idempotente provado por hash** (3
+  execuções, mesmo SHA), não por `git diff`;
+- os 16 placeholders do `prompt.md` estão todos ligados na cadeia de substituição;
+- **o ledger reproduz o gabarito**: confrontados os 41 sítios `--ds-*` das duas moléculas consertadas
+  à mão, 39 coerentes, 0 conflitantes, 2 inéditos (`--input-bg`, que o piloto estreou).
+
+**Ainda aberto:** o aceite do controle exige refazer o piloto no Studio e bater 41 migrados / 12
+holdouts / 0 fallback alterado / formatação idêntica. Nada disto prova que a LLM OBEDECE — prova que
+o gate reprova certo, que o ledger está certo e chega no gabarito, e que a prosa chegou ao prompt.
+
 ## 2026-09-08 — `geometry_alias`, pelo DELTA: token que renomeia um conceito já compartilhado
 
 Mesma causa raiz medida no `n5-less`: o `ml-button-group` cunhou `--ml-button-group-spinner-size`

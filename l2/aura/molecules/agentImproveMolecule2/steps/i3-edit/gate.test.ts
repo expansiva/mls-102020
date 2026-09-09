@@ -167,6 +167,20 @@ test('the registry token itself is never flagged as an alias', () => {
   assert.equal(result.ok, true);
 });
 
+// ---- fallback_divergence: the message must teach the MIGRATION fix, not "already used" (2026-09-08) ----
+// A migration introduces every role fresh — there is no "fallback the sheet already used". The gate
+// message must point at the two real fixes: a different role, or a holdout on the old --ml-* token.
+
+test('an introduced token read with two fallbacks is refused, naming a different role or a holdout', () => {
+  const before = 'collab-x {\n  .ml-a { color: var(--ml-text-a, #79747e); }\n  .ml-b { color: var(--ml-text-b, #49454f); }\n}';
+  const after = 'collab-x {\n  .ml-a { color: var(--text-muted, #79747e); }\n  .ml-b { color: var(--text-muted, #49454f); }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^fallback_divergence: /.test(e)));
+  assert.match(result.errors.join('\n'), /different role/);
+  assert.match(result.errors.join('\n'), /--ml-\*/);
+});
+
 test('THE DELTA RULE for the compiler: a pre-existing error does not block', () => {
   const result = runImEditGate(
     inputs({ compileErrors: ['line 4: already broken'], compileErrorsBefore: ['line 4: already broken'] }),
