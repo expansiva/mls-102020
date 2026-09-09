@@ -287,3 +287,73 @@ test('the two pointer-events rules live in the stylesheet the editor removes', (
   // page must not keep an editor rule after that.
   assert.ok(codeLines(EDITOR).some((line) => line.includes('document.getElementById(STYLE_ID)?.remove()')));
 });
+
+// ── Live slots: the page markup a molecule was handed ────────────────────────────────────────────
+
+/** The body of a member, from its declaration to the closing brace at member indentation. */
+function memberOf(source: string, name: string, end = '\n  }'): string {
+  const start = source.indexOf(name);
+  assert.notEqual(start, -1, name);
+  return source.slice(start, source.indexOf(end, start));
+}
+
+test('the three layers ask the SAME question about who owns the markup', () => {
+  // Selection, scope and the structural path each used to walk `parentElement` on their own, and any
+  // disagreement between them is a tool that lies: the outline follows one element while the click
+  // selects another, or the panel names a file the write will not land in. One walk, three readers.
+  for (const [member, end] of [
+    ['private resolveSelectableElement', '\n  }'],
+    ['private foreignProjectOfAncestor', '\n  }'],
+    ['private domPathOf', '\n  }'],
+  ] as const) {
+    assert.ok(memberOf(EDITOR, member, end).includes('this.ownerChainOf('), member);
+  }
+
+  // And the raw walk is gone from all three: a `parentElement` chain cannot tell the markup the page
+  // passed into a live slot from the molecule's own, because projection MOVED it in there.
+  for (const member of ['private resolveSelectableElement', 'private foreignProjectOfAncestor']) {
+    assert.equal(memberOf(EDITOR, member).includes('.parentElement'), false, member);
+  }
+  // `domPathOf` still reads `parentElement` — deliberately, and only to COUNT siblings: the anchor
+  // holds exactly the source's children, so their order there is the source's order.
+  const path = memberOf(EDITOR, 'private domPathOf');
+  assert.equal(path.includes('current.parentElement'), false, 'not to build the chain');
+  assert.ok(path.includes('node.parentElement'), 'but still to measure each step');
+});
+
+test('hover and click resolve the same element, inside a molecule too', () => {
+  // They disagreed exactly where it hurt most: the outline followed the internal div while the click
+  // jumped to the molecule. That reads as a rendering defect rather than as the scope rule it is —
+  // TASK-102020-select-inert-elements called that shape worse than the bug it fixed.
+  const hover = memberOf(EDITOR, 'private onHostMouseMove', '\n  };');
+  const click = memberOf(EDITOR, 'private onHostClick', '\n  };');
+
+  for (const [where, body] of [['hover', hover], ['click', click]] as const) {
+    assert.ok(body.includes('this.resolvePointerTarget(e, target)'), `${where}: geometry`);
+    assert.ok(body.includes('this.resolveSelectableElement('), `${where}: ownership`);
+  }
+});
+
+test('the boundary is read from what the anchor HOLDS', () => {
+  // `_fillAnchor` reuses anchors by position, so during a sort an anchor still carries the key it
+  // was rendered with while already holding another row's nodes. Reading `mlLiveSlot`/`mlLiveRef`
+  // there resolves the previous row's source, and the panel edits a cell nobody clicked.
+  const tree = memberOf(EDITOR, 'private ownerTree');
+  assert.ok(tree.includes('dataset.mlLiveHeld'), 'held is what is in there now');
+  assert.equal(tree.includes('dataset.mlLiveSlot'), false);
+  assert.equal(tree.includes('dataset.mlLiveRef'), false);
+
+  // The source is hunted inside the molecule that rendered the anchor: the keys (`Scene`, `ref3`)
+  // are per molecule, and a document-wide lookup would happily return another molecule's source.
+  const source = memberOf(EDITOR, 'private liveSlotSource');
+  assert.ok(source.includes('this.owningComponent(anchor)'), 'scoped to its molecule');
+  assert.equal(source.includes('document.querySelector'), false);
+});
+
+test('the page own element is never treated as a molecule', () => {
+  // Without the guard a page whose file could not be resolved compares every tag against `null`, and
+  // the page's own element reads as a foreign component — which collapses every click on it.
+  const tree = memberOf(EDITOR, 'private ownerTree');
+  assert.ok(tree.includes('pageTag !== null'), 'no page tag, no collapsing');
+  assert.ok(tree.includes('tag !== pageTag'));
+});

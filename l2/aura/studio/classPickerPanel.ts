@@ -121,6 +121,17 @@ export interface IPickerTarget {
    */
   undo: string;
   redo: string;
+  /**
+   * Whether the element can change places with the sibling above or below it.
+   *
+   * Answered by the editor with the REAL planner, not by a guess: a move button that is enabled has
+   * to be one that writes. When it cannot, the reason travels with it and becomes the tooltip — the
+   * same discipline the chips follow, so the user knows before clicking and not after.
+   */
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  moveUpReason?: IMessageRef;
+  moveDownReason?: IMessageRef;
 }
 
 /** What the panel asks the editor to write. */
@@ -197,6 +208,7 @@ export class ClassPickerPanel extends StateLitElement {
   private static readonly SCENARIO_KEY = 'aura.scenario.simulated';
 
   connectedCallback(): void {
+    console.info('[picker] connected : teste publish 102020 - 2');
     super.connectedCallback();
     this.readScenario();
     subscribe(ClassPickerPanel.SCENARIO_KEY, this);
@@ -248,6 +260,8 @@ export class ClassPickerPanel extends StateLitElement {
       <div class="acp-head">
         <span class="acp-tag">${target.tag}</span>
         ${this.renderScenarioBadge()}
+        ${this.moveButton('up')}
+        ${this.moveButton('down')}
         ${this.historyButton('undo')}
         ${this.historyButton('redo')}
         ${this.renderCopyIcon()}
@@ -266,6 +280,22 @@ export class ClassPickerPanel extends StateLitElement {
       ${this.tab === 'info' ? this.renderInfo() : nothing}
       ${this.tab === 'classes' ? this.renderClasses() : nothing}
     `;
+  }
+
+  /**
+   * Move the element one place among its siblings.
+   *
+   * Disabled carries the reason, because "why not" is the useful half here: not a sibling, one line
+   * of code behind several elements, a helper's own root. The keyboard does the same thing
+   * (Ctrl+Alt+Arrow), and so does dragging the element in the app.
+   */
+  private moveButton(direction: 'up' | 'down') {
+    const can = direction === 'up' ? this.target?.canMoveUp : this.target?.canMoveDown;
+    const reason = direction === 'up' ? this.target?.moveUpReason : this.target?.moveDownReason;
+    return html`<button type="button" class="acp-history" ?disabled=${!can}
+      title=${can ? t(`panel.move${direction === 'up' ? 'Up' : 'Down'}`) : (tr(reason) || t('panel.moveNo'))}
+      @click=${() => this.dispatchEvent(new CustomEvent(`picker-move-${direction}`, { bubbles: true, composed: true }))}
+    >${direction === 'up' ? '\u2191' : '\u2193'}</button>`;
   }
 
   /**

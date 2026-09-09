@@ -329,6 +329,24 @@ const message_pt = {
     + ' depois de recarregar (F5)',
   'status.propertyAdded': 'nova propriedade: {property}',
   'status.propertyRemoved': 'propriedade removida: {property}',
+  // ── Moving an element among its siblings (TASK-102020-move-elements) ──────
+  'panel.moveUp': 'mover para antes do vizinho de cima  (Ctrl+Alt+\u2191)',
+  'panel.moveDown': 'mover para depois do vizinho de baixo  (Ctrl+Alt+\u2193)',
+  'panel.moveNo': 'não dá para mover para esse lado',
+  'reason.moveNotSibling': 'só dá para trocar de lugar com um vizinho do mesmo pai — mover para'
+    + ' dentro de outro elemento é outra operação',
+  'reason.moveSameNode': 'estes dois elementos vêm da MESMA linha de código (uma repetição): trocar'
+    + ' a ordem aqui mudaria a ordem dos dados, não da marcação',
+  'reason.moveMountedRoot': 'este bloco é montado por uma chamada no código (${this.renderX()}) —'
+    + ' mover ele é mover a chamada, e isso ainda não dá para fazer daqui',
+  'reason.moveUnclosed': 'não consegui delimitar este elemento no código com segurança — a marcação'
+    + ' parece não estar fechada',
+  'reason.moveNoTarget': 'não há vizinho desse lado',
+  'reason.moveStale': 'a fonte mudou desde essa movimentação',
+  'status.movedUp': '<{tag}> movido para cima',
+  'status.movedDown': '<{tag}> movido para baixo',
+  'status.dragging': 'arrastando <{tag}> — solte sobre o vizinho de cima ou de baixo',
+  'status.dropCancelled': 'nada foi movido: solte sobre o vizinho de cima ou de baixo',
 
   // ── Animations: groups, options and screens ───────────────────────────────
   'anim.group.continuous': 'Animação contínua',
@@ -819,6 +837,24 @@ const message_en: typeof message_pt = {
     + ' after a reload (F5)',
   'status.propertyAdded': 'new property: {property}',
   'status.propertyRemoved': 'property removed: {property}',
+  // ── Moving an element among its siblings (TASK-102020-move-elements) ──────
+  'panel.moveUp': 'move before the neighbour above  (Ctrl+Alt+\u2191)',
+  'panel.moveDown': 'move after the neighbour below  (Ctrl+Alt+\u2193)',
+  'panel.moveNo': 'it cannot move that way',
+  'reason.moveNotSibling': 'it can only swap places with a neighbour under the same parent — moving'
+    + ' it into another element is a different operation',
+  'reason.moveSameNode': 'these two elements come from the SAME line of code (a repetition):'
+    + ' reordering here would change the order of the DATA, not of the markup',
+  'reason.moveMountedRoot': 'this block is mounted by a call in the code (${this.renderX()}) —'
+    + ' moving it means moving the call, which cannot be done from here yet',
+  'reason.moveUnclosed': 'I could not safely delimit this element in the code — the markup does not'
+    + ' look closed',
+  'reason.moveNoTarget': 'there is no neighbour on that side',
+  'reason.moveStale': 'the source changed since that move',
+  'status.movedUp': '<{tag}> moved up',
+  'status.movedDown': '<{tag}> moved down',
+  'status.dragging': 'dragging <{tag}> — drop it on the neighbour above or below',
+  'status.dropCancelled': 'nothing moved: drop it on the neighbour above or below',
 
   'anim.group.continuous': 'Continuous animation',
   'anim.group.speed': 'Speed',

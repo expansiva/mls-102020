@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 // The browser globals go in FIRST: imports are hoisted, so stubbing has to be an import of its own.
-import '/_102020_/l2/aura/helpers/auraStateEdit.stub.js';
+import '/_102020_/l2/aura/helpers/auraStateEditStub.js';
 import {
   AuraInitState,
   getActualLanguage,

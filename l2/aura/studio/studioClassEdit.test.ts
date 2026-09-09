@@ -1,5 +1,6 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioClassEdit.test.ts" enhancement="_blank" />
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   ANIMATION_GROUPS,
@@ -47,7 +48,10 @@ import {
   splitUtilities,
   utilityLabel,
   utilityOptions,
+  type IDomPathStep,
   type IHitTree,
+  type IOwnerTree,
+  type ITemplateTree,
   STYLE_CATEGORIES,
   addableProperties,
   addableProperty,
@@ -57,6 +61,7 @@ import {
   classAttrSpan,
   containsPoint,
   deepestAt,
+  ownerChain,
   readTypedValue,
   typedValueSpec,
   pasteCategories,
@@ -2053,4 +2058,567 @@ test('the scanner says WHICH expression holds each element', () => {
   assert.ok(li && bold && italic);
   assert.equal(bold.expression, italic.expression, 'the two branches share their own ternary');
   assert.notEqual(bold.expression, li.expression, 'not the map that repeats them');
+});
+
+// ── Ownership: whose file the markup under the pointer is in ────────────────────────────────────
+
+interface OwnedNode {
+  name: string;
+  /** Custom-element tag; absent for plain markup. */
+  tag?: string;
+  /** Key this node's children were drained into — it is a projection ANCHOR. */
+  held?: string;
+  /** Key this node is the SOURCE of (`data-ml-live-source`, written by `_fillAnchor`). */
+  source?: string;
+  kids?: OwnedNode[];
+  up?: OwnedNode | null;
+}
+
+/** Links the parents once, the way the DOM already has them linked. */
+function owned(root: OwnedNode): OwnedNode {
+  const link = (node: OwnedNode, parent: OwnedNode | null): void => {
+    node.up = parent;
+    for (const kid of node.kids ?? []) link(kid, node);
+  };
+  link(root, null);
+  return root;
+}
+
+function pick(root: OwnedNode, name: string): OwnedNode {
+  if (root.name === name) return root;
+  for (const kid of root.kids ?? []) {
+    const hit = pick(kid, name);
+    if (hit.name === name) return hit;
+  }
+  return root;
+}
+
+/** Sources are hunted inside the molecule that RENDERED the anchor, exactly as the editor does. */
+const OWNER: IOwnerTree<OwnedNode> = {
+  parent: (node) => node.up ?? null,
+  slotAnchor: (node) => node.held ?? null,
+  slotSource: (node, key) => {
+    let molecule = node.up ?? null;
+    while (molecule && !molecule.tag) molecule = molecule.up ?? null;
+    if (!molecule) return null;
+    const hunt = (from: OwnedNode): OwnedNode | null => {
+      for (const kid of from.kids ?? []) {
+        if (kid.source === key) return kid;
+        if (kid.tag) continue; // another molecule's sources are its own
+        const deeper = hunt(kid);
+        if (deeper) return deeper;
+      }
+      return null;
+    };
+    return hunt(molecule);
+  },
+  component: (node) => node.tag ?? null,
+};
+
+const ownedNames = (nodes: OwnedNode[]): string[] => nodes.map((node) => node.name);
+
+/**
+ * The shape of every 102047 page: the whole page inside a `<Scene>` of an `ml-scenary`, projected
+ * into an anchor buried under the molecule's own wrappers.
+ */
+function scenaryPage(): OwnedNode {
+  return owned({
+    name: 'page',
+    kids: [{
+      name: 'scenary',
+      tag: 'molecules--ml-scenary-102020',
+      kids: [
+        { name: 'Scene', source: 'ref1' }, // emptied by the capture, still a child, still hidden
+        {
+          name: 'ml-scenary',
+          kids: [{
+            name: 'ml-scenary-panel',
+            kids: [{
+              name: 'anchor',
+              held: 'ref1',
+              kids: [{
+                name: 'pageRoot',
+                kids: [{ name: 'header', kids: [{ name: 'h1' }] }],
+              }],
+            }],
+          }],
+        },
+      ],
+    }],
+  });
+}
+
+test('content the page passed into a live slot is still the page it came from', () => {
+  // The 102047 in one assertion. The DOM route to the `h1` runs through three of the molecule's own
+  // wrappers plus the anchor; the page's file says `<ml-scenary><Scene><div><header><h1>`. Without
+  // the re-route the path is unresolvable and the selection collapses to the molecule — which is
+  // why 599 class attributes were reachable exactly zero times.
+  const page = scenaryPage();
+  const chain = ownerChain(pick(page, 'h1'), page, OWNER);
+
+  assert.deepEqual(ownedNames(chain.chain), ['scenary', 'Scene', 'pageRoot', 'header', 'h1']);
+  assert.equal(chain.crossed, true);
+  assert.equal(chain.ownerBreak, -1, 'the molecule was HANDED this markup, it does not own it');
+});
+
+test('the molecule own markup still collapses to the molecule', () => {
+  // The rule this task must not weaken: that file is shared by every project that imports it, and
+  // there is no undo anywhere in the chain.
+  const page = scenaryPage();
+  const chain = ownerChain(pick(page, 'ml-scenary-panel'), page, OWNER);
+
+  assert.equal(chain.crossed, false);
+  assert.ok(chain.ownerBreak >= 0);
+  assert.equal(chain.chain[chain.ownerBreak].name, 'scenary');
+});
+
+test('a molecule inside another molecule slot keeps both levels of the consumer markup', () => {
+  // Composition with live slots is legitimate, and the rule has to be re-applied at EVERY boundary:
+  // one miss and the outer level collapses the whole thing again.
+  const page = owned({
+    name: 'page',
+    kids: [{
+      name: 'outer',
+      tag: 'ml-outer-102040',
+      kids: [
+        { name: 'Scene', source: 'Scene' },
+        {
+          name: 'outerBody',
+          kids: [{
+            name: 'outerAnchor',
+            held: 'Scene',
+            kids: [{
+              name: 'inner',
+              tag: 'ml-inner-102040',
+              kids: [
+                { name: 'Item', source: 'Item' },
+                {
+                  name: 'innerBody',
+                  kids: [{ name: 'innerAnchor', held: 'Item', kids: [{ name: 'cell' }] }],
+                },
+              ],
+            }],
+          }],
+        },
+      ],
+    }],
+  });
+
+  const chain = ownerChain(pick(page, 'cell'), page, OWNER);
+  assert.deepEqual(ownedNames(chain.chain), ['outer', 'Scene', 'inner', 'Item', 'cell']);
+  assert.equal(chain.ownerBreak, -1);
+});
+
+test('the anchor is read by what it HOLDS, not by the key it was rendered with', () => {
+  // `_fillAnchor` reuses anchors by position: while a table is sorted, anchor #2 still carries the
+  // id it was rendered with and already holds another row's nodes. Trusting the rendered key would
+  // resolve the previous row's source — the panel would then edit a cell nobody clicked.
+  const page = owned({
+    name: 'page',
+    kids: [{
+      name: 'table',
+      tag: 'ml-table-102040',
+      kids: [
+        { name: 'cellA', source: 'ref1' },
+        { name: 'cellB', source: 'ref2' },
+        { name: 'anchor', held: 'ref2', kids: [{ name: 'text' }] },
+      ],
+    }],
+  });
+
+  const chain = ownerChain(pick(page, 'text'), page, OWNER);
+  assert.deepEqual(ownedNames(chain.chain), ['table', 'cellB', 'text'], 'the source it holds NOW');
+});
+
+test('an anchor whose source does not resolve collapses — it never guesses', () => {
+  // The high risk of the whole task: a boundary detected where there is no projection points the
+  // panel at the page's file for markup that is not in it, and the write lands somewhere else
+  // entirely. With no source there is no boundary, and the answer is the one from before.
+  const page = owned({
+    name: 'page',
+    kids: [{
+      name: 'molecule',
+      tag: 'ml-x-102040',
+      kids: [{ name: 'anchor', held: 'gone', kids: [{ name: 'orphan' }] }],
+    }],
+  });
+
+  const chain = ownerChain(pick(page, 'orphan'), page, OWNER);
+  assert.equal(chain.crossed, false);
+  assert.equal(chain.chain[chain.ownerBreak]?.name, 'molecule');
+});
+
+test('the deepest molecule is the one that owns the markup', () => {
+  // What the scope refusal needs: naming the outer molecule would send the user to the wrong
+  // project's file.
+  const page = owned({
+    name: 'page',
+    kids: [{
+      name: 'outer',
+      tag: 'ml-outer-102040',
+      kids: [{
+        name: 'wrapper',
+        kids: [{ name: 'inner', tag: 'ml-inner-102040', kids: [{ name: 'deep' }] }],
+      }],
+    }],
+  });
+
+  const chain = ownerChain(pick(page, 'deep'), page, OWNER);
+  assert.equal(chain.chain[chain.ownerBreak].name, 'inner');
+  // And the ancestors ABOVE the break are still in the chain: that is where the refusal goes
+  // looking for a project to name.
+  assert.deepEqual(ownedNames(chain.chain.slice(0, chain.ownerBreak)), ['outer', 'wrapper']);
+});
+
+test('a molecule the page renders is the page own element', () => {
+  // `<ml-x class="p-3">` carries the PAGE's class attribute. The node itself never breaks ownership
+  // — only a strict ancestor does — or editing a molecule's usage would be refused.
+  const page = scenaryPage();
+  const chain = ownerChain(pick(page, 'scenary'), page, OWNER);
+
+  assert.deepEqual(ownedNames(chain.chain), ['scenary']);
+  assert.equal(chain.ownerBreak, -1);
+});
+
+test('a node outside the page has no chain', () => {
+  const page = scenaryPage();
+  const loose = owned({ name: 'toolbar', kids: [{ name: 'chip' }] });
+
+  assert.deepEqual(ownerChain(pick(loose, 'chip'), page, OWNER).chain, []);
+  assert.deepEqual(ownerChain(page, page, OWNER).chain, [], 'the root itself is not a step');
+});
+
+test('cyclic accessors do not hang the pointer handler', () => {
+  const a: OwnedNode = { name: 'a' };
+  const b: OwnedNode = { name: 'b', up: a };
+  a.up = b;
+
+  assert.deepEqual(ownerChain(a, { name: 'root' }, OWNER).chain, []);
+});
+
+// ── The template that is not linked to whoever renders it (TASK-102020-anchor-orphan-roots) ──────
+//
+// The failure these guard is not the resolver's matching — measured over the 5.571 elements of the
+// two real projects, `matchStep` never failed. It is the step before: a helper's template not being
+// connected to its call site, which leaves the resolver believing that block is top level while the
+// DOM says it is nested. Everything under it then resolves to nothing, or to the wrong node.
+
+/** The path the browser hands the editor for `literal`, given the tree that knows the true nesting. */
+function domPathFor(tree: ITemplateTree, literal: string, parentLiteral: string): IDomPathStep[] {
+  void tree;
+  return [
+    { tag: 'section', index: 0, count: 1, literal: parentLiteral, literalIndex: 0, literalCount: 1 },
+    { tag: 'div', index: 0, count: 1, literal, literalIndex: 0, literalCount: 1 },
+  ];
+}
+
+test('a helper whose method holds an `if` is still linked to its call', () => {
+  // `if (…) {` matches the shape of a method declaration exactly. The ranges are built as
+  // [start, nextStart), so a phantom range in the middle of a method took over every template after
+  // it: they stopped belonging to the method that returns them, and the real call never found them.
+  // 132 phantom ranges in the two real projects, and the single biggest source of "not located".
+  const source = [
+    'class X {',
+    '  render() {',
+    '    return html`<section class="wrap">${this.renderBody()}</section>`;',
+    '  }',
+    '  renderBody() {',
+    '    if (this.loading) {',
+    '      return html`<div class="spinner">…</div>`;',
+    '    }',
+    '    return html`<div class="body">pronto</div>`;',
+    '  }',
+    '}',
+  ].join('\n');
+
+  const tree = scanTemplateTree(source);
+  const body = tree.elements.findIndex((element) => element.literal === 'body');
+  const spinner = tree.elements.findIndex((element) => element.literal === 'spinner');
+
+  // BOTH templates of the method are mounted at the call site — the one before the `if` and the one
+  // after it. Before this, only the first was.
+  assert.ok(tree.links.some((link) => link.root === spinner), 'the early-return template');
+  assert.ok(tree.links.some((link) => link.root === body), 'and the one after the `if`');
+
+  const resolved = resolveStructuralAnchor(tree, domPathFor(tree, 'body', 'wrap'));
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.ok && resolved.element.literal, 'body');
+});
+
+test('a helper called from inside an expression is linked, and counted as one of its arms', () => {
+  // `${done ? html`…` : this.renderForm()}` renders exactly as often as that arm does. Linking it
+  // without saying so would make the source claim a sibling the screen may not have.
+  const source = [
+    'class X {',
+    '  render() {',
+    '    return html`<section class="wrap">',
+    '      ${this.done ? html`<div class="ok">pronto</div>` : this.renderForm()}',
+    '    </section>`;',
+    '  }',
+    '  renderForm() {',
+    '    return html`<div class="form">formulário</div>`;',
+    '  }',
+    '}',
+  ].join('\n');
+
+  const tree = scanTemplateTree(source);
+  const form = tree.elements.findIndex((element) => element.literal === 'form');
+  const link = tree.links.find((candidate) => candidate.root === form);
+  assert.ok(link, 'the conditional call is linked');
+  assert.ok(link.expression > 0, 'and the link says which ${…} holds it');
+
+  // The two arms are alternatives, so the literal is what tells them apart — and it does.
+  const asForm = resolveStructuralAnchor(tree, domPathFor(tree, 'form', 'wrap'));
+  assert.equal(asForm.ok && asForm.element.literal, 'form');
+  const asOk = resolveStructuralAnchor(tree, domPathFor(tree, 'ok', 'wrap'));
+  assert.equal(asOk.ok && asOk.element.literal, 'ok');
+});
+
+test('two arms with the SAME literal are refused, not guessed', () => {
+  // The item this task exists to close. The path is IDENTICAL whichever arm rendered, so any answer
+  // other than a refusal is a coin toss — and the editor's guard (`element.literal !== literal`) does
+  // not catch it, because the wrong answer carries the right literal. It would write the edit into
+  // the other branch of the code, silently.
+  const source = [
+    'class X {',
+    '  render() {',
+    '    return html`<section class="wrap">',
+    '      ${this.done ? html`<div class="panel">pronto</div>` : this.renderForm()}',
+    '    </section>`;',
+    '  }',
+    '  renderForm() {',
+    '    return html`<div class="panel">formulário</div>`;',
+    '  }',
+    '}',
+  ].join('\n');
+
+  const tree = scanTemplateTree(source);
+  const resolved = resolveStructuralAnchor(tree, domPathFor(tree, 'panel', 'wrap'));
+  assert.equal(resolved.ok, false, 'ambiguous is ambiguous — say so');
+  assert.deepEqual(resolved.ok === false && resolved.reason, NOT_LOCATED);
+});
+
+test('an unconditional call still counts as markup that always renders', () => {
+  // The case that already worked, and the premise the whole grouping rests on: `${this.renderX()}`
+  // with nothing around it renders once, every time, so it is a STATIC sibling. Loosening this is how
+  // the fix would have broken what it was meant to help.
+  const source = [
+    'class X {',
+    '  render() {',
+    '    return html`<section class="wrap">',
+    '      <div class="head">t</div>',
+    '      ${this.renderBody()}',
+    '    </section>`;',
+    '  }',
+    '  renderBody() {',
+    '    return html`<div class="body">b</div>`;',
+    '  }',
+    '}',
+  ].join('\n');
+
+  const tree = scanTemplateTree(source);
+  const body = tree.elements.findIndex((element) => element.literal === 'body');
+  assert.equal(tree.links.find((link) => link.root === body)?.expression, -1, 'unconditional');
+
+  // Two divs under the section, both always there: position alone identifies each.
+  const second = resolveStructuralAnchor(tree, [
+    { tag: 'section', index: 0, count: 1, literal: 'wrap', literalIndex: 0, literalCount: 1 },
+    { tag: 'div', index: 1, count: 2, literal: 'body', literalIndex: 0, literalCount: 1 },
+  ]);
+  assert.equal(second.ok && second.element.literal, 'body');
+});
+
+test('a call in plain code is not a mount point', () => {
+  // `const body = this.renderForm();` says nothing about where the result lands. Inventing a parent
+  // for it would invent nesting, which is worse than leaving the helper unlinked.
+  const source = [
+    'class X {',
+    '  render() {',
+    '    const extra = this.renderForm();',
+    '    return html`<section class="wrap">${extra}</section>`;',
+    '  }',
+    '  renderForm() {',
+    '    return html`<div class="form">f</div>`;',
+    '  }',
+    '}',
+  ].join('\n');
+
+  const tree = scanTemplateTree(source);
+  const form = tree.elements.findIndex((element) => element.literal === 'form');
+  assert.equal(tree.links.some((link) => link.root === form), false);
+});
+
+test('the block keywords are named, and `render` is not among them', () => {
+  const CORE = readFileSync(new URL('studioClassEdit.ts', import.meta.url), 'utf8');
+  const list = /const BLOCK_KEYWORDS = new Set\(\[([^\]]+)\]\)/u.exec(CORE)?.[1] ?? '';
+  for (const keyword of ['if', 'for', 'while', 'switch', 'catch', 'do']) {
+    assert.ok(list.includes(`'${keyword}'`), keyword);
+  }
+  assert.equal(list.includes("'render'"), false, 'a real method name must never be in there');
+});
+
+// ── The i18n key as the last tiebreaker (TASK-102020-anchor-i18n-tiebreak) ───────────────────────
+//
+// The shape that survived every other rule: a ternary whose arms are the same tag with the same class
+// — or with none at all, which is how the "Nenhum registro encontrado" paragraph of the 102047 stayed
+// unreachable. Nothing in the markup separates them except the sentence each one writes.
+
+/** The real page11/ticketCatalogue shape: a nested ternary with two class-less `<p>`. */
+const TERNARY_ARMS = [
+  'class X {',
+  '  render() {',
+  "    const msg = { 'common.loading': 'Carregando...', 'list.empty': 'Nenhum registro encontrado' };",
+  '    return html`<section class="wrap">',
+  "      ${this.loading ? html`<p>${msg['common.loading']}</p>`",
+  "        : this.rows.length === 0 ? html`<p>${msg['list.empty']}</p>`",
+  '        : html`<div class="table">…</div>`}',
+  '    </section>`;',
+  '  }',
+  '}',
+].join('\n');
+
+const armsPath = (keys?: readonly string[]): IDomPathStep[] => [
+  { tag: 'section', index: 0, count: 1, literal: 'wrap', literalIndex: 0, literalCount: 1 },
+  {
+    tag: 'p', index: 0, count: 1, literal: null, literalIndex: 0, literalCount: 1,
+    ...(keys ? { i18nKeys: keys } : {}),
+  },
+];
+
+test('the arm the screen is showing is the one that resolves', () => {
+  const tree = scanTemplateTree(TERNARY_ARMS);
+
+  const empty = resolveStructuralAnchor(tree, armsPath(['list.empty']));
+  assert.equal(empty.ok, true);
+  assert.ok(empty.ok && TERNARY_ARMS.slice(empty.element.openStart, empty.element.end).includes('list.empty'));
+
+  const loading = resolveStructuralAnchor(tree, armsPath(['common.loading']));
+  assert.equal(loading.ok, true);
+  assert.ok(loading.ok && TERNARY_ARMS.slice(loading.element.openStart, loading.element.end).includes('common.loading'));
+});
+
+test('a sentence written under several keys still resolves', () => {
+  // The real case: "Nenhum registro encontrado" is the value of THREE keys in one page11 file, so the
+  // screen text maps to three. The question asked of each arm is "does it interpolate ANY of these".
+  const tree = scanTemplateTree(TERNARY_ARMS);
+  const resolved = resolveStructuralAnchor(tree, armsPath([
+    'list.empty', 'intent.qryLocateTicket.list.empty', 'intent.qryGetTicket.list.empty',
+  ]));
+  assert.equal(resolved.ok, true);
+  assert.ok(resolved.ok && TERNARY_ARMS.slice(resolved.element.openStart, resolved.element.end).includes('list.empty'));
+});
+
+test('without the key the same path is still refused — the signal is what changed, not the rule', () => {
+  const tree = scanTemplateTree(TERNARY_ARMS);
+  const resolved = resolveStructuralAnchor(tree, armsPath());
+  assert.equal(resolved.ok, false, 'two identical arms and nothing to tell them apart');
+});
+
+test('arms with no key at all stay refused', () => {
+  // Two arms the markup writes identically ARE identical. Refusing is the right answer, and a key
+  // that matches neither must not turn a refusal into a guess.
+  const source = [
+    'class X {',
+    '  render() {',
+    '    return html`<section class="wrap">',
+    '      ${this.a ? html`<p>um</p>` : html`<p>dois</p>`}',
+    '    </section>`;',
+    '  }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  assert.equal(resolveStructuralAnchor(tree, armsPath()).ok, false);
+  assert.equal(resolveStructuralAnchor(tree, armsPath(['nothing.matches.this'])).ok, false);
+});
+
+test('the key never overrides what position already answered', () => {
+  // The order is the guarantee: the tiebreaker runs only where the positional rules gave up, so a
+  // step carrying a key can never resolve differently from the same step without one.
+  const source = [
+    'class X {',
+    '  render() {',
+    '    const msg = { a: "A", b: "B" };',
+    '    return html`<section class="wrap">',
+    "      <p class=\"one\">${msg['a']}</p>",
+    "      <p class=\"two\">${msg['b']}</p>",
+    '    </section>`;',
+    '  }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+
+  const step = (literal: string, index: number, keys?: readonly string[]): IDomPathStep[] => [
+    { tag: 'section', index: 0, count: 1, literal: 'wrap', literalIndex: 0, literalCount: 1 },
+    {
+      tag: 'p', index, count: 2, literal, literalIndex: 0, literalCount: 1,
+      ...(keys ? { i18nKeys: keys } : {}),
+    },
+  ];
+
+  // A key that points at the OTHER element does not move the answer: position already decided.
+  const withoutKey = resolveStructuralAnchor(tree, step('one', 0));
+  const withWrongKey = resolveStructuralAnchor(tree, step('one', 0, ['b']));
+  assert.equal(withoutKey.ok && withoutKey.element.literal, 'one');
+  assert.equal(withWrongKey.ok && withWrongKey.element.literal, 'one');
+});
+
+test('the element carries the keys of its OWN text, not of its children', () => {
+  // A child's sentence belongs to the child. Inheriting it upwards would make every ancestor look
+  // like every one of its descendants, and the tiebreaker would start matching the wrong level.
+  const source = [
+    'class X {',
+    '  render() {',
+    '    const msg = { outer: "O", inner: "I", title: "T" };',
+    "    return html`<section class=\"wrap\" title=${msg['title']}>${msg['outer']}",
+    "      <p class=\"kid\">${msg['inner']}</p>",
+    '    </section>`;',
+    '  }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  const wrap = tree.elements.find((element) => element.literal === 'wrap');
+  const kid = tree.elements.find((element) => element.literal === 'kid');
+
+  assert.deepEqual(wrap?.i18nKeys, ['outer'], 'not the child, and not the attribute');
+  assert.deepEqual(kid?.i18nKeys, ['inner']);
+});
+
+test('an element whose text is not i18n carries no key', () => {
+  // `<p>${item.title}</p>` has text and no key. Nothing on the step, nothing changes — and the test
+  // exists so that "no signal" never quietly becomes "no result".
+  const source = [
+    'class X {',
+    '  render() {',
+    '    return html`<section class="wrap"><p class="row">${item.title}</p></section>`;',
+    '  }',
+    '}',
+  ].join('\n');
+  const tree = scanTemplateTree(source);
+  assert.deepEqual(tree.elements.find((element) => element.literal === 'row')?.i18nKeys, []);
+});
+
+test('the editor asks the catalog with the language on screen, and only where it is needed', () => {
+  const EDITOR = readFileSync(new URL('studioEditor.ts', import.meta.url), 'utf8');
+  const body = EDITOR.slice(EDITOR.indexOf('private i18nKeysOf('), EDITOR.indexOf('private locateLiteral('));
+
+  assert.ok(body.includes('findAllI18nMatches('), 'the text goes back through the catalog');
+  assert.ok(body.includes('currentLanguage()'), 'in the language the document is in');
+  // Own text only, matching the rule on the source side.
+  assert.ok(body.includes('Node.TEXT_NODE'), 'direct text nodes, not the subtree');
+});
+
+test('the key is read even when the element looks unique on screen', () => {
+  // The regression that shipped once: the lookup was gated on the element having a same-tag rival IN
+  // THE DOM, as an optimisation. But the rival of a ternary arm lives in the SOURCE and exactly one
+  // arm renders — so the gate switched the tiebreaker off precisely in the case it exists for, and
+  // the reported `<p>` went on being unreachable with the fix supposedly in.
+  const EDITOR = readFileSync(new URL('studioEditor.ts', import.meta.url), 'utf8');
+  const call = /const i18nKeys = this\.i18nKeysOf\(([^)]*)\);/u.exec(EDITOR);
+  assert.ok(call, 'domPathOf asks for the keys');
+  assert.equal(call[1].trim(), 'node', 'the node, and nothing about how many siblings it has');
+
+  const body = EDITOR.slice(EDITOR.indexOf('private i18nKeysOf('), EDITOR.indexOf('private locateLiteral('));
+  for (const gate of ['siblings.length', 'sameLiteral.length', 'worthAsking']) {
+    assert.equal(body.includes(gate), false, `the lookup must not depend on ${gate}`);
+  }
 });

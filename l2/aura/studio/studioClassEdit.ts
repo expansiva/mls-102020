@@ -2085,6 +2085,18 @@ export interface ITemplateElement {
   /** Inside a `${...}`: one source node may render many times (a `.map()`), or none (a ternary). */
   inExpression: boolean;
   /**
+   * The i18n keys this element interpolates in its OWN text — `${msg['x']}` between its tags, with
+   * the children's markup and the open tag cut out.
+   *
+   * It is the one signal that tells two arms of a ternary apart when nothing else can: measured over
+   * the real pages, of the elements lost to that ambiguity the key separates 16 of 18 (102047) and
+   * 131 of 138 (102046), while the wider text and the other attributes separate ZERO more.
+   *
+   * The open tag is excluded on purpose: `title=${msg['x']}` never reaches `textContent`, so offering
+   * its key would promise a match the screen cannot produce.
+   */
+  i18nKeys: readonly string[];
+  /**
    * Offset of the INNERMOST `${...}` holding this element, or -1 when it is static.
    *
    * `inExpression` says "this may not render"; this says WITH WHOM. Two elements sharing it are
@@ -2245,6 +2257,7 @@ export function scanTemplateElements(source: string): ITemplateElement[] {
 
       elements.push({
         tag,
+        i18nKeys: [],
         literal: classMatch ? classMatch[1] : null,
         literalStart,
         literalEnd: classMatch ? literalStart + classMatch[1].length : -1,
@@ -2296,6 +2309,7 @@ export function scanTemplateElements(source: string): ITemplateElement[] {
     i += 1;
   }
 
+  fillI18nKeys(source, elements);
   return elements;
 }
 
@@ -2307,6 +2321,15 @@ export interface ITemplateLink {
   root: number;
   /** Offset of the CALL — where the helper's markup appears among its siblings. */
   order: number;
+  /**
+   * Offset of the innermost `${...}` holding the CALL, or -1 when the call is unconditional.
+   *
+   * Without this the link cannot be told apart from markup written in place, and `slotsWithTag` would
+   * count a helper mounted from a ternary arm as something that ALWAYS renders — claiming a sibling
+   * the screen does not have. It is the same offset `ITemplateElement.expression` carries, so a
+   * conditional call and the other arms of its ternary land in one slot, which is what they are.
+   */
+  expression: number;
 }
 
 export interface ITemplateTree {
@@ -2314,11 +2337,24 @@ export interface ITemplateTree {
   links: ITemplateLink[];
 }
 
+/**
+ * Statements that LOOK like a method declaration and are not.
+ *
+ * `if (cond) {` matches the shape exactly, and the damage is not cosmetic: the ranges below are built
+ * as [start, nextStart), so a phantom range in the middle of a method takes over everything after it.
+ * The templates there stop belonging to the method that returns them, `rootsByMethod` files them
+ * under a "method" called `if`, and the real call never finds them — which is the single biggest
+ * source of "não consegui identificar este elemento" (58 of the 91 orphan roots in the two real
+ * projects; 132 phantom ranges in all).
+ */
+const BLOCK_KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'catch', 'do', 'else', 'return', 'with']);
+
 /** Method declarations of a source, as ranges, so each template knows who returns it. */
 function methodRanges(source: string): { name: string; start: number; end: number }[] {
   const ranges: { name: string; start: number; end: number }[] = [];
   const pattern = /(?:^|\n)[ \t]*(?:public |private |protected |static |async |override )*([a-zA-Z_$][\w$]*)\s*\([^)]*\)\s*(?::[^{;=]+)?\{/gu;
   for (const match of source.matchAll(pattern)) {
+    if (BLOCK_KEYWORDS.has(match[1])) continue;
     ranges.push({ name: match[1], start: match.index ?? 0, end: source.length });
   }
   for (let i = 0; i < ranges.length - 1; i += 1) ranges[i].end = ranges[i + 1].start;
@@ -2362,26 +2398,45 @@ export function scanTemplateTree(source: string): ITemplateTree {
   for (const call of findTemplateCalls(source, elements)) {
     for (const root of rootsByMethod.get(call.method) ?? []) {
       if (root === call.parent) continue; // a method rendering itself would be a cycle
-      links.push({ parent: call.parent, root, order: call.order });
+      links.push({ parent: call.parent, root, order: call.order, expression: call.expression });
     }
   }
 
   return { elements, links };
 }
 
+/** Every `${...}` of a source, as a range. `skipExpression` is what makes the end trustworthy. */
+function expressionRanges(source: string): { start: number; end: number }[] {
+  const ranges: { start: number; end: number }[] = [];
+  for (let i = 0; i < source.length - 1; i += 1) {
+    if (source[i] === '$' && source[i + 1] === '{') ranges.push({ start: i, end: skipExpression(source, i) });
+  }
+  return ranges;
+}
+
 /**
- * `${this.renderX(...)}` calls inside templates, with the element that contains them.
+ * `this.renderX(...)` calls inside templates, with the element that contains them.
  *
  * The containing element is what the call's markup becomes a child of, so it is resolved the same way
  * the scanner resolves parents: the innermost element still open at that offset.
+ *
+ * CONDITIONAL CALLS COUNT TOO. It used to require `${` glued to the `this.`, which reads only the
+ * unconditional form and leaves `${done ? html`…` : this.renderForm(msg)}` unlinked — and everything
+ * that helper renders then has no address at all (33 of the 91 orphan roots in the real projects).
+ * They are linked now, and the link says WHICH expression holds them, because a helper mounted from a
+ * ternary arm renders exactly as often as that arm does.
+ *
+ * A call that is not inside any element is not markup — `const body = this.renderForm();` in plain
+ * code says nothing about where the result lands, and guessing a parent for it would invent nesting.
  */
 function findTemplateCalls(
   source: string,
   elements: ITemplateElement[],
-): { method: string; parent: number; order: number }[] {
-  const calls: { method: string; parent: number; order: number }[] = [];
+): { method: string; parent: number; order: number; expression: number }[] {
+  const calls: { method: string; parent: number; order: number; expression: number }[] = [];
+  const expressions = expressionRanges(source);
 
-  for (const match of source.matchAll(/\$\{\s*this\.([a-zA-Z_$][\w$]*)\s*\(/gu)) {
+  for (const match of source.matchAll(/this\.([a-zA-Z_$][\w$]*)\s*\(/gu)) {
     const at = match.index ?? 0;
     // Innermost element whose span contains the call — the scan produces parents before children, so
     // the last match in array order is the innermost.
@@ -2389,10 +2444,52 @@ function findTemplateCalls(
     for (const [index, element] of elements.entries()) {
       if (element.openStart < at && at < element.end) parent = index;
     }
-    calls.push({ method: match[1], parent, order: at });
+
+    // `${` right before the call: the old shape, and the only one that always renders.
+    if (/\$\{\s*$/u.test(source.slice(Math.max(0, at - 16), at))) {
+      calls.push({ method: match[1], parent, order: at, expression: -1 });
+      continue;
+    }
+
+    if (parent === -1) continue; // not inside markup: plain TypeScript
+    let expression = -1;
+    for (const range of expressions) {
+      if (range.start < at && at < range.end && range.start > expression) expression = range.start;
+    }
+    if (expression === -1) continue; // inside markup but not inside a `${…}`: nothing to mount
+    calls.push({ method: match[1], parent, order: at, expression });
   }
 
   return calls;
+}
+
+/**
+ * The keys each element interpolates in its own text.
+ *
+ * A pass at the end and not inline in the walker: it needs the finished tree to know where the
+ * children are, and cutting their spans out is the whole point — the key of a child belongs to the
+ * child, and inheriting it upwards would make every ancestor look like every one of its descendants.
+ */
+function fillI18nKeys(source: string, elements: ITemplateElement[]): void {
+  const childrenOf = new Map<number, ITemplateElement[]>();
+  for (const element of elements) {
+    if (element.parent === -1) continue;
+    childrenOf.set(element.parent, [...(childrenOf.get(element.parent) ?? []), element]);
+  }
+
+  for (const [index, element] of elements.entries()) {
+    const afterOpenTag = findOpenTagEnd(source, element.openStart) + 1;
+    let own = '';
+    let at = afterOpenTag;
+    for (const child of (childrenOf.get(index) ?? []).sort((a, b) => a.openStart - b.openStart)) {
+      if (child.openStart > at) own += source.slice(at, child.openStart);
+      at = Math.max(at, child.end);
+    }
+    if (at < element.end) own += source.slice(at, element.end);
+
+    const keys = [...own.matchAll(/msg\[\s*'([^']+)'\s*\]/gu)].map((match) => match[1]);
+    (element as { i18nKeys: readonly string[] }).i18nKeys = [...new Set(keys)];
+  }
 }
 
 /** One level of the path from the page element down to the selected one. */
@@ -2414,6 +2511,16 @@ export interface IDomPathStep {
   literal?: string | null;
   literalIndex?: number;
   literalCount?: number;
+  /**
+   * The i18n keys whose value, in the language on screen, IS this element's own text.
+   *
+   * A list and not one key because the same sentence is written under several keys in the real pages
+   * — "Nenhum registro encontrado" is the value of three of them in a single file — so the question
+   * asked of a source candidate is "does it interpolate ANY of these", never "is it this one".
+   *
+   * Optional like `literal`: a step without it resolves exactly as it did before this existed.
+   */
+  i18nKeys?: readonly string[];
 }
 
 export type StructuralAnchor =
@@ -2462,12 +2569,14 @@ function slotsWithTag(tree: ITemplateTree, parent: number, tag: string): ISource
   const slots: ISourceSlot[] = [];
 
   for (const index of childrenWithTag(tree, parent, tag)) {
-    const expression = tree.elements[index].expression;
-    const order = tree.elements[index].openStart;
-    // A mounted root keeps the order of its CALL, which childrenWithTag already sorted by; its own
-    // offset lives in another method, so it must not be used to group anything.
-    const mounted = tree.links.some((link) => link.root === index && link.parent === parent);
-    if (expression < 0 || mounted) {
+    // A mounted root is placed by its CALL, not by where its markup is written: the element's own
+    // `expression` and `openStart` belong to the helper's method and describe nothing about this
+    // level. The link carries both — and its expression is -1 exactly when the call is unconditional,
+    // which is the case that really does always render.
+    const link = tree.links.find((candidate) => candidate.root === index && candidate.parent === parent);
+    const expression = link ? link.expression : tree.elements[index].expression;
+    const order = link ? link.order : tree.elements[index].openStart;
+    if (expression < 0) {
       slots.push({ candidates: [index], expression: -1, order });
       continue;
     }
@@ -2534,6 +2643,44 @@ function childrenWithTag(tree: ITemplateTree, parent: number, tag: string): numb
  * answer than a silent mistake.
  */
 function matchStep(
+  tree: ITemplateTree,
+  parent: number,
+  step: IDomPathStep,
+): { chosen: number; renders: number } | null {
+  // The i18n key is a LAST RESORT, and the order is the guarantee: whatever the rules below already
+  // answered stays answered, so a step that carries a key cannot resolve differently from one that
+  // does not. It only speaks where the rules give up — which is exactly the ternary whose arms are
+  // the same tag with the same class (or no class at all), the shape that made the "empty list"
+  // paragraph of the 102047 unreachable.
+  return matchStepByPosition(tree, parent, step) ?? matchStepByKey(tree, parent, step);
+}
+
+/**
+ * The arm whose own text is the one on screen.
+ *
+ * Only ONE surviving candidate is an answer. Two candidates interpolating a key the screen shows is
+ * still ambiguous, and the honest reply there is the same as before: nothing.
+ */
+function matchStepByKey(
+  tree: ITemplateTree,
+  parent: number,
+  step: IDomPathStep,
+): { chosen: number; renders: number } | null {
+  if (!step.i18nKeys?.length) return null;
+  const wanted = new Set(step.i18nKeys);
+
+  const candidates = childrenWithTag(tree, parent, step.tag).filter((index) => {
+    const element = tree.elements[index];
+    // The literal still has to agree: the key narrows WITHIN what the class already allows, never
+    // across it.
+    if (step.literal !== undefined && element.literal !== step.literal) return false;
+    return element.i18nKeys.some((key) => wanted.has(key));
+  });
+
+  return candidates.length === 1 ? { chosen: candidates[0], renders: 1 } : null;
+}
+
+function matchStepByPosition(
   tree: ITemplateTree,
   parent: number,
   step: IDomPathStep,
@@ -3240,4 +3387,116 @@ export function deepestAt<T>(root: T, point: IPoint, tree: IHitTree<T>): T {
 
   visit(root);
   return best;
+}
+
+// --- Ownership: whose file the markup under the pointer is in ---
+//
+// Generic over the accessors for the same reason `deepestAt` is: the rule is then verifiable against
+// a tree of plain objects, with no browser.
+//
+// The question this answers cannot be read off the raw DOM. A molecule with LIVE slots MOVES the
+// consumer's nodes into its own template (`moleculeBase._fillAnchor`) — moving is what preserves
+// listeners, component identity and Lit's parts — so the markup the PAGE wrote ends up with the
+// molecule's wrappers as its ancestors. Ancestry stops meaning ownership right there, and the
+// collapse rule that protects the molecule's shared file ("anything under a custom element is the
+// molecule's") starts refusing the page's own markup. In the 102047 that is the whole page: 599
+// class attributes, none of them reachable.
+//
+// The boundary is the projection anchor. Walking up from the clicked node:
+//
+//   - an anchor crossed BEFORE any custom element  => consumer content. The walk RE-ROUTES to the
+//     slot's source element, which is still a real child of the molecule, and carries on from there
+//     — so the chain comes out shaped like the page's own template (`molecule > Scene > div`)
+//     instead of like the DOM (`molecule > div.ml-scenary > … > span[anchor] > div`);
+//   - a custom element reached first => the molecule's internal markup, and the ownership breaks
+//     there, exactly as it did before.
+
+export interface IOwnerTree<T> {
+  parent: (node: T) => T | null;
+  /** The slot key when the node IS a projection anchor; null when it is not. */
+  slotAnchor: (node: T) => string | null;
+  /** The source of that key, reached from the anchor. */
+  slotSource: (node: T, key: string) => T | null;
+  /** Tag of the custom element, or null when the node is not one. */
+  component: (node: T) => string | null;
+}
+
+export interface IOwnerChain<T> {
+  /**
+   * Root-first, ending at the node itself, with every projection re-routed through its source.
+   * Empty when the node does not hang from `root` at all.
+   */
+  chain: T[];
+  /** A projection boundary was crossed: part of the chain is content the consumer passed in. */
+  crossed: boolean;
+  /**
+   * Index in `chain` of the component that owns the markup BELOW it — the deepest strict ancestor
+   * reached without coming up through its own slot source. -1 when the whole chain belongs to
+   * whoever wrote `root`.
+   *
+   * An index and not a boolean because all three callers need the node itself: it is what the
+   * selection collapses to, and it is where the scope refusal starts looking for a project.
+   */
+  ownerBreak: number;
+}
+
+/** A cycle in the accessors would hang the pointer handler; the deepest real page is nowhere near. */
+const OWNER_CHAIN_MAX_DEPTH = 512;
+
+/** Nothing owned: the node is not under the root, or the accessors are cyclic. */
+function noOwnerChain<T>(): IOwnerChain<T> {
+  return { chain: [], crossed: false, ownerBreak: -1 };
+}
+
+/**
+ * The chain from `root` down to `node`, as the file that wrote `root` sees it.
+ *
+ * Never guesses: an anchor whose source does not resolve is walked as ordinary markup, which
+ * collapses at the molecule above it — the behaviour that existed before this function. Guessing
+ * here would point the panel at the page's file for markup that is not in it, and the write would
+ * land in the wrong element of the wrong project.
+ */
+export function ownerChain<T>(node: T, root: T, tree: IOwnerTree<T>): IOwnerChain<T> {
+  if (node === root) return noOwnerChain<T>();
+
+  const chain: T[] = [];
+  let crossed = false;
+  let breakNode: T | null = null;
+  let current: T | null = node;
+  // True while the node just entered came from a slot source: the component above it was handed
+  // that content by the consumer, so it does not own it.
+  let fromSource = false;
+
+  for (let guard = 0; current !== null && current !== root; guard += 1) {
+    if (guard > OWNER_CHAIN_MAX_DEPTH) return noOwnerChain<T>();
+
+    // Only a strict ANCESTOR is a boundary. The anchor element is markup the molecule rendered
+    // (`renderLiveSlot` emits it), so a click that lands on the anchor itself — its padding, the gap
+    // its children do not cover — is a click on the molecule, and re-routing it would hand the panel
+    // the consumer's slot element with the molecule's class attribute on it.
+    const key = chain.length === 0 ? null : tree.slotAnchor(current);
+    const source = key === null ? null : tree.slotSource(current, key);
+
+    if (source !== null) {
+      crossed = true;
+      current = source;
+      fromSource = true;
+    } else {
+      // The DEEPEST break wins: an inner molecule is what the user is pointing at, and naming it is
+      // what makes the refusal name the right project. The node itself never breaks — a molecule
+      // USED by the page carries the page's own class attribute.
+      if (breakNode === null && chain.length > 0 && !fromSource && tree.component(current) !== null) {
+        breakNode = current;
+      }
+      fromSource = false;
+    }
+
+    chain.unshift(current);
+    current = tree.parent(current);
+  }
+
+  // Ran out of ancestors before reaching the root: the node is not in this page.
+  if (current !== root) return noOwnerChain<T>();
+
+  return { chain, crossed, ownerBreak: breakNode === null ? -1 : chain.indexOf(breakNode) };
 }
