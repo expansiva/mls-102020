@@ -127,7 +127,7 @@ async function beforePromptStep(
     // Option B — one repair round: on attempt 2, feed the current .ts's compiler errors back.
     let repairHint: string | undefined;
     if (attempt >= 2) {
-      const errors = await compileMlsPathAndGetErrors(item.outputPath);
+      const errors = await compileMlsPathAndGetErrors(item.outputPath) ?? [];
       if (errors.length) repairHint = buildCompileRepairHint(item.outputPath, errors.slice(0, 8), currentCode ?? undefined);
     }
     console.info(`[agentRenderEdit] ▶ ${a.page} render (attempt ${attempt}) → ${item.outputPath}`);
@@ -177,7 +177,7 @@ async function afterPromptStep(
       if (!saved) return [mkFail(context, parentStep, step, hookSequential, `save failed: ${item.outputPath}`)];
     }
 
-    const errors = context.isTest ? [] : await compileMlsPathAndGetErrors(item.outputPath);
+    const errors = context.isTest ? [] : (await compileMlsPathAndGetErrors(item.outputPath) ?? []);
     if (errors.length) {
       if (attempt < 2) {
         // Option B: one repair round — complete this pass, queue a second render (attempt 2).

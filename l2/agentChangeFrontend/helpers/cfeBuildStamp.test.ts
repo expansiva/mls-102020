@@ -10,7 +10,7 @@ import {
 import {
   NS4_AGENT_PROJECT, NS4_AGENT_SOURCE_PREFIX, NS4_BUILD_ANCHORS,
   buildProvenance as ns4BuildProvenance,
-} from '../../agentNewSolution/helpers/ns4BuildStamp.js';
+} from '/_102035_/l2/agentNewSolution/helpers/ns4BuildStamp.js';
 
 // versionRefs REAIS do fileinfos.json dentro do obj/compiled.zip do 102020 (build 5a1ec55,
 // lastModified 2026-08-22T01:06:54.276Z).
@@ -30,9 +30,9 @@ test('os dois agentes do 102020 têm proveniências SEPARADAS', () => {
   assert.notEqual(cfe.buildRef, ns4.buildRef);
   assert.equal(cfe.anchors['l2/agentChangeFrontend/helpers/cfeCreateShared.ts'], 'absent');
   assert.equal(ns4.anchors['l2/agentNewSolution/agentNewSolution.ts'], '3a4e92e7adc5c8da7d9d4221dc7e8b5ef057f4d6');
-  // Os dois projetos são o 102020: a separação é pelo PREFIXO, não pelo projeto.
+  // CF stays in 102020; NS moved to the master solution (102035). Separation is by project and prefix.
   assert.equal(CFE_AGENT_PROJECT, 102020);
-  assert.equal(NS4_AGENT_PROJECT, 102020);
+  assert.equal(NS4_AGENT_PROJECT, 102035);
 });
 
 test('digest estável e linha de trace informativa (sem alarme)', () => {
@@ -47,16 +47,18 @@ test('digest estável e linha de trace informativa (sem alarme)', () => {
 
 test('o arquivo saiu da raiz do l2 e nenhum call site aponta para lá', () => {
   const base = new URL('../../', import.meta.url);
+  const nsL2 = new URL('../../../../mls-102035/l2/', import.meta.url);
   // T4: agentBuildStamp.ts na raiz do l2 era promoção a superfície compartilhada da plataforma
   // (ao lado de designSystem.ts/project.ts) que ninguém pediu.
   assert.throws(() => readFileSync(new URL('agentBuildStamp.ts', base), 'utf8'));
-  for (const rel of [
-    'agentNewSolution/agentNewSolution.ts',
-    'agentNewSolution/steps/e10/agentNs4E10.ts',
-    'agentChangeFrontend/steps/scan/agentCfeCreateScanL4.ts',
-    'agentChangeFrontend/steps/finalize/agentCfeCreateFinalize.ts',
-  ]) {
-    const src = readFileSync(new URL(rel, base), 'utf8');
+  const sites: Array<{ rel: string; root: URL }> = [
+    { rel: 'agentNewSolution/agentNewSolution.ts', root: nsL2 },
+    { rel: 'agentNewSolution/steps/e10/agentNs4E10.ts', root: nsL2 },
+    { rel: 'agentChangeFrontend/steps/scan/agentCfeCreateScanL4.ts', root: base },
+    { rel: 'agentChangeFrontend/steps/finalize/agentCfeCreateFinalize.ts', root: base },
+  ];
+  for (const { rel, root } of sites) {
+    const src = readFileSync(new URL(rel, root), 'utf8');
     assert.doesNotMatch(src, /l2\/agentBuildStamp\.js/u, rel);
     assert.doesNotMatch(src, /staleAgentWarning|readAgentBuildInfo/u, rel);
     assert.match(src, /(ns4BuildStamp|cfeBuildStamp)\.js/u, rel);
@@ -64,8 +66,13 @@ test('o arquivo saiu da raiz do l2 e nenhum call site aponta para lá', () => {
 });
 
 test('os dois helpers escrevem no código o que o stamp NÃO faz', () => {
-  for (const rel of ['cfeBuildStamp.ts', '../../agentNewSolution/helpers/ns4BuildStamp.ts']) {
-    const src = readFileSync(new URL(rel, import.meta.url), 'utf8');
+  const stampFiles = [
+    new URL('cfeBuildStamp.ts', import.meta.url),
+    new URL('../../../../mls-102035/l2/agentNewSolution/helpers/ns4BuildStamp.ts', import.meta.url),
+  ];
+  for (const file of stampFiles) {
+    const src = readFileSync(file, 'utf8');
+    const rel = file.pathname;
     assert.doesNotMatch(src, /compareAgentBuild|CLOCK_TOLERANCE|staleSources/u, rel);
     assert.match(src, /cannot see work that was never committed and pushed/, rel);
     assert.match(src, /NOT a gate/, rel);

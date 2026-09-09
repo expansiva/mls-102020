@@ -2,6 +2,10 @@
 
 # Changelog
 
+- 2026-09-07: verify `typecheck` may be `'unavailable'` when `compileMlsPathAndGetErrors` returns
+  `null` (no Monaco on this host). That is a state, never `'passed'`. The module gate in finalize
+  is who runs project `tsc` — this phase does not spawn `tsc` per file.
+
 - 2026-08-27 (shared dts persistido e referenciado — cf_shared_dts_persistido_e_ref) — o artefato
   compilado do shared muda de `trace/frontend-shared-dts/<page>.txt` para `web/shared/<page>Dts.txt`
   (visível ao lado do shared, decisão do Wagner 27/ago). `<page>Dts.txt` e não `<page>.d.ts`:

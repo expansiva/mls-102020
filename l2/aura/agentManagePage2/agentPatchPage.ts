@@ -135,7 +135,7 @@ async function beforePromptStep(
     if (!sharedSrc) throw new Error(`shared base class not found for ${a.module}/${a.page}`);
 
     // Attempt 2 is the repair round: feed back what the compiler said about the file on disk.
-    const compileErrors = attempt >= 2 ? await compileMlsPathAndGetErrors(tsRef) : [];
+    const compileErrors = attempt >= 2 ? (await compileMlsPathAndGetErrors(tsRef) ?? []) : [];
     traceStep(meta, attempt >= 2 ? 'repair round' : 'patching', {
       target: tsRef,
       pageBytes: pageSrc.length,
@@ -229,7 +229,7 @@ async function afterPromptStep(
       if (!saved) return [mkFail(context, parentStep, step, hookSequential, `save failed: ${tsRef}`)];
     }
 
-    const errors = context.isTest ? [] : await compileMlsPathAndGetErrors(tsRef);
+    const errors = context.isTest ? [] : (await compileMlsPathAndGetErrors(tsRef) ?? []);
     traceVerdict(meta, `compile: ${errors.length} error(s)`, errors.length === 0, errors.slice(0, 8).join(' | '));
     if (errors.length) {
       if (attempt < 2) {
