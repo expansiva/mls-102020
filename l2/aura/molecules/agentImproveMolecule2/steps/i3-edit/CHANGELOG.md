@@ -123,6 +123,34 @@ mão. Um aceite que compare `mls-102040` com `mls-102040-temp` sem antes descer 
 numa molécula e `--surface-bg` na outra. `--input-bg` não está no ledger — estreou no conserto à mão
 — e onde o ledger não ancora, a escolha de papel oscila.
 
+### Terceira rodada — a mecânica passou; sobrou escolher papel pelo VALOR
+
+As duas moléculas passaram **na tentativa 1**: nenhum `fallback_divergence`, nenhum erro de
+aplicação. A regra de ancorar no seletor resolveu os três defeitos mecânicos do run 2. Medido:
+**41 sítios migrados · 12 holdouts · 0 fallback alterado**, e a única diferença de formatação contra
+o original são 2 linhas em branco por folha, absorvidas pelo matcher tolerante — indentação e
+aninhamento intactos. O `why` do agente mostra a regra internalizada: *"mantém o placeholder porque
+seu fallback não coincide com o papel global"*.
+
+Sobrou **1 acusação** do `check-ds-tokens.mjs`, e ela expôs um furo na prosa do ledger. O mesmo
+sítio — a borda de foco do campo, `#3b82f6` — foi resolvido de dois jeitos diferentes:
+
+- `ml-enter-money-br` escolheu `--border-default-focus`, papel semanticamente CERTO, mas que o
+  ledger tem em `#e2e8f0` (`ml-pagination-control.less:92`). Colisão: era para ser holdout, e o
+  modelo escolheu o papel sem fazer a consulta;
+- `ml-currency-input` escolheu `--selected-border`, que o ledger tem em `#3b82f6` — **passa no
+  verificador** e está semanticamente errado: aquilo é foco, não seleção.
+
+A segunda é a que importa. A prosa dizia "se o papel que você quer está no ledger com valor
+DIFERENTE, o sítio não migra" — e não proibia **ir às compras**: procurar na tabela qualquer papel
+cujo valor bata. O modelo cumpriu a letra e furou o sentido, e a própria tabela (papel -> valor) é o
+que torna a busca fácil. É o "um valor, dois papéis" que o verificador não pega, por ser
+unidirecional.
+
+**Correção:** a prosa do `libraryFallbackTable()` ganhou *"Choose the role by the PLACE, never by the
+value"* — achar o papel que NOMEIA o que a declaração é, e só então consultar o ledger; um papel
+vizinho com valor igual não é saída para a regra do holdout.
+
 **Ainda aberto:** o aceite do controle exige refazer o piloto no Studio e bater 41 migrados / 12
 holdouts / 0 fallback alterado / formatação idêntica. Nada disto prova que a LLM OBEDECE — prova que
 o gate reprova certo, que o ledger está certo e chega no gabarito, e que a prosa chegou ao prompt.

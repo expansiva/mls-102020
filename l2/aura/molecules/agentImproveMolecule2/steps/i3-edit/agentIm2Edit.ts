@@ -143,6 +143,16 @@ function libraryFallbackTable(): string {
     'one value across the library — a site that cannot honour that is a holdout, not a',
     'site to repaint.',
     '',
+    'Choose the role by the PLACE, never by the value. Find the role that names what',
+    'this declaration IS — a focus border is a focus border — and only then look it up',
+    'in the ledger. Never go shopping for a role whose value happens to match: a role',
+    'that names the wrong thing is wrong even when the fallback is right, and the',
+    "client's design system will restyle it as the wrong thing.",
+    '',
+    'So when the role the place demands is in the ledger with a different value, that',
+    'site is a holdout — that is the whole point of the rule, and a nearby role with a',
+    'matching value is not an escape from it.',
+    '',
     libraryFallbackRows(),
   ].join('\n');
 }
