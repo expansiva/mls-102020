@@ -15,6 +15,17 @@
 // MATERIALIZED, not scanned at runtime: the agent runs in the Studio and does not have the sheets of
 // mls-102040 on disk. `harness/gen-library-fallbacks.mjs` scans mls-102040 and regenerates the array
 // below — never hand-edit it, regenerate it.
+//
+// ⚠️ THE LEDGER AGES, AND AGING BLINDS THE GATE that reads it (i3-edit/gate.ts's `ledgerConflictSites`,
+// AKA G3). Two rules, both learned from todo/moleculetokens/todo-gate-ledger-conflito.md:
+//
+// 1. Only regenerate from a library `harness/check-ds-tokens.mjs` calls clean. Running `--write` after
+//    a conflict has already landed in mls-102040 writes down the FORGETTING of it: the generator only
+//    ever publishes a role with a single consistent value, so a role two sheets now disagree on is
+//    silently dropped from the table below — and G3 goes blind on exactly the role the conflict broke.
+// 2. A role that DISAPPEARS from the ledger between two generations is a SIGNAL, not noise — it means
+//    the library started disagreeing with itself about it. The generator already reports the ambiguous
+//    count on every run; read it before trusting a regenerated table.
 
 export interface LibraryFallbackEntry {
   /** The DS role name, without its leading `--`. */

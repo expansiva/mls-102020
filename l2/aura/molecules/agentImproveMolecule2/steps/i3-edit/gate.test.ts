@@ -238,6 +238,37 @@ test('THE DELTA RULE: a focus-role mismatch the sheet ALREADY had does not block
   assert.equal(result.ok, true);
 });
 
+// ---- G3 — ledger_conflict: a role's fallback contradicts what the library already reads (2026-09-09) ----
+// Real defect: ml-currency-input introduced --border-default-focus, #3b82f6 while the ledger already
+// has that role at #e2e8f0 (grouptriggeraction/ml-pagination-control.less:92). G1 passes (no rename:
+// the value #3b82f6 already existed on the old --ml-* token) and G2 passes (the name ends in -focus)
+// — this is the site both let through, and the last of the three known ways it fails.
+
+test('a role introduced with a fallback that contradicts the ledger is refused', () => {
+  const before = 'collab-x {\n  &:focus-within {\n    border-color: var(--ml-outline-focus, #3b82f6);\n  }\n}';
+  const after = 'collab-x {\n  &:focus-within {\n    border-color: var(--border-default-focus, #3b82f6);\n  }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^ledger_conflict: /.test(e)));
+  assert.match(result.errors.join('\n'), /#e2e8f0/);
+  assert.match(result.errors.join('\n'), /--ml-\*/);
+});
+
+test('a role NOT in the ledger never conflicts — it debuts and defines the value', () => {
+  const before = 'collab-x {\n  .ml-row { background: var(--ml-surface, #ffffff); }\n}';
+  const after = 'collab-x {\n  .ml-row { background: var(--input-bg, #ffffff); }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, true);
+});
+
+test('THE DELTA RULE: a ledger conflict the sheet ALREADY had does not block an unrelated fix', () => {
+  const less = 'collab-x {\n  &:focus-within {\n    border-color: var(--border-default-focus, #3b82f6);\n    padding: 4px;\n  }\n}';
+  const result = runImEditGate(inputs({
+    files: [file({ kind: 'less', before: less, after: less.replace('4px', '8px') })],
+  }));
+  assert.equal(result.ok, true);
+});
+
 test('THE DELTA RULE for the compiler: a pre-existing error does not block', () => {
   const result = runImEditGate(
     inputs({ compileErrors: ['line 4: already broken'], compileErrorsBefore: ['line 4: already broken'] }),

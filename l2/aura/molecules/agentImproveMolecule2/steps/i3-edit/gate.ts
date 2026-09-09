@@ -23,6 +23,7 @@ import { deadShellMembers, offendingForeignWrite } from '/_102020_/l2/aura/molec
 import { diffSurface, groupVocabulary, readSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import { divergentTokenFallbacks, geometryAliasTokens, normalizeTokenValue, tokenFallbacks } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 import { GEOMETRY_REGISTRY } from '/_102020_/l2/aura/molecules/skills/moleculeGeometry.js';
+import { LIBRARY_FALLBACKS } from '/_102020_/l2/aura/molecules/skills/libraryFallbacks.js';
 import { mlsHeaderOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
 import {
   findBaseInternals,
@@ -300,6 +301,63 @@ function introducedFocusRoleMismatch(file: ImEditedFile): string[] {
   );
 }
 
+// role (with its leading `--`) -> the value the LIBRARY already reads for it, straight off the same
+// materialized table agentIm2Edit.ts injects into the prompt (skills/libraryFallbacks). Built once:
+// the gate never scans mls-102040 itself, only the two files this run touched.
+const LIBRARY_LEDGER = new Map(LIBRARY_FALLBACKS.map(entry => [`--${entry.role}`, entry.value]));
+
+/**
+ * A role introduced with a fallback that CONTRADICTS the library's ledger — the third and last known
+ * way this same site fails. G1 catches a rename that changes the value; G2 catches a role chosen by
+ * value inside a `:focus` scope; this is the site both let through: the NAME is right (it ends in
+ * `-focus`, so G2 passes) and the VALUE is what the sheet already rendered (no rename happened, so G1
+ * passes) — but the role already means something ELSE everywhere else in the library.
+ *
+ * Measured: `ml-currency-input` introduced `--border-default-focus, #3b82f6` while the ledger already
+ * has that role at `#e2e8f0` (`grouptriggeraction/ml-pagination-control.less:92`). One role is one
+ * value across the library, so this site cannot migrate to it — it has to stay a holdout.
+ *
+ * A role ABSENT from the ledger is never a conflict: it DEBUTS here, exactly like `--input-bg` did in
+ * the pilot, and this site is free to define its value.
+ */
+function ledgerConflictSites(less: string): Array<{ token: string; fallback: string }> {
+  const found: Array<{ token: string; fallback: string }> = [];
+  for (const site of tokenFallbacks(less)) {
+    if (site.fallback === null) continue;
+    if (site.token.startsWith('--ml-')) continue; // a holdout is always a valid choice
+    const ledgerValue = LIBRARY_LEDGER.get(site.token);
+    if (ledgerValue === undefined) continue; // the role debuts here — nothing to contradict
+    if (normalizeTokenValue(site.fallback) === normalizeTokenValue(ledgerValue)) continue;
+    found.push({ token: site.token, fallback: site.fallback });
+  }
+  return found;
+}
+
+/**
+ * `ledgerConflictSites`, but only the conflict this edit INTRODUCED — same delta rule as
+ * `introducedFocusRoleMismatch`: a molecule that already carries the conflict is not this run's
+ * fault, but one the edit itself creates is.
+ */
+function introducedLedgerConflict(file: ImEditedFile): string[] {
+  const keyOf = (found: { token: string; fallback: string }): string => `${found.token} ${normalizeTokenValue(found.fallback)}`;
+  const keys = (source: string): string[] => ledgerConflictSites(source).map(keyOf);
+  const byKey = new Map(ledgerConflictSites(file.after).map(found => [keyOf(found), found]));
+
+  const out: string[] = [];
+  for (const key of introduced(keys, file)) {
+    const found = byKey.get(key);
+    if (!found) continue;
+    const ledgerValue = LIBRARY_LEDGER.get(found.token) ?? '';
+    out.push(
+      issue(
+        'ledger_conflict',
+        `'${found.token}' is read with "${found.fallback}", but the library already reads that role as "${ledgerValue}" everywhere else — one role is one value across the library, so this site cannot migrate to it. Leave the site on its '--ml-*' token: a role whose established value is not the one this sheet renders is a holdout, not a role to repaint`,
+      ),
+    );
+  }
+  return out;
+}
+
 /**
  * A coined token whose suffix aliases a SHARED geometry concept (skills/moleculeGeometry) — but only
  * the alias this edit INTRODUCED. Real molecule in the library that forces the delta rule here:
@@ -446,6 +504,10 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
       // as introducedGeometryAlias below: a molecule that already carries the mismatch is not this
       // run's fault, but one the edit itself creates is.
       for (const error of introducedFocusRoleMismatch(file)) errors.push(error);
+
+      // G3 — a role whose fallback CONTRADICTS the library's ledger (skills/libraryFallbacks). The
+      // site G1 and G2 both let through: the rename kept its value, and the name is a real focus role.
+      for (const error of introducedLedgerConflict(file)) errors.push(error);
 
       // Same delta rule, same reason: a molecule that already coined an alias of a shared geometry
       // concept is not this run's fault, but an alias the edit ITSELF introduces is.
