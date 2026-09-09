@@ -21,7 +21,7 @@ import {
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { deadShellMembers, offendingForeignWrite } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { diffSurface, groupVocabulary, readSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
-import { divergentTokenFallbacks, geometryAliasTokens, normalizeTokenValue } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+import { divergentTokenFallbacks, geometryAliasTokens, normalizeTokenValue, tokenFallbacks } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 import { GEOMETRY_REGISTRY } from '/_102020_/l2/aura/molecules/skills/moleculeGeometry.js';
 import { mlsHeaderOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
 import {
@@ -192,6 +192,115 @@ function introducedFallbackDivergence(file: ImEditedFile): string[] {
 }
 
 /**
+ * A RENAME that also changes the VALUE — decision #2 of planejamento.md, never defended in code until
+ * now: renaming a token keeps the fallback the sheet already rendered with. A value-only change on the
+ * SAME token is legitimate route-B work (the user may ask for a darker helper text), so this only fires
+ * when the NAME changed together with the VALUE — widening it to catch a value change alone would
+ * refuse every honest colour request.
+ *
+ * DELTA BY CONSTRUCTION — no `introduced()` wrapper: the finding only exists by comparing before and
+ * after directly, so there is no pre-existing version of it to subtract. If the edit added or removed a
+ * declaration the counts differ and the gate stays silent rather than guess an alignment between the
+ * two lists.
+ *
+ * Measured on the groupEnterMoney pilot's run 4: `--ml-outline-focus, #3b82f6` became
+ * `--border-default-focus, #e2e8f0` — the name changed AND the value changed, losing the field's focus
+ * highlight. `harness/probe-gates-papel.mjs` reproduces 0 accusations across the library's `before ===
+ * after` pairs and 1 on that synthetic mutation.
+ */
+function renamedFallbackChanged(file: ImEditedFile): string[] {
+  const before = tokenFallbacks(file.before);
+  const after = tokenFallbacks(file.after);
+  if (before.length !== after.length) return [];
+  const out: string[] = [];
+  for (let i = 0; i < before.length; i++) {
+    const was = before[i];
+    const now = after[i];
+    if (was.token === now.token) continue;
+    if (was.fallback === null || now.fallback === null) continue;
+    if (normalizeTokenValue(was.fallback) === normalizeTokenValue(now.fallback)) continue;
+    out.push(
+      issue(
+        'fallback_renamed',
+        `'${was.token}' was renamed to '${now.token}' and its fallback changed ("${was.fallback}" -> "${now.fallback}") — a rename must keep the value the sheet already rendered with no design system, or the migration changes the appearance nobody asked to change. Keep the old fallback under the new name; if the role you want cannot carry that value, the site is a holdout and stays on its '--ml-*' token`,
+      ),
+    );
+  }
+  return out;
+}
+
+/**
+ * A role read inside a `:focus`/`:focus-within`/`:focus-visible` block that does not itself NAME a
+ * focus role — chosen because its VALUE happened to match what the border needed, not because of what
+ * the role is FOR. Real case in the pilot: `ml-enter-money-br.less` read `--selected-border` inside a
+ * focus block because its value (`#3b82f6`) matched — but "selected" and "focused" are different
+ * concepts, and a design system may restyle them independently.
+ *
+ * An `--ml-*` holdout is always allowed: it is exactly what `ml-currency-input`'s pilot run produced
+ * when the right role (`--ml-outline-focus`) has no DS equivalent to migrate to.
+ */
+function focusRoleMismatches(less: string): string[] {
+  const lines = less.split('\n');
+  const sitesByLine = new Map<number, Array<{ token: string; fallback: string | null }>>();
+  for (const site of tokenFallbacks(less)) {
+    if (!sitesByLine.has(site.line)) sitesByLine.set(site.line, []);
+    sitesByLine.get(site.line)!.push(site);
+  }
+
+  const found: string[] = [];
+  let depth = 0;
+  const focusScopeDepths: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNo = i + 1;
+    const opensFocusScope = /:focus(-within|-visible)?[^{]*\{/.test(line);
+
+    // `|| opensFocusScope` is the ONE-LINE block: `&:focus { color: var(--selected-text, #3b82f6); }`
+    // opens and closes the scope on this very line, so the stack is still empty when its sites are
+    // examined. MEASURED 2026-09-09: the library carries 14 single-line `:focus` blocks, all of them in
+    // groupselectmany and grouprateitem — two of the biggest groups still to migrate. They read `--ml-*`
+    // today, so the detector reported 0 either way and the blindness was invisible to its validation.
+    if (focusScopeDepths.length || opensFocusScope) {
+      for (const site of sitesByLine.get(lineNo) || []) {
+        if (site.fallback === null) continue;
+        if (site.token.startsWith('--ml-')) continue; // a holdout is always a valid choice
+        if (site.token.startsWith('--focus-') || /-focus$/.test(site.token)) continue;
+        found.push(site.token);
+      }
+    }
+
+    for (const char of line) {
+      if (char === '{') {
+        depth++;
+      } else if (char === '}') {
+        if (focusScopeDepths.length && focusScopeDepths[focusScopeDepths.length - 1] === depth) {
+          focusScopeDepths.pop();
+        }
+        depth--;
+      }
+    }
+    if (opensFocusScope) focusScopeDepths.push(depth);
+  }
+
+  return found;
+}
+
+/**
+ * `focusRoleMismatches`, but only the mismatch this edit INTRODUCED — same delta rule as
+ * `introducedGeometryAlias`: a molecule that already carries the mismatch is not this run's business,
+ * but one the edit itself creates is.
+ */
+function introducedFocusRoleMismatch(file: ImEditedFile): string[] {
+  return introduced(focusRoleMismatches, file).map(token =>
+    issue(
+      'focus_role_mismatch',
+      `'${token}' is read inside a :focus block, and it does not name a focus role — a role is chosen by the PLACE it paints, never by the value that happens to match. Use a '*-focus' or 'focus-*' role, or leave the site on its '--ml-*' token when no focus role of the design system can carry this value`,
+    ),
+  );
+}
+
+/**
  * A coined token whose suffix aliases a SHARED geometry concept (skills/moleculeGeometry) — but only
  * the alias this edit INTRODUCED. Real molecule in the library that forces the delta rule here:
  * `ml-button-group.less` (mls-102053-temp) already carries `--ml-button-group-spinner-size` and
@@ -328,6 +437,15 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
     // pre-existing divergence would otherwise freeze every edit to it.
     if (file.kind === 'less') {
       for (const error of introducedFallbackDivergence(file)) errors.push(error);
+
+      // G1 — a RENAME that changed the VALUE too. Not wrapped in introduced(): see
+      // renamedFallbackChanged for why this finding only exists as a before/after comparison.
+      for (const error of renamedFallbackChanged(file)) errors.push(error);
+
+      // G2 — a role chosen by its VALUE instead of its PLACE, inside a :focus scope. Same delta rule
+      // as introducedGeometryAlias below: a molecule that already carries the mismatch is not this
+      // run's fault, but one the edit itself creates is.
+      for (const error of introducedFocusRoleMismatch(file)) errors.push(error);
 
       // Same delta rule, same reason: a molecule that already coined an alias of a shared geometry
       // concept is not this run's fault, but an alias the edit ITSELF introduces is.

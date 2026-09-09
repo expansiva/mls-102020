@@ -1,5 +1,43 @@
 # CHANGELOG — i3-edit
 
+## 2026-09-09 (2) — G1 e G2: a escolha de papel virou detector
+
+Cinco rodadas do piloto provaram que **prosa não governa escolha de papel**. O mesmo sítio — a borda
+de foco do campo, `#3b82f6` — saiu de quatro jeitos diferentes, e nunca igual nas duas moléculas ao
+mesmo tempo; a cada rodada a prosa foi reforçada e a seguinte desobedeceu em outro lugar. Controle:
+`todo/moleculetokens/todo-gates-papel-e-neutralidade.md`.
+
+E o aceite aprovava os dois defeitos: o run 4 mudou o valor e o `check-ds-tokens.mjs` saiu LIMPO
+(a consistência foi comprada mudando o valor); o run 5 tinha o papel errado e passou em tudo, porque
+o valor estava preservado. Dois furos distintos, dois gates.
+
+- **`fallback_renamed`** (`renamedFallbackChanged`) — o par cujo NOME mudou não pode mudar de valor.
+  **Delta por construção**, sem `introduced()`: o achado só existe comparando `before` com `after`.
+  Se a contagem de sítios diferir, o gate fica calado em vez de adivinhar o alinhamento. Só o par
+  RENOMEADO, e isso é deliberado: mudar cor mantendo o token pode ser exatamente o que o usuário
+  pediu — ampliar reprovaria todo pedido honesto de cor;
+- **`focus_role_mismatch`** (`focusRoleMismatches` + `introducedFocusRoleMismatch`) — dentro de
+  `:focus`/`:focus-within`/`:focus-visible`, só papel `*-focus`/`focus-*`, ou holdout `--ml-*`. Pelo
+  DELTA, como o `geometry_alias`.
+
+Os dois reusam `tokenFallbacks` e `normalizeTokenValue` de `shared/moleculeInspect.ts` — nenhum regex
+novo. `harness/probe-gates-papel.mjs` reproduz os números fora do Studio e **carrega os primitivos
+reais** por `esbuild.transformSync` em vez de reescrevê-los (a §7 do planejamento registra um
+protótipo que divergiu no regex e acertou por sorte).
+
+**Verificado:** G1 — `before === after` nas 183 folhas dá 0, o par real do piloto dá 0, o defeito do
+run 4 injetado dá 1. G2 — 10 sítios `--ds-*` dentro de blocos `:focus*`, 1 acusação, 0 falso
+positivo, 0 no delta.
+
+⚠️ **O bloco `:focus` de UMA LINHA quase escapou, e o motivo importa.** A primeira implementação
+checava os sítios antes de processar as chaves da linha, então `&:focus { color: var(--selected-text,
+#3b82f6); }` — que abre e fecha o escopo na mesma linha — passava batido. **A validação não podia ver
+isso:** os 14 blocos `:focus` de uma linha da biblioteca leem `--ml-*` hoje, então a varredura dava 0
+com ou sem o defeito, e os quatro testes usavam blocos de várias linhas. Eles estão concentrados em
+`groupselectmany` e `grouprateitem`, dois dos maiores grupos ainda por migrar — a cegueira morderia
+exatamente lá. Corrigido com `|| opensFocusScope`, mais um teste do caso e o mesmo ajuste no probe,
+que havia ficado para trás. Varredura final: 187 folhas, `before === after`, 0 acusações.
+
 ## 2026-09-09 — a mensagem do `fallback_divergence` ensinava o conserto errado; e o ledger da biblioteca
 
 **O gate estava certo no diagnóstico e errado no conserto.** Ele disparava e mandava *"Use at every
@@ -150,6 +188,42 @@ unidirecional.
 **Correção:** a prosa do `libraryFallbackTable()` ganhou *"Choose the role by the PLACE, never by the
 value"* — achar o papel que NOMEIA o que a declaração é, e só então consultar o ledger; um papel
 vizinho com valor igual não é saída para a regra do holdout.
+
+### Rodadas 4 e 5 — o alvo bateu, e a escolha de papel continuou sorteada
+
+O run 5 (as duas moléculas, tentativa 1, sem gate disparado) deu **39 sítios
+migrados, 14 holdouts, 0 fallback alterado**, verificador limpo, ambas compilando,
+e a única diferença de formatação contra o original é recuo e linha em branco.
+**O piloto está fechado e o veredito é positivo: o IM2 migra `.less` existente.**
+
+O que não se resolveu foi a escolha de PAPEL num sítio específico — a borda de
+foco do campo, `#3b82f6`:
+
+| | `ml-enter-money-br` | `ml-currency-input` |
+|---|---|---|
+| run 3 | `--border-default-focus, #3b82f6` (colide com o ledger) | `--selected-border` (papel pelo valor) |
+| run 4 | *(arquivo corrompido pelo Studio)* | `--border-default-focus, #e2e8f0` (mudou o valor) |
+| run 5 | `--selected-border` (papel pelo valor) | `--ml-outline-focus` ✅ |
+
+Quatro resultados, e nunca o mesmo nas duas moléculas ao mesmo tempo. A regra
+"Choose the role by the PLACE, never by the value" foi acrescentada entre o 3 e o
+4 e é obedecida de forma intermitente. **Onde a tabela do ledger AFIRMA
+`papel -> valor`, prosa ao lado dela não vence de forma determinística** — é o
+aprendizado #10 no seu limite, e a conclusão é que isto tem de virar detector.
+
+⚠️ **O aceite aprovou os dois defeitos.** O run 4 mudou o valor e o
+`check-ds-tokens.mjs` saiu LIMPO, porque a consistência foi comprada mudando o
+valor. O run 5 tem o papel errado e passa em tudo, porque o valor está
+preservado. São dois furos distintos, e vão para dois gates distintos, em
+`todo/moleculetokens/todo-gates-papel-e-neutralidade.md`:
+
+- **G1**, neutralidade do rename — o par cujo NOME mudou não pode mudar de valor.
+  Validado: `before === after` nas 184 folhas dá 0; o defeito do run 4 injetado
+  dá 1. Só o par renomeado, deliberadamente: mudar cor com o mesmo token pode ser
+  o que o usuário pediu;
+- **G2**, papel de foco — dentro de `:focus*`, só `*-focus`/`focus-*` ou holdout
+  `--ml-*`. Validado: 10 sítios de foco na biblioteca, 1 acusação, 0 falso
+  positivo, e a acusação é o defeito real.
 
 **Ainda aberto:** o aceite do controle exige refazer o piloto no Studio e bater 41 migrados / 12
 holdouts / 0 fallback alterado / formatação idêntica. Nada disto prova que a LLM OBEDECE — prova que

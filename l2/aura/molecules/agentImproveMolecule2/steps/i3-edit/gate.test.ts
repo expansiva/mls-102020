@@ -181,6 +181,63 @@ test('an introduced token read with two fallbacks is refused, naming a different
   assert.match(result.errors.join('\n'), /--ml-\*/);
 });
 
+// ---- G1 — fallback_renamed: a rename must not change the value too (2026-09-09) ----
+// Measured on the groupEnterMoney pilot's run 4: --ml-outline-focus, #3b82f6 became
+// --border-default-focus, #e2e8f0 — the name changed AND the value changed, losing the focus
+// highlight. G1 is delta BY CONSTRUCTION (no introduced() wrapper): it only exists as a
+// before/after comparison, so there is no pre-existing version of it to subtract.
+
+test('a rename that also changes the value is refused, naming rename and holdout', () => {
+  const before = 'collab-x {\n  &:focus-within {\n    border-color: var(--ml-outline-focus, #3b82f6);\n  }\n}';
+  const after = 'collab-x {\n  &:focus-within {\n    border-color: var(--border-default-focus, #e2e8f0);\n  }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^fallback_renamed: /.test(e)));
+  assert.match(result.errors.join('\n'), /rename/);
+  assert.match(result.errors.join('\n'), /holdout/);
+});
+
+test('an honest colour request on the SAME token passes — only a rename that also changes value is refused', () => {
+  const before = 'collab-x {\n  .ml-helper { color: var(--ml-text-muted, #79747e); }\n}';
+  const after = 'collab-x {\n  .ml-helper { color: var(--ml-text-muted, #49454f); }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, true);
+});
+
+// ---- G2 — focus_role_mismatch: a role chosen by value, not by place, inside :focus (2026-09-09) ----
+// Real defect in the pilot: ml-enter-money-br.less read --selected-border inside a focus block
+// because its VALUE (#3b82f6) matched — "selected" and "focused" are different concepts. DELTA via
+// introduced(): a molecule that already carries the mismatch must not block an unrelated fix.
+
+test('a role introduced inside :focus-within that does not name a focus role is refused', () => {
+  const before = 'collab-x {\n  &:focus-within {\n    border-color: var(--ml-outline-focus, #3b82f6);\n  }\n}';
+  const after = 'collab-x {\n  &:focus-within {\n    border-color: var(--selected-border, #3b82f6);\n  }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^focus_role_mismatch: /.test(e)));
+  assert.match(result.errors.join('\n'), /focus role/);
+  assert.match(result.errors.join('\n'), /--ml-\*/);
+});
+
+// The ONE-LINE focus block. The scope opens and closes on the same line, so an implementation that
+// only checks the stack misses it — and the library's own shape hid that: its 14 single-line `:focus`
+// blocks all read `--ml-*` today, so the detector's library sweep reported 0 either way.
+test('a role chosen by value inside a SINGLE-LINE :focus block is refused', () => {
+  const before = 'collab-x {\n  &:focus { color: var(--ml-outline-focus, #3b82f6); }\n}';
+  const after = 'collab-x {\n  &:focus { color: var(--selected-text, #3b82f6); }\n}';
+  const result = runImEditGate(inputs({ files: [file({ kind: 'less', before, after })] }));
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(e => /^focus_role_mismatch: /.test(e)));
+});
+
+test('THE DELTA RULE: a focus-role mismatch the sheet ALREADY had does not block an unrelated fix', () => {
+  const less = 'collab-x {\n  &:focus-within {\n    border-color: var(--selected-border, #3b82f6);\n    padding: 4px;\n  }\n}';
+  const result = runImEditGate(inputs({
+    files: [file({ kind: 'less', before: less, after: less.replace('4px', '8px') })],
+  }));
+  assert.equal(result.ok, true);
+});
+
 test('THE DELTA RULE for the compiler: a pre-existing error does not block', () => {
   const result = runImEditGate(
     inputs({ compileErrors: ['line 4: already broken'], compileErrorsBefore: ['line 4: already broken'] }),
