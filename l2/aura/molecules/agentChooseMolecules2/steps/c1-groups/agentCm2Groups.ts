@@ -1,11 +1,19 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentChooseMolecules2/steps/c1-groups/agentCm2Groups.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 // c1-groups — the first LLM call: the deterministic regions of the target page in, the group of each
-// out. Unlike agentChooseMolecules's c1, the regions are never invented from prose — they were already
-// extracted by code (helpers/cm2Regions) from the page's own dataBindings/inputs, so this call only
-// answers "which group", never "what is a region here".
+// out. The regions are never invented: helpers/cm2Regions extracted them from the workspace's own
+// dataBindings, so this call only answers "which group", never "what is a region here".
 //
-// It sees LEVEL 1 and nothing else (the group list), same one-level-per-prompt discipline as the probe.
+// ⚠️ v3 (2026-09-08): TWO SOURCES, EACH ANSWERING A DIFFERENT QUESTION.
+//   the SHARED defs (web/shared/{page}.defs.ts, READ-ONLY) — WHAT interactions exist: dataBindings,
+//     the declared column/field labels, which command is destructive. See helpers/cm2Shared.ts's
+//     header for why (v2 read only the page's prose and found 1 region on a page with 15).
+//   the TARGET's own prose definition — WHAT THE PAGE IS FOR: uxExperience, purpose, actor
+//     (helpers/cm2PageContext), as the {{pageContext}} section.
+// The target is still the only file the run ever writes, and it is written by c3-patch alone.
+//
+// It sees LEVEL 1 and nothing else of the catalog (the group list), same one-level-per-prompt
+// discipline as the probe.
 //
 // No l4 artifact anywhere: the answer travels only in this step's own `result`, read back by the root's
 // fan-out (helpers/cm2Types.cm2ReadC1Result) — see agentChooseMolecules2.ts.
@@ -16,8 +24,8 @@ import { buildVToolInstruction, createVToolSchema, extractVToolOutput, nmResultS
 import { chFileRefFromImport } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import { ChLevel1, readChLevel1 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chCatalog.js';
 import { ChGroupsOutput, buildChRegions, chDistinctGroups, normalizeChGroupsOutput, runChGroupsGate } from '/_102020_/l2/aura/molecules/agentChooseMolecules/steps/c1-groups/gate.js';
-import { cm2ContractFileFromTarget } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Entry.js';
-import { parseContractTypesFromCompiledTs, parseContractTypesFromDefsSource, parsePageDefsSource } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2DefsPatch.js';
+import { cm2DefinitionKind, parsePageDefsSource } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2DefsPatch.js';
+import { cm2SharedFileFromTarget, parseSharedDefinition, readCm2ContractTypes } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Shared.js';
 import { Cm2Region, extractRegions } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Regions.js';
 import { extractPageContext, formatPageContext } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2PageContext.js';
 import { CM2_AGENT_FOLDER, CM2_MAX_ATTEMPTS, CM2_PLAN_C1, Cm2GroupsResult, cm2DoneAnchor, cm2ParseStepArgs, readCm2AgentText } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Types.js';
@@ -40,7 +48,7 @@ export function createAgent(): IAgentAsync {
 interface LoadedContext {
   level1: ChLevel1;
   regions: Cm2Region[];
-  /** The target's own declared intent — see helpers/cm2PageContext.ts. '' when it declares none. */
+  /** The target's own declared intent, from its prose definition. '' when it declares none. */
   pageContext: string;
 }
 
@@ -51,31 +59,34 @@ async function loadContext(catalogProject: number, target: string): Promise<Load
   const { level1, error: catalogError } = await readChLevel1(catalogProject);
   if (!level1) return `[${AGENT_NAME}] ${catalogError}`;
 
+  // ---- the TARGET: read for its intent, and to prove it is a page this run can equip ----
   const pageSource = await readStorText(targetFile, false);
   if (!pageSource) return `[${AGENT_NAME}] target file not found: ${target}`;
   const parsedPage = parsePageDefsSource(pageSource);
-  if (!parsedPage) return `[${AGENT_NAME}] '${target}' does not match the expected { definition, pipeline } shape`;
-
-  const contractTypes = await loadContractTypes(targetFile);
-  const regions = extractRegions(parsedPage.definitionJson, contractTypes);
-  const pageContext = formatPageContext(extractPageContext(parsedPage.definitionJson));
-  return { level1, regions, pageContext };
-}
-
-/** Best-effort: the .defs.ts is the source of truth when present; the compiled .ts is the fallback
- * when it is not (confirmed necessary — a real client checkout may only have the materialized .ts). A
- * command whose type this cannot resolve is not a failure: extractRegions falls back to 'unknown'. */
-async function loadContractTypes(targetFile: ReturnType<typeof chFileRefFromImport>) {
-  if (!targetFile) return {};
-  const contractDefsFile = cm2ContractFileFromTarget(targetFile);
-  if (contractDefsFile) {
-    const defsSource = await readStorText(contractDefsFile, false);
-    const parsed = defsSource ? parseContractTypesFromDefsSource(defsSource) : null;
-    if (parsed) return parsed;
-    const tsSource = await readStorText({ ...contractDefsFile, extension: '.ts' }, false);
-    if (tsSource) return parseContractTypesFromCompiledTs(tsSource);
+  if (!parsedPage) {
+    const kind = cm2DefinitionKind(pageSource);
+    return kind === 'object'
+      ? `[${AGENT_NAME}] '${target}' still carries the v1 OBJECT definition. This agent reads the prose definition ('export const definition = \`page: ...\`') and equips the pipeline (flow.json.decisions.definitionFormat)`
+      : `[${AGENT_NAME}] '${target}' does not match the expected { definition (prose), pipeline } shape`;
   }
-  return {};
+  const pageContext = formatPageContext(extractPageContext(parsedPage.definitionText));
+
+  // ---- the SHARED: read for the structure, never written ----
+  const sharedFile = cm2SharedFileFromTarget(targetFile);
+  if (!sharedFile) {
+    return `[${AGENT_NAME}] cannot locate the workspace shared defs from '${target}' — the reference has no 'web' segment to anchor 'web/shared' on, so it is not a page of a workspace`;
+  }
+  const sharedSource = await readStorText(sharedFile, false);
+  if (!sharedSource) {
+    return `[${AGENT_NAME}] the workspace shared defs was not found at '_${sharedFile.project}_/l${sharedFile.level}/${sharedFile.folder}/${sharedFile.shortName}${sharedFile.extension}'. It is where this workspace declares its dataBindings, and the page's own prose definition declares no interaction at all — there is nothing to choose from without it`;
+  }
+  const shared = parseSharedDefinition(sharedSource);
+  if (!shared) {
+    return `[${AGENT_NAME}] the workspace shared defs at '${sharedFile.folder}/${sharedFile.shortName}' could not be read as a { definition: object } — refusing to guess its structure`;
+  }
+
+  const contractTypes = await readCm2ContractTypes(shared);
+  return { level1, regions: extractRegions(shared, contractTypes), pageContext };
 }
 
 async function beforePromptStep(
@@ -107,10 +118,10 @@ async function beforePromptStep(
       nmResultStepIntent(context, parentStep, {
         planId: cm2DoneAnchor(CM2_PLAN_C1),
         dependsOn: [],
-        stepTitle: 'no region found in the target — nothing to choose',
+        stepTitle: 'the workspace declares no dataBinding — nothing to choose',
         result: { catalogProject, target, regions: [], groups: [] } satisfies Cm2GroupsResult,
       }),
-      nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'no region found in the target', 'input_output'),
+      nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', 'the workspace declares no dataBinding — nothing to choose', 'input_output'),
     ];
   }
 
@@ -128,7 +139,7 @@ async function beforePromptStep(
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the regions cannot be answered from the group list you were given')}`;
 
   const humanPrompt = [
-    '## Decide the group of each region listed in the system prompt.',
+    `## Decide the group of each of the ${regions.length} regions listed in the system prompt.`,
     parsed.retryContext ? `\n## What the gate rejected — fix ALL of these\n${parsed.retryContext}` : '',
   ].filter(Boolean).join('\n');
 
@@ -145,6 +156,37 @@ async function beforePromptStep(
     tools: [createVToolSchema(TOOL_NAME, 'Submit one entry per region, with the group that serves it', schema as Record<string, unknown>)],
     toolChoice: { type: 'function', function: { name: TOOL_NAME } },
   } as mls.msg.AgentIntentPromptReady];
+}
+
+/**
+ * The regions are DETERMINISTIC and they are the c1→c2 join key, so the answer is checked against the
+ * list that was actually sent: a renamed region cannot be joined to anything and a dropped one loses
+ * its molecule in silence — the run would report success with the interaction simply missing.
+ *
+ * ⚠️ The shared gate cannot do this. runChGroupsGate is imported from the probe, where the regions are
+ * INVENTED by the model and there is no list to check against — it only refuses an empty answer, a
+ * nameless region, a duplicate and an unpublished group. The c2 gate DOES check its region set
+ * (region_unknown / region_unanswered), and this closes the same hole one level up.
+ */
+function checkRegionSet(answered: string[], expected: string[]): string[] {
+  const errors: string[] = [];
+  const wanted = new Map(expected.map(id => [id.toLowerCase(), id]));
+  const seen = new Set<string>();
+
+  for (const name of answered) {
+    const match = wanted.get(name.trim().toLowerCase());
+    if (!match) {
+      errors.push(`region '${name}' was not one of the regions given to you. The regions are extracted from this workspace's data contract and the list is closed — echo each id back exactly as given, and never add, rename or translate one.`);
+      continue;
+    }
+    seen.add(match);
+  }
+  for (const id of expected) {
+    if (!seen.has(id)) {
+      errors.push(`region '${id}' was given to you and got no answer — every region is answered, with a group or with 'none'; omitting one is not a way to say 'none'.`);
+    }
+  }
+  return errors;
 }
 
 async function afterPromptStep(
@@ -183,9 +225,11 @@ async function afterPromptStep(
   const gate = output
     ? runChGroupsGate({ output, knownGroups: groupNames })
     : { ok: false, errors: [`extract: ${extractError}`] };
-  const errorText = gate.errors.join('\n');
+  const setErrors = output ? checkRegionSet(output.regions.map(region => region.region), regions.map(region => region.id)) : [];
+  const ok = gate.ok && !setErrors.length;
+  const errorText = [...gate.errors, ...setErrors].join('\n');
 
-  if (gate.ok && output) {
+  if (ok && output) {
     const answeredRegions = buildChRegions(output, groupNames);
     const groups = chDistinctGroups(answeredRegions);
     const groupless = answeredRegions.filter(region => !region.group).length;

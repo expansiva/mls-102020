@@ -6,6 +6,11 @@
 //
 // c1's answer is read from the TASK TREE (helpers/cm2Types.cm2ReadC1Result), never a file — see
 // agentChooseMolecules2.ts for the run's overall "zero artifact" rule.
+//
+// v2 (2026-09-08): unchanged in shape. What changed under it is where the page context comes from —
+// the definition is prose now, so helpers/cm2PageContext parses its labelled lines instead of a JSON
+// definition, and `uxExperience` is what took over from presentation.categoryRef as the fact that
+// rules a specific scenario row in or out.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { isRecord, readStorText } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
@@ -73,7 +78,11 @@ async function resolveGroup(context: mls.msg.ExecutionContext, catalogProject: n
 }
 
 /** The target's declared page intent, or '' when the file cannot be read or declares none of it.
- * Best-effort by design: missing page context degrades the choice, it never fails the step. */
+ * Best-effort by design: missing page context degrades the choice, it never fails the step.
+ *
+ * v2: parsed out of the definition PROSE (helpers/cm2PageContext), not a JSON definition. c2 never
+ * sees that prose otherwise — c1 does, in its human prompt — so this section is the only channel the
+ * page's declared intent, `uxExperience` above all, has to reach this call. */
 async function readPageContext(target: string | undefined): Promise<string> {
   if (!target) return '';
   const targetFile = chFileRefFromImport(target);
@@ -82,7 +91,7 @@ async function readPageContext(target: string | undefined): Promise<string> {
   if (!source) return '';
   const parsedDefs = parsePageDefsSource(source);
   if (!parsedDefs) return '';
-  return formatPageContext(extractPageContext(parsedDefs.definitionJson));
+  return formatPageContext(extractPageContext(parsedDefs.definitionText));
 }
 
 async function beforePromptStep(
@@ -124,9 +133,9 @@ async function beforePromptStep(
   const projectLanguages = targetFile ? await readCm2ProjectLanguages(targetFile.project) : [];
   const projectContext = formatProjectContext(projectLanguages);
 
-  // The target page's OWN declared intent (purpose, categoryRef, pageObjective). Read FRESH from the
-  // target here rather than carried through c1's result: it is the same file c1 read, and threading a
-  // ~2KB block through the task record would bloat every step that reads that result.
+  // The target page's OWN declared intent (page, actor, purpose, uxExperience). Read FRESH from the
+  // target here rather than carried through c1's result: it is the same file c1 read, and threading the
+  // block through the task record would bloat every step that reads that result.
   // This is the evidence that separates 11 near-siblings — see helpers/cm2PageContext.ts's header.
   const pageContext = await readPageContext(parsed.target);
 
@@ -222,7 +231,9 @@ async function afterPromptStep(
           status: 'waiting_human_input',
           nextSteps: [],
           agentName: AGENT_NAME,
-          prompt: JSON.stringify({ planId, catalogProject, group, retryAttempt: attempt + 1, retryContext: errorText }),
+          // `target` travels too: without it the retry loses the page context and the project
+          // language — the exact tie-breakers the failed attempt already had (flow.json.decisions.retry).
+          prompt: JSON.stringify({ planId, catalogProject, target: parsed.target, group, retryAttempt: attempt + 1, retryContext: errorText }),
           rags: [],
           planning: { planId: `${planId}-retry${attempt}`, dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
         } as mls.msg.AIAgentStep,

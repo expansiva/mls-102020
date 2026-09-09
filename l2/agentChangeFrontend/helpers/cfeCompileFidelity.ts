@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeCompileFidelity.ts" enhancement="_blank"/>
 
+import type { CompileGatePath } from '/_102020_/l2/agentChangeFrontend/helpers/cfeProjectTsc.js';
+
 /**
  * The closing gate compiles with the Studio Monaco worker (`mls.l2.typescript.compile`).
  * Publish/tsc uses `mls-base/tsconfig.json`. A gate that says "clean" while tsc fails is a false green.
@@ -34,6 +36,16 @@ export const BUILD_TSC_DEFAULTS = {
   source: 'mls-base/tsconfig.json',
 } as const;
 
-export function describeCompilerFidelity(): string {
+export function describeCompilerFidelity(path: CompileGatePath): string {
+  if (path === 'project-tsc') {
+    return 'compiled with project tsc (tsconfig.frontend.json, same gate as certification); diagnostics outside the module filtered';
+  }
+  if (path === 'unavailable') {
+    return 'NOT compiled: no compiler capability on this host (tscGate=unavailable)';
+  }
   return 'compiled with Monaco (strict=true like tsc; skipLibCheck=false vs tsc true; noEmitOnError not set; host localStorage may override; unresolved imports degrade to any and hide TS2339/TS2353)';
+}
+
+export function describeModuleCompileClean(path: CompileGatePath): string {
+  return path === 'monaco' ? 'with no blocking Monaco errors' : 'with no blocking compile errors';
 }

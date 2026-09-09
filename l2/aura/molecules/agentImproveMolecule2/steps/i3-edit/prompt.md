@@ -83,9 +83,15 @@ If the edit touches the `.less`, it goes through tokens — and the vocabulary i
 tables in the group contract above say *which* tokens this molecule already uses; the skill
 below says *how* to choose and what is forbidden.
 
+A token migration is a rename: one `replace` per declaration, quoting just the line that changes.
+Never send the whole rule block or the whole sheet — a block anchored at the root selector is
+written back at the anchor's own depth, and a body you sent flush comes out flush.
+
 {{tokenVocabulary}}
 
 {{canonicalFallbacks}}
+
+{{libraryFallbacks}}
 
 ### Its own contract — what THIS molecule promises
 

@@ -2,6 +2,10 @@
 
 import { parseDefs, checkSharedDtsProvenance, contractTsPathOf, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stampSharedDtsArtifact, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import { sessionScope } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSessionScope.js';
+import {
+  flattenTscErrorsAsRefs, mlsBaseFromDiskPath, traceProjectTscResult,
+  type CompileModuleTrace,
+} from '/_102020_/l2/agentChangeFrontend/helpers/cfeProjectTsc.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
 
 declare const mls: any;
@@ -374,13 +378,99 @@ export async function persistSharedDtsArtifactIfStale(sharedTsPath: string): Pro
   if (dts) await saveArtifactTextByMlsPath(artifactPath, stampSharedDtsArtifact(dts, source));
 }
 
+/**
+ * Capability, never host: the Studio compile path needs `mls.l2.typescript.compile` and the
+ * `mls.editor` surface `getGeneratedModel` actually calls. Missing either is `unavailable`, not a
+ * clean compile.
+ */
+export function monacoCompileAvailable(): boolean {
+  const compile = (mls as { l2?: { typescript?: { compile?: unknown } } }).l2?.typescript?.compile;
+  return typeof compile === 'function'
+    && typeof mls.editor?.getKeyModel === 'function'
+    && mls.editor?.models != null;
+}
+
+// Call it as a METHOD, never detached. `diskPath` is host-only (it does not exist in mls.d.ts nor
+// in the cfe) and on the CLI host it is a CLASS method that reads a private field.
+// `const fn = mls.stor.diskPath; fn(info)` throws `Cannot read properties of undefined (reading
+// '#mlsBase')`, the catch swallows it, and the project-tsc gate reports `no-diskPath`.
+export function storDiskPath(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string | null {
+  const stor = mls.stor as unknown as { diskPath?: (file: typeof info) => string };
+  if (typeof stor.diskPath !== 'function') return null;
+  try { return stor.diskPath(info); } catch { return null; }
+}
+
+type ProjectTscSpawn = (cmd: string, args: string[], opts: Record<string, unknown>) => {
+  stdout?: { on: (ev: string, fn: (chunk: unknown) => void) => void };
+  stderr?: { on: (ev: string, fn: (chunk: unknown) => void) => void };
+  on: (ev: string, fn: (arg?: unknown) => void) => void;
+};
+
+export async function runProjectFrontendTsc(cwd: string, spawnFn?: ProjectTscSpawn): Promise<string | null> {
+  try {
+    const spawn = spawnFn ?? await loadChildProcessSpawn();
+    if (typeof spawn !== 'function') return null;
+    return await new Promise(resolve => {
+      const child = spawn('npx', ['tsc', '-p', 'tsconfig.frontend.json', '--noEmit', '--pretty', 'false'], { cwd });
+      let out = '';
+      child.stdout?.on('data', chunk => { out += String(chunk); });
+      child.stderr?.on('data', chunk => { out += String(chunk); });
+      child.on('error', () => resolve(null));
+      child.on('close', () => resolve(out));
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function loadChildProcessSpawn(): Promise<ProjectTscSpawn | null> {
+  const childProcessSpec = 'node:child_process';
+  const loaded = await import(childProcessSpec) as { spawn?: ProjectTscSpawn };
+  return typeof loaded.spawn === 'function' ? loaded.spawn : null;
+}
+
+export async function compileModuleViaProjectTsc(
+  project: number,
+  moduleName: string,
+  files: Array<{ folder: string; shortName: string }>,
+  runTsc?: (cwd: string) => Promise<string | null>,
+): Promise<{ errors: string[]; trace: CompileModuleTrace }> {
+  const sample = files[0];
+  if (!sample) {
+    return {
+      errors: [],
+      trace: { path: 'unavailable', reason: 'no-files', rawDiagnostics: 0, afterFilter: 0, files: 0 },
+    };
+  }
+  const abs = storDiskPath({ project, level: 2, folder: sample.folder, shortName: sample.shortName, extension: '.ts' });
+  if (!abs) {
+    return {
+      errors: [],
+      trace: { path: 'unavailable', reason: 'no-diskPath', rawDiagnostics: 0, afterFilter: 0, files: files.length },
+    };
+  }
+  const cwd = mlsBaseFromDiskPath(abs);
+  if (!cwd) {
+    return {
+      errors: [],
+      trace: { path: 'unavailable', reason: 'no-diskPath', rawDiagnostics: 0, afterFilter: 0, files: files.length },
+    };
+  }
+  const output = runTsc ? await runTsc(cwd) : await runProjectFrontendTsc(cwd);
+  const { grouped, trace } = traceProjectTscResult(output, moduleName, project, files.length, 'no-child-process');
+  if (!grouped) return { errors: [], trace };
+  return { errors: flattenTscErrorsAsRefs(project, grouped), trace };
+}
+
+/** `null` = no compile capability. `[]` = compiled and clean. */
 export async function compileAndGetErrors(
   project: number,
   level: number,
   folder: string,
   shortName: string,
   extension = '.ts',
-): Promise<string[]> {
+): Promise<string[] | null> {
+  if (!monacoCompileAvailable()) return null;
   try {
     const modelTs = await getGeneratedModel(project, level, folder, shortName, extension);
     if (!modelTs?.model) return [];
@@ -394,7 +484,7 @@ export async function compileAndGetErrors(
   }
 }
 
-export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<string[]> {
+export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<string[] | null> {
   const parsed = parseMlsPath(mlsPath);
   if (!parsed || !isGeneratedTsExtension(parsed.extension)) return [];
   return compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);

@@ -4,7 +4,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { cfeCreatePageArgs, createAddStepIntent, createAgentStepPayload, createUpdateStatusIntent, readCreateContext, rememberCreateUxVariants, startCreateRun } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { agentBuildTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfeBuildStamp.js';
 import { removeOrphanFrontendArtifacts } from '/_102020_/l2/agentChangeFrontend/helpers/cfeWorkspaceArtifacts.js';
-import { clearCfeLayerTrace } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
+import { clearCfeLayerTrace, recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 
 interface ScanArgs {
   command?: string;
@@ -51,6 +51,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     if (scanArgs.command === 'rebuild-all' && sweepModule) {
       await clearCfeLayerTrace(createContext.project, sweepModule);
     }
+    const warningTrace = await recordScanWarnings(sweepModule || requested || '', createContext.warnings);
     const orphanNote = sweepModule ? await sweepOrphans(createContext.project, sweepModule) : '';
 
     if (createContext.pages.length === 0) {
@@ -61,10 +62,10 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
         const materialize = createMaterializeStep(scanArgs, [], requested || sweepModule);
         return [
           createAddStepIntent(context, parentStep, materialize),
-          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason} Queued materialization freshness check.${orphanNote}${buildTrace}`),
+          createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason} Queued materialization freshness check.${orphanNote}${warningTrace}${buildTrace}`),
         ];
       }
-      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason}${orphanNote}${buildTrace}`)];
+      return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'completed', `${reason}${orphanNote}${warningTrace}${buildTrace}`)];
     }
 
     // Guaranteed defined once pages are non-empty (pages were filtered by this module).
@@ -134,7 +135,7 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
       step,
       hookSequential,
       'completed',
-      `Scanned L4 once; module ${runModule}: queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}${orphanNote}${buildTrace}`,
+      `Scanned L4 once; module ${runModule}: queued ${pageArgs.length} page contract/shared item(s) and the guarded layout phase${scanArgs.materialize === false ? ' (defs-only).' : '.'}${orphanNote}${warningTrace}${buildTrace}`,
     );
     // Name the task after the single module it processes: "<module> - frontend".
     doneIntent.newTaskTitle = `${runModule} - frontend`;
@@ -145,6 +146,14 @@ async function beforePromptStep(agent: IAgentMeta, context: mls.msg.ExecutionCon
     console.error(`[${agent.agentName}] ${message}`);
     return [createUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', message)];
   }
+}
+
+/** Same channel as CB scanWarnings: step trace + runNN_changefrontend.json (kind scan-warning, split out of degradations so it does not flip the verdict). */
+async function recordScanWarnings(moduleName: string, warnings: string[]): Promise<string> {
+  for (const warning of warnings) {
+    await recordCfeDegradation(moduleName, 'scan-warning', warning);
+  }
+  return warnings.length ? ` Warnings: ${warnings.slice(0, 8).join('; ')}` : '';
 }
 
 async function sweepOrphans(project: number, moduleName: string): Promise<string> {

@@ -19,6 +19,12 @@
 // .defs.ts (steps/c3-patch, the run's only write). Every handoff between steps travels through the
 // task tree's own step `result` field (helpers/cm2Types.cm2ReadC1Result / cm2ReadGroupResult), never a
 // file — there is no report.json, no c1-groups.json, no per-attempt trace here.
+//
+// v2 (2026-09-08): the page defs carries a PROSE definition, so c1 NAMES the regions from it (the
+// deterministic dataBindings walk is gone) and c3-patch writes the `pipeline` value alone — the
+// definition is never rewritten. Nothing in this file changed for it: the two-phase planting, the
+// per-group anchors and the deterministic bootstrap are the same. See flow.json.decisions
+// .definitionFormat / .whatIsWritten.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
@@ -47,7 +53,7 @@ export function createAgent(): IAgentAsync {
     agentName: CM2_AGENT_NAME,
     agentProject: 102020,
     agentFolder: CM2_AGENT_FOLDER,
-    agentDescription: 'Given a catalogProject and the reference of an existing page .defs.ts, decides which molecule serves each of its regions and rewrites that .defs.ts in place — definition and pipeline. Writes nothing else: no report, no l4 artifact.',
+    agentDescription: 'Given a catalogProject and the reference of an existing page .defs.ts, decides which molecule serves each region of its definition and equips that file\'s pipeline with them — the chosen components in dependsFiles, their groups\' usage contracts in skills. The definition itself is read, never written. Nothing else is: no report, no l4 artifact.',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,
@@ -113,7 +119,9 @@ async function afterPromptStep(
 /**
  * PHASE 2 — the fan-out. Deterministic, no LLM: reads c1's result from the task tree and plants one c2
  * per DISTINCT group, plus c3-patch depending on all of them. With no group chosen, c3-patch still
- * runs alone (it is what completes the run — and with zero regions it completes without writing).
+ * runs alone: it is what completes the run, and it still has work to do — clearing the molecules a
+ * PREVIOUS run left in the pipeline is exactly the 'nothing chosen' case
+ * (helpers/cm2DefsPatch.applyPipelineMolecules prunes before it adds).
  */
 async function beforePromptStep(
   agent: IAgentMeta,

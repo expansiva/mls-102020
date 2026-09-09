@@ -30,6 +30,12 @@ aura--studio--class-picker-102020 {
   }
   &[hidden] { display: none !important; }
 
+  .acp-scenario {
+    flex: 0 0 auto; font-size: 10px; padding: 1px 5px; border-radius: 3px;
+    background: rgba(245,166,35,0.18); color: #ffd8a1;
+    border: 1px solid rgba(245,166,35,0.45);
+  }
+
   .acp-head {
     display: flex; align-items: center; gap: 8px;
     padding: 8px 10px;
@@ -37,7 +43,23 @@ aura--studio--class-picker-102020 {
     position: sticky; top: 0; background: #1f2933;
   }
   .acp-tag { font-family: monospace; color: #7fb3ff; }
-  .acp-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b8c2cc; }
+  /* Pushes only what comes AFTER it to the right (the close). The actions stay together on the
+     left, in the order they are used: undo, redo, copy, paste. */
+  .acp-spacer { flex: 1 1 auto; }
+
+  .acp-icon {
+    flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+    color: #b8c2cc; font-size: 14px; line-height: 1; padding: 0 3px;
+  }
+  .acp-icon:hover:not([disabled]) { color: #f5f7fa; }
+  .acp-icon[disabled] { opacity: 0.3; cursor: default; }
+
+  .acp-info-row { display: flex; gap: 8px; align-items: baseline; padding: 2px 0; }
+  .acp-info-label { flex: 0 0 96px; color: #9aa5b1; font-size: 11px; }
+  .acp-info-value {
+    flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: monospace; font-size: 11px; color: #e6edf3;
+  }
   .acp-close { background: transparent; border: 0; color: #b8c2cc; font-size: 16px; line-height: 1; cursor: pointer; }
   .acp-history {
     flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
@@ -135,30 +157,6 @@ aura--studio--class-picker-102020 {
   }
   .acp-remove:hover:not([disabled]) { color: #fca5a5; }
   .acp-remove[disabled] { opacity: 0.3; cursor: not-allowed; }
-
-  /* Copy/paste of a style */
-  .acp-copy {
-    flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
-    color: #7fb3ff; font-family: inherit; font-size: 11px; padding: 0;
-  }
-  .acp-copy:hover { text-decoration: underline; }
-  .acp-block.acp-paste { background: rgba(66,135,245,0.10); }
-  .acp-paste-actions { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-  .acp-paste-actions .acp-link { margin-left: auto; }
-  .acp-diff-row { display: flex; gap: 6px; align-items: baseline; margin-top: 4px; }
-  .acp-dir {
-    flex: 0 0 34px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
-  }
-  .acp-dir.acp-in { color: #86efac; }
-  .acp-dir.acp-out { color: #fca5a5; }
-  .acp-toks { display: flex; flex-wrap: wrap; gap: 3px; }
-  .acp-tok {
-    font-family: monospace; font-size: 10px; padding: 1px 4px; border-radius: 3px;
-    background: rgba(245,247,250,0.08); color: #e6edf3;
-  }
-  .acp-tok.acp-out { text-decoration: line-through; opacity: 0.7; }
-  /* Place is the one thing a paste may legitimately have to hold back — so it is never silent. */
-  .acp-tok.acp-place { outline: 1px dashed rgba(245,166,35,0.85); }
 
   .acp-role-list {
     display: block; width: 100%; margin-top: 2px; max-height: 190px; overflow: auto;

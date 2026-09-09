@@ -1371,6 +1371,9 @@ export class StudioEditor {
     panel.target = {
       tag: state.el.tagName.toLowerCase(),
       fileLabel: state.file ? `${state.file.shortName} (${state.file.folder})` : '',
+      file: state.file
+        ? { project: state.file.project, shortName: state.file.shortName, folder: state.file.folder }
+        : undefined,
       literal: state.literal,
       editable: !state.refusal && Boolean(state.file) && state.anchor !== null,
       refusal: state.refusal,

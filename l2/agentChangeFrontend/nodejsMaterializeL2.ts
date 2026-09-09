@@ -427,7 +427,7 @@ function sharedTemplateFor(item: PipelineItem, data: unknown): { code: string; m
   }
   const previousSource = readIfExists(mlsToFs(item.outputPath)) ?? undefined;
   const template = sharedLlmFallbackTemplate(item.outputPath, data, contractSource, previousSource);
-  if (!template.code) {
+  if (template.code === null) {
     console.log(`  shared LLM template skipped for ${item.outputPath} (${template.reason})`);
     return undefined;
   }

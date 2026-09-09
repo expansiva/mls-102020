@@ -96,7 +96,7 @@ interface BrokenItem {
   repairable: string[];
   declared: string[];
   warnings: string[];
-  typecheck: 'not-applicable' | 'passed' | 'failed';
+  typecheck: 'not-applicable' | 'passed' | 'failed' | 'unavailable';
 }
 
 const AGENT_NAME = 'agentCfeMaterializePhase';
@@ -552,6 +552,13 @@ async function persistAuditableFindings(moduleName: string, attempt: number, ite
   }
 }
 
+/** `null` compile result is no capability — never `passed`. Empty list is compiled and clean. */
+export function typecheckFromCompile(testContent: string | null | undefined, errors: string[] | null): BrokenItem['typecheck'] {
+  if (!testContent?.trim()) return 'not-applicable';
+  if (errors === null) return 'unavailable';
+  return errors.length ? 'failed' : 'passed';
+}
+
 function withFindings(item: GenStepArgs, outputPath: string | null, typecheck: BrokenItem['typecheck'], findings: Partial<Pick<BrokenItem, 'blocking' | 'repairable' | 'declared' | 'warnings'>>): BrokenItem {
   const blocking = findings.blocking ?? [];
   const repairable = findings.repairable ?? [];
@@ -583,7 +590,7 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     await preloadTypecheckDeps([contractTsPathOf(defsContent)]);
   }
 
-  const blocking = [...await compileMlsPathAndGetErrors(outputPath)];
+  const blocking = [...(await compileMlsPathAndGetErrors(outputPath) ?? [])];
   const repairable: string[] = [];
   const declared: string[] = [];
   const warnings: string[] = [];
@@ -604,7 +611,7 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   // misses — those still block, because the file that does not compile is the one that ships. An error
   // naming any OTHER file (a dependency) is declared here: it belongs to that item, which blocks on
   // its own; blocking this one for a neighbour's fault is the false-positive the phase must avoid.
-  for (const error of typecheckErrors) {
+  for (const error of typecheckErrors ?? []) {
     if (compileErrorRef(error) === outputPath.replace(/^\/+/u, '')) blocking.push(error);
     else declared.push(error);
   }
@@ -684,7 +691,7 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   if (pipelineItem.type === 'l2_shared' && blocking.length === 0) {
     await persistSharedDtsArtifactIfStale(outputPath);
   }
-  return withFindings(item, outputPath, testContent && testContent.trim() ? (typecheckErrors.length ? 'failed' : 'passed') : 'not-applicable', {
+  return withFindings(item, outputPath, typecheckFromCompile(testContent, typecheckErrors), {
     blocking, repairable, declared, warnings,
   });
 }

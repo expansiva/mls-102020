@@ -22,6 +22,12 @@ For each slot listed, add real content inside the `<{{tag}}>` instance on this p
 
 **Copy `find` from the page below** — the words, the punctuation, the line breaks. **Indentation does not have to match**: whitespace runs are matched flexibly, because some files here have collapsed indentation. It must occur **exactly once**; if it appears twice, extend it until it is unique. Order matters: a later edit sees the result of the earlier ones.
 
+## The group's usage contract
+
+{{groupUsageSkill}}
+
+A showcase card carries TWO layers. The **envelope** — `name`, `.value`, `.isEditing`, `@change` — is how the page hosts any molecule; it says nothing about this one. The **contract** — the properties and events in the group usage skill above (a tone/variant attribute, sizes, the molecule's own events) — is what makes the card demonstrate the molecule. You are here because a slot changed. Filling that slot must not cost the card its contract layer: when you rewrite a card, every attribute and event binding it already carried stays.
+
 ## The group index today
 
 {{index}}

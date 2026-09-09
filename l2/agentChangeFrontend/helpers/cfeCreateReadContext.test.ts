@@ -1,6 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentChangeFrontend/helpers/cfeCreateReadContext.test.ts" enhancement="_blank"/>
 import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // cfeCreateShared pulls in UI-ish modules that touch window/document at import time. Stub them, then
 // dynamic-import so the module graph loads under node:test (top-level await is unavailable here).
@@ -178,6 +180,98 @@ test('orphan todoFrontend for a module absent from l4 does not block the run (mo
   const ctx = await readCreateContext();
   assert.ok(ctx.pages.some((p: any) => p.pageId === 'catalog'));
   assert.equal(ctx.warnings.some((w: string) => w.includes("orphan todoFrontend for module 'legacyPet'")), true);
+});
+
+function installL4ModuleOnly(moduleName: string, extraFiles: ReturnType<typeof file>[] = []): void {
+  const files = [
+    file(4, moduleName, 'module', '.defs.ts', defs(`${moduleName}Module`, JSON.stringify({ moduleName, visualStyle: {}, languages: ['en'] }))),
+    ...extraFiles,
+  ];
+  g.mls.actualProject = PROJECT;
+  g.mls.stor = { ...(g.mls.stor || {}), files: Object.fromEntries(files.map((f, i) => [`u${i}`, f])) };
+}
+
+test('unparsable todoFrontend of a module absent from l4 is a warning, not a run failure (empty content)', async () => {
+  const { readCreateContext } = await loadModule();
+  installL4ModuleOnly('controleEstoque4', [
+    { ...file(5, 'petShopAgendamento', 'todoFrontend', '.defs.ts', ''), status: 'nochange' },
+  ]);
+  const ctx = await readCreateContext();
+  assert.deepEqual(ctx.moduleNames, ['controleEstoque4']);
+  assert.equal(ctx.warnings.some((w: string) => w.includes("ignored unparsable todoFrontend for module 'petShopAgendamento'")), true);
+  assert.equal(ctx.warnings.some((w: string) => w.includes('no l4 present')), true);
+  assert.equal(ctx.warnings.some((w: string) => /invalid todoFrontend defs/.test(w)), false);
+});
+
+test('unparsable todoFrontend of a module absent from l4 is a warning, not a run failure (non-defs text)', async () => {
+  const { readCreateContext } = await loadModule();
+  installL4ModuleOnly('controleEstoque4', [
+    { ...file(5, 'petShopAgendamento', 'todoFrontend', '.defs.ts', 'not a defs file { oops'), status: 'nochange' },
+  ]);
+  const ctx = await readCreateContext();
+  assert.deepEqual(ctx.moduleNames, ['controleEstoque4']);
+  assert.equal(ctx.warnings.some((w: string) => w.includes("ignored unparsable todoFrontend for module 'petShopAgendamento'")), true);
+});
+
+test('unparsable todoFrontend with empty folder is a warning when l4 modules exist', async () => {
+  const { readCreateContext } = await loadModule();
+  installL4ModuleOnly('controleEstoque4', [
+    { ...file(5, '', 'todoFrontend', '.defs.ts', ''), status: 'nochange' },
+  ]);
+  const ctx = await readCreateContext();
+  assert.equal(ctx.warnings.some((w: string) => w.includes("ignored unparsable todoFrontend for module ''")), true);
+});
+
+test('unreadable todoFrontend of the l4 module itself remains a fatal error', async () => {
+  const { readCreateContext } = await loadModule();
+  installL4ModuleOnly('controleEstoque4', [
+    file(5, 'controleEstoque4', 'todoFrontend', '.defs.ts', ''),
+  ]);
+  await assert.rejects(
+    () => readCreateContext(),
+    (err: unknown) => {
+      assert.match(String((err as Error).message), /invalid todoFrontend defs at l5\/controleEstoque4\/todoFrontend\.defs\.ts/);
+      return true;
+    },
+  );
+});
+
+test('empty validModules keeps unparsable todoFrontend fatal (l4 scan found no module)', async () => {
+  const { readCreateContext } = await loadModule();
+  g.mls.actualProject = PROJECT;
+  g.mls.stor = {
+    ...(g.mls.stor || {}),
+    files: {
+      u0: file(5, 'ghostModule', 'todoFrontend', '.defs.ts', ''),
+    },
+  };
+  await assert.rejects(
+    () => readCreateContext(),
+    (err: unknown) => {
+      assert.match(String((err as Error).message), /invalid todoFrontend defs at l5\/ghostModule\/todoFrontend\.defs\.ts/);
+      return true;
+    },
+  );
+});
+
+test('new readFrontendTodoState parse-fail branch stays English in comments and identifiers', () => {
+  const source = readFileSync(fileURLToPath(new URL('./cfeCreateShared.ts', import.meta.url)), 'utf8');
+  const start = source.indexOf('async function readFrontendTodoState');
+  const end = source.indexOf('async function setTodoFrontendStatuses');
+  assert.ok(start >= 0 && end > start, 'readFrontendTodoState block not found');
+  const excerpt = source.slice(start, end);
+  assert.match(excerpt, /ignored unparsable todoFrontend for module/);
+  assert.match(excerpt, /stale stor index or module removed by hand/);
+  const comments = [...excerpt.matchAll(/\/\/.*$|\/\*[\s\S]*?\*\//gm)].map(item => item[0]).join('\n');
+  assert.doesNotMatch(comments, /[À-ÿ]/);
+  assert.doesNotMatch(excerpt, /portuguese\s*\?/);
+  const stripped = excerpt
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '')
+    .replace(/`(?:\\.|[^`])*`/g, '')
+    .replace(/'(?:\\.|[^'\\])*'/g, '')
+    .replace(/"(?:\\.|[^"\\])*"/g, '');
+  assert.doesNotMatch(stripped, /[À-ÿ]/);
 });
 
 test('preparePageCreate builds one command per bffCall and GENERATES the l2 contracts from the bffCall (F3, no l4 .ts read)', async () => {

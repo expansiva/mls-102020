@@ -12,6 +12,7 @@
 // instantiated twice would arm two editors on the same DOM.
 
 import { registerStudioEditTool, currentEditHost, type IStudioEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
+import { resetAuraSeed, seedActiveHeader, seedAuraStateFromHost } from '/_102020_/l2/aura/studio/studioAuraSeed.js';
 import type { StudioEditor } from '/_102020_/l2/aura/studio/studioEditor.js';
 import type { StudioLiveUpdateWatcher } from '/_102020_/l2/aura/studio/studioLiveUpdateWatcher.js';
 import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
@@ -21,6 +22,23 @@ let watcher: StudioLiveUpdateWatcher | undefined;
 let armed = false;
 /** Guard against re-entrancy: loading the editor is async and the slot can publish again meanwhile. */
 let arming = false;
+
+/**
+ * Fills the Aura state from the page the app has mounted (studioAuraSeed).
+ *
+ * Gated on studio mode alone, NOT on the edit level: the state is what the studio SERVICES read (the
+ * genome knob, the project knob, the scenario panel, selectPage), and they are on screen whether or
+ * not the in-place editor is armed. It is also the FIRST thing done here, so those services never
+ * paint an empty panel before the seed lands.
+ *
+ * Synchronous by design: the panels read the state as they render, and one publish is all the
+ * ordering guarantee there is. Only the header (a stor read) is left floating.
+ */
+function syncAuraState(state: IStudioEditHost): void {
+  if (!state.studioMode) return;
+  const page = seedAuraStateFromHost(state.host);
+  if (page) void seedActiveHeader(page.project);
+}
 
 /**
  * Bridges edits made through the studio's OWN file editor (ServiceSource) to the running page.
@@ -88,6 +106,8 @@ function teardown(): void {
   armed = false;
   watcher?.stop();
   watcher = undefined;
+  // The next entry must seed again: the app region coming back can bring another page.
+  resetAuraSeed();
 }
 
 async function apply(state: IStudioEditHost | null): Promise<void> {
@@ -95,6 +115,7 @@ async function apply(state: IStudioEditHost | null): Promise<void> {
     teardown();
     return;
   }
+  syncAuraState(state);
   await syncWatcher(state);
   await syncEditor(state);
 }

@@ -29,3 +29,11 @@ void test('scan page-queue args carry moduleName', () => {
   assert.match(src, /JSON\.stringify\(cfeCreatePageArgs\(\{\s*moduleName:\s*page\.moduleName,\s*pageId:\s*page\.pageId,\s*runId\s*\}\)\)/);
   assert.doesNotMatch(src, /JSON\.stringify\(\{\s*pageId:\s*page\.pageId,\s*runId\s*\}\)/);
 });
+
+void test('scan records createContext.warnings as scan-warning and prints them on the step status', () => {
+  const src = readFileSync(path.join(HERE, 'agentCfeCreateScanL4.ts'), 'utf8');
+  assert.match(src, /recordCfeDegradation\(moduleName, 'scan-warning', warning\)/);
+  assert.match(src, /recordScanWarnings\(sweepModule \|\| requested \|\| '', createContext\.warnings\)/);
+  assert.match(src, /Warnings: \$\{warnings\.slice\(0, 8\)\.join\('; '\)\}/);
+  assert.match(src, /\$\{orphanNote\}\$\{warningTrace\}/);
+});

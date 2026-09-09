@@ -29,10 +29,11 @@ const LESS = code('classPickerPanel.less');
 /**
  * Classes the templates compose at RUNTIME, which no static scan can see.
  *
- * `class="acp-dir acp-${direction}"` produces one of these two. Listing them by hand is the price of
- * the interpolation, and it is a short list on purpose.
+ * Empty since the paste summary left the panel (it was `class="acp-dir acp-${direction}"`). It stays
+ * as the place to list such a class if one comes back: an interpolated name is invisible to the scan
+ * below, and would be reported as styled-but-never-rendered.
  */
-const DYNAMIC = ['acp-in', 'acp-out'];
+const DYNAMIC: string[] = [];
 
 /** Every class the panel can put on an element, from the templates. */
 function renderedClasses(): string[] {

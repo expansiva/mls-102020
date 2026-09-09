@@ -1,14 +1,35 @@
 /// <mls fileReference="_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2DefsPatch.ts" enhancement="_blank"/>
 
-// Parsing and patching a page .defs.ts, and reading a contract .defs.ts for field types. Pure — no
-// I/O; the caller (steps/c3-patch, steps/c1-groups) reads the file text and passes it in.
+// Reading a page .defs.ts and patching its PIPELINE. Pure — no I/O; the caller (steps/c3-patch,
+// steps/c1-groups, steps/c2-molecules) reads the file text and passes it in.
+//
+// ⚠️ THE FILE SHAPE CHANGED — THIS IS v2 (2026-09-08, measured on _102047_/l2/controleChamados, all
+// three genomes). `export const definition` of a page is no longer a JSON object carrying
+// dataBindings[]/inputs[]; it is a TEMPLATE LITERAL of prose:
+//
+//   export const definition = `page: Registrar comentário em chamado aberto
+//   actor: atendente
+//   purpose: Documentar o andamento do atendimento em um chamado aberto.
+//   uxExperience: processWizard
+//   The page extends the shared base class of this workspace: ... do not list routines.`;
+//
+// Two consequences, and together they are the whole redesign (flow.json.decisions.definitionFormat):
+//
+// 1. THERE IS NO NODE LEFT TO ANNOTATE. `molecule: { group, tag }` needed a dataBinding or an input to
+//    live on, so applyMoleculeChoices, writePageMolecule and the root `pageMolecules[]` array are gone
+//    with the object they addressed. The run's only output is pipeline[0].dependsFiles/skills — which
+//    is also the only channel that reaches the render model at all: agentCfeMaterializeGen's
+//    readContextSections turns dependsFiles into '## Context files' sections and readSections
+//    concatenates skills into its system prompt. A new pipeline KEY would not work: PipelineItem
+//    (cfeMaterializeCore.ts) is a closed interface and materialize reads exactly those two fields.
+//
+// 2. THE DEFINITION IS NEVER REWRITTEN. It is read as TEXT — the description c1 reasons over — and
+//    travels back byte for byte inside `prefix`. The only cut this file makes is around the `pipeline`
+//    value, so no run can change what the page says it is.
 //
 // mls-102020/l2/aura/helpers/moduleLanguages.ts's parseDefsSource/replaceDefsValue is the established
-// repo pattern for this (JSON.parse/JSON.stringify + splice the original text, never reserialize the
-// whole file), but it assumes exactly ONE exported const. A page .defs.ts has TWO —
-// `export const definition = {...};` (no suffix) and `export const pipeline = [...] as const;` — so
-// this file applies the same technique twice, at two independent cuts, and the module.defs.ts /
-// contract .ts (single-export) files keep using the helper above unchanged.
+// repo pattern for this kind of surgery (JSON.parse/JSON.stringify + splice the original text, never
+// reserialize the whole file) and v2 is now a plain instance of it: ONE cut, at one exported const.
 
 import { isRecord } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 
@@ -16,254 +37,148 @@ const DEFINITION_MARK = 'export const definition = ';
 const PIPELINE_MARK = 'export const pipeline = ';
 
 export interface Cm2ParsedPageDefs {
-  definitionJson: Record<string, unknown>;
+  /**
+   * The prose of `export const definition`, verbatim between its backticks. READ-ONLY: it is the
+   * description the choice reasons over, and it is never part of what gets written back.
+   */
+  definitionText: string;
   pipelineJson: unknown[];
-  /** Everything up to and including DEFINITION_MARK — header, mls fileReference, imports. */
+  /** Everything up to and including PIPELINE_MARK — the header, the whole definition, verbatim. */
   prefix: string;
-  /** From the end of the definition value through PIPELINE_MARK, verbatim (';\n\nexport const pipeline = '). */
-  betweenDefinitionAndPipeline: string;
-  /** From ' as const' to the end of the file, verbatim — nothing after pipeline is ever touched. */
+  /** From ' as const' to the end of the file, verbatim — nothing after the pipeline value is touched. */
   suffix: string;
 }
 
 /**
- * Two structural cuts, JSON.parse'd independently, with the exact text between and around them kept
- * for a byte-perfect splice back (serializePageDefsSource). Returns null when the file does not match
- * this family's fixed shape — the caller reports that instead of guessing.
+ * Which form the target's definition is in. Exported so the caller can name the v1 object shape in its
+ * error instead of reporting a generic parse failure — the two are different problems for whoever is
+ * pointing this agent at a file.
+ */
+export function cm2DefinitionKind(source: string): 'prose' | 'object' | 'none' {
+  const start = source.indexOf(DEFINITION_MARK);
+  if (start < 0) return 'none';
+  const first = source.slice(start + DEFINITION_MARK.length).trimStart().charAt(0);
+  if (first === '`') return 'prose';
+  return first === '{' || first === '[' ? 'object' : 'none';
+}
+
+/**
+ * The prose definition and the pipeline value, with the exact text around the pipeline kept for a
+ * byte-perfect splice back (serializePageDefsSource). Returns null when the file does not match this
+ * family's shape — the caller reports that (with cm2DefinitionKind) instead of guessing.
  */
 export function parsePageDefsSource(source: string): Cm2ParsedPageDefs | null {
-  const defStart = source.indexOf(DEFINITION_MARK);
-  if (defStart < 0) return null;
-  const defBodyStart = defStart + DEFINITION_MARK.length;
+  if (cm2DefinitionKind(source) !== 'prose') return null;
 
-  const pipeStart = source.indexOf(PIPELINE_MARK, defBodyStart);
+  const defBodyStart = source.indexOf(DEFINITION_MARK) + DEFINITION_MARK.length;
+  const openQuote = source.indexOf('`', defBodyStart);
+  if (openQuote < 0) return null;
+  const closeQuote = closingBacktick(source, openQuote + 1);
+  if (closeQuote < 0) return null;
+
+  const pipeStart = source.indexOf(PIPELINE_MARK, closeQuote);
   if (pipeStart < 0) return null;
   const pipeBodyStart = pipeStart + PIPELINE_MARK.length;
-
-  // The definition value has no ' as const' suffix — it ends at the last ';' before 'export const
-  // pipeline'. Whitespace/newlines are the only thing expected between that ';' and the next marker.
-  const defBodyEnd = source.lastIndexOf(';', pipeStart);
-  if (defBodyEnd <= defBodyStart) return null;
 
   const asConstIndex = source.lastIndexOf(' as const');
   if (asConstIndex < pipeBodyStart) return null;
 
-  let definitionJson: unknown;
   let pipelineJson: unknown;
   try {
-    definitionJson = JSON.parse(source.slice(defBodyStart, defBodyEnd));
     pipelineJson = JSON.parse(source.slice(pipeBodyStart, asConstIndex));
   } catch {
     return null;
   }
-  if (!isRecord(definitionJson) || !Array.isArray(pipelineJson)) return null;
+  if (!Array.isArray(pipelineJson)) return null;
 
   return {
-    definitionJson,
+    definitionText: source.slice(openQuote + 1, closeQuote),
     pipelineJson,
-    prefix: source.slice(0, defBodyStart),
-    betweenDefinitionAndPipeline: source.slice(defBodyEnd, pipeBodyStart),
+    prefix: source.slice(0, pipeBodyStart),
     suffix: source.slice(asConstIndex),
   };
 }
 
-/** Reassembles the file from the two (possibly patched) JSON values, splicing back into the original text. */
-export function serializePageDefsSource(parsed: Cm2ParsedPageDefs, definitionJson: Record<string, unknown>, pipelineJson: unknown[]): string {
-  return (
-    parsed.prefix
-    + JSON.stringify(definitionJson, null, 2)
-    + parsed.betweenDefinitionAndPipeline
-    + JSON.stringify(pipelineJson, null, 2)
-    + parsed.suffix
-  );
-}
-
-// ---- the sibling contract, read-only: field types for the regions extracted from `definition` ----
-
-export interface Cm2ContractCommand {
-  input: Record<string, string>;
-  output: Record<string, string>;
+/** The index of the backtick that closes the literal opened before `from`, skipping escapes. */
+function closingBacktick(source: string, from: number): number {
+  for (let index = from; index < source.length; index++) {
+    if (source[index] === '\\') { index++; continue; }
+    if (source[index] === '`') return index;
+  }
+  return -1;
 }
 
 /**
- * `web/contracts/{page}.defs.ts` — same two-export shape, but `definition` here is an ARRAY of bffCall
- * commands (agentChangeFrontend/spec.md "1. Contract"), not an object. Reuses the same first-cut
- * technique as parsePageDefsSource for the definition value alone; the pipeline half is irrelevant here
- * and is not parsed.
+ * Reassembles the file from the (possibly patched) pipeline value alone. The definition is not a
+ * parameter here on purpose: it travels inside `parsed.prefix` and cannot be altered by this agent.
  */
-export function parseContractTypesFromDefsSource(source: string): Record<string, Cm2ContractCommand> | null {
-  const defStart = source.indexOf(DEFINITION_MARK);
-  if (defStart < 0) return null;
-  const defBodyStart = defStart + DEFINITION_MARK.length;
-  const pipeStart = source.indexOf(PIPELINE_MARK, defBodyStart);
-  const searchEnd = pipeStart >= 0 ? pipeStart : source.length;
-  const defBodyEnd = source.lastIndexOf(';', searchEnd);
-  if (defBodyEnd <= defBodyStart) return null;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(source.slice(defBodyStart, defBodyEnd));
-  } catch {
-    return null;
-  }
-  return Array.isArray(parsed) ? commandsFromDefsArray(parsed) : null;
+export function serializePageDefsSource(parsed: Cm2ParsedPageDefs, pipelineJson: unknown[]): string {
+  return parsed.prefix + JSON.stringify(pipelineJson, null, 2) + parsed.suffix;
 }
 
-function commandsFromDefsArray(commands: unknown[]): Record<string, Cm2ContractCommand> {
-  const out: Record<string, Cm2ContractCommand> = {};
-  for (const item of commands) {
-    if (!isRecord(item) || typeof item.commandName !== 'string' || !item.commandName) continue;
-    out[item.commandName] = { input: fieldTypesFromDefsFields(item.input), output: fieldTypesFromDefsFields(item.output) };
-  }
-  return out;
-}
-
-function fieldTypesFromDefsFields(value: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!Array.isArray(value)) return out;
-  for (const field of value) {
-    if (isRecord(field) && typeof field.name === 'string' && field.name && typeof field.type === 'string') out[field.name] = field.type;
-  }
-  return out;
-}
-
-/**
- * Fallback when the contract's `.defs.ts` is not on disk (only its materialized `.ts` is — confirmed
- * on a real client project, mls-102046) — GENERATED from l4, so the shape is fixed:
- * `export interface <PascalName>Input { field: type; ... }` / `...Output { ... }` per bffCall, the
- * PascalName being the commandName with its first letter capitalized. Best-effort: a field this regex
- * cannot parse is simply absent from the map, never invented.
- */
-export function parseContractTypesFromCompiledTs(source: string): Record<string, Cm2ContractCommand> {
-  const out: Record<string, Cm2ContractCommand> = {};
-  const interfaceRe = /export interface (\w+)(Input|Output)\s*\{([^}]*)\}/g;
-  let match: RegExpExecArray | null;
-  while ((match = interfaceRe.exec(source))) {
-    const [, pascalName, side, body] = match;
-    const commandName = pascalName.charAt(0).toLowerCase() + pascalName.slice(1);
-    const fields: Record<string, string> = {};
-    for (const line of body.split('\n')) {
-      const fieldMatch = /^\s*([A-Za-z_$][\w$]*)\??:\s*([^;]+);?\s*$/.exec(line);
-      if (fieldMatch) fields[fieldMatch[1]] = fieldMatch[2].trim();
-    }
-    out[commandName] = out[commandName] || { input: {}, output: {} };
-    if (side === 'Input') out[commandName].input = fields;
-    else out[commandName].output = fields;
-  }
-  return out;
-}
-
-// ---- applying the chosen molecules back into `definition` and `pipeline` ----
-
-export interface Cm2MoleculeChoice {
-  group: string;
-  tag: string;
-}
-
-/**
- * The address prefix of a PAGE-LEVEL region — one that serves the whole page and belongs to no single
- * dataBinding (helpers/cm2Regions.ts's `page` kind). Unambiguous by construction: every binding id
- * this platform generates starts with `binding.`, so nothing can collide with `page::`.
- */
-export const CM2_PAGE_REGION_PREFIX = 'page::';
-
-/**
- * Sets or removes `molecule: { group, tag }` on exactly the dataBindings/inputs that were extracted as
- * regions this run (helpers/cm2Regions.ts) — never touches a `selection`/`route` input, which was
- * never a region and never entered `choices`. A region present in `choices` with a `null` value means
- * the gate/LLM found nothing — the field is removed (reconciliation), never written as `molecule: null`.
- *
- * A `page::<role>` region has no binding node to carry the field, so it lands in the root
- * `pageMolecules[]` array as `{ role, group, tag }` — see writePageMolecule.
- */
-export function applyMoleculeChoices(
-  definitionJson: Record<string, unknown>,
-  regionIds: string[],
-  choices: ReadonlyMap<string, Cm2MoleculeChoice | null>,
-): Record<string, unknown> {
-  const cloned = JSON.parse(JSON.stringify(definitionJson)) as Record<string, unknown>;
-  const bindings = Array.isArray(cloned.dataBindings) ? cloned.dataBindings : [];
-
-  for (const regionId of regionIds) {
-    if (!choices.has(regionId)) continue;
-    const choice = choices.get(regionId) ?? null;
-
-    if (regionId.startsWith(CM2_PAGE_REGION_PREFIX)) {
-      writePageMolecule(cloned, regionId.slice(CM2_PAGE_REGION_PREFIX.length), choice);
-      continue;
-    }
-
-    const separator = regionId.indexOf('::');
-    const bindingId = separator < 0 ? regionId : regionId.slice(0, separator);
-    const inputName = separator < 0 ? '' : regionId.slice(separator + 2);
-
-    const binding = bindings.find((item: unknown) => isRecord(item) && item.id === bindingId);
-    if (!isRecord(binding)) continue;
-    const target = inputName
-      ? (Array.isArray(binding.inputs) ? binding.inputs.find((item: unknown) => isRecord(item) && item.name === inputName) : null)
-      : binding;
-    if (!isRecord(target)) continue;
-
-    if (choice) target.molecule = { group: choice.group, tag: choice.tag };
-    else delete target.molecule;
-  }
-  return cloned;
-}
-
-/**
- * The root `pageMolecules[]` entry for one page-level role, reconciled in place.
- *
- * ⚠️ ROOT, not nested under `presentation` (which is where `categoryRef` lives). `presentation` is
- * agentChangeFrontend's object; putting this agent's output inside it would leave it exposed to a
- * partial rewrite of that object by its owner. At the root, `pageMolecules` is unambiguously this
- * agent's output — the same clarity of ownership `molecule` has inside a binding, which had no
- * alternative location.
- *
- * An ARRAY with a `role`, not one field per role (`moleculeFeedback`, `moleculeConfirmation`, ...):
- * the destructive-confirmation and workflow-progress roles are already known gaps (flow.json.knownGaps),
- * and a role vocabulary grows without changing the shape. The vocabulary is CLOSED and extended
- * deliberately — today it holds `feedback` only.
- *
- * `definition` carries no `satisfies` (unlike `pipeline`, which is `as const`), so a new root key
- * cannot break the generated project's typecheck.
- */
-function writePageMolecule(definitionJson: Record<string, unknown>, role: string, choice: Cm2MoleculeChoice | null): void {
-  if (!role) return;
-  const existing = Array.isArray(definitionJson.pageMolecules) ? definitionJson.pageMolecules : [];
-  // Everything but this role survives untouched — a rerun reconciles one role without dropping another.
-  const kept = existing.filter(item => !isRecord(item) || item.role !== role);
-
-  if (!choice) {
-    // No molecule for this role: drop the entry, and the whole array when it was the last one — never
-    // an empty `pageMolecules: []` left behind, and never `{ role, group: null }`.
-    if (kept.length) definitionJson.pageMolecules = kept;
-    else delete definitionJson.pageMolecules;
-    return;
-  }
-  definitionJson.pageMolecules = [...kept, { role, group: choice.group, tag: choice.tag }];
-}
+// ---- equipping the pipeline with the chosen molecules ----
 
 export interface Cm2PipelineAddition {
-  /** Import reference to the group's usage.ts (level 3), or '' when the catalog publishes none. */
+  /** PIPELINE-form reference to the group's usage.ts (level 3), or '' when the catalog publishes none. */
   usageRef: string;
-  /** Import references to the chosen molecules' own component files. */
+  /** PIPELINE-form references to the chosen molecules' own component files. */
   componentFiles: string[];
 }
 
-/** Appends (deduplicated, order-stable) to `pipeline[0].skills`/`dependsFiles` — every other entry is untouched. */
-export function applyPipelineSkills(pipelineJson: unknown[], additions: Cm2PipelineAddition[]): unknown[] {
-  if (!additions.length) return pipelineJson;
+/**
+ * Is this dependsFiles entry one THIS AGENT put there? A molecule component always lives at
+ * `l2/molecules/<groupFolder>/<shortName>.ts` of the catalog project (cm2Types.cm2ComponentReference),
+ * and nothing else a page depends on has that shape: the generator's own entries are
+ * `web/shared/<page>Dts.txt` and `l2/designSystem.ts`.
+ */
+export function isCm2MoleculeDependsFile(reference: string): boolean {
+  return /(?:^|\/)l2\/molecules\/[^/]+\/[^/]+\.ts$/u.test(reference);
+}
+
+/**
+ * Is this skills entry one THIS AGENT put there? A group usage contract always lives at
+ * `l2/aura/molecules/skills/<group>/usage.ts` (what the catalog publishes as `usageContract`); the
+ * generator's own skills are `l2/agentChangeFrontend/skills/*.ts` and `l4/collabux/templates/*.md`.
+ */
+export function isCm2UsageSkill(reference: string): boolean {
+  return /(?:^|\/)l2\/aura\/molecules\/skills\/[^/]+\/usage\.ts$/u.test(reference);
+}
+
+/**
+ * Rewrites `pipeline[0].skills`/`dependsFiles` with the molecules chosen THIS RUN — every other entry
+ * of every other item is untouched.
+ *
+ * ⚠️ IT PRUNES BEFORE IT ADDS (flow.json.decisions.pipelineReconciliation). Appending was enough while
+ * the annotation lived on the bindings and the pipeline was a secondary index of it; now the pipeline
+ * is the whole output, so a rerun whose choice CHANGED would otherwise leave the previous molecule in
+ * dependsFiles forever and hand the render model two components for one region. Only this agent's own
+ * entries are dropped, recognized by shape (isCm2MoleculeDependsFile / isCm2UsageSkill) — never by
+ * position, and never anything the generator wrote.
+ *
+ * ⚠️ AND IT SORTS what it adds, so a rerun that chose the same set writes nothing even when c1 returned
+ * the groups in another order. Without that the byte-equality check in c3-patch would fire on ordering
+ * alone and the run would report a change it did not make.
+ */
+export function applyPipelineMolecules(pipelineJson: unknown[], additions: Cm2PipelineAddition[]): unknown[] {
+  const usageRefs = new Set<string>();
+  const componentFiles = new Set<string>();
+  for (const addition of additions) {
+    if (addition.usageRef) usageRefs.add(addition.usageRef);
+    for (const file of addition.componentFiles) componentFiles.add(file);
+  }
+
   return pipelineJson.map((entry, index) => {
     if (index !== 0 || !isRecord(entry)) return entry;
     const patched = { ...entry };
-    const skills = new Set(Array.isArray(patched.skills) ? patched.skills.filter((item): item is string => typeof item === 'string') : []);
-    const dependsFiles = new Set(Array.isArray(patched.dependsFiles) ? patched.dependsFiles.filter((item): item is string => typeof item === 'string') : []);
-    for (const addition of additions) {
-      if (addition.usageRef) skills.add(addition.usageRef);
-      for (const file of addition.componentFiles) dependsFiles.add(file);
-    }
-    patched.skills = [...skills];
-    patched.dependsFiles = [...dependsFiles];
+    patched.skills = reconcile(patched.skills, isCm2UsageSkill, usageRefs);
+    patched.dependsFiles = reconcile(patched.dependsFiles, isCm2MoleculeDependsFile, componentFiles);
     return patched;
   });
+}
+
+/** Foreign entries first, in their original order; then this run's own, sorted and deduplicated. */
+function reconcile(current: unknown, isOurs: (reference: string) => boolean, ours: ReadonlySet<string>): string[] {
+  const existing = Array.isArray(current) ? current.filter((item): item is string => typeof item === 'string') : [];
+  const kept = existing.filter(reference => !isOurs(reference));
+  return [...kept, ...[...ours].sort()];
 }

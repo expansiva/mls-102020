@@ -2,7 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cm2ContractFileFromTarget, cm2ParseEntry, cm2StripMention } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Entry.js';
+import { cm2ParseEntry, cm2StripMention } from '/_102020_/l2/aura/molecules/agentChooseMolecules2/helpers/cm2Entry.js';
 
 void test('strips the @@ mention prefix, case-insensitively', () => {
   assert.equal(cm2StripMention('@@agentChooseMolecules2 {"a":1}'), '{"a":1}');
@@ -41,13 +41,4 @@ void test('requires catalogProject as a number', () => {
 void test('requires target, and rejects a materialized .ts instead of .defs.ts', () => {
   assert.notEqual(cm2ParseEntry('{"catalogProject": 102040}').error, '');
   assert.notEqual(cm2ParseEntry('{"catalogProject": 102040, "target": "_102046_/l2/a/b/c"}').error, '');
-});
-
-void test('derives the sibling contract path from a device/layout page path', () => {
-  const contract = cm2ContractFileFromTarget({ project: 102046, level: 2, folder: 'buildFlowFsm/web/desktop/page11', shortName: 'approveChangeOrder', extension: '.defs.ts' });
-  assert.deepEqual(contract, { project: 102046, level: 2, folder: 'buildFlowFsm/web/contracts', shortName: 'approveChangeOrder', extension: '.defs.ts' });
-});
-
-void test('returns null when the target has no "web" segment to anchor on', () => {
-  assert.equal(cm2ContractFileFromTarget({ project: 102046, level: 2, folder: 'buildFlowFsm/l4stuff', shortName: 'x', extension: '.defs.ts' }), null);
 });

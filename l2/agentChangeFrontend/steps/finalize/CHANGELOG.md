@@ -2,6 +2,18 @@
 
 # Changelog
 
+- 2026-09-07: compile gate by capability. Monaco when `mls.l2.typescript.compile` exists (Studio
+  path unchanged). Otherwise one `npx tsc -p tsconfig.frontend.json --noEmit`; diagnostics outside
+  `l2/<module>/` are filtered. Missing compiler is `tscGate: 'unavailable'` — a state, never a
+  clean compile. `compileAndGetErrors` returns `null` when Monaco is absent (`[]` still means
+  compiled and clean). `cf-run.json` › `gate.path` / `gate.trace`; `runNN_changefrontend.json` ›
+  `tscGate: 'ran' | 'unavailable'` (omitted on Monaco). Blocking policy unchanged
+  (`MODULE-COMPILE-FAILED` after the existing repair rounds).
+
+- 2026-09-07: `persistCfeRunSummary` splits `kind: 'scan-warning'` out of `degradations[]` into
+  `scanWarnings[]` on `runNN_changefrontend.json` so an orphan/unparsable todo of another module
+  stays informational (CB parity) and does not flip the verdict to `degraded`.
+
 - 2026-08-26 (gates declaram) — closing gate still compiles `.test.ts` (detector stays loud) but
   those findings are `declared`, never `MODULE-COMPILE-FAILED`. Only shipped `.ts` errors block.
 

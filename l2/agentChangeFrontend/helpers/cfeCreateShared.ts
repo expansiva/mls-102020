@@ -5418,7 +5418,15 @@ async function readFrontendTodoState(project: number, validModules: Set<string>)
     if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
     if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
     const parsed = parseDefsSource(String(await file.getContent()));
-    if (!parsed) { errors.push(`invalid todoFrontend defs at l5/${String(file.folder || '')}/todoFrontend.defs.ts`); continue; }
+    if (!parsed) {
+      const moduleName = String(file.folder || '');
+      if (validModules.size > 0 && !validModules.has(moduleName)) {
+        warnings.push(`ignored unparsable todoFrontend for module '${moduleName}' (no l4 present); stale stor index or module removed by hand`);
+        continue;
+      }
+      errors.push(`invalid todoFrontend defs at l5/${moduleName}/todoFrontend.defs.ts`);
+      continue;
+    }
     const data = parsed.data;
     const moduleName = readString(data.moduleName) || String(file.folder || '');
     if (validModules.size > 0 && moduleName && !validModules.has(moduleName)) {

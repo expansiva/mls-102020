@@ -259,3 +259,74 @@ test('an item type with no cross-file dependency loads nothing', async () => {
   await studio.preloadItemTypecheckDeps('l2_contract', CONTRACT_TS, null);
   assert.deepEqual(stub.loaded, []);
 });
+
+test('compileAndGetErrors returns null when Monaco compile is absent, [] when present and clean', async () => {
+  const studio = await loadModule();
+  studio.releaseBorrowedModelScope();
+
+  g.mls = {
+    actualProject: PROJECT,
+    events: { addEventListener() { /* noop */ }, removeEventListener() { /* noop */ }, dispatch() { /* noop */ } },
+    stor: { files: {}, getKeyToFile: () => 'k' },
+    editor: {},
+    l2: {},
+  };
+  assert.equal(studio.monacoCompileAvailable(), false);
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null);
+  assert.equal(await studio.compileMlsPathAndGetErrors(`_${PROJECT}_/l2/${FOLDER}/itemA.ts`), null);
+
+  installStub();
+  assert.equal(studio.monacoCompileAvailable(), true);
+  const clean = await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA');
+  assert.deepEqual(clean, []);
+});
+
+test('storDiskPath calls diskPath as a method (host class, private field)', async () => {
+  const studio = await loadModule();
+  class HostStor {
+    readonly #base = '/data/mls-base';
+    diskPath(info: { project: number; shortName: string }): string {
+      return `${this.#base}/mls-${info.project}/${info.shortName}.ts`;
+    }
+  }
+  const info = { project: 102047, level: 2, folder: 'mod/web/shared', shortName: 'catalog', extension: '.ts' };
+  g.mls = { stor: new HostStor() };
+  assert.equal(studio.storDiskPath(info), '/data/mls-base/mls-102047/catalog.ts');
+  g.mls = { stor: {} };
+  assert.equal(studio.storDiskPath(info), null);
+});
+
+test('compileModuleViaProjectTsc uses injected runner and does not sniff the host', async () => {
+  const studio = await loadModule();
+  const src = await import('node:fs').then(fs => fs.readFileSync(new URL('./cfeMaterializeStudio.ts', import.meta.url), 'utf8'));
+  assert.match(src, /const childProcessSpec = 'node:child_process'/);
+  assert.match(src, /await import\(childProcessSpec\)/);
+  assert.match(src, /tsconfig\.frontend\.json/);
+  assert.doesNotMatch(src, /typeof Deno/);
+  assert.doesNotMatch(src, /"Deno" in globalThis/);
+  assert.doesNotMatch(src, /user-agent/i);
+
+  const info = { project: 102047, level: 2, folder: 'controleEstoque4/web/desktop/page31', shortName: 'stockMovementCatalogue', extension: '.ts' };
+  class HostStor {
+    diskPath() { return '/Volumes/x/collab/mls-base/mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts'; }
+  }
+  g.mls = { stor: new HostStor() };
+  const tscOut = "mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts(42,729): error TS2367: This comparison appears to be unintentional because the types '\"idle\" | \"success\" | \"error\"' and '\"loading\"' have no overlap.\nmls-102051/l5/runtimeConfig.ts(1,1): error TS2322: Type '\"x\"' is not assignable to type 'RuntimeConfig'.";
+  const ran = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => tscOut);
+  assert.equal(ran.trace.path, 'project-tsc');
+  assert.equal(ran.trace.rawDiagnostics, 2);
+  assert.equal(ran.trace.afterFilter, 1);
+  assert.equal(ran.errors.length, 1);
+  assert.match(ran.errors[0], /stockMovementCatalogue\.ts: TS2367/);
+
+  const missingSpawn = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => null);
+  assert.equal(missingSpawn.trace.path, 'unavailable');
+  assert.equal(missingSpawn.trace.reason, 'no-child-process');
+  assert.deepEqual(missingSpawn.errors, []);
+
+  g.mls = { stor: {} };
+  const missingDisk = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => tscOut);
+  assert.equal(missingDisk.trace.path, 'unavailable');
+  assert.equal(missingDisk.trace.reason, 'no-diskPath');
+  assert.deepEqual(missingDisk.errors, []);
+});

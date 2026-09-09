@@ -293,7 +293,8 @@ window['collabActualLevel']=${level};
 window['mls']=window['mls']||{};
 window['globalVariation']=window['globalVariation']||0;
 window['originalDefine']=customElements.define.bind(customElements);
-customElements.define=function(n,c,o){if(!customElements.get(n))return window['originalDefine'](n,c,o);};
+window['__defineGuardWarned']=window['__defineGuardWarned']||{};
+customElements.define=function(n,c,o){if(!customElements.get(n))return window['originalDefine'](n,c,o);if(!window['__defineGuardWarned'][n]){window['__defineGuardWarned'][n]=true;console.warn('[preview] customElements.define ignored: "'+n+'" is already registered');}};
 </script>`;
     }
 
@@ -528,9 +529,14 @@ customElements.define=function(n,c,o){if(!customElements.get(n))return window['o
                 window['preview'] = window['preview']  ? window['preview']  : parent.preview ? parent.preview : top['preview'];
 
                 (window)['originalDefine'] = customElements.define.bind(customElements);
+                (window)['__defineGuardWarned'] = (window)['__defineGuardWarned'] || {};
                     customElements.define = (name, constructor, options) => {
                     if (!customElements.get(name)) {
                         return (window)['originalDefine'](name, constructor, options);
+                    }
+                    if (!(window)['__defineGuardWarned'][name]) {
+                        (window)['__defineGuardWarned'][name] = true;
+                        console.warn('[preview] customElements.define ignored: "' + name + '" is already registered');
                     }
                 };
 

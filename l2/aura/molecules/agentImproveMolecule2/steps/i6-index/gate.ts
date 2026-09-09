@@ -13,6 +13,7 @@
 import { ImGateResult, imGateFail, imGateOk } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { slotIsExercised } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
 import { countImports } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i6-index/indexPlan.js';
+import { contractItemsUsed, contractSpellings, usageContractItems } from '/_102020_/l2/aura/molecules/shared/usageContract.js';
 
 export interface ImIndexGateInputs {
   playgroundChanged: boolean;
@@ -39,6 +40,8 @@ export interface ImIndexGateInputs {
   tag: string;
   /** Only the slots this run added; pre-existing gaps are not this run's business. */
   addedSlots: string[];
+  /** The group's usage skill text (or the loader's degraded empty string). Empty skips the check. */
+  groupUsageSkill?: string;
 }
 
 function issue(code: string, message: string): string {
@@ -90,6 +93,32 @@ export function runImIndexGate(inputs: ImIndexGateInputs): ImGateResult {
   // Nothing in this step justifies losing content: it adds an import and extends a card.
   if (after.length < inputs.before.length * 0.9) {
     errors.push(issue('shrunk', `the index lost ${inputs.before.length - after.length} characters — this step adds to the page, it does not rewrite it`));
+  }
+
+  // A DIFFERENT question from the other three index gates (n7-index/s3-indexts/v4-index): they ask
+  // "does the page demonstrate the group's contract", which is right for a step that writes the
+  // whole page. This step edits one card, so it asks "did the edit REMOVE something the page
+  // already demonstrated" — a contract regression, not a coverage floor.
+  //
+  // ⚠️ GRANULARITY IS THE PAGE, NOT THE CARD. Identifying which card owns which attribute would mean
+  // parsing Lit structure, which is fragile and not worth it. Measured consequence: if `data-variant`
+  // appears on 3 cards and this edit drops it from ONE, the page still carries the item elsewhere and
+  // this check does NOT fire. That is a known limitation, not a bug — the next person to read this
+  // will otherwise assume it is.
+  const contract = usageContractItems(inputs.groupUsageSkill || '');
+  if (contract.size) {
+    const stillUsed = new Set(contractItemsUsed(after, inputs.groupFolder, contract));
+    const removed = contractItemsUsed(inputs.before, inputs.groupFolder, contract).filter(item => !stillUsed.has(item));
+    if (removed.length) {
+      const spellings = contractSpellings(inputs.groupUsageSkill || '');
+      const names = removed.map(item => spellings.get(item) || item);
+      errors.push(
+        issue(
+          'contract_regressed',
+          `this edit removed from the page: ${names.join(', ')} — items of the group's usage contract the page already demonstrated. Restore every attribute and event binding the card already carried; filling a slot must not cost it its contract layer`,
+        ),
+      );
+    }
   }
 
   return errors.length ? imGateFail(...errors) : imGateOk();

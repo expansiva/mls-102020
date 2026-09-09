@@ -40,6 +40,19 @@ void test('CF chokepoint is l4/<mod>/pipeline/trace/l2 and never a bare trace fo
   assert.equal(isCfeMaterializeVerifyFolder('outro/pipeline/trace/l2/frontend-materialize-verify', 'todo'), false);
 });
 
+void test('PipelineRunSummary carries scanWarnings as an informational field', () => {
+  const src = readFileSync(new URL('./cfePipelineTrace.ts', import.meta.url), 'utf8');
+  assert.match(src, /scanWarnings\?: string\[\]/);
+  assert.match(src, /orphan\/unparsable todo of a module outside this run/);
+});
+
+void test('PipelineRunSummary records tscGate as ran or unavailable, omitted on monaco', () => {
+  const src = readFileSync(new URL('./cfePipelineTrace.ts', import.meta.url), 'utf8');
+  assert.match(src, /tscGate\?: 'ran' \| 'unavailable'/);
+  const finalize = readFileSync(new URL('../steps/finalize/agentCfeCreateFinalize.ts', import.meta.url), 'utf8');
+  assert.match(finalize, /\.\.\.\(tscGate \? \{ tscGate \} : \{\}\)/);
+});
+
 void test('describeAgentCommand keeps /fast and /rebuild from longMemory', () => {
   assert.equal(describeAgentCommand({ fastMode: 'true', cliCommand: 'rebuild-all' }), '/fast /rebuild all');
   assert.equal(describeAgentCommand({ cliCommand: 'rebuild-defs' }), '/rebuild defs');

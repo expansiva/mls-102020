@@ -17,6 +17,7 @@ import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { skill as moleculeGenerationSkill } from '/_102020_/l2/aura/molecules/skills/moleculeGeneration.js';
 import { skill as tokenVocabularySkill } from '/_102020_/l2/aura/molecules/skills/tokenVocabulary.js';
 import { canonicalFallbackRows } from '/_102020_/l2/aura/molecules/skills/canonicalFallbacks.js';
+import { libraryFallbackRows } from '/_102020_/l2/aura/molecules/skills/libraryFallbacks.js';
 import { contractFingerprint } from '/_102020_/l2/aura/molecules/shared/contractFingerprint.js';
 import {
   compileStorLess,
@@ -93,12 +94,21 @@ export function createAgent(): IAgentAsync {
 // step EDITS a sheet that already exists, and the rule of this agent is the DELTA — rewriting the
 // fallback of a role the sheet already reads is an unrequested visual change, however "canonical" the
 // new value is. The table is for a role the edit INTRODUCES.
+//
+// "Introducing" a role means the sheet gains an appearance it did not have. Renaming the token of an
+// appearance the sheet ALREADY paints is a migration, not an introduction: there the fallback to
+// write is the one the old `--ml-*` token carried, never the canonical value. See
+// skills/libraryFallbacks for the table a migration reads instead.
 function canonicalFallbackTable(): string {
   return [
     '#### The canonical fallback of each role — for a role you are INTRODUCING',
     '',
     'For a role the sheet ALREADY reads, keep the fallback the sheet already uses — changing it is an',
     'unrequested visual change. Use the canonical value only for a role you are INTRODUCING.',
+    '',
+    '"Introducing" a role means the sheet gains an appearance it did not have. Renaming the token of an',
+    'appearance the sheet ALREADY paints is a migration, not an introduction: there the fallback to',
+    'write is the one the old `--ml-*` token carried, never the canonical value.',
     '',
     'When you do introduce one, write the fallback exactly as listed instead of inventing a neutral:',
     'two sheets that pick their own values disagree on what the library looks like with no design',
@@ -108,6 +118,32 @@ function canonicalFallbackTable(): string {
     'fallback when you read a variant, unless the render needs a visibly different one.',
     '',
     canonicalFallbackRows(),
+  ].join('\n');
+}
+
+// The LIBRARY's ledger — what the sheets of mls-102040 ALREADY read for each role, as opposed to the
+// template's value above. A MIGRATION needs this one: every role is technically "introduced" in a
+// migrated sheet, but the fallback to write is not the template's — it is whatever the library
+// already settled on, so the migration causes zero visual change. See skills/libraryFallbacks for the
+// run that measured why (a focus border lost its highlight when a retry used the template's value
+// for `--focus-ring` instead of what the library already reads).
+function libraryFallbackTable(): string {
+  return [
+    '#### What the library already reads — the ledger',
+    '',
+    "The table above is the template's value. This one is what the 184 sheets of the",
+    'library ALREADY read for each role. When both exist, the ledger wins: it is what',
+    'the library looks like today with no design system.',
+    '',
+    'Renaming a token is not introducing a concept. If the sheet already painted this',
+    "with an `--ml-*` token, keep that value and only change the NAME.",
+    '',
+    'And when the role you want is in the ledger with a DIFFERENT value than this',
+    'sheet uses, that site does not migrate: leave it on its `--ml-*` token. A role is',
+    'one value across the library — a site that cannot honour that is a holdout, not a',
+    'site to repaint.',
+    '',
+    libraryFallbackRows(),
   ].join('\n');
 }
 
@@ -208,6 +244,7 @@ async function beforePromptStep(
     .split('{{moleculeGeneration}}').join(moleculeGenerationSkill)
     .split('{{tokenVocabulary}}').join(tokenVocabularySkill)
     .split('{{canonicalFallbacks}}').join(canonicalFallbackTable())
+    .split('{{libraryFallbacks}}').join(libraryFallbackTable())
     .split('{{moleculeBase}}').join(moleculeBase || '(base class source unavailable)')
     .split('{{inheritance}}').join(renderInheritance(ctx, choice))
     .split('{{files}}').join(renderFiles(ctx, triage, choice))

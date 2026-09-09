@@ -140,3 +140,59 @@ test('an index that shrank is refused — this step adds, it does not rewrite', 
   const result = runImIndexGate(inputs({ after: INDEX.slice(0, 200) }));
   assert.ok(result.errors.some(e => /^shrunk: /.test(e)));
 });
+
+// ---- contract_regressed: a DIFFERENT question from the other three index gates. Those ask "does
+// the page demonstrate the contract" (right for a step writing the whole page); this asks "did the
+// edit REMOVE something the page already had" (right for a step editing one card). ----
+
+const USAGE_SKILL = `
+## Properties
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| \`data-variant\` | \`string\` | \`'primary'\` | Visual tone |
+
+## Events
+
+| Event | Detail | Description |
+|-------|--------|-------------|
+| \`action\` | \`{}\` | Fired when the button is clicked |
+`;
+
+const WITH_CONTRACT = INDEX.replace(
+  '<groupviewtable--ml-data-table>',
+  '<groupviewtable--ml-data-table data-variant="secondary" @action=${() => {}}>',
+);
+
+test('removing a contract item the page already demonstrated is refused, naming the real spelling', () => {
+  const after = WITH_CONTRACT.replace(' data-variant="secondary"', '');
+  const result = runImIndexGate(inputs({ before: WITH_CONTRACT, after, groupUsageSkill: USAGE_SKILL }));
+  assert.equal(result.ok, false);
+  const found = result.errors.find(e => e.startsWith('contract_regressed'));
+  assert.ok(found);
+  assert.ok(found?.includes('data-variant'));
+  assert.ok(!found?.includes('datavariant'), 'must print the real attribute name, not the normalized key');
+});
+
+test('an edit that only adds (fills a slot) is not a regression', () => {
+  const after = WITH_CONTRACT.replace('</groupviewtable--ml-data-table>', '<Detail>x</Detail></groupviewtable--ml-data-table>');
+  const result = runImIndexGate(inputs({ before: WITH_CONTRACT, after, addedSlots: ['Detail'], groupUsageSkill: USAGE_SKILL }));
+  assert.ok(!result.errors.some(e => e.startsWith('contract_regressed')));
+});
+
+test('no usage skill (or empty) never triggers the check', () => {
+  const after = WITH_CONTRACT.replace(' data-variant="secondary"', '');
+  const result = runImIndexGate(inputs({ before: WITH_CONTRACT, after, groupUsageSkill: '' }));
+  assert.ok(!result.errors.some(e => e.startsWith('contract_regressed')));
+});
+
+test('KNOWN LIMITATION: removing a contract item from one card does not fire while another card still carries it', () => {
+  // Two cards, both carrying data-variant; the edit drops it from only the SECOND.
+  const twoCards = WITH_CONTRACT.replace(
+    '</groupviewtable--ml-data-table>',
+    '</groupviewtable--ml-data-table>\n      <groupviewtable--ml-view-table data-variant="secondary"></groupviewtable--ml-view-table>',
+  );
+  const after = twoCards.replace('<groupviewtable--ml-view-table data-variant="secondary">', '<groupviewtable--ml-view-table>');
+  const result = runImIndexGate(inputs({ before: twoCards, after, groupUsageSkill: USAGE_SKILL }));
+  assert.ok(!result.errors.some(e => e.startsWith('contract_regressed')));
+});

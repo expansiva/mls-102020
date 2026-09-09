@@ -387,6 +387,7 @@ test('renderUiScenaryMembers is the same block the full scaffold emits', () => {
 test('shared LLM fallback template is the scaffold when it builds, else the scenary block', () => {
   const defs = definitionWithScenary();
   const template = sharedLlmFallbackTemplate(SHARED_PATH, defs, CONTRACT);
+  assert.ok('mode' in template);
   assert.equal(template.mode, 'scaffold');
   assert.equal(template.code, generateSharedScaffold(SHARED_PATH, defs, CONTRACT).code);
 });
