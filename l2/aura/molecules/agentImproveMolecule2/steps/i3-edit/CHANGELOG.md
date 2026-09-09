@@ -86,6 +86,43 @@ não foi tocado.
 - **o ledger reproduz o gabarito**: confrontados os 41 sítios `--ds-*` das duas moléculas consertadas
   à mão, 39 coerentes, 0 conflitantes, 2 inéditos (`--input-bg`, que o piloto estreou).
 
+### Segunda rodada, mesmo dia — o run confirmou a semântica e quebrou na mecânica
+
+O piloto foi refeito com o 102020 publicado. **Os três defeitos semânticos sumiram**, medido sobre o
+mapeamento que as duas runs queriam aplicar: **0 fallbacks alterados** (eram 5) e **10 dos 11
+mapeamentos idênticos ao gabarito**, incluindo `--transition-fast` e `--text-strong`, que só o ledger
+explica — antes davam `transition-normal` e `text-default`. A prova mais limpa é o `ml-currency-input`:
+a tentativa 1 colapsou a borda de foco e o anel em `--focus-ring`, o gate disparou, e a tentativa 2
+**deixou a borda no `--ml-outline-focus`** em vez de unificar valor. Foi exatamente o conserto que a
+mensagem nova ensina.
+
+Nenhuma das duas runs gravou, porém: as duas morreram em erro de aplicação de edição, e os três
+defeitos são todos consequência da regra de granularidade escrita acima.
+
+- **`find` não único** — `background: var(--ml-surface, #ffffff);` aparece em dois blocos do
+  `ml-currency-input`. "Cite só a linha que muda" briga com a exigência de unicidade;
+- **`find`s sobrepostos** — no `ml-enter-money-br`, o edit 7 reescreveu a linha de `font-family` que
+  o edit 8 usava como âncora. Os edits são aplicados em sequência, então o 8 não achou mais o texto;
+- **não havia como dizer "este sítio fica"** — a mensagem do gate manda *"leave it on its `--ml-*`
+  token"*, e a LLM expressou isso como um edit com `content` igual ao `find`, rejeitado como no-op.
+  A mensagem criou uma obrigação sem dar meio de cumpri-la — a mesma classe de defeito que ela
+  mesma consertou, um nível acima.
+
+**A regra certa está provada pelo run que funcionou em 08/09:** ele ancorou cada `replace` na LINHA
+DO SELETOR (`.ml-helper {` e as declarações abaixo). Seletor é único na folha, blocos de regra não se
+sobrepõem, e o recuo da âncora é o recuo certo — foi por isso que aquela folha saiu com a indentação
+intacta. O `prompt.md` passou a exigir isso, mais unicidade, não-sobreposição, e **nenhum edit para
+um sítio que vira holdout**; a mensagem do gate ganhou o parêntese *"(emit no edit for that site)"*.
+
+⚠️ **O Studio e o `mls-102040-temp` local são cópias diferentes.** O `context.json` deste run mostra
+que o agente leu a folha ORIGINAL, não migrada, enquanto o `-temp` local guardava o gabarito feito à
+mão. Um aceite que compare `mls-102040` com `mls-102040-temp` sem antes descer a saída do run
+**passa falsamente**.
+
+⚠️ **Sobrou uma oscilação que nenhum gate pega:** o fundo do `.ml-input-container` virou `--input-bg`
+numa molécula e `--surface-bg` na outra. `--input-bg` não está no ledger — estreou no conserto à mão
+— e onde o ledger não ancora, a escolha de papel oscila.
+
 **Ainda aberto:** o aceite do controle exige refazer o piloto no Studio e bater 41 migrados / 12
 holdouts / 0 fallback alterado / formatação idêntica. Nada disto prova que a LLM OBEDECE — prova que
 o gate reprova certo, que o ledger está certo e chega no gabarito, e que a prosa chegou ao prompt.

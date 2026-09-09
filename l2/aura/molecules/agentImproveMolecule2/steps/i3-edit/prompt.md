@@ -83,9 +83,20 @@ If the edit touches the `.less`, it goes through tokens — and the vocabulary i
 tables in the group contract above say *which* tokens this molecule already uses; the skill
 below says *how* to choose and what is forbidden.
 
-A token migration is a rename: one `replace` per declaration, quoting just the line that changes.
-Never send the whole rule block or the whole sheet — a block anchored at the root selector is
-written back at the anchor's own depth, and a body you sent flush comes out flush.
+A token migration is a rename: one `replace` per RULE BLOCK, anchored at its selector line —
+`.ml-helper {` and the declarations under it. Never send the whole sheet, and never anchor at the
+root selector: a block written back at the anchor's own depth means a body you sent flush comes out
+flush.
+
+Every `find` must occur exactly once in the sheet, and no two edits may quote overlapping text. A
+declaration alone is often NOT unique — `background: var(--ml-surface, #ffffff);` can sit in two
+blocks — and the selector line above it is what makes it unique. Overlap is the other trap: each
+edit is applied before the next one is matched, so a line an earlier edit already rewrote is no
+longer there for a later one to find.
+
+A site you decide to keep on its `--ml-*` token gets NO edit at all. Never send an edit whose
+`content` equals its `find` — it changes nothing and is refused. Say why the site stays in the
+summary instead.
 
 {{tokenVocabulary}}
 
