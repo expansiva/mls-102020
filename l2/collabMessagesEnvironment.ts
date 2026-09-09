@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/collabMessagesEnvironment.ts" enhancement="_blank"/> 
  
 import { CollabMessagesEnvironment, CollabProgramMenu, CollabProgramMenuItem } from '/_102036_/l2/environmentContract.js';
-import { IAgentMeta, IOpenClawIntegration, Thread, ToolsBeforeSendMessage, ExecutionContext, TaskData, Message } from '/_102036_/l2/shared/interfaces.js';
+import { IAgentMeta, ExecutionContext, TaskData, Message } from '/_102036_/l2/shared/interfaces.js';
 
 import { loadAgent, executeBeforePrompt } from '/_102027_/l2/aiAgentOrchestration.js';
 import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
@@ -10,17 +10,11 @@ import { createModel } from '/_102027_/l2/libModel.js';
 import { collabImport } from '/_102027_/l2/collabImport.js';
 import { setAuraState, saveAuraProject, getAuraState, type IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
 import { notificationsRuntime } from '/_102025_/l2/notificationsRuntime.js';
+import { collabMessagesEnvironmentBase } from '/_102025_/l2/collabMessagesEnvironmentBase.js';
 
 export const collabEnvironment: CollabMessagesEnvironment = {
-    getAgents,
-    getIntegrationsOpenClaw,
-    setIntegrationsOpenClaw: (integrations: IOpenClawIntegration[]) => setIntegrationsOpenClaw(integrations),
+    ...collabMessagesEnvironmentBase,
     notifications: notificationsRuntime,
-    bots: {
-        getArgsToBots,
-        getBotContextVarsBeforeMessageSend,
-        getBotContextVarsBeforeMessageSend2
-    },
     agents: {
         generateSvgAvatar: (threadId: string, userId: string, promptToAvatar: string) => generateSvgAvatar(threadId, userId, promptToAvatar),
         executeAgent: (agent: string, context: ExecutionContext) => executeAgent(agent, context),
@@ -238,84 +232,6 @@ async function openProgram(item: CollabProgramMenuItem & { project?: number; mod
     mls.events.fire([mls.actualLevel], ['FileAction'], JSON.stringify(params), 0);
 }
 
-async function getAgents(): Promise<IAgentMeta[]> {
-
-    const keys = Object.keys(mls.stor.files);
-    const ret: IAgentMeta[] = [];
-    for await (const k of keys) {
-        if (k.indexOf('agent') < 0) continue;
-        const file = mls.stor.files[k];
-        const path = `/_${file.project}_${file.folder ? file.folder + '/' : ''}${file.shortName}`;
-        if (file.extension !== '.ts' || !file.shortName.startsWith('agent')) continue;
-        try {
-            const mdl = await import(path);
-            if (!mdl.createAgent) continue;
-            const agent = mdl.createAgent() as IAgentMeta
-            ret.push(agent);
-        } catch (err) {
-            console.info(err)
-            continue;
-        }
-    }
-    return ret;
-
-}
-
-async function getIntegrationsOpenClaw(): Promise<IOpenClawIntegration[]> {
-
-    if (mls.l5.actualOrg === undefined) return [];
-    const actualOrgDetails = getOrgDetails(mls.l5.actualOrg);
-    if (!actualOrgDetails || !actualOrgDetails.value) return [];
-    try {
-        const data = JSON.parse(actualOrgDetails.value);
-        return data.integrations || []
-
-    } catch (err: any) {
-        throw new Error(err.message)
-    }
-
-}
-
-async function setIntegrationsOpenClaw(integrations: IOpenClawIntegration[]): Promise<void> {
-
-    if (mls.l5.actualOrg === undefined) throw new Error(`Invalid org actual: ${mls.l5.actualOrg}`);
-
-    const actualOrgDetails = getOrgDetails(mls.l5.actualOrg);
-    if (!actualOrgDetails) throw new Error(`Invalid org details: ${mls.l5.actualOrg}`);
-
-    try {
-        let data: any = {};
-
-        if (actualOrgDetails.value) {
-            data = JSON.parse(actualOrgDetails.value);
-        }
-
-        data = { ...data, integrations };
-
-        await mls.api.cbeAddOrUpdateOrgValue(
-            actualOrgDetails.sett.name,
-            JSON.stringify(data)
-        );
-
-    } catch (err: any) {
-        throw new Error(err.message);
-    }
-
-}
-
-async function getArgsToBots(): Promise<Record<string, any>> {
-    const data = {}
-    return data;
-}
-
-async function getBotContextVarsBeforeMessageSend(thread: Thread, prompt: string): Promise<string[]> {
-    return mls.bots.getBotContextVarsBeforeMessageSend(thread, prompt);
-}
-
-async function getBotContextVarsBeforeMessageSend2(vars: string[], myArgs: Record<string, any>): Promise<ToolsBeforeSendMessage[]> {
-    return mls.bots.getBotContextVarsBeforeMessageSend2(vars, myArgs);
-}
-
 async function generateSvgAvatar(threadId: string, userId: string, promptToAvatar: string) {
     const agentName = '_102020_/l2/agents/agentGenerateAvatarSvg';
     const agent = await loadAgent(agentName);
@@ -357,10 +273,4 @@ async function openTaskDetails(messageId: string, taskId: string, task: TaskData
 
 function extractSvgFromContext(context: any): string | null {
     return context?.task?.iaCompressed?.nextSteps?.[0]?.interaction?.payload?.[0]?.result ?? null;
-}
-
-function getOrgDetails(orgIndex: number) {
-    const actualOrgName = Object.keys(mls.stor.orgs)[orgIndex];
-    const actualOrgDetails = mls.stor.orgs[actualOrgName];
-    return actualOrgDetails;
 }
