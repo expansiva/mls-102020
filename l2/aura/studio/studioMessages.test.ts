@@ -8,7 +8,6 @@ import test from 'node:test';
 import {
   ADD_GROUPS,
   ANIMATION_GROUPS,
-  LAYER_STATES,
   MISSING_IN_SOURCE,
   MOTION_SAFE_HINT,
   NOT_LOCATED,
@@ -210,16 +209,3 @@ test('every text attribute the editor offers has a name a human can read', () =>
     'the editor offers exactly what the panel can name');
 });
 
-test('every layer the selector offers has words for its name', () => {
-  // The state's label is looked up dynamically (`t(`variant.${state}`)`), which the scan above cannot
-  // see — a missing entry would render `variant.focus` in the selector.
-  const missing = LAYER_STATES
-    .filter((state) => state !== 'base')
-    .map((state) => `variant.${state}`)
-    .filter((id) => !CATALOG.has(id));
-
-  assert.deepEqual(missing, [], 'states with no name');
-  for (const id of ['panel.layer', 'panel.layerBase', 'panel.layerNoState', 'panel.layerPreviewNote']) {
-    assert.ok(CATALOG.has(id), id);
-  }
-});

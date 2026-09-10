@@ -10,7 +10,12 @@
 //    `class="block"` of its own. On top of that the Tailwind JIT scans the live DOM in studio mode, so
 //    any name that happens to be a utility becomes one. The prefix closes both directions.
 //
-// 2. The colours are FIXED, never the design system's. This is chrome sitting on top of the page it
+// 2. NO BACKTICK AND NO `${` IN A BLOCK COMMENT. A `/* */` comment survives into the compiled css,
+//    the css is injected into a JS TEMPLATE LITERAL (processCssLit -> loadStyle), and one backtick
+//    closes it early: the module stops parsing, the editor never loads, and studio mode silently
+//    stops arming. It happened on 2026-09-10; classPickerPanel.test.ts now guards it.
+//
+// 3. The colours are FIXED, never the design system's. This is chrome sitting on top of the page it
 //    edits: following the client's DS would camouflage the tool in exactly the thing being edited. The
 //    only DS values here are the swatches, and those are read at runtime from the resolved role.
 
@@ -101,21 +106,6 @@ aura--studio--class-picker-102020 {
   /* The "+" is not another property of the element: it is the end of the list. */
   .acp-block.acp-add { margin-top: 6px; border-top-color: rgba(245,247,250,0.18); }
 
-  /* The layer selector (TASK-102033-picker-variants): the two dimensions on their own rows, above
-     the properties, because everything below is written INTO the layer chosen here. */
-  .acp-block.acp-layers { padding-bottom: 6px; border-bottom: 1px solid rgba(245,247,250,0.18); }
-  .acp-block.acp-layers .acp-chips { margin-bottom: 4px; }
-  /* A row whose value comes from a shallower layer: dimmed, because choosing here CREATES something
-     that is not there yet (risk 1 of the task — an inherited value that reads as an override is how
-     someone writes an md override for nothing).
-     NO BACKTICK AND NO DOLLAR-BRACE IN THIS FILE: a block comment survives into the compiled css,
-     the css is injected into a JS TEMPLATE LITERAL (processCssLit -> loadStyle), and one backtick
-     closes it early — the module then fails to parse and the whole editor stops arming. */
-  .acp-block.acp-inherited .acp-label { opacity: 0.8; }
-  .acp-from {
-    flex: 0 0 auto; font-size: 10px; padding: 1px 5px; border-radius: 3px;
-    background: rgba(66,135,245,0.18); color: #9dc0ff;
-  }
 
   .acp-chip {
     font-family: monospace; font-size: 11px; padding: 2px 6px; cursor: pointer;

@@ -313,17 +313,6 @@ const message_pt = {
   'panel.removeLast': 'a última classe deste elemento não pode sair: não consegui localizá-lo pela'
     + ' posição no template, então é por ela que ele é encontrado na fonte',
   'panel.typedOpen': 'digitar um valor em {unit} (entre {min} e {max})',
-  // ── Layers: responsive and state (TASK-102033-picker-variants) ───────────
-  'panel.layer': 'Camada',
-  'panel.layerTitle': 'em qual camada esta aba escreve — largura de tela e estado do elemento',
-  'panel.layerBase': 'base',
-  'panel.layerNoState': 'sem estado',
-  'panel.layerPreviewNote': 'a tela está mostrando esta camada como se ela fosse a única — é prévia,'
-    + ' não muda a fonte, e não é a soma real das camadas',
-  'panel.inherited': 'herdado de {layer}',
-  'panel.inheritedTitle': 'esta camada não define isso: o valor vem de outra. Escolher aqui cria o'
-    + ' ajuste só desta camada',
-  'panel.removeInherited': 'nada para remover nesta camada — o valor vem de {layer}',
   'group.spacing': 'espaçamento',
   'group.color': 'cor',
   'group.text': 'texto',
@@ -862,16 +851,6 @@ const message_en: typeof message_pt = {
   'panel.removeLast': 'the last class of this element cannot go: it could not be located by its'
     + ' position in the template, so the literal is how it is found in the source',
   'panel.typedOpen': 'type a value in {unit} (between {min} and {max})',
-  'panel.layer': 'Layer',
-  'panel.layerTitle': 'which layer this tab writes to — screen width and element state',
-  'panel.layerBase': 'base',
-  'panel.layerNoState': 'no state',
-  'panel.layerPreviewNote': 'the screen is showing this layer as if it were the only one — it is a'
-    + ' preview, it does not touch the source, and it is not the real sum of the layers',
-  'panel.inherited': 'inherited from {layer}',
-  'panel.inheritedTitle': 'this layer does not define it: the value comes from another one. Choosing'
-    + ' here creates the override for this layer only',
-  'panel.removeInherited': 'nothing to remove in this layer — the value comes from {layer}',
   'group.spacing': 'spacing',
   'group.color': 'colour',
   'group.text': 'text',
