@@ -71,6 +71,7 @@ import {
   resolveAnchor,
   resolveStructuralAnchor,
   scanTemplateTree,
+  selectableChain,
   splitUtilities,
   type IDomPathStep,
   type IOwnerChain,
@@ -196,6 +197,13 @@ type EditStep =
 
 interface IClassPanelState {
   el: HTMLElement;
+  /**
+   * The chain the breadcrumb offers, root-first, ending at `el` (TASK-102020-ancestor-breadcrumb).
+   *
+   * Lives HERE and not in a field of its own so it cannot drift from the selection it describes: the
+   * panel is handed the index of a level, and this is what resolves it back — one panel, one chain.
+   */
+  levels: HTMLElement[];
   /** The element's class attribute, exactly as authored — what has to be found in the source. */
   literal: string;
   tokens: IUtilityToken[];
@@ -482,7 +490,7 @@ export class StudioEditor {
     // CAPTURE, and it stops there: the page underneath and the shell's own Ctrl+Z (the code editor)
     // must never see the editor's undo. Capture also means this runs before anything deeper, which
     // is the only way to be sure of that.
-    window.addEventListener('keydown', this.onUndoKey, true);
+    window.addEventListener('keydown', this.onEditorKey, true);
   }
 
   private removeListeners(): void {
@@ -499,7 +507,7 @@ export class StudioEditor {
     window.removeEventListener('scroll', this.onScrollResize, true);
     window.removeEventListener('resize', this.onScrollResize);
     window.removeEventListener('mouseup', this.onHostPointerUp, true);
-    window.removeEventListener('keydown', this.onUndoKey, true);
+    window.removeEventListener('keydown', this.onEditorKey, true);
   }
 
   /**
@@ -570,21 +578,8 @@ export class StudioEditor {
     const pointerTarget = this.resolvePointerTarget(e, target);
     if (pointerTarget === this.host) return;
 
-    // A new click means the user moved on from whatever the last message said.
-    this.statusText = '';
     const selectableEl = this.resolveSelectableElement(pointerTarget);
-    this.selectedEl = selectableEl;
-    // Forget the hover cache: the mousemove handler skips redraws while the pointer stays on the
-    // same element, so without this the hover outline would not come back over the element just
-    // clicked.
-    this.lastHoveredEl = null;
-    this.drawSelection();
-    this.publishSelection(selectableEl);
-
-    // The picker resolves the source anchor for the SELECTION — the file that would change, and any
-    // refusal, are on screen BEFORE a chip is clicked. Async (it may have to open organism models);
-    // the text path below does not wait for it.
-    void this.showClassPanel(selectableEl);
+    this.selectElement(selectableEl);
 
     const textResult = this.findClickedTextNode(e, pointerTarget);
     if (!textResult) return;
@@ -748,15 +743,32 @@ export class StudioEditor {
   };
 
   /**
-   * Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y) while the editor is armed.
+   * The editor's own keys while it is armed: Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y), Ctrl+Alt+Arrow, Esc.
    *
    * Two things it must NOT do: fire while the user is typing — a field has its own undo, and taking
    * it over would be the worst kind of surprise — and leak. The typing check reads
    * `composedPath()[0]` rather than `target`, because a field inside the panel's shadow root is
    * retargeted to the panel element by the time the event reaches the window.
    */
-  private onUndoKey = (e: KeyboardEvent): void => {
+  private onEditorKey = (e: KeyboardEvent): void => {
     if (this.currentMode() === 'off') return;
+
+    // Esc has THREE possible owners and the order is the whole guarantee (see the task's risk 1):
+    //
+    //  1. the text being edited. This listener is on the window in CAPTURE, so it runs BEFORE the
+    //     span's own handler — returning here is what leaves the cancel to it. Losing what was typed
+    //     while reaching for "one level up" is the one outcome that must be impossible;
+    //  2. a field of the panel (the typed value, the custom ms), which cancels itself;
+    //  3. the selection: up one level, and only at the page's own root does it close the panel.
+    if (e.key === 'Escape') {
+      if (this.editSpan || this.isTypingTarget(e)) return;
+      // Nothing of ours is open: the key belongs to whatever else is listening.
+      if (!this.classPanel) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.selectParentLevel()) this.hideClassPanel();
+      return;
+    }
 
     // Ctrl+Alt+Arrow moves the selection among its siblings. It shares this handler because it shares
     // the guards: not while typing, not while a write is in flight, and only when armed.
@@ -801,6 +813,70 @@ export class StudioEditor {
   }
 
   /**
+   * Makes an element THE selection — the one path, for the pointer and for the breadcrumb.
+   *
+   * Two ways to select would eventually disagree about what the panel is showing, which is the same
+   * failure `resolveSelectableElement` guards against for hover and click. The element arrives here
+   * already resolved: the pointer collapses it by ownership, the breadcrumb reads it off a chain that
+   * was built the same way.
+   */
+  private selectElement(el: HTMLElement): void {
+    // A new selection means the user moved on from whatever the last message said.
+    this.statusText = '';
+    this.selectedEl = el;
+    // Forget the hover cache: the mousemove handler skips redraws while the pointer stays on the
+    // same element, so without this the hover outline would not come back over the element just
+    // clicked.
+    this.lastHoveredEl = null;
+    this.drawSelection();
+    this.publishSelection(el);
+
+    // The picker resolves the source anchor for the SELECTION — the file that would change, and any
+    // refusal, are on screen BEFORE a chip is clicked. Async (it may have to open organism models);
+    // the caller does not wait for it.
+    void this.showClassPanel(el);
+  }
+
+  /**
+   * Selects the n-th level of the breadcrumb (TASK-102020-ancestor-breadcrumb).
+   *
+   * The handle is the INDEX and not the element: the panel is chrome and never holds a live node (the
+   * same discipline `publishSelection` follows). Resolving it here also means a chain that aged out
+   * of the DOM — a re-render between the paint and the click — lands on the `gone` status instead of
+   * writing the source for something no longer on screen.
+   *
+   * @returns false when there is no such level, which is what lets `Esc` fall through to closing.
+   */
+  private selectLevel(index: number): boolean {
+    const el = this.classPanel?.levels[index];
+    if (!el) return false;
+    if (!el.isConnected) {
+      this.setStatus(t('status.gone'));
+      return true;
+    }
+    this.selectElement(el);
+    return true;
+  }
+
+  /** One step up the chain: the level right above the selection, or nothing at the page's own root. */
+  private selectParentLevel(): boolean {
+    const levels = this.classPanel?.levels.length ?? 0;
+    // The selection always ends the chain, so its parent is the one before last.
+    return levels >= 2 && this.selectLevel(levels - 2);
+  }
+
+  /**
+   * The chain the breadcrumb offers for a selection, root-first.
+   *
+   * From the HOST, so the first level is the page's own element: the host is the shell's and is in no
+   * source. The cut at the ownership break, and why the selection always ends it, are in
+   * `selectableChain`.
+   */
+  private selectionLevels(el: HTMLElement): HTMLElement[] {
+    return selectableChain(this.ownerChainOf(el), el);
+  }
+
+  /**
    * Collapses to the nearest custom element that owns the markup under the pointer, so selecting
    * inside a molecule selects the molecule and not its internal markup.
    *
@@ -817,9 +893,9 @@ export class StudioEditor {
   /**
    * `ownerChain` over the real DOM, from the region host.
    *
-   * ONE accessor set for the three layers that ask the ownership question — selection, scope and
-   * the structural path. They used to walk `parentElement` on their own, and the moment they
-   * disagree the tool lies: the outline follows one element while the click selects another (the
+   * ONE accessor set for every layer that asks the ownership question — selection, scope, the
+   * structural path and the breadcrumb. They used to walk `parentElement` on their own, and the
+   * moment they disagree the tool lies: the outline follows one element while the click selects another (the
    * failure TASK-102020-select-inert-elements called worse than the bug it fixed), or the panel
    * names a file the write will not land in.
    */
@@ -1262,6 +1338,8 @@ export class StudioEditor {
     this.classPanelEl.addEventListener('picker-redo', this.onPickerRedo);
     this.classPanelEl.addEventListener('picker-move-up', this.onPickerMoveUp);
     this.classPanelEl.addEventListener('picker-move-down', this.onPickerMoveDown);
+    this.classPanelEl.addEventListener('picker-level', this.onPickerLevel as EventListener);
+    this.classPanelEl.addEventListener('picker-level-hover', this.onPickerLevelHover as EventListener);
     // Same layer as the marking and the toast — see createStatusEl.
     document.body.appendChild(this.classPanelEl);
   }
@@ -1311,6 +1389,29 @@ export class StudioEditor {
     void this.moveSelected('down');
   };
 
+  /** A click on the breadcrumb: the level it names becomes the selection. */
+  private onPickerLevel = (e: CustomEvent<number>): void => {
+    this.selectLevel(e.detail);
+  };
+
+  /**
+   * Hovering the breadcrumb marks the element on screen, with the SAME box the pointer draws.
+   *
+   * Not polish: `div › div › div` says nothing on its own, and without seeing which one is which the
+   * only way to use the chain would be to select and look — trial and error over a tool that is
+   * supposed to remove it.
+   */
+  private onPickerLevelHover = (e: CustomEvent<number | null>): void => {
+    const el = e.detail === null ? null : this.classPanel?.levels[e.detail];
+    if (!el?.isConnected) {
+      this.lastHoveredEl = null;
+      this.drawSelection();
+      return;
+    }
+    this.lastHoveredEl = el;
+    this.drawHover(el);
+  };
+
   private onPickerUndo = (): void => {
     void this.undo();
   };
@@ -1338,6 +1439,10 @@ export class StudioEditor {
     const literal = el.getAttribute('class') ?? '';
     const state: IClassPanelState = {
       el,
+      // Recomputed for every selection, deliberately: a re-render (the scenario panel writing a
+      // state, a live update) can replace the nodes, and a chain kept from the previous selection
+      // would offer elements that are no longer in the document.
+      levels: this.selectionLevels(el),
       literal,
       tokens: splitUtilities(literal),
       file: null,
@@ -1696,6 +1801,14 @@ export class StudioEditor {
     panel.resolveVar = (cssVar: string) => this.resolveCssVar(cssVar);
     panel.target = {
       tag: state.el.tagName.toLowerCase(),
+      // DATA, never the nodes: the panel gets a tag, a literal and the index that points back into
+      // `state.levels`, which is the only place the elements themselves live.
+      levels: state.levels.map((node, index) => ({
+        index,
+        tag: node.tagName.toLowerCase(),
+        literal: node.getAttribute('class') ?? '',
+        current: node === state.el,
+      })),
       fileLabel: state.file ? `${state.file.shortName} (${state.file.folder})` : '',
       file: state.file
         ? { project: state.file.project, shortName: state.file.shortName, folder: state.file.folder }

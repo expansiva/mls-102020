@@ -108,6 +108,28 @@ aura--studio--class-picker-102020 {
   .acp-chip.acp-more { letter-spacing: 1px; padding: 2px 8px; }
   .acp-star { color: #ffd8a1; }
 
+  /* The selection's ancestors (TASK-102020-ancestor-breadcrumb). One row that SCROLLS instead of
+     wrapping: the deepest real page is 9 levels, and a wrapping breadcrumb would push the tabs down
+     by two lines on the pages that need it most. The editor keeps it scrolled to the end, so what is
+     cut is the left side — the outer wrappers — and never the current element. */
+  .acp-chain {
+    display: flex; align-items: center; gap: 4px;
+    padding: 5px 10px; overflow-x: auto; scrollbar-width: none;
+    border-bottom: 1px solid rgba(245,247,250,0.08);
+  }
+  .acp-chain::-webkit-scrollbar { display: none; }
+  .acp-chain-sep { flex: 0 0 auto; color: #6b7684; }
+  .acp-chain-item {
+    flex: 0 0 auto; padding: 0; background: transparent; border: 0; cursor: pointer;
+    font-family: monospace; font-size: 11px; color: #7fb3ff; white-space: nowrap;
+  }
+  .acp-chain-item:hover { text-decoration: underline; }
+  /* Where the selection is: the same blue as the current chip, so "here" reads the same everywhere. */
+  .acp-chain-now {
+    flex: 0 0 auto; font-family: monospace; font-size: 11px; color: #f5f7fa; white-space: nowrap;
+    border-bottom: 1px solid #4287f5;
+  }
+
   .acp-crumb { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid rgba(245,247,250,0.08); }
   .acp-here { color: #f5f7fa; }
   .acp-link { background: transparent; border: 0; cursor: pointer; color: #7fb3ff; font-size: 12px; padding: 0; }

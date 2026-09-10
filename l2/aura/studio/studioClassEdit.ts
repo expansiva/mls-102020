@@ -3500,3 +3500,31 @@ export function ownerChain<T>(node: T, root: T, tree: IOwnerTree<T>): IOwnerChai
 
   return { chain, crossed, ownerBreak: breakNode === null ? -1 : chain.indexOf(breakNode) };
 }
+
+/**
+ * The levels of an ownership chain a breadcrumb may offer, root-first, ending at the selection.
+ *
+ * The pointer always lands on the DEEPEST element under it (`deepestAt`, and that rule is right —
+ * it is what reaches a `disabled` button), which leaves a wrapper whose children cover its whole
+ * area impossible to select by clicking. Measured on the real pages: 1 element in 5 has children and
+ * no text of its own. The chain is the way out, and it is already computed for every selection.
+ *
+ * Two things it must not offer:
+ *
+ *  - anything BELOW the ownership break. That is the molecule's own markup, in a file shared by every
+ *    project that imports it; offering it would be offering a refusal;
+ *  - the region host, which is not in any source. The chain starts at the page's own element because
+ *    `ownerChain` is walked from the host and never includes the root.
+ *
+ * `node` must be the element that is actually SELECTED — the collapsed one. It always ends the list,
+ * even when the ownership breaks above it (a molecule rendered inside another molecule resolves to
+ * the inner one while the ownership names the outer): a breadcrumb without the element it describes
+ * says nothing at all.
+ */
+export function selectableChain<T>(owner: IOwnerChain<T>, node: T): T[] {
+  const { chain, ownerBreak } = owner;
+  if (!chain.length) return [];
+  const levels = ownerBreak < 0 ? [...chain] : chain.slice(0, ownerBreak + 1);
+  if (levels[levels.length - 1] !== node) levels.push(node);
+  return levels;
+}

@@ -63,6 +63,7 @@ import {
   deepestAt,
   ownerChain,
   readTypedValue,
+  selectableChain,
   typedValueSpec,
   pasteCategories,
   pasteStyle,
@@ -2294,6 +2295,93 @@ test('cyclic accessors do not hang the pointer handler', () => {
   a.up = b;
 
   assert.deepEqual(ownerChain(a, { name: 'root' }, OWNER).chain, []);
+});
+
+// ── The breadcrumb of the selection (TASK-102020-ancestor-breadcrumb) ────────────────────────────
+//
+// The chain the panel offers is the ownership chain, minus what is not editable. Everything here is
+// measured on the same fixtures as `ownerChain` above, because it is the same walk: the pointer
+// cannot reach a wrapper its children cover, and this is the way in.
+
+/** The chain as the editor asks for it: from the HOST, so the first level is the page's element. */
+function levelsOf(host: OwnedNode, node: OwnedNode): string[] {
+  return ownedNames(selectableChain(ownerChain(node, host, OWNER), node));
+}
+
+test('the breadcrumb starts at the page element and never at the host', () => {
+  // The host is the shell's: it is in no source, and offering it would offer an element nothing can
+  // be written for. `ownerChain` never includes its root, which is exactly what gives us this.
+  const host = owned({
+    name: 'host',
+    kids: [{ name: 'page', kids: [{ name: 'section', kids: [{ name: 'div', kids: [{ name: 'p' }] }] }] }],
+  });
+
+  assert.deepEqual(levelsOf(host, pick(host, 'p')), ['page', 'section', 'div', 'p']);
+  // And the selection is the last level, always: that is what the panel highlights as "here".
+  assert.deepEqual(levelsOf(host, pick(host, 'section')), ['page', 'section']);
+});
+
+test('a level of the page inside a live slot is the SOURCE, not the molecule wrappers', () => {
+  // The 102047 shape: the page's own markup was MOVED into the molecule's template, so the DOM route
+  // to it runs through `ml-scenary > ml-scenary-panel > span[anchor]` — three elements that appear in
+  // no file of the page. A breadcrumb built from `parentElement` would offer them, and each one would
+  // answer with a refusal.
+  const page = scenaryPage();
+  const levels = levelsOf(page, pick(page, 'h1'));
+
+  assert.deepEqual(levels, ['scenary', 'Scene', 'pageRoot', 'header', 'h1']);
+  for (const wrapper of ['ml-scenary', 'ml-scenary-panel', 'anchor']) {
+    assert.equal(levels.includes(wrapper), false, `${wrapper} is the molecule's own markup`);
+  }
+});
+
+test('molecule markup never becomes a level, and the selection still ends the chain', () => {
+  // A molecule rendered INSIDE another molecule: the click resolves to the inner one (the deepest
+  // break) while the ownership names the outer. The wrapper between them is the outer molecule's own
+  // markup — not editable, so not offered — and the inner one is still where the user is.
+  const page = owned({
+    name: 'page',
+    kids: [{
+      name: 'outer',
+      tag: 'ml-outer-102040',
+      kids: [{
+        name: 'wrapper',
+        kids: [{ name: 'inner', tag: 'ml-inner-102040', kids: [{ name: 'deep' }] }],
+      }],
+    }],
+  });
+
+  assert.deepEqual(levelsOf(page, pick(page, 'inner')), ['outer', 'inner']);
+  // The same rule from the other side: with the whole chain owned by the page, nothing is cut.
+  assert.deepEqual(levelsOf(page, pick(page, 'outer')), ['outer']);
+});
+
+test('a node that does not hang from the root has no breadcrumb at all', () => {
+  // The panel renders nothing rather than a chain of one invented level.
+  const page = scenaryPage();
+  const loose = owned({ name: 'toolbar', kids: [{ name: 'chip' }] });
+
+  assert.deepEqual(levelsOf(page, pick(loose, 'chip')), []);
+  assert.deepEqual(levelsOf(page, page), [], 'the root itself is not a level');
+});
+
+test('every ancestor of a wrapper is reachable from any descendant', () => {
+  // The promise of the task, as a rule: from the deepest node, the chain contains EVERY element
+  // between the page and it — which is what makes a wrapper whose children cover it selectable.
+  const host = owned({
+    name: 'host',
+    kids: [{
+      name: 'page',
+      kids: [{ name: 'a', kids: [{ name: 'b', kids: [{ name: 'c', kids: [{ name: 'd' }] }] }] }],
+    }],
+  });
+
+  const deepest = levelsOf(host, pick(host, 'd'));
+  for (const name of ['page', 'a', 'b', 'c']) {
+    assert.ok(deepest.includes(name), `${name} has to be one click away`);
+    // And selecting it lands on a chain that is the same walk truncated — never a different one.
+    assert.deepEqual(levelsOf(host, pick(host, name)), deepest.slice(0, deepest.indexOf(name) + 1));
+  }
 });
 
 // ── The template that is not linked to whoever renders it (TASK-102020-anchor-orphan-roots) ──────

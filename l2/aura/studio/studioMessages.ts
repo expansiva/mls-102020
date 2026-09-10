@@ -183,8 +183,10 @@ const message_pt = {
 
   // ── Reasons: why a row (or an edit) has nothing to offer ──────────────────
   'reason.noOptions': 'sem opções prontas para esta propriedade — edite pelo código',
+  // The advice names the breadcrumb on purpose: it used to ask for the element "around this one",
+  // which was an action the tool did not have (TASK-102020-ancestor-breadcrumb).
   'reason.notLocated': 'não consegui identificar este elemento no código desta tela.'
-    + ' Tente selecionar o elemento em volta, ou edite pelo código',
+    + ' Suba para o elemento em volta pela trilha aí em cima (ou Esc), ou edite pelo código',
   'reason.missingInSource': 'as classes deste elemento não estão escritas na fonte desta tela',
   'reason.computedClass': 'as classes deste elemento são calculadas em código, não escritas direto na'
     + ' marcação — o picker não reescreve expressão',
@@ -229,6 +231,11 @@ const message_pt = {
   'panel.fileTitle': 'arquivo que recebe a edição',
   'panel.noFile': 'nenhum arquivo resolvido',
   'panel.close': 'fechar',
+  // ── The selection's ancestors (TASK-102020-ancestor-breadcrumb) ───────────
+  'panel.chainTitle': 'os elementos em volta — clique para selecionar',
+  'panel.chainSelect': 'selecionar <{tag}>',
+  'panel.chainUp': 'selecionar <{tag}> — um nível acima (Esc)',
+  'panel.chainCurrent': 'este é o elemento selecionado',
   'panel.tabClasses': 'Classes atuais',
   'panel.tabAnimations': 'Animações',
   'panel.tabInfo': 'Info',
@@ -694,7 +701,7 @@ const message_en: typeof message_pt = {
 
   'reason.noOptions': 'no ready options for this property — edit it in the code',
   'reason.notLocated': 'I could not identify this element in the code of this screen.'
-    + ' Try selecting the element around it, or edit it in the code',
+    + ' Go up to the element around it on the trail above (or Esc), or edit it in the code',
   'reason.missingInSource': "this element's classes are not written in the source of this screen",
   'reason.computedClass': "this element's classes are computed in code, not written in the markup —"
     + ' the picker does not rewrite an expression',
@@ -738,6 +745,10 @@ const message_en: typeof message_pt = {
   'panel.fileTitle': 'file that receives the edit',
   'panel.noFile': 'no file resolved',
   'panel.close': 'close',
+  'panel.chainTitle': 'the elements around this one — click to select',
+  'panel.chainSelect': 'select <{tag}>',
+  'panel.chainUp': 'select <{tag}> — one level up (Esc)',
+  'panel.chainCurrent': 'this is the selected element',
   'panel.tabClasses': 'Current classes',
   'panel.tabAnimations': 'Animations',
   'panel.tabInfo': 'Info',

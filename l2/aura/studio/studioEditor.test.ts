@@ -221,11 +221,11 @@ test('undo walks the same write as any other edit, and the shortcut stays contai
   }
 
   // The shortcut: captured, stopped, and never taken from a field that has its own undo.
-  const key = inside('private onUndoKey', '\n  };');
+  const key = inside('private onEditorKey', '\n  };');
   assert.ok(key.includes('e.stopPropagation()'), 'the page and the shell must not see it');
   assert.ok(key.includes('this.editSpan || this.isTypingTarget(e)'), 'a field keeps its own undo');
-  assert.ok(EDITOR.includes("window.addEventListener('keydown', this.onUndoKey, true)"), 'capture phase');
-  assert.ok(EDITOR.includes("window.removeEventListener('keydown', this.onUndoKey, true)"), 'and removed');
+  assert.ok(EDITOR.includes("window.addEventListener('keydown', this.onEditorKey, true)"), 'capture phase');
+  assert.ok(EDITOR.includes("window.removeEventListener('keydown', this.onEditorKey, true)"), 'and removed');
 
   // Only a write that landed is recorded — an edit refused as dynamic text changed nothing, and
   // undoing it would undo the previous one instead.
@@ -356,4 +356,89 @@ test('the page own element is never treated as a molecule', () => {
   const tree = memberOf(EDITOR, 'private ownerTree');
   assert.ok(tree.includes('pageTag !== null'), 'no page tag, no collapsing');
   assert.ok(tree.includes('tag !== pageTag'));
+});
+
+// ── The breadcrumb of the selection (TASK-102020-ancestor-breadcrumb) ────────────────────────────
+
+test('the breadcrumb selects through the SAME path as a click', () => {
+  // Two ways to select would eventually disagree about what the panel is showing — the failure this
+  // whole file keeps guarding against. The pointer resolves the element and the breadcrumb reads it
+  // off the chain, but from there on it is one method.
+  const select = memberOf(EDITOR, 'private selectElement');
+  for (const step of ['this.selectedEl = el', 'this.drawSelection()', 'this.publishSelection(el)',
+    'this.showClassPanel(el)', 'this.lastHoveredEl = null']) {
+    assert.ok(select.includes(step), step);
+  }
+
+  const click = memberOf(EDITOR, 'private onHostClick', '\n  };');
+  assert.ok(click.includes('this.selectElement(selectableEl)'), 'the click goes through it');
+  assert.equal(click.includes('this.selectedEl ='), false, 'and no longer selects on its own');
+  const level = memberOf(EDITOR, 'private selectLevel');
+  assert.ok(level.includes('this.selectElement(el)'), 'so does the breadcrumb');
+});
+
+test('the panel is handed the chain as DATA, and resolves it by index', () => {
+  // The state manager keeps every value it is handed in a 10.000-entry log and the panel outlives the
+  // page it edits: a live node in either would outlive what it points at. So the panel gets a tag, a
+  // literal and an index — and the index comes back.
+  const render = memberOf(EDITOR, 'private renderClassPanel');
+  assert.ok(render.includes('levels: state.levels.map('), 'mapped, not passed');
+  const fields = ['tag: node.tagName.toLowerCase()', "node.getAttribute('class')", 'current: node === state.el'];
+  for (const field of fields) {
+    assert.ok(render.includes(field), field);
+  }
+  assert.equal(/levels: state\.levels[,\s]/u.test(render), false, 'never the elements themselves');
+
+  // The panel's side of the contract: no DOM type reaches it.
+  const declared = PANEL.slice(
+    PANEL.indexOf('export interface IPickerLevel'),
+    PANEL.indexOf('export interface IPickerTarget'),
+  );
+  assert.ok(declared.includes('index: number;'), 'the handle is the index');
+  assert.equal(/HTMLElement|Element(?![a-zA-Z])/u.test(declared), false, 'and never a node');
+
+  // Resolving happens where the elements live, and a chain that aged out says so instead of writing.
+  const resolve = memberOf(EDITOR, 'private selectLevel');
+  assert.ok(resolve.includes('this.classPanel?.levels[index]'), 'the editor owns the chain');
+  assert.ok(resolve.includes("t('status.gone')"), 'a level that left the DOM is reported, not written');
+});
+
+test('the chain is recomputed for every selection', () => {
+  // It ages: a re-render (the scenario panel writing a state, a live update) replaces the nodes. It is
+  // built where the panel state is built, so it cannot outlive the selection it describes.
+  const show = memberOf(EDITOR, 'private async showClassPanel');
+  assert.ok(show.includes('levels: this.selectionLevels(el),'), 'part of the panel state');
+  assert.equal(codeLines(EDITOR).some((line) => line.includes('private chain')), false,
+    'no second copy of the chain in a field of its own');
+  // And it is the SAME ownership walk as the selection and the anchor — not a parentElement chain.
+  assert.ok(memberOf(EDITOR, 'private selectionLevels').includes('this.ownerChainOf(el)'));
+  assert.equal(memberOf(EDITOR, 'private selectionLevels').includes('.parentElement'), false);
+});
+
+test('hovering a level marks it with the box the pointer already draws', () => {
+  // Without it `div › div › div` is decoration: the only way to tell the levels apart would be to
+  // select each one and look, which is the trial and error the breadcrumb exists to remove.
+  const hover = memberOf(EDITOR, 'private onPickerLevelHover', '\n  };');
+  assert.ok(hover.includes('this.drawHover(el)'), 'the same drawing as the pointer');
+  assert.ok(hover.includes('this.classPanel?.levels[e.detail]'), 'resolved from the chain, by index');
+  assert.ok(hover.includes('this.drawSelection()'), 'and the mark goes back when the pointer leaves');
+});
+
+test('Esc has three owners and this is the order', () => {
+  // The risk of the task: reaching for "one level up" and losing the text being typed. The text edit
+  // owns Esc first, then a field of the panel, and only then does the selection move — and the panel
+  // closes only when there is nowhere left to go up.
+  const key = memberOf(EDITOR, 'private onEditorKey', '\n  };');
+  const esc = key.slice(key.indexOf("if (e.key === 'Escape')"));
+  assert.notEqual(esc, '', 'the handler answers Escape');
+
+  const typing = esc.indexOf('this.editSpan || this.isTypingTarget(e)');
+  const up = esc.indexOf('this.selectParentLevel()');
+  const close = esc.indexOf('this.hideClassPanel()');
+  assert.ok(typing >= 0 && up > typing, 'the text being edited keeps its cancel');
+  assert.ok(close > up, 'and closing is the fallback of going up, not the other way round');
+  // The listener is on the WINDOW in capture, so it runs BEFORE the span's own handler: returning is
+  // what leaves the cancel to it. Preventing anything there would eat the text.
+  assert.ok(esc.slice(typing, up).includes('return;'), 'it returns without touching the event');
+  assert.ok(esc.includes('if (!this.classPanel) return;'), 'with nothing open the key is not ours');
 });

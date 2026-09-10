@@ -81,10 +81,43 @@ import { t, tr, type IMessageRef } from '/_102020_/l2/aura/studio/studioMessages
 
 export const CLASS_PICKER_TAG = 'aura--studio--class-picker-102020';
 
+/**
+ * How long a breadcrumb label may be before it is cut.
+ *
+ * The row scrolls, so this is not about the panel's width: it is about one long level (a molecule tag
+ * is `molecules--ml-scenary-102020`) pushing every other level out of reach of the eye. The whole
+ * name is in the tooltip, and the hover shows the element itself.
+ */
+const CHAIN_LABEL_MAX = 10;
+
+/**
+ * One level of the selection's ancestor chain (TASK-102020-ancestor-breadcrumb).
+ *
+ * `index` is the HANDLE: the panel sends it back and the editor resolves the element. A live node
+ * parked in a property of this component would be a node the chrome outlives — the same reason
+ * `publishSelection` carries data only.
+ */
+export interface IPickerLevel {
+  index: number;
+  tag: string;
+  /** The level's class attribute — the tooltip only: the label is the tag, and the hover is the rest. */
+  literal: string;
+  /** The selection itself — highlighted, and not a link to itself. */
+  current: boolean;
+}
+
 /** What the editor knows about the selection and the panel needs to render it. */
 export interface IPickerTarget {
   /** Tag of the selected element, for the header. */
   tag: string;
+  /**
+   * The chain from the page's own element down to the selection, root-first.
+   *
+   * It exists because the pointer cannot reach a wrapper whose children cover it — 1 element in 5 of
+   * the real pages — and the refusal that used to say "try selecting the element around it" was
+   * asking for something the tool did not have.
+   */
+  levels: IPickerLevel[];
   /** File that receives the edit, already formatted for display. */
   fileLabel: string;
   /**
@@ -252,6 +285,20 @@ export class ClassPickerPanel extends StateLitElement {
     }
   }
 
+  /**
+   * Keeps the breadcrumb scrolled to its end.
+   *
+   * The selection is the LAST item, and a chain deeper than the panel is wide would leave it off
+   * screen — the one item that must always be visible. Scrolling to the end is what makes the
+   * truncation happen on the left, where the page's outer wrappers are.
+   */
+  updated(changed: Map<string, unknown>): void {
+    super.updated(changed);
+    if (!changed.has('target')) return;
+    const row = this.renderRoot.querySelector('.acp-chain');
+    if (row) row.scrollLeft = row.scrollWidth;
+  }
+
   render() {
     const target = this.target;
     if (!target) return nothing;
@@ -269,6 +316,7 @@ export class ClassPickerPanel extends StateLitElement {
         <span class="acp-spacer"></span>
         <button type="button" class="acp-close" title=${t('panel.close')} @click=${this.onClose}>&times;</button>
       </div>
+      ${this.renderChain(target)}
       <div class="acp-tabs">
         ${this.tabButton('classes', 'panel.tabClasses')}
         ${this.tabButton('animations', 'panel.tabAnimations')}
@@ -280,6 +328,65 @@ export class ClassPickerPanel extends StateLitElement {
       ${this.tab === 'info' ? this.renderInfo() : nothing}
       ${this.tab === 'classes' ? this.renderClasses() : nothing}
     `;
+  }
+
+  /**
+   * The breadcrumb: every element between the page and the selection, one click each.
+   *
+   * ONE ROW, and it scrolls instead of wrapping — the deepest of the real pages is 9 levels, which
+   * does not fit in 340px. What may fall off is the far end of the page, never the selection: the row
+   * is kept scrolled to its end (see `updated`), so the truncation is on the left. With fewer than
+   * two levels there is nothing to walk and the row would only repeat the header.
+   */
+  private renderChain(target: IPickerTarget) {
+    const levels = target.levels;
+    if (levels.length < 2) return nothing;
+    // The one right above the selection is what `Esc` does, and its tooltip says so.
+    const parent = levels.length - 2;
+    return html`<div class="acp-chain" title=${t('panel.chainTitle')}>${levels.map((level, at) => html`
+      ${at ? html`<span class="acp-chain-sep">›</span>` : nothing}
+      ${level.current
+    ? html`<span class="acp-chain-now" title=${this.levelTitle(level, 'panel.chainCurrent')}
+        >${this.levelLabel(level)}</span>`
+    : html`<button type="button" class="acp-chain-item"
+        title=${this.levelTitle(level, at === parent ? 'panel.chainUp' : 'panel.chainSelect')}
+        @click=${() => this.emitLevel(level.index)}
+        @mouseenter=${() => this.emitLevelHover(level.index)}
+        @mouseleave=${() => this.emitLevelHover(null)}
+      >${this.levelLabel(level)}</button>`}`)}</div>`;
+  }
+
+  /**
+   * The label of a level: the TAG, and nothing else.
+   *
+   * It used to carry the first classes too, and that was worse than plain: `section.rounded-lg.borde…`
+   * spends the whole row on one level and still gets cut mid-word, while the thing that actually says
+   * WHICH element this is — the hover — was already there. The classes stay in the tooltip.
+   */
+  private levelLabel(level: IPickerLevel): string {
+    const tag = level.tag;
+    return tag.length > CHAIN_LABEL_MAX ? `${tag.slice(0, CHAIN_LABEL_MAX)}…` : tag;
+  }
+
+  /** What the level does, and under it the class attribute the label deliberately does not show. */
+  private levelTitle(level: IPickerLevel, id: string): string {
+    const what = t(id, { tag: level.tag });
+    return level.literal ? `${what}\n${level.literal}` : what;
+  }
+
+  /** The panel asks for a level by index; the editor owns the elements and resolves it. */
+  private emitLevel(index: number): void {
+    this.preview(null);
+    this.dispatchEvent(new CustomEvent<number>('picker-level', {
+      detail: index, bubbles: true, composed: true,
+    }));
+  }
+
+  /** Hovering a level marks it on screen — `null` when the pointer leaves. */
+  private emitLevelHover(index: number | null): void {
+    this.dispatchEvent(new CustomEvent<number | null>('picker-level-hover', {
+      detail: index, bubbles: true, composed: true,
+    }));
   }
 
   /**
