@@ -1,5 +1,52 @@
 # CHANGELOG — i3-edit
 
+## 2026-09-10 (3) — o que 4 grupos migrados dizem sobre a divergência
+
+`groupviewcard`, `groupselectmany`, `groupenterdateinterval` e `groupentertime`: **17 moléculas,
+606 sítios, 0 fallback alterado**, verificador limpo ao fim de cada grupo.
+
+**A hipótese de densidade cai.** Eu suspeitava que a divergência entre folhas irmãs crescia com o
+número de sítios por folha. Medido:
+
+| grupo | sítios/folha | tokens que divergem |
+|---|---|---|
+| `groupviewcard` | 16-18 | 1/12 |
+| `groupselectmany` | 33-42 | **10/18** |
+| `groupenterdateinterval` | ~35 | 5/20 |
+| `groupentertime` | **66** | 4/22 |
+
+O grupo MAIS denso deu menos divergência que o de densidade média. O que separa o `groupselectmany`
+é quantos papéis plausíveis existem para o mesmo valor no vocabulário daquelas moléculas — ele tem
+os quatro contextos de `#ffffff` (superfície, input, botão secundário, texto sobre primário). É
+ambiguidade do vocabulário no lugar, não tamanho de folha.
+
+**E 80% da divergência não é escolha de papel.** Medindo por `(token de origem, propriedade)` —
+mesmo contexto, papéis diferentes — e separando em duas famílias:
+
+```
+migrou numa folha, virou holdout na irmã:  28
+dois papéis do DS em conflito de verdade:   7
+```
+
+`--ml-font-family` em `.ml-error-text { color }` virando `--font-family-primary` numa folha e
+ficando `--ml-font-family` na outra não é discordância de papel: é uma folha que migrou menos. É a
+variância de cobertura (6 vs 8 edits) já registrada, vista de outro ângulo.
+
+⚠️ **Duas correções minhas, e as duas do mesmo tipo — julguei a escolha pelo NOME do papel sem ler
+o que a declaração original fazia:**
+
+1. Reportei que a nota do `-hover` falhara no `&:hover:not(:disabled)` de um número de relógio
+   selecionado. O original repete o valor do repouso dentro do hover **de propósito** — um item já
+   selecionado não muda sob o ponteiro. Usar `--button-primary-bg-hover` CRIARIA um efeito que a
+   molécula não tem. O agente manteve o mesmo papel dos dois lados e acertou;
+2. Reportei como inconsistência o `background: --button-primary-bg` ao lado de
+   `border-color: --selected-border` no mesmo bloco. `--selected-bg` está no ledger com `#f5f5f5` e
+   o valor ali é `#3b82f6` — pelo G3 aquele papel é proibido para esse sítio, e o único papel de
+   FUNDO com `#3b82f6` no ledger é `--button-primary-bg`. A escolha estava forçada pela regra.
+
+O segundo caso expõe uma **lacuna do design system**, não do agente: não há papel para "fundo de
+item selecionado na cor de destaque". Fica registrado para quando o DS for revisado.
+
 ## 2026-09-10 (2) — o edit no-op passa a ser PULADO, não recusado
 
 O `applyEdits` reprovava o lote inteiro quando um edit tinha `content` igual ao `find`. Medido duas
@@ -72,7 +119,7 @@ não ver o próprio conteúdo, e vazar para o que vem depois.
 Cinco rodadas do piloto provaram que **prosa não governa escolha de papel**. O mesmo sítio — a borda
 de foco do campo, `#3b82f6` — saiu de quatro jeitos diferentes, e nunca igual nas duas moléculas ao
 mesmo tempo; a cada rodada a prosa foi reforçada e a seguinte desobedeceu em outro lugar. Controle:
-`todo/moleculetokens/todo-gates-papel-e-neutralidade.md`.
+`todo/resolvidos/202609/todo-gates-papel-e-neutralidade.md`.
 
 E o aceite aprovava os dois defeitos: o run 4 mudou o valor e o `check-ds-tokens.mjs` saiu LIMPO
 (a consistência foi comprada mudando o valor); o run 5 tinha o papel errado e passou em tudo, porque
@@ -113,7 +160,7 @@ todo papel do DS é novo na folha. Sem saída obedecível, a LLM unificava por c
 **valor**.
 
 **A medição que motivou:** o piloto de 08/09 no `groupEnterMoney` (2 moléculas, 51 sítios,
-`todo/moleculetokens/todo-gate-fallback-migracao.md`). O agente acertou 46 dos 51 sítios — a mecânica
+`todo/resolvidos/202609/todo-gate-fallback-migracao.md`). O agente acertou 46 dos 51 sítios — a mecânica
 funciona. O gate reprovou a tentativa 1 das **três** runs, e as três tentativas 2 obedeceram à
 mensagem: **5 fallbacks alterados**, entre eles `--ml-outline-focus` `#3b82f6` virando
 `--border-default` `#e2e8f0`, que **apagou o destaque de foco de um campo** — a borda de foco passou
@@ -282,7 +329,7 @@ aprendizado #10 no seu limite, e a conclusão é que isto tem de virar detector.
 `check-ds-tokens.mjs` saiu LIMPO, porque a consistência foi comprada mudando o
 valor. O run 5 tem o papel errado e passa em tudo, porque o valor está
 preservado. São dois furos distintos, e vão para dois gates distintos, em
-`todo/moleculetokens/todo-gates-papel-e-neutralidade.md`:
+`todo/resolvidos/202609/todo-gates-papel-e-neutralidade.md`:
 
 - **G1**, neutralidade do rename — o par cujo NOME mudou não pode mudar de valor.
   Validado: `before === after` nas 184 folhas dá 0; o defeito do run 4 injetado
