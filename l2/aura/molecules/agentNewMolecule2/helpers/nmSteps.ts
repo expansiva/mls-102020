@@ -110,7 +110,8 @@ export function nmAgentStepIntent(
 // The retry counter lives HERE — in the step's own args — not in longTermMemory: the old flow kept
 // `fixCount` as a string in task memory, where it silently vanishes if the task is recreated.
 //
-// `target` (added for todo/moleculetokens/todo-casca-migracao-por-grupo.md): optional, read only by
+// `target` (added for todo/moleculetokens/todo-casca-migracao-por-grupo.md, a batch shell ABANDONED
+// on 2026-09-10 — the field has no consumer today and is kept because it is inert): optional, read only by
 // agentImproveMolecule2/i1-locate, where the step's own argument wins over the root plan's — same
 // precedence `runKey` already has two lines below. A normal run never sends it and falls back to the
 // root plan unchanged.
