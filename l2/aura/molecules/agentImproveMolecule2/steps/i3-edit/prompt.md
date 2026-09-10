@@ -94,9 +94,9 @@ blocks — and the selector line above it is what makes it unique. Overlap is th
 edit is applied before the next one is matched, so a line an earlier edit already rewrote is no
 longer there for a later one to find.
 
-A site you decide to keep on its `--ml-*` token gets NO edit at all. Never send an edit whose
-`content` equals its `find` — it changes nothing and is refused. Say why the site stays in the
-summary instead.
+A site you decide to keep on its `--ml-*` token needs NO edit: just leave it out, and say why it
+stays in the summary. If you do send an edit whose `content` equals its `find`, it is skipped rather
+than applied — it is not an error, but it is not how a holdout is recorded either.
 
 {{tokenVocabulary}}
 

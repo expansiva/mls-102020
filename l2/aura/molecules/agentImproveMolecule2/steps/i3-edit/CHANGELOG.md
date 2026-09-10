@@ -1,5 +1,72 @@
 # CHANGELOG — i3-edit
 
+## 2026-09-10 (2) — o edit no-op passa a ser PULADO, não recusado
+
+O `applyEdits` reprovava o lote inteiro quando um edit tinha `content` igual ao `find`. Medido duas
+vezes, e nas duas logo depois de um gate ter ensinado o holdout: `ml-enter-money-br` (09/09,
+`--ml-on-surface-faint`) e `ml-tree-multi-select` (10/09, `--ml-outline-error`, na tentativa
+seguinte à do `focus_role_mismatch`). Na segunda, **12 edits válidos foram jogados fora junto com o
+no-op e a run morreu.**
+
+A causa não é desleixo do modelo. Os gates mandam "leave the site on its `--ml-*` token", e **o
+formato de edição não tem como DIZER isso** — então o modelo diz do único jeito disponível: um edit
+que não muda nada, com o motivo no `why` (*"Mantém a borda de status no token --ml permitido pelo
+design system"*). Entre as duas medições entrou uma regra no `prompt.md` proibindo o no-op, e ela
+**não segurou**. Prosa pede, código impõe.
+
+Agora o no-op é pulado e registrado em `applied` como `no-op skipped — holdout declared (…)`.
+
+**O que o guard defendia continua defendido, um nível abaixo:** se TODOS os edits forem no-op o
+arquivo sai idêntico e o `!changed.size` reprova a tentativa (`every edit applied but the content is
+unchanged`). Uma run que acha que editou e não editou continua sendo pega; só o holdout declarado
+passa. Verificado nos três casos: no-op + edit válido -> 0 erros e o edit válido aplicado; só no-op
+-> erro de conteúdo inalterado; `find` inexistente -> continua reprovando.
+
+O `prompt.md` foi corrigido junto, porque passou a afirmar algo falso: dizia que o no-op "is
+refused". Agora diz que ele é pulado, e continua pedindo a forma limpa — não emitir o edit e
+explicar o holdout no resumo.
+
+## 2026-09-10 — quando o `:hover` pede a variante `-hover`, e quando NÃO pede
+
+Depois de 3 grupos migrados (`groupviewcard`, `groupselectmany`, `groupenterdateinterval` — 14
+moléculas, 393 sítios, 0 fallback alterado), a única regularidade que sobrou sem tratamento era o
+`:hover`: **19 de 20 sítios `--ds-*` dentro de blocos `:hover` NÃO usavam a variante `-hover`**, e
+18 deles eram a mesma escolha, `--surface-alt-bg`. Contra 22 de 38 COM variante nos grupos migrados
+antes, parecia defeito sistemático, e o caminho óbvio era um quarto gate.
+
+**A medição matou o gate.** Um detector calibrado — papel que POSSUI variante `-hover` no template,
+lido dentro de `:hover`, sem usar a variante — acusa **12 sítios na biblioteca fonte**, e ao abrir
+cada um eles são escolha deliberada, duas delas com o motivo escrito em comentário pelo próprio
+autor da migração anterior:
+
+```less
+// Hover — subtle fill (an ITEM hover, not a button hover: surface-alt-bg)
+// Hover — signals SELECTION AFFORDANCE, hence selected-*, not button-primary-*
+```
+
+E cinco são classes utilitárias (`.hover\:ml-text:hover`), onde o `:hover` é o PROPÓSITO da classe,
+não o estado de um componente — ali `--text-strong-hover` seria errado. Um detector que acusa
+escolha documentada não vira gate: **não existe resposta mecânica aqui**, e essa é a única razão
+pela qual isto virou prosa em vez de código.
+
+O que faltava não era detecção, era DOCUMENTAÇÃO. A distinção existia em dois comentários dentro do
+`ml-pagination-control.less` e em lugar nenhum que o agente leia. Agora está no
+`libraryFallbackTable()`, ao lado do ledger: a variante `-hover` é o estado de algo que o elemento
+já pinta em repouso; preenchimento de item (linha, opção, card sem fundo próprio) e classe
+utilitária usam o papel base.
+
+⚠️ **Registro de um erro meu, porque ele custa se voltar:** eu havia classificado o
+`--surface-alt-bg` do `groupviewcard` como "a escolha tentadora e errada". Era o oposto — o
+precedente documentado da biblioteca é `item hover -> surface-alt-bg`, e o agente seguiu a convenção
+da casa. A regra que eu tinha na cabeça não existia na biblioteca; foi a medição que mostrou isso, e
+só porque ela varreu a biblioteca INTEIRA em vez de olhar só o que o agente produziu.
+
+⚠️ **O detector calibrado tinha um bug, e é o espelho do que já corrigimos no G2.** A 1ª versão
+acusava um `--focus-ring` dentro de `&:focus` porque um `&:hover { … }` de UMA LINHA, na linha
+acima, abria escopo e nunca o fechava. Rastreio por offset de caractere resolve. Fica o padrão: todo
+detector com escopo de bloco tem de ser testado contra o bloco de uma linha, nas duas direções —
+não ver o próprio conteúdo, e vazar para o que vem depois.
+
 ## 2026-09-09 (2) — G1 e G2: a escolha de papel virou detector
 
 Cinco rodadas do piloto provaram que **prosa não governa escolha de papel**. O mesmo sítio — a borda
