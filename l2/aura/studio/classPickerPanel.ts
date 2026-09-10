@@ -91,6 +91,19 @@ export const CLASS_PICKER_TAG = 'aura--studio--class-picker-102020';
 const CHAIN_LABEL_MAX = 10;
 
 /**
+ * What each text attribute is CALLED for someone who is not writing HTML.
+ *
+ * "tooltip" is what the user sees, `title` is what the markup says — the attribute name travels in
+ * the tooltip of the label, so both are there and neither has to be guessed.
+ */
+const TEXT_ATTR_LABEL: Record<string, string> = {
+  placeholder: 'attr.placeholder',
+  title: 'attr.title',
+  'aria-label': 'attr.ariaLabel',
+  alt: 'attr.alt',
+};
+
+/**
  * One level of the selection's ancestor chain (TASK-102020-ancestor-breadcrumb).
  *
  * `index` is the HANDLE: the panel sends it back and the editor resolves the element. A live node
@@ -106,6 +119,34 @@ export interface IPickerLevel {
   current: boolean;
 }
 
+/**
+ * A text the selection carries in an ATTRIBUTE (TASK-102020-attribute-text).
+ *
+ * `placeholder`, `title`, `aria-label` and `alt` are text the user READS and, until this, the only
+ * text on the page with no way in: they have no box of their own, so the pointer cannot land on them
+ * and the panel is where the gesture has to live.
+ */
+export interface IPickerText {
+  attribute: string;
+  value: string;
+  /**
+   * Catalog keys whose value IS this text. Empty means not editable here (written in the markup, or
+   * from a molecule's own file); more than one means the panel ASKS which — an attribute has no
+   * position in the DOM to break the tie with.
+   */
+  keys: string[];
+  /** Why there is no key — shown in place of the field, which stays read-only. */
+  reason?: IMessageRef;
+}
+
+/** What the panel asks the editor to write into an attribute. */
+export interface IPickerTextEdit {
+  attribute: string;
+  /** The key the user is editing — chosen when the text matched more than one. */
+  key: string;
+  value: string;
+}
+
 /** What the editor knows about the selection and the panel needs to render it. */
 export interface IPickerTarget {
   /** Tag of the selected element, for the header. */
@@ -118,6 +159,8 @@ export interface IPickerTarget {
    * asking for something the tool did not have.
    */
   levels: IPickerLevel[];
+  /** Text this element carries in an attribute — empty for most elements. */
+  texts: IPickerText[];
   /** File that receives the edit, already formatted for display. */
   fileLabel: string;
   /**
@@ -229,6 +272,10 @@ export class ClassPickerPanel extends StateLitElement {
   @state() private typedEditing: number | null = null;
   /** State keys the scenario panel is currently simulating — see renderScenarioBadge. */
   @state() private simulatedKeys: string[] = [];
+  /** Which catalog key the user chose for an ambiguous attribute text, by attribute. */
+  @state() private textKeys: Record<string, string> = {};
+  /** Last value asked for per attribute — the guard against Enter and blur writing twice. */
+  private lastSent: Record<string, string> = {};
 
   // The looks live in classPickerPanel.less, compiled into this constructor by the enhancement
   // (processCssLit -> loadStyle). Two things that file explains and this one depends on: every class
@@ -283,6 +330,14 @@ export class ClassPickerPanel extends StateLitElement {
       this.pendingState = {};
       this.roleEditing = null;
     }
+    // A different element means a different sentence behind the same attribute name. The editor
+    // re-validates the key against what it offered, so a stale choice cannot write — but it could
+    // still SHOW the wrong key, and that is a lie the panel must not tell.
+    if (changed.has('target') && previous
+      && (previous.tag !== this.target?.tag || previous.literal !== this.target?.literal)) {
+      this.textKeys = {};
+      this.lastSent = {};
+    }
   }
 
   /**
@@ -317,6 +372,7 @@ export class ClassPickerPanel extends StateLitElement {
         <button type="button" class="acp-close" title=${t('panel.close')} @click=${this.onClose}>&times;</button>
       </div>
       ${this.renderChain(target)}
+      ${this.renderTexts(target)}
       <div class="acp-tabs">
         ${this.tabButton('classes', 'panel.tabClasses')}
         ${this.tabButton('animations', 'panel.tabAnimations')}
@@ -386,6 +442,99 @@ export class ClassPickerPanel extends StateLitElement {
   private emitLevelHover(index: number | null): void {
     this.dispatchEvent(new CustomEvent<number | null>('picker-level-hover', {
       detail: index, bubbles: true, composed: true,
+    }));
+  }
+
+  /**
+   * The texts this element carries in an attribute — one line each.
+   *
+   * ABOVE the tabs, and not inside the "classes" tab, because it is not a class and because the
+   * whole point is that the user can SEE that the text is editable: a `placeholder` has no box on
+   * screen, so nothing about it is discoverable by pointing. It only renders when the element has
+   * one, which is a minority of elements.
+   */
+  private renderTexts(target: IPickerTarget) {
+    if (!target.texts.length) return nothing;
+    return html`<div class="acp-texts">
+      ${target.texts.map((text) => this.renderText(text))}
+    </div>`;
+  }
+
+  private renderText(text: IPickerText) {
+    const label = TEXT_ATTR_LABEL[text.attribute];
+    const head = html`<span class="acp-text-label" title=${text.attribute}
+      >${label ? t(label) : text.attribute}</span>`;
+
+    // No key: the text is data, or markup, or in a file this screen does not reach. Read-only with
+    // the reason the editor resolved — the same shape a class row uses when it has nothing to offer.
+    if (!text.keys.length) {
+      return html`<div class="acp-text acp-readonly">${head}
+        <span class="acp-reason">${tr(text.reason) || t('reason.attrNotInCatalog')}</span></div>`;
+    }
+
+    const chosen = this.textKey(text);
+    if (!chosen) {
+      // Ambiguous: the markup could not name the key (a mapped `fromShared`, a ternary), so the only
+      // way back was the sentence — and several keys hold it. Choosing here would be writing one the
+      // user never pointed at.
+      return html`<div class="acp-text">${head}
+        <span class="acp-reason">${t('panel.textPickKey', { count: text.keys.length })}</span>
+        <span class="acp-chips">${text.keys.map((key) => html`<button type="button" class="acp-chip"
+          title=${key} @click=${() => { this.textKeys = { ...this.textKeys, [text.attribute]: key }; }}
+        >${key}</button>`)}</span></div>`;
+    }
+
+    return html`<div class="acp-text">${head}
+      <input class="acp-text-input" type="text" .value=${text.value}
+        title=${t('panel.textOf', { key: chosen })}
+        @keydown=${(e: KeyboardEvent) => this.onTextKeydown(e, text)}
+        @blur=${(e: Event) => this.commitText(text, e.target as HTMLInputElement)}>
+      ${text.keys.length > 1
+    ? html`<button type="button" class="acp-link" title=${t('panel.textOtherKey')}
+        @click=${() => { const next = { ...this.textKeys }; delete next[text.attribute]; this.textKeys = next; }}
+      >${chosen}</button>`
+    : nothing}</div>`;
+  }
+
+  /** The key being edited: the only one, or the one the user picked when there were several. */
+  private textKey(text: IPickerText): string {
+    if (text.keys.length === 1) return text.keys[0];
+    const chosen = this.textKeys[text.attribute];
+    return chosen && text.keys.includes(chosen) ? chosen : '';
+  }
+
+  /** Enter applies, Escape gives up — the same contract as every other field of this panel. */
+  private onTextKeydown = (e: KeyboardEvent, text: IPickerText): void => {
+    e.stopPropagation();
+    const input = e.target as HTMLInputElement;
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.commitText(text, input);
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      // Put the value back BEFORE blurring: that is what makes the blur below a no-op.
+      input.value = text.value;
+      input.blur();
+    }
+  };
+
+  /**
+   * Asks the editor to write it — once.
+   *
+   * `lastSent` is not bookkeeping for its own sake: Enter commits and the blur that follows would
+   * arrive while the write is still in flight, with `text.value` still holding the old sentence — a
+   * second write of the same edit, which the history would then have to undo twice.
+   */
+  private commitText(text: IPickerText, input: HTMLInputElement): void {
+    const value = input.value.trim();
+    const key = this.textKey(text);
+    if (!key || !value || value === text.value || value === this.lastSent[text.attribute]) return;
+    this.lastSent[text.attribute] = value;
+    this.dispatchEvent(new CustomEvent<IPickerTextEdit>('picker-text', {
+      detail: { attribute: text.attribute, key, value },
+      bubbles: true,
+      composed: true,
     }));
   }
 

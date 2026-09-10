@@ -32,6 +32,7 @@
 
 import {
   applyTextEdit,
+  extractI18nKeyFromExpression,
   findAllI18nMatches,
   findTextOriginByKey,
   findTextOriginByOccurrence,
@@ -45,6 +46,7 @@ import {
   type ClassPickerPanel,
   type IPickerApply,
   type IPickerPreview,
+  type IPickerTextEdit,
 } from '/_102020_/l2/aura/studio/classPickerPanel.js';
 import {
   addEditDirty,
@@ -66,6 +68,7 @@ import {
   ownerChain,
   parseClassAttr,
   readAnimationState,
+  readAttribute,
   readDesignSystemRoles,
   repeatedRenderWarning,
   resolveAnchor,
@@ -76,6 +79,7 @@ import {
   type IDomPathStep,
   type IOwnerChain,
   type IOwnerTree,
+  type ITemplateElement,
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { builtCssClassNames, isStudioTailwindLive } from '/_102033_/l2/cbe/studioTailwind.js';
@@ -122,6 +126,16 @@ const DRAG_THRESHOLD_PX = 4;
 
 /** Elements the editor itself puts on the page — never selectable, never counted. */
 const CONTROL_CLASS = 'se-control';
+
+/**
+ * Attributes that hold TEXT THE USER READS (TASK-102020-attribute-text).
+ *
+ * A closed list, and that is the whole safety of the feature: `id`, `for`, `href`, `value` and
+ * `data-*` also carry strings, but editing one of those is changing a LINK, not content. Measured on
+ * the real pages, these four carry 47 (102047) and 52 (102046) sentences that had no way in at all —
+ * the placeholder of every search field, the tooltip of every icon button.
+ */
+const TEXT_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'alt'] as const;
 
 /**
  * What the current selection resolved to for the class picker.
@@ -178,6 +192,21 @@ type EditStep =
     el: WeakRef<HTMLElement>;
   }
   | {
+    /**
+     * Text that lives in an ATTRIBUTE (`placeholder`, `title`, `aria-label`, `alt`).
+     *
+     * No text node, so no `node` — the screen is put back by setting the attribute again. Everything
+     * else is the text step: the address is the catalog KEY, and the write is the same one.
+     */
+    kind: 'attr';
+    attribute: string;
+    i18nKey: string;
+    before: string;
+    after: string;
+    what: string;
+    el: WeakRef<HTMLElement>;
+  }
+  | {
     kind: 'move';
     file: IStudioEditTarget;
     /**
@@ -195,6 +224,27 @@ type EditStep =
     el: WeakRef<HTMLElement>;
   };
 
+/**
+ * A text attribute of the selection, and the catalog keys its value could be.
+ *
+ * Resolved AT SELECTION TIME, like everything else the panel offers: the user has to see that the
+ * text is editable — and, when it is ambiguous, WHICH keys it could be — before typing into it.
+ */
+interface IAttrText {
+  attribute: string;
+  value: string;
+  /**
+   * Keys whose catalog value IS this text, in declaration order. Empty when the text is not in any
+   * catalog of this screen (written straight into the markup, or coming from a molecule's own file).
+   *
+   * A list and not a key: the same sentence can be the value of several keys, and when the source
+   * itself cannot name the one this attribute uses, the panel ASKS instead of choosing.
+   */
+  keys: string[];
+  /** Why there are no keys — the line is read-only and says this. */
+  reason?: IMessageRef;
+}
+
 interface IClassPanelState {
   el: HTMLElement;
   /**
@@ -206,6 +256,8 @@ interface IClassPanelState {
   levels: HTMLElement[];
   /** The element's class attribute, exactly as authored — what has to be found in the source. */
   literal: string;
+  /** Text attributes of the selection, resolved against this screen's catalogs. */
+  texts: IAttrText[];
   tokens: IUtilityToken[];
   /** File that receives the edit, or null when nothing was resolved. */
   file: IStudioEditTarget | null;
@@ -1084,7 +1136,14 @@ export class StudioEditor {
       this.applyCursor();
 
       if (newText !== oldText) {
-        void this.applyTextEditToSource(oldText, newText, occurrenceIndex, editParent, restoredNode, i18nKey)
+        void this.applyTextEditToSource({
+          oldText,
+          newText,
+          occurrence: occurrenceIndex,
+          i18nKey,
+          el: editParent,
+          revert: () => { restoredNode.textContent = oldText; },
+        })
           .then((result) => {
             // Only a write that landed goes on the stack: an edit refused as dynamic text changed
             // nothing, and offering to undo it would undo the previous one instead.
@@ -1156,17 +1215,29 @@ export class StudioEditor {
    * (a re-render, a navigation), and the file still has to be put right. When they are there, they
    * are the rollback — the screen already shows the new text, and a failure has to take it back.
    */
-  private async applyTextEditToSource(
-    oldText: string,
-    newText: string,
-    occurrenceIndex: number,
-    editTarget: HTMLElement | null,
-    restoredNode: Text | null,
-    i18nKey: string | null,
-  ): Promise<{ ok: boolean; what?: string }> {
+  private async applyTextEditToSource(edit: {
+    oldText: string;
+    newText: string;
+    occurrence: number;
+    /** The catalog key when the DOM knows it (data-i18n-key, or an attribute's resolved key). */
+    i18nKey: string | null;
+    /** Element to flash when the write is refused; null when it is no longer on screen. */
+    el: HTMLElement | null;
+    /**
+     * Puts the SCREEN back.
+     *
+     * The optimistic change is the caller's — a text node's content, an attribute's value — so undoing
+     * it is too. It is a callback and not the node itself because the text a user reads is not always
+     * a text node: `placeholder`, `title` and `aria-label` carry a third of the sentences on a
+     * generated page (TASK-102020-attribute-text), and the write below is the same for all of them.
+     */
+    revert: (() => void) | null;
+  }): Promise<{ ok: boolean; what?: string }> {
+    const { oldText, newText, i18nKey } = edit;
+    const occurrenceIndex = edit.occurrence;
     const rollback = (message: string): { ok: false } => {
-      if (restoredNode) restoredNode.textContent = oldText;
-      if (editTarget) this.flashError(editTarget);
+      edit.revert?.();
+      if (edit.el) this.flashError(edit.el);
       this.setStatus(message);
       return { ok: false };
     };
@@ -1338,6 +1409,7 @@ export class StudioEditor {
     this.classPanelEl.addEventListener('picker-redo', this.onPickerRedo);
     this.classPanelEl.addEventListener('picker-move-up', this.onPickerMoveUp);
     this.classPanelEl.addEventListener('picker-move-down', this.onPickerMoveDown);
+    this.classPanelEl.addEventListener('picker-text', this.onPickerText as EventListener);
     this.classPanelEl.addEventListener('picker-level', this.onPickerLevel as EventListener);
     this.classPanelEl.addEventListener('picker-level-hover', this.onPickerLevelHover as EventListener);
     // Same layer as the marking and the toast — see createStatusEl.
@@ -1387,6 +1459,11 @@ export class StudioEditor {
 
   private onPickerMoveDown = (): void => {
     void this.moveSelected('down');
+  };
+
+  /** A text attribute was edited in the panel: same writer as the text between tags. */
+  private onPickerText = (e: CustomEvent<IPickerTextEdit>): void => {
+    void this.applyAttributeEdit(e.detail.attribute, e.detail.key, e.detail.value);
   };
 
   /** A click on the breadcrumb: the level it names becomes the selection. */
@@ -1444,6 +1521,7 @@ export class StudioEditor {
       // would offer elements that are no longer in the document.
       levels: this.selectionLevels(el),
       literal,
+      texts: [],
       tokens: splitUtilities(literal),
       file: null,
       anchor: null,
@@ -1481,8 +1559,94 @@ export class StudioEditor {
     // class attribute goes through here too: it is editable now that the panel can ADD a property,
     // anchored by position alone, and the first write inserts the attribute.
     await this.resolveClassAnchor(el, literal, state);
+    // The text of an attribute is a different edit with the same address (the catalog key), so it is
+    // resolved here too — and it does NOT depend on the class anchor: an element whose class literal
+    // could not be located can still have a `title` that is perfectly editable.
+    state.texts = await this.resolveTextAttributes(el, state);
     this.traceAnchor(el, literal, state);
     show();
+  }
+
+  /**
+   * The text attributes of an element, each with the catalog keys its value could be.
+   *
+   * TWO WAYS IN, and the order is what makes the gesture usable:
+   *
+   *  1. the SOURCE. `title=${msg['x']}` names the key at the element's own open tag, and the
+   *     structural anchor already resolved which element that is (it is what the class edit writes
+   *     through). One key, no question asked;
+   *  2. the VALUE, when the anchor did not resolve or the binding is not a plain key — the same walk
+   *     back the anchor tiebreak uses, over the same candidate chain as the write (page, organisms,
+   *     shared), so a mapped key (`fromShared`) is not reported as missing.
+   *
+   * Why 1 exists at all: measured on the real pages, the value alone is AMBIGUOUS for 36 of the 47
+   * attributes of the 102047 — the same sentence is the value of three to five keys — and an
+   * attribute has no position in the DOM to break that tie with. The source has one.
+   */
+  private async resolveTextAttributes(el: HTMLElement, state: IClassPanelState): Promise<IAttrText[]> {
+    const candidates = await this.resolveCandidates();
+    if (!candidates.length) return [];
+
+    const source = state.file?.model.model.getValue() ?? '';
+    const written = source ? this.locateElementInSource(source, state.anchor) : null;
+    const language = currentLanguage();
+
+    const texts: IAttrText[] = [];
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const value = el.getAttribute(attribute) ?? '';
+      if (!value.trim()) continue;
+      texts.push(this.resolveAttrText(attribute, value, {
+        source, openStart: written?.openStart ?? -1, candidates, language,
+      }));
+    }
+    return texts;
+  }
+
+  /** The element of the page's source the selection IS, when its position resolved it. */
+  private locateElementInSource(source: string, anchor: ClassAnchor | null): ITemplateElement | null {
+    // Only a position can name an element; an `occurrence` anchor knows where a class LITERAL is,
+    // which is not the same thing and would point at the first element that happens to share it.
+    if (!anchor || anchor.kind === 'occurrence') return null;
+    const resolved = resolveStructuralAnchor(scanTemplateTree(source), anchor.path);
+    return resolved.ok ? resolved.element : null;
+  }
+
+  /** One attribute: its keys, or the reason there are none. */
+  private resolveAttrText(attribute: string, value: string, where: {
+    source: string;
+    openStart: number;
+    candidates: IStudioEditTarget[];
+    language: string;
+  }): IAttrText {
+    const declared = where.openStart >= 0
+      ? readAttribute(where.source, where.openStart, attribute)
+      : { kind: 'absent' as const };
+
+    if (declared.kind === 'expression') {
+      const key = extractI18nKeyFromExpression(declared.expression);
+      if (key && this.keyInCatalog(key, where.candidates)) return { attribute, value, keys: [key] };
+      // A binding that is not a catalog key is DATA — a formatted date, a record's own field. There
+      // is nothing in any source to rewrite, and saying so is the honest answer.
+      if (!key) return { attribute, value, keys: [], reason: { id: 'reason.attrIsData' } };
+    }
+
+    // Written into the markup: editable only at the source, because rewriting markup is another
+    // operation (and the one the LLM owns).
+    if (declared.kind === 'literal') {
+      return { attribute, value, keys: [], reason: { id: 'reason.attrStaticText' } };
+    }
+
+    for (const candidate of where.candidates) {
+      const keys = findAllI18nMatches(value, candidate.model.model.getValue(), where.language)
+        .map((match) => match.key);
+      if (keys.length) return { attribute, value, keys };
+    }
+    return { attribute, value, keys: [], reason: { id: 'reason.attrNotInCatalog' } };
+  }
+
+  /** True when some file of this screen declares the key — the write resolves it the same way. */
+  private keyInCatalog(key: string, candidates: IStudioEditTarget[]): boolean {
+    return candidates.some((candidate) => findTextOriginByKey(key, candidate.model.model.getValue()).type === 'i18n');
   }
 
   /**
@@ -1809,6 +1973,8 @@ export class StudioEditor {
         literal: node.getAttribute('class') ?? '',
         current: node === state.el,
       })),
+      // Plain data already — attribute, value and keys are strings.
+      texts: state.texts.map((entry) => ({ ...entry, keys: [...entry.keys] })),
       fileLabel: state.file ? `${state.file.shortName} (${state.file.folder})` : '',
       file: state.file
         ? { project: state.file.project, shortName: state.file.shortName, folder: state.file.folder }
@@ -1962,6 +2128,69 @@ export class StudioEditor {
     // `@starting-style` only applies on a first render.
     if (this.hasEntrance(literal)) this.replayEntrance(state.el);
     if (timeout) this.previewTimer = window.setTimeout(() => this.previewLiteral(null), timeout);
+  }
+
+  /**
+   * Writes a new text into an ATTRIBUTE of the selection (TASK-102020-attribute-text).
+   *
+   * The screen first and then the source, like the class write — and the source part is the very
+   * writer the text between tags uses: an attribute's sentence is a catalog entry, so what changes is
+   * the entry, in every locale that declares it. Nothing here rewrites markup, and the shared-key
+   * warning comes along for free because it lives in that writer.
+   *
+   * The key comes from the panel and is checked against what was OFFERED: the panel is chrome, and a
+   * key it was never given is a key nobody chose.
+   */
+  private async applyAttributeEdit(attribute: string, key: string, newValue: string): Promise<void> {
+    const state = this.classPanel;
+    if (!state) return;
+    if (!TEXT_ATTRIBUTES.includes(attribute as typeof TEXT_ATTRIBUTES[number])) return;
+
+    const text = state.texts.find((entry) => entry.attribute === attribute);
+    if (!text || !text.keys.includes(key)) return;
+    const before = text.value;
+    if (!newValue.trim() || newValue === before) return;
+
+    const el = state.el;
+    if (!el.isConnected) {
+      this.hideClassPanel();
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      el.setAttribute(attribute, newValue);
+      const result = await this.applyTextEditToSource({
+        oldText: before,
+        newText: newValue,
+        occurrence: 0,
+        i18nKey: key,
+        el,
+        revert: () => el.setAttribute(attribute, before),
+      });
+      if (result.ok) {
+        this.history.push({
+          kind: 'attr',
+          attribute,
+          i18nKey: key,
+          before,
+          after: newValue,
+          what: result.what ?? t('status.textLabel'),
+          el: new WeakRef(el),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+
+    // The value — and which keys hold it — just changed in the source: re-resolve, exactly as after
+    // a class edit.
+    await this.showClassPanel(el);
   }
 
   /**
@@ -2404,11 +2633,37 @@ export class StudioEditor {
 
     const from = undoing ? step.after : step.before;
     const to = undoing ? step.before : step.after;
+
+    if (step.kind === 'attr') {
+      // The same writer as everything else: an attribute's text is a catalog entry like any other,
+      // and the only difference is which part of the screen shows it.
+      const el = step.el.deref() ?? null;
+      const live = el?.isConnected ? el : null;
+      live?.setAttribute(step.attribute, to);
+      const result = await this.applyTextEditToSource({
+        oldText: from,
+        newText: to,
+        occurrence: 0,
+        i18nKey: step.i18nKey,
+        el: live,
+        revert: live ? () => live.setAttribute(step.attribute, from) : null,
+      });
+      if (result.ok && !live) this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
+      return result.ok;
+    }
+
     const node = step.node.deref() ?? null;
     // The screen first, like every other edit — and it doubles as the rollback: a failed write puts
     // `from` back into this very node.
     if (node?.isConnected) node.textContent = to;
-    const result = await this.applyTextEditToSource(from, to, step.occurrence, step.el.deref() ?? null, node, step.i18nKey);
+    const result = await this.applyTextEditToSource({
+      oldText: from,
+      newText: to,
+      occurrence: step.occurrence,
+      i18nKey: step.i18nKey,
+      el: step.el.deref() ?? null,
+      revert: node ? () => { node.textContent = from; } : null,
+    });
     if (result.ok && !node?.isConnected) this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
     return result.ok;
   }

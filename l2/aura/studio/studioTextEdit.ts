@@ -698,8 +698,13 @@ export function buildTemplateMap(source: string): ITemplateExpression[] {
 /**
  * i18n key of an expression like 'this.msg.login' or 'this.msg["login"]'.
  * Also recognizes the t() helper: t('login') / this.t('login'). Null when unrecognized.
+ *
+ * EXPORTED for the attribute edit (TASK-102020-attribute-text): the key of a `title=${msg['x']}` is
+ * written at the element's own open tag, so the editor reads it there instead of guessing it back
+ * from the sentence. It must be the same grammar as the one the template map uses — a second copy of
+ * it in the editor would drift, and the two would disagree about which key an element names.
  */
-function extractI18nKeyFromExpression(expression: string): string | null {
+export function extractI18nKeyFromExpression(expression: string): string | null {
   // this.msg.key — only a bare identifier can be reached with dot access
   const dotMatch = expression.match(/^this\.msg\.(\w+)$/u);
   if (dotMatch) return dotMatch[1];

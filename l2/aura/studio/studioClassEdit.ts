@@ -3528,3 +3528,57 @@ export function selectableChain<T>(owner: IOwnerChain<T>, node: T): T[] {
   if (levels[levels.length - 1] !== node) levels.push(node);
   return levels;
 }
+
+// --- Attributes of an element, as the SOURCE writes them (TASK-102020-attribute-text) ------------
+
+/**
+ * What an element's open tag says about one attribute.
+ *
+ * `expression` is a binding (`title=${msg['x']}`), `literal` a quoted value written in the markup,
+ * `absent` neither. The distinction is the whole degradation of the attribute-text edit: a binding
+ * may name a catalog key (editable), a literal never does (it is markup), and telling the user which
+ * is which is the difference between a reason and a shrug.
+ */
+export type IAttributeSource =
+  | { kind: 'expression'; expression: string }
+  | { kind: 'literal'; value: string }
+  | { kind: 'absent' };
+
+/**
+ * Reads one attribute off the element that starts at `openStart`.
+ *
+ * The open tag is delimited by `findOpenTagEnd`, never by the next `>`: an event binding
+ * (`@click=${() => …}`) carries an arrow, and cutting the tag there would read the attributes of
+ * whatever came after. The name is matched with the same guard the class scan uses, so `title` does
+ * not match `data-title` and `aria-label` does not match `data-aria-label`.
+ */
+export function readAttribute(source: string, openStart: number, attribute: string): IAttributeSource {
+  if (openStart < 0 || openStart >= source.length || source[openStart] !== '<') return { kind: 'absent' };
+  const end = findOpenTagEnd(source, openStart + 1);
+  const openTag = source.slice(openStart, end + 1);
+
+  const name = attribute.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  const found = new RegExp(`(?<![\\w.?@:-])${name}\\s*=\\s*`, 'u').exec(openTag);
+  if (!found) return { kind: 'absent' };
+
+  const at = found.index + found[0].length;
+  if (openTag.startsWith('${', at)) {
+    const close = skipExpression(openTag, at);
+    return { kind: 'expression', expression: openTag.slice(at + 2, close - 1).trim() };
+  }
+
+  const quote = openTag[at];
+  if (quote !== '"' && quote !== "'") return { kind: 'absent' };
+  const closing = openTag.indexOf(quote, at + 1);
+  if (closing < 0) return { kind: 'absent' };
+  const value = openTag.slice(at + 1, closing);
+
+  // QUOTED and yet a binding: `aria-label="${msg['health']}"` is how 8 of the 102046's attributes are
+  // written, and reading them as markup would tell the user their text is not editable when it is the
+  // catalog's. Only a value that is ONE whole expression counts — a mix (`title="Total: ${n}"`) is
+  // part markup, and rewriting markup is another operation.
+  if (value.startsWith('${') && skipExpression(value, 0) === value.length) {
+    return { kind: 'expression', expression: value.slice(2, -1).trim() };
+  }
+  return { kind: 'literal', value };
+}

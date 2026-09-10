@@ -130,6 +130,23 @@ aura--studio--class-picker-102020 {
     border-bottom: 1px solid #4287f5;
   }
 
+  /* The text that lives in an attribute (TASK-102020-attribute-text): one row per attribute, above
+     the tabs. It is not a class and it is not a tab — it is what this element SAYS, and the only
+     place it can be shown, because a placeholder has no box on screen to point at. */
+  .acp-texts { padding: 6px 10px; border-bottom: 1px solid rgba(245,247,250,0.08); }
+  .acp-text { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 3px 0; }
+  .acp-text.acp-readonly { opacity: 0.75; }
+  .acp-text-label {
+    flex: 0 0 96px; color: #9aa5b1; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .acp-text-input {
+    flex: 1 1 120px; min-width: 0; padding: 2px 4px; font-family: inherit; font-size: 11px;
+    color: #e6edf3; background: #2c3742;
+    border: 1px solid rgba(245,247,250,0.25); border-radius: 3px;
+  }
+  .acp-text-input:focus { outline: 1px solid #4287f5; }
+
   .acp-crumb { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid rgba(245,247,250,0.08); }
   .acp-here { color: #f5f7fa; }
   .acp-link { background: transparent; border: 0; cursor: pointer; color: #7fb3ff; font-size: 12px; padding: 0; }

@@ -62,6 +62,7 @@ import {
   containsPoint,
   deepestAt,
   ownerChain,
+  readAttribute,
   readTypedValue,
   selectableChain,
   typedValueSpec,
@@ -2709,4 +2710,88 @@ test('the key is read even when the element looks unique on screen', () => {
   for (const gate of ['siblings.length', 'sameLiteral.length', 'worthAsking']) {
     assert.equal(body.includes(gate), false, `the lookup must not depend on ${gate}`);
   }
+});
+
+// ── Attributes as the source writes them (TASK-102020-attribute-text) ────────────────────────────
+
+/** The open tag of the element whose tag name is given, as the scanner found it. */
+function openStartOf(source: string, tag: string): number {
+  const element = scanTemplateTree(source).elements.find((candidate) => candidate.tag === tag);
+  assert.ok(element, tag);
+  return element.openStart;
+}
+
+const ATTR_MARKUP = [
+  'class X {',
+  '  render() {',
+  '    const msg = this.msg;',
+  '    return html`<div>',
+  '      <input placeholder=${msg[\'search.hint\']} class="w-full" aria-label="busca">',
+  '      <button @click=${() => this.reload()} title=${msg[\'refresh\']}>ok</button>',
+  '      <span data-title="nope" title=${this.formatDate(row.at)}>x</span>',
+  '      <img alt="logo" src="/l.svg">',
+  '      <section aria-label="${msg[\'health\']}"></section>',
+  '      <p title="Total: ${n}"></p>',
+  '    </div>`;',
+  '  }',
+  '}',
+].join('\n');
+
+test('an attribute bound to a catalog key is read as an expression', () => {
+  const found = readAttribute(ATTR_MARKUP, openStartOf(ATTR_MARKUP, 'input'), 'placeholder');
+
+  assert.equal(found.kind, 'expression');
+  if (found.kind !== 'expression') return;
+  assert.equal(found.expression, `msg['search.hint']`);
+});
+
+test('an arrow in an event binding does not end the open tag', () => {
+  // `@click=${() => this.reload()}` carries a `>`. Cutting the tag there would read the attributes
+  // of whatever came next — the same trap findOpenTagEnd exists for.
+  const found = readAttribute(ATTR_MARKUP, openStartOf(ATTR_MARKUP, 'button'), 'title');
+
+  assert.equal(found.kind, 'expression');
+  if (found.kind !== 'expression') return;
+  assert.equal(found.expression, `msg['refresh']`);
+});
+
+test('a quoted attribute is a literal, and a missing one is absent', () => {
+  const literal = readAttribute(ATTR_MARKUP, openStartOf(ATTR_MARKUP, 'img'), 'alt');
+  assert.deepEqual(literal, { kind: 'literal', value: 'logo' });
+
+  assert.deepEqual(readAttribute(ATTR_MARKUP, openStartOf(ATTR_MARKUP, 'img'), 'title'), { kind: 'absent' });
+  assert.deepEqual(readAttribute(ATTR_MARKUP, -1, 'title'), { kind: 'absent' });
+});
+
+test('the name is matched whole: data-title is not title', () => {
+  // The `<span>` carries `data-title="nope"` AND a real `title` binding. Reading the first would
+  // offer the wrong text — and `data-*` is deliberately out of the closed list.
+  const found = readAttribute(ATTR_MARKUP, openStartOf(ATTR_MARKUP, 'span'), 'title');
+
+  assert.equal(found.kind, 'expression');
+  if (found.kind !== 'expression') return;
+  assert.equal(found.expression, 'this.formatDate(row.at)', 'the binding, not the data- literal');
+});
+
+test('an aria-label written in the markup is a literal, not a key', () => {
+  const found = readAttribute(ATTR_MARKUP, openStartOf(ATTR_MARKUP, 'input'), 'aria-label');
+  assert.deepEqual(found, { kind: 'literal', value: 'busca' });
+});
+
+test('a QUOTED interpolation is a binding, not markup', () => {
+  // How 8 of the 102046's aria-labels are written. Read as markup, they told the user their text was
+  // not editable when it is the catalog's.
+  const found = readAttribute(ATTR_MARKUP, openStartOf(ATTR_MARKUP, 'section'), 'aria-label');
+
+  assert.equal(found.kind, 'expression');
+  if (found.kind !== 'expression') return;
+  assert.equal(found.expression, `msg['health']`);
+});
+
+test('a quoted value that MIXES text and code stays markup', () => {
+  // Half of it is a literal, and rewriting markup is another operation — so the honest answer is the
+  // one that sends the user to the source.
+  const found = readAttribute(ATTR_MARKUP, openStartOf(ATTR_MARKUP, 'p'), 'title');
+
+  assert.deepEqual(found, { kind: 'literal', value: 'Total: ${n}' });
 });

@@ -442,3 +442,122 @@ test('Esc has three owners and this is the order', () => {
   assert.ok(esc.slice(typing, up).includes('return;'), 'it returns without touching the event');
   assert.ok(esc.includes('if (!this.classPanel) return;'), 'with nothing open the key is not ours');
 });
+
+// ── Text that lives in an attribute (TASK-102020-attribute-text) ─────────────────────────────────
+
+test('an attribute edit is the SAME write as the text between tags', () => {
+  // The whole reason this feature is cheap: an i18n edit rewrites the catalog ENTRY, in every locale
+  // that declares it — so changing a `placeholder` is byte for byte the same write as changing a
+  // `<p>`. A second writer here would be a second set of bugs (no compile, no live update, no undo).
+  const write = memberOf(EDITOR, 'private async applyAttributeEdit');
+  assert.ok(write.includes('this.applyTextEditToSource({'), 'it goes through the shared writer');
+
+  // And there is exactly ONE call to the text module's write in the whole editor.
+  const calls = codeLines(EDITOR).filter((line) => line.includes('applyTextEdit('));
+  assert.equal(calls.length, 1, 'applyTextEdit is called in one place only');
+
+  // The screen first, then the source, and a refused write puts the attribute back.
+  assert.ok(write.includes('el.setAttribute(attribute, newValue)'), 'optimistic');
+  assert.ok(write.includes('revert: () => el.setAttribute(attribute, before)'), 'and undone on failure');
+  // Serialised like every other write, and never onto an element that left the screen.
+  assert.ok(write.includes('if (this.applying)'), 'one edit at a time');
+  assert.ok(write.includes("t('status.gone')"));
+});
+
+test('the list of text attributes is closed, and nothing on it is a link', () => {
+  // `id`, `for`, `href`, `value` and `data-*` carry strings too — editing one of those changes a
+  // BINDING, not content, and the panel must not be able to reach them.
+  const list = EDITOR.slice(EDITOR.indexOf('const TEXT_ATTRIBUTES'), EDITOR.indexOf('] as const;') + 10);
+  assert.match(list, /\['placeholder', 'title', 'aria-label', 'alt'\]/u);
+  for (const forbidden of ['id', 'for', 'href', 'value', 'data-']) {
+    assert.equal(list.includes(`'${forbidden}'`), false, forbidden);
+  }
+
+  // The panel is chrome: what comes back from it is checked against the closed list AND against the
+  // keys that were offered, so an event nobody could have produced writes nothing.
+  const write = memberOf(EDITOR, 'private async applyAttributeEdit');
+  assert.ok(write.includes('TEXT_ATTRIBUTES.includes(attribute'), 'the attribute is validated');
+  assert.ok(write.includes('text.keys.includes(key)'), 'and so is the key');
+});
+
+test('the key of an attribute comes from the SOURCE first, and from the value as the fallback', () => {
+  // Measured on the real pages: the VALUE alone is ambiguous for 36 of the 47 attributes of the
+  // 102047 — the same sentence is the value of three to five keys — and an attribute has no position
+  // in the DOM to break that tie with. The MARKUP has no such problem: `title=${msg['x']}` names the
+  // key at the element's own open tag, and the structural anchor already knows which element that is.
+  const resolve = memberOf(EDITOR, 'private async resolveTextAttributes');
+  assert.ok(resolve.includes('this.locateElementInSource('), 'the element in the source');
+  assert.ok(resolve.includes('await this.resolveCandidates()'), 'page, organisms and shared, like the write');
+  // Read as an ATTRIBUTE and nothing else: `<svg><title>` is an ELEMENT with the same name, and a
+  // querySelector here would edit it as if it were one.
+  assert.ok(resolve.includes('el.getAttribute(attribute)'));
+  assert.equal(resolve.includes('querySelector'), false);
+  // A blank attribute is not a text with no key — it is not a text at all.
+  assert.ok(resolve.includes('if (!value.trim()) continue;'));
+
+  // `\n  }\n`: the member takes an inline object type, whose own closing brace is `\n  })`.
+  const one = memberOf(EDITOR, 'private resolveAttrText', '\n  }\n');
+  assert.ok(one.indexOf('extractI18nKeyFromExpression') < one.indexOf('findAllI18nMatches'),
+    'the source is asked before the sentence');
+  assert.ok(one.includes('this.keyInCatalog(key, where.candidates)'), 'and a key nobody declares is no key');
+  // The grammar of what a key looks like lives in ONE place (studioTextEdit): a copy of the
+  // `msg['…']` shape here would drift from the one the template map reads.
+  assert.equal(codeLines(EDITOR).some((line) => line.includes('msg[')), false, 'no second copy of the grammar');
+  // Data and static markup get their own reason instead of a shrug.
+  for (const id of ['reason.attrIsData', 'reason.attrStaticText', 'reason.attrNotInCatalog']) {
+    assert.ok(one.includes(id), id);
+  }
+
+  // Only a POSITION can name an element: an `occurrence` anchor knows where a class literal is, and
+  // reading attributes there would read them off the first element that happens to share it.
+  assert.ok(memberOf(EDITOR, 'private locateElementInSource').includes("anchor.kind === 'occurrence'"));
+
+  // Resolved at SELECTION time and not gated by the class anchor: an element whose class literal
+  // could not be located can still have an editable title.
+  const show = memberOf(EDITOR, 'private async showClassPanel');
+  assert.ok(show.includes('state.texts = await this.resolveTextAttributes(el, state);'));
+  assert.ok(show.indexOf('resolveClassAnchor') < show.indexOf('resolveTextAttributes'), 'after, never instead');
+});
+
+test('undo of an attribute edit walks the same writer', () => {
+  // Criterion 5: Ctrl+Z is the editor's own stack, and the step replays through the shared write —
+  // the file and the screen cannot drift apart.
+  assert.match(EDITOR, /kind: 'attr';\s*\n\s*attribute: string;\s*\n\s*i18nKey: string;/u);
+
+  const step = memberOf(EDITOR, 'private async applyStep');
+  const attr = step.slice(step.indexOf("if (step.kind === 'attr')"));
+  assert.ok(attr.includes('live?.setAttribute(step.attribute, to)'), 'the screen follows');
+  assert.ok(attr.includes('this.applyTextEditToSource({'), 'and the source through the same door');
+  assert.ok(attr.includes('i18nKey: step.i18nKey'), 'the address is the key, as in the text step');
+  assert.ok(attr.includes("t('status.offscreen')"), 'a file put right with no screen says so');
+
+  // Only a write that landed is recorded.
+  const write = memberOf(EDITOR, 'private async applyAttributeEdit');
+  assert.ok(write.includes('if (result.ok) {'), 'the push is guarded by the outcome');
+});
+
+test('the panel never picks a key for an ambiguous text', () => {
+  // Risk 2 of the task: in the 102047 three keys hold "Nenhum registro encontrado", and an attribute
+  // has no position in the DOM to break the tie with. Picking one would write a sentence the user
+  // never pointed at.
+  // The FULL signature: `private textKeys` (the chosen-key state) is a prefix of this name.
+  const key = memberOf(PANEL, 'private textKey(text: IPickerText)', '\n  }');
+  assert.ok(key.includes('text.keys.length === 1'), 'one key needs no choosing');
+  assert.ok(key.includes("return chosen && text.keys.includes(chosen) ? chosen : '';"), 'anything else asks');
+
+  // Full signature again: `renderTexts` (the section) is a prefix of `renderText` (the row).
+  const row = memberOf(PANEL, 'private renderText(text: IPickerText)', '\n  }');
+  assert.ok(row.includes("t('panel.textPickKey'"), 'and the row says so');
+  assert.ok(row.includes("t('reason.attrNotInCatalog')"), 'a text with no key shows the reason');
+  // The input only exists once a key is settled.
+  assert.ok(row.indexOf('const chosen = this.textKey(text);') < row.indexOf('acp-text-input'));
+
+  // Enter applies, Esc gives up, and the write is asked for ONCE (Enter plus the blur that follows).
+  const commit = memberOf(PANEL, 'private commitText', '\n  }');
+  assert.ok(commit.includes('this.lastSent[text.attribute]'), 'the same edit is not sent twice');
+  assert.ok(commit.includes("'picker-text'"));
+  // The panel asks; it never writes.
+  for (const forbidden of ['applyTextEdit', 'pushEditOperations', 'persistLocalEdit']) {
+    assert.equal(codeLines(PANEL).some((line) => line.includes(forbidden)), false, forbidden);
+  }
+});

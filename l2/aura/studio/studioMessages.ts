@@ -198,6 +198,10 @@ const message_pt = {
   'reason.moleculeShared': 'este elemento vem de uma molécula (projeto {project}), compartilhada por'
     + ' vários projetos — edição de classe em molécula fica bloqueada até existir undo',
   'reason.noTargetFile': 'sem arquivo-fonte resolvido para esta tela',
+  'reason.attrNotInCatalog': 'não achei este texto no catálogo desta tela — ele está escrito direto'
+    + ' na marcação (ou vem de uma molécula), então dá para editar só na fonte',
+  'reason.attrIsData': 'este texto vem dos dados desta tela, não do catálogo — não há o que editar na fonte',
+  'reason.attrStaticText': 'este texto está escrito direto na marcação — dá para editar só na fonte',
   'reason.repeatedRender': 'esta marcação é uma só no código e desenha {count} elementos na tela —'
     + ' a mudança vale para todos',
 
@@ -236,6 +240,14 @@ const message_pt = {
   'panel.chainSelect': 'selecionar <{tag}>',
   'panel.chainUp': 'selecionar <{tag}> — um nível acima (Esc)',
   'panel.chainCurrent': 'este é o elemento selecionado',
+  // ── Text that lives in an attribute (TASK-102020-attribute-text) ──────────
+  'attr.placeholder': 'dica do campo',
+  'attr.title': 'tooltip',
+  'attr.ariaLabel': 'rótulo acessível',
+  'attr.alt': 'texto alternativo',
+  'panel.textPickKey': 'este texto está em {count} chaves — escolha qual editar',
+  'panel.textOf': 'editando a chave {key} (Enter aplica, Esc desiste)',
+  'panel.textOtherKey': 'trocar de chave',
   'panel.tabClasses': 'Classes atuais',
   'panel.tabAnimations': 'Animações',
   'panel.tabInfo': 'Info',
@@ -713,6 +725,10 @@ const message_en: typeof message_pt = {
   'reason.moleculeShared': 'this element comes from a molecule (project {project}), shared by several'
     + ' projects — editing a molecule class stays blocked until there is undo',
   'reason.noTargetFile': 'no source file resolved for this screen',
+  'reason.attrNotInCatalog': 'I could not find this text in any catalog of this screen — it is'
+    + ' written straight into the markup (or comes from a molecule), so it can only be edited at the source',
+  'reason.attrIsData': 'this text comes from the data of this screen, not from the catalog — there is nothing to edit in the source',
+  'reason.attrStaticText': 'this text is written straight into the markup — it can only be edited at the source',
   'reason.repeatedRender': 'this markup is written once in the code and draws {count} elements on'
     + ' screen — the change applies to all of them',
 
@@ -749,6 +765,13 @@ const message_en: typeof message_pt = {
   'panel.chainSelect': 'select <{tag}>',
   'panel.chainUp': 'select <{tag}> — one level up (Esc)',
   'panel.chainCurrent': 'this is the selected element',
+  'attr.placeholder': 'field hint',
+  'attr.title': 'tooltip',
+  'attr.ariaLabel': 'accessible label',
+  'attr.alt': 'alternative text',
+  'panel.textPickKey': 'this text is under {count} keys — choose which one to edit',
+  'panel.textOf': 'editing key {key} (Enter applies, Esc gives up)',
+  'panel.textOtherKey': 'change the key',
   'panel.tabClasses': 'Current classes',
   'panel.tabAnimations': 'Animations',
   'panel.tabInfo': 'Info',

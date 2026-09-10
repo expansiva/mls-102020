@@ -189,3 +189,22 @@ test('no Portuguese is left in the studio modules outside the catalog', () => {
 
   assert.deepEqual(offenders, [], 'strings in Portuguese outside the catalog');
 });
+
+test('every text attribute the editor offers has a name a human can read', () => {
+  // The label is looked up DYNAMICALLY (`t(TEXT_ATTR_LABEL[attribute])`), which the scan above cannot
+  // see: a missing entry would render `attr.placeholder` in the panel, or the raw attribute name.
+  // It also keeps the two lists aligned — the editor's closed list and the panel's vocabulary.
+  const panel = readFileSync(`${STUDIO_DIR}classPickerPanel.ts`, 'utf8');
+  const editor = readFileSync(`${STUDIO_DIR}studioEditor.ts`, 'utf8');
+
+  const block = panel.slice(panel.indexOf('const TEXT_ATTR_LABEL'), panel.indexOf('};', panel.indexOf('const TEXT_ATTR_LABEL')));
+  const labelled = [...block.matchAll(/^\s*'?([\w-]+)'?:\s*'([\w.]+)',/gmu)].map((m) => ({ attribute: m[1], id: m[2] }));
+  assert.equal(labelled.length > 0, true, 'the scan found the map');
+
+  assert.deepEqual(labelled.filter((entry) => !CATALOG.has(entry.id)), [], 'attributes with no words');
+
+  const offered = /const TEXT_ATTRIBUTES = \[([^\]]*)\]/u.exec(editor)?.[1] ?? '';
+  const attributes = [...offered.matchAll(/'([\w-]+)'/gu)].map((m) => m[1]);
+  assert.deepEqual(labelled.map((entry) => entry.attribute).sort(), attributes.sort(),
+    'the editor offers exactly what the panel can name');
+});
