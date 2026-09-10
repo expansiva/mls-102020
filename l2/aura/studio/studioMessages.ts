@@ -313,6 +313,17 @@ const message_pt = {
   'panel.removeLast': 'a última classe deste elemento não pode sair: não consegui localizá-lo pela'
     + ' posição no template, então é por ela que ele é encontrado na fonte',
   'panel.typedOpen': 'digitar um valor em {unit} (entre {min} e {max})',
+  // ── Layers: responsive and state (TASK-102033-picker-variants) ───────────
+  'panel.layer': 'Camada',
+  'panel.layerTitle': 'em qual camada esta aba escreve — largura de tela e estado do elemento',
+  'panel.layerBase': 'base',
+  'panel.layerNoState': 'sem estado',
+  'panel.layerPreviewNote': 'a tela está mostrando esta camada como se ela fosse a única — é prévia,'
+    + ' não muda a fonte, e não é a soma real das camadas',
+  'panel.inherited': 'herdado de {layer}',
+  'panel.inheritedTitle': 'esta camada não define isso: o valor vem de outra. Escolher aqui cria o'
+    + ' ajuste só desta camada',
+  'panel.removeInherited': 'nada para remover nesta camada — o valor vem de {layer}',
   'group.spacing': 'espaçamento',
   'group.color': 'cor',
   'group.text': 'texto',
@@ -362,6 +373,20 @@ const message_pt = {
     + ' parece não estar fechada',
   'reason.moveNoTarget': 'não há vizinho desse lado',
   'reason.moveStale': 'a fonte mudou desde essa movimentação',
+  // ── Duplicating and removing (TASK-102020-duplicate-remove) ──────────────
+  'reason.sliceMountedRoot': 'este bloco é montado por uma chamada no código (${this.renderX()}) —'
+    + ' duplicar ou remover ele é mexer na chamada, e isso ainda não dá para fazer daqui',
+  'reason.sliceNoTarget': 'não consegui identificar este elemento no código desta tela',
+  'reason.sliceStale': 'a fonte mudou desde essa edição',
+  'panel.duplicate': 'duplicar: entra uma cópia igual logo depois desta',
+  'panel.duplicateNo': 'não dá para duplicar este elemento',
+  'panel.duplicateIds': 'atenção: a cópia leva o mesmo id ({ids}) — rótulos ligados por for ou'
+    + ' aria-labelledby podem apontar para o elemento errado',
+  'panel.remove': 'remover este elemento',
+  'panel.removeNo': 'não dá para remover este elemento',
+  'panel.removeConfirm': 'clique de novo para remover — dá para desfazer com Ctrl+Z, mas só nesta sessão',
+  'status.duplicated': '<{tag}> duplicado',
+  'status.removed': '<{tag}> removido',
   'status.movedUp': '<{tag}> movido para cima',
   'status.movedDown': '<{tag}> movido para baixo',
   'status.dragging': 'arrastando <{tag}> — solte sobre o vizinho de cima ou de baixo',
@@ -837,6 +862,16 @@ const message_en: typeof message_pt = {
   'panel.removeLast': 'the last class of this element cannot go: it could not be located by its'
     + ' position in the template, so the literal is how it is found in the source',
   'panel.typedOpen': 'type a value in {unit} (between {min} and {max})',
+  'panel.layer': 'Layer',
+  'panel.layerTitle': 'which layer this tab writes to — screen width and element state',
+  'panel.layerBase': 'base',
+  'panel.layerNoState': 'no state',
+  'panel.layerPreviewNote': 'the screen is showing this layer as if it were the only one — it is a'
+    + ' preview, it does not touch the source, and it is not the real sum of the layers',
+  'panel.inherited': 'inherited from {layer}',
+  'panel.inheritedTitle': 'this layer does not define it: the value comes from another one. Choosing'
+    + ' here creates the override for this layer only',
+  'panel.removeInherited': 'nothing to remove in this layer — the value comes from {layer}',
   'group.spacing': 'spacing',
   'group.color': 'colour',
   'group.text': 'text',
@@ -885,6 +920,19 @@ const message_en: typeof message_pt = {
     + ' look closed',
   'reason.moveNoTarget': 'there is no neighbour on that side',
   'reason.moveStale': 'the source changed since that move',
+  'reason.sliceMountedRoot': 'this block is mounted by a call in the code (${this.renderX()}) —'
+    + ' duplicating or removing it means touching the call, which cannot be done from here yet',
+  'reason.sliceNoTarget': 'I could not identify this element in the code of this screen',
+  'reason.sliceStale': 'the source changed since that edit',
+  'panel.duplicate': 'duplicate: an identical copy goes in right after this one',
+  'panel.duplicateNo': 'this element cannot be duplicated',
+  'panel.duplicateIds': 'heads up: the copy carries the same id ({ids}) — labels tied by for or'
+    + ' aria-labelledby may point at the wrong element',
+  'panel.remove': 'remove this element',
+  'panel.removeNo': 'this element cannot be removed',
+  'panel.removeConfirm': 'click again to remove — Ctrl+Z undoes it, but only in this session',
+  'status.duplicated': '<{tag}> duplicated',
+  'status.removed': '<{tag}> removed',
   'status.movedUp': '<{tag}> moved up',
   'status.movedDown': '<{tag}> moved down',
   'status.dragging': 'dragging <{tag}> — drop it on the neighbour above or below',

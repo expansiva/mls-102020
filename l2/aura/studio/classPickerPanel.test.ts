@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { LAYER_BREAKPOINTS, LAYER_STATES, layerClass } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const PREFIX = 'acp-';
@@ -102,4 +103,59 @@ test('no class of the panel is a Tailwind utility', async () => {
   const utilities = renderedClasses().filter((name) => compiler.build([name]).length > empty);
 
   assert.deepEqual(utilities, [], 'the JIT would generate rules for these inside the client page');
+});
+
+test('every class the layer selector can write really has a rule', async () => {
+  // TASK-102033-picker-variants: the selector composes `camada × estado × propriedade`, and a
+  // composition Tailwind does not generate is a chip that does nothing. Compiled with the tailwind of
+  // the lockfile — the same engine the studio JIT is pinned to.
+  const { compile } = await import('tailwindcss');
+  const root = path.resolve(HERE, '../../../..');
+  const twDir = path.join(root, 'node_modules/tailwindcss');
+  const loadStylesheet = async (id: string, base: string) => {
+    const file = id === 'tailwindcss'
+      ? path.join(twDir, 'index.css')
+      : id.startsWith('tailwindcss/')
+        ? path.join(twDir, id.slice('tailwindcss/'.length))
+        : path.resolve(base, id);
+    return { path: file, base: path.dirname(file), content: readFileSync(file, 'utf8') };
+  };
+  const compiler = await compile('@import "tailwindcss";', { base: root, loadStylesheet });
+  const empty = compiler.build([]).length;
+
+  // One per family shape the picker offers: a scale, a colour role (arbitrary value), a list, a grid
+  // and a bare word.
+  const sample = ['p-4', 'text-sm', 'bg-[var(--surface,#fff)]', 'flex', 'grid-cols-2', 'opacity-50'];
+  const missing: string[] = [];
+  for (const breakpoint of LAYER_BREAKPOINTS) {
+    for (const state of LAYER_STATES) {
+      for (const cls of sample) {
+        const written = layerClass(cls, { breakpoint, state });
+        if (compiler.build([written]).length <= empty) missing.push(written);
+      }
+    }
+  }
+
+  assert.deepEqual(missing, [], 'these compositions generate no css');
+});
+
+test('the compiled css can survive being put inside a JS template literal', () => {
+  // How this broke for real (2026-09-10): a block comment in the .less said "someone writes
+  // `md:p-3`", the css is injected as `loadStyle(`…css…`)` (processCssLit), the backtick closed the
+  // template early, the module stopped parsing — and since the editor is loaded with a dynamic
+  // `import()` whose rejection nobody reads, studio mode simply stopped arming. Silently.
+  //
+  // The `//` comments at the top of the file are safe (less strips them); a `/* */` one is not.
+  const less = readFileSync(path.join(HERE, 'classPickerPanel.less'), 'utf8');
+  const compiled = less
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('//'))
+    .join('\n');
+
+  const offenders = compiled
+    .split('\n')
+    .map((line, index) => ({ line: line.trim(), at: index + 1 }))
+    .filter((entry) => entry.line.includes('`') || entry.line.includes('${'));
+
+  assert.deepEqual(offenders, [], 'a backtick or ${ here breaks the module that carries this css');
 });

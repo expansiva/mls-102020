@@ -80,14 +80,24 @@ import {
   type IOwnerChain,
   type IOwnerTree,
   type ITemplateElement,
+  type ITemplateTree,
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { builtCssClassNames, isStudioTailwindLive } from '/_102033_/l2/cbe/studioTailwind.js';
 import { applyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import {
+  CONTEXT_CHARS,
   MOVE_NO_TARGET,
+  SLICE_NO_TARGET,
+  applyInsert,
   applyMove,
+  applyRemove,
+  duplicatedIds,
+  planDuplicate,
   planMove,
+  planRemove,
+  planRemoveSlice,
+  planRestore,
   planReverse,
   type IMovePlan,
 } from '/_102020_/l2/aura/studio/studioMoveEdit.js';
@@ -204,6 +214,39 @@ type EditStep =
     before: string;
     after: string;
     what: string;
+    el: WeakRef<HTMLElement>;
+  }
+  | {
+    /**
+     * A whole element went IN (a duplication) or OUT (a removal) — TASK-102020-duplicate-remove.
+     *
+     * One kind for both because the undo of one is the other: the direction is a flip of `op`, and
+     * the two revalidations travel together (the text for taking a slice out, the neighbourhood for
+     * putting one back — see studioMoveEdit).
+     */
+    kind: 'slice';
+    /** Which way the FORWARD edit went. */
+    op: 'insert' | 'remove';
+    file: IStudioEditTarget;
+    /** Where the markup is (insert) or was (remove). */
+    at: number;
+    /** The markup itself: the payload in both directions. */
+    text: string;
+    /** The text on each side of the hole — the address a re-insertion is revalidated on. */
+    before: string;
+    after: string;
+    what: string;
+    /**
+     * The node itself, held STRONGLY, and where on screen it belongs.
+     *
+     * The exception to the WeakRef rule above, and the reason is the operation: a removed subtree is
+     * referenced by nobody else, so a weak reference would let it be collected and the undo would put
+     * the source right with an empty screen. It is the payload, like `slice` is for a move — and
+     * putting the SAME node back is what keeps its listeners and its Lit parts alive.
+     */
+    node: HTMLElement;
+    parent: WeakRef<HTMLElement>;
+    next: WeakRef<ChildNode> | null;
     el: WeakRef<HTMLElement>;
   }
   | {
@@ -1409,6 +1452,8 @@ export class StudioEditor {
     this.classPanelEl.addEventListener('picker-redo', this.onPickerRedo);
     this.classPanelEl.addEventListener('picker-move-up', this.onPickerMoveUp);
     this.classPanelEl.addEventListener('picker-move-down', this.onPickerMoveDown);
+    this.classPanelEl.addEventListener('picker-duplicate', this.onPickerDuplicate);
+    this.classPanelEl.addEventListener('picker-remove', this.onPickerRemove);
     this.classPanelEl.addEventListener('picker-text', this.onPickerText as EventListener);
     this.classPanelEl.addEventListener('picker-level', this.onPickerLevel as EventListener);
     this.classPanelEl.addEventListener('picker-level-hover', this.onPickerLevelHover as EventListener);
@@ -1487,6 +1532,15 @@ export class StudioEditor {
     }
     this.lastHoveredEl = el;
     this.drawHover(el);
+  };
+
+  private onPickerDuplicate = (): void => {
+    void this.duplicateSelected();
+  };
+
+  /** The panel asked twice (see removeElementButton); this writes. */
+  private onPickerRemove = (): void => {
+    void this.removeSelected();
   };
 
   private onPickerUndo = (): void => {
@@ -1949,9 +2003,10 @@ export class StudioEditor {
       return;
     }
 
-    // Resolved here and not on click: a move button that is enabled has to be one that writes, so
-    // the real planner answers before the user reaches for it.
+    // Resolved here and not on click: a button that is enabled has to be one that writes, so the
+    // real planners answer before the user reaches for one.
     const moves = this.moveOptions(state.el);
+    const slice = this.sliceOptions(state.el);
 
     // Read once per session: the built sheet is a static file and does not change while the app runs.
     if (!this.builtClasses) this.builtClasses = builtCssClassNames();
@@ -1991,6 +2046,11 @@ export class StudioEditor {
       canMoveDown: moves.ready.has('down'),
       moveUpReason: moves.up,
       moveDownReason: moves.down,
+      canDuplicate: slice.ready.has('duplicate'),
+      canRemove: slice.ready.has('remove'),
+      duplicateReason: slice.duplicate,
+      removeReason: slice.remove,
+      duplicateNotes: slice.notes,
     };
     panel.hidden = false;
     // Only measurable once it is showing — and its size depends on what the selection carries.
@@ -2536,6 +2596,278 @@ export class StudioEditor {
     return true;
   }
 
+  // --- Duplicating and removing (TASK-102020-duplicate-remove) ---
+
+  /**
+   * The selection's slice, fully resolved: which file, and which node of its tree.
+   *
+   * The move's sibling rule does not apply here — duplicating and removing need no neighbour — so
+   * this is the move's resolution minus half of it, and it reaches more elements for that reason
+   * (measured: 94,5% against 80,1%).
+   */
+  private resolveSlice(el: HTMLElement): (
+    { ok: true; file: IStudioEditTarget; tree: ITemplateTree; index: number; renders: number }
+    | { ok: false; reason: IMessageRef }
+  ) {
+    const path = this.domPathOf(el);
+    if (!path.length) return { ok: false, reason: NOT_LOCATED };
+
+    for (const candidate of this.candidates ?? (this.target ? [this.target] : [])) {
+      const tree = scanTemplateTree(candidate.model.model.getValue());
+      const resolved = resolveStructuralAnchor(tree, path);
+      if (!resolved.ok) continue;
+      return {
+        ok: true,
+        file: candidate,
+        tree,
+        index: tree.elements.indexOf(resolved.element),
+        renders: resolved.renders,
+      };
+    }
+    return { ok: false, reason: NOT_LOCATED };
+  }
+
+  /**
+   * Whether the selection can be duplicated and removed, and what the user must know first.
+   *
+   * The real planners answer, like the move's: a button that is enabled is a button that writes. The
+   * NOTES are the other half — how many copies a repeated node makes, and the id the copy carries —
+   * and they have to be on screen BEFORE the click, because neither is visible afterwards.
+   */
+  private sliceOptions(el: HTMLElement | null): {
+    duplicate?: IMessageRef;
+    remove?: IMessageRef;
+    notes: IMessageRef[];
+    ready: Set<'duplicate' | 'remove'>;
+  } {
+    const ready = new Set<'duplicate' | 'remove'>();
+    if (!el) return { duplicate: SLICE_NO_TARGET, remove: SLICE_NO_TARGET, notes: [], ready };
+
+    const resolved = this.resolveSlice(el);
+    if (!resolved.ok) return { duplicate: resolved.reason, remove: resolved.reason, notes: [], ready };
+
+    const source = resolved.file.model.model.getValue();
+    const duplicate = planDuplicate(source, resolved.tree, resolved.index);
+    const remove = planRemove(source, resolved.tree, resolved.index);
+    const answer: {
+      duplicate?: IMessageRef;
+      remove?: IMessageRef;
+      notes: IMessageRef[];
+      ready: Set<'duplicate' | 'remove'>;
+    } = { notes: [], ready };
+
+    if (duplicate.ok) ready.add('duplicate');
+    else answer.duplicate = duplicate.reason;
+    if (remove.ok) ready.add('remove');
+    else answer.remove = remove.reason;
+
+    if (duplicate.ok) {
+      // One line of code drawing N elements makes N copies. It may be exactly what the user wants (a
+      // column more), but it is a different decision from "one more card".
+      if (resolved.renders > 1) answer.notes.push(repeatedRenderWarning(resolved.renders));
+      const ids = duplicatedIds(source.slice(duplicate.slice.start, duplicate.slice.end));
+      if (ids.length) answer.notes.push({ id: 'panel.duplicateIds', params: { ids: ids.join(', ') } });
+    }
+    return answer;
+  }
+
+  /** Duplicates the selection: an identical copy, right after it. */
+  public async duplicateSelected(): Promise<void> {
+    if (this.mode === 'off') return;
+    const el = this.selectedEl;
+    if (!el?.isConnected) {
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const resolved = this.resolveSlice(el);
+    if (!resolved.ok) {
+      this.setStatus(tr(resolved.reason));
+      return;
+    }
+    const source = resolved.file.model.model.getValue();
+    const plan = planDuplicate(source, resolved.tree, resolved.index);
+    if (!plan.ok) {
+      this.setStatus(tr(plan.reason));
+      return;
+    }
+
+    const text = source.slice(plan.slice.start, plan.slice.end);
+    const result = applyInsert(source, { ok: true, at: plan.insertAt, text });
+    if (!result.ok) {
+      this.setStatus(tr(result.reason));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      // The screen first, so the gesture feels direct: a clone next to the original. Same caveat as
+      // the move — inside a `${...}` the next re-render owns that DOM again, and the source is what
+      // is true either way.
+      const parent = el.parentElement;
+      const copy = el.cloneNode(true) as HTMLElement;
+      parent?.insertBefore(copy, el.nextSibling);
+
+      const what = t('status.duplicated', { tag: el.tagName.toLowerCase() });
+      await this.commitSource(
+        resolved.file,
+        result.source,
+        what,
+        resolved.renders > 1 ? repeatedRenderWarning(resolved.renders) : undefined,
+      );
+
+      if (parent) {
+        this.history.push({
+          kind: 'slice',
+          op: 'insert',
+          file: resolved.file,
+          at: result.inserted.start,
+          text,
+          // The neighbourhood of the copy in the NEW source: what a redo revalidates on.
+          before: result.source.slice(
+            Math.max(0, result.inserted.start - CONTEXT_CHARS),
+            result.inserted.start,
+          ),
+          after: result.source.slice(result.inserted.end, result.inserted.end + CONTEXT_CHARS),
+          what,
+          node: copy,
+          parent: new WeakRef(parent),
+          next: copy.nextSibling ? new WeakRef(copy.nextSibling) : null,
+          el: new WeakRef(copy),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+
+    await this.showClassPanel(el);
+  }
+
+  /**
+   * Removes the selection: the whole slice, and nothing else.
+   *
+   * The most destructive gesture of the L3 — the undo lives in this session's memory only — so the
+   * panel asks for a second click before it gets here, and the status says the change is local and
+   * not saved yet.
+   */
+  public async removeSelected(): Promise<void> {
+    if (this.mode === 'off') return;
+    const el = this.selectedEl;
+    if (!el?.isConnected) {
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const resolved = this.resolveSlice(el);
+    if (!resolved.ok) {
+      this.setStatus(tr(resolved.reason));
+      return;
+    }
+    const source = resolved.file.model.model.getValue();
+    const plan = planRemove(source, resolved.tree, resolved.index);
+    if (!plan.ok) {
+      this.setStatus(tr(plan.reason));
+      return;
+    }
+    const result = applyRemove(source, plan);
+    if (!result.ok) {
+      this.setStatus(tr(result.reason));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      // Captured BEFORE the node leaves: afterwards it has no parent and no next sibling, and those
+      // two are the only way the undo can put it back where it was.
+      const parent = el.parentElement;
+      const next = el.nextSibling;
+      el.remove();
+
+      const what = t('status.removed', { tag: el.tagName.toLowerCase() });
+      await this.commitSource(resolved.file, result.source, what);
+
+      if (parent) {
+        this.history.push({
+          kind: 'slice',
+          op: 'remove',
+          file: resolved.file,
+          at: plan.slice.start,
+          text: result.removed,
+          before: result.before,
+          after: result.after,
+          what,
+          node: el,
+          parent: new WeakRef(parent),
+          next: next ? new WeakRef(next) : null,
+          el: new WeakRef(el),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+
+    // Nothing is selected any more: the element the panel was describing is gone from the screen.
+    this.selectedEl = null;
+    this.lastHoveredEl = null;
+    this.hideClassPanel();
+    this.clearOverlay();
+    this.publishSelection(null);
+  }
+
+  /**
+   * Replays a slice step in one direction — the undo of a duplication is a removal, and vice versa.
+   *
+   * Both revalidate before writing, and each on what it can: taking a slice OUT compares the text
+   * that should be there; putting one BACK compares the neighbourhood, because there is nothing at
+   * the hole to compare against.
+   */
+  private async applySliceStep(
+    step: Extract<EditStep, { kind: 'slice' }>,
+    direction: 'undo' | 'redo',
+  ): Promise<boolean> {
+    const source = step.file.model.model.getValue();
+    const what = t(direction === 'undo' ? 'status.undone' : 'status.redone', { what: step.what });
+    const inserting = (step.op === 'insert') === (direction === 'redo');
+
+    if (inserting) {
+      const plan = planRestore(source, step.at, step.text, { before: step.before, after: step.after });
+      if (!plan.ok) return false;
+      const result = applyInsert(source, plan);
+      if (!result.ok) return false;
+
+      const parent = step.parent.deref();
+      if (parent?.isConnected) parent.insertBefore(step.node, step.next?.deref() ?? null);
+      await this.commitSource(step.file, result.source, what);
+      // The node is back on screen: selecting it is what makes an undone removal feel undone.
+      if (step.node.isConnected) this.selectElement(step.node);
+      else this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
+      return true;
+    }
+
+    const plan = planRemoveSlice(source, { start: step.at, end: step.at + step.text.length }, step.text);
+    if (!plan.ok) return false;
+    const result = applyRemove(source, plan);
+    if (!result.ok) return false;
+
+    if (step.node.isConnected) step.node.remove();
+    if (this.selectedEl === step.node) {
+      this.selectedEl = null;
+      this.hideClassPanel();
+      this.clearOverlay();
+      this.publishSelection(null);
+    }
+    await this.commitSource(step.file, result.source, what);
+    return true;
+  }
+
   // --- Undo (TASK-102033-picker-undo) ---
 
   /** Undoes the last edit of this session. */
@@ -2616,6 +2948,8 @@ export class StudioEditor {
       if (result.ok && !el?.isConnected) this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
       return result.ok;
     }
+
+    if (step.kind === 'slice') return this.applySliceStep(step, direction);
 
     if (step.kind === 'move') {
       // The EXACT inverse splice, not the opposite move: re-planning would restore the order but not

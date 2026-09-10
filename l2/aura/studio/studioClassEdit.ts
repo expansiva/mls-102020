@@ -3303,6 +3303,18 @@ export function readTypedValue(token: IUtilityToken): number | null {
   return match ? Number(match[1]) : null;
 }
 
+/**
+ * The CLASS a typed value produces, clamped to the spec.
+ *
+ * Split out of `applyTypedValue` for the layer edit (TASK-102033-picker-variants): in a layer the
+ * value may have to be ADDED with a prefix instead of replacing what is there, and that decision
+ * belongs to `applyInLayer` — which needs the class, not a rewritten literal.
+ */
+export function typedClass(token: IUtilityToken, value: number, spec: ITypedValueSpec): string {
+  const clamped = Math.min(spec.max, Math.max(spec.min, value));
+  return composeUtility(token, `[${clamped}${spec.unit}]`);
+}
+
 /** The literal with a typed value in place of the token's current one, clamped to the spec. */
 export function applyTypedValue(
   literal: string,
@@ -3310,8 +3322,7 @@ export function applyTypedValue(
   value: number,
   spec: ITypedValueSpec,
 ): string {
-  const clamped = Math.min(spec.max, Math.max(spec.min, value));
-  return replaceUtility(literal, token.raw, composeUtility(token, `[${clamped}${spec.unit}]`), token.index);
+  return replaceUtility(literal, token.raw, typedClass(token, value, spec), token.index);
 }
 
 // --- Pointing at what the mouse cannot reach (TASK-102020-select-inert-elements) ---
@@ -3387,6 +3398,239 @@ export function deepestAt<T>(root: T, point: IPoint, tree: IHitTree<T>): T {
 
   visit(root);
   return best;
+}
+
+// --- Layers: editing the responsive and the state layer (TASK-102033-picker-variants) ------------
+//
+// The picker could always READ a variant (a row label says "cor do texto · no mouse") and never
+// WRITE one: every edit landed on the base layer. What was missing is not a vocabulary — it is the
+// notion of WHICH layer is being edited, and of what a layer INHERITS from the ones below it.
+//
+// WHY ONLY THESE TWO DIMENSIONS
+// Measured over the real pages: 326 variant prefixes in the 102046 and 13 in the 102047, and of those
+// `disabled` (91) and the breakpoints (197) are almost all of it. `dark:` is ZERO and that is
+// correct — the design system's roles already swap inside its dark block, so a colour never needs the
+// prefix. Offering a dark layer here would be solving something that is already solved.
+//
+// THE CASCADE, AS THIS MODULE READS IT
+// A layer is a breakpoint (min-width, so base ⊂ sm ⊂ md ⊂ lg ⊂ xl) and a state (`hover`, `focus`,
+// `active`, `disabled`). A token applies in the active layer when its breakpoint is at or below the
+// active one AND its state is either the active one or none. The DEEPEST applier wins, and "deepest"
+// is (breakpoint depth, then having a state at all) — which is the order Tailwind emits.
+//
+// It is an approximation of the real cascade and it is deliberately the simple one: what the user has
+// to be able to trust is "this is the value that applies here, and this is where it comes from". The
+// panel says which of the two it is on every row (see `inherited`), because a row showing `p-3` in the
+// `md` layer without saying it is inherited is how someone writes `md:p-3` for nothing.
+
+export const LAYER_BREAKPOINTS = ['base', 'sm', 'md', 'lg', 'xl'] as const;
+export const LAYER_STATES = ['base', 'hover', 'focus', 'active', 'disabled'] as const;
+
+export type LayerBreakpoint = typeof LAYER_BREAKPOINTS[number];
+export type LayerState = typeof LAYER_STATES[number];
+
+/** `base` in either dimension means "no prefix for it". */
+export interface ILayer {
+  breakpoint: LayerBreakpoint;
+  state: LayerState;
+}
+
+export const BASE_LAYER: ILayer = { breakpoint: 'base', state: 'base' };
+
+export function isBaseLayer(layer: ILayer): boolean {
+  return layer.breakpoint === 'base' && layer.state === 'base';
+}
+
+/**
+ * The prefix a layer writes — breakpoint first, always.
+ *
+ * `md:hover:` and `hover:md:` both work in Tailwind, so this is a convention and not a rule: writing
+ * it the same way every time is what keeps the file predictable and the reader's eye trained.
+ */
+export function layerPrefix(layer: ILayer): string {
+  const parts = [
+    ...(layer.breakpoint === 'base' ? [] : [layer.breakpoint]),
+    ...(layer.state === 'base' ? [] : [layer.state]),
+  ];
+  return parts.length ? `${parts.join(':')}:` : '';
+}
+
+/** True for a variant this module writes — the two dimensions of a layer, and nothing else. */
+function isLayerVariant(variant: string): boolean {
+  return (LAYER_BREAKPOINTS as readonly string[]).includes(variant)
+    || (LAYER_STATES as readonly string[]).includes(variant);
+}
+
+/**
+ * The layer a token belongs to, or null when it carries a variant this module does not write.
+ *
+ * `group-hover:`, `first:`, `motion-safe:`, `starting:` all land in null on purpose: the picker keeps
+ * showing them (the animations tab writes some of them) and keeps editing them in place, but they are
+ * not a layer anyone can switch to. Two variants of the same dimension (`sm:md:`) are also null —
+ * that is not a layer, it is a mistake nobody should be offered a way to deepen.
+ */
+export function layerOf(token: { variants: string[] }): ILayer | null {
+  let breakpoint: LayerBreakpoint = 'base';
+  let state: LayerState = 'base';
+  for (const variant of token.variants) {
+    if (!isLayerVariant(variant)) return null;
+    if ((LAYER_BREAKPOINTS as readonly string[]).includes(variant)) {
+      if (breakpoint !== 'base') return null;
+      breakpoint = variant as LayerBreakpoint;
+    } else {
+      if (state !== 'base') return null;
+      state = variant as LayerState;
+    }
+  }
+  return { breakpoint, state };
+}
+
+/** How deep a layer is: the pair the cascade is ordered by. */
+function depthOf(layer: ILayer): [number, number] {
+  return [LAYER_BREAKPOINTS.indexOf(layer.breakpoint), layer.state === 'base' ? 0 : 1];
+}
+
+/** Whether a token's layer has any say in the active one. */
+function appliesIn(token: ILayer, active: ILayer): boolean {
+  const [tokenBp] = depthOf(token);
+  const [activeBp] = depthOf(active);
+  if (tokenBp > activeBp) return false;
+  return token.state === 'base' || token.state === active.state;
+}
+
+/**
+ * Rewrites a class for a layer: OUR variants are replaced by the layer's, foreign ones survive.
+ *
+ * The survival matters: choosing an option on a `motion-safe:animate-spin` row must not silently drop
+ * the `motion-safe:` the animation tab wrote. And the order is fixed — breakpoint, state, then
+ * whatever else the class carried.
+ */
+export function layerClass(cls: string, layer: ILayer): string {
+  const parts = cls.split(':');
+  const base = parts.pop() ?? '';
+  const foreign = parts.filter((variant) => !isLayerVariant(variant));
+  return `${layerPrefix(layer)}${foreign.length ? `${foreign.join(':')}:` : ''}${base}`;
+}
+
+/** One line of the classes tab, in the layer being edited. */
+export interface ILayerRow {
+  token: IUtilityToken;
+  /** Where the value comes from; null for a variant this module does not write. */
+  from: ILayer | null;
+  /** True when the value applies here but is written in a shallower layer — choosing CREATES the override. */
+  inherited: boolean;
+}
+
+/** What identifies a row across layers: the family, or the class itself when there is no family. */
+function rowKey(token: IUtilityToken): string {
+  return `${token.negative ? '-' : ''}${token.family || token.base}`;
+}
+
+/**
+ * The rows that apply in a layer: the layer's own, plus what it inherits, plus the foreign ones.
+ *
+ * Order follows the LITERAL, not the cascade: the file is the thing the user is editing, and a list
+ * that reorders itself when a layer changes reads as a different element.
+ *
+ * The foreign rows come back too (`from: null`). The panel only shows them in the base layer — where
+ * they behave exactly as they did before this — while the layer preview needs them all, because they
+ * are real classes on the element.
+ */
+export function layerRows(literal: string, layer: ILayer): ILayerRow[] {
+  const tokens = splitUtilities(literal);
+  const sameLayer = (a: ILayer): boolean => a.breakpoint === layer.breakpoint && a.state === layer.state;
+
+  // EVERY token the layer owns is a row, duplicates of a family included: a literal that carries
+  // `p-3 p-4` shows two padding rows today, and a rule that kept only the winner would make one of
+  // them impossible to see or remove.
+  const own = new Set<string>();
+  for (const token of tokens) {
+    const from = layerOf(token);
+    if (from && sameLayer(from)) own.add(rowKey(token));
+  }
+
+  // Inheritance fills only what the layer does NOT define, and the deepest applier is what it shows.
+  const inherited = new Map<string, IUtilityToken>();
+  for (const token of tokens) {
+    const from = layerOf(token);
+    if (!from || sameLayer(from) || !appliesIn(from, layer)) continue;
+    const key = rowKey(token);
+    if (own.has(key)) continue;
+    const current = inherited.get(key);
+    if (!current) {
+      inherited.set(key, token);
+      continue;
+    }
+    const [bp, st] = depthOf(from);
+    const [currentBp, currentSt] = depthOf(layerOf(current) ?? BASE_LAYER);
+    // Equal depth means the later one in the literal wins, which is what the sheet does with two
+    // rules of the same specificity.
+    if (bp > currentBp || (bp === currentBp && st >= currentSt)) inherited.set(key, token);
+  }
+
+  const rows: ILayerRow[] = [];
+  for (const token of tokens) {
+    const from = layerOf(token);
+    if (!from) {
+      rows.push({ token, from: null, inherited: false });
+      continue;
+    }
+    if (sameLayer(from)) {
+      rows.push({ token, from, inherited: false });
+      continue;
+    }
+    if (inherited.get(rowKey(token)) === token) rows.push({ token, from, inherited: true });
+  }
+  return rows;
+}
+
+/**
+ * The literal after choosing `option` on a row of a layer.
+ *
+ * The two cases are the whole feature: a row the layer OWNS is rewritten in place, and an INHERITED
+ * one gets a new class — that is what "creating the override" means, and it is why choosing the value
+ * a row already shows is not a no-op in a deeper layer.
+ */
+export function applyInLayer(
+  literal: string,
+  row: ILayerRow,
+  option: string,
+  layer: ILayer,
+): string {
+  const written = layerClass(option, row.from === null ? BASE_LAYER : layer);
+  if (row.inherited) return addUtility(literal, written);
+  return replaceUtility(literal, row.token.raw, written, row.token.index);
+}
+
+/**
+ * Takes the layer's override out — the row goes back to showing what it inherits.
+ *
+ * An inherited row has nothing to remove HERE, and removing the class it points at would be editing
+ * another layer behind the user's back. So it is refused, and the panel does not offer the button.
+ */
+export function removeInLayer(literal: string, row: ILayerRow): string {
+  if (row.inherited) return literal;
+  return removeUtility(literal, row.token.raw);
+}
+
+/**
+ * The literal as this layer alone would render — the preview (option 1 of the task's decision).
+ *
+ * A breakpoint answers to the VIEWPORT, and in the studio the client app lives inside the nav3 panel:
+ * shrinking that panel does not change what `md:` matches. So the layer is simulated instead — every
+ * row of the layer written WITHOUT our prefixes, so the browser applies it right now.
+ *
+ * Removing the shallower class is not optional: the class attribute has no order of its own (the
+ * sheet decides), so leaving `p-3` next to an unprefixed `p-6` would show whichever Tailwind emitted
+ * last — for `md:p-2` over `p-4`, the wrong one.
+ *
+ * The honest limit, which the panel says on screen: this is the layer as if it were the only one, not
+ * the real cascade at that width.
+ */
+export function simulateLayer(literal: string, layer: ILayer): string {
+  return layerRows(literal, layer)
+    .map((row) => (row.from === null ? row.token.raw : layerClass(row.token.raw, BASE_LAYER)))
+    .join(' ');
 }
 
 // --- Ownership: whose file the markup under the pointer is in ---

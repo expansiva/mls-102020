@@ -30,12 +30,16 @@ import { currentLanguage, describePageFolder } from '/_102020_/l2/aura/studio/st
 import {
   ADD_GROUPS,
   ANIMATION_GROUPS,
+  BASE_LAYER,
   CASCADE_MAX_CHILDREN,
   CASCADE_STEPS,
+  LAYER_BREAKPOINTS,
+  LAYER_STATES,
   activeAnimationGroups,
   activeAnimations,
   animationOption,
   animationScreen,
+  applyInLayer,
   applyAnimationCustom,
   applyAnimationGroup,
   applyAnimationOption,
@@ -50,6 +54,9 @@ import {
   classesInCategories,
   colorOf,
   diffLiterals,
+  isBaseLayer,
+  layerClass,
+  layerRows,
   newRoleOptions,
   pasteCategories,
   pasteStyle,
@@ -59,17 +66,22 @@ import {
   readTypedValue,
   removeAnimationCustom,
   removeCascade,
-  removeUtility,
-  replaceUtility,
+  removeInLayer,
   typedValueSpec,
   roleLabel,
   roleVar,
+  simulateLayer,
   splitUtilities,
+  typedClass,
   utilityLabel,
   utilityOptions,
   type AddGroup,
   type AnimationScreen,
   type AnimationStateKey,
+  type ILayer,
+  type ILayerRow,
+  type LayerBreakpoint,
+  type LayerState,
   type IAddableProperty,
   type ITypedValueSpec,
   type IAnimationGroup,
@@ -89,6 +101,16 @@ export const CLASS_PICKER_TAG = 'aura--studio--class-picker-102020';
  * name is in the tooltip, and the hover shows the element itself.
  */
 const CHAIN_LABEL_MAX = 10;
+
+/**
+ * The two icons of TASK-102020-duplicate-remove.
+ *
+ * NOT `⧉`, which is already the copy-STYLE icon two buttons away: the same glyph for two
+ * different operations in the same row is worse than an unfamiliar one. `⎘` (next page) reads as
+ * "one more of these" and `⌦` (erase to the right) is not the panel's `×` (close).
+ */
+const DUPLICATE_ICON = '⎘';
+const REMOVE_ICON = '⌦';
 
 /**
  * What each text attribute is CALLED for someone who is not writing HTML.
@@ -208,6 +230,18 @@ export interface IPickerTarget {
   canMoveDown: boolean;
   moveUpReason?: IMessageRef;
   moveDownReason?: IMessageRef;
+  /**
+   * Whether the element can be duplicated and removed (TASK-102020-duplicate-remove).
+   *
+   * Answered by the real planners, like the move's — and the NOTES are what the user has to know
+   * before clicking duplicate: how many copies a repeated node makes, and the id the copy carries.
+   * Neither is visible afterwards.
+   */
+  canDuplicate: boolean;
+  canRemove: boolean;
+  duplicateReason?: IMessageRef;
+  removeReason?: IMessageRef;
+  duplicateNotes: IMessageRef[];
 }
 
 /** What the panel asks the editor to write. */
@@ -272,10 +306,28 @@ export class ClassPickerPanel extends StateLitElement {
   @state() private typedEditing: number | null = null;
   /** State keys the scenario panel is currently simulating — see renderScenarioBadge. */
   @state() private simulatedKeys: string[] = [];
+  /**
+   * The layer every edit of the classes tab lands on (TASK-102033-picker-variants).
+   *
+   * A MODE, like the tab: it survives a change of selection on purpose — someone tuning the `md`
+   * layer of a page walks through several elements doing it, and having it snap back to base on every
+   * click would be its own kind of surprise. What it must never do is be silent: the selector shows
+   * it, the rows say what is inherited, and the preview shows the layer on screen.
+   */
+  @state() private layer: ILayer = BASE_LAYER;
+  /** The layer preview currently asked for — so a render that changes nothing does not re-ask. */
+  private layerPreview: string | null = null;
   /** Which catalog key the user chose for an ambiguous attribute text, by attribute. */
   @state() private textKeys: Record<string, string> = {};
   /** Last value asked for per attribute — the guard against Enter and blur writing twice. */
   private lastSent: Record<string, string> = {};
+  /**
+   * The remove button, armed by the first click.
+   *
+   * Removing is the only gesture of the L3 whose undo does not outlive the session, so it is the only
+   * one that asks — and it asks in the button itself, not in a `confirm()` the browser owns.
+   */
+  @state() private confirmRemove = false;
 
   // The looks live in classPickerPanel.less, compiled into this constructor by the enhancement
   // (processCssLit -> loadStyle). Two things that file explains and this one depends on: every class
@@ -330,6 +382,9 @@ export class ClassPickerPanel extends StateLitElement {
       this.pendingState = {};
       this.roleEditing = null;
     }
+    // The arming never survives a render: whatever else changed, the second click has to be a
+    // deliberate second click on the same element.
+    if (changed.has('target')) this.confirmRemove = false;
     // A different element means a different sentence behind the same attribute name. The editor
     // re-validates the key against what it offered, so a stale choice cannot write — but it could
     // still SHOW the wrong key, and that is a lie the panel must not tell.
@@ -349,9 +404,30 @@ export class ClassPickerPanel extends StateLitElement {
    */
   updated(changed: Map<string, unknown>): void {
     super.updated(changed);
+    this.showLayerPreview(changed.has('target'));
     if (!changed.has('target')) return;
     const row = this.renderRoot.querySelector('.acp-chain');
     if (row) row.scrollLeft = row.scrollWidth;
+  }
+
+  /**
+   * Puts the active layer ON SCREEN, as a preview (the task's option 1).
+   *
+   * A breakpoint answers to the viewport, and the client app lives inside the nav3 panel — shrinking
+   * that panel does not change what `md:` matches, and `window.resizeTo` is not ours to call. So the
+   * layer is simulated instead: its effective classes, written without our prefixes, applied to the
+   * element and never to the source (`simulateLayer`).
+   *
+   * Re-emitted on every change of target because the editor cancels every preview before re-reading
+   * the class attribute — otherwise the panel would say `md` while the screen shows base.
+   */
+  private showLayerPreview(targetChanged: boolean): void {
+    const desired = this.target && !isBaseLayer(this.layer)
+      ? simulateLayer(this.target.literal, this.layer)
+      : null;
+    if (!targetChanged && desired === this.layerPreview) return;
+    this.layerPreview = desired;
+    this.emitPreview(desired === null ? null : { literal: desired });
   }
 
   render() {
@@ -364,6 +440,8 @@ export class ClassPickerPanel extends StateLitElement {
         ${this.renderScenarioBadge()}
         ${this.moveButton('up')}
         ${this.moveButton('down')}
+        ${this.duplicateButton()}
+        ${this.removeElementButton()}
         ${this.historyButton('undo')}
         ${this.historyButton('redo')}
         ${this.renderCopyIcon()}
@@ -555,6 +633,52 @@ export class ClassPickerPanel extends StateLitElement {
   }
 
   /**
+   * Duplicate the element: one more of these, right after it.
+   *
+   * The notes travel in the tooltip because they are the whole difference between a useful gesture
+   * and a surprise: a node inside a `.map()` makes N copies, and a copy carries the same `id`.
+   */
+  private duplicateButton() {
+    const can = this.target?.canDuplicate ?? false;
+    const notes = (this.target?.duplicateNotes ?? []).map((note) => tr(note)).filter(Boolean);
+    const title = can
+      ? [t('panel.duplicate'), ...notes].join(' · ')
+      : (tr(this.target?.duplicateReason) || t('panel.duplicateNo'));
+    return html`<button type="button" class="acp-history ${notes.length ? 'acp-noted' : ''}"
+      ?disabled=${!can} title=${title}
+      @click=${() => this.dispatchEvent(new CustomEvent('picker-duplicate', { bubbles: true, composed: true }))}
+    >${DUPLICATE_ICON}</button>`;
+  }
+
+  /**
+   * Remove the element — in TWO clicks.
+   *
+   * The first arms it, the second writes. It is the only gesture here that asks, and the reason is
+   * not that it is dangerous in the file (the undo is exact) but that the undo lives in this
+   * session's memory: close the Studio and the markup is gone from the source.
+   */
+  private removeElementButton() {
+    const can = this.target?.canRemove ?? false;
+    if (!can) {
+      return html`<button type="button" class="acp-history" disabled
+        title=${tr(this.target?.removeReason) || t('panel.removeNo')}>${REMOVE_ICON}</button>`;
+    }
+    return html`<button type="button" class="acp-history ${this.confirmRemove ? 'acp-danger' : ''}"
+      title=${this.confirmRemove ? t('panel.removeConfirm') : t('panel.remove')}
+      @click=${this.onRemoveElement}>${REMOVE_ICON}</button>`;
+  }
+
+  /** First click arms, second writes. Nothing else on this panel needs two clicks. */
+  private onRemoveElement = (): void => {
+    if (!this.confirmRemove) {
+      this.confirmRemove = true;
+      return;
+    }
+    this.confirmRemove = false;
+    this.dispatchEvent(new CustomEvent('picker-remove', { bubbles: true, composed: true }));
+  };
+
+  /**
    * Undo or redo, with the name of what it would do in the tooltip.
    *
    * Disabled is the honest state when the stack is empty — and the shortcut (Ctrl+Z) does the same
@@ -600,13 +724,62 @@ export class ClassPickerPanel extends StateLitElement {
    * difference here is the line that says there is nothing yet.
    */
   private renderClasses() {
-    const tokens = splitUtilities(this.target?.literal ?? '');
+    // Foreign variants (`group-hover:`, `motion-safe:`, `starting:` — the animation tab writes some
+    // of them) belong to no layer anyone can switch to, so they are shown in the BASE layer, where
+    // they behave exactly as they did before layers existed. Hiding them everywhere would make a
+    // class the panel wrote unreachable by the panel.
+    const rows = layerRows(this.target?.literal ?? '', this.layer)
+      .filter((row) => row.from !== null || isBaseLayer(this.layer));
+
     return html`<div class="acp-rows">
-      ${tokens.length
-    ? tokens.map((token) => this.renderClassBlock(token))
+      ${this.renderLayerPicker()}
+      ${rows.length
+    ? rows.map((row) => this.renderClassBlock(row))
     : html`<div class="acp-block acp-readonly"><span class="acp-reason">${t('panel.noClasses')}</span></div>`}
       ${this.renderAdd()}
     </div>`;
+  }
+
+  /**
+   * The layer selector: a breakpoint and a state, and everything the tab writes lands there.
+   *
+   * Two rows of chips and not a `<select>` for the same reason the roles are not one: the current
+   * value has to be visible without opening anything, and there are five of each.
+   *
+   * `dark:` is deliberately absent, and this is the place that would tempt someone to add it: the
+   * design system's roles already swap inside its own dark block, so a colour never needs the prefix.
+   * A dark layer here would be a second answer to a solved question.
+   */
+  private renderLayerPicker() {
+    const active = this.layer;
+    const chip = (label: string, current: boolean, pick: () => void) => html`<button type="button"
+      class="acp-chip ${current ? 'acp-current' : ''}" ?disabled=${current}
+      @click=${pick}>${label}</button>`;
+
+    return html`<div class="acp-block acp-layers">
+      <span class="acp-head-row">
+        <span class="acp-label" title=${t('panel.layerTitle')}>${t('panel.layer')}</span>
+      </span>
+      <span class="acp-chips">${LAYER_BREAKPOINTS.map((breakpoint) => chip(
+    breakpoint === 'base' ? t('panel.layerBase') : breakpoint,
+    active.breakpoint === breakpoint,
+    () => this.pickLayer({ breakpoint }),
+  ))}</span>
+      <span class="acp-chips">${LAYER_STATES.map((state) => chip(
+    state === 'base' ? t('panel.layerNoState') : t(`variant.${state}`),
+    active.state === state,
+    () => this.pickLayer({ state }),
+  ))}</span>
+      ${isBaseLayer(active) ? nothing : html`<small class="acp-hint">${t('panel.layerPreviewNote')}</small>`}
+    </div>`;
+  }
+
+  private pickLayer(part: { breakpoint?: LayerBreakpoint; state?: LayerState }): void {
+    this.layer = { ...this.layer, ...part };
+    // The role list and the typed input belong to the row they were opened on, and the rows just
+    // changed underneath them.
+    this.roleEditing = null;
+    this.typedEditing = null;
   }
 
   /**
@@ -616,39 +789,63 @@ export class ClassPickerPanel extends StateLitElement {
    * written, "background colour" says what the row does. The class itself is the tooltip, and it stays
    * the label when there is no honest name for the family — showing the class beats inventing a name.
    */
-  private renderClassBlock(token: IUtilityToken) {
+  private renderClassBlock(row: ILayerRow) {
+    const token = row.token;
     const options = utilityOptions(token, 2, this.dsRoles, (cssVar) => this.resolveVar(cssVar));
     const label = utilityLabel(token);
     const text = label.property
       ? [t(label.property), ...label.variants.map((part) => (part.id ? t(part.id, part.params) : part.raw ?? ''))].join(' · ')
       : token.raw;
 
+    // The marker is not decoration: a row showing `p-3` in the `md` layer without saying it is
+    // INHERITED is how someone writes `md:p-3` for nothing (risk 1 of the task).
     const head = html`<span class="acp-head-row">
       <span class="acp-label" title=${token.raw}>${text}</span>
-      ${this.removeButton(token, text)}
+      ${row.inherited
+    ? html`<span class="acp-from" title=${t('panel.inheritedTitle')}
+        >${t('panel.inherited', { layer: this.layerName(row.from) })}</span>`
+    : nothing}
+      ${this.removeButton(row, text)}
     </span>`;
 
     if (options.kind === 'none') {
       return html`<div class="acp-block acp-readonly">${head}<span class="acp-reason">${tr(options.reason)}</span></div>`;
     }
     if (options.kind === 'role') {
-      return html`<div class="acp-block">${head}${this.renderRolePicker(token, options.options)}</div>`;
+      return html`<div class="acp-block ${row.inherited ? 'acp-inherited' : ''}">${head}
+        ${this.renderRolePicker(row, options.options)}</div>`;
     }
 
     const editable = this.target?.editable ?? false;
     const typed = typedValueSpec(token, options.kind);
-    return html`<div class="acp-block">${head}<span class="acp-chips">${options.options.map((option) => {
-      const isCurrent = option === token.raw;
-      const availability = chipAvailability(isCurrent, this.builtClasses.has(option), this.jitLive);
-      if (availability === 'hidden') return nothing;
-      const jitOnly = availability === 'jit-only';
-      return html`<button type="button"
+    return html`<div class="acp-block ${row.inherited ? 'acp-inherited' : ''}">${head}
+      <span class="acp-chips">${options.options.map((option) => {
+    // On an inherited row NOTHING is current: the value shown belongs to another layer, and
+    // choosing it here is a real edit (it creates the override).
+    const isCurrent = !row.inherited && option === token.raw;
+    const written = layerClass(option, row.from === null ? BASE_LAYER : this.layer);
+    const availability = chipAvailability(isCurrent, this.builtClasses.has(written), this.jitLive);
+    if (availability === 'hidden') return nothing;
+    const jitOnly = availability === 'jit-only';
+    return html`<button type="button"
         class="acp-chip ${isCurrent ? 'acp-current' : ''} ${jitOnly ? 'acp-jit' : ''}"
-        title=${jitOnly ? `${option} — ${t('panel.publishNote')}` : option}
+        title=${jitOnly ? `${written} — ${t('panel.publishNote')}` : written}
         ?disabled=${!editable || isCurrent}
-        @click=${() => this.applyLiteral(replaceUtility(this.literal, token.raw, option, token.index), `${token.raw} → ${option}`)}
+        @click=${() => this.applyLiteral(
+    applyInLayer(this.literal, row, option, this.layer),
+    `${token.raw} → ${written}`,
+  )}
       >${option.split(':').pop() ?? option}${jitOnly ? html`<span class="acp-star">*</span>` : nothing}</button>`;
-    })}${typed ? this.renderTypedValue(token, typed) : nothing}</span></div>`;
+  })}${typed ? this.renderTypedValue(row, typed) : nothing}</span></div>`;
+  }
+
+  /** How a layer is called on screen: `base`, `md`, `no mouse`, `md · no mouse`. */
+  private layerName(layer: ILayer | null): string {
+    if (!layer || isBaseLayer(layer)) return t('panel.layerBase');
+    return [
+      ...(layer.breakpoint === 'base' ? [] : [layer.breakpoint]),
+      ...(layer.state === 'base' ? [] : [t(`variant.${layer.state}`)]),
+    ].join(' · ');
   }
 
   /**
@@ -659,15 +856,20 @@ export class ClassPickerPanel extends StateLitElement {
    * out, and the panel comes back offering the "+". The one exception is an element the editor could
    * only find by COUNTING its literal — there the literal is the address (see canRemoveLast).
    */
-  private removeButton(token: IUtilityToken, name: string) {
+  private removeButton(row: ILayerRow, name: string) {
     const editable = this.target?.editable ?? false;
     const stranded = splitUtilities(this.literal).length <= 1 && !(this.target?.canRemoveLast ?? false);
-    return html`<button type="button" class="acp-remove" ?disabled=${!editable || stranded}
-      title=${stranded ? t('panel.removeLast') : t('panel.removeProperty')}
-      @mouseenter=${() => { if (!stranded) this.previewLiteral(removeUtility(this.literal, token.raw)); }}
+    // An inherited row has nothing to remove HERE. Removing the class it points at would be editing
+    // another layer behind the user's back, so the button says why instead of doing that.
+    const nothingHere = row.inherited;
+    return html`<button type="button" class="acp-remove" ?disabled=${!editable || stranded || nothingHere}
+      title=${nothingHere
+    ? t('panel.removeInherited', { layer: this.layerName(row.from) })
+    : (stranded ? t('panel.removeLast') : t('panel.removeProperty'))}
+      @mouseenter=${() => { if (!stranded && !nothingHere) this.previewLiteral(removeInLayer(this.literal, row)); }}
       @mouseleave=${() => this.previewLiteral(null)}
       @click=${() => this.applyLiteral(
-    removeUtility(this.literal, token.raw),
+    removeInLayer(this.literal, row),
     t('status.propertyRemoved', { property: name }),
   )}>&times;</button>`;
   }
@@ -679,7 +881,8 @@ export class ClassPickerPanel extends StateLitElement {
    * the scale is the way back) — what was missing was the way in. Gated by the family AND by the kind,
    * so the colour side of `text-*` never gets a px input.
    */
-  private renderTypedValue(token: IUtilityToken, spec: ITypedValueSpec) {
+  private renderTypedValue(row: ILayerRow, spec: ITypedValueSpec) {
+    const token = row.token;
     const editable = this.target?.editable ?? false;
 
     if (this.typedEditing === token.index) {
@@ -689,7 +892,7 @@ export class ClassPickerPanel extends StateLitElement {
           placeholder=${`${spec.min}–${spec.max}`}
           @keydown=${this.onTypedKeydown}>
         <span class="acp-unit">${spec.unit}</span>
-        <button type="button" class="acp-chip" @click=${() => this.commitTyped(token, spec)}>${t('panel.customApply')}</button>
+        <button type="button" class="acp-chip" @click=${() => this.commitTyped(row, spec)}>${t('panel.customApply')}</button>
         <button type="button" class="acp-link" @click=${() => { this.typedEditing = null; }}>${t('panel.customCancel')}</button>
       </span>`;
     }
@@ -709,7 +912,13 @@ export class ClassPickerPanel extends StateLitElement {
    */
   private renderAdd() {
     const editable = this.target?.editable ?? false;
-    const options = addableProperties(this.literal, { childCount: this.target?.childCount ?? 0 });
+    // The layer's EFFECTIVE classes, not the whole literal: in `md` a padding inherited from base is
+    // already a row (choosing there creates the override), so the "+" must not offer it again — and a
+    // `md:`-only class must not hide the property from the base layer, where it does not apply.
+    const options = addableProperties(
+      simulateLayer(this.literal, this.layer),
+      { childCount: this.target?.childCount ?? 0 },
+    );
 
     if (!options.length) {
       return html`<div class="acp-block acp-add acp-readonly">
@@ -765,7 +974,7 @@ export class ClassPickerPanel extends StateLitElement {
       : t('panel.addColor');
 
     return html`<button type="button" class="acp-chip ${jitOnly ? 'acp-jit' : ''}" ?disabled=${!editable} title=${title}
-      @mouseenter=${() => { if (seed) this.previewLiteral(addUtility(this.literal, seed)); }}
+      @mouseenter=${() => { if (seed) this.previewLiteral(addUtility(this.literal, layerClass(seed, this.layer))); }}
       @mouseleave=${() => this.previewLiteral(null)}
       @click=${() => { if (seed) this.addSeed(entry.property, seed); else this.addColor = entry.property; }}
     >${t(entry.property)}${jitOnly ? html`<span class="acp-star">*</span>` : nothing}</button>`;
@@ -774,7 +983,11 @@ export class ClassPickerPanel extends StateLitElement {
   private addSeed(property: string, cls: string): void {
     this.addGroup = null;
     this.addColor = null;
-    this.applyLiteral(addUtility(this.literal, cls), t('status.propertyAdded', { property: t(property) }));
+    // The new property is born in the ACTIVE layer, like every other write of this tab.
+    this.applyLiteral(
+      addUtility(this.literal, layerClass(cls, this.layer)),
+      t('status.propertyAdded', { property: t(property) }),
+    );
   }
 
   /**
@@ -870,27 +1083,32 @@ export class ClassPickerPanel extends StateLitElement {
    * to paint the whole row. It expands INLINE because the panel scrolls — a positioned popup would be
    * clipped by its own container.
    */
-  private renderRolePicker(token: IUtilityToken, options: string[]) {
+  private renderRolePicker(row: ILayerRow, options: string[]) {
+    const token = row.token;
     const current = options[0];
     const open = this.roleEditing === token.index;
     const editable = this.target?.editable ?? false;
 
-    const row = (option: string) => this.roleRow(option);
+    const roleRow = (option: string) => this.roleRow(option);
 
     return html`<span class="acp-chips">
       <button type="button" class="acp-role-btn" title=${t('panel.roleTitle')} ?disabled=${!editable}
         @click=${() => { this.roleEditing = open ? null : token.index; }}>
-        ${row(current)}<span>${open ? '▴' : '▾'}</span>
+        ${roleRow(current)}<span>${open ? '▴' : '▾'}</span>
       </button>
       ${open ? html`<span class="acp-role-list">${options.map((option) => {
-        const isCurrent = option === current;
-        const availability = chipAvailability(isCurrent, this.builtClasses.has(option), this.jitLive);
+        const isCurrent = !row.inherited && option === current;
+        const written = layerClass(option, row.from === null ? BASE_LAYER : this.layer);
+        const availability = chipAvailability(isCurrent, this.builtClasses.has(written), this.jitLive);
         if (availability === 'hidden') return nothing;
         return html`<button type="button" class="acp-role-item ${isCurrent ? 'acp-current' : ''}"
           @click=${() => {
     this.roleEditing = null;
-    this.applyLiteral(replaceUtility(this.literal, token.raw, option, token.index), `${roleLabel(token.raw)} → ${roleLabel(option)}`);
-  }}>${row(option)}${isCurrent ? html`<span>✓</span>` : nothing}</button>`;
+    this.applyLiteral(
+      applyInLayer(this.literal, row, option, this.layer),
+      `${roleLabel(token.raw)} → ${roleLabel(written)}`,
+    );
+  }}>${roleRow(option)}${isCurrent ? html`<span>✓</span>` : nothing}</button>`;
       })}</span>` : nothing}
     </span>`;
   }
@@ -1201,16 +1419,17 @@ export class ClassPickerPanel extends StateLitElement {
     this.applyLiteral(result.literal, `${t(group?.title ?? '')} ${result.value}${group?.custom?.unit ?? ''}`);
   }
 
-  private commitTyped(token: IUtilityToken, spec: ITypedValueSpec): void {
+  private commitTyped(row: ILayerRow, spec: ITypedValueSpec): void {
     const input = this.renderRoot.querySelector('input[type="number"]') as HTMLInputElement | null;
     if (!input) return;
     if (input.value.trim() === '' || !Number.isFinite(Number(input.value))) {
       this.status(t('status.needNumber'));
       return;
     }
-    const next = applyTypedValue(this.literal, token, Number(input.value), spec);
+    const written = typedClass(row.token, Number(input.value), spec);
+    const next = applyInLayer(this.literal, row, written, this.layer);
     this.typedEditing = null;
-    this.applyLiteral(next, `${token.raw} → ${splitUtilities(next)[token.index]?.raw ?? ''}`);
+    this.applyLiteral(next, `${row.token.raw} → ${layerClass(written, row.from === null ? BASE_LAYER : this.layer)}`);
   }
 
   /** Enter applies, Escape cancels — contained, exactly like the animations input. */
@@ -1218,9 +1437,12 @@ export class ClassPickerPanel extends StateLitElement {
     e.stopPropagation();
     if (e.key === 'Enter') {
       e.preventDefault();
-      const token = splitUtilities(this.literal).find((candidate) => candidate.index === this.typedEditing);
-      const spec = token ? typedValueSpec(token, utilityOptions(token).kind) : null;
-      if (token && spec) this.commitTyped(token, spec);
+      // The ROW and not the token: in a layer the value may have to be added with a prefix instead of
+      // replacing what is on screen, and only the row knows which of the two it is.
+      const row = layerRows(this.literal, this.layer)
+        .find((candidate) => candidate.token.index === this.typedEditing);
+      const spec = row ? typedValueSpec(row.token, utilityOptions(row.token).kind) : null;
+      if (row && spec) this.commitTyped(row, spec);
     }
     if (e.key === 'Escape') {
       e.preventDefault();

@@ -1,5 +1,9 @@
 /// <mls fileReference="_102020_/l2/aura/studio/studioMoveEdit.ts" enhancement="_blank" />
-// Moving an element among its siblings, in the source (TASK-102020-move-elements).
+// An element as a SLICE of the source: moving it, duplicating it, removing it.
+//
+// The name is historical — it started as the move (TASK-102020-move-elements) and duplicate/remove
+// (TASK-102020-duplicate-remove) landed here because they are the same primitive: a slice and a
+// position. Three operations, one delimitation, one undo discipline.
 //
 // WHY THIS IS THE THIRD OPERATION AND NOT THE FIRST
 // The editor swaps TEXT and swaps CLASSES; both rewrite a span in place. Moving is the first one that
@@ -189,4 +193,199 @@ export function siblingsOf(tree: ITemplateTree, index: number): number[] {
 
   return [...new Map(found.sort((a, b) => a.order - b.order).map((e) => [e.index, e])).values()]
     .map((e) => e.index);
+}
+
+// ── Duplicating and removing: the same slice, one step simpler (TASK-102020-duplicate-remove) ────
+//
+// Moving is cut + paste of the slice; these two are each HALF of it — duplicating is the paste
+// without the cut, removing is the cut without the paste. That is why they reach MORE elements than
+// the move: neither needs a sibling to point at. Measured with the real scanner over the real pages,
+// a usable slice (closed, not a mounted root) covers 725 of the 767 elements of the 102047 (94,5%)
+// and 5.692 of the 6.155 of the 102046 (92,5%), against the move's 80,1%.
+//
+// They do NOT share `IMovePlan`: that shape answers about two nodes and a side, and making
+// `insertAt` mean "where the hole is" for a removal is the kind of overloaded field that reads fine
+// the day it is written and lies six months later.
+//
+// THE TWO REVALIDATIONS, and they are not the same
+// Undo never trusts an offset — a file can be rewritten between the edit and the undo (an agent, the
+// code editor). Undoing a DUPLICATE means taking a slice out, and the slice's own text is the
+// address, exactly like `planReverse`. Undoing a REMOVE means putting text back where there is
+// nothing to compare against, so the address is the NEIGHBOURHOOD: the text on each side of the hole
+// has to still be there, side by side.
+
+/**
+ * The sentence about a slice that could not be delimited is the move's, deliberately reused: it talks
+ * about the markup not looking closed, which is the same fact whoever asked.
+ */
+export const SLICE_UNCLOSED = MOVE_UNCLOSED;
+export const SLICE_MOUNTED_ROOT: IMessageRef = { id: 'reason.sliceMountedRoot' };
+export const SLICE_NO_TARGET: IMessageRef = { id: 'reason.sliceNoTarget' };
+export const SLICE_STALE: IMessageRef = { id: 'reason.sliceStale' };
+
+/**
+ * How much text on each side of a removal is kept as its address.
+ *
+ * Enough to be unique in a generated one-line template (40 characters spans several attributes) and
+ * short enough that a session's worth of steps is not a copy of the file.
+ */
+export const CONTEXT_CHARS = 40;
+
+/** Where a duplication puts the copy: right after the original, in the SOURCE's coordinates. */
+export interface IDuplicatePlan {
+  ok: true;
+  slice: { start: number; end: number };
+  insertAt: number;
+}
+
+/** What a removal takes out. */
+export interface IRemovePlan {
+  ok: true;
+  slice: { start: number; end: number };
+}
+
+/** Text going in at an offset — the undo of a removal, and the redo of a duplication. */
+export interface IInsertPlan {
+  ok: true;
+  at: number;
+  text: string;
+}
+
+export type DuplicatePlan = IDuplicatePlan | { ok: false; reason: IMessageRef };
+export type RemovePlan = IRemovePlan | { ok: false; reason: IMessageRef };
+export type InsertPlan = IInsertPlan | { ok: false; reason: IMessageRef };
+
+export type InsertResult =
+  | { ok: true; source: string; inserted: { start: number; end: number } }
+  | { ok: false; reason: IMessageRef };
+
+export type RemoveResult =
+  | {
+    ok: true;
+    source: string;
+    /** The text taken out — the payload of the undo. */
+    removed: string;
+    /** The text that now sits on each side of the hole: the address the undo is revalidated on. */
+    before: string;
+    after: string;
+  }
+  | { ok: false; reason: IMessageRef };
+
+/** What both planners refuse, in the order the user needs to hear it. */
+function refuseSlice(source: string, tree: ITemplateTree, index: number): IMessageRef | null {
+  const element = tree.elements[index];
+  if (!element) return SLICE_NO_TARGET;
+  // Before the slice check: a mounted root's slice is perfectly closed, and reporting "unclosed" for
+  // it would send the user looking for a bug in their markup.
+  if (isMountedRoot(tree, index)) return SLICE_MOUNTED_ROOT;
+  if (!sliceIsWhole(source, element.openStart, element.end)) return SLICE_UNCLOSED;
+  return null;
+}
+
+/**
+ * The copy goes right after the original — the only position that needs no decision.
+ *
+ * Not "at the end of the parent", not "where the pointer is": next to what was pointed at is what
+ * "one more of these" means, and it is also the only place where the copy is certainly among
+ * siblings that accept it.
+ */
+export function planDuplicate(source: string, tree: ITemplateTree, index: number): DuplicatePlan {
+  const refusal = refuseSlice(source, tree, index);
+  if (refusal) return { ok: false, reason: refusal };
+  const element = tree.elements[index];
+  return { ok: true, slice: { start: element.openStart, end: element.end }, insertAt: element.end };
+}
+
+/** The slice that goes away — the same delimitation, with nothing put back. */
+export function planRemove(source: string, tree: ITemplateTree, index: number): RemovePlan {
+  const refusal = refuseSlice(source, tree, index);
+  if (refusal) return { ok: false, reason: refusal };
+  const element = tree.elements[index];
+  return { ok: true, slice: { start: element.openStart, end: element.end } };
+}
+
+/**
+ * Takes a slice out that is expected to hold exactly `slice` — the undo of a duplication.
+ *
+ * Revalidated on the TEXT, like the move's `planReverse`: if the copy is not where the step says it
+ * is, the step is refused and the branch goes with it.
+ */
+export function planRemoveSlice(
+  source: string,
+  span: { start: number; end: number },
+  slice: string,
+): RemovePlan {
+  if (span.start < 0 || span.end > source.length || span.end <= span.start) {
+    return { ok: false, reason: SLICE_STALE };
+  }
+  if (source.slice(span.start, span.end) !== slice) return { ok: false, reason: SLICE_STALE };
+  return { ok: true, slice: { ...span } };
+}
+
+/**
+ * Puts a removed slice back — the undo of a removal.
+ *
+ * There is nothing at `at` to compare against, so the address is the NEIGHBOURHOOD: the text that was
+ * on each side of the hole has to still be there, side by side. That is what makes this safe against
+ * a file rewritten in between — the offset alone would happily insert markup into the middle of a
+ * string literal.
+ */
+export function planRestore(
+  source: string,
+  at: number,
+  text: string,
+  context: { before: string; after: string },
+): InsertPlan {
+  if (at < 0 || at > source.length) return { ok: false, reason: SLICE_STALE };
+  if (source.slice(Math.max(0, at - context.before.length), at) !== context.before) {
+    return { ok: false, reason: SLICE_STALE };
+  }
+  if (source.slice(at, at + context.after.length) !== context.after) {
+    return { ok: false, reason: SLICE_STALE };
+  }
+  return { ok: true, at, text };
+}
+
+/** Text in, nothing else touched. The simplest of the three operations. */
+export function applyInsert(source: string, plan: IInsertPlan): InsertResult {
+  if (plan.at < 0 || plan.at > source.length) return { ok: false, reason: SLICE_NO_TARGET };
+  if (!plan.text) return { ok: false, reason: SLICE_NO_TARGET };
+  return {
+    ok: true,
+    source: source.slice(0, plan.at) + plan.text + source.slice(plan.at),
+    inserted: { start: plan.at, end: plan.at + plan.text.length },
+  };
+}
+
+/**
+ * The slice out, and the address of the hole it leaves.
+ *
+ * Whitespace is left exactly as it is — the same decision the move made. Trimming the blank line a
+ * removal leaves behind would make the undo no longer byte for byte, which is the property the whole
+ * stack is built on.
+ */
+export function applyRemove(source: string, plan: IRemovePlan): RemoveResult {
+  const { start, end } = plan.slice;
+  if (!sliceIsWhole(source, start, end)) return { ok: false, reason: SLICE_UNCLOSED };
+  return {
+    ok: true,
+    source: source.slice(0, start) + source.slice(end),
+    removed: source.slice(start, end),
+    before: source.slice(Math.max(0, start - CONTEXT_CHARS), start),
+    after: source.slice(end, end + CONTEXT_CHARS),
+  };
+}
+
+/**
+ * The `id="…"` values a slice carries.
+ *
+ * A copy carries the id too, and the generated pages tie labels to controls with it
+ * (`<label for>`, `aria-labelledby`) — two elements with the same id break that quietly. Renaming
+ * cannot be done safely from here (the reference may be in another file, or computed), so the answer
+ * is to NAME them and let the user decide.
+ */
+export function duplicatedIds(slice: string): string[] {
+  const found = new Set<string>();
+  for (const match of slice.matchAll(/(?<![\w.?@:-])id\s*=\s*"([^"$]+)"/gu)) found.add(match[1]);
+  return [...found];
 }
