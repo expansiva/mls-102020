@@ -109,12 +109,19 @@ export function nmAgentStepIntent(
 
 // The retry counter lives HERE — in the step's own args — not in longTermMemory: the old flow kept
 // `fixCount` as a string in task memory, where it silently vanishes if the task is recreated.
-export function nmParseStepArgs(value: unknown): { planId?: string; runKey?: string; retryAttempt?: number; retryContext?: string } {
+//
+// `target` (added for todo/moleculetokens/todo-casca-migracao-por-grupo.md, a batch shell ABANDONED
+// on 2026-09-10 — the field has no consumer today and is kept because it is inert): optional, read only by
+// agentImproveMolecule2/i1-locate, where the step's own argument wins over the root plan's — same
+// precedence `runKey` already has two lines below. A normal run never sends it and falls back to the
+// root plan unchanged.
+export function nmParseStepArgs(value: unknown): { planId?: string; runKey?: string; target?: string; retryAttempt?: number; retryContext?: string } {
   const parsed = parseMaybeJsonLocal(value);
   if (!isRecordLocal(parsed)) return {};
   return {
     planId: typeof parsed.planId === 'string' ? parsed.planId : undefined,
     runKey: typeof parsed.runKey === 'string' ? parsed.runKey : undefined,
+    target: typeof parsed.target === 'string' ? parsed.target : undefined,
     retryAttempt: typeof parsed.retryAttempt === 'number' ? parsed.retryAttempt : undefined,
     retryContext: typeof parsed.retryContext === 'string' ? parsed.retryContext : undefined,
   };

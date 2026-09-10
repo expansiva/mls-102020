@@ -21,8 +21,9 @@ import {
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imTypes.js';
 import { deadShellMembers, offendingForeignWrite } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imInherit.js';
 import { diffSurface, groupVocabulary, readSurface } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imSurface.js';
-import { divergentTokenFallbacks, geometryAliasTokens, normalizeTokenValue } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
+import { divergentTokenFallbacks, geometryAliasTokens, normalizeTokenValue, tokenFallbacks } from '/_102020_/l2/aura/molecules/shared/moleculeInspect.js';
 import { GEOMETRY_REGISTRY } from '/_102020_/l2/aura/molecules/skills/moleculeGeometry.js';
+import { LIBRARY_FALLBACKS } from '/_102020_/l2/aura/molecules/skills/libraryFallbacks.js';
 import { mlsHeaderOf } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/steps/i3-edit/applyEdits.js';
 import {
   findBaseInternals,
@@ -184,7 +185,173 @@ function introducedFallbackDivergence(file: ImEditedFile): string[] {
     out.push(
       issue(
         'fallback_divergence',
-        `'${found.token}' is read with ${found.values.length} different fallbacks (${found.values.map(value => `"${value}"`).join(' vs ')}) — the fallback is what renders with NO design system, so one token must mean one value. Use at every site the fallback the sheet ALREADY used for this token`,
+        `'${found.token}' is read with ${found.values.length} different fallbacks (${found.values.map(value => `"${value}"`).join(' vs ')}) — the fallback is what renders with NO design system, so one token must mean one value. Two sites needing two values are two different CONCEPTS: give the diverging site a different role, or leave it on its '--ml-*' token (emit no edit for that site). Do NOT unify by changing a fallback — that is an unrequested visual change`,
+      ),
+    );
+  }
+  return out;
+}
+
+/**
+ * A RENAME that also changes the VALUE — decision #2 of planejamento.md, never defended in code until
+ * now: renaming a token keeps the fallback the sheet already rendered with. A value-only change on the
+ * SAME token is legitimate route-B work (the user may ask for a darker helper text), so this only fires
+ * when the NAME changed together with the VALUE — widening it to catch a value change alone would
+ * refuse every honest colour request.
+ *
+ * DELTA BY CONSTRUCTION — no `introduced()` wrapper: the finding only exists by comparing before and
+ * after directly, so there is no pre-existing version of it to subtract. If the edit added or removed a
+ * declaration the counts differ and the gate stays silent rather than guess an alignment between the
+ * two lists.
+ *
+ * Measured on the groupEnterMoney pilot's run 4: `--ml-outline-focus, #3b82f6` became
+ * `--border-default-focus, #e2e8f0` — the name changed AND the value changed, losing the field's focus
+ * highlight. `harness/probe-gates-papel.mjs` reproduces 0 accusations across the library's `before ===
+ * after` pairs and 1 on that synthetic mutation.
+ */
+function renamedFallbackChanged(file: ImEditedFile): string[] {
+  const before = tokenFallbacks(file.before);
+  const after = tokenFallbacks(file.after);
+  if (before.length !== after.length) return [];
+  const out: string[] = [];
+  for (let i = 0; i < before.length; i++) {
+    const was = before[i];
+    const now = after[i];
+    if (was.token === now.token) continue;
+    if (was.fallback === null || now.fallback === null) continue;
+    if (normalizeTokenValue(was.fallback) === normalizeTokenValue(now.fallback)) continue;
+    out.push(
+      issue(
+        'fallback_renamed',
+        `'${was.token}' was renamed to '${now.token}' and its fallback changed ("${was.fallback}" -> "${now.fallback}") — a rename must keep the value the sheet already rendered with no design system, or the migration changes the appearance nobody asked to change. Keep the old fallback under the new name; if the role you want cannot carry that value, the site is a holdout and stays on its '--ml-*' token`,
+      ),
+    );
+  }
+  return out;
+}
+
+/**
+ * A role read inside a `:focus`/`:focus-within`/`:focus-visible` block that does not itself NAME a
+ * focus role — chosen because its VALUE happened to match what the border needed, not because of what
+ * the role is FOR. Real case in the pilot: `ml-enter-money-br.less` read `--selected-border` inside a
+ * focus block because its value (`#3b82f6`) matched — but "selected" and "focused" are different
+ * concepts, and a design system may restyle them independently.
+ *
+ * An `--ml-*` holdout is always allowed: it is exactly what `ml-currency-input`'s pilot run produced
+ * when the right role (`--ml-outline-focus`) has no DS equivalent to migrate to.
+ */
+function focusRoleMismatches(less: string): string[] {
+  const lines = less.split('\n');
+  const sitesByLine = new Map<number, Array<{ token: string; fallback: string | null }>>();
+  for (const site of tokenFallbacks(less)) {
+    if (!sitesByLine.has(site.line)) sitesByLine.set(site.line, []);
+    sitesByLine.get(site.line)!.push(site);
+  }
+
+  const found: string[] = [];
+  let depth = 0;
+  const focusScopeDepths: number[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNo = i + 1;
+    const opensFocusScope = /:focus(-within|-visible)?[^{]*\{/.test(line);
+
+    // `|| opensFocusScope` is the ONE-LINE block: `&:focus { color: var(--selected-text, #3b82f6); }`
+    // opens and closes the scope on this very line, so the stack is still empty when its sites are
+    // examined. MEASURED 2026-09-09: the library carries 14 single-line `:focus` blocks, all of them in
+    // groupselectmany and grouprateitem — two of the biggest groups still to migrate. They read `--ml-*`
+    // today, so the detector reported 0 either way and the blindness was invisible to its validation.
+    if (focusScopeDepths.length || opensFocusScope) {
+      for (const site of sitesByLine.get(lineNo) || []) {
+        if (site.fallback === null) continue;
+        if (site.token.startsWith('--ml-')) continue; // a holdout is always a valid choice
+        if (site.token.startsWith('--focus-') || /-focus$/.test(site.token)) continue;
+        found.push(site.token);
+      }
+    }
+
+    for (const char of line) {
+      if (char === '{') {
+        depth++;
+      } else if (char === '}') {
+        if (focusScopeDepths.length && focusScopeDepths[focusScopeDepths.length - 1] === depth) {
+          focusScopeDepths.pop();
+        }
+        depth--;
+      }
+    }
+    if (opensFocusScope) focusScopeDepths.push(depth);
+  }
+
+  return found;
+}
+
+/**
+ * `focusRoleMismatches`, but only the mismatch this edit INTRODUCED — same delta rule as
+ * `introducedGeometryAlias`: a molecule that already carries the mismatch is not this run's business,
+ * but one the edit itself creates is.
+ */
+function introducedFocusRoleMismatch(file: ImEditedFile): string[] {
+  return introduced(focusRoleMismatches, file).map(token =>
+    issue(
+      'focus_role_mismatch',
+      `'${token}' is read inside a :focus block, and it does not name a focus role — a role is chosen by the PLACE it paints, never by the value that happens to match. Use a '*-focus' or 'focus-*' role, or leave the site on its '--ml-*' token when no focus role of the design system can carry this value`,
+    ),
+  );
+}
+
+// role (with its leading `--`) -> the value the LIBRARY already reads for it, straight off the same
+// materialized table agentIm2Edit.ts injects into the prompt (skills/libraryFallbacks). Built once:
+// the gate never scans mls-102040 itself, only the two files this run touched.
+const LIBRARY_LEDGER = new Map(LIBRARY_FALLBACKS.map(entry => [`--${entry.role}`, entry.value]));
+
+/**
+ * A role introduced with a fallback that CONTRADICTS the library's ledger — the third and last known
+ * way this same site fails. G1 catches a rename that changes the value; G2 catches a role chosen by
+ * value inside a `:focus` scope; this is the site both let through: the NAME is right (it ends in
+ * `-focus`, so G2 passes) and the VALUE is what the sheet already rendered (no rename happened, so G1
+ * passes) — but the role already means something ELSE everywhere else in the library.
+ *
+ * Measured: `ml-currency-input` introduced `--border-default-focus, #3b82f6` while the ledger already
+ * has that role at `#e2e8f0` (`grouptriggeraction/ml-pagination-control.less:92`). One role is one
+ * value across the library, so this site cannot migrate to it — it has to stay a holdout.
+ *
+ * A role ABSENT from the ledger is never a conflict: it DEBUTS here, exactly like `--input-bg` did in
+ * the pilot, and this site is free to define its value.
+ */
+function ledgerConflictSites(less: string): Array<{ token: string; fallback: string }> {
+  const found: Array<{ token: string; fallback: string }> = [];
+  for (const site of tokenFallbacks(less)) {
+    if (site.fallback === null) continue;
+    if (site.token.startsWith('--ml-')) continue; // a holdout is always a valid choice
+    const ledgerValue = LIBRARY_LEDGER.get(site.token);
+    if (ledgerValue === undefined) continue; // the role debuts here — nothing to contradict
+    if (normalizeTokenValue(site.fallback) === normalizeTokenValue(ledgerValue)) continue;
+    found.push({ token: site.token, fallback: site.fallback });
+  }
+  return found;
+}
+
+/**
+ * `ledgerConflictSites`, but only the conflict this edit INTRODUCED — same delta rule as
+ * `introducedFocusRoleMismatch`: a molecule that already carries the conflict is not this run's
+ * fault, but one the edit itself creates is.
+ */
+function introducedLedgerConflict(file: ImEditedFile): string[] {
+  const keyOf = (found: { token: string; fallback: string }): string => `${found.token} ${normalizeTokenValue(found.fallback)}`;
+  const keys = (source: string): string[] => ledgerConflictSites(source).map(keyOf);
+  const byKey = new Map(ledgerConflictSites(file.after).map(found => [keyOf(found), found]));
+
+  const out: string[] = [];
+  for (const key of introduced(keys, file)) {
+    const found = byKey.get(key);
+    if (!found) continue;
+    const ledgerValue = LIBRARY_LEDGER.get(found.token) ?? '';
+    out.push(
+      issue(
+        'ledger_conflict',
+        `'${found.token}' is read with "${found.fallback}", but the library already reads that role as "${ledgerValue}" everywhere else — one role is one value across the library, so this site cannot migrate to it. Leave the site on its '--ml-*' token: a role whose established value is not the one this sheet renders is a holdout, not a role to repaint`,
       ),
     );
   }
@@ -328,6 +495,19 @@ export function runImEditGate(inputs: ImEditGateInputs): ImGateResult {
     // pre-existing divergence would otherwise freeze every edit to it.
     if (file.kind === 'less') {
       for (const error of introducedFallbackDivergence(file)) errors.push(error);
+
+      // G1 — a RENAME that changed the VALUE too. Not wrapped in introduced(): see
+      // renamedFallbackChanged for why this finding only exists as a before/after comparison.
+      for (const error of renamedFallbackChanged(file)) errors.push(error);
+
+      // G2 — a role chosen by its VALUE instead of its PLACE, inside a :focus scope. Same delta rule
+      // as introducedGeometryAlias below: a molecule that already carries the mismatch is not this
+      // run's fault, but one the edit itself creates is.
+      for (const error of introducedFocusRoleMismatch(file)) errors.push(error);
+
+      // G3 — a role whose fallback CONTRADICTS the library's ledger (skills/libraryFallbacks). The
+      // site G1 and G2 both let through: the rename kept its value, and the name is a real focus role.
+      for (const error of introducedLedgerConflict(file)) errors.push(error);
 
       // Same delta rule, same reason: a molecule that already coined an alias of a shared geometry
       // concept is not this run's fault, but an alias the edit ITSELF introduces is.

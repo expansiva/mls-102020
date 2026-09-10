@@ -33,4 +33,4 @@
   on what counts as coverage. An empty or degraded usage skill never fails. The mold
   itself was fixed in the same pass (a gap for the contract layer plus a paragraph
   saying the two layers are additive, not alternatives). Control:
-  todo/moleculetokens/todo-molde-vitrine-e-gate.md
+  todo/resolvidos/202609/todo-molde-vitrine-e-gate.md

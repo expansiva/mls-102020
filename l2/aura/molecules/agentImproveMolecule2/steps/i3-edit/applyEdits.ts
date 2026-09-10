@@ -262,8 +262,23 @@ export function applyEdits(
       errors.push(fail(index, edit.artifact, 'replace without `find`'));
       return;
     }
+    // A no-op edit is SKIPPED, not refused — and that is a measured decision, not leniency.
+    //
+    // The gates tell a run to "leave the site on its `--ml-*` token" when no design-system role can
+    // carry its value. The edit format has no way to SAY that, so the model says it the only way it
+    // can: an edit whose `content` equals its `find`, with the reason in `why`. Refusing it threw
+    // away 12 valid edits alongside it and burned the whole attempt.
+    //
+    // MEASURED twice, both right after a gate refusal taught the holdout: ml-enter-money-br
+    // (2026-09-09, `--ml-on-surface-faint`) and ml-tree-multi-select (2026-09-10,
+    // `--ml-outline-error`, after focus_role_mismatch). A prompt rule was added in between and did
+    // not hold — prose asks, code imposes.
+    //
+    // What the guard actually defended is still defended, one level down: if EVERY edit is a no-op
+    // the file comes out identical and the `!changed.size` check below fails the attempt. So a run
+    // that thinks it edited and did not is still caught; only the declared holdout gets through.
     if (find.trim() === edit.content.trim()) {
-      errors.push(fail(index, edit.artifact, '`find` and `content` are identical — this edit changes nothing'));
+      applied.push(`${edit.artifact}: no-op skipped — holdout declared (${edit.why.trim() || 'no reason given'})`);
       return;
     }
 

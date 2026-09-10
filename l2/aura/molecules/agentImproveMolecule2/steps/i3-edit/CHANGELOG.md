@@ -1,5 +1,348 @@
 # CHANGELOG — i3-edit
 
+## 2026-09-10 (3) — o que 4 grupos migrados dizem sobre a divergência
+
+`groupviewcard`, `groupselectmany`, `groupenterdateinterval` e `groupentertime`: **17 moléculas,
+606 sítios, 0 fallback alterado**, verificador limpo ao fim de cada grupo.
+
+**A hipótese de densidade cai.** Eu suspeitava que a divergência entre folhas irmãs crescia com o
+número de sítios por folha. Medido:
+
+| grupo | sítios/folha | tokens que divergem |
+|---|---|---|
+| `groupviewcard` | 16-18 | 1/12 |
+| `groupselectmany` | 33-42 | **10/18** |
+| `groupenterdateinterval` | ~35 | 5/20 |
+| `groupentertime` | **66** | 4/22 |
+
+O grupo MAIS denso deu menos divergência que o de densidade média. O que separa o `groupselectmany`
+é quantos papéis plausíveis existem para o mesmo valor no vocabulário daquelas moléculas — ele tem
+os quatro contextos de `#ffffff` (superfície, input, botão secundário, texto sobre primário). É
+ambiguidade do vocabulário no lugar, não tamanho de folha.
+
+**E 80% da divergência não é escolha de papel.** Medindo por `(token de origem, propriedade)` —
+mesmo contexto, papéis diferentes — e separando em duas famílias:
+
+```
+migrou numa folha, virou holdout na irmã:  28
+dois papéis do DS em conflito de verdade:   7
+```
+
+`--ml-font-family` em `.ml-error-text { color }` virando `--font-family-primary` numa folha e
+ficando `--ml-font-family` na outra não é discordância de papel: é uma folha que migrou menos. É a
+variância de cobertura (6 vs 8 edits) já registrada, vista de outro ângulo.
+
+⚠️ **Duas correções minhas, e as duas do mesmo tipo — julguei a escolha pelo NOME do papel sem ler
+o que a declaração original fazia:**
+
+1. Reportei que a nota do `-hover` falhara no `&:hover:not(:disabled)` de um número de relógio
+   selecionado. O original repete o valor do repouso dentro do hover **de propósito** — um item já
+   selecionado não muda sob o ponteiro. Usar `--button-primary-bg-hover` CRIARIA um efeito que a
+   molécula não tem. O agente manteve o mesmo papel dos dois lados e acertou;
+2. Reportei como inconsistência o `background: --button-primary-bg` ao lado de
+   `border-color: --selected-border` no mesmo bloco. `--selected-bg` está no ledger com `#f5f5f5` e
+   o valor ali é `#3b82f6` — pelo G3 aquele papel é proibido para esse sítio, e o único papel de
+   FUNDO com `#3b82f6` no ledger é `--button-primary-bg`. A escolha estava forçada pela regra.
+
+O segundo caso expõe uma **lacuna do design system**, não do agente: não há papel para "fundo de
+item selecionado na cor de destaque". Fica registrado para quando o DS for revisado.
+
+## 2026-09-10 (2) — o edit no-op passa a ser PULADO, não recusado
+
+O `applyEdits` reprovava o lote inteiro quando um edit tinha `content` igual ao `find`. Medido duas
+vezes, e nas duas logo depois de um gate ter ensinado o holdout: `ml-enter-money-br` (09/09,
+`--ml-on-surface-faint`) e `ml-tree-multi-select` (10/09, `--ml-outline-error`, na tentativa
+seguinte à do `focus_role_mismatch`). Na segunda, **12 edits válidos foram jogados fora junto com o
+no-op e a run morreu.**
+
+A causa não é desleixo do modelo. Os gates mandam "leave the site on its `--ml-*` token", e **o
+formato de edição não tem como DIZER isso** — então o modelo diz do único jeito disponível: um edit
+que não muda nada, com o motivo no `why` (*"Mantém a borda de status no token --ml permitido pelo
+design system"*). Entre as duas medições entrou uma regra no `prompt.md` proibindo o no-op, e ela
+**não segurou**. Prosa pede, código impõe.
+
+Agora o no-op é pulado e registrado em `applied` como `no-op skipped — holdout declared (…)`.
+
+**O que o guard defendia continua defendido, um nível abaixo:** se TODOS os edits forem no-op o
+arquivo sai idêntico e o `!changed.size` reprova a tentativa (`every edit applied but the content is
+unchanged`). Uma run que acha que editou e não editou continua sendo pega; só o holdout declarado
+passa. Verificado nos três casos: no-op + edit válido -> 0 erros e o edit válido aplicado; só no-op
+-> erro de conteúdo inalterado; `find` inexistente -> continua reprovando.
+
+O `prompt.md` foi corrigido junto, porque passou a afirmar algo falso: dizia que o no-op "is
+refused". Agora diz que ele é pulado, e continua pedindo a forma limpa — não emitir o edit e
+explicar o holdout no resumo.
+
+## 2026-09-10 — quando o `:hover` pede a variante `-hover`, e quando NÃO pede
+
+Depois de 3 grupos migrados (`groupviewcard`, `groupselectmany`, `groupenterdateinterval` — 14
+moléculas, 393 sítios, 0 fallback alterado), a única regularidade que sobrou sem tratamento era o
+`:hover`: **19 de 20 sítios `--ds-*` dentro de blocos `:hover` NÃO usavam a variante `-hover`**, e
+18 deles eram a mesma escolha, `--surface-alt-bg`. Contra 22 de 38 COM variante nos grupos migrados
+antes, parecia defeito sistemático, e o caminho óbvio era um quarto gate.
+
+**A medição matou o gate.** Um detector calibrado — papel que POSSUI variante `-hover` no template,
+lido dentro de `:hover`, sem usar a variante — acusa **12 sítios na biblioteca fonte**, e ao abrir
+cada um eles são escolha deliberada, duas delas com o motivo escrito em comentário pelo próprio
+autor da migração anterior:
+
+```less
+// Hover — subtle fill (an ITEM hover, not a button hover: surface-alt-bg)
+// Hover — signals SELECTION AFFORDANCE, hence selected-*, not button-primary-*
+```
+
+E cinco são classes utilitárias (`.hover\:ml-text:hover`), onde o `:hover` é o PROPÓSITO da classe,
+não o estado de um componente — ali `--text-strong-hover` seria errado. Um detector que acusa
+escolha documentada não vira gate: **não existe resposta mecânica aqui**, e essa é a única razão
+pela qual isto virou prosa em vez de código.
+
+O que faltava não era detecção, era DOCUMENTAÇÃO. A distinção existia em dois comentários dentro do
+`ml-pagination-control.less` e em lugar nenhum que o agente leia. Agora está no
+`libraryFallbackTable()`, ao lado do ledger: a variante `-hover` é o estado de algo que o elemento
+já pinta em repouso; preenchimento de item (linha, opção, card sem fundo próprio) e classe
+utilitária usam o papel base.
+
+⚠️ **Registro de um erro meu, porque ele custa se voltar:** eu havia classificado o
+`--surface-alt-bg` do `groupviewcard` como "a escolha tentadora e errada". Era o oposto — o
+precedente documentado da biblioteca é `item hover -> surface-alt-bg`, e o agente seguiu a convenção
+da casa. A regra que eu tinha na cabeça não existia na biblioteca; foi a medição que mostrou isso, e
+só porque ela varreu a biblioteca INTEIRA em vez de olhar só o que o agente produziu.
+
+⚠️ **O detector calibrado tinha um bug, e é o espelho do que já corrigimos no G2.** A 1ª versão
+acusava um `--focus-ring` dentro de `&:focus` porque um `&:hover { … }` de UMA LINHA, na linha
+acima, abria escopo e nunca o fechava. Rastreio por offset de caractere resolve. Fica o padrão: todo
+detector com escopo de bloco tem de ser testado contra o bloco de uma linha, nas duas direções —
+não ver o próprio conteúdo, e vazar para o que vem depois.
+
+## 2026-09-09 (2) — G1 e G2: a escolha de papel virou detector
+
+Cinco rodadas do piloto provaram que **prosa não governa escolha de papel**. O mesmo sítio — a borda
+de foco do campo, `#3b82f6` — saiu de quatro jeitos diferentes, e nunca igual nas duas moléculas ao
+mesmo tempo; a cada rodada a prosa foi reforçada e a seguinte desobedeceu em outro lugar. Controle:
+`todo/resolvidos/202609/todo-gates-papel-e-neutralidade.md`.
+
+E o aceite aprovava os dois defeitos: o run 4 mudou o valor e o `check-ds-tokens.mjs` saiu LIMPO
+(a consistência foi comprada mudando o valor); o run 5 tinha o papel errado e passou em tudo, porque
+o valor estava preservado. Dois furos distintos, dois gates.
+
+- **`fallback_renamed`** (`renamedFallbackChanged`) — o par cujo NOME mudou não pode mudar de valor.
+  **Delta por construção**, sem `introduced()`: o achado só existe comparando `before` com `after`.
+  Se a contagem de sítios diferir, o gate fica calado em vez de adivinhar o alinhamento. Só o par
+  RENOMEADO, e isso é deliberado: mudar cor mantendo o token pode ser exatamente o que o usuário
+  pediu — ampliar reprovaria todo pedido honesto de cor;
+- **`focus_role_mismatch`** (`focusRoleMismatches` + `introducedFocusRoleMismatch`) — dentro de
+  `:focus`/`:focus-within`/`:focus-visible`, só papel `*-focus`/`focus-*`, ou holdout `--ml-*`. Pelo
+  DELTA, como o `geometry_alias`.
+
+Os dois reusam `tokenFallbacks` e `normalizeTokenValue` de `shared/moleculeInspect.ts` — nenhum regex
+novo. `harness/probe-gates-papel.mjs` reproduz os números fora do Studio e **carrega os primitivos
+reais** por `esbuild.transformSync` em vez de reescrevê-los (a §7 do planejamento registra um
+protótipo que divergiu no regex e acertou por sorte).
+
+**Verificado:** G1 — `before === after` nas 183 folhas dá 0, o par real do piloto dá 0, o defeito do
+run 4 injetado dá 1. G2 — 10 sítios `--ds-*` dentro de blocos `:focus*`, 1 acusação, 0 falso
+positivo, 0 no delta.
+
+⚠️ **O bloco `:focus` de UMA LINHA quase escapou, e o motivo importa.** A primeira implementação
+checava os sítios antes de processar as chaves da linha, então `&:focus { color: var(--selected-text,
+#3b82f6); }` — que abre e fecha o escopo na mesma linha — passava batido. **A validação não podia ver
+isso:** os 14 blocos `:focus` de uma linha da biblioteca leem `--ml-*` hoje, então a varredura dava 0
+com ou sem o defeito, e os quatro testes usavam blocos de várias linhas. Eles estão concentrados em
+`groupselectmany` e `grouprateitem`, dois dos maiores grupos ainda por migrar — a cegueira morderia
+exatamente lá. Corrigido com `|| opensFocusScope`, mais um teste do caso e o mesmo ajuste no probe,
+que havia ficado para trás. Varredura final: 187 folhas, `before === after`, 0 acusações.
+
+## 2026-09-09 — a mensagem do `fallback_divergence` ensinava o conserto errado; e o ledger da biblioteca
+
+**O gate estava certo no diagnóstico e errado no conserto.** Ele disparava e mandava *"Use at every
+site the fallback the sheet ALREADY used for this token"* — instrução impossível numa MIGRAÇÃO, onde
+todo papel do DS é novo na folha. Sem saída obedecível, a LLM unificava por conta própria, mudando
+**valor**.
+
+**A medição que motivou:** o piloto de 08/09 no `groupEnterMoney` (2 moléculas, 51 sítios,
+`todo/resolvidos/202609/todo-gate-fallback-migracao.md`). O agente acertou 46 dos 51 sítios — a mecânica
+funciona. O gate reprovou a tentativa 1 das **três** runs, e as três tentativas 2 obedeceram à
+mensagem: **5 fallbacks alterados**, entre eles `--ml-outline-focus` `#3b82f6` virando
+`--border-default` `#e2e8f0`, que **apagou o destaque de foco de um campo** — a borda de foco passou
+a ler o mesmo papel e o mesmo valor da borda em repouso. Encadeamento visível no trace: na tentativa
+1 a LLM já escolhera o papel errado com o valor certo; o gate acusou o **papel**; a tentativa 2
+consertou o **valor**.
+
+E o gate enxergava só a folha: uma das duas ficou coerente consigo mesma em `--text-muted: #79747e`
+e divergente dos 13 sítios já migrados que leem `#49454f`. Só o `harness/check-ds-tokens.mjs`, que
+varre a biblioteca inteira, pegou — e o agente não tem esse verificador.
+
+**O que mudou:**
+
+- `gate.ts` — a mensagem do `fallback_divergence` passa a oferecer os dois consertos que existem no
+  contexto em que ela dispara: *dois sítios que precisam de dois valores são dois CONCEITOS* — dê ao
+  sítio divergente outro papel, ou deixe-o no `--ml-*`. E proíbe explicitamente o conserto que a
+  mensagem antiga induzia: *"Do NOT unify by changing a fallback"*. O detector e a chave estável não
+  mudaram;
+- `skills/libraryFallbacks.ts` (novo) — o **ledger**: o fallback que cada papel do DS já lê nas
+  folhas do `mls-102040`, o companheiro do `skills/canonicalFallbacks` (que dá o valor do TEMPLATE).
+  41 papéis, 0 ambíguos. Papel lido com dois valores na biblioteca é divergência pré-existente e
+  **não entra** numa tabela feita para ser seguida como verdade;
+- `harness/gen-library-fallbacks.mjs` (novo) — regenera o array. Dry-run por padrão, `--write`
+  explícito, e relata a contagem de ambíguos;
+- `agentIm2Edit.ts` — `libraryFallbackTable()` + `{{libraryFallbacks}}` na cadeia de substituição,
+  depois de `{{canonicalFallbacks}}`. E a prosa do `canonicalFallbackTable()` ganhou a distinção que
+  faltava (abaixo);
+- `prompt.md` — `{{libraryFallbacks}}` na seção `### The token vocabulary of the appearance`, mais a
+  regra de granularidade da edição (abaixo);
+- `gate.test.ts` — o caso do piloto: dois `--ml-*` com `#79747e` e `#49454f` colapsando em
+  `--text-muted` é reprovado, e a mensagem tem de nomear `different role` e `--ml-*`.
+
+**⚠️ "INTRODUZIR" queria dizer duas coisas, e o prompt não separava.** A prosa de 04/09 diz, com
+razão para o caso comum, que a tabela canônica vale só para um papel que a edição está INTRODUZINDO.
+Numa migração **todo papel é introduzido**, então ela mandava usar o valor do template
+(`--text-muted` -> `#5d6b7e`), o oposto da regra do fallback. São dois casos distintos:
+
+| | o que é | qual fallback |
+|---|---|---|
+| conceito novo | a folha ganha aparência que não tinha | o canônico do template |
+| renomeação (migração) | a folha já pintava isso com um `--ml-*` | **o valor que a folha já usava** |
+
+O texto injetado agora diz isso em inglês e aponta para o ledger. O piloto não caiu inteiro nesse
+buraco só porque o pedido do usuário dizia "mantenha os fallbacks" — prosa vencendo prosa não é rede.
+
+**⚠️ A DIVERGÊNCIA COM O `n5-less` É DELIBERADA — não "unifique" as duas mensagens.** O
+`n5-less/gate.ts` termina em *"Pick one and use it at every site"* e **está certo lá**: aquele agente
+CRIA a folha, não há valor anterior a preservar, escolher um é a resposta. Este agente EDITA, e a
+regra dele é o delta. É a mesma assimetria que a doc de `skills/canonicalFallbacks.ts` já registra
+entre os dois — só a TABELA é compartilhada, a prosa e agora também a mensagem do gate são de cada um.
+
+**⚠️ O ledger é MATERIALIZADO, não varrido em runtime.** O agente roda no Studio e não tem as 183
+folhas do `mls-102040` em disco. O array vive entre marcadores `GENERATED — start/end` e é
+regenerado pelo harness, nunca editado à mão.
+
+**A granularidade da edição, defeito separado do mesmo piloto.** O `ml-enter-money-br.less` saiu com
+as 46 linhas na coluna 0. Não é bug do `applyEdits`: aquela run emitiu **um `replace` de bloco
+inteiro** ancorado no seletor raiz, e o `alignReplacement` desloca o corpo pelo recuo da linha âncora
+— zero, na raiz. A doc dele diz que isso é deliberado: preserva estrutura RELATIVA, não inventa a que
+a LLM não mandou. A run irmã emitiu 14 `replace` por declaração e saiu intacta. Mesma tarefa, mesmo
+prompt. Por isso a regra foi para o `prompt.md`, onde o comportamento nasce, e o `alignReplacement`
+não foi tocado.
+
+**Verificado (09/09), com o `gate.ts` empacotado por esbuild resolvendo os aliases `/_102020_/`:**
+
+- o cenário do piloto reprova, e a mensagem traz `different role` e `--ml-*`, sem `ALREADY used`;
+- divergência **pré-existente** + edição não relacionada **passa** — a regra do delta continua de pé;
+- migração correta (`--text-muted-disabled` `#79747e` / `--text-muted` `#49454f`) **passa**;
+- varredura do detector nas **183 folhas** da biblioteca: **1 acusação, 0 falso positivo** — e é o
+  `--ml-pagination-press-shadow`, exatamente o caso pré-existente que a doc da função cita como razão
+  da regra do delta;
+- ledger: 41 papéis, 0 ambíguos, tabela de 43 linhas; gerador **idempotente provado por hash** (3
+  execuções, mesmo SHA), não por `git diff`;
+- os 16 placeholders do `prompt.md` estão todos ligados na cadeia de substituição;
+- **o ledger reproduz o gabarito**: confrontados os 41 sítios `--ds-*` das duas moléculas consertadas
+  à mão, 39 coerentes, 0 conflitantes, 2 inéditos (`--input-bg`, que o piloto estreou).
+
+### Segunda rodada, mesmo dia — o run confirmou a semântica e quebrou na mecânica
+
+O piloto foi refeito com o 102020 publicado. **Os três defeitos semânticos sumiram**, medido sobre o
+mapeamento que as duas runs queriam aplicar: **0 fallbacks alterados** (eram 5) e **10 dos 11
+mapeamentos idênticos ao gabarito**, incluindo `--transition-fast` e `--text-strong`, que só o ledger
+explica — antes davam `transition-normal` e `text-default`. A prova mais limpa é o `ml-currency-input`:
+a tentativa 1 colapsou a borda de foco e o anel em `--focus-ring`, o gate disparou, e a tentativa 2
+**deixou a borda no `--ml-outline-focus`** em vez de unificar valor. Foi exatamente o conserto que a
+mensagem nova ensina.
+
+Nenhuma das duas runs gravou, porém: as duas morreram em erro de aplicação de edição, e os três
+defeitos são todos consequência da regra de granularidade escrita acima.
+
+- **`find` não único** — `background: var(--ml-surface, #ffffff);` aparece em dois blocos do
+  `ml-currency-input`. "Cite só a linha que muda" briga com a exigência de unicidade;
+- **`find`s sobrepostos** — no `ml-enter-money-br`, o edit 7 reescreveu a linha de `font-family` que
+  o edit 8 usava como âncora. Os edits são aplicados em sequência, então o 8 não achou mais o texto;
+- **não havia como dizer "este sítio fica"** — a mensagem do gate manda *"leave it on its `--ml-*`
+  token"*, e a LLM expressou isso como um edit com `content` igual ao `find`, rejeitado como no-op.
+  A mensagem criou uma obrigação sem dar meio de cumpri-la — a mesma classe de defeito que ela
+  mesma consertou, um nível acima.
+
+**A regra certa está provada pelo run que funcionou em 08/09:** ele ancorou cada `replace` na LINHA
+DO SELETOR (`.ml-helper {` e as declarações abaixo). Seletor é único na folha, blocos de regra não se
+sobrepõem, e o recuo da âncora é o recuo certo — foi por isso que aquela folha saiu com a indentação
+intacta. O `prompt.md` passou a exigir isso, mais unicidade, não-sobreposição, e **nenhum edit para
+um sítio que vira holdout**; a mensagem do gate ganhou o parêntese *"(emit no edit for that site)"*.
+
+⚠️ **O Studio e o `mls-102040-temp` local são cópias diferentes.** O `context.json` deste run mostra
+que o agente leu a folha ORIGINAL, não migrada, enquanto o `-temp` local guardava o gabarito feito à
+mão. Um aceite que compare `mls-102040` com `mls-102040-temp` sem antes descer a saída do run
+**passa falsamente**.
+
+⚠️ **Sobrou uma oscilação que nenhum gate pega:** o fundo do `.ml-input-container` virou `--input-bg`
+numa molécula e `--surface-bg` na outra. `--input-bg` não está no ledger — estreou no conserto à mão
+— e onde o ledger não ancora, a escolha de papel oscila.
+
+### Terceira rodada — a mecânica passou; sobrou escolher papel pelo VALOR
+
+As duas moléculas passaram **na tentativa 1**: nenhum `fallback_divergence`, nenhum erro de
+aplicação. A regra de ancorar no seletor resolveu os três defeitos mecânicos do run 2. Medido:
+**41 sítios migrados · 12 holdouts · 0 fallback alterado**, e a única diferença de formatação contra
+o original são 2 linhas em branco por folha, absorvidas pelo matcher tolerante — indentação e
+aninhamento intactos. O `why` do agente mostra a regra internalizada: *"mantém o placeholder porque
+seu fallback não coincide com o papel global"*.
+
+Sobrou **1 acusação** do `check-ds-tokens.mjs`, e ela expôs um furo na prosa do ledger. O mesmo
+sítio — a borda de foco do campo, `#3b82f6` — foi resolvido de dois jeitos diferentes:
+
+- `ml-enter-money-br` escolheu `--border-default-focus`, papel semanticamente CERTO, mas que o
+  ledger tem em `#e2e8f0` (`ml-pagination-control.less:92`). Colisão: era para ser holdout, e o
+  modelo escolheu o papel sem fazer a consulta;
+- `ml-currency-input` escolheu `--selected-border`, que o ledger tem em `#3b82f6` — **passa no
+  verificador** e está semanticamente errado: aquilo é foco, não seleção.
+
+A segunda é a que importa. A prosa dizia "se o papel que você quer está no ledger com valor
+DIFERENTE, o sítio não migra" — e não proibia **ir às compras**: procurar na tabela qualquer papel
+cujo valor bata. O modelo cumpriu a letra e furou o sentido, e a própria tabela (papel -> valor) é o
+que torna a busca fácil. É o "um valor, dois papéis" que o verificador não pega, por ser
+unidirecional.
+
+**Correção:** a prosa do `libraryFallbackTable()` ganhou *"Choose the role by the PLACE, never by the
+value"* — achar o papel que NOMEIA o que a declaração é, e só então consultar o ledger; um papel
+vizinho com valor igual não é saída para a regra do holdout.
+
+### Rodadas 4 e 5 — o alvo bateu, e a escolha de papel continuou sorteada
+
+O run 5 (as duas moléculas, tentativa 1, sem gate disparado) deu **39 sítios
+migrados, 14 holdouts, 0 fallback alterado**, verificador limpo, ambas compilando,
+e a única diferença de formatação contra o original é recuo e linha em branco.
+**O piloto está fechado e o veredito é positivo: o IM2 migra `.less` existente.**
+
+O que não se resolveu foi a escolha de PAPEL num sítio específico — a borda de
+foco do campo, `#3b82f6`:
+
+| | `ml-enter-money-br` | `ml-currency-input` |
+|---|---|---|
+| run 3 | `--border-default-focus, #3b82f6` (colide com o ledger) | `--selected-border` (papel pelo valor) |
+| run 4 | *(arquivo corrompido pelo Studio)* | `--border-default-focus, #e2e8f0` (mudou o valor) |
+| run 5 | `--selected-border` (papel pelo valor) | `--ml-outline-focus` ✅ |
+
+Quatro resultados, e nunca o mesmo nas duas moléculas ao mesmo tempo. A regra
+"Choose the role by the PLACE, never by the value" foi acrescentada entre o 3 e o
+4 e é obedecida de forma intermitente. **Onde a tabela do ledger AFIRMA
+`papel -> valor`, prosa ao lado dela não vence de forma determinística** — é o
+aprendizado #10 no seu limite, e a conclusão é que isto tem de virar detector.
+
+⚠️ **O aceite aprovou os dois defeitos.** O run 4 mudou o valor e o
+`check-ds-tokens.mjs` saiu LIMPO, porque a consistência foi comprada mudando o
+valor. O run 5 tem o papel errado e passa em tudo, porque o valor está
+preservado. São dois furos distintos, e vão para dois gates distintos, em
+`todo/resolvidos/202609/todo-gates-papel-e-neutralidade.md`:
+
+- **G1**, neutralidade do rename — o par cujo NOME mudou não pode mudar de valor.
+  Validado: `before === after` nas 184 folhas dá 0; o defeito do run 4 injetado
+  dá 1. Só o par renomeado, deliberadamente: mudar cor com o mesmo token pode ser
+  o que o usuário pediu;
+- **G2**, papel de foco — dentro de `:focus*`, só `*-focus`/`focus-*` ou holdout
+  `--ml-*`. Validado: 10 sítios de foco na biblioteca, 1 acusação, 0 falso
+  positivo, e a acusação é o defeito real.
+
+**Ainda aberto:** o aceite do controle exige refazer o piloto no Studio e bater 41 migrados / 12
+holdouts / 0 fallback alterado / formatação idêntica. Nada disto prova que a LLM OBEDECE — prova que
+o gate reprova certo, que o ledger está certo e chega no gabarito, e que a prosa chegou ao prompt.
+
 ## 2026-09-08 — `geometry_alias`, pelo DELTA: token que renomeia um conceito já compartilhado
 
 Mesma causa raiz medida no `n5-less`: o `ml-button-group` cunhou `--ml-button-group-spinner-size`
