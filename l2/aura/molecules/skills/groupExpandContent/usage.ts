@@ -84,13 +84,13 @@ Pass CSS classes on slot tags via \`data-class\`:
 
 ## Design Tokens
 
-The component's visual styling can be customized by overriding \`--ml-*\` CSS custom properties on a parent element:
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom
+properties on a parent element. The values below are this group's current defaults —
+copy the block and change them:
 
 \`\`\`css
 .my-container {
-  --ml-primary: #7c3aed;
-  --ml-radius-sm: 10px;
-  --ml-font-family: 'Inter', sans-serif;
+  --ml-surface-overlay: rgba(255, 255, 255, 0.9);
 }
 \`\`\`
 
@@ -98,24 +98,10 @@ The component's visual styling can be customized by overriding \`--ml-*\` CSS cu
 
 | Token | Default | Purpose |
 |-------|---------|---------|
-| \`--ml-surface\` | \`#ffffff\` | Component background |
-| \`--ml-surface-dim\` | \`#f5f5f5\` | Hover background |
-| \`--ml-on-surface\` | \`#1c1b1f\` | Primary text |
-| \`--ml-on-surface-muted\` | \`#49454f\` | Secondary text |
-| \`--ml-on-surface-faint\` | \`#79747e\` | Placeholder |
-| \`--ml-primary\` | \`#3b82f6\` | Primary action color |
-| \`--ml-on-primary\` | \`#ffffff\` | Text on primary |
-| \`--ml-error\` | \`#ef4444\` | Error color |
-| \`--ml-on-error\` | \`#ffffff\` | Text on error |
-| \`--ml-outline-variant\` | \`#e2e8f0\` | Default border |
-| \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
-| \`--ml-outline-error\` | \`#ef4444\` | Error border |
-| \`--ml-radius-sm\` | \`6px\` | Default radius |
-| \`--ml-shadow-1\` | \`0 1px 3px rgba(0,0,0,0.1)\` | Subtle shadow |
-| \`--ml-font-family\` | \`system-ui, sans-serif\` | Font family |
-| \`--ml-font-weight-medium\` | \`500\` | Medium weight |
-| \`--ml-transition\` | \`200ms ease\` | Transition |
-| \`--ml-focus-ring-color\` | \`rgba(59,130,246,0.4)\` | Focus ring |
-| \`--ml-disabled-opacity\` | \`0.5\` | Disabled opacity |
+| \`--ml-border-style\` | \`solid\` | Border style |
+| \`--ml-border-width\` | \`1px\` | Border width |
+| \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
+| \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+| \`--ml-surface-overlay\` | \`rgba(255, 255, 255, 0.9)\` | Light veil over content (loading, disabled area) |
 
 `;
