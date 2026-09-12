@@ -72,19 +72,21 @@ export class ServiceBehavior102020 extends ServiceBase {
     onServiceClick(visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._workflowReloadToken += 1; // re-scan the workflow list on each service (re)open
         this._updateMenuTitle();
-        if (visible) this._openModuleBlueprint();
+        if (visible) void this._openModuleBlueprint();
         // @ts-ignore
         this.requestUpdate();
     }
 
     /**
      * The module workspace belongs to master-solution (102035), but is hosted by the
-     * Studio's existing detail service. Keeping this bridge event-only avoids making
-     * the frontend master depend on the solution generator.
+     * Studio's existing detail service. The dependency already exists in project
+     * metadata; importing it here makes the detail host independent from its legacy
+     * tag-to-script URL conversion.
      */
-    private _openModuleBlueprint(): void {
+    private async _openModuleBlueprint(): Promise<void> {
         const { actualProject, actualModule } = getAuraState();
         if (!actualProject) return;
+        await import('/_102035_/l2/newRelease/widgets/index.js');
         const escapeAttribute = (value: unknown) => String(value ?? '')
             .replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
