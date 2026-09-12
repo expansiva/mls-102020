@@ -13,7 +13,7 @@
 //   INTRODUCES; a role the sheet already reads keeps the fallback it already uses.
 //
 // That difference lives in each agent's prose. Only the table is shared — it was duplicated for one
-// day and the TODO that created this module (todo/moleculetokens/todo-ajuste-im2-template.md) says
+// day and the TODO that created this module (todo/resolvidos/202609/todo-ajuste-im2-template.md) says
 // plainly: duplicating is acceptable, letting the two diverge is not.
 //
 // MEASURED on the 2026-09-03 Studio run, before any of this existed: two molecules generated in the

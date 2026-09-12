@@ -70,10 +70,14 @@ async function beforePromptStep(
   // resolveTarget searches every group when the prose named no group, and throws when nothing
   // matches. The throw is the INVERTED PRECONDITION and it is turned into a gate issue, never
   // rethrown: the user must get one readable line, not a stack.
+  //
+  // The step's own argument wins over the root plan's — same precedence `runKey` already uses two
+  // lines above, and the router already uses. Retrocompatible: a normal run never sends `target` and
+  // falls back to the root plan exactly as before (todo-casca-migracao-por-grupo.md, Tarefa 1).
   let target: ImTargetRef | null = null;
   let notFound: string | null = null;
   try {
-    target = resolveTarget(rootPlan.target, skillList.map(item => item.name));
+    target = resolveTarget(parsedArgs.target || rootPlan.target, skillList.map(item => item.name));
   } catch (error) {
     if (!(error instanceof ImNotFoundError)) throw error;
     notFound = error.message;

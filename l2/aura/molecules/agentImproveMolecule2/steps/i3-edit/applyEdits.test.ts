@@ -98,10 +98,23 @@ test('append keeps exactly one newline at the seam', () => {
   assert.equal(result.changed.get('less'), 'a\nb\n');
 });
 
-test('an edit that changes nothing is an error, not a silent success', () => {
-  // It would make the summary claim work that did not happen.
+test('a no-op edit is SKIPPED, not refused — it is how the model declares a holdout', () => {
+  // Measured twice, both right after a gate told the run to leave a site on its --ml-* token:
+  // the model says it with an edit whose content equals its find. Refusing it threw away the
+  // valid edits alongside it. See applyEdits for the two runs.
+  const result = applyEdits(files({ less: { present: true, source: 'a { padding: 4px; color: red; }' } }), [
+    edit({ find: 'padding: 4px;', content: 'padding: 4px;', why: 'stays on the --ml-* token' }),
+    edit({ find: 'color: red;', content: 'color: blue;' }),
+  ]);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.changed.get('less'), 'a { padding: 4px; color: blue; }');
+  assert.ok(result.applied.some(line => /no-op skipped/.test(line)));
+});
+
+test('a batch of ONLY no-ops still fails — the file came out identical', () => {
+  // The guard the skip replaces is still there, one level down.
   const same = applyEdits(files(), [edit({ content: 'padding: 4px;' })]);
-  assert.match(same.errors[0], /identical/);
+  assert.match(same.errors[0], /unchanged/);
 });
 
 test('an empty edit list is an error', () => {

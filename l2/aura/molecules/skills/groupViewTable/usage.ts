@@ -190,13 +190,15 @@ a slot tag.
 
 ## Design Tokens
 
-The component's visual styling can be customized by overriding \`--ml-*\` CSS custom properties on a parent element:
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom
+properties on a parent element. The values below are this group's current defaults —
+copy the block and change them:
 
 \`\`\`css
 .my-container {
-  --ml-primary: #7c3aed;
-  --ml-radius-sm: 10px;
-  --ml-font-family: 'Inter', sans-serif;
+  --ml-error-dim: #fef2f2;
+  --ml-surface-variant: #ede8f5;
+  --ml-radius-md: var(--ml-radius-sm, 6px);
 }
 \`\`\`
 
@@ -207,17 +209,11 @@ The component's visual styling can be customized by overriding \`--ml-*\` CSS cu
 | \`--ml-border-style\` | \`solid\` | Border style |
 | \`--ml-border-width\` | \`1px\` | Border width |
 | \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
-| \`--ml-error\` | \`#ef4444\` | Error color |
 | \`--ml-error-dim\` | \`#fef2f2\` | Error background |
-| \`--ml-focus-ring-color\` | \`rgba(59, 130, 246, 0.4)\` | Focus ring color |
 | \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
-| \`--ml-font-family\` | \`system-ui, -apple-system, sans-serif\` | Font family |
-| \`--ml-font-weight-medium\` | \`500\` | Medium font weight |
-| \`--ml-on-primary\` | \`#ffffff\` | Text on primary |
+| \`--ml-font-family\` | \`system-ui\` | Font family |
 | \`--ml-on-primary-container\` | \`#1c1b1f\` | Text on primary container |
-| \`--ml-on-surface\` | \`#1c1b1f\` | Primary text |
 | \`--ml-on-surface-faint\` | \`#79747e\` | Placeholder / tertiary text |
-| \`--ml-on-surface-muted\` | \`#49454f\` | Secondary text |
 | \`--ml-outline-error\` | \`#ef4444\` | Error border |
 | \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
 | \`--ml-outline-variant\` | \`#e2e8f0\` | Default border |
@@ -226,11 +222,5 @@ The component's visual styling can be customized by overriding \`--ml-*\` CSS cu
 | \`--ml-radius-md\` | \`var(--ml-radius-sm, 6px)\` | Medium radius |
 | \`--ml-radius-sm\` | \`6px\` | Small radius |
 | \`--ml-shadow-0\` | \`none\` | No elevation (pressed state) |
-| \`--ml-shadow-1\` | \`0 1px 3px rgba(0,0,0,.1)\` | Subtle shadow |
-| \`--ml-shadow-2\` | \`0 4px 6px rgba(0,0,0,.1)\` | Raised shadow |
-| \`--ml-surface\` | \`#ffffff\` | Component background |
-| \`--ml-surface-dim\` | \`#f5f5f5\` | Hover / secondary background |
-| \`--ml-surface-overlay\` | \`#ffffff\` | Light veil over content (loading, disabled area) |
-| \`--ml-surface-variant\` | \`#f5f5f5\` | Tinted alternate surface |
-| \`--ml-transition\` | \`200ms ease\` | Transition duration / easing |
+| \`--ml-surface-variant\` | \`#ede8f5\` | Tinted alternate surface |
 `;

@@ -69,11 +69,38 @@ export class ServiceBehavior102020 extends ServiceBase {
         onClickMain: this.onClickMain.bind(this),
     };
 
-    onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
+    onServiceClick(visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         this._workflowReloadToken += 1; // re-scan the workflow list on each service (re)open
         this._updateMenuTitle();
+        if (visible) this._openModuleBlueprint();
         // @ts-ignore
         this.requestUpdate();
+    }
+
+    /**
+     * The module workspace belongs to master-solution (102035), but is hosted by the
+     * Studio's existing detail service. Keeping this bridge event-only avoids making
+     * the frontend master depend on the solution generator.
+     */
+    private _openModuleBlueprint(): void {
+        const { actualProject, actualModule } = getAuraState();
+        if (!actualProject) return;
+        const escapeAttribute = (value: unknown) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        const htmlText = `<new-release--widgets--index-102035 project="${escapeAttribute(actualProject)}" module-name="${escapeAttribute(actualModule)}"></new-release--widgets--index-102035>`;
+        mls.events.fire(
+            4,
+            'PluginDetails' as any,
+            JSON.stringify({
+                project: 102035,
+                shortName: 'l2/newRelease/widgets/index',
+                htmlText,
+            }),
+            0,
+        );
     }
 
     /** nav-3 menu title: project + module this service is acting on (module picked at l5). */

@@ -8,13 +8,24 @@
 // the sheet already used" — every role is introduced fresh in a migration. Without this table the
 // model unifies two different concepts into one role, changing a VALUE to make the gate's message
 // go away. Measured on the groupEnterMoney pilot (see
-// todo/moleculetokens/todo-gate-fallback-migracao.md): a focus border lost its highlight because the
+// todo/resolvidos/202609/todo-gate-fallback-migracao.md): a focus border lost its highlight because the
 // retry rewrote `--focus-ring` to `--border-default`'s value instead of leaving the site on its own
 // role.
 //
 // MATERIALIZED, not scanned at runtime: the agent runs in the Studio and does not have the sheets of
 // mls-102040 on disk. `harness/gen-library-fallbacks.mjs` scans mls-102040 and regenerates the array
 // below — never hand-edit it, regenerate it.
+//
+// ⚠️ THE LEDGER AGES, AND AGING BLINDS THE GATE that reads it (i3-edit/gate.ts's `ledgerConflictSites`,
+// AKA G3). Two rules, both learned from todo/resolvidos/202609/todo-gate-ledger-conflito.md:
+//
+// 1. Only regenerate from a library `harness/check-ds-tokens.mjs` calls clean. Running `--write` after
+//    a conflict has already landed in mls-102040 writes down the FORGETTING of it: the generator only
+//    ever publishes a role with a single consistent value, so a role two sheets now disagree on is
+//    silently dropped from the table below — and G3 goes blind on exactly the role the conflict broke.
+// 2. A role that DISAPPEARS from the ledger between two generations is a SIGNAL, not noise — it means
+//    the library started disagreeing with itself about it. The generator already reports the ambiguous
+//    count on every run; read it before trusting a regenerated table.
 
 export interface LibraryFallbackEntry {
   /** The DS role name, without its leading `--`. */

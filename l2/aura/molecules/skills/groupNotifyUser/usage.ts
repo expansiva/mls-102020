@@ -102,13 +102,15 @@ Pass CSS classes on slot tags via \`data-class\`:
 
 ## Design Tokens
 
-The component's visual styling can be customized by overriding \`--ml-*\` CSS custom properties on a parent element:
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom
+properties on a parent element. The values below are this group's current defaults —
+copy the block and change them:
 
 \`\`\`css
 .my-container {
-  --ml-primary: #7c3aed;
-  --ml-radius-sm: 10px;
-  --ml-font-family: 'Inter', sans-serif;
+  --ml-info-border: #bae6fd;
+  --ml-warning-border: #fde68a;
+  --ml-success-border: #a7f3d0;
 }
 \`\`\`
 

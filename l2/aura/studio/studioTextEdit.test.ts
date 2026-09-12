@@ -541,3 +541,93 @@ test('the catalog order follows the MAP, not the const declarations', () => {
   assert.deepEqual(readDeclaredLocales(reordered), ['en', 'pt-br', 'pt']);
   assert.equal(pickLocale(readDeclaredLocales(reordered), 'de'), 'en');
 });
+
+// ── Text that lives in an ATTRIBUTE (TASK-102020-attribute-text) ─────────────────────────────────
+//
+// The DOM never carries the key of an attribute — `placeholder=${msg['x']}` leaves nothing on the
+// element but the sentence — so the way in is the same walk back the anchor tiebreak uses: from the
+// VALUE to the keys that hold it. Nothing here is a new write: the origin these produce is the very
+// one the text-node path hands to `applyTextEdit`.
+
+const ATTR_PAGE = [
+  `/// **collab_i18n_start**`,
+  `const pageMessage_en = {`,
+  `  'search.hint': 'Search by title',`,
+  `  'refresh': 'Refresh',`,
+  `  'reload': 'Refresh',`,
+  `}`,
+  ``,
+  `const pageMessage_pt: MessageType = {`,
+  `  'search.hint': 'Buscar por título',`,
+  `  'refresh': 'Atualizar',`,
+  `  'reload': 'Atualizar',`,
+  `}`,
+  `/// **collab_i18n_end**`,
+  ``,
+  `class TicketCatalogue {`,
+  `  render() {`,
+  `    const msg = this.msg;`,
+  `    return html\`<div>`,
+  `      <input class="w-full" placeholder=\${msg['search.hint']}>`,
+  `      <button title=\${msg['refresh']} aria-label=\${msg['refresh']}>`,
+  `        <svg><title>ícone</title></svg>`,
+  `      </button>`,
+  `      <img alt="logo da empresa" src="/logo.svg">`,
+  `    </div>\`;`,
+  `  }`,
+  `}`,
+].join('\n');
+
+test('the value of a placeholder resolves to the key that holds it', () => {
+  const found = findAllI18nMatches('Buscar por título', ATTR_PAGE, 'pt-br');
+
+  assert.deepEqual(found.map((m) => m.key), ['search.hint']);
+  // What the write needs is the ENTRY, and every declared locale carries it. (`templateExpression`
+  // comes back as the `this.msg.<key>` fallback here — `findTemplateExpression` does not know the
+  // bare `msg['…']` form the generator emits. Nothing writes with it, so it is not this task's.)
+  assert.deepEqual(found[0].origin.languages.map((l) => l.lang), ['en', 'pt']);
+  assert.deepEqual(found[0].origin.languages.map((l) => l.value), ['Search by title', 'Buscar por título']);
+});
+
+test('an attribute text under two keys comes back as TWO — the panel has to ask', () => {
+  // There is no position in the DOM to break this tie with: `title` is not a node, it has no
+  // siblings and no order. Choosing here would be writing a sentence nobody pointed at.
+  const found = findAllI18nMatches('Atualizar', ATTR_PAGE, 'pt-br');
+
+  assert.deepEqual(found.map((m) => m.key), ['refresh', 'reload']);
+});
+
+test('a fixed attribute text resolves to nothing at all', () => {
+  // `alt="logo da empresa"` is written in the markup, so there is no catalog entry to rewrite — the
+  // line is read-only with the reason, and no edit is invented.
+  assert.deepEqual(findAllI18nMatches('logo da empresa', ATTR_PAGE, 'pt-br'), []);
+  // Same for the text of an `<svg><title>` ELEMENT, which is not an attribute: the editor reads
+  // attributes with getAttribute, so it never reaches this, and if it did the answer is still no.
+  assert.deepEqual(findAllI18nMatches('ícone', ATTR_PAGE, 'pt-br'), []);
+});
+
+test('an attribute is written through the SAME origin as the text between tags', () => {
+  // Criterion 2 of the task, at the module level: the two paths differ only in where the sentence
+  // was read from. If these ever diverge, the attribute edit is a second write.
+  const byValue = findAllI18nMatches('Buscar por título', ATTR_PAGE, 'pt-br')[0];
+  const byKey = findTextOriginByKey('search.hint', ATTR_PAGE);
+
+  assert.deepEqual(byValue.origin, byKey);
+
+  // And the write it produces touches the catalog entry only — never the markup.
+  const locales = pickSiblingLocales(byValue.origin, 'pt');
+  const result = applyTextEdit(byValue.origin, 'Procurar por título', ATTR_PAGE, locales);
+  assert.equal(result.success, true);
+  assert.match(result.newSource ?? '', /'search\.hint': 'Procurar por título'/u);
+  assert.match(result.newSource ?? '', /'search\.hint': 'Search by title'/u, 'the other locale is intact');
+  assert.match(result.newSource ?? '', /placeholder=\$\{msg\['search\.hint'\]\}/u, 'the markup is intact');
+});
+
+test('every locale that declares the key is reachable from an attribute value', () => {
+  // The real-page verification asks for this one: an attribute whose value resolves has to have an
+  // entry in every declared locale, or editing the displayed one would leave the other stale.
+  const origin = findAllI18nMatches('Atualizar', ATTR_PAGE, 'pt-br')[0].origin;
+
+  assert.deepEqual(readDeclaredLocales(ATTR_PAGE), ['en', 'pt']);
+  assert.deepEqual(origin.languages.map((l) => l.lang), ['en', 'pt']);
+});

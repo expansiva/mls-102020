@@ -183,8 +183,10 @@ const message_pt = {
 
   // ── Reasons: why a row (or an edit) has nothing to offer ──────────────────
   'reason.noOptions': 'sem opções prontas para esta propriedade — edite pelo código',
+  // The advice names the breadcrumb on purpose: it used to ask for the element "around this one",
+  // which was an action the tool did not have (TASK-102020-ancestor-breadcrumb).
   'reason.notLocated': 'não consegui identificar este elemento no código desta tela.'
-    + ' Tente selecionar o elemento em volta, ou edite pelo código',
+    + ' Suba para o elemento em volta pela trilha aí em cima (ou Esc), ou edite pelo código',
   'reason.missingInSource': 'as classes deste elemento não estão escritas na fonte desta tela',
   'reason.computedClass': 'as classes deste elemento são calculadas em código, não escritas direto na'
     + ' marcação — o picker não reescreve expressão',
@@ -196,6 +198,10 @@ const message_pt = {
   'reason.moleculeShared': 'este elemento vem de uma molécula (projeto {project}), compartilhada por'
     + ' vários projetos — edição de classe em molécula fica bloqueada até existir undo',
   'reason.noTargetFile': 'sem arquivo-fonte resolvido para esta tela',
+  'reason.attrNotInCatalog': 'não achei este texto no catálogo desta tela — ele está escrito direto'
+    + ' na marcação (ou vem de uma molécula), então dá para editar só na fonte',
+  'reason.attrIsData': 'este texto vem dos dados desta tela, não do catálogo — não há o que editar na fonte',
+  'reason.attrStaticText': 'este texto está escrito direto na marcação — dá para editar só na fonte',
   'reason.repeatedRender': 'esta marcação é uma só no código e desenha {count} elementos na tela —'
     + ' a mudança vale para todos',
 
@@ -229,6 +235,19 @@ const message_pt = {
   'panel.fileTitle': 'arquivo que recebe a edição',
   'panel.noFile': 'nenhum arquivo resolvido',
   'panel.close': 'fechar',
+  // ── The selection's ancestors (TASK-102020-ancestor-breadcrumb) ───────────
+  'panel.chainTitle': 'os elementos em volta — clique para selecionar',
+  'panel.chainSelect': 'selecionar <{tag}>',
+  'panel.chainUp': 'selecionar <{tag}> — um nível acima (Esc)',
+  'panel.chainCurrent': 'este é o elemento selecionado',
+  // ── Text that lives in an attribute (TASK-102020-attribute-text) ──────────
+  'attr.placeholder': 'dica do campo',
+  'attr.title': 'tooltip',
+  'attr.ariaLabel': 'rótulo acessível',
+  'attr.alt': 'texto alternativo',
+  'panel.textPickKey': 'este texto está em {count} chaves — escolha qual editar',
+  'panel.textOf': 'editando a chave {key} (Enter aplica, Esc desiste)',
+  'panel.textOtherKey': 'trocar de chave',
   'panel.tabClasses': 'Classes atuais',
   'panel.tabAnimations': 'Animações',
   'panel.tabInfo': 'Info',
@@ -329,6 +348,38 @@ const message_pt = {
     + ' depois de recarregar (F5)',
   'status.propertyAdded': 'nova propriedade: {property}',
   'status.propertyRemoved': 'propriedade removida: {property}',
+  // ── Moving an element among its siblings (TASK-102020-move-elements) ──────
+  'panel.moveUp': 'mover para antes do vizinho de cima  (Ctrl+Alt+\u2191)',
+  'panel.moveDown': 'mover para depois do vizinho de baixo  (Ctrl+Alt+\u2193)',
+  'panel.moveNo': 'não dá para mover para esse lado',
+  'reason.moveNotSibling': 'só dá para trocar de lugar com um vizinho do mesmo pai — mover para'
+    + ' dentro de outro elemento é outra operação',
+  'reason.moveSameNode': 'estes dois elementos vêm da MESMA linha de código (uma repetição): trocar'
+    + ' a ordem aqui mudaria a ordem dos dados, não da marcação',
+  'reason.moveMountedRoot': 'este bloco é montado por uma chamada no código (${this.renderX()}) —'
+    + ' mover ele é mover a chamada, e isso ainda não dá para fazer daqui',
+  'reason.moveUnclosed': 'não consegui delimitar este elemento no código com segurança — a marcação'
+    + ' parece não estar fechada',
+  'reason.moveNoTarget': 'não há vizinho desse lado',
+  'reason.moveStale': 'a fonte mudou desde essa movimentação',
+  // ── Duplicating and removing (TASK-102020-duplicate-remove) ──────────────
+  'reason.sliceMountedRoot': 'este bloco é montado por uma chamada no código (${this.renderX()}) —'
+    + ' duplicar ou remover ele é mexer na chamada, e isso ainda não dá para fazer daqui',
+  'reason.sliceNoTarget': 'não consegui identificar este elemento no código desta tela',
+  'reason.sliceStale': 'a fonte mudou desde essa edição',
+  'panel.duplicate': 'duplicar: entra uma cópia igual logo depois desta',
+  'panel.duplicateNo': 'não dá para duplicar este elemento',
+  'panel.duplicateIds': 'atenção: a cópia leva o mesmo id ({ids}) — rótulos ligados por for ou'
+    + ' aria-labelledby podem apontar para o elemento errado',
+  'panel.remove': 'remover este elemento',
+  'panel.removeNo': 'não dá para remover este elemento',
+  'panel.removeConfirm': 'clique de novo para remover — dá para desfazer com Ctrl+Z, mas só nesta sessão',
+  'status.duplicated': '<{tag}> duplicado',
+  'status.removed': '<{tag}> removido',
+  'status.movedUp': '<{tag}> movido para cima',
+  'status.movedDown': '<{tag}> movido para baixo',
+  'status.dragging': 'arrastando <{tag}> — solte sobre o vizinho de cima ou de baixo',
+  'status.dropCancelled': 'nada foi movido: solte sobre o vizinho de cima ou de baixo',
 
   // ── Animations: groups, options and screens ───────────────────────────────
   'anim.group.continuous': 'Animação contínua',
@@ -676,7 +727,7 @@ const message_en: typeof message_pt = {
 
   'reason.noOptions': 'no ready options for this property — edit it in the code',
   'reason.notLocated': 'I could not identify this element in the code of this screen.'
-    + ' Try selecting the element around it, or edit it in the code',
+    + ' Go up to the element around it on the trail above (or Esc), or edit it in the code',
   'reason.missingInSource': "this element's classes are not written in the source of this screen",
   'reason.computedClass': "this element's classes are computed in code, not written in the markup —"
     + ' the picker does not rewrite an expression',
@@ -688,6 +739,10 @@ const message_en: typeof message_pt = {
   'reason.moleculeShared': 'this element comes from a molecule (project {project}), shared by several'
     + ' projects — editing a molecule class stays blocked until there is undo',
   'reason.noTargetFile': 'no source file resolved for this screen',
+  'reason.attrNotInCatalog': 'I could not find this text in any catalog of this screen — it is'
+    + ' written straight into the markup (or comes from a molecule), so it can only be edited at the source',
+  'reason.attrIsData': 'this text comes from the data of this screen, not from the catalog — there is nothing to edit in the source',
+  'reason.attrStaticText': 'this text is written straight into the markup — it can only be edited at the source',
   'reason.repeatedRender': 'this markup is written once in the code and draws {count} elements on'
     + ' screen — the change applies to all of them',
 
@@ -720,6 +775,17 @@ const message_en: typeof message_pt = {
   'panel.fileTitle': 'file that receives the edit',
   'panel.noFile': 'no file resolved',
   'panel.close': 'close',
+  'panel.chainTitle': 'the elements around this one — click to select',
+  'panel.chainSelect': 'select <{tag}>',
+  'panel.chainUp': 'select <{tag}> — one level up (Esc)',
+  'panel.chainCurrent': 'this is the selected element',
+  'attr.placeholder': 'field hint',
+  'attr.title': 'tooltip',
+  'attr.ariaLabel': 'accessible label',
+  'attr.alt': 'alternative text',
+  'panel.textPickKey': 'this text is under {count} keys — choose which one to edit',
+  'panel.textOf': 'editing key {key} (Enter applies, Esc gives up)',
+  'panel.textOtherKey': 'change the key',
   'panel.tabClasses': 'Current classes',
   'panel.tabAnimations': 'Animations',
   'panel.tabInfo': 'Info',
@@ -819,6 +885,37 @@ const message_en: typeof message_pt = {
     + ' after a reload (F5)',
   'status.propertyAdded': 'new property: {property}',
   'status.propertyRemoved': 'property removed: {property}',
+  // ── Moving an element among its siblings (TASK-102020-move-elements) ──────
+  'panel.moveUp': 'move before the neighbour above  (Ctrl+Alt+\u2191)',
+  'panel.moveDown': 'move after the neighbour below  (Ctrl+Alt+\u2193)',
+  'panel.moveNo': 'it cannot move that way',
+  'reason.moveNotSibling': 'it can only swap places with a neighbour under the same parent — moving'
+    + ' it into another element is a different operation',
+  'reason.moveSameNode': 'these two elements come from the SAME line of code (a repetition):'
+    + ' reordering here would change the order of the DATA, not of the markup',
+  'reason.moveMountedRoot': 'this block is mounted by a call in the code (${this.renderX()}) —'
+    + ' moving it means moving the call, which cannot be done from here yet',
+  'reason.moveUnclosed': 'I could not safely delimit this element in the code — the markup does not'
+    + ' look closed',
+  'reason.moveNoTarget': 'there is no neighbour on that side',
+  'reason.moveStale': 'the source changed since that move',
+  'reason.sliceMountedRoot': 'this block is mounted by a call in the code (${this.renderX()}) —'
+    + ' duplicating or removing it means touching the call, which cannot be done from here yet',
+  'reason.sliceNoTarget': 'I could not identify this element in the code of this screen',
+  'reason.sliceStale': 'the source changed since that edit',
+  'panel.duplicate': 'duplicate: an identical copy goes in right after this one',
+  'panel.duplicateNo': 'this element cannot be duplicated',
+  'panel.duplicateIds': 'heads up: the copy carries the same id ({ids}) — labels tied by for or'
+    + ' aria-labelledby may point at the wrong element',
+  'panel.remove': 'remove this element',
+  'panel.removeNo': 'this element cannot be removed',
+  'panel.removeConfirm': 'click again to remove — Ctrl+Z undoes it, but only in this session',
+  'status.duplicated': '<{tag}> duplicated',
+  'status.removed': '<{tag}> removed',
+  'status.movedUp': '<{tag}> moved up',
+  'status.movedDown': '<{tag}> moved down',
+  'status.dragging': 'dragging <{tag}> — drop it on the neighbour above or below',
+  'status.dropCancelled': 'nothing moved: drop it on the neighbour above or below',
 
   'anim.group.continuous': 'Continuous animation',
   'anim.group.speed': 'Speed',

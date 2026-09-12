@@ -109,13 +109,15 @@ Pass CSS classes on slot tags via \`data-class\`:
 
 ## Design Tokens
 
-The component's visual styling can be customized by overriding \`--ml-*\` CSS custom properties on a parent element:
+The component's visual styling can be customized by overriding \`--ml-*\` CSS custom
+properties on a parent element. The values below are this group's current defaults —
+copy the block and change them:
 
 \`\`\`css
 .my-container {
-  --ml-primary: #7c3aed;
-  --ml-radius-sm: 10px;
-  --ml-font-family: 'Inter', sans-serif;
+  --ml-gradient-1: #10b981;
+  --ml-gradient-2: #84cc16;
+  --ml-gradient-3: #eab308;
 }
 \`\`\`
 
@@ -123,24 +125,21 @@ The component's visual styling can be customized by overriding \`--ml-*\` CSS cu
 
 | Token | Default | Purpose |
 |-------|---------|---------|
-| \`--ml-surface\` | \`#ffffff\` | Component background |
-| \`--ml-surface-dim\` | \`#f5f5f5\` | Hover background |
-| \`--ml-on-surface\` | \`#1c1b1f\` | Primary text |
-| \`--ml-on-surface-muted\` | \`#49454f\` | Secondary text |
-| \`--ml-on-surface-faint\` | \`#79747e\` | Placeholder |
-| \`--ml-primary\` | \`#3b82f6\` | Primary action color |
-| \`--ml-on-primary\` | \`#ffffff\` | Text on primary |
-| \`--ml-error\` | \`#ef4444\` | Error color |
-| \`--ml-on-error\` | \`#ffffff\` | Text on error |
-| \`--ml-outline-variant\` | \`#e2e8f0\` | Default border |
-| \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
+| \`--ml-disabled-opacity\` | \`0.5\` | Opacity of disabled elements |
+| \`--ml-focus-ring-width\` | \`2px\` | Focus ring width |
+| \`--ml-gradient-1\` | \`#10b981\` | Diverging scale step 1 (best) |
+| \`--ml-gradient-2\` | \`#84cc16\` | Diverging scale step 2 |
+| \`--ml-gradient-3\` | \`#eab308\` | Diverging scale step 3 |
+| \`--ml-gradient-4\` | \`#f59e0b\` | Diverging scale step 4 (neutral) |
+| \`--ml-gradient-5\` | \`#f97316\` | Diverging scale step 5 |
+| \`--ml-gradient-6\` | \`#ef4444\` | Diverging scale step 6 |
+| \`--ml-gradient-7\` | \`#e11d48\` | Diverging scale step 7 (worst) |
+| \`--ml-on-gradient-1\` | \`#ffffff\` | Text on diverging step 1 |
+| \`--ml-on-gradient-5\` | \`#ffffff\` | Text on diverging step 5 |
+| \`--ml-on-gradient-6\` | \`#ffffff\` | Text on diverging step 6 |
+| \`--ml-on-gradient-7\` | \`#ffffff\` | Text on diverging step 7 |
 | \`--ml-outline-error\` | \`#ef4444\` | Error border |
-| \`--ml-radius-sm\` | \`6px\` | Default radius |
-| \`--ml-shadow-1\` | \`0 1px 3px rgba(0,0,0,0.1)\` | Subtle shadow |
-| \`--ml-font-family\` | \`system-ui, sans-serif\` | Font family |
-| \`--ml-font-weight-medium\` | \`500\` | Medium weight |
-| \`--ml-transition\` | \`200ms ease\` | Transition |
-| \`--ml-focus-ring-color\` | \`rgba(59,130,246,0.4)\` | Focus ring |
-| \`--ml-disabled-opacity\` | \`0.5\` | Disabled opacity |
+| \`--ml-outline-focus\` | \`#3b82f6\` | Focus border |
+| \`--ml-outline-variant\` | \`#e2e8f0\` | Default border |
 
 `

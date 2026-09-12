@@ -32,6 +32,8 @@
 
 import {
   applyTextEdit,
+  extractI18nKeyFromExpression,
+  findAllI18nMatches,
   findTextOriginByKey,
   findTextOriginByOccurrence,
   pickLocale,
@@ -44,6 +46,7 @@ import {
   type ClassPickerPanel,
   type IPickerApply,
   type IPickerPreview,
+  type IPickerTextEdit,
 } from '/_102020_/l2/aura/studio/classPickerPanel.js';
 import {
   addEditDirty,
@@ -62,19 +65,42 @@ import {
   editScope,
   describeMissingLiteral,
   findClassAttrs,
+  ownerChain,
   parseClassAttr,
   readAnimationState,
+  readAttribute,
   readDesignSystemRoles,
   repeatedRenderWarning,
   resolveAnchor,
   resolveStructuralAnchor,
   scanTemplateTree,
+  selectableChain,
   splitUtilities,
   type IDomPathStep,
+  type IOwnerChain,
+  type IOwnerTree,
+  type ITemplateElement,
+  type ITemplateTree,
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { builtCssClassNames, isStudioTailwindLive } from '/_102033_/l2/cbe/studioTailwind.js';
 import { applyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
+import {
+  CONTEXT_CHARS,
+  MOVE_NO_TARGET,
+  SLICE_NO_TARGET,
+  applyInsert,
+  applyMove,
+  applyRemove,
+  duplicatedIds,
+  planDuplicate,
+  planMove,
+  planRemove,
+  planRemoveSlice,
+  planRestore,
+  planReverse,
+  type IMovePlan,
+} from '/_102020_/l2/aura/studio/studioMoveEdit.js';
 import {
   compileAfterEdit,
   currentLanguage,
@@ -99,8 +125,27 @@ const STYLE_ID = 'se-editor-styles';
 /** How long a transient toast stays up. Long enough to read the key that was edited. */
 const STATUS_TIMEOUT_MS = 5000;
 
+/**
+ * How far the pointer must travel before a press becomes a drag.
+ *
+ * Not polish: with no threshold every click is a one-pixel drag and the element can never simply be
+ * SELECTED. Four pixels is under the hand tremor of a deliberate click and well under any intended
+ * movement.
+ */
+const DRAG_THRESHOLD_PX = 4;
+
 /** Elements the editor itself puts on the page — never selectable, never counted. */
 const CONTROL_CLASS = 'se-control';
+
+/**
+ * Attributes that hold TEXT THE USER READS (TASK-102020-attribute-text).
+ *
+ * A closed list, and that is the whole safety of the feature: `id`, `for`, `href`, `value` and
+ * `data-*` also carry strings, but editing one of those is changing a LINK, not content. Measured on
+ * the real pages, these four carry 47 (102047) and 52 (102046) sentences that had no way in at all —
+ * the placeholder of every search field, the tooltip of every icon button.
+ */
+const TEXT_ATTRIBUTES = ['placeholder', 'title', 'aria-label', 'alt'] as const;
 
 /**
  * What the current selection resolved to for the class picker.
@@ -155,12 +200,107 @@ type EditStep =
     what: string;
     node: WeakRef<Text>;
     el: WeakRef<HTMLElement>;
+  }
+  | {
+    /**
+     * Text that lives in an ATTRIBUTE (`placeholder`, `title`, `aria-label`, `alt`).
+     *
+     * No text node, so no `node` — the screen is put back by setting the attribute again. Everything
+     * else is the text step: the address is the catalog KEY, and the write is the same one.
+     */
+    kind: 'attr';
+    attribute: string;
+    i18nKey: string;
+    before: string;
+    after: string;
+    what: string;
+    el: WeakRef<HTMLElement>;
+  }
+  | {
+    /**
+     * A whole element went IN (a duplication) or OUT (a removal) — TASK-102020-duplicate-remove.
+     *
+     * One kind for both because the undo of one is the other: the direction is a flip of `op`, and
+     * the two revalidations travel together (the text for taking a slice out, the neighbourhood for
+     * putting one back — see studioMoveEdit).
+     */
+    kind: 'slice';
+    /** Which way the FORWARD edit went. */
+    op: 'insert' | 'remove';
+    file: IStudioEditTarget;
+    /** Where the markup is (insert) or was (remove). */
+    at: number;
+    /** The markup itself: the payload in both directions. */
+    text: string;
+    /** The text on each side of the hole — the address a re-insertion is revalidated on. */
+    before: string;
+    after: string;
+    what: string;
+    /**
+     * The node itself, held STRONGLY, and where on screen it belongs.
+     *
+     * The exception to the WeakRef rule above, and the reason is the operation: a removed subtree is
+     * referenced by nobody else, so a weak reference would let it be collected and the undo would put
+     * the source right with an empty screen. It is the payload, like `slice` is for a move — and
+     * putting the SAME node back is what keeps its listeners and its Lit parts alive.
+     */
+    node: HTMLElement;
+    parent: WeakRef<HTMLElement>;
+    next: WeakRef<ChildNode> | null;
+    el: WeakRef<HTMLElement>;
+  }
+  | {
+    kind: 'move';
+    file: IStudioEditTarget;
+    /**
+     * The element's text, verbatim — and it is also the revalidation.
+     *
+     * Offsets go stale the moment anything else writes to the file; the TEXT does not. Before
+     * replaying, the source has to hold exactly this slice at exactly the recorded position, or the
+     * step is refused and the branch goes with it (see EditHistory).
+     */
+    slice: string;
+    /** Where the slice was before the move, and where it ended up. */
+    from: number;
+    to: { start: number; end: number };
+    what: string;
+    el: WeakRef<HTMLElement>;
   };
+
+/**
+ * A text attribute of the selection, and the catalog keys its value could be.
+ *
+ * Resolved AT SELECTION TIME, like everything else the panel offers: the user has to see that the
+ * text is editable — and, when it is ambiguous, WHICH keys it could be — before typing into it.
+ */
+interface IAttrText {
+  attribute: string;
+  value: string;
+  /**
+   * Keys whose catalog value IS this text, in declaration order. Empty when the text is not in any
+   * catalog of this screen (written straight into the markup, or coming from a molecule's own file).
+   *
+   * A list and not a key: the same sentence can be the value of several keys, and when the source
+   * itself cannot name the one this attribute uses, the panel ASKS instead of choosing.
+   */
+  keys: string[];
+  /** Why there are no keys — the line is read-only and says this. */
+  reason?: IMessageRef;
+}
 
 interface IClassPanelState {
   el: HTMLElement;
+  /**
+   * The chain the breadcrumb offers, root-first, ending at `el` (TASK-102020-ancestor-breadcrumb).
+   *
+   * Lives HERE and not in a field of its own so it cannot drift from the selection it describes: the
+   * panel is handed the index of a level, and this is what resolves it back — one panel, one chain.
+   */
+  levels: HTMLElement[];
   /** The element's class attribute, exactly as authored — what has to be found in the source. */
   literal: string;
+  /** Text attributes of the selection, resolved against this screen's catalogs. */
+  texts: IAttrText[];
   tokens: IUtilityToken[];
   /** File that receives the edit, or null when nothing was resolved. */
   file: IStudioEditTarget | null;
@@ -189,6 +329,15 @@ export class StudioEditor {
    * update and the local copy behind (see studioEditHistory).
    */
   private readonly history = new EditHistory<EditStep>();
+  /**
+   * A press on the already-selected element, waiting to become a drag.
+   *
+   * Only the SELECTED element starts one: dragging whatever is under the pointer would make every
+   * press on the page a potential rewrite, and the first gesture on an element has to be able to be
+   * just a click.
+   */
+  private dragPress: { el: HTMLElement; x: number; y: number } | null = null;
+  private dragging: HTMLElement | null = null;
   /**
    * Files that can hold this page's text, resolved lazily: page, organism files, shared base class.
    * Null until the first edit needs it.
@@ -423,6 +572,10 @@ export class StudioEditor {
     host.addEventListener('pointerdown', this.onHostPointerDown, true);
     host.addEventListener('mousedown', this.onHostPointerDown, true);
     host.addEventListener('mousemove', this.onHostMouseMove);
+    host.addEventListener('mousemove', this.onHostPointerMove);
+    // On the WINDOW: a drag that ends outside the shell still has to end, or the next click would
+    // arrive with a drag still armed.
+    window.addEventListener('mouseup', this.onHostPointerUp, true);
     host.addEventListener('mouseleave', this.onHostMouseLeave);
     // Capture phase, unlike the original: in the app the page scrolls inside the nav3 panel, and a
     // scroll on an inner element never bubbles to window — it only passes through on capture. The
@@ -432,7 +585,7 @@ export class StudioEditor {
     // CAPTURE, and it stops there: the page underneath and the shell's own Ctrl+Z (the code editor)
     // must never see the editor's undo. Capture also means this runs before anything deeper, which
     // is the only way to be sure of that.
-    window.addEventListener('keydown', this.onUndoKey, true);
+    window.addEventListener('keydown', this.onEditorKey, true);
   }
 
   private removeListeners(): void {
@@ -442,12 +595,14 @@ export class StudioEditor {
       host.removeEventListener('pointerdown', this.onHostPointerDown, true);
       host.removeEventListener('mousedown', this.onHostPointerDown, true);
       host.removeEventListener('mousemove', this.onHostMouseMove);
+      host.removeEventListener('mousemove', this.onHostPointerMove);
       host.removeEventListener('mouseleave', this.onHostMouseLeave);
       host.style.cursor = '';
     }
     window.removeEventListener('scroll', this.onScrollResize, true);
     window.removeEventListener('resize', this.onScrollResize);
-    window.removeEventListener('keydown', this.onUndoKey, true);
+    window.removeEventListener('mouseup', this.onHostPointerUp, true);
+    window.removeEventListener('keydown', this.onEditorKey, true);
   }
 
   /**
@@ -471,6 +626,19 @@ export class StudioEditor {
     // While armed the page must not react to the pointer — otherwise clicking a button to edit its
     // label would submit the form. In `off` mode this handler is not even registered.
     e.stopPropagation();
+
+    // A press on the element that is already selected is a candidate drag; the threshold in
+    // `onHostPointerMove` decides whether it becomes one. Below it, this was a click and the normal
+    // selection path runs untouched.
+    if (this.mode === 'select' && e instanceof MouseEvent && !this.editSpan) {
+      const target = e.target as HTMLElement | null;
+      if (target && !this.isControl(target)) {
+        const over = this.resolveSelectableElement(this.resolvePointerTarget(e, target));
+        if (over === this.selectedEl && over !== this.host) {
+          this.dragPress = { el: over, x: e.clientX, y: e.clientY };
+        }
+      }
+    }
 
     if (this.currentMode() !== 'text' || !(e instanceof MouseEvent) || !this.editSpan) return;
 
@@ -505,21 +673,8 @@ export class StudioEditor {
     const pointerTarget = this.resolvePointerTarget(e, target);
     if (pointerTarget === this.host) return;
 
-    // A new click means the user moved on from whatever the last message said.
-    this.statusText = '';
     const selectableEl = this.resolveSelectableElement(pointerTarget);
-    this.selectedEl = selectableEl;
-    // Forget the hover cache: the mousemove handler skips redraws while the pointer stays on the
-    // same element, so without this the hover outline would not come back over the element just
-    // clicked.
-    this.lastHoveredEl = null;
-    this.drawSelection();
-    this.publishSelection(selectableEl);
-
-    // The picker resolves the source anchor for the SELECTION — the file that would change, and any
-    // refusal, are on screen BEFORE a chip is clicked. Async (it may have to open organism models);
-    // the text path below does not wait for it.
-    void this.showClassPanel(selectableEl);
+    this.selectElement(selectableEl);
 
     const textResult = this.findClickedTextNode(e, pointerTarget);
     if (!textResult) return;
@@ -550,12 +705,17 @@ export class StudioEditor {
 
     const target = e.target as HTMLElement | null;
     if (!target || this.isControl(target)) return;
+    // While dragging, the hover box chasing the pointer fights the drop line for attention and says
+    // nothing the drop line does not already say.
+    if (this.dragging) return;
 
     // Resolved FIRST, and the cache compares the resolved element: the pointer can move across a
     // disabled button without `e.target` ever changing, and comparing the raw target would keep the
-    // outline on the ancestor. It also has to be the same resolution the click uses, or the outline
-    // points at one element and the click selects another.
-    const hovered = this.resolvePointerTarget(e, target);
+    // outline on the ancestor. It also has to be the same resolution the click uses — BOTH halves of
+    // it — or the outline points at one element and the click selects another. Inside a molecule
+    // that was exactly what happened: the outline followed the internal div while the click jumped
+    // to the molecule, which reads as a rendering defect rather than as the scope rule it is.
+    const hovered = this.resolveSelectableElement(this.resolvePointerTarget(e, target));
     if (hovered === this.host || hovered === this.lastHoveredEl) return;
     // The span being edited already has its own outline; a hover box on top just fights it.
     if (this.editSpan && (hovered === this.editSpan || this.editSpan.contains(hovered))) return;
@@ -584,6 +744,93 @@ export class StudioEditor {
     });
   }
 
+  /**
+   * The drag itself: past the threshold, the pointer picks a sibling and a side.
+   *
+   * It shares `mousemove` with the hover so there is exactly one pointer path through this editor —
+   * two would eventually disagree about what is under the cursor, which is the failure mode this
+   * whole file keeps guarding against.
+   */
+  private onHostPointerMove = (e: MouseEvent): void => {
+    if (!this.dragPress) return;
+    if (!this.dragging) {
+      const travelled = Math.abs(e.clientX - this.dragPress.x) + Math.abs(e.clientY - this.dragPress.y);
+      if (travelled < DRAG_THRESHOLD_PX) return;
+      this.dragging = this.dragPress.el;
+      this.setStatus(t('status.dragging', { tag: this.dragging.tagName.toLowerCase() }));
+    }
+
+    const drop = this.dropTargetAt(e);
+    if (drop) this.drawDropLine(drop.sibling, drop.side);
+    else this.clearDropLine();
+  };
+
+  /** The pointer released: one write, or nothing at all. */
+  private onHostPointerUp = (e: MouseEvent): void => {
+    const dragged = this.dragging;
+    this.dragPress = null;
+    this.dragging = null;
+    if (!dragged) return;
+    this.clearDropLine();
+
+    const drop = this.dropTargetAt(e);
+    // Released over nothing that can receive it: the honest outcome is to write nothing. A drag that
+    // silently lands somewhere plausible is worse than one that does not land.
+    if (!drop) {
+      this.setStatus(t('status.dropCancelled'));
+      return;
+    }
+    void this.moveSelected(drop.side === 'before' ? 'up' : 'down');
+  };
+
+  /**
+   * Which sibling the pointer is over, and which side of it.
+   *
+   * The pointer is walked DOWN by geometry (`deepestAt`, same as everything else here) and then back
+   * UP to the level of the dragged element — dropping is between siblings, so a pointer deep inside a
+   * neighbour's subtree still means "that neighbour". Only the two immediate neighbours are offered,
+   * which is exactly what the source rule can write.
+   */
+  private dropTargetAt(e: MouseEvent): { sibling: HTMLElement; side: 'before' | 'after' } | null {
+    const dragged = this.dragging;
+    const target = e.target as HTMLElement | null;
+    if (!dragged?.isConnected || !target) return null;
+
+    const under = this.resolvePointerTarget(e, target);
+    let node: HTMLElement | null = under;
+    while (node && node.parentElement !== dragged.parentElement) node = node.parentElement;
+    if (!node || node === dragged) return null;
+
+    const previous = this.domSibling(dragged, 'up');
+    const next = this.domSibling(dragged, 'down');
+    if (node !== previous && node !== next) return null;
+
+    // The side follows from WHICH neighbour it is, not from the half of the box the pointer is in.
+    // With only the two immediate neighbours able to receive, "the near half of the previous sibling"
+    // is the seat the element already occupies — half the drop area would do nothing, which reads as
+    // the gesture being broken. One neighbour, one meaning.
+    return { sibling: node, side: node === previous ? 'before' : 'after' };
+  }
+
+  /** A line in the overlay showing where the element would land. */
+  private drawDropLine(sibling: HTMLElement, side: 'before' | 'after'): void {
+    if (!this.overlayEl) return;
+    let line = this.overlayEl.querySelector<HTMLDivElement>('.se-drop-line');
+    if (!line) {
+      line = document.createElement('div');
+      line.className = 'se-drop-line';
+      this.overlayEl.appendChild(line);
+    }
+    const box = sibling.getBoundingClientRect();
+    line.style.left = `${box.left}px`;
+    line.style.width = `${box.width}px`;
+    line.style.top = `${side === 'before' ? box.top : box.bottom}px`;
+  }
+
+  private clearDropLine(): void {
+    this.overlayEl?.querySelector('.se-drop-line')?.remove();
+  }
+
   private onHostMouseLeave = (): void => {
     if (this.currentMode() === 'off') return;
     this.lastHoveredEl = null;
@@ -591,15 +838,43 @@ export class StudioEditor {
   };
 
   /**
-   * Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y) while the editor is armed.
+   * The editor's own keys while it is armed: Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y), Ctrl+Alt+Arrow, Esc.
    *
    * Two things it must NOT do: fire while the user is typing — a field has its own undo, and taking
    * it over would be the worst kind of surprise — and leak. The typing check reads
    * `composedPath()[0]` rather than `target`, because a field inside the panel's shadow root is
    * retargeted to the panel element by the time the event reaches the window.
    */
-  private onUndoKey = (e: KeyboardEvent): void => {
+  private onEditorKey = (e: KeyboardEvent): void => {
     if (this.currentMode() === 'off') return;
+
+    // Esc has THREE possible owners and the order is the whole guarantee (see the task's risk 1):
+    //
+    //  1. the text being edited. This listener is on the window in CAPTURE, so it runs BEFORE the
+    //     span's own handler — returning here is what leaves the cancel to it. Losing what was typed
+    //     while reaching for "one level up" is the one outcome that must be impossible;
+    //  2. a field of the panel (the typed value, the custom ms), which cancels itself;
+    //  3. the selection: up one level, and only at the page's own root does it close the panel.
+    if (e.key === 'Escape') {
+      if (this.editSpan || this.isTypingTarget(e)) return;
+      // Nothing of ours is open: the key belongs to whatever else is listening.
+      if (!this.classPanel) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.selectParentLevel()) this.hideClassPanel();
+      return;
+    }
+
+    // Ctrl+Alt+Arrow moves the selection among its siblings. It shares this handler because it shares
+    // the guards: not while typing, not while a write is in flight, and only when armed.
+    if ((e.ctrlKey || e.metaKey) && e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      if (this.editSpan || this.isTypingTarget(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void this.moveSelected(e.key === 'ArrowUp' ? 'up' : 'down');
+      return;
+    }
+
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
     const key = e.key.toLowerCase();
     if (key !== 'z' && key !== 'y') return;
@@ -633,25 +908,142 @@ export class StudioEditor {
   }
 
   /**
-   * Walks up to the nearest custom element that is NOT the page component itself, so selecting
+   * Makes an element THE selection — the one path, for the pointer and for the breadcrumb.
+   *
+   * Two ways to select would eventually disagree about what the panel is showing, which is the same
+   * failure `resolveSelectableElement` guards against for hover and click. The element arrives here
+   * already resolved: the pointer collapses it by ownership, the breadcrumb reads it off a chain that
+   * was built the same way.
+   */
+  private selectElement(el: HTMLElement): void {
+    // A new selection means the user moved on from whatever the last message said.
+    this.statusText = '';
+    this.selectedEl = el;
+    // Forget the hover cache: the mousemove handler skips redraws while the pointer stays on the
+    // same element, so without this the hover outline would not come back over the element just
+    // clicked.
+    this.lastHoveredEl = null;
+    this.drawSelection();
+    this.publishSelection(el);
+
+    // The picker resolves the source anchor for the SELECTION — the file that would change, and any
+    // refusal, are on screen BEFORE a chip is clicked. Async (it may have to open organism models);
+    // the caller does not wait for it.
+    void this.showClassPanel(el);
+  }
+
+  /**
+   * Selects the n-th level of the breadcrumb (TASK-102020-ancestor-breadcrumb).
+   *
+   * The handle is the INDEX and not the element: the panel is chrome and never holds a live node (the
+   * same discipline `publishSelection` follows). Resolving it here also means a chain that aged out
+   * of the DOM — a re-render between the paint and the click — lands on the `gone` status instead of
+   * writing the source for something no longer on screen.
+   *
+   * @returns false when there is no such level, which is what lets `Esc` fall through to closing.
+   */
+  private selectLevel(index: number): boolean {
+    const el = this.classPanel?.levels[index];
+    if (!el) return false;
+    if (!el.isConnected) {
+      this.setStatus(t('status.gone'));
+      return true;
+    }
+    this.selectElement(el);
+    return true;
+  }
+
+  /** One step up the chain: the level right above the selection, or nothing at the page's own root. */
+  private selectParentLevel(): boolean {
+    const levels = this.classPanel?.levels.length ?? 0;
+    // The selection always ends the chain, so its parent is the one before last.
+    return levels >= 2 && this.selectLevel(levels - 2);
+  }
+
+  /**
+   * The chain the breadcrumb offers for a selection, root-first.
+   *
+   * From the HOST, so the first level is the page's own element: the host is the shell's and is in no
+   * source. The cut at the ownership break, and why the selection always ends it, are in
+   * `selectableChain`.
+   */
+  private selectionLevels(el: HTMLElement): HTMLElement[] {
+    return selectableChain(this.ownerChainOf(el), el);
+  }
+
+  /**
+   * Collapses to the nearest custom element that owns the markup under the pointer, so selecting
    * inside a molecule selects the molecule and not its internal markup.
+   *
+   * What it no longer does is collapse content the PAGE passed into a live slot. That markup is in
+   * the page's own file and is legitimate to edit; it only looks like the molecule's because
+   * projection MOVED it in there (see `ownerChain`). Before this, the whole 102047 was unselectable
+   * — every one of its pages is a single `<ml-scenary>` with the page inside a `<Scene>`.
    */
   private resolveSelectableElement(target: HTMLElement): HTMLElement {
+    const { chain, ownerBreak } = this.ownerChainOf(target);
+    return ownerBreak < 0 ? target : (chain[ownerBreak] ?? target);
+  }
+
+  /**
+   * `ownerChain` over the real DOM, from the region host.
+   *
+   * ONE accessor set for every layer that asks the ownership question — selection, scope, the
+   * structural path and the breadcrumb. They used to walk `parentElement` on their own, and the
+   * moment they disagree the tool lies: the outline follows one element while the click selects another (the
+   * failure TASK-102020-select-inert-elements called worse than the bug it fixed), or the panel
+   * names a file the write will not land in.
+   */
+  private ownerChainOf(el: HTMLElement, root?: HTMLElement | null): IOwnerChain<HTMLElement> {
+    const from = root ?? this.host;
+    if (!from) return { chain: [], crossed: false, ownerBreak: -1 };
+    return ownerChain(el, from, this.ownerTree());
+  }
+
+  private ownerTree(): IOwnerTree<HTMLElement> {
     const pageTag = this.pageTag();
-    let current: HTMLElement | null = target;
+    return {
+      parent: (el) => el.parentElement,
+      // `mlLiveHeld` and NOT the key declared on the anchor: `_fillAnchor` reuses anchors by
+      // position, so while a table is being sorted an anchor still carries the tag/id it was
+      // rendered with while already holding another row's nodes. Held is what is in there NOW.
+      slotAnchor: (el) => el.dataset.mlLiveHeld ?? null,
+      slotSource: (el, key) => this.liveSlotSource(el, key),
+      component: (el) => {
+        const tag = el.tagName.toLowerCase();
+        // Nothing is a molecule while we do not know which tag the page itself is: comparing against
+        // `null` would make the page's own element a foreign component and collapse every click.
+        return tag.includes('-') && pageTag !== null && tag !== pageTag ? tag : null;
+      },
+    };
+  }
 
+  /**
+   * The element whose children a projection anchor is holding.
+   *
+   * Scoped to the molecule that RENDERED the anchor: the keys (`Scene`, `ref3`) are per molecule, so
+   * a document-wide lookup would happily return another molecule's source. A source can sit deeper
+   * than a direct child — a transforming molecule addresses `TableCell` inside `TableRow` — so the
+   * scope is checked per candidate instead of by depth.
+   */
+  private liveSlotSource(anchor: HTMLElement, key: string): HTMLElement | null {
+    const molecule = this.owningComponent(anchor);
+    if (!molecule) return null;
+    // The key is matched in JS, not interpolated into the selector: a slot tag is whatever the
+    // consumer wrote, and a quote in it would either throw or, worse, widen the selector.
+    return Array.from(molecule.querySelectorAll<HTMLElement>('[data-ml-live-source]'))
+      .find((candidate) => candidate.dataset.mlLiveSource === key
+        && this.owningComponent(candidate) === molecule) ?? null;
+  }
+
+  /** Nearest STRICT ancestor that is a custom element — the molecule a node was rendered by. */
+  private owningComponent(el: HTMLElement): HTMLElement | null {
+    let current = el.parentElement;
     while (current && current !== this.host) {
-      const parent: HTMLElement | null = current.parentElement;
-      if (!parent || parent === this.host) break;
-
-      const parentTag = parent.tagName.toLowerCase();
-      if (parentTag.includes('-') && pageTag && parentTag !== pageTag) {
-        return parent;
-      }
-      current = parent;
+      if (current.tagName.includes('-')) return current;
+      current = current.parentElement;
     }
-
-    return target;
+    return null;
   }
 
   private pageTag(): string | null {
@@ -787,7 +1179,14 @@ export class StudioEditor {
       this.applyCursor();
 
       if (newText !== oldText) {
-        void this.applyTextEditToSource(oldText, newText, occurrenceIndex, editParent, restoredNode, i18nKey)
+        void this.applyTextEditToSource({
+          oldText,
+          newText,
+          occurrence: occurrenceIndex,
+          i18nKey,
+          el: editParent,
+          revert: () => { restoredNode.textContent = oldText; },
+        })
           .then((result) => {
             // Only a write that landed goes on the stack: an edit refused as dynamic text changed
             // nothing, and offering to undo it would undo the previous one instead.
@@ -859,17 +1258,29 @@ export class StudioEditor {
    * (a re-render, a navigation), and the file still has to be put right. When they are there, they
    * are the rollback — the screen already shows the new text, and a failure has to take it back.
    */
-  private async applyTextEditToSource(
-    oldText: string,
-    newText: string,
-    occurrenceIndex: number,
-    editTarget: HTMLElement | null,
-    restoredNode: Text | null,
-    i18nKey: string | null,
-  ): Promise<{ ok: boolean; what?: string }> {
+  private async applyTextEditToSource(edit: {
+    oldText: string;
+    newText: string;
+    occurrence: number;
+    /** The catalog key when the DOM knows it (data-i18n-key, or an attribute's resolved key). */
+    i18nKey: string | null;
+    /** Element to flash when the write is refused; null when it is no longer on screen. */
+    el: HTMLElement | null;
+    /**
+     * Puts the SCREEN back.
+     *
+     * The optimistic change is the caller's — a text node's content, an attribute's value — so undoing
+     * it is too. It is a callback and not the node itself because the text a user reads is not always
+     * a text node: `placeholder`, `title` and `aria-label` carry a third of the sentences on a
+     * generated page (TASK-102020-attribute-text), and the write below is the same for all of them.
+     */
+    revert: (() => void) | null;
+  }): Promise<{ ok: boolean; what?: string }> {
+    const { oldText, newText, i18nKey } = edit;
+    const occurrenceIndex = edit.occurrence;
     const rollback = (message: string): { ok: false } => {
-      if (restoredNode) restoredNode.textContent = oldText;
-      if (editTarget) this.flashError(editTarget);
+      edit.revert?.();
+      if (edit.el) this.flashError(edit.el);
       this.setStatus(message);
       return { ok: false };
     };
@@ -1039,6 +1450,13 @@ export class StudioEditor {
     this.classPanelEl.addEventListener('picker-close', this.onPickerClose);
     this.classPanelEl.addEventListener('picker-undo', this.onPickerUndo);
     this.classPanelEl.addEventListener('picker-redo', this.onPickerRedo);
+    this.classPanelEl.addEventListener('picker-move-up', this.onPickerMoveUp);
+    this.classPanelEl.addEventListener('picker-move-down', this.onPickerMoveDown);
+    this.classPanelEl.addEventListener('picker-duplicate', this.onPickerDuplicate);
+    this.classPanelEl.addEventListener('picker-remove', this.onPickerRemove);
+    this.classPanelEl.addEventListener('picker-text', this.onPickerText as EventListener);
+    this.classPanelEl.addEventListener('picker-level', this.onPickerLevel as EventListener);
+    this.classPanelEl.addEventListener('picker-level-hover', this.onPickerLevelHover as EventListener);
     // Same layer as the marking and the toast — see createStatusEl.
     document.body.appendChild(this.classPanelEl);
   }
@@ -1080,6 +1498,51 @@ export class StudioEditor {
     this.hideClassPanel();
   };
 
+  private onPickerMoveUp = (): void => {
+    void this.moveSelected('up');
+  };
+
+  private onPickerMoveDown = (): void => {
+    void this.moveSelected('down');
+  };
+
+  /** A text attribute was edited in the panel: same writer as the text between tags. */
+  private onPickerText = (e: CustomEvent<IPickerTextEdit>): void => {
+    void this.applyAttributeEdit(e.detail.attribute, e.detail.key, e.detail.value);
+  };
+
+  /** A click on the breadcrumb: the level it names becomes the selection. */
+  private onPickerLevel = (e: CustomEvent<number>): void => {
+    this.selectLevel(e.detail);
+  };
+
+  /**
+   * Hovering the breadcrumb marks the element on screen, with the SAME box the pointer draws.
+   *
+   * Not polish: `div › div › div` says nothing on its own, and without seeing which one is which the
+   * only way to use the chain would be to select and look — trial and error over a tool that is
+   * supposed to remove it.
+   */
+  private onPickerLevelHover = (e: CustomEvent<number | null>): void => {
+    const el = e.detail === null ? null : this.classPanel?.levels[e.detail];
+    if (!el?.isConnected) {
+      this.lastHoveredEl = null;
+      this.drawSelection();
+      return;
+    }
+    this.lastHoveredEl = el;
+    this.drawHover(el);
+  };
+
+  private onPickerDuplicate = (): void => {
+    void this.duplicateSelected();
+  };
+
+  /** The panel asked twice (see removeElementButton); this writes. */
+  private onPickerRemove = (): void => {
+    void this.removeSelected();
+  };
+
   private onPickerUndo = (): void => {
     void this.undo();
   };
@@ -1107,7 +1570,12 @@ export class StudioEditor {
     const literal = el.getAttribute('class') ?? '';
     const state: IClassPanelState = {
       el,
+      // Recomputed for every selection, deliberately: a re-render (the scenario panel writing a
+      // state, a live update) can replace the nodes, and a chain kept from the previous selection
+      // would offer elements that are no longer in the document.
+      levels: this.selectionLevels(el),
       literal,
+      texts: [],
       tokens: splitUtilities(literal),
       file: null,
       anchor: null,
@@ -1145,21 +1613,153 @@ export class StudioEditor {
     // class attribute goes through here too: it is editable now that the panel can ADD a property,
     // anchored by position alone, and the first write inserts the attribute.
     await this.resolveClassAnchor(el, literal, state);
+    // The text of an attribute is a different edit with the same address (the catalog key), so it is
+    // resolved here too — and it does NOT depend on the class anchor: an element whose class literal
+    // could not be located can still have a `title` that is perfectly editable.
+    state.texts = await this.resolveTextAttributes(el, state);
+    this.traceAnchor(el, literal, state);
     show();
+  }
+
+  /**
+   * The text attributes of an element, each with the catalog keys its value could be.
+   *
+   * TWO WAYS IN, and the order is what makes the gesture usable:
+   *
+   *  1. the SOURCE. `title=${msg['x']}` names the key at the element's own open tag, and the
+   *     structural anchor already resolved which element that is (it is what the class edit writes
+   *     through). One key, no question asked;
+   *  2. the VALUE, when the anchor did not resolve or the binding is not a plain key — the same walk
+   *     back the anchor tiebreak uses, over the same candidate chain as the write (page, organisms,
+   *     shared), so a mapped key (`fromShared`) is not reported as missing.
+   *
+   * Why 1 exists at all: measured on the real pages, the value alone is AMBIGUOUS for 36 of the 47
+   * attributes of the 102047 — the same sentence is the value of three to five keys — and an
+   * attribute has no position in the DOM to break that tie with. The source has one.
+   */
+  private async resolveTextAttributes(el: HTMLElement, state: IClassPanelState): Promise<IAttrText[]> {
+    const candidates = await this.resolveCandidates();
+    if (!candidates.length) return [];
+
+    const source = state.file?.model.model.getValue() ?? '';
+    const written = source ? this.locateElementInSource(source, state.anchor) : null;
+    const language = currentLanguage();
+
+    const texts: IAttrText[] = [];
+    for (const attribute of TEXT_ATTRIBUTES) {
+      const value = el.getAttribute(attribute) ?? '';
+      if (!value.trim()) continue;
+      texts.push(this.resolveAttrText(attribute, value, {
+        source, openStart: written?.openStart ?? -1, candidates, language,
+      }));
+    }
+    return texts;
+  }
+
+  /** The element of the page's source the selection IS, when its position resolved it. */
+  private locateElementInSource(source: string, anchor: ClassAnchor | null): ITemplateElement | null {
+    // Only a position can name an element; an `occurrence` anchor knows where a class LITERAL is,
+    // which is not the same thing and would point at the first element that happens to share it.
+    if (!anchor || anchor.kind === 'occurrence') return null;
+    const resolved = resolveStructuralAnchor(scanTemplateTree(source), anchor.path);
+    return resolved.ok ? resolved.element : null;
+  }
+
+  /** One attribute: its keys, or the reason there are none. */
+  private resolveAttrText(attribute: string, value: string, where: {
+    source: string;
+    openStart: number;
+    candidates: IStudioEditTarget[];
+    language: string;
+  }): IAttrText {
+    const declared = where.openStart >= 0
+      ? readAttribute(where.source, where.openStart, attribute)
+      : { kind: 'absent' as const };
+
+    if (declared.kind === 'expression') {
+      const key = extractI18nKeyFromExpression(declared.expression);
+      if (key && this.keyInCatalog(key, where.candidates)) return { attribute, value, keys: [key] };
+      // A binding that is not a catalog key is DATA — a formatted date, a record's own field. There
+      // is nothing in any source to rewrite, and saying so is the honest answer.
+      if (!key) return { attribute, value, keys: [], reason: { id: 'reason.attrIsData' } };
+    }
+
+    // Written into the markup: editable only at the source, because rewriting markup is another
+    // operation (and the one the LLM owns).
+    if (declared.kind === 'literal') {
+      return { attribute, value, keys: [], reason: { id: 'reason.attrStaticText' } };
+    }
+
+    for (const candidate of where.candidates) {
+      const keys = findAllI18nMatches(value, candidate.model.model.getValue(), where.language)
+        .map((match) => match.key);
+      if (keys.length) return { attribute, value, keys };
+    }
+    return { attribute, value, keys: [], reason: { id: 'reason.attrNotInCatalog' } };
+  }
+
+  /** True when some file of this screen declares the key — the write resolves it the same way. */
+  private keyInCatalog(key: string, candidates: IStudioEditTarget[]): boolean {
+    return candidates.some((candidate) => findTextOriginByKey(key, candidate.model.model.getValue()).type === 'i18n');
+  }
+
+  /**
+   * The structural path from the page element down to `el`, as the page's own template has it.
+   *
+   * The chain comes from `ownerChain` and not from `parentElement`, and that is the whole reason a
+   * click inside a live slot can resolve at all: the DOM route to that markup runs through the
+   * molecule's wrappers (`div.ml-scenary > div.ml-scenary-panel > span[anchor]`), which appear
+   * nowhere in the page's file. Re-routed, the path reads `<ml-scenary> > <Scene> > <div>` — what
+   * the source actually says.
+   *
+   * Each STEP is still measured against the node's real DOM parent, deliberately: the anchor holds
+   * exactly the source's children, so their order and count are the source's order and count.
+   */
+  /**
+   * TEMPORARY diagnosis for the "não consegui identificar" reports (2026-09-09).
+   *
+   * Opt-in with `window.auraAnchorTrace = true` in the console. It prints what the panel actually
+   * decided with — the file it resolved, the path it built, and what each candidate answered — because
+   * three rounds of reasoning about a simulated DOM produced three wrong conclusions.
+   */
+  private traceAnchor(el: HTMLElement, literal: string, state: IClassPanelState): void {
+    if ((window as unknown as { auraAnchorTrace?: boolean }).auraAnchorTrace !== true) return;
+    const path = this.domPathOf(el);
+    /* eslint-disable no-console */
+    console.group(`[anchor] <${el.tagName.toLowerCase()}> literal=${JSON.stringify(literal)}`);
+    console.log('target', this.target && {
+      project: this.target.project, shortName: this.target.shortName, folder: this.target.folder,
+    });
+    console.log('refusal', state.refusal?.id ?? null, 'file', state.file?.shortName ?? null,
+      'anchor', state.anchor?.kind ?? null);
+    console.log('own text', JSON.stringify(Array.from(el.childNodes)
+      .filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent).join('').trim()));
+    console.table(path.map((step) => ({
+      tag: step.tag,
+      index: step.index,
+      count: step.count,
+      literal: step.literal === null ? '(none)' : String(step.literal).slice(0, 30),
+      litIdx: step.literalIndex,
+      litCount: step.literalCount,
+      keys: (step.i18nKeys ?? []).join(' | '),
+    })));
+    for (const candidate of this.candidates ?? []) {
+      const resolved = resolveStructuralAnchor(scanTemplateTree(candidate.model.model.getValue()), path);
+      console.log(`candidate ${candidate.shortName}:`, resolved.ok
+        ? `resolved <${resolved.element.tag}> literal=${JSON.stringify(resolved.element.literal)} at ${resolved.element.openStart}`
+        : `refused ${resolved.reason.id}`);
+    }
+    console.groupEnd();
+    /* eslint-enable no-console */
   }
 
   private domPathOf(el: HTMLElement): IDomPathStep[] {
     const page = this.host ? findPageElement(this.host) : null;
     if (!page) return [];
 
-    const chain: HTMLElement[] = [];
-    let current: HTMLElement | null = el;
-    while (current && current !== page) {
-      chain.unshift(current);
-      current = current.parentElement;
-    }
     // `el` outside the mounted page (the tab bar, say) has no structural path into its template.
-    if (current !== page) return [];
+    const { chain } = this.ownerChainOf(el, page);
+    if (!chain.length) return [];
 
     const path: IDomPathStep[] = [];
     for (const node of chain) {
@@ -1177,6 +1777,7 @@ export class StudioEditor {
       // which is exactly the resolution that existed before this.
       const literal = node.getAttribute('class');
       const sameLiteral = siblings.filter((sibling) => sibling.getAttribute('class') === literal);
+      const i18nKeys = this.i18nKeysOf(node);
       path.push({
         tag: node.tagName.toLowerCase(),
         index,
@@ -1184,9 +1785,46 @@ export class StudioEditor {
         literal,
         literalIndex: sameLiteral.indexOf(node),
         literalCount: sameLiteral.length,
+        ...(i18nKeys.length ? { i18nKeys } : {}),
       });
     }
     return path;
+  }
+
+  /**
+   * The i18n keys whose value is this element's OWN text.
+   *
+   * The last thing that tells two arms of a ternary apart when they share a tag and a class — or have
+   * no class at all, which is how the "Nenhum registro encontrado" paragraph of the 102047 stayed
+   * unreachable. Measured on the real pages, the key separates 16 of 18 and 131 of 138 of those; the
+   * wider text and the other attributes separate none.
+   *
+   * The generated pages interpolate `${msg['x']}` and emit NO `data-i18n-key` (0 of 114 files), so
+   * the screen only has the translated sentence. `findAllI18nMatches` is the way back, and it
+   * deliberately answers with SEVERAL keys: the same sentence is written under three of them in a
+   * single real file.
+   *
+   * Own text only — a child's sentence belongs to the child, and inheriting it upwards would make
+   * every ancestor look like every one of its descendants.
+   *
+   * NOT gated on the element having a rival ON SCREEN, which is the mistake this comment exists to
+   * prevent: the rival of a ternary arm is in the SOURCE, and exactly one arm renders, so the DOM
+   * never shows it. Skipping the lookup when the node looks unique is skipping it precisely in the
+   * case the whole tiebreaker was built for — the "Nenhum registro encontrado" paragraph is the only
+   * `<p>` among its siblings the moment it is on screen.
+   */
+  private i18nKeysOf(node: Element): string[] {
+    const source = this.target?.model.model.getValue();
+    if (!source) return [];
+
+    const text = Array.from(node.childNodes)
+      .filter((child) => child.nodeType === Node.TEXT_NODE)
+      .map((child) => child.textContent ?? '')
+      .join('')
+      .trim();
+    if (!text) return [];
+
+    return findAllI18nMatches(text, source, currentLanguage()).map((match) => match.key);
   }
 
   /**
@@ -1338,11 +1976,18 @@ export class StudioEditor {
    * class attribute, and editing that is legitimate.
    */
   private foreignProjectOfAncestor(el: HTMLElement): number | null {
-    let current = el.parentElement;
-    while (current && current !== this.host) {
-      const project = this.foreignProjectOfTag(current);
+    const { chain, ownerBreak } = this.ownerChainOf(el);
+    // Nothing above owns this node: either there is no component ancestor, or the only ones are
+    // molecules the PAGE handed content to through a live slot. An ancestor above a projection
+    // boundary did not write the node — it was given it — and refusing there is what made the whole
+    // 102047 read as "this element comes from a molecule (102020)".
+    if (ownerBreak < 0) return null;
+
+    // Nearest first. Everything deeper than the break is plain markup (the break IS the deepest
+    // component ancestor), so this walks exactly the component ancestors, innermost out.
+    for (let i = ownerBreak; i >= 0; i -= 1) {
+      const project = this.foreignProjectOfTag(chain[i]);
       if (project !== null) return project;
-      current = current.parentElement;
     }
     return null;
   }
@@ -1358,6 +2003,11 @@ export class StudioEditor {
       return;
     }
 
+    // Resolved here and not on click: a button that is enabled has to be one that writes, so the
+    // real planners answer before the user reaches for one.
+    const moves = this.moveOptions(state.el);
+    const slice = this.sliceOptions(state.el);
+
     // Read once per session: the built sheet is a static file and does not change while the app runs.
     if (!this.builtClasses) this.builtClasses = builtCssClassNames();
     // `#ds-tokens` is rewritten when the user cycles the design system (Ctrl+Alt+D), so it is read per
@@ -1370,6 +2020,16 @@ export class StudioEditor {
     panel.resolveVar = (cssVar: string) => this.resolveCssVar(cssVar);
     panel.target = {
       tag: state.el.tagName.toLowerCase(),
+      // DATA, never the nodes: the panel gets a tag, a literal and the index that points back into
+      // `state.levels`, which is the only place the elements themselves live.
+      levels: state.levels.map((node, index) => ({
+        index,
+        tag: node.tagName.toLowerCase(),
+        literal: node.getAttribute('class') ?? '',
+        current: node === state.el,
+      })),
+      // Plain data already — attribute, value and keys are strings.
+      texts: state.texts.map((entry) => ({ ...entry, keys: [...entry.keys] })),
       fileLabel: state.file ? `${state.file.shortName} (${state.file.folder})` : '',
       file: state.file
         ? { project: state.file.project, shortName: state.file.shortName, folder: state.file.folder }
@@ -1382,6 +2042,15 @@ export class StudioEditor {
       canRemoveLast: state.anchor?.kind !== 'occurrence',
       undo: this.history.peekUndo()?.what ?? '',
       redo: this.history.peekRedo()?.what ?? '',
+      canMoveUp: moves.ready.has('up'),
+      canMoveDown: moves.ready.has('down'),
+      moveUpReason: moves.up,
+      moveDownReason: moves.down,
+      canDuplicate: slice.ready.has('duplicate'),
+      canRemove: slice.ready.has('remove'),
+      duplicateReason: slice.duplicate,
+      removeReason: slice.remove,
+      duplicateNotes: slice.notes,
     };
     panel.hidden = false;
     // Only measurable once it is showing — and its size depends on what the selection carries.
@@ -1522,6 +2191,69 @@ export class StudioEditor {
   }
 
   /**
+   * Writes a new text into an ATTRIBUTE of the selection (TASK-102020-attribute-text).
+   *
+   * The screen first and then the source, like the class write — and the source part is the very
+   * writer the text between tags uses: an attribute's sentence is a catalog entry, so what changes is
+   * the entry, in every locale that declares it. Nothing here rewrites markup, and the shared-key
+   * warning comes along for free because it lives in that writer.
+   *
+   * The key comes from the panel and is checked against what was OFFERED: the panel is chrome, and a
+   * key it was never given is a key nobody chose.
+   */
+  private async applyAttributeEdit(attribute: string, key: string, newValue: string): Promise<void> {
+    const state = this.classPanel;
+    if (!state) return;
+    if (!TEXT_ATTRIBUTES.includes(attribute as typeof TEXT_ATTRIBUTES[number])) return;
+
+    const text = state.texts.find((entry) => entry.attribute === attribute);
+    if (!text || !text.keys.includes(key)) return;
+    const before = text.value;
+    if (!newValue.trim() || newValue === before) return;
+
+    const el = state.el;
+    if (!el.isConnected) {
+      this.hideClassPanel();
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      el.setAttribute(attribute, newValue);
+      const result = await this.applyTextEditToSource({
+        oldText: before,
+        newText: newValue,
+        occurrence: 0,
+        i18nKey: key,
+        el,
+        revert: () => el.setAttribute(attribute, before),
+      });
+      if (result.ok) {
+        this.history.push({
+          kind: 'attr',
+          attribute,
+          i18nKey: key,
+          before,
+          after: newValue,
+          what: result.what ?? t('status.textLabel'),
+          el: new WeakRef(el),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+
+    // The value — and which keys hold it — just changed in the source: re-resolve, exactly as after
+    // a class edit.
+    await this.showClassPanel(el);
+  }
+
+  /**
    * Writes a new class attribute: the live element first, then the source.
    *
    * The order is the point of this whole task — setting the attribute on the live instance shows the
@@ -1639,6 +2371,31 @@ export class StudioEditor {
       }
     }
     const newSource = source.slice(0, startOffset) + written + source.slice(endOffset);
+    await this.commitSource(file, newSource, what, write.warning);
+
+    // Where the new literal ended up, so the reverse step can find it by counting as well.
+    const literalOffset = match.insert ? startOffset + ' class="'.length : startOffset;
+    const occurrence = to
+      ? findClassAttrs(newSource, to).findIndex((attr) => attr.startOffset === literalOffset)
+      : -1;
+    return { ok: true, occurrence };
+  }
+
+  /**
+   * The tail every source write shares: the model, the local copy, the compile, the live update.
+   *
+   * One place because the ORDER matters and is not obvious — the model first (it is the source of
+   * truth everything else reads), the local copy ahead of libModel's own debounced listener, and only
+   * then the compile that feeds the service worker and the live update. A second copy of this
+   * sequence would drift, and drift here means the file and the screen disagree, which is the one
+   * state this editor exists to prevent.
+   */
+  private async commitSource(
+    file: IStudioEditTarget,
+    newSource: string,
+    what: string,
+    warning?: IMessageRef,
+  ): Promise<void> {
     const model = file.model.model;
     model.pushEditOperations(
       [],
@@ -1652,7 +2409,7 @@ export class StudioEditor {
     const where = file === this.target
       ? t('status.onThisPage')
       : t('status.onFile', { file: file.shortName, folder: file.folder });
-    const warning = write.warning ? ` — ${tr(write.warning)}` : '';
+    const note = warning ? ` — ${tr(warning)}` : '';
     this.setStatus(`${what} ${where} — ${t('status.applying')}`, true);
 
     await compileAfterEdit(file);
@@ -1664,15 +2421,451 @@ export class StudioEditor {
 
     // STOPS AT THE LOCAL STORE, on purpose: the model and the local copy, never the project's files.
     // Reaching those is the SAVE's job (see saveTarget, which the editor does not call).
-    this.setStatus(`${what} ${where} — ${live.message}${warning} ${t('status.localOnly')}`);
+    this.setStatus(`${what} ${where} — ${live.message}${note} ${t('status.localOnly')}`);
     this.publishEdited(file);
+  }
 
-    // Where the new literal ended up, so the reverse step can find it by counting as well.
-    const literalOffset = match.insert ? startOffset + ' class="'.length : startOffset;
-    const occurrence = to
-      ? findClassAttrs(newSource, to).findIndex((attr) => attr.startOffset === literalOffset)
-      : -1;
-    return { ok: true, occurrence };
+  // --- Moving an element among its siblings (TASK-102020-move-elements) ---
+
+  /**
+   * Where the selected element could go, and why it could not.
+   *
+   * Answered BEFORE the gesture, for both directions, so a button that is enabled is a button that
+   * writes — the same discipline the chips follow. It resolves the real anchors and runs the real
+   * planner, because a cheaper "looks movable" answer is how a disabled state starts lying.
+   */
+  private moveOptions(el: HTMLElement | null): { up?: IMessageRef; down?: IMessageRef; ready: Set<'up' | 'down'> } {
+    const ready = new Set<'up' | 'down'>();
+    if (!el) return { up: MOVE_NO_TARGET, down: MOVE_NO_TARGET, ready };
+
+    const answer: { up?: IMessageRef; down?: IMessageRef; ready: Set<'up' | 'down'> } = { ready };
+    for (const direction of ['up', 'down'] as const) {
+      const resolved = this.resolveMove(el, direction);
+      if (resolved.ok) ready.add(direction);
+      else answer[direction] = resolved.reason;
+    }
+    return answer;
+  }
+
+  /**
+   * The move, fully resolved: which file, which two nodes of its tree, and the splice.
+   *
+   * The DOM sibling is what makes this honest. Two source nodes sharing one `${...}` are ambiguous on
+   * paper — the two cells of a row, or the two arms of a ternary — and the user pointing at an
+   * element that HAS a neighbour on screen is the proof that they coexist.
+   */
+  private resolveMove(el: HTMLElement, direction: 'up' | 'down'): (
+    { ok: true; file: IStudioEditTarget; plan: IMovePlan; renders: number }
+    | { ok: false; reason: IMessageRef }
+  ) {
+    const neighbour = this.domSibling(el, direction);
+    if (!neighbour) return { ok: false, reason: MOVE_NO_TARGET };
+
+    const movedPath = this.domPathOf(el);
+    const targetPath = this.domPathOf(neighbour);
+    if (!movedPath.length || !targetPath.length) return { ok: false, reason: NOT_LOCATED };
+
+    for (const candidate of this.candidates ?? (this.target ? [this.target] : [])) {
+      const source = candidate.model.model.getValue();
+      const tree = scanTemplateTree(source);
+      const moved = resolveStructuralAnchor(tree, movedPath);
+      const target = resolveStructuralAnchor(tree, targetPath);
+      if (!moved.ok || !target.ok) continue;
+
+      const plan = planMove(
+        source, tree,
+        tree.elements.indexOf(moved.element),
+        tree.elements.indexOf(target.element),
+        direction === 'up' ? 'before' : 'after',
+      );
+      if (!plan.ok) return { ok: false, reason: plan.reason };
+      return { ok: true, file: candidate, plan, renders: Math.max(moved.renders, target.renders) };
+    }
+    return { ok: false, reason: NOT_LOCATED };
+  }
+
+  /**
+   * The element next to this one ON SCREEN, our own chrome skipped.
+   *
+   * The overlay, the panel and the span of a text edit in flight are siblings of the app's markup in
+   * the DOM but not in the source; treating one as a destination would resolve nothing and report the
+   * wrong reason.
+   */
+  private domSibling(el: HTMLElement, direction: 'up' | 'down'): HTMLElement | null {
+    let node = direction === 'up' ? el.previousElementSibling : el.nextElementSibling;
+    while (node) {
+      const candidate = node as HTMLElement;
+      const ours = candidate.classList.contains(CONTROL_CLASS) || candidate === this.editSpan;
+      if (!ours) return candidate;
+      node = direction === 'up' ? candidate.previousElementSibling : candidate.nextElementSibling;
+    }
+    return null;
+  }
+
+  /** Moves the selection one place up or down among its siblings. */
+  public async moveSelected(direction: 'up' | 'down'): Promise<void> {
+    if (this.mode === 'off') return;
+    const el = this.selectedEl;
+    if (!el?.isConnected) {
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const resolved = this.resolveMove(el, direction);
+    if (!resolved.ok) {
+      this.setStatus(tr(resolved.reason));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      const what = t(direction === 'up' ? 'status.movedUp' : 'status.movedDown', { tag: el.tagName.toLowerCase() });
+      await this.writeMove({
+        file: resolved.file,
+        plan: resolved.plan,
+        el,
+        what,
+        warning: resolved.renders > 1 ? repeatedRenderWarning(resolved.renders) : undefined,
+        record: true,
+      });
+    } finally {
+      this.applying = false;
+    }
+
+    await this.showClassPanel(el);
+  }
+
+  /**
+   * The ONE place a move is written — for a button, for a drag, and for an undo.
+   *
+   * The DOM is moved too, and that is what makes the gesture feel direct. It is honest for static
+   * siblings, which Lit cloned once and never revisits; next to a `${...}` the node crosses a
+   * ChildPart boundary and the next re-render can put it back, so the status says the SOURCE already
+   * changed and the screen may lag until a reload. What it must never do is the opposite: claim a
+   * write that did not land.
+   */
+  private async writeMove(write: {
+    file: IStudioEditTarget;
+    plan: IMovePlan;
+    el: HTMLElement | null;
+    what: string;
+    warning?: IMessageRef;
+    record: boolean;
+  }): Promise<boolean> {
+    const { file, plan, what } = write;
+    const source = file.model.model.getValue();
+    const result = applyMove(source, plan);
+    if (!result.ok) {
+      this.setStatus(tr(result.reason));
+      return false;
+    }
+
+    const el = write.el?.isConnected ? write.el : null;
+    if (el) {
+      // The screen follows the source: the element goes the way the slice went. The neighbour comes
+      // from `domSibling` and not from `previousElementSibling`, so the overlay and the panel — which
+      // are siblings in the DOM and in no source — are never used as the pivot.
+      const parent = el.parentElement;
+      const insertingBefore = plan.insertAt <= plan.slice.start;
+      const neighbour = this.domSibling(el, insertingBefore ? 'up' : 'down');
+      if (parent && neighbour) {
+        if (insertingBefore) parent.insertBefore(el, neighbour);
+        else parent.insertBefore(el, neighbour.nextSibling);
+      }
+    }
+
+    await this.commitSource(file, result.source, what, write.warning);
+    if (el) this.drawSelection();
+    else this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
+
+    if (write.record && write.el) {
+      this.history.push({
+        kind: 'move',
+        file,
+        slice: source.slice(plan.slice.start, plan.slice.end),
+        from: plan.slice.start,
+        to: result.moved,
+        what,
+        el: new WeakRef(write.el),
+      });
+    }
+    return true;
+  }
+
+  // --- Duplicating and removing (TASK-102020-duplicate-remove) ---
+
+  /**
+   * The selection's slice, fully resolved: which file, and which node of its tree.
+   *
+   * The move's sibling rule does not apply here — duplicating and removing need no neighbour — so
+   * this is the move's resolution minus half of it, and it reaches more elements for that reason
+   * (measured: 94,5% against 80,1%).
+   */
+  private resolveSlice(el: HTMLElement): (
+    { ok: true; file: IStudioEditTarget; tree: ITemplateTree; index: number; renders: number }
+    | { ok: false; reason: IMessageRef }
+  ) {
+    const path = this.domPathOf(el);
+    if (!path.length) return { ok: false, reason: NOT_LOCATED };
+
+    for (const candidate of this.candidates ?? (this.target ? [this.target] : [])) {
+      const tree = scanTemplateTree(candidate.model.model.getValue());
+      const resolved = resolveStructuralAnchor(tree, path);
+      if (!resolved.ok) continue;
+      return {
+        ok: true,
+        file: candidate,
+        tree,
+        index: tree.elements.indexOf(resolved.element),
+        renders: resolved.renders,
+      };
+    }
+    return { ok: false, reason: NOT_LOCATED };
+  }
+
+  /**
+   * Whether the selection can be duplicated and removed, and what the user must know first.
+   *
+   * The real planners answer, like the move's: a button that is enabled is a button that writes. The
+   * NOTES are the other half — how many copies a repeated node makes, and the id the copy carries —
+   * and they have to be on screen BEFORE the click, because neither is visible afterwards.
+   */
+  private sliceOptions(el: HTMLElement | null): {
+    duplicate?: IMessageRef;
+    remove?: IMessageRef;
+    notes: IMessageRef[];
+    ready: Set<'duplicate' | 'remove'>;
+  } {
+    const ready = new Set<'duplicate' | 'remove'>();
+    if (!el) return { duplicate: SLICE_NO_TARGET, remove: SLICE_NO_TARGET, notes: [], ready };
+
+    const resolved = this.resolveSlice(el);
+    if (!resolved.ok) return { duplicate: resolved.reason, remove: resolved.reason, notes: [], ready };
+
+    const source = resolved.file.model.model.getValue();
+    const duplicate = planDuplicate(source, resolved.tree, resolved.index);
+    const remove = planRemove(source, resolved.tree, resolved.index);
+    const answer: {
+      duplicate?: IMessageRef;
+      remove?: IMessageRef;
+      notes: IMessageRef[];
+      ready: Set<'duplicate' | 'remove'>;
+    } = { notes: [], ready };
+
+    if (duplicate.ok) ready.add('duplicate');
+    else answer.duplicate = duplicate.reason;
+    if (remove.ok) ready.add('remove');
+    else answer.remove = remove.reason;
+
+    if (duplicate.ok) {
+      // One line of code drawing N elements makes N copies. It may be exactly what the user wants (a
+      // column more), but it is a different decision from "one more card".
+      if (resolved.renders > 1) answer.notes.push(repeatedRenderWarning(resolved.renders));
+      const ids = duplicatedIds(source.slice(duplicate.slice.start, duplicate.slice.end));
+      if (ids.length) answer.notes.push({ id: 'panel.duplicateIds', params: { ids: ids.join(', ') } });
+    }
+    return answer;
+  }
+
+  /** Duplicates the selection: an identical copy, right after it. */
+  public async duplicateSelected(): Promise<void> {
+    if (this.mode === 'off') return;
+    const el = this.selectedEl;
+    if (!el?.isConnected) {
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const resolved = this.resolveSlice(el);
+    if (!resolved.ok) {
+      this.setStatus(tr(resolved.reason));
+      return;
+    }
+    const source = resolved.file.model.model.getValue();
+    const plan = planDuplicate(source, resolved.tree, resolved.index);
+    if (!plan.ok) {
+      this.setStatus(tr(plan.reason));
+      return;
+    }
+
+    const text = source.slice(plan.slice.start, plan.slice.end);
+    const result = applyInsert(source, { ok: true, at: plan.insertAt, text });
+    if (!result.ok) {
+      this.setStatus(tr(result.reason));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      // The screen first, so the gesture feels direct: a clone next to the original. Same caveat as
+      // the move — inside a `${...}` the next re-render owns that DOM again, and the source is what
+      // is true either way.
+      const parent = el.parentElement;
+      const copy = el.cloneNode(true) as HTMLElement;
+      parent?.insertBefore(copy, el.nextSibling);
+
+      const what = t('status.duplicated', { tag: el.tagName.toLowerCase() });
+      await this.commitSource(
+        resolved.file,
+        result.source,
+        what,
+        resolved.renders > 1 ? repeatedRenderWarning(resolved.renders) : undefined,
+      );
+
+      if (parent) {
+        this.history.push({
+          kind: 'slice',
+          op: 'insert',
+          file: resolved.file,
+          at: result.inserted.start,
+          text,
+          // The neighbourhood of the copy in the NEW source: what a redo revalidates on.
+          before: result.source.slice(
+            Math.max(0, result.inserted.start - CONTEXT_CHARS),
+            result.inserted.start,
+          ),
+          after: result.source.slice(result.inserted.end, result.inserted.end + CONTEXT_CHARS),
+          what,
+          node: copy,
+          parent: new WeakRef(parent),
+          next: copy.nextSibling ? new WeakRef(copy.nextSibling) : null,
+          el: new WeakRef(copy),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+
+    await this.showClassPanel(el);
+  }
+
+  /**
+   * Removes the selection: the whole slice, and nothing else.
+   *
+   * The most destructive gesture of the L3 — the undo lives in this session's memory only — so the
+   * panel asks for a second click before it gets here, and the status says the change is local and
+   * not saved yet.
+   */
+  public async removeSelected(): Promise<void> {
+    if (this.mode === 'off') return;
+    const el = this.selectedEl;
+    if (!el?.isConnected) {
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const resolved = this.resolveSlice(el);
+    if (!resolved.ok) {
+      this.setStatus(tr(resolved.reason));
+      return;
+    }
+    const source = resolved.file.model.model.getValue();
+    const plan = planRemove(source, resolved.tree, resolved.index);
+    if (!plan.ok) {
+      this.setStatus(tr(plan.reason));
+      return;
+    }
+    const result = applyRemove(source, plan);
+    if (!result.ok) {
+      this.setStatus(tr(result.reason));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      // Captured BEFORE the node leaves: afterwards it has no parent and no next sibling, and those
+      // two are the only way the undo can put it back where it was.
+      const parent = el.parentElement;
+      const next = el.nextSibling;
+      el.remove();
+
+      const what = t('status.removed', { tag: el.tagName.toLowerCase() });
+      await this.commitSource(resolved.file, result.source, what);
+
+      if (parent) {
+        this.history.push({
+          kind: 'slice',
+          op: 'remove',
+          file: resolved.file,
+          at: plan.slice.start,
+          text: result.removed,
+          before: result.before,
+          after: result.after,
+          what,
+          node: el,
+          parent: new WeakRef(parent),
+          next: next ? new WeakRef(next) : null,
+          el: new WeakRef(el),
+        });
+      }
+    } finally {
+      this.applying = false;
+    }
+
+    // Nothing is selected any more: the element the panel was describing is gone from the screen.
+    this.selectedEl = null;
+    this.lastHoveredEl = null;
+    this.hideClassPanel();
+    this.clearOverlay();
+    this.publishSelection(null);
+  }
+
+  /**
+   * Replays a slice step in one direction — the undo of a duplication is a removal, and vice versa.
+   *
+   * Both revalidate before writing, and each on what it can: taking a slice OUT compares the text
+   * that should be there; putting one BACK compares the neighbourhood, because there is nothing at
+   * the hole to compare against.
+   */
+  private async applySliceStep(
+    step: Extract<EditStep, { kind: 'slice' }>,
+    direction: 'undo' | 'redo',
+  ): Promise<boolean> {
+    const source = step.file.model.model.getValue();
+    const what = t(direction === 'undo' ? 'status.undone' : 'status.redone', { what: step.what });
+    const inserting = (step.op === 'insert') === (direction === 'redo');
+
+    if (inserting) {
+      const plan = planRestore(source, step.at, step.text, { before: step.before, after: step.after });
+      if (!plan.ok) return false;
+      const result = applyInsert(source, plan);
+      if (!result.ok) return false;
+
+      const parent = step.parent.deref();
+      if (parent?.isConnected) parent.insertBefore(step.node, step.next?.deref() ?? null);
+      await this.commitSource(step.file, result.source, what);
+      // The node is back on screen: selecting it is what makes an undone removal feel undone.
+      if (step.node.isConnected) this.selectElement(step.node);
+      else this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
+      return true;
+    }
+
+    const plan = planRemoveSlice(source, { start: step.at, end: step.at + step.text.length }, step.text);
+    if (!plan.ok) return false;
+    const result = applyRemove(source, plan);
+    if (!result.ok) return false;
+
+    if (step.node.isConnected) step.node.remove();
+    if (this.selectedEl === step.node) {
+      this.selectedEl = null;
+      this.hideClassPanel();
+      this.clearOverlay();
+      this.publishSelection(null);
+    }
+    await this.commitSource(step.file, result.source, what);
+    return true;
   }
 
   // --- Undo (TASK-102033-picker-undo) ---
@@ -1737,11 +2930,11 @@ export class StudioEditor {
   /** Replays one step in one direction. The two kinds differ only in which writer they call. */
   private async applyStep(step: EditStep, direction: 'undo' | 'redo'): Promise<boolean> {
     const undoing = direction === 'undo';
-    const from = undoing ? step.after : step.before;
-    const to = undoing ? step.before : step.after;
     const what = t(undoing ? 'status.undone' : 'status.redone', { what: step.what });
 
     if (step.kind === 'class') {
+      const from = undoing ? step.after : step.before;
+      const to = undoing ? step.before : step.after;
       const el = step.el.deref() ?? null;
       const result = await this.writeClassLiteral({
         file: step.file,
@@ -1756,11 +2949,55 @@ export class StudioEditor {
       return result.ok;
     }
 
+    if (step.kind === 'slice') return this.applySliceStep(step, direction);
+
+    if (step.kind === 'move') {
+      // The EXACT inverse splice, not the opposite move: re-planning would restore the order but not
+      // the bytes, because the whitespace that sat between the siblings has migrated. And it is
+      // revalidated on the TEXT — offsets go stale the moment anything else writes to the file.
+      const file = step.file;
+      const source = file.model.model.getValue();
+      const landed = undoing ? step.to : { start: step.from, end: step.from + step.slice.length };
+      const back = undoing
+        ? planReverse(source, landed, step.slice, step.from)
+        : planReverse(source, landed, step.slice, step.to.start);
+      if (!back.ok) return false;
+      return this.writeMove({ file, plan: back, el: step.el.deref() ?? null, what, record: false });
+    }
+
+    const from = undoing ? step.after : step.before;
+    const to = undoing ? step.before : step.after;
+
+    if (step.kind === 'attr') {
+      // The same writer as everything else: an attribute's text is a catalog entry like any other,
+      // and the only difference is which part of the screen shows it.
+      const el = step.el.deref() ?? null;
+      const live = el?.isConnected ? el : null;
+      live?.setAttribute(step.attribute, to);
+      const result = await this.applyTextEditToSource({
+        oldText: from,
+        newText: to,
+        occurrence: 0,
+        i18nKey: step.i18nKey,
+        el: live,
+        revert: live ? () => live.setAttribute(step.attribute, from) : null,
+      });
+      if (result.ok && !live) this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
+      return result.ok;
+    }
+
     const node = step.node.deref() ?? null;
     // The screen first, like every other edit — and it doubles as the rollback: a failed write puts
     // `from` back into this very node.
     if (node?.isConnected) node.textContent = to;
-    const result = await this.applyTextEditToSource(from, to, step.occurrence, step.el.deref() ?? null, node, step.i18nKey);
+    const result = await this.applyTextEditToSource({
+      oldText: from,
+      newText: to,
+      occurrence: step.occurrence,
+      i18nKey: step.i18nKey,
+      el: step.el.deref() ?? null,
+      revert: node ? () => { node.textContent = from; } : null,
+    });
     if (result.ok && !node?.isConnected) this.setStatus(`${this.statusText} — ${t('status.offscreen')}`);
     return result.ok;
   }
@@ -1805,6 +3042,17 @@ export class StudioEditor {
       .se-hover-highlight {
         outline: 2px dashed rgba(66,135,245,0.6);
         background: rgba(66,135,245,0.05);
+      }
+
+      /* Where a dragged element would land. In THIS stylesheet, and in the overlay the detach
+         removes: the client page must not keep a line drawn by the editor after it disarms. */
+      .se-drop-line {
+        position: fixed;
+        height: 2px;
+        margin-top: -1px;
+        background: rgb(66,135,245);
+        box-shadow: 0 0 4px rgba(66,135,245,0.8);
+        pointer-events: none;
       }
 
       .se-select-highlight {

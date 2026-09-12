@@ -103,3 +103,24 @@ test('no class of the panel is a Tailwind utility', async () => {
 
   assert.deepEqual(utilities, [], 'the JIT would generate rules for these inside the client page');
 });
+
+test('the compiled css can survive being put inside a JS template literal', () => {
+  // How this broke for real (2026-09-10): a block comment in the .less said "someone writes
+  // `md:p-3`", the css is injected as `loadStyle(`…css…`)` (processCssLit), the backtick closed the
+  // template early, the module stopped parsing — and since the editor is loaded with a dynamic
+  // `import()` whose rejection nobody reads, studio mode simply stopped arming. Silently.
+  //
+  // The `//` comments at the top of the file are safe (less strips them); a `/* */` one is not.
+  const less = readFileSync(path.join(HERE, 'classPickerPanel.less'), 'utf8');
+  const compiled = less
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('//'))
+    .join('\n');
+
+  const offenders = compiled
+    .split('\n')
+    .map((line, index) => ({ line: line.trim(), at: index + 1 }))
+    .filter((entry) => entry.line.includes('`') || entry.line.includes('${'));
+
+  assert.deepEqual(offenders, [], 'a backtick or ${ here breaks the module that carries this css');
+});

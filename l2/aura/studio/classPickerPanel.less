@@ -10,7 +10,12 @@
 //    `class="block"` of its own. On top of that the Tailwind JIT scans the live DOM in studio mode, so
 //    any name that happens to be a utility becomes one. The prefix closes both directions.
 //
-// 2. The colours are FIXED, never the design system's. This is chrome sitting on top of the page it
+// 2. NO BACKTICK AND NO `${` IN A BLOCK COMMENT. A `/* */` comment survives into the compiled css,
+//    the css is injected into a JS TEMPLATE LITERAL (processCssLit -> loadStyle), and one backtick
+//    closes it early: the module stops parsing, the editor never loads, and studio mode silently
+//    stops arming. It happened on 2026-09-10; classPickerPanel.test.ts now guards it.
+//
+// 3. The colours are FIXED, never the design system's. This is chrome sitting on top of the page it
 //    edits: following the client's DS would camouflage the tool in exactly the thing being edited. The
 //    only DS values here are the swatches, and those are read at runtime from the resolved role.
 
@@ -67,6 +72,11 @@ aura--studio--class-picker-102020 {
   }
   .acp-history:hover:not([disabled]) { color: #f5f7fa; }
   .acp-history[disabled] { opacity: 0.3; cursor: default; }
+  /* Duplicating a node that draws N elements, or a slice that carries an id: the tooltip says what,
+     this says THAT there is something to read before clicking (TASK-102020-duplicate-remove). */
+  .acp-history.acp-noted { color: #ffd8a1; }
+  /* The remove button, armed by the first click. The second one writes. */
+  .acp-history.acp-danger { color: #fca5a5; background: rgba(229,57,53,0.18); border-radius: 3px; }
 
   .acp-tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid rgba(245,247,250,0.12); }
   .acp-tab {
@@ -96,6 +106,7 @@ aura--studio--class-picker-102020 {
   /* The "+" is not another property of the element: it is the end of the list. */
   .acp-block.acp-add { margin-top: 6px; border-top-color: rgba(245,247,250,0.18); }
 
+
   .acp-chip {
     font-family: monospace; font-size: 11px; padding: 2px 6px; cursor: pointer;
     color: #e6edf3; background: rgba(245,247,250,0.08);
@@ -107,6 +118,45 @@ aura--studio--class-picker-102020 {
   .acp-chip.acp-jit { border-style: dashed; }
   .acp-chip.acp-more { letter-spacing: 1px; padding: 2px 8px; }
   .acp-star { color: #ffd8a1; }
+
+  /* The selection's ancestors (TASK-102020-ancestor-breadcrumb). One row that SCROLLS instead of
+     wrapping: the deepest real page is 9 levels, and a wrapping breadcrumb would push the tabs down
+     by two lines on the pages that need it most. The editor keeps it scrolled to the end, so what is
+     cut is the left side — the outer wrappers — and never the current element. */
+  .acp-chain {
+    display: flex; align-items: center; gap: 4px;
+    padding: 5px 10px; overflow-x: auto; scrollbar-width: none;
+    border-bottom: 1px solid rgba(245,247,250,0.08);
+  }
+  .acp-chain::-webkit-scrollbar { display: none; }
+  .acp-chain-sep { flex: 0 0 auto; color: #6b7684; }
+  .acp-chain-item {
+    flex: 0 0 auto; padding: 0; background: transparent; border: 0; cursor: pointer;
+    font-family: monospace; font-size: 11px; color: #7fb3ff; white-space: nowrap;
+  }
+  .acp-chain-item:hover { text-decoration: underline; }
+  /* Where the selection is: the same blue as the current chip, so "here" reads the same everywhere. */
+  .acp-chain-now {
+    flex: 0 0 auto; font-family: monospace; font-size: 11px; color: #f5f7fa; white-space: nowrap;
+    border-bottom: 1px solid #4287f5;
+  }
+
+  /* The text that lives in an attribute (TASK-102020-attribute-text): one row per attribute, above
+     the tabs. It is not a class and it is not a tab — it is what this element SAYS, and the only
+     place it can be shown, because a placeholder has no box on screen to point at. */
+  .acp-texts { padding: 6px 10px; border-bottom: 1px solid rgba(245,247,250,0.08); }
+  .acp-text { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 3px 0; }
+  .acp-text.acp-readonly { opacity: 0.75; }
+  .acp-text-label {
+    flex: 0 0 96px; color: #9aa5b1; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .acp-text-input {
+    flex: 1 1 120px; min-width: 0; padding: 2px 4px; font-family: inherit; font-size: 11px;
+    color: #e6edf3; background: #2c3742;
+    border: 1px solid rgba(245,247,250,0.25); border-radius: 3px;
+  }
+  .acp-text-input:focus { outline: 1px solid #4287f5; }
 
   .acp-crumb { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid rgba(245,247,250,0.08); }
   .acp-here { color: #f5f7fa; }

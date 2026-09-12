@@ -6,9 +6,8 @@ import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/
 
 import { setEnvironment } from '/_102036_/l2/environmentContract.js';
 import { collabEnvironment } from '/_102020_/l2/collabMessagesEnvironment.js';
-import { loadNotificationPreferences } from '/_102025_/l2/collabMessagesHelper.js';
 
-import { checkIfNotificationUnread, listenToThreadEvents } from '/_102025_/l2/collabMessagesSyncNotifications.js';
+import { checkIfNotificationUnread } from '/_102025_/l2/collabMessagesSyncNotifications.js';
 import { getThread } from '/_102025_/l2/collabMessagesIndexedDB.js';
 
 import { loadLastTab } from "/_102025_/l2/collabMessagesHelper.js";
@@ -163,18 +162,6 @@ export class ServiceCollabMessages extends ServiceBase {
 
     private bootstrapCollabMessages() {
         setEnvironment(collabEnvironment);
-        this.initNotificationIfEnabled();
-    }
-
-    private async initNotificationIfEnabled() {
-        try {
-            let preferences: string | null | undefined = loadNotificationPreferences();
-            if (preferences !== 'granted' && Notification.permission !== 'granted') return;
-            listenToThreadEvents();
-        } catch (err: any) {
-            console.error('Error on listen notifications' + err.message)
-        }
-
     }
 
     private setEvents() {
