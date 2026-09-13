@@ -36,6 +36,7 @@ export class AuraSelectKnob extends StateLitElement {
   private get _rotation(): number {
     if (!this._hasValue) return -135;
     const range = this.max - this.min;
+    if (range <= 0) return -135;
     const normalized = ((this.value! - this.min) / range);
     return -135 + normalized * 270;
   }
