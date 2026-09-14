@@ -20,6 +20,7 @@ import {
   nmDefsFile,
   nmDestProject,
   nmFileExists,
+  nmLessFile,
   nmTsFile,
   parseMaybeJson,
   readJsonArtifact,
@@ -66,9 +67,34 @@ import {
   syScanGroupMoleculeShortNames,
 } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
 import { runSyCreateIndexTsGate } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/steps/s3-indexts/createGate.js';
+import {
+  SyGroupDifferentiators,
+  syGroupDifferentiators,
+  syRenderDifferentiators,
+} from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syDifferentiators.js';
 import { skill as indexGroupPageSkill } from '/_102020_/l2/aura/molecules/skills/indexGroupPage.js';
 
 const AGENT_NAME = 'agentSyIndexTs';
+
+/**
+ * What separates the group's molecules from each other, read from their own files.
+ *
+ * ⚠️ The creation prompt used to carry only the SHORT NAMES plus the GROUP contract — identical for
+ * every sibling by construction — so the model had nothing to tell them apart with, and wrote one card
+ * per molecule, all the same. Measured 2026-09-14 on groupViewTable: 13 identical cards, 2 of the
+ * group's 34 contract items demonstrated, 1 of the library's 39 events. This reads the `.ts` (events,
+ * slots, properties, on-switches, `action` verbs), the `.less` (does it reshape by container or by
+ * window?) and the `.defs.ts` (its objective). No LLM: it is grep over files already on disk.
+ */
+async function loadGroupDifferentiators(folder: string, shortNames: string[]): Promise<SyGroupDifferentiators> {
+  const sources = await Promise.all(shortNames.map(async shortName => ({
+    shortName,
+    ts: await readStorText(nmTsFile(folder, shortName)),
+    less: await readStorText(nmLessFile(folder, shortName)),
+    defs: await readStorText(nmDefsFile(folder, shortName)),
+  })));
+  return syGroupDifferentiators(sources);
+}
 const TOOL_NAME = 'submitGroupIndex';
 
 export function createAgent(): IAgentAsync {
@@ -249,6 +275,7 @@ async function buildCreationPromptReady(
   if (!isRecord(schema)) throw new Error(`[${AGENT_NAME}] invalid s3-indexts-create schema`);
 
   const groupUsageSkill = await loadGroupUsageSkill(groupArgs.usageContract);
+  const differentiators = await loadGroupDifferentiators(folder, moleculeShortNames);
 
   const indexTag = syIndexTag(folder, project);
   const headerRef = syHeaderRef(folder, project);
@@ -263,6 +290,7 @@ async function buildCreationPromptReady(
     .split('{{indexDefsReference}}').join(indexDefsReference)
     .split('{{sharedTableReference}}').join(SY_SHARED_TABLE_IMPORT)
     .split('{{groupUsageSkill}}').join(groupUsageSkill)
+    .split('{{moleculeDifferentiators}}').join(syRenderDifferentiators(differentiators))
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the group cannot be showcased with the given context')}`;
 
   const previousAttempt = await readPreviousCreationAttempt(runKey, folder, attempt);
@@ -334,6 +362,7 @@ async function finishCreation(
 
   const moleculeShortNames = syScanGroupMoleculeShortNames(folder);
   const groupUsageSkill = await loadGroupUsageSkill(groupArgs.usageContract);
+  const differentiators = await loadGroupDifferentiators(folder, moleculeShortNames);
   const gateIssues = extractError
     ? [{ code: 'extract', message: extractError }]
     : [
@@ -345,6 +374,7 @@ async function finishCreation(
         groupMoleculeShortNames: moleculeShortNames,
         groupFolder: folder,
         groupUsageSkill,
+        differentiators,
       }),
       ...compileErrors.map(message => ({ code: 'compile', message })),
     ];

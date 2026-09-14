@@ -145,16 +145,96 @@ void test('a showcase using only the mold envelope fails contract_not_demonstrat
   assert.ok(codes.includes('contract_not_demonstrated'));
 });
 
-void test('a showcase using a contract property beyond the envelope passes', () => {
+// ⚠️ THE THRESHOLD CHANGED ON 2026-09-14, and this pair of tests is where it shows. The check used to
+// fire only at ZERO items, so ONE item beyond the envelope cleared it — which is how a showcase of 13
+// identical cards passed while demonstrating 2 of its group's 34 items. The floor is now
+// min(4, contract.size): a two-item contract like this fixture has to demonstrate BOTH.
+void test('one item out of a two-item contract is no longer enough', () => {
   const withVariant = GOOD.replace(
     '<groupenterdatetime--ml-datetime-picker></groupenterdatetime--ml-datetime-picker>',
     '<groupenterdatetime--ml-datetime-picker data-variant="secondary"></groupenterdatetime--ml-datetime-picker>',
   );
   const codes = runSyCreateIndexTsGate(withVariant, { ...OPTIONS, groupUsageSkill: USAGE_SKILL }).map(issue => issue.code);
-  assert.ok(!codes.includes('contract_not_demonstrated'));
+  assert.ok(codes.includes('contract_not_demonstrated'));
+});
+
+void test('a small contract is held to ITS size, not to 4 — demonstrating both items passes', () => {
+  const withBoth = GOOD.replace(
+    '<groupenterdatetime--ml-datetime-picker></groupenterdatetime--ml-datetime-picker>',
+    '<groupenterdatetime--ml-datetime-picker data-variant="secondary" @action=${this.go}></groupenterdatetime--ml-datetime-picker>',
+  );
+  const codes = runSyCreateIndexTsGate(withBoth, { ...OPTIONS, groupUsageSkill: USAGE_SKILL }).map(issue => issue.code);
+  assert.ok(!codes.includes('contract_not_demonstrated'), codes.join());
 });
 
 void test('sem skill de uso (ou placeholder degradado) o check nunca dispara', () => {
   assert.ok(!runSyCreateIndexTsGate(GOOD, { ...OPTIONS, groupUsageSkill: '' }).map(i => i.code).includes('contract_not_demonstrated'));
   assert.ok(!runSyCreateIndexTsGate(GOOD, { ...OPTIONS, groupUsageSkill: '(this group has no usage skill)' }).map(i => i.code).includes('contract_not_demonstrated'));
+});
+
+// ============================================================================
+// THE DIFFERENTIATOR CHECKS (2026-09-14)
+// ============================================================================
+// Every case below is a real defect of the showcase this gate failed to catch: 13 identical cards that
+// demonstrated 2 of the group's 34 contract items and 1 of the library's 39 events, and where three
+// molecules rendered as plain tables because a single attribute was never set.
+
+const DIFFS = {
+  molecules: [
+    { shortName: 'ml-datetime-picker', tag: '', slots: [], props: [], events: ['change', 'sort'], switches: [], actions: [], liveSlots: false, reactsTo: 'none' as const, objective: '', exclusive: [], ownSwitches: [] },
+    { shortName: 'ml-enter-datetime-masked-input', tag: '', slots: [], props: [], events: ['change', 'rowClick', 'groupChange'], switches: ['groupable'], actions: ['open'], liveSlots: false, reactsTo: 'none' as const, objective: '', exclusive: ['@groupChange'], ownSwitches: ['groupable'] },
+  ],
+  allEvents: ['change', 'groupChange', 'rowClick', 'sort'],
+  distinguishingSwitches: ['groupable'],
+  distinguishingActions: ['open'],
+  withoutExclusiveApi: ['ml-datetime-picker'],
+};
+
+/** GOOD plus everything the differentiator checks ask for — the shape a real showcase has. */
+const WIRED = GOOD.replace(
+  '<groupenterdatetime--ml-datetime-picker></groupenterdatetime--ml-datetime-picker>',
+  `<groupenterdatetime--ml-datetime-picker @change=\${this.a} @sort=\${this.b} @rowClick=\${this.c} @groupChange=\${this.d} loading error>
+     <TableHead groupable></TableHead><RowAction action="open">Abrir</RowAction>
+   </groupenterdatetime--ml-datetime-picker>`,
+);
+
+void test('the checks stay silent when the caller has no differentiators — never guessed', () => {
+  assert.deepEqual(runSyCreateIndexTsGate(GOOD, OPTIONS), []);
+});
+
+void test('a page that binds only @change is rejected — the envelope is not a demonstration', () => {
+  const onlyChange = GOOD.replace('></groupenterdatetime--ml-datetime-picker>', ' @change=${this.a}></groupenterdatetime--ml-datetime-picker>');
+  const codes = runSyCreateIndexTsGate(onlyChange, { ...OPTIONS, differentiators: DIFFS }).map(i => i.code);
+  assert.ok(codes.includes('events_not_wired'));
+});
+
+void test('an on-switch only one molecule reads must be set, or that card is a plain sibling', () => {
+  const codes = runSyCreateIndexTsGate(GOOD, { ...OPTIONS, differentiators: DIFFS }).map(i => i.code);
+  assert.ok(codes.includes('feature_switch_unset'));
+  const message = runSyCreateIndexTsGate(GOOD, { ...OPTIONS, differentiators: DIFFS }).find(i => i.code === 'feature_switch_unset')!.message;
+  assert.match(message, /groupable/);
+});
+
+void test('an action verb only one molecule answers to must appear as action="…"', () => {
+  const codes = runSyCreateIndexTsGate(GOOD, { ...OPTIONS, differentiators: DIFFS }).map(i => i.code);
+  assert.ok(codes.includes('action_verb_unused'));
+});
+
+void test('mentioning the verb in prose does not count — it has to be the attribute', () => {
+  const prose = GOOD.replace('<header></header>', '<header>open the record</header>');
+  const codes = runSyCreateIndexTsGate(prose, { ...OPTIONS, differentiators: DIFFS }).map(i => i.code);
+  assert.ok(codes.includes('action_verb_unused'));
+});
+
+void test('a page that wires events, the switch and the verb clears all three checks', () => {
+  const codes = runSyCreateIndexTsGate(WIRED, { ...OPTIONS, differentiators: DIFFS }).map(i => i.code);
+  assert.ok(!codes.includes('events_not_wired'), codes.join());
+  assert.ok(!codes.includes('feature_switch_unset'), codes.join());
+  assert.ok(!codes.includes('action_verb_unused'), codes.join());
+});
+
+void test('a group that emits fewer events than the floor is held to what it emits, not to 3', () => {
+  const oneEvent = { ...DIFFS, allEvents: ['change'], distinguishingSwitches: [], distinguishingActions: [] };
+  const withChange = GOOD.replace('></groupenterdatetime--ml-datetime-picker>', ' @change=${this.a}></groupenterdatetime--ml-datetime-picker>');
+  assert.deepEqual(runSyCreateIndexTsGate(withChange, { ...OPTIONS, differentiators: oneEvent }), []);
 });

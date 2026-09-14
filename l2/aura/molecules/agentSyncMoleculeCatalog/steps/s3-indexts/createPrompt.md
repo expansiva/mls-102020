@@ -13,6 +13,24 @@ You are creating the SHOWCASE page of a molecule group from scratch: the page a 
 - EVERY molecule of the group, imported and displayed with live examples: {{moleculeFiles}}
 - A "Quick reference" section — see the OVERRIDE below; do not hand-write it.
 
+## What separates these molecules from each other
+
+Read this BEFORE deciding the page's structure. It is derived from the molecules' own files — their
+events, slot tags, properties, the attributes they read, the `action` verbs they answer to, whether
+their slots are live, and whether they reshape by container or by window. The group contract is the
+same for all of them, so it can never answer this question; this can.
+
+{{moleculeDifferentiators}}
+
+Use it to sort the molecules into families and to pick each family's layout, as "How to build a group
+index page" describes. Two rules come straight out of it:
+
+- a molecule listed as having **no exclusive API** cannot be told apart by a static card. Put it in a
+  comparison, in a container that proves something, or give it data the others do not get;
+- an **on-switch** or an **`action` verb** that only one molecule reads is the feature that molecule
+  exists for. If the showcase never sets it, that card renders as a plain sibling — measured three
+  times in one group.
+
 ## How to build a group index page
 
 {{indexGroupPage}}
