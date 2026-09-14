@@ -6,6 +6,7 @@ import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/
 import { AuraInitState, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import {
     announceNewReleaseContext,
+    NEW_RELEASE_TOBE_UPDATED_EVENT,
     type NewReleaseContext,
     type NewReleaseVersion,
 } from '/_102035_/l2/newRelease/helpers/context.js';
@@ -29,7 +30,7 @@ const message_en = {
     moduleDesc: 'Level 4 modules available for human review.',
     versionDesc: 'Current definition or a prepared future version.',
     current: 'Current',
-    future: 'Future',
+    tobe: 'To be',
     loading: 'Loading release context…',
     empty: 'No eligible project was found.',
     moduleContext: 'Selected module',
@@ -54,7 +55,7 @@ const messages: Record<string, MessageType> = {
         moduleDesc: 'Módulos do nível 4 disponíveis para revisão humana.',
         versionDesc: 'Definição atual ou uma versão futura preparada.',
         current: 'Atual',
-        future: 'Futuro',
+        tobe: 'Tobe',
         loading: 'Carregando o contexto da release…',
         empty: 'Nenhum projeto elegível foi encontrado.',
         moduleContext: 'Módulo selecionado',
@@ -76,7 +77,7 @@ const messages: Record<string, MessageType> = {
         moduleDesc: 'Módulos de nivel 4 disponibles para revisión humana.',
         versionDesc: 'Definición actual o una versión futura preparada.',
         current: 'Actual',
-        future: 'Futuro',
+        tobe: 'Tobe',
         loading: 'Cargando el contexto de la release…',
         empty: 'No se encontró ningún proyecto elegible.',
         moduleContext: 'Módulo seleccionado',
@@ -155,7 +156,23 @@ export class ServiceBehavior102020 extends ServiceBase {
     connectedCallback() {
         super.connectedCallback();
         AuraInitState();
+        window.addEventListener(NEW_RELEASE_TOBE_UPDATED_EVENT, this._onTobeUpdated as EventListener);
     }
+
+    disconnectedCallback() {
+        window.removeEventListener(NEW_RELEASE_TOBE_UPDATED_EVENT, this._onTobeUpdated as EventListener);
+        super.disconnectedCallback();
+    }
+
+    private _onTobeUpdated = async (event: Event) => {
+        const detail = (event as CustomEvent<{ project?: number; moduleName?: string }>).detail;
+        const currentModule = this._module;
+        if (!currentModule || detail?.project !== this._project || detail?.moduleName !== currentModule.name) return;
+        const selected = currentModule.name;
+        await this._loadModules(selected);
+        this._versionValue = this._module?.tobeChanges ? 2 : 1;
+        this._announceContext();
+    };
 
     async onServiceClick(visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
         if (!visible) return;
@@ -302,7 +319,7 @@ export class ServiceBehavior102020 extends ServiceBase {
     private _selectedLabel(): string {
         if (this._selectedKnob === 'project') return String(this._project);
         if (this._selectedKnob === 'module') return this._module?.title ?? '—';
-        return this._version === 'tobe' ? this.msg.future : this.msg.current;
+        return this._version === 'tobe' ? this.msg.tobe : this.msg.current;
     }
 
     private _selectedDescription(): string {
