@@ -38,15 +38,29 @@ aura--services--service-behavior-102020 {
     }
 
     .nr-service__knobs {
+        position: relative;
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(3, 4.6rem);
+        justify-content: center;
         justify-items: center;
-        gap: .15rem;
+        gap: 22px;
         padding: .8rem .45rem .65rem;
         border-bottom: 1px solid var(--border-subtle, #262e3a);
     }
 
+    .nr-service__knobs::before {
+        content: '';
+        position: absolute;
+        top: 2.55rem;
+        right: calc((100% - 13.8rem - 44px) / 2 + 2.3rem);
+        left: calc((100% - 13.8rem - 44px) / 2 + 2.3rem);
+        height: 1px;
+        background: color-mix(in srgb, var(--border-default, #3a4351) 82%, transparent);
+    }
+
     .nr-service__knob {
+        position: relative;
+        z-index: 1;
         display: grid;
         min-width: 0;
         justify-items: center;
@@ -54,10 +68,11 @@ aura--services--service-behavior-102020 {
     }
 
     .nr-service__knob > button {
+        position: relative;
         min-width: 4.6rem;
         padding: .28rem .45rem;
         border: 0;
-        border-radius: 999px;
+        border-radius: .3rem;
         outline: none;
         background: transparent;
         color: var(--text-muted, #96a3b3);
@@ -70,9 +85,18 @@ aura--services--service-behavior-102020 {
     }
 
     .nr-service__knob.is-selected > button {
-        background: var(--selected-bg, #18304a);
         color: var(--selected-text, #8bc4ff);
-        box-shadow: inset 0 0 0 1px var(--selected-border, #3b96f0);
+    }
+
+    .nr-service__knob.is-selected > button::after {
+        content: '';
+        position: absolute;
+        right: .5rem;
+        bottom: -.08rem;
+        left: .5rem;
+        height: 2px;
+        border-radius: 999px;
+        background: var(--selected-border, #3b96f0);
     }
 
     .nr-service__knob > button:focus-visible {
@@ -100,8 +124,7 @@ aura--services--service-behavior-102020 {
         gap: .75rem;
     }
 
-    .nr-service__context-heading span,
-    .nr-service__languages > span {
+    .nr-service__context-heading span {
         color: var(--text-muted, #96a3b3);
         font-size: .61rem;
         font-weight: 800;
@@ -117,14 +140,10 @@ aura--services--service-behavior-102020 {
     }
 
     .nr-service__context p {
-        display: -webkit-box;
         margin: 0;
-        overflow: hidden;
         color: var(--text-muted, #96a3b3);
         font-size: .74rem;
         line-height: 1.55;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 6;
     }
 
     .nr-service__status {
@@ -151,25 +170,6 @@ aura--services--service-behavior-102020 {
     .nr-service__status--awaitingStep {
         background: var(--status-warning-bg, #413518);
         color: var(--status-warning-text, #e8c76d);
-    }
-
-    .nr-service__languages {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: .42rem;
-        padding-top: .7rem;
-        border-top: 1px solid var(--border-subtle, #262e3a);
-    }
-
-    .nr-service__languages > span { margin-right: auto; }
-
-    .nr-service__languages strong {
-        padding: .25rem .45rem;
-        border: 1px solid var(--border-default, #3a4351);
-        border-radius: .45rem;
-        color: var(--text-default, #d7dee6);
-        font-size: .64rem;
     }
 
     .nr-service__loading,

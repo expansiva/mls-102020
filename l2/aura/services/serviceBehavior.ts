@@ -33,9 +33,8 @@ const message_en = {
     tobe: 'To be',
     loading: 'Loading release context…',
     empty: 'No eligible project was found.',
-    moduleContext: 'Selected module',
-    languages: 'Module languages',
-    noDescription: 'No original intent was recorded for this module.',
+    moduleMap: 'Module blueprint',
+    moduleMapDescription: 'Review the business, follow generation and prepare the next version in one place.',
     complete: 'Complete',
     failed: 'Failed',
     inProgress: 'In progress',
@@ -58,9 +57,8 @@ const messages: Record<string, MessageType> = {
         tobe: 'Tobe',
         loading: 'Carregando o contexto da release…',
         empty: 'Nenhum projeto elegível foi encontrado.',
-        moduleContext: 'Módulo selecionado',
-        languages: 'Idiomas do módulo',
-        noDescription: 'Nenhuma intenção original foi registrada para este módulo.',
+        moduleMap: 'Mapa do módulo',
+        moduleMapDescription: 'Revise o negócio, acompanhe a geração e prepare a próxima versão em um só lugar.',
         complete: 'Completo',
         failed: 'Falhou',
         inProgress: 'Em andamento',
@@ -80,9 +78,8 @@ const messages: Record<string, MessageType> = {
         tobe: 'Tobe',
         loading: 'Cargando el contexto de la release…',
         empty: 'No se encontró ningún proyecto elegible.',
-        moduleContext: 'Módulo seleccionado',
-        languages: 'Idiomas del módulo',
-        noDescription: 'No se registró ninguna intención original para este módulo.',
+        moduleMap: 'Mapa del módulo',
+        moduleMapDescription: 'Revise el negocio, acompañe la generación y prepare la próxima versión en un solo lugar.',
         complete: 'Completo',
         failed: 'Falló',
         inProgress: 'En curso',
@@ -353,21 +350,16 @@ export class ServiceBehavior102020 extends ServiceBase {
     private _renderContextCard() {
         const module = this._module?.module;
         if (!this._module || !module) return nothing;
-        const languages = module.productLanguages?.length ? module.productLanguages : [module.defaultLanguage].filter(Boolean);
         return html`
             <article class="nr-service__context">
                 <div class="nr-service__context-heading">
                     <div>
-                        <span>${this.msg.moduleContext}</span>
+                        <span>${this.msg.moduleMap}</span>
                         <h2>${this._module.title}</h2>
                     </div>
                     <strong class="nr-service__status nr-service__status--${this._module.status}">${this._statusLabel()}</strong>
                 </div>
-                <p>${module.sourcePrompt || this.msg.noDescription}</p>
-                <div class="nr-service__languages">
-                    <span>${this.msg.languages}</span>
-                    ${languages.map(language => html`<strong>${language}</strong>`)}
-                </div>
+                <p>${this.msg.moduleMapDescription}</p>
             </article>
         `;
     }
