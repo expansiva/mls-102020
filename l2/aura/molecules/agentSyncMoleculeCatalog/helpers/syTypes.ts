@@ -112,6 +112,9 @@ export interface SyRunInput {
   runKey: string;
   /** The mention, after stripping the agent's own '@@name' prefix. */
   mentionRaw: string;
+  /** The project this run OPERATES ON — `{ projectTarget: N }` or, absent that, the active project.
+   * The run's own l4/ (this file included) always stays in the ACTIVE project, regardless of this value. */
+  projectTarget: number;
   wantsAll: boolean;
   /**
    * True when the mention matched a recognized index.ts phrase (G2). ⚠️ Since E8, this does NOT gate

@@ -27,7 +27,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { isBareMention, stripAgentMention } from '/_102020_/l2/aura/molecules/shared/mentionEntry.js';
-import { nmFileExists, readStorText, writeJsonArtifact } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { NmFileInfo, nmDestProject, nmFileExists, readStorText, writeJsonArtifact } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import { syParseEntry } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syEntry.js';
 import { syDiscoverGroups, syResolveRequested, syUnknownGroupsMessage } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syDiscover.js';
@@ -78,19 +78,39 @@ async function beforePromptImplicit(
   // So every user-input problem becomes a `refusal` carried in input.json, the run is created anyway,
   // and s4 alone is planted: the report is the only channel that reaches the human. This also makes the
   // unknown-group path the report was ALREADY built for (`unknown`) reachable for the first time.
+  const activeProject = nmDestProject();
+  // A cold session may not have the dependencies' file index in memory yet, and without it every group
+  // of a dependency project would look absent (same precaution agentChooseMolecules takes — chCatalog.ts).
+  try {
+    await mls.stor.loadProjectdependenciesInfoIfNeed(activeProject);
+  } catch {
+    // Best effort: if it fails, the scan below simply sees whatever is loaded.
+  }
+
   const entry = syParseEntry(raw);
-  const discovery = syDiscoverGroups(syScanProjectGroupFolders(), sySkillList());
+  const projectTarget = entry.projectTarget ?? activeProject;
+  const at = (info: NmFileInfo): NmFileInfo => ({ ...info, project: projectTarget });
+
+  const discovery = syDiscoverGroups(syScanProjectGroupFolders(projectTarget), sySkillList());
   const resolved = entry.error ? { selected: [], requestedButIgnored: [], unknown: [] } : syResolveRequested(discovery, entry);
 
   let refusal = '';
   if (entry.error) {
     refusal = entry.error;
   } else if (!resolved.selected.length) {
-    refusal = resolved.unknown.length
-      ? syUnknownGroupsMessage(resolved.unknown, discovery)
-      : resolved.requestedButIgnored.length
-        ? `todos os grupos pedidos estão fora do catálogo: ${resolved.requestedButIgnored.map(group => `${group.folder} (${group.reason})`).join('; ')}`
-        : 'nenhum grupo com entrada em skills/index.ts foi encontrado no projeto';
+    if (resolved.unknown.length) {
+      refusal = syUnknownGroupsMessage(resolved.unknown, discovery);
+    } else if (resolved.requestedButIgnored.length) {
+      refusal = `todos os grupos pedidos estão fora do catálogo: ${resolved.requestedButIgnored.map(group => `${group.folder} (${group.reason})`).join('; ')}`;
+    } else if (entry.projectTarget != null) {
+      // The target may be a project this one does not depend on at all — the search set is named so the
+      // human sees exactly what was searched, same precedent as chChooseCatalog's refusal.
+      const declared = mls.l5.getProjectDetails(activeProject)?.prj_dependencies;
+      const directDeps = Array.isArray(declared) ? declared.filter(project => project !== activeProject) : [];
+      refusal = `nenhuma molécula encontrada no projeto ${projectTarget} — dependências diretas do projeto ${activeProject}: ${directDeps.length ? directDeps.join(', ') : '(nenhuma)'}`;
+    } else {
+      refusal = 'nenhum grupo com entrada em skills/index.ts foi encontrado no projeto';
+    }
   }
 
   // E8 triggers, per matched group: G1 (no index.ts at all) gets its page CREATED automatically since
@@ -105,7 +125,7 @@ async function beforePromptImplicit(
   const creationGroups: string[] = [];
   const regenerationGroups: SyRegenerationTrigger[] = [];
   for (const group of resolved.selected) {
-    const indexTsInfo = nmGroupIndexFile(group.folder, '.ts');
+    const indexTsInfo = at(nmGroupIndexFile(group.folder, '.ts'));
     const exists = nmFileExists(indexTsInfo);
     if (syNeedsIndexTsCreation(exists)) {
       creationGroups.push(group.canonical);
@@ -116,7 +136,7 @@ async function beforePromptImplicit(
       migrationGroups.push(group.canonical);
       continue;
     }
-    const missing = syMoleculesNotShown(source, group.folder, syScanGroupMoleculeShortNames(group.folder));
+    const missing = syMoleculesNotShown(source, group.folder, syScanGroupMoleculeShortNames(projectTarget, group.folder));
     if (syNeedsIndexTsRegeneration(missing)) {
       regenerationGroups.push({ canonical: group.canonical, missingMoleculeCount: missing.length });
     }
@@ -128,6 +148,7 @@ async function beforePromptImplicit(
     savedAt: new Date().toISOString(),
     runKey,
     mentionRaw: raw,
+    projectTarget,
     wantsAll: entry.wantsAll,
     includeIndexTsRequested: entry.includeIndexTs,
     matchedGroups: resolved.selected.map(group => group.canonical),
@@ -182,7 +203,7 @@ async function beforePromptImplicit(
         title: 's4 · relatório',
         dependsOn: [],
         status: 'waiting_human_input',
-        prompt: { planId: SY_PLAN_S4, runKey },
+        prompt: { planId: SY_PLAN_S4, runKey, projectTarget },
       }),
     );
     return intents;
@@ -196,7 +217,7 @@ async function beforePromptImplicit(
         title: `s1 · ${group.canonical}`,
         dependsOn: [],
         status: 'waiting_human_input',
-        prompt: { planId: syGroupPlanId(group.canonical), runKey, group: group.canonical, purpose: group.purpose, usageContract: group.usageContract },
+        prompt: { planId: syGroupPlanId(group.canonical), runKey, group: group.canonical, purpose: group.purpose, usageContract: group.usageContract, projectTarget },
       }),
     );
   }
@@ -235,6 +256,7 @@ async function beforePromptImplicit(
           purpose: group?.purpose || '',
           usageContract: group?.usageContract || '',
           mode: planting.mode,
+          projectTarget,
           ...(planting.regenerationMissingCount !== undefined ? { regenerationMissingCount: planting.regenerationMissingCount } : {}),
         },
       }),

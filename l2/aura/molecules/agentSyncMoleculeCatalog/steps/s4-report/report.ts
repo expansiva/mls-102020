@@ -49,6 +49,9 @@ export interface SyRunReport {
   savedAt: string;
   runKey: string;
   project: number;
+  /** The project that RAN this agent (where the l4/ of this run lives). Equal to `project` unless the
+   * mention carried `{ projectTarget: N }` for a project other than the active one. */
+  activeProject: number;
   written: {
     skillFile: string | null;
     groupCount: number;
@@ -76,6 +79,7 @@ export function buildSyRunReport(facts: {
   savedAt: string;
   runKey: string;
   project: number;
+  activeProject: number;
   input: SyRunInput;
   projectArtifact: SyProjectArtifact | null;
   groupArtifacts: SyGroupArtifact[];
@@ -130,6 +134,7 @@ export function buildSyRunReport(facts: {
     savedAt: facts.savedAt,
     runKey: facts.runKey,
     project: facts.project,
+    activeProject: facts.activeProject,
     written: {
       skillFile: facts.projectArtifact?.skillFile || null,
       groupCount: facts.groupArtifacts.length,
@@ -174,6 +179,11 @@ const INDEX_TS_STATUS_LABEL: Record<SyIndexTsStatus, string> = {
 export function renderSyRunSummary(report: SyRunReport): string {
   const lines: string[] = [];
   lines.push(`agentSyncMoleculeCatalog — run ${report.runKey} (mls-${report.project})`);
+  // Not printed in the common case (target === active) — this is the one line that says the catalog was
+  // written somewhere OTHER than where the run itself happened, so it must not read as an ordinary run.
+  if (report.activeProject !== report.project) {
+    lines.push(`⚠️ projectTarget: catálogo gravado no projeto ${report.project}, run executado a partir do projeto ${report.activeProject}.`);
+  }
   lines.push('');
   if (report.refusal) {
     lines.push(`⚠️ Nada foi gerado: ${report.refusal}`);

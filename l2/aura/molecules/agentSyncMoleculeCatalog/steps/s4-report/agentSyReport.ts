@@ -58,7 +58,8 @@ async function beforePromptStep(
   }
 
   const savedAt = new Date().toISOString();
-  const report = buildSyRunReport({ savedAt, runKey, project: nmDestProject(), input, projectArtifact, groupArtifacts, indexTsArtifacts });
+  const activeProject = nmDestProject();
+  const report = buildSyRunReport({ savedAt, runKey, project: input.projectTarget || activeProject, activeProject, input, projectArtifact, groupArtifacts, indexTsArtifacts });
   await writeJsonArtifact(syReportFileInfo(runKey), report);
   const summary = renderSyRunSummary(report);
 

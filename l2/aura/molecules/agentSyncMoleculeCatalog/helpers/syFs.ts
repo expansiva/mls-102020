@@ -42,8 +42,8 @@ export function syIndexTsTraceFileInfo(runKey: string, groupFolder: string, atte
 
 export { nmGroupDefsFile, nmGroupIndexFile, nmDefsFile, nmTsFile };
 
-export function syProjectSkillFile(): NmFileInfo {
-  return { project: nmDestProject(), level: 2, folder: 'molecules', shortName: 'skill', extension: '.ts' };
+export function syProjectSkillFile(project: number): NmFileInfo {
+  return { project, level: 2, folder: 'molecules', shortName: 'skill', extension: '.ts' };
 }
 
 // ---- this agent's OWN files (creation-mode prompt.md + schema.json), same pattern as nmFs.nmAgentFile
@@ -64,8 +64,7 @@ export async function readSyAgentText(subfolder: string, shortName: string, exte
  * lives directly under it (a molecule .ts, its .defs.ts, index.ts, …), the same gesture
  * `getMoleculeFiles` in the legacy agentUpdateIndexGroupPage uses, one level up.
  */
-export function syScanProjectGroupFolders(): string[] {
-  const project = nmDestProject();
+export function syScanProjectGroupFolders(project: number): string[] {
   const folders = new Set<string>();
   for (const key of Object.keys(mls.stor.files)) {
     const file = mls.stor.files[key];
@@ -77,8 +76,7 @@ export function syScanProjectGroupFolders(): string[] {
 }
 
 /** Every molecule short name (no 'index', no .defs/.html/.less) one group folder has, sorted. */
-export function syScanGroupMoleculeShortNames(groupFolder: string): string[] {
-  const project = nmDestProject();
+export function syScanGroupMoleculeShortNames(project: number, groupFolder: string): string[] {
   const target = `molecules/${groupFolder}`;
   const names = new Set<string>();
   for (const key of Object.keys(mls.stor.files)) {
