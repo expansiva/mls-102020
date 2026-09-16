@@ -29,9 +29,9 @@ async function load(): Promise<LiveUpdateModule> {
   return cached;
 }
 
-test('the modes are the three documented ones', async () => {
+test('the modes are the four documented ones', async () => {
   const { listLiveUpdateModes } = await load();
-  assert.deepEqual(listLiveUpdateModes(), ['hotSwap', 'reload', 'off']);
+  assert.deepEqual(listLiveUpdateModes(), ['remount', 'hotSwap', 'reload', 'off']);
 });
 
 test('the default is OFF while the hot swap is suspended', async () => {
@@ -138,4 +138,125 @@ test('serialize runs queued calls one at a time, in the order they were queued',
   await all;
 
   assert.deepEqual(order, ['A:start', 'A:end', 'B:start', 'B:end', 'C:start', 'C:end']);
+});
+
+// ── Deduplication: one gesture used to arrive here twice ───────────────────────────────────────
+//
+// An explicit caller (the in-place editor, the genome's molecule knob) compiles and applies; writing
+// the Monaco model then wakes libModel's debounce, which fires `statusOrErrorChanged`, which is what
+// StudioLiveUpdateWatcher reacts to — so the SAME edit arrived a second time. With the hot swap that
+// was a wasted `requestUpdate`; with the remount it throws the page node away and rebuilds it, losing
+// scroll, open dialogs and unsent input all over again.
+//
+// `reload` is the mode under test because it is observable here (reloadCount) and, like every mode
+// except `off`, it declares that it applies code.
+function editedWith(source: string, shortName = 'ticketCatalogue') {
+  return {
+    edited: {
+      project: 102047,
+      folder: 'controleChamados/web/desktop/page11',
+      shortName,
+      page: `_102047_controleChamados/web/desktop/page11/${shortName}`,
+      storFile: {} as never,
+      model: { model: { getValue: () => source } },
+    } as never,
+    page: { page: '_1_x' } as never,
+    pageTag: 'x-y-1',
+  };
+}
+
+test('the same source arriving twice is applied once', async () => {
+  const { applyLiveUpdate, setLiveUpdateMode, resetLiveUpdateDedup } = await load();
+  resetLiveUpdateDedup();
+  setLiveUpdateMode('reload');
+  const before = reloadCount;
+
+  const first = await applyLiveUpdate(editedWith('render() { return html`a`; }'));
+  assert.equal(first.ok, true);
+  assert.equal(reloadCount, before + 1, 'the first arrival applies');
+
+  const second = await applyLiveUpdate(editedWith('render() { return html`a`; }'));
+  assert.equal(second.ok, true);
+  assert.equal(second.message, t('live.alreadyApplied'));
+  assert.equal(reloadCount, before + 1, 'the echo must not reach the mode');
+  setLiveUpdateMode('off');
+});
+
+// THE CONTROL THAT MATTERS. A dedup that never lets anything through would pass the test above and
+// break the product: the second edit of a session would silently do nothing.
+test('a NEW source for the same file is applied — the dedup is not a mute button', async () => {
+  const { applyLiveUpdate, setLiveUpdateMode, resetLiveUpdateDedup } = await load();
+  resetLiveUpdateDedup();
+  setLiveUpdateMode('reload');
+  const before = reloadCount;
+
+  await applyLiveUpdate(editedWith('render() { return html`a`; }'));
+  const second = await applyLiveUpdate(editedWith('render() { return html`b`; }'));
+
+  assert.notEqual(second.message, t('live.alreadyApplied'));
+  assert.equal(reloadCount, before + 2, 'a real second edit must apply');
+  setLiveUpdateMode('off');
+});
+
+test('editing away and back applies again — only the LAST applied source is remembered', async () => {
+  // In between, the page was built from something else, so coming back is a real change.
+  const { applyLiveUpdate, setLiveUpdateMode, resetLiveUpdateDedup } = await load();
+  resetLiveUpdateDedup();
+  setLiveUpdateMode('reload');
+  const before = reloadCount;
+
+  await applyLiveUpdate(editedWith('A'));
+  await applyLiveUpdate(editedWith('B'));
+  const back = await applyLiveUpdate(editedWith('A'));
+
+  assert.notEqual(back.message, t('live.alreadyApplied'));
+  assert.equal(reloadCount, before + 3);
+  setLiveUpdateMode('off');
+});
+
+test('the key includes the file: the same text in another file is another change', async () => {
+  const { applyLiveUpdate, setLiveUpdateMode, resetLiveUpdateDedup } = await load();
+  resetLiveUpdateDedup();
+  setLiveUpdateMode('reload');
+  const before = reloadCount;
+
+  await applyLiveUpdate(editedWith('same text', 'ticketCatalogue'));
+  const other = await applyLiveUpdate(editedWith('same text', 'commentOpenTicket'));
+
+  assert.notEqual(other.message, t('live.alreadyApplied'));
+  assert.equal(reloadCount, before + 2);
+  setLiveUpdateMode('off');
+});
+
+test('`off` leaves no mark — it succeeds at doing nothing, which is not the page being up to date', async () => {
+  // Without `appliesCode: false` this is the trap: `off` returns ok, the dedup remembers the source as
+  // live, and the NEXT call — a real one, after the user switches mode — is skipped.
+  const { applyLiveUpdate, setLiveUpdateMode, resetLiveUpdateDedup } = await load();
+  resetLiveUpdateDedup();
+
+  setLiveUpdateMode('off');
+  const ignored = await applyLiveUpdate(editedWith('untouched'));
+  assert.equal(ignored.message, t('live.off'));
+
+  setLiveUpdateMode('reload');
+  const before = reloadCount;
+  const real = await applyLiveUpdate(editedWith('untouched'));
+  assert.notEqual(real.message, t('live.alreadyApplied'));
+  assert.equal(reloadCount, before + 1, 'what `off` saw must not count as applied');
+  setLiveUpdateMode('off');
+});
+
+test('a file with no readable model is never deduped — no key, so the mode always answers', async () => {
+  // The shape every pre-existing caller in this file uses, and what a disposed model degrades to.
+  const { applyLiveUpdate, setLiveUpdateMode, resetLiveUpdateDedup } = await load();
+  resetLiveUpdateDedup();
+  setLiveUpdateMode('reload');
+  const before = reloadCount;
+
+  const ctx = { edited: { page: '_1_x' } as never, page: { page: '_1_x' } as never, pageTag: 'x-y-1' };
+  await applyLiveUpdate(ctx);
+  await applyLiveUpdate(ctx);
+
+  assert.equal(reloadCount, before + 2, 'both must reach the mode');
+  setLiveUpdateMode('off');
 });

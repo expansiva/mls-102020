@@ -4,13 +4,17 @@ import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { getState, setState, subscribe, unsubscribe } from '/_102029_/l2/collabState.js';
-import { AuraInitState, getAuraState, setAuraState, saveAuraProject, moduleScopeTitle, IAuraPage } from '/_102020_/l2/aura/helpers/auraState.js';
+import { AuraInitState, getAuraState, getAuraEdit, setAuraState, saveAuraProject, moduleScopeTitle, IAuraPage, type IAuraEditSelection } from '/_102020_/l2/aura/helpers/auraState.js';
 import { skills as listOfGroups } from '/_102020_/l2/aura/molecules/skills/index.js';
 import { replaceComponentTag } from '/_102020_/l2/aura/services/preview/previewTextEditor.js';
 import { convertFileToTag, isPageFile } from '/_102020_/l2/utils.js';
 import { getLastOpenedFiles, saveOpenedFile } from '/_102027_/l2/libCommom.js';
 import { createModel } from '/_102027_/l2/libModel.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
+import { routeForSource, sourceOfPageFile } from '/_102020_/l2/aura/helpers/pageRoutes.js';
+import { compileAndApplyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
+import { findPageElement, resolveEditTarget, targetForFile, type IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { currentEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/selectPage.js';
@@ -31,6 +35,13 @@ const message_en = {
     molecules: 'Molecules',
     noPageSelected: 'No page selected',
     notAPage: 'Current file is not a page',
+    // Why a knob is off. A dimmed control that says nothing sends the user looking for the defect in
+    // the wrong place — every one of these is a different cause with a different fix.
+    offNoProject: 'No project in context',
+    offNoLayouts: 'This project declares no layout in project.json',
+    offNoSelection: 'Nothing selected in the preview',
+    offNotAMolecule: 'The selected element is not a molecule',
+    offNoGroupMolecules: 'No molecule of this group was loaded (mls-102040)',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -43,6 +54,11 @@ const messages: Record<string, MessageType> = {
         molecules: 'Moléculas',
         noPageSelected: 'Nenhuma página selecionada',
         notAPage: 'O arquivo atual não é uma página',
+        offNoProject: 'Nenhum projeto em contexto',
+        offNoLayouts: 'Este projeto não declara nenhum layout no project.json',
+        offNoSelection: 'Nada selecionado no preview',
+        offNotAMolecule: 'O elemento selecionado não é uma molécula',
+        offNoGroupMolecules: 'Nenhuma molécula deste grupo foi carregada (mls-102040)',
     },
     es: {
         svcTitle: 'Genome',
@@ -52,6 +68,11 @@ const messages: Record<string, MessageType> = {
         molecules: 'Moléculas',
         noPageSelected: 'Ninguna página seleccionada',
         notAPage: 'El archivo actual no es una página',
+        offNoProject: 'Ningún proyecto en contexto',
+        offNoLayouts: 'Este proyecto no declara ningún layout en project.json',
+        offNoSelection: 'Nada seleccionado en la vista previa',
+        offNotAMolecule: 'El elemento seleccionado no es una molécula',
+        offNoGroupMolecules: 'Ninguna molécula de este grupo fue cargada (mls-102040)',
     },
 };
 /// **collab_i18n_end**
@@ -69,17 +90,28 @@ interface IKnobConfig {
     max: number;
     labels: Record<number, string>;
     disabled?: boolean;
+    /** Message key explaining why it is off — the tooltip, and the console line next to it. */
+    reason?: keyof MessageType;
 }
 
 // ─── Static configs ───────────────────────────────────────────────────
 
-const DISABLED_CONFIG = (key: string): IKnobConfig => ({
+const DISABLED_CONFIG = (key: string, reason?: keyof MessageType): IKnobConfig => ({
     key,
     min: 1,
     max: 1,
     labels: {},
     disabled: true,
+    reason,
 });
+
+/**
+ * The project whose molecules this service offers.
+ *
+ * Its files have to be IN `mls.stor.files` for `_getMolecules` to find anything, and the stor only
+ * carries the projects of the app that is running — which does not necessarily depend on this one.
+ */
+const MOLECULES_PROJECT = 102040;
 
 // ─── Service ─────────────────────────────────────────────────────────
 
@@ -107,13 +139,17 @@ export class ServiceGenome102020 extends ServiceBase {
     };
 
     async onServiceClick(_visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
-        this._initLayoutKnob();
         this._pageReloadToken += 1; // re-scan the page list on each service (re)open
         const file = await this._getActual3File();
+        // BEFORE the layout knob, and that order is the fix: `_initLayoutKnob` reads the project, and
+        // the project of this service is settled by the file in the l3 and the module it implies.
+        // Running it first asked a question nobody had answered yet, once per service open.
         await this._trySetActualModule(file);
         await this._updateCurrentPage(file);
+        await this._initLayoutKnob();
         // The DS is chosen at project scope (l5) — reconcile whatever was picked/edited there.
         await this._syncWithProjectDs();
+        await this._diagnose('onServiceClick');
     }
 
     /** nav-3 menu title: project + module this service is acting on. Prefers the module of the
@@ -156,30 +192,74 @@ export class ServiceGenome102020 extends ServiceBase {
     @state() private _moleculeReplaceMode: 'selected' | 'all' = 'selected';
     @state() private _actualPage: mls.editor.IModelBase | null = null;
 
-    // ─── Preview state subscription ───────────────────────────────────
+    // ─── Selection: TWO channels, because the surface moved ───────────
+    //
+    // The molecule knob was born reading `previewL3.selectedTagName`, written by the L3 preview
+    // component (servicePreview). The selection now happens IN THE APP — the in-place editor
+    // (studioEditor) publishes `aura.edit.selection` instead, and nobody writes the old key any more.
+    // So the knob sat there disabled: not because the element was not a molecule, but because
+    // nothing ever told it anything was selected.
+    //
+    // Both are kept. The old one still works wherever the L3 preview is still mounted, and the new
+    // one carries more than a tag — the page's own file and WHICH occurrence of the tag it is, which
+    // is what the swap needs to rewrite the right one.
+
+    /** The last selection published by the in-place editor, when that is the live channel. */
+    @state() private _studioSelection: IAuraEditSelection | null = null;
 
     handleIcaStateChange(key: string, value: any) {
         if (key === 'previewL3.selectedTagName') {
+            this._studioSelection = null;
             this._oldSelectedTag = getState('previewL3.selectedTagName');
-            this._onPreviewSelectedElementChanged(value);
+            void this._onPreviewSelectedElementChanged(value);
+        }
+        if (key === 'aura.edit.selection') {
+            const selection = (value ?? getAuraEdit().selection) as IAuraEditSelection | null;
+            this._studioSelection = selection;
+            this._oldSelectedTag = selection?.tag ?? '';
+            void this._onPreviewSelectedElementChanged(selection?.tag ?? '');
         }
     }
 
     // ─── Layout init from project.js ─────────────────────────────────
 
+    /**
+     * The project this service is acting on, and the config it declares.
+     *
+     * `getAuraState().actualProject` is written by the KNOBS (and seeded on studio entry), so it is
+     * empty whenever nobody went through one — while `mls.actualProject` is the platform's own and is
+     * always there. Reading only the first one is why the layout knob could stay disabled on a
+     * perfectly normal project: the config never loaded, and nothing said so. `_loadModuleNames`, two
+     * methods below, already used `mls.actualProject`; this aligns them.
+     */
     private async _loadProjectConfig(): Promise<any> {
-        const project = getAuraState().actualProject;
-        if (!project) return null;
+        const project = getAuraState().actualProject || mls.actualProject;
+        if (!project) {
+            console.warn('[serviceGenome] no project in context: the layout knob stays off');
+            return null;
+        }
         try {
             return await getConfigProject(project) ?? null;
-        } catch { return null; }
+        } catch (error) {
+            console.warn(`[serviceGenome] could not read the config of ${project}`, error);
+            return null;
+        }
     }
 
     private async _initLayoutKnob() {
         const config = await this._loadProjectConfig();
         const layoutsMap: Record<number, { name: string }> = config?.layouts ?? {};
         const keys = Object.keys(layoutsMap).map(Number).sort((a, b) => a - b);
-        if (!keys.length) return;
+        if (!keys.length) {
+            // It used to `return` here, leaving whatever config was there — which on the first run is
+            // the disabled one, with no word about it. Two different causes, two different sentences,
+            // and both on screen in the tooltip.
+            this._layoutConfig = DISABLED_CONFIG('layout', config ? 'offNoLayouts' : 'offNoProject');
+            console.warn(`[serviceGenome] layout knob off: ${config ? 'the project declares no layouts' : 'no project config'}`);
+            // @ts-ignore
+            this.requestUpdate();
+            return;
+        }
 
         const labels: Record<number, string> = { 0: 'All' };
         keys.forEach(k => { labels[k] = layoutsMap[k].name; });
@@ -195,6 +275,23 @@ export class ServiceGenome102020 extends ServiceBase {
     }
 
     // ─── Molecule Logic ───────────────────────────────────────────────
+
+    /**
+     * Puts the molecule project's file list in the stor before anything looks for it.
+     *
+     * `_getMolecules` reads `mls.stor.files`, and the stor carries the projects of the app that is
+     * RUNNING. The molecules live in another project, which the app under preview does not
+     * necessarily depend on — so the scan came back empty and the knob stayed off as if the element
+     * were not a molecule. Same call `resolveEditTarget` makes for the page's own project:
+     * idempotent, and cheap once it is there.
+     */
+    private async _ensureMoleculesLoaded(): Promise<void> {
+        try {
+            await mls.stor.server.loadProjectInfoIfNeeded(MOLECULES_PROJECT);
+        } catch (error) {
+            console.warn(`[serviceGenome] could not load the file list of ${MOLECULES_PROJECT}`, error);
+        }
+    }
 
     private _getMolecules(): Map<string, any[]> {
         const files = Object.values(mls.stor.files) as any[];
@@ -219,13 +316,23 @@ export class ServiceGenome102020 extends ServiceBase {
         return tag.split('-')[0];
     }
 
-    private _onPreviewSelectedElementChanged(tag: string) {
+    private async _onPreviewSelectedElementChanged(tag: string) {
+        await this._ensureMoleculesLoaded();
         const isWC = this._isWebComponent(tag);
         const groupsMolecules = this._getMolecules();
         const actualGroup = this._extractGroupFromTag(tag);
 
         if (!isWC || !actualGroup || !groupsMolecules.get(actualGroup)) {
-            this._moleculesConfig = DISABLED_CONFIG('molecules');
+            // THREE causes, three sentences: nothing is selected, what is selected is not a molecule,
+            // or it is one and the catalog of its group did not load. Only the middle one is about
+            // the element — saying it for the third sent the user looking at their markup.
+            const reason: keyof MessageType = !tag
+                ? 'offNoSelection'
+                : (!isWC || !actualGroup) ? 'offNotAMolecule' : 'offNoGroupMolecules';
+            if (reason === 'offNoGroupMolecules') {
+                console.warn(`[serviceGenome] <${tag}> is a molecule of '${actualGroup}', but no molecule of that group is in the stor`);
+            }
+            this._moleculesConfig = DISABLED_CONFIG('molecules', reason);
             this._moleculesValue = null;
             this._selectedMoleculeGroup = '';
             this._selectedMoleculeGroupDescription = '';
@@ -234,6 +341,7 @@ export class ServiceGenome102020 extends ServiceBase {
             if (this._selectedKnob === 'molecules') this._selectedKnob = 'layout';
             // @ts-ignore
             this.requestUpdate();
+            void this._diagnose('selection changed (no molecule)');
             return;
         }
 
@@ -276,14 +384,24 @@ export class ServiceGenome102020 extends ServiceBase {
         this._moleculeError = '';
         // @ts-ignore
         this.requestUpdate();
+        void this._diagnose('selection changed');
     }
 
     private async _onMoleculesChanged(value: number | null) {
 
-        const file = await this._getActual3File();
+        // The FILE: the in-place editor already resolved which file renders the selection, so when it
+        // is the live channel that answer is used directly. The l3 route stays for the L3 preview,
+        // where the selection carries no file of its own.
+        const studio = this._studioSelection;
+        const file = studio?.file
+            ? { project: studio.file.project, shortName: studio.file.shortName, folder: studio.file.folder }
+            : await this._getActual3File();
         if (!file) return;
         const storFiles = await mls.stor.getFiles({ ...file, level: 2, loadContent: false })
-        if (storFiles.ts) this._actualPage = await storFiles.ts.getOrCreateModel();
+        // Bound to a local so the live-update call at the end of this method still knows it is there:
+        // `storFiles.ts` is optional, and the assignment below narrows nothing for later statements.
+        const pageStorFile = storFiles.ts;
+        if (pageStorFile) this._actualPage = await pageStorFile.getOrCreateModel();
 
         if (!value || !this._actualPage) return;
         const selectedFile = this._selectedMoleculeFiles[value - 1];
@@ -291,7 +409,7 @@ export class ServiceGenome102020 extends ServiceBase {
 
         this._moleculeError = '';
 
-        const selector = getState('previewL3.selectedElement');
+        const selector = this._selectorForSwap();
         const newTag = convertFileToTag(selectedFile);
         const tsModel = this._actualPage;
         const source = tsModel.model.getValue();
@@ -305,7 +423,12 @@ export class ServiceGenome102020 extends ServiceBase {
         );
 
         if (!result.success) {
-            this._moleculeError = 'Could not replace the molecule in the source.';
+            // The replacer says exactly what went wrong (`tag not found in any template`, `oldTag and
+            // newTag are the same`, …) and that was being thrown away for one sentence that fits
+            // every failure and helps with none.
+            this._moleculeError = result.error || 'Could not replace the molecule in the source.';
+            console.warn(`[serviceGenome] molecule swap refused: ${result.error ?? '(no reason given)'}`
+                + ` — ${this._oldSelectedTag} -> ${newTag}, mode ${this._moleculeReplaceMode}`);
             // @ts-ignore
             this.requestUpdate();
             return;
@@ -321,6 +444,161 @@ export class ServiceGenome102020 extends ServiceBase {
         setState('preview.pendingReselect', newTag);
         mls.editor.forceModelUpdate(tsModel.model)
 
+        if (pageStorFile) await this._applyToRunningPage(targetForFile(pageStorFile, tsModel));
+
+    }
+
+    /**
+     * Puts the swap in the RUNNING page, and says so when it cannot.
+     *
+     * WHY THIS IS NOT LEFT TO THE WATCHER. Writing the Monaco model does eventually reach the page:
+     * libModel's debounce compiles and fires `statusOrErrorChanged`, which StudioLiveUpdateWatcher
+     * listens to. But "eventually" is the whole problem — the knob had no way to know whether
+     * anything happened, and every refusal the live update produced (the edited file registers no
+     * element, the swap is not armed in this session, the compile has TypeScript errors) died inside
+     * a trigger with nowhere to show it. A swap that quietly does nothing is indistinguishable from
+     * one that worked, which is exactly how this went unnoticed in real use.
+     *
+     * The duplicate the debounce then produces costs nothing: `compileAndApplyLiveUpdate` dedups on
+     * the edited source, so the second arrival answers "already applied" instead of throwing the page
+     * node away and building it again.
+     *
+     * Silent with no host ON PURPOSE: in the L3 preview route there is no running app to update, and
+     * the preview re-renders on its own.
+     */
+    private async _applyToRunningPage(edited: IStudioEditTarget): Promise<void> {
+        const host = currentEditHost()?.host;
+        if (!host) return;
+
+        const pageEl = findPageElement(host);
+        const resolved = await resolveEditTarget(host);
+        if (!pageEl || !resolved.ok) return;
+
+        const live = await compileAndApplyLiveUpdate({
+            edited,
+            page: resolved.target,
+            pageTag: pageEl.tagName.toLowerCase(),
+        });
+
+        // The knob already has somewhere to speak: the same line the replacer's refusals use.
+        this._moleculeError = live.ok ? '' : live.message;
+        // @ts-ignore
+        this.requestUpdate();
+    }
+
+    // ─── Diagnosis ────────────────────────────────────────────────────
+    //
+    // WHY A DUMP AND NOT MORE WARNINGS
+    // Each knob is off for one of several reasons, and every one of them is the END of a chain: the
+    // project comes from one place, the module from another, the page context from a regex over a
+    // folder, the molecule list from a scan of the stor. A warning at the point of failure says WHICH
+    // step gave up and nothing about the step before it — and when the failure is upstream (no
+    // project, no file in the l3) the warning does not fire at all, which reads as "no log, no
+    // problem". This prints the whole chain, with the values, on every entry point.
+    //
+    // `window.auraGenomeDiagnose()` runs it on demand: select an element, then ask.
+
+    /** Files of a project currently in `mls.stor.files` — the scans below all depend on this. */
+    private _storCount(project: number): number {
+        return (Object.values(mls.stor.files) as any[])
+            .filter((f) => f && f.project === project).length;
+    }
+
+    /**
+     * Whether the file `getConfigProject` reads is in the stor at all.
+     *
+     * It returns `undefined` when the file is missing and when the content does not parse, and those
+     * are different problems — this separates them without touching the lib.
+     */
+    private _configInStor(): boolean {
+        const project = (getAuraState().actualProject || mls.actualProject) as number;
+        if (!project) return false;
+        return Boolean(mls.stor.files[mls.stor.getKeyToFiles(project, 5, 'project', '', '.json')]);
+    }
+
+    /** The two halves of `isPageFile`, separately — an unset module fails EVERY folder. */
+    private _pageContextDetail(folder: string): Record<string, unknown> {
+        const match = folder.match(/^(.+?)\/(web\/desktop|web\/mobile|android|ios)\/page\d+$/);
+        return {
+            folder: folder || '(none)',
+            'folder looks like a page': Boolean(match),
+            'module in the folder': match?.[1] ?? '(no match)',
+            'mls.actualModule': mls.actualModule || '(unset)',
+            'both agree': Boolean(match && match[1] === mls.actualModule),
+        };
+    }
+
+    private async _diagnose(where: string): Promise<void> {
+        const aura = getAuraState();
+        const file = this._currentPageFile;
+        const tag = this._studioSelection?.tag ?? String(getState('previewL3.selectedTagName') ?? '');
+        const config = await this._loadProjectConfig();
+        const groups = this._getMolecules();
+        const group = this._extractGroupFromTag(tag);
+
+        /* eslint-disable no-console */
+        console.groupCollapsed(`[serviceGenome] diagnosis @ ${where}`);
+        console.table({
+            'mls.actualProject': { value: String(mls.actualProject ?? '(unset)') },
+            'auraState.actualProject': { value: String(aura.actualProject ?? '(unset)') },
+            'mls.actualModule': { value: String(mls.actualModule ?? '(unset)') },
+            'modules declared (l5/project.json)': { value: this._moduleNames.join(', ') || '(none loaded)' },
+            'l5/project.json in the stor': { value: String(this._configInStor()) },
+            'l3 file': { value: file ? `${file.project}:${file.folder}/${file.shortName}` : '(none)' },
+            'page in context': { value: String(this._isPageContext) },
+        });
+        console.log('page context, step by step:', this._pageContextDetail(file?.folder ?? ''));
+        console.log('LAYOUT knob:', {
+            'project config read': Boolean(config),
+            'layouts declared': config?.layouts ? Object.keys(config.layouts).join(', ') : '(none)',
+            disabled: this._layoutConfig.disabled ?? false,
+            reason: this._layoutConfig.reason ?? '(none)',
+            'min..max': `${this._layoutConfig.min}..${this._layoutConfig.max}`,
+            value: this._layoutValue,
+            'dimmed by page context': !this._isPageContext,
+        });
+        console.log('MOLECULES knob:', {
+            'selection channel': this._studioSelection
+                ? 'aura.edit.selection (in-place editor)'
+                : (getState('previewL3.selectedTagName') ? 'previewL3 (l3 preview)' : '(nothing has spoken yet)'),
+            'studio selection': this._studioSelection
+                ? `<${this._studioSelection.tag}> #${this._studioSelection.occurrence} in ${this._studioSelection.file?.shortName ?? '(no file)'}`
+                : '(none)',
+            'selected tag': tag || '(nothing selected)',
+            'is a web component': this._isWebComponent(tag),
+            'group from the tag': group ?? '(none)',
+            [`files of ${MOLECULES_PROJECT} in the stor`]: this._storCount(MOLECULES_PROJECT),
+            'molecule groups found': groups.size,
+            'groups (first 8)': [...groups.keys()].slice(0, 8).join(', ') || '(none)',
+            'this group found': group ? Boolean(groups.get(group)) : false,
+            disabled: this._moleculesConfig.disabled ?? false,
+            reason: this._moleculesConfig.reason ?? '(none)',
+            'dimmed by page context': !this._isPageContext,
+        });
+        console.groupEnd();
+        /* eslint-enable no-console */
+    }
+
+    /**
+     * WHICH occurrence of the tag the swap rewrites, in the shape `replaceComponentTag` reads.
+     *
+     * That function only looks at the last segment of the selector and pulls an `:nth-of-type(N)` out
+     * of it — so a selector is, in practice, an occurrence index with CSS punctuation around it. The
+     * in-place editor publishes that index directly (position among the elements with the same tag on
+     * screen), and this puts it back in the shape the existing contract parses, instead of changing
+     * the contract for one caller.
+     *
+     * THE LIMIT, and it is the same one the L3 selector always had: the index is of the ELEMENT on
+     * screen, and `replaceComponentTag` uses it as an index of the occurrence in the SOURCE. One
+     * source occurrence inside a `.map()` renders N elements, and the two stop lining up — out of
+     * range it falls back to the first occurrence. Swapping "all" is the honest answer there, and it
+     * is already an option in the panel.
+     */
+    private _selectorForSwap(): string | undefined {
+        const studio = this._studioSelection;
+        if (!studio) return getState('previewL3.selectedElement');
+        if (!studio.tag) return undefined;
+        return studio.occurrence > 0 ? `${studio.tag}:nth-of-type(${studio.occurrence + 1})` : studio.tag;
     }
 
     // ─── Knob helpers ─────────────────────────────────────────────────
@@ -427,18 +705,52 @@ export class ServiceGenome102020 extends ServiceBase {
         return { project: mls.actual[3].project, folder, shortName, level: 3, extension: '.ts' } as mls.stor.IFileInfo;
     }
 
-    /** Module names declared by the ACTIVE project (project.js), cached per project. Tells a
-     *  real module folder from any other first path segment. */
+    /**
+     * Module names declared by the ACTIVE project, cached per project.
+     *
+     * THIS LIST IS WHAT SWITCHES BOTH KNOBS ON. It is the guard `_trySetActualModule` uses, so an
+     * empty list means `mls.actualModule` is never set, `isPageFile` answers false for EVERY folder,
+     * `_isPageContext` goes false and the layout and molecules knobs render dimmed and unclickable.
+     *
+     * It used to read `l2/project.js` -> `projectConfig.modules`, and that array is `[]` in every
+     * real project (checked on 2026-09-11 across 102043/45/46/47/48/49/50/51): the modules live in
+     * `l5/project.json`, which is where the Module knob of serviceProject reads them from, with the
+     * shape `{ moduleName, backend, … }`. Two services, two sources, one of them empty by
+     * construction — so this one now reads the same file as the other, and keeps the old source as a
+     * fallback for whatever project still fills it in.
+     */
     private async _loadModuleNames(): Promise<string[]> {
-        const project: number = mls.actualProject as number;
+        const project = (getAuraState().actualProject || mls.actualProject) as number;
         if (!project) return [];
         if (this._moduleNamesProject === project) return this._moduleNames;
+
+        const names: string[] = [];
         try {
-            const mod = await import(`/_${project}_/l2/project.js`);
-            const modules: IModule[] = mod?.projectConfig?.modules ?? [];
-            this._moduleNames = modules.map((m: IModule) => m.name);
-            this._moduleNamesProject = project;
-        } catch { return []; }
+            const config: any = await getConfigProject(project);
+            for (const entry of (config?.modules ?? []) as any[]) {
+                const name = entry?.moduleName ?? entry?.name ?? '';
+                if (name) names.push(String(name));
+            }
+        } catch (error) {
+            console.warn(`[serviceGenome] could not read the modules of ${project}`, error);
+        }
+
+        if (!names.length) {
+            try {
+                const mod = await import(`/_${project}_/l2/project.js`);
+                for (const entry of (mod?.projectConfig?.modules ?? []) as IModule[]) {
+                    if (entry?.name) names.push(entry.name);
+                }
+            } catch { /* the l5 answer is the one that counts; this is the fallback */ }
+        }
+
+        if (!names.length) {
+            console.warn(`[serviceGenome] project ${project} declares no module: the layout and molecules knobs stay dimmed (no page context)`);
+            return [];  // NOT cached: a project whose config is still loading has to be asked again
+        }
+
+        this._moduleNames = names;
+        this._moduleNamesProject = project;
         return this._moduleNames;
     }
 
@@ -456,10 +768,17 @@ export class ServiceGenome102020 extends ServiceBase {
         if (!file) {
             this._actualPage = null;
             this._isPageContext = false;
+            console.info('[serviceGenome] no l3 file in context: layout and molecules knobs stay off');
             return;
         }
         this._isPageContext = isPageFile(file.folder ?? '');
-
+        // This ONE flag dims both the layout and the molecules knobs (and makes them unclickable), so
+        // when it is false it has to say which half failed: `isPageFile` wants a folder shaped
+        // `<module>/web/<device>/page<NN>` AND `mls.actualModule` set to that same module — an unset
+        // module turns every file into "not a page".
+        if (!this._isPageContext) {
+            console.info(`[serviceGenome] '${file.folder}' is not a page of '${mls.actualModule || '(no module)'}': layout and molecules knobs stay off`);
+        }
     }
 
     // ─── Repaint preview on layout/DS change ──────────────────────────
@@ -567,7 +886,55 @@ export class ServiceGenome102020 extends ServiceBase {
             position: this.position,
         };
         mls.events.fire([mls.actualLevel], ['FileAction'], JSON.stringify(params), 0);
+        await this._navigateApp(file);
         this.requestUpdate();
+    }
+
+    /**
+     * Takes the RUNNING APP to the page the knob selected.
+     *
+     * `_openPage` above opens the file in the l3/l4 editors — which is what the knob used to do, and
+     * the whole of it: the editors changed and the app on screen stayed on whatever page it was
+     * rendering. Two different things were being called "open the page".
+     *
+     * The app navigates by URL, and the route of each page is declared in `l5/config.json` under
+     * `projects[<id>].modules[].frontend.pages[]`, keyed by the very file this knob holds (`source`).
+     * The navigation itself is the SAME call the apps menu makes (`openProgramUnified`, mls-102033):
+     * pushState + popstate for a page of the current app, a nav3 tab for anything else, plain
+     * navigation as the fallback. Copying that logic here would be a second implementation of the
+     * shell's own routing, and the two would drift.
+     */
+    private async _navigateApp(file: mls.stor.IFileInfo): Promise<void> {
+        const route = await this._routeOfPage(file);
+        if (!route) {
+            console.info(`[serviceGenome] no route declared for ${file.folder}/${file.shortName}: the app stays where it is`);
+            return;
+        }
+        try {
+            const { openProgramUnified } = await import('/_102033_/l2/cbe/runtimeMessagesEnvironment.js');
+            await openProgramUnified({ url: route, pageName: file.shortName });
+        } catch (error) {
+            console.warn('[serviceGenome] could not navigate the app', error);
+        }
+    }
+
+    /** Reads `l5/config.json` out of the stor and asks `routeForSource` which route this file has. */
+    private async _routeOfPage(file: mls.stor.IFileInfo): Promise<string> {
+        const project = file.project || (getAuraState().actualProject || mls.actualProject) as number;
+        if (!project) return '';
+        const key = mls.stor.getKeyToFiles(project, 5, 'config', '', '.json');
+        const configFile = mls.stor.files[key];
+        if (!configFile) return '';
+
+        let config: any;
+        try {
+            config = JSON.parse(String(await configFile.getContent()));
+        } catch (error) {
+            console.warn('[serviceGenome] l5/config.json did not parse', error);
+            return '';
+        }
+
+        return routeForSource(config, project, sourceOfPageFile(file));
     }
 
     private _onFileActionGenome = async (ev: mls.events.IEvent) => {
@@ -585,15 +952,21 @@ export class ServiceGenome102020 extends ServiceBase {
         super.connectedCallback();
         AuraInitState();
         subscribe('previewL3.selectedTagName', this);
-        this._initLayoutKnob();
-        await this._loadModuleNames(); // warm the guard used by the menu title
+        subscribe('aura.edit.selection', this);
+        await this._loadModuleNames(); // warm the guard used by the menu title — BEFORE the knob
         await this.setLastOpenedFileIfNeeded();
+        await this._initLayoutKnob();
         mls.events.addEventListener([this.level], ['FileAction'], this._onFileActionGenome);
+        // On demand, from the console: select an element in the preview and ask.
+        (window as unknown as Record<string, unknown>).auraGenomeDiagnose = () => this._diagnose('manual');
+        await this._diagnose('connectedCallback');
     }
 
     disconnectedCallback() {
         super.disconnectedCallback();
+        delete (window as unknown as Record<string, unknown>).auraGenomeDiagnose;
         unsubscribe('previewL3.selectedTagName', this);
+        unsubscribe('aura.edit.selection', this);
         // @ts-ignore
         mls.events.removeEventListener([this.level], ['FileAction'], this._onFileActionGenome);
     }
@@ -602,7 +975,10 @@ export class ServiceGenome102020 extends ServiceBase {
         const file = await this._getActual3File();
         await this._trySetActualModule(file);
         await this._updateCurrentPage(file);
+        // Same order as onServiceClick: the module has to be set before the project config is read.
+        await this._initLayoutKnob();
         await this._syncWithProjectDs();
+        await this._diagnose('firstUpdated');
     }
 
     // ─── Render ───────────────────────────────────────────────────────
@@ -649,9 +1025,15 @@ export class ServiceGenome102020 extends ServiceBase {
 
         const label = this.msg[key as keyof MessageType] || key;
         const fullLabel = this.msg[`${key}Full` as keyof MessageType] || label; // tooltip: name in full
+        // WHY it is off, under the name. `noContext` wins when both apply: with no page in context
+        // the knob would not operate even if its own list were fine.
+        const off = noContext
+            ? (this._currentPageFile ? this.msg.notAPage : this.msg.noPageSelected)
+            : (isDisabled && config.reason ? this.msg[config.reason] : '');
+        const title = off ? `${fullLabel} — ${off}` : fullLabel;
 
         return html`
-            <div title=${fullLabel} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''} ${noContext ? 'opacity-30 pointer-events-none' : ''}">
+            <div title=${title} class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''} ${noContext ? 'opacity-30 pointer-events-none' : ''}">
                 <aura--widgets--aura-select-knob-102020
                     .min=${config.min}
                     .max=${config.max}

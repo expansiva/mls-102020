@@ -27,6 +27,16 @@ export interface MoleculeCatalogEntry {
     /** file shortName, e.g. 'ml-floating-text-input'. */
     variant: string;
     /**
+     * Folder of the molecule's file in its project, e.g. 'molecules/groupentertext'.
+     *
+     * It is here so the side-effect import can be BUILT FROM DATA
+     * (`/_<project>_/l2/<folder>/<variant>.js`) instead of from a convention. The tag already taught
+     * that lesson: derived by convention it names an element that never renders, and the failure is
+     * silent. The import has the same shape of failure and the folder is right there in the stor
+     * entry the catalog is read from, so there is nothing to guess.
+     */
+    folder: string;
+    /**
      * DS axes this molecule candidates for (empty = wildcard).
      * Values already validated against the vocabulary by `buildMoleculeCatalog`.
      */

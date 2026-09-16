@@ -47,7 +47,14 @@ aura--studio--class-picker-102020 {
     border-bottom: 1px solid rgba(245,247,250,0.12);
     position: sticky; top: 0; background: #1f2933;
   }
-  .acp-tag { font-family: monospace; color: #7fb3ff; }
+  /* The character cut happens in the component; this is what keeps a long name from pushing the row
+     apart anyway: a count of characters cannot know how wide the glyphs are. min-width 0 is what lets
+     a flex item shrink below its content at all. */
+  .acp-tag {
+    font-family: monospace; color: #7fb3ff;
+    flex: 0 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
   /* Pushes only what comes AFTER it to the right (the close). The actions stay together on the
      left, in the order they are used: undo, redo, copy, paste. */
   .acp-spacer { flex: 1 1 auto; }
@@ -212,4 +219,25 @@ aura--studio--class-picker-102020 {
     display: block; width: 100%; margin-top: 2px; max-height: 190px; overflow: auto;
     border: 1px solid rgba(245,247,250,0.18); border-radius: 3px; background: #232e39;
   }
+
+  // ── Molecules tab (TASK-102020-adopt-molecules) ───────────────────────────
+  // The stage is the one area of this chrome that is LIGHT, and deliberately: what is mounted there
+  // is the real molecule, coloured by the page's own tokens, and judging it against a dark panel
+  // would say nothing about how it will look on the page.
+  .acp-adopt-group { font-family: monospace; color: #7fb3ff; }
+  .acp-adopt-replaces { color: #ffd8a1; cursor: default; }
+  .acp-adopt-markup {
+    display: block; margin-top: 4px; padding: 6px; border-radius: 3px;
+    background: #16202a; color: #b8c2cc; font-family: monospace; font-size: 10px;
+    line-height: 1.4; white-space: pre-wrap; word-break: break-all;
+    max-height: 96px; overflow: auto;
+  }
+  .acp-adopt-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .acp-adopt-go { background: rgba(66,135,245,0.35); border-color: #4287f5; }
+  .acp-adopt-go:hover:not([disabled]) { background: #4287f5; color: #fff; }
+  .acp-adopt-stage {
+    display: block; margin: 6px; padding: 10px; border-radius: 4px;
+    background: #ffffff; color: #0f172a;
+  }
+  .acp-adopt-stage .acp-label { color: #64748b; }
 }

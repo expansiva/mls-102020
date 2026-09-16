@@ -59,6 +59,7 @@ export async function buildMoleculeCatalog(force = false): Promise<MoleculeCatal
                 group,
                 tag: parseTag(skill) || `${group.toLowerCase()}--${sf.shortName}`,
                 variant: sf.shortName,
+                folder: sf.folder,
                 layoutConfig: sanitizeLayoutConfig(mod.layoutConfig, ref),
                 objective: parseObjective(skill),
                 description: skill, // full .defs skill (Objective/Responsibilities/Constraints) for Agent2

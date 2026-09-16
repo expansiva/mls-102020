@@ -26,6 +26,9 @@ const SELECTION = {
   file: { project: 102046, shortName: 'changeOrderCatalogue', folder: 'buildFlowFsm/web/desktop/page11' },
   literal: 'rounded-md p-3 text-sm',
   editable: true,
+  // WHICH of the buttons on screen it is: a tag alone is enough to SHOW a selection and not enough to
+  // act on one, and the genome's molecule knob rewrites exactly one occurrence.
+  occurrence: 2,
 };
 
 test('the state starts with an empty projection, not with undefined', () => {

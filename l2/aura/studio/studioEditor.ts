@@ -44,10 +44,23 @@ import {
 import {
   CLASS_PICKER_TAG,
   type ClassPickerPanel,
+  type IPickerAdopt,
   type IPickerApply,
   type IPickerPreview,
   type IPickerTextEdit,
 } from '/_102020_/l2/aura/studio/classPickerPanel.js';
+import {
+  ADOPT_NO_TARGET,
+  composeAdopt,
+  describeElement,
+  planAdopt,
+  planUnadopt,
+  type IAdoptTarget,
+  type IElementShape,
+} from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
+import { adoptOffer, type IAdoptOffer, type IAdoptOption } from '/_102020_/l2/aura/studio/studioAdoptCatalog.js';
+import { resolveRulesForPage } from '/_102020_/l2/aura/helpers/dsMatch/resolveRulesForPage.js';
+import type { ResolvedLayoutRules } from '/_102020_/l2/aura/helpers/dsMatch/types.js';
 import {
   addEditDirty,
   setEditHistory,
@@ -69,6 +82,7 @@ import {
   parseClassAttr,
   readAnimationState,
   readAttribute,
+  readAttributes,
   readDesignSystemRoles,
   repeatedRenderWarning,
   resolveAnchor,
@@ -84,7 +98,7 @@ import {
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { builtCssClassNames, isStudioTailwindLive } from '/_102033_/l2/cbe/studioTailwind.js';
-import { applyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
+import { compileAndApplyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import {
   CONTEXT_CHARS,
   MOVE_NO_TARGET,
@@ -102,8 +116,8 @@ import {
   type IMovePlan,
 } from '/_102020_/l2/aura/studio/studioMoveEdit.js';
 import {
-  compileAfterEdit,
   currentLanguage,
+  describePageFolder,
   findPageElement,
   persistLocalEdit,
   resolveEditTarget,
@@ -250,6 +264,27 @@ type EditStep =
     el: WeakRef<HTMLElement>;
   }
   | {
+    /**
+     * A raw control became a molecule (TASK-102020-adopt-molecules).
+     *
+     * Two splices in ONE step — the markup and the side-effect import — because they were one write:
+     * an undo that put the element back and left the import behind would leave a page importing a
+     * module it does not use, and the other way round is worse.
+     */
+    kind: 'adopt';
+    file: IStudioEditTarget;
+    /** Where the molecule's markup is now, and what it says: the address AND the revalidation. */
+    landed: { start: number; end: number };
+    markup: string;
+    /** The control that was there, verbatim — what makes the undo byte for byte. */
+    original: string;
+    /** Where the import line went in, or null when the file already had it. */
+    importSpan: { start: number; end: number } | null;
+    importText: string;
+    what: string;
+    el: WeakRef<HTMLElement>;
+  }
+  | {
     kind: 'move';
     file: IStudioEditTarget;
     /**
@@ -287,6 +322,35 @@ interface IAttrText {
   /** Why there are no keys — the line is read-only and says this. */
   reason?: IMessageRef;
 }
+
+/**
+ * What the Molecules tab knows about the selection (TASK-102020-adopt-molecules).
+ *
+ * Computed only when the tab ASKS: the molecule catalog is ~155 `.defs.ts` through collabImport, and
+ * paying that on every selection would make the whole editor feel slow for a gesture most selections
+ * never reach for.
+ *
+ * Everything here is recomputed from the file before the write — the offsets in it are for SHOWING,
+ * never for writing.
+ */
+interface IAdoptState {
+  el: HTMLElement;
+  file: IStudioEditTarget;
+  /** The element that would be REPLACED: the selection, or its wrapper when the group lifts. */
+  index: number;
+  /** True when what is replaced is not what was clicked — the panel says so before the gesture. */
+  lifted: boolean;
+  /** Tag of the replaced element, for the sentence. */
+  replacedTag: string;
+  offer: IAdoptOffer;
+  option: IAdoptOption;
+  markup?: string;
+  imports: string[];
+  refusal?: IMessageRef;
+}
+
+/** The answer of a resolution: the state, or the reason there is none. */
+type AdoptResolution = { ok: true; state: IAdoptState } | { ok: false; reason: IMessageRef };
 
 interface IClassPanelState {
   el: HTMLElement;
@@ -364,6 +428,22 @@ export class StudioEditor {
   /** The class picker (TASK-102033-class-picker): panel element + what the current selection resolved to. */
   private classPanelEl: ClassPickerPanel | null = null;
   private classPanel: IClassPanelState | null = null;
+  /** The Molecules tab's answer; null once it was asked and nothing candidates. */
+  private adopt: IAdoptState | null = null;
+  /**
+   * Where the tab's question is.
+   *
+   * Three states and not a boolean, because `adopt === null` means two opposite things: "nobody
+   * asked yet" (the panel has to ask) and "asked, and nothing candidates" (the panel must NOT ask
+   * again — it would ask on every render, forever).
+   */
+  private adoptPhase: 'idle' | 'loading' | 'done' = 'idle';
+  /** The molecule the user picked by hand, held across re-resolutions of the same selection. */
+  private adoptChoice: string | null = null;
+  /** Why there is no offer — the four causes are four sentences (see studioAdoptCatalog). */
+  private adoptReason: IMessageRef | null = null;
+  /** The molecule MOUNTED for the preview — a real element, built by importing the real module. */
+  private adoptPreviewEl: HTMLElement | null = null;
   /** Classes with a rule in the BUILT css, read once per selection (the sheet does not change mid-session). */
   private builtClasses: Set<string> | null = null;
   /** Design system roles, read from the injected `#ds-tokens` css — the vocabulary for arbitrary values. */
@@ -1370,14 +1450,13 @@ export class StudioEditor {
     // toast blink out and back in whenever the save takes longer than the timeout.
     this.setStatus(`${what} ${where} — ${t('status.applying')}`, true);
 
-    // Compiles first: it fills `compilerResults.prodJS` (what the live update evaluates) and puts the
-    // fresh JS in the SW cache (what a reload would serve).
-    await compileAfterEdit(editTargetFile);
-
-    // Reaches the RUNNING app. The DOM already shows the new text, but the registered class still
-    // holds the old code — without this, navigating away and back brings the old text back. Which
-    // strategy does it is a swappable mode (see studioLiveUpdate).
-    const live = await applyLiveUpdate({
+    // Compiles and reaches the RUNNING app, in that order — the compile fills `compilerResults.prodJS`
+    // (what the live update evaluates) and puts the fresh JS in the SW cache (what a reload would
+    // serve). The DOM already shows the new text, but the registered class still holds the old code:
+    // without this, navigating away and back brings the old text back. Which strategy does it is a
+    // swappable mode (see studioLiveUpdate), and the pair lives behind one name so every trigger —
+    // this one, the watcher, a studio service — takes the same two steps in the same order.
+    const live = await compileAndApplyLiveUpdate({
       edited: editTargetFile,
       page: this.target,
       pageTag: this.pageTag() ?? '',
@@ -1457,6 +1536,10 @@ export class StudioEditor {
     this.classPanelEl.addEventListener('picker-text', this.onPickerText as EventListener);
     this.classPanelEl.addEventListener('picker-level', this.onPickerLevel as EventListener);
     this.classPanelEl.addEventListener('picker-level-hover', this.onPickerLevelHover as EventListener);
+    this.classPanelEl.addEventListener('picker-adopt-open', this.onPickerAdoptOpen);
+    this.classPanelEl.addEventListener('picker-adopt-select', this.onPickerAdoptSelect as EventListener);
+    this.classPanelEl.addEventListener('picker-adopt-preview', this.onPickerAdoptPreview);
+    this.classPanelEl.addEventListener('picker-adopt', this.onPickerAdopt);
     // Same layer as the marking and the toast — see createStatusEl.
     document.body.appendChild(this.classPanelEl);
   }
@@ -1534,6 +1617,28 @@ export class StudioEditor {
     this.drawHover(el);
   };
 
+  // --- Adopting a molecule (TASK-102020-adopt-molecules) ---
+
+  /** The tab was opened, or the selection changed while it was open: this is what pays the catalog. */
+  private onPickerAdoptOpen = (): void => {
+    void this.loadAdopt();
+  };
+
+  /** The user picked another molecule of the same group — the choice survives the re-resolution. */
+  private onPickerAdoptSelect = (e: CustomEvent<string>): void => {
+    this.adoptChoice = e.detail;
+    this.adoptPreviewEl = null;
+    void this.loadAdopt();
+  };
+
+  private onPickerAdoptPreview = (): void => {
+    void this.previewAdopt();
+  };
+
+  private onPickerAdopt = (): void => {
+    void this.adoptSelected();
+  };
+
   private onPickerDuplicate = (): void => {
     void this.duplicateSelected();
   };
@@ -1566,6 +1671,16 @@ export class StudioEditor {
     // an edit and went away on the next click: the pointer stays over the chips while the edit is
     // written, a hover starts a preview, and the panel then looked for the previewed classes.
     this.previewAnimation(null);
+
+    // The Molecules tab answers about ONE element; a stale answer would offer to convert the
+    // previous one. The panel re-asks by itself when it is open (see its willUpdate).
+    if (this.adoptPhase !== 'idle' && this.adopt?.el !== el) {
+      this.adopt = null;
+      this.adoptReason = null;
+      this.adoptPhase = 'idle';
+      this.adoptChoice = null;
+      this.adoptPreviewEl = null;
+    }
 
     const literal = el.getAttribute('class') ?? '';
     const state: IClassPanelState = {
@@ -1940,6 +2055,21 @@ export class StudioEditor {
    * with the editor's own chrome excluded. This N is what turns "one literal in the source" into
    * either "the only one" or "one inside a `.map()`" (resolveAnchor).
    */
+  /**
+   * Which of the elements with this tag the selection is, in document order.
+   *
+   * The same walk `countLiteralInDom` makes, by TAG instead of by class literal — and for the same
+   * reason: whoever acts on the selection from outside gets data only, so the position is the
+   * address. Our own chrome is excluded the same way, or an overlay of ours would shift the count.
+   */
+  private countTagInDom(el: HTMLElement): number {
+    const root = this.host;
+    if (!root) return -1;
+    const matches = Array.from(root.querySelectorAll(el.tagName.toLowerCase()))
+      .filter((node) => !(node as HTMLElement).closest(`.${CONTROL_CLASS}`));
+    return matches.indexOf(el);
+  }
+
   private countLiteralInDom(el: HTMLElement, literal: string): { domCount: number; domIndex: number } {
     const root = this.host;
     if (!root) return { domCount: 1, domIndex: 0 };
@@ -2052,9 +2182,45 @@ export class StudioEditor {
       removeReason: slice.remove,
       duplicateNotes: slice.notes,
     };
+    panel.adopt = this.adoptProjection();
+    panel.adoptPreview = this.adoptPreviewEl;
     panel.hidden = false;
     // Only measurable once it is showing — and its size depends on what the selection carries.
     this.positionChrome();
+  }
+
+  /**
+   * The Molecules tab as DATA — the same discipline as the rest of the projection.
+   *
+   * Absent (not empty) while nobody asked: the tab renders its own "loading" until the catalog
+   * answers, and a tab that was never opened costs nothing at all.
+   */
+  private adoptProjection(): IPickerAdopt | undefined {
+    if (this.adoptPhase === 'idle') return undefined; // nobody asked: the panel is what asks
+    if (this.adoptPhase === 'loading') return { loading: true, options: [], warnings: [] };
+    const state = this.adopt;
+    // Asked and answered with nothing — and WHY travels with it: the catalog, the conversion files,
+    // this screen's file and the element itself are four different answers.
+    if (!state) {
+      return { loading: false, options: [], warnings: [], noneReason: this.adoptReason ?? undefined };
+    }
+    return {
+      loading: false,
+      group: state.offer.candidate.group,
+      why: state.offer.candidate.why,
+      replaces: { tag: state.replacedTag, lifted: state.lifted },
+      options: state.offer.options.map((option) => ({
+        tag: option.tag,
+        variant: option.variant,
+        objective: option.objective,
+        chosen: option.chosen,
+      })),
+      current: state.option.tag,
+      parts: state.offer.candidate.parts,
+      warnings: state.offer.candidate.warnings,
+      refusal: state.refusal,
+      markup: state.markup,
+    };
   }
 
   /**
@@ -2081,6 +2247,7 @@ export class StudioEditor {
       literal: el.getAttribute('class') ?? '',
       editable: Boolean(state && !state.refusal && file && state.anchor !== null),
       refusal: state?.refusal ? tr(state.refusal) : undefined,
+      occurrence: this.countTagInDom(el),
     };
     setEditSelection(selection);
     this.publishHistory();
@@ -2412,8 +2579,7 @@ export class StudioEditor {
     const note = warning ? ` — ${tr(warning)}` : '';
     this.setStatus(`${what} ${where} — ${t('status.applying')}`, true);
 
-    await compileAfterEdit(file);
-    const live = await applyLiveUpdate({
+    const live = await compileAndApplyLiveUpdate({
       edited: file,
       page: this.target ?? file,
       pageTag: this.pageTag() ?? '',
@@ -2822,6 +2988,332 @@ export class StudioEditor {
     this.publishSelection(null);
   }
 
+  // --- Adopting a molecule (TASK-102020-adopt-molecules) ---
+
+  /**
+   * Answers the Molecules tab: which group claims the selection, and what the conversion would write.
+   *
+   * Asynchronous and interruptible — the catalog can take a moment on its first read, and the user
+   * can select something else while it does. The answer is dropped when it comes back for an element
+   * that is no longer selected, which is the same rule `showClassPanel` follows.
+   */
+  private async loadAdopt(): Promise<void> {
+    const el = this.selectedEl;
+    if (!el?.isConnected) return;
+
+    this.adopt = null;
+    this.adoptReason = null;
+    this.adoptPhase = 'loading';
+    this.adoptPreviewEl = null;
+    this.renderClassPanel();
+
+    const resolved = await this.resolveAdopt(el);
+    if (this.selectedEl !== el) return;
+    this.adopt = resolved.ok ? resolved.state : null;
+    this.adoptReason = resolved.ok ? null : resolved.reason;
+    this.adoptPhase = 'done';
+    this.renderClassPanel();
+  }
+
+  /**
+   * The whole answer, resolved from the FILE and not from anything cached.
+   *
+   * It runs again right before the write for exactly that reason: between opening the tab and
+   * pressing the button an agent (or the code editor) can rewrite the file, and every offset here
+   * would then point somewhere else.
+   */
+  private async resolveAdopt(el: HTMLElement): Promise<AdoptResolution> {
+    // The element not being findable in the source is NOT "no group claims it": the first is about
+    // this screen's file, the second about the element, and the user acts on them differently.
+    const resolved = this.resolveSlice(el);
+    if (!resolved.ok) return { ok: false, reason: resolved.reason };
+
+    const source = resolved.file.model.model.getValue();
+    const shape = describeElement(source, resolved.tree, resolved.index);
+    if (!shape) return { ok: false, reason: NOT_LOCATED };
+
+    const answer = await adoptOffer(shape, await this.designSystemRules(resolved.file));
+    if (!answer.ok) return { ok: false, reason: answer.reason };
+    const offer = answer.offer;
+
+    // The user's pick wins over the design system's, and survives a re-resolution — otherwise
+    // choosing a molecule and pressing [Adotar] would write the DS's one.
+    const option = offer.options.find((entry) => entry.tag === this.adoptChoice)
+      ?? offer.options.find((entry) => entry.chosen)
+      ?? offer.options[0];
+
+    // What is REPLACED: the selection, or its wrapper when the group lifts (a label around an
+    // input). Resolved through the tree, so the panel can point at the real element.
+    const lifted = offer.candidate.lift > 0;
+    const parent = resolved.tree.elements[shape.index]?.parent ?? -1;
+    if (lifted && parent < 0) return { ok: false, reason: NOT_LOCATED };
+    const index = lifted ? parent : shape.index;
+
+    const target: IAdoptTarget = { tag: option.tag, importPath: option.importPath };
+    const markup = offer.rules.convert(shape, offer.candidate, target);
+
+    return {
+      ok: true,
+      state: {
+        el,
+        file: resolved.file,
+        index,
+        lifted,
+        replacedTag: resolved.tree.elements[index]?.tag ?? shape.tag,
+        offer,
+        option,
+        markup: markup.ok ? markup.markup : undefined,
+        imports: markup.ok ? markup.imports : [],
+        refusal: markup.ok ? undefined : markup.reason,
+      },
+    };
+  }
+
+  /**
+   * The design system this page renders under — the same cascade the generator resolves.
+   *
+   * It is what picks the molecule INSIDE the group (`matchVariant`), so reading it from the same
+   * place is what keeps the studio and the generator from disagreeing. The page's folder carries the
+   * identity, so nothing is asked of the aura state here: that one answers "what the Studio is
+   * pointing at", and this asks "what is on screen".
+   *
+   * With no answer at all the axes stay empty: molecules that declare none still match (they are
+   * wildcards), the rest simply do not, and the list is offered anyway for the user to pick from.
+   */
+  private async designSystemRules(file: IStudioEditTarget): Promise<ResolvedLayoutRules> {
+    const identity = describePageFolder(file.folder);
+    try {
+      const effective = await resolveRulesForPage(
+        file.project,
+        identity.module,
+        file.shortName,
+        identity.layout ?? 1,
+      );
+      return effective.rules;
+    } catch (error) {
+      console.warn('[studioAdopt] could not read the design system of', file.folder, error);
+      return {} as ResolvedLayoutRules;
+    }
+  }
+
+  /**
+   * Mounts the molecule FOR REAL, next to nothing but itself.
+   *
+   * Every other preview of this editor is a class swapped on a live element; this one cannot be: the
+   * tag does not exist in the page's compiled class, and the hot swap is off. What it can do is
+   * import the module — which is what DEFINES the custom element — and build the element with the
+   * content the page would hand it. That is also the proof risk 2 asks for: a tag that is wrong does
+   * not render here, before anything is written, instead of failing silently in the file.
+   */
+  private async previewAdopt(): Promise<void> {
+    const state = this.adopt;
+    if (!state?.markup) return;
+
+    try {
+      await import(state.option.importPath);
+    } catch (error) {
+      this.setStatus(t('panel.adoptPreviewFailed', { error: String(error) }));
+      return;
+    }
+
+    const node = document.createElement(state.option.tag);
+    // Only the LITERAL attributes: a binding is an expression of the page's class and there is
+    // nothing to evaluate it with here. They are the ones that decide the look anyway
+    // (data-variant, data-class, inputType, rows).
+    for (const attribute of readAttributes(state.markup, 0)) {
+      if (attribute.value.kind === 'literal') node.setAttribute(attribute.name, attribute.value.value);
+    }
+
+    // The slots are BUILT, not written as markup: the nodes are cloned from the screen and appended,
+    // so nothing is serialized and re-parsed on the way in (and the panel stays the only place in
+    // this class that produces markup at all).
+    for (const holder of this.previewSlots(state)) node.appendChild(holder);
+
+    this.adoptPreviewEl = node;
+    this.renderClassPanel();
+  }
+
+  /**
+   * The slot holders the preview mounts, filled from the SCREEN.
+   *
+   * The group says where each slot's content comes from and this fills it, so a list is previewed
+   * with its rows and this class still does not know what an option is. Without a declaration it is
+   * the old behaviour, unchanged: the first slot the markup names, with everything that disappears
+   * inside it.
+   */
+  private previewSlots(state: IAdoptState): HTMLElement[] {
+    const declared = state.offer.candidate.previewSlots;
+    // No declaration means the group's content is ONE slot — the first one the markup names, filled
+    // with what disappears. That is the whole of a button's label and of a text field's, and it is
+    // the shape the first two groups were written against.
+    if (!declared?.length) {
+      const slot = /<([A-Z][\w-]*)>/u.exec(state.markup ?? '')?.[1];
+      if (!slot) return [];
+      const holder = document.createElement(slot);
+      for (const child of this.replacedNodes(state)) holder.appendChild(child);
+      return [holder];
+    }
+
+    const holders: HTMLElement[] = [];
+    for (const spec of declared) {
+      if (spec.from === 'replaced') {
+        const holder = document.createElement(spec.slot);
+        for (const child of this.replacedNodes(state)) holder.appendChild(child);
+        if (holder.childNodes.length) holders.push(holder);
+        continue;
+      }
+      // One holder per live child of the CONTROL, carrying its attributes: an `<option value="open">`
+      // becomes an `<Item value="open">` without this class knowing what an option is. The text is
+      // the child's own, which is the point — the source has a binding where the words are.
+      for (const child of Array.from(state.el.children)) {
+        if (child.classList.contains(CONTROL_CLASS)) continue;
+        const holder = document.createElement(spec.slot);
+        for (const attribute of Array.from(child.attributes)) holder.setAttribute(attribute.name, attribute.value);
+        for (const node of Array.from(child.cloneNode(true).childNodes)) holder.appendChild(node);
+        holders.push(holder);
+      }
+    }
+    return holders;
+  }
+
+  /**
+   * What the replaced element SHOWS — the content that goes into the molecule's slot.
+   *
+   * Taken from the screen and not from the source, because the source has a binding where the words
+   * are and the preview has to show words. They are CLONES: the page's own nodes stay where they
+   * are, so a preview that is never confirmed changes nothing. Our own chrome comes out of the
+   * clone, and so does the control itself when the unit is the wrapper — what is left is the label.
+   */
+  private replacedNodes(state: IAdoptState): Node[] {
+    const replaced = state.lifted ? state.el.parentElement : state.el;
+    if (!replaced) return [];
+    const clone = replaced.cloneNode(true) as HTMLElement;
+    for (const node of clone.querySelectorAll(`.se-edit-span, .${CONTROL_CLASS}`)) node.remove();
+    if (state.lifted) for (const node of clone.querySelectorAll('input, textarea, select, button')) node.remove();
+    return Array.from(clone.childNodes);
+  }
+
+  /**
+   * Writes the adoption: the molecule in place of the control, and its import, in ONE write.
+   *
+   * Everything is resolved again here — the tree, the shape, the markup — because the panel's answer
+   * was computed when the tab opened and the file may have changed since. The offsets that reach
+   * `composeAdopt` are always from the source it is about to rewrite.
+   */
+  public async adoptSelected(): Promise<void> {
+    if (this.mode === 'off') return;
+    const el = this.selectedEl;
+    if (!el?.isConnected) {
+      this.setStatus(t('status.gone'));
+      return;
+    }
+    if (this.applying) {
+      this.setStatus(t('status.busy'));
+      return;
+    }
+
+    const resolution = await this.resolveAdopt(el);
+    if (!resolution.ok) {
+      this.setStatus(tr(resolution.reason));
+      return;
+    }
+    const state = resolution.state;
+    if (!state.markup) {
+      this.setStatus(tr(state.refusal ?? ADOPT_NO_TARGET));
+      return;
+    }
+
+    const source = state.file.model.model.getValue();
+    const plan = planAdopt(source, scanTemplateTree(source), state.index, state.markup, state.imports);
+    if (!plan.ok) {
+      this.setStatus(tr(plan.reason));
+      return;
+    }
+    const result = composeAdopt(source, plan);
+    if (!result.ok) {
+      this.setStatus(tr(result.reason));
+      return;
+    }
+
+    this.applying = true;
+    try {
+      const what = t('status.adopted', { tag: state.replacedTag, molecule: state.option.variant });
+      await this.commitSource(state.file, result.source, what);
+      this.history.push({
+        kind: 'adopt',
+        file: state.file,
+        landed: result.landed,
+        markup: state.markup,
+        original: source.slice(plan.slice.start, plan.slice.end),
+        importSpan: result.importSpan,
+        importText: plan.importLine?.text ?? '',
+        what,
+        el: new WeakRef(el),
+      });
+      // The SCREEN cannot follow: the tag is not in the compiled class and the hot swap is off. The
+      // source is what is true, and saying so is the only honest thing to do here.
+      this.setStatus(`${this.statusText} — ${t('status.adoptReload')}`);
+    } finally {
+      this.applying = false;
+    }
+
+    // The control the panel was describing is not in the source any more; keeping it selected would
+    // offer edits that cannot be anchored.
+    this.adopt = null;
+    this.adoptPhase = 'idle';
+    this.adoptChoice = null;
+    this.adoptPreviewEl = null;
+    this.selectedEl = null;
+    this.lastHoveredEl = null;
+    this.hideClassPanel();
+    this.clearOverlay();
+    this.publishSelection(null);
+  }
+
+  /**
+   * Replays an adoption in one direction: the molecule out and the control back, or the other way.
+   *
+   * Both directions revalidate on the TEXT and both are EXACT splices, never a re-plan: re-running
+   * the converter would produce the same markup today and something else after the catalog changes,
+   * and an undo that writes something new is not an undo. The step carries both payloads, so each
+   * direction is the other one's inverse, byte for byte.
+   */
+  private async applyAdoptStep(
+    step: Extract<EditStep, { kind: 'adopt' }>,
+    direction: 'undo' | 'redo',
+  ): Promise<boolean> {
+    const source = step.file.model.model.getValue();
+    const what = t(direction === 'undo' ? 'status.undone' : 'status.redone', { what: step.what });
+
+    if (direction === 'undo') {
+      const back = planUnadopt(source, step);
+      if (!back.ok) return false;
+      await this.commitSource(step.file, back.source, what);
+      // Where the control is now — the address the redo revalidates on.
+      step.landed = { start: back.restored.start, end: back.restored.end };
+      return true;
+    }
+
+    // Redoing: the control has to still be exactly where the undo left it.
+    const at = step.landed.start;
+    if (source.slice(at, at + step.original.length) !== step.original) return false;
+
+    const withMarkup = source.slice(0, at) + step.markup + source.slice(at + step.original.length);
+    // The import goes back only if it is missing again — the undo took it out, but anything else
+    // (another adoption of the same molecule) may have put one back in the meantime.
+    const missing = Boolean(step.importText) && !withMarkup.includes(step.importText.trimEnd());
+    const importAt = Math.min(step.importSpan?.start ?? 0, at);
+    const redone = missing
+      ? withMarkup.slice(0, importAt) + step.importText + withMarkup.slice(importAt)
+      : withMarkup;
+    const shift = missing ? step.importText.length : 0;
+
+    await this.commitSource(step.file, redone, what);
+    step.importSpan = missing ? { start: importAt, end: importAt + step.importText.length } : null;
+    step.landed = { start: at + shift, end: at + shift + step.markup.length };
+    return true;
+  }
+
   /**
    * Replays a slice step in one direction — the undo of a duplication is a removal, and vice versa.
    *
@@ -2950,6 +3442,8 @@ export class StudioEditor {
     }
 
     if (step.kind === 'slice') return this.applySliceStep(step, direction);
+
+    if (step.kind === 'adopt') return this.applyAdoptStep(step, direction);
 
     if (step.kind === 'move') {
       // The EXACT inverse splice, not the opposite move: re-planning would restore the order but not

@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/services/preview/previewTextEditor.ts" enhancement="_blank"/>
 
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
+import { scanTemplateElements } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 
 /**
  * previewTextEditor.ts
@@ -910,35 +911,28 @@ export function replaceComponentTag(
     return { success: false, error: 'Tags must be custom elements (contain a hyphen)' };
   }
 
-  const templateRange = getTemplateRange(source);
-  if (!templateRange) {
-    return { success: false, error: 'Template html`...` not found in render()' };
+  // EVERY html`` template of the file, not the first one of `render()`.
+  //
+  // It used to take `render()`'s first template and search inside it. The generated pages split the
+  // screen into helper methods — the 102047's ticketCatalogue has 25 templates and `render()` holds
+  // only the dispatcher — so a molecule anywhere else was simply not found, and the swap answered
+  // "could not replace" for a tag that was right there. `scanTemplateElements` is the studio's own
+  // scanner: it knows a template from TypeScript (an `Array<string>` in a `${…}` is not an element),
+  // it delimits an open tag past an arrow function's `>`, and it is tested.
+  const elements = scanTemplateElements(source).filter((element) => element.tag === oldTag.toLowerCase());
+  if (elements.length === 0) {
+    return { success: false, error: `Tag "${oldTag}" not found in any html\`\` template of this file` };
   }
 
-  const { start, end } = templateRange;
-  const template = source.substring(start, end);
-
-  // Encontra todas as posições de abertura e fechamento da tag no template
-  const escapedOld = escapeRegex(oldTag);
-  const openRegex = new RegExp(`<${escapedOld}(\\s|>|\\/)`, 'g');
-  const closeRegex = new RegExp(`</${escapedOld}>`, 'g');
-
-  const openMatches: { index: number; length: number; suffix: string }[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = openRegex.exec(template)) !== null) {
-    openMatches.push({ index: m.index, length: m[0].length, suffix: m[1] });
-  }
-
-  const closeMatches: { index: number; length: number }[] = [];
-  while ((m = closeRegex.exec(template)) !== null) {
-    closeMatches.push({ index: m.index, length: m[0].length });
-  }
-
-  if (openMatches.length === 0) {
-    return { success: false, error: `Tag "${oldTag}" not found in template` };
-  }
+  // The NAME is what changes — `<oldTag` becomes `<newTag` and `</oldTag>` becomes `</newTag>`, with
+  // every attribute, binding and child left exactly where they are.
+  const openMatches = elements.map((element) => ({ index: element.openStart, length: oldTag.length + 1 }));
+  const closeMatches = elements
+    .map((element) => ({ index: element.end - (oldTag.length + 3), length: oldTag.length + 3 }))
+    .filter((close) => source.slice(close.index, close.index + close.length) === `</${oldTag}>`);
 
   const totalOccurrences = openMatches.length;
+  const start = 0;
 
   // Determina quais ocorrências trocar
   let targetOpen: typeof openMatches;
@@ -965,7 +959,7 @@ export function replaceComponentTag(
     replacements.push({
       srcStart: start + open.index,
       srcEnd: start + open.index + open.length,
-      replacement: `<${newTag}${open.suffix}`,
+      replacement: `<${newTag}`,
     });
   }
 
@@ -1131,24 +1125,6 @@ function getOccurrenceFromPath(oldTag: string, selectorPath?: string): number {
 
   // Sem nth-of-type → primeira ocorrência
   return 0;
-}
-
-/**
- * Retorna o range (start, end) do conteúdo do template html`...` no render().
- */
-function getTemplateRange(source: string): { start: number; end: number } | null {
-  const renderMatch = source.match(/render\s*\(\s*\)\s*\{/);
-  if (!renderMatch || renderMatch.index === undefined) return null;
-
-  const renderStart = renderMatch.index;
-  const htmlTagIndex = source.indexOf('html`', renderStart);
-  if (htmlTagIndex === -1) return null;
-
-  const templateStart = htmlTagIndex + 5;
-  const templateEnd = findTemplateEnd(source, templateStart);
-  if (templateEnd === -1) return null;
-
-  return { start: templateStart, end: templateEnd };
 }
 
 /**

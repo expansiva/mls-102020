@@ -20,6 +20,18 @@ export interface IAuraEditSelection {
     editable: boolean;
     /** Why it cannot be edited, already translated. */
     refusal?: string;
+    /**
+     * WHICH of the elements with this tag on screen it is, in document order (0-based).
+     *
+     * A tag alone answers "what is selected" and that is enough to SHOW something; it is not enough
+     * to ACT on it, and the genome's molecule knob is the first consumer that acts — swapping a
+     * molecule has to rewrite one occurrence, not the first one it finds. The element itself can
+     * never travel here (this is a projection, and the state manager keeps every value it is handed),
+     * so what travels is its position among its peers.
+     *
+     * -1 when the editor could not tell.
+     */
+    occurrence: number;
 }
 
 /**

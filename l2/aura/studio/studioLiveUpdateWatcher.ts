@@ -151,7 +151,19 @@ export class StudioLiveUpdateWatcher {
     }
     // Not the mounted page nor its shared base — some other file being edited elsewhere in the
     // studio; not ours to react to.
-    if (!edited) return;
+    //
+    // `debug` and not `warn`: this is the common case (any file touched anywhere in the studio lands
+    // here) so it must not shout, but it IS the only trace of a drop. A change made by a studio
+    // SERVICE rather than by the editor — the genome's molecule knob writes the model and lets the
+    // compile pipeline carry it, never calling applyLiveUpdate itself — reaches the running page only
+    // through this method, so "nothing happened and nothing was said" needs somewhere to look.
+    if (!edited) {
+      console.debug('[liveUpdate] change ignored: not the mounted page nor its shared base', {
+        changed: `${ref.project}/${ref.folder}/${ref.shortName}`,
+        page: `${page.project}/${page.folder}/${page.shortName}`,
+      });
+      return;
+    }
 
     // Never swap in broken code — the DOM already shows nothing changed, and the next clean compile
     // fires its own 'statusOrErrorChanged' that will retry this.
@@ -159,7 +171,17 @@ export class StudioLiveUpdateWatcher {
 
     this.applying = true;
     try {
-      await applyLiveUpdate({ edited, page, pageTag });
+      const live = await applyLiveUpdate({ edited, page, pageTag });
+      // THE RESULT USED TO BE THROWN AWAY, and that made every refusal invisible. The editor prints
+      // it on its status strip (studioEditor.ts), but this trigger has no strip — so an honest
+      // refusal ("the edited file registers no element", "reload once to arm") looked exactly like a
+      // silent no-op, which is the one outcome the live update is designed never to produce.
+      if (!live.ok) {
+        console.warn(`[liveUpdate] not applied: ${live.message}`, {
+          edited: edited.page,
+          pageTag,
+        });
+      }
     } finally {
       this.applying = false;
     }

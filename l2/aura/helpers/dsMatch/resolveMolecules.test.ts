@@ -11,6 +11,7 @@ function entry(group: string, variant: string, layoutConfig: Record<string, stri
         project: 102040,
         group, variant,
         tag: `${group.toLowerCase()}--${variant}`,
+        folder: `molecules/${group.toLowerCase()}`,
         layoutConfig,
         objective: `obj-${variant}`,
         description: `desc-${variant}`,

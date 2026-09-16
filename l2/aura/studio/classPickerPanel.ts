@@ -77,6 +77,7 @@ import {
   type IAnimationState,
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
+import { isCoreElementTag } from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
 import { t, tr, type IMessageRef } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 export const CLASS_PICKER_TAG = 'aura--studio--class-picker-102020';
@@ -89,6 +90,22 @@ export const CLASS_PICKER_TAG = 'aura--studio--class-picker-102020';
  * name is in the tooltip, and the hover shows the element itself.
  */
 const CHAIN_LABEL_MAX = 10;
+
+/**
+ * How long the header's tag may be before it is cut.
+ *
+ * More room than a breadcrumb level (it is one item, not nine) and still a hard limit, because the
+ * header is a single flex row with eight icon buttons and a close on it: a molecule tag
+ * (`grouptriggeraction--ml-button-group`, 35 characters) pushed all of them out of the panel. The
+ * whole name is in the tooltip, and the `.less` keeps an ellipsis as the second line of defence — a
+ * cut by character count cannot know the width of the glyphs.
+ */
+const HEAD_TAG_MAX = 16;
+
+/** A label cut to fit, with the ellipsis that says it was cut. The full text goes in a tooltip. */
+function ellipsize(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
 
 /**
  * The two icons of TASK-102020-duplicate-remove.
@@ -232,6 +249,55 @@ export interface IPickerTarget {
   duplicateNotes: IMessageRef[];
 }
 
+/**
+ * One molecule the user may adopt (TASK-102020-adopt-molecules).
+ *
+ * The `tag` is the catalog's, verbatim — the panel never builds one, and the editor writes exactly
+ * what it is handed back.
+ */
+export interface IPickerAdoptOption {
+  tag: string;
+  variant: string;
+  /** First line of the molecule's objective — what tells two siblings of a group apart. */
+  objective: string;
+  /** The one the project's design system resolves for this group. */
+  chosen: boolean;
+}
+
+/**
+ * The Molecules tab, as the editor answers it.
+ *
+ * Everything here is decided BEFORE the gesture, with the real converter: what would be replaced,
+ * what the conversion recognised, what it warns about and why it cannot happen. A tab that offers
+ * [Adotar] is a tab that writes.
+ */
+export interface IPickerAdopt {
+  /** The catalog is 155 files through collabImport: the first opening of the tab pays for it. */
+  loading: boolean;
+  group?: string;
+  why?: IMessageRef;
+  /** The element that would be replaced — `lifted` when it is not the one that was clicked. */
+  replaces?: { tag: string; lifted: boolean };
+  options: IPickerAdoptOption[];
+  /** Tag currently chosen in the list (the DS's, until the user changes it). */
+  current?: string;
+  /** What the converter recognised: the label, the icon, the tone, how many items, the events. */
+  parts?: { label?: string; icon?: string; variant?: string; items?: number; events: Record<string, string> };
+  warnings: IMessageRef[];
+  /** Why [Adotar] is off. Present means the conversion was refused, not that it was not tried. */
+  refusal?: IMessageRef;
+  /** The markup that would be written — shown, because a rewrite of the page should not be blind. */
+  markup?: string;
+  /**
+   * Why there is no group, when there is none.
+   *
+   * "No group claims this element" is one of four possible facts and the only one that is about the
+   * element; the others are about the catalog, the conversion files or this screen's file. Without
+   * this the tab told the user to look at their markup for a problem that was ours.
+   */
+  noneReason?: IMessageRef;
+}
+
 /** What the panel asks the editor to write. */
 export interface IPickerApply {
   literal: string;
@@ -267,8 +333,19 @@ export class ClassPickerPanel extends StateLitElement {
   @property({ attribute: false }) dsRoles: string[] = [];
   @property({ attribute: false }) resolveVar: (cssVar: string) => string = () => '';
   @property({ type: Boolean }) jitLive = false;
+  /** The Molecules tab's answer; absent until the tab is opened (the catalog is not cheap). */
+  @property({ attribute: false }) adopt?: IPickerAdopt;
+  /**
+   * The molecule MOUNTED, for real, by the editor — held as a node and not as markup.
+   *
+   * It is the one preview of this panel that cannot be faked: the tag does not exist in the page's
+   * compiled class, so there is nothing on screen to restyle. Importing the module defines the
+   * element, and what is rendered here is the real thing with the real content — which also proves,
+   * before anything is written, that the tag exists and loads.
+   */
+  @property({ attribute: false }) adoptPreview: HTMLElement | null = null;
 
-  @state() private tab: 'classes' | 'animations' | 'info' = 'classes';
+  @state() private tab: 'classes' | 'animations' | 'info' | 'molecules' = 'classes';
   @state() private screen: AnimationScreen = 'root';
   /** Group whose "custom value" input is open. */
   @state() private customEditing: string | null = null;
@@ -359,6 +436,14 @@ export class ClassPickerPanel extends StateLitElement {
       this.pendingState = {};
       this.roleEditing = null;
     }
+    // A new selection is a new question for the Molecules tab, and the editor only answers when
+    // asked. The trigger is the ABSENCE of an answer and not a changed literal: the editor drops its
+    // answer whenever the selected element changes, and two different elements can carry the same
+    // class attribute. It cannot loop — an answer of "nothing candidates" is still an answer.
+    if (changed.has('target') && this.tab === 'molecules' && !this.adopt) this.openTab('molecules');
+    // The tab the selection just left has to stop being the open one: a molecule has no Molecules
+    // tab, and staying on it would show a panel with no tab highlighted.
+    if (changed.has('target') && this.tab === 'molecules' && !this.isCoreElement) this.tab = 'classes';
     // The arming never survives a render: whatever else changed, the second click has to be a
     // deliberate second click on the same element.
     if (changed.has('target')) this.confirmRemove = false;
@@ -393,7 +478,7 @@ export class ClassPickerPanel extends StateLitElement {
 
     return html`
       <div class="acp-head">
-        <span class="acp-tag">${target.tag}</span>
+        <span class="acp-tag" title=${target.tag}>${ellipsize(target.tag, HEAD_TAG_MAX)}</span>
         ${this.renderScenarioBadge()}
         ${this.moveButton('up')}
         ${this.moveButton('down')}
@@ -411,11 +496,13 @@ export class ClassPickerPanel extends StateLitElement {
       <div class="acp-tabs">
         ${this.tabButton('classes', 'panel.tabClasses')}
         ${this.tabButton('animations', 'panel.tabAnimations')}
+        ${this.isCoreElement ? this.tabButton('molecules', 'panel.tabMolecules') : nothing}
         ${this.tabButton('info', 'panel.tabInfo')}
       </div>
       ${target.refusal ? html`<div class="acp-note acp-refusal">${tr(target.refusal)}</div>` : nothing}
       ${target.warning ? html`<div class="acp-note acp-warning">${tr(target.warning)}</div>` : nothing}
       ${this.tab === 'animations' ? this.renderAnimations() : nothing}
+      ${this.tab === 'molecules' ? this.renderMolecules() : nothing}
       ${this.tab === 'info' ? this.renderInfo() : nothing}
       ${this.tab === 'classes' ? this.renderClasses() : nothing}
     `;
@@ -455,8 +542,7 @@ export class ClassPickerPanel extends StateLitElement {
    * WHICH element this is — the hover — was already there. The classes stay in the tooltip.
    */
   private levelLabel(level: IPickerLevel): string {
-    const tag = level.tag;
-    return tag.length > CHAIN_LABEL_MAX ? `${tag.slice(0, CHAIN_LABEL_MAX)}…` : tag;
+    return ellipsize(level.tag, CHAIN_LABEL_MAX);
   }
 
   /** What the level does, and under it the class attribute the label deliberately does not show. */
@@ -649,9 +735,34 @@ export class ClassPickerPanel extends StateLitElement {
     >${direction === 'undo' ? '\u21B6' : '\u21B7'}</button>`;
   }
 
-  private tabButton(id: 'classes' | 'animations' | 'info', label: string) {
+  private tabButton(id: 'classes' | 'animations' | 'info' | 'molecules', label: string) {
     return html`<button type="button" class="acp-tab ${this.tab === id ? 'acp-active' : ''}"
-      @click=${() => { this.tab = id; this.preview(null); }}>${t(label)}</button>`;
+      @click=${() => { this.tab = id; this.preview(null); this.openTab(id); }}>${t(label)}</button>`;
+  }
+
+  /**
+   * Whether the selection is a CORE html element — the only thing that can be adopted.
+   *
+   * A tag with a hyphen is a custom element by the html spec, which here means a molecule (or some
+   * other web component). Adopting one would be swapping a molecule for a molecule: a different
+   * operation, with a different question (which VARIANT of the group), and that one already has a
+   * home in the genome's molecule knob. So the tab is not disabled for those — it is not there,
+   * because an absent tab asks nothing.
+   */
+  private get isCoreElement(): boolean {
+    return isCoreElementTag(this.target?.tag ?? '');
+  }
+
+  /**
+   * Opening the Molecules tab is what ASKS for the catalog.
+   *
+   * Never on arming the editor and never on selecting an element: `buildMoleculeCatalog` imports ~155
+   * `.defs.ts` through collabImport. It is cached afterwards, but the first read has to be paid by
+   * someone who asked for it.
+   */
+  private openTab(id: 'classes' | 'animations' | 'info' | 'molecules'): void {
+    if (id !== 'molecules') return;
+    this.dispatchEvent(new CustomEvent('picker-adopt-open', { bubbles: true, composed: true }));
   }
 
   /**
@@ -1001,6 +1112,120 @@ export class ClassPickerPanel extends StateLitElement {
    * render time rather than subscribed — this tab is only on screen while it is open, and the panel
    * re-renders on every selection and every edit.
    */
+  // ─── Molecules tab (TASK-102020-adopt-molecules) ───────────────────────────
+
+  /**
+   * The one operation that changes the page's VOCABULARY, and the only tab that shows the write
+   * before it happens.
+   *
+   * The order on screen is the order of the decision: what claims this element, what would be
+   * replaced, which molecule, what the conversion understood, what it warns about — and only then
+   * the button. The refusal takes the place of the button rather than sitting next to a disabled one,
+   * because "why not" is the whole answer when the answer is no.
+   */
+  private renderMolecules() {
+    const adopt = this.adopt;
+    if (!adopt || adopt.loading) return html`<div class="acp-note">${t('panel.adoptLoading')}</div>`;
+    if (!adopt.group) {
+      return html`<div class="acp-note">${adopt.noneReason ? tr(adopt.noneReason) : t('panel.adoptNone')}</div>`;
+    }
+
+    const editable = this.target?.editable ?? false;
+    return html`<div class="acp-rows">
+      <div class="acp-block">
+        <span class="acp-label">${t('panel.adoptGroup')}</span>
+        <span class="acp-adopt-group">${adopt.group}</span>
+        ${adopt.why ? html`<span class="acp-reason">${tr(adopt.why)}</span>` : nothing}
+        ${adopt.replaces ? html`<span class="acp-reason acp-adopt-replaces"
+          @mouseenter=${() => this.emitLevelHover(this.replacedLevel())}
+          @mouseleave=${() => this.emitLevelHover(null)}
+        >${t(adopt.replaces.lifted ? 'panel.adoptReplaces' : 'panel.adoptReplacesSelf', { tag: adopt.replaces.tag })}</span>` : nothing}
+      </div>
+
+      <div class="acp-block">
+        <span class="acp-label">${t('panel.adoptMolecule')}</span>
+        <div class="acp-chips">
+          ${adopt.options.map((option) => html`<button type="button"
+            class="acp-chip ${option.tag === adopt.current ? 'acp-current' : ''}"
+            title=${this.optionTitle(option)}
+            @click=${() => this.selectMolecule(option.tag)}
+          >${option.chosen ? html`<span class="acp-star">★</span> ` : nothing}${option.variant}</button>`)}
+        </div>
+      </div>
+
+      ${adopt.parts ? this.renderAdoptParts(adopt.parts) : nothing}
+      ${adopt.warnings.map((warning) => html`<div class="acp-note acp-warning">${tr(warning)}</div>`)}
+      ${adopt.markup ? html`<div class="acp-block">
+        <code class="acp-adopt-markup">${adopt.markup}</code>
+      </div>` : nothing}
+
+      ${adopt.refusal
+    ? html`<div class="acp-note acp-refusal">${tr(adopt.refusal)}</div>`
+    : html`<div class="acp-block acp-adopt-actions">
+        <button type="button" class="acp-chip" ?disabled=${!editable}
+          @click=${this.emitAdoptPreview}>${t('panel.adoptPreview')}</button>
+        <button type="button" class="acp-chip acp-adopt-go" ?disabled=${!editable}
+          @click=${this.emitAdopt}>${t('panel.adoptApply')}</button>
+        <span class="acp-reason">${t('panel.adoptPreviewHint')}</span>
+      </div>`}
+
+      ${this.adoptPreview ? html`<div class="acp-adopt-stage">
+        <span class="acp-label">${t('panel.adoptPreviewNext')}</span>
+        ${this.adoptPreview}
+      </div>` : nothing}
+    </div>`;
+  }
+
+  /**
+   * The tooltip of a molecule chip: its tag, what it is for, and whether the design system picked it.
+   *
+   * The chip itself shows only the short name (`ml-button-standard`), because six of them have to fit
+   * in 340px — everything that tells two siblings of a group apart lives here.
+   */
+  private optionTitle(option: IPickerAdoptOption): string {
+    const lines = [option.tag];
+    if (option.objective) lines.push(option.objective);
+    if (option.chosen) lines.push(t('panel.adoptChosen'));
+    return lines.join('\n');
+  }
+
+  /** What the conversion understood, as rows — the only place the user can check it before writing. */
+  private renderAdoptParts(parts: NonNullable<IPickerAdopt['parts']>) {
+    const events = Object.entries(parts.events);
+    if (!parts.label && !parts.icon && !parts.variant && !parts.items && !events.length) return nothing;
+    return html`<div class="acp-block">
+      ${parts.variant ? this.infoRow('panel.adoptVariant', parts.variant) : nothing}
+      ${parts.label ? this.infoRow('panel.adoptLabel', parts.label) : nothing}
+      ${parts.icon ? this.infoRow('panel.adoptIcon', parts.icon) : nothing}
+      ${parts.items ? this.infoRow('panel.adoptItems', String(parts.items)) : nothing}
+      ${events.length ? this.infoRow('panel.adoptEvents', events.map(([name, value]) => `${name}=${value}`).join(' · ')) : nothing}
+    </div>`;
+  }
+
+  /**
+   * The level the breadcrumb should highlight while the pointer is on "what will be replaced".
+   *
+   * The chain ends at the selection, so one level up is the last but one — the same index the `Esc`
+   * tooltip uses. It is how a `lift: 1` stops being a sentence and becomes the element on screen.
+   */
+  private replacedLevel(): number | null {
+    const levels = this.target?.levels ?? [];
+    if (!this.adopt?.replaces?.lifted || levels.length < 2) return null;
+    return levels[levels.length - 2].index;
+  }
+
+  private selectMolecule(tag: string): void {
+    this.dispatchEvent(new CustomEvent<string>('picker-adopt-select', { detail: tag, bubbles: true, composed: true }));
+  }
+
+  private emitAdoptPreview = (): void => {
+    this.dispatchEvent(new CustomEvent('picker-adopt-preview', { bubbles: true, composed: true }));
+  };
+
+  private emitAdopt = (): void => {
+    this.dispatchEvent(new CustomEvent('picker-adopt', { bubbles: true, composed: true }));
+  };
+
   private renderInfo() {
     const target = this.target;
     const aura = getAuraState();
