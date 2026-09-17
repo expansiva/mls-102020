@@ -13,13 +13,20 @@ Create a visual showcase page for a molecule group that presents every component
 # Structure
 
 ## index.ts
-A Lit Web Component extending StateLitElement, composed of three mandatory sections each implemented as a private method returning TemplateResult.
+A Lit Web Component extending StateLitElement. Three PARTS are mandatory, each implemented as a private method
+returning TemplateResult: the hero, the showcase and the reference table. The hero and the reference table are ONE
+method each. The showcase is one method **per family** (see "Organize by what differs") — a group whose molecules
+separate in three different ways has three showcase methods, and render() calls them in order.
 
 ## index.html
 A single line containing only the custom element tag:
 <molecules--{groupname}--index-{actualProjectId}></molecules--{groupname}--index-{actualProjectId}>
 
-# Section layouts (follow exactly — do not invent alternative structures)
+# Section layouts
+
+The CHROME is fixed: copy the hero, the card shell, the accent colors and the reference table exactly as given.
+The ARRANGEMENT is yours — how many showcase sections there are, what goes in each one, and how the cards sit
+inside them is decided by what SEPARATES the molecules of this group. Never repeat one layout N times by default.
 
 ## renderHero()
 
@@ -37,41 +44,92 @@ A single line containing only the custom element tag:
 </header>
 \`\`\`
 
-## renderShowcaseCards()
+## The showcase sections — organize by what differs
+
+Before writing a single card, answer: **what separates these molecules from each other?** The group
+contract is the SAME for all of them, so the contract is never the answer. Sort them into families:
+
+| the family differs by | how you make it visible |
+|---|---|
+| **finish** — same API, different density or ornament | put them SIDE BY SIDE with the SAME data, in a grid. Stacked in one column nobody can compare them |
+| **space** — the molecule changes shape by itself | give it its own container, and say in the card what the real rule is. Read the molecule's \`.less\`: \`@container\` reacts to the container, \`@media\` reacts to the WINDOW, and a card cannot fake the second one |
+| **the shape of the data** — it groups, pivots, totals | give that family its OWN dataset. A grouping needs a column with REPEATED values; a total needs two numeric columns; a pivot needs an already-aggregated cross-tab |
+| **the gesture** — it opens a record, and each one opens it elsewhere | these are the most confusable in any group. Show them ALREADY usable and name the gesture in the card: which control opens it, and where the detail appears |
+| **live content** — the slot accepts a component, not text | put a real molecule inside the slot. This is the only family where \`is-editing\` reaches anything |
+
+A molecule with NO exclusive property, slot or event is not a mistake — it is the signal that it
+belongs to one of the first four families, and that a static card will never tell it apart from its
+siblings.
+
+Give each family its own section with a \`<h2>\` naming what it separates, and a one-line subtitle
+saying what the reader should try. One section for the whole group is correct ONLY when the group
+really has one family.
+
+## The card shell (fixed — copy verbatim)
 
 \`\`\`html
 <section class="bg-slate-50 dark:bg-slate-950 px-8 py-12 border-b border-slate-200 dark:border-slate-700">
-  <div class="max-w-2xl mx-auto flex flex-col gap-5">
+  <div class="max-w-6xl mx-auto">
+    <h2 class="text-2xl font-bold text-slate-900 dark:text-slate-50">{what this family separates}</h2>
+    <p class="mt-2 mb-8 text-sm text-slate-500 dark:text-slate-400 max-w-3xl">{what to try, in one line}</p>
 
-    <!-- Repeat this block for each card: -->
-    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-      <div class="h-1 bg-{color}-500 rounded-t-2xl"></div>
-      <div class="p-6">
-        <div class="flex items-center justify-between mb-1">
-          <p class="text-sm font-bold text-slate-900 dark:text-slate-50">Display Name</p>
-          <code class="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded">tag-name</code>
-        </div>
-        <p class="text-xs text-slate-400 mb-5">One-line context description</p>
-        <{groupname}--{component} name="card-{x}" .value=\${this.cardX} .isEditing=\${true}
-          @change=\${(e: CustomEvent) => { this.cardX = e.detail.value; }}
-          {the molecule's own properties and event bindings, from the group usage skill's Properties and Events tables}>
-          <!-- Populate all available slot tags with realistic content (Label, Helper, Item, etc.) -->
-        </{groupname}--{component}>
+    <!-- one or more cards, laid out as the family requires: grid for a comparison,
+         a narrow container for a space demo, a single wide card for a rich one -->
+    <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
+      <div class="flex items-center justify-between gap-3 mb-1">
+        <p class="text-sm font-bold text-slate-900 dark:text-slate-50">Display Name</p>
+        <code class="text-[11px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded">tag-name</code>
       </div>
+      <p class="text-xs text-slate-400 mb-4">{what THIS molecule does that its siblings do not}</p>
+      <{groupname}--{component} ...>
+        <!-- realistic content in every slot tag the molecule declares -->
+      </{groupname}--{component}>
+      {the last-event line — see below}
     </div>
 
   </div>
 </section>
 \`\`\`
 
-Accent bar colors rotate through: violet, emerald, amber, rose, sky, indigo, purple, teal, orange, pink — one distinct color per card.
-A group may show the same component more than once when different configurations deserve separate illustration.
+Accent bar colors rotate through: violet, emerald, amber, rose, sky, indigo, purple, teal, orange,
+pink. A group may show the same component more than once when different configurations deserve
+separate illustration.
 
-The attributes shown above are the showcase ENVELOPE — every card has them. They are NOT the molecule's
-contract. Read the group usage skill's **Properties** and **Events** tables and add those on top: the
-tone/variant attribute, the sizes, the molecule's own events. A card that carries only the envelope
-demonstrates nothing about the molecule. Measured on a real run: a showcase for a button group shipped
-with no \`data-variant\` on any card, so all three instances rendered in the default tone.
+## Wire the contract, not the envelope
+
+\`name\`, \`.value\` and \`@change\` are the ENVELOPE — every card has them and they prove nothing. On top
+of that, each card MUST:
+
+1. **bind every event the molecule emits.** Read them from the molecule's own file
+   (\`dispatchEvent(new CustomEvent('x'\`, and any \`emit('x'\` helper), not only from the group contract —
+   a group table lists what the GROUP emits, and a single molecule often emits more;
+2. **set the attributes that turn its feature ON.** Many are read with \`hasAttribute(...)\` inside the
+   molecule and appear in no contract table: without them the feature renders as nothing and the card
+   looks like every other card. Measured: a grouping table with no \`groupable\` on any \`<TableHead>\`
+   renders an EMPTY group selector; a table with \`showRowTotal\` unset shows no totals; a record form
+   whose rows carry no \`open\` action can never open the form. Grep the molecule for \`hasAttribute(\`
+   and for its boolean properties, and switch on what defines it;
+3. **show the last event received**, so the reader sees the wiring work:
+
+\`\`\`html
+<p class="mt-3 text-[11px] font-mono text-slate-400 dark:text-slate-500">
+  último evento: <span class="text-slate-600 dark:text-slate-300">\${this.lastEvent['card-x']}</span>
+</p>
+\`\`\`
+
+with one handler that records \`e.type\` and \`e.detail\` into a \`@state()\` map. Read the value from
+**\`e.detail\`**, never from \`e.target.value\`: the molecule settles \`detail\` on every event, and
+\`target.value\` is stale for any event that is not a confirmed change.
+
+Measured on a real run: a showcase whose 13 cards each carried only the envelope demonstrated 2 of the
+group's 34 contract items, and 1 of the 39 events the library emits.
+
+## The data
+
+One dataset per NEED, declared as a const above the class — not one dataset for the page. A set that
+suits a flat listing does not suit a grouping (it needs repeated values), a total (two numeric
+columns), a pivot (an aggregated cross-tab) or pagination (more rows than a page). Keep them small and
+realistic, and reuse one across a family whose whole point is comparing the SAME data.
 
 ## renderReferenceTable()
 
@@ -143,13 +201,16 @@ Every distinct component in the group must appear as a column.
   - String values: attribute binding   value="\${this.cardX}"
   - Boolean / number / null values: property binding   .value=\${this.cardX}
 - Separate sections with 80-char section banners: // =========================================================================== SECTION NAME
-- Compose all three sections in render() inside a single <div class="font-sans min-h-screen">
+- Compose the hero, every showcase section and the reference table in render(), in order, inside a single <div class="font-sans min-h-screen">
 
 # Constraints
 - index.ts file header: /// <mls fileReference="_actualProjectId_/l2/molecules/{groupname}/index.ts" enhancement="_102020_/l2/enhancementAura"/>
   (groupname is lowercase in the fileReference path)
-- All three sections (Hero, Showcase Cards, Reference Table) are mandatory; none may be omitted
-- Every live showcase instance must receive .isEditing=\${true} and have realistic slot content for all available slot tags
+- The hero, at least one showcase section and the reference table are mandatory; none may be omitted
+- Every live showcase instance must have realistic slot content for all available slot tags
+- Do NOT pass .isEditing=\${true} by default. \`is-editing\` only reaches a WEB COMPONENT inside the slot — on
+  plain text it does nothing. Measured: a showcase shipped it on all 13 cards and it was decorative in every one.
+  Pass it only where the slot content IS a molecule, and say so in that card's description
 - Do not hardcode hex colors; use only Tailwind utility classes
 
 # Notes

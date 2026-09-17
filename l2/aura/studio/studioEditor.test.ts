@@ -42,8 +42,15 @@ test('the local write is still there, and it is the model + IndexedDB pair', () 
   assert.equal(code.filter((line) => line.includes('persistLocalEdit(')).length, 2, 'text edit and class edit');
   // The model is the source of truth; the local copy is what a reload reads.
   assert.equal(code.some((line) => line.includes('pushEditOperations')), true);
-  // And the compile stays: it feeds the live update and the service worker cache.
-  assert.equal(code.some((line) => line.includes('compileAfterEdit(')), true);
+  // And the compile stays: it feeds the live update and the service worker cache. It moved BEHIND
+  // `compileAndApplyLiveUpdate` — compile-then-apply is one gesture, and having it behind one name is
+  // what stopped the genome's molecule knob from inventing a third variation of the same two steps.
+  assert.equal(code.some((line) => line.includes('compileAndApplyLiveUpdate(')), true);
+  assert.equal(
+    code.some((line) => line.includes('compileAfterEdit(')),
+    false,
+    'the editor must not compile on its own any more — the pair is what every trigger shares',
+  );
 });
 
 test('every edit says it is not saved yet', () => {

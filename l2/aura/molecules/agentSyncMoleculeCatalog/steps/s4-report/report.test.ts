@@ -10,6 +10,7 @@ const INPUT: SyRunInput = {
   savedAt: '2026-08-25T00:00:00.000Z',
   runKey: 'sync-20260825t000000',
   mentionRaw: '',
+  projectTarget: 102040,
   wantsAll: true,
   includeIndexTsRequested: false,
   matchedGroups: ['groupEnterNumber'],
@@ -62,6 +63,7 @@ function baseFacts(overrides: Partial<Parameters<typeof buildSyRunReport>[0]> = 
     savedAt: '2026-08-25T00:00:00.000Z',
     runKey: 'sync-20260825t000000',
     project: 102040,
+    activeProject: 102040,
     input: INPUT,
     projectArtifact: PROJECT_ARTIFACT,
     groupArtifacts: [GROUP_ARTIFACT],
@@ -187,7 +189,7 @@ void test('a group whose s1 step left no artifact is not counted as written (mis
 // summary is the only channel that reaches the human.
 void test('a refused run names the reason AND the group names the project accepts', () => {
   const refused: SyRunInput = { ...INPUT, matchedGroups: [], indexTsMigrationGroups: [], unknownGroups: ['groupEnterDate'], refusal: "grupo(s) desconhecido(s): groupEnterDate" };
-  const report = buildSyRunReport({ savedAt: '2026-08-26T00:00:00.000Z', runKey: 'sync-x', project: 102053, input: refused, projectArtifact: null, groupArtifacts: [], indexTsArtifacts: [] });
+  const report = buildSyRunReport({ savedAt: '2026-08-26T00:00:00.000Z', runKey: 'sync-x', project: 102053, activeProject: 102053, input: refused, projectArtifact: null, groupArtifacts: [], indexTsArtifacts: [] });
 
   assert.equal(report.refusal, 'grupo(s) desconhecido(s): groupEnterDate');
   assert.deepEqual(report.validGroups, ['groupEnterNumber']);
@@ -200,8 +202,19 @@ void test('a refused run names the reason AND the group names the project accept
   assert.match(summary, /Nenhum arquivo foi escrito/);
 });
 
+void test('projectTarget: the summary names both projects only when they differ', () => {
+  const same = buildSyRunReport(baseFacts());
+  assert.doesNotMatch(renderSyRunSummary(same), /projectTarget/);
+
+  const crossProject = buildSyRunReport(baseFacts({ project: 102040, activeProject: 102053 }));
+  const summary = renderSyRunSummary(crossProject);
+  assert.match(summary, /projectTarget/);
+  assert.match(summary, /gravado no projeto 102040/);
+  assert.match(summary, /projeto 102053/);
+});
+
 void test('a normal run carries no refusal and still lists the valid group names', () => {
-  const report = buildSyRunReport({ savedAt: '2026-08-26T00:00:00.000Z', runKey: 'sync-y', project: 102053, input: INPUT, projectArtifact: null, groupArtifacts: [], indexTsArtifacts: [] });
+  const report = buildSyRunReport({ savedAt: '2026-08-26T00:00:00.000Z', runKey: 'sync-y', project: 102053, activeProject: 102053, input: INPUT, projectArtifact: null, groupArtifacts: [], indexTsArtifacts: [] });
   assert.equal(report.refusal, null);
   assert.deepEqual(report.validGroups, ['groupEnterNumber']);
   assert.doesNotMatch(renderSyRunSummary(report), /Nada foi gerado/);

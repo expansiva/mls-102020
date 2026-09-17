@@ -23,6 +23,24 @@ import {
   utilityOptions,
   type AnimationScreen,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
+import {
+  ADOPT_NO_MOLECULE,
+  ADOPT_NO_TARGET,
+  ADOPT_STALE,
+  ADOPT_UNCLOSED,
+  adoptUnknownAttributes,
+  describeElement,
+} from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
+import {
+  ADOPT_NO_CANDIDATE,
+  ADOPT_NO_CATALOG,
+  ADOPT_NO_GROUP_FILES,
+  ADOPT_NO_GROUP_MOLECULE,
+} from '/_102020_/l2/aura/studio/studioAdoptCatalog.js';
+import { scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
+import * as adoptTriggerAction from '/_102020_/l2/aura/molecules/skills/groupTriggerAction/adopt.js';
+import * as adoptEnterText from '/_102020_/l2/aura/molecules/skills/groupEnterText/adopt.js';
+import * as adoptSelectOne from '/_102020_/l2/aura/molecules/skills/groupSelectOne/adopt.js';
 import { messageIds, t } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 const STUDIO_DIR = fileURLToPath(new URL('.', import.meta.url));
@@ -92,6 +110,50 @@ function idsFromCore(): string[] {
     add(utilityOptions(token).reason?.id);
   }
 
+  // Adopting a molecule: the core's refusals, and every id the two hand-written conversion files can
+  // produce. The group files are the point of this one — they live OUTSIDE this folder, so nothing
+  // else here would notice a sentence they ask for and the catalog never heard of.
+  for (const ref of [ADOPT_NO_TARGET, ADOPT_UNCLOSED, ADOPT_STALE, ADOPT_NO_MOLECULE, adoptUnknownAttributes(['x']),
+    // The four sentences of "no offer": they are constants of the runtime half, so nothing else here
+    // would notice one of them pointing at an id the catalog never heard of.
+    ADOPT_NO_CATALOG, ADOPT_NO_GROUP_FILES, ADOPT_NO_GROUP_MOLECULE, ADOPT_NO_CANDIDATE]) {
+    add(ref.id);
+  }
+  for (const markup of [
+    '<button class="p-2 bg-[var(--button-danger-bg,#dc2626)]" @click=${this.go}>x</button>',
+    '<button class="p-2"><span>x</span></button>',
+    '<button class="p-2" @dblclick=${this.go}>x</button>',
+    '<button class="p-2"><span @click=${this.go}>x</span></button>',
+    '<label class="b">t<input .value=${this.v}></label>',
+    '<label class="b">t<input .value=${this.a}><input .value=${this.b}></label>',
+    '<input class="p-2" step="1" .value=${this.v}>',
+    '<label class="b">t<select .value=${this.v} @change=${this.go}><option value="">c</option></select></label>',
+    '<select class="p-2" @change=${this.go}><option value="a">A</option>'
+      + '${this.rows.map((row) => html`<option value=${row.id}>${row.name}</option>`)}</select>',
+    '<select class="p-2" @input=${this.go}><option value="a">A</option></select>',
+    '<select class="p-2"><option>A</option></select>',
+    '<select class="p-2"><optgroup label="g"><option value="a">A</option></optgroup></select>',
+    '<select class="p-2"><div>${this.rows}</div></select>',
+    '<select class="p-2"></select>',
+    '<select class="p-2"><option value="a"><b @click=${this.go}>A</b></option></select>',
+  ]) {
+    const source = `class X { render() { return html\`<div>${markup}</div>\`; } }`;
+    const tree = scanTemplateTree(source);
+    for (const [index, element] of tree.elements.entries()) {
+      if (!['button', 'input', 'textarea', 'select'].includes(element.tag)) continue;
+      const shape = describeElement(source, tree, index);
+      if (!shape) continue;
+      for (const rules of [adoptTriggerAction, adoptEnterText, adoptSelectOne]) {
+        const candidate = rules.candidate(shape);
+        if (!candidate) continue;
+        add(candidate.why.id);
+        for (const warning of candidate.warnings) add(warning.id);
+        const converted = rules.convert(shape, candidate, { tag: 'x--y', importPath: '/x.js' });
+        if (!converted.ok) add(converted.reason.id);
+      }
+    }
+  }
+
   return [...ids];
 }
 
@@ -99,8 +161,16 @@ test('every id the core can produce has words in the catalog', () => {
   // The compiler already guarantees pt and en carry the SAME keys (message_en is typed as typeof
   // message_pt). What it cannot see is an id the code invents and the catalog never heard of — that
   // one would render as `prop.whatever` on screen.
-  const missing = idsFromCore().filter((id) => !CATALOG.has(id));
-  assert.deepEqual(missing, [], 'ids with no entry in the catalog');
+  const ids = idsFromCore();
+  assert.deepEqual(ids.filter((id) => !CATALOG.has(id)), [], 'ids with no entry in the catalog');
+  // The list has to actually REACH the conversion files: a loop that produced nothing would pass the
+  // assertion above while saying nothing at all.
+  for (const id of ['adopt.whyTriggerAction', 'adopt.whyEnterTextLabel', 'reason.adoptSlotBindings',
+    'reason.adoptSharedLabel', 'reason.adoptUnknownAttr', 'adopt.whySelectOne',
+    'adopt.whySelectOneLabel', 'adopt.warnSelectShape', 'reason.adoptSelectGroups',
+    'reason.adoptSelectChildren', 'reason.adoptSelectItemValue', 'reason.adoptSelectNoItems']) {
+    assert.equal(ids.includes(id), true, `the scan reached ${id}`);
+  }
 });
 
 test('every id the PANEL asks for has words too', () => {

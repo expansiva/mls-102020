@@ -20,6 +20,8 @@ import {
   nmDefsFile,
   nmDestProject,
   nmFileExists,
+  nmLessFile,
+  NmFileInfo,
   nmTsFile,
   parseMaybeJson,
   readJsonArtifact,
@@ -66,9 +68,35 @@ import {
   syScanGroupMoleculeShortNames,
 } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syFs.js';
 import { runSyCreateIndexTsGate } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/steps/s3-indexts/createGate.js';
+import {
+  SyGroupDifferentiators,
+  syGroupDifferentiators,
+  syRenderDifferentiators,
+} from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syDifferentiators.js';
 import { skill as indexGroupPageSkill } from '/_102020_/l2/aura/molecules/skills/indexGroupPage.js';
 
 const AGENT_NAME = 'agentSyIndexTs';
+
+/**
+ * What separates the group's molecules from each other, read from their own files.
+ *
+ * ⚠️ The creation prompt used to carry only the SHORT NAMES plus the GROUP contract — identical for
+ * every sibling by construction — so the model had nothing to tell them apart with, and wrote one card
+ * per molecule, all the same. Measured 2026-09-14 on groupViewTable: 13 identical cards, 2 of the
+ * group's 34 contract items demonstrated, 1 of the library's 39 events. This reads the `.ts` (events,
+ * slots, properties, on-switches, `action` verbs), the `.less` (does it reshape by container or by
+ * window?) and the `.defs.ts` (its objective). No LLM: it is grep over files already on disk.
+ */
+async function loadGroupDifferentiators(project: number, folder: string, shortNames: string[]): Promise<SyGroupDifferentiators> {
+  const at = (info: NmFileInfo): NmFileInfo => ({ ...info, project });
+  const sources = await Promise.all(shortNames.map(async shortName => ({
+    shortName,
+    ts: await readStorText(at(nmTsFile(folder, shortName))),
+    less: await readStorText(at(nmLessFile(folder, shortName))),
+    defs: await readStorText(at(nmDefsFile(folder, shortName))),
+  })));
+  return syGroupDifferentiators(sources);
+}
 const TOOL_NAME = 'submitGroupIndex';
 
 export function createAgent(): IAgentAsync {
@@ -91,6 +119,8 @@ interface SyIndexTsStepArgs {
   mode: 'migrate' | 'create';
   /** Set only for a G4 (regeneration) group — how many molecules the CURRENT page doesn't show. */
   regenerationMissingCount?: number;
+  /** The project this run operates on. Absent (older runs) or falsy means the active project. */
+  projectTarget?: number;
 }
 
 function parseGroupArg(prompt: unknown): SyIndexTsStepArgs | null {
@@ -107,6 +137,7 @@ function parseGroupArg(prompt: unknown): SyIndexTsStepArgs | null {
       usageContract: typeof parsed.usageContract === 'string' ? parsed.usageContract : '',
       mode,
       ...(typeof parsed.regenerationMissingCount === 'number' ? { regenerationMissingCount: parsed.regenerationMissingCount } : {}),
+      ...(typeof parsed.projectTarget === 'number' ? { projectTarget: parsed.projectTarget } : {}),
     };
   } catch {
     return null;
@@ -129,6 +160,7 @@ async function beforePromptStep(
   const runKey = stepArgs.runKey;
   const canonical = groupArgs.group;
   const folder = syGroupFolder(canonical);
+  const project = groupArgs.projectTarget || nmDestProject();
 
   // ⚠️ MODE COMES FROM THE ROOT, NEVER RE-DERIVED FROM WHETHER index.ts EXISTS ON DISK (G4 the brief §3.1).
   // The old rule ("exists -> migrate") broke two ways: a G4 group's file DOES exist (migration would be
@@ -137,8 +169,8 @@ async function beforePromptStep(
   // the root already knows which trigger fired and hands the mode down explicitly, both problems are the
   // same fix: trust groupArgs.mode, not nmFileExists.
   if (groupArgs.mode === 'migrate') {
-    const indexTsInfo = nmGroupIndexFile(folder, '.ts');
-    return runMigration(context, parentStep, step, hookSequential, runKey, canonical, folder, indexTsInfo);
+    const indexTsInfo: NmFileInfo = { ...nmGroupIndexFile(folder, '.ts'), project };
+    return runMigration(context, parentStep, step, hookSequential, runKey, canonical, folder, project, indexTsInfo);
   }
 
   return buildCreationPromptReady(context, parentStep, step, hookSequential, runKey, canonical, folder, groupArgs, stepArgs.retryAttempt || 1, stepArgs.retryContext || '');
@@ -173,12 +205,19 @@ async function runMigration(
   runKey: string,
   canonical: string,
   folder: string,
-  indexTsInfo: ReturnType<typeof nmGroupIndexFile>,
+  project: number,
+  indexTsInfo: NmFileInfo,
 ): Promise<mls.msg.AgentIntent[]> {
   const source = await readStorText(indexTsInfo, true);
   // The group's own level-2 file, by ABSOLUTE path — the house convention for every module in l2, and
   // the reason the first build's relative './index.defs' did not resolve in the Studio.
-  const indexDefsReference = `/_${nmDestProject()}_/l2/molecules/${folder}/index.defs.js`;
+  //
+  // ⚠️ THIS HAS TO BE THE TARGET PROJECT, NOT nmDestProject(). index.defs.ts lives where the group's
+  // files were written (`project`), which may differ from the active project running this agent — using
+  // the active project here would generate a page that imports index.defs.js from where the file is
+  // NOT, a failure that only surfaces later, in the browser, as a silent 404 (see helpers/syFs.ts
+  // syPublishToCache for the same class of bug).
+  const indexDefsReference = `/_${project}_/l2/molecules/${folder}/index.defs.js`;
   const result = syMigrateIndexTs(source, SY_SHARED_TABLE_IMPORT, indexDefsReference);
 
   const savedAt = new Date().toISOString();
@@ -236,9 +275,9 @@ async function buildCreationPromptReady(
   retryContext: string,
 ): Promise<mls.msg.AgentIntent[]> {
   if (!context.task) throw new Error(`[${AGENT_NAME}] task invalid`);
-  const project = nmDestProject();
+  const project = groupArgs.projectTarget || nmDestProject();
 
-  const moleculeShortNames = syScanGroupMoleculeShortNames(folder);
+  const moleculeShortNames = syScanGroupMoleculeShortNames(project, folder);
   if (!moleculeShortNames.length) {
     return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `[${AGENT_NAME}] no molecule files found under molecules/${folder}`)];
   }
@@ -249,6 +288,7 @@ async function buildCreationPromptReady(
   if (!isRecord(schema)) throw new Error(`[${AGENT_NAME}] invalid s3-indexts-create schema`);
 
   const groupUsageSkill = await loadGroupUsageSkill(groupArgs.usageContract);
+  const differentiators = await loadGroupDifferentiators(project, folder, moleculeShortNames);
 
   const indexTag = syIndexTag(folder, project);
   const headerRef = syHeaderRef(folder, project);
@@ -263,6 +303,7 @@ async function buildCreationPromptReady(
     .split('{{indexDefsReference}}').join(indexDefsReference)
     .split('{{sharedTableReference}}').join(SY_SHARED_TABLE_IMPORT)
     .split('{{groupUsageSkill}}').join(groupUsageSkill)
+    .split('{{moleculeDifferentiators}}').join(syRenderDifferentiators(differentiators))
     + `\n\n${buildVToolInstruction(TOOL_NAME, 'the group cannot be showcased with the given context')}`;
 
   const previousAttempt = await readPreviousCreationAttempt(runKey, folder, attempt);
@@ -282,6 +323,7 @@ async function buildCreationPromptReady(
       usageContract: groupArgs.usageContract,
       mode: 'create',
       ...(groupArgs.regenerationMissingCount !== undefined ? { regenerationMissingCount: groupArgs.regenerationMissingCount } : {}),
+      ...(groupArgs.projectTarget ? { projectTarget: groupArgs.projectTarget } : {}),
     }),
     messageId: context.message.orderAt,
     threadId: context.message.threadId,
@@ -306,8 +348,8 @@ async function finishCreation(
 ): Promise<mls.msg.AgentIntent[]> {
   const canonical = groupArgs.group;
   const folder = syGroupFolder(canonical);
-  const project = nmDestProject();
-  const indexTsInfo = nmGroupIndexFile(folder, '.ts');
+  const project = groupArgs.projectTarget || nmDestProject();
+  const indexTsInfo: NmFileInfo = { ...nmGroupIndexFile(folder, '.ts'), project };
   const display = toDisplayPath(indexTsInfo);
 
   let indexTs = '';
@@ -332,8 +374,9 @@ async function finishCreation(
     compileErrors = (await compileStorTs(indexTsInfo, indexTs)).errors;
   }
 
-  const moleculeShortNames = syScanGroupMoleculeShortNames(folder);
+  const moleculeShortNames = syScanGroupMoleculeShortNames(project, folder);
   const groupUsageSkill = await loadGroupUsageSkill(groupArgs.usageContract);
+  const differentiators = await loadGroupDifferentiators(project, folder, moleculeShortNames);
   const gateIssues = extractError
     ? [{ code: 'extract', message: extractError }]
     : [
@@ -345,6 +388,7 @@ async function finishCreation(
         groupMoleculeShortNames: moleculeShortNames,
         groupFolder: folder,
         groupUsageSkill,
+        differentiators,
       }),
       ...compileErrors.map(message => ({ code: 'compile', message })),
     ];
@@ -380,6 +424,7 @@ async function finishCreation(
           usageContract: groupArgs.usageContract,
           mode: 'create',
           ...(groupArgs.regenerationMissingCount !== undefined ? { regenerationMissingCount: groupArgs.regenerationMissingCount } : {}),
+          ...(groupArgs.projectTarget ? { projectTarget: groupArgs.projectTarget } : {}),
           retryAttempt: attempt + 1,
           retryContext: errorText,
         },
@@ -407,14 +452,14 @@ async function finishCreation(
     scenarios,
     generatedAt: new Date().toISOString(),
   });
-  await writeStorTextAtomic(nmGroupDefsFile(folder), indexDefsText, true);
-  const defsCompile = await compileStorTs(nmGroupDefsFile(folder), indexDefsText);
+  await writeStorTextAtomic({ ...nmGroupDefsFile(folder), project }, indexDefsText, true);
+  const defsCompile = await compileStorTs({ ...nmGroupDefsFile(folder), project }, indexDefsText);
   const defsWarnings = [...warnings];
   if (defsCompile.errors.length) defsWarnings.push(`index.defs.ts não compila após gravar os cenários: ${defsCompile.errors.slice(0, 3).join(' | ')}`);
   // index.ts is never cached (nothing imports it by name — decisions.e8bCreation_indexTsNeverCached);
   // index.defs.ts IS, because index.ts (just written above) imports it by name and s1 already cached the
   // pre-scenario version earlier in this same run.
-  const defsCache = await syPublishToCache(nmGroupDefsFile(folder));
+  const defsCache = await syPublishToCache({ ...nmGroupDefsFile(folder), project });
   if (defsCache.error) defsWarnings.push(`index.defs.ts não entrou no cache (${defsCache.error}) — a página não vai conseguir importar molecules/scenarios`);
 
   const artifact: SyIndexTsArtifact = {
@@ -483,18 +528,19 @@ async function readPreviousCreationAttempt(runKey: string, folder: string, attem
  * contract for a step it does not own (the brief §0.4, "não reabra o que já funciona").
  */
 async function deriveGroupMolecules(folder: string, project: number): Promise<{ molecules: SyMoleculeEntry[]; warnings: string[] }> {
-  const shortNames = syScanGroupMoleculeShortNames(folder);
+  const at = (info: NmFileInfo): NmFileInfo => ({ ...info, project });
+  const shortNames = syScanGroupMoleculeShortNames(project, folder);
   const warnings: string[] = [];
   const extracted: Array<{ tag: string; shortName: string; layoutConfig: Record<string, string>; objective: string | null; defsRef: string | null }> = [];
 
   for (const shortName of shortNames) {
-    const tsSource = await readStorText(nmTsFile(folder, shortName), false);
+    const tsSource = await readStorText(at(nmTsFile(folder, shortName)), false);
     const tag = syExtractTag(tsSource);
     if (!tag) {
       warnings.push(`${shortName}.ts: nenhum @customElement encontrado — molécula ignorada`);
       continue;
     }
-    const defsInfo = nmDefsFile(folder, shortName);
+    const defsInfo = at(nmDefsFile(folder, shortName));
     const hasDefs = nmFileExists(defsInfo);
     const defsExtracted = hasDefs ? syExtractMoleculeDefs(await readStorText(defsInfo, false)) : null;
     if (hasDefs && !defsExtracted) warnings.push(`${shortName}.defs.ts: sem '# Objective' legível — tratada como sem contrato`);

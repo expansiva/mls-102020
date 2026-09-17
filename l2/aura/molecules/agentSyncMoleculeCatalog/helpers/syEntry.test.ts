@@ -78,3 +78,43 @@ void test('leading/trailing whitespace and repeated spaces do not break the spli
   const entry = syParseEntry('  atualizar   grupos   groupEnterText ,  groupSelectOne  ');
   assert.deepEqual(entry.groupTokens, ['groupEnterText', 'groupSelectOne']);
 });
+
+void test('projectTarget prefix is read and the rest parses as today', () => {
+  const entry = syParseEntry('{ projectTarget: 102040 } atualizar groupViewTable');
+  assert.equal(entry.projectTarget, 102040);
+  assert.equal(entry.wantsAll, false);
+  assert.deepEqual(entry.groupTokens, ['groupViewTable']);
+  assert.equal(entry.error, '');
+});
+
+void test('projectTarget key tolerates quotes', () => {
+  const entry = syParseEntry('{"projectTarget": 102040} atualizar groupViewTable');
+  assert.equal(entry.projectTarget, 102040);
+  assert.deepEqual(entry.groupTokens, ['groupViewTable']);
+});
+
+void test('no prefix means projectTarget is null and all 11 today-tests keep passing', () => {
+  const entry = syParseEntry('atualizar groupEnterText');
+  assert.equal(entry.projectTarget, null);
+  assert.deepEqual(entry.groupTokens, ['groupEnterText']);
+});
+
+void test('projectTarget prefix followed by the index.ts opt-in still reads both', () => {
+  const entry = syParseEntry('{ projectTarget: 102040 } atualizar groupX incluindo o arquivo index.ts');
+  assert.equal(entry.projectTarget, 102040);
+  assert.deepEqual(entry.groupTokens, ['groupX']);
+  assert.equal(entry.includeIndexTs, true);
+  assert.equal(entry.error, '');
+});
+
+void test('projectTarget prefix that never closes is an error', () => {
+  const entry = syParseEntry('{ projectTarget: 102040 atualizar groupX');
+  assert.equal(entry.projectTarget, null);
+  assert.notEqual(entry.error, '');
+});
+
+void test('an unknown key in the prefix is an error naming projectTarget', () => {
+  const entry = syParseEntry('{ foo: 1 } atualizar x');
+  assert.equal(entry.projectTarget, null);
+  assert.match(entry.error, /projectTarget/);
+});

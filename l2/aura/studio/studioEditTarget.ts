@@ -309,6 +309,29 @@ export async function compileAfterEdit(target: IStudioEditTarget): Promise<void>
   }
 }
 
+/**
+ * An edit target for a file the caller ALREADY resolved and has a model for.
+ *
+ * `resolveEditTarget` answers a different question — "which file renders what is mounted" — and a
+ * studio SERVICE does not need it: the genome's molecule knob learns its file from the selection and
+ * opens the model itself. Without this it would spell the `page` field by hand, which would be the
+ * fourth place in this repo that knows how that string is built.
+ */
+export function targetForFile(
+  storFile: mls.stor.IFileInfo,
+  model: mls.editor.IModelBase,
+): IStudioEditTarget {
+  const { project, folder, shortName } = storFile;
+  return {
+    project,
+    shortName,
+    folder,
+    page: `_${project}_${folder ? `${folder}/` : ''}${shortName}`,
+    storFile,
+    model,
+  };
+}
+
 /** True when the file carries unsaved local edits. */
 export function isDirty(target: IStudioEditTarget): boolean {
   return Boolean(target.storFile.inLocalStorage);

@@ -19,7 +19,7 @@
 //   studioLiveUpdate.set('reload')   -> persisted in localStorage
 //   studioLiveUpdate.get()
 
-import type { IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { compileAfterEdit, type IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
 import { t } from '/_102020_/l2/aura/studio/studioMessages.js';
 
 export interface ILiveUpdateContext {
@@ -41,10 +41,20 @@ export interface ILiveUpdateMode {
   readonly name: LiveUpdateModeName;
   /** One-line description, shown by studioLiveUpdate.list(). */
   readonly description: string;
+  /**
+   * Whether this mode actually puts new code in the running page.
+   *
+   * Only the deduplication below reads it, and only `off` answers false: it returns `ok` for having
+   * successfully done nothing, and remembering that as "this source is live" would make the NEXT
+   * call — a real one — skip. OPTIONAL, defaulting to true, so a mode that says nothing keeps the
+   * safe behaviour and `studioLiveUpdateHotSwap.ts` stays byte-for-byte frozen while the remount is
+   * proven in real use.
+   */
+  readonly appliesCode?: boolean;
   apply(ctx: ILiveUpdateContext): Promise<ILiveUpdateResult>;
 }
 
-export type LiveUpdateModeName = 'hotSwap' | 'reload' | 'off';
+export type LiveUpdateModeName = 'remount' | 'hotSwap' | 'reload' | 'off';
 
 const STORAGE_KEY = 'studioLiveUpdateMode';
 
@@ -79,12 +89,14 @@ const offMode: ILiveUpdateMode = {
   name: 'off',
   // English: `studioLiveUpdate.list()` is a devtools listing, not panel copy.
   description: 'does nothing; the change shows on the next reload',
+  appliesCode: false,
   async apply() {
     return { ok: true, message: t('live.off') };
   },
 };
 
 const LOADERS: Record<LiveUpdateModeName, () => Promise<ILiveUpdateMode>> = {
+  remount: async () => (await import('/_102020_/l2/aura/studio/studioLiveUpdateRemount.js')).remountMode,
   hotSwap: async () => (await import('/_102020_/l2/aura/studio/studioLiveUpdateHotSwap.js')).hotSwapMode,
   reload: async () => (await import('/_102020_/l2/aura/studio/studioLiveUpdateReload.js')).reloadMode,
   off: async () => offMode,
@@ -139,14 +151,86 @@ export function setLiveUpdateMode(name: string): LiveUpdateModeName {
   return activeMode;
 }
 
+/**
+ * The source of the last edit that really reached the running page, and which file it was.
+ *
+ * WHY THIS EXISTS. There is more than one trigger (the in-place editor, the file-editor watcher, a
+ * studio service like the genome's molecule knob) and they are not independent: an explicit caller
+ * compiles and applies, and the SAME edit then travels the implicit route too — writing the Monaco
+ * model wakes libModel's debounced compile, which fires `statusOrErrorChanged`, which is exactly what
+ * the watcher listens to. So one gesture arrived here twice. With the hot swap that cost a second
+ * `requestUpdate`; with the remount it throws the page node away and builds it again, losing scroll,
+ * an open dialog and unsent input A SECOND TIME, for nothing.
+ *
+ * KEYED ON THE SOURCE, NOT ON `cacheVersion`. Every compile mints a new cache version even when the
+ * text did not change (that is what makes the module URL unique and the re-import real), so the
+ * second arrival always carries a different version — the one key that looks obvious is the one that
+ * would never match. The source text is what actually answers "is the running page already built
+ * from this?".
+ *
+ * Only the LAST one is remembered, deliberately: editing away and back must apply again, because in
+ * between the page was built from something else.
+ */
+let lastApplied: { file: string; source: string } | null = null;
+
+function fileKey(target: IStudioEditTarget): string {
+  return `${target.project}/${target.folder}/${target.shortName}`;
+}
+
+/** Current text of the edited file, or '' when there is no model to read it from. */
+function editedSource(target: IStudioEditTarget): string {
+  try {
+    return target.model?.model?.getValue() ?? '';
+  } catch {
+    // A disposed model: no key, so no dedup — the mode runs and answers for itself.
+    return '';
+  }
+}
+
+/** Forgets what is live. For a test, and for anything that rebuilds the page behind our back. */
+export function resetLiveUpdateDedup(): void {
+  lastApplied = null;
+}
+
 async function applyLiveUpdateNow(ctx: ILiveUpdateContext): Promise<ILiveUpdateResult> {
   const name = getLiveUpdateMode();
   try {
     const mode = await LOADERS[name]();
-    return await mode.apply(ctx);
+    const appliesCode = mode.appliesCode !== false;
+    const key = fileKey(ctx.edited);
+    const source = editedSource(ctx.edited);
+
+    if (appliesCode && source && lastApplied?.file === key && lastApplied.source === source) {
+      return { ok: true, message: t('live.alreadyApplied') };
+    }
+
+    const result = await mode.apply(ctx);
+    // Only a mode that really swapped code, and only on success: a refusal must stay retryable, and
+    // `off` must never leave a mark saying the page is built from something it never received.
+    if (appliesCode && source && result.ok) lastApplied = { file: key, source };
+    return result;
   } catch (err) {
     return { ok: false, message: t('live.failed', { mode: name, error: (err as Error).message }) };
   }
+}
+
+/**
+ * Compile the edited file, then put it in the running page — the whole gesture, once.
+ *
+ * Every caller that has just changed a source needs the same two steps in the same order, and the
+ * one that skipped them (the genome's molecule knob, which wrote the Monaco model and left the rest
+ * to the debounce) was the one that failed silently in real use. Having the pair behind one name is
+ * what stops the next caller from inventing a third variation.
+ *
+ * The compile is not redundant with libModel's own: it is the same work, DETERMINISTIC and now,
+ * instead of whenever the debounce lands — the caller gets a sentence it can show while the gesture
+ * is still on screen. The duplicate that the debounce then produces is absorbed by the dedup above.
+ */
+export function compileAndApplyLiveUpdate(ctx: ILiveUpdateContext): Promise<ILiveUpdateResult> {
+  return serialize(async () => {
+    await compileAfterEdit(ctx.edited);
+    return applyLiveUpdateNow(ctx);
+  });
 }
 
 /** Chain used to serialize `applyLiveUpdate` calls — never rejects, so one caller's failure never

@@ -11,6 +11,17 @@
 import { NmGateIssue } from '/_102020_/l2/aura/molecules/agentNewMolecule2/steps/n1-bootstrap/gate.js';
 import { syMoleculesNotShown } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syMigrateIndexTs.js';
 import { contractItemsMissing, contractItemsUsed, usageContractItems } from '/_102020_/l2/aura/molecules/shared/usageContract.js';
+import { SyGroupDifferentiators } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syDifferentiators.js';
+
+// ⚠️ THRESHOLDS, AND WHY THEY ARE NOT 1 (measured 2026-09-14 on groupViewTable).
+// `contract_not_demonstrated` used to fire only at ZERO items. The mold hands the model an envelope of
+// `name`/`.value`/`@change`, and `value` + `change` ARE contract items — so every page cleared the gate
+// with exactly those two, out of 34. A showcase of 13 identical cards passed. A floor has to sit ABOVE
+// what the envelope gives for free, which is why the minimum is 4 and not 3.
+const MIN_CONTRACT_ITEMS = 4;
+// Distinct events actually bound in the page. The whole library emits 39; the 31 showcases demonstrated
+// 2. Groups that emit fewer than this are held to what they emit, never to a number they cannot reach.
+const MIN_DISTINCT_EVENTS = 3;
 
 export interface SyCreateGateOptions {
   indexTag: string;
@@ -22,6 +33,11 @@ export interface SyCreateGateOptions {
   groupFolder: string;
   /** The group's usage skill text (or the loader's degraded placeholder). Empty/degraded skips the check. */
   groupUsageSkill?: string;
+  /**
+   * What separates the group's molecules, read from their own files (helpers/syDifferentiators.ts).
+   * Absent = the three checks that depend on it are skipped, never guessed.
+   */
+  differentiators?: SyGroupDifferentiators;
 }
 
 export function runSyCreateIndexTsGate(indexTs: string, options: SyCreateGateOptions): NmGateIssue[] {
@@ -102,11 +118,66 @@ export function runSyCreateIndexTsGate(indexTs: string, options: SyCreateGateOpt
   // The showcase must demonstrate the molecule's OWN contract (usage skill Properties/Events), not just
   // the mold's envelope (name/value/isEditing/@change). See shared/usageContract.ts for why.
   const contract = usageContractItems(options.groupUsageSkill || '');
-  if (contract.size && !contractItemsUsed(content, options.groupFolder, contract).length) {
-    const sample = contractItemsMissing(options.groupUsageSkill || '', content, options.groupFolder).slice(0, 5).join(', ');
+  if (contract.size) {
+    const used = contractItemsUsed(content, options.groupFolder, contract).length;
+    const floor = Math.min(MIN_CONTRACT_ITEMS, contract.size);
+    if (used < floor) {
+      const sample = contractItemsMissing(options.groupUsageSkill || '', content, options.groupFolder).slice(0, 5).join(', ');
+      issues.push({
+        code: 'contract_not_demonstrated',
+        message: `the showcase uses ${used} of the group's ${contract.size} contract items — at least ${floor} are required, and the mold's envelope (name/value/@change) already accounts for two of them; read the usage skill's Properties and Events tables and wire what actually separates these molecules — e.g. ${sample}`,
+      });
+    }
+  }
+
+  issues.push(...differentiatorIssues(content, options));
+
+  return issues;
+}
+
+/**
+ * The three checks that need the molecules' own files. Each one caught a real defect in the showcase
+ * that was hand-written as this gate's reference (2026-09-14).
+ */
+function differentiatorIssues(content: string, options: SyCreateGateOptions): NmGateIssue[] {
+  const group = options.differentiators;
+  if (!group || !group.molecules.length) return [];
+  const issues: NmGateIssue[] = [];
+
+  // 1. EVENTS. A card that binds nothing but `@change` proves the element exists, not what it does.
+  const bound = new Set([...content.matchAll(/@([A-Za-z][\w-]*)=\$\{/g)].map(m => m[1]));
+  const emitted = group.allEvents.filter(name => bound.has(name));
+  const floor = Math.min(MIN_DISTINCT_EVENTS, group.allEvents.length);
+  if (group.allEvents.length && emitted.length < floor) {
+    const missing = group.allEvents.filter(name => !bound.has(name)).slice(0, 6).join(', ');
     issues.push({
-      code: 'contract_not_demonstrated',
-      message: `the showcase never uses any property or event from the group's usage contract beyond the mold's envelope (name/value/isEditing/@change) — e.g. ${sample}; read the group usage skill's Properties and Events tables and add them to at least one card`,
+      code: 'events_not_wired',
+      message: `the showcase binds ${emitted.length} of the ${group.allEvents.length} events these molecules emit — at least ${floor} distinct ones are required, each on the molecule that emits it; not wired: ${missing}`,
+    });
+  }
+
+  // 2. THE ON-SWITCH. Read with hasAttribute(...) by exactly one molecule: without it that molecule
+  // renders as a plain sibling and the card is a lie. Measured: `groupable` absent = EMPTY group
+  // selector; `showRowTotal` unset = no totals at all.
+  // Matched as an ATTRIBUTE, never as a word: `\b total \b` hits `p.total` and `brl(p.total)` in any
+  // realistic dataset and reports the switch as set when it never was. The optional `?`/`.` prefix is
+  // Lit's own binding syntax (`?groupable=\${…}`, `.showRowTotal=\${true}`).
+  const asAttribute = (name: string) => new RegExp(`[\\s?.]${escapeForRegExp(name)}(?=[\\s=>])`);
+  const switchesMissing = group.distinguishingSwitches.filter(name => !asAttribute(name).test(content));
+  if (switchesMissing.length) {
+    issues.push({
+      code: 'feature_switch_unset',
+      message: `these attributes are read by exactly ONE molecule of the group and turn its whole feature on — the showcase never sets them, so that molecule renders like every other card: ${switchesMissing.join(', ')}`,
+    });
+  }
+
+  // 3. THE ACTION VERB. Same defect, different door: `ml-record-form-table` opens its record form only
+  // for <RowAction action="open">, and `open` is in no contract table.
+  const actionsMissing = group.distinguishingActions.filter(verb => !new RegExp(`action=["']${escapeForRegExp(verb)}["']`).test(content));
+  if (actionsMissing.length) {
+    issues.push({
+      code: 'action_verb_unused',
+      message: `exactly one molecule of the group answers to each of these action verbs, and the feature they unlock has no other way in — add <RowAction action="…"> for: ${actionsMissing.join(', ')}`,
     });
   }
 

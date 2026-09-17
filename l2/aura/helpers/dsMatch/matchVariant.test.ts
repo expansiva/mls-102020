@@ -8,7 +8,7 @@ import { matchVariant, type MatchResult } from '/_102020_/l2/aura/helpers/dsMatc
 import type { ResolvedLayoutRules, MoleculeCatalogEntry } from '/_102020_/l2/aura/helpers/dsMatch/types.js';
 
 function entry(group: string, variant: string, layoutConfig: Record<string, string>): MoleculeCatalogEntry {
-    return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: '', description: '', usagePath: '' };
+    return { project: 102040, group, variant, tag: `${group.toLowerCase()}--${variant}`, layoutConfig, objective: '', folder: `molecules/${group.toLowerCase()}`, description: '', usagePath: '' };
 }
 
 function ds(rules: Record<string, string>): ResolvedLayoutRules {

@@ -3582,3 +3582,102 @@ export function readAttribute(source: string, openStart: number, attribute: stri
   }
   return { kind: 'literal', value };
 }
+
+/**
+ * How an open tag writes ONE attribute value — the listing counterpart of `IAttributeSource`.
+ *
+ * `bare` is the member that union does not have and this one needs: `<input required class="…">` is
+ * how the generator writes a boolean, and `readAttribute` (which looks for `name=`) reports it as
+ * absent. For a listing that is not a detail — an attribute nobody can see is an attribute a
+ * conversion would drop in silence.
+ */
+export type IAttributeValue =
+  | { kind: 'expression'; expression: string }
+  | { kind: 'literal'; value: string }
+  | { kind: 'bare' };
+
+/** One attribute of an open tag, with the name EXACTLY as written (`@click`, `?disabled`, `.value`). */
+export interface IOpenTagAttribute {
+  /** Lit's binding prefix is part of the name on purpose: `@click` and `click` are different things. */
+  name: string;
+  value: IAttributeValue;
+}
+
+/**
+ * EVERY attribute of the element that starts at `openStart`, in source order.
+ *
+ * `readAttribute` answers about one attribute by name, which is enough to READ a text and not enough
+ * to REPLACE an element: a conversion has to know what it is leaving behind, so the `@dblclick` and
+ * the `?autofocus` nobody thought of can refuse the conversion instead of vanishing with the tag.
+ *
+ * Same delimitation as `readAttribute` (`findOpenTagEnd`), same quoted-binding rule
+ * (`title="${msg['x']}"` is an expression, `title="Total: ${n}"` is markup). The class attribute is
+ * listed like any other — the caller decides what to do with it, and the literal it already has from
+ * the scan.
+ */
+export function readAttributes(source: string, openStart: number): IOpenTagAttribute[] {
+  if (openStart < 0 || openStart >= source.length || source[openStart] !== '<') return [];
+  const end = findOpenTagEnd(source, openStart + 1);
+  const openTag = source.slice(openStart, end + 1);
+
+  const name = /^([a-zA-Z_@?.][\w:.@?-]*)/u;
+  const attributes: IOpenTagAttribute[] = [];
+  // Past `<` and the tag name: the tag name is not an attribute, and it is the one token here that
+  // may not carry a prefix.
+  let i = (/^<\s*[a-zA-Z][\w-]*/u.exec(openTag) ?? [''])[0].length;
+
+  while (i < openTag.length) {
+    const ch = openTag[i];
+    if (ch === '>' || (ch === '/' && openTag[i + 1] === '>')) break;
+    if (/\s/u.test(ch)) { i += 1; continue; }
+
+    const found = name.exec(openTag.slice(i));
+    if (!found) { i += 1; continue; }
+    const attribute = found[1];
+    i += attribute.length;
+
+    // Between the name and its `=` there may be spaces; without an `=` the attribute is bare.
+    let after = i;
+    while (after < openTag.length && /\s/u.test(openTag[after])) after += 1;
+    if (openTag[after] !== '=') {
+      attributes.push({ name: attribute, value: { kind: 'bare' } });
+      continue;
+    }
+    after += 1;
+    while (after < openTag.length && /\s/u.test(openTag[after])) after += 1;
+
+    if (openTag.startsWith('${', after)) {
+      const close = skipExpression(openTag, after);
+      attributes.push({
+        name: attribute,
+        value: { kind: 'expression', expression: openTag.slice(after + 2, close - 1).trim() },
+      });
+      i = close;
+      continue;
+    }
+
+    const quote = openTag[after];
+    if (quote === '"' || quote === "'") {
+      const closing = openTag.indexOf(quote, after + 1);
+      if (closing < 0) break; // an unterminated quote: everything after it is unreadable
+      const value = openTag.slice(after + 1, closing);
+      attributes.push({
+        name: attribute,
+        value: value.startsWith('${') && skipExpression(value, 0) === value.length
+          ? { kind: 'expression', expression: value.slice(2, -1).trim() }
+          : { kind: 'literal', value },
+      });
+      i = closing + 1;
+      continue;
+    }
+
+    // Unquoted and not a binding (`type=button`): valid HTML, and the generator does not write it —
+    // read it anyway rather than losing the rest of the tag.
+    let plain = after;
+    while (plain < openTag.length && !/[\s>]/u.test(openTag[plain])) plain += 1;
+    attributes.push({ name: attribute, value: { kind: 'literal', value: openTag.slice(after, plain) } });
+    i = plain;
+  }
+
+  return attributes;
+}

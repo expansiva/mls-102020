@@ -13,6 +13,8 @@
 // agentChooseMolecules uses when more than one catalog is reachable).
 
 export interface SyEntry {
+  /** `{ projectTarget: 102040 }` prefix, or null when the mention carried only prose (active project). */
+  projectTarget: number | null;
   wantsAll: boolean;
   /** Raw, as the user typed them (case preserved). Empty when wantsAll. */
   groupTokens: string[];
@@ -42,8 +44,37 @@ const INDEX_PHRASES = [
 const INDEX_HINT = /\bindex(\.ts)?\b|p[áa]gina|showcase/i;
 
 export function syParseEntry(raw: string): SyEntry {
-  const text = (raw || '').trim();
-  if (!text) return { wantsAll: true, groupTokens: [], includeIndexTs: false, error: '' };
+  const rawText = (raw || '').trim();
+
+  let projectTarget: number | null = null;
+  let text = rawText;
+  if (rawText.startsWith('{')) {
+    const close = matchingBrace(rawText);
+    if (close < 0) {
+      return {
+        projectTarget: null,
+        wantsAll: false,
+        groupTokens: [],
+        includeIndexTs: false,
+        error: `o argumento abre com '{' e nunca fecha — escreva '{ projectTarget: 102040 }' seguido do pedido`,
+      };
+    }
+    const argument = rawText.slice(0, close + 1);
+    const found = new RegExp(`['"]?projectTarget['"]?\\s*:\\s*['"]?(\\d+)`).exec(argument);
+    if (!found) {
+      return {
+        projectTarget: null,
+        wantsAll: false,
+        groupTokens: [],
+        includeIndexTs: false,
+        error: `o único argumento aceito é 'projectTarget' — escreva '{ projectTarget: 102040 }' seguido do pedido, ou nada e o projeto ativo é usado`,
+      };
+    }
+    projectTarget = Number(found[1]);
+    text = rawText.slice(close + 1).trim();
+  }
+
+  if (!text) return { projectTarget, wantsAll: true, groupTokens: [], includeIndexTs: false, error: '' };
 
   const normalized = foldAccents(text).toLowerCase();
 
@@ -59,6 +90,7 @@ export function syParseEntry(raw: string): SyEntry {
 
   if (!includeIndexTs && INDEX_HINT.test(withoutIndexPhrase)) {
     return {
+      projectTarget,
       wantsAll: false,
       groupTokens: [],
       includeIndexTs: false,
@@ -75,7 +107,7 @@ export function syParseEntry(raw: string): SyEntry {
   const rest = tokens.join(' ').trim();
 
   if (!rest || ALL_WORDS.has(foldAccents(rest).toLowerCase())) {
-    return { wantsAll: true, groupTokens: [], includeIndexTs, error: '' };
+    return { projectTarget, wantsAll: true, groupTokens: [], includeIndexTs, error: '' };
   }
 
   const groupTokens = rest
@@ -83,7 +115,19 @@ export function syParseEntry(raw: string): SyEntry {
     .map(item => item.trim())
     .filter(Boolean);
 
-  return { wantsAll: false, groupTokens, includeIndexTs, error: '' };
+  return { projectTarget, wantsAll: false, groupTokens, includeIndexTs, error: '' };
+}
+
+function matchingBrace(text: string): number {
+  let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] === '{') depth += 1;
+    else if (text[index] === '}') {
+      depth -= 1;
+      if (!depth) return index;
+    }
+  }
+  return -1;
 }
 
 function foldAccents(text: string): string {

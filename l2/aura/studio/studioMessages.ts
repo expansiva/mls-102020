@@ -230,6 +230,12 @@ const message_pt = {
   'live.pageOwnCatalog': 'a página tem catálogo próprio: a mudança no shared só aparece após reload',
   'live.appliedPage': 'aplicado ao vivo (página, {count} instância(s))',
   'live.appliedBase': 'aplicado ao vivo (classe base, {count} instância(s))',
+  'live.nothingToApply': 'nada a aplicar: {reason}',
+  'live.notArmed': 'a troca ao vivo não está armada nesta sessão (tag "{tag}") — recarregue a página uma vez para armar',
+  'live.tagNotArmed': 'tag sem troca disponível, ficou na versão antiga: {tag}',
+  'live.noElementDefine': 'o arquivo editado não registra nenhum elemento (é base compartilhada) — recarregue para ver',
+  'live.remounted': 'remontado ao vivo ({count} instância(s), {tags} implementação(ões) trocada(s)) — rolagem, diálogo aberto e texto não enviado se perdem',
+  'live.alreadyApplied': 'já aplicado — a página no ar já é esta versão',
 
   // ── Panel chrome ──────────────────────────────────────────────────────────
   'panel.fileTitle': 'arquivo que recebe a edição',
@@ -380,6 +386,75 @@ const message_pt = {
   'status.movedDown': '<{tag}> movido para baixo',
   'status.dragging': 'arrastando <{tag}> — solte sobre o vizinho de cima ou de baixo',
   'status.dropCancelled': 'nada foi movido: solte sobre o vizinho de cima ou de baixo',
+
+  // ── Adopting a molecule (TASK-102020-adopt-molecules) ────────────────────
+  'panel.tabMolecules': 'Moléculas',
+  'panel.adoptLoading': 'lendo o catálogo de moléculas…',
+  'panel.adoptNone': 'nenhum grupo do catálogo reconhece este elemento — por enquanto só botão,'
+    + ' campo de texto e seleção de um item têm conversão escrita',
+  'reason.adoptNoCatalog': 'o catálogo de moléculas voltou vazio: nenhuma molécula do 102040 foi'
+    + ' carregada nesta tela (veja o console)',
+  'reason.adoptNoGroupFiles': 'nenhum arquivo de conversão foi carregado (skills/<grupo>/adopt.ts do'
+    + ' 102020) — não é sobre este elemento, é sobre a ferramenta (veja o console)',
+  'reason.adoptNoGroupMolecule': 'este elemento é deste grupo, mas o catálogo não tem nenhuma'
+    + ' molécula do grupo para colocar no lugar',
+  'panel.adoptGroup': 'grupo',
+  'panel.adoptMolecule': 'molécula',
+  'panel.adoptOthers': 'outras deste grupo',
+  'panel.adoptChosen': 'escolhida pelo design system deste projeto',
+  'panel.adoptReplaces': 'vai trocar o <{tag}> inteiro (um nível acima do que você clicou)',
+  'panel.adoptReplacesSelf': 'vai trocar este <{tag}>',
+  'panel.adoptLabel': 'rótulo',
+  'panel.adoptIcon': 'ícone',
+  'panel.adoptVariant': 'tom',
+  'panel.adoptItems': 'itens',
+  'panel.adoptEvents': 'eventos',
+  'panel.adoptApply': 'Adotar',
+  'panel.adoptPreview': 'Prévia',
+  'panel.adoptPreviewHint': 'a prévia monta a molécula de verdade, ao lado do original — é o que'
+    + ' prova que a tag existe e carrega antes de gravar',
+  'panel.adoptPreviewFailed': 'a molécula não carregou: {error}',
+  'panel.adoptPreviewOriginal': 'agora',
+  'panel.adoptPreviewNext': 'depois',
+  'adopt.whyTriggerAction': 'um <button> é executar uma ação',
+  'adopt.whyEnterText': 'um campo de texto livre',
+  'adopt.whyEnterTextLabel': 'um campo de texto livre — o rótulo está no <label> em volta, e é ele'
+    + ' que vira a molécula',
+  'adopt.warnNoVariant': 'as classes não trazem nenhum papel do design system, então o tom fica'
+    + ' primary — dá para trocar aqui antes de adotar',
+  'adopt.warnAppearance': 'a aparência passa a ser a da molécula: cor, padding e borda deixam de'
+    + ' ser desta página',
+  'adopt.warnIconGuess': 'o <span> aqui dentro vai inteiro para o rótulo — se ele era um ícone,'
+    + ' mova para o slot Icon depois',
+  'adopt.whySelectOne': 'escolher exatamente um item de uma lista',
+  'adopt.whySelectOneLabel': 'escolher exatamente um item de uma lista — o rótulo está no <label>'
+    + ' em volta, e é ele que vira a molécula',
+  'adopt.warnSelectShape': 'a forma também passa a ser do design system: este grupo também se'
+    + ' desenha como radio, segmentado, cartões ou tabela — confira a molécula escolhida',
+  'reason.adoptNoTarget': 'não consegui identificar este elemento no código desta tela',
+  'reason.adoptUnclosed': 'não consegui delimitar este elemento no código com segurança — a'
+    + ' marcação parece não estar fechada',
+  'reason.adoptStale': 'a fonte mudou desde essa adoção',
+  'reason.adoptNoMolecule': 'o design system deste projeto não resolve nenhuma molécula para este'
+    + ' grupo — escolha uma na lista',
+  'reason.adoptUnknownAttr': 'não sei o que fazer com {attrs} nesta molécula, e não vou descartar'
+    + ' em silêncio: tire do elemento antes, ou deixe como está',
+  'reason.adoptSlotBindings': 'o conteúdo deste elemento tem comportamento próprio (um @evento lá'
+    + ' dentro), e o slot da molécula não preserva isso',
+  'reason.adoptSharedLabel': 'este <label> tem mais de um controle dentro — não dá para dizer qual'
+    + ' deles é o campo',
+  'reason.adoptSelectGroups': 'este <select> agrupa as opções em <optgroup>, e a conversão ainda'
+    + ' não lê as opções de dentro do grupo',
+  'reason.adoptSelectChildren': 'este <select> tem dentro dele algo que não é <option> — a lista é'
+    + ' montada em outro lugar, e eu perderia esse pedaço',
+  'reason.adoptSelectNoItems': 'este <select> não tem nenhum <option> escrito aqui — sem a lista'
+    + ' não dá para montar a molécula',
+  'reason.adoptSelectItemValue': 'uma das opções não tem value, e a molécula identifica cada item'
+    + ' por ele — a opção sumiria da lista',
+  'status.adopted': '<{tag}> virou {molecule}',
+  'status.adoptReload': 'a tag nova não existe na classe já compilada desta tela — recarregue (F5)'
+    + ' para ver a molécula funcionando',
+  'status.adoptUndone': '{molecule} voltou a ser <{tag}>',
 
   // ── Animations: groups, options and screens ───────────────────────────────
   'anim.group.continuous': 'Animação contínua',
@@ -771,6 +846,12 @@ const message_en: typeof message_pt = {
   'live.pageOwnCatalog': 'the page has its own catalog: a change in the shared one only shows after a reload',
   'live.appliedPage': 'applied live (page, {count} instance(s))',
   'live.appliedBase': 'applied live (base class, {count} instance(s))',
+  'live.nothingToApply': 'nothing to apply: {reason}',
+  'live.notArmed': 'the live swap is not armed in this session (tag "{tag}") — reload the page once to arm it',
+  'live.tagNotArmed': 'tag with no swap available, left on the old version: {tag}',
+  'live.noElementDefine': 'the edited file registers no element (it is a shared base) — reload to see it',
+  'live.remounted': 'remounted live ({count} instance(s), {tags} implementation(s) swapped) — scroll, open dialog and unsent text are lost',
+  'live.alreadyApplied': 'already applied — the running page is already this version',
 
   'panel.fileTitle': 'file that receives the edit',
   'panel.noFile': 'no file resolved',
@@ -916,6 +997,74 @@ const message_en: typeof message_pt = {
   'status.movedDown': '<{tag}> moved down',
   'status.dragging': 'dragging <{tag}> — drop it on the neighbour above or below',
   'status.dropCancelled': 'nothing moved: drop it on the neighbour above or below',
+
+  'panel.tabMolecules': 'Molecules',
+  'panel.adoptLoading': 'reading the molecule catalog…',
+  'panel.adoptNone': 'no group of the catalog claims this element — for now only button, text'
+    + ' field and select-one have a written conversion',
+  'reason.adoptNoCatalog': 'the molecule catalog came back empty: no molecule of the 102040 loaded'
+    + ' on this screen (see the console)',
+  'reason.adoptNoGroupFiles': 'no conversion file loaded (skills/<group>/adopt.ts of the 102020) —'
+    + ' this is not about the element, it is about the tool (see the console)',
+  'reason.adoptNoGroupMolecule': 'this element belongs to that group, but the catalog has no'
+    + ' molecule of the group to put in its place',
+  'panel.adoptGroup': 'group',
+  'panel.adoptMolecule': 'molecule',
+  'panel.adoptOthers': 'others in this group',
+  'panel.adoptChosen': 'the one the design system of this project resolves',
+  'panel.adoptReplaces': 'it will replace the whole <{tag}> (one level above what you clicked)',
+  'panel.adoptReplacesSelf': 'it will replace this <{tag}>',
+  'panel.adoptLabel': 'label',
+  'panel.adoptIcon': 'icon',
+  'panel.adoptVariant': 'tone',
+  'panel.adoptItems': 'items',
+  'panel.adoptEvents': 'events',
+  'panel.adoptApply': 'Adopt',
+  'panel.adoptPreview': 'Preview',
+  'panel.adoptPreviewHint': 'the preview mounts the real molecule, next to the original — that is'
+    + ' what proves the tag exists and loads before anything is written',
+  'panel.adoptPreviewFailed': 'the molecule did not load: {error}',
+  'panel.adoptPreviewOriginal': 'now',
+  'panel.adoptPreviewNext': 'after',
+  'adopt.whyTriggerAction': 'a <button> is triggering an action',
+  'adopt.whyEnterText': 'a free-form text field',
+  'adopt.whyEnterTextLabel': 'a free-form text field — the label is in the <label> around it, and'
+    + ' that is what becomes the molecule',
+  'adopt.warnNoVariant': 'the classes carry no design-system role, so the tone stays primary — you'
+    + ' can change it here before adopting',
+  'adopt.warnAppearance': 'the looks become the ones of the molecule: colour, padding and border'
+    + ' stop belonging to this page',
+  'adopt.warnIconGuess': 'the <span> inside goes whole into the label — if it was an icon, move it'
+    + ' to the Icon slot afterwards',
+  'adopt.whySelectOne': 'choosing exactly one item from a list',
+  'adopt.whySelectOneLabel': 'choosing exactly one item from a list — the label is in the <label>'
+    + ' around it, and that is what becomes the molecule',
+  'adopt.warnSelectShape': 'the shape is decided by the design system too: this group also renders as'
+    + ' radio, segmented, cards or a table — check the molecule it picked',
+  'reason.adoptNoTarget': 'I could not identify this element in the code of this screen',
+  'reason.adoptUnclosed': 'I could not safely delimit this element in the code — the markup does'
+    + ' not look closed',
+  'reason.adoptStale': 'the source changed since that adoption',
+  'reason.adoptNoMolecule': 'the design system of this project resolves no molecule for this'
+    + ' group — pick one from the list',
+  'reason.adoptUnknownAttr': 'I do not know what {attrs} becomes on this molecule, and I will not'
+    + ' drop it silently: remove it from the element first, or leave the control as it is',
+  'reason.adoptSlotBindings': 'the content of this element has behaviour of its own (an @event'
+    + ' inside), and a slot of the molecule does not preserve that',
+  'reason.adoptSharedLabel': 'this <label> holds more than one control — there is no way to tell'
+    + ' which one is the field',
+  'reason.adoptSelectGroups': 'this <select> groups its options in <optgroup>, and the conversion'
+    + ' does not read the options inside a group yet',
+  'reason.adoptSelectChildren': 'this <select> holds something that is not an <option> — the list'
+    + ' is built somewhere else, and that piece would be lost',
+  'reason.adoptSelectNoItems': 'this <select> has no <option> written here — without the list there'
+    + ' is no molecule to build',
+  'reason.adoptSelectItemValue': 'one of the options has no value, and the molecule identifies each'
+    + ' item by it — that option would vanish from the list',
+  'status.adopted': '<{tag}> became {molecule}',
+  'status.adoptReload': 'the new tag is not in the compiled class of this screen — reload (F5) to'
+    + ' see the molecule working',
+  'status.adoptUndone': '{molecule} is a <{tag}> again',
 
   'anim.group.continuous': 'Continuous animation',
   'anim.group.speed': 'Speed',

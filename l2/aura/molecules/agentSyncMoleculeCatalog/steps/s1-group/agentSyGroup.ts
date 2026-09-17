@@ -9,7 +9,7 @@
 // refém of the authored index.ts (s3) — if s3 fails, the catalog this step wrote is already there.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { compileStorTs, nmFileExists, nmDestProject, readStorText, writeJsonArtifact, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
+import { compileStorTs, nmFileExists, nmDestProject, NmFileInfo, readStorText, writeJsonArtifact, writeStorTextAtomic } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmFs.js';
 import { nmParseStepArgs, nmResultStepIntent, nmUpdateStatusIntent } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmSteps.js';
 import {
   SY_AGENT_PROJECT,
@@ -56,6 +56,8 @@ interface SyGroupStepArgs {
   group: string;
   purpose: string;
   usageContract: string;
+  /** The project this run operates on. Absent (older runs) or falsy means the active project. */
+  projectTarget?: number;
 }
 
 function parseGroupStepArgs(prompt: unknown): SyGroupStepArgs | null {
@@ -69,6 +71,7 @@ function parseGroupStepArgs(prompt: unknown): SyGroupStepArgs | null {
       group,
       purpose: typeof parsed.purpose === 'string' ? parsed.purpose : '',
       usageContract: typeof parsed.usageContract === 'string' ? parsed.usageContract : '',
+      ...(typeof parsed.projectTarget === 'number' ? { projectTarget: parsed.projectTarget } : {}),
     };
   } catch {
     return null;
@@ -91,9 +94,10 @@ async function beforePromptStep(
   const runKey = stepArgs.runKey;
   const { group: canonical, purpose, usageContract } = groupArgs;
   const folder = syGroupFolder(canonical);
-  const project = nmDestProject();
+  const project = groupArgs.projectTarget || nmDestProject();
+  const at = (info: NmFileInfo): NmFileInfo => ({ ...info, project });
 
-  const shortNames = syScanGroupMoleculeShortNames(folder);
+  const shortNames = syScanGroupMoleculeShortNames(project, folder);
   if (!shortNames.length) {
     return [nmUpdateStatusIntent(context, parentStep, step, hookSequential, 'failed', `[${AGENT_NAME}] no molecule files found under molecules/${folder}`)];
   }
@@ -101,13 +105,13 @@ async function beforePromptStep(
   const warnings: string[] = [];
   const extracted: Array<{ tag: string; shortName: string; layoutConfig: Record<string, string>; objective: string | null; defsRef: string | null }> = [];
   for (const shortName of shortNames) {
-    const tsSource = await readStorText(nmTsFile(folder, shortName), false);
+    const tsSource = await readStorText(at(nmTsFile(folder, shortName)), false);
     const tag = syExtractTag(tsSource);
     if (!tag) {
       warnings.push(`${shortName}.ts: nenhum @customElement encontrado — molécula ignorada`);
       continue;
     }
-    const defsInfo = nmDefsFile(folder, shortName);
+    const defsInfo = at(nmDefsFile(folder, shortName));
     const hasDefs = nmFileExists(defsInfo);
     const defsExtracted = hasDefs ? syExtractMoleculeDefs(await readStorText(defsInfo, false)) : null;
     if (hasDefs && !defsExtracted) warnings.push(`${shortName}.defs.ts: sem '# Objective' legível — tratada como sem contrato`);
@@ -136,7 +140,7 @@ async function beforePromptStep(
       objective: m.objective,
     }));
 
-  const { scenarios, scenariosSource } = await resolveScenarios(folder, extracted.map(m => ({ tag: m.tag })));
+  const { scenarios, scenariosSource } = await resolveScenarios(project, folder, extracted.map(m => ({ tag: m.tag })));
 
   const generatedAt = new Date().toISOString();
   const indexDefsText = syRenderIndexDefs({ project, groupCanonical: canonical, groupFolder: folder, usageContract, purpose, molecules, scenarios, generatedAt });
@@ -149,8 +153,8 @@ async function beforePromptStep(
   // open) landed, while skill.ts and index.ts (models open) did not — the steps reported success either
   // way. Every source-writing step in this family passes true (n3-defs, n4-render, n7-index, v2-shell,
   // v4-index, t3-generate); only the l4 JSON artifacts may leave it false.
-  await writeStorTextAtomic(nmGroupDefsFile(folder), indexDefsText, true);
-  await writeStorTextAtomic(nmGroupIndexFile(folder, '.html'), indexHtmlText, true);
+  await writeStorTextAtomic(at(nmGroupDefsFile(folder)), indexDefsText, true);
+  await writeStorTextAtomic(at(nmGroupIndexFile(folder, '.html')), indexHtmlText, true);
 
   // ⚠️ WRITING IS NOT ENOUGH TO MAKE A MODULE LOADABLE. The preview bundles a page by FETCHING each
   // import, and a source that was only written to the stor is not served yet — the group page failed
@@ -162,14 +166,14 @@ async function beforePromptStep(
   // Second reason, free: this is also the only COMPILE GATE this deterministic agent has. The backtick
   // defect of 2026-08-26 — a molecule Objective containing `code` closed the generated template literal
   // and silently invalidated the file — would have been caught here instead of in the editor.
-  const defsCompile = await compileStorTs(nmGroupDefsFile(folder), indexDefsText);
+  const defsCompile = await compileStorTs(at(nmGroupDefsFile(folder)), indexDefsText);
   if (defsCompile.errors.length) {
     warnings.push(`index.defs.ts não compila: ${defsCompile.errors.slice(0, 3).join(' | ')}`);
   }
   // Compiling proves it is VALID; caching is what makes it FETCHABLE — the group page imports
   // molecules/scenarios from this module by name, and an uncached module 404s in the preview bundler.
   // See helpers/syFs.syPublishToCache for the two measurements behind this.
-  const defsCache = await syPublishToCache(nmGroupDefsFile(folder));
+  const defsCache = await syPublishToCache(at(nmGroupDefsFile(folder)));
   if (defsCache.error) warnings.push(`index.defs.ts não entrou no cache (${defsCache.error}) — a página do grupo não vai conseguir importá-lo`);
 
   const artifact: SyGroupArtifact = {
@@ -213,13 +217,14 @@ async function beforePromptStep(
  *    has an authored showcase page with a hand-written `renderReferenceTable()`.
  * 3. Empty — a brand-new group with no index.ts yet (G1), or a page whose table could not be parsed.
  */
-async function resolveScenarios(folder: string, molecules: Array<{ tag: string }>): Promise<{ scenarios: SyScenario[]; scenariosSource: SyGroupArtifact['scenariosSource'] }> {
-  const existingDefsText = await readStorText(nmGroupDefsFile(folder), false);
+async function resolveScenarios(project: number, folder: string, molecules: Array<{ tag: string }>): Promise<{ scenarios: SyScenario[]; scenariosSource: SyGroupArtifact['scenariosSource'] }> {
+  const at = (info: NmFileInfo): NmFileInfo => ({ ...info, project });
+  const existingDefsText = await readStorText(at(nmGroupDefsFile(folder)), false);
   const existing = syExtractExistingScenarios(existingDefsText);
   if (existing && existing.length) return { scenarios: existing, scenariosSource: 'preserved-existing' };
 
-  const indexTsExists = nmFileExists(nmGroupIndexFile(folder, '.ts'));
-  const indexTsText = indexTsExists ? await readStorText(nmGroupIndexFile(folder, '.ts'), false) : '';
+  const indexTsExists = nmFileExists(at(nmGroupIndexFile(folder, '.ts')));
+  const indexTsText = indexTsExists ? await readStorText(at(nmGroupIndexFile(folder, '.ts')), false) : '';
   const harvested = syHarvestScenarios(indexTsText, molecules);
   if (harvested) return { scenarios: harvested, scenariosSource: 'harvested' };
 

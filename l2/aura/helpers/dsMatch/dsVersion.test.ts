@@ -16,7 +16,7 @@ import type { MoleculeCatalogEntry, ResolvedLayoutRules } from '/_102020_/l2/aur
 function assert(cond: boolean, msg: string): void { if (!cond) throw new Error(`[dsVersion.test] FAIL: ${msg}`); }
 
 function mol(project: number, group: string, tag: string, layoutConfig: Record<string, string> = {}, description = `desc-${tag}`): MoleculeCatalogEntry {
-    return { project, group, tag, variant: tag, layoutConfig, objective: '', description, usagePath: '' };
+    return { project, group, tag, variant: tag, layoutConfig, objective: '', folder: `molecules/${group.toLowerCase()}`, description, usagePath: '' };
 }
 function ds(rules: Record<string, string>): ResolvedLayoutRules { return rules as ResolvedLayoutRules; }
 
