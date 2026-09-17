@@ -3,45 +3,99 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
-import { AuraInitState, getAuraState, moduleScopeTitle } from '/_102020_/l2/aura/helpers/auraState.js';
+import { AuraInitState, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import {
+    announceNewReleaseContext,
+    NEW_RELEASE_TOBE_UPDATED_EVENT,
+    type NewReleaseContext,
+    type NewReleaseVersion,
+} from '/_102035_/l2/newRelease/helpers/context.js';
+import {
+    listEligibleProjects,
+    listNs5ModuleSummaries,
+    type NewReleaseModuleSummary,
+} from '/_102035_/l2/newRelease/helpers/l4Reader.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
-import '/_102020_/l2/aura/plugins/selectWorkflow.js';
-import '/_102020_/l2/aura/plugins/selectRule.js';
+import '/_102020_/l2/aura/plugins/navHeader.js';
 
 /// **collab_i18n_start**
 const message_en = {
-    svcTitle: 'Behavior',
-    workflow: 'Workflows',
-    rule: 'Rules',
+    svcTitle: 'New release',
+    intro: 'Choose the project, module and version to review.',
+    project: 'Project',
+    module: 'Module',
+    version: 'Version',
+    projectDesc: 'Projects with a materialized l5/config.json.',
+    moduleDesc: 'Level 4 modules available for human review.',
+    versionDesc: 'Current definition or a prepared future version.',
+    current: 'Current',
+    tobe: 'To be',
+    loading: 'Loading release context…',
+    empty: 'No eligible project was found.',
+    moduleMap: 'Module blueprint',
+    moduleMapDescription: 'Review the business, follow generation and prepare the next version in one place.',
+    complete: 'Complete',
+    failed: 'Failed',
+    inProgress: 'In progress',
+    awaitingStep: 'Awaiting review',
+    unknown: 'No pipeline',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
     en: message_en,
     pt: {
-        svcTitle: 'Comportamento',
-        workflow: 'Workflows',
-        rule: 'Regras',
+        svcTitle: 'Nova versão',
+        intro: 'Escolha o projeto, o módulo e a versão que deseja revisar.',
+        project: 'Projeto',
+        module: 'Módulo',
+        version: 'Versão',
+        projectDesc: 'Projetos com l5/config.json materializado.',
+        moduleDesc: 'Módulos do nível 4 disponíveis para revisão humana.',
+        versionDesc: 'Definição atual ou uma versão futura preparada.',
+        current: 'Atual',
+        tobe: 'Tobe',
+        loading: 'Carregando o contexto da release…',
+        empty: 'Nenhum projeto elegível foi encontrado.',
+        moduleMap: 'Mapa do módulo',
+        moduleMapDescription: 'Revise o negócio, acompanhe a geração e prepare a próxima versão em um só lugar.',
+        complete: 'Completo',
+        failed: 'Falhou',
+        inProgress: 'Em andamento',
+        awaitingStep: 'Aguardando revisão',
+        unknown: 'Sem pipeline',
     },
     es: {
-        svcTitle: 'Comportamiento',
-        workflow: 'Workflows',
-        rule: 'Reglas',
+        svcTitle: 'Nueva versión',
+        intro: 'Elija el proyecto, el módulo y la versión que desea revisar.',
+        project: 'Proyecto',
+        module: 'Módulo',
+        version: 'Versión',
+        projectDesc: 'Proyectos con l5/config.json materializado.',
+        moduleDesc: 'Módulos de nivel 4 disponibles para revisión humana.',
+        versionDesc: 'Definición actual o una versión futura preparada.',
+        current: 'Actual',
+        tobe: 'Tobe',
+        loading: 'Cargando el contexto de la release…',
+        empty: 'No se encontró ningún proyecto elegible.',
+        moduleMap: 'Mapa del módulo',
+        moduleMapDescription: 'Revise el negocio, acompañe la generación y prepare la próxima versión en un solo lugar.',
+        complete: 'Completo',
+        failed: 'Falló',
+        inProgress: 'En curso',
+        awaitingStep: 'Esperando revisión',
+        unknown: 'Sin pipeline',
     },
 };
 /// **collab_i18n_end**
 
-interface IModule {
-    name: string;
-    path: string;
-}
+type ContextKey = 'project' | 'module' | 'version';
 
 interface IKnobConfig {
-    key: string;
     min: number;
     max: number;
-    labels: Record<number, string>;
-    disabled?: boolean;
+    value: number;
+    disabled: boolean;
 }
 
 @customElement('aura--services--service-behavior-102020')
@@ -51,7 +105,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         icon: '&#xf0f6',
         state: 'foreground',
         position: 'left',
-        tooltip: 'Behavior',
+        tooltip: 'Nova versão',
         visible: true,
         widget: '_102020_/l2/aura/services/serviceBehavior',
         level: [4],
@@ -69,28 +123,132 @@ export class ServiceBehavior102020 extends ServiceBase {
         onClickMain: this.onClickMain.bind(this),
     };
 
-    onServiceClick(visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
-        this._workflowReloadToken += 1; // re-scan the workflow list on each service (re)open
+    @state() private msg: MessageType = message_en;
+    @state() private _projects: number[] = [];
+    @state() private _modules: NewReleaseModuleSummary[] = [];
+    @state() private _projectValue = 1;
+    @state() private _moduleValue = 1;
+    @state() private _versionValue = 1;
+    @state() private _selectedKnob: ContextKey = 'module';
+    @state() private _loading = true;
+
+    private _loadToken = 0;
+
+    private get _project(): number {
+        return this._projects[this._projectValue - 1] ?? 0;
+    }
+
+    private get _module(): NewReleaseModuleSummary | null {
+        return this._modules[this._moduleValue - 1] ?? null;
+    }
+
+    private get _versions(): NewReleaseVersion[] {
+        return this._module?.tobeChanges ? ['asis', 'tobe'] : ['asis'];
+    }
+
+    private get _version(): NewReleaseVersion {
+        return this._versions[this._versionValue - 1] ?? 'asis';
+    }
+
+    connectedCallback() {
+        super.connectedCallback();
+        AuraInitState();
+        window.addEventListener(NEW_RELEASE_TOBE_UPDATED_EVENT, this._onTobeUpdated as EventListener);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener(NEW_RELEASE_TOBE_UPDATED_EVENT, this._onTobeUpdated as EventListener);
+        super.disconnectedCallback();
+    }
+
+    private _onTobeUpdated = async (event: Event) => {
+        const detail = (event as CustomEvent<{ project?: number; moduleName?: string }>).detail;
+        const currentModule = this._module;
+        if (!currentModule || detail?.project !== this._project || detail?.moduleName !== currentModule.name) return;
+        const selected = currentModule.name;
+        await this._loadModules(selected);
+        this._versionValue = this._module?.tobeChanges ? 2 : 1;
+        this._announceContext();
+    };
+
+    async onServiceClick(visible: boolean, _reinit: boolean, _el: IToolbarContent | null) {
+        if (!visible) return;
+        await this._loadData();
+        await this._openModuleBlueprint();
+    }
+
+    private async _loadData(): Promise<void> {
+        const token = ++this._loadToken;
+        const aura = getAuraState();
+        this._loading = true;
+        this._projects = await listEligibleProjects();
+        if (token !== this._loadToken) return;
+
+        const actualProject = Number(aura.actualProject || 0);
+        const actualModule = String(aura.actualModule || '');
+        const preferredProject = this._projects.includes(actualProject)
+            ? actualProject
+            : this._projects[0] ?? 0;
+        this._projectValue = Math.max(1, this._projects.indexOf(preferredProject) + 1);
+        await this._loadModules(actualModule, token);
+        if (token !== this._loadToken) return;
+        this._loading = false;
         this._updateMenuTitle();
-        if (visible) this._openModuleBlueprint();
-        // @ts-ignore
         this.requestUpdate();
     }
 
-    /**
-     * The module workspace belongs to master-solution (102035), but is hosted by the
-     * Studio's existing detail service. Keeping this bridge event-only avoids making
-     * the frontend master depend on the solution generator.
-     */
-    private _openModuleBlueprint(): void {
-        const { actualProject, actualModule } = getAuraState();
-        if (!actualProject) return;
+    private async _loadModules(preferredModule = '', token = ++this._loadToken): Promise<void> {
+        this._modules = this._project ? await listNs5ModuleSummaries(this._project) : [];
+        if (token !== this._loadToken) return;
+        const preferredIndex = this._modules.findIndex(module => module.name === preferredModule);
+        this._moduleValue = preferredIndex >= 0 ? preferredIndex + 1 : 1;
+        this._versionValue = 1;
+    }
+
+    private _knobConfig(key: ContextKey): IKnobConfig {
+        const count = key === 'project' ? this._projects.length : key === 'module' ? this._modules.length : this._versions.length;
+        const value = key === 'project' ? this._projectValue : key === 'module' ? this._moduleValue : this._versionValue;
+        return { min: 1, max: Math.max(1, count), value, disabled: count <= 1 };
+    }
+
+    private async _setKnobValue(key: ContextKey, value: number | null): Promise<void> {
+        if (value === null) return;
+        this._selectedKnob = key;
+        if (key === 'project' && value !== this._projectValue) {
+            this._projectValue = value;
+            await this._loadModules();
+        } else if (key === 'module' && value !== this._moduleValue) {
+            this._moduleValue = value;
+            this._versionValue = 1;
+        } else if (key === 'version') {
+            this._versionValue = value;
+        }
+        this._announceContext();
+    }
+
+    private _announceContext(): void {
+        const context = this._context();
+        if (!context) return;
+        announceNewReleaseContext(context);
+        this._updateMenuTitle();
+        this.requestUpdate();
+    }
+
+    private _context(): NewReleaseContext | null {
+        if (!this._project || !this._module) return null;
+        return { project: this._project, moduleName: this._module.name, version: this._version };
+    }
+
+    private async _openModuleBlueprint(): Promise<void> {
+        const context = this._context();
+        if (!context) return;
+        await import('/_102035_/l2/newRelease/widgets/index.js');
         const escapeAttribute = (value: unknown) => String(value ?? '')
             .replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
-        const htmlText = `<new-release--widgets--index-102035 project="${escapeAttribute(actualProject)}" module-name="${escapeAttribute(actualModule)}"></new-release--widgets--index-102035>`;
+        const htmlText = `<new-release--widgets--index-102035 project="${escapeAttribute(context.project)}" module-name="${escapeAttribute(context.moduleName)}" version="${escapeAttribute(context.version)}"></new-release--widgets--index-102035>`;
         mls.events.fire(
             4,
             'PluginDetails' as any,
@@ -103,223 +261,106 @@ export class ServiceBehavior102020 extends ServiceBase {
         );
     }
 
-    /** nav-3 menu title: project + module this service is acting on (module picked at l5). */
     private _updateMenuTitle(): void {
-        this.menu.title = moduleScopeTitle();
+        this.menu.title = this._project && this._module ? `${this._project}-${this._module.name}` : this.msg.svcTitle;
         this.menu.updateTitle?.();
     }
-
-    //State
-
-    @state() private msg: MessageType = message_en;
-
-    @state() private _modules: IModule[] = [];
-
-    @state() private _workflowConfig: IKnobConfig = { key: 'workflow', min: 0, max: 0, labels: { 0: 'All' } };
-    @state() private _ruleConfig: IKnobConfig = { key: 'rule', min: 0, max: 0, labels: { 0: 'All' } };
-
-    @state() private _workflowValue: number | null = 0;
-    @state() private _ruleValue: number | null = null;
-    @state() private _workflowReloadToken: number = 0;
-
-    @state() private _selectedKnob: string = 'workflow';
-
-    //Data Loading
-
-    private async _loadData() {
-        const project = getAuraState().actualProject;
-        if (!project) return;
-        try {
-            const mod = await import(`/_${project}_/l2/project.js`);
-            this._modules = mod?.projectConfig?.modules ?? [];
-            this._ruleValue = 0;
-        } catch {
-            this._modules = [];
-        }
-        // @ts-ignore
-        this.requestUpdate();
-    }
-
-    private get _selectedModule(): IModule | null {
-        const actualModule = getAuraState().actualModule;
-        if (!actualModule) return null;
-        return this._modules.find(m => m.name === actualModule) ?? null;
-    }
-
-    //Helpers
-    private get _knobValues(): Record<string, number | null> {
-        return {
-            workflow: this._workflowValue,
-            rule: this._ruleValue,
-        };
-    }
-
-    private _getKnobConfig(key: string): IKnobConfig {
-        switch (key) {
-            case 'workflow': return this._workflowConfig;
-            case 'rule': return this._ruleConfig;
-            default: return { key, min: 0, max: 0, labels: {}, disabled: true };
-        }
-    }
-
-    private _setKnobValue(key: string, value: number | null) {
-        switch (key) {
-            case 'workflow': this._workflowValue = value; break;
-            case 'rule': this._ruleValue = value; break;
-        }
-        // @ts-ignore
-        this.requestUpdate();
-    }
-
-    //Event Handlers
-
-    private _onKnobChange(key: string, e: CustomEvent) {
-        this._selectedKnob = key;
-        this._setKnobValue(key, e.detail.value);
-    }
-
-    private _onKnobClick(key: string) {
-        this._selectedKnob = key;
-        // @ts-ignore
-        this.requestUpdate();
-    }
-
-    //Lifecycle
-
-    connectedCallback() {
-        super.connectedCallback();
-        AuraInitState();
-        this._loadData();
-        this._updateMenuTitle();
-    }
-
-    //Render
 
     createRenderRoot() { return this; }
 
     render() {
         const lang = this.getMessageKey(messages);
-        this.msg = messages[lang];
-
+        this.msg = messages[lang] ?? message_en;
         return html`
-            <div class="flex flex-col min-h-full bg-white dark:bg-gray-950 text-gray-800 dark:text-gray-200">
-                ${this._renderKnobRow()}
-                ${this._renderDetailsRow()}
-            </div>
+            <section class="nr-service">
+                <header class="nr-service__intro">
+                    <span>${this.msg.svcTitle}</span>
+                    <p>${this.msg.intro}</p>
+                </header>
+                ${this._loading ? html`<div class="nr-service__loading">${this.msg.loading}</div>` : this._projects.length === 0
+                    ? html`<div class="nr-service__empty">${this.msg.empty}</div>`
+                    : html`
+                        <div class="nr-service__knobs" style="--knob-scale: 0.48">
+                            ${this._renderKnob('project')}
+                            ${this._renderKnob('module')}
+                            ${this._renderKnob('version')}
+                        </div>
+                        ${this._renderNavigator()}
+                        ${this._renderContextCard()}
+                    `}
+            </section>
         `;
     }
 
-    //Knob Row
-
-    private _renderKnobRow() {
+    private _renderKnob(key: ContextKey) {
+        const config = this._knobConfig(key);
         return html`
-            <div class="
-                flex items-center justify-center
-                px-2 py-3
-                border-b border-gray-200 dark:border-gray-800
-                gap-0
-            " style="--knob-scale: 0.5">
-                ${this._renderKnobItem('workflow')}
-                ${this._renderKnobItem('rule')}
-            </div>
-        `;
-    }
-
-    private _renderKnobItem(key: string) {
-        const config = this._getKnobConfig(key);
-        const value = this._knobValues[key];
-        const isContext = this._selectedKnob === key;
-        const isDisabled = config.disabled ?? false;
-        const label = this.msg[key as keyof MessageType] || key;
-
-        return html`
-            <div class="flex flex-col items-center gap-0.5 ${isDisabled ? 'opacity-30' : ''}">
+            <div class="nr-service__knob ${this._selectedKnob === key ? 'is-selected' : ''}">
                 <aura--widgets--aura-select-knob-102020
                     .min=${config.min}
                     .max=${config.max}
-                    .value=${value}
+                    .value=${config.value}
                     .step=${1}
-                    .active=${true}
-                    .disabled=${isDisabled}
-                    .selected=${isContext}
+                    .active=${!config.disabled}
+                    .disabled=${config.disabled}
+                    .selected=${this._selectedKnob === key}
                     .showTicks=${false}
-                    @knob-change=${(e: CustomEvent) => this._onKnobChange(key, e)}
+                    @knob-change=${(event: CustomEvent) => void this._setKnobValue(key, event.detail.value)}
+                    @knob-click=${() => { this._selectedKnob = key; this.requestUpdate(); }}
                 ></aura--widgets--aura-select-knob-102020>
-
-                <div
-                    class="flex flex-col items-center gap-0.5 cursor-pointer"
-                    @click=${() => this._onKnobClick(key)}
-                >
-                    <span class="
-                        text-[9px] font-semibold uppercase tracking-wider
-                        ${isContext
-                ? 'text-gray-700 dark:text-gray-200'
-                : 'text-gray-400 dark:text-gray-600'}
-                        transition-colors duration-200
-                    ">${label}</span>
-
-                    <div class="
-                        w-full h-0.5 rounded-full
-                        transition-all duration-200
-                        ${isContext
-                ? 'bg-cyan-400 shadow-[0_0_4px_1px_rgba(34,211,238,0.6),0_0_8px_2px_rgba(34,211,238,0.3)]'
-                : 'bg-transparent'}
-                    "></div>
-                </div>
+                <button type="button" @click=${() => { this._selectedKnob = key; this.requestUpdate(); }}>${this.msg[key]}</button>
             </div>
         `;
     }
 
-    //Details Row
-
-    private _onWorkflowConfig(e: CustomEvent) {
-        const { min, max, labels } = e.detail;
-        this._workflowConfig = { key: 'workflow', min, max, labels };
-        // @ts-ignore
-        this.requestUpdate();
+    private _selectedLabel(): string {
+        if (this._selectedKnob === 'project') return String(this._project);
+        if (this._selectedKnob === 'module') return this._module?.title ?? '—';
+        return this._version === 'tobe' ? this.msg.tobe : this.msg.current;
     }
 
-    private _onRuleConfig(e: CustomEvent) {
-        const { min, max, labels } = e.detail;
-        this._ruleConfig = { key: 'rule', min, max, labels };
-        // @ts-ignore
-        this.requestUpdate();
+    private _selectedDescription(): string {
+        if (this._selectedKnob === 'project') return this.msg.projectDesc;
+        if (this._selectedKnob === 'module') return this.msg.moduleDesc;
+        return this.msg.versionDesc;
     }
 
-    private _renderDetailsRow() {
+    private _renderNavigator() {
+        const config = this._knobConfig(this._selectedKnob);
         return html`
-            <div class="flex flex-col flex-1">
-                <div class="flex flex-col gap-3 px-4 py-4 flex-1"
-                    @select-workflow=${(e: CustomEvent) => this._setKnobValue('workflow', e.detail.value)}
-                    @workflow-config=${(e: CustomEvent) => this._onWorkflowConfig(e)}
-                    @select-rule=${(e: CustomEvent) => this._setKnobValue('rule', e.detail.value)}
-                    @rule-config=${(e: CustomEvent) => this._onRuleConfig(e)}
-                >
-                    ${this._renderContextStatusArea()}
-                </div>
+            <div class="nr-service__navigator">
+                <aura--plugins--nav-header-102020
+                    .fixedLabel=${this.msg[this._selectedKnob]}
+                    .itemName=${this._selectedLabel()}
+                    .desc=${this._selectedDescription()}
+                    .value=${config.value}
+                    .min=${config.min}
+                    .max=${config.max}
+                    @nav-change=${(event: CustomEvent) => void this._setKnobValue(this._selectedKnob, event.detail.value)}
+                ></aura--plugins--nav-header-102020>
             </div>
         `;
     }
 
-    private _renderContextStatusArea() {
-        switch (this._selectedKnob) {
-            case 'workflow':
-                return html`
-                    <aura--plugins--select-workflow-102020
-                        .value=${this._workflowValue}
-                        .reloadToken=${this._workflowReloadToken}
-                    ></aura--plugins--select-workflow-102020>
-                `;
-            case 'rule':
-                return html`
-                    <aura--plugins--select-rule-102020
-                        .selectedModule=${this._selectedModule}
-                        .value=${this._ruleValue}
-                        @select-rule=${(e: CustomEvent) => this._setKnobValue('rule', e.detail.value)}
-                    ></aura--plugins--select-rule-102020>
-                `;
-            default:
-                return nothing;
-        }
+    private _statusLabel(): string {
+        const status = this._module?.status ?? 'unknown';
+        return this.msg[status as keyof MessageType] || this.msg.unknown;
+    }
+
+    private _renderContextCard() {
+        const module = this._module?.module;
+        if (!this._module || !module) return nothing;
+        return html`
+            <article class="nr-service__context">
+                <div class="nr-service__context-heading">
+                    <div>
+                        <span>${this.msg.moduleMap}</span>
+                        <h2>${this._module.title}</h2>
+                    </div>
+                    <strong class="nr-service__status nr-service__status--${this._module.status}">${this._statusLabel()}</strong>
+                </div>
+                <p>${this.msg.moduleMapDescription}</p>
+            </article>
+        `;
     }
 }
