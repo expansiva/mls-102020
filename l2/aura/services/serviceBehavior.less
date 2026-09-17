@@ -117,6 +117,46 @@ aura--services--service-behavior-102020 {
         box-shadow: 0 .8rem 2rem rgba(0, 0, 0, .14);
     }
 
+    .nr-service__compatibility {
+        display: grid;
+        gap: .55rem;
+        margin: .9rem 1rem 1rem;
+        padding: 1rem;
+        border: 1px solid color-mix(in srgb, var(--status-warning-text, #e8c76d) 45%, var(--border-subtle, #262e3a));
+        border-radius: .9rem;
+        background:
+            linear-gradient(135deg, color-mix(in srgb, var(--status-warning-bg, #413518) 48%, transparent), transparent 72%),
+            var(--surface-bg, #161b22);
+        box-shadow: 0 .8rem 2rem rgba(0, 0, 0, .12);
+    }
+
+    .nr-service__compatibility > span {
+        color: var(--status-warning-text, #e8c76d);
+        font-size: .61rem;
+        font-weight: 800;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+    }
+
+    .nr-service__compatibility h2 {
+        margin: 0;
+        color: var(--text-strong, #f0f4f8);
+        font-size: .95rem;
+        line-height: 1.35;
+    }
+
+    .nr-service__compatibility p {
+        margin: 0;
+        color: var(--text-muted, #96a3b3);
+        font-size: .72rem;
+        line-height: 1.55;
+    }
+
+    .nr-service__compatibility p + p {
+        padding-top: .55rem;
+        border-top: 1px solid var(--border-subtle, #262e3a);
+    }
+
     .nr-service__context-heading {
         display: flex;
         align-items: flex-start;

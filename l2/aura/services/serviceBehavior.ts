@@ -12,6 +12,7 @@ import {
 } from '/_102035_/l2/newRelease/helpers/context.js';
 import {
     listEligibleProjects,
+    listReadableProjects,
     listNs5ModuleSummaries,
     type NewReleaseModuleSummary,
 } from '/_102035_/l2/newRelease/helpers/l4Reader.js';
@@ -40,6 +41,12 @@ const message_en = {
     inProgress: 'In progress',
     awaitingStep: 'Awaiting review',
     unknown: 'No pipeline',
+    compatibility: 'Project compatibility',
+    ineligibleTitle: 'This project is not ready for New release yet.',
+    missingL4: 'No reviewable root L4 module definition was found in the current project.',
+    missingRuntime: 'The L4 definition exists, but l5/config.json has not been materialized with at least one module.',
+    projectUnavailable: 'The current project could not be identified in Studio.',
+    ineligibleHint: 'Complete the project structure and rebuild the release. The knobs remain available so you can inspect or select another compatible project.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -64,6 +71,12 @@ const messages: Record<string, MessageType> = {
         inProgress: 'Em andamento',
         awaitingStep: 'Aguardando revisão',
         unknown: 'Sem pipeline',
+        compatibility: 'Compatibilidade do projeto',
+        ineligibleTitle: 'Este projeto ainda não está preparado para Nova versão.',
+        missingL4: 'Nenhuma definição de módulo L4 revisável foi encontrada na raiz do projeto atual.',
+        missingRuntime: 'A definição L4 existe, mas o l5/config.json ainda não foi materializado com pelo menos um módulo.',
+        projectUnavailable: 'Não foi possível identificar o projeto atual no Studio.',
+        ineligibleHint: 'Complete a estrutura do projeto e gere novamente a release. Os knobs continuam disponíveis para inspeção ou para selecionar outro projeto compatível.',
     },
     es: {
         svcTitle: 'Nueva versión',
@@ -85,6 +98,12 @@ const messages: Record<string, MessageType> = {
         inProgress: 'En curso',
         awaitingStep: 'Esperando revisión',
         unknown: 'Sin pipeline',
+        compatibility: 'Compatibilidad del proyecto',
+        ineligibleTitle: 'Este proyecto todavía no está preparado para Nueva versión.',
+        missingL4: 'No se encontró una definición de módulo L4 revisable en la raíz del proyecto actual.',
+        missingRuntime: 'La definición L4 existe, pero l5/config.json aún no fue materializado con al menos un módulo.',
+        projectUnavailable: 'No fue posible identificar el proyecto actual en Studio.',
+        ineligibleHint: 'Complete la estructura del proyecto y genere nuevamente la versión. Los knobs siguen disponibles para inspección o para seleccionar otro proyecto compatible.',
     },
 };
 /// **collab_i18n_end**
@@ -125,6 +144,8 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     @state() private msg: MessageType = message_en;
     @state() private _projects: number[] = [];
+    @state() private _readableProjects: number[] = [];
+    @state() private _eligibleProjects: number[] = [];
     @state() private _modules: NewReleaseModuleSummary[] = [];
     @state() private _projectValue = 1;
     @state() private _moduleValue = 1;
@@ -140,6 +161,10 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     private get _module(): NewReleaseModuleSummary | null {
         return this._modules[this._moduleValue - 1] ?? null;
+    }
+
+    private get _projectEligible(): boolean {
+        return this._eligibleProjects.includes(this._project);
     }
 
     private get _versions(): NewReleaseVersion[] {
@@ -181,15 +206,20 @@ export class ServiceBehavior102020 extends ServiceBase {
         const token = ++this._loadToken;
         const aura = getAuraState();
         this._loading = true;
-        this._projects = await listEligibleProjects();
+        this._readableProjects = listReadableProjects();
+        this._eligibleProjects = await listEligibleProjects();
         if (token !== this._loadToken) return;
 
         const actualProject = Number(aura.actualProject || 0);
         const actualModule = String(aura.actualModule || '');
+        this._projects = actualProject > 0 && !this._eligibleProjects.includes(actualProject)
+            ? [actualProject, ...this._eligibleProjects]
+            : this._eligibleProjects;
         const preferredProject = this._projects.includes(actualProject)
             ? actualProject
             : this._projects[0] ?? 0;
         this._projectValue = Math.max(1, this._projects.indexOf(preferredProject) + 1);
+        if (!this._projectEligible) this._selectedKnob = 'project';
         await this._loadModules(actualModule, token);
         if (token !== this._loadToken) return;
         this._loading = false;
@@ -198,7 +228,7 @@ export class ServiceBehavior102020 extends ServiceBase {
     }
 
     private async _loadModules(preferredModule = '', token = ++this._loadToken): Promise<void> {
-        this._modules = this._project ? await listNs5ModuleSummaries(this._project) : [];
+        this._modules = this._projectEligible ? await listNs5ModuleSummaries(this._project) : [];
         if (token !== this._loadToken) return;
         const preferredIndex = this._modules.findIndex(module => module.name === preferredModule);
         this._moduleValue = preferredIndex >= 0 ? preferredIndex + 1 : 1;
@@ -213,6 +243,7 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     private async _setKnobValue(key: ContextKey, value: number | null): Promise<void> {
         if (value === null) return;
+        const hadContext = Boolean(this._context());
         this._selectedKnob = key;
         if (key === 'project' && value !== this._projectValue) {
             this._projectValue = value;
@@ -224,6 +255,7 @@ export class ServiceBehavior102020 extends ServiceBase {
             this._versionValue = value;
         }
         this._announceContext();
+        if (!hadContext && this._context()) await this._openModuleBlueprint();
     }
 
     private _announceContext(): void {
@@ -277,17 +309,17 @@ export class ServiceBehavior102020 extends ServiceBase {
                     <span>${this.msg.svcTitle}</span>
                     <p>${this.msg.intro}</p>
                 </header>
-                ${this._loading ? html`<div class="nr-service__loading">${this.msg.loading}</div>` : this._projects.length === 0
-                    ? html`<div class="nr-service__empty">${this.msg.empty}</div>`
-                    : html`
-                        <div class="nr-service__knobs" style="--knob-scale: 0.48">
-                            ${this._renderKnob('project')}
-                            ${this._renderKnob('module')}
-                            ${this._renderKnob('version')}
-                        </div>
+                ${this._loading ? html`<div class="nr-service__loading">${this.msg.loading}</div>` : html`
+                    <div class="nr-service__knobs" style="--knob-scale: 0.48">
+                        ${this._renderKnob('project')}
+                        ${this._renderKnob('module')}
+                        ${this._renderKnob('version')}
+                    </div>
+                    ${this._projectEligible ? html`
                         ${this._renderNavigator()}
                         ${this._renderContextCard()}
-                    `}
+                    ` : this._renderCompatibilityCard()}
+                `}
             </section>
         `;
     }
@@ -314,7 +346,7 @@ export class ServiceBehavior102020 extends ServiceBase {
     }
 
     private _selectedLabel(): string {
-        if (this._selectedKnob === 'project') return String(this._project);
+        if (this._selectedKnob === 'project') return this._project ? String(this._project) : '—';
         if (this._selectedKnob === 'module') return this._module?.title ?? '—';
         return this._version === 'tobe' ? this.msg.tobe : this.msg.current;
     }
@@ -345,6 +377,22 @@ export class ServiceBehavior102020 extends ServiceBase {
     private _statusLabel(): string {
         const status = this._module?.status ?? 'unknown';
         return this.msg[status as keyof MessageType] || this.msg.unknown;
+    }
+
+    private _compatibilityReason(): string {
+        if (!this._project) return this.msg.projectUnavailable;
+        return this._readableProjects.includes(this._project) ? this.msg.missingRuntime : this.msg.missingL4;
+    }
+
+    private _renderCompatibilityCard() {
+        return html`
+            <article class="nr-service__compatibility" role="status">
+                <span>${this.msg.compatibility}${this._project ? html` · ${this._project}` : nothing}</span>
+                <h2>${this.msg.ineligibleTitle}</h2>
+                <p>${this._compatibilityReason()}</p>
+                <p>${this.msg.ineligibleHint}</p>
+            </article>
+        `;
     }
 
     private _renderContextCard() {
