@@ -1,0 +1,15 @@
+{
+  "from": "l4",
+  "to": "l2",
+  "thread": "mensalidadesAcademia-20260918103000",
+  "round": 1,
+  "mode": "implement",
+  "subject": "first contracts for mensalidadesAcademia",
+  "artifacts": [
+    "module.defs.ts",
+    "journeys/index.defs.ts",
+    "ontology/index.defs.ts",
+    "access.defs.ts"
+  ],
+  "body": "Emit the workspace contracts and shared defs for this module from the finished l4. One workspace per (entity, actor) group of journeys."
+}
