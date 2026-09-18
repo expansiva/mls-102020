@@ -42,7 +42,7 @@ const EXPECTED_ARTIFACTS: Record<string, string> = {
   poolL1: 'l4/{module}/pool/l1/{stamp}_{thread}_{round}.json',
 };
 
-const WAITING_STEPS = ['requests50'] as const;
+const WAITING_STEPS: readonly string[] = [];
 
 function loadFlow(): FlowDoc {
   return JSON.parse(readFileSync(FLOW_PATH, 'utf8')) as FlowDoc;
@@ -83,6 +83,12 @@ void test('flow has exactly five steps in declared order with declared dependenc
   assert.equal(shared?.modelAlias, 'reasoning');
   assert.equal(shared?.status, undefined);
   assert.equal(shared?.artifact, 'l2/{module}/web/shared/{workspace}.defs.ts');
+
+  const requests = flow.steps.find(step => step.id === 'requests50');
+  assert.equal(requests?.kind, 'deterministic');
+  assert.equal(requests?.modelAlias, undefined);
+  assert.equal(requests?.status, undefined);
+  assert.equal(requests?.artifact, 'l4/{module}/pool/l1/{stamp}_{thread}_{round}.json');
 
   for (const id of WAITING_STEPS) {
     const step = flow.steps.find(item => item.id === id);

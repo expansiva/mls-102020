@@ -9,11 +9,11 @@ import {
   writeJson,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
-import { listPoolBox, readPoolMessage, type PoolMessage } from '/_102035_/l2/solution/pool.js';
+import { listPoolBox, readPoolMessage, type PoolMessage, type PoolTraceLine } from '/_102035_/l2/solution/pool.js';
 import type { Ns5PipelineStatus, Ns5PipelineStepState } from '/_102035_/l2/solution/types.js';
 
 export const P2_FLOW_ID = 'agentPlannerL2' as const;
-export const P2_FLOW_VERSION = '2026-09-18-p2-flow-v2' as const;
+export const P2_FLOW_VERSION = '2026-09-18-p2-flow-v3' as const;
 export const P2_AGENT_NAME = 'agentPlannerL2' as const;
 export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v1' as const;
 
@@ -61,6 +61,7 @@ export interface P2PipelineState {
   thread: string;
   round: number;
   messageFile: string;
+  pool?: PoolTraceLine[];
   updatedAt: string;
 }
 

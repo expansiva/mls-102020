@@ -1,5 +1,11 @@
 # agentPlannerL2
 
+## 2026-09-18 (p2_05)
+
+- `requests50`: one `pool/l1` message per BFF call. Body names the journey step, the
+  contract Input/Output, and the cited l4 fields. Trace on the l2 pipeline, then
+  delete the `pool/l2` message. No LLM. `docs/flow.json` is complete.
+
 ## 2026-09-18 (p2_04)
 
 - `shared40`: one `web/shared/{workspaceId}.defs.ts` per workspace in the 102039
