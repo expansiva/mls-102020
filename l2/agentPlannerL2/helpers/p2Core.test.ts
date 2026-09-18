@@ -1,0 +1,222 @@
+/// <mls fileReference="_102020_/l2/agentPlannerL2/helpers/p2Core.test.ts" enhancement="_blank"/>
+
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { normalizePoolMessage } from '/_102035_/l2/solution/pool.js';
+import {
+  P2_STEP_DEPENDS_ON,
+  P2_STEP_IDS,
+  buildP2PlannedSteps,
+  executeP2Entry,
+  loadP2Entry,
+  moduleTokenOk,
+  ownerStepId,
+  parseP2Invocation,
+  parseP2StepPrompt,
+  p2InvocationRefusal,
+  p2PipelineFile,
+} from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const FIXTURE = JSON.parse(readFileSync(
+  path.join(HERE, '../steps/entry10/fixtures/pool-l2-mensalidadesAcademia.json'),
+  'utf8',
+)) as Record<string, unknown>;
+
+const PROJECT = 102047;
+const MODULE = 'mensalidadesAcademia';
+const AT = new Date(Date.UTC(2026, 8, 18, 10, 30, 0));
+const SHORT = '20260918103000_mensalidadesAcademia-20260918103000_1';
+const DISPLAY = `l4/${MODULE}/pool/l2/${SHORT}.json`;
+
+type Stored = {
+  project: number; level: number; folder: string; shortName: string; extension: string;
+  status: string; versionRef: string; content: string;
+  getValueInfo: () => Promise<{ content: string }>;
+  getContent: () => Promise<string>;
+};
+
+type Host = { files: Record<string, Stored> };
+
+function keyOf(info: { project: number | string; level: number | string; folder: string; shortName: string; extension: string }): string {
+  return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
+}
+
+function seed(host: Host, folder: string, shortName: string, content = '', level = 4): Stored {
+  const file: Stored = {
+    project: PROJECT, level, folder, shortName, extension: '.json',
+    status: 'changed', versionRef: '1', content,
+    getValueInfo: async () => ({ content: file.content }),
+    getContent: async () => file.content,
+  };
+  host.files[keyOf(file)] = file;
+  return file;
+}
+
+function installHost(): Host {
+  const host: Host = { files: {} };
+  (globalThis as unknown as Record<string, unknown>).mls = {
+    actualProject: PROJECT,
+    events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
+    stor: {
+      files: host.files,
+      getKeyToFile: keyOf,
+      localStor: {
+        setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
+        listFolder: () => [],
+      },
+    },
+  };
+  return host;
+}
+
+const L4_COMPLETE = JSON.stringify({
+  schemaVersion: '2026-09-10-ns5-pipeline-v1',
+  flowId: 'agentNewSolution5',
+  moduleName: MODULE,
+  status: 'complete',
+  steps: {},
+  sourcePrompt: '',
+  invocation: { fast: false, module: MODULE, rebuildAll: false },
+  updatedAt: AT.toISOString(),
+});
+
+function seedReady(host: Host, message: unknown = FIXTURE, extraShort?: string): void {
+  seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(message, null, 2)}\n`);
+  if (extraShort) seed(host, `${MODULE}/pool/l2`, extraShort, `${JSON.stringify(message, null, 2)}\n`);
+  seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 2);
+}
+
+void test('parseP2Invocation reads the module token and strips the agent prefix', () => {
+  assert.equal(parseP2Invocation('@@agentPlannerL2 mensalidadesAcademia').module, MODULE);
+  assert.equal(parseP2Invocation('mensalidadesAcademia').module, MODULE);
+  assert.equal(parseP2Invocation('@@_102020_/l2/agentPlannerL2 mensalidadesAcademia').module, MODULE);
+  assert.equal(parseP2Invocation('').module, '');
+});
+
+void test('p2InvocationRefusal refuses a missing or non-lowerCamel module', () => {
+  assert.equal(p2InvocationRefusal({ module: MODULE }), '');
+  assert.match(p2InvocationRefusal({ module: '' }), /Pass @@agentPlannerL2/);
+  assert.match(p2InvocationRefusal({ module: 'MensalidadesAcademia' }), /lowerCamel/);
+  assert.match(p2InvocationRefusal({ module: 'mensalidades-academia' }), /lowerCamel/);
+});
+
+void test('moduleTokenOk accepts lowerCamel only', () => {
+  assert.equal(moduleTokenOk(MODULE), true);
+  assert.equal(moduleTokenOk('stockControl'), true);
+  assert.equal(moduleTokenOk('MensalidadesAcademia'), false);
+  assert.equal(moduleTokenOk(''), false);
+});
+
+void test('planned tree is five sequential steps with entry10 first', () => {
+  const steps = buildP2PlannedSteps(MODULE, { thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY });
+  assert.equal(steps.length, 5);
+  assert.deepEqual(steps.map(step => step.planning?.planId), [...P2_STEP_IDS]);
+  assert.equal(steps[0].status, 'waiting_human_input');
+  assert.deepEqual(steps[0].planning?.dependsOn, []);
+  for (const step of steps.slice(1)) {
+    assert.equal(step.status, 'waiting_dependency');
+    assert.equal(step.agentName, 'agentPlannerL2');
+  }
+  assert.deepEqual(steps.find(step => step.planning?.planId === 'workspaces20')?.planning?.dependsOn, [...P2_STEP_DEPENDS_ON.workspaces20]);
+});
+
+void test('ownerStepId maps L4 dispatch prompt to entry10 and ignores done-anchors', () => {
+  const l4Prompt = JSON.stringify({ moduleName: MODULE, thread: 't-20260918103000', file: DISPLAY });
+  assert.equal(ownerStepId('entry10'), 'entry10');
+  assert.equal(ownerStepId('entry10-done'), '');
+  assert.equal(ownerStepId('entry10-done', l4Prompt), '');
+  assert.equal(ownerStepId('workspaces20-repair-1'), 'workspaces20');
+  assert.equal(ownerStepId('', l4Prompt), 'entry10');
+  assert.equal(ownerStepId('', JSON.stringify({ moduleName: MODULE })), '');
+});
+
+void test('parseP2StepPrompt distinguishes L4 dispatch from a planned entry10', () => {
+  assert.deepEqual(
+    parseP2StepPrompt(JSON.stringify({ moduleName: MODULE, thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY })),
+    { kind: 'step', moduleName: MODULE, thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY },
+  );
+  assert.deepEqual(parseP2StepPrompt(JSON.stringify({ planId: 'entry10', moduleName: MODULE })), { kind: 'entry', moduleName: MODULE });
+  assert.equal(parseP2StepPrompt('not-json').kind, 'refusal');
+});
+
+void test('fixture of the pool/l2 message is a valid PoolMessage', () => {
+  const message = normalizePoolMessage(FIXTURE);
+  assert.equal(message.from, 'l4');
+  assert.equal(message.to, 'l2');
+  assert.equal(message.thread, 'mensalidadesAcademia-20260918103000');
+  assert.equal(message.round, 1);
+  assert.equal(message.mode, 'implement');
+});
+
+void test('loadP2Entry refuses when l4 is missing, not complete, or pool/l2 is empty', async () => {
+  installHost();
+  const missing = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in missing && missing.refusal, `Module "${MODULE}" has no complete l4.`);
+
+  const host = installHost();
+  seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE.replace('"complete"', '"inProgress"'));
+  const incomplete = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in incomplete && incomplete.refusal, `Module "${MODULE}" has no complete l4.`);
+
+  const empty = installHost();
+  seed(empty, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  const pending = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in pending && pending.refusal, `nothing pending for ${MODULE} in pool/l2`);
+});
+
+void test('hand entry picks the oldest pool/l2 message by name', async () => {
+  const host = installHost();
+  seedReady(host, FIXTURE, '20260918120000_mensalidadesAcademia-20260918103000_1');
+  const loaded = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in loaded, false);
+  if ('refusal' in loaded) return;
+  assert.equal(loaded.file.shortName, SHORT);
+  assert.equal(loaded.message.thread, 'mensalidadesAcademia-20260918103000');
+});
+
+void test('hand entry and L4 step entry converge on the same pipeline.json', async () => {
+  const host = installHost();
+  seedReady(host);
+  const hand = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in hand, false);
+  if ('refusal' in hand) return;
+
+  const l2Key = keyOf(p2PipelineFile(MODULE));
+  delete host.files[l2Key];
+  seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 2);
+
+  const step = await executeP2Entry({
+    kind: 'step',
+    moduleName: MODULE,
+    thread: 'mensalidadesAcademia-20260918103000',
+    file: DISPLAY,
+  }, AT);
+  assert.equal('refusal' in step, false);
+  if ('refusal' in step) return;
+
+  assert.deepEqual(step.pipeline, hand.pipeline);
+  assert.equal(step.pipeline.thread, 'mensalidadesAcademia-20260918103000');
+  assert.equal(step.pipeline.round, 1);
+  assert.equal(step.pipeline.messageFile, DISPLAY);
+  assert.equal(step.pipeline.steps.entry10?.status, 'approved');
+  assert.equal(step.pipeline.flowId, 'agentPlannerL2');
+  assert.equal(JSON.parse(host.files[l2Key].content).thread, 'mensalidadesAcademia-20260918103000');
+});
+
+void test('L4 step entry refuses a thread that does not match the file', async () => {
+  const host = installHost();
+  seedReady(host);
+  const result = await loadP2Entry({
+    kind: 'step',
+    moduleName: MODULE,
+    thread: 'mensalidadesAcademia-19990101000000',
+    file: DISPLAY,
+  });
+  assert.equal('refusal' in result && /thread does not match/.test(result.refusal), true);
+});
