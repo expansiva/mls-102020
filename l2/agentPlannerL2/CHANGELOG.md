@@ -1,5 +1,35 @@
 # agentPlannerL2
 
+## 2026-09-18 (p2_05)
+
+- `requests50`: one `pool/l1` message per BFF call. Body names the journey step, the
+  contract Input/Output, and the cited l4 fields. Trace on the l2 pipeline, then
+  delete the `pool/l2` message. No LLM. `docs/flow.json` is complete.
+
+## 2026-09-18 (p2_04)
+
+- `shared40`: one `web/shared/{workspaceId}.defs.ts` per workspace in the 102039
+  20-key form. Code writes derived keys (`pageId`, `baseClassName`, `contractRef`,
+  …); the model writes judgment (`scenaries`, `states`, `dataBindings`,
+  `initialLoads`, `actions`, `destructiveCommandIds`, `pageName`). Gate plus
+  bounded repair. No class, no page.
+
+## 2026-09-18 (p2_03)
+
+- `contracts30`: field catalog from `ontologyPaths`; call slots from the workspace cut
+  (`locate` → paginated `qry*`, `inspect` → `qryGet*` / hub `ddm`, `act` → `cmd*` by effect,
+  `decide` → one `cmd*` per branching origin). The model names calls and picks fields; the
+  emitter writes `l2/<mod>/web/contracts/{workspaceId}.defs.ts` (interfaces + route constants).
+- Gate: cited fields resolve; `derived: true` never in command Input except identity `id`;
+  no `any`; no import. Repair by step (NS5 pattern).
+
+## 2026-09-18 (p2_02)
+
+- `workspaces20`: candidates grouped by `(entity, actorRef, kind)` from the l4 journeys.
+  Journey with only `act` and no `locate` → `command`; `ddm` / inspect-only → `hub`; else
+  `catalogue`. The model names the cut; the gate keeps every journey in exactly one workspace.
+- Artifact `l2/<mod>/pipeline/workspaces20-draft.json`. Repair by step (NS5 pattern).
+
 ## 2026-09-18 (p2_01)
 
 - Skeleton in the NS5 pattern: `createAgent` (`agentProject: 102020`, `visibility: public`),

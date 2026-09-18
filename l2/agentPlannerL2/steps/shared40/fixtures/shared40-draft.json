@@ -1,0 +1,1420 @@
+{
+  "schemaVersion": "2026-09-18-p2-shared-v1",
+  "moduleName": "mensalidadesAcademia",
+  "workspaces": [
+    {
+      "workspaceId": "matriculaCatalogue",
+      "pageName": "Matrículas",
+      "scenaries": [
+        {
+          "value": "base",
+          "kind": "base",
+          "commandName": "qryListAluno",
+          "preconditions": []
+        },
+        {
+          "value": "createMatricula",
+          "kind": "command",
+          "commandName": "cmdCreateMatricula",
+          "preconditions": []
+        }
+      ],
+      "states": [
+        {
+          "stateKey": "ui.matriculaCatalogue.status",
+          "name": "status",
+          "kind": "pageStatus",
+          "defaultValue": ""
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.scenary",
+          "name": "uiScenary",
+          "kind": "uiScenary",
+          "defaultValue": "base",
+          "valueSet": [
+            "base",
+            "createMatricula"
+          ]
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.action.qryListAluno.status",
+          "name": "qryListAlunoState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "qryListAluno"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.input.qryListAluno.name",
+          "name": "qryListAlunoName",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "qryListAluno",
+            "direction": "input",
+            "field": "name"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.input.qryListAluno.docId",
+          "name": "qryListAlunoDocId",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "qryListAluno",
+            "direction": "input",
+            "field": "docId"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.data.qryListAluno",
+          "name": "qryListAlunoData",
+          "kind": "queryResult",
+          "defaultValue": {
+            "alunoItems": [],
+            "total": 0
+          },
+          "contractRef": {
+            "commandName": "qryListAluno",
+            "direction": "output"
+          },
+          "outputShape": "paginated",
+          "collection": true
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.action.qryListPlano.status",
+          "name": "qryListPlanoState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "qryListPlano"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.input.qryListPlano.name",
+          "name": "qryListPlanoName",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "qryListPlano",
+            "direction": "input",
+            "field": "name"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.data.qryListPlano",
+          "name": "qryListPlanoData",
+          "kind": "queryResult",
+          "defaultValue": {
+            "planoItems": [],
+            "total": 0
+          },
+          "contractRef": {
+            "commandName": "qryListPlano",
+            "direction": "output"
+          },
+          "outputShape": "paginated",
+          "collection": true
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.action.cmdCreateMatricula.status",
+          "name": "cmdCreateMatriculaState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "cmdCreateMatricula"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.alunoId",
+          "name": "cmdCreateMatriculaAlunoId",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "cmdCreateMatricula",
+            "direction": "input",
+            "field": "alunoId"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.planoId",
+          "name": "cmdCreateMatriculaPlanoId",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "cmdCreateMatricula",
+            "direction": "input",
+            "field": "planoId"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.dataInicio",
+          "name": "cmdCreateMatriculaDataInicio",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "cmdCreateMatricula",
+            "direction": "input",
+            "field": "dataInicio"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.output.cmdCreateMatricula",
+          "name": "cmdCreateMatriculaOutput",
+          "kind": "commandOutput",
+          "defaultValue": null,
+          "contractRef": {
+            "commandName": "cmdCreateMatricula",
+            "direction": "output"
+          }
+        },
+        {
+          "stateKey": "ui.matriculaCatalogue.action.cmdCreateMatricula.error",
+          "name": "cmdCreateMatriculaError",
+          "kind": "actionError",
+          "defaultValue": "",
+          "actionRef": "cmdCreateMatricula"
+        }
+      ],
+      "dataBindings": [
+        {
+          "id": "binding.matriculaCatalogue.qryListAluno",
+          "source": "bff.qryListAluno",
+          "command": "qryListAluno",
+          "description": "qryListAluno",
+          "kind": "query",
+          "stateKey": "ui.matriculaCatalogue.data.qryListAluno",
+          "inputStateKeys": [
+            "ui.matriculaCatalogue.input.qryListAluno.name",
+            "ui.matriculaCatalogue.input.qryListAluno.docId"
+          ],
+          "inputs": [
+            {
+              "name": "name",
+              "stateKey": "ui.matriculaCatalogue.input.qryListAluno.name",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            },
+            {
+              "name": "docId",
+              "stateKey": "ui.matriculaCatalogue.input.qryListAluno.docId",
+              "source": "userInput",
+              "required": false,
+              "presentation": "form"
+            }
+          ],
+          "selection": "single"
+        },
+        {
+          "id": "binding.matriculaCatalogue.qryListPlano",
+          "source": "bff.qryListPlano",
+          "command": "qryListPlano",
+          "description": "qryListPlano",
+          "kind": "query",
+          "stateKey": "ui.matriculaCatalogue.data.qryListPlano",
+          "inputStateKeys": [
+            "ui.matriculaCatalogue.input.qryListPlano.name"
+          ],
+          "inputs": [
+            {
+              "name": "name",
+              "stateKey": "ui.matriculaCatalogue.input.qryListPlano.name",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            }
+          ],
+          "selection": "single"
+        },
+        {
+          "id": "binding.matriculaCatalogue.cmdCreateMatricula",
+          "source": "bff.cmdCreateMatricula",
+          "command": "cmdCreateMatricula",
+          "description": "cmdCreateMatricula",
+          "kind": "command",
+          "stateKey": "ui.matriculaCatalogue.output.cmdCreateMatricula",
+          "inputStateKeys": [
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.alunoId",
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.planoId",
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.dataInicio"
+          ],
+          "inputs": [
+            {
+              "name": "alunoId",
+              "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.alunoId",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            },
+            {
+              "name": "planoId",
+              "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.planoId",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            },
+            {
+              "name": "dataInicio",
+              "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.dataInicio",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            }
+          ],
+          "selection": "none"
+        }
+      ],
+      "initialLoads": [],
+      "actions": [
+        {
+          "actionId": "qryListAluno",
+          "kind": "query",
+          "methodName": "loadQryListAluno",
+          "handlerName": "handleQryListAlunoClick",
+          "commandRef": "qryListAluno",
+          "routeKey": "mensalidadesAcademia.matriculaCatalogue.qryListAluno",
+          "purpose": "qryListAluno",
+          "inputStateKeys": [
+            "ui.matriculaCatalogue.input.qryListAluno.name",
+            "ui.matriculaCatalogue.input.qryListAluno.docId"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [],
+          "outputStateKeys": [
+            "ui.matriculaCatalogue.data.qryListAluno"
+          ],
+          "statusStateKey": "ui.matriculaCatalogue.action.qryListAluno.status"
+        },
+        {
+          "actionId": "qryListPlano",
+          "kind": "query",
+          "methodName": "loadQryListPlano",
+          "handlerName": "handleQryListPlanoClick",
+          "commandRef": "qryListPlano",
+          "routeKey": "mensalidadesAcademia.matriculaCatalogue.qryListPlano",
+          "purpose": "qryListPlano",
+          "inputStateKeys": [
+            "ui.matriculaCatalogue.input.qryListPlano.name"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [],
+          "outputStateKeys": [
+            "ui.matriculaCatalogue.data.qryListPlano"
+          ],
+          "statusStateKey": "ui.matriculaCatalogue.action.qryListPlano.status"
+        },
+        {
+          "actionId": "cmdCreateMatricula",
+          "kind": "command",
+          "methodName": "cmdCreateMatricula",
+          "handlerName": "handleCmdCreateMatriculaClick",
+          "commandRef": "cmdCreateMatricula",
+          "routeKey": "mensalidadesAcademia.matriculaCatalogue.cmdCreateMatricula",
+          "purpose": "cmdCreateMatricula",
+          "inputStateKeys": [
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.alunoId",
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.planoId",
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.dataInicio"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [],
+          "outputStateKeys": [
+            "ui.matriculaCatalogue.output.cmdCreateMatricula"
+          ],
+          "statusStateKey": "ui.matriculaCatalogue.action.cmdCreateMatricula.status",
+          "errorStateKey": "ui.matriculaCatalogue.action.cmdCreateMatricula.error",
+          "feedback": {
+            "successMessageKey": "action.cmdCreateMatricula.success",
+            "errorMessageKey": "action.cmdCreateMatricula.error",
+            "dismissible": true
+          },
+          "clearInputStateKeys": [
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.alunoId",
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.planoId",
+            "ui.matriculaCatalogue.input.cmdCreateMatricula.dataInicio"
+          ],
+          "refreshActionIds": [
+            "qryListAluno",
+            "qryListPlano"
+          ]
+        },
+        {
+          "actionId": "set.qryListAlunoName",
+          "kind": "stateSetter",
+          "methodName": "setQryListAlunoName",
+          "handlerName": "handleQryListAlunoNameChange",
+          "stateKey": "ui.matriculaCatalogue.input.qryListAluno.name"
+        },
+        {
+          "actionId": "set.qryListAlunoDocId",
+          "kind": "stateSetter",
+          "methodName": "setQryListAlunoDocId",
+          "handlerName": "handleQryListAlunoDocIdChange",
+          "stateKey": "ui.matriculaCatalogue.input.qryListAluno.docId"
+        },
+        {
+          "actionId": "set.qryListPlanoName",
+          "kind": "stateSetter",
+          "methodName": "setQryListPlanoName",
+          "handlerName": "handleQryListPlanoNameChange",
+          "stateKey": "ui.matriculaCatalogue.input.qryListPlano.name"
+        },
+        {
+          "actionId": "set.cmdCreateMatriculaAlunoId",
+          "kind": "stateSetter",
+          "methodName": "setCmdCreateMatriculaAlunoId",
+          "handlerName": "handleCmdCreateMatriculaAlunoIdChange",
+          "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.alunoId"
+        },
+        {
+          "actionId": "set.cmdCreateMatriculaPlanoId",
+          "kind": "stateSetter",
+          "methodName": "setCmdCreateMatriculaPlanoId",
+          "handlerName": "handleCmdCreateMatriculaPlanoIdChange",
+          "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.planoId"
+        },
+        {
+          "actionId": "set.cmdCreateMatriculaDataInicio",
+          "kind": "stateSetter",
+          "methodName": "setCmdCreateMatriculaDataInicio",
+          "handlerName": "handleCmdCreateMatriculaDataInicioChange",
+          "stateKey": "ui.matriculaCatalogue.input.cmdCreateMatricula.dataInicio"
+        }
+      ],
+      "destructiveCommandIds": []
+    },
+    {
+      "workspaceId": "mensalidadeCatalogue",
+      "pageName": "Mensalidades e pagamentos",
+      "scenaries": [
+        {
+          "value": "base",
+          "kind": "base",
+          "commandName": "qryListMensalidade",
+          "preconditions": []
+        },
+        {
+          "value": "detail",
+          "kind": "detail",
+          "commandName": "qryGetMensalidade",
+          "preconditions": [
+            "ui.mensalidadeCatalogue.input.qryGetMensalidade.id"
+          ]
+        },
+        {
+          "value": "createPagamento",
+          "kind": "command",
+          "commandName": "cmdCreatePagamento",
+          "preconditions": []
+        }
+      ],
+      "states": [
+        {
+          "stateKey": "ui.mensalidadeCatalogue.status",
+          "name": "status",
+          "kind": "pageStatus",
+          "defaultValue": ""
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.scenary",
+          "name": "uiScenary",
+          "kind": "uiScenary",
+          "defaultValue": "base",
+          "valueSet": [
+            "base",
+            "detail",
+            "createPagamento"
+          ]
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.action.qryListMensalidade.status",
+          "name": "qryListMensalidadeState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "qryListMensalidade"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.input.qryListMensalidade.matriculaId",
+          "name": "qryListMensalidadeMatriculaId",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "qryListMensalidade",
+            "direction": "input",
+            "field": "matriculaId"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.input.qryListMensalidade.competencia",
+          "name": "qryListMensalidadeCompetencia",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "qryListMensalidade",
+            "direction": "input",
+            "field": "competencia"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.data.qryListMensalidade",
+          "name": "qryListMensalidadeData",
+          "kind": "queryResult",
+          "defaultValue": {
+            "mensalidadeItems": [],
+            "total": 0
+          },
+          "contractRef": {
+            "commandName": "qryListMensalidade",
+            "direction": "output"
+          },
+          "outputShape": "paginated",
+          "collection": true
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.action.qryGetMensalidade.status",
+          "name": "qryGetMensalidadeState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "qryGetMensalidade"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.input.qryGetMensalidade.id",
+          "name": "qryGetMensalidadeId",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "qryGetMensalidade",
+            "direction": "input",
+            "field": "id"
+          },
+          "source": "selectedEntity",
+          "presentation": "selection"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.data.qryGetMensalidade",
+          "name": "qryGetMensalidadeData",
+          "kind": "queryResult",
+          "defaultValue": null,
+          "contractRef": {
+            "commandName": "qryGetMensalidade",
+            "direction": "output"
+          },
+          "outputShape": "object",
+          "collection": false
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.action.cmdCreatePagamento.status",
+          "name": "cmdCreatePagamentoState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "cmdCreatePagamento"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.mensalidadeId",
+          "name": "cmdCreatePagamentoMensalidadeId",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "cmdCreatePagamento",
+            "direction": "input",
+            "field": "mensalidadeId"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.dataPagamento",
+          "name": "cmdCreatePagamentoDataPagamento",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "cmdCreatePagamento",
+            "direction": "input",
+            "field": "dataPagamento"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.valor",
+          "name": "cmdCreatePagamentoValor",
+          "kind": "input",
+          "defaultValue": 0,
+          "contractRef": {
+            "commandName": "cmdCreatePagamento",
+            "direction": "input",
+            "field": "valor"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.formaPagamento",
+          "name": "cmdCreatePagamentoFormaPagamento",
+          "kind": "input",
+          "defaultValue": "",
+          "valueSet": [
+            "cash",
+            "pix",
+            "debitCard",
+            "creditCard",
+            "bankTransfer"
+          ],
+          "contractRef": {
+            "commandName": "cmdCreatePagamento",
+            "direction": "input",
+            "field": "formaPagamento"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.output.cmdCreatePagamento",
+          "name": "cmdCreatePagamentoOutput",
+          "kind": "commandOutput",
+          "defaultValue": null,
+          "contractRef": {
+            "commandName": "cmdCreatePagamento",
+            "direction": "output"
+          }
+        },
+        {
+          "stateKey": "ui.mensalidadeCatalogue.action.cmdCreatePagamento.error",
+          "name": "cmdCreatePagamentoError",
+          "kind": "actionError",
+          "defaultValue": "",
+          "actionRef": "cmdCreatePagamento"
+        }
+      ],
+      "dataBindings": [
+        {
+          "id": "binding.mensalidadeCatalogue.qryListMensalidade",
+          "source": "bff.qryListMensalidade",
+          "command": "qryListMensalidade",
+          "description": "qryListMensalidade",
+          "kind": "query",
+          "stateKey": "ui.mensalidadeCatalogue.data.qryListMensalidade",
+          "inputStateKeys": [
+            "ui.mensalidadeCatalogue.input.qryListMensalidade.matriculaId",
+            "ui.mensalidadeCatalogue.input.qryListMensalidade.competencia"
+          ],
+          "inputs": [
+            {
+              "name": "matriculaId",
+              "stateKey": "ui.mensalidadeCatalogue.input.qryListMensalidade.matriculaId",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            },
+            {
+              "name": "competencia",
+              "stateKey": "ui.mensalidadeCatalogue.input.qryListMensalidade.competencia",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            }
+          ],
+          "selection": "single"
+        },
+        {
+          "id": "binding.mensalidadeCatalogue.qryGetMensalidade",
+          "source": "bff.qryGetMensalidade",
+          "command": "qryGetMensalidade",
+          "description": "qryGetMensalidade",
+          "kind": "query",
+          "stateKey": "ui.mensalidadeCatalogue.data.qryGetMensalidade",
+          "inputStateKeys": [
+            "ui.mensalidadeCatalogue.input.qryGetMensalidade.id"
+          ],
+          "inputs": [
+            {
+              "name": "id",
+              "stateKey": "ui.mensalidadeCatalogue.input.qryGetMensalidade.id",
+              "source": "selectedEntity",
+              "required": true,
+              "presentation": "selection"
+            }
+          ],
+          "selection": "none"
+        },
+        {
+          "id": "binding.mensalidadeCatalogue.cmdCreatePagamento",
+          "source": "bff.cmdCreatePagamento",
+          "command": "cmdCreatePagamento",
+          "description": "cmdCreatePagamento",
+          "kind": "command",
+          "stateKey": "ui.mensalidadeCatalogue.output.cmdCreatePagamento",
+          "inputStateKeys": [
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.mensalidadeId",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.dataPagamento",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.valor",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.formaPagamento"
+          ],
+          "inputs": [
+            {
+              "name": "mensalidadeId",
+              "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.mensalidadeId",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            },
+            {
+              "name": "dataPagamento",
+              "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.dataPagamento",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            },
+            {
+              "name": "valor",
+              "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.valor",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            },
+            {
+              "name": "formaPagamento",
+              "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.formaPagamento",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            }
+          ],
+          "selection": "none"
+        }
+      ],
+      "initialLoads": [],
+      "actions": [
+        {
+          "actionId": "qryListMensalidade",
+          "kind": "query",
+          "methodName": "loadQryListMensalidade",
+          "handlerName": "handleQryListMensalidadeClick",
+          "commandRef": "qryListMensalidade",
+          "routeKey": "mensalidadesAcademia.mensalidadeCatalogue.qryListMensalidade",
+          "purpose": "qryListMensalidade",
+          "inputStateKeys": [
+            "ui.mensalidadeCatalogue.input.qryListMensalidade.matriculaId",
+            "ui.mensalidadeCatalogue.input.qryListMensalidade.competencia"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [],
+          "outputStateKeys": [
+            "ui.mensalidadeCatalogue.data.qryListMensalidade"
+          ],
+          "statusStateKey": "ui.mensalidadeCatalogue.action.qryListMensalidade.status"
+        },
+        {
+          "actionId": "qryGetMensalidade",
+          "kind": "query",
+          "methodName": "loadQryGetMensalidade",
+          "handlerName": "handleQryGetMensalidadeClick",
+          "commandRef": "qryGetMensalidade",
+          "routeKey": "mensalidadesAcademia.mensalidadeCatalogue.qryGetMensalidade",
+          "purpose": "qryGetMensalidade",
+          "inputStateKeys": [
+            "ui.mensalidadeCatalogue.input.qryGetMensalidade.id"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [
+            "ui.mensalidadeCatalogue.input.qryGetMensalidade.id"
+          ],
+          "outputStateKeys": [
+            "ui.mensalidadeCatalogue.data.qryGetMensalidade"
+          ],
+          "statusStateKey": "ui.mensalidadeCatalogue.action.qryGetMensalidade.status"
+        },
+        {
+          "actionId": "cmdCreatePagamento",
+          "kind": "command",
+          "methodName": "cmdCreatePagamento",
+          "handlerName": "handleCmdCreatePagamentoClick",
+          "commandRef": "cmdCreatePagamento",
+          "routeKey": "mensalidadesAcademia.mensalidadeCatalogue.cmdCreatePagamento",
+          "purpose": "cmdCreatePagamento",
+          "inputStateKeys": [
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.mensalidadeId",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.dataPagamento",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.valor",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.formaPagamento"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [],
+          "outputStateKeys": [
+            "ui.mensalidadeCatalogue.output.cmdCreatePagamento"
+          ],
+          "statusStateKey": "ui.mensalidadeCatalogue.action.cmdCreatePagamento.status",
+          "errorStateKey": "ui.mensalidadeCatalogue.action.cmdCreatePagamento.error",
+          "feedback": {
+            "successMessageKey": "action.cmdCreatePagamento.success",
+            "errorMessageKey": "action.cmdCreatePagamento.error",
+            "dismissible": true
+          },
+          "clearInputStateKeys": [
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.mensalidadeId",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.dataPagamento",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.valor",
+            "ui.mensalidadeCatalogue.input.cmdCreatePagamento.formaPagamento"
+          ],
+          "refreshActionIds": [
+            "qryListMensalidade",
+            "qryGetMensalidade"
+          ]
+        },
+        {
+          "actionId": "set.qryListMensalidadeMatriculaId",
+          "kind": "stateSetter",
+          "methodName": "setQryListMensalidadeMatriculaId",
+          "handlerName": "handleQryListMensalidadeMatriculaIdChange",
+          "stateKey": "ui.mensalidadeCatalogue.input.qryListMensalidade.matriculaId"
+        },
+        {
+          "actionId": "set.qryListMensalidadeCompetencia",
+          "kind": "stateSetter",
+          "methodName": "setQryListMensalidadeCompetencia",
+          "handlerName": "handleQryListMensalidadeCompetenciaChange",
+          "stateKey": "ui.mensalidadeCatalogue.input.qryListMensalidade.competencia"
+        },
+        {
+          "actionId": "set.qryGetMensalidadeId",
+          "kind": "stateSetter",
+          "methodName": "setQryGetMensalidadeId",
+          "handlerName": "handleQryGetMensalidadeIdChange",
+          "stateKey": "ui.mensalidadeCatalogue.input.qryGetMensalidade.id"
+        },
+        {
+          "actionId": "set.cmdCreatePagamentoMensalidadeId",
+          "kind": "stateSetter",
+          "methodName": "setCmdCreatePagamentoMensalidadeId",
+          "handlerName": "handleCmdCreatePagamentoMensalidadeIdChange",
+          "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.mensalidadeId"
+        },
+        {
+          "actionId": "set.cmdCreatePagamentoDataPagamento",
+          "kind": "stateSetter",
+          "methodName": "setCmdCreatePagamentoDataPagamento",
+          "handlerName": "handleCmdCreatePagamentoDataPagamentoChange",
+          "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.dataPagamento"
+        },
+        {
+          "actionId": "set.cmdCreatePagamentoValor",
+          "kind": "stateSetter",
+          "methodName": "setCmdCreatePagamentoValor",
+          "handlerName": "handleCmdCreatePagamentoValorChange",
+          "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.valor"
+        },
+        {
+          "actionId": "set.cmdCreatePagamentoFormaPagamento",
+          "kind": "stateSetter",
+          "methodName": "setCmdCreatePagamentoFormaPagamento",
+          "handlerName": "handleCmdCreatePagamentoFormaPagamentoChange",
+          "stateKey": "ui.mensalidadeCatalogue.input.cmdCreatePagamento.formaPagamento"
+        }
+      ],
+      "destructiveCommandIds": []
+    },
+    {
+      "workspaceId": "gerarMensalidadesDoMes",
+      "pageName": "Gerar mensalidades do mês",
+      "scenaries": [
+        {
+          "value": "base",
+          "kind": "base",
+          "commandName": "",
+          "preconditions": []
+        },
+        {
+          "value": "gerarMensalidadesDoMes",
+          "kind": "command",
+          "commandName": "cmdGerarMensalidadesDoMes",
+          "preconditions": []
+        }
+      ],
+      "states": [
+        {
+          "stateKey": "ui.gerarMensalidadesDoMes.status",
+          "name": "status",
+          "kind": "pageStatus",
+          "defaultValue": ""
+        },
+        {
+          "stateKey": "ui.gerarMensalidadesDoMes.scenary",
+          "name": "uiScenary",
+          "kind": "uiScenary",
+          "defaultValue": "base",
+          "valueSet": [
+            "base",
+            "gerarMensalidadesDoMes"
+          ]
+        },
+        {
+          "stateKey": "ui.gerarMensalidadesDoMes.action.cmdGerarMensalidadesDoMes.status",
+          "name": "cmdGerarMensalidadesDoMesState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "cmdGerarMensalidadesDoMes"
+        },
+        {
+          "stateKey": "ui.gerarMensalidadesDoMes.input.cmdGerarMensalidadesDoMes.competencia",
+          "name": "cmdGerarMensalidadesDoMesCompetencia",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "cmdGerarMensalidadesDoMes",
+            "direction": "input",
+            "field": "competencia"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.gerarMensalidadesDoMes.output.cmdGerarMensalidadesDoMes",
+          "name": "cmdGerarMensalidadesDoMesOutput",
+          "kind": "commandOutput",
+          "defaultValue": null,
+          "contractRef": {
+            "commandName": "cmdGerarMensalidadesDoMes",
+            "direction": "output"
+          }
+        },
+        {
+          "stateKey": "ui.gerarMensalidadesDoMes.action.cmdGerarMensalidadesDoMes.error",
+          "name": "cmdGerarMensalidadesDoMesError",
+          "kind": "actionError",
+          "defaultValue": "",
+          "actionRef": "cmdGerarMensalidadesDoMes"
+        }
+      ],
+      "dataBindings": [
+        {
+          "id": "binding.gerarMensalidadesDoMes.cmdGerarMensalidadesDoMes",
+          "source": "bff.cmdGerarMensalidadesDoMes",
+          "command": "cmdGerarMensalidadesDoMes",
+          "description": "cmdGerarMensalidadesDoMes",
+          "kind": "command",
+          "stateKey": "ui.gerarMensalidadesDoMes.output.cmdGerarMensalidadesDoMes",
+          "inputStateKeys": [
+            "ui.gerarMensalidadesDoMes.input.cmdGerarMensalidadesDoMes.competencia"
+          ],
+          "inputs": [
+            {
+              "name": "competencia",
+              "stateKey": "ui.gerarMensalidadesDoMes.input.cmdGerarMensalidadesDoMes.competencia",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            }
+          ],
+          "selection": "none"
+        }
+      ],
+      "initialLoads": [],
+      "actions": [
+        {
+          "actionId": "cmdGerarMensalidadesDoMes",
+          "kind": "command",
+          "methodName": "cmdGerarMensalidadesDoMes",
+          "handlerName": "handleCmdGerarMensalidadesDoMesClick",
+          "commandRef": "cmdGerarMensalidadesDoMes",
+          "routeKey": "mensalidadesAcademia.gerarMensalidadesDoMes.cmdGerarMensalidadesDoMes",
+          "purpose": "cmdGerarMensalidadesDoMes",
+          "inputStateKeys": [
+            "ui.gerarMensalidadesDoMes.input.cmdGerarMensalidadesDoMes.competencia"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [],
+          "outputStateKeys": [
+            "ui.gerarMensalidadesDoMes.output.cmdGerarMensalidadesDoMes"
+          ],
+          "statusStateKey": "ui.gerarMensalidadesDoMes.action.cmdGerarMensalidadesDoMes.status",
+          "errorStateKey": "ui.gerarMensalidadesDoMes.action.cmdGerarMensalidadesDoMes.error",
+          "feedback": {
+            "successMessageKey": "action.cmdGerarMensalidadesDoMes.success",
+            "errorMessageKey": "action.cmdGerarMensalidadesDoMes.error",
+            "dismissible": true
+          },
+          "clearInputStateKeys": [
+            "ui.gerarMensalidadesDoMes.input.cmdGerarMensalidadesDoMes.competencia"
+          ]
+        },
+        {
+          "actionId": "set.cmdGerarMensalidadesDoMesCompetencia",
+          "kind": "stateSetter",
+          "methodName": "setCmdGerarMensalidadesDoMesCompetencia",
+          "handlerName": "handleCmdGerarMensalidadesDoMesCompetenciaChange",
+          "stateKey": "ui.gerarMensalidadesDoMes.input.cmdGerarMensalidadesDoMes.competencia"
+        }
+      ],
+      "destructiveCommandIds": []
+    },
+    {
+      "workspaceId": "indicadoresAcademiaHub",
+      "pageName": "Indicadores da academia",
+      "scenaries": [
+        {
+          "value": "base",
+          "kind": "base",
+          "commandName": "qryInspectMensalidade",
+          "preconditions": []
+        }
+      ],
+      "states": [
+        {
+          "stateKey": "ui.indicadoresAcademiaHub.status",
+          "name": "status",
+          "kind": "pageStatus",
+          "defaultValue": ""
+        },
+        {
+          "stateKey": "ui.indicadoresAcademiaHub.scenary",
+          "name": "uiScenary",
+          "kind": "uiScenary",
+          "defaultValue": "base",
+          "valueSet": [
+            "base"
+          ]
+        },
+        {
+          "stateKey": "ui.indicadoresAcademiaHub.action.qryInspectMensalidade.status",
+          "name": "qryInspectMensalidadeState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "qryInspectMensalidade"
+        },
+        {
+          "stateKey": "ui.indicadoresAcademiaHub.input.qryInspectMensalidade.competencia",
+          "name": "qryInspectMensalidadeCompetencia",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "qryInspectMensalidade",
+            "direction": "input",
+            "field": "competencia"
+          },
+          "source": "userInput",
+          "presentation": "form"
+        },
+        {
+          "stateKey": "ui.indicadoresAcademiaHub.data.qryInspectMensalidade",
+          "name": "qryInspectMensalidadeData",
+          "kind": "queryResult",
+          "defaultValue": null,
+          "contractRef": {
+            "commandName": "qryInspectMensalidade",
+            "direction": "output"
+          },
+          "outputShape": "object",
+          "collection": false
+        }
+      ],
+      "dataBindings": [
+        {
+          "id": "binding.indicadoresAcademiaHub.qryInspectMensalidade",
+          "source": "bff.qryInspectMensalidade",
+          "command": "qryInspectMensalidade",
+          "description": "qryInspectMensalidade",
+          "kind": "query",
+          "stateKey": "ui.indicadoresAcademiaHub.data.qryInspectMensalidade",
+          "inputStateKeys": [
+            "ui.indicadoresAcademiaHub.input.qryInspectMensalidade.competencia"
+          ],
+          "inputs": [
+            {
+              "name": "competencia",
+              "stateKey": "ui.indicadoresAcademiaHub.input.qryInspectMensalidade.competencia",
+              "source": "userInput",
+              "required": true,
+              "presentation": "form"
+            }
+          ],
+          "selection": "none"
+        }
+      ],
+      "initialLoads": [],
+      "actions": [
+        {
+          "actionId": "qryInspectMensalidade",
+          "kind": "query",
+          "methodName": "loadQryInspectMensalidade",
+          "handlerName": "handleQryInspectMensalidadeClick",
+          "commandRef": "qryInspectMensalidade",
+          "routeKey": "mensalidadesAcademia.indicadoresAcademiaHub.qryInspectMensalidade",
+          "purpose": "qryInspectMensalidade",
+          "inputStateKeys": [
+            "ui.indicadoresAcademiaHub.input.qryInspectMensalidade.competencia"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [],
+          "outputStateKeys": [
+            "ui.indicadoresAcademiaHub.data.qryInspectMensalidade"
+          ],
+          "statusStateKey": "ui.indicadoresAcademiaHub.action.qryInspectMensalidade.status"
+        },
+        {
+          "actionId": "set.qryInspectMensalidadeCompetencia",
+          "kind": "stateSetter",
+          "methodName": "setQryInspectMensalidadeCompetencia",
+          "handlerName": "handleQryInspectMensalidadeCompetenciaChange",
+          "stateKey": "ui.indicadoresAcademiaHub.input.qryInspectMensalidade.competencia"
+        }
+      ],
+      "destructiveCommandIds": []
+    },
+    {
+      "workspaceId": "cancelarPropriaMatricula",
+      "pageName": "Cancelar própria matrícula",
+      "scenaries": [
+        {
+          "value": "base",
+          "kind": "base",
+          "commandName": "qryListMatricula",
+          "preconditions": []
+        },
+        {
+          "value": "detail",
+          "kind": "detail",
+          "commandName": "qryGetMatricula",
+          "preconditions": [
+            "ui.cancelarPropriaMatricula.input.qryGetMatricula.id"
+          ]
+        }
+      ],
+      "states": [
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.status",
+          "name": "status",
+          "kind": "pageStatus",
+          "defaultValue": ""
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.scenary",
+          "name": "uiScenary",
+          "kind": "uiScenary",
+          "defaultValue": "base",
+          "valueSet": [
+            "base",
+            "detail"
+          ]
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.action.qryListMatricula.status",
+          "name": "qryListMatriculaState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "qryListMatricula"
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.data.qryListMatricula",
+          "name": "qryListMatriculaData",
+          "kind": "queryResult",
+          "defaultValue": {
+            "matriculaItems": [],
+            "total": 0
+          },
+          "contractRef": {
+            "commandName": "qryListMatricula",
+            "direction": "output"
+          },
+          "outputShape": "paginated",
+          "collection": true
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.action.qryGetMatricula.status",
+          "name": "qryGetMatriculaState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "qryGetMatricula"
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.input.qryGetMatricula.id",
+          "name": "qryGetMatriculaId",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "qryGetMatricula",
+            "direction": "input",
+            "field": "id"
+          },
+          "source": "selectedEntity",
+          "presentation": "selection"
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.data.qryGetMatricula",
+          "name": "qryGetMatriculaData",
+          "kind": "queryResult",
+          "defaultValue": null,
+          "contractRef": {
+            "commandName": "qryGetMatricula",
+            "direction": "output"
+          },
+          "outputShape": "object",
+          "collection": false
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.action.cmdCancelarMatricula.status",
+          "name": "cmdCancelarMatriculaState",
+          "kind": "actionStatus",
+          "defaultValue": "idle",
+          "valueSet": [
+            "idle",
+            "loading",
+            "success",
+            "error"
+          ],
+          "actionRef": "cmdCancelarMatricula"
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.input.cmdCancelarMatricula.id",
+          "name": "cmdCancelarMatriculaId",
+          "kind": "input",
+          "defaultValue": "",
+          "contractRef": {
+            "commandName": "cmdCancelarMatricula",
+            "direction": "input",
+            "field": "id"
+          },
+          "source": "selectedEntity",
+          "presentation": "selection"
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.output.cmdCancelarMatricula",
+          "name": "cmdCancelarMatriculaOutput",
+          "kind": "commandOutput",
+          "defaultValue": null,
+          "contractRef": {
+            "commandName": "cmdCancelarMatricula",
+            "direction": "output"
+          }
+        },
+        {
+          "stateKey": "ui.cancelarPropriaMatricula.action.cmdCancelarMatricula.error",
+          "name": "cmdCancelarMatriculaError",
+          "kind": "actionError",
+          "defaultValue": "",
+          "actionRef": "cmdCancelarMatricula"
+        }
+      ],
+      "dataBindings": [
+        {
+          "id": "binding.cancelarPropriaMatricula.qryListMatricula",
+          "source": "bff.qryListMatricula",
+          "command": "qryListMatricula",
+          "description": "qryListMatricula",
+          "kind": "query",
+          "stateKey": "ui.cancelarPropriaMatricula.data.qryListMatricula",
+          "inputStateKeys": [],
+          "inputs": [],
+          "selection": "single"
+        },
+        {
+          "id": "binding.cancelarPropriaMatricula.qryGetMatricula",
+          "source": "bff.qryGetMatricula",
+          "command": "qryGetMatricula",
+          "description": "qryGetMatricula",
+          "kind": "query",
+          "stateKey": "ui.cancelarPropriaMatricula.data.qryGetMatricula",
+          "inputStateKeys": [
+            "ui.cancelarPropriaMatricula.input.qryGetMatricula.id"
+          ],
+          "inputs": [
+            {
+              "name": "id",
+              "stateKey": "ui.cancelarPropriaMatricula.input.qryGetMatricula.id",
+              "source": "selectedEntity",
+              "required": true,
+              "presentation": "selection"
+            }
+          ],
+          "selection": "none"
+        },
+        {
+          "id": "binding.cancelarPropriaMatricula.cmdCancelarMatricula",
+          "source": "bff.cmdCancelarMatricula",
+          "command": "cmdCancelarMatricula",
+          "description": "cmdCancelarMatricula",
+          "kind": "command",
+          "stateKey": "ui.cancelarPropriaMatricula.output.cmdCancelarMatricula",
+          "inputStateKeys": [
+            "ui.cancelarPropriaMatricula.input.cmdCancelarMatricula.id"
+          ],
+          "inputs": [
+            {
+              "name": "id",
+              "stateKey": "ui.cancelarPropriaMatricula.input.cmdCancelarMatricula.id",
+              "source": "selectedEntity",
+              "required": true,
+              "presentation": "selection"
+            }
+          ],
+          "selection": "none"
+        }
+      ],
+      "initialLoads": [
+        {
+          "actionId": "qryListMatricula",
+          "stateKey": "ui.cancelarPropriaMatricula.data.qryListMatricula"
+        }
+      ],
+      "actions": [
+        {
+          "actionId": "qryListMatricula",
+          "kind": "query",
+          "methodName": "loadQryListMatricula",
+          "handlerName": "handleQryListMatriculaClick",
+          "commandRef": "qryListMatricula",
+          "routeKey": "mensalidadesAcademia.cancelarPropriaMatricula.qryListMatricula",
+          "purpose": "qryListMatricula",
+          "inputStateKeys": [],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [],
+          "outputStateKeys": [
+            "ui.cancelarPropriaMatricula.data.qryListMatricula"
+          ],
+          "statusStateKey": "ui.cancelarPropriaMatricula.action.qryListMatricula.status"
+        },
+        {
+          "actionId": "qryGetMatricula",
+          "kind": "query",
+          "methodName": "loadQryGetMatricula",
+          "handlerName": "handleQryGetMatriculaClick",
+          "commandRef": "qryGetMatricula",
+          "routeKey": "mensalidadesAcademia.cancelarPropriaMatricula.qryGetMatricula",
+          "purpose": "qryGetMatricula",
+          "inputStateKeys": [
+            "ui.cancelarPropriaMatricula.input.qryGetMatricula.id"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [
+            "ui.cancelarPropriaMatricula.input.qryGetMatricula.id"
+          ],
+          "outputStateKeys": [
+            "ui.cancelarPropriaMatricula.data.qryGetMatricula"
+          ],
+          "statusStateKey": "ui.cancelarPropriaMatricula.action.qryGetMatricula.status"
+        },
+        {
+          "actionId": "cmdCancelarMatricula",
+          "kind": "command",
+          "methodName": "cmdCancelarMatricula",
+          "handlerName": "handleCmdCancelarMatriculaClick",
+          "commandRef": "cmdCancelarMatricula",
+          "routeKey": "mensalidadesAcademia.cancelarPropriaMatricula.cmdCancelarMatricula",
+          "purpose": "cmdCancelarMatricula",
+          "inputStateKeys": [
+            "ui.cancelarPropriaMatricula.input.cmdCancelarMatricula.id"
+          ],
+          "routeParamInputStateKeys": [],
+          "selectedEntityInputStateKeys": [
+            "ui.cancelarPropriaMatricula.input.cmdCancelarMatricula.id"
+          ],
+          "outputStateKeys": [
+            "ui.cancelarPropriaMatricula.output.cmdCancelarMatricula"
+          ],
+          "statusStateKey": "ui.cancelarPropriaMatricula.action.cmdCancelarMatricula.status",
+          "errorStateKey": "ui.cancelarPropriaMatricula.action.cmdCancelarMatricula.error",
+          "feedback": {
+            "successMessageKey": "action.cmdCancelarMatricula.success",
+            "errorMessageKey": "action.cmdCancelarMatricula.error",
+            "dismissible": true
+          },
+          "clearInputStateKeys": [
+            "ui.cancelarPropriaMatricula.input.cmdCancelarMatricula.id"
+          ],
+          "refreshActionIds": [
+            "qryListMatricula",
+            "qryGetMatricula"
+          ]
+        },
+        {
+          "actionId": "set.qryGetMatriculaId",
+          "kind": "stateSetter",
+          "methodName": "setQryGetMatriculaId",
+          "handlerName": "handleQryGetMatriculaIdChange",
+          "stateKey": "ui.cancelarPropriaMatricula.input.qryGetMatricula.id"
+        },
+        {
+          "actionId": "set.cmdCancelarMatriculaId",
+          "kind": "stateSetter",
+          "methodName": "setCmdCancelarMatriculaId",
+          "handlerName": "handleCmdCancelarMatriculaIdChange",
+          "stateKey": "ui.cancelarPropriaMatricula.input.cmdCancelarMatricula.id"
+        }
+      ],
+      "destructiveCommandIds": [
+        "cmdCancelarMatricula"
+      ]
+    }
+  ]
+}

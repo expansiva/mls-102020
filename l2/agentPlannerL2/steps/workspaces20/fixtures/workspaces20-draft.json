@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "2026-09-18-p2-workspaces-v1",
+  "moduleName": "mensalidadesAcademia",
+  "workspaces": [
+    {
+      "workspaceId": "matriculaCatalogue",
+      "title": "Matrículas",
+      "kind": "catalogue",
+      "entityRef": "Matricula",
+      "actorRefs": ["recepcao"],
+      "journeyRefs": ["matricularAluno"],
+      "stepRefs": ["localizarAluno", "localizarPlano", "criarMatricula"]
+    },
+    {
+      "workspaceId": "mensalidadeCatalogue",
+      "title": "Mensalidades e pagamentos",
+      "kind": "catalogue",
+      "entityRef": "Mensalidade",
+      "actorRefs": ["recepcao"],
+      "journeyRefs": ["registrarPagamentoMensalidade"],
+      "stepRefs": ["localizarMensalidade", "inspecionarMensalidade", "registrarPagamento"]
+    },
+    {
+      "workspaceId": "gerarMensalidadesDoMes",
+      "title": "Gerar mensalidades do mês",
+      "kind": "command",
+      "entityRef": "Mensalidade",
+      "actorRefs": ["gerencia"],
+      "journeyRefs": ["gerarMensalidadesDoMes"],
+      "stepRefs": ["criarMensalidades"]
+    },
+    {
+      "workspaceId": "indicadoresAcademiaHub",
+      "title": "Indicadores da academia",
+      "kind": "hub",
+      "entityRef": "Mensalidade",
+      "actorRefs": ["gerencia"],
+      "journeyRefs": ["acompanharIndicadoresAcademia"],
+      "stepRefs": ["inspecionarIndicadores"]
+    },
+    {
+      "workspaceId": "cancelarPropriaMatricula",
+      "title": "Cancelar própria matrícula",
+      "kind": "catalogue",
+      "entityRef": "Matricula",
+      "actorRefs": ["aluno"],
+      "journeyRefs": ["cancelarPropriaMatricula"],
+      "stepRefs": ["localizarPropriaMatricula", "inspecionarPropriaMatricula", "cancelarMatricula"]
+    }
+  ]
+}

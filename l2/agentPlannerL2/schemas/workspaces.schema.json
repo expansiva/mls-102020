@@ -1,0 +1,55 @@
+{
+  "$id": "https://collab.codes/schemas/agentPlannerL2/workspaces/2026-09-18-p2-workspaces-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "workspaces"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-09-18-p2-workspaces-v1" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "workspaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/workspace" }
+    }
+  },
+  "$defs": {
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceId",
+        "title",
+        "kind",
+        "entityRef",
+        "actorRefs",
+        "journeyRefs",
+        "stepRefs"
+      ],
+      "properties": {
+        "workspaceId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "title": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["catalogue", "hub", "command"] },
+        "entityRef": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+        "actorRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" }
+        },
+        "journeyRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" }
+        },
+        "stepRefs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" }
+        }
+      }
+    }
+  }
+}

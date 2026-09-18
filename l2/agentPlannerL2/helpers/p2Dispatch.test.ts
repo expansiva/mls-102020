@@ -21,11 +21,13 @@ function numberedStep(stepId: number, planId: P2StepId, status: mls.msg.AIStepSt
   return step;
 }
 
-void test('entry10 is hooked and later steps are not', () => {
+void test('every declared step is hooked', () => {
   createAgent();
   assert.ok(P2_STEP_HOOKS.entry10?.beforePromptStep, 'entry10 hook must be registered');
-  assert.equal(P2_STEP_HOOKS.workspaces20, undefined);
-  assert.equal(P2_STEP_HOOKS.requests50, undefined);
+  assert.ok(P2_STEP_HOOKS.workspaces20?.beforePromptStep, 'workspaces20 hook must be registered');
+  assert.ok(P2_STEP_HOOKS.contracts30?.beforePromptStep, 'contracts30 hook must be registered');
+  assert.ok(P2_STEP_HOOKS.shared40?.beforePromptStep, 'shared40 hook must be registered');
+  assert.ok(P2_STEP_HOOKS.requests50?.beforePromptStep, 'requests50 hook must be registered');
 });
 
 void test('hooksFor routes an L4 prompt with no planId to entry10', () => {
@@ -44,6 +46,8 @@ void test('notImplemented drain leaves hooked siblings running', () => {
     numberedStep(10, 'entry10', 'completed'),
     numberedStep(20, 'workspaces20', 'waiting_human_input'),
     numberedStep(30, 'contracts30', 'waiting_dependency'),
+    numberedStep(40, 'shared40', 'waiting_dependency'),
+    numberedStep(50, 'requests50', 'waiting_dependency'),
   ];
   const root: mls.msg.AIAgentStep = {
     type: 'agent',
@@ -66,7 +70,7 @@ void test('notImplemented drain leaves hooked siblings running', () => {
   const intents = drainWaitingSiblings(context, steps[1], 1, 'stopped: awaiting step workspaces20', { onlyUnimplemented: true });
   assert.deepEqual(
     intents.map(intent => intent.stepId),
-    [30],
+    [],
   );
   assert.equal(planIdOf(steps[1]), 'workspaces20');
 });
