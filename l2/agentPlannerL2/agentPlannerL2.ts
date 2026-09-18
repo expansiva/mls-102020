@@ -22,6 +22,7 @@ import {
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import '/_102020_/l2/agentPlannerL2/steps/entry10/agentP2Entry.js';
 import '/_102020_/l2/agentPlannerL2/steps/workspaces20/agentP2Workspaces.js';
+import '/_102020_/l2/agentPlannerL2/steps/contracts30/agentP2Contracts.js';
 
 export function createAgent(): IAgentAsync {
   return {

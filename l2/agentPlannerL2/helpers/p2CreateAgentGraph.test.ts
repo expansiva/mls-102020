@@ -17,6 +17,7 @@ const ALLOWED_102035 = new Set([
   '/_102035_/l2/solution/pool.js',
   '/_102035_/l2/solution/fs.js',
   '/_102035_/l2/solution/types.js',
+  '/_102035_/l2/solution/ontologyPaths.js',
 ]);
 
 type Offence = { file: string; reason: string };
@@ -132,6 +133,7 @@ void test('createAgent static graph stays inside agentPlannerL2 and the three so
   assert.ok(rels.includes('helpers/p2Core.ts'), 'p2Core must be in the graph');
   assert.ok(rels.includes('steps/entry10/agentP2Entry.ts'), 'entry10 must be in the graph');
   assert.ok(rels.includes('steps/workspaces20/agentP2Workspaces.ts'), 'workspaces20 must be in the graph');
+  assert.ok(rels.includes('steps/contracts30/agentP2Contracts.ts'), 'contracts30 must be in the graph');
   assert.ok(!rels.some(file => file.includes('agentChangeFrontend')), 'agentChangeFrontend leaked into the graph');
   assert.deepEqual(offences, [], offences.map(item => `${item.file}: ${item.reason}`).join('\n'));
 });

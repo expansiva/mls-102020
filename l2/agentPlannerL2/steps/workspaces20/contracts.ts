@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.ts" enhancement="_blank"/>
 
+import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
+
 export const P2_WORKSPACES_SCHEMA_VERSION = '2026-09-18-p2-workspaces-v1' as const;
 export const P2_WORKSPACE_KINDS = ['catalogue', 'hub', 'command'] as const;
 export type P2WorkspaceKind = typeof P2_WORKSPACE_KINDS[number];
@@ -10,6 +12,10 @@ export interface P2JourneyStepView {
   stepId: string;
   kind: string;
   entity: string;
+  /** contracts30: act ⇒ cmd create/update/transition. */
+  effect?: string;
+  /** contracts30: transition cmd; decide branches share this id. */
+  transitionRef?: string;
 }
 
 export interface P2JourneyView {
@@ -17,6 +23,12 @@ export interface P2JourneyView {
   actorRef: string;
   title: string;
   steps: P2JourneyStepView[];
+}
+
+export interface P2OntologyTransitionView {
+  transitionId: string;
+  from: string[];
+  to: string;
 }
 
 export interface P2OntologyEntityView {
@@ -28,6 +40,8 @@ export interface P2OntologyEntityView {
   displayField?: string;
   idField?: string;
   capabilities: string[];
+  /** contracts30: decide ⇒ one cmd per branching origin. */
+  transitions: P2OntologyTransitionView[];
 }
 
 export interface P2AccessActorView {
@@ -42,6 +56,8 @@ export interface P2L4Sources {
   journeys: P2JourneyView[];
   actors: P2AccessActorView[];
   entities: P2OntologyEntityView[];
+  /** contracts30: field catalog via ontologyPaths. */
+  ontologyEntities: Ns5OntologyAnyEntity[];
 }
 
 /**
@@ -175,10 +191,19 @@ export function parseP2L4Sources(input: {
       displayField: text(file.displayField) || undefined,
       idField: fields.id ? 'id' : undefined,
       capabilities: Object.keys(capabilities),
+      transitions: list(file.transitions).map(item => {
+        const transition = record(item);
+        return {
+          transitionId: memberId(text(transition.transitionId)),
+          from: list(transition.from).map(value => text(value)).filter(Boolean),
+          to: text(transition.to),
+        };
+      }).filter(transition => transition.transitionId),
     };
   }).filter(entity => entity.entityId);
 
   const journeys = input.journeys.map(item => parseJourney(item)).filter(journey => journey.journeyId);
+  const ontologyEntities = (input.ontologyEntities || []).filter(isOntologyEntity);
 
   return {
     moduleName: memberId(text(input.moduleName) || text(record(input.journeyIndex).moduleName) || text(access.moduleName)),
@@ -186,6 +211,7 @@ export function parseP2L4Sources(input: {
     journeys,
     actors,
     entities,
+    ontologyEntities,
   };
 }
 
@@ -256,6 +282,8 @@ function parseJourney(value: unknown): P2JourneyView {
         stepId: memberId(text(step.stepId)),
         kind: text(step.kind),
         entity: text(step.entity),
+        effect: text(step.effect) || undefined,
+        transitionRef: memberId(text(step.transitionRef)) || undefined,
       };
     }).filter(step => step.stepId),
   };
@@ -329,4 +357,9 @@ function parseMaybeJson(value: unknown): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isOntologyEntity(value: unknown): value is Ns5OntologyAnyEntity {
+  if (!isRecord(value)) return false;
+  return typeof value.entityId === 'string' && !!value.entityId.trim();
 }

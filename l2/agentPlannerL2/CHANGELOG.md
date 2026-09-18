@@ -1,5 +1,14 @@
 # agentPlannerL2
 
+## 2026-09-18 (p2_03)
+
+- `contracts30`: field catalog from `ontologyPaths`; call slots from the workspace cut
+  (`locate` → paginated `qry*`, `inspect` → `qryGet*` / hub `ddm`, `act` → `cmd*` by effect,
+  `decide` → one `cmd*` per branching origin). The model names calls and picks fields; the
+  emitter writes `l2/<mod>/web/contracts/{workspaceId}.defs.ts` (interfaces + route constants).
+- Gate: cited fields resolve; `derived: true` never in command Input except identity `id`;
+  no `any`; no import. Repair by step (NS5 pattern).
+
 ## 2026-09-18 (p2_02)
 
 - `workspaces20`: candidates grouped by `(entity, actorRef, kind)` from the l4 journeys.

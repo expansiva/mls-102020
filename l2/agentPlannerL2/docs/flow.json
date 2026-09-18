@@ -1,7 +1,7 @@
 {
   "flowId": "agentPlannerL2",
   "schemaVersion": "2026-09-18-p2-flow-v2",
-  "status": "workspaces20",
+  "status": "contracts30",
   "description": "L2 planner: read pool/l2 of a finished l4 module, emit web/contracts and web/shared defs, then ask l1 via pool/l1. No LLM on entry.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
@@ -53,12 +53,11 @@
     {
       "id": "contracts30",
       "kind": "agent-checkpoint",
-      "status": "waiting",
       "dependsOn": ["workspaces20-done"],
       "doneAnchor": "contracts30-done",
       "modelAlias": "reasoning",
       "artifact": "l2/{module}/web/contracts/{workspace}.defs.ts",
-      "goal": "Emit contract defs per workspace. Declared here; implemented by a later spec."
+      "goal": "Emit one .defs.ts contract per workspace from the journey steps and the ontology field catalog. The model names calls and picks fields; the emitter writes interfaces and route constants."
     },
     {
       "id": "shared40",

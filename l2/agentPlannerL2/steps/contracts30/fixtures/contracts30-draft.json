@@ -1,0 +1,235 @@
+{
+  "schemaVersion": "2026-09-18-p2-contracts-v1",
+  "moduleName": "mensalidadesAcademia",
+  "workspaces": [
+    {
+      "workspaceId": "matriculaCatalogue",
+      "calls": [
+        {
+          "callName": "qryListAluno",
+          "kind": "query",
+          "stepRef": "localizarAluno",
+          "entityRef": "Aluno",
+          "shape": "list",
+          "transitionRef": "",
+          "inputFields": [
+            "Aluno.details.identification.name",
+            "Aluno.details.identification.docId"
+          ],
+          "outputFields": [
+            "Aluno.id",
+            "Aluno.details.identification.name",
+            "Aluno.details.identification.docId",
+            "Aluno.details.identification.status"
+          ]
+        },
+        {
+          "callName": "qryListPlano",
+          "kind": "query",
+          "stepRef": "localizarPlano",
+          "entityRef": "Plano",
+          "shape": "list",
+          "transitionRef": "",
+          "inputFields": [
+            "Plano.name"
+          ],
+          "outputFields": [
+            "Plano.id",
+            "Plano.name",
+            "Plano.details.periodicidade",
+            "Plano.details.valor",
+            "Plano.details.diaVencimento"
+          ]
+        },
+        {
+          "callName": "cmdCreateMatricula",
+          "kind": "command",
+          "stepRef": "criarMatricula",
+          "entityRef": "Matricula",
+          "shape": "create",
+          "transitionRef": "",
+          "inputFields": [
+            "Matricula.alunoId",
+            "Matricula.planoId",
+            "Matricula.dataInicio"
+          ],
+          "outputFields": [
+            "Matricula.id",
+            "Matricula.alunoId",
+            "Matricula.planoId",
+            "Matricula.status",
+            "Matricula.dataInicio"
+          ]
+        }
+      ]
+    },
+    {
+      "workspaceId": "mensalidadeCatalogue",
+      "calls": [
+        {
+          "callName": "qryListMensalidade",
+          "kind": "query",
+          "stepRef": "localizarMensalidade",
+          "entityRef": "Mensalidade",
+          "shape": "list",
+          "transitionRef": "",
+          "inputFields": [
+            "Mensalidade.matriculaId",
+            "Mensalidade.competencia"
+          ],
+          "outputFields": [
+            "Mensalidade.id",
+            "Mensalidade.matriculaId",
+            "Mensalidade.competencia",
+            "Mensalidade.vencimento",
+            "Mensalidade.details.valorCobranca",
+            "Mensalidade.details.totalPago",
+            "Mensalidade.details.saldoDevedor",
+            "Mensalidade.details.situacao"
+          ]
+        },
+        {
+          "callName": "qryGetMensalidade",
+          "kind": "query",
+          "stepRef": "inspecionarMensalidade",
+          "entityRef": "Mensalidade",
+          "shape": "get",
+          "transitionRef": "",
+          "inputFields": [
+            "Mensalidade.id"
+          ],
+          "outputFields": [
+            "Mensalidade.id",
+            "Mensalidade.matriculaId",
+            "Mensalidade.competencia",
+            "Mensalidade.vencimento",
+            "Mensalidade.details.valorCobranca",
+            "Mensalidade.details.totalPago",
+            "Mensalidade.details.saldoDevedor",
+            "Mensalidade.details.situacao"
+          ]
+        },
+        {
+          "callName": "cmdCreatePagamento",
+          "kind": "command",
+          "stepRef": "registrarPagamento",
+          "entityRef": "Pagamento",
+          "shape": "create",
+          "transitionRef": "",
+          "inputFields": [
+            "Pagamento.mensalidadeId",
+            "Pagamento.dataPagamento",
+            "Pagamento.details.valor",
+            "Pagamento.details.formaPagamento"
+          ],
+          "outputFields": [
+            "Pagamento.id",
+            "Pagamento.mensalidadeId",
+            "Pagamento.dataPagamento",
+            "Pagamento.details.valor",
+            "Pagamento.details.formaPagamento"
+          ]
+        }
+      ]
+    },
+    {
+      "workspaceId": "gerarMensalidadesDoMes",
+      "calls": [
+        {
+          "callName": "cmdGerarMensalidadesDoMes",
+          "kind": "command",
+          "stepRef": "criarMensalidades",
+          "entityRef": "Mensalidade",
+          "shape": "create",
+          "transitionRef": "",
+          "inputFields": [
+            "Mensalidade.competencia"
+          ],
+          "outputFields": [
+            "Mensalidade.id",
+            "Mensalidade.matriculaId",
+            "Mensalidade.competencia",
+            "Mensalidade.vencimento",
+            "Mensalidade.details.valorCobranca"
+          ]
+        }
+      ]
+    },
+    {
+      "workspaceId": "indicadoresAcademiaHub",
+      "calls": [
+        {
+          "callName": "qryInspectMensalidade",
+          "kind": "query",
+          "stepRef": "inspecionarIndicadores",
+          "entityRef": "Mensalidade",
+          "shape": "ddm",
+          "transitionRef": "",
+          "inputFields": [
+            "Mensalidade.competencia"
+          ],
+          "outputFields": [
+            "Mensalidade.competencia",
+            "Mensalidade.details.totalPago",
+            "Mensalidade.details.saldoDevedor",
+            "Mensalidade.details.situacao"
+          ]
+        }
+      ]
+    },
+    {
+      "workspaceId": "cancelarPropriaMatricula",
+      "calls": [
+        {
+          "callName": "qryListMatricula",
+          "kind": "query",
+          "stepRef": "localizarPropriaMatricula",
+          "entityRef": "Matricula",
+          "shape": "list",
+          "transitionRef": "",
+          "inputFields": [],
+          "outputFields": [
+            "Matricula.id",
+            "Matricula.planoId",
+            "Matricula.status",
+            "Matricula.dataInicio"
+          ]
+        },
+        {
+          "callName": "qryGetMatricula",
+          "kind": "query",
+          "stepRef": "inspecionarPropriaMatricula",
+          "entityRef": "Matricula",
+          "shape": "get",
+          "transitionRef": "",
+          "inputFields": [
+            "Matricula.id"
+          ],
+          "outputFields": [
+            "Matricula.id",
+            "Matricula.planoId",
+            "Matricula.status",
+            "Matricula.dataInicio",
+            "Matricula.details.dataCancelamento"
+          ]
+        },
+        {
+          "callName": "cmdCancelarMatricula",
+          "kind": "command",
+          "stepRef": "cancelarMatricula",
+          "entityRef": "Matricula",
+          "shape": "transition",
+          "transitionRef": "cancelarMatricula",
+          "inputFields": [
+            "Matricula.id"
+          ],
+          "outputFields": [
+            "Matricula.id",
+            "Matricula.status",
+            "Matricula.details.dataCancelamento"
+          ]
+        }
+      ]
+    }
+  ]
+}
