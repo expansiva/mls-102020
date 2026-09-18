@@ -1,5 +1,13 @@
 # agentPlannerL2
 
+## 2026-09-18 (p2_04)
+
+- `shared40`: one `web/shared/{workspaceId}.defs.ts` per workspace in the 102039
+  20-key form. Code writes derived keys (`pageId`, `baseClassName`, `contractRef`,
+  …); the model writes judgment (`scenaries`, `states`, `dataBindings`,
+  `initialLoads`, `actions`, `destructiveCommandIds`, `pageName`). Gate plus
+  bounded repair. No class, no page.
+
 ## 2026-09-18 (p2_03)
 
 - `contracts30`: field catalog from `ontologyPaths`; call slots from the workspace cut

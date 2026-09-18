@@ -5,8 +5,8 @@ writes `l2/<mod>/web/contracts/*.defs.ts`, `l2/<mod>/web/shared/*.defs.ts` and a
 `pool/l1`. Lives in `mls-102020` next to `agentChangeFrontend`. Unique name `agentPlannerL2`.
 
 `p2_01` delivered the skeleton and `entry10`. `p2_02` implements `workspaces20`. `p2_03`
-implements `contracts30`: one `.defs.ts` contract per workspace from the journey steps and the
-ontology field catalog. Steps `shared40` and `requests50` stay `waiting` in `docs/flow.json`.
+implements `contracts30`. `p2_04` implements `shared40`: one shared `.defs.ts` per workspace
+in the CF 20-key form. Step `requests50` stays `waiting` in `docs/flow.json`.
 
 ## Invocation
 

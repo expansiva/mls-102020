@@ -42,7 +42,7 @@ const EXPECTED_ARTIFACTS: Record<string, string> = {
   poolL1: 'l4/{module}/pool/l1/{stamp}_{thread}_{round}.json',
 };
 
-const WAITING_STEPS = ['shared40', 'requests50'] as const;
+const WAITING_STEPS = ['requests50'] as const;
 
 function loadFlow(): FlowDoc {
   return JSON.parse(readFileSync(FLOW_PATH, 'utf8')) as FlowDoc;
@@ -78,6 +78,12 @@ void test('flow has exactly five steps in declared order with declared dependenc
   assert.equal(contracts?.status, undefined);
   assert.equal(contracts?.artifact, 'l2/{module}/web/contracts/{workspace}.defs.ts');
 
+  const shared = flow.steps.find(step => step.id === 'shared40');
+  assert.equal(shared?.kind, 'agent-checkpoint');
+  assert.equal(shared?.modelAlias, 'reasoning');
+  assert.equal(shared?.status, undefined);
+  assert.equal(shared?.artifact, 'l2/{module}/web/shared/{workspace}.defs.ts');
+
   for (const id of WAITING_STEPS) {
     const step = flow.steps.find(item => item.id === id);
     assert.equal(step?.status, 'waiting', `${id} must stay declared as waiting until its spec lands`);
@@ -103,7 +109,7 @@ void test('each step folder that exists implements beforePromptStep and is on th
   }
 });
 
-void test('waiting steps 40-50 have no folder yet', () => {
+void test('waiting steps have no folder yet', () => {
   for (const id of WAITING_STEPS) {
     assert.equal(existsSync(path.join(STEPS_ROOT, id)), false, `${id} folder must wait for its spec`);
   }

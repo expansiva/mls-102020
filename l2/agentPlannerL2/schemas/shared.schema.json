@@ -1,0 +1,211 @@
+{
+  "$id": "https://collab.codes/schemas/agentPlannerL2/shared/2026-09-18-p2-shared-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "workspaces"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-09-18-p2-shared-v1" },
+    "moduleName": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+    "workspaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/workspace" }
+    }
+  },
+  "$defs": {
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workspaceId",
+        "pageName",
+        "scenaries",
+        "states",
+        "dataBindings",
+        "initialLoads",
+        "actions",
+        "destructiveCommandIds"
+      ],
+      "properties": {
+        "workspaceId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "pageName": { "type": "string", "minLength": 1 },
+        "scenaries": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/scenary" }
+        },
+        "states": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/state" }
+        },
+        "dataBindings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/binding" }
+        },
+        "initialLoads": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/initialLoad" }
+        },
+        "actions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/action" }
+        },
+        "destructiveCommandIds": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" }
+        }
+      }
+    },
+    "scenary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "kind", "commandName", "preconditions"],
+      "properties": {
+        "value": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["base", "detail", "command"] },
+        "commandName": { "type": "string" },
+        "preconditions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stateKey", "name", "kind", "defaultValue"],
+      "properties": {
+        "stateKey": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": ["pageStatus", "uiScenary", "actionStatus", "queryResult", "input", "commandOutput", "actionError", "businessContext"]
+        },
+        "defaultValue": {},
+        "valueSet": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "actionRef": { "type": "string" },
+        "contractRef": { "$ref": "#/$defs/stateContractRef" },
+        "outputShape": { "type": "string", "enum": ["array", "paginated", "object"] },
+        "collection": { "type": "boolean" },
+        "source": { "type": "string", "enum": ["userInput", "selectedEntity", "routeParam"] },
+        "presentation": { "type": "string", "enum": ["form", "selection", "route"] }
+      }
+    },
+    "stateContractRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commandName", "direction"],
+      "properties": {
+        "commandName": { "type": "string" },
+        "direction": { "type": "string", "enum": ["input", "output"] },
+        "field": { "type": "string" }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "kind", "methodName", "handlerName"],
+      "properties": {
+        "actionId": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["query", "command", "stateSetter"] },
+        "commandRef": { "type": "string" },
+        "routeKey": { "type": "string" },
+        "purpose": { "type": "string" },
+        "methodName": { "type": "string", "minLength": 1 },
+        "handlerName": { "type": "string", "minLength": 1 },
+        "inputStateKeys": { "type": "array", "items": { "type": "string" } },
+        "routeParamInputStateKeys": { "type": "array", "items": { "type": "string" } },
+        "selectedEntityInputStateKeys": { "type": "array", "items": { "type": "string" } },
+        "outputStateKeys": { "type": "array", "items": { "type": "string" } },
+        "statusStateKey": { "type": "string" },
+        "errorStateKey": { "type": "string" },
+        "feedback": { "$ref": "#/$defs/feedback" },
+        "clearInputStateKeys": { "type": "array", "items": { "type": "string" } },
+        "refreshActionIds": { "type": "array", "items": { "type": "string" } },
+        "stateKey": { "type": "string" },
+        "prefill": { "$ref": "#/$defs/prefill" }
+      }
+    },
+    "feedback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["successMessageKey", "errorMessageKey", "dismissible"],
+      "properties": {
+        "successMessageKey": { "type": "string" },
+        "errorMessageKey": { "type": "string" },
+        "dismissible": { "type": "boolean" }
+      }
+    },
+    "prefill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "sourceStateKey", "sourceOutputShape", "matchField", "fields"],
+      "properties": {
+        "command": { "type": "string" },
+        "sourceStateKey": { "type": "string" },
+        "sourceOutputShape": { "type": "string" },
+        "matchField": { "type": "string" },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["itemField", "targetStateKey"],
+            "properties": {
+              "itemField": { "type": "string" },
+              "targetStateKey": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "command", "description", "kind", "stateKey", "inputStateKeys", "inputs", "selection"],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string" },
+        "command": { "type": "string" },
+        "description": { "type": "string" },
+        "kind": { "type": "string", "enum": ["query", "command"] },
+        "stateKey": { "type": "string" },
+        "inputStateKeys": { "type": "array", "items": { "type": "string" } },
+        "inputs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bindingInput" }
+        },
+        "selection": { "type": "string", "enum": ["single", "none", "multiple"] }
+      }
+    },
+    "bindingInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "stateKey", "source", "required", "presentation"],
+      "properties": {
+        "name": { "type": "string" },
+        "stateKey": { "type": "string" },
+        "source": { "type": "string", "enum": ["userInput", "selectedEntity", "routeParam"] },
+        "required": { "type": "boolean" },
+        "presentation": { "type": "string", "enum": ["form", "selection", "route"] }
+      }
+    },
+    "initialLoad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "stateKey"],
+      "properties": {
+        "actionId": { "type": "string" },
+        "stateKey": { "type": "string" }
+      }
+    }
+  }
+}

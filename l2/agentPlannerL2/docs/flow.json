@@ -1,7 +1,7 @@
 {
   "flowId": "agentPlannerL2",
   "schemaVersion": "2026-09-18-p2-flow-v2",
-  "status": "contracts30",
+  "status": "shared40",
   "description": "L2 planner: read pool/l2 of a finished l4 module, emit web/contracts and web/shared defs, then ask l1 via pool/l1. No LLM on entry.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
@@ -62,12 +62,11 @@
     {
       "id": "shared40",
       "kind": "agent-checkpoint",
-      "status": "waiting",
       "dependsOn": ["contracts30-done"],
       "doneAnchor": "shared40-done",
       "modelAlias": "reasoning",
       "artifact": "l2/{module}/web/shared/{workspace}.defs.ts",
-      "goal": "Emit shared defs the pages will need. Declared here; implemented by a later spec."
+      "goal": "Emit one shared .defs.ts per workspace in the CF 20-key form. Code writes derived keys; the model writes scenaries/states/dataBindings/initialLoads/actions/destructiveCommandIds/pageName."
     },
     {
       "id": "requests50",
