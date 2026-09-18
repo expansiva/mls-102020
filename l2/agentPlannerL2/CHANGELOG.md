@@ -1,5 +1,12 @@
 # agentPlannerL2
 
+## 2026-09-18 (p2_02)
+
+- `workspaces20`: candidates grouped by `(entity, actorRef, kind)` from the l4 journeys.
+  Journey with only `act` and no `locate` → `command`; `ddm` / inspect-only → `hub`; else
+  `catalogue`. The model names the cut; the gate keeps every journey in exactly one workspace.
+- Artifact `l2/<mod>/pipeline/workspaces20-draft.json`. Repair by step (NS5 pattern).
+
 ## 2026-09-18 (p2_01)
 
 - Skeleton in the NS5 pattern: `createAgent` (`agentProject: 102020`, `visibility: public`),

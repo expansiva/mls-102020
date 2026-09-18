@@ -1,7 +1,7 @@
 {
   "flowId": "agentPlannerL2",
-  "schemaVersion": "2026-09-18-p2-flow-v1",
-  "status": "entry10",
+  "schemaVersion": "2026-09-18-p2-flow-v2",
+  "status": "workspaces20",
   "description": "L2 planner: read pool/l2 of a finished l4 module, emit web/contracts and web/shared defs, then ask l1 via pool/l1. No LLM on entry.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
@@ -44,12 +44,11 @@
     {
       "id": "workspaces20",
       "kind": "agent-checkpoint",
-      "status": "waiting",
       "dependsOn": ["entry10-done"],
       "doneAnchor": "workspaces20-done",
       "modelAlias": "reasoning",
       "artifact": "l2/{module}/pipeline/workspaces20-draft.json",
-      "goal": "Cut workspaces from the l4 journeys. Declared here; implemented by a later spec."
+      "goal": "Cut workspaces from the l4 journeys. Deterministic candidates by entity and actor; the model names the cut; gate plus bounded repair."
     },
     {
       "id": "contracts30",

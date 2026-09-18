@@ -21,10 +21,11 @@ function numberedStep(stepId: number, planId: P2StepId, status: mls.msg.AIStepSt
   return step;
 }
 
-void test('entry10 is hooked and later steps are not', () => {
+void test('entry10 and workspaces20 are hooked and later steps are not', () => {
   createAgent();
   assert.ok(P2_STEP_HOOKS.entry10?.beforePromptStep, 'entry10 hook must be registered');
-  assert.equal(P2_STEP_HOOKS.workspaces20, undefined);
+  assert.ok(P2_STEP_HOOKS.workspaces20?.beforePromptStep, 'workspaces20 hook must be registered');
+  assert.equal(P2_STEP_HOOKS.contracts30, undefined);
   assert.equal(P2_STEP_HOOKS.requests50, undefined);
 });
 

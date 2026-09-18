@@ -4,8 +4,9 @@ L2 planner. Reads a finished l4 module and the oldest message in `pool/l2`, then
 writes `l2/<mod>/web/contracts/*.defs.ts`, `l2/<mod>/web/shared/*.defs.ts` and asks l1 through
 `pool/l1`. Lives in `mls-102020` next to `agentChangeFrontend`. Unique name `agentPlannerL2`.
 
-This spec (`p2_01`) delivers the skeleton and `entry10` only. Steps 20–50 are declared in
-`docs/flow.json` as `waiting`.
+`p2_01` delivered the skeleton and `entry10`. `p2_02` implements `workspaces20`: deterministic
+candidates from the l4 journeys, an LLM cut, a gate and bounded repair. Steps 30–50 stay
+`waiting` in `docs/flow.json`.
 
 ## Invocation
 

@@ -13,7 +13,7 @@ import { listPoolBox, readPoolMessage, type PoolMessage } from '/_102035_/l2/sol
 import type { Ns5PipelineStatus, Ns5PipelineStepState } from '/_102035_/l2/solution/types.js';
 
 export const P2_FLOW_ID = 'agentPlannerL2' as const;
-export const P2_FLOW_VERSION = '2026-09-18-p2-flow-v1' as const;
+export const P2_FLOW_VERSION = '2026-09-18-p2-flow-v2' as const;
 export const P2_AGENT_NAME = 'agentPlannerL2' as const;
 export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v1' as const;
 
@@ -263,4 +263,98 @@ export async function executeP2Entry(source: P2EntrySource, now: Date): Promise<
 
 export async function readP2Pipeline(moduleName: string): Promise<P2PipelineState | null> {
   return readJson<P2PipelineState>(p2PipelineFile(moduleName));
+}
+
+/** `l2/<module>/pipeline/<stepId>-draft.json` in the project of the run. */
+export function p2DraftFile(moduleName: string, stepId: P2StepId): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 2,
+    folder: `${base.folder}/pipeline`,
+    shortName: `${stepId}-draft`,
+    extension: '.json',
+  };
+}
+
+/** Files of this agent (prompt.md, skills, schemas) live in 102020, not in the run module. */
+export function p2AgentFile(folder: string, shortName: string, extension: string): Ns5FileInfo {
+  return {
+    project: 102020,
+    level: 2,
+    folder: folder ? `agentPlannerL2/${folder}` : 'agentPlannerL2',
+    shortName,
+    extension,
+  };
+}
+
+export async function readP2AgentText(folder: string, shortName: string, extension: string): Promise<string> {
+  const fileInfo = p2AgentFile(folder, shortName, extension);
+  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as {
+    status?: string;
+    getValueInfo?: () => Promise<{ content?: unknown }>;
+    getContent: () => Promise<unknown>;
+  } | undefined;
+  if (!file || file.status === 'deleted') {
+    throw new Error(`agentPlannerL2 file not found: ${displayPath(fileInfo)}`);
+  }
+  if (file.getValueInfo) {
+    try {
+      const local = await file.getValueInfo();
+      if (typeof local?.content === 'string') return local.content;
+    } catch { /* fall through */ }
+  }
+  const content = await file.getContent();
+  if (typeof content === 'string') return content;
+  throw new Error(`agentPlannerL2 invalid text file: ${displayPath(fileInfo)}`);
+}
+
+export function markP2Step(
+  pipeline: P2PipelineState,
+  stepId: P2StepId,
+  next: Ns5PipelineStepState,
+): P2PipelineState {
+  const current = pipeline.steps[stepId];
+  if (current?.status === 'approved') {
+    return { ...pipeline, updatedAt: next.updatedAt };
+  }
+  const failed = next.status === 'failed';
+  const approved = next.status === 'approved';
+  return {
+    ...pipeline,
+    steps: { ...pipeline.steps, [stepId]: next },
+    updatedAt: next.updatedAt,
+    ...(failed ? { status: 'failed' as const, awaitingStep: undefined } : {}),
+    ...(approved && pipeline.awaitingStep === stepId
+      ? { status: 'inProgress' as const, awaitingStep: undefined }
+      : {}),
+  };
+}
+
+export function createP2RetryStep(
+  stepId: P2StepId,
+  moduleName: string,
+  kind: 'repair' | 'transport',
+  attempt: number,
+  extra: Record<string, unknown> = {},
+): mls.msg.AIAgentStep {
+  const planId = `${stepId}-${kind}-${attempt}`;
+  const suffix = kind === 'repair' ? `R${attempt}` : `T${attempt}`;
+  return {
+    type: 'agent',
+    stepId: 0,
+    interaction: null,
+    stepTitle: `${P2_STEP_TITLES[stepId]} · ${suffix}`,
+    status: 'waiting_human_input',
+    nextSteps: [],
+    agentName: P2_AGENT_NAME,
+    prompt: JSON.stringify({ planId: stepId, moduleName, [`${kind}Attempt`]: attempt, ...extra }),
+    rags: [],
+    planning: {
+      planId,
+      dependsOn: [],
+      executionMode: 'sequential',
+      executionHost: 'client',
+    },
+  };
 }
