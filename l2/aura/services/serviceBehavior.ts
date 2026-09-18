@@ -243,6 +243,7 @@ export class ServiceBehavior102020 extends ServiceBase {
 
     private async _setKnobValue(key: ContextKey, value: number | null): Promise<void> {
         if (value === null) return;
+        const hadContext = Boolean(this._context());
         this._selectedKnob = key;
         if (key === 'project' && value !== this._projectValue) {
             this._projectValue = value;
@@ -254,6 +255,7 @@ export class ServiceBehavior102020 extends ServiceBase {
             this._versionValue = value;
         }
         this._announceContext();
+        if (!hadContext && this._context()) await this._openModuleBlueprint();
     }
 
     private _announceContext(): void {
