@@ -28,23 +28,24 @@ import {
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import { loadP2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/agentP2Workspaces.js';
 import {
-  collectP2WorkspaceCandidates,
   unwrapP2ArtifactPayload,
   type P2L4Sources,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 import {
   buildP2MenuFile,
   buildP2MenuTool,
-  normalizeP2MenuPayload,
+  menuCandidates,
+  normalizeMenuV2,
   parseP2Grants,
   parseP2Processes,
+  type MenuV2,
   type P2GrantView,
-  type P2MenuDraft,
   type P2MenuFile,
   type P2ProcessView,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import {
   formatP2MenuGate,
+  formatP2MenuWarnings,
   validateP2Menu,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/gate.js';
 
@@ -76,7 +77,7 @@ export function buildP2MenuHumanPrompt(input: {
   previousDraft?: unknown;
 }): string {
   const { sources, grants, processes } = input.menuSources;
-  const candidates = collectP2WorkspaceCandidates(sources);
+  const candidates = menuCandidates(sources, grants);
   const actorLines = sources.actors.map(actor => `- ${actor.actorId} (${actor.kind}): ${actor.title}`);
   const grantLines = grants.map(grant => {
     const anchor = grant.dataScope.anchorEntity ? ` anchor=${grant.dataScope.anchorEntity}` : '';
@@ -215,14 +216,32 @@ export async function afterP2MenuPromptStep(
     }
 
     const menuSources = await loadP2MenuSources(moduleName);
-    const draft = normalizeP2MenuPayload(payload);
     let pipeline = await requirePipeline(moduleName);
     pipeline = await writeStepState(pipeline, {
       status: 'running',
       updatedAt: new Date().toISOString(),
     });
-    const draftPath = await writeJson(p2DraftFile(moduleName, 'menu20'), draft);
-    const gate = validateP2Menu(draft, menuSources.sources, menuSources.processes);
+    const draftPath = await writeJson(p2DraftFile(moduleName, 'menu20'), payload);
+    let draft: MenuV2;
+    try {
+      draft = normalizeMenuV2(payload);
+    } catch (error) {
+      const feedback = errorMessage(error);
+      if (parsed.repairAttempt < MAX_REPAIRS) {
+        return [
+          addStep(context, mutationParent, createP2RetryStep('menu20', moduleName, 'repair', parsed.repairAttempt + 1, { gateFeedback: feedback })),
+          updateStatus(context, mutationParent, step, hookSequential, 'completed', `menu20 gate scheduled repair ${parsed.repairAttempt + 1}.`),
+        ];
+      }
+      await writeStepState(pipeline, {
+        status: 'failed',
+        updatedAt: new Date().toISOString(),
+        error: feedback,
+        artifactPaths: [draftPath],
+      });
+      throw new Error(feedback);
+    }
+    const gate = validateP2Menu(draft, menuSources.sources);
     if (!gate.ok) {
       const feedback = formatP2MenuGate(gate.issues);
       if (parsed.repairAttempt < MAX_REPAIRS) {
@@ -243,22 +262,21 @@ export async function afterP2MenuPromptStep(
     const artifact = buildP2MenuFile({
       moduleName,
       userLanguage: menuSources.sources.userLanguage,
-      sourceMessages: pipeline.sourceMessages || [],
-      generatedAt: new Date().toISOString(),
       draft,
     });
     const menuPath = await writeJson(p2MenuFile(moduleName), artifact);
-    const warnings = gate.issues.filter(issue => issue.severity === 'warning');
+    const warnings = formatP2MenuWarnings(gate.issues);
     pipeline = await writeStepState(pipeline, {
       status: 'approved',
       updatedAt: new Date().toISOString(),
       artifactPaths: [menuPath, draftPath],
     });
+    pipeline = { ...pipeline, warnings };
     pipeline = markP2Complete(pipeline);
     await writeJson(p2PipelineFile(pipeline.moduleName), pipeline);
     const warningNote = warnings.length ? ` (${warnings.length} warning(s))` : '';
     return [
-      doneAnchor(context, mutationParent, moduleName, artifact, menuPath),
+      doneAnchor(context, mutationParent, moduleName, artifact, menuPath, pipeline.sourceMessages || []),
       updateStatus(context, mutationParent, step, hookSequential, 'completed', `menu20 approved: ${menuPath}${warningNote}`),
     ];
   } catch (error) {
@@ -341,6 +359,7 @@ function doneAnchor(
   moduleName: string,
   artifact: P2MenuFile,
   menuPath: string,
+  sourceMessages: string[],
 ): mls.msg.AgentIntentAddStep {
   return addStep(context, parentStep, {
     type: 'result',
@@ -352,8 +371,8 @@ function doneAnchor(
     result: JSON.stringify({
       moduleName,
       artifactPaths: [menuPath],
-      sourceMessages: artifact.sourceMessages,
-      actorRefs: artifact.menu.map(entry => entry.actorRef),
+      sourceMessages,
+      actors: Object.keys(artifact.authorities),
       completedStep: 'menu20',
     }),
     planning: { planId: 'menu20-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },

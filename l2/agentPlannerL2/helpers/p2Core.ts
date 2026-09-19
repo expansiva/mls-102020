@@ -91,6 +91,8 @@ export interface P2PipelineState {
   pool?: PoolTraceLine[];
   /** Wipe result of `l2/<mod>/web/`. Always written by entry10 — never a silent leftover. */
   webDir: P2WebDir;
+  /** menu20: gate warnings (journey with no page). Written on approve; omitted before. */
+  warnings?: string[];
   updatedAt: string;
 }
 

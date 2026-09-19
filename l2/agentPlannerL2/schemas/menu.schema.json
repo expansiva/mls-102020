@@ -1,78 +1,157 @@
 {
-  "$id": "https://collab.codes/schemas/agentPlannerL2/menu/2026-09-18-p2-menu-v1",
+  "$id": "https://collab.codes/schemas/agentPlannerL2/menu/2026-09-19-p2-menu-v2",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "menu",
-    "workflows"
+    "tree",
+    "authorities",
+    "meta"
   ],
   "properties": {
-    "menu": {
+    "tree": {
       "type": "array",
-      "items": { "$ref": "#/$defs/actorMenu" }
+      "items": { "$ref": "#/$defs/node" }
     },
-    "workflows": {
+    "authorities": {
       "type": "array",
-      "maxItems": 0
-    }
+      "items": { "$ref": "#/$defs/authority" }
+    },
+    "meta": { "$ref": "#/$defs/meta" }
   },
   "$defs": {
-    "actorMenu": {
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/hubNode" },
+        { "$ref": "#/$defs/pageNode" },
+        { "$ref": "#/$defs/groupNode" }
+      ]
+    },
+    "hubNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "context",
+        "text",
+        "children"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" },
+        "kind": { "type": "string", "enum": ["hub"] },
+        "label": { "type": "string", "minLength": 1 },
+        "context": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
+        "text": { "type": "string", "minLength": 1 },
+        "children": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/node" }
+        }
+      }
+    },
+    "pageNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "organisms"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" },
+        "kind": { "type": "string", "enum": ["page"] },
+        "label": { "type": "string", "minLength": 1 },
+        "organisms": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/organism" }
+        }
+      }
+    },
+    "groupNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "text",
+        "children"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" },
+        "kind": { "type": "string", "enum": ["group"] },
+        "label": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        }
+      }
+    },
+    "organism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "text"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["list", "detail", "form", "summary", "highlights", "timeline", "actions"]
+        },
+        "text": { "type": "string", "minLength": 1 }
+      }
+    },
+    "authority": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "actorRef",
-        "items"
+        "nodes"
       ],
       "properties": {
         "actorRef": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
-        "items": {
+        "nodes": {
           "type": "array",
-          "items": { "$ref": "#/$defs/menuItem" }
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" }
         }
       }
     },
-    "menuItem": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "itemId",
-        "kind",
-        "label",
-        "placeRef",
-        "origins",
-        "description"
-      ],
-      "properties": {
-        "itemId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
-        "kind": { "type": "string", "enum": ["place", "action"] },
-        "label": { "type": "string", "minLength": 1 },
-        "placeRef": { "type": "string" },
-        "origins": { "$ref": "#/$defs/origins" },
-        "description": { "type": "string", "minLength": 1 }
-      }
-    },
-    "origins": {
+    "meta": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "journeys",
-        "entities",
         "processes"
       ],
       "properties": {
         "journeys": {
           "type": "array",
-          "items": { "type": "string" }
-        },
-        "entities": {
-          "type": "array",
-          "items": { "type": "string" }
+          "items": { "$ref": "#/$defs/journeyPages" }
         },
         "processes": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        }
+      }
+    },
+    "journeyPages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "journeyId",
+        "pages"
+      ],
+      "properties": {
+        "journeyId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "pages": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" }
         }
       }
     }

@@ -1,11 +1,10 @@
 # Menu
 
-The menu is the per-profile navigation of the module. It is the only product of this phase.
+The menu is one tree for the module. Actors are a filter, not a second tree.
 
-- One entry per actor. Items are `place` (where the person works) or `action` (a duty that lives inside a place).
-- An action is never a top-level item. Its `placeRef` is a place of the same actor.
-- The hub or panel of the profile comes first when it exists. Keep the top level short.
-- `label` is in the module `userLanguage`. `description` is English prose that says what the person does there and why, and cites origins.
-- Origins always list `journeys`, `entities` and `processes` (lists may be empty). Cite only ids that exist in the l4.
-- The deterministic `(entity, actor)` candidates in the prompt are evidence, not the cut. One journey = one item is the result to avoid.
-- `workflows` stays `[]` in this version.
+- Nodes are `hub` (pick a record of `context`, then act), `page` (a screen of organisms) or `group` (a folder, rare).
+- A page has `organisms[]` (`list`, `detail`, `form`, `summary`, `highlights`, `timeline`, `actions`). Actions are never nodes.
+- `authorities` lists, in order, the node ids each actor sees. Granting a hub grants its children. The first id is that actor's entry.
+- `label`, `text` and `organisms[].text` use `userLanguage`. Ids are snake_case.
+- `meta.journeys` maps every l4 journey to the pages where it happens; an empty list is a visible hole. `meta.processes` is `{}`.
+- The deterministic hub/page candidates in the prompt are evidence, not the cut. One journey = one page is the result to avoid.

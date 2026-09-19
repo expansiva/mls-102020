@@ -1,5 +1,9 @@
 # agentPlannerL2
 
+## 2026-09-19 (p2_11)
+
+- `menu.json` v2: one tree of hubs/pages/organisms, filterable by actor (`authorities`). Replaces v1.
+
 ## 2026-09-19 (p2_10)
 
 - Last flow step (`menu20`) calls `markP2Complete` on approve: `pipeline.status = complete`

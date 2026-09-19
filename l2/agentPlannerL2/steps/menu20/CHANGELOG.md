@@ -1,5 +1,11 @@
 # menu20
 
+## 2026-09-19 (p2_11)
+
+- Menu v2: one tree (`hub` / `page` / `group`), organisms on pages, `authorities` by actor, `meta.journeys`.
+- Replaces v1 place|action. Schema `2026-09-19-p2-menu-v2`. Candidates: grant anchors + `(entity, actor)` from workspaces20.
+- Journey with no page is a pipeline warning, not a gate error.
+
 ## 2026-09-19 (p2_10)
 
 - On approve, `markP2Complete` sets `pipeline.status = complete` (last step of flow.json).

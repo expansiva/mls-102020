@@ -1,92 +1,65 @@
 {
-  "menu": [
+  "tree": [
     {
-      "actorRef": "recepcao",
-      "items": [
+      "id": "aluno",
+      "kind": "hub",
+      "label": "Aluno",
+      "context": "Aluno",
+      "text": "escolhe um aluno; tudo abaixo vale para o aluno escolhido",
+      "children": [
         {
-          "itemId": "matriculas",
-          "kind": "place",
-          "label": "Matrículas",
-          "placeRef": "",
-          "origins": {
-            "journeys": ["matricularAluno"],
-            "entities": ["Matricula", "Aluno", "Plano"],
-            "processes": []
-          },
-          "description": "Where the front desk finds a student, enrols them in a plan and follows the enrolment."
+          "id": "matricula_aluno",
+          "kind": "page",
+          "label": "Matrícula",
+          "organisms": [
+            { "kind": "detail", "text": "a matrícula atual do aluno: plano, início, situação" },
+            { "kind": "actions", "text": "matricular em um plano; cancelar a matrícula" }
+          ]
         },
         {
-          "itemId": "mensalidades",
-          "kind": "place",
+          "id": "mensalidades_aluno",
+          "kind": "page",
           "label": "Mensalidades",
-          "placeRef": "",
-          "origins": {
-            "journeys": ["registrarPagamentoMensalidade"],
-            "entities": ["Mensalidade", "Pagamento"],
-            "processes": []
-          },
-          "description": "Where the front desk records a payment against a monthly fee."
+          "organisms": [
+            { "kind": "list", "text": "as mensalidades do aluno, com vencimento, valor e situação" },
+            { "kind": "summary", "text": "quantas estão vencidas e o total em aberto" },
+            { "kind": "actions", "text": "registrar um pagamento na mensalidade escolhida" }
+          ]
         }
       ]
     },
     {
-      "actorRef": "gerencia",
-      "items": [
-        {
-          "itemId": "indicadores",
-          "kind": "place",
-          "label": "Indicadores",
-          "placeRef": "",
-          "origins": {
-            "journeys": ["acompanharIndicadoresAcademia"],
-            "entities": ["IndicadoresAcademia"],
-            "processes": []
-          },
-          "description": "Management hub: receivables, active students and overdue counts."
-        },
-        {
-          "itemId": "gerenciaMensalidades",
-          "kind": "place",
-          "label": "Mensalidades",
-          "placeRef": "",
-          "origins": {
-            "journeys": ["gerarMensalidadesDoMes"],
-            "entities": ["Mensalidade"],
-            "processes": ["lembrarGeracaoMensalidades"]
-          },
-          "description": "Where management works the monthly fees of the academy."
-        },
-        {
-          "itemId": "gerarMensalidades",
-          "kind": "action",
-          "placeRef": "gerenciaMensalidades",
-          "label": "Gerar mensalidades do mês",
-          "origins": {
-            "journeys": ["gerarMensalidadesDoMes"],
-            "entities": ["Mensalidade"],
-            "processes": ["lembrarGeracaoMensalidades"]
-          },
-          "description": "A monthly duty of management: one button inside Mensalidades, never a top-level entry."
-        }
+      "id": "mensalidades_mes",
+      "kind": "page",
+      "label": "Mensalidades do mês",
+      "organisms": [
+        { "kind": "list", "text": "as mensalidades do mês corrente, por aluno" },
+        { "kind": "actions", "text": "gerar as mensalidades do mês para os alunos ativos" }
       ]
     },
     {
-      "actorRef": "aluno",
-      "items": [
-        {
-          "itemId": "minhaMatricula",
-          "kind": "place",
-          "label": "Minha matrícula",
-          "placeRef": "",
-          "origins": {
-            "journeys": ["cancelarPropriaMatricula"],
-            "entities": ["Matricula"],
-            "processes": []
-          },
-          "description": "The student's own enrolment portal. Cancelling happens here, not at the front desk."
-        }
+      "id": "painel",
+      "kind": "page",
+      "label": "Painel",
+      "organisms": [
+        { "kind": "summary", "text": "total a receber no mês, total recebido, alunos ativos, bloqueados e inadimplentes" },
+        { "kind": "highlights", "text": "alunos com duas ou mais mensalidades vencidas" }
       ]
     }
   ],
-  "workflows": []
+  "authorities": {
+    "actor:recepcao": ["aluno", "mensalidades_mes"],
+    "actor:gerencia": ["painel", "mensalidades_mes", "aluno"],
+    "actor:aluno": ["aluno"]
+  },
+  "meta": {
+    "journeys": {
+      "matricularAluno": ["matricula_aluno"],
+      "registrarPagamentoMensalidade": ["mensalidades_aluno"],
+      "gerarMensalidadesDoMes": ["mensalidades_mes"],
+      "acompanharIndicadoresAcademia": ["painel"],
+      "cancelarPropriaMatricula": ["matricula_aluno"]
+    },
+    "processes": {}
+  }
 }
