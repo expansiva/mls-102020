@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { P2_STEP_HOOKS } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import {
   P2_FLOW_ID,
+  P2_FLOW_LAST_STEP_ID,
   P2_FLOW_STEP_IDS,
   P2_FLOW_VERSION,
   P2_PARKED_STEP_IDS,
@@ -103,5 +104,24 @@ void test('each step folder that exists implements beforePromptStep and is on th
 void test('waiting steps have no folder yet', () => {
   for (const id of WAITING_STEPS) {
     assert.equal(existsSync(path.join(STEPS_ROOT, id)), false, `${id} folder must wait for its spec`);
+  }
+});
+
+function agentSourceOf(stepId: string): string {
+  const folder = path.join(STEPS_ROOT, stepId);
+  const agentFiles = readdirSync(folder).filter(name => /^agentP2\w+\.ts$/.test(name) && !name.endsWith('.test.ts'));
+  assert.ok(agentFiles.length > 0, `${stepId} has no agentP2*.ts`);
+  return readFileSync(path.join(folder, agentFiles[0]), 'utf8');
+}
+
+void test('the last flow.json step is who writes pipeline.status complete', () => {
+  const flow = loadFlow();
+  const last = flow.steps[flow.steps.length - 1];
+  assert.ok(last, 'flow.json has no steps');
+  assert.equal(last.id, P2_FLOW_LAST_STEP_ID);
+  assert.equal(last.id, P2_FLOW_STEP_IDS[P2_FLOW_STEP_IDS.length - 1]);
+  assert.match(agentSourceOf(last.id), /markP2Complete/, `${last.id} afterPrompt must close the pipeline`);
+  for (const step of flow.steps.slice(0, -1)) {
+    assert.doesNotMatch(agentSourceOf(step.id), /markP2Complete/, `${step.id} must not close the pipeline`);
   }
 });

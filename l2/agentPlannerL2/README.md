@@ -29,8 +29,10 @@ paths read the same `pool/l2` messages and write the same
 ## Pipeline
 
 `docs/flow.json` is the contract: `entry10 → menu20`. `entry10` is deterministic.
-`menu20` spends one reasoning call. Re-execution always starts from zero (wipes
-the l2 pipeline and `web/`), overwrites `menu.json`, and leaves the pool intact.
+`menu20` spends one reasoning call and, on approve, sets `pipeline.status = complete`.
+Re-execution always starts from zero (wipes the l2 pipeline and `web/` files),
+overwrites `menu.json`, and leaves the pool intact. Empty `web/` folders stay:
+`deleteFile` does not remove directories; `pipeline.webDir` records that.
 
 Types reused from `/_102035_/l2/solution/{pool,fs,types}.js`. The l2 pipeline has
 its own `flowId: agentPlannerL2` and carries `sourceMessages` of the grouped

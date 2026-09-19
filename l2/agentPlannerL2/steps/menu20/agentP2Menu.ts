@@ -11,6 +11,7 @@ import {
 import type { Ns5AccessArtifact, Ns5WorkflowsArtifact } from '/_102035_/l2/solution/types.js';
 import {
   createP2RetryStep,
+  markP2Complete,
   markP2Step,
   p2AgentFile,
   p2DraftFile,
@@ -248,11 +249,13 @@ export async function afterP2MenuPromptStep(
     });
     const menuPath = await writeJson(p2MenuFile(moduleName), artifact);
     const warnings = gate.issues.filter(issue => issue.severity === 'warning');
-    await writeStepState(pipeline, {
+    pipeline = await writeStepState(pipeline, {
       status: 'approved',
       updatedAt: new Date().toISOString(),
       artifactPaths: [menuPath, draftPath],
     });
+    pipeline = markP2Complete(pipeline);
+    await writeJson(p2PipelineFile(pipeline.moduleName), pipeline);
     const warningNote = warnings.length ? ` (${warnings.length} warning(s))` : '';
     return [
       doneAnchor(context, mutationParent, moduleName, artifact, menuPath),

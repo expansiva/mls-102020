@@ -9,8 +9,8 @@ Deterministic. No LLM.
 
 ## Output
 
-`l2/<mod>/pipeline/pipeline.json` with `thread`, `round`, `messageFile`, `sourceMessages`, `steps.entry10.status: approved`.
-Wipes `l2/<mod>/pipeline/` and `l2/<mod>/web/` first. Done-anchor `entry10-done` unlocks `menu20`.
+`l2/<mod>/pipeline/pipeline.json` with `thread`, `round`, `messageFile`, `sourceMessages`, `steps.entry10.status: approved`, `webDir`.
+Wipes `l2/<mod>/pipeline/` and `l2/<mod>/web/` files first. Empty `web/` directories stay (no `removeDir`); the pipeline records `webDir`. Done-anchor `entry10-done` unlocks `menu20`.
 
 ## Invariants
 

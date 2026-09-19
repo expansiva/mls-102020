@@ -228,6 +228,7 @@ function seedPipeline(host: Host, extra: Record<string, unknown> = {}): void {
     round: 1,
     messageFile: 'l4/mensalidadesAcademia/pool/l2/20260918201156_mensalidadesAcademia-20260918201156_1.json',
     sourceMessages: ['20260918201156_mensalidadesAcademia-20260918201156_1.json'],
+    webDir: 'empty-left: deleteFile does not remove directories',
     updatedAt: '2026-09-18T10:30:00.000Z',
     ...extra,
   };
@@ -416,6 +417,7 @@ void test('afterPromptStep schedules repair when the gate fails', async () => {
   assert.ok(draft, 'gate failure still writes the draft');
   assert.notEqual(draft.content.trim(), '');
   assert.equal(host.files[keyOf(p2MenuFile(MODULE))].content, '');
+  assert.equal(JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).status, 'inProgress');
 });
 
 void test('afterPromptStep approves the draft, overwrites menu.json and leaves pool messages', async () => {
@@ -438,7 +440,10 @@ void test('afterPromptStep approves the draft, overwrites menu.json and leaves p
   assert.ok(first.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'menu20-done'));
   const firstWritten = JSON.parse(host.files[keyOf(p2MenuFile(MODULE))].content) as { generatedAt: string; sourceMessages: string[] };
   assert.equal(firstWritten.sourceMessages[0], '20260918201156_mensalidadesAcademia-20260918201156_1.json');
-  assert.equal(JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).steps.menu20.status, 'approved');
+  const approved = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { status: string; steps: { menu20: { status: string }; entry10: { status: string } } };
+  assert.equal(approved.steps.entry10.status, 'approved');
+  assert.equal(approved.steps.menu20.status, 'approved');
+  assert.equal(approved.status, 'complete');
 
   const step2 = menuStep();
   const again = await afterP2MenuPromptStep(agentMeta(), contextWith(step2, payload), step2, step2, 1);

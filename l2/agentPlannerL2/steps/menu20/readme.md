@@ -8,7 +8,7 @@ Module l4: every journey (id, actor, title, goal, steps), `access.defs.ts` actor
 
 ## Output
 
-`l4/<mod>/pool/l2/menu.json` (overwritten). Envelope fields (`schemaVersion`, `moduleName`, `userLanguage`, `sourceMessages`, `generatedAt`, `workflows: []`) are filled by code. Done-anchor `menu20-done`.
+`l4/<mod>/pool/l2/menu.json` (overwritten). Envelope fields (`schemaVersion`, `moduleName`, `userLanguage`, `sourceMessages`, `generatedAt`, `workflows: []`) are filled by code. On approve, `pipeline.status = complete`. Done-anchor `menu20-done`.
 
 ## Invariants
 

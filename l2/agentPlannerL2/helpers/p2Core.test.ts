@@ -10,10 +10,13 @@ import { normalizePoolMessage } from '/_102035_/l2/solution/pool.js';
 import {
   P2_FLOW_STEP_IDS,
   P2_STEP_DEPENDS_ON,
+  P2_WEB_DIR_EMPTY_LEFT,
+  P2_WEB_DIR_REMOVED,
   buildP2PlannedSteps,
   executeP2Entry,
   isP2PoolMessageFile,
   loadP2Entry,
+  markP2Complete,
   moduleTokenOk,
   ownerStepId,
   parseP2Invocation,
@@ -21,6 +24,7 @@ import {
   p2DifferentRequestsRefusal,
   p2InvocationRefusal,
   p2PipelineFile,
+  type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -274,11 +278,91 @@ void test('re-execution wipes l2 pipeline drafts and web, keeps pool messages, r
   const second = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, later);
   assert.equal('refusal' in second, false);
   if ('refusal' in second) return;
-  const pipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { updatedAt: string; sourceMessages: string[]; steps: { entry10: { status: string } } };
+  const pipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { updatedAt: string; sourceMessages: string[]; steps: { entry10: { status: string } }; webDir: string; status: string };
   assert.equal(pipeline.updatedAt, later.toISOString());
   assert.deepEqual(pipeline.sourceMessages, [`${SHORT}.json`]);
   assert.equal(pipeline.steps.entry10.status, 'approved');
+  assert.equal(pipeline.status, 'inProgress');
+  assert.equal(pipeline.webDir, P2_WEB_DIR_EMPTY_LEFT);
   assert.equal(host.files[poolKey].content, beforePool);
+});
+
+void test('entry10 records webDir empty-left when host cannot remove directories', async () => {
+  const host = installHost();
+  seedReady(host);
+  seed(host, `${MODULE}/web/contracts`, 'stale', '', 2);
+  seed(host, `${MODULE}/web/shared`, 'stale', '', 2);
+  assert.equal(typeof (mls.stor.localStor as { removeDir?: unknown }).removeDir, 'undefined');
+  const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in written, false);
+  if ('refusal' in written) return;
+  assert.equal(written.pipeline.webDir, P2_WEB_DIR_EMPTY_LEFT);
+  assert.equal(written.pipeline.status, 'inProgress');
+  const contractsKey = keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'stale', extension: '.json' });
+  const sharedKey = keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/shared`, shortName: 'stale', extension: '.json' });
+  assert.equal(host.files[contractsKey].status, 'deleted');
+  assert.equal(host.files[sharedKey].status, 'deleted');
+  assert.equal(JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).webDir, P2_WEB_DIR_EMPTY_LEFT);
+});
+
+void test('entry10 sets webDir removed when the host exposes removeDir', async () => {
+  const host = installHost();
+  const removed: string[] = [];
+  (mls.stor.localStor as unknown as { removeDir: (project: number, level: number, folder: string) => void }).removeDir = (project, level, folder) => {
+    removed.push(`${project}:${level}:${folder}`);
+  };
+  seedReady(host);
+  seed(host, `${MODULE}/web/contracts`, 'stale', '', 2);
+  const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in written, false);
+  if ('refusal' in written) return;
+  assert.equal(written.pipeline.webDir, P2_WEB_DIR_REMOVED);
+  assert.deepEqual(removed, [`${PROJECT}:2:${MODULE}/web`]);
+});
+
+function samplePipeline(extra: Partial<P2PipelineState> = {}): P2PipelineState {
+  return {
+    schemaVersion: '2026-09-18-p2-pipeline-v2',
+    flowId: 'agentPlannerL2',
+    moduleName: MODULE,
+    status: 'inProgress',
+    steps: {
+      entry10: { status: 'approved', updatedAt: AT.toISOString() },
+    },
+    thread: 'mensalidadesAcademia-20260918103000',
+    round: 1,
+    messageFile: DISPLAY,
+    sourceMessages: [`${SHORT}.json`],
+    webDir: P2_WEB_DIR_EMPTY_LEFT,
+    updatedAt: AT.toISOString(),
+    ...extra,
+  };
+}
+
+void test('markP2Complete sets complete only when every flow.json step is approved', () => {
+  const now = '2026-09-19T12:00:00.000Z';
+  const onlyEntry = markP2Complete(samplePipeline(), now);
+  assert.equal(onlyEntry.status, 'inProgress');
+  assert.equal(onlyEntry.updatedAt, AT.toISOString());
+
+  const both = markP2Complete(samplePipeline({
+    steps: {
+      entry10: { status: 'approved', updatedAt: AT.toISOString() },
+      menu20: { status: 'approved', updatedAt: now },
+    },
+  }), now);
+  assert.equal(both.status, 'complete');
+  assert.equal(both.awaitingStep, undefined);
+  assert.equal(both.updatedAt, now);
+
+  const failed = markP2Complete(samplePipeline({
+    status: 'failed',
+    steps: {
+      entry10: { status: 'approved', updatedAt: AT.toISOString() },
+      menu20: { status: 'approved', updatedAt: now },
+    },
+  }), now);
+  assert.equal(failed.status, 'failed');
 });
 
 void test('L4 step entry refuses a thread that does not match the file', async () => {

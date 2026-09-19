@@ -1,5 +1,13 @@
 # agentPlannerL2
 
+## 2026-09-19 (p2_10)
+
+- Last flow step (`menu20`) calls `markP2Complete` on approve: `pipeline.status = complete`
+  when every `flow.json` step is approved.
+- `entry10` records `webDir` after wiping `l2/<mod>/web/` files. Host/Studio have no
+  `removeDir`; `deleteFile` unlinks files only, so empty folders stay and the pipeline
+  line is `empty-left: deleteFile does not remove directories`.
+
 ## 2026-09-18 (p2_09)
 
 - Flow v4: `entry10 → menu20`. Product is `l4/<mod>/pool/l2/menu.json`.

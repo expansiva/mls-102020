@@ -35,6 +35,19 @@ export const P2_STEP_IDS = [...P2_FLOW_STEP_IDS, ...P2_PARKED_STEP_IDS] as const
 export type P2FlowStepId = typeof P2_FLOW_STEP_IDS[number];
 export type P2StepId = typeof P2_STEP_IDS[number];
 
+/** Last step of `docs/flow.json` — that step's afterPrompt closes the pipeline. */
+export const P2_FLOW_LAST_STEP_ID: P2FlowStepId = P2_FLOW_STEP_IDS[P2_FLOW_STEP_IDS.length - 1];
+
+/** Host unlinked every file under `l2/<mod>/web/` and removed the empty directory. */
+export const P2_WEB_DIR_REMOVED = 'removed' as const;
+/**
+ * Files under `web/` were unlinked; the empty directory stays. `deleteFile` (libStor and
+ * host `localStor.deleteFile`) unlinks a file path (`shortName+extension`). Studio has no
+ * `deleteFile`. `fs.ts` / `removeModule.ts` also only delete files. No `removeDir` on the host.
+ */
+export const P2_WEB_DIR_EMPTY_LEFT = 'empty-left: deleteFile does not remove directories' as const;
+export type P2WebDir = typeof P2_WEB_DIR_REMOVED | typeof P2_WEB_DIR_EMPTY_LEFT;
+
 export const P2_STEP_TITLES: Record<P2StepId, string> = {
   entry10: 'Entry',
   menu20: 'Menu',
@@ -76,6 +89,8 @@ export interface P2PipelineState {
   messageFile: string;
   sourceMessages: string[];
   pool?: PoolTraceLine[];
+  /** Wipe result of `l2/<mod>/web/`. Always written by entry10 — never a silent leftover. */
+  webDir: P2WebDir;
   updatedAt: string;
 }
 
@@ -178,6 +193,7 @@ export function createP2Pipeline(
   messageFile: string,
   now: Date,
   sourceMessages: string[],
+  webDir: P2WebDir,
 ): P2PipelineState {
   const updatedAt = now.toISOString();
   return {
@@ -196,6 +212,7 @@ export function createP2Pipeline(
     round: message.round,
     messageFile,
     sourceMessages,
+    webDir,
     updatedAt,
   };
 }
@@ -316,7 +333,7 @@ export async function loadP2Entry(source: P2EntrySource): Promise<P2LoadResult> 
 }
 
 export async function writeP2Entry(loaded: P2LoadedEntry, now: Date): Promise<P2PipelineState> {
-  await clearP2Scratch(loaded.moduleName);
+  const webDir = await clearP2Scratch(loaded.moduleName);
   const messageFile = displayPath(loaded.file);
   const pipeline = createP2Pipeline(
     loaded.moduleName,
@@ -324,6 +341,7 @@ export async function writeP2Entry(loaded: P2LoadedEntry, now: Date): Promise<P2
     messageFile,
     now,
     loaded.sourceMessages,
+    webDir,
   );
   await writeJson(p2PipelineFile(loaded.moduleName), pipeline);
   return pipeline;
@@ -378,13 +396,29 @@ function listP2ScratchFiles(moduleName: string): Ns5FileInfo[] {
   return [...found.values()];
 }
 
-async function clearP2Scratch(moduleName: string): Promise<void> {
+async function clearP2Scratch(moduleName: string): Promise<P2WebDir> {
   const files = listP2ScratchFiles(moduleName);
-  if (!files.length) return;
-  const { deleteFile } = await import('/_102027_/l2/libStor.js');
-  for (const file of files) {
-    await deleteFile(diskFileInfo(file));
+  if (files.length) {
+    const { deleteFile } = await import('/_102027_/l2/libStor.js');
+    for (const file of files) {
+      await deleteFile(diskFileInfo(file));
+    }
   }
+  return removeEmptyWebDir(moduleName);
+}
+
+/** Same probe pattern as `hostListFolder` in fs.ts. Host and Studio have no such method today. */
+function hostRemoveDir(): ((project: number, level: number, folder: string) => unknown) | undefined {
+  const fn = (mls.stor.localStor as { removeDir?: unknown } | undefined)?.removeDir;
+  return typeof fn === 'function' ? fn as ((project: number, level: number, folder: string) => unknown) : undefined;
+}
+
+async function removeEmptyWebDir(moduleName: string): Promise<P2WebDir> {
+  const removeDir = hostRemoveDir();
+  if (!removeDir) return P2_WEB_DIR_EMPTY_LEFT;
+  const base = moduleFile(moduleName);
+  await Promise.resolve(removeDir(base.project, 2, `${moduleName}/web`));
+  return P2_WEB_DIR_REMOVED;
 }
 
 export async function executeP2Entry(source: P2EntrySource, now: Date): Promise<P2ExecuteResult> {
@@ -440,6 +474,20 @@ export async function readP2AgentText(folder: string, shortName: string, extensi
   const content = await file.getContent();
   if (typeof content === 'string') return content;
   throw new Error(`agentPlannerL2 invalid text file: ${displayPath(fileInfo)}`);
+}
+
+/** `complete` = every step of `flow.json` is approved. A failed pipeline stays failed. */
+export function markP2Complete(pipeline: P2PipelineState, now = new Date().toISOString()): P2PipelineState {
+  if (pipeline.status === 'failed') return pipeline;
+  for (const stepId of P2_FLOW_STEP_IDS) {
+    if (pipeline.steps[stepId]?.status !== 'approved') return pipeline;
+  }
+  return {
+    ...pipeline,
+    status: 'complete',
+    awaitingStep: undefined,
+    updatedAt: now,
+  };
 }
 
 export function markP2Step(
