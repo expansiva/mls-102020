@@ -1,5 +1,9 @@
 # agentPlannerL2
 
+## 2026-09-19 (p2_12)
+
+- `menu.json` v2.1: `inbox`/`alerts`, `meta.processes` filled, candidates and gate for processes/derived.
+
 ## 2026-09-19 (p2_11)
 
 - `menu.json` v2: one tree of hubs/pages/organisms, filterable by actor (`authorities`). Replaces v1.

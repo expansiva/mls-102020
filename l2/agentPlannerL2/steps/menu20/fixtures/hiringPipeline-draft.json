@@ -1,0 +1,98 @@
+{
+  "tree": [
+    {
+      "id": "recruiter_applications",
+      "kind": "page",
+      "label": "Applications",
+      "organisms": [
+        { "kind": "inbox", "text": "applications waiting for the recruiter to start screening, move to interview, or record a rejection" },
+        { "kind": "list", "text": "Find applications by candidate, job position, and hiring stage." },
+        { "kind": "detail", "text": "Review the application, its candidate, job position, and screening or rejection details." },
+        { "kind": "form", "text": "Start an application by linking a registered candidate to an open job position, and record a rejection reason when needed." },
+        { "kind": "actions", "text": "Start screening, move a screened application to interview, or record a rejection." }
+      ]
+    },
+    {
+      "id": "recruiter_candidates",
+      "kind": "page",
+      "label": "Candidates",
+      "organisms": [
+        { "kind": "list", "text": "Find registered candidates and view their contact details." },
+        { "kind": "detail", "text": "Review a candidate's identification, contact details, and qualifications." },
+        { "kind": "form", "text": "Register a new candidate or attach an existing candidate record." },
+        { "kind": "actions", "text": "Register a candidate and start an application for an eligible candidate." }
+      ]
+    },
+    {
+      "id": "recruiter_job_positions",
+      "kind": "page",
+      "label": "Job positions",
+      "organisms": [
+        { "kind": "list", "text": "Browse job positions, including those closed automatically when headcount is filled." },
+        { "kind": "detail", "text": "Review job position requirements, availability, filled headcount and remaining headcount." },
+        { "kind": "timeline", "text": "See when the system closed a position because its required headcount was hired." },
+        { "kind": "form", "text": "Open an approved job position and assign its responsible hiring manager." },
+        { "kind": "actions", "text": "Open a job position." }
+      ]
+    },
+    {
+      "id": "managed_hiring",
+      "kind": "hub",
+      "label": "My managed positions",
+      "context": "HiringManager",
+      "text": "Your hiring manager record is selected. Choose an application for one of your managed positions to make a hiring decision.",
+      "children": [
+        {
+          "id": "managed_applications",
+          "kind": "page",
+          "label": "Hiring decisions",
+          "organisms": [
+            { "kind": "inbox", "text": "interviewed and offered applications waiting for the hiring manager to decide" },
+            { "kind": "list", "text": "Find interviewed and offered applications for your managed positions." },
+            { "kind": "detail", "text": "Review the application, candidate details, job position, and available headcount before deciding." },
+            { "kind": "highlights", "text": "See the candidate qualifications, offer status, and position headcount relevant to this decision." },
+            { "kind": "actions", "text": "Make an offer, move an offered candidate to hired, or refer a declined candidate or offer for follow-up." }
+          ]
+        },
+        {
+          "id": "managed_candidates",
+          "kind": "page",
+          "label": "Candidates",
+          "organisms": [
+            { "kind": "list", "text": "Browse candidates associated with your managed positions." },
+            { "kind": "detail", "text": "Review candidate identification and qualifications while assessing an application." }
+          ]
+        },
+        {
+          "id": "managed_positions",
+          "kind": "page",
+          "label": "Managed positions",
+          "organisms": [
+            { "kind": "list", "text": "View your managed job positions and their current headcount." },
+            { "kind": "detail", "text": "Review the job position requirements, filled headcount and remaining headcount." },
+            { "kind": "timeline", "text": "See when the system closed a managed position because its required headcount was hired." }
+          ]
+        }
+      ]
+    }
+  ],
+  "authorities": {
+    "actor:recruiter": ["recruiter_applications", "recruiter_candidates", "recruiter_job_positions"],
+    "actor:hiringManager": ["managed_hiring"]
+  },
+  "meta": {
+    "journeys": {
+      "openJobPosition": ["recruiter_job_positions"],
+      "registerCandidate": ["recruiter_candidates"],
+      "startApplicationScreening": ["recruiter_applications", "recruiter_candidates", "recruiter_job_positions"],
+      "advanceApplicationToInterview": ["recruiter_applications", "recruiter_candidates"],
+      "decideOffer": ["managed_applications", "managed_candidates"],
+      "decideHiringOutcome": ["managed_applications", "managed_positions"],
+      "recordApplicationRejection": ["recruiter_applications", "recruiter_job_positions"]
+    },
+    "processes": {
+      "applicationDecisionProcess": ["managed_applications", "recruiter_applications"],
+      "closeFilledPositionProcess": ["recruiter_job_positions", "managed_positions"]
+    }
+  }
+}

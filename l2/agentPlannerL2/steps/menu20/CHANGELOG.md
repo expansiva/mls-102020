@@ -1,5 +1,12 @@
 # menu20
 
+## 2026-09-19 (p2_12)
+
+- Menu v2.1: organism kinds `inbox` and `alerts`; `meta.processes` maps process → pages.
+- Candidates `beyondJourneys` (pure): human/alert stages, mechanical effects, derived/`ddm` per actor.
+- Gate warnings for missing `alerts`/`inbox`/`timeline`/citation; unknown process/page is an error.
+- Schema `2026-09-19-p2-menu-v2.1`. Prompt: what the system does on its own, the person must see it happened.
+
 ## 2026-09-19 (p2_11)
 
 - Menu v2: one tree (`hub` / `page` / `group`), organisms on pages, `authorities` by actor, `meta.journeys`.

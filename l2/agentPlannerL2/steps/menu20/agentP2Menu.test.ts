@@ -36,8 +36,13 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
 const WORKFLOWS_FIXTURE = path.join(HERE, 'fixtures/workflows.defs.ts');
-const REAL_WORKFLOWS = path.resolve(HERE, '../../../../../mls-102047/l4/mensalidadesAcademia/workflows.defs.ts');
+const HIRING_FIXTURE = path.join(HERE, 'fixtures/hiringPipeline');
+const COMPRAS_FIXTURE = path.join(HERE, 'fixtures/compras');
+const REAL_L4 = path.resolve(HERE, '../../../../../mls-102047/l4');
+const REAL_WORKFLOWS = path.join(REAL_L4, 'mensalidadesAcademia/workflows.defs.ts');
 const DRAFT_PATH = path.join(HERE, 'fixtures/menu20-draft.json');
+const HIRING_DRAFT_PATH = path.join(HERE, 'fixtures/hiringPipeline-draft.json');
+const COMPRAS_DRAFT_PATH = path.join(HERE, 'fixtures/compras-draft.json');
 const CANDIDATES_PATH = path.join(HERE, 'fixtures/candidates.json');
 const SCHEMA_PATH = path.join(HERE, '../../schemas/menu.schema.json');
 const PROJECT = 102047;
@@ -72,33 +77,41 @@ function readDefs(root: string, rel: string): unknown {
   return extractDefsJson(readFileSync(path.join(root, rel), 'utf8'));
 }
 
-function loadSources(): { sources: P2L4Sources; grants: ReturnType<typeof parseP2Grants>; processes: ReturnType<typeof parseP2Processes> } {
-  const journeyDir = path.join(L4_FIXTURE, 'journeys');
-  const ontologyDir = path.join(L4_FIXTURE, 'ontology');
+function loadModuleSources(root: string, workflowsPath = path.join(root, 'workflows.defs.ts')): {
+  sources: P2L4Sources;
+  grants: ReturnType<typeof parseP2Grants>;
+  processes: ReturnType<typeof parseP2Processes>;
+} {
+  const journeyDir = path.join(root, 'journeys');
+  const ontologyDir = path.join(root, 'ontology');
   const journeys = readdirSync(journeyDir)
     .filter(name => name.endsWith('.defs.ts') && name !== 'index.defs.ts')
     .sort()
-    .map(name => readDefs(L4_FIXTURE, `journeys/${name}`));
+    .map(name => readDefs(root, `journeys/${name}`));
   const ontologyEntities = readdirSync(ontologyDir)
     .filter(name => name.endsWith('.defs.ts') && name !== 'index.defs.ts')
     .sort()
-    .map(name => readDefs(L4_FIXTURE, `ontology/${name}`));
-  const moduleArtifact = readDefs(L4_FIXTURE, 'module.defs.ts') as { userLanguage?: string; moduleName?: string };
-  const access = readDefs(L4_FIXTURE, 'access.defs.ts');
-  const workflows = extractDefsJson(readFileSync(WORKFLOWS_FIXTURE, 'utf8'));
+    .map(name => readDefs(root, `ontology/${name}`));
+  const moduleArtifact = readDefs(root, 'module.defs.ts') as { userLanguage?: string; moduleName?: string };
+  const access = readDefs(root, 'access.defs.ts');
+  const workflows = extractDefsJson(readFileSync(workflowsPath, 'utf8'));
   return {
     sources: parseP2L4Sources({
       moduleName: moduleArtifact.moduleName,
       userLanguage: moduleArtifact.userLanguage,
-      journeyIndex: readDefs(L4_FIXTURE, 'journeys/index.defs.ts'),
+      journeyIndex: readDefs(root, 'journeys/index.defs.ts'),
       journeys,
       access,
-      ontologyIndex: readDefs(L4_FIXTURE, 'ontology/index.defs.ts'),
+      ontologyIndex: readDefs(root, 'ontology/index.defs.ts'),
       ontologyEntities,
     }),
     grants: parseP2Grants(access),
     processes: parseP2Processes(workflows),
   };
+}
+
+function loadSources(): ReturnType<typeof loadModuleSources> {
+  return loadModuleSources(L4_FIXTURE, WORKFLOWS_FIXTURE);
 }
 
 function loadDraft(): unknown {
@@ -315,12 +328,23 @@ function menuStep(): mls.msg.AIAgentStep {
   };
 }
 
-void test('workflows fixture is a byte-for-byte copy of the l4', () => {
+void test('l4 fixtures are byte-for-byte copies of the real modules', () => {
   assert.equal(existsSync(REAL_WORKFLOWS), true, `missing ${REAL_WORKFLOWS}`);
-  assert.equal(
-    Buffer.compare(readFileSync(WORKFLOWS_FIXTURE), readFileSync(REAL_WORKFLOWS)),
-    0,
-  );
+  assert.equal(Buffer.compare(readFileSync(WORKFLOWS_FIXTURE), readFileSync(REAL_WORKFLOWS)), 0);
+  for (const mod of ['hiringPipeline', 'compras'] as const) {
+    const fixtureRoot = path.join(HERE, 'fixtures', mod);
+    const realRoot = path.join(REAL_L4, mod);
+    const walk = (dir: string, rel = ''): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+      const next = path.join(rel, entry.name);
+      return entry.isDirectory() ? walk(path.join(dir, entry.name), next) : [next];
+    });
+    for (const rel of walk(fixtureRoot)) {
+      const a = path.join(fixtureRoot, rel);
+      const b = path.join(realRoot, rel);
+      assert.equal(existsSync(b), true, `missing ${b}`);
+      assert.equal(Buffer.compare(readFileSync(a), readFileSync(b)), 0, rel);
+    }
+  }
 });
 
 void test('normalizeMenuV2 accepts the mensalidadesAcademia v2 fixture', () => {
@@ -328,7 +352,12 @@ void test('normalizeMenuV2 accepts the mensalidadesAcademia v2 fixture', () => {
   assert.equal(draft.tree[0].kind, 'hub');
   assert.equal(draft.tree[0].id, 'aluno');
   assert.deepEqual(Object.keys(draft.authorities), ['actor:recepcao', 'actor:gerencia', 'actor:aluno']);
-  assert.deepEqual(draft.meta.processes, {});
+  assert.deepEqual(draft.meta.processes.lembrarGeracaoMensalidades, ['painel', 'mensalidades_mes']);
+  const painel = draft.tree.find(node => node.id === 'painel');
+  assert.equal(painel?.kind, 'page');
+  if (painel?.kind === 'page') {
+    assert.ok(painel.organisms.some(organism => organism.kind === 'alerts'));
+  }
 });
 
 void test('normalizeMenuV2 rejects each shape violation', () => {
@@ -377,9 +406,9 @@ void test('normalizeMenuV2 rejects each shape violation', () => {
   ((camel.tree as unknown[])[0] as Record<string, unknown>).id = 'alunoHub';
   assert.throws(() => normalizeMenuV2(camel), /must be snake_case/);
 
-  const processes = structuredClone(valid);
-  (processes.meta as Record<string, unknown>).processes = { x: [] };
-  assert.throws(() => normalizeMenuV2(processes), /must be an empty object/);
+  const badProcess = structuredClone(valid);
+  (badProcess.meta as Record<string, unknown>).processes = { 'Lembrar': [] };
+  assert.throws(() => normalizeMenuV2(badProcess), /must be lowerCamel/);
 });
 
 void test('normalizeMenuV2 accepts the tool array form of authorities and journeys', () => {
@@ -399,7 +428,9 @@ void test('normalizeMenuV2 accepts the tool array form of authorities and journe
         { journeyId: 'acompanharIndicadoresAcademia', pages: ['painel'] },
         { journeyId: 'cancelarPropriaMatricula', pages: ['matricula_aluno'] },
       ],
-      processes: {},
+      processes: [
+        { processId: 'lembrarGeracaoMensalidades', pages: ['painel', 'mensalidades_mes'] },
+      ],
     },
   });
   assert.deepEqual(arrayForm, objectForm);
@@ -407,8 +438,8 @@ void test('normalizeMenuV2 accepts the tool array form of authorities and journe
 
 void test('menuCandidates from the mensalidadesAcademia l4 fixture is byte-for-byte the golden file', () => {
   const loaded = loadSources();
-  const got = menuCandidates(loaded.sources, loaded.grants);
-  const serialized = `${JSON.stringify(got, null, 2)}\n`;
+  const got = menuCandidates(loaded.sources, loaded.grants, loaded.processes);
+  const serialized = `${JSON.stringify({ hubs: got.hubs, pages: got.pages }, null, 2)}\n`;
   assert.equal(serialized, readFileSync(CANDIDATES_PATH, 'utf8'));
   assert.deepEqual(got.hubs, [{ entityRef: 'Aluno', actorRefs: ['aluno'] }]);
   assert.ok(got.pages.some(page => page.candidateId === 'gerenciaMensalidadeCommand'));
@@ -417,9 +448,10 @@ void test('menuCandidates from the mensalidadesAcademia l4 fixture is byte-for-b
 void test('accepted mensalidadesAcademia menu draft passes the gate', () => {
   const loaded = loadSources();
   const draft = normalizeMenuV2(loadDraft());
-  const gate = validateP2Menu(draft, loaded.sources);
+  const gate = validateP2Menu(draft, loaded);
   assert.equal(gate.ok, true, gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
-  assert.deepEqual(draft.meta.processes, {});
+  assert.deepEqual(gate.issues.filter(issue => issue.severity === 'warning'), []);
+  assert.ok(draft.meta.processes.lembrarGeracaoMensalidades.length > 0);
   for (const journey of loaded.sources.journeys) {
     assert.ok(Object.prototype.hasOwnProperty.call(draft.meta.journeys, journey.journeyId), `missing journey ${journey.journeyId}`);
     assert.ok(draft.meta.journeys[journey.journeyId].length > 0, `empty journey ${journey.journeyId}`);
@@ -432,24 +464,24 @@ void test('gate rejects empty hub, duplicate id, unknown actor, unknown organism
   const emptyHub = structuredClone(normalizeMenuV2(loadDraft()));
   assert.equal(emptyHub.tree[0].kind, 'hub');
   if (emptyHub.tree[0].kind === 'hub') emptyHub.tree[0].children = [];
-  assert.ok(validateP2Menu(emptyHub, loaded.sources).issues.some(issue => issue.code === 'P2_MENU_HUB_EMPTY'));
+  assert.ok(validateP2Menu(emptyHub, loaded).issues.some(issue => issue.code === 'P2_MENU_HUB_EMPTY'));
 
   const dup = structuredClone(normalizeMenuV2(loadDraft()));
   dup.tree[1].id = 'aluno';
-  assert.ok(validateP2Menu(dup, loaded.sources).issues.some(issue => issue.code === 'P2_MENU_ID_DUPLICATE'));
+  assert.ok(validateP2Menu(dup, loaded).issues.some(issue => issue.code === 'P2_MENU_ID_DUPLICATE'));
 
   const unknownActor = structuredClone(normalizeMenuV2(loadDraft()));
   unknownActor.authorities['actor:fantasma'] = ['painel'];
-  assert.ok(validateP2Menu(unknownActor, loaded.sources).issues.some(issue => issue.code === 'P2_MENU_ACTOR_UNKNOWN'));
+  assert.ok(validateP2Menu(unknownActor, loaded).issues.some(issue => issue.code === 'P2_MENU_ACTOR_UNKNOWN'));
 
   const badOrganism = structuredClone(normalizeMenuV2(loadDraft()));
   const page = firstPage(badOrganism);
   (page.organisms[0] as { kind: string }).kind = 'widget';
-  assert.ok(validateP2Menu(badOrganism, loaded.sources).issues.some(issue => issue.code === 'P2_MENU_ORGANISM_KIND'));
+  assert.ok(validateP2Menu(badOrganism, loaded).issues.some(issue => issue.code === 'P2_MENU_ORGANISM_KIND'));
 
   const unused = structuredClone(normalizeMenuV2(loadDraft()));
   unused.meta.journeys.acompanharIndicadoresAcademia = [];
-  const unusedGate = validateP2Menu(unused, loaded.sources);
+  const unusedGate = validateP2Menu(unused, loaded);
   assert.equal(unusedGate.ok, true);
   assert.ok(unusedGate.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_JOURNEY_UNMAPPED'));
 });
@@ -480,6 +512,7 @@ void test('beforePromptStep emits prompt_ready with candidates labelled as not t
   assert.equal(intents[0].type, 'prompt_ready');
   const ready = intents[0] as mls.msg.AgentIntentPromptReady;
   assert.match(String(ready.humanPrompt || ''), /candidates, not the answer/);
+  assert.match(String(ready.humanPrompt || ''), /What this actor must see, beyond journeys/);
   assert.match(String(ready.humanPrompt || ''), /gerenciaMensalidadeCommand/);
   assert.match(String(ready.humanPrompt || ''), /"entityRef": "Aluno"/);
   assert.match(String(ready.systemPrompt || ''), /submitP2Menu/);
@@ -569,6 +602,8 @@ void test('human prompt carries journeys, grants, processes and candidates', () 
   assert.match(human, /matricularAluno/);
   assert.match(human, /lembrarGeracaoMensalidades/);
   assert.match(human, /goal:/);
+  assert.match(human, /What this actor must see, beyond journeys/);
+  assert.match(human, /alertarGerenciaGeracao/);
   assert.ok(loaded.grants.length > 0);
 });
 
@@ -584,5 +619,146 @@ void test('buildP2MenuFile fills the envelope from code, not the model', () => {
   assert.equal(file.moduleName, MODULE);
   assert.equal('sourceMessages' in file, false);
   assert.equal('generatedAt' in file, false);
-  assert.deepEqual(file.meta.processes, {});
+  assert.deepEqual(file.meta.processes.lembrarGeracaoMensalidades, ['painel', 'mensalidades_mes']);
+});
+
+void test('menuCandidates from the four real processes classify by actor', () => {
+  const mens = loadSources();
+  const hiring = loadModuleSources(HIRING_FIXTURE);
+  const compras = loadModuleSources(COMPRAS_FIXTURE);
+
+  const mensSee = menuCandidates(mens.sources, mens.grants, mens.processes).beyondJourneys;
+  const gerencia = mensSee.find(row => row.actorRef === 'gerencia');
+  assert.ok(gerencia, 'gerencia missing from beyondJourneys');
+  assert.ok(gerencia.alerts.some(task => (
+    task.processId === 'lembrarGeracaoMensalidades' && task.taskId === 'alertarGerenciaGeracao'
+  )));
+  assert.equal(gerencia.human.length, 0);
+  assert.ok(gerencia.derived.some(item => item.entityRef === 'IndicadoresAcademia' && !item.fieldId));
+  assert.ok(gerencia.derived.some(item => item.entityRef === 'Mensalidade' && item.fieldId === 'details.situacao'));
+
+  const hiringSee = menuCandidates(hiring.sources, hiring.grants, hiring.processes).beyondJourneys;
+  const hiringManager = hiringSee.find(row => row.actorRef === 'hiringManager');
+  const recruiter = hiringSee.find(row => row.actorRef === 'recruiter');
+  assert.ok(hiringManager && recruiter);
+  assert.ok(hiringManager.human.some(task => (
+    task.processId === 'applicationDecisionProcess' && task.taskId === 'decideOffer'
+  )));
+  assert.ok(hiringManager.human.some(task => task.taskId === 'decideHiringOutcome'));
+  assert.ok(recruiter.human.some(task => (
+    task.processId === 'applicationDecisionProcess' && task.taskId === 'recordApplicationRejection'
+  )));
+  assert.ok(recruiter.mechanicalEffects.some(task => (
+    task.processId === 'closeFilledPositionProcess'
+    && task.taskId === 'closeFilledPosition'
+    && task.entityRef === 'JobPosition'
+    && task.effect === 'transition'
+  )));
+  assert.ok(hiringManager.mechanicalEffects.some(task => task.processId === 'closeFilledPositionProcess'));
+  assert.ok(recruiter.derived.some(item => item.entityRef === 'JobPosition' && item.fieldId === 'details.filledHeadcount'));
+
+  const comprasSee = menuCandidates(compras.sources, compras.grants, compras.processes).beyondJourneys;
+  const comprador = comprasSee.find(row => row.actorRef === 'comprador');
+  const gerente = comprasSee.find(row => row.actorRef === 'gerenteCompras');
+  assert.ok(comprador && gerente);
+  assert.ok(comprador.human.some(task => (
+    task.processId === 'aprovarPedidoAcimaDoLimite' && task.taskId === 'enviarEEncaminharPedido'
+  )));
+  assert.ok(gerente.human.some(task => (
+    task.processId === 'aprovarPedidoAcimaDoLimite' && task.taskId === 'decidirPedidoEncaminhado'
+  )));
+  assert.ok(gerente.derived.some(item => item.entityRef === 'PurchaseOrderDashboard' && !item.fieldId));
+  assert.equal(gerente.alerts.length, 0);
+});
+
+void test('v2.1 fixtures of the three modules pass the gate with no warnings', () => {
+  const mens = loadSources();
+  const hiring = loadModuleSources(HIRING_FIXTURE);
+  const compras = loadModuleSources(COMPRAS_FIXTURE);
+  const cases = [
+    { name: 'mensalidadesAcademia', loaded: mens, draft: normalizeMenuV2(loadDraft()) },
+    { name: 'hiringPipeline', loaded: hiring, draft: normalizeMenuV2(JSON.parse(readFileSync(HIRING_DRAFT_PATH, 'utf8'))) },
+    { name: 'compras', loaded: compras, draft: normalizeMenuV2(JSON.parse(readFileSync(COMPRAS_DRAFT_PATH, 'utf8'))) },
+  ];
+  for (const item of cases) {
+    const gate = validateP2Menu(item.draft, item.loaded);
+    assert.equal(gate.ok, true, `${item.name}: ${gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n')}`);
+    assert.deepEqual(
+      gate.issues.filter(issue => issue.severity === 'warning'),
+      [],
+      `${item.name} warnings: ${gate.issues.map(issue => issue.code).join(',')}`,
+    );
+  }
+});
+
+void test('gate warns when closeFilledPosition has no timeline and is silent when it has one', () => {
+  const hiring = loadModuleSources(HIRING_FIXTURE);
+  const withTimeline = normalizeMenuV2(JSON.parse(readFileSync(HIRING_DRAFT_PATH, 'utf8')));
+  const without = structuredClone(withTimeline);
+  const strip = (node: typeof without.tree[number]) => {
+    if (node.kind === 'page') {
+      node.organisms = node.organisms.filter(organism => organism.kind !== 'timeline');
+      return;
+    }
+    if (node.kind === 'hub' || node.kind === 'group') node.children.forEach(strip);
+  };
+  without.tree.forEach(strip);
+
+  const missing = validateP2Menu(without, hiring);
+  const present = validateP2Menu(withTimeline, hiring);
+  assert.equal(missing.ok, true);
+  assert.ok(
+    missing.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_MECHANICAL_NO_TIMELINE'),
+    `expected P2_MENU_MECHANICAL_NO_TIMELINE, got ${missing.issues.map(issue => issue.code).join(',') || '(none)'}`,
+  );
+  assert.equal(
+    present.issues.some(issue => issue.code === 'P2_MENU_MECHANICAL_NO_TIMELINE'),
+    false,
+    `timeline present still warned: ${present.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n')}`,
+  );
+});
+
+void test('gate warns when an alert has no alerts organism and is silent when it has one', () => {
+  const mens = loadSources();
+  const withAlerts = normalizeMenuV2(loadDraft());
+  const without = structuredClone(withAlerts);
+  const painel = without.tree.find(node => node.id === 'painel');
+  assert.equal(painel?.kind, 'page');
+  if (painel?.kind === 'page') {
+    painel.organisms = painel.organisms.filter(organism => organism.kind !== 'alerts');
+  }
+  const missing = validateP2Menu(without, mens);
+  const present = validateP2Menu(withAlerts, mens);
+  assert.ok(missing.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_ALERT_MISSING'));
+  assert.equal(present.issues.some(issue => issue.code === 'P2_MENU_ALERT_MISSING'), false);
+});
+
+void test('gate warns when a human task has no inbox and errors on an unknown process id', () => {
+  const compras = loadModuleSources(COMPRAS_FIXTURE);
+  const withInbox = normalizeMenuV2(JSON.parse(readFileSync(COMPRAS_DRAFT_PATH, 'utf8')));
+  const without = structuredClone(withInbox);
+  const strip = (node: typeof without.tree[number]) => {
+    if (node.kind === 'page') {
+      node.organisms = node.organisms.filter(organism => organism.kind !== 'inbox');
+      return;
+    }
+    if (node.kind === 'hub' || node.kind === 'group') node.children.forEach(strip);
+  };
+  without.tree.forEach(strip);
+  const missing = validateP2Menu(without, compras);
+  const present = validateP2Menu(withInbox, compras);
+  assert.ok(missing.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_HUMAN_NO_INBOX'));
+  assert.equal(present.issues.some(issue => issue.code === 'P2_MENU_HUMAN_NO_INBOX'), false);
+
+  const unknown = structuredClone(withInbox);
+  unknown.meta.processes.fantasmaProcesso = ['pedidos_e_indicadores'];
+  const unknownGate = validateP2Menu(unknown, compras);
+  assert.equal(unknownGate.ok, false);
+  assert.ok(unknownGate.issues.some(issue => issue.severity === 'error' && issue.code === 'P2_MENU_PROCESS_UNKNOWN'));
+
+  const empty = structuredClone(withInbox);
+  empty.meta.processes.aprovarPedidoAcimaDoLimite = [];
+  const emptyGate = validateP2Menu(empty, compras);
+  assert.equal(emptyGate.ok, true);
+  assert.ok(emptyGate.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_PROCESS_UNMAPPED'));
 });

@@ -1,0 +1,77 @@
+{
+  "tree": [
+    {
+      "id": "area_comprador",
+      "kind": "hub",
+      "label": "Minha área de compras",
+      "context": "Buyer",
+      "text": "Seu perfil de comprador já está selecionado. Acesse os cadastros e os pedidos pelos quais você é responsável.",
+      "children": [
+        {
+          "id": "fornecedores_e_condicoes",
+          "kind": "page",
+          "label": "Fornecedores e condições",
+          "organisms": [
+            { "kind": "list", "text": "Consulte fornecedores cadastrados e localize produtos para vincular às condições de fornecimento." },
+            { "kind": "detail", "text": "Veja os dados do fornecedor, seus contatos e as condições de produtos, preços e fornecimento." },
+            { "kind": "form", "text": "Cadastre ou atualize fornecedor, contatos e condições de fornecimento para cada produto." },
+            { "kind": "actions", "text": "Cadastrar fornecedor, atualizar fornecedor, cadastrar contato e registrar condição de fornecimento." }
+          ]
+        },
+        {
+          "id": "pedidos_de_compra",
+          "kind": "page",
+          "label": "Pedidos de compra",
+          "organisms": [
+            { "kind": "inbox", "text": "pedidos que o comprador precisa enviar ou encaminhar para aprovação" },
+            { "kind": "list", "text": "Consulte seus pedidos de compra e localize fornecedores e condições disponíveis para compor um pedido." },
+            { "kind": "detail", "text": "Confira itens, quantidades, preços, fornecedor, condições e situação do pedido." },
+            { "kind": "form", "text": "Abra e complete um pedido de compra com os produtos, quantidades e preços necessários." },
+            { "kind": "actions", "text": "Abrir pedido de compra, enviar pedido ao fornecedor e encaminhar pedido para aprovação." }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pedidos_e_indicadores",
+      "kind": "page",
+      "label": "Pedidos e indicadores",
+      "organisms": [
+        { "kind": "inbox", "text": "pedidos acima do limite que esperam a decisão do gerente de compras" },
+        { "kind": "summary", "text": "Acompanhe pedidos em aberto, atrasados e o total comprado por fornecedor no mês." },
+        { "kind": "highlights", "text": "Veja os principais indicadores de compras do período selecionado." },
+        { "kind": "list", "text": "Localize pedidos de compra, incluindo os que aguardam sua decisão." },
+        { "kind": "detail", "text": "Inspecione fornecedor, produtos, valores, itens, situação e histórico do pedido." },
+        { "kind": "actions", "text": "Autorizar ou rejeitar pedido de compra acima do limite." }
+      ]
+    },
+    {
+      "id": "recebimentos_de_pedidos",
+      "kind": "page",
+      "label": "Recebimentos de pedidos",
+      "organisms": [
+        { "kind": "list", "text": "Localize pedidos de compra disponíveis para recebimento." },
+        { "kind": "detail", "text": "Confira os itens, produtos, quantidades pedidas e recebimentos já registrados no pedido." },
+        { "kind": "form", "text": "Registre o recebimento total ou parcial dos itens efetivamente entregues." },
+        { "kind": "actions", "text": "Registrar recebimento de pedido." }
+      ]
+    }
+  ],
+  "authorities": {
+    "actor:comprador": ["area_comprador"],
+    "actor:gerenteCompras": ["pedidos_e_indicadores"],
+    "actor:almoxarife": ["recebimentos_de_pedidos"]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarFornecedor": ["fornecedores_e_condicoes"],
+      "abrirEenviarPedidoCompra": ["fornecedores_e_condicoes", "pedidos_de_compra"],
+      "decidirPedidoAcimaDoLimite": ["pedidos_e_indicadores"],
+      "registrarRecebimentoPedido": ["recebimentos_de_pedidos"],
+      "acompanharIndicadoresDeCompras": ["pedidos_e_indicadores"]
+    },
+    "processes": {
+      "aprovarPedidoAcimaDoLimite": ["pedidos_de_compra", "pedidos_e_indicadores"]
+    }
+  }
+}

@@ -77,7 +77,7 @@ export function buildP2MenuHumanPrompt(input: {
   previousDraft?: unknown;
 }): string {
   const { sources, grants, processes } = input.menuSources;
-  const candidates = menuCandidates(sources, grants);
+  const candidates = menuCandidates(sources, grants, processes);
   const actorLines = sources.actors.map(actor => `- ${actor.actorId} (${actor.kind}): ${actor.title}`);
   const grantLines = grants.map(grant => {
     const anchor = grant.dataScope.anchorEntity ? ` anchor=${grant.dataScope.anchorEntity}` : '';
@@ -111,7 +111,10 @@ export function buildP2MenuHumanPrompt(input: {
     sources.userLanguage,
     '',
     '## Candidates (deterministic; candidates, not the answer)',
-    JSON.stringify(candidates, null, 2),
+    JSON.stringify({ hubs: candidates.hubs, pages: candidates.pages }, null, 2),
+    '',
+    '## What this actor must see, beyond journeys',
+    JSON.stringify(candidates.beyondJourneys, null, 2),
     '',
     '## Actors',
     actorLines.length ? actorLines.join('\n') : '(none)',
@@ -241,7 +244,7 @@ export async function afterP2MenuPromptStep(
       });
       throw new Error(feedback);
     }
-    const gate = validateP2Menu(draft, menuSources.sources);
+    const gate = validateP2Menu(draft, menuSources);
     if (!gate.ok) {
       const feedback = formatP2MenuGate(gate.issues);
       if (parsed.repairAttempt < MAX_REPAIRS) {

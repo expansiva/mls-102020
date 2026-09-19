@@ -2,10 +2,18 @@
 
 import type { P2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 import {
+  actorAuthorityKey,
+  isMechanicalEffectTask,
   isMenuNodeKind,
   isMenuOrganismKind,
   type MenuNode,
+  type MenuOrganismKind,
+  type MenuPageNode,
   type MenuV2,
+  type P2ActorMustSeeDerived,
+  type P2GrantView,
+  type P2ProcessView,
+  collectBeyondJourneys,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 
 const ACTOR_KEY = /^actor:([a-z][A-Za-z0-9]*)$/;
@@ -22,9 +30,17 @@ export interface P2MenuGateResult {
   issues: P2MenuGateIssue[];
 }
 
-export function validateP2Menu(draft: MenuV2, sources: P2L4Sources): P2MenuGateResult {
+export interface P2MenuGateInput {
+  sources: P2L4Sources;
+  grants: readonly P2GrantView[];
+  processes: readonly P2ProcessView[];
+}
+
+export function validateP2Menu(draft: MenuV2, input: P2MenuGateInput): P2MenuGateResult {
+  const { sources, grants, processes } = input;
   const issues: P2MenuGateIssue[] = [];
   const journeyIds = new Set(sources.journeys.map(journey => journey.journeyId).filter(Boolean));
+  const processIds = new Set(processes.map(process => process.processId).filter(Boolean));
   const entityIds = new Set(sources.entities.map(entity => entity.entityId).filter(Boolean));
   const actorIds = new Set(sources.actors.map(actor => actor.actorId).filter(Boolean));
   const byId = new Map<string, { node: MenuNode; path: string }>();
@@ -56,7 +72,7 @@ export function validateP2Menu(draft: MenuV2, sources: P2L4Sources): P2MenuGateR
           error(
             issues,
             'P2_MENU_ORGANISM_KIND',
-            "organism kind must be list, detail, form, summary, highlights, timeline or actions.",
+            "organism kind must be list, detail, form, summary, highlights, timeline, actions, inbox or alerts.",
             `${organismPath}.kind`,
           );
         }
@@ -138,6 +154,120 @@ export function validateP2Menu(draft: MenuV2, sources: P2L4Sources): P2MenuGateR
     });
   });
 
+  for (const process of processes) {
+    if (!Object.prototype.hasOwnProperty.call(draft.meta.processes, process.processId)
+      || draft.meta.processes[process.processId].length === 0) {
+      warning(
+        issues,
+        'P2_MENU_PROCESS_UNMAPPED',
+        `Process ${process.processId} has no page.`,
+        `$.meta.processes.${process.processId}`,
+      );
+    }
+  }
+
+  Object.entries(draft.meta.processes).forEach(([processId, pages]) => {
+    if (!processIds.has(processId)) {
+      error(issues, 'P2_MENU_PROCESS_UNKNOWN', `Unknown process ${processId}.`, `$.meta.processes.${processId}`);
+    }
+    pages.forEach((pageId, pagePosition) => {
+      const found = byId.get(pageId);
+      if (!found) {
+        error(
+          issues,
+          'P2_MENU_PROCESS_PAGE_UNKNOWN',
+          `Unknown page ${pageId}.`,
+          `$.meta.processes.${processId}[${pagePosition}]`,
+        );
+      } else if (found.node.kind !== 'page') {
+        error(
+          issues,
+          'P2_MENU_PROCESS_NOT_PAGE',
+          `${pageId} is not a page.`,
+          `$.meta.processes.${processId}[${pagePosition}]`,
+        );
+      }
+    });
+  });
+
+  const pagesByActor = new Map<string, MenuPageNode[]>();
+  for (const actor of sources.actors) {
+    pagesByActor.set(actor.actorId, pagesVisibleToActor(draft, byId, actor.actorId));
+  }
+  const beyond = collectBeyondJourneys(sources, grants, processes);
+  for (const row of beyond) {
+    const visible = pagesByActor.get(row.actorRef) || [];
+    for (const task of row.alerts) {
+      if (!hasOrganismKind(visible, 'alerts')) {
+        warning(
+          issues,
+          'P2_MENU_ALERT_MISSING',
+          `Alert ${task.taskId} of ${task.processId} has no alerts page for actor ${row.actorRef}.`,
+          `$.authorities[${JSON.stringify(actorAuthorityKey(row.actorRef))}]`,
+        );
+      }
+    }
+    for (const task of row.human) {
+      if (!hasOrganismKind(visible, 'inbox')) {
+        warning(
+          issues,
+          'P2_MENU_HUMAN_NO_INBOX',
+          `Human task ${task.taskId} of ${task.processId} has no inbox for actor ${row.actorRef}.`,
+          `$.authorities[${JSON.stringify(actorAuthorityKey(row.actorRef))}]`,
+        );
+      }
+      if (!hasOrganismKind(visible, 'actions')) {
+        warning(
+          issues,
+          'P2_MENU_HUMAN_NO_ACTIONS',
+          `Human task ${task.taskId} of ${task.processId} has no actions page for actor ${row.actorRef}.`,
+          `$.authorities[${JSON.stringify(actorAuthorityKey(row.actorRef))}]`,
+        );
+      }
+    }
+  }
+
+  const mechanicalSeen = new Set<string>();
+  for (const process of processes) {
+    for (const task of process.tasks) {
+      if (!isMechanicalEffectTask(task) || !task.entityRef) continue;
+      const key = `${process.processId}:${task.taskId}`;
+      if (mechanicalSeen.has(key)) continue;
+      mechanicalSeen.add(key);
+      const actorsWithGrant = beyond.filter(row => (
+        row.mechanicalEffects.some(item => item.processId === process.processId && item.taskId === task.taskId)
+      ));
+      const anyTimeline = actorsWithGrant.some(row => hasOrganismKind(pagesByActor.get(row.actorRef) || [], 'timeline'));
+      if (actorsWithGrant.length && !anyTimeline) {
+        warning(
+          issues,
+          'P2_MENU_MECHANICAL_NO_TIMELINE',
+          `Mechanical effect ${task.taskId} of ${process.processId} on ${task.entityRef} has no timeline.`,
+          `$.meta.processes.${process.processId}`,
+        );
+      }
+    }
+  }
+
+  const derivedSeen = new Set<string>();
+  for (const row of beyond) {
+    for (const derived of row.derived) {
+      const key = derivedKey(derived);
+      if (derivedSeen.has(key)) continue;
+      derivedSeen.add(key);
+      const actors = beyond.filter(item => item.derived.some(entry => derivedKey(entry) === key));
+      const cited = actors.some(item => hasCitation(pagesByActor.get(item.actorRef) || []));
+      if (actors.length && !cited) {
+        warning(
+          issues,
+          'P2_MENU_DERIVED_NOT_CITED',
+          `Derived ${key} is not cited in summary, highlights or detail.`,
+          `$.tree`,
+        );
+      }
+    }
+  }
+
   return { ok: !issues.some(issue => issue.severity === 'error'), issues };
 }
 
@@ -174,6 +304,45 @@ function collectPages(node: MenuNode, into: Set<string>): void {
     return;
   }
   for (const child of node.children) collectPages(child, into);
+}
+
+function pagesVisibleToActor(
+  draft: MenuV2,
+  byId: Map<string, { node: MenuNode; path: string }>,
+  actorRef: string,
+): MenuPageNode[] {
+  const ids = draft.authorities[actorAuthorityKey(actorRef)] || [];
+  const pages: MenuPageNode[] = [];
+  const seen = new Set<string>();
+  const collect = (node: MenuNode) => {
+    if (node.kind === 'page') {
+      if (node.id && !seen.has(node.id)) {
+        seen.add(node.id);
+        pages.push(node);
+      }
+      return;
+    }
+    for (const child of node.children) collect(child);
+  };
+  for (const id of ids) {
+    const found = byId.get(id);
+    if (found) collect(found.node);
+  }
+  return pages;
+}
+
+function hasOrganismKind(pages: readonly MenuPageNode[], kind: MenuOrganismKind): boolean {
+  return pages.some(page => page.organisms.some(organism => organism.kind === kind));
+}
+
+function hasCitation(pages: readonly MenuPageNode[]): boolean {
+  return hasOrganismKind(pages, 'summary')
+    || hasOrganismKind(pages, 'highlights')
+    || hasOrganismKind(pages, 'detail');
+}
+
+function derivedKey(derived: P2ActorMustSeeDerived): string {
+  return derived.fieldId ? `${derived.entityRef}.${derived.fieldId}` : derived.entityRef;
 }
 
 function error(issues: P2MenuGateIssue[], code: string, message: string, path?: string): void {

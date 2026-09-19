@@ -43,7 +43,8 @@
       "label": "Painel",
       "organisms": [
         { "kind": "summary", "text": "total a receber no mês, total recebido, alunos ativos, bloqueados e inadimplentes" },
-        { "kind": "highlights", "text": "alunos com duas ou mais mensalidades vencidas" }
+        { "kind": "highlights", "text": "alunos com duas ou mais mensalidades vencidas" },
+        { "kind": "alerts", "text": "lembrete mensal para gerar as mensalidades das matrículas ativas" }
       ]
     }
   ],
@@ -60,6 +61,8 @@
       "acompanharIndicadoresAcademia": ["painel"],
       "cancelarPropriaMatricula": ["matricula_aluno"]
     },
-    "processes": {}
+    "processes": {
+      "lembrarGeracaoMensalidades": ["painel", "mensalidades_mes"]
+    }
   }
 }

@@ -1,5 +1,5 @@
 {
-  "$id": "https://collab.codes/schemas/agentPlannerL2/menu/2026-09-19-p2-menu-v2",
+  "$id": "https://collab.codes/schemas/agentPlannerL2/menu/2026-09-19-p2-menu-v2.1",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "additionalProperties": false,
@@ -101,7 +101,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["list", "detail", "form", "summary", "highlights", "timeline", "actions"]
+          "enum": ["list", "detail", "form", "summary", "highlights", "timeline", "actions", "inbox", "alerts"]
         },
         "text": { "type": "string", "minLength": 1 }
       }
@@ -134,9 +134,8 @@
           "items": { "$ref": "#/$defs/journeyPages" }
         },
         "processes": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {}
+          "type": "array",
+          "items": { "$ref": "#/$defs/processPages" }
         }
       }
     },
@@ -149,6 +148,21 @@
       ],
       "properties": {
         "journeyId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "pages": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" }
+        }
+      }
+    },
+    "processPages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "processId",
+        "pages"
+      ],
+      "properties": {
+        "processId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
         "pages": {
           "type": "array",
           "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" }

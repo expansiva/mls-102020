@@ -14,6 +14,7 @@ Call the tool `submitP2Menu` once. Do not write Markdown around the tool argumen
 - entities with family and displayField
 - processes: id, trigger, stages
 - **candidates**, labelled "candidates, not the answer": hubs = grant anchors; pages = grouping (entity, actor)
+- **what this actor must see, beyond journeys**: human stages waiting for that actor, alert stages, mechanical effects their grant reaches, derived fields and `ddm` entities their grant reaches
 
 ## What to emit
 
@@ -24,7 +25,7 @@ Tool arguments:
 - `tree`: nodes of kind `hub` | `page` | `group`
 - `authorities`: array of `{ actorRef, nodes }` — node ids each actor sees, **in order** (first = that actor's entry). Granting a hub grants its children.
 - `meta.journeys`: array of `{ journeyId, pages }` — every l4 journey, pages where it happens (empty pages = a visible hole)
-- `meta.processes`: `{}`
+- `meta.processes`: array of `{ processId, pages }` — every l4 process, pages where the person sees its cause or effect (empty pages = a visible hole)
 
 Do not emit `schemaVersion`, `moduleName` or `userLanguage`. Code fills those.
 
@@ -40,9 +41,11 @@ Ids are `snake_case`. Suffix an actor only when the same thing exists for differ
 
 ## Organisms
 
-Each page is an array of organisms. `kind` is exactly one of: `list`, `detail`, `form`, `summary`, `highlights`, `timeline`, `actions`. Each has `text`: what the person sees and does, as they would say it, in `userLanguage`.
+Each page is an array of organisms. `kind` is exactly one of: `list`, `detail`, `form`, `summary`, `highlights`, `timeline`, `actions`, `inbox`, `alerts`. Each has `text`: what the person sees and does, as they would say it, in `userLanguage`.
 
 `actions` may only name what that actor's grants allow.
+
+The actor's home is three derived organisms: `summary` / `highlights` (numbers and stand-outs), `alerts` (deadlines and recurring duties), `inbox` (what waits for that person's action). The entity page carries `timeline` for what the system did on its own.
 
 ## Rules
 
@@ -52,3 +55,4 @@ Each page is an array of organisms. `kind` is exactly one of: `list`, `detail`, 
 - `label`, `text` and `organisms[].text` are in `userLanguage`.
 - Put each actor's entry first in that actor's `nodes`.
 - Candidates are evidence, not the cut. You may merge or nest. You may not invent an actor, an entity, a journey or a process.
+- What the system does on its own, the person must see it happened.

@@ -1,8 +1,9 @@
 # agentPlannerL2
 
 L2 planner. Reads a finished l4 module and every message in `pool/l2`, then
-writes `l4/<mod>/pool/l2/menu.json` — menu v2: one tree of hubs, pages and
-organisms, filterable by actor. One reasoning call. Lives in `mls-102020` next
+writes `l4/<mod>/pool/l2/menu.json` — menu v2.1: one tree of hubs, pages and
+organisms (including `inbox`/`alerts`), filterable by actor, with `meta.processes`.
+One reasoning call. Lives in `mls-102020` next
 to `agentChangeFrontend`. Unique name `agentPlannerL2`.
 
 This phase is menu-only. `workspaces20`, `contracts30`, `shared40` and

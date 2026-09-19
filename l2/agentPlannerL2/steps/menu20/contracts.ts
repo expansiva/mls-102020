@@ -2,15 +2,19 @@
 
 import {
   collectP2WorkspaceCandidates,
+  isDdmEntity,
   type P2L4Sources,
   type P2WorkspaceCandidate,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 
-export const P2_MENU_SCHEMA_VERSION = '2026-09-19-p2-menu-v2' as const;
+export const P2_MENU_SCHEMA_VERSION = '2026-09-19-p2-menu-v2.1' as const;
 export const MENU_NODE_KINDS = ['hub', 'page', 'group'] as const;
 export type MenuNodeKind = typeof MENU_NODE_KINDS[number];
-export const MENU_ORGANISM_KINDS = ['list', 'detail', 'form', 'summary', 'highlights', 'timeline', 'actions'] as const;
+export const MENU_ORGANISM_KINDS = [
+  'list', 'detail', 'form', 'summary', 'highlights', 'timeline', 'actions', 'inbox', 'alerts',
+] as const;
 export type MenuOrganismKind = typeof MENU_ORGANISM_KINDS[number];
+export const MENU_MECHANICAL_EFFECTS = ['transition', 'create', 'update'] as const;
 
 const NODE_ID = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
@@ -53,7 +57,7 @@ export interface MenuV2 {
   authorities: Record<string, string[]>;
   meta: {
     journeys: Record<string, string[]>;
-    processes: Record<string, never>;
+    processes: Record<string, string[]>;
   };
 }
 
@@ -75,10 +79,21 @@ export interface P2GrantView {
   disclosure: { mode: string; description: string };
 }
 
+export interface P2ProcessTaskView {
+  taskId: string;
+  kind: string;
+  description: string;
+  actorRef: string;
+  entityRef: string;
+  effect: string;
+  journeyRef: string;
+  transitionRef: string;
+}
+
 export interface P2ProcessView {
   processId: string;
   trigger: { kind: string; schedule: string; event: string; actorRef: string };
-  tasks: Array<{ taskId: string; kind: string; description: string }>;
+  tasks: P2ProcessTaskView[];
 }
 
 export interface P2MenuHubCandidate {
@@ -86,9 +101,36 @@ export interface P2MenuHubCandidate {
   actorRefs: string[];
 }
 
+export interface P2ActorMustSeeTask {
+  processId: string;
+  taskId: string;
+  description: string;
+}
+
+export interface P2ActorMustSeeEffect extends P2ActorMustSeeTask {
+  entityRef: string;
+  effect: string;
+}
+
+export interface P2ActorMustSeeDerived {
+  entityRef: string;
+  fieldId?: string;
+  title: string;
+}
+
+/** Per actor, what the person must see beyond journeys (classes 1–4). */
+export interface P2ActorMustSee {
+  actorRef: string;
+  human: P2ActorMustSeeTask[];
+  alerts: P2ActorMustSeeTask[];
+  mechanicalEffects: P2ActorMustSeeEffect[];
+  derived: P2ActorMustSeeDerived[];
+}
+
 export interface P2MenuCandidates {
   hubs: P2MenuHubCandidate[];
   pages: P2WorkspaceCandidate[];
+  beyondJourneys: P2ActorMustSee[];
 }
 
 export function isMenuNodeKind(value: string): value is MenuNodeKind {
@@ -144,6 +186,11 @@ export function parseP2Processes(workflows: unknown): P2ProcessView[] {
           taskId: memberId(text(task.taskId)),
           kind: text(task.kind),
           description: text(task.description),
+          actorRef: memberId(text(task.actorRef)),
+          entityRef: text(task.entityRef),
+          effect: text(task.effect),
+          journeyRef: memberId(text(task.journeyRef)),
+          transitionRef: memberId(text(task.transitionRef)),
         };
       }).filter(task => task.taskId),
     };
@@ -151,7 +198,11 @@ export function parseP2Processes(workflows: unknown): P2ProcessView[] {
 }
 
 /** Hubs = grant anchors; pages = (entity, actor) groups from workspaces20. Candidates, not the answer. */
-export function menuCandidates(sources: P2L4Sources, grants: readonly P2GrantView[]): P2MenuCandidates {
+export function menuCandidates(
+  sources: P2L4Sources,
+  grants: readonly P2GrantView[],
+  processes: readonly P2ProcessView[] = [],
+): P2MenuCandidates {
   const hubActors = new Map<string, Set<string>>();
   for (const grant of grants) {
     const anchor = grant.dataScope.anchorEntity;
@@ -166,7 +217,94 @@ export function menuCandidates(sources: P2L4Sources, grants: readonly P2GrantVie
   const hubs = [...hubActors.entries()]
     .map(([entityRef, actors]) => ({ entityRef, actorRefs: [...actors].sort((a, b) => a.localeCompare(b)) }))
     .sort((left, right) => left.entityRef.localeCompare(right.entityRef));
-  return { hubs, pages: collectP2WorkspaceCandidates(sources) };
+  return {
+    hubs,
+    pages: collectP2WorkspaceCandidates(sources),
+    beyondJourneys: collectBeyondJourneys(sources, grants, processes),
+  };
+}
+
+export function isMechanicalEffectTask(task: P2ProcessTaskView): boolean {
+  return (task.kind === 'mechanical' || task.kind === 'llm')
+    && (MENU_MECHANICAL_EFFECTS as readonly string[]).includes(task.effect);
+}
+
+/** Pure. Per actor: human stages, alerts, mechanical effects, derived/ddm their grant reaches. */
+export function collectBeyondJourneys(
+  sources: P2L4Sources,
+  grants: readonly P2GrantView[],
+  processes: readonly P2ProcessView[],
+): P2ActorMustSee[] {
+  const grantEntities = new Map<string, Set<string>>();
+  for (const grant of grants) {
+    if (!grant.actorRef) continue;
+    let entities = grantEntities.get(grant.actorRef);
+    if (!entities) {
+      entities = new Set();
+      grantEntities.set(grant.actorRef, entities);
+    }
+    for (const entityRef of grant.entityRefs) {
+      if (entityRef) entities.add(entityRef);
+    }
+  }
+  const ddmIds = new Set(sources.entities.filter(isDdmEntity).map(entity => entity.entityId));
+  const derivedByEntity = new Map<string, P2ActorMustSeeDerived[]>();
+  for (const entity of sources.ontologyEntities) {
+    const entityId = text(record(entity).entityId);
+    if (!entityId) continue;
+    derivedByEntity.set(entityId, collectDerivedOfEntity(entity, ddmIds.has(entityId)));
+  }
+  const byActor = new Map<string, P2ActorMustSee>();
+  const actorOf = (actorRef: string): P2ActorMustSee => {
+    let row = byActor.get(actorRef);
+    if (!row) {
+      row = { actorRef, human: [], alerts: [], mechanicalEffects: [], derived: [] };
+      byActor.set(actorRef, row);
+    }
+    return row;
+  };
+  for (const actor of sources.actors) {
+    if (actor.actorId) actorOf(actor.actorId);
+  }
+  for (const process of processes) {
+    for (const task of process.tasks) {
+      if (task.kind === 'human' && task.actorRef) {
+        actorOf(task.actorRef).human.push({
+          processId: process.processId,
+          taskId: task.taskId,
+          description: task.description,
+        });
+      }
+      if (task.kind === 'alert' && task.actorRef) {
+        actorOf(task.actorRef).alerts.push({
+          processId: process.processId,
+          taskId: task.taskId,
+          description: task.description,
+        });
+      }
+      if (isMechanicalEffectTask(task) && task.entityRef) {
+        for (const [actorRef, entities] of grantEntities) {
+          if (!entities.has(task.entityRef)) continue;
+          actorOf(actorRef).mechanicalEffects.push({
+            processId: process.processId,
+            taskId: task.taskId,
+            description: task.description,
+            entityRef: task.entityRef,
+            effect: task.effect,
+          });
+        }
+      }
+    }
+  }
+  for (const [actorRef, entities] of grantEntities) {
+    const row = actorOf(actorRef);
+    const derived: P2ActorMustSeeDerived[] = [];
+    for (const entityRef of [...entities].sort((left, right) => left.localeCompare(right))) {
+      derived.push(...(derivedByEntity.get(entityRef) || []));
+    }
+    row.derived = derived;
+  }
+  return [...byActor.values()].sort((left, right) => left.actorRef.localeCompare(right.actorRef));
 }
 
 export function normalizeMenuV2(value: unknown): MenuV2 {
@@ -174,14 +312,12 @@ export function normalizeMenuV2(value: unknown): MenuV2 {
   exactKeys(root, ['tree', 'authorities', 'meta'], '$');
   const meta = asRecord(root.meta, '$.meta');
   exactKeys(meta, ['journeys', 'processes'], '$.meta');
-  const processes = asRecord(meta.processes, '$.meta.processes');
-  if (Object.keys(processes).length) throw new Error('$.meta.processes must be an empty object.');
   return {
     tree: list(root.tree, '$.tree').map((item, index) => normalizeNode(item, `$.tree[${index}]`)),
     authorities: normalizeAuthorities(root.authorities, '$.authorities'),
     meta: {
-      journeys: normalizeJourneyMap(meta.journeys, '$.meta.journeys'),
-      processes: {},
+      journeys: normalizeIdPagesMap(meta.journeys, '$.meta.journeys', 'journeyId'),
+      processes: normalizeIdPagesMap(meta.processes, '$.meta.processes', 'processId'),
     },
   };
 }
@@ -204,7 +340,7 @@ export function buildP2MenuFile(input: {
 export function buildP2MenuTool(schema: Record<string, unknown>): mls.msg.LLMTool {
   return createP2ArtifactTool(
     'submitP2Menu',
-    'Submit the module menu tree: hubs, pages with organisms, authorities by actor, and journey mapping.',
+    'Submit the module menu tree: hubs, pages with organisms, authorities by actor, and journey/process mapping.',
     schema,
   );
 }
@@ -287,25 +423,57 @@ function normalizeAuthorities(value: unknown, path: string): Record<string, stri
   return out;
 }
 
-function normalizeJourneyMap(value: unknown, path: string): Record<string, string[]> {
+function normalizeIdPagesMap(value: unknown, path: string, idKey: 'journeyId' | 'processId'): Record<string, string[]> {
   if (Array.isArray(value)) {
     const out: Record<string, string[]> = {};
     value.forEach((item, index) => {
       const row = asRecord(item, `${path}[${index}]`);
-      exactKeys(row, ['journeyId', 'pages'], `${path}[${index}]`);
-      const journeyId = memberIdRequired(row.journeyId, `${path}[${index}].journeyId`);
-      if (out[journeyId]) throw new Error(`${path}[${index}]: duplicate journeyId ${journeyId}.`);
-      out[journeyId] = stringIdList(row.pages, `${path}[${index}].pages`, nodeId);
+      exactKeys(row, [idKey, 'pages'], `${path}[${index}]`);
+      const id = memberIdRequired(row[idKey], `${path}[${index}].${idKey}`);
+      if (out[id]) throw new Error(`${path}[${index}]: duplicate ${idKey} ${id}.`);
+      out[id] = stringIdList(row.pages, `${path}[${index}].pages`, nodeId);
     });
     return out;
   }
   const source = asRecord(value, path);
   const out: Record<string, string[]> = {};
   for (const [key, pages] of Object.entries(source)) {
-    const journeyId = memberIdRequired(key, `${path}.${key}`);
-    out[journeyId] = stringIdList(pages, `${path}.${journeyId}`, nodeId);
+    const id = memberIdRequired(key, `${path}.${key}`);
+    out[id] = stringIdList(pages, `${path}.${id}`, nodeId);
   }
   return out;
+}
+
+function collectDerivedOfEntity(entity: unknown, isDdm: boolean): P2ActorMustSeeDerived[] {
+  const root = record(entity);
+  const entityRef = text(root.entityId);
+  if (!entityRef) return [];
+  const title = text(root.title) || entityRef;
+  if (isDdm) return [{ entityRef, title }];
+  const out: P2ActorMustSeeDerived[] = [];
+  walkDerivedFields(record(record(root.record).fields), false, '', (fieldId, fieldTitle) => {
+    out.push({ entityRef, fieldId, title: fieldTitle });
+  });
+  return out;
+}
+
+function walkDerivedFields(
+  fields: Record<string, unknown>,
+  platform: boolean,
+  prefix: string,
+  visit: (fieldId: string, title: string) => void,
+): void {
+  for (const [id, raw] of Object.entries(fields)) {
+    const field = record(raw);
+    const nextPlatform = platform || text(field.owner) === 'platform';
+    const path = prefix ? `${prefix}.${id}` : id;
+    const nested = field.fields;
+    const container = isRecord(nested) && Object.keys(nested).length > 0;
+    if (!nextPlatform && field.derived === true && id !== 'id' && id !== 'version' && !container) {
+      visit(path, text(field.title) || path);
+    }
+    if (isRecord(nested)) walkDerivedFields(nested, nextPlatform, path, visit);
+  }
 }
 
 function createP2ArtifactTool(
