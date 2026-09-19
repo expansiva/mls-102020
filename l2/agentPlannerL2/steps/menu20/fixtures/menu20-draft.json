@@ -1,0 +1,92 @@
+{
+  "menu": [
+    {
+      "actorRef": "recepcao",
+      "items": [
+        {
+          "itemId": "matriculas",
+          "kind": "place",
+          "label": "Matrículas",
+          "placeRef": "",
+          "origins": {
+            "journeys": ["matricularAluno"],
+            "entities": ["Matricula", "Aluno", "Plano"],
+            "processes": []
+          },
+          "description": "Where the front desk finds a student, enrols them in a plan and follows the enrolment."
+        },
+        {
+          "itemId": "mensalidades",
+          "kind": "place",
+          "label": "Mensalidades",
+          "placeRef": "",
+          "origins": {
+            "journeys": ["registrarPagamentoMensalidade"],
+            "entities": ["Mensalidade", "Pagamento"],
+            "processes": []
+          },
+          "description": "Where the front desk records a payment against a monthly fee."
+        }
+      ]
+    },
+    {
+      "actorRef": "gerencia",
+      "items": [
+        {
+          "itemId": "indicadores",
+          "kind": "place",
+          "label": "Indicadores",
+          "placeRef": "",
+          "origins": {
+            "journeys": ["acompanharIndicadoresAcademia"],
+            "entities": ["IndicadoresAcademia"],
+            "processes": []
+          },
+          "description": "Management hub: receivables, active students and overdue counts."
+        },
+        {
+          "itemId": "gerenciaMensalidades",
+          "kind": "place",
+          "label": "Mensalidades",
+          "placeRef": "",
+          "origins": {
+            "journeys": ["gerarMensalidadesDoMes"],
+            "entities": ["Mensalidade"],
+            "processes": ["lembrarGeracaoMensalidades"]
+          },
+          "description": "Where management works the monthly fees of the academy."
+        },
+        {
+          "itemId": "gerarMensalidades",
+          "kind": "action",
+          "placeRef": "gerenciaMensalidades",
+          "label": "Gerar mensalidades do mês",
+          "origins": {
+            "journeys": ["gerarMensalidadesDoMes"],
+            "entities": ["Mensalidade"],
+            "processes": ["lembrarGeracaoMensalidades"]
+          },
+          "description": "A monthly duty of management: one button inside Mensalidades, never a top-level entry."
+        }
+      ]
+    },
+    {
+      "actorRef": "aluno",
+      "items": [
+        {
+          "itemId": "minhaMatricula",
+          "kind": "place",
+          "label": "Minha matrícula",
+          "placeRef": "",
+          "origins": {
+            "journeys": ["cancelarPropriaMatricula"],
+            "entities": ["Matricula"],
+            "processes": []
+          },
+          "description": "The student's own enrolment portal. Cancelling happens here, not at the front desk."
+        }
+      ]
+    }
+  ],
+  "workflows": []
+}

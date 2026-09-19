@@ -1,7 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/helpers/p2Core.ts" enhancement="_blank"/>
 
 import {
+  diskFileInfo,
   displayPath,
+  hostListFolder,
   moduleFile,
   normalizeModuleName,
   readJson,
@@ -13,22 +15,29 @@ import { listPoolBox, readPoolMessage, type PoolMessage, type PoolTraceLine } fr
 import type { Ns5PipelineStatus, Ns5PipelineStepState } from '/_102035_/l2/solution/types.js';
 
 export const P2_FLOW_ID = 'agentPlannerL2' as const;
-export const P2_FLOW_VERSION = '2026-09-18-p2-flow-v3' as const;
+export const P2_FLOW_VERSION = '2026-09-18-p2-flow-v4' as const;
 export const P2_AGENT_NAME = 'agentPlannerL2' as const;
-export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v1' as const;
+export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v2' as const;
 
-export const P2_STEP_IDS = [
-  'entry10',
+/** Steps the current flow.json actually runs. */
+export const P2_FLOW_STEP_IDS = ['entry10', 'menu20'] as const;
+
+/** Parked: code stays, flow.json v4 does not list them. */
+export const P2_PARKED_STEP_IDS = [
   'workspaces20',
   'contracts30',
   'shared40',
   'requests50',
 ] as const;
 
+export const P2_STEP_IDS = [...P2_FLOW_STEP_IDS, ...P2_PARKED_STEP_IDS] as const;
+
+export type P2FlowStepId = typeof P2_FLOW_STEP_IDS[number];
 export type P2StepId = typeof P2_STEP_IDS[number];
 
 export const P2_STEP_TITLES: Record<P2StepId, string> = {
   entry10: 'Entry',
+  menu20: 'Menu',
   workspaces20: 'Workspaces',
   contracts30: 'Contracts',
   shared40: 'Shared',
@@ -37,11 +46,15 @@ export const P2_STEP_TITLES: Record<P2StepId, string> = {
 
 export const P2_STEP_DEPENDS_ON: Record<P2StepId, readonly string[]> = {
   entry10: [],
+  menu20: ['entry10-done'],
   workspaces20: ['entry10-done'],
   contracts30: ['workspaces20-done'],
   shared40: ['contracts30-done'],
   requests50: ['shared40-done'],
 };
+
+/** Pool message file: `<stamp>_<thread>_<round>`. `menu.json` does not match. */
+const POOL_MESSAGE_SHORT = /^\d{14}_[A-Za-z0-9]+-\d{14}_[123]$/;
 
 export interface P2ParsedInvocation {
   module: string;
@@ -61,6 +74,7 @@ export interface P2PipelineState {
   thread: string;
   round: number;
   messageFile: string;
+  sourceMessages: string[];
   pool?: PoolTraceLine[];
   updatedAt: string;
 }
@@ -69,6 +83,7 @@ export interface P2LoadedEntry {
   moduleName: string;
   file: Ns5FileInfo;
   message: PoolMessage;
+  sourceMessages: string[];
 }
 
 export type P2LoadResult = P2LoadedEntry | { refusal: string };
@@ -162,6 +177,7 @@ export function createP2Pipeline(
   message: PoolMessage,
   messageFile: string,
   now: Date,
+  sourceMessages: string[],
 ): P2PipelineState {
   const updatedAt = now.toISOString();
   return {
@@ -179,6 +195,7 @@ export function createP2Pipeline(
     thread: message.thread,
     round: message.round,
     messageFile,
+    sourceMessages,
     updatedAt,
   };
 }
@@ -212,7 +229,37 @@ export function buildP2PlannedSteps(
   moduleName: string,
   entry: { thread: string; file: string },
 ): mls.msg.AIAgentStep[] {
-  return P2_STEP_IDS.map(stepId => createP2AgentStep(stepId, moduleName, entry));
+  return P2_FLOW_STEP_IDS.map(stepId => createP2AgentStep(stepId, moduleName, entry));
+}
+
+export function isP2PoolMessageFile(shortName: string): boolean {
+  return POOL_MESSAGE_SHORT.test(shortName);
+}
+
+function poolMessageFileName(file: Ns5FileInfo): string {
+  return `${file.shortName}${file.extension}`;
+}
+
+function requestKey(moduleName: string, message: PoolMessage): string {
+  const threadModule = message.thread.replace(/-\d{14}$/, '') || moduleName;
+  const artifacts = [...message.artifacts].map(item => item.trim()).filter(Boolean).sort().join('\0');
+  return `${threadModule}\0${message.mode}\0${artifacts}`;
+}
+
+export function p2DifferentRequestsRefusal(count: number): string {
+  return `pool/l2 has ${count} different requests; resolve with the l4 supervisor`;
+}
+
+/** `l4/<module>/pool/l2/menu.json` — temporary; overwritten each run. Not a pool message. */
+export function p2MenuFile(moduleName: string): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 4,
+    folder: `${base.folder}/pool/l2`,
+    shortName: 'menu',
+    extension: '.json',
+  };
 }
 
 function matchPoolFile(file: Ns5FileInfo, wanted: string): boolean {
@@ -231,28 +278,113 @@ export async function loadP2Entry(source: P2EntrySource): Promise<P2LoadResult> 
     return { refusal: `Module "${moduleName}" has no complete l4.` };
   }
 
-  const box = listPoolBox(moduleName, 'l2');
-  if (source.kind === 'hand') {
-    if (!box.length) return { refusal: `nothing pending for ${moduleName} in pool/l2` };
-    const file = box[0];
-    return { moduleName, file, message: await readPoolMessage(file) };
+  const box = listPoolBox(moduleName, 'l2').filter(file => isP2PoolMessageFile(file.shortName));
+  if (!box.length) return { refusal: `nothing pending for ${moduleName} in pool/l2` };
+
+  const loaded: Array<{ file: Ns5FileInfo; message: PoolMessage }> = [];
+  for (const file of box) {
+    loaded.push({ file, message: await readPoolMessage(file) });
   }
 
-  if (!box.length) return { refusal: `nothing pending for ${moduleName} in pool/l2` };
-  const file = box.find(entry => matchPoolFile(entry, source.file));
-  if (!file) return { refusal: `pool/l2 message not found: ${source.file}` };
-  const message = await readPoolMessage(file);
-  if (message.thread !== source.thread) {
-    return { refusal: `message thread does not match '${source.thread}'.` };
+  const groups = new Map<string, typeof loaded>();
+  for (const entry of loaded) {
+    const key = requestKey(moduleName, entry.message);
+    const group = groups.get(key) || [];
+    group.push(entry);
+    groups.set(key, group);
   }
-  return { moduleName, file, message };
+  if (groups.size > 1) return { refusal: p2DifferentRequestsRefusal(groups.size) };
+
+  const group = loaded;
+  const oldest = group[0];
+  const sourceMessages = group.map(entry => poolMessageFileName(entry.file));
+
+  if (source.kind === 'step') {
+    const specified = group.find(entry => matchPoolFile(entry.file, source.file));
+    if (!specified) return { refusal: `pool/l2 message not found: ${source.file}` };
+    if (specified.message.thread !== source.thread) {
+      return { refusal: `message thread does not match '${source.thread}'.` };
+    }
+  }
+
+  return {
+    moduleName,
+    file: oldest.file,
+    message: oldest.message,
+    sourceMessages,
+  };
 }
 
 export async function writeP2Entry(loaded: P2LoadedEntry, now: Date): Promise<P2PipelineState> {
+  await clearP2Scratch(loaded.moduleName);
   const messageFile = displayPath(loaded.file);
-  const pipeline = createP2Pipeline(loaded.moduleName, loaded.message, messageFile, now);
+  const pipeline = createP2Pipeline(
+    loaded.moduleName,
+    loaded.message,
+    messageFile,
+    now,
+    loaded.sourceMessages,
+  );
   await writeJson(p2PipelineFile(loaded.moduleName), pipeline);
   return pipeline;
+}
+
+function isP2ScratchFolder(folder: string, moduleName: string): boolean {
+  return folder === `${moduleName}/pipeline`
+    || folder === `${moduleName}/web`
+    || folder.startsWith(`${moduleName}/web/`);
+}
+
+function listP2ScratchFiles(moduleName: string): Ns5FileInfo[] {
+  const base = moduleFile(moduleName);
+  const files = mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>;
+  const found = new Map<string, Ns5FileInfo>();
+  const remember = (info: Ns5FileInfo) => {
+    found.set(`${info.folder}/${info.shortName}${info.extension}`, info);
+  };
+  for (const file of Object.values(files)) {
+    if (!file || file.project !== base.project || Number(file.level) !== 2 || file.status === 'deleted') continue;
+    const folder = String(file.folder || '');
+    if (!isP2ScratchFolder(folder, moduleName) || !file.shortName) continue;
+    remember({
+      project: base.project,
+      level: 2,
+      folder,
+      shortName: String(file.shortName),
+      extension: String(file.extension || ''),
+    });
+  }
+  const listFolder = hostListFolder();
+  if (listFolder) {
+    const folders = new Set<string>([`${moduleName}/pipeline`, `${moduleName}/web`, `${moduleName}/web/contracts`, `${moduleName}/web/shared`]);
+    for (const info of found.values()) folders.add(info.folder);
+    for (const folder of folders) {
+      for (const info of listFolder(base.project, 2, folder)) {
+        if (!info.shortName) continue;
+        const key = mls.stor.getKeyToFile(info);
+        const indexed = files[key];
+        if (indexed?.status === 'deleted') continue;
+        if (!indexed) files[key] = diskFileInfo(info);
+        remember({
+          project: base.project,
+          level: 2,
+          folder,
+          shortName: String(info.shortName),
+          extension: String(info.extension || ''),
+        });
+      }
+    }
+  }
+  return [...found.values()];
+}
+
+async function clearP2Scratch(moduleName: string): Promise<void> {
+  const files = listP2ScratchFiles(moduleName);
+  if (!files.length) return;
+  const { deleteFile } = await import('/_102027_/l2/libStor.js');
+  for (const file of files) {
+    await deleteFile(diskFileInfo(file));
+  }
 }
 
 export async function executeP2Entry(source: P2EntrySource, now: Date): Promise<P2ExecuteResult> {

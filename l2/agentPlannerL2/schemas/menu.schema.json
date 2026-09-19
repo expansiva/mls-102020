@@ -1,0 +1,80 @@
+{
+  "$id": "https://collab.codes/schemas/agentPlannerL2/menu/2026-09-18-p2-menu-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "menu",
+    "workflows"
+  ],
+  "properties": {
+    "menu": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/actorMenu" }
+    },
+    "workflows": {
+      "type": "array",
+      "maxItems": 0
+    }
+  },
+  "$defs": {
+    "actorMenu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actorRef",
+        "items"
+      ],
+      "properties": {
+        "actorRef": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "items": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/menuItem" }
+        }
+      }
+    },
+    "menuItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "itemId",
+        "kind",
+        "label",
+        "placeRef",
+        "origins",
+        "description"
+      ],
+      "properties": {
+        "itemId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "kind": { "type": "string", "enum": ["place", "action"] },
+        "label": { "type": "string", "minLength": 1 },
+        "placeRef": { "type": "string" },
+        "origins": { "$ref": "#/$defs/origins" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "origins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "journeys",
+        "entities",
+        "processes"
+      ],
+      "properties": {
+        "journeys": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "entities": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "processes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

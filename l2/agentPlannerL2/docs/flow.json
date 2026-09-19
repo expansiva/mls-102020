@@ -1,8 +1,8 @@
 {
   "flowId": "agentPlannerL2",
-  "schemaVersion": "2026-09-18-p2-flow-v3",
-  "status": "requests50",
-  "description": "L2 planner: read pool/l2 of a finished l4 module, emit web/contracts and web/shared defs, then ask l1 via pool/l1. No LLM on entry.",
+  "schemaVersion": "2026-09-18-p2-flow-v4",
+  "status": "menu20",
+  "description": "L2 planner, menu-only phase: read pool/l2 of a finished l4 module and write pool/l2/menu.json. Does not delete the pool, does not write pool/l1 or l2 web/. Parked steps stay on disk outside this flow.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -14,24 +14,30 @@
     "Sequence is declared in this file via dependsOn and done-anchors. Steps do not enqueue their successor by name.",
     "Pipeline state lives on disk at l2/{module}/pipeline/pipeline.json. The task record is orchestration, not truth.",
     "A step declared here and not implemented stops the run with pipeline.status awaitingStep naming that step. The task completes without failed.",
-    "Two entries, one path: a step created by L4 with prompt { moduleName, thread, file }, or @@agentPlannerL2 <lowerCamel> which takes the oldest pool/l2 message. Both write the same pipeline.json.",
-    "Reads only the module l4 and pool/l2. Never reads l1. Writes l2/{module}/, l2/{module}/pipeline/ and pool/l1.",
-    "Deterministic first. entry10 and requests50 have no LLM. Workspaces, contracts and shared spend an LLM call only on judgment.",
-    "User-facing refusals are English."
+    "Two entries, one path: a step created by L4 with prompt { moduleName, thread, file }, or @@agentPlannerL2 <lowerCamel> which reads every pool/l2 message. Both write the same pipeline.json.",
+    "Reads only the module l4 and pool/l2. Never reads l1. Writes l2/{module}/pipeline/ and l4/{module}/pool/l2/menu.json. Never deletes pool messages in this phase.",
+    "Deterministic first. entry10 has no LLM. menu20 spends one reasoning call on the UX cut.",
+    "User-facing refusals are English.",
+    "listPoolBox may list menu.json; entry10 keeps only files named <stamp>_<thread>_<round>."
   ],
   "invocation": {
     "hand": "@@agentPlannerL2 <lowerCamel>",
     "fromL4": "step prompt JSON { moduleName, thread, file }",
     "moduleRule": "The module token is required and must be lowerCamel. The name is never inferred from prose.",
     "l4Rule": "The module l4 pipeline.json must be status complete. Otherwise the run is refused.",
-    "poolRule": "No file in pool/l2 refuses with 'nothing pending for <mod> in pool/l2'."
+    "poolRule": "No pool message in pool/l2 refuses with 'nothing pending for <mod> in pool/l2'. menu.json is not a message.",
+    "dedupeRule": "Messages with the same moduleName, mode and artifacts are one request. Two different requests refuse: 'pool/l2 has N different requests; resolve with the l4 supervisor'."
   },
   "artifacts": {
     "pipeline": "l2/{module}/pipeline/pipeline.json",
-    "contracts": "l2/{module}/web/contracts/{workspace}.defs.ts",
-    "shared": "l2/{module}/web/shared/{workspace}.defs.ts",
-    "poolL1": "l4/{module}/pool/l1/{stamp}_{thread}_{round}.json"
+    "menu": "l4/{module}/pool/l2/menu.json"
   },
+  "parkedSteps": [
+    "workspaces20",
+    "contracts30",
+    "shared40",
+    "requests50"
+  ],
   "steps": [
     {
       "id": "entry10",
@@ -39,42 +45,16 @@
       "dependsOn": [],
       "doneAnchor": "entry10-done",
       "artifact": "l2/{module}/pipeline/pipeline.json",
-      "goal": "Parse the hand invocation or the L4 step prompt, read the pool/l2 message, refuse if none or l4 is not complete, write the l2 pipeline.json with thread and round."
+      "goal": "Read every pool/l2 message (oldest first), group identical requests, refuse if they differ, wipe l2/{module}/pipeline and l2/{module}/web, write pipeline.json with sourceMessages. Never delete the pool."
     },
     {
-      "id": "workspaces20",
+      "id": "menu20",
       "kind": "agent-checkpoint",
       "dependsOn": ["entry10-done"],
-      "doneAnchor": "workspaces20-done",
+      "doneAnchor": "menu20-done",
       "modelAlias": "reasoning",
-      "artifact": "l2/{module}/pipeline/workspaces20-draft.json",
-      "goal": "Cut workspaces from the l4 journeys. Deterministic candidates by entity and actor; the model names the cut; gate plus bounded repair."
-    },
-    {
-      "id": "contracts30",
-      "kind": "agent-checkpoint",
-      "dependsOn": ["workspaces20-done"],
-      "doneAnchor": "contracts30-done",
-      "modelAlias": "reasoning",
-      "artifact": "l2/{module}/web/contracts/{workspace}.defs.ts",
-      "goal": "Emit one .defs.ts contract per workspace from the journey steps and the ontology field catalog. The model names calls and picks fields; the emitter writes interfaces and route constants."
-    },
-    {
-      "id": "shared40",
-      "kind": "agent-checkpoint",
-      "dependsOn": ["contracts30-done"],
-      "doneAnchor": "shared40-done",
-      "modelAlias": "reasoning",
-      "artifact": "l2/{module}/web/shared/{workspace}.defs.ts",
-      "goal": "Emit one shared .defs.ts per workspace in the CF 20-key form. Code writes derived keys; the model writes scenaries/states/dataBindings/initialLoads/actions/destructiveCommandIds/pageName."
-    },
-    {
-      "id": "requests50",
-      "kind": "deterministic",
-      "dependsOn": ["shared40-done"],
-      "doneAnchor": "requests50-done",
-      "artifact": "l4/{module}/pool/l1/{stamp}_{thread}_{round}.json",
-      "goal": "Write one pool/l1 message per BFF call, trace processed+delivered on the l2 pipeline, then delete the pool/l2 message. No LLM."
+      "artifact": "l4/{module}/pool/l2/menu.json",
+      "goal": "One LLM call. Menu per actor from all journeys, access grants, ontology, workflows and the deterministic workspace candidates (as data, not the answer). Gate plus bounded repair. Overwrite menu.json."
     }
   ]
 }

@@ -1,0 +1,29 @@
+{
+  "from": "l4",
+  "to": "l2",
+  "thread": "mensalidadesAcademia-20260918201156",
+  "round": 1,
+  "mode": "implement",
+  "subject": "Changed artifacts of mensalidadesAcademia",
+  "artifacts": [
+    "access.defs.ts",
+    "integration.defs.ts",
+    "journeys/acompanharIndicadoresAcademia.defs.ts",
+    "journeys/cancelarPropriaMatricula.defs.ts",
+    "journeys/gerarMensalidadesDoMes.defs.ts",
+    "journeys/index.defs.ts",
+    "journeys/matricularAluno.defs.ts",
+    "journeys/registrarPagamentoMensalidade.defs.ts",
+    "module.defs.ts",
+    "ontology/Aluno.defs.ts",
+    "ontology/IndicadoresAcademia.defs.ts",
+    "ontology/Matricula.defs.ts",
+    "ontology/Mensalidade.defs.ts",
+    "ontology/Pagamento.defs.ts",
+    "ontology/Plano.defs.ts",
+    "ontology/index.defs.ts",
+    "rules.defs.ts",
+    "workflows.defs.ts"
+  ],
+  "body": "Evaluate and dispatch. The recipient decides what to do with these artifacts."
+}

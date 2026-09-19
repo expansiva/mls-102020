@@ -24,10 +24,11 @@ function numberedStep(stepId: number, planId: P2StepId, status: mls.msg.AIStepSt
 void test('every declared step is hooked', () => {
   createAgent();
   assert.ok(P2_STEP_HOOKS.entry10?.beforePromptStep, 'entry10 hook must be registered');
-  assert.ok(P2_STEP_HOOKS.workspaces20?.beforePromptStep, 'workspaces20 hook must be registered');
-  assert.ok(P2_STEP_HOOKS.contracts30?.beforePromptStep, 'contracts30 hook must be registered');
-  assert.ok(P2_STEP_HOOKS.shared40?.beforePromptStep, 'shared40 hook must be registered');
-  assert.ok(P2_STEP_HOOKS.requests50?.beforePromptStep, 'requests50 hook must be registered');
+  assert.ok(P2_STEP_HOOKS.menu20?.beforePromptStep, 'menu20 hook must be registered');
+  assert.ok(P2_STEP_HOOKS.workspaces20?.beforePromptStep, 'parked workspaces20 hook stays registered');
+  assert.ok(P2_STEP_HOOKS.contracts30?.beforePromptStep, 'parked contracts30 hook stays registered');
+  assert.ok(P2_STEP_HOOKS.shared40?.beforePromptStep, 'parked shared40 hook stays registered');
+  assert.ok(P2_STEP_HOOKS.requests50?.beforePromptStep, 'parked requests50 hook stays registered');
 });
 
 void test('hooksFor routes an L4 prompt with no planId to entry10', () => {

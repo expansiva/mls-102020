@@ -1,5 +1,14 @@
 # agentPlannerL2
 
+## 2026-09-18 (p2_09)
+
+- Flow v4: `entry10 → menu20`. Product is `l4/<mod>/pool/l2/menu.json`.
+- `entry10` groups identical pool/l2 messages, records `sourceMessages`, wipes
+  `l2/<mod>/pipeline/` and `l2/<mod>/web/`, never deletes the pool.
+- `menu20`: one reasoning call; candidates from `workspaces20/contracts.ts` as
+  data. Gate plus bounded repair. `workflows: []`.
+- Parked (code stays): `workspaces20`, `contracts30`, `shared40`, `requests50`.
+
 ## 2026-09-18 (p2_05)
 
 - `requests50`: one `pool/l1` message per BFF call. Body names the journey step, the

@@ -4,16 +4,17 @@ Deterministic. No LLM.
 
 ## Input
 
-- Hand: `@@agentPlannerL2 <lowerCamel>` → oldest file in `pool/l2`.
-- L4 step: prompt JSON `{ moduleName, thread, file }`.
+- Hand: `@@agentPlannerL2 <lowerCamel>` → every pool/l2 **message** (oldest first). `menu.json` is ignored.
+- L4 step: prompt JSON `{ moduleName, thread, file }`. Same grouping.
 
 ## Output
 
-`l2/<mod>/pipeline/pipeline.json` with `thread`, `round`, `messageFile`, `steps.entry10.status: approved`.
-Done-anchor `entry10-done` unlocks `workspaces20`.
+`l2/<mod>/pipeline/pipeline.json` with `thread`, `round`, `messageFile`, `sourceMessages`, `steps.entry10.status: approved`.
+Wipes `l2/<mod>/pipeline/` and `l2/<mod>/web/` first. Done-anchor `entry10-done` unlocks `menu20`.
 
 ## Invariants
 
 - Module token is lowerCamel. l4 `pipeline.json` must be `complete`.
-- Empty box refuses `nothing pending for <mod> in pool/l2`.
-- Does not read `l1/`. Does not delete the pool message (that is `requests50`).
+- Empty box (or only `menu.json`) refuses `nothing pending for <mod> in pool/l2`.
+- Same `moduleName` + `mode` + `artifacts` → one request. Two different requests refuse in English for the l4 supervisor.
+- Does not read `l1/`. Does not delete pool messages.

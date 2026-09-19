@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102020_/l2/agentPlannerL2/agentPlannerL2.js';
-import { P2_STEP_IDS, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+import { P2_FLOW_STEP_IDS, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import { P2_STEP_HOOKS } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import { beforeP2EntryPromptStep } from '/_102020_/l2/agentPlannerL2/steps/entry10/agentP2Entry.js';
 
@@ -56,6 +56,10 @@ function installHost(): Host {
       localStor: {
         setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
         listFolder: () => [],
+        deleteFile: (file: Stored) => {
+          const stored = host.files[keyOf(file)];
+          if (stored) stored.status = 'deleted';
+        },
       },
     },
   };
@@ -138,7 +142,7 @@ void test('hand invocation and L4 step write the same pipeline.json', async () =
   const hand = await agent.beforePromptImplicit!(agentMeta(), handCtx, MODULE);
   assert.equal(hand[0]?.type, 'add-message-ai');
   const added = hand.filter((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
-  assert.deepEqual(added.map(intent => intent.step.planning?.planId), [...P2_STEP_IDS]);
+  assert.deepEqual(added.map(intent => intent.step.planning?.planId), [...P2_FLOW_STEP_IDS]);
 
   const entryStep = added[0].step as mls.msg.AIAgentStep;
   entryStep.stepId = 10;
