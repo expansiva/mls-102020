@@ -1,5 +1,10 @@
 # agentPlannerL2
 
+## 2026-09-20 (p2_17)
+
+- `P2_MENU_ENTITY_NO_FORM` trusts `meta.entities` (mapped, visible, has
+  `form`/`actions`). It no longer searches organism prose.
+
 ## 2026-09-20 (p2_16)
 
 - `menu20` candidates `recordsMaintained` + `meta.entities` + warning when a

@@ -1,0 +1,456 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "hiringPipeline",
+  "userLanguage": "en",
+  "device": "web",
+  "tree": [
+    {
+      "id": "recruiter_home",
+      "kind": "page",
+      "label": "Recruiter home",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "See your open positions, active applications, and candidates in progress."
+        },
+        {
+          "kind": "alerts",
+          "text": "See hiring deadlines and recurring follow-ups that need attention."
+        },
+        {
+          "kind": "inbox",
+          "text": "See declined applications waiting for you to record a rejection."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "recruiting",
+      "kind": "group",
+      "label": "Recruiting",
+      "text": "Manage positions, candidate records, and applications.",
+      "children": [
+        {
+          "id": "job_positions",
+          "kind": "page",
+          "label": "Job positions",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Browse open and closed job positions and choose one to review."
+            },
+            {
+              "kind": "detail",
+              "text": "Review the position requirements, responsible hiring manager, filled headcount, and remaining headcount."
+            },
+            {
+              "kind": "form",
+              "text": "Open an approved job position and assign its responsible hiring manager."
+            },
+            {
+              "kind": "timeline",
+              "text": "See position activity, including when the system closes a position after its required headcount is filled."
+            },
+            {
+              "kind": "actions",
+              "text": "Open a job position."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "candidates",
+          "kind": "page",
+          "label": "Candidates",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Find a candidate or start a new candidate record."
+            },
+            {
+              "kind": "detail",
+              "text": "Review the candidate profile, contact details, and qualifications used for applications."
+            },
+            {
+              "kind": "form",
+              "text": "Register a candidate and capture the profile information needed for hiring."
+            },
+            {
+              "kind": "actions",
+              "text": "Register a candidate."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "recruiter_applications",
+          "kind": "page",
+          "label": "Applications",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Find applications by screening, interview, offer, or declined status."
+            },
+            {
+              "kind": "detail",
+              "text": "Review the application together with its candidate qualifications and job-position requirements."
+            },
+            {
+              "kind": "form",
+              "text": "Start screening by linking a candidate to an open job position."
+            },
+            {
+              "kind": "timeline",
+              "text": "See application progress, referrals from hiring managers, and recorded outcomes."
+            },
+            {
+              "kind": "actions",
+              "text": "Start screening, advance a screened application to interview, and record a rejection for a declined application."
+            }
+          ],
+          "action": "change"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "hiring_manager_portfolio",
+      "kind": "hub",
+      "label": "My hiring portfolio",
+      "context": "HiringManager",
+      "text": "Your hiring manager record is already selected. Review the positions you manage and decide pending applications.",
+      "children": [
+        {
+          "id": "hiring_manager_home",
+          "kind": "page",
+          "label": "Hiring overview",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "See your managed positions, interview decisions, offers awaiting outcomes, and headcount progress."
+            },
+            {
+              "kind": "alerts",
+              "text": "See hiring deadlines and recurring duties for your managed positions."
+            },
+            {
+              "kind": "inbox",
+              "text": "See interviewed and offered applications waiting for your decision."
+            }
+          ],
+          "action": "change"
+        },
+        {
+          "id": "hiring_manager_applications",
+          "kind": "page",
+          "label": "Hiring decisions",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Find interviewed and offered applications for your managed positions."
+            },
+            {
+              "kind": "detail",
+              "text": "Review the application, the candidate profile, and the decision history before deciding."
+            },
+            {
+              "kind": "timeline",
+              "text": "See application decisions, referrals for rejection, and hiring outcomes."
+            },
+            {
+              "kind": "actions",
+              "text": "Make an offer, decline an interviewed application and refer it for rejection, hire an offered candidate, or decline an offer and refer it for rejection."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "managed_job_positions",
+          "kind": "page",
+          "label": "Managed job positions",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Browse the job positions assigned to you."
+            },
+            {
+              "kind": "detail",
+              "text": "Review position requirements, filled headcount, and remaining headcount."
+            },
+            {
+              "kind": "timeline",
+              "text": "See position activity, including when the system closes a position because its required headcount has been filled."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:recruiter": [
+      "recruiter_home",
+      "recruiting"
+    ],
+    "actor:hiringManager": [
+      "hiring_manager_portfolio"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "openJobPosition": [
+        "job_positions"
+      ],
+      "registerCandidate": [
+        "candidates"
+      ],
+      "startApplicationScreening": [
+        "recruiter_applications"
+      ],
+      "advanceApplicationToInterview": [
+        "recruiter_applications"
+      ],
+      "decideOffer": [
+        "hiring_manager_applications"
+      ],
+      "decideHiringOutcome": [
+        "hiring_manager_applications"
+      ],
+      "recordApplicationRejection": [
+        "recruiter_applications"
+      ]
+    },
+    "processes": {
+      "applicationDecisionProcess": [
+        "recruiter_applications",
+        "hiring_manager_applications"
+      ],
+      "closeFilledPositionProcess": [
+        "job_positions",
+        "managed_job_positions"
+      ]
+    },
+    "entities": {},
+    "removed": [
+      {
+        "id": "recruiter_candidates",
+        "kind": "page",
+        "label": "Candidates",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Find registered candidates and their contact details."
+          },
+          {
+            "kind": "detail",
+            "text": "Review a candidate’s identity, contact channels, and qualifications."
+          },
+          {
+            "kind": "form",
+            "text": "Register a new candidate or attach an existing candidate record."
+          },
+          {
+            "kind": "actions",
+            "text": "Register a candidate record."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "recruiter_positions",
+        "kind": "page",
+        "label": "Job positions",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Find open and closed job positions."
+          },
+          {
+            "kind": "detail",
+            "text": "Review job requirements, responsible hiring manager, filled headcount, and remaining headcount."
+          },
+          {
+            "kind": "form",
+            "text": "Open an approved job position under its responsible hiring manager."
+          },
+          {
+            "kind": "actions",
+            "text": "Open a job position."
+          },
+          {
+            "kind": "timeline",
+            "text": "See position creation and when the system closes a position after its required headcount is filled."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "hiring_manager",
+        "kind": "hub",
+        "label": "My hiring area",
+        "context": "HiringManager",
+        "text": "Your hiring manager record is already selected. Review your positions or choose a candidate before making a decision.",
+        "children": [
+          {
+            "id": "hiring_manager_home",
+            "kind": "page",
+            "label": "Hiring overview",
+            "organisms": [
+              {
+                "kind": "summary",
+                "text": "See your managed positions, interview decisions, offered applications, and remaining headcount."
+              },
+              {
+                "kind": "highlights",
+                "text": "Review applications waiting for an offer or final hiring decision."
+              },
+              {
+                "kind": "alerts",
+                "text": "See deadlines and recurring hiring duties."
+              },
+              {
+                "kind": "inbox",
+                "text": "See interviewed and offered applications waiting for your decision."
+              }
+            ],
+            "action": "remove"
+          },
+          {
+            "id": "managed_positions",
+            "kind": "page",
+            "label": "Managed job positions",
+            "organisms": [
+              {
+                "kind": "list",
+                "text": "Find the job positions you manage."
+              },
+              {
+                "kind": "detail",
+                "text": "Review position requirements, filled headcount, remaining headcount, and current status."
+              },
+              {
+                "kind": "timeline",
+                "text": "See hiring activity and when the system closes a position because its required headcount has been filled."
+              }
+            ],
+            "action": "remove"
+          },
+          {
+            "id": "candidate",
+            "kind": "hub",
+            "label": "Candidate decisions",
+            "context": "Candidate",
+            "text": "Choose a candidate assigned to one of your managed positions, then review and decide their applications.",
+            "children": [
+              {
+                "id": "candidate_applications",
+                "kind": "page",
+                "label": "Candidate applications",
+                "organisms": [
+                  {
+                    "kind": "list",
+                    "text": "Review this candidate’s applications for your managed job positions by hiring stage."
+                  },
+                  {
+                    "kind": "detail",
+                    "text": "Review the interview or offered application with the candidate, position requirements, filled headcount, and remaining headcount."
+                  },
+                  {
+                    "kind": "actions",
+                    "text": "Decide whether to make an offer, move a successful interview application to offer, decide whether an offered candidate is hired, move a successful offered application to hired, or refer a declined application for rejection recording."
+                  },
+                  {
+                    "kind": "timeline",
+                    "text": "See application stage changes, your decisions, and referrals for rejection recording."
+                  }
+                ],
+                "action": "remove"
+              }
+            ],
+            "action": "remove"
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "managed_positions",
+        "kind": "page",
+        "label": "Managed job positions",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Find the job positions you manage."
+          },
+          {
+            "kind": "detail",
+            "text": "Review position requirements, filled headcount, remaining headcount, and current status."
+          },
+          {
+            "kind": "timeline",
+            "text": "See hiring activity and when the system closes a position because its required headcount has been filled."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "candidate",
+        "kind": "hub",
+        "label": "Candidate decisions",
+        "context": "Candidate",
+        "text": "Choose a candidate assigned to one of your managed positions, then review and decide their applications.",
+        "children": [
+          {
+            "id": "candidate_applications",
+            "kind": "page",
+            "label": "Candidate applications",
+            "organisms": [
+              {
+                "kind": "list",
+                "text": "Review this candidate’s applications for your managed job positions by hiring stage."
+              },
+              {
+                "kind": "detail",
+                "text": "Review the interview or offered application with the candidate, position requirements, filled headcount, and remaining headcount."
+              },
+              {
+                "kind": "actions",
+                "text": "Decide whether to make an offer, move a successful interview application to offer, decide whether an offered candidate is hired, move a successful offered application to hired, or refer a declined application for rejection recording."
+              },
+              {
+                "kind": "timeline",
+                "text": "See application stage changes, your decisions, and referrals for rejection recording."
+              }
+            ],
+            "action": "remove"
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "candidate_applications",
+        "kind": "page",
+        "label": "Candidate applications",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Review this candidate’s applications for your managed job positions by hiring stage."
+          },
+          {
+            "kind": "detail",
+            "text": "Review the interview or offered application with the candidate, position requirements, filled headcount, and remaining headcount."
+          },
+          {
+            "kind": "actions",
+            "text": "Decide whether to make an offer, move a successful interview application to offer, decide whether an offered candidate is hired, move a successful offered application to hired, or refer a declined application for rejection recording."
+          },
+          {
+            "kind": "timeline",
+            "text": "See application stage changes, your decisions, and referrals for rejection recording."
+          }
+        ],
+        "action": "remove"
+      }
+    ]
+  }
+}

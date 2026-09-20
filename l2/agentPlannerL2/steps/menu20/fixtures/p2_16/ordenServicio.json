@@ -1,0 +1,280 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "ordenServicio",
+  "userLanguage": "es",
+  "device": "web",
+  "tree": [
+    {
+      "id": "cliente",
+      "kind": "hub",
+      "label": "Mi cuenta",
+      "context": "Cliente",
+      "text": "Tu perfil de cliente ya está seleccionado; consulta y gestiona tus órdenes de servicio.",
+      "children": [
+        {
+          "id": "mis_ordenes",
+          "kind": "page",
+          "label": "Mis órdenes",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Consulta el resumen de tus órdenes de servicio y su estado actual."
+            },
+            {
+              "kind": "alerts",
+              "text": "Consulta avisos sobre tus órdenes, incluidos los aparatos disponibles para retiro."
+            },
+            {
+              "kind": "inbox",
+              "text": "Revisa los presupuestos que esperan tu decisión."
+            },
+            {
+              "kind": "list",
+              "text": "Busca y abre tus órdenes de servicio."
+            },
+            {
+              "kind": "detail",
+              "text": "Consulta el aparato, diagnóstico, presupuesto, avance y disponibilidad para retiro de la orden."
+            },
+            {
+              "kind": "actions",
+              "text": "Aprueba o rechaza el presupuesto de una orden cuando esté pendiente de tu decisión."
+            },
+            {
+              "kind": "timeline",
+              "text": "Revisa el historial de recepción, análisis, presupuesto, decisión, reparación, disponibilidad para retiro y cierre de la orden."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "ordenes_recepcionista",
+      "kind": "page",
+      "label": "Órdenes de servicio",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Consulta el resumen de órdenes recibidas, listas para entrega y finalizadas."
+        },
+        {
+          "kind": "alerts",
+          "text": "Consulta avisos de órdenes con aparatos disponibles para retiro."
+        },
+        {
+          "kind": "inbox",
+          "text": "Revisa las órdenes que esperan recepción, derivación a análisis o entrega al cliente."
+        },
+        {
+          "kind": "list",
+          "text": "Busca y abre las órdenes de servicio de la organización."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulta los datos del cliente, aparato, diagnóstico, presupuesto, estado y disponibilidad para retiro."
+        },
+        {
+          "kind": "form",
+          "text": "Registra la recepción del aparato y los datos necesarios para abrir la orden; registra también la entrega al cliente."
+        },
+        {
+          "kind": "actions",
+          "text": "Abre una orden, la deriva a análisis técnico, entrega el aparato reparado al cliente y finaliza la orden."
+        },
+        {
+          "kind": "timeline",
+          "text": "Revisa el historial de cada orden, incluidas las derivaciones, decisiones del cliente, reparación, disponibilidad para retiro y cierre."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "ordenes_tecnico",
+      "kind": "page",
+      "label": "Órdenes de reparación",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Consulta el resumen de órdenes pendientes de análisis, presupuestos enviados y reparaciones autorizadas."
+        },
+        {
+          "kind": "alerts",
+          "text": "Consulta avisos de órdenes reparadas con el aparato disponible para retiro."
+        },
+        {
+          "kind": "inbox",
+          "text": "Revisa las órdenes que esperan análisis técnico, presupuesto o reparación autorizada."
+        },
+        {
+          "kind": "list",
+          "text": "Busca y abre las órdenes asignadas al flujo de reparación."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulta los datos del cliente y aparato, diagnóstico, presupuesto, decisión del cliente, estado y disponibilidad para retiro."
+        },
+        {
+          "kind": "form",
+          "text": "Registra el análisis, las piezas requeridas, el presupuesto y el trabajo de reparación realizado."
+        },
+        {
+          "kind": "actions",
+          "text": "Registra el análisis, emite y envía el presupuesto al cliente, registra la reparación terminada y deriva la orden para entrega."
+        },
+        {
+          "kind": "timeline",
+          "text": "Revisa el historial de cada orden, incluidas la recepción, decisión del cliente, disponibilidad para retiro y entrega final."
+        }
+      ],
+      "action": "change"
+    }
+  ],
+  "authorities": {
+    "actor:cliente": [
+      "cliente"
+    ],
+    "actor:recepcionista": [
+      "ordenes_recepcionista"
+    ],
+    "actor:tecnico": [
+      "ordenes_tecnico"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "abrirOrdenServicio": [
+        "ordenes_recepcionista"
+      ],
+      "prepararPresupuesto": [
+        "ordenes_tecnico"
+      ],
+      "aprobarPresupuesto": [
+        "mis_ordenes"
+      ],
+      "rechazarPresupuesto": [
+        "mis_ordenes"
+      ],
+      "repararYmarcarLista": [
+        "ordenes_tecnico"
+      ],
+      "entregarAparatoYfinalizar": [
+        "ordenes_recepcionista"
+      ],
+      "consultarMisOrdenes": [
+        "mis_ordenes"
+      ]
+    },
+    "processes": {
+      "gestionarOrdenServicio": [
+        "ordenes_recepcionista",
+        "ordenes_tecnico",
+        "mis_ordenes"
+      ]
+    },
+    "entities": {},
+    "removed": [
+      {
+        "id": "inicio_recepcionista",
+        "kind": "page",
+        "label": "Inicio",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Veo cuántas órdenes acabo de abrir, cuántas siguen en taller y cuántas están listas para entregar."
+          },
+          {
+            "kind": "highlights",
+            "text": "Me destacan los aparatos disponibles para retiro y las entregas pendientes."
+          },
+          {
+            "kind": "alerts",
+            "text": "Me avisan las órdenes listas para entregar al cliente."
+          },
+          {
+            "kind": "inbox",
+            "text": "Veo lo que me toca ahora: abrir una orden al recibir un aparato o entregar y finalizar."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "inicio_tecnico",
+        "kind": "page",
+        "label": "Inicio",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Veo cuántas órdenes esperan mi análisis y cuántas aprobadas debo reparar."
+          },
+          {
+            "kind": "highlights",
+            "text": "Me destacan las pendientes de presupuesto y las autorizadas para reparar."
+          },
+          {
+            "kind": "alerts",
+            "text": "Me avisan las órdenes que esperan diagnóstico o la reparación ya autorizada."
+          },
+          {
+            "kind": "inbox",
+            "text": "Veo lo que me toca: preparar el presupuesto o registrar la reparación y marcarla lista."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "inicio",
+        "kind": "page",
+        "label": "Inicio",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Veo el resumen de mis órdenes: cuántas están en curso, cuántas esperan mi decisión y cuántas ya se pueden retirar."
+          },
+          {
+            "kind": "highlights",
+            "text": "Me destacan el presupuesto que debo decidir y los aparatos disponibles para retiro."
+          },
+          {
+            "kind": "alerts",
+            "text": "Me avisan cuando un presupuesto espera mi aprobación o un aparato quedó listo para retirar."
+          },
+          {
+            "kind": "inbox",
+            "text": "Tengo aquí las órdenes que esperan que apruebe o rechace el presupuesto."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "ordenes",
+        "kind": "page",
+        "label": "Mis órdenes",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Listo mis órdenes por número y estado, y veo si el aparato ya está disponible para retiro."
+          },
+          {
+            "kind": "detail",
+            "text": "Abro el detalle: diagnóstico, presupuesto, avance y si puedo retirar el aparato."
+          },
+          {
+            "kind": "form",
+            "text": "Confirmo si apruebo o rechazo el presupuesto de esta orden."
+          },
+          {
+            "kind": "actions",
+            "text": "Apruebo el presupuesto para autorizar la reparación o lo rechazo."
+          },
+          {
+            "kind": "timeline",
+            "text": "Sigo el historial de la orden: recepción, presupuesto, mi decisión, reparación y cierre."
+          }
+        ],
+        "action": "remove"
+      }
+    ]
+  }
+}

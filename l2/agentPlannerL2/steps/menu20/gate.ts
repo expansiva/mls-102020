@@ -306,19 +306,47 @@ export function validateP2Menu(draft: MenuV2, input: P2MenuGateInput): P2MenuGat
     });
   });
 
-  const entityTitle = new Map(sources.entities.map(entity => [entity.entityId, entity.title || entity.entityId]));
   const formSeen = new Set<string>();
   for (const row of maintained) {
     const key = `${row.actorRef}:${row.entityRef}`;
     if (formSeen.has(key)) continue;
     formSeen.add(key);
-    const visible = pagesByActor.get(row.actorRef) || [];
-    if (!hasFormOrActionsCiting(visible, row.entityRef, entityTitle.get(row.entityRef) || row.entityRef)) {
+    const authorityPath = `$.authorities[${JSON.stringify(actorAuthorityKey(row.actorRef))}]`;
+    const mapped = Object.prototype.hasOwnProperty.call(draft.meta.entities, row.entityRef)
+      ? draft.meta.entities[row.entityRef]
+      : undefined;
+    if (!mapped || mapped.length === 0) {
       warning(
         issues,
         'P2_MENU_ENTITY_NO_FORM',
-        `Record ${row.entityRef} maintained by ${row.actorRef} has no form or actions citing it.`,
-        `$.authorities[${JSON.stringify(actorAuthorityKey(row.actorRef))}]`,
+        `Record ${row.entityRef} maintained by ${row.actorRef} is not mapped in meta.entities`,
+        authorityPath,
+      );
+      continue;
+    }
+    const visibleIds = new Set((pagesByActor.get(row.actorRef) || []).map(page => page.id));
+    const visibleMapped: MenuPageNode[] = [];
+    for (const pageId of mapped) {
+      if (!visibleIds.has(pageId)) continue;
+      const found = byId.get(pageId);
+      if (!found || found.node.kind !== 'page') continue;
+      visibleMapped.push(found.node);
+    }
+    if (!visibleMapped.length) {
+      warning(
+        issues,
+        'P2_MENU_ENTITY_NO_FORM',
+        `Record ${row.entityRef} maintained by ${row.actorRef} is mapped only to pages ${row.actorRef} cannot reach`,
+        authorityPath,
+      );
+      continue;
+    }
+    if (!visibleMapped.some(page => hasFormOrActions(page))) {
+      warning(
+        issues,
+        'P2_MENU_ENTITY_NO_FORM',
+        `Record ${row.entityRef} maintained by ${row.actorRef} has no form or actions on ${visibleMapped[0].id}`,
+        authorityPath,
       );
     }
   }
@@ -390,33 +418,14 @@ function hasOrganismKind(pages: readonly MenuPageNode[], kind: MenuOrganismKind)
   return pages.some(page => page.organisms.some(organism => organism.kind === kind));
 }
 
+function hasFormOrActions(page: MenuPageNode): boolean {
+  return page.organisms.some(organism => organism.kind === 'form' || organism.kind === 'actions');
+}
+
 function hasCitation(pages: readonly MenuPageNode[]): boolean {
   return hasOrganismKind(pages, 'summary')
     || hasOrganismKind(pages, 'highlights')
     || hasOrganismKind(pages, 'detail');
-}
-
-function hasFormOrActionsCiting(
-  pages: readonly MenuPageNode[],
-  entityId: string,
-  title: string,
-): boolean {
-  return pages.some(page => page.organisms.some(organism => (
-    (organism.kind === 'form' || organism.kind === 'actions')
-    && citesEntity(organism.text, entityId, title)
-  )));
-}
-
-function citesEntity(text: string, entityId: string, title: string): boolean {
-  if (containsToken(text, entityId)) return true;
-  const label = title.trim();
-  return !!label && containsToken(text, label);
-}
-
-function containsToken(text: string, token: string): boolean {
-  if (!token) return false;
-  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|[^A-Za-z0-9])${escaped}(?:$|[^A-Za-z0-9])`, 'i').test(text);
 }
 
 function derivedKey(derived: P2ActorMustSeeDerived): string {

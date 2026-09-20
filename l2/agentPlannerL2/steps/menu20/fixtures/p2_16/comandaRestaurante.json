@@ -1,0 +1,232 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "comandaRestaurante",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "inicio_garcom",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Veja o resumo das comandas abertas e das mesas em atendimento."
+        },
+        {
+          "kind": "highlights",
+          "text": "Acompanhe comandas com maior total, itens lançados recentemente e mesas indisponíveis."
+        },
+        {
+          "kind": "alerts",
+          "text": "Veja avisos sobre comandas abertas e situações que exigem atenção."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja as comandas e mesas em que você precisa atuar."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "inicio_caixa",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Veja o resumo das comandas prontas para fechamento e das mesas disponíveis."
+        },
+        {
+          "kind": "highlights",
+          "text": "Acompanhe os totais das comandas e os fechamentos mais recentes."
+        },
+        {
+          "kind": "alerts",
+          "text": "Veja avisos sobre comandas que precisam ser fechadas."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja as comandas que aguardam seu fechamento."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "mesas",
+      "kind": "page",
+      "label": "Mesas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Consulte as mesas, sua identificação e se estão disponíveis para atendimento."
+        },
+        {
+          "kind": "detail",
+          "text": "Veja os dados da mesa, sua disponibilidade e o histórico de abertura e liberação de comandas."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre e edite a identificação e a disponibilidade das mesas."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe quando uma comanda abriu ou liberou a mesa e outras alterações registradas."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastre, edite e consulte mesas; abra uma comanda para uma mesa disponível."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "comandas_garcom",
+      "kind": "page",
+      "label": "Comandas em atendimento",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize as comandas abertas e acompanhe seu número, mesa e total atual."
+        },
+        {
+          "kind": "detail",
+          "text": "Veja os itens lançados na comanda, os subtotais dos itens e o total da comanda."
+        },
+        {
+          "kind": "form",
+          "text": "Registre um item do cardápio na comanda aberta."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe a criação da comanda, os lançamentos e os cancelamentos de itens."
+        },
+        {
+          "kind": "actions",
+          "text": "Consulte comandas abertas, lance itens e cancele lançamentos feitos por engano enquanto a comanda estiver aberta."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "cardapio",
+      "kind": "page",
+      "label": "Cardápio",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Consulte os itens disponíveis no cardápio."
+        },
+        {
+          "kind": "detail",
+          "text": "Veja os dados de cada item do cardápio para escolher o consumo da comanda."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre e edite os itens do cardápio."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastre, edite e consulte itens do cardápio."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "fechamento_comandas",
+      "kind": "page",
+      "label": "Fechamento de comandas",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize as comandas abertas que serão fechadas."
+        },
+        {
+          "kind": "detail",
+          "text": "Confira a mesa, os itens, o total da comanda e o histórico do atendimento antes de concluir o pagamento."
+        },
+        {
+          "kind": "form",
+          "text": "Informe o desconto eventual e os dados necessários para concluir o fechamento."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe o fechamento da comanda e a liberação automática da mesa."
+        },
+        {
+          "kind": "actions",
+          "text": "Consulte o total, aplique desconto eventual e feche a comanda para liberar a mesa."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:garcom": [
+      "inicio_garcom",
+      "mesas",
+      "comandas_garcom",
+      "cardapio"
+    ],
+    "actor:caixa": [
+      "inicio_caixa",
+      "fechamento_comandas",
+      "mesas"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "abrirComanda": [
+        "mesas"
+      ],
+      "lancarItemNaComanda": [
+        "comandas_garcom"
+      ],
+      "cancelarItemLancado": [
+        "comandas_garcom"
+      ],
+      "fecharComanda": [
+        "fechamento_comandas"
+      ]
+    },
+    "processes": {},
+    "entities": {
+      "Mesa": [
+        "mesas"
+      ],
+      "ItemCardapio": [
+        "cardapio"
+      ]
+    },
+    "removed": [
+      {
+        "id": "comandas_caixa",
+        "kind": "page",
+        "label": "Fechamento de comandas",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Localize a comanda que será fechada e consulte a mesa associada."
+          },
+          {
+            "kind": "detail",
+            "text": "Confira o total da comanda e se a mesa está disponível."
+          },
+          {
+            "kind": "form",
+            "text": "Informe o pagamento e o eventual desconto para concluir o fechamento."
+          },
+          {
+            "kind": "actions",
+            "text": "Conclua o fechamento da comanda e libere a mesa."
+          },
+          {
+            "kind": "timeline",
+            "text": "Acompanhe o histórico de fechamento da comanda e a liberação da mesa."
+          }
+        ],
+        "action": "remove"
+      }
+    ]
+  }
+}

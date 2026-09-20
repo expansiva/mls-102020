@@ -51,6 +51,20 @@ const WORKFLOWS_FIXTURE = path.join(HERE, 'fixtures/workflows.defs.ts');
 const HIRING_FIXTURE = path.join(HERE, 'fixtures/hiringPipeline');
 const COMPRAS_FIXTURE = path.join(HERE, 'fixtures/compras');
 const LOCACAO_FIXTURE = path.join(HERE, 'fixtures/locacaoEquipamentos');
+const MODULE_L4_ROOTS: Record<string, string> = {
+  agendaClinica: path.join(HERE, 'fixtures/agendaClinica'),
+  comandaRestaurante: path.join(HERE, 'fixtures/comandaRestaurante'),
+  compras: COMPRAS_FIXTURE,
+  controleEstoque: path.join(HERE, 'fixtures/controleEstoque'),
+  financeiro: path.join(HERE, 'fixtures/financeiro'),
+  hiringPipeline: HIRING_FIXTURE,
+  inscricaoEvento: path.join(HERE, 'fixtures/inscricaoEvento'),
+  locacaoEquipamentos: LOCACAO_FIXTURE,
+  manutencaoFrota: path.join(HERE, 'fixtures/manutencaoFrota'),
+  mensalidadesAcademia: L4_FIXTURE,
+  ordenServicio: path.join(HERE, 'fixtures/ordenServicio'),
+  reembolsoDespesas: path.join(HERE, 'fixtures/reembolsoDespesas'),
+};
 const REAL_L4 = path.resolve(HERE, '../../../../../mls-102047/l4');
 const REAL_WORKFLOWS = path.join(REAL_L4, 'mensalidadesAcademia/workflows.defs.ts');
 const DRAFT_PATH = path.join(HERE, 'fixtures/menu20-draft.json');
@@ -155,6 +169,20 @@ function loadAccessOntology(root: string): {
 
 function loadDraft(): unknown {
   return JSON.parse(readFileSync(DRAFT_PATH, 'utf8'));
+}
+
+function draftFromGeneratedMenu(raw: unknown): MenuV2 {
+  const root = raw as Record<string, unknown>;
+  const meta = (root.meta || {}) as Record<string, unknown>;
+  return {
+    tree: parsePreviousMenuTree(raw),
+    authorities: (root.authorities || {}) as Record<string, string[]>,
+    meta: {
+      journeys: (meta.journeys || {}) as Record<string, string[]>,
+      processes: (meta.processes || {}) as Record<string, string[]>,
+      entities: (meta.entities || {}) as Record<string, string[]>,
+    },
+  };
 }
 
 function loadSchema(): Record<string, unknown> {
@@ -963,20 +991,7 @@ void test('collectRecordsMaintained from locacaoEquipamentos: gerente maintains 
 });
 
 void test('collectRecordsMaintained across the 12 modules matches writer:crud ∩ grant', () => {
-  const roots: Record<string, string> = {
-    agendaClinica: path.join(HERE, 'fixtures/agendaClinica'),
-    comandaRestaurante: path.join(HERE, 'fixtures/comandaRestaurante'),
-    compras: COMPRAS_FIXTURE,
-    controleEstoque: path.join(HERE, 'fixtures/controleEstoque'),
-    financeiro: path.join(HERE, 'fixtures/financeiro'),
-    hiringPipeline: HIRING_FIXTURE,
-    inscricaoEvento: path.join(HERE, 'fixtures/inscricaoEvento'),
-    locacaoEquipamentos: LOCACAO_FIXTURE,
-    manutencaoFrota: path.join(HERE, 'fixtures/manutencaoFrota'),
-    mensalidadesAcademia: L4_FIXTURE,
-    ordenServicio: path.join(HERE, 'fixtures/ordenServicio'),
-    reembolsoDespesas: path.join(HERE, 'fixtures/reembolsoDespesas'),
-  };
+  const roots = MODULE_L4_ROOTS;
   const expected: Record<string, Array<{ actorRef: string; entityRef: string; writer: 'crud' }>> = {
     agendaClinica: [
       { actorRef: 'profissional', entityRef: 'Profissional', writer: 'crud' },
@@ -1038,57 +1053,136 @@ void test('collectRecordsMaintained across the 12 modules matches writer:crud �
   assert.ok(actorAsEntity.includes('manutencaoFrota:gestor:Driver'));
 });
 
-void test('gate warns when a granted crud entity has no form/actions and is silent when it has one', () => {
+function noFormMessages(issues: { code: string; message: string }[]): string[] {
+  return issues.filter(issue => issue.code === 'P2_MENU_ENTITY_NO_FORM').map(issue => issue.message);
+}
+
+void test('gate P2_MENU_ENTITY_NO_FORM names the missing structural piece', () => {
   const locacao = loadModuleSources(LOCACAO_FIXTURE);
-  const base = locacaoMenuDraft();
-  const missing = validateP2Menu(normalizeMenuV2(base), locacao);
-  assert.equal(missing.ok, true, missing.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
-  const missingCodes = missing.issues.filter(issue => issue.severity === 'warning').map(issue => `${issue.code}:${issue.message}`);
+
+  const unmapped = validateP2Menu(normalizeMenuV2(locacaoMenuDraft()), locacao);
+  assert.equal(unmapped.ok, true);
   assert.ok(
-    missing.issues.some(issue => (
-      issue.severity === 'warning'
-      && issue.code === 'P2_MENU_ENTITY_NO_FORM'
-      && issue.message.includes('ManutencaoEquipamento')
-      && issue.message.includes('gerente')
-    )),
-    `expected NO_FORM for ManutencaoEquipamento/gerente, got ${missingCodes.join(' | ') || '(none)'}`,
+    noFormMessages(unmapped.issues).includes(
+      'Record ManutencaoEquipamento maintained by gerente is not mapped in meta.entities',
+    ),
+    `branch 1 missing, got ${noFormMessages(unmapped.issues).join(' | ') || '(none)'}`,
   );
 
-  const withForm = locacaoMenuDraft({
-    cite: ['Equipamento', 'ManutencaoEquipamento'],
+  const unreachable = locacaoMenuDraft({
+    formText: 'create and edit records',
+    entities: { ManutencaoEquipamento: ['contratos'] },
+  });
+  const unreachableGate = validateP2Menu(normalizeMenuV2(unreachable), locacao);
+  assert.equal(unreachableGate.ok, true);
+  assert.ok(
+    noFormMessages(unreachableGate.issues).includes(
+      'Record ManutencaoEquipamento maintained by gerente is mapped only to pages gerente cannot reach',
+    ),
+    `branch 2 missing, got ${noFormMessages(unreachableGate.issues).join(' | ') || '(none)'}`,
+  );
+
+  const noForm = locacaoMenuDraft({
     entities: {
       Equipamento: ['equipamentos'],
       ManutencaoEquipamento: ['equipamentos'],
     },
   });
-  const present = validateP2Menu(normalizeMenuV2(withForm), locacao);
-  assert.equal(present.ok, true, present.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
-  assert.equal(
-    present.issues.some(issue => issue.code === 'P2_MENU_ENTITY_NO_FORM' || issue.code === 'P2_MENU_ENTITY_UNMAPPED'),
-    false,
-    `form present still warned: ${present.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n')}`,
+  const noFormGate = validateP2Menu(normalizeMenuV2(noForm), locacao);
+  assert.equal(noFormGate.ok, true);
+  assert.ok(
+    noFormMessages(noFormGate.issues).includes(
+      'Record ManutencaoEquipamento maintained by gerente has no form or actions on equipamentos',
+    ),
+    `branch 3 missing, got ${noFormMessages(noFormGate.issues).join(' | ') || '(none)'}`,
   );
 
-  const onlyEquipamento = locacaoMenuDraft({
-    cite: ['Equipamento'],
+  const mappedWithForm = locacaoMenuDraft({
+    formText: 'create and edit Equipamento and ManutencaoEquipamento',
     entities: {
       Equipamento: ['equipamentos'],
       ManutencaoEquipamento: ['equipamentos'],
     },
   });
-  const partial = validateP2Menu(normalizeMenuV2(onlyEquipamento), locacao);
-  assert.equal(partial.ok, true);
+  const silent = validateP2Menu(normalizeMenuV2(mappedWithForm), locacao);
+  assert.equal(silent.ok, true, silent.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  assert.deepEqual(noFormMessages(silent.issues), []);
+});
+
+void test('gate is silent when a mapped visible page has form whose text does not name the entity', () => {
+  const locacao = loadModuleSources(LOCACAO_FIXTURE);
+  const entities = {
+    Equipamento: ['equipamentos'],
+    ManutencaoEquipamento: ['equipamentos'],
+  };
+  const falsePositive = locacaoMenuDraft({
+    formText: 'cadastre e edite os registros de manutenção',
+    entities,
+  });
+  const silent = validateP2Menu(normalizeMenuV2(falsePositive), locacao);
+  assert.equal(silent.ok, true);
+  assert.deepEqual(
+    noFormMessages(silent.issues),
+    [],
+    `prose mismatch still warned: ${noFormMessages(silent.issues).join(' | ')}`,
+  );
+
+  const withoutForm = locacaoMenuDraft({ entities });
+  const warned = validateP2Menu(normalizeMenuV2(withoutForm), locacao);
   assert.ok(
-    partial.issues.some(issue => (
-      issue.code === 'P2_MENU_ENTITY_NO_FORM'
-      && issue.message.includes('ManutencaoEquipamento')
-    )),
-    `citing only Equipamento should still warn for ManutencaoEquipamento, got ${partial.issues.map(issue => issue.code).join(',') || '(none)'}`,
+    noFormMessages(warned.issues).includes(
+      'Record ManutencaoEquipamento maintained by gerente has no form or actions on equipamentos',
+    ),
+    `control without form stayed silent: ${noFormMessages(warned.issues).join(' | ') || '(none)'}`,
   );
-  assert.equal(
-    partial.issues.some(issue => issue.code === 'P2_MENU_ENTITY_NO_FORM' && issue.message.includes('Equipamento') && !issue.message.includes('Manutencao')),
-    false,
-  );
+});
+
+void test('gate follows hub authority to a child page with form', () => {
+  const locacao = loadModuleSources(LOCACAO_FIXTURE);
+  const draft = locacaoMenuDraft({
+    formText: 'cadastre e edite os registros de manutenção',
+    entities: {
+      Equipamento: ['equipamentos'],
+      ManutencaoEquipamento: ['equipamentos'],
+    },
+  }) as {
+    tree: unknown[];
+    authorities: Record<string, string[]>;
+    meta: { journeys: unknown; processes: unknown; entities: unknown };
+  };
+  const equipamentos = draft.tree[1];
+  draft.tree[1] = {
+    id: 'inventario',
+    kind: 'hub',
+    label: 'Inventory',
+    context: 'Equipamento',
+    text: 'equipment already selected',
+    children: [equipamentos],
+  };
+  draft.authorities['actor:atendente'] = ['contratos', 'inventario'];
+  draft.authorities['actor:gerente'] = ['inventario'];
+  const gate = validateP2Menu(normalizeMenuV2(draft), locacao);
+  assert.equal(gate.ok, true, gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  assert.deepEqual(noFormMessages(gate.issues), []);
+});
+
+void test('gate P2_MENU_ENTITY_NO_FORM on the 12 p2_16 menus does not read organism prose', () => {
+  const remaining: string[] = [];
+  for (const [mod, root] of Object.entries(MODULE_L4_ROOTS)) {
+    const loaded = loadAccessOntology(root);
+    const raw = JSON.parse(readFileSync(path.join(HERE, `fixtures/p2_16/${mod}.json`), 'utf8'));
+    const gate = validateP2Menu(draftFromGeneratedMenu(raw), {
+      sources: loaded.sources,
+      grants: loaded.grants,
+      processes: [],
+    });
+    for (const issue of gate.issues) {
+      if (issue.code === 'P2_MENU_ENTITY_NO_FORM') remaining.push(`${mod}: ${issue.message}`);
+    }
+  }
+  assert.deepEqual(remaining, [
+    'locacaoEquipamentos: Record Equipamento maintained by atendente is mapped only to pages atendente cannot reach',
+  ]);
 });
 
 void test('gate errors on unknown meta.entities id and warns when the candidate is unmapped', () => {
@@ -1112,12 +1206,11 @@ void test('gate errors on unknown meta.entities id and warns when the candidate 
 
 function locacaoMenuDraft(opts: {
   cite?: string[];
+  formText?: string;
   entities?: Record<string, string[]>;
 } = {}): unknown {
   const cite = opts.cite || [];
-  const formText = cite.length
-    ? `create and edit ${cite.join(' and ')}`
-    : 'look at the record';
+  const formText = opts.formText ?? (cite.length ? `create and edit ${cite.join(' and ')}` : '');
   const organisms: Array<{ kind: string; text: string }> = [
     { kind: 'list', text: 'the equipment list' },
     { kind: 'detail', text: 'the selected equipment' },
@@ -1127,7 +1220,7 @@ function locacaoMenuDraft(opts: {
     { kind: 'alerts', text: 'alerts' },
     { kind: 'inbox', text: 'inbox' },
   ];
-  if (cite.length) {
+  if (formText) {
     organisms.push({ kind: 'form', text: formText });
     organisms.push({ kind: 'actions', text: formText });
   }

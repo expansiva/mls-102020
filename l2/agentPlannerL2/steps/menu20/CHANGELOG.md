@@ -1,5 +1,12 @@
 # menu20
 
+## 2026-09-20 (p2_17)
+
+- `P2_MENU_ENTITY_NO_FORM` no longer matches entity id/title against organism
+  prose. It uses `meta.entities`: mapped, visible to the actor (direct or via
+  hub), and that page has `form` or `actions`. The warning names which of the
+  three is missing.
+
 ## 2026-09-20 (p2_16)
 
 - Candidates `recordsMaintained` (pure): per actor, `writer: crud` entities in that actor's grant.

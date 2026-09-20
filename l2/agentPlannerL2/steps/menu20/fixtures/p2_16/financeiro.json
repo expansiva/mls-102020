@@ -1,0 +1,497 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "financeiro",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "caixa_inicio",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Veja os recebimentos do dia e os títulos com saldo em aberto."
+        },
+        {
+          "kind": "alerts",
+          "text": "Veja avisos de operação, quando houver."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja itens que aguardam sua ação, quando houver."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "caixa_recebimentos",
+      "kind": "page",
+      "label": "Recebimentos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize títulos em aberto e recebimentos registrados hoje."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulte o título, incluindo total recebido, saldo em aberto, situação e indicação de vencimento; confira os dados do recebimento antes de agir."
+        },
+        {
+          "kind": "form",
+          "text": "Registre um recebimento total ou parcial por dinheiro, Pix ou cartão."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe o registro, o estorno e as atualizações automáticas de saldo e situação do título."
+        },
+        {
+          "kind": "actions",
+          "text": "Registrar recebimento e estornar recebimento registrado no mesmo dia."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "gerente_financeiro_inicio",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Acompanhe o painel de recebíveis, totais recebidos, saldos em aberto e títulos vencidos."
+        },
+        {
+          "kind": "alerts",
+          "text": "Veja avisos sobre títulos vencidos e outras pendências, quando houver."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja itens que aguardam sua ação, quando houver."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "recebiveis",
+      "kind": "page",
+      "label": "Recebíveis",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Analise títulos a receber por período e origem."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulte total recebido, saldo em aberto, situação e vencimento de cada título."
+        },
+        {
+          "kind": "highlights",
+          "text": "Veja o painel de recebíveis e os destaques de títulos vencidos."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe os recebimentos e as atualizações automáticas de saldo e situação dos títulos."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "extratos_pagador",
+      "kind": "page",
+      "label": "Extratos por pagador",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize um pagador e consulte seus títulos e recebimentos."
+        },
+        {
+          "kind": "detail",
+          "text": "Confira o extrato gerado, com total dos títulos, total recebido e saldo em aberto."
+        },
+        {
+          "kind": "form",
+          "text": "Gere um extrato de títulos e recebimentos para o pagador selecionado."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe a geração dos extratos e as movimentações consideradas."
+        },
+        {
+          "kind": "actions",
+          "text": "Gerar extrato por pagador."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "gerentes_financeiros",
+      "kind": "page",
+      "label": "Gerentes financeiros",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Consulte os cadastros de gerentes financeiros."
+        },
+        {
+          "kind": "detail",
+          "text": "Veja os dados do gerente financeiro."
+        },
+        {
+          "kind": "form",
+          "text": "Crie e edite cadastros de gerentes financeiros."
+        },
+        {
+          "kind": "actions",
+          "text": "Criar e editar gerente financeiro."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "minha_conta",
+      "kind": "hub",
+      "label": "Minha conta",
+      "context": "Pagador",
+      "text": "Sua conta de pagador já está selecionada. Consulte seus títulos e recebimentos ou faça um pagamento.",
+      "children": [
+        {
+          "id": "meus_titulos_e_recebimentos",
+          "kind": "page",
+          "label": "Meus títulos e recebimentos",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Veja o total dos seus títulos, o total recebido e o saldo em aberto."
+            },
+            {
+              "kind": "alerts",
+              "text": "Veja avisos sobre seus títulos vencidos e vencimentos próximos, quando houver."
+            },
+            {
+              "kind": "inbox",
+              "text": "Veja títulos próprios em aberto que aguardam pagamento, quando houver."
+            },
+            {
+              "kind": "list",
+              "text": "Consulte somente os seus títulos a receber e os seus recebimentos."
+            },
+            {
+              "kind": "detail",
+              "text": "Confira total recebido, saldo em aberto, situação e vencimento do seu título, além dos dados de cada recebimento."
+            },
+            {
+              "kind": "form",
+              "text": "Pague total ou parcialmente um título próprio em aberto com cartão."
+            },
+            {
+              "kind": "timeline",
+              "text": "Acompanhe seus pagamentos e as atualizações automáticas de saldo e situação dos seus títulos."
+            },
+            {
+              "kind": "actions",
+              "text": "Pagar título próprio em aberto com cartão."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:caixa": [
+      "caixa_inicio",
+      "caixa_recebimentos"
+    ],
+    "actor:gerenteFinanceiro": [
+      "gerente_financeiro_inicio",
+      "recebiveis",
+      "extratos_pagador",
+      "gerentes_financeiros"
+    ],
+    "actor:pagador": [
+      "minha_conta"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "receberTitulo": [
+        "caixa_recebimentos"
+      ],
+      "estornarRecebimentoNoMesmoDia": [
+        "caixa_recebimentos"
+      ],
+      "acompanharRecebiveis": [
+        "recebiveis"
+      ],
+      "emitirExtratoPorPagador": [
+        "extratos_pagador"
+      ],
+      "consultarMeusTitulosErecebimentos": [
+        "meus_titulos_e_recebimentos"
+      ],
+      "pagarTituloComCartao": [
+        "meus_titulos_e_recebimentos"
+      ]
+    },
+    "processes": {},
+    "entities": {
+      "GerenteFinanceiro": [
+        "gerentes_financeiros"
+      ]
+    },
+    "removed": [
+      {
+        "id": "inicio_caixa",
+        "kind": "page",
+        "label": "Início",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Vejo quanto o caixa já recebeu hoje e o que ainda está em aberto."
+          },
+          {
+            "kind": "highlights",
+            "text": "Destaco os totais recebidos, os saldos em aberto e os títulos vencidos."
+          },
+          {
+            "kind": "alerts",
+            "text": "Acompanho os prazos do dia para não deixar recebimento ou estorno passar."
+          },
+          {
+            "kind": "inbox",
+            "text": "Vejo o que espera eu lançar um recebimento ou estornar um lançamento de hoje."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "titulos",
+        "kind": "page",
+        "label": "Títulos a receber",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Percorro os títulos a receber e vejo situação, saldo em aberto e se estão vencidos."
+          },
+          {
+            "kind": "detail",
+            "text": "Abro o título e confiro pagador, total recebido, saldo em aberto, situação e atraso."
+          },
+          {
+            "kind": "form",
+            "text": "Informo valor e meio — dinheiro, Pix ou cartão — para baixar o título."
+          },
+          {
+            "kind": "actions",
+            "text": "Registro o recebimento total ou parcial do título."
+          },
+          {
+            "kind": "timeline",
+            "text": "Vejo o que o sistema já fez sozinho neste título."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "recebimentos",
+        "kind": "page",
+        "label": "Recebimentos",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Localizo os recebimentos lançados hoje."
+          },
+          {
+            "kind": "detail",
+            "text": "Confiro o recebimento do dia — valor, título e meio — antes de decidir."
+          },
+          {
+            "kind": "actions",
+            "text": "Estorno o recebimento lançado indevidamente no mesmo dia."
+          },
+          {
+            "kind": "timeline",
+            "text": "Acompanho o lançamento e o estorno que o sistema registrou neste recebimento."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "inicio_gerente",
+        "kind": "page",
+        "label": "Início",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Vejo o painel de recebíveis do período, com totais por origem e o que está vencido."
+          },
+          {
+            "kind": "highlights",
+            "text": "Destaco os títulos vencidos e os maiores saldos em aberto."
+          },
+          {
+            "kind": "alerts",
+            "text": "Acompanho prazos e deveres recorrentes da área financeira."
+          },
+          {
+            "kind": "inbox",
+            "text": "Vejo o que espera minha análise ou a emissão de um extrato."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "pagadores",
+        "kind": "page",
+        "label": "Pagadores",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Localizo o pagador pelo nome ou identificação."
+          },
+          {
+            "kind": "detail",
+            "text": "Vejo o pagador, as movimentações dos títulos, o total recebido e o saldo em aberto."
+          },
+          {
+            "kind": "form",
+            "text": "Peço o extrato deste pagador para o período que eu escolher."
+          },
+          {
+            "kind": "actions",
+            "text": "Gero o extrato dos títulos e recebimentos do pagador."
+          },
+          {
+            "kind": "timeline",
+            "text": "Vejo quando o extrato foi gerado e os totais que o sistema calculou."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "pagador",
+        "kind": "hub",
+        "label": "Pagador",
+        "context": "Pagador",
+        "text": "Abro o meu cadastro de pagador — ele já vem selecionado porque sou eu — e então vejo meus títulos e recebimentos.",
+        "children": [
+          {
+            "id": "inicio",
+            "kind": "page",
+            "label": "Início",
+            "organisms": [
+              {
+                "kind": "summary",
+                "text": "Vejo o resumo dos meus títulos: total recebido, saldo em aberto e situação."
+              },
+              {
+                "kind": "highlights",
+                "text": "Destaco o que está vencido e o que ainda posso pagar."
+              },
+              {
+                "kind": "alerts",
+                "text": "Acompanho os vencimentos dos meus títulos."
+              },
+              {
+                "kind": "inbox",
+                "text": "Vejo os títulos em aberto que esperam eu pagar com cartão."
+              }
+            ],
+            "action": "remove"
+          },
+          {
+            "id": "meus_titulos",
+            "kind": "page",
+            "label": "Meus títulos",
+            "organisms": [
+              {
+                "kind": "list",
+                "text": "Vejo somente os meus títulos e a situação de cada um."
+              },
+              {
+                "kind": "detail",
+                "text": "Abro o título e confiro total recebido, saldo em aberto, situação e se está vencido."
+              },
+              {
+                "kind": "list",
+                "text": "Vejo os meus recebimentos."
+              },
+              {
+                "kind": "form",
+                "text": "Informo o cartão para quitar ou abater um título meu em aberto."
+              },
+              {
+                "kind": "actions",
+                "text": "Pago o título com cartão."
+              },
+              {
+                "kind": "timeline",
+                "text": "Acompanho o que o sistema registrou sozinho nos meus títulos e recebimentos."
+              }
+            ],
+            "action": "remove"
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "inicio",
+        "kind": "page",
+        "label": "Início",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Vejo o resumo dos meus títulos: total recebido, saldo em aberto e situação."
+          },
+          {
+            "kind": "highlights",
+            "text": "Destaco o que está vencido e o que ainda posso pagar."
+          },
+          {
+            "kind": "alerts",
+            "text": "Acompanho os vencimentos dos meus títulos."
+          },
+          {
+            "kind": "inbox",
+            "text": "Vejo os títulos em aberto que esperam eu pagar com cartão."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "meus_titulos",
+        "kind": "page",
+        "label": "Meus títulos",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Vejo somente os meus títulos e a situação de cada um."
+          },
+          {
+            "kind": "detail",
+            "text": "Abro o título e confiro total recebido, saldo em aberto, situação e se está vencido."
+          },
+          {
+            "kind": "list",
+            "text": "Vejo os meus recebimentos."
+          },
+          {
+            "kind": "form",
+            "text": "Informo o cartão para quitar ou abater um título meu em aberto."
+          },
+          {
+            "kind": "actions",
+            "text": "Pago o título com cartão."
+          },
+          {
+            "kind": "timeline",
+            "text": "Acompanho o que o sistema registrou sozinho nos meus títulos e recebimentos."
+          }
+        ],
+        "action": "remove"
+      }
+    ]
+  }
+}
