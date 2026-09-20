@@ -1,5 +1,12 @@
 # agentPlannerL2
 
+## 2026-09-20 (p2_19)
+
+- `action` compares with what is already built in l2, not with the previous
+  `menu.json`. Today that manifesto does not exist: every node is `new`,
+  `meta.removed` is `[]`. `diffMenuTrees`, the legacy migration and
+  `pipeline.previousMenu` are gone.
+
 ## 2026-09-20 (p2_17)
 
 - `P2_MENU_ENTITY_NO_FORM` trusts `meta.entities` (mapped, visible, has

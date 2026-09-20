@@ -28,7 +28,7 @@ Tool arguments:
 - `meta.processes`: array of `{ processId, pages }` — every l4 process, pages where the person sees its cause or effect (empty pages = a visible hole)
 - `meta.entities`: array of `{ entityId, pages }` — every record an actor maintains, pages where that actor creates and edits it (empty pages = a visible hole)
 
-Do not emit `schemaVersion`, `moduleName`, `userLanguage`, `device`, `action` or `meta.removed`. Code fills those.
+Do not emit `schemaVersion`, `moduleName`, `userLanguage`, `device` or `action`. Code fills those.
 
 ## Node kinds
 

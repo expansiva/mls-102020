@@ -2,9 +2,9 @@
 
 import {
   P2_MENU_DEVICE,
+  readReadyL2Manifest,
   type P2MenuDevice,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
-import { countMenuActions, diffMenuTrees } from '/_102020_/l2/agentPlannerL2/steps/menu20/diff.js';
 import {
   collectP2WorkspaceCandidates,
   isDdmEntity,
@@ -392,30 +392,47 @@ export function buildP2MenuFile(input: {
   userLanguage: string;
   draft: MenuV2;
   device?: P2MenuDevice;
-  previousTree?: readonly MenuNode[] | null;
 }): P2MenuFile {
-  const diff = diffMenuTrees(input.previousTree, input.draft.tree);
+  const device = input.device || P2_MENU_DEVICE;
+  const ready = readReadyL2Manifest(input.moduleName, device);
   return {
     schemaVersion: P2_MENU_SCHEMA_VERSION,
     moduleName: input.moduleName,
     userLanguage: input.userLanguage,
-    device: input.device || P2_MENU_DEVICE,
-    tree: diff.tree,
+    device,
+    tree: stampAllNew(input.draft.tree, ready),
     authorities: input.draft.authorities,
     meta: {
       journeys: input.draft.meta.journeys,
       processes: input.draft.meta.processes,
       entities: input.draft.meta.entities,
-      removed: diff.removed,
+      removed: [],
     },
   };
 }
 
 export function menuActionCounts(file: P2MenuFile): Record<MenuAction, number> {
-  return countMenuActions({ tree: file.tree, removed: file.meta.removed });
+  const counts: Record<MenuAction, number> = { new: 0, change: 0, keep: 0, remove: 0 };
+  const visit = (nodes: readonly MenuStampedNode[]) => {
+    for (const node of nodes) {
+      counts[node.action] += 1;
+      if (node.kind === 'hub' || node.kind === 'group') visit(node.children);
+    }
+  };
+  visit(file.tree);
+  visit(file.meta.removed);
+  return counts;
 }
 
-/** Previous on-disk menu (v2.1 or v2.2). Strips `action` so the structural diff is clean. */
+function stampAllNew(nodes: readonly MenuNode[], ready: null): MenuStampedNode[] {
+  void ready;
+  return nodes.map((node): MenuStampedNode => {
+    if (node.kind === 'page') return { ...node, action: 'new' };
+    return { ...node, action: 'new', children: stampAllNew(node.children, ready) };
+  });
+}
+
+/** Read a stamped menu tree, stripping `action` so the node shape matches the draft. */
 export function parsePreviousMenuTree(value: unknown): MenuNode[] {
   const root = asRecord(value, '$');
   return list(root.tree, '$.tree').map((item, index) => (

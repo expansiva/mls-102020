@@ -3,7 +3,6 @@
 import {
   diskFileInfo,
   displayPath,
-  fileExists,
   hostListFolder,
   moduleFile,
   normalizeModuleName,
@@ -24,7 +23,6 @@ export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v2' as const;
 export const P2_MENU_DEVICES = ['web'] as const;
 export type P2MenuDevice = typeof P2_MENU_DEVICES[number];
 export const P2_MENU_DEVICE: P2MenuDevice = 'web';
-export const P2_PREVIOUS_MENU_NONE = 'none' as const;
 
 /** Steps the current flow.json actually runs. */
 export const P2_FLOW_STEP_IDS = ['entry10', 'menu20'] as const;
@@ -102,8 +100,6 @@ export interface P2PipelineState {
   warnings?: string[];
   /** menu20: device the menu was written for. Written on approve; omitted before. */
   device?: P2MenuDevice;
-  /** menu20: previous menu path used for the diff, or `none`. Written on approve. */
-  previousMenu?: string;
   /** menu20: node counts by action. Written on approve. */
   actionCounts?: { new: number; change: number; keep: number; remove: number };
   updatedAt: string;
@@ -294,59 +290,21 @@ export function p2MenuFile(moduleName: string, device: P2MenuDevice = P2_MENU_DE
   };
 }
 
-/** Pre-v2.2 layout: `l4/<module>/pool/l2/menu.json`. Used once as previous, then deleted. */
-export function p2LegacyMenuFile(moduleName: string): Ns5FileInfo {
-  const base = moduleFile(moduleName);
-  return {
-    project: base.project,
-    level: 4,
-    folder: `${base.folder}/pool/l2`,
-    shortName: 'menu',
-    extension: '.json',
-  };
-}
-
 export function isP2MenuDevice(value: string): value is P2MenuDevice {
   return (P2_MENU_DEVICES as readonly string[]).includes(value);
 }
 
-export interface P2PreviousMenu {
-  raw: unknown | null;
-  previousMenu: string;
-  migrateLegacy: boolean;
-}
-
 /**
- * Previous menu of this device. New path wins; if only the legacy file exists, it
- * is the previous for this run (`migrateLegacy`) and must be deleted after write.
+ * What is already a screen in l2 for this device — the future source of `action`.
+ * Materialization will write a manifesto per device (`l2/<mod>/web/<device>/menu.built.json`,
+ * or the name that spec decides). Today that file does not exist, so this reader
+ * returns null and every node is stamped `new`.
  */
-export async function resolvePreviousP2Menu(
-  moduleName: string,
-  device: P2MenuDevice = P2_MENU_DEVICE,
-): Promise<P2PreviousMenu> {
-  const current = p2MenuFile(moduleName, device);
-  const currentRaw = await readPresentJson(current);
-  if (currentRaw != null) {
-    return { raw: currentRaw, previousMenu: displayPath(current), migrateLegacy: false };
-  }
-  const legacy = p2LegacyMenuFile(moduleName);
-  const legacyRaw = await readPresentJson(legacy);
-  if (legacyRaw != null) {
-    return { raw: legacyRaw, previousMenu: displayPath(legacy), migrateLegacy: true };
-  }
-  return { raw: null, previousMenu: P2_PREVIOUS_MENU_NONE, migrateLegacy: false };
-}
-
-export async function deleteLegacyP2Menu(moduleName: string): Promise<void> {
-  const legacy = p2LegacyMenuFile(moduleName);
-  if (!fileExists(legacy)) return;
-  const { deleteFile } = await import('/_102027_/l2/libStor.js');
-  await deleteFile(diskFileInfo(legacy));
-}
-
-async function readPresentJson(file: Ns5FileInfo): Promise<unknown | null> {
-  if (!fileExists(file)) return null;
-  return readJson(file);
+export function readReadyL2Manifest(
+  _moduleName: string,
+  _device: P2MenuDevice = P2_MENU_DEVICE,
+): null {
+  return null;
 }
 
 function matchPoolFile(file: Ns5FileInfo, wanted: string): boolean {

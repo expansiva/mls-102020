@@ -24,12 +24,10 @@ import {
   parseP2StepPrompt,
   p2DifferentRequestsRefusal,
   p2InvocationRefusal,
-  p2LegacyMenuFile,
   p2MenuFile,
   p2PipelineFile,
   P2_MENU_DEVICE,
-  P2_PREVIOUS_MENU_NONE,
-  resolvePreviousP2Menu,
+  readReadyL2Manifest,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 
@@ -263,7 +261,7 @@ void test('menu.json is not a pool message and does not count as pending', async
   assert.equal('refusal' in pending && pending.refusal, `nothing pending for ${MODULE} in pool/l2`);
 });
 
-void test('p2MenuFile is pool/l2/<device>/menu.json and legacy stays at pool/l2/menu.json', () => {
+void test('p2MenuFile is pool/l2/<device>/menu.json', () => {
   installHost();
   assert.equal(isP2MenuDevice('web'), true);
   assert.equal(isP2MenuDevice('ios'), false);
@@ -274,33 +272,11 @@ void test('p2MenuFile is pool/l2/<device>/menu.json and legacy stays at pool/l2/
     shortName: 'menu',
     extension: '.json',
   });
-  assert.deepEqual(p2LegacyMenuFile(MODULE), {
-    project: PROJECT,
-    level: 4,
-    folder: `${MODULE}/pool/l2`,
-    shortName: 'menu',
-    extension: '.json',
-  });
 });
 
-void test('resolvePreviousP2Menu: none, legacy layout, new layout', async () => {
-  const host = installHost();
-  const none = await resolvePreviousP2Menu(MODULE);
-  assert.equal(none.previousMenu, P2_PREVIOUS_MENU_NONE);
-  assert.equal(none.raw, null);
-  assert.equal(none.migrateLegacy, false);
-
-  seed(host, `${MODULE}/pool/l2`, 'menu', '{"tree":[{"id":"legacy"}]}\n');
-  const legacy = await resolvePreviousP2Menu(MODULE);
-  assert.equal(legacy.previousMenu, `l4/${MODULE}/pool/l2/menu.json`);
-  assert.equal(legacy.migrateLegacy, true);
-  assert.deepEqual(legacy.raw, { tree: [{ id: 'legacy' }] });
-
-  seed(host, `${MODULE}/pool/l2/${P2_MENU_DEVICE}`, 'menu', '{"tree":[{"id":"web"}]}\n');
-  const current = await resolvePreviousP2Menu(MODULE);
-  assert.equal(current.previousMenu, `l4/${MODULE}/pool/l2/${P2_MENU_DEVICE}/menu.json`);
-  assert.equal(current.migrateLegacy, false);
-  assert.deepEqual(current.raw, { tree: [{ id: 'web' }] });
+void test('readReadyL2Manifest returns null while the built manifesto does not exist', () => {
+  assert.equal(readReadyL2Manifest(MODULE), null);
+  assert.equal(readReadyL2Manifest(MODULE, P2_MENU_DEVICE), null);
 });
 
 void test('re-execution wipes l2 pipeline drafts and web, keeps pool messages, rewrites pipeline.json', async () => {

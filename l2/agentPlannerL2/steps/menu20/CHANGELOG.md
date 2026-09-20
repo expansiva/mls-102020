@@ -1,5 +1,15 @@
 # menu20
 
+## 2026-09-20 (p2_19)
+
+- `action` says what generation will do to a screen that already exists in l2.
+  The comparison source is the manifesto materialization will write
+  (`l2/<mod>/web/<device>/menu.built.json`, or the name that spec decides).
+  That file does not exist yet: `readReadyL2Manifest` returns null, every node
+  is `new`, `meta.removed` is `[]`. Enum stays `new|change|keep|remove`.
+- No diff against the previous `menu.json`. `diffMenuTrees`, the legacy-layout
+  migration and `pipeline.previousMenu` are gone.
+
 ## 2026-09-20 (p2_17)
 
 - `P2_MENU_ENTITY_NO_FORM` no longer matches entity id/title against organism
