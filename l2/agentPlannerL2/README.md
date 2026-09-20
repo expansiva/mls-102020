@@ -2,9 +2,9 @@
 
 L2 planner. Reads a finished l4 module and every message in `pool/l2`, then
 writes `l4/<mod>/pool/l2/web/menu.json` — menu v2.2: one tree of hubs, pages and
-organisms (including `inbox`/`alerts`), filterable by actor, with `meta.processes`,
-`device`, and `action` (`new|change|keep|remove`) stamped by code against the
-previous menu of the same device.
+organisms (including `inbox`/`alerts`), filterable by actor, with `meta.processes`
+and `meta.entities`, `device`, and `action` (`new|change|keep|remove`) stamped by
+code against the previous menu of the same device.
 One reasoning call. Lives in `mls-102020` next
 to `agentChangeFrontend`. Unique name `agentPlannerL2`.
 

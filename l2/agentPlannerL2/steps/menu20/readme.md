@@ -4,16 +4,16 @@ LLM step (`modelType: reasoning`). One call. The product is `l4/<mod>/pool/l2/we
 
 ## Input
 
-Module l4: every journey (id, actor, title, goal, steps), `access.defs.ts` actors and grants (mode, anchor, disclosure), ontology entities (family, displayField, derived/`ddm`), `workflows.defs.ts` processes (id, trigger, stages), and the deterministic candidates from `menuCandidates` (hubs = grant anchors; pages = `(entity, actor)` from `workspaces20/contracts.ts`; `beyondJourneys` = human/alert/mechanical/derived per actor) — labelled **candidates, not the answer** and **what this actor must see, beyond journeys**.
+Module l4: every journey (id, actor, title, goal, steps), `access.defs.ts` actors and grants (mode, anchor, disclosure), ontology entities (family, displayField, derived/`ddm`, `writer`), `workflows.defs.ts` processes (id, trigger, stages), and the deterministic candidates from `menuCandidates` (hubs = grant anchors; pages = `(entity, actor)` from `workspaces20/contracts.ts`; `beyondJourneys` = human/alert/mechanical/derived per actor; `recordsMaintained` = `writer: crud` entities in the actor's grant) — labelled **candidates, not the answer** and **what this actor must see, beyond journeys**.
 
 ## Output
 
-`l4/<mod>/pool/l2/web/menu.json` (overwritten). Envelope fields (`schemaVersion`, `moduleName`, `userLanguage`, `device`) are filled by code. The model emits `tree`, `authorities`, `meta` (journeys/processes). `action` and `meta.removed` are stamped by L2 against the previous menu of the same device. On approve, `pipeline.status = complete`; `pipeline.device`, `previousMenu` and `actionCounts` are recorded. Gate warnings land on `pipeline.warnings`. Done-anchor `menu20-done`.
+`l4/<mod>/pool/l2/web/menu.json` (overwritten). Envelope fields (`schemaVersion`, `moduleName`, `userLanguage`, `device`) are filled by code. The model emits `tree`, `authorities`, `meta` (journeys/processes/entities). `action` and `meta.removed` are stamped by L2 against the previous menu of the same device. On approve, `pipeline.status = complete`; `pipeline.device`, `previousMenu` and `actionCounts` are recorded. Gate warnings land on `pipeline.warnings`. Done-anchor `menu20-done`.
 
 ## Invariants
 
 - One tree per module, one file per device (`web` today). Nodes are `hub`, `page` or `group`. A page has `organisms[]` (9 kinds, including `inbox` and `alerts`); a hub has `context` + `text` + `children`. Every node has `action`: `new` | `change` | `keep` | `remove` (`remove` only in `meta.removed`).
 - `authorities` is visibility (ordered; a hub grants its children). Every page is reachable from at least one actor.
-- Gate: unique ids; hub.context is an l4 entity; every authorities id exists; every authorities actor exists in access; hub has ≥ 1 child; every l4 journey appears in `meta.journeys` (empty ⇒ warning, not error); every l4 process appears in `meta.processes` (empty ⇒ warning; unknown id/page ⇒ error). Alert without `alerts`, human without `inbox`/`actions`, mechanical effect without `timeline`, derived/`ddm` without `summary`/`highlights`/`detail` are warnings. No UX rule in the gate.
+- Gate: unique ids; hub.context is an l4 entity; every authorities id exists; every authorities actor exists in access; hub has ≥ 1 child; every l4 journey appears in `meta.journeys` (empty ⇒ warning, not error); every l4 process appears in `meta.processes` (empty ⇒ warning; unknown id/page ⇒ error); every granted `writer: crud` entity appears in `meta.entities` (empty ⇒ warning; unknown id/page ⇒ error). Alert without `alerts`, human without `inbox`/`actions`, mechanical effect without `timeline`, derived/`ddm` without `summary`/`highlights`/`detail`, granted crud record without `form`/`actions` citing it are warnings. No UX rule in the gate.
 - Bounded repair (2) and one transport retry, NS5 pattern.
 - Does not delete pool messages. Does not write `pool/l1` or `l2/<mod>/web/`.

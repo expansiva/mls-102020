@@ -3,6 +3,8 @@
 import type { P2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 import {
   actorAuthorityKey,
+  collectBeyondJourneys,
+  collectRecordsMaintained,
   isMechanicalEffectTask,
   isMenuNodeKind,
   isMenuOrganismKind,
@@ -13,7 +15,6 @@ import {
   type P2ActorMustSeeDerived,
   type P2GrantView,
   type P2ProcessView,
-  collectBeyondJourneys,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 
 const ACTOR_KEY = /^actor:([a-z][A-Za-z0-9]*)$/;
@@ -268,6 +269,60 @@ export function validateP2Menu(draft: MenuV2, input: P2MenuGateInput): P2MenuGat
     }
   }
 
+  const maintained = collectRecordsMaintained(sources, grants);
+  for (const row of maintained) {
+    if (!Object.prototype.hasOwnProperty.call(draft.meta.entities, row.entityRef)
+      || draft.meta.entities[row.entityRef].length === 0) {
+      warning(
+        issues,
+        'P2_MENU_ENTITY_UNMAPPED',
+        `Entity ${row.entityRef} has no page.`,
+        `$.meta.entities.${row.entityRef}`,
+      );
+    }
+  }
+
+  Object.entries(draft.meta.entities).forEach(([entityId, pages]) => {
+    if (!entityIds.has(entityId)) {
+      error(issues, 'P2_MENU_ENTITY_UNKNOWN', `Unknown entity ${entityId}.`, `$.meta.entities.${entityId}`);
+    }
+    pages.forEach((pageId, pagePosition) => {
+      const found = byId.get(pageId);
+      if (!found) {
+        error(
+          issues,
+          'P2_MENU_ENTITY_PAGE_UNKNOWN',
+          `Unknown page ${pageId}.`,
+          `$.meta.entities.${entityId}[${pagePosition}]`,
+        );
+      } else if (found.node.kind !== 'page') {
+        error(
+          issues,
+          'P2_MENU_ENTITY_NOT_PAGE',
+          `${pageId} is not a page.`,
+          `$.meta.entities.${entityId}[${pagePosition}]`,
+        );
+      }
+    });
+  });
+
+  const entityTitle = new Map(sources.entities.map(entity => [entity.entityId, entity.title || entity.entityId]));
+  const formSeen = new Set<string>();
+  for (const row of maintained) {
+    const key = `${row.actorRef}:${row.entityRef}`;
+    if (formSeen.has(key)) continue;
+    formSeen.add(key);
+    const visible = pagesByActor.get(row.actorRef) || [];
+    if (!hasFormOrActionsCiting(visible, row.entityRef, entityTitle.get(row.entityRef) || row.entityRef)) {
+      warning(
+        issues,
+        'P2_MENU_ENTITY_NO_FORM',
+        `Record ${row.entityRef} maintained by ${row.actorRef} has no form or actions citing it.`,
+        `$.authorities[${JSON.stringify(actorAuthorityKey(row.actorRef))}]`,
+      );
+    }
+  }
+
   return { ok: !issues.some(issue => issue.severity === 'error'), issues };
 }
 
@@ -339,6 +394,29 @@ function hasCitation(pages: readonly MenuPageNode[]): boolean {
   return hasOrganismKind(pages, 'summary')
     || hasOrganismKind(pages, 'highlights')
     || hasOrganismKind(pages, 'detail');
+}
+
+function hasFormOrActionsCiting(
+  pages: readonly MenuPageNode[],
+  entityId: string,
+  title: string,
+): boolean {
+  return pages.some(page => page.organisms.some(organism => (
+    (organism.kind === 'form' || organism.kind === 'actions')
+    && citesEntity(organism.text, entityId, title)
+  )));
+}
+
+function citesEntity(text: string, entityId: string, title: string): boolean {
+  if (containsToken(text, entityId)) return true;
+  const label = title.trim();
+  return !!label && containsToken(text, label);
+}
+
+function containsToken(text: string, token: string): boolean {
+  if (!token) return false;
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^A-Za-z0-9])${escaped}(?:$|[^A-Za-z0-9])`, 'i').test(text);
 }
 
 function derivedKey(derived: P2ActorMustSeeDerived): string {

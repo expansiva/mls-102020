@@ -28,6 +28,7 @@ import {
   P2_MENU_SCHEMA_VERSION,
   buildP2MenuFile,
   buildP2MenuTool,
+  collectRecordsMaintained,
   menuActionCounts,
   menuCandidates,
   normalizeMenuV2,
@@ -49,6 +50,7 @@ const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademi
 const WORKFLOWS_FIXTURE = path.join(HERE, 'fixtures/workflows.defs.ts');
 const HIRING_FIXTURE = path.join(HERE, 'fixtures/hiringPipeline');
 const COMPRAS_FIXTURE = path.join(HERE, 'fixtures/compras');
+const LOCACAO_FIXTURE = path.join(HERE, 'fixtures/locacaoEquipamentos');
 const REAL_L4 = path.resolve(HERE, '../../../../../mls-102047/l4');
 const REAL_WORKFLOWS = path.join(REAL_L4, 'mensalidadesAcademia/workflows.defs.ts');
 const DRAFT_PATH = path.join(HERE, 'fixtures/menu20-draft.json');
@@ -124,6 +126,31 @@ function loadModuleSources(root: string, workflowsPath = path.join(root, 'workfl
 
 function loadSources(): ReturnType<typeof loadModuleSources> {
   return loadModuleSources(L4_FIXTURE, WORKFLOWS_FIXTURE);
+}
+
+function loadAccessOntology(root: string): {
+  sources: P2L4Sources;
+  grants: ReturnType<typeof parseP2Grants>;
+} {
+  const ontologyDir = path.join(root, 'ontology');
+  const ontologyEntities = readdirSync(ontologyDir)
+    .filter(name => name.endsWith('.defs.ts') && name !== 'index.defs.ts')
+    .sort()
+    .map(name => readDefs(root, `ontology/${name}`));
+  const moduleArtifact = readDefs(root, 'module.defs.ts') as { userLanguage?: string; moduleName?: string };
+  const access = readDefs(root, 'access.defs.ts');
+  return {
+    sources: parseP2L4Sources({
+      moduleName: moduleArtifact.moduleName,
+      userLanguage: moduleArtifact.userLanguage,
+      journeyIndex: { journeys: [] },
+      journeys: [],
+      access,
+      ontologyIndex: readDefs(root, 'ontology/index.defs.ts'),
+      ontologyEntities,
+    }),
+    grants: parseP2Grants(access),
+  };
 }
 
 function loadDraft(): unknown {
@@ -354,7 +381,12 @@ function menuStep(): mls.msg.AIAgentStep {
 void test('l4 fixtures are byte-for-byte copies of the real modules', () => {
   assert.equal(existsSync(REAL_WORKFLOWS), true, `missing ${REAL_WORKFLOWS}`);
   assert.equal(Buffer.compare(readFileSync(WORKFLOWS_FIXTURE), readFileSync(REAL_WORKFLOWS)), 0);
-  for (const mod of ['hiringPipeline', 'compras'] as const) {
+  const full = ['hiringPipeline', 'compras', 'locacaoEquipamentos'] as const;
+  const accessOntology = [
+    'agendaClinica', 'comandaRestaurante', 'controleEstoque', 'financeiro',
+    'inscricaoEvento', 'manutencaoFrota', 'ordenServicio', 'reembolsoDespesas',
+  ] as const;
+  for (const mod of [...full, ...accessOntology]) {
     const fixtureRoot = path.join(HERE, 'fixtures', mod);
     const realRoot = path.join(REAL_L4, mod);
     const walk = (dir: string, rel = ''): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
@@ -365,7 +397,7 @@ void test('l4 fixtures are byte-for-byte copies of the real modules', () => {
       const a = path.join(fixtureRoot, rel);
       const b = path.join(realRoot, rel);
       assert.equal(existsSync(b), true, `missing ${b}`);
-      assert.equal(Buffer.compare(readFileSync(a), readFileSync(b)), 0, rel);
+      assert.equal(Buffer.compare(readFileSync(a), readFileSync(b)), 0, `${mod}/${rel}`);
     }
   }
 });
@@ -459,6 +491,9 @@ void test('normalizeMenuV2 accepts the tool array form of authorities and journe
       processes: [
         { processId: 'lembrarGeracaoMensalidades', pages: ['painel', 'mensalidades_mes'] },
       ],
+      entities: [
+        { entityId: 'Plano', pages: ['matricula_aluno'] },
+      ],
     },
   });
   assert.deepEqual(arrayForm, objectForm);
@@ -551,6 +586,7 @@ void test('beforePromptStep emits prompt_ready with candidates labelled as not t
   assert.match(String(ready.humanPrompt || ''), /gerenciaMensalidadeCommand/);
   assert.match(String(ready.humanPrompt || ''), /"entityRef": "Aluno"/);
   assert.match(String(ready.systemPrompt || ''), /submitP2Menu/);
+  assert.match(String(ready.systemPrompt || ''), /a record an actor maintains \(crud, granted\)/);
   assert.equal(ready.tools?.[0]?.function.name, 'submitP2Menu');
   assert.doesNotMatch(String(ready.systemPrompt || ''), /Matrículas/);
   assert.doesNotMatch(String(ready.systemPrompt || ''), /recepcao/);
@@ -574,7 +610,7 @@ void test('afterPromptStep schedules repair when the gate fails', async () => {
         children: [],
       }],
       authorities: { 'actor:recepcao': ['only'] },
-      meta: { journeys: {}, processes: {} },
+      meta: { journeys: {}, processes: {}, entities: {} },
     },
   };
   const intents = await afterP2MenuPromptStep(agentMeta(), contextWith(step, bad), step, step, 1);
@@ -664,6 +700,8 @@ void test('human prompt carries journeys, grants, processes and candidates', () 
   assert.match(human, /goal:/);
   assert.match(human, /What this actor must see, beyond journeys/);
   assert.match(human, /alertarGerenciaGeracao/);
+  assert.match(human, /recordsMaintained/);
+  assert.match(human, /"entityRef": "Plano"/);
   assert.ok(loaded.grants.length > 0);
 });
 
@@ -905,4 +943,227 @@ void test('afterPromptStep prefers the new device path over leftover legacy', as
   assert.equal(pipeline.previousMenu, `l4/${MODULE}/pool/l2/${P2_MENU_DEVICE}/menu.json`);
   assert.equal(host.files[keyOf(p2LegacyMenuFile(MODULE))].status, 'changed');
 });
+
+void test('collectRecordsMaintained from locacaoEquipamentos: gerente maintains ManutencaoEquipamento', () => {
+  const locacao = loadModuleSources(LOCACAO_FIXTURE);
+  const got = collectRecordsMaintained(locacao.sources, locacao.grants);
+  const gerente = got.filter(row => row.actorRef === 'gerente');
+  assert.ok(
+    gerente.some(row => row.entityRef === 'ManutencaoEquipamento' && row.writer === 'crud'),
+    `gerente records: ${JSON.stringify(gerente)}`,
+  );
+  assert.deepEqual(
+    got,
+    [
+      { actorRef: 'atendente', entityRef: 'Equipamento', writer: 'crud' },
+      { actorRef: 'gerente', entityRef: 'Equipamento', writer: 'crud' },
+      { actorRef: 'gerente', entityRef: 'ManutencaoEquipamento', writer: 'crud' },
+    ],
+  );
+});
+
+void test('collectRecordsMaintained across the 12 modules matches writer:crud ∩ grant', () => {
+  const roots: Record<string, string> = {
+    agendaClinica: path.join(HERE, 'fixtures/agendaClinica'),
+    comandaRestaurante: path.join(HERE, 'fixtures/comandaRestaurante'),
+    compras: COMPRAS_FIXTURE,
+    controleEstoque: path.join(HERE, 'fixtures/controleEstoque'),
+    financeiro: path.join(HERE, 'fixtures/financeiro'),
+    hiringPipeline: HIRING_FIXTURE,
+    inscricaoEvento: path.join(HERE, 'fixtures/inscricaoEvento'),
+    locacaoEquipamentos: LOCACAO_FIXTURE,
+    manutencaoFrota: path.join(HERE, 'fixtures/manutencaoFrota'),
+    mensalidadesAcademia: L4_FIXTURE,
+    ordenServicio: path.join(HERE, 'fixtures/ordenServicio'),
+    reembolsoDespesas: path.join(HERE, 'fixtures/reembolsoDespesas'),
+  };
+  const expected: Record<string, Array<{ actorRef: string; entityRef: string; writer: 'crud' }>> = {
+    agendaClinica: [
+      { actorRef: 'profissional', entityRef: 'Profissional', writer: 'crud' },
+      { actorRef: 'recepcionista', entityRef: 'Profissional', writer: 'crud' },
+      { actorRef: 'recepcionista', entityRef: 'Recepcionista', writer: 'crud' },
+    ],
+    comandaRestaurante: [
+      { actorRef: 'caixa', entityRef: 'Mesa', writer: 'crud' },
+      { actorRef: 'garcom', entityRef: 'ItemCardapio', writer: 'crud' },
+      { actorRef: 'garcom', entityRef: 'Mesa', writer: 'crud' },
+    ],
+    compras: [],
+    controleEstoque: [],
+    financeiro: [
+      { actorRef: 'gerenteFinanceiro', entityRef: 'GerenteFinanceiro', writer: 'crud' },
+    ],
+    hiringPipeline: [],
+    inscricaoEvento: [],
+    locacaoEquipamentos: [
+      { actorRef: 'atendente', entityRef: 'Equipamento', writer: 'crud' },
+      { actorRef: 'gerente', entityRef: 'Equipamento', writer: 'crud' },
+      { actorRef: 'gerente', entityRef: 'ManutencaoEquipamento', writer: 'crud' },
+    ],
+    manutencaoFrota: [
+      { actorRef: 'gestor', entityRef: 'Driver', writer: 'crud' },
+      { actorRef: 'gestor', entityRef: 'Vehicle', writer: 'crud' },
+      { actorRef: 'gestor', entityRef: 'VehicleAssignment', writer: 'crud' },
+      { actorRef: 'gestor', entityRef: 'Workshop', writer: 'crud' },
+      { actorRef: 'motorista', entityRef: 'Vehicle', writer: 'crud' },
+    ],
+    mensalidadesAcademia: [
+      { actorRef: 'gerencia', entityRef: 'Plano', writer: 'crud' },
+      { actorRef: 'recepcao', entityRef: 'Plano', writer: 'crud' },
+    ],
+    ordenServicio: [],
+    reembolsoDespesas: [
+      { actorRef: 'gestorEquipe', entityRef: 'GestorEquipe', writer: 'crud' },
+    ],
+  };
+  const empty: string[] = [];
+  const actorAsEntity: string[] = [];
+  for (const [mod, root] of Object.entries(roots)) {
+    const loaded = loadAccessOntology(root);
+    const got = collectRecordsMaintained(loaded.sources, loaded.grants);
+    assert.deepEqual(got, expected[mod], mod);
+    if (got.length === 0) empty.push(mod);
+    for (const row of got) {
+      if (['Recepcionista', 'GerenteFinanceiro', 'GestorEquipe', 'Driver'].includes(row.entityRef)) {
+        actorAsEntity.push(`${mod}:${row.actorRef}:${row.entityRef}`);
+      }
+    }
+  }
+  assert.deepEqual(empty.sort(), [
+    'compras', 'controleEstoque', 'hiringPipeline', 'inscricaoEvento', 'ordenServicio',
+  ]);
+  assert.ok(actorAsEntity.includes('agendaClinica:recepcionista:Recepcionista'));
+  assert.ok(actorAsEntity.includes('financeiro:gerenteFinanceiro:GerenteFinanceiro'));
+  assert.ok(actorAsEntity.includes('reembolsoDespesas:gestorEquipe:GestorEquipe'));
+  assert.ok(actorAsEntity.includes('manutencaoFrota:gestor:Driver'));
+});
+
+void test('gate warns when a granted crud entity has no form/actions and is silent when it has one', () => {
+  const locacao = loadModuleSources(LOCACAO_FIXTURE);
+  const base = locacaoMenuDraft();
+  const missing = validateP2Menu(normalizeMenuV2(base), locacao);
+  assert.equal(missing.ok, true, missing.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  const missingCodes = missing.issues.filter(issue => issue.severity === 'warning').map(issue => `${issue.code}:${issue.message}`);
+  assert.ok(
+    missing.issues.some(issue => (
+      issue.severity === 'warning'
+      && issue.code === 'P2_MENU_ENTITY_NO_FORM'
+      && issue.message.includes('ManutencaoEquipamento')
+      && issue.message.includes('gerente')
+    )),
+    `expected NO_FORM for ManutencaoEquipamento/gerente, got ${missingCodes.join(' | ') || '(none)'}`,
+  );
+
+  const withForm = locacaoMenuDraft({
+    cite: ['Equipamento', 'ManutencaoEquipamento'],
+    entities: {
+      Equipamento: ['equipamentos'],
+      ManutencaoEquipamento: ['equipamentos'],
+    },
+  });
+  const present = validateP2Menu(normalizeMenuV2(withForm), locacao);
+  assert.equal(present.ok, true, present.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+  assert.equal(
+    present.issues.some(issue => issue.code === 'P2_MENU_ENTITY_NO_FORM' || issue.code === 'P2_MENU_ENTITY_UNMAPPED'),
+    false,
+    `form present still warned: ${present.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n')}`,
+  );
+
+  const onlyEquipamento = locacaoMenuDraft({
+    cite: ['Equipamento'],
+    entities: {
+      Equipamento: ['equipamentos'],
+      ManutencaoEquipamento: ['equipamentos'],
+    },
+  });
+  const partial = validateP2Menu(normalizeMenuV2(onlyEquipamento), locacao);
+  assert.equal(partial.ok, true);
+  assert.ok(
+    partial.issues.some(issue => (
+      issue.code === 'P2_MENU_ENTITY_NO_FORM'
+      && issue.message.includes('ManutencaoEquipamento')
+    )),
+    `citing only Equipamento should still warn for ManutencaoEquipamento, got ${partial.issues.map(issue => issue.code).join(',') || '(none)'}`,
+  );
+  assert.equal(
+    partial.issues.some(issue => issue.code === 'P2_MENU_ENTITY_NO_FORM' && issue.message.includes('Equipamento') && !issue.message.includes('Manutencao')),
+    false,
+  );
+});
+
+void test('gate errors on unknown meta.entities id and warns when the candidate is unmapped', () => {
+  const locacao = loadModuleSources(LOCACAO_FIXTURE);
+  const unknown = locacaoMenuDraft({
+    cite: ['Equipamento', 'ManutencaoEquipamento'],
+    entities: { Fantasma: ['equipamentos'] },
+  });
+  const unknownGate = validateP2Menu(normalizeMenuV2(unknown), locacao);
+  assert.equal(unknownGate.ok, false);
+  assert.ok(unknownGate.issues.some(issue => issue.severity === 'error' && issue.code === 'P2_MENU_ENTITY_UNKNOWN'));
+
+  const empty = locacaoMenuDraft({
+    cite: ['Equipamento', 'ManutencaoEquipamento'],
+    entities: { ManutencaoEquipamento: [] },
+  });
+  const emptyGate = validateP2Menu(normalizeMenuV2(empty), locacao);
+  assert.equal(emptyGate.ok, true);
+  assert.ok(emptyGate.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_ENTITY_UNMAPPED' && issue.message.includes('ManutencaoEquipamento')));
+});
+
+function locacaoMenuDraft(opts: {
+  cite?: string[];
+  entities?: Record<string, string[]>;
+} = {}): unknown {
+  const cite = opts.cite || [];
+  const formText = cite.length
+    ? `create and edit ${cite.join(' and ')}`
+    : 'look at the record';
+  const organisms: Array<{ kind: string; text: string }> = [
+    { kind: 'list', text: 'the equipment list' },
+    { kind: 'detail', text: 'the selected equipment' },
+    { kind: 'timeline', text: 'what the system did' },
+    { kind: 'summary', text: 'counts' },
+    { kind: 'highlights', text: 'stand-outs' },
+    { kind: 'alerts', text: 'alerts' },
+    { kind: 'inbox', text: 'inbox' },
+  ];
+  if (cite.length) {
+    organisms.push({ kind: 'form', text: formText });
+    organisms.push({ kind: 'actions', text: formText });
+  }
+  return {
+    tree: [
+      {
+        id: 'contratos',
+        kind: 'page',
+        label: 'Contracts',
+        organisms: [
+          { kind: 'list', text: 'rental contracts' },
+          { kind: 'form', text: 'create a ContratoLocacao' },
+          { kind: 'actions', text: 'register a return' },
+          { kind: 'inbox', text: 'inbox' },
+        ],
+      },
+      {
+        id: 'equipamentos',
+        kind: 'page',
+        label: 'Equipment',
+        organisms,
+      },
+    ],
+    authorities: {
+      'actor:atendente': ['contratos', 'equipamentos'],
+      'actor:gerente': ['equipamentos'],
+    },
+    meta: {
+      journeys: {
+        criarContratoLocacao: ['contratos'],
+        registrarDevolucao: ['contratos'],
+        consultarSituacaoEquipamentos: ['equipamentos'],
+      },
+      processes: {},
+      entities: opts.entities || {},
+    },
+  };
+}
 

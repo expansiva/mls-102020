@@ -1,5 +1,10 @@
 # agentPlannerL2
 
+## 2026-09-20 (p2_16)
+
+- `menu20` candidates `recordsMaintained` + `meta.entities` + warning when a
+  granted `writer: crud` record has no `form`/`actions` citing it.
+
 ## 2026-09-20 (p2_15)
 
 - Menu path is `l4/<mod>/pool/l2/<device>/menu.json` (`device` enum, today `web`).

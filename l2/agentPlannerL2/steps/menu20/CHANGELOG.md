@@ -1,5 +1,13 @@
 # menu20
 
+## 2026-09-20 (p2_16)
+
+- Candidates `recordsMaintained` (pure): per actor, `writer: crud` entities in that actor's grant.
+- `meta.entities` maps those entities to pages. Gate warning when a granted crud
+  record has no `form`/`actions` citing it (the model may nest it; analise3 decides).
+- Prompt: a record an actor maintains (crud, granted) has a place where that actor
+  creates and edits it; if it belongs inside another page, say which.
+
 ## 2026-09-20 (p2_15)
 
 - Writes `l4/<mod>/pool/l2/web/menu.json`. Schema `2026-09-20-p2-menu-v2.2`.

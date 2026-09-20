@@ -93,6 +93,7 @@
     "processes": {
       "applicationDecisionProcess": ["managed_applications", "recruiter_applications"],
       "closeFilledPositionProcess": ["recruiter_job_positions", "managed_positions"]
-    }
+    },
+    "entities": {}
   }
 }

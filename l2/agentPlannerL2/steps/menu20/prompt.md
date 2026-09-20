@@ -13,7 +13,7 @@ Call the tool `submitP2Menu` once. Do not write Markdown around the tool argumen
 - actors and grants with data-scope mode, anchor entity, disclosure
 - entities with family and displayField
 - processes: id, trigger, stages
-- **candidates**, labelled "candidates, not the answer": hubs = grant anchors; pages = grouping (entity, actor)
+- **candidates**, labelled "candidates, not the answer": hubs = grant anchors; pages = grouping (entity, actor); records this actor maintains (`writer: crud` in their grant)
 - **what this actor must see, beyond journeys**: human stages waiting for that actor, alert stages, mechanical effects their grant reaches, derived fields and `ddm` entities their grant reaches
 
 ## What to emit
@@ -26,6 +26,7 @@ Tool arguments:
 - `authorities`: array of `{ actorRef, nodes }` — node ids each actor sees, **in order** (first = that actor's entry). Granting a hub grants its children.
 - `meta.journeys`: array of `{ journeyId, pages }` — every l4 journey, pages where it happens (empty pages = a visible hole)
 - `meta.processes`: array of `{ processId, pages }` — every l4 process, pages where the person sees its cause or effect (empty pages = a visible hole)
+- `meta.entities`: array of `{ entityId, pages }` — every record an actor maintains, pages where that actor creates and edits it (empty pages = a visible hole)
 
 Do not emit `schemaVersion`, `moduleName`, `userLanguage`, `device`, `action` or `meta.removed`. Code fills those.
 
@@ -56,3 +57,4 @@ The actor's home is three derived organisms: `summary` / `highlights` (numbers a
 - Put each actor's entry first in that actor's `nodes`.
 - Candidates are evidence, not the cut. You may merge or nest. You may not invent an actor, an entity, a journey or a process.
 - What the system does on its own, the person must see it happened.
+- a record an actor maintains (crud, granted) has a place where that actor creates and edits it; if it belongs inside another page, say which

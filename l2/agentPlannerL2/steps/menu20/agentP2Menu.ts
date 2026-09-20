@@ -92,6 +92,7 @@ export function buildP2MenuHumanPrompt(input: {
     const flags = [
       entity.kind,
       entity.family,
+      entity.writer ? `writer=${entity.writer}` : '',
       entity.displayField ? `displayField=${entity.displayField}` : '',
     ].filter(Boolean);
     return `- ${entity.entityId} (${flags.join(', ')})`;
@@ -116,7 +117,11 @@ export function buildP2MenuHumanPrompt(input: {
     sources.userLanguage,
     '',
     '## Candidates (deterministic; candidates, not the answer)',
-    JSON.stringify({ hubs: candidates.hubs, pages: candidates.pages }, null, 2),
+    JSON.stringify({
+      hubs: candidates.hubs,
+      pages: candidates.pages,
+      recordsMaintained: candidates.recordsMaintained,
+    }, null, 2),
     '',
     '## What this actor must see, beyond journeys',
     JSON.stringify(candidates.beyondJourneys, null, 2),

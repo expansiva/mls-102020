@@ -72,6 +72,7 @@
     },
     "processes": {
       "aprovarPedidoAcimaDoLimite": ["pedidos_de_compra", "pedidos_e_indicadores"]
-    }
+    },
+    "entities": {}
   }
 }

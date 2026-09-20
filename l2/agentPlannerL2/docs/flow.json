@@ -54,7 +54,7 @@
       "doneAnchor": "menu20-done",
       "modelAlias": "reasoning",
       "artifact": "l4/{module}/pool/l2/web/menu.json",
-      "goal": "One LLM call. Menu v2.2 tree (hub/page/group, organisms) from all journeys, access grants, ontology, workflows and the deterministic candidates (as data, not the answer). Gate plus bounded repair. L2 stamps action vs the previous menu of the same device. Overwrite pool/l2/web/menu.json."
+      "goal": "One LLM call. Menu v2.2 tree (hub/page/group, organisms) from all journeys, access grants, ontology, workflows and the deterministic candidates (as data, not the answer), including records an actor maintains. Gate plus bounded repair. L2 stamps action vs the previous menu of the same device. Overwrite pool/l2/web/menu.json."
     }
   ]
 }
