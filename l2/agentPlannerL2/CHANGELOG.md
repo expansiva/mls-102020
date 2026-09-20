@@ -1,5 +1,30 @@
 # agentPlannerL2
 
+## 2026-09-19 (p2_12)
+
+- `menu.json` v2.1: `inbox`/`alerts`, `meta.processes` filled, candidates and gate for processes/derived.
+
+## 2026-09-19 (p2_11)
+
+- `menu.json` v2: one tree of hubs/pages/organisms, filterable by actor (`authorities`). Replaces v1.
+
+## 2026-09-19 (p2_10)
+
+- Last flow step (`menu20`) calls `markP2Complete` on approve: `pipeline.status = complete`
+  when every `flow.json` step is approved.
+- `entry10` records `webDir` after wiping `l2/<mod>/web/` files. Host/Studio have no
+  `removeDir`; `deleteFile` unlinks files only, so empty folders stay and the pipeline
+  line is `empty-left: deleteFile does not remove directories`.
+
+## 2026-09-18 (p2_09)
+
+- Flow v4: `entry10 → menu20`. Product is `l4/<mod>/pool/l2/menu.json`.
+- `entry10` groups identical pool/l2 messages, records `sourceMessages`, wipes
+  `l2/<mod>/pipeline/` and `l2/<mod>/web/`, never deletes the pool.
+- `menu20`: one reasoning call; candidates from `workspaces20/contracts.ts` as
+  data. Gate plus bounded repair. `workflows: []`.
+- Parked (code stays): `workspaces20`, `contracts30`, `shared40`, `requests50`.
+
 ## 2026-09-18 (p2_05)
 
 - `requests50`: one `pool/l1` message per BFF call. Body names the journey step, the

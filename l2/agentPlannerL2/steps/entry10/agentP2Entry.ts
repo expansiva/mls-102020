@@ -2,7 +2,7 @@
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
-  P2_STEP_IDS,
+  P2_FLOW_STEP_IDS,
   buildP2PlannedSteps,
   executeP2Entry,
   parseP2StepPrompt,
@@ -108,8 +108,9 @@ function doneAnchor(
       thread: result.pipeline.thread,
       round: result.pipeline.round,
       messageFile: result.pipeline.messageFile,
+      sourceMessages: result.pipeline.sourceMessages,
       completedStep: 'entry10',
-      nextStep: P2_STEP_IDS[1],
+      nextStep: P2_FLOW_STEP_IDS[1],
     }),
     planning: { planId: 'entry10-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);

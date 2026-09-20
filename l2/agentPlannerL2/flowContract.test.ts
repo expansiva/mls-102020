@@ -9,9 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { P2_STEP_HOOKS } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import {
   P2_FLOW_ID,
+  P2_FLOW_LAST_STEP_ID,
+  P2_FLOW_STEP_IDS,
   P2_FLOW_VERSION,
+  P2_PARKED_STEP_IDS,
   P2_STEP_DEPENDS_ON,
-  P2_STEP_IDS,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -37,9 +39,7 @@ interface FlowDoc {
 
 const EXPECTED_ARTIFACTS: Record<string, string> = {
   pipeline: 'l2/{module}/pipeline/pipeline.json',
-  contracts: 'l2/{module}/web/contracts/{workspace}.defs.ts',
-  shared: 'l2/{module}/web/shared/{workspace}.defs.ts',
-  poolL1: 'l4/{module}/pool/l1/{stamp}_{thread}_{round}.json',
+  menu: 'l4/{module}/pool/l2/menu.json',
 };
 
 const WAITING_STEPS: readonly string[] = [];
@@ -48,12 +48,12 @@ function loadFlow(): FlowDoc {
   return JSON.parse(readFileSync(FLOW_PATH, 'utf8')) as FlowDoc;
 }
 
-void test('flow has exactly five steps in declared order with declared dependencies', () => {
+void test('flow has exactly two steps in declared order with declared dependencies', () => {
   const flow = loadFlow();
   assert.equal(flow.flowId, P2_FLOW_ID);
   assert.equal(flow.schemaVersion, P2_FLOW_VERSION);
-  assert.equal(flow.steps.length, 5);
-  assert.deepEqual(flow.steps.map(step => step.id), [...P2_STEP_IDS]);
+  assert.equal(flow.steps.length, 2);
+  assert.deepEqual(flow.steps.map(step => step.id), [...P2_FLOW_STEP_IDS]);
 
   for (const step of flow.steps) {
     assert.deepEqual(step.dependsOn, [...P2_STEP_DEPENDS_ON[step.id as keyof typeof P2_STEP_DEPENDS_ON]]);
@@ -66,29 +66,15 @@ void test('flow has exactly five steps in declared order with declared dependenc
   assert.equal(entry?.modelAlias, undefined);
   assert.equal(entry?.status, undefined);
 
-  const workspaces = flow.steps.find(step => step.id === 'workspaces20');
-  assert.equal(workspaces?.kind, 'agent-checkpoint');
-  assert.equal(workspaces?.modelAlias, 'reasoning');
-  assert.equal(workspaces?.status, undefined);
-  assert.equal(workspaces?.artifact, 'l2/{module}/pipeline/workspaces20-draft.json');
+  const menu = flow.steps.find(step => step.id === 'menu20');
+  assert.equal(menu?.kind, 'agent-checkpoint');
+  assert.equal(menu?.modelAlias, 'reasoning');
+  assert.equal(menu?.status, undefined);
+  assert.equal(menu?.artifact, 'l4/{module}/pool/l2/menu.json');
 
-  const contracts = flow.steps.find(step => step.id === 'contracts30');
-  assert.equal(contracts?.kind, 'agent-checkpoint');
-  assert.equal(contracts?.modelAlias, 'reasoning');
-  assert.equal(contracts?.status, undefined);
-  assert.equal(contracts?.artifact, 'l2/{module}/web/contracts/{workspace}.defs.ts');
-
-  const shared = flow.steps.find(step => step.id === 'shared40');
-  assert.equal(shared?.kind, 'agent-checkpoint');
-  assert.equal(shared?.modelAlias, 'reasoning');
-  assert.equal(shared?.status, undefined);
-  assert.equal(shared?.artifact, 'l2/{module}/web/shared/{workspace}.defs.ts');
-
-  const requests = flow.steps.find(step => step.id === 'requests50');
-  assert.equal(requests?.kind, 'deterministic');
-  assert.equal(requests?.modelAlias, undefined);
-  assert.equal(requests?.status, undefined);
-  assert.equal(requests?.artifact, 'l4/{module}/pool/l1/{stamp}_{thread}_{round}.json');
+  for (const id of P2_PARKED_STEP_IDS) {
+    assert.equal(flow.steps.some(step => step.id === id), false, `${id} must stay out of flow.json v4`);
+  }
 
   for (const id of WAITING_STEPS) {
     const step = flow.steps.find(item => item.id === id);
@@ -103,7 +89,7 @@ void test('flow artifacts match the l2 table', () => {
 
 void test('each step folder that exists implements beforePromptStep and is on the dispatch table', async () => {
   if (!existsSync(STEPS_ROOT)) return;
-  for (const stepId of P2_STEP_IDS) {
+  for (const stepId of P2_FLOW_STEP_IDS) {
     const folder = path.join(STEPS_ROOT, stepId);
     if (!existsSync(folder)) continue;
     const agentFiles = readdirSync(folder).filter(name => /^agentP2\w+\.ts$/.test(name) && !name.endsWith('.test.ts'));
@@ -118,5 +104,24 @@ void test('each step folder that exists implements beforePromptStep and is on th
 void test('waiting steps have no folder yet', () => {
   for (const id of WAITING_STEPS) {
     assert.equal(existsSync(path.join(STEPS_ROOT, id)), false, `${id} folder must wait for its spec`);
+  }
+});
+
+function agentSourceOf(stepId: string): string {
+  const folder = path.join(STEPS_ROOT, stepId);
+  const agentFiles = readdirSync(folder).filter(name => /^agentP2\w+\.ts$/.test(name) && !name.endsWith('.test.ts'));
+  assert.ok(agentFiles.length > 0, `${stepId} has no agentP2*.ts`);
+  return readFileSync(path.join(folder, agentFiles[0]), 'utf8');
+}
+
+void test('the last flow.json step is who writes pipeline.status complete', () => {
+  const flow = loadFlow();
+  const last = flow.steps[flow.steps.length - 1];
+  assert.ok(last, 'flow.json has no steps');
+  assert.equal(last.id, P2_FLOW_LAST_STEP_ID);
+  assert.equal(last.id, P2_FLOW_STEP_IDS[P2_FLOW_STEP_IDS.length - 1]);
+  assert.match(agentSourceOf(last.id), /markP2Complete/, `${last.id} afterPrompt must close the pipeline`);
+  for (const step of flow.steps.slice(0, -1)) {
+    assert.doesNotMatch(agentSourceOf(step.id), /markP2Complete/, `${step.id} must not close the pipeline`);
   }
 });

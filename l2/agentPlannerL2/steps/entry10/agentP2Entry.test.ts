@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102020_/l2/agentPlannerL2/agentPlannerL2.js';
-import { P2_STEP_IDS, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+import { P2_FLOW_STEP_IDS, P2_WEB_DIR_EMPTY_LEFT, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import { P2_STEP_HOOKS } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import { beforeP2EntryPromptStep } from '/_102020_/l2/agentPlannerL2/steps/entry10/agentP2Entry.js';
 
@@ -56,6 +56,10 @@ function installHost(): Host {
       localStor: {
         setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
         listFolder: () => [],
+        deleteFile: (file: Stored) => {
+          const stored = host.files[keyOf(file)];
+          if (stored) stored.status = 'deleted';
+        },
       },
     },
   };
@@ -138,13 +142,13 @@ void test('hand invocation and L4 step write the same pipeline.json', async () =
   const hand = await agent.beforePromptImplicit!(agentMeta(), handCtx, MODULE);
   assert.equal(hand[0]?.type, 'add-message-ai');
   const added = hand.filter((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
-  assert.deepEqual(added.map(intent => intent.step.planning?.planId), [...P2_STEP_IDS]);
+  assert.deepEqual(added.map(intent => intent.step.planning?.planId), [...P2_FLOW_STEP_IDS]);
 
   const entryStep = added[0].step as mls.msg.AIAgentStep;
   entryStep.stepId = 10;
   const afterHand = await beforeP2EntryPromptStep(agentMeta(), handCtx, handCtx.task!.iaCompressed!.nextSteps[0] as mls.msg.AIAgentStep, entryStep, 1);
   assert.ok(afterHand.some(intent => intent.type === 'update-status'));
-  const writtenHand = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { thread: string; round: number; messageFile: string };
+  const writtenHand = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { thread: string; round: number; messageFile: string; status: string; webDir: string };
 
   delete host.files[keyOf(p2PipelineFile(MODULE))];
   seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 2);
@@ -164,9 +168,39 @@ void test('hand invocation and L4 step write the same pipeline.json', async () =
   const l4Ctx = contextWith('from L4', [l4Step]);
   const fromL4 = await agent.beforePromptStep!(agentMeta(), l4Ctx, l4Ctx.task!.iaCompressed!.nextSteps[0] as mls.msg.AIAgentStep, l4Step, 1);
   assert.ok(fromL4.some(intent => intent.type === 'update-status'));
-  const writtenL4 = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { thread: string; round: number; messageFile: string };
+  const writtenL4 = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { thread: string; round: number; messageFile: string; status: string; webDir: string };
   assert.equal(writtenL4.thread, writtenHand.thread);
   assert.equal(writtenL4.round, writtenHand.round);
   assert.equal(writtenL4.messageFile, writtenHand.messageFile);
   assert.equal(writtenL4.thread, 'mensalidadesAcademia-20260918103000');
+  assert.equal(writtenHand.status, 'inProgress');
+  assert.equal(writtenL4.status, 'inProgress');
+  assert.equal(writtenHand.webDir, P2_WEB_DIR_EMPTY_LEFT);
+  assert.equal(writtenL4.webDir, P2_WEB_DIR_EMPTY_LEFT);
+});
+
+void test('entry10 leaves empty web/ folders as a recorded pipeline line', async () => {
+  const host = installHost();
+  seedReady(host);
+  seed(host, `${MODULE}/web/contracts`, 'stale', 'old\n', 2);
+  seed(host, `${MODULE}/web/shared`, 'stale', 'old\n', 2);
+  const ctx = contextWith(`@@agentPlannerL2 ${MODULE}`);
+  const step: mls.msg.AIAgentStep = {
+    type: 'agent',
+    stepId: 10,
+    interaction: null,
+    stepTitle: 'Entry',
+    status: 'waiting_human_input',
+    nextSteps: [],
+    agentName: 'agentPlannerL2',
+    prompt: JSON.stringify({ planId: 'entry10', moduleName: MODULE }),
+    rags: [],
+    planning: { planId: 'entry10', dependsOn: [], executionMode: 'sequential', executionHost: 'client' },
+  };
+  await beforeP2EntryPromptStep(agentMeta(), ctx, ctx.task!.iaCompressed!.nextSteps[0] as mls.msg.AIAgentStep, step, 1);
+  const pipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { webDir: string; status: string };
+  assert.equal(pipeline.webDir, P2_WEB_DIR_EMPTY_LEFT);
+  assert.equal(pipeline.status, 'inProgress');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'stale', extension: '.json' })].status, 'deleted');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/shared`, shortName: 'stale', extension: '.json' })].status, 'deleted');
 });

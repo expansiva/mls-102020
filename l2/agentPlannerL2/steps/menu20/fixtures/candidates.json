@@ -1,0 +1,111 @@
+{
+  "hubs": [
+    {
+      "entityRef": "Aluno",
+      "actorRefs": [
+        "aluno"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "candidateId": "alunoMatriculaCatalogue",
+      "entityRef": "Matricula",
+      "actorRef": "aluno",
+      "kind": "catalogue",
+      "journeyRefs": [
+        "cancelarPropriaMatricula"
+      ],
+      "stepRefs": [
+        "localizarPropriaMatricula",
+        "inspecionarPropriaMatricula",
+        "cancelarMatricula"
+      ]
+    },
+    {
+      "candidateId": "gerenciaMensalidadeCommand",
+      "entityRef": "Mensalidade",
+      "actorRef": "gerencia",
+      "kind": "command",
+      "journeyRefs": [
+        "gerarMensalidadesDoMes"
+      ],
+      "stepRefs": [
+        "criarMensalidades"
+      ]
+    },
+    {
+      "candidateId": "gerenciaMensalidadeHub",
+      "entityRef": "Mensalidade",
+      "actorRef": "gerencia",
+      "kind": "hub",
+      "journeyRefs": [
+        "acompanharIndicadoresAcademia"
+      ],
+      "stepRefs": [
+        "inspecionarIndicadores"
+      ]
+    },
+    {
+      "candidateId": "recepcaoAlunoCatalogue",
+      "entityRef": "Aluno",
+      "actorRef": "recepcao",
+      "kind": "catalogue",
+      "journeyRefs": [
+        "matricularAluno"
+      ],
+      "stepRefs": [
+        "localizarAluno"
+      ]
+    },
+    {
+      "candidateId": "recepcaoMatriculaCatalogue",
+      "entityRef": "Matricula",
+      "actorRef": "recepcao",
+      "kind": "catalogue",
+      "journeyRefs": [
+        "matricularAluno"
+      ],
+      "stepRefs": [
+        "criarMatricula"
+      ]
+    },
+    {
+      "candidateId": "recepcaoMensalidadeCatalogue",
+      "entityRef": "Mensalidade",
+      "actorRef": "recepcao",
+      "kind": "catalogue",
+      "journeyRefs": [
+        "registrarPagamentoMensalidade"
+      ],
+      "stepRefs": [
+        "localizarMensalidade",
+        "inspecionarMensalidade"
+      ]
+    },
+    {
+      "candidateId": "recepcaoPagamentoCatalogue",
+      "entityRef": "Pagamento",
+      "actorRef": "recepcao",
+      "kind": "catalogue",
+      "journeyRefs": [
+        "registrarPagamentoMensalidade"
+      ],
+      "stepRefs": [
+        "registrarPagamento"
+      ]
+    },
+    {
+      "candidateId": "recepcaoPlanoCatalogue",
+      "entityRef": "Plano",
+      "actorRef": "recepcao",
+      "kind": "catalogue",
+      "journeyRefs": [
+        "matricularAluno"
+      ],
+      "stepRefs": [
+        "localizarPlano"
+      ]
+    }
+  ]
+}

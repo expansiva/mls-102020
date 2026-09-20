@@ -22,6 +22,7 @@ export interface P2JourneyView {
   journeyId: string;
   actorRef: string;
   title: string;
+  goal?: string;
   steps: P2JourneyStepView[];
 }
 
@@ -276,6 +277,7 @@ function parseJourney(value: unknown): P2JourneyView {
     journeyId: memberId(text(source.journeyId)),
     actorRef: memberId(text(business.actorRef)),
     title: text(business.title),
+    goal: text(business.goal),
     steps: list(business.steps).map(item => {
       const step = record(item);
       return {
