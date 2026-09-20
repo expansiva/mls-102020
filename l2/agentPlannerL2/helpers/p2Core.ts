@@ -19,6 +19,11 @@ export const P2_FLOW_VERSION = '2026-09-18-p2-flow-v4' as const;
 export const P2_AGENT_NAME = 'agentPlannerL2' as const;
 export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v2' as const;
 
+/** Devices that get a menu folder. Grows by spec, not by prompt. */
+export const P2_MENU_DEVICES = ['web'] as const;
+export type P2MenuDevice = typeof P2_MENU_DEVICES[number];
+export const P2_MENU_DEVICE: P2MenuDevice = 'web';
+
 /** Steps the current flow.json actually runs. */
 export const P2_FLOW_STEP_IDS = ['entry10', 'menu20'] as const;
 
@@ -93,6 +98,10 @@ export interface P2PipelineState {
   webDir: P2WebDir;
   /** menu20: gate warnings (journey with no page). Written on approve; omitted before. */
   warnings?: string[];
+  /** menu20: device the menu was written for. Written on approve; omitted before. */
+  device?: P2MenuDevice;
+  /** menu20: node counts by action. Written on approve. */
+  actionCounts?: { new: number; change: number; keep: number; remove: number };
   updatedAt: string;
 }
 
@@ -269,16 +278,33 @@ export function p2DifferentRequestsRefusal(count: number): string {
   return `pool/l2 has ${count} different requests; resolve with the l4 supervisor`;
 }
 
-/** `l4/<module>/pool/l2/menu.json` — temporary; overwritten each run. Not a pool message. */
-export function p2MenuFile(moduleName: string): Ns5FileInfo {
+/** `l4/<module>/pool/l2/<device>/menu.json` — overwritten each run. Not a pool message. */
+export function p2MenuFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
   const base = moduleFile(moduleName);
   return {
     project: base.project,
     level: 4,
-    folder: `${base.folder}/pool/l2`,
+    folder: `${base.folder}/pool/l2/${device}`,
     shortName: 'menu',
     extension: '.json',
   };
+}
+
+export function isP2MenuDevice(value: string): value is P2MenuDevice {
+  return (P2_MENU_DEVICES as readonly string[]).includes(value);
+}
+
+/**
+ * What is already a screen in l2 for this device — the future source of `action`.
+ * Materialization will write a manifesto per device (`l2/<mod>/web/<device>/menu.built.json`,
+ * or the name that spec decides). Today that file does not exist, so this reader
+ * returns null and every node is stamped `new`.
+ */
+export function readReadyL2Manifest(
+  _moduleName: string,
+  _device: P2MenuDevice = P2_MENU_DEVICE,
+): null {
+  return null;
 }
 
 function matchPoolFile(file: Ns5FileInfo, wanted: string): boolean {

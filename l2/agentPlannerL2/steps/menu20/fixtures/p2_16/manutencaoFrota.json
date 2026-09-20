@@ -1,0 +1,437 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "manutencaoFrota",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "area_motorista",
+      "kind": "hub",
+      "label": "Minha operação",
+      "context": "Driver",
+      "text": "Seu cadastro de motorista já fica selecionado. Consulte os veículos atribuídos e registre os abastecimentos.",
+      "children": [
+        {
+          "id": "meus_veiculos",
+          "kind": "page",
+          "label": "Meus veículos",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Resumo dos veículos atribuídos, quilometragem e abastecimentos recentes."
+            },
+            {
+              "kind": "highlights",
+              "text": "Destaques dos veículos em uso, incluindo preventiva por quilometragem vencida."
+            },
+            {
+              "kind": "alerts",
+              "text": "Avisos de preventiva por quilometragem vencida nos seus veículos atribuídos."
+            },
+            {
+              "kind": "inbox",
+              "text": "Pendências de operação relacionadas aos seus veículos."
+            },
+            {
+              "kind": "list",
+              "text": "Veículos atribuídos a você e histórico de abastecimentos de cada veículo."
+            },
+            {
+              "kind": "detail",
+              "text": "Dados operacionais, quilometragem, situação de manutenção e preventiva do veículo selecionado."
+            },
+            {
+              "kind": "form",
+              "text": "Cadastre ou edite os dados permitidos do seu veículo e registre data, quilometragem e dados do abastecimento."
+            },
+            {
+              "kind": "actions",
+              "text": "Consultar veículo atribuído, atualizar dados permitidos do veículo e registrar abastecimento."
+            },
+            {
+              "kind": "timeline",
+              "text": "Histórico do veículo e dos abastecimentos registrados, incluindo atualizações automáticas de quilometragem."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "painel_gestor",
+      "kind": "page",
+      "label": "Painel da frota",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Resumo da frota, ordens em aberto, preventivas próximas e preventivas vencidas."
+        },
+        {
+          "kind": "highlights",
+          "text": "Veículos com preventiva vencida, ordens concluídas e itens que exigem atenção."
+        },
+        {
+          "kind": "alerts",
+          "text": "Alertas de preventiva vencida por quilometragem e por data."
+        },
+        {
+          "kind": "inbox",
+          "text": "Itens de manutenção e cadastros da frota que exigem acompanhamento."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "veiculos_frota",
+      "kind": "page",
+      "label": "Veículos e atribuições",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Lista de veículos da frota, motoristas e atribuições vigentes."
+        },
+        {
+          "kind": "detail",
+          "text": "Dados do veículo selecionado, motorista atribuído, quilometragem e situação da preventiva."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre e edite veículos da frota e crie, altere ou encerre atribuições de veículo a motorista."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastrar, editar e consultar veículos; criar, editar e excluir atribuições de veículos."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico de alterações do veículo, atribuições e atualizações automáticas de situação preventiva."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "manutencao_preventiva",
+      "kind": "page",
+      "label": "Manutenção preventiva",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Planos com próxima quilometragem, próxima data e preventivas vencidas."
+        },
+        {
+          "kind": "alerts",
+          "text": "Preventivas vencidas que precisam de ordem de manutenção."
+        },
+        {
+          "kind": "list",
+          "text": "Planos preventivos da frota e veículos cobertos por cada plano."
+        },
+        {
+          "kind": "detail",
+          "text": "Periodicidade do plano, próxima quilometragem preventiva, próxima data preventiva e condição de vencimento."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre e atualize o plano preventivo para o veículo selecionado."
+        },
+        {
+          "kind": "actions",
+          "text": "Consultar veículo e plano preventivo, cadastrar plano e abrir ordem de manutenção para preventiva vencida."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico do plano, incluindo recálculos automáticos das próximas preventivas."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "ordens_manutencao",
+      "kind": "page",
+      "label": "Ordens de manutenção",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Ordens abertas, serviços concluídos e veículos com manutenção em andamento."
+        },
+        {
+          "kind": "list",
+          "text": "Ordens de manutenção por veículo, defeito, preventiva e situação."
+        },
+        {
+          "kind": "detail",
+          "text": "Descrição do defeito ou da preventiva, veículo atendido, execução do serviço e conclusão da ordem."
+        },
+        {
+          "kind": "form",
+          "text": "Abra uma ordem por defeito ou preventiva e registre os dados finais do serviço executado."
+        },
+        {
+          "kind": "actions",
+          "text": "Consultar veículo e ordem, abrir ordem de manutenção e atualizar os dados da ordem."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico da ordem, incluindo registro de conclusão da manutenção."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "cadastros_frota",
+      "kind": "page",
+      "label": "Cadastros da frota",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Motoristas e oficinas cadastrados para operação da frota."
+        },
+        {
+          "kind": "detail",
+          "text": "Dados do motorista ou da oficina selecionada."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre e edite motoristas e oficinas."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastrar, editar, consultar e excluir motoristas e oficinas."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:motorista": [
+      "area_motorista"
+    ],
+    "actor:gestor": [
+      "painel_gestor",
+      "veiculos_frota",
+      "manutencao_preventiva",
+      "ordens_manutencao",
+      "cadastros_frota"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "registrarAbastecimento": [
+        "meus_veiculos"
+      ],
+      "consultarVeiculosAtribuidos": [
+        "meus_veiculos"
+      ],
+      "cadastrarPlanoPreventivo": [
+        "manutencao_preventiva"
+      ],
+      "abrirOrdemPorDefeito": [
+        "ordens_manutencao"
+      ],
+      "tratarAlertaPreventivaVencida": [
+        "manutencao_preventiva",
+        "ordens_manutencao"
+      ],
+      "atualizarOrdemManutencao": [
+        "ordens_manutencao"
+      ]
+    },
+    "processes": {},
+    "entities": {
+      "Driver": [
+        "cadastros_frota"
+      ],
+      "Vehicle": [
+        "meus_veiculos",
+        "veiculos_frota"
+      ],
+      "Workshop": [
+        "cadastros_frota"
+      ],
+      "VehicleAssignment": [
+        "veiculos_frota"
+      ]
+    },
+    "removed": [
+      {
+        "id": "inicio",
+        "kind": "page",
+        "label": "Início",
+        "organisms": [
+          {
+            "kind": "highlights",
+            "text": "Vejo as preventivas vencidas, as próximas datas e quilometragens e as manutenções já concluídas na frota."
+          },
+          {
+            "kind": "alerts",
+            "text": "Acompanho os prazos de preventiva vencida por data ou por quilometragem."
+          },
+          {
+            "kind": "inbox",
+            "text": "Vejo o que espera minha ação: preventiva vencida para abrir ordem e ordens para atualizar."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "veiculos",
+        "kind": "page",
+        "label": "Veículos",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Localizo os veículos da frota."
+          },
+          {
+            "kind": "detail",
+            "text": "Consulto o veículo e vejo se a preventiva por quilometragem está vencida."
+          },
+          {
+            "kind": "timeline",
+            "text": "Vejo o que o sistema registrou sozinho neste veículo."
+          },
+          {
+            "kind": "actions",
+            "text": "Cadastro um plano preventivo ou abro uma ordem de manutenção por defeito."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "planos_preventivos",
+        "kind": "page",
+        "label": "Planos preventivos",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Localizo os planos de manutenção preventiva da frota."
+          },
+          {
+            "kind": "detail",
+            "text": "Vejo a próxima quilometragem, a próxima data e se a preventiva está vencida."
+          },
+          {
+            "kind": "form",
+            "text": "Defino a periodicidade de manutenção preventiva do veículo."
+          },
+          {
+            "kind": "timeline",
+            "text": "Vejo o que o sistema calculou neste plano."
+          },
+          {
+            "kind": "actions",
+            "text": "Abro uma ordem de manutenção preventiva para o veículo com alerta vencido."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "meu_perfil",
+        "kind": "hub",
+        "label": "Meu perfil",
+        "context": "Driver",
+        "text": "O sistema já seleciona o seu cadastro de motorista. Daqui você consulta os veículos atribuídos a você e registra os abastecimentos.",
+        "children": [
+          {
+            "id": "resumo",
+            "kind": "page",
+            "label": "Início",
+            "organisms": [
+              {
+                "kind": "highlights",
+                "text": "Vejo se algum veículo atribuído está com a preventiva por quilometragem vencida."
+              },
+              {
+                "kind": "alerts",
+                "text": "Acompanho o alerta de preventiva vencida nos meus veículos."
+              },
+              {
+                "kind": "inbox",
+                "text": "Vejo o que espera minha ação nos veículos que dirijo."
+              }
+            ],
+            "action": "remove"
+          },
+          {
+            "id": "veiculos_atribuidos",
+            "kind": "page",
+            "label": "Meus veículos",
+            "organisms": [
+              {
+                "kind": "list",
+                "text": "Vejo os veículos que estão atribuídos a mim."
+              },
+              {
+                "kind": "detail",
+                "text": "Consulto as informações de operação e se a preventiva por quilometragem está vencida."
+              },
+              {
+                "kind": "form",
+                "text": "Registro o abastecimento do veículo que estou dirigindo."
+              },
+              {
+                "kind": "timeline",
+                "text": "Vejo o que o sistema registrou neste veículo."
+              },
+              {
+                "kind": "actions",
+                "text": "Registro um abastecimento."
+              }
+            ],
+            "action": "remove"
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "resumo",
+        "kind": "page",
+        "label": "Início",
+        "organisms": [
+          {
+            "kind": "highlights",
+            "text": "Vejo se algum veículo atribuído está com a preventiva por quilometragem vencida."
+          },
+          {
+            "kind": "alerts",
+            "text": "Acompanho o alerta de preventiva vencida nos meus veículos."
+          },
+          {
+            "kind": "inbox",
+            "text": "Vejo o que espera minha ação nos veículos que dirijo."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "veiculos_atribuidos",
+        "kind": "page",
+        "label": "Meus veículos",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Vejo os veículos que estão atribuídos a mim."
+          },
+          {
+            "kind": "detail",
+            "text": "Consulto as informações de operação e se a preventiva por quilometragem está vencida."
+          },
+          {
+            "kind": "form",
+            "text": "Registro o abastecimento do veículo que estou dirigindo."
+          },
+          {
+            "kind": "timeline",
+            "text": "Vejo o que o sistema registrou neste veículo."
+          },
+          {
+            "kind": "actions",
+            "text": "Registro um abastecimento."
+          }
+        ],
+        "action": "remove"
+      }
+    ]
+  }
+}

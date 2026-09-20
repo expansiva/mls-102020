@@ -1,0 +1,252 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "inscricaoEvento",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "inicio_organizador",
+      "kind": "page",
+      "label": "Visão geral",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Veja um resumo dos eventos publicados, inscrições e ocupação."
+        },
+        {
+          "kind": "highlights",
+          "text": "Veja os eventos com maior ocupação e as inscrições em destaque."
+        },
+        {
+          "kind": "alerts",
+          "text": "Veja avisos sobre eventos e capacidade de vagas."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja itens que aguardam sua atenção."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "eventos",
+      "kind": "page",
+      "label": "Eventos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize e selecione eventos."
+        },
+        {
+          "kind": "detail",
+          "text": "Consulte informações do evento, incluindo vagas ocupadas e vagas disponíveis."
+        },
+        {
+          "kind": "form",
+          "text": "Crie e edite as informações e a capacidade de um evento."
+        },
+        {
+          "kind": "actions",
+          "text": "Crie, edite e publique eventos."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "evento_selecionado",
+      "kind": "hub",
+      "label": "Acompanhar evento",
+      "context": "Evento",
+      "text": "Escolha um evento para acompanhar sua ocupação e suas inscrições.",
+      "children": [
+        {
+          "id": "inscricoes_do_evento",
+          "kind": "page",
+          "label": "Inscrições",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Veja a ocupação do evento e o total de inscrições."
+            },
+            {
+              "kind": "list",
+              "text": "Consulte os inscritos e suas inscrições neste evento."
+            },
+            {
+              "kind": "detail",
+              "text": "Veja os dados disponíveis de cada inscrição e participante."
+            },
+            {
+              "kind": "actions",
+              "text": "Baixe a lista de inscrições em CSV."
+            },
+            {
+              "kind": "timeline",
+              "text": "Acompanhe cancelamentos e promoções automáticas da lista de espera."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "participante",
+      "kind": "hub",
+      "label": "Minha participação",
+      "context": "Participante",
+      "text": "Sua participação já está selecionada. Consulte eventos e gerencie suas inscrições.",
+      "children": [
+        {
+          "id": "inicio_publico",
+          "kind": "page",
+          "label": "Visão geral",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Veja um resumo das suas inscrições."
+            },
+            {
+              "kind": "highlights",
+              "text": "Veja suas próximas participações e inscrições em destaque."
+            },
+            {
+              "kind": "alerts",
+              "text": "Veja avisos sobre suas inscrições."
+            },
+            {
+              "kind": "inbox",
+              "text": "Veja itens que aguardam sua ação."
+            }
+          ],
+          "action": "change"
+        },
+        {
+          "id": "eventos_publicos",
+          "kind": "page",
+          "label": "Eventos disponíveis",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Encontre eventos publicados disponíveis para inscrição."
+            },
+            {
+              "kind": "detail",
+              "text": "Consulte informações, capacidade e disponibilidade do evento."
+            },
+            {
+              "kind": "actions",
+              "text": "Faça sua inscrição em um evento publicado."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "minhas_inscricoes",
+          "kind": "page",
+          "label": "Minhas inscrições",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Localize suas inscrições."
+            },
+            {
+              "kind": "detail",
+              "text": "Consulte o status e os dados de cada inscrição."
+            },
+            {
+              "kind": "actions",
+              "text": "Cancele suas inscrições quando necessário."
+            },
+            {
+              "kind": "timeline",
+              "text": "Acompanhe cancelamentos e promoções automáticas da lista de espera que afetam suas inscrições."
+            }
+          ],
+          "action": "change"
+        }
+      ],
+      "action": "change"
+    }
+  ],
+  "authorities": {
+    "actor:organizador": [
+      "inicio_organizador",
+      "eventos",
+      "evento_selecionado"
+    ],
+    "actor:publico": [
+      "participante"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarEpublicarEvento": [
+        "eventos"
+      ],
+      "inscreverSeEmEvento": [
+        "eventos_publicos"
+      ],
+      "cancelarInscricao": [
+        "minhas_inscricoes"
+      ],
+      "acompanharEexportarInscricoes": [
+        "eventos",
+        "inscricoes_do_evento"
+      ]
+    },
+    "processes": {
+      "promoverListaEsperaAposCancelamento": [
+        "inscricoes_do_evento",
+        "minhas_inscricoes"
+      ]
+    },
+    "entities": {},
+    "removed": [
+      {
+        "id": "inscricoes",
+        "kind": "page",
+        "label": "Inscrições",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Vejo os inscritos, os participantes e os e-mails de cada evento."
+          },
+          {
+            "kind": "detail",
+            "text": "Consulto os dados da inscrição e do participante."
+          },
+          {
+            "kind": "actions",
+            "text": "Baixo a lista de inscrições em CSV."
+          },
+          {
+            "kind": "timeline",
+            "text": "Vejo quando o sistema promoveu alguém da lista de espera depois de um cancelamento."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "eventos_publicados",
+        "kind": "page",
+        "label": "Eventos",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Localizo os eventos publicados."
+          },
+          {
+            "kind": "detail",
+            "text": "Consulto as informações do evento publicado."
+          },
+          {
+            "kind": "form",
+            "text": "Registro a minha inscrição no evento."
+          }
+        ],
+        "action": "remove"
+      }
+    ]
+  }
+}

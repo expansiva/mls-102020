@@ -10,6 +10,7 @@ import {
 } from '/_102035_/l2/solution/fs.js';
 import type { Ns5AccessArtifact, Ns5WorkflowsArtifact } from '/_102035_/l2/solution/types.js';
 import {
+  P2_MENU_DEVICE,
   createP2RetryStep,
   markP2Complete,
   markP2Step,
@@ -34,6 +35,7 @@ import {
 import {
   buildP2MenuFile,
   buildP2MenuTool,
+  menuActionCounts,
   menuCandidates,
   normalizeMenuV2,
   parseP2Grants,
@@ -87,6 +89,7 @@ export function buildP2MenuHumanPrompt(input: {
     const flags = [
       entity.kind,
       entity.family,
+      entity.writer ? `writer=${entity.writer}` : '',
       entity.displayField ? `displayField=${entity.displayField}` : '',
     ].filter(Boolean);
     return `- ${entity.entityId} (${flags.join(', ')})`;
@@ -111,7 +114,11 @@ export function buildP2MenuHumanPrompt(input: {
     sources.userLanguage,
     '',
     '## Candidates (deterministic; candidates, not the answer)',
-    JSON.stringify({ hubs: candidates.hubs, pages: candidates.pages }, null, 2),
+    JSON.stringify({
+      hubs: candidates.hubs,
+      pages: candidates.pages,
+      recordsKept: candidates.recordsKept,
+    }, null, 2),
     '',
     '## What this actor must see, beyond journeys',
     JSON.stringify(candidates.beyondJourneys, null, 2),
@@ -265,16 +272,22 @@ export async function afterP2MenuPromptStep(
     const artifact = buildP2MenuFile({
       moduleName,
       userLanguage: menuSources.sources.userLanguage,
+      device: P2_MENU_DEVICE,
       draft,
     });
-    const menuPath = await writeJson(p2MenuFile(moduleName), artifact);
+    const menuPath = await writeJson(p2MenuFile(moduleName, P2_MENU_DEVICE), artifact);
     const warnings = formatP2MenuWarnings(gate.issues);
     pipeline = await writeStepState(pipeline, {
       status: 'approved',
       updatedAt: new Date().toISOString(),
       artifactPaths: [menuPath, draftPath],
     });
-    pipeline = { ...pipeline, warnings };
+    pipeline = {
+      ...pipeline,
+      warnings,
+      device: P2_MENU_DEVICE,
+      actionCounts: menuActionCounts(artifact),
+    };
     pipeline = markP2Complete(pipeline);
     await writeJson(p2PipelineFile(pipeline.moduleName), pipeline);
     const warningNote = warnings.length ? ` (${warnings.length} warning(s))` : '';

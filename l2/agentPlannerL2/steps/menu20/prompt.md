@@ -13,7 +13,7 @@ Call the tool `submitP2Menu` once. Do not write Markdown around the tool argumen
 - actors and grants with data-scope mode, anchor entity, disclosure
 - entities with family and displayField
 - processes: id, trigger, stages
-- **candidates**, labelled "candidates, not the answer": hubs = grant anchors; pages = grouping (entity, actor)
+- **candidates**, labelled "candidates, not the answer": hubs = grant anchors; pages = grouping (entity, actor); records kept by this module and who is granted on them; the grant description says whether that actor maintains or only consults
 - **what this actor must see, beyond journeys**: human stages waiting for that actor, alert stages, mechanical effects their grant reaches, derived fields and `ddm` entities their grant reaches
 
 ## What to emit
@@ -27,7 +27,7 @@ Tool arguments:
 - `meta.journeys`: array of `{ journeyId, pages }` — every l4 journey, pages where it happens (empty pages = a visible hole)
 - `meta.processes`: array of `{ processId, pages }` — every l4 process, pages where the person sees its cause or effect (empty pages = a visible hole)
 
-Do not emit `schemaVersion`, `moduleName` or `userLanguage`. Code fills those.
+Do not emit `schemaVersion`, `moduleName`, `userLanguage`, `device` or `action`. Code fills those.
 
 ## Node kinds
 

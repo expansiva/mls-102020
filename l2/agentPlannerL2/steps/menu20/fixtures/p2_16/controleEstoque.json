@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "controleEstoque",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "visao_geral",
+      "kind": "page",
+      "label": "Visão geral",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Veja um resumo dos produtos acompanhados e da situação do estoque."
+        },
+        {
+          "kind": "highlights",
+          "text": "Veja produtos com saldo baixo e itens que precisam de atenção."
+        },
+        {
+          "kind": "alerts",
+          "text": "Veja os avisos de saldo abaixo do mínimo."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja itens que aguardam sua verificação."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "produtos",
+      "kind": "page",
+      "label": "Produtos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize e consulte os produtos controlados no estoque."
+        },
+        {
+          "kind": "detail",
+          "text": "Veja o saldo atual, o saldo mínimo e o aviso de saldo baixo do produto."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre um produto para controle de estoque e defina seu saldo mínimo."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe o histórico do produto, incluindo atualizações automáticas de saldo após movimentações."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastre produtos e inicie o registro de uma movimentação para o produto selecionado."
+        }
+      ],
+      "action": "change"
+    },
+    {
+      "id": "movimentacoes_estoque",
+      "kind": "page",
+      "label": "Movimentações de estoque",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Consulte as movimentações de entrada e saída registradas para os produtos."
+        },
+        {
+          "kind": "detail",
+          "text": "Veja a data, o tipo, a quantidade e o produto de cada movimentação."
+        },
+        {
+          "kind": "form",
+          "text": "Registre uma entrada ou saída de unidades para atualizar o saldo disponível do produto."
+        },
+        {
+          "kind": "actions",
+          "text": "Registre uma movimentação de estoque."
+        }
+      ],
+      "action": "change"
+    }
+  ],
+  "authorities": {
+    "actor:estoquista": [
+      "visao_geral",
+      "produtos",
+      "movimentacoes_estoque"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarProduto": [
+        "produtos"
+      ],
+      "registrarMovimentacaoEstoque": [
+        "produtos",
+        "movimentacoes_estoque"
+      ],
+      "acompanharSaldoProdutos": [
+        "produtos"
+      ],
+      "tratarAvisoSaldoBaixo": [
+        "visao_geral",
+        "produtos",
+        "movimentacoes_estoque"
+      ]
+    },
+    "processes": {},
+    "entities": {},
+    "removed": []
+  }
+}

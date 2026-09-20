@@ -1,0 +1,498 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "compras",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "inicio_comprador",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Veja o resumo dos seus pedidos de compra, fornecedores e condições de fornecimento."
+        },
+        {
+          "kind": "alerts",
+          "text": "Acompanhe prazos e pedidos que exigem atenção."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja os pedidos que precisam ser enviados ou encaminhados para aprovação."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "fornecedores_e_condicoes",
+      "kind": "page",
+      "label": "Fornecedores e condições",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Consulte fornecedores, seus contatos, produtos e condições de fornecimento."
+        },
+        {
+          "kind": "detail",
+          "text": "Veja os dados do fornecedor, contatos cadastrados e as condições de preço e fornecimento por produto."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre um fornecedor e registre as condições de fornecimento dos produtos selecionados."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastre fornecedor e registre condição de fornecimento."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pedidos_de_compra_comprador",
+      "kind": "page",
+      "label": "Pedidos de compra",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Liste e localize pedidos de compra, com valor total, exigência de aprovação, situação de recebimento, abertura e atraso."
+        },
+        {
+          "kind": "detail",
+          "text": "Confira fornecedor, itens, quantidades, preços, valor total e situação do pedido."
+        },
+        {
+          "kind": "form",
+          "text": "Abra ou atualize o pedido com fornecedor, produtos, quantidades e preços."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe os envios, encaminhamentos, decisões e atualizações automáticas da situação de recebimento."
+        },
+        {
+          "kind": "actions",
+          "text": "Abra pedido de compra, envie ao fornecedor e encaminhe para aprovação quando exigido."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "meu_perfil_comprador",
+      "kind": "hub",
+      "label": "Meu perfil",
+      "context": "Buyer",
+      "text": "Seu perfil de comprador já está selecionado. Consulte suas informações e condições de fornecimento vinculadas a você.",
+      "children": [
+        {
+          "id": "perfil_do_comprador",
+          "kind": "page",
+          "label": "Dados do perfil",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Consulte seus dados de comprador e as condições de fornecimento associadas ao seu perfil."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "inicio_gerente_compras",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Acompanhe pedidos em aberto, pedidos atrasados e o total comprado por fornecedor no mês."
+        },
+        {
+          "kind": "alerts",
+          "text": "Acompanhe pedidos que exigem atenção."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja os pedidos acima do limite que aguardam sua decisão."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pedidos_de_compra_gerente",
+      "kind": "page",
+      "label": "Pedidos de compra",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Veja indicadores de pedidos em aberto, atrasados e total comprado por fornecedor no mês."
+        },
+        {
+          "kind": "list",
+          "text": "Localize pedidos de compra e identifique os que exigem aprovação."
+        },
+        {
+          "kind": "detail",
+          "text": "Inspecione fornecedor, produtos, valor total, exigência de aprovação, situação de recebimento, abertura e atraso."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe o encaminhamento, a decisão registrada e as atualizações automáticas da situação de recebimento."
+        },
+        {
+          "kind": "actions",
+          "text": "Aprove ou rejeite o pedido encaminhado e registre sua decisão."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "inicio_almoxarife",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Veja o resumo dos pedidos em aberto para recebimento e dos recebimentos registrados."
+        },
+        {
+          "kind": "alerts",
+          "text": "Acompanhe pedidos atrasados e recebimentos que exigem atenção."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja os pedidos disponíveis para conferência e recebimento."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "recebimentos_de_pedidos",
+      "kind": "page",
+      "label": "Recebimentos de pedidos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Localize pedidos para recebimento e recebimentos já registrados."
+        },
+        {
+          "kind": "detail",
+          "text": "Confira itens do pedido, valor total, exigência de aprovação, situação de recebimento, abertura e atraso; veja também a situação de cada recebimento."
+        },
+        {
+          "kind": "form",
+          "text": "Registre o recebimento total ou parcial dos itens efetivamente recebidos."
+        },
+        {
+          "kind": "timeline",
+          "text": "Acompanhe os recebimentos registrados e as atualizações automáticas da situação de recebimento do pedido."
+        },
+        {
+          "kind": "actions",
+          "text": "Registre o recebimento do pedido."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:comprador": [
+      "inicio_comprador",
+      "fornecedores_e_condicoes",
+      "pedidos_de_compra_comprador",
+      "meu_perfil_comprador"
+    ],
+    "actor:gerenteCompras": [
+      "inicio_gerente_compras",
+      "pedidos_de_compra_gerente"
+    ],
+    "actor:almoxarife": [
+      "inicio_almoxarife",
+      "recebimentos_de_pedidos"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarFornecedor": [
+        "fornecedores_e_condicoes"
+      ],
+      "abrirEenviarPedidoCompra": [
+        "fornecedores_e_condicoes",
+        "pedidos_de_compra_comprador"
+      ],
+      "decidirPedidoAcimaDoLimite": [
+        "pedidos_de_compra_gerente"
+      ],
+      "registrarRecebimentoPedido": [
+        "recebimentos_de_pedidos"
+      ],
+      "acompanharIndicadoresDeCompras": [
+        "inicio_gerente_compras",
+        "pedidos_de_compra_gerente"
+      ]
+    },
+    "processes": {
+      "aprovarPedidoAcimaDoLimite": [
+        "pedidos_de_compra_comprador",
+        "pedidos_de_compra_gerente"
+      ]
+    },
+    "entities": {},
+    "removed": [
+      {
+        "id": "buyer_hub",
+        "kind": "hub",
+        "label": "Minhas compras",
+        "context": "Buyer",
+        "text": "Seu perfil de comprador já fica selecionado. Acesse sua visão geral, cadastros e pedidos.",
+        "children": [
+          {
+            "id": "visao_geral_comprador",
+            "kind": "page",
+            "label": "Visão geral",
+            "organisms": [
+              {
+                "kind": "summary",
+                "text": "Veja o resumo dos seus pedidos de compra e do seu perfil de comprador."
+              },
+              {
+                "kind": "highlights",
+                "text": "Acompanhe pedidos que exigem aprovação, pedidos em aberto e pedidos atrasados."
+              },
+              {
+                "kind": "alerts",
+                "text": "Veja avisos importantes sobre seus pedidos de compra."
+              },
+              {
+                "kind": "inbox",
+                "text": "Veja pedidos em rascunho e encaminhamentos que dependem de você."
+              },
+              {
+                "kind": "detail",
+                "text": "Consulte os dados do seu perfil de comprador."
+              }
+            ],
+            "action": "remove"
+          },
+          {
+            "id": "fornecedores_condicoes",
+            "kind": "page",
+            "label": "Fornecedores e condições",
+            "organisms": [
+              {
+                "kind": "list",
+                "text": "Encontre fornecedores, seus contatos, produtos e condições de fornecimento."
+              },
+              {
+                "kind": "detail",
+                "text": "Consulte os dados do fornecedor, contatos, produto e condições comerciais cadastradas."
+              },
+              {
+                "kind": "form",
+                "text": "Cadastre ou atualize fornecedores, contatos e as condições de preço e fornecimento de cada produto."
+              },
+              {
+                "kind": "actions",
+                "text": "Cadastre e atualize fornecedores, contatos e condições de fornecimento dos produtos."
+              }
+            ],
+            "action": "remove"
+          },
+          {
+            "id": "pedidos_compra_comprador",
+            "kind": "page",
+            "label": "Pedidos de compra",
+            "organisms": [
+              {
+                "kind": "list",
+                "text": "Encontre e acompanhe seus pedidos de compra."
+              },
+              {
+                "kind": "detail",
+                "text": "Confira fornecedor, itens, quantidades, preços, valor total, necessidade de aprovação e situação de recebimento."
+              },
+              {
+                "kind": "form",
+                "text": "Crie ou edite pedidos de compra com os produtos, quantidades e preços necessários."
+              },
+              {
+                "kind": "actions",
+                "text": "Abra, envie ao fornecedor e encaminhe para aprovação os pedidos que exigem aprovação."
+              },
+              {
+                "kind": "timeline",
+                "text": "Veja quando o pedido foi criado, enviado, encaminhado, aprovado ou rejeitado e quando houve recebimentos."
+              }
+            ],
+            "action": "remove"
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "visao_geral_comprador",
+        "kind": "page",
+        "label": "Visão geral",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Veja o resumo dos seus pedidos de compra e do seu perfil de comprador."
+          },
+          {
+            "kind": "highlights",
+            "text": "Acompanhe pedidos que exigem aprovação, pedidos em aberto e pedidos atrasados."
+          },
+          {
+            "kind": "alerts",
+            "text": "Veja avisos importantes sobre seus pedidos de compra."
+          },
+          {
+            "kind": "inbox",
+            "text": "Veja pedidos em rascunho e encaminhamentos que dependem de você."
+          },
+          {
+            "kind": "detail",
+            "text": "Consulte os dados do seu perfil de comprador."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "fornecedores_condicoes",
+        "kind": "page",
+        "label": "Fornecedores e condições",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Encontre fornecedores, seus contatos, produtos e condições de fornecimento."
+          },
+          {
+            "kind": "detail",
+            "text": "Consulte os dados do fornecedor, contatos, produto e condições comerciais cadastradas."
+          },
+          {
+            "kind": "form",
+            "text": "Cadastre ou atualize fornecedores, contatos e as condições de preço e fornecimento de cada produto."
+          },
+          {
+            "kind": "actions",
+            "text": "Cadastre e atualize fornecedores, contatos e condições de fornecimento dos produtos."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "pedidos_compra_comprador",
+        "kind": "page",
+        "label": "Pedidos de compra",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Encontre e acompanhe seus pedidos de compra."
+          },
+          {
+            "kind": "detail",
+            "text": "Confira fornecedor, itens, quantidades, preços, valor total, necessidade de aprovação e situação de recebimento."
+          },
+          {
+            "kind": "form",
+            "text": "Crie ou edite pedidos de compra com os produtos, quantidades e preços necessários."
+          },
+          {
+            "kind": "actions",
+            "text": "Abra, envie ao fornecedor e encaminhe para aprovação os pedidos que exigem aprovação."
+          },
+          {
+            "kind": "timeline",
+            "text": "Veja quando o pedido foi criado, enviado, encaminhado, aprovado ou rejeitado e quando houve recebimentos."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "pedidos_e_indicadores_gerente",
+        "kind": "page",
+        "label": "Pedidos e indicadores de compras",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Veja os totais de pedidos em aberto, atrasados e comprados por fornecedor no mês."
+          },
+          {
+            "kind": "highlights",
+            "text": "Identifique pedidos acima do limite, pedidos atrasados e os principais fornecedores do período."
+          },
+          {
+            "kind": "alerts",
+            "text": "Veja pedidos que precisam de decisão e pedidos que estão atrasados."
+          },
+          {
+            "kind": "inbox",
+            "text": "Veja os pedidos encaminhados que aguardam sua aprovação ou rejeição."
+          },
+          {
+            "kind": "list",
+            "text": "Encontre pedidos de compra e filtre os pedidos pendentes de decisão, em aberto ou atrasados."
+          },
+          {
+            "kind": "detail",
+            "text": "Inspecione fornecedor, produtos, itens, valor total, exigência de aprovação e situação de recebimento do pedido."
+          },
+          {
+            "kind": "actions",
+            "text": "Aprove ou rejeite os pedidos de compra encaminhados para sua decisão."
+          },
+          {
+            "kind": "timeline",
+            "text": "Veja o envio, o encaminhamento para aprovação, sua decisão e os recebimentos registrados no pedido."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "recebimentos_pedidos",
+        "kind": "page",
+        "label": "Recebimentos de pedidos",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Veja o resumo dos pedidos disponíveis para recebimento e dos recebimentos registrados."
+          },
+          {
+            "kind": "highlights",
+            "text": "Identifique pedidos em aberto, atrasados e com recebimento parcial."
+          },
+          {
+            "kind": "alerts",
+            "text": "Veja avisos sobre pedidos atrasados ou pendentes de recebimento."
+          },
+          {
+            "kind": "inbox",
+            "text": "Veja os pedidos que aguardam conferência e registro de recebimento."
+          },
+          {
+            "kind": "list",
+            "text": "Encontre pedidos de compra e seus recebimentos para registrar a entrada dos itens."
+          },
+          {
+            "kind": "detail",
+            "text": "Confira os itens e o valor total do pedido, a exigência de aprovação, a situação de recebimento e a conclusão de cada recebimento."
+          },
+          {
+            "kind": "form",
+            "text": "Registre o recebimento total ou parcial dos itens efetivamente entregues."
+          },
+          {
+            "kind": "actions",
+            "text": "Registre recebimentos de pedidos e consulte os produtos e itens do pedido."
+          },
+          {
+            "kind": "timeline",
+            "text": "Veja os recebimentos registrados e as atualizações da situação de recebimento do pedido."
+          }
+        ],
+        "action": "remove"
+      }
+    ]
+  }
+}

@@ -1,5 +1,35 @@
 # agentPlannerL2
 
+## 2026-09-20 (p2_20)
+
+- `meta.entities` and `P2_MENU_ENTITY_NO_FORM` are gone. Who maintains a
+  `crud` record is in the grant description, not a gate.
+
+## 2026-09-20 (p2_19)
+
+- `action` compares with what is already built in l2, not with the previous
+  `menu.json`. Today that manifesto does not exist: every node is `new`,
+  `meta.removed` is `[]`. `diffMenuTrees`, the legacy migration and
+  `pipeline.previousMenu` are gone.
+
+## 2026-09-20 (p2_17)
+
+- `P2_MENU_ENTITY_NO_FORM` trusts `meta.entities` (mapped, visible, has
+  `form`/`actions`). It no longer searches organism prose.
+
+## 2026-09-20 (p2_16)
+
+- `menu20` candidates `recordsMaintained` + `meta.entities` + warning when a
+  granted `writer: crud` record has no `form`/`actions` citing it.
+
+## 2026-09-20 (p2_15)
+
+- Menu path is `l4/<mod>/pool/l2/<device>/menu.json` (`device` enum, today `web`).
+- Schema `2026-09-20-p2-menu-v2.2`: `device` on the file, `action` on every node,
+  `meta.removed`. `action` is computed by L2 (`diffMenuTrees`), never by the model.
+- One-shot migration: legacy `pool/l2/menu.json` is the previous of the first
+  device run, then deleted. Pipeline records `device`, `previousMenu`, `actionCounts`.
+
 ## 2026-09-19 (p2_12)
 
 - `menu.json` v2.1: `inbox`/`alerts`, `meta.processes` filled, candidates and gate for processes/derived.

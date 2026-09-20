@@ -34,12 +34,15 @@ export interface P2OntologyTransitionView {
 
 export interface P2OntologyEntityView {
   entityId: string;
+  title?: string;
   kind: string;
   class?: string;
   family?: string;
   storageKind?: string;
   displayField?: string;
   idField?: string;
+  /** ontology30: omitted = journey. menu20: `crud` is a record the granted actor maintains. */
+  writer?: 'journey' | 'crud' | 'inbound';
   capabilities: string[];
   /** contracts30: decide ⇒ one cmd per branching origin. */
   transitions: P2OntologyTransitionView[];
@@ -185,12 +188,14 @@ export function parseP2L4Sources(input: {
     const fields = record(recordNode.fields);
     return {
       entityId,
+      title: text(file.title) || entityId,
       kind: text(row.kind) || text(file.kind),
       class: text(row.class) || text(file.class) || undefined,
       family: text(file.family) || undefined,
       storageKind: text(storage.kind) || undefined,
       displayField: text(file.displayField) || undefined,
       idField: fields.id ? 'id' : undefined,
+      writer: ontologyWriter(file.writer),
       capabilities: Object.keys(capabilities),
       transitions: list(file.transitions).map(item => {
         const transition = record(item);
@@ -303,6 +308,12 @@ function normalizeWorkspace(value: unknown): P2Workspace {
     journeyRefs: uniqueMemberIds(source.journeyRefs),
     stepRefs: uniqueMemberIds(source.stepRefs),
   };
+}
+
+function ontologyWriter(value: unknown): P2OntologyEntityView['writer'] {
+  const writer = text(value);
+  if (writer === 'journey' || writer === 'crud' || writer === 'inbound') return writer;
+  return undefined;
 }
 
 function entityIsDdm(entities: readonly P2OntologyEntityView[], entityId: string): boolean {

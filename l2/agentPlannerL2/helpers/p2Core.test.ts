@@ -14,6 +14,7 @@ import {
   P2_WEB_DIR_REMOVED,
   buildP2PlannedSteps,
   executeP2Entry,
+  isP2MenuDevice,
   isP2PoolMessageFile,
   loadP2Entry,
   markP2Complete,
@@ -23,7 +24,10 @@ import {
   parseP2StepPrompt,
   p2DifferentRequestsRefusal,
   p2InvocationRefusal,
+  p2MenuFile,
   p2PipelineFile,
+  P2_MENU_DEVICE,
+  readReadyL2Manifest,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 
@@ -255,6 +259,24 @@ void test('menu.json is not a pool message and does not count as pending', async
   seed(host, `${MODULE}/pool/l2`, 'menu', '{"schemaVersion":"x"}\n');
   const pending = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
   assert.equal('refusal' in pending && pending.refusal, `nothing pending for ${MODULE} in pool/l2`);
+});
+
+void test('p2MenuFile is pool/l2/<device>/menu.json', () => {
+  installHost();
+  assert.equal(isP2MenuDevice('web'), true);
+  assert.equal(isP2MenuDevice('ios'), false);
+  assert.deepEqual(p2MenuFile(MODULE), {
+    project: PROJECT,
+    level: 4,
+    folder: `${MODULE}/pool/l2/${P2_MENU_DEVICE}`,
+    shortName: 'menu',
+    extension: '.json',
+  });
+});
+
+void test('readReadyL2Manifest returns null while the built manifesto does not exist', () => {
+  assert.equal(readReadyL2Manifest(MODULE), null);
+  assert.equal(readReadyL2Manifest(MODULE, P2_MENU_DEVICE), null);
 });
 
 void test('re-execution wipes l2 pipeline drafts and web, keeps pool messages, rewrites pipeline.json', async () => {

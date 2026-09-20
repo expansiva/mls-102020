@@ -1,0 +1,266 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "reembolsoDespesas",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "inicio",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Acompanhe o resumo das despesas sob sua responsabilidade, conforme seu perfil de acesso."
+        },
+        {
+          "kind": "highlights",
+          "text": "Veja despesas que exigem atenção, como itens pendentes de envio, avaliação, correção ou pagamento."
+        },
+        {
+          "kind": "alerts",
+          "text": "Consulte prazos e avisos de despesas; quando não houver avisos, veja que não há alertas no momento."
+        },
+        {
+          "kind": "inbox",
+          "text": "Veja as despesas que aguardam sua ação, como enviar, avaliar, corrigir, reenviar ou registrar pagamento, conforme suas permissões."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "colaboradores",
+      "kind": "hub",
+      "label": "Despesas por colaborador",
+      "context": "Colaborador",
+      "text": "Selecione o colaborador cujas despesas deseja consultar ou tratar. Para o colaborador, o próprio cadastro já é selecionado.",
+      "children": [
+        {
+          "id": "despesas",
+          "kind": "page",
+          "label": "Despesas",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Liste as despesas disponíveis para você, com filtros de status, incluindo despesas próprias, pendentes de avaliação, rejeitadas ou aprovadas para pagamento."
+            },
+            {
+              "kind": "detail",
+              "text": "Consulte os dados permitidos da despesa selecionada, seu status, decisão, motivo de rejeição e informações de pagamento quando disponíveis."
+            },
+            {
+              "kind": "form",
+              "text": "Cadastre uma nova despesa própria ou atualize uma despesa que você esteja autorizado a corrigir ou tratar."
+            },
+            {
+              "kind": "actions",
+              "text": "Na despesa selecionada, execute somente as ações permitidas para seu perfil e para o status atual."
+            },
+            {
+              "kind": "timeline",
+              "text": "Acompanhe o histórico da despesa, incluindo envios, correções, reenvios, decisões de aprovação ou rejeição e registro de pagamento."
+            }
+          ],
+          "action": "change"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "meu_cadastro_gestor",
+      "kind": "hub",
+      "label": "Meu cadastro de gestor",
+      "context": "GestorEquipe",
+      "text": "Seu cadastro de gestor já vem selecionado; consulte e mantenha suas informações.",
+      "children": [
+        {
+          "id": "cadastro_gestor",
+          "kind": "page",
+          "label": "Cadastro do gestor",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Consulte os dados do seu cadastro de gestor."
+            },
+            {
+              "kind": "form",
+              "text": "Crie ou atualize os dados do seu cadastro de gestor."
+            },
+            {
+              "kind": "actions",
+              "text": "Salve as alterações permitidas no seu cadastro."
+            },
+            {
+              "kind": "timeline",
+              "text": "Acompanhe o histórico de alterações do seu cadastro de gestor."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:colaborador": [
+      "inicio",
+      "colaboradores"
+    ],
+    "actor:gestorEquipe": [
+      "inicio",
+      "colaboradores",
+      "meu_cadastro_gestor"
+    ],
+    "actor:financeiro": [
+      "inicio",
+      "colaboradores"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "registrarEenviarDespesa": [
+        "despesas"
+      ],
+      "consultarPropriasDespesas": [
+        "despesas"
+      ],
+      "corrigirEreenviarDespesa": [
+        "despesas"
+      ],
+      "avaliarDespesaDaEquipe": [
+        "despesas"
+      ],
+      "registrarPagamentoDeDespesa": [
+        "despesas"
+      ]
+    },
+    "processes": {
+      "submeterEAvaliarDespesa": [
+        "despesas"
+      ],
+      "reavaliarDespesaReenviada": [
+        "despesas"
+      ],
+      "registrarPagamentoDespesaAprovada": [
+        "despesas"
+      ]
+    },
+    "entities": {
+      "GestorEquipe": [
+        "cadastro_gestor"
+      ]
+    },
+    "removed": [
+      {
+        "id": "inicio_colaborador",
+        "kind": "page",
+        "label": "Início",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Vejo quantas despesas minhas estão em rascunho, aguardando o gestor, aprovadas, rejeitadas ou já pagas."
+          },
+          {
+            "kind": "highlights",
+            "text": "Vejo as rejeitadas que preciso corrigir e as que ainda não enviei."
+          },
+          {
+            "kind": "alerts",
+            "text": "Acompanho prazos e pendências das minhas despesas de reembolso."
+          },
+          {
+            "kind": "inbox",
+            "text": "Vejo o que espera por mim: registrar e enviar uma despesa ou corrigir e reenviar uma rejeitada."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "inicio_gestor_equipe",
+        "kind": "page",
+        "label": "Início",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Vejo quantas despesas da equipe esperam avaliação, quantas aprovei e quantas rejeitei."
+          },
+          {
+            "kind": "highlights",
+            "text": "Vejo as recém-enviadas e as que voltaram corrigidas para nova avaliação."
+          },
+          {
+            "kind": "alerts",
+            "text": "Acompanho as avaliações de reembolso que ainda estão comigo."
+          },
+          {
+            "kind": "inbox",
+            "text": "Vejo as despesas da equipe que preciso avaliar e registrar a aprovação ou a rejeição com o motivo."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "inicio_financeiro",
+        "kind": "page",
+        "label": "Início",
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Vejo quantas despesas aprovadas ainda não foram pagas e quantas já tiveram o pagamento registrado."
+          },
+          {
+            "kind": "highlights",
+            "text": "Vejo as despesas aprovadas que estão na fila para eu registrar o pagamento."
+          },
+          {
+            "kind": "alerts",
+            "text": "Acompanho as pendências de pagamento de reembolso."
+          },
+          {
+            "kind": "inbox",
+            "text": "Vejo as despesas aprovadas em que preciso registrar a data de pagamento."
+          }
+        ],
+        "action": "remove"
+      },
+      {
+        "id": "colaborador",
+        "kind": "hub",
+        "label": "Colaborador",
+        "context": "Colaborador",
+        "text": "Escolho o colaborador cujas despesas de reembolso vou tratar. Quando sou o próprio colaborador, meu registro já vem selecionado.",
+        "children": [
+          {
+            "id": "despesas",
+            "kind": "page",
+            "label": "Despesas",
+            "organisms": [
+              {
+                "kind": "list",
+                "text": "Vejo as despesas deste colaborador e o status de cada uma."
+              },
+              {
+                "kind": "detail",
+                "text": "Abro a despesa e vejo os dados, o status e o motivo da rejeição, quando houver."
+              },
+              {
+                "kind": "form",
+                "text": "Cadastro uma despesa nova, corrijo uma rejeitada ou informo a data de pagamento."
+              },
+              {
+                "kind": "actions",
+                "text": "Envio para aprovação, reenvio depois de corrigir, aprovo ou rejeito com o motivo, ou confirmo o registro do pagamento."
+              },
+              {
+                "kind": "timeline",
+                "text": "Acompanho o histórico da despesa: envio, avaliação do gestor, reenvio e pagamento."
+              }
+            ],
+            "action": "remove"
+          }
+        ],
+        "action": "remove"
+      }
+    ]
+  }
+}

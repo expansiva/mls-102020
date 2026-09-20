@@ -3,6 +3,7 @@
 import type { P2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 import {
   actorAuthorityKey,
+  collectBeyondJourneys,
   isMechanicalEffectTask,
   isMenuNodeKind,
   isMenuOrganismKind,
@@ -13,7 +14,6 @@ import {
   type P2ActorMustSeeDerived,
   type P2GrantView,
   type P2ProcessView,
-  collectBeyondJourneys,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 
 const ACTOR_KEY = /^actor:([a-z][A-Za-z0-9]*)$/;

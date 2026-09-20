@@ -1,13 +1,18 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/menu20/contracts.ts" enhancement="_blank"/>
 
 import {
+  P2_MENU_DEVICE,
+  readReadyL2Manifest,
+  type P2MenuDevice,
+} from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+import {
   collectP2WorkspaceCandidates,
   isDdmEntity,
   type P2L4Sources,
   type P2WorkspaceCandidate,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 
-export const P2_MENU_SCHEMA_VERSION = '2026-09-19-p2-menu-v2.1' as const;
+export const P2_MENU_SCHEMA_VERSION = '2026-09-20-p2-menu-v2.2' as const;
 export const MENU_NODE_KINDS = ['hub', 'page', 'group'] as const;
 export type MenuNodeKind = typeof MENU_NODE_KINDS[number];
 export const MENU_ORGANISM_KINDS = [
@@ -15,6 +20,8 @@ export const MENU_ORGANISM_KINDS = [
 ] as const;
 export type MenuOrganismKind = typeof MENU_ORGANISM_KINDS[number];
 export const MENU_MECHANICAL_EFFECTS = ['transition', 'create', 'update'] as const;
+export const MENU_ACTIONS = ['new', 'change', 'keep', 'remove'] as const;
+export type MenuAction = typeof MENU_ACTIONS[number];
 
 const NODE_ID = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
@@ -52,28 +59,47 @@ export interface MenuGroupNode {
 
 export type MenuNode = MenuHubNode | MenuPageNode | MenuGroupNode;
 
+export type MenuStampedHubNode = Omit<MenuHubNode, 'children'> & {
+  action: MenuAction;
+  children: MenuStampedNode[];
+};
+export type MenuStampedPageNode = MenuPageNode & { action: MenuAction };
+export type MenuStampedGroupNode = Omit<MenuGroupNode, 'children'> & {
+  action: MenuAction;
+  children: MenuStampedNode[];
+};
+export type MenuStampedNode = MenuStampedHubNode | MenuStampedPageNode | MenuStampedGroupNode;
+
+export interface MenuV2Meta {
+  journeys: Record<string, string[]>;
+  processes: Record<string, string[]>;
+}
+
+export interface MenuFileMeta extends MenuV2Meta {
+  removed: MenuStampedNode[];
+}
+
 export interface MenuV2 {
   tree: MenuNode[];
   authorities: Record<string, string[]>;
-  meta: {
-    journeys: Record<string, string[]>;
-    processes: Record<string, string[]>;
-  };
+  meta: MenuV2Meta;
 }
 
 export interface P2MenuFile {
   schemaVersion: typeof P2_MENU_SCHEMA_VERSION;
   moduleName: string;
   userLanguage: string;
-  tree: MenuNode[];
+  device: P2MenuDevice;
+  tree: MenuStampedNode[];
   authorities: Record<string, string[]>;
-  meta: MenuV2['meta'];
+  meta: MenuFileMeta;
 }
 
 export interface P2GrantView {
   grantId: string;
   actorRef: string;
   title: string;
+  description: string;
   entityRefs: string[];
   dataScope: { mode: string; anchorEntity: string; description: string };
   disclosure: { mode: string; description: string };
@@ -127,10 +153,23 @@ export interface P2ActorMustSee {
   derived: P2ActorMustSeeDerived[];
 }
 
+export interface P2RecordKeptGrant {
+  actorRef: string;
+  dataScope: { mode: string };
+  disclosure: { mode: string };
+  description: string;
+}
+
+export interface P2RecordKept {
+  entityRef: string;
+  grants: P2RecordKeptGrant[];
+}
+
 export interface P2MenuCandidates {
   hubs: P2MenuHubCandidate[];
   pages: P2WorkspaceCandidate[];
   beyondJourneys: P2ActorMustSee[];
+  recordsKept: P2RecordKept[];
 }
 
 export function isMenuNodeKind(value: string): value is MenuNodeKind {
@@ -139,6 +178,10 @@ export function isMenuNodeKind(value: string): value is MenuNodeKind {
 
 export function isMenuOrganismKind(value: string): value is MenuOrganismKind {
   return (MENU_ORGANISM_KINDS as readonly string[]).includes(value);
+}
+
+export function isMenuAction(value: string): value is MenuAction {
+  return (MENU_ACTIONS as readonly string[]).includes(value);
 }
 
 export function actorAuthorityKey(actorRef: string): string {
@@ -154,6 +197,7 @@ export function parseP2Grants(access: unknown): P2GrantView[] {
       grantId: memberId(text(grant.grantId)),
       actorRef: memberId(text(grant.actorRef)),
       title: text(grant.title),
+      description: text(grant.description),
       entityRefs: uniqueIds(grant.entityRefs, entityId),
       dataScope: {
         mode: text(dataScope.mode),
@@ -221,7 +265,45 @@ export function menuCandidates(
     hubs,
     pages: collectP2WorkspaceCandidates(sources),
     beyondJourneys: collectBeyondJourneys(sources, grants, processes),
+    recordsKept: collectRecordsKept(sources, grants),
   };
+}
+
+/** Pure. Per `writer: crud` entity, the grants that reach it. Description as-is. */
+export function collectRecordsKept(
+  sources: P2L4Sources,
+  grants: readonly P2GrantView[],
+): P2RecordKept[] {
+  const crudIds = new Set(
+    sources.entities.filter(entity => entity.writer === 'crud' && entity.entityId).map(entity => entity.entityId),
+  );
+  const byEntity = new Map<string, P2RecordKeptGrant[]>();
+  for (const grant of grants) {
+    if (!grant.actorRef) continue;
+    for (const entityRef of grant.entityRefs) {
+      if (!entityRef || !crudIds.has(entityRef)) continue;
+      let rows = byEntity.get(entityRef);
+      if (!rows) {
+        rows = [];
+        byEntity.set(entityRef, rows);
+      }
+      rows.push({
+        actorRef: grant.actorRef,
+        dataScope: { mode: grant.dataScope.mode },
+        disclosure: { mode: grant.disclosure.mode },
+        description: grant.description,
+      });
+    }
+  }
+  return [...byEntity.entries()]
+    .map(([entityRef, entityGrants]) => ({
+      entityRef,
+      grants: entityGrants.sort((left, right) => {
+        const actor = left.actorRef.localeCompare(right.actorRef);
+        return actor !== 0 ? actor : left.description.localeCompare(right.description);
+      }),
+    }))
+    .sort((left, right) => left.entityRef.localeCompare(right.entityRef));
 }
 
 export function isMechanicalEffectTask(task: P2ProcessTaskView): boolean {
@@ -326,15 +408,52 @@ export function buildP2MenuFile(input: {
   moduleName: string;
   userLanguage: string;
   draft: MenuV2;
+  device?: P2MenuDevice;
 }): P2MenuFile {
+  const device = input.device || P2_MENU_DEVICE;
+  const ready = readReadyL2Manifest(input.moduleName, device);
   return {
     schemaVersion: P2_MENU_SCHEMA_VERSION,
     moduleName: input.moduleName,
     userLanguage: input.userLanguage,
-    tree: input.draft.tree,
+    device,
+    tree: stampAllNew(input.draft.tree, ready),
     authorities: input.draft.authorities,
-    meta: input.draft.meta,
+    meta: {
+      journeys: input.draft.meta.journeys,
+      processes: input.draft.meta.processes,
+      removed: [],
+    },
   };
+}
+
+export function menuActionCounts(file: P2MenuFile): Record<MenuAction, number> {
+  const counts: Record<MenuAction, number> = { new: 0, change: 0, keep: 0, remove: 0 };
+  const visit = (nodes: readonly MenuStampedNode[]) => {
+    for (const node of nodes) {
+      counts[node.action] += 1;
+      if (node.kind === 'hub' || node.kind === 'group') visit(node.children);
+    }
+  };
+  visit(file.tree);
+  visit(file.meta.removed);
+  return counts;
+}
+
+function stampAllNew(nodes: readonly MenuNode[], ready: null): MenuStampedNode[] {
+  void ready;
+  return nodes.map((node): MenuStampedNode => {
+    if (node.kind === 'page') return { ...node, action: 'new' };
+    return { ...node, action: 'new', children: stampAllNew(node.children, ready) };
+  });
+}
+
+/** Read a stamped menu tree, stripping `action` so the node shape matches the draft. */
+export function parsePreviousMenuTree(value: unknown): MenuNode[] {
+  const root = asRecord(value, '$');
+  return list(root.tree, '$.tree').map((item, index) => (
+    normalizeNode(stripAction(item), `$.tree[${index}]`)
+  ));
 }
 
 export function buildP2MenuTool(schema: Record<string, unknown>): mls.msg.LLMTool {
@@ -527,6 +646,15 @@ function exactKeys(source: Record<string, unknown>, allowed: readonly string[], 
   for (const key of allowed) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) throw new Error(`${path}: missing field '${key}'.`);
   }
+}
+
+function stripAction(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripAction);
+  if (!isRecord(value)) return value;
+  const { action: _action, ...rest } = value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(rest)) out[key] = stripAction(item);
+  return out;
 }
 
 function asRecord(value: unknown, path: string): Record<string, unknown> {
