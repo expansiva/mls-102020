@@ -1,8 +1,8 @@
 {
   "flowId": "agentPlannerL2",
-  "schemaVersion": "2026-09-21-p2-flow-v5",
-  "status": "needs30",
-  "description": "L2 planner: read pool/l2 of a finished l4 module, write pool/l2/<device>/menu.json, then derive pool/l1/web/needs.json (what each screen reads and writes) and one l2→l1 message. Does not delete the pool. Parked steps stay on disk outside this flow.",
+  "schemaVersion": "2026-09-21-p2-flow-v6",
+  "status": "effort40",
+  "description": "L2 planner: two conversations on pool/l2. L4 request → menu.json then needs.json (l2→l1). L1 backend.json → effort.json (l2→l4). Does not delete the pool. Parked steps stay on disk outside this flow.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -15,10 +15,11 @@
     "Pipeline state lives on disk at l2/{module}/pipeline/pipeline.json. The task record is orchestration, not truth.",
     "A step declared here and not implemented stops the run with pipeline.status awaitingStep naming that step. The task completes without failed.",
     "Two entries, one path: a step created by L4 with prompt { moduleName, thread, file }, or @@agentPlannerL2 <lowerCamel> which reads every pool/l2 message. Both write the same pipeline.json.",
-    "Reads only the module l4, pool/l2 and the menu it wrote. Never reads l1. Writes l2/{module}/pipeline/, l4/{module}/pool/l2/web/menu.json, l4/{module}/pool/l1/web/needs.json and one pool/l1 message. Never deletes pool messages in this phase.",
-    "Deterministic first. entry10 and needs30 have no LLM. menu20 spends one reasoning call on the UX cut.",
+    "Reads the module l4, pool/l2, the menu it wrote and backend.json from L1. Never reads generated l1. Writes l2/{module}/pipeline/, l4/{module}/pool/l2/web/menu.json, l4/{module}/pool/l1/web/needs.json, l4/{module}/pool/l2/web/effort.json and pool messages to l1 and l4. Never deletes pool messages in this phase.",
+    "Deterministic first. entry10, needs30 and effort40 have no LLM. menu20 spends one reasoning call on the UX cut.",
     "User-facing refusals are English.",
-    "listPoolBox may list menu.json or needs.json; entry10 keeps only files named <stamp>_<thread>_<round>."
+    "listPoolBox may list menu.json, backend.json or effort.json; entry10 keeps only files named <stamp>_<thread>_<round>.",
+    "entry10 partitions pool/l2 by message.from before grouping. An l1 message whose artifacts contain backend.json selects the effort conversation; otherwise the menu conversation. Grouping and the different-requests refusal stay inside the chosen partition."
   ],
   "invocation": {
     "hand": "@@agentPlannerL2 <lowerCamel>",
@@ -26,12 +27,13 @@
     "moduleRule": "The module token is required and must be lowerCamel. The name is never inferred from prose.",
     "l4Rule": "The module l4 pipeline.json must be status complete. Otherwise the run is refused.",
     "poolRule": "No pool message in pool/l2 refuses with 'nothing pending for <mod> in pool/l2'. menu.json is not a message.",
-    "dedupeRule": "Messages with the same moduleName, mode and artifacts are one request. Two different requests refuse: 'pool/l2 has N different requests; resolve with the l4 supervisor'."
+    "dedupeRule": "Messages with the same moduleName, mode and artifacts are one request, compared inside the chosen from-partition. Two different requests refuse: 'pool/l2 has N different requests; resolve with the l4 supervisor'."
   },
   "artifacts": {
     "pipeline": "l2/{module}/pipeline/pipeline.json",
     "menu": "l4/{module}/pool/l2/web/menu.json",
-    "needs": "l4/{module}/pool/l1/web/needs.json"
+    "needs": "l4/{module}/pool/l1/web/needs.json",
+    "effort": "l4/{module}/pool/l2/web/effort.json"
   },
   "parkedSteps": [
     "workspaces20",
@@ -46,7 +48,7 @@
       "dependsOn": [],
       "doneAnchor": "entry10-done",
       "artifact": "l2/{module}/pipeline/pipeline.json",
-      "goal": "Read every pool/l2 message (oldest first), group identical requests, refuse if they differ, wipe l2/{module}/pipeline and l2/{module}/web, write pipeline.json with sourceMessages. Never delete the pool."
+      "goal": "Read every pool/l2 message, partition by from, group identical requests inside the chosen partition, refuse if they differ. Menu partition: wipe l2/{module}/pipeline and l2/{module}/web, write pipeline.json with sourceMessages. Effort partition (l1 + backend.json): do not wipe; require existing pipeline.json and menu.json; add the step onto the existing pipeline. Never delete the pool."
     },
     {
       "id": "menu20",
@@ -63,7 +65,15 @@
       "dependsOn": ["menu20-done"],
       "doneAnchor": "needs30-done",
       "artifact": "l4/{module}/pool/l1/web/needs.json",
-      "goal": "No LLM. From the menu and the l4, derive what each page reads and writes (entity + operation). Write pool/l1/web/needs.json, one l2→l1 message pointing at it, and a delivered trace on the l2 pipeline. Structural gate only. Does not delete the pool."
+      "goal": "No LLM. From the menu and the l4, derive what each page reads and writes (entity + operation). Write pool/l1/web/needs.json, one l2→l1 message pointing at it, and a delivered trace on the l2 pipeline. Structural gate only. Does not delete the pool. Does not close the pipeline."
+    },
+    {
+      "id": "effort40",
+      "kind": "deterministic",
+      "dependsOn": ["entry10-done"],
+      "doneAnchor": "effort40-done",
+      "artifact": "l4/{module}/pool/l2/web/effort.json",
+      "goal": "No LLM. Join menu action (screens) with backend.json statuses into pool/l2/web/effort.json, one l2→l4 message, delivered trace. Structural gate. Closes the pipeline when every flow.json step is approved. Reached from the effort partition of entry10; not enqueued by name."
     }
   ]
 }

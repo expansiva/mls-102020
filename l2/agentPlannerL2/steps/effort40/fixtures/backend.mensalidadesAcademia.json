@@ -1,0 +1,197 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1",
+  "moduleName": "mensalidadesAcademia",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "mensalidadesAcademia.minha_matricula.qryGetMatricula",
+      "page": "minha_matricula",
+      "kind": "qry",
+      "usecaseRef": "getMatricula",
+      "status": "toCreate"
+    },
+    {
+      "route": "mensalidadesAcademia.minha_matricula.cmdCancelarMatricula",
+      "page": "minha_matricula",
+      "kind": "cmd",
+      "usecaseRef": "cancelarMatricula",
+      "status": "toCreate"
+    },
+    {
+      "route": "mensalidadesAcademia.inicio_recepcao.qryListMensalidade",
+      "page": "inicio_recepcao",
+      "kind": "qry",
+      "usecaseRef": "listMensalidade",
+      "status": "toCreate"
+    },
+    {
+      "route": "mensalidadesAcademia.matriculas.qryListMatricula",
+      "page": "matriculas",
+      "kind": "qry",
+      "usecaseRef": "listMatricula",
+      "status": "toCreate"
+    },
+    {
+      "route": "mensalidadesAcademia.matriculas.cmdCreateMatricula",
+      "page": "matriculas",
+      "kind": "cmd",
+      "usecaseRef": "createMatricula",
+      "status": "toCreate"
+    },
+    {
+      "route": "mensalidadesAcademia.mensalidades_pagamentos.qryListMensalidade",
+      "page": "mensalidades_pagamentos",
+      "kind": "qry",
+      "usecaseRef": "listMensalidade",
+      "status": "toCreate"
+    },
+    {
+      "route": "mensalidadesAcademia.mensalidades_pagamentos.cmdCreatePagamento",
+      "page": "mensalidades_pagamentos",
+      "kind": "cmd",
+      "usecaseRef": "createPagamento",
+      "status": "toCreate"
+    },
+    {
+      "route": "mensalidadesAcademia.planos.qryListPlano",
+      "page": "planos",
+      "kind": "qry",
+      "usecaseRef": "listPlano",
+      "status": "done"
+    },
+    {
+      "route": "mensalidadesAcademia.planos.cmdCreatePlano",
+      "page": "planos",
+      "kind": "cmd",
+      "usecaseRef": "createPlano",
+      "status": "toCreate"
+    },
+    {
+      "route": "mensalidadesAcademia.inicio_gerencia.qryListMensalidade",
+      "page": "inicio_gerencia",
+      "kind": "qry",
+      "usecaseRef": "listMensalidade",
+      "status": "toCreate"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "getMatricula",
+      "entity": "Matricula",
+      "operation": "get",
+      "ports": ["Matricula"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Matricula.get"
+    },
+    {
+      "usecaseId": "cancelarMatricula",
+      "entity": "Matricula",
+      "operation": "transition",
+      "ports": ["Matricula"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Matricula.transition"
+    },
+    {
+      "usecaseId": "listMatricula",
+      "entity": "Matricula",
+      "operation": "list",
+      "ports": ["Matricula"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Matricula.list"
+    },
+    {
+      "usecaseId": "createMatricula",
+      "entity": "Matricula",
+      "operation": "create",
+      "ports": ["Matricula"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Matricula.create"
+    },
+    {
+      "usecaseId": "listMensalidade",
+      "entity": "Mensalidade",
+      "operation": "list",
+      "ports": ["Mensalidade"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Mensalidade.list"
+    },
+    {
+      "usecaseId": "createPagamento",
+      "entity": "Pagamento",
+      "operation": "create",
+      "ports": ["Pagamento"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Pagamento.create"
+    },
+    {
+      "usecaseId": "listPlano",
+      "entity": "Plano",
+      "operation": "list",
+      "ports": ["Plano"],
+      "status": "done",
+      "existing": "l1/mensalidadesAcademia/layer_2_application/usecases/listPlano.defs.ts",
+      "reason": "l1 usecase covers Plano.list"
+    },
+    {
+      "usecaseId": "createPlano",
+      "entity": "Plano",
+      "operation": "create",
+      "ports": ["Plano"],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Plano.create"
+    }
+  ],
+  "ports": [
+    { "portId": "MatriculaRepository", "entity": "Matricula", "status": "toCreate" },
+    { "portId": "MensalidadeRepository", "entity": "Mensalidade", "status": "toCreate" },
+    { "portId": "PagamentoRepository", "entity": "Pagamento", "status": "toCreate" },
+    { "portId": "PlanoRepository", "entity": "Plano", "status": "toCreate" }
+  ],
+  "tables": [
+    { "tableId": "matricula", "entity": "Matricula", "status": "toCreate" },
+    { "tableId": "mensalidade", "entity": "Mensalidade", "status": "toCreate" },
+    { "tableId": "pagamento", "entity": "Pagamento", "status": "toCreate" },
+    { "tableId": "plano", "entity": "Plano", "status": "toCreate" }
+  ],
+  "removed": [
+    {
+      "kind": "usecase",
+      "id": "archivePlano",
+      "status": "toRemove",
+      "reason": "exists in l1, no page needs it"
+    }
+  ],
+  "meta": {
+    "pages": {
+      "minha_matricula": [
+        "mensalidadesAcademia.minha_matricula.qryGetMatricula",
+        "mensalidadesAcademia.minha_matricula.cmdCancelarMatricula"
+      ],
+      "inicio_recepcao": ["mensalidadesAcademia.inicio_recepcao.qryListMensalidade"],
+      "matriculas": [
+        "mensalidadesAcademia.matriculas.qryListMatricula",
+        "mensalidadesAcademia.matriculas.cmdCreateMatricula"
+      ],
+      "mensalidades_pagamentos": [
+        "mensalidadesAcademia.mensalidades_pagamentos.qryListMensalidade",
+        "mensalidadesAcademia.mensalidades_pagamentos.cmdCreatePagamento"
+      ],
+      "planos": [
+        "mensalidadesAcademia.planos.qryListPlano",
+        "mensalidadesAcademia.planos.cmdCreatePlano"
+      ],
+      "inicio_gerencia": ["mensalidadesAcademia.inicio_gerencia.qryListMensalidade"]
+    },
+    "generatedAt": "2026-09-21T12:00:00.000Z",
+    "llmCalled": false
+  }
+}

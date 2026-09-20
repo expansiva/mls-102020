@@ -1,4 +1,4 @@
-/// <mls fileReference="_102020_/l2/agentPlannerL2/steps/needs30/agentP2Needs.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentPlannerL2/steps/effort40/agentP2Effort.ts" enhancement="_blank"/>
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { displayPath, readJson, writeJson } from '/_102035_/l2/solution/fs.js';
@@ -10,9 +10,11 @@ import {
 } from '/_102035_/l2/solution/pool.js';
 import {
   P2_MENU_DEVICE,
+  markP2Complete,
   markP2Step,
+  p2BackendFile,
+  p2EffortFile,
   p2MenuFile,
-  p2NeedsFile,
   p2PipelineFile,
   readP2Pipeline,
   type P2PipelineState,
@@ -22,46 +24,43 @@ import {
   drainWaitingSiblings,
   updateStatus,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
-import { loadP2MenuSources } from '/_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.js';
 import type { P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/steps/requests50/agentP2Requests.js';
 import {
-  buildP2NeedsFile,
-  buildP2NeedsMessage,
-  type P2NeedsFile,
-} from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
+  buildP2EffortFile,
+  buildP2EffortMessage,
+  parseP2BackendFile,
+  type P2EffortFile,
+} from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import {
-  formatP2NeedsGate,
-  validateP2Needs,
-} from '/_102020_/l2/agentPlannerL2/steps/needs30/gate.js';
+  formatP2EffortGate,
+  validateP2Effort,
+} from '/_102020_/l2/agentPlannerL2/steps/effort40/gate.js';
 
-export interface P2DeliverNeedsResult {
-  needs: P2NeedsFile;
-  needsPath: string;
+export interface P2DeliverEffortResult {
+  effort: P2EffortFile;
+  effortPath: string;
   message: PoolMessage;
   messagePath: string;
 }
 
-export async function executeP2Needs(moduleName: string, now: Date): Promise<P2DeliverNeedsResult> {
+export async function executeP2Effort(moduleName: string, now: Date): Promise<P2DeliverEffortResult> {
   const pipeline = await requirePipeline(moduleName);
-  const menu = await readJson<P2MenuFile>(p2MenuFile(moduleName, pipeline.device || P2_MENU_DEVICE));
-  if (!menu) throw new Error(`pool/l2/${pipeline.device || P2_MENU_DEVICE}/menu.json is missing; menu20 must run first.`);
-  const menuSources = await loadP2MenuSources(moduleName);
-  const needs = buildP2NeedsFile({
-    menu,
-    sources: menuSources.sources,
-    grants: menuSources.grants,
-    processes: menuSources.processes,
-    now,
-  });
-  const gate = validateP2Needs(needs, menu, menuSources.sources);
-  if (!gate.ok) throw new Error(formatP2NeedsGate(gate.issues));
+  const device = pipeline.device || P2_MENU_DEVICE;
+  const menu = await readJson<P2MenuFile>(p2MenuFile(moduleName, device));
+  if (!menu) throw new Error(`pool/l2/${device}/menu.json is missing; the menu flow must run first.`);
+  const rawBackend = await readJson<unknown>(p2BackendFile(moduleName, device));
+  if (rawBackend === null) throw new Error(`pool/l2/${device}/backend.json is missing; the l1 plan must run first.`);
+  const backend = parseP2BackendFile(rawBackend);
+  const effort = buildP2EffortFile({ menu, backend, now });
+  const gate = validateP2Effort(effort, menu);
+  if (!gate.ok) throw new Error(formatP2EffortGate(gate.issues));
 
   const receivedFile = receivedPoolFile(moduleName, pipeline.messageFile);
   const received = await readPoolMessage(receivedFile);
-  const message = buildP2NeedsMessage({ file: needs, received });
-  const needsInfo = p2NeedsFile(moduleName, needs.device);
-  const needsPath = await writeJson(needsInfo, needs);
+  const message = buildP2EffortMessage({ file: effort, received });
+  const effortInfo = p2EffortFile(moduleName, effort.device);
+  const effortPath = await writeJson(effortInfo, effort);
   const messageInfo = await writePoolMessage(moduleName, message, now);
   const messagePath = displayPath(messageInfo);
   await tracePoolAt(p2PipelineFile(moduleName), {
@@ -74,10 +73,10 @@ export async function executeP2Needs(moduleName: string, now: Date): Promise<P2D
     mode: message.mode,
     outcome: 'delivered',
   });
-  return { needs, needsPath, message, messagePath };
+  return { effort, effortPath, message, messagePath };
 }
 
-export async function beforeP2NeedsPromptStep(
+export async function beforeP2EffortPromptStep(
   _agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
@@ -88,19 +87,19 @@ export async function beforeP2NeedsPromptStep(
   let moduleName = '';
   try {
     moduleName = resolveModuleName(context, args || step.prompt);
-    if (!moduleName) throw new Error('needs30 needs a moduleName.');
+    if (!moduleName) throw new Error('effort40 needs a moduleName.');
     const mutationParent = findOpenParent(context, parentStep);
-    const delivered = await executeP2Needs(moduleName, new Date());
-    await writeApproved(moduleName, [delivered.needsPath, delivered.messagePath]);
+    const delivered = await executeP2Effort(moduleName, new Date());
+    await writeApproved(moduleName, [delivered.effortPath, delivered.messagePath]);
     return [
-      doneAnchor(context, mutationParent, moduleName, [delivered.needsPath, delivered.messagePath]),
+      doneAnchor(context, mutationParent, moduleName, [delivered.effortPath, delivered.messagePath]),
       updateStatus(
         context,
         mutationParent,
         step,
         hookSequential,
         'completed',
-        `needs30 wrote ${delivered.needsPath}`,
+        `effort40 wrote ${delivered.effortPath}`,
       ),
     ];
   } catch (error) {
@@ -113,14 +112,14 @@ export async function beforeP2NeedsPromptStep(
   }
 }
 
-export async function afterP2NeedsPromptStep(
+export async function afterP2EffortPromptStep(
   _agent: IAgentMeta,
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   step: mls.msg.AIAgentStep,
   hookSequential: number,
 ): Promise<mls.msg.AgentIntent[]> {
-  return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'needs30 already recorded.')];
+  return [updateStatus(context, parentStep, step, hookSequential, 'completed', 'effort40 already recorded.')];
 }
 
 async function requirePipeline(moduleName: string): Promise<P2PipelineState> {
@@ -131,12 +130,12 @@ async function requirePipeline(moduleName: string): Promise<P2PipelineState> {
 
 async function writeApproved(moduleName: string, artifactPaths: string[]): Promise<void> {
   const pipeline = await requirePipeline(moduleName);
-  const updated = markP2Step(pipeline, 'needs30', {
+  const updated = markP2Step(pipeline, 'effort40', {
     status: 'approved',
     updatedAt: new Date().toISOString(),
     artifactPaths,
   });
-  await writeJson(p2PipelineFile(moduleName), updated);
+  await writeJson(p2PipelineFile(moduleName), markP2Complete(updated));
 }
 
 async function recordFailure(moduleName: string, error: string): Promise<void> {
@@ -144,7 +143,7 @@ async function recordFailure(moduleName: string, error: string): Promise<void> {
   try {
     const pipeline = await readP2Pipeline(moduleName);
     if (!pipeline) return;
-    await writeJson(p2PipelineFile(moduleName), markP2Step(pipeline, 'needs30', {
+    await writeJson(p2PipelineFile(moduleName), markP2Step(pipeline, 'effort40', {
       status: 'failed',
       updatedAt: new Date().toISOString(),
       error,
@@ -162,15 +161,15 @@ function doneAnchor(
     type: 'result',
     stepId: 0,
     interaction: null,
-    stepTitle: 'Needs done',
+    stepTitle: 'Effort done',
     status: 'completed',
     nextSteps: [],
     result: JSON.stringify({
       moduleName,
       artifactPaths,
-      completedStep: 'needs30',
+      completedStep: 'effort40',
     }),
-    planning: { planId: 'needs30-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
+    planning: { planId: 'effort40-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);
 }
 
@@ -250,7 +249,7 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-P2_STEP_HOOKS.needs30 = {
-  beforePromptStep: beforeP2NeedsPromptStep,
-  afterPromptStep: afterP2NeedsPromptStep,
+P2_STEP_HOOKS.effort40 = {
+  beforePromptStep: beforeP2EffortPromptStep,
+  afterPromptStep: afterP2EffortPromptStep,
 };

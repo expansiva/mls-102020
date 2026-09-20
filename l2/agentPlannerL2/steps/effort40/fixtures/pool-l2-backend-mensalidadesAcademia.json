@@ -1,0 +1,10 @@
+{
+  "from": "l1",
+  "to": "l2",
+  "thread": "mensalidadesAcademia-20260918103000",
+  "round": 1,
+  "mode": "implement",
+  "subject": "backend plan of mensalidadesAcademia (web)",
+  "artifacts": ["pool/l2/web/backend.json"],
+  "body": "Backend plan for mensalidadesAcademia (web): endpoints, usecases and tables with owner status."
+}

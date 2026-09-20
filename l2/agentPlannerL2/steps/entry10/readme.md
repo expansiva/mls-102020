@@ -4,13 +4,17 @@ Deterministic. No LLM.
 
 ## Input
 
-- Hand: `@@agentPlannerL2 <lowerCamel>` → every pool/l2 **message** (oldest first). `menu.json` is ignored.
-- L4 step: prompt JSON `{ moduleName, thread, file }`. Same grouping.
+- Hand: `@@agentPlannerL2 <lowerCamel>` → every pool/l2 **message**, partitioned
+  by `from`. `menu.json` is ignored.
+- L4 step: prompt JSON `{ moduleName, thread, file }`. Same grouping inside the
+  chosen partition.
+- Effort partition (`from: l1` and `backend.json` in artifacts): do not wipe;
+  require `pipeline.json` and `menu.json`.
 
 ## Output
 
 `l2/<mod>/pipeline/pipeline.json` with `thread`, `round`, `messageFile`, `sourceMessages`, `steps.entry10.status: approved`, `webDir`.
-Wipes `l2/<mod>/pipeline/` and `l2/<mod>/web/` files first. Empty `web/` directories stay (no `removeDir`); the pipeline records `webDir`. Done-anchor `entry10-done` unlocks `menu20`.
+Menu partition: wipes `l2/<mod>/pipeline/` and `l2/<mod>/web/` files first. Empty `web/` directories stay (no `removeDir`); the pipeline records `webDir`. Done-anchor `entry10-done` unlocks the rest of the chosen conversation (`menu20` or `effort40`).
 
 ## Invariants
 

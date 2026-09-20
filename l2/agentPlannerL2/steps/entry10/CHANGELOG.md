@@ -1,5 +1,13 @@
 # entry10
 
+## 2026-09-21 (p2_22)
+
+- Partitions `pool/l2` by `message.from` before grouping. An `l1` message whose
+  artifacts contain `backend.json` is the effort conversation: no scratch wipe,
+  existing `pipeline.json` is kept, `menu.json` is required. The menu
+  conversation is unchanged. The different-requests refusal still applies
+  inside the chosen partition.
+
 ## 2026-09-19 (p2_10)
 
 - After wiping files under `l2/<mod>/web/`, records `pipeline.webDir`. No host/Studio

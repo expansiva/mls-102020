@@ -2,7 +2,7 @@
 
 ## 2026-09-21 (p2_21)
 
-- No longer calls `markP2Complete`. The last flow step is `needs30`.
+- No longer calls `markP2Complete`. The last flow step is `effort40`.
 
 ## 2026-09-20 (p2_20)
 

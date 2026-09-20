@@ -7,6 +7,8 @@ organisms (including `inbox`/`alerts`), filterable by actor, with `meta.processe
 code against what is already a screen in l2 (today nothing is, so every node is
 `new`). After the menu, `needs30` derives `l4/<mod>/pool/l1/web/needs.json`
 (what each page reads and writes, entity + operation) and one `l2→l1` message.
+When `pool/l2` has the L1 `backend.json`, `effort40` joins screens and backend
+statuses into `l4/<mod>/pool/l2/web/effort.json` and one `l2→l4` message.
 One reasoning call (menu). Lives in `mls-102020` next
 to `agentChangeFrontend`. Unique name `agentPlannerL2`.
 
@@ -32,12 +34,14 @@ paths read the same `pool/l2` messages and write the same
 
 ## Pipeline
 
-`docs/flow.json` is the contract: `entry10 → menu20 → needs30`. `entry10` and
-`needs30` are deterministic. `menu20` spends one reasoning call. `needs30`, on
-approve, sets `pipeline.status = complete`. Re-execution always starts from zero
-(wipes the l2 pipeline and `web/` files), overwrites `pool/l2/web/menu.json` and
-`pool/l1/web/needs.json`, and leaves the pool messages intact. Empty `web/` folders stay:
-`deleteFile` does not remove directories; `pipeline.webDir` records that.
+`docs/flow.json` is the contract: menu conversation `entry10 → menu20 → needs30`,
+effort conversation `entry10 → effort40`. `entry10`, `needs30` and `effort40`
+are deterministic. `menu20` spends one reasoning call. `effort40`, on approve,
+sets `pipeline.status = complete` when every flow step is approved. The menu
+conversation wipes the l2 pipeline and `web/` files; the effort conversation
+does not. Both overwrite their artefact and leave the pool messages intact.
+Empty `web/` folders stay: `deleteFile` does not remove directories;
+`pipeline.webDir` records that.
 
 Types reused from `/_102035_/l2/solution/{pool,fs,types}.js`. The l2 pipeline has
 its own `flowId: agentPlannerL2` and carries `sourceMessages` of the grouped

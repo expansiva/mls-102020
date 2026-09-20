@@ -2,10 +2,10 @@
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import {
-  P2_FLOW_STEP_IDS,
   buildP2PlannedSteps,
   executeP2Entry,
   parseP2StepPrompt,
+  plannedP2StepIds,
   type P2ExecuteResult,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
@@ -85,7 +85,7 @@ function missingPlannedSteps(
   return buildP2PlannedSteps(result.pipeline.moduleName, {
     thread: result.pipeline.thread,
     file: result.pipeline.messageFile,
-  }).filter(item => {
+  }, result.message).filter(item => {
     const id = item.planning?.planId || '';
     return id !== 'entry10' && !present.has(id);
   });
@@ -110,7 +110,7 @@ function doneAnchor(
       messageFile: result.pipeline.messageFile,
       sourceMessages: result.pipeline.sourceMessages,
       completedStep: 'entry10',
-      nextStep: P2_FLOW_STEP_IDS[1],
+      nextStep: plannedP2StepIds(result.message).find(id => id !== 'entry10') || '',
     }),
     planning: { planId: 'entry10-done', dependsOn: [], executionMode: 'manual_later', executionHost: 'client' },
   } as mls.msg.AIResultStep);

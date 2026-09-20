@@ -1,32 +1,33 @@
-/// <mls fileReference="_102020_/l2/agentPlannerL2/steps/needs30/agentP2Needs.test.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentPlannerL2/steps/effort40/agentP2Effort.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102020_/l2/agentPlannerL2/agentPlannerL2.js';
-import { p2NeedsFile, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+import { p2EffortFile, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import { P2_STEP_HOOKS } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import {
-  beforeP2NeedsPromptStep,
-  executeP2Needs,
-} from '/_102020_/l2/agentPlannerL2/steps/needs30/agentP2Needs.js';
-import type { P2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
+  beforeP2EffortPromptStep,
+  executeP2Effort,
+} from '/_102020_/l2/agentPlannerL2/steps/effort40/agentP2Effort.js';
+import type { P2EffortFile } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solution/pool.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
-const WORKFLOWS_FIXTURE = path.join(HERE, '../menu20/fixtures/workflows.defs.ts');
-const MENU_PATH = path.join(HERE, 'fixtures/menu.json');
-const RECEIVED_PATH = path.join(HERE, '../entry10/fixtures/pool-l2-mensalidadesAcademia.json');
+const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
+const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.json');
+const RECEIVED_PATH = path.join(HERE, 'fixtures/pool-l2-backend-mensalidadesAcademia.json');
+const L4_PATH = path.join(HERE, '../entry10/fixtures/pool-l2-mensalidadesAcademia.json');
 const PROJECT = 102047;
 const MODULE = 'mensalidadesAcademia';
 const AT = new Date(Date.UTC(2026, 8, 21, 12, 0, 0));
-const SHORT = '20260918103000_mensalidadesAcademia-20260918103000_1';
-const DISPLAY = `l4/${MODULE}/pool/l2/${SHORT}.json`;
+const L1_SHORT = '20260921120000_mensalidadesAcademia-20260918103000_1';
+const L4_SHORT = '20260918103000_mensalidadesAcademia-20260918103000_1';
+const DISPLAY = `l4/${MODULE}/pool/l2/${L1_SHORT}.json`;
 
 type Stored = {
   project: number; level: number; folder: string; shortName: string; extension: string;
@@ -89,28 +90,20 @@ function installHost(): Host {
   return host;
 }
 
-function seedL4(host: Host): void {
-  const put = (folder: string, shortName: string, rel: string, extension = '.defs.ts', root = L4_FIXTURE) => {
-    seed(host, { folder, shortName, extension, content: readFileSync(path.join(root, rel), 'utf8') });
-  };
-  put(MODULE, 'module', 'module.defs.ts');
-  put(MODULE, 'access', 'access.defs.ts');
-  put(MODULE, 'workflows', 'workflows.defs.ts', '.defs.ts', path.dirname(WORKFLOWS_FIXTURE));
-  put(`${MODULE}/journeys`, 'index', 'journeys/index.defs.ts');
-  for (const name of readdirSync(path.join(L4_FIXTURE, 'journeys')).filter(item => item.endsWith('.defs.ts') && item !== 'index.defs.ts')) {
-    put(`${MODULE}/journeys`, name.replace(/\.defs\.ts$/, ''), `journeys/${name}`);
-  }
-  put(`${MODULE}/ontology`, 'index', 'ontology/index.defs.ts');
-  for (const name of readdirSync(path.join(L4_FIXTURE, 'ontology')).filter(item => item.endsWith('.defs.ts') && item !== 'index.defs.ts')) {
-    put(`${MODULE}/ontology`, name.replace(/\.defs\.ts$/, ''), `ontology/${name}`);
-  }
-}
-
 function seedReady(host: Host): void {
-  seedL4(host);
+  seed(host, {
+    folder: `${MODULE}/pipeline`,
+    shortName: 'pipeline',
+    content: `${JSON.stringify({ status: 'complete', moduleName: MODULE })}\n`,
+  });
   seed(host, {
     folder: `${MODULE}/pool/l2`,
-    shortName: SHORT,
+    shortName: L4_SHORT,
+    content: `${readFileSync(L4_PATH, 'utf8')}\n`,
+  });
+  seed(host, {
+    folder: `${MODULE}/pool/l2`,
+    shortName: L1_SHORT,
     content: `${readFileSync(RECEIVED_PATH, 'utf8')}\n`,
   });
   seed(host, {
@@ -119,13 +112,18 @@ function seedReady(host: Host): void {
     content: `${readFileSync(MENU_PATH, 'utf8')}\n`,
   });
   seed(host, {
-    folder: `${MODULE}/pool/l1/web`,
-    shortName: 'needs',
+    folder: `${MODULE}/pool/l2/web`,
+    shortName: 'backend',
+    content: `${readFileSync(BACKEND_PATH, 'utf8')}\n`,
+  });
+  seed(host, {
+    folder: `${MODULE}/pool/l2/web`,
+    shortName: 'effort',
     content: '',
   });
   const stamp = poolStamp(AT);
   seed(host, {
-    folder: `${MODULE}/pool/l1`,
+    folder: `${MODULE}/pool/l4`,
     shortName: `${stamp}_mensalidadesAcademia-20260918103000_1`,
     content: '',
   });
@@ -141,11 +139,12 @@ function seedReady(host: Host): void {
       steps: {
         entry10: { status: 'approved', updatedAt: AT.toISOString() },
         menu20: { status: 'approved', updatedAt: AT.toISOString() },
+        needs30: { status: 'approved', updatedAt: AT.toISOString() },
       },
       thread: 'mensalidadesAcademia-20260918103000',
       round: 1,
       messageFile: DISPLAY,
-      sourceMessages: [`${SHORT}.json`],
+      sourceMessages: [`${L1_SHORT}.json`],
       webDir: 'empty-left: deleteFile does not remove directories',
       device: 'web',
       updatedAt: AT.toISOString(),
@@ -182,69 +181,67 @@ function contextWith(steps: mls.msg.AIPayload[] = []): mls.msg.ExecutionContext 
   } as unknown as mls.msg.ExecutionContext;
 }
 
-void test('needs30 is deterministic and has no prompt.md', () => {
+void test('effort40 is deterministic and has no prompt.md', () => {
   assert.equal(existsSync(path.join(HERE, 'prompt.md')), false);
 });
 
-void test('createAgent registers needs30 on the dispatch table', () => {
+void test('createAgent registers effort40 on the dispatch table', () => {
   createAgent();
-  assert.equal(P2_STEP_HOOKS.needs30?.beforePromptStep, beforeP2NeedsPromptStep);
+  assert.equal(P2_STEP_HOOKS.effort40?.beforePromptStep, beforeP2EffortPromptStep);
 });
 
-void test('execute writes needs.json, one l2→l1 message, delivered trace, and does not delete the pool', async () => {
+void test('execute writes effort.json, one l2→l4 message, delivered trace, and does not delete the pool', async () => {
   const host = installHost();
   seedReady(host);
-  const result = await executeP2Needs(MODULE, AT);
-  const written = JSON.parse(host.files[keyOf(p2NeedsFile(MODULE))].content) as P2NeedsFile;
-  assert.equal(written.schemaVersion, '2026-09-21-p2-needs-v1');
-  assert.equal(result.needsPath, `l4/${MODULE}/pool/l1/web/needs.json`);
-  const payments = written.pages.find(page => page.pageId === 'mensalidades_pagamentos');
-  assert.ok(payments);
-  assert.deepEqual(payments.reads.map(item => item.entity), ['Mensalidade', 'Pagamento']);
-  assert.deepEqual(payments.writes.map(item => `${item.entity}:${item.operation}`), ['Pagamento:create']);
+  const result = await executeP2Effort(MODULE, AT);
+  const written = JSON.parse(host.files[keyOf(p2EffortFile(MODULE))].content) as P2EffortFile;
+  assert.equal(written.schemaVersion, '2026-09-21-p2-effort-v1');
+  assert.equal(result.effortPath, `l4/${MODULE}/pool/l2/web/effort.json`);
+  assert.equal(written.totals.screens.toCreate, 6);
+  assert.equal(written.totals.endpoints.done, 1);
 
   const message = JSON.parse(host.files[keyOf({
-    project: PROJECT, level: 4, folder: `${MODULE}/pool/l1`,
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l4`,
     shortName: `${poolStamp(AT)}_mensalidadesAcademia-20260918103000_1`, extension: '.json',
   })].content) as PoolMessage;
   assert.equal(message.from, 'l2');
-  assert.equal(message.to, 'l1');
-  assert.equal(message.subject, 'needs of mensalidadesAcademia (web)');
-  assert.deepEqual(message.artifacts, ['pool/l1/web/needs.json']);
+  assert.equal(message.to, 'l4');
+  assert.equal(message.subject, 'effort of mensalidadesAcademia (web) ready');
+  assert.deepEqual(message.artifacts, ['pool/l2/web/effort.json']);
 
   const trace = await readPoolTraceAt(p2PipelineFile(MODULE));
   assert.equal(trace.length, 1);
   assert.equal(trace[0].outcome, 'delivered');
-  assert.equal(trace[0].to, 'l1');
+  assert.equal(trace[0].to, 'l4');
   assert.deepEqual(host.deleted, []);
   assert.ok(host.files[keyOf({
-    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: SHORT, extension: '.json',
-  })].content.includes('"to": "l2"'));
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: L1_SHORT, extension: '.json',
+  })].content.includes('"from": "l1"'));
 });
 
-void test('beforePromptStep approves needs30 and does not close the pipeline', async () => {
+void test('beforePromptStep approves effort40 and closes the pipeline', async () => {
   const host = installHost();
   seedReady(host);
   const step: mls.msg.AIAgentStep = {
     type: 'agent',
-    stepId: 30,
+    stepId: 40,
     interaction: null,
-    stepTitle: 'Needs',
+    stepTitle: 'Effort',
     status: 'waiting_human_input',
     nextSteps: [],
     agentName: 'agentPlannerL2',
-    prompt: JSON.stringify({ planId: 'needs30', moduleName: MODULE }),
+    prompt: JSON.stringify({ planId: 'effort40', moduleName: MODULE }),
     rags: [],
-    planning: { planId: 'needs30', dependsOn: ['menu20-done'], executionMode: 'sequential', executionHost: 'client' },
+    planning: { planId: 'effort40', dependsOn: ['entry10-done'], executionMode: 'sequential', executionHost: 'client' },
   };
-  const intents = await beforeP2NeedsPromptStep(agentMeta(), contextWith([step]), step, step, 1);
+  const intents = await beforeP2EffortPromptStep(agentMeta(), contextWith([step]), step, step, 1);
   const status = intents.find(intent => intent.type === 'update-status') as mls.msg.AgentIntentUpdateStatus | undefined;
   assert.equal(status?.status, 'completed', status?.traceMsg);
-  assert.ok(intents.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'needs30-done'));
+  assert.ok(intents.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'effort40-done'));
   const pipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as {
     status: string;
-    steps: { needs30: { status: string } };
+    steps: { effort40: { status: string } };
   };
-  assert.equal(pipeline.steps.needs30.status, 'approved');
-  assert.equal(pipeline.status, 'inProgress');
+  assert.equal(pipeline.steps.effort40.status, 'approved');
+  assert.equal(pipeline.status, 'complete');
 });
