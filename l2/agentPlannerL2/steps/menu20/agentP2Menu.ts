@@ -117,7 +117,7 @@ export function buildP2MenuHumanPrompt(input: {
     JSON.stringify({
       hubs: candidates.hubs,
       pages: candidates.pages,
-      recordsMaintained: candidates.recordsMaintained,
+      recordsKept: candidates.recordsKept,
     }, null, 2),
     '',
     '## What this actor must see, beyond journeys',

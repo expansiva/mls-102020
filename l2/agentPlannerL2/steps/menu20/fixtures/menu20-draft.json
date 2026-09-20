@@ -63,9 +63,6 @@
     },
     "processes": {
       "lembrarGeracaoMensalidades": ["painel", "mensalidades_mes"]
-    },
-    "entities": {
-      "Plano": ["matricula_aluno"]
     }
   }
 }

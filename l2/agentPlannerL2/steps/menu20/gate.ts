@@ -4,7 +4,6 @@ import type { P2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20
 import {
   actorAuthorityKey,
   collectBeyondJourneys,
-  collectRecordsMaintained,
   isMechanicalEffectTask,
   isMenuNodeKind,
   isMenuOrganismKind,
@@ -269,88 +268,6 @@ export function validateP2Menu(draft: MenuV2, input: P2MenuGateInput): P2MenuGat
     }
   }
 
-  const maintained = collectRecordsMaintained(sources, grants);
-  for (const row of maintained) {
-    if (!Object.prototype.hasOwnProperty.call(draft.meta.entities, row.entityRef)
-      || draft.meta.entities[row.entityRef].length === 0) {
-      warning(
-        issues,
-        'P2_MENU_ENTITY_UNMAPPED',
-        `Entity ${row.entityRef} has no page.`,
-        `$.meta.entities.${row.entityRef}`,
-      );
-    }
-  }
-
-  Object.entries(draft.meta.entities).forEach(([entityId, pages]) => {
-    if (!entityIds.has(entityId)) {
-      error(issues, 'P2_MENU_ENTITY_UNKNOWN', `Unknown entity ${entityId}.`, `$.meta.entities.${entityId}`);
-    }
-    pages.forEach((pageId, pagePosition) => {
-      const found = byId.get(pageId);
-      if (!found) {
-        error(
-          issues,
-          'P2_MENU_ENTITY_PAGE_UNKNOWN',
-          `Unknown page ${pageId}.`,
-          `$.meta.entities.${entityId}[${pagePosition}]`,
-        );
-      } else if (found.node.kind !== 'page') {
-        error(
-          issues,
-          'P2_MENU_ENTITY_NOT_PAGE',
-          `${pageId} is not a page.`,
-          `$.meta.entities.${entityId}[${pagePosition}]`,
-        );
-      }
-    });
-  });
-
-  const formSeen = new Set<string>();
-  for (const row of maintained) {
-    const key = `${row.actorRef}:${row.entityRef}`;
-    if (formSeen.has(key)) continue;
-    formSeen.add(key);
-    const authorityPath = `$.authorities[${JSON.stringify(actorAuthorityKey(row.actorRef))}]`;
-    const mapped = Object.prototype.hasOwnProperty.call(draft.meta.entities, row.entityRef)
-      ? draft.meta.entities[row.entityRef]
-      : undefined;
-    if (!mapped || mapped.length === 0) {
-      warning(
-        issues,
-        'P2_MENU_ENTITY_NO_FORM',
-        `Record ${row.entityRef} maintained by ${row.actorRef} is not mapped in meta.entities`,
-        authorityPath,
-      );
-      continue;
-    }
-    const visibleIds = new Set((pagesByActor.get(row.actorRef) || []).map(page => page.id));
-    const visibleMapped: MenuPageNode[] = [];
-    for (const pageId of mapped) {
-      if (!visibleIds.has(pageId)) continue;
-      const found = byId.get(pageId);
-      if (!found || found.node.kind !== 'page') continue;
-      visibleMapped.push(found.node);
-    }
-    if (!visibleMapped.length) {
-      warning(
-        issues,
-        'P2_MENU_ENTITY_NO_FORM',
-        `Record ${row.entityRef} maintained by ${row.actorRef} is mapped only to pages ${row.actorRef} cannot reach`,
-        authorityPath,
-      );
-      continue;
-    }
-    if (!visibleMapped.some(page => hasFormOrActions(page))) {
-      warning(
-        issues,
-        'P2_MENU_ENTITY_NO_FORM',
-        `Record ${row.entityRef} maintained by ${row.actorRef} has no form or actions on ${visibleMapped[0].id}`,
-        authorityPath,
-      );
-    }
-  }
-
   return { ok: !issues.some(issue => issue.severity === 'error'), issues };
 }
 
@@ -416,10 +333,6 @@ function pagesVisibleToActor(
 
 function hasOrganismKind(pages: readonly MenuPageNode[], kind: MenuOrganismKind): boolean {
   return pages.some(page => page.organisms.some(organism => organism.kind === kind));
-}
-
-function hasFormOrActions(page: MenuPageNode): boolean {
-  return page.organisms.some(organism => organism.kind === 'form' || organism.kind === 'actions');
 }
 
 function hasCitation(pages: readonly MenuPageNode[]): boolean {

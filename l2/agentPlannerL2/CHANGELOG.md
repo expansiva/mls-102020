@@ -1,5 +1,10 @@
 # agentPlannerL2
 
+## 2026-09-20 (p2_20)
+
+- `meta.entities` and `P2_MENU_ENTITY_NO_FORM` are gone. Who maintains a
+  `crud` record is in the grant description, not a gate.
+
 ## 2026-09-20 (p2_19)
 
 - `action` compares with what is already built in l2, not with the previous

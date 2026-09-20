@@ -1,5 +1,18 @@
 # menu20
 
+## 2026-09-20 (p2_20)
+
+- Gate `P2_MENU_ENTITY_NO_FORM` and `meta.entities` are gone. A gate on an
+  expectation derived from grant prose is the origin of the whack-a-mole
+  (the attendant who only consults was accused of missing a form). Who
+  maintains and who only consults is in the grant description; the person
+  (analise3) reads the menu. There is no entity gate.
+- Candidate `recordsKept` (pure): per `writer: crud` entity, the grants that
+  reach it (`actorRef`, `disclosure.mode`, `dataScope.mode`, grant
+  `description` as-is). Prompt label: records kept by this module and who is
+  granted on them; the grant description says whether that actor maintains
+  or only consults. No new rule sentence.
+
 ## 2026-09-20 (p2_19)
 
 - `action` says what generation will do to a screen that already exists in l2.

@@ -73,7 +73,6 @@ export type MenuStampedNode = MenuStampedHubNode | MenuStampedPageNode | MenuSta
 export interface MenuV2Meta {
   journeys: Record<string, string[]>;
   processes: Record<string, string[]>;
-  entities: Record<string, string[]>;
 }
 
 export interface MenuFileMeta extends MenuV2Meta {
@@ -100,6 +99,7 @@ export interface P2GrantView {
   grantId: string;
   actorRef: string;
   title: string;
+  description: string;
   entityRefs: string[];
   dataScope: { mode: string; anchorEntity: string; description: string };
   disclosure: { mode: string; description: string };
@@ -153,17 +153,23 @@ export interface P2ActorMustSee {
   derived: P2ActorMustSeeDerived[];
 }
 
-export interface P2RecordMaintained {
+export interface P2RecordKeptGrant {
   actorRef: string;
+  dataScope: { mode: string };
+  disclosure: { mode: string };
+  description: string;
+}
+
+export interface P2RecordKept {
   entityRef: string;
-  writer: 'crud' | 'mdm';
+  grants: P2RecordKeptGrant[];
 }
 
 export interface P2MenuCandidates {
   hubs: P2MenuHubCandidate[];
   pages: P2WorkspaceCandidate[];
   beyondJourneys: P2ActorMustSee[];
-  recordsMaintained: P2RecordMaintained[];
+  recordsKept: P2RecordKept[];
 }
 
 export function isMenuNodeKind(value: string): value is MenuNodeKind {
@@ -191,6 +197,7 @@ export function parseP2Grants(access: unknown): P2GrantView[] {
       grantId: memberId(text(grant.grantId)),
       actorRef: memberId(text(grant.actorRef)),
       title: text(grant.title),
+      description: text(grant.description),
       entityRefs: uniqueIds(grant.entityRefs, entityId),
       dataScope: {
         mode: text(dataScope.mode),
@@ -258,34 +265,45 @@ export function menuCandidates(
     hubs,
     pages: collectP2WorkspaceCandidates(sources),
     beyondJourneys: collectBeyondJourneys(sources, grants, processes),
-    recordsMaintained: collectRecordsMaintained(sources, grants),
+    recordsKept: collectRecordsKept(sources, grants),
   };
 }
 
-/** Pure. Per actor: `writer: crud` entities in that actor's grant — records they maintain. */
-export function collectRecordsMaintained(
+/** Pure. Per `writer: crud` entity, the grants that reach it. Description as-is. */
+export function collectRecordsKept(
   sources: P2L4Sources,
   grants: readonly P2GrantView[],
-): P2RecordMaintained[] {
+): P2RecordKept[] {
   const crudIds = new Set(
     sources.entities.filter(entity => entity.writer === 'crud' && entity.entityId).map(entity => entity.entityId),
   );
-  const seen = new Set<string>();
-  const out: P2RecordMaintained[] = [];
+  const byEntity = new Map<string, P2RecordKeptGrant[]>();
   for (const grant of grants) {
     if (!grant.actorRef) continue;
     for (const entityRef of grant.entityRefs) {
       if (!entityRef || !crudIds.has(entityRef)) continue;
-      const key = `${grant.actorRef}:${entityRef}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ actorRef: grant.actorRef, entityRef, writer: 'crud' });
+      let rows = byEntity.get(entityRef);
+      if (!rows) {
+        rows = [];
+        byEntity.set(entityRef, rows);
+      }
+      rows.push({
+        actorRef: grant.actorRef,
+        dataScope: { mode: grant.dataScope.mode },
+        disclosure: { mode: grant.disclosure.mode },
+        description: grant.description,
+      });
     }
   }
-  return out.sort((left, right) => {
-    const actor = left.actorRef.localeCompare(right.actorRef);
-    return actor !== 0 ? actor : left.entityRef.localeCompare(right.entityRef);
-  });
+  return [...byEntity.entries()]
+    .map(([entityRef, entityGrants]) => ({
+      entityRef,
+      grants: entityGrants.sort((left, right) => {
+        const actor = left.actorRef.localeCompare(right.actorRef);
+        return actor !== 0 ? actor : left.description.localeCompare(right.description);
+      }),
+    }))
+    .sort((left, right) => left.entityRef.localeCompare(right.entityRef));
 }
 
 export function isMechanicalEffectTask(task: P2ProcessTaskView): boolean {
@@ -375,14 +393,13 @@ export function normalizeMenuV2(value: unknown): MenuV2 {
   const root = asRecord(value, '$');
   exactKeys(root, ['tree', 'authorities', 'meta'], '$');
   const meta = asRecord(root.meta, '$.meta');
-  exactKeys(meta, ['journeys', 'processes', 'entities'], '$.meta');
+  exactKeys(meta, ['journeys', 'processes'], '$.meta');
   return {
     tree: list(root.tree, '$.tree').map((item, index) => normalizeNode(item, `$.tree[${index}]`)),
     authorities: normalizeAuthorities(root.authorities, '$.authorities'),
     meta: {
       journeys: normalizeIdPagesMap(meta.journeys, '$.meta.journeys', 'journeyId'),
       processes: normalizeIdPagesMap(meta.processes, '$.meta.processes', 'processId'),
-      entities: normalizeEntityPagesMap(meta.entities, '$.meta.entities'),
     },
   };
 }
@@ -405,7 +422,6 @@ export function buildP2MenuFile(input: {
     meta: {
       journeys: input.draft.meta.journeys,
       processes: input.draft.meta.processes,
-      entities: input.draft.meta.entities,
       removed: [],
     },
   };
@@ -443,7 +459,7 @@ export function parsePreviousMenuTree(value: unknown): MenuNode[] {
 export function buildP2MenuTool(schema: Record<string, unknown>): mls.msg.LLMTool {
   return createP2ArtifactTool(
     'submitP2Menu',
-    'Submit the module menu tree: hubs, pages with organisms, authorities by actor, and journey/process/entity mapping.',
+    'Submit the module menu tree: hubs, pages with organisms, authorities by actor, and journey/process mapping.',
     schema,
   );
 }
@@ -542,27 +558,6 @@ function normalizeIdPagesMap(value: unknown, path: string, idKey: 'journeyId' | 
   const out: Record<string, string[]> = {};
   for (const [key, pages] of Object.entries(source)) {
     const id = memberIdRequired(key, `${path}.${key}`);
-    out[id] = stringIdList(pages, `${path}.${id}`, nodeId);
-  }
-  return out;
-}
-
-function normalizeEntityPagesMap(value: unknown, path: string): Record<string, string[]> {
-  if (Array.isArray(value)) {
-    const out: Record<string, string[]> = {};
-    value.forEach((item, index) => {
-      const row = asRecord(item, `${path}[${index}]`);
-      exactKeys(row, ['entityId', 'pages'], `${path}[${index}]`);
-      const id = entityIdRequired(row.entityId, `${path}[${index}].entityId`);
-      if (out[id]) throw new Error(`${path}[${index}]: duplicate entityId ${id}.`);
-      out[id] = stringIdList(row.pages, `${path}[${index}].pages`, nodeId);
-    });
-    return out;
-  }
-  const source = asRecord(value, path);
-  const out: Record<string, string[]> = {};
-  for (const [key, pages] of Object.entries(source)) {
-    const id = entityIdRequired(key, `${path}.${key}`);
     out[id] = stringIdList(pages, `${path}.${id}`, nodeId);
   }
   return out;

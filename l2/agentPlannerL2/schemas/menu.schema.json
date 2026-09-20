@@ -126,8 +126,7 @@
       "additionalProperties": false,
       "required": [
         "journeys",
-        "processes",
-        "entities"
+        "processes"
       ],
       "properties": {
         "journeys": {
@@ -137,10 +136,6 @@
         "processes": {
           "type": "array",
           "items": { "$ref": "#/$defs/processPages" }
-        },
-        "entities": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/entityPages" }
         }
       }
     },
@@ -168,21 +163,6 @@
       ],
       "properties": {
         "processId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
-        "pages": {
-          "type": "array",
-          "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" }
-        }
-      }
-    },
-    "entityPages": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "entityId",
-        "pages"
-      ],
-      "properties": {
-        "entityId": { "type": "string", "pattern": "^[A-Z][A-Za-z0-9]*$" },
         "pages": {
           "type": "array",
           "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$" }
