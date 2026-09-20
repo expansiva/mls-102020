@@ -1,5 +1,13 @@
 # menu20
 
+## 2026-09-20 (p2_15)
+
+- Writes `l4/<mod>/pool/l2/web/menu.json`. Schema `2026-09-20-p2-menu-v2.2`.
+- `action` (`new|change|keep|remove`) stamped after the gate from a structural
+  diff against the previous menu of the same device. Tool schema still has no `action`.
+- Missing nodes go to `meta.removed` with `action: remove`. First generation is
+  all `new`. Legacy `pool/l2/menu.json` is previous once, then deleted.
+
 ## 2026-09-19 (p2_12)
 
 - Menu v2.1: organism kinds `inbox` and `alerts`; `meta.processes` maps process → pages.

@@ -27,7 +27,7 @@ Tool arguments:
 - `meta.journeys`: array of `{ journeyId, pages }` — every l4 journey, pages where it happens (empty pages = a visible hole)
 - `meta.processes`: array of `{ processId, pages }` — every l4 process, pages where the person sees its cause or effect (empty pages = a visible hole)
 
-Do not emit `schemaVersion`, `moduleName` or `userLanguage`. Code fills those.
+Do not emit `schemaVersion`, `moduleName`, `userLanguage`, `device`, `action` or `meta.removed`. Code fills those.
 
 ## Node kinds
 

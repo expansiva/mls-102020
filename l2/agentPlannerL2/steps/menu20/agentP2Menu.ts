@@ -10,7 +10,9 @@ import {
 } from '/_102035_/l2/solution/fs.js';
 import type { Ns5AccessArtifact, Ns5WorkflowsArtifact } from '/_102035_/l2/solution/types.js';
 import {
+  P2_MENU_DEVICE,
   createP2RetryStep,
+  deleteLegacyP2Menu,
   markP2Complete,
   markP2Step,
   p2AgentFile,
@@ -19,6 +21,7 @@ import {
   p2PipelineFile,
   readP2AgentText,
   readP2Pipeline,
+  resolvePreviousP2Menu,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
@@ -34,10 +37,12 @@ import {
 import {
   buildP2MenuFile,
   buildP2MenuTool,
+  menuActionCounts,
   menuCandidates,
   normalizeMenuV2,
   parseP2Grants,
   parseP2Processes,
+  parsePreviousMenuTree,
   type MenuV2,
   type P2GrantView,
   type P2MenuFile,
@@ -262,19 +267,30 @@ export async function afterP2MenuPromptStep(
       throw new Error(feedback);
     }
 
+    const previous = await resolvePreviousP2Menu(moduleName, P2_MENU_DEVICE);
+    const previousTree = previous.raw != null ? parsePreviousMenuTree(previous.raw) : null;
     const artifact = buildP2MenuFile({
       moduleName,
       userLanguage: menuSources.sources.userLanguage,
+      device: P2_MENU_DEVICE,
       draft,
+      previousTree,
     });
-    const menuPath = await writeJson(p2MenuFile(moduleName), artifact);
+    const menuPath = await writeJson(p2MenuFile(moduleName, P2_MENU_DEVICE), artifact);
+    if (previous.migrateLegacy) await deleteLegacyP2Menu(moduleName);
     const warnings = formatP2MenuWarnings(gate.issues);
     pipeline = await writeStepState(pipeline, {
       status: 'approved',
       updatedAt: new Date().toISOString(),
       artifactPaths: [menuPath, draftPath],
     });
-    pipeline = { ...pipeline, warnings };
+    pipeline = {
+      ...pipeline,
+      warnings,
+      device: P2_MENU_DEVICE,
+      previousMenu: previous.previousMenu,
+      actionCounts: menuActionCounts(artifact),
+    };
     pipeline = markP2Complete(pipeline);
     await writeJson(p2PipelineFile(pipeline.moduleName), pipeline);
     const warningNote = warnings.length ? ` (${warnings.length} warning(s))` : '';

@@ -1,0 +1,209 @@
+{
+  "schemaVersion": "2026-09-19-p2-menu-v2.1",
+  "moduleName": "compras",
+  "userLanguage": "pt-BR",
+  "tree": [
+    {
+      "id": "pedidos_de_compra",
+      "kind": "page",
+      "label": "Pedidos de compra",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Resumo dos meus pedidos de compra, com valor total, pedidos em aberto, atrasados e situação de recebimento."
+        },
+        {
+          "kind": "highlights",
+          "text": "Pedidos que exigem aprovação, estão atrasados ou aguardam recebimento."
+        },
+        {
+          "kind": "alerts",
+          "text": "Prazos e pendências dos meus pedidos de compra."
+        },
+        {
+          "kind": "inbox",
+          "text": "Pedidos que preciso enviar ou encaminhar para aprovação."
+        },
+        {
+          "kind": "list",
+          "text": "Meus pedidos de compra; localize e acompanhe cada pedido."
+        },
+        {
+          "kind": "detail",
+          "text": "Detalhes do pedido, fornecedor, itens, valor total, exigência de aprovação, situação de recebimento, abertura e atraso."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico do pedido, incluindo envio, encaminhamento, decisão de aprovação e atualizações de recebimento."
+        },
+        {
+          "kind": "actions",
+          "text": "Abrir pedido de compra, enviar ao fornecedor e encaminhar para aprovação quando exigido."
+        }
+      ]
+    },
+    {
+      "id": "meu_perfil_comprador",
+      "kind": "hub",
+      "label": "Meu perfil de comprador",
+      "context": "Buyer",
+      "text": "Seu perfil de comprador já está selecionado; consulte seus dados.",
+      "children": [
+        {
+          "id": "perfil_comprador",
+          "kind": "page",
+          "label": "Meu perfil",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Meus dados de identificação como comprador."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fornecedores_e_condicoes",
+      "kind": "page",
+      "label": "Fornecedores e condições",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Fornecedores cadastrados e suas condições de fornecimento."
+        },
+        {
+          "kind": "detail",
+          "text": "Dados do fornecedor, contatos, produtos localizados e condições de fornecimento com preços combinados."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre ou atualize fornecedor, contatos e condições de fornecimento para os produtos."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastrar fornecedor, cadastrar contato, localizar produto e registrar condições de fornecimento."
+        }
+      ]
+    },
+    {
+      "id": "gerenciar_pedidos_de_compra",
+      "kind": "page",
+      "label": "Gerenciar pedidos de compra",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Resumo dos pedidos de compra, incluindo total comprado por fornecedor no mês, pedidos em aberto e atrasados."
+        },
+        {
+          "kind": "highlights",
+          "text": "Pedidos acima do limite aguardando decisão e indicadores de compras que merecem atenção."
+        },
+        {
+          "kind": "alerts",
+          "text": "Pedidos de compra atrasados e outras pendências a acompanhar."
+        },
+        {
+          "kind": "inbox",
+          "text": "Pedidos encaminhados que aguardam minha aprovação ou rejeição."
+        },
+        {
+          "kind": "list",
+          "text": "Pedidos de compra da organização; localize pedidos pendentes e consulte os indicadores."
+        },
+        {
+          "kind": "detail",
+          "text": "Detalhes do pedido, fornecedor, produtos, valor total, exigência de aprovação, situação de recebimento, abertura e atraso."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico do pedido, incluindo encaminhamento, aprovação ou rejeição e atualizações de recebimento."
+        },
+        {
+          "kind": "actions",
+          "text": "Aprovar ou rejeitar pedidos de compra encaminhados acima do limite."
+        }
+      ]
+    },
+    {
+      "id": "recebimento_de_pedidos",
+      "kind": "page",
+      "label": "Recebimento de pedidos",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Resumo dos recebimentos e da situação dos pedidos disponíveis para recebimento."
+        },
+        {
+          "kind": "highlights",
+          "text": "Pedidos em aberto, atrasados e recebimentos parciais que precisam de atenção."
+        },
+        {
+          "kind": "alerts",
+          "text": "Prazos e pendências de recebimento."
+        },
+        {
+          "kind": "inbox",
+          "text": "Pedidos disponíveis para eu registrar o recebimento."
+        },
+        {
+          "kind": "list",
+          "text": "Pedidos de compra disponíveis para recebimento e seus registros de recebimento."
+        },
+        {
+          "kind": "detail",
+          "text": "Itens do pedido, valor total, exigência de aprovação, situação de recebimento, abertura, atraso e situação de conclusão do recebimento."
+        },
+        {
+          "kind": "form",
+          "text": "Registre o recebimento total ou parcial dos itens efetivamente recebidos."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico do pedido e do recebimento, incluindo registros totais ou parciais."
+        },
+        {
+          "kind": "actions",
+          "text": "Registrar recebimento de pedido."
+        }
+      ]
+    }
+  ],
+  "authorities": {
+    "actor:comprador": [
+      "pedidos_de_compra",
+      "meu_perfil_comprador",
+      "fornecedores_e_condicoes"
+    ],
+    "actor:gerenteCompras": [
+      "gerenciar_pedidos_de_compra"
+    ],
+    "actor:almoxarife": [
+      "recebimento_de_pedidos"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarFornecedor": [
+        "fornecedores_e_condicoes"
+      ],
+      "abrirEenviarPedidoCompra": [
+        "pedidos_de_compra"
+      ],
+      "decidirPedidoAcimaDoLimite": [
+        "gerenciar_pedidos_de_compra"
+      ],
+      "registrarRecebimentoPedido": [
+        "recebimento_de_pedidos"
+      ],
+      "acompanharIndicadoresDeCompras": [
+        "gerenciar_pedidos_de_compra"
+      ]
+    },
+    "processes": {
+      "aprovarPedidoAcimaDoLimite": [
+        "pedidos_de_compra",
+        "gerenciar_pedidos_de_compra"
+      ]
+    }
+  }
+}

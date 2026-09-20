@@ -1,13 +1,18 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/menu20/contracts.ts" enhancement="_blank"/>
 
 import {
+  P2_MENU_DEVICE,
+  type P2MenuDevice,
+} from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+import { countMenuActions, diffMenuTrees } from '/_102020_/l2/agentPlannerL2/steps/menu20/diff.js';
+import {
   collectP2WorkspaceCandidates,
   isDdmEntity,
   type P2L4Sources,
   type P2WorkspaceCandidate,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 
-export const P2_MENU_SCHEMA_VERSION = '2026-09-19-p2-menu-v2.1' as const;
+export const P2_MENU_SCHEMA_VERSION = '2026-09-20-p2-menu-v2.2' as const;
 export const MENU_NODE_KINDS = ['hub', 'page', 'group'] as const;
 export type MenuNodeKind = typeof MENU_NODE_KINDS[number];
 export const MENU_ORGANISM_KINDS = [
@@ -15,6 +20,8 @@ export const MENU_ORGANISM_KINDS = [
 ] as const;
 export type MenuOrganismKind = typeof MENU_ORGANISM_KINDS[number];
 export const MENU_MECHANICAL_EFFECTS = ['transition', 'create', 'update'] as const;
+export const MENU_ACTIONS = ['new', 'change', 'keep', 'remove'] as const;
+export type MenuAction = typeof MENU_ACTIONS[number];
 
 const NODE_ID = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
@@ -52,22 +59,40 @@ export interface MenuGroupNode {
 
 export type MenuNode = MenuHubNode | MenuPageNode | MenuGroupNode;
 
+export type MenuStampedHubNode = Omit<MenuHubNode, 'children'> & {
+  action: MenuAction;
+  children: MenuStampedNode[];
+};
+export type MenuStampedPageNode = MenuPageNode & { action: MenuAction };
+export type MenuStampedGroupNode = Omit<MenuGroupNode, 'children'> & {
+  action: MenuAction;
+  children: MenuStampedNode[];
+};
+export type MenuStampedNode = MenuStampedHubNode | MenuStampedPageNode | MenuStampedGroupNode;
+
+export interface MenuV2Meta {
+  journeys: Record<string, string[]>;
+  processes: Record<string, string[]>;
+}
+
+export interface MenuFileMeta extends MenuV2Meta {
+  removed: MenuStampedNode[];
+}
+
 export interface MenuV2 {
   tree: MenuNode[];
   authorities: Record<string, string[]>;
-  meta: {
-    journeys: Record<string, string[]>;
-    processes: Record<string, string[]>;
-  };
+  meta: MenuV2Meta;
 }
 
 export interface P2MenuFile {
   schemaVersion: typeof P2_MENU_SCHEMA_VERSION;
   moduleName: string;
   userLanguage: string;
-  tree: MenuNode[];
+  device: P2MenuDevice;
+  tree: MenuStampedNode[];
   authorities: Record<string, string[]>;
-  meta: MenuV2['meta'];
+  meta: MenuFileMeta;
 }
 
 export interface P2GrantView {
@@ -139,6 +164,10 @@ export function isMenuNodeKind(value: string): value is MenuNodeKind {
 
 export function isMenuOrganismKind(value: string): value is MenuOrganismKind {
   return (MENU_ORGANISM_KINDS as readonly string[]).includes(value);
+}
+
+export function isMenuAction(value: string): value is MenuAction {
+  return (MENU_ACTIONS as readonly string[]).includes(value);
 }
 
 export function actorAuthorityKey(actorRef: string): string {
@@ -326,15 +355,35 @@ export function buildP2MenuFile(input: {
   moduleName: string;
   userLanguage: string;
   draft: MenuV2;
+  device?: P2MenuDevice;
+  previousTree?: readonly MenuNode[] | null;
 }): P2MenuFile {
+  const diff = diffMenuTrees(input.previousTree, input.draft.tree);
   return {
     schemaVersion: P2_MENU_SCHEMA_VERSION,
     moduleName: input.moduleName,
     userLanguage: input.userLanguage,
-    tree: input.draft.tree,
+    device: input.device || P2_MENU_DEVICE,
+    tree: diff.tree,
     authorities: input.draft.authorities,
-    meta: input.draft.meta,
+    meta: {
+      journeys: input.draft.meta.journeys,
+      processes: input.draft.meta.processes,
+      removed: diff.removed,
+    },
   };
+}
+
+export function menuActionCounts(file: P2MenuFile): Record<MenuAction, number> {
+  return countMenuActions({ tree: file.tree, removed: file.meta.removed });
+}
+
+/** Previous on-disk menu (v2.1 or v2.2). Strips `action` so the structural diff is clean. */
+export function parsePreviousMenuTree(value: unknown): MenuNode[] {
+  const root = asRecord(value, '$');
+  return list(root.tree, '$.tree').map((item, index) => (
+    normalizeNode(stripAction(item), `$.tree[${index}]`)
+  ));
 }
 
 export function buildP2MenuTool(schema: Record<string, unknown>): mls.msg.LLMTool {
@@ -527,6 +576,15 @@ function exactKeys(source: Record<string, unknown>, allowed: readonly string[], 
   for (const key of allowed) {
     if (!Object.prototype.hasOwnProperty.call(source, key)) throw new Error(`${path}: missing field '${key}'.`);
   }
+}
+
+function stripAction(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripAction);
+  if (!isRecord(value)) return value;
+  const { action: _action, ...rest } = value;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(rest)) out[key] = stripAction(item);
+  return out;
 }
 
 function asRecord(value: unknown, path: string): Record<string, unknown> {

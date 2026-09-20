@@ -1,5 +1,13 @@
 # agentPlannerL2
 
+## 2026-09-20 (p2_15)
+
+- Menu path is `l4/<mod>/pool/l2/<device>/menu.json` (`device` enum, today `web`).
+- Schema `2026-09-20-p2-menu-v2.2`: `device` on the file, `action` on every node,
+  `meta.removed`. `action` is computed by L2 (`diffMenuTrees`), never by the model.
+- One-shot migration: legacy `pool/l2/menu.json` is the previous of the first
+  device run, then deleted. Pipeline records `device`, `previousMenu`, `actionCounts`.
+
 ## 2026-09-19 (p2_12)
 
 - `menu.json` v2.1: `inbox`/`alerts`, `meta.processes` filled, candidates and gate for processes/derived.

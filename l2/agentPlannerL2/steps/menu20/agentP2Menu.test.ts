@@ -10,7 +10,15 @@ import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { createAgent } from '/_102020_/l2/agentPlannerL2/agentPlannerL2.js';
 import { P2_STEP_HOOKS } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
-import { ownerStepId, p2DraftFile, p2MenuFile, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+import {
+  P2_MENU_DEVICE,
+  P2_PREVIOUS_MENU_NONE,
+  ownerStepId,
+  p2DraftFile,
+  p2LegacyMenuFile,
+  p2MenuFile,
+  p2PipelineFile,
+} from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
   afterP2MenuPromptStep,
   beforeP2MenuPromptStep,
@@ -20,11 +28,14 @@ import {
   P2_MENU_SCHEMA_VERSION,
   buildP2MenuFile,
   buildP2MenuTool,
+  menuActionCounts,
   menuCandidates,
   normalizeMenuV2,
   parseP2Grants,
   parseP2Processes,
+  parsePreviousMenuTree,
   type MenuPageNode,
+  type MenuStampedNode,
   type MenuV2,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { validateP2Menu } from '/_102020_/l2/agentPlannerL2/steps/menu20/gate.js';
@@ -45,6 +56,7 @@ const HIRING_DRAFT_PATH = path.join(HERE, 'fixtures/hiringPipeline-draft.json');
 const COMPRAS_DRAFT_PATH = path.join(HERE, 'fixtures/compras-draft.json');
 const CANDIDATES_PATH = path.join(HERE, 'fixtures/candidates.json');
 const SCHEMA_PATH = path.join(HERE, '../../schemas/menu.schema.json');
+const PREVIOUS_COMPRAS_PATH = path.join(HERE, 'fixtures/previous-compras.json');
 const PROJECT = 102047;
 const MODULE = 'mensalidadesAcademia';
 
@@ -120,6 +132,18 @@ function loadDraft(): unknown {
 
 function loadSchema(): Record<string, unknown> {
   return JSON.parse(readFileSync(SCHEMA_PATH, 'utf8')) as Record<string, unknown>;
+}
+
+function collectActions(nodes: readonly MenuStampedNode[]): string[] {
+  const out: string[] = [];
+  const walk = (list: readonly MenuStampedNode[]) => {
+    for (const node of list) {
+      out.push(node.action);
+      if (node.kind === 'hub' || node.kind === 'group') walk(node.children);
+    }
+  };
+  walk(nodes);
+  return out;
 }
 
 function firstPage(draft: MenuV2): MenuPageNode {
@@ -200,10 +224,9 @@ function installHost(): Host {
       localStor: {
         setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
         listFolder: () => [],
-        deleteFile: (file: { folder: string; shortName: string; extension?: string }) => {
+        deleteFile: (file: Stored) => {
           host.deleted.push(`${file.folder}/${file.shortName}`);
-          const key = keyOf({ project: PROJECT, level: 2, folder: file.folder, shortName: file.shortName, extension: file.extension || '.json' });
-          const stored = host.files[key];
+          const stored = host.files[keyOf(file)];
           if (stored) stored.status = 'deleted';
         },
       },
@@ -274,7 +297,7 @@ function seedPipeline(host: Host, extra: Record<string, unknown> = {}): void {
     content: '{}\n',
   });
   seed(host, {
-    folder: `${MODULE}/pool/l2`,
+    folder: `${MODULE}/pool/l2/${P2_MENU_DEVICE}`,
     shortName: 'menu',
     extension: '.json',
     content: '',
@@ -402,6 +425,11 @@ void test('normalizeMenuV2 rejects each shape violation', () => {
   (((treeMissing.tree as unknown[])[0] as Record<string, unknown>).children as unknown[])[0] = missing;
   assert.throws(() => normalizeMenuV2(treeMissing), /missing field 'organisms'/);
 
+  const withAction = { ...page, action: 'new' };
+  const treeAction = structuredClone(valid);
+  (((treeAction.tree as unknown[])[0] as Record<string, unknown>).children as unknown[])[0] = withAction;
+  assert.throws(() => normalizeMenuV2(treeAction), /unexpected field 'action'/);
+
   const camel = structuredClone(valid);
   ((camel.tree as unknown[])[0] as Record<string, unknown>).id = 'alunoHub';
   assert.throws(() => normalizeMenuV2(camel), /must be snake_case/);
@@ -493,6 +521,13 @@ void test('menu20 tool schema is provider-clean and has no optional single-value
   assert.equal(lintToolSchema(JSON.stringify(tool.function.parameters)), null);
   assert.deepEqual(requiredIncludesAllProperties(schema), []);
   assert.deepEqual(requiredIncludesAllProperties(tool.function.parameters), []);
+  const defs = schema.$defs as Record<string, { properties?: Record<string, unknown> }>;
+  const hasProp = (value: unknown, key: string): boolean => isRecord(value) && key in value;
+  assert.equal(hasProp(defs.hubNode.properties, 'action'), false);
+  assert.equal(hasProp(defs.pageNode.properties, 'action'), false);
+  assert.equal(hasProp(defs.groupNode.properties, 'action'), false);
+  assert.equal(hasProp(schema.properties, 'device'), false);
+  assert.equal(hasProp(defs.meta.properties, 'removed'), false);
 });
 
 void test('createAgent registers menu20 on the dispatch table', () => {
@@ -566,18 +601,28 @@ void test('afterPromptStep approves the draft, overwrites menu.json and leaves p
     extension: '.json',
     content: poolContent,
   });
-  host.files[keyOf(p2MenuFile(MODULE))].content = '{"stale":true}\n';
   const step = menuStep();
   const payload = { type: 'flexible', result: loadDraft() };
   const first = await afterP2MenuPromptStep(agentMeta(), contextWith(step, payload), step, step, 1);
   assert.ok(first.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'menu20-done'));
-  const firstWritten = JSON.parse(host.files[keyOf(p2MenuFile(MODULE))].content) as { schemaVersion: string; tree: unknown[] };
+  const firstWritten = JSON.parse(host.files[keyOf(p2MenuFile(MODULE))].content) as {
+    schemaVersion: string;
+    device: string;
+    tree: MenuStampedNode[];
+    meta: { removed: unknown[] };
+  };
   assert.equal(firstWritten.schemaVersion, P2_MENU_SCHEMA_VERSION);
+  assert.equal(firstWritten.device, P2_MENU_DEVICE);
   assert.ok(Array.isArray(firstWritten.tree));
+  assert.deepEqual(firstWritten.meta.removed, []);
+  assert.ok(collectActions(firstWritten.tree).every(action => action === 'new'));
   const approved = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as {
     status: string;
     sourceMessages: string[];
     warnings: string[];
+    device: string;
+    previousMenu: string;
+    actionCounts: { new: number; change: number; keep: number; remove: number };
     steps: { menu20: { status: string }; entry10: { status: string } };
   };
   assert.equal(approved.steps.entry10.status, 'approved');
@@ -585,14 +630,29 @@ void test('afterPromptStep approves the draft, overwrites menu.json and leaves p
   assert.equal(approved.status, 'complete');
   assert.equal(approved.sourceMessages[0], '20260918201156_mensalidadesAcademia-20260918201156_1.json');
   assert.deepEqual(approved.warnings, []);
+  assert.equal(approved.device, P2_MENU_DEVICE);
+  assert.equal(approved.previousMenu, P2_PREVIOUS_MENU_NONE);
+  assert.ok(approved.actionCounts.new > 0);
+  assert.equal(approved.actionCounts.keep, 0);
+  assert.equal(approved.actionCounts.remove, 0);
 
   const step2 = menuStep();
   const again = await afterP2MenuPromptStep(agentMeta(), contextWith(step2, payload), step2, step2, 1);
   assert.ok(again.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'menu20-done'));
-  const secondWritten = JSON.parse(host.files[keyOf(p2MenuFile(MODULE))].content) as { schemaVersion: string; tree: unknown[] };
+  const secondWritten = JSON.parse(host.files[keyOf(p2MenuFile(MODULE))].content) as {
+    schemaVersion: string;
+    tree: MenuStampedNode[];
+  };
   assert.equal(secondWritten.schemaVersion, P2_MENU_SCHEMA_VERSION);
+  assert.ok(collectActions(secondWritten.tree).every(action => action === 'keep'));
+  const secondPipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as {
+    previousMenu: string;
+    actionCounts: { new: number; change: number; keep: number; remove: number };
+  };
+  assert.equal(secondPipeline.previousMenu, `l4/${MODULE}/pool/l2/${P2_MENU_DEVICE}/menu.json`);
+  assert.ok(secondPipeline.actionCounts.keep > 0);
+  assert.equal(secondPipeline.actionCounts.new, 0);
   assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: poolShort, extension: '.json' })].content, poolContent);
-  assert.notEqual(host.files[keyOf(p2MenuFile(MODULE))].content, '{"stale":true}\n');
 });
 
 void test('human prompt carries journeys, grants, processes and candidates', () => {
@@ -617,9 +677,18 @@ void test('buildP2MenuFile fills the envelope from code, not the model', () => {
   assert.equal(file.schemaVersion, P2_MENU_SCHEMA_VERSION);
   assert.equal(file.userLanguage, 'pt-BR');
   assert.equal(file.moduleName, MODULE);
+  assert.equal(file.device, P2_MENU_DEVICE);
   assert.equal('sourceMessages' in file, false);
   assert.equal('generatedAt' in file, false);
   assert.deepEqual(file.meta.processes.lembrarGeracaoMensalidades, ['painel', 'mensalidades_mes']);
+  assert.deepEqual(file.meta.removed, []);
+  assert.ok(collectActions(file.tree).every(action => action === 'new'));
+  assert.deepEqual(menuActionCounts(file), {
+    new: collectActions(file.tree).length,
+    change: 0,
+    keep: 0,
+    remove: 0,
+  });
 });
 
 void test('menuCandidates from the four real processes classify by actor', () => {
@@ -762,3 +831,78 @@ void test('gate warns when a human task has no inbox and errors on an unknown pr
   assert.equal(emptyGate.ok, true);
   assert.ok(emptyGate.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_PROCESS_UNMAPPED'));
 });
+
+void test('parsePreviousMenuTree reads the real compras v2.1 menu and strips nothing required', () => {
+  const raw = JSON.parse(readFileSync(PREVIOUS_COMPRAS_PATH, 'utf8')) as { schemaVersion: string; tree: unknown[] };
+  assert.equal(raw.schemaVersion, '2026-09-19-p2-menu-v2.1');
+  const tree = parsePreviousMenuTree(raw);
+  assert.ok(tree.some(node => node.id === 'pedidos_de_compra'));
+  assert.ok(tree.some(node => node.id === 'meu_perfil_comprador' && node.kind === 'hub'));
+});
+
+void test('afterPromptStep migrates legacy pool/l2/menu.json once', async () => {
+  const host = installHost();
+  seedAgentFiles(host);
+  seedL4(host);
+  seedPipeline(host);
+  const poolShort = '20260918201156_mensalidadesAcademia-20260918201156_1';
+  seed(host, {
+    folder: `${MODULE}/pool/l2`,
+    shortName: poolShort,
+    extension: '.json',
+    content: readFileSync(path.join(HERE, '../entry10/fixtures/pool-l2-20260918201156.json'), 'utf8'),
+  });
+  seed(host, {
+    folder: `${MODULE}/pool/l2`,
+    shortName: 'menu',
+    extension: '.json',
+    content: `${JSON.stringify(loadDraft(), null, 2)}\n`,
+  });
+  const step = menuStep();
+  const intents = await afterP2MenuPromptStep(
+    agentMeta(),
+    contextWith(step, { type: 'flexible', result: loadDraft() }),
+    step,
+    step,
+    1,
+  );
+  assert.ok(intents.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'menu20-done'));
+  const written = JSON.parse(host.files[keyOf(p2MenuFile(MODULE))].content) as { tree: MenuStampedNode[] };
+  assert.ok(collectActions(written.tree).every(action => action === 'keep'));
+  const pipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as {
+    previousMenu: string;
+    actionCounts: { keep: number; new: number };
+  };
+  assert.equal(pipeline.previousMenu, `l4/${MODULE}/pool/l2/menu.json`);
+  assert.ok(pipeline.actionCounts.keep > 0);
+  assert.equal(pipeline.actionCounts.new, 0);
+  assert.equal(host.files[keyOf(p2LegacyMenuFile(MODULE))].status, 'deleted');
+  assert.ok(host.deleted.includes(`${MODULE}/pool/l2/menu`));
+});
+
+void test('afterPromptStep prefers the new device path over leftover legacy', async () => {
+  const host = installHost();
+  seedAgentFiles(host);
+  seedL4(host);
+  seedPipeline(host);
+  const draft = loadDraft();
+  host.files[keyOf(p2MenuFile(MODULE))].content = `${JSON.stringify(draft, null, 2)}\n`;
+  seed(host, {
+    folder: `${MODULE}/pool/l2`,
+    shortName: 'menu',
+    extension: '.json',
+    content: '{"tree":[]}\n',
+  });
+  const step = menuStep();
+  await afterP2MenuPromptStep(
+    agentMeta(),
+    contextWith(step, { type: 'flexible', result: draft }),
+    step,
+    step,
+    1,
+  );
+  const pipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { previousMenu: string };
+  assert.equal(pipeline.previousMenu, `l4/${MODULE}/pool/l2/${P2_MENU_DEVICE}/menu.json`);
+  assert.equal(host.files[keyOf(p2LegacyMenuFile(MODULE))].status, 'changed');
+});
+

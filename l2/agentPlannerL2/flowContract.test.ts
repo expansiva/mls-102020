@@ -39,7 +39,7 @@ interface FlowDoc {
 
 const EXPECTED_ARTIFACTS: Record<string, string> = {
   pipeline: 'l2/{module}/pipeline/pipeline.json',
-  menu: 'l4/{module}/pool/l2/menu.json',
+  menu: 'l4/{module}/pool/l2/web/menu.json',
 };
 
 const WAITING_STEPS: readonly string[] = [];
@@ -70,7 +70,7 @@ void test('flow has exactly two steps in declared order with declared dependenci
   assert.equal(menu?.kind, 'agent-checkpoint');
   assert.equal(menu?.modelAlias, 'reasoning');
   assert.equal(menu?.status, undefined);
-  assert.equal(menu?.artifact, 'l4/{module}/pool/l2/menu.json');
+  assert.equal(menu?.artifact, 'l4/{module}/pool/l2/web/menu.json');
 
   for (const id of P2_PARKED_STEP_IDS) {
     assert.equal(flow.steps.some(step => step.id === id), false, `${id} must stay out of flow.json v4`);
