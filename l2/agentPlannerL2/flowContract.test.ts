@@ -42,6 +42,7 @@ const EXPECTED_ARTIFACTS: Record<string, string> = {
   pipeline: 'l2/{module}/pipeline/pipeline.json',
   menu: 'l4/{module}/pool/l2/web/menu.json',
   needs: 'l4/{module}/pool/l1/web/needs.json',
+  effort: 'l4/{module}/pool/l2/web/effort.json',
 };
 
 const WAITING_STEPS: readonly string[] = [];
@@ -50,12 +51,12 @@ function loadFlow(): FlowDoc {
   return JSON.parse(readFileSync(FLOW_PATH, 'utf8')) as FlowDoc;
 }
 
-void test('flow has exactly three steps in declared order with declared dependencies', () => {
+void test('flow has exactly four steps in declared order with declared dependencies', () => {
   const flow = loadFlow();
   assert.equal(flow.flowId, P2_FLOW_ID);
   assert.equal(flow.schemaVersion, P2_FLOW_VERSION);
-  assert.equal(flow.status, 'needs30');
-  assert.equal(flow.steps.length, 3);
+  assert.equal(flow.status, 'effort40');
+  assert.equal(flow.steps.length, 4);
   assert.deepEqual(flow.steps.map(step => step.id), [...P2_FLOW_STEP_IDS]);
 
   for (const step of flow.steps) {
@@ -81,8 +82,15 @@ void test('flow has exactly three steps in declared order with declared dependen
   assert.equal(needs?.status, undefined);
   assert.equal(needs?.artifact, 'l4/{module}/pool/l1/web/needs.json');
 
+  const effort = flow.steps.find(step => step.id === 'effort40');
+  assert.equal(effort?.kind, 'deterministic');
+  assert.equal(effort?.modelAlias, undefined);
+  assert.equal(effort?.status, undefined);
+  assert.equal(effort?.artifact, 'l4/{module}/pool/l2/web/effort.json');
+  assert.deepEqual(effort?.dependsOn, ['entry10-done']);
+
   for (const id of P2_PARKED_STEP_IDS) {
-    assert.equal(flow.steps.some(step => step.id === id), false, `${id} must stay out of flow.json v5`);
+    assert.equal(flow.steps.some(step => step.id === id), false, `${id} must stay out of flow.json v6`);
   }
 
   for (const id of WAITING_STEPS) {

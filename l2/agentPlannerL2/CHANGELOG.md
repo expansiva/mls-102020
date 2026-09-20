@@ -1,5 +1,14 @@
 # agentPlannerL2
 
+## 2026-09-21 (p2_22)
+
+- Flow v6: `entry10 → menu20 → needs30` (menu conversation) and
+  `entry10 → effort40` (effort conversation). `entry10` partitions `pool/l2`
+  by `from` before grouping; an l1 message with `backend.json` selects
+  effort and does not wipe scratch. `effort40` writes `pool/l2/web/effort.json`
+  and one `l2→l4` message, then closes the pipeline. `needs30` no longer
+  closes it.
+
 ## 2026-09-21 (p2_21)
 
 - Flow v5: `entry10 → menu20 → needs30`. `needs30` is deterministic: from the

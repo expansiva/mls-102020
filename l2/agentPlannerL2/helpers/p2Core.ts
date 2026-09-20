@@ -15,7 +15,7 @@ import { listPoolBox, readPoolMessage, type PoolMessage, type PoolTraceLine } fr
 import type { Ns5PipelineStatus, Ns5PipelineStepState } from '/_102035_/l2/solution/types.js';
 
 export const P2_FLOW_ID = 'agentPlannerL2' as const;
-export const P2_FLOW_VERSION = '2026-09-21-p2-flow-v5' as const;
+export const P2_FLOW_VERSION = '2026-09-21-p2-flow-v6' as const;
 export const P2_AGENT_NAME = 'agentPlannerL2' as const;
 export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v2' as const;
 
@@ -24,8 +24,12 @@ export const P2_MENU_DEVICES = ['web'] as const;
 export type P2MenuDevice = typeof P2_MENU_DEVICES[number];
 export const P2_MENU_DEVICE: P2MenuDevice = 'web';
 
-/** Steps the current flow.json actually runs. */
-export const P2_FLOW_STEP_IDS = ['entry10', 'menu20', 'needs30'] as const;
+/** Menu conversation: L4 request → menu.json → needs.json. */
+export const P2_MENU_FLOW_STEP_IDS = ['entry10', 'menu20', 'needs30'] as const;
+/** Effort conversation: L1 backend.json → effort.json. Reached from the flow table, not by name in entry10. */
+export const P2_EFFORT_FLOW_STEP_IDS = ['entry10', 'effort40'] as const;
+/** Steps the current flow.json actually lists. */
+export const P2_FLOW_STEP_IDS = ['entry10', 'menu20', 'needs30', 'effort40'] as const;
 
 /** Parked: code stays, flow.json v4 does not list them. */
 export const P2_PARKED_STEP_IDS = [
@@ -57,6 +61,7 @@ export const P2_STEP_TITLES: Record<P2StepId, string> = {
   entry10: 'Entry',
   menu20: 'Menu',
   needs30: 'Needs',
+  effort40: 'Effort',
   workspaces20: 'Workspaces',
   contracts30: 'Contracts',
   shared40: 'Shared',
@@ -67,6 +72,7 @@ export const P2_STEP_DEPENDS_ON: Record<P2StepId, readonly string[]> = {
   entry10: [],
   menu20: ['entry10-done'],
   needs30: ['menu20-done'],
+  effort40: ['entry10-done'],
   workspaces20: ['entry10-done'],
   contracts30: ['workspaces20-done'],
   shared40: ['contracts30-done'],
@@ -107,11 +113,14 @@ export interface P2PipelineState {
   updatedAt: string;
 }
 
+export type P2EntryBranch = 'menu' | 'effort';
+
 export interface P2LoadedEntry {
   moduleName: string;
   file: Ns5FileInfo;
   message: PoolMessage;
   sourceMessages: string[];
+  branch: P2EntryBranch;
 }
 
 export type P2LoadResult = P2LoadedEntry | { refusal: string };
@@ -255,11 +264,26 @@ export function createP2AgentStep(
   };
 }
 
+export function isP2EffortMessage(message: PoolMessage): boolean {
+  return message.from === 'l1' && message.artifacts.some(item => artifactEndsWith(item, 'backend.json'));
+}
+
+function artifactEndsWith(value: string, name: string): boolean {
+  const path = value.trim();
+  return path === name || path.endsWith(`/${name}`);
+}
+
+/** Which flow.json steps this entry enqueues. The table decides; callers do not name a successor. */
+export function plannedP2StepIds(message?: PoolMessage): readonly P2FlowStepId[] {
+  return message && isP2EffortMessage(message) ? P2_EFFORT_FLOW_STEP_IDS : P2_MENU_FLOW_STEP_IDS;
+}
+
 export function buildP2PlannedSteps(
   moduleName: string,
   entry: { thread: string; file: string },
+  message?: PoolMessage,
 ): mls.msg.AIAgentStep[] {
-  return P2_FLOW_STEP_IDS.map(stepId => createP2AgentStep(stepId, moduleName, entry));
+  return plannedP2StepIds(message).map(stepId => createP2AgentStep(stepId, moduleName, entry));
 }
 
 export function isP2PoolMessageFile(shortName: string): boolean {
@@ -300,6 +324,30 @@ export function p2NeedsFile(moduleName: string, device: P2MenuDevice = P2_MENU_D
     level: 4,
     folder: `${base.folder}/pool/l1/${device}`,
     shortName: 'needs',
+    extension: '.json',
+  };
+}
+
+/** `l4/<module>/pool/l2/<device>/backend.json` — written by L1. Not a pool message. */
+export function p2BackendFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 4,
+    folder: `${base.folder}/pool/l2/${device}`,
+    shortName: 'backend',
+    extension: '.json',
+  };
+}
+
+/** `l4/<module>/pool/l2/<device>/effort.json` — overwritten each effort run. Not a pool message. */
+export function p2EffortFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 4,
+    folder: `${base.folder}/pool/l2/${device}`,
+    shortName: 'effort',
     extension: '.json',
   };
 }
@@ -345,8 +393,12 @@ export async function loadP2Entry(source: P2EntrySource): Promise<P2LoadResult> 
     loaded.push({ file, message: await readPoolMessage(file) });
   }
 
-  const groups = new Map<string, typeof loaded>();
-  for (const entry of loaded) {
+  const effort = loaded.filter(entry => isP2EffortMessage(entry.message));
+  const chosen = effort.length ? effort : loaded.filter(entry => entry.message.from !== 'l1');
+  if (!chosen.length) return { refusal: `nothing pending for ${moduleName} in pool/l2` };
+
+  const groups = new Map<string, typeof chosen>();
+  for (const entry of chosen) {
     const key = requestKey(moduleName, entry.message);
     const group = groups.get(key) || [];
     group.push(entry);
@@ -354,7 +406,7 @@ export async function loadP2Entry(source: P2EntrySource): Promise<P2LoadResult> 
   }
   if (groups.size > 1) return { refusal: p2DifferentRequestsRefusal(groups.size) };
 
-  const group = loaded;
+  const group = chosen;
   const oldest = group[0];
   const sourceMessages = group.map(entry => poolMessageFileName(entry.file));
 
@@ -371,6 +423,7 @@ export async function loadP2Entry(source: P2EntrySource): Promise<P2LoadResult> 
     file: oldest.file,
     message: oldest.message,
     sourceMessages,
+    branch: effort.length ? 'effort' : 'menu',
   };
 }
 
@@ -387,6 +440,39 @@ export async function writeP2Entry(loaded: P2LoadedEntry, now: Date): Promise<P2
   );
   await writeJson(p2PipelineFile(loaded.moduleName), pipeline);
   return pipeline;
+}
+
+export async function writeP2EffortEntry(loaded: P2LoadedEntry, now: Date): Promise<P2PipelineState | { refusal: string }> {
+  const pipeline = await readP2Pipeline(loaded.moduleName);
+  if (!pipeline || pipeline.flowId !== P2_FLOW_ID) {
+    return { refusal: 'l2 pipeline.json is missing; the menu flow must run first.' };
+  }
+  const device = pipeline.device || P2_MENU_DEVICE;
+  const menu = await readJson(p2MenuFile(loaded.moduleName, device));
+  if (!menu) {
+    return { refusal: `pool/l2/${device}/menu.json is missing; the menu flow must run first.` };
+  }
+  const updatedAt = now.toISOString();
+  const next: P2PipelineState = {
+    ...pipeline,
+    status: pipeline.status === 'failed' ? 'failed' : 'inProgress',
+    awaitingStep: undefined,
+    thread: loaded.message.thread,
+    round: loaded.message.round,
+    messageFile: displayPath(loaded.file),
+    sourceMessages: loaded.sourceMessages,
+    updatedAt,
+    steps: {
+      ...pipeline.steps,
+      entry10: {
+        status: 'approved',
+        updatedAt,
+        artifactPaths: [`l2/${loaded.moduleName}/pipeline/pipeline.json`],
+      },
+    },
+  };
+  await writeJson(p2PipelineFile(loaded.moduleName), next);
+  return next;
 }
 
 function isP2ScratchFolder(folder: string, moduleName: string): boolean {
@@ -466,6 +552,11 @@ async function removeEmptyWebDir(moduleName: string): Promise<P2WebDir> {
 export async function executeP2Entry(source: P2EntrySource, now: Date): Promise<P2ExecuteResult> {
   const loaded = await loadP2Entry(source);
   if ('refusal' in loaded) return loaded;
+  if (loaded.branch === 'effort') {
+    const pipeline = await writeP2EffortEntry(loaded, now);
+    if ('refusal' in pipeline) return pipeline;
+    return { pipeline, file: loaded.file, message: loaded.message };
+  }
   const pipeline = await writeP2Entry(loaded, now);
   return { pipeline, file: loaded.file, message: loaded.message };
 }

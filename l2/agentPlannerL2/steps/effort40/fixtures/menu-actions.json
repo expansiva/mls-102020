@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "mensalidadesAcademia",
+  "userLanguage": "en",
+  "device": "web",
+  "tree": [
+    {
+      "id": "created_page",
+      "kind": "page",
+      "label": "New screen",
+      "organisms": [{ "kind": "list", "text": "List new records." }],
+      "action": "new"
+    },
+    {
+      "id": "changed_page",
+      "kind": "page",
+      "label": "Changed screen",
+      "organisms": [{ "kind": "form", "text": "Edit the record." }],
+      "action": "change"
+    },
+    {
+      "id": "kept_page",
+      "kind": "page",
+      "label": "Kept screen",
+      "organisms": [{ "kind": "detail", "text": "See the record." }],
+      "action": "keep"
+    }
+  ],
+  "authorities": {
+    "actor:recepcao": ["created_page", "changed_page", "kept_page"]
+  },
+  "meta": {
+    "journeys": {},
+    "processes": {},
+    "removed": [
+      {
+        "id": "removed_page",
+        "kind": "page",
+        "label": "Removed screen",
+        "organisms": [{ "kind": "list", "text": "Gone." }],
+        "action": "remove"
+      }
+    ]
+  }
+}

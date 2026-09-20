@@ -8,12 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 import { normalizePoolMessage } from '/_102035_/l2/solution/pool.js';
 import {
+  P2_EFFORT_FLOW_STEP_IDS,
   P2_FLOW_STEP_IDS,
+  P2_MENU_FLOW_STEP_IDS,
   P2_STEP_DEPENDS_ON,
   P2_WEB_DIR_EMPTY_LEFT,
   P2_WEB_DIR_REMOVED,
   buildP2PlannedSteps,
   executeP2Entry,
+  isP2EffortMessage,
   isP2MenuDevice,
   isP2PoolMessageFile,
   loadP2Entry,
@@ -22,12 +25,15 @@ import {
   ownerStepId,
   parseP2Invocation,
   parseP2StepPrompt,
+  p2BackendFile,
   p2DifferentRequestsRefusal,
+  p2EffortFile,
   p2InvocationRefusal,
   p2MenuFile,
   p2NeedsFile,
   p2PipelineFile,
   P2_MENU_DEVICE,
+  plannedP2StepIds,
   readReadyL2Manifest,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
@@ -129,10 +135,10 @@ void test('moduleTokenOk accepts lowerCamel only', () => {
   assert.equal(moduleTokenOk(''), false);
 });
 
-void test('planned tree is three sequential steps with entry10 first', () => {
+void test('planned tree is the menu conversation unless the message is l1 backend.json', () => {
   const steps = buildP2PlannedSteps(MODULE, { thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY });
   assert.equal(steps.length, 3);
-  assert.deepEqual(steps.map(step => step.planning?.planId), [...P2_FLOW_STEP_IDS]);
+  assert.deepEqual(steps.map(step => step.planning?.planId), [...P2_MENU_FLOW_STEP_IDS]);
   assert.equal(steps[0].status, 'waiting_human_input');
   assert.deepEqual(steps[0].planning?.dependsOn, []);
   for (const step of steps.slice(1)) {
@@ -141,6 +147,7 @@ void test('planned tree is three sequential steps with entry10 first', () => {
   }
   assert.deepEqual(steps.find(step => step.planning?.planId === 'menu20')?.planning?.dependsOn, [...P2_STEP_DEPENDS_ON.menu20]);
   assert.deepEqual(steps.find(step => step.planning?.planId === 'needs30')?.planning?.dependsOn, [...P2_STEP_DEPENDS_ON.needs30]);
+  assert.deepEqual([...P2_FLOW_STEP_IDS], ['entry10', 'menu20', 'needs30', 'effort40']);
 });
 
 void test('ownerStepId maps L4 dispatch prompt to entry10 and ignores done-anchors', () => {
@@ -287,6 +294,24 @@ void test('p2NeedsFile is pool/l1/<device>/needs.json', () => {
   });
 });
 
+void test('p2BackendFile and p2EffortFile live under pool/l2/<device>/', () => {
+  installHost();
+  assert.deepEqual(p2BackendFile(MODULE), {
+    project: PROJECT,
+    level: 4,
+    folder: `${MODULE}/pool/l2/${P2_MENU_DEVICE}`,
+    shortName: 'backend',
+    extension: '.json',
+  });
+  assert.deepEqual(p2EffortFile(MODULE), {
+    project: PROJECT,
+    level: 4,
+    folder: `${MODULE}/pool/l2/${P2_MENU_DEVICE}`,
+    shortName: 'effort',
+    extension: '.json',
+  });
+});
+
 void test('readReadyL2Manifest returns null while the built manifesto does not exist', () => {
   assert.equal(readReadyL2Manifest(MODULE), null);
   assert.equal(readReadyL2Manifest(MODULE, P2_MENU_DEVICE), null);
@@ -388,11 +413,21 @@ void test('markP2Complete sets complete only when every flow.json step is approv
   }), now);
   assert.equal(menuOnly.status, 'inProgress');
 
+  const withoutEffort = markP2Complete(samplePipeline({
+    steps: {
+      entry10: { status: 'approved', updatedAt: AT.toISOString() },
+      menu20: { status: 'approved', updatedAt: now },
+      needs30: { status: 'approved', updatedAt: now },
+    },
+  }), now);
+  assert.equal(withoutEffort.status, 'inProgress');
+
   const all = markP2Complete(samplePipeline({
     steps: {
       entry10: { status: 'approved', updatedAt: AT.toISOString() },
       menu20: { status: 'approved', updatedAt: now },
       needs30: { status: 'approved', updatedAt: now },
+      effort40: { status: 'approved', updatedAt: now },
     },
   }), now);
   assert.equal(all.status, 'complete');
@@ -405,6 +440,7 @@ void test('markP2Complete sets complete only when every flow.json step is approv
       entry10: { status: 'approved', updatedAt: AT.toISOString() },
       menu20: { status: 'approved', updatedAt: now },
       needs30: { status: 'approved', updatedAt: now },
+      effort40: { status: 'approved', updatedAt: now },
     },
   }), now);
   assert.equal(failed.status, 'failed');
@@ -420,4 +456,102 @@ void test('L4 step entry refuses a thread that does not match the file', async (
     file: DISPLAY,
   });
   assert.equal('refusal' in result && /thread does not match/.test(result.refusal), true);
+});
+
+const L1_FIXTURE = JSON.parse(readFileSync(
+  path.join(HERE, '../steps/effort40/fixtures/pool-l2-backend-mensalidadesAcademia.json'),
+  'utf8',
+)) as Record<string, unknown>;
+const L1_SHORT = '20260921120000_mensalidadesAcademia-20260918103000_1';
+const L1_DISPLAY = `l4/${MODULE}/pool/l2/${L1_SHORT}.json`;
+const MENU_FIXTURE = readFileSync(path.join(HERE, '../steps/needs30/fixtures/menu.json'), 'utf8');
+
+function seedEffort(host: Host, opts?: { pipeline?: boolean; menu?: boolean; draft?: boolean }): void {
+  seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(FIXTURE, null, 2)}\n`);
+  seed(host, `${MODULE}/pool/l2`, L1_SHORT, `${JSON.stringify(L1_FIXTURE, null, 2)}\n`);
+  if (opts?.menu !== false) {
+    seed(host, `${MODULE}/pool/l2/web`, 'menu', `${MENU_FIXTURE}\n`);
+  }
+  if (opts?.pipeline !== false) {
+    seed(host, `${MODULE}/pipeline`, 'pipeline', `${JSON.stringify({
+      schemaVersion: '2026-09-18-p2-pipeline-v2',
+      flowId: 'agentPlannerL2',
+      moduleName: MODULE,
+      status: 'complete',
+      steps: {
+        entry10: { status: 'approved', updatedAt: AT.toISOString() },
+        menu20: { status: 'approved', updatedAt: AT.toISOString() },
+        needs30: { status: 'approved', updatedAt: AT.toISOString() },
+      },
+      thread: 'mensalidadesAcademia-20260918103000',
+      round: 1,
+      messageFile: DISPLAY,
+      sourceMessages: [`${SHORT}.json`],
+      webDir: P2_WEB_DIR_EMPTY_LEFT,
+      device: 'web',
+      updatedAt: AT.toISOString(),
+    }, null, 2)}\n`, 2);
+  } else {
+    seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 2);
+  }
+  if (opts?.draft) {
+    seed(host, `${MODULE}/pipeline`, 'workspaces20-draft', '{}\n', 2);
+  }
+}
+
+void test('l1 backend.json is an effort message and plans entry10 plus effort40', () => {
+  const message = normalizePoolMessage(L1_FIXTURE);
+  assert.equal(isP2EffortMessage(message), true);
+  assert.equal(isP2EffortMessage(normalizePoolMessage(FIXTURE)), false);
+  assert.deepEqual([...plannedP2StepIds(message)], [...P2_EFFORT_FLOW_STEP_IDS]);
+  assert.deepEqual(
+    buildP2PlannedSteps(MODULE, { thread: message.thread, file: L1_DISPLAY }, message).map(step => step.planning?.planId),
+    [...P2_EFFORT_FLOW_STEP_IDS],
+  );
+});
+
+void test('l4 request plus l1 backend.json is one effort partition, not two different requests', async () => {
+  const host = installHost();
+  seedEffort(host);
+  const loaded = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in loaded, false);
+  if ('refusal' in loaded) return;
+  assert.equal(loaded.branch, 'effort');
+  assert.equal(loaded.message.from, 'l1');
+  assert.equal(loaded.file.shortName, L1_SHORT);
+  assert.deepEqual(loaded.sourceMessages, [`${L1_SHORT}.json`]);
+});
+
+void test('effort entry does not wipe pipeline scratch and keeps menu20/needs30', async () => {
+  const host = installHost();
+  seedEffort(host, { draft: true });
+  const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in written, false);
+  if ('refusal' in written) return;
+  const draftKey = keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'workspaces20-draft', extension: '.json' });
+  assert.equal(host.files[draftKey].status, 'changed');
+  assert.equal(written.pipeline.steps.menu20?.status, 'approved');
+  assert.equal(written.pipeline.steps.needs30?.status, 'approved');
+  assert.equal(written.pipeline.steps.entry10?.status, 'approved');
+  assert.equal(written.pipeline.status, 'inProgress');
+  assert.equal(written.pipeline.messageFile, L1_DISPLAY);
+});
+
+void test('effort entry refuses without an l2 pipeline from the menu flow', async () => {
+  const host = installHost();
+  seedEffort(host, { pipeline: false });
+  const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in written, true);
+  if (!('refusal' in written)) return;
+  assert.match(written.refusal, /pipeline.json is missing/);
+});
+
+void test('effort entry refuses without menu.json', async () => {
+  const host = installHost();
+  seedEffort(host, { menu: false });
+  const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in written, true);
+  if (!('refusal' in written)) return;
+  assert.match(written.refusal, /menu.json is missing/);
 });

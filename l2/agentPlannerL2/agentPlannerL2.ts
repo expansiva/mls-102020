@@ -23,6 +23,7 @@ import {
 import '/_102020_/l2/agentPlannerL2/steps/entry10/agentP2Entry.js';
 import '/_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.js';
 import '/_102020_/l2/agentPlannerL2/steps/needs30/agentP2Needs.js';
+import '/_102020_/l2/agentPlannerL2/steps/effort40/agentP2Effort.js';
 import '/_102020_/l2/agentPlannerL2/steps/workspaces20/agentP2Workspaces.js';
 import '/_102020_/l2/agentPlannerL2/steps/contracts30/agentP2Contracts.js';
 import '/_102020_/l2/agentPlannerL2/steps/shared40/agentP2Shared.js';
@@ -33,7 +34,7 @@ export function createAgent(): IAgentAsync {
     agentName: P2_AGENT_NAME,
     agentProject: 102020,
     agentFolder: 'agentPlannerL2',
-    agentDescription: 'L2 planner — menu.json and needs.json from a finished l4, driven by pool/l2',
+    agentDescription: 'L2 planner — menu.json, needs.json and effort.json from a finished l4, driven by pool/l2',
     visibility: 'public',
     beforePromptImplicit,
     beforePromptStep,
@@ -77,7 +78,7 @@ async function beforePromptImplicit(
     },
   };
 
-  const steps = buildP2PlannedSteps(invocation.module, entry).map(step => addStepIntent(context, step));
+  const steps = buildP2PlannedSteps(invocation.module, entry, loaded.message).map(step => addStepIntent(context, step));
   return [addMessage, ...steps];
 }
 

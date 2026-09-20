@@ -26,6 +26,7 @@ void test('every declared step is hooked', () => {
   assert.ok(P2_STEP_HOOKS.entry10?.beforePromptStep, 'entry10 hook must be registered');
   assert.ok(P2_STEP_HOOKS.menu20?.beforePromptStep, 'menu20 hook must be registered');
   assert.ok(P2_STEP_HOOKS.needs30?.beforePromptStep, 'needs30 hook must be registered');
+  assert.ok(P2_STEP_HOOKS.effort40?.beforePromptStep, 'effort40 hook must be registered');
   assert.ok(P2_STEP_HOOKS.workspaces20?.beforePromptStep, 'parked workspaces20 hook stays registered');
   assert.ok(P2_STEP_HOOKS.contracts30?.beforePromptStep, 'parked contracts30 hook stays registered');
   assert.ok(P2_STEP_HOOKS.shared40?.beforePromptStep, 'parked shared40 hook stays registered');
