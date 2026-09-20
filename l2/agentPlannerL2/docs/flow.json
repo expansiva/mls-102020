@@ -1,8 +1,8 @@
 {
   "flowId": "agentPlannerL2",
-  "schemaVersion": "2026-09-18-p2-flow-v4",
-  "status": "menu20",
-  "description": "L2 planner, menu-only phase: read pool/l2 of a finished l4 module and write pool/l2/<device>/menu.json (device=web). Does not delete the pool, does not write pool/l1 or l2 web/. Parked steps stay on disk outside this flow.",
+  "schemaVersion": "2026-09-21-p2-flow-v5",
+  "status": "needs30",
+  "description": "L2 planner: read pool/l2 of a finished l4 module, write pool/l2/<device>/menu.json, then derive pool/l1/web/needs.json (what each screen reads and writes) and one l2→l1 message. Does not delete the pool. Parked steps stay on disk outside this flow.",
   "canonicalReferences": [
     "mls-base/skills/00_index.md",
     "mls-base/skills/agentsBestPractices.md",
@@ -15,10 +15,10 @@
     "Pipeline state lives on disk at l2/{module}/pipeline/pipeline.json. The task record is orchestration, not truth.",
     "A step declared here and not implemented stops the run with pipeline.status awaitingStep naming that step. The task completes without failed.",
     "Two entries, one path: a step created by L4 with prompt { moduleName, thread, file }, or @@agentPlannerL2 <lowerCamel> which reads every pool/l2 message. Both write the same pipeline.json.",
-    "Reads only the module l4 and pool/l2. Never reads l1. Writes l2/{module}/pipeline/ and l4/{module}/pool/l2/web/menu.json. Never deletes pool messages in this phase.",
-    "Deterministic first. entry10 has no LLM. menu20 spends one reasoning call on the UX cut.",
+    "Reads only the module l4, pool/l2 and the menu it wrote. Never reads l1. Writes l2/{module}/pipeline/, l4/{module}/pool/l2/web/menu.json, l4/{module}/pool/l1/web/needs.json and one pool/l1 message. Never deletes pool messages in this phase.",
+    "Deterministic first. entry10 and needs30 have no LLM. menu20 spends one reasoning call on the UX cut.",
     "User-facing refusals are English.",
-    "listPoolBox may list menu.json; entry10 keeps only files named <stamp>_<thread>_<round>."
+    "listPoolBox may list menu.json or needs.json; entry10 keeps only files named <stamp>_<thread>_<round>."
   ],
   "invocation": {
     "hand": "@@agentPlannerL2 <lowerCamel>",
@@ -30,7 +30,8 @@
   },
   "artifacts": {
     "pipeline": "l2/{module}/pipeline/pipeline.json",
-    "menu": "l4/{module}/pool/l2/web/menu.json"
+    "menu": "l4/{module}/pool/l2/web/menu.json",
+    "needs": "l4/{module}/pool/l1/web/needs.json"
   },
   "parkedSteps": [
     "workspaces20",
@@ -55,6 +56,14 @@
       "modelAlias": "reasoning",
       "artifact": "l4/{module}/pool/l2/web/menu.json",
       "goal": "One LLM call. Menu v2.2 tree (hub/page/group, organisms) from all journeys, access grants, ontology, workflows and the deterministic candidates (as data, not the answer), including records an actor maintains. Gate plus bounded repair. L2 stamps action against what is already a screen in l2 (today nothing is, so every node is new). Overwrite pool/l2/web/menu.json."
+    },
+    {
+      "id": "needs30",
+      "kind": "deterministic",
+      "dependsOn": ["menu20-done"],
+      "doneAnchor": "needs30-done",
+      "artifact": "l4/{module}/pool/l1/web/needs.json",
+      "goal": "No LLM. From the menu and the l4, derive what each page reads and writes (entity + operation). Write pool/l1/web/needs.json, one l2→l1 message pointing at it, and a delivered trace on the l2 pipeline. Structural gate only. Does not delete the pool."
     }
   ]
 }

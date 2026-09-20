@@ -691,7 +691,7 @@ void test('afterPromptStep approves the draft, overwrites menu.json and leaves p
   };
   assert.equal(approved.steps.entry10.status, 'approved');
   assert.equal(approved.steps.menu20.status, 'approved');
-  assert.equal(approved.status, 'complete');
+  assert.equal(approved.status, 'inProgress');
   assert.equal(approved.sourceMessages[0], '20260918201156_mensalidadesAcademia-20260918201156_1.json');
   assert.deepEqual(approved.warnings, []);
   assert.equal(approved.device, P2_MENU_DEVICE);

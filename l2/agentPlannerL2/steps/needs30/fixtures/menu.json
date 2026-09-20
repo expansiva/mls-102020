@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "mensalidadesAcademia",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "aluno",
+      "kind": "hub",
+      "label": "Minha conta",
+      "context": "Aluno",
+      "text": "Sua conta já fica selecionada; consulte e gerencie a sua matrícula.",
+      "children": [
+        {
+          "id": "minha_matricula",
+          "kind": "page",
+          "label": "Minha matrícula",
+          "organisms": [
+            { "kind": "summary", "text": "Veja o resumo da sua matrícula atual." },
+            { "kind": "highlights", "text": "Confira o plano, a situação e as informações mais importantes da sua matrícula." },
+            { "kind": "alerts", "text": "Veja avisos sobre a sua matrícula." },
+            { "kind": "inbox", "text": "Veja se há alguma pendência para você." },
+            { "kind": "detail", "text": "Consulte os detalhes da sua matrícula." },
+            { "kind": "timeline", "text": "Acompanhe o histórico e as alterações da sua matrícula." },
+            { "kind": "actions", "text": "Cancele sua matrícula quando precisar encerrar o vínculo." }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "inicio_recepcao",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        { "kind": "summary", "text": "Veja um resumo dos atendimentos e cobranças." },
+        { "kind": "highlights", "text": "Confira os itens que merecem atenção no atendimento." },
+        { "kind": "alerts", "text": "Veja avisos de atendimento e cobrança." },
+        { "kind": "inbox", "text": "Veja pendências que aguardam atendimento." }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "matriculas",
+      "kind": "page",
+      "label": "Matrículas",
+      "organisms": [
+        { "kind": "list", "text": "Localize alunos e suas matrículas para iniciar um novo vínculo." },
+        { "kind": "detail", "text": "Consulte os dados disponíveis do aluno e os detalhes da matrícula." },
+        { "kind": "form", "text": "Selecione o aluno, escolha um plano e informe a data de início para registrar a matrícula." },
+        { "kind": "actions", "text": "Registre uma nova matrícula para o aluno selecionado." }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "mensalidades_pagamentos",
+      "kind": "page",
+      "label": "Mensalidades e pagamentos",
+      "organisms": [
+        { "kind": "list", "text": "Localize mensalidades e consulte total pago, saldo devedor e situação." },
+        { "kind": "detail", "text": "Veja os detalhes da mensalidade e os pagamentos já registrados." },
+        { "kind": "form", "text": "Informe os dados do pagamento para a mensalidade selecionada." },
+        { "kind": "timeline", "text": "Acompanhe o histórico de cobranças, pagamentos e atualizações da mensalidade." },
+        { "kind": "actions", "text": "Registre o pagamento informado para a mensalidade." }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "planos",
+      "kind": "page",
+      "label": "Planos",
+      "organisms": [
+        { "kind": "list", "text": "Consulte os planos disponíveis para matrícula." },
+        { "kind": "detail", "text": "Veja os valores e as condições de cada plano." },
+        { "kind": "form", "text": "Crie ou edite os dados de um plano." },
+        { "kind": "actions", "text": "Crie, edite ou exclua planos." }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "inicio_gerencia",
+      "kind": "page",
+      "label": "Visão financeira",
+      "organisms": [
+        { "kind": "summary", "text": "Veja o resumo financeiro e de alunos do período." },
+        { "kind": "highlights", "text": "Acompanhe os indicadores da academia e os principais resultados do período." },
+        { "kind": "alerts", "text": "Gere as mensalidades do mês para todos os alunos com matrícula ativa." },
+        { "kind": "inbox", "text": "Veja pendências de gestão que aguardam sua ação." },
+        { "kind": "list", "text": "Consulte as mensalidades do período, incluindo total pago, saldo devedor e situação." },
+        { "kind": "detail", "text": "Veja os detalhes de uma mensalidade e sua composição financeira." },
+        { "kind": "timeline", "text": "Acompanhe a geração de mensalidades e as demais alterações registradas." },
+        { "kind": "actions", "text": "Gere as mensalidades do mês para os alunos com matrícula ativa." }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:recepcao": ["inicio_recepcao", "matriculas", "mensalidades_pagamentos", "planos"],
+    "actor:gerencia": ["inicio_gerencia", "planos"],
+    "actor:aluno": ["aluno"]
+  },
+  "meta": {
+    "journeys": {
+      "matricularAluno": ["matriculas"],
+      "gerarMensalidadesDoMes": ["inicio_gerencia"],
+      "registrarPagamentoMensalidade": ["mensalidades_pagamentos"],
+      "acompanharIndicadoresAcademia": ["inicio_gerencia"],
+      "cancelarPropriaMatricula": ["minha_matricula"]
+    },
+    "processes": {
+      "lembrarGeracaoMensalidades": ["inicio_gerencia"]
+    },
+    "removed": []
+  }
+}
