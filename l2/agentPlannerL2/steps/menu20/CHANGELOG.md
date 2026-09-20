@@ -1,5 +1,9 @@
 # menu20
 
+## 2026-09-21 (p2_21)
+
+- No longer calls `markP2Complete`. The last flow step is `needs30`.
+
 ## 2026-09-20 (p2_20)
 
 - Gate `P2_MENU_ENTITY_NO_FORM` and `meta.entities` are gone. A gate on an

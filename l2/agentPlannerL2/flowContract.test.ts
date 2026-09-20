@@ -33,6 +33,7 @@ interface FlowStep {
 interface FlowDoc {
   flowId: string;
   schemaVersion: string;
+  status?: string;
   artifacts: Record<string, string>;
   steps: FlowStep[];
 }
@@ -40,6 +41,7 @@ interface FlowDoc {
 const EXPECTED_ARTIFACTS: Record<string, string> = {
   pipeline: 'l2/{module}/pipeline/pipeline.json',
   menu: 'l4/{module}/pool/l2/web/menu.json',
+  needs: 'l4/{module}/pool/l1/web/needs.json',
 };
 
 const WAITING_STEPS: readonly string[] = [];
@@ -48,11 +50,12 @@ function loadFlow(): FlowDoc {
   return JSON.parse(readFileSync(FLOW_PATH, 'utf8')) as FlowDoc;
 }
 
-void test('flow has exactly two steps in declared order with declared dependencies', () => {
+void test('flow has exactly three steps in declared order with declared dependencies', () => {
   const flow = loadFlow();
   assert.equal(flow.flowId, P2_FLOW_ID);
   assert.equal(flow.schemaVersion, P2_FLOW_VERSION);
-  assert.equal(flow.steps.length, 2);
+  assert.equal(flow.status, 'needs30');
+  assert.equal(flow.steps.length, 3);
   assert.deepEqual(flow.steps.map(step => step.id), [...P2_FLOW_STEP_IDS]);
 
   for (const step of flow.steps) {
@@ -72,8 +75,14 @@ void test('flow has exactly two steps in declared order with declared dependenci
   assert.equal(menu?.status, undefined);
   assert.equal(menu?.artifact, 'l4/{module}/pool/l2/web/menu.json');
 
+  const needs = flow.steps.find(step => step.id === 'needs30');
+  assert.equal(needs?.kind, 'deterministic');
+  assert.equal(needs?.modelAlias, undefined);
+  assert.equal(needs?.status, undefined);
+  assert.equal(needs?.artifact, 'l4/{module}/pool/l1/web/needs.json');
+
   for (const id of P2_PARKED_STEP_IDS) {
-    assert.equal(flow.steps.some(step => step.id === id), false, `${id} must stay out of flow.json v4`);
+    assert.equal(flow.steps.some(step => step.id === id), false, `${id} must stay out of flow.json v5`);
   }
 
   for (const id of WAITING_STEPS) {

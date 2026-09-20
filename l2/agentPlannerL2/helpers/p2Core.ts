@@ -15,7 +15,7 @@ import { listPoolBox, readPoolMessage, type PoolMessage, type PoolTraceLine } fr
 import type { Ns5PipelineStatus, Ns5PipelineStepState } from '/_102035_/l2/solution/types.js';
 
 export const P2_FLOW_ID = 'agentPlannerL2' as const;
-export const P2_FLOW_VERSION = '2026-09-18-p2-flow-v4' as const;
+export const P2_FLOW_VERSION = '2026-09-21-p2-flow-v5' as const;
 export const P2_AGENT_NAME = 'agentPlannerL2' as const;
 export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v2' as const;
 
@@ -25,7 +25,7 @@ export type P2MenuDevice = typeof P2_MENU_DEVICES[number];
 export const P2_MENU_DEVICE: P2MenuDevice = 'web';
 
 /** Steps the current flow.json actually runs. */
-export const P2_FLOW_STEP_IDS = ['entry10', 'menu20'] as const;
+export const P2_FLOW_STEP_IDS = ['entry10', 'menu20', 'needs30'] as const;
 
 /** Parked: code stays, flow.json v4 does not list them. */
 export const P2_PARKED_STEP_IDS = [
@@ -56,6 +56,7 @@ export type P2WebDir = typeof P2_WEB_DIR_REMOVED | typeof P2_WEB_DIR_EMPTY_LEFT;
 export const P2_STEP_TITLES: Record<P2StepId, string> = {
   entry10: 'Entry',
   menu20: 'Menu',
+  needs30: 'Needs',
   workspaces20: 'Workspaces',
   contracts30: 'Contracts',
   shared40: 'Shared',
@@ -65,6 +66,7 @@ export const P2_STEP_TITLES: Record<P2StepId, string> = {
 export const P2_STEP_DEPENDS_ON: Record<P2StepId, readonly string[]> = {
   entry10: [],
   menu20: ['entry10-done'],
+  needs30: ['menu20-done'],
   workspaces20: ['entry10-done'],
   contracts30: ['workspaces20-done'],
   shared40: ['contracts30-done'],
@@ -286,6 +288,18 @@ export function p2MenuFile(moduleName: string, device: P2MenuDevice = P2_MENU_DE
     level: 4,
     folder: `${base.folder}/pool/l2/${device}`,
     shortName: 'menu',
+    extension: '.json',
+  };
+}
+
+/** `l4/<module>/pool/l1/<device>/needs.json` — overwritten each run. Not a pool message. */
+export function p2NeedsFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 4,
+    folder: `${base.folder}/pool/l1/${device}`,
+    shortName: 'needs',
     extension: '.json',
   };
 }

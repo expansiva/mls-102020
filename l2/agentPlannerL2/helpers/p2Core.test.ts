@@ -25,6 +25,7 @@ import {
   p2DifferentRequestsRefusal,
   p2InvocationRefusal,
   p2MenuFile,
+  p2NeedsFile,
   p2PipelineFile,
   P2_MENU_DEVICE,
   readReadyL2Manifest,
@@ -128,9 +129,9 @@ void test('moduleTokenOk accepts lowerCamel only', () => {
   assert.equal(moduleTokenOk(''), false);
 });
 
-void test('planned tree is two sequential steps with entry10 first', () => {
+void test('planned tree is three sequential steps with entry10 first', () => {
   const steps = buildP2PlannedSteps(MODULE, { thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY });
-  assert.equal(steps.length, 2);
+  assert.equal(steps.length, 3);
   assert.deepEqual(steps.map(step => step.planning?.planId), [...P2_FLOW_STEP_IDS]);
   assert.equal(steps[0].status, 'waiting_human_input');
   assert.deepEqual(steps[0].planning?.dependsOn, []);
@@ -139,6 +140,7 @@ void test('planned tree is two sequential steps with entry10 first', () => {
     assert.equal(step.agentName, 'agentPlannerL2');
   }
   assert.deepEqual(steps.find(step => step.planning?.planId === 'menu20')?.planning?.dependsOn, [...P2_STEP_DEPENDS_ON.menu20]);
+  assert.deepEqual(steps.find(step => step.planning?.planId === 'needs30')?.planning?.dependsOn, [...P2_STEP_DEPENDS_ON.needs30]);
 });
 
 void test('ownerStepId maps L4 dispatch prompt to entry10 and ignores done-anchors', () => {
@@ -274,6 +276,17 @@ void test('p2MenuFile is pool/l2/<device>/menu.json', () => {
   });
 });
 
+void test('p2NeedsFile is pool/l1/<device>/needs.json', () => {
+  installHost();
+  assert.deepEqual(p2NeedsFile(MODULE), {
+    project: PROJECT,
+    level: 4,
+    folder: `${MODULE}/pool/l1/${P2_MENU_DEVICE}`,
+    shortName: 'needs',
+    extension: '.json',
+  });
+});
+
 void test('readReadyL2Manifest returns null while the built manifesto does not exist', () => {
   assert.equal(readReadyL2Manifest(MODULE), null);
   assert.equal(readReadyL2Manifest(MODULE, P2_MENU_DEVICE), null);
@@ -367,21 +380,31 @@ void test('markP2Complete sets complete only when every flow.json step is approv
   assert.equal(onlyEntry.status, 'inProgress');
   assert.equal(onlyEntry.updatedAt, AT.toISOString());
 
-  const both = markP2Complete(samplePipeline({
+  const menuOnly = markP2Complete(samplePipeline({
     steps: {
       entry10: { status: 'approved', updatedAt: AT.toISOString() },
       menu20: { status: 'approved', updatedAt: now },
     },
   }), now);
-  assert.equal(both.status, 'complete');
-  assert.equal(both.awaitingStep, undefined);
-  assert.equal(both.updatedAt, now);
+  assert.equal(menuOnly.status, 'inProgress');
+
+  const all = markP2Complete(samplePipeline({
+    steps: {
+      entry10: { status: 'approved', updatedAt: AT.toISOString() },
+      menu20: { status: 'approved', updatedAt: now },
+      needs30: { status: 'approved', updatedAt: now },
+    },
+  }), now);
+  assert.equal(all.status, 'complete');
+  assert.equal(all.awaitingStep, undefined);
+  assert.equal(all.updatedAt, now);
 
   const failed = markP2Complete(samplePipeline({
     status: 'failed',
     steps: {
       entry10: { status: 'approved', updatedAt: AT.toISOString() },
       menu20: { status: 'approved', updatedAt: now },
+      needs30: { status: 'approved', updatedAt: now },
     },
   }), now);
   assert.equal(failed.status, 'failed');

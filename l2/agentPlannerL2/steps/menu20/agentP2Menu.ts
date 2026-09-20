@@ -12,7 +12,6 @@ import type { Ns5AccessArtifact, Ns5WorkflowsArtifact } from '/_102035_/l2/solut
 import {
   P2_MENU_DEVICE,
   createP2RetryStep,
-  markP2Complete,
   markP2Step,
   p2AgentFile,
   p2DraftFile,
@@ -288,7 +287,6 @@ export async function afterP2MenuPromptStep(
       device: P2_MENU_DEVICE,
       actionCounts: menuActionCounts(artifact),
     };
-    pipeline = markP2Complete(pipeline);
     await writeJson(p2PipelineFile(pipeline.moduleName), pipeline);
     const warningNote = warnings.length ? ` (${warnings.length} warning(s))` : '';
     return [

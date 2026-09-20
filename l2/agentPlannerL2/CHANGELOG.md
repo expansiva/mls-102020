@@ -1,5 +1,12 @@
 # agentPlannerL2
 
+## 2026-09-21 (p2_21)
+
+- Flow v5: `entry10 → menu20 → needs30`. `needs30` is deterministic: from the
+  menu and the l4, writes `pool/l1/web/needs.json` (reads/writes per page,
+  entity + operation) and one `l2→l1` message. Structural gate. Does not delete
+  the pool. `menu20` no longer closes the pipeline.
+
 ## 2026-09-20 (p2_20)
 
 - `meta.entities` and `P2_MENU_ENTITY_NO_FORM` are gone. Who maintains a
