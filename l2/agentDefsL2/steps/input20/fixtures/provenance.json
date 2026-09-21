@@ -1,0 +1,21 @@
+{
+  "current": {
+    "commit": "a2f929ed8778c9d8240ac445d6206d401434fdc9",
+    "sha256": {
+      "menu.json": "47ec89accdfb0e6120404c7c7b78483e1a41d7d425d2bcf8d72da1e478527cd0",
+      "needs.json": "e1c768f8b695a114240d0d8d3bf427f8f4bc2f011fb22402ee9d6a6a06e51634",
+      "backend.json": "398c64ca16fb4fe6e74fd34523dfb238de43d7c8c39668bb31dee3fdc94bab34",
+      "effort.json": "e5866e32f95e1c5f89d8b8cd5fd4d6906db27bbf9bd5d0d009245cd0bfdb5531",
+      "access.defs.ts": "fcc99e2dcc6182d9ae46297976c451f819cf2779574c6fbf722ea3b2db86415a"
+    }
+  },
+  "historical": {
+    "commit": "7d3b2ac3aafc7052bdae5bd3991f9bc24efbc556",
+    "sha256": {
+      "menu.json": "91db1600f1f059b923f5258a5dbc159ddbbaf80e10dd3aad4af14953f21e1d61",
+      "needs.json": "b25803e17aeb56a7e26067507d0cd3ff264ad62751fc55151b767d5ae4723d1e",
+      "backend.json": "bdf87a82f2d16ed2e82e98f32fcb0de40b93dfb6bb14119430e1fc8e22fe8dc5",
+      "effort.json": "790e8f88d7f249ee3f6d3d09b9c7cb00e6bf8e77f837c90cf9a8708833c3421e"
+    }
+  }
+}

@@ -12,6 +12,7 @@ import {
 } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import '/_102020_/l2/agentDefsL2/steps/entry10/agentD2Entry.js';
+import '/_102020_/l2/agentDefsL2/steps/input20/agentD2Input.js';
 
 export function createAgent(): IAgentAsync {
   return {

@@ -29,9 +29,10 @@ void test('createAgent export graph has one public root and only private workers
   assert.deepEqual(agents.map(agent => [agent.file, agent.visibility]), [
     ['agentDefsL2.ts', 'public'],
     ['steps/entry10/agentD2Entry.ts', 'private'],
+    ['steps/input20/agentD2Input.ts', 'private'],
   ]);
   assert.match(agents[0].source, /beforePromptImplicit/);
-  assert.doesNotMatch(agents[1].source, /beforePromptImplicit/);
+  for (const agent of agents.slice(1)) assert.doesNotMatch(agent.source, /beforePromptImplicit/);
 });
 
 void test('no hook imports room messaging, frontend UI or another generator agent', () => {

@@ -1,0 +1,21 @@
+{
+  "$id": "https://collab.codes/schemas/agent-defs-l2/input-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agentDefsL2 immutable input snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "module", "device", "snapshotHash", "releaseIdentity", "sources", "l4", "selection", "normalizations", "problems"],
+  "properties": {
+    "schemaVersion": { "const": "2026-09-21-agent-defs-l2-input-v1" },
+    "project": { "type": "integer", "minimum": 1 },
+    "module": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]{0,59}$" },
+    "device": { "const": "web" },
+    "snapshotHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "releaseIdentity": { "type": "null" },
+    "sources": { "type": "array" },
+    "l4": { "type": "object" },
+    "selection": { "type": "object" },
+    "normalizations": { "type": "array" },
+    "problems": { "type": "array" }
+  }
+}

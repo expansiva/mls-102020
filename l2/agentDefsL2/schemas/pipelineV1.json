@@ -10,7 +10,7 @@
     "flowId": { "type": "string", "const": "agentDefsL2" },
     "project": { "type": "integer", "minimum": 1 },
     "module": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]{0,59}$" },
-    "status": { "type": "string", "enum": ["inProgress", "awaitingStep"] },
+    "status": { "type": "string", "enum": ["inProgress", "awaitingStep", "failed"] },
     "awaitingStep": { "type": "string", "enum": ["entry10", "input20", "contracts30", "shared40", "pages50", "finalize60"] },
     "steps": { "type": "object" },
     "createdAt": { "type": "string" },

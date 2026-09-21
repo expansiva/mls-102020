@@ -42,7 +42,8 @@ void test('flow declares the six acyclic phases with inputs, outputs and honest 
     seen.add(step.id);
   }
   assert.equal(FLOW.steps[0].availability, 'available');
-  for (const step of FLOW.steps.slice(1)) assert.equal(step.availability, 'unavailable');
+  assert.equal(FLOW.steps[1].availability, 'available');
+  for (const step of FLOW.steps.slice(2)) assert.equal(step.availability, 'unavailable');
 });
 
 void test('flow references only existing agents and each step has its own maintenance folder', () => {
@@ -55,6 +56,7 @@ void test('flow references only existing agents and each step has its own mainte
   assert.deepEqual(FLOW.agents, [
     { name: 'agentDefsL2', visibility: 'public', role: 'message entry, task-step entry and unavailable-step diagnostics' },
     { name: 'agentD2Entry', visibility: 'private', role: 'entry10 deterministic worker' },
+    { name: 'agentD2Input', visibility: 'private', role: 'input20 deterministic validation and snapshot worker' },
   ]);
   for (const imported of FLOW.hookImports) {
     assert.equal(existsSync(path.resolve(HERE, '..', imported.replace(/^l2\//, ''))), true, `missing hook import ${imported}`);
@@ -77,7 +79,7 @@ void test('flow declares bounded workers, repairs, limits and progress counters'
 });
 
 void test('all referenced JSON schemas are versioned and strict', () => {
-  for (const name of ['invocationV1.json', 'pipelineV1.json']) {
+  for (const name of ['invocationV1.json', 'pipelineV1.json', 'inputV1.json', 'inputReportV1.json']) {
     const schema = JSON.parse(readFileSync(path.join(HERE, 'schemas', name), 'utf8')) as Record<string, unknown>;
     assert.match(String(schema.$id), /^https:\/\//);
     assert.equal(schema.additionalProperties, false);

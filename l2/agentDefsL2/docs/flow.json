@@ -1,7 +1,7 @@
 {
   "flowId": "agentDefsL2",
-  "schemaVersion": "2026-09-21-agent-defs-l2-flow-v1",
-  "status": "entry10",
+  "schemaVersion": "2026-09-21-agent-defs-l2-flow-v2",
+  "status": "input20",
   "description": "Generate L2 definition sources from approved L4 and planner artifacts without materializing runtime files.",
   "invocation": {
     "message": "@@agentDefsL2 <lowerCamel>",
@@ -17,6 +17,7 @@
     "root": "l2/{module}/pipeline/agentDefsL2/",
     "pipeline": "l2/{module}/pipeline/agentDefsL2/pipeline.json",
     "input": "l2/{module}/pipeline/agentDefsL2/input.json",
+    "inputReport": "l2/{module}/pipeline/agentDefsL2/inputReport.json",
     "report": "l2/{module}/pipeline/agentDefsL2/report.json",
     "ownership": "Never write l2/{module}/pipeline/pipeline.json."
   },
@@ -42,11 +43,13 @@
   },
   "agents": [
     { "name": "agentDefsL2", "visibility": "public", "role": "message entry, task-step entry and unavailable-step diagnostics" },
-    { "name": "agentD2Entry", "visibility": "private", "role": "entry10 deterministic worker" }
+    { "name": "agentD2Entry", "visibility": "private", "role": "entry10 deterministic worker" },
+    { "name": "agentD2Input", "visibility": "private", "role": "input20 deterministic validation and snapshot worker" }
   ],
   "hookImports": [
     "l2/agentDefsL2/agentDefsL2.ts",
-    "l2/agentDefsL2/steps/entry10/agentD2Entry.ts"
+    "l2/agentDefsL2/steps/entry10/agentD2Entry.ts",
+    "l2/agentDefsL2/steps/input20/agentD2Input.ts"
   ],
   "artifacts": {
     "contract": "l2/{module}/web/contracts/{pageId}.defs.ts",
@@ -68,13 +71,13 @@
     },
     {
       "id": "input20",
-      "agent": "agentDefsL2",
+      "agent": "agentD2Input",
       "kind": "deterministic",
-      "availability": "unavailable",
+      "availability": "available",
       "dependsOn": ["entry10-done"],
       "doneAnchor": "input20-done",
       "inputs": ["module.defs.ts", "L4 indices", "menu.json", "needs.json", "backend.json", "effort.json"],
-      "outputs": ["l2/{module}/pipeline/agentDefsL2/input.json"],
+      "outputs": ["l2/{module}/pipeline/agentDefsL2/input.json", "l2/{module}/pipeline/agentDefsL2/inputReport.json"],
       "goal": "Validate a coherent immutable input snapshot."
     },
     {

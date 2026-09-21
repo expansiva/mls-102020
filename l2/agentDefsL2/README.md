@@ -6,8 +6,9 @@ Invocation: `@@agentDefsL2 <lowerCamel>` or `/help`. An existing task may add an
 JSON args `{ "project": 102047, "module": "agendaClinica" }`. Both forms plant the same six-step
 plan; only the message entry creates an `add-message-ai` intent.
 
-Current delivery implements `entry10`. `input20` through `finalize60` are deliberately unavailable:
-their execution records `awaitingStep` in the owned pipeline and fails with an English diagnostic.
-No generation, materialization, publication, room message or L5 mutation exists in this delivery.
+Current delivery implements `entry10` and deterministic `input20`. The input phase freezes coherent
+L4/planner inputs with content hashes, exact page destinations and structured review findings.
+`contracts30` through `finalize60` remain deliberately unavailable. No generation, materialization,
+publication, room message or L5 mutation exists in this delivery.
 
 State belongs only to `l2/<module>/pipeline/agentDefsL2/`.

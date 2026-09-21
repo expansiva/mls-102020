@@ -4,8 +4,9 @@ import { readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.
 
 export const D2_AGENT_NAME = 'agentDefsL2' as const;
 export const D2_ENTRY_AGENT_NAME = 'agentD2Entry' as const;
+export const D2_INPUT_AGENT_NAME = 'agentD2Input' as const;
 export const D2_FLOW_ID = 'agentDefsL2' as const;
-export const D2_FLOW_VERSION = '2026-09-21-agent-defs-l2-flow-v1' as const;
+export const D2_FLOW_VERSION = '2026-09-21-agent-defs-l2-flow-v2' as const;
 export const D2_PIPELINE_VERSION = '2026-09-21-agent-defs-l2-pipeline-v1' as const;
 
 export const D2_FLOW_STEP_IDS = [
@@ -43,9 +44,11 @@ export interface D2RunIdentity {
 }
 
 export interface D2PipelineStepState {
-  status: 'approved' | 'unavailable';
+  status: 'approved' | 'unavailable' | 'failed';
   updatedAt: string;
   diagnostic?: string;
+  artifactPaths?: string[];
+  snapshotHash?: string;
 }
 
 export interface D2PipelineState {
@@ -53,7 +56,7 @@ export interface D2PipelineState {
   flowId: typeof D2_FLOW_ID;
   project: number;
   module: string;
-  status: 'inProgress' | 'awaitingStep';
+  status: 'inProgress' | 'awaitingStep' | 'failed';
   awaitingStep?: D2StepId;
   steps: Partial<Record<D2StepId, D2PipelineStepState>>;
   createdAt: string;
@@ -152,7 +155,7 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity): ml
     stepTitle: D2_STEP_TITLES[stepId],
     status: dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     nextSteps: [],
-    agentName: stepId === 'entry10' ? D2_ENTRY_AGENT_NAME : D2_AGENT_NAME,
+    agentName: stepId === 'entry10' ? D2_ENTRY_AGENT_NAME : stepId === 'input20' ? D2_INPUT_AGENT_NAME : D2_AGENT_NAME,
     prompt: JSON.stringify(identity),
     rags: [],
     planning: {
@@ -199,7 +202,7 @@ export function createD2Pipeline(identity: D2RunIdentity, now: Date): D2Pipeline
 export async function initializeD2Pipeline(identity: D2RunIdentity, now = new Date()): Promise<D2PipelineState> {
   const existing = await readD2Pipeline(identity);
   if (existing) {
-    if (existing.flowId !== D2_FLOW_ID || existing.project !== identity.project || existing.module !== identity.module) {
+    if (existing.schemaVersion !== D2_PIPELINE_VERSION || existing.flowId !== D2_FLOW_ID || existing.project !== identity.project || existing.module !== identity.module) {
       throw new Error('Existing agentDefsL2 pipeline has a different identity. Nothing was overwritten.');
     }
     return existing;
@@ -222,8 +225,42 @@ export async function markD2Unavailable(identity: D2RunIdentity, stepId: D2StepI
   } satisfies D2PipelineState);
 }
 
+export async function markD2StepApproved(
+  identity: D2RunIdentity,
+  stepId: D2StepId,
+  artifactPaths: string[],
+  snapshotHash?: string,
+): Promise<void> {
+  const pipeline = await readD2Pipeline(identity);
+  if (!pipeline) throw new Error('agentDefsL2 pipeline is missing; entry10 must run first.');
+  const updatedAt = new Date().toISOString();
+  await writeJson(d2PipelineFile(identity), {
+    ...pipeline,
+    status: 'inProgress',
+    awaitingStep: undefined,
+    steps: {
+      ...pipeline.steps,
+      [stepId]: { status: 'approved', updatedAt, artifactPaths, ...(snapshotHash ? { snapshotHash } : {}) },
+    },
+    updatedAt,
+  } satisfies D2PipelineState);
+}
+
+export async function markD2StepFailed(identity: D2RunIdentity, stepId: D2StepId, diagnostic: string): Promise<void> {
+  const pipeline = await readD2Pipeline(identity);
+  if (!pipeline) return;
+  const updatedAt = new Date().toISOString();
+  await writeJson(d2PipelineFile(identity), {
+    ...pipeline,
+    status: 'failed',
+    awaitingStep: stepId,
+    steps: { ...pipeline.steps, [stepId]: { status: 'failed', diagnostic, updatedAt } },
+    updatedAt,
+  } satisfies D2PipelineState);
+}
+
 export const D2_HELP = [
   'Usage: @@agentDefsL2 <lowerCamel>',
   'The module is explicit and the project comes from the current context.',
-  'Available now: entry10. input20 and later phases are declared but unavailable.',
+  'Available now: entry10 and input20. contracts30 and later phases are declared but unavailable.',
 ].join('\n');
