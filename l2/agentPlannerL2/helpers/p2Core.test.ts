@@ -6,8 +6,10 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { moduleFolder, setModuleRoot } from '/_102035_/l2/solution/fs.js';
 import { normalizePoolMessage } from '/_102035_/l2/solution/pool.js';
 import {
+  P2_DEFAULT_CANDIDATE_REL,
   P2_EFFORT_FLOW_STEP_IDS,
   P2_FLOW_STEP_IDS,
   P2_MENU_FLOW_STEP_IDS,
@@ -35,8 +37,14 @@ import {
   P2_MENU_DEVICE,
   plannedP2StepIds,
   readReadyL2Manifest,
+  resolveCandidateFolder,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+import {
+  changedOutside,
+  diffTrees,
+  snapshotEntries,
+} from '/_102020_/l2/agentPlannerL2/helpers/treeFingerprint.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = JSON.parse(readFileSync(
@@ -63,9 +71,9 @@ function keyOf(info: { project: number | string; level: number | string; folder:
   return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
 }
 
-function seed(host: Host, folder: string, shortName: string, content = '', level = 4): Stored {
+function seed(host: Host, folder: string, shortName: string, content = '', level = 4, extension = '.json'): Stored {
   const file: Stored = {
-    project: PROJECT, level, folder, shortName, extension: '.json',
+    project: PROJECT, level, folder, shortName, extension,
     status: 'changed', versionRef: '1', content,
     getValueInfo: async () => ({ content: file.content }),
     getContent: async () => file.content,
@@ -115,17 +123,42 @@ function seedReady(host: Host, message: unknown = FIXTURE, extraShort?: string):
 }
 
 void test('parseP2Invocation reads the module token and strips the agent prefix', () => {
-  assert.equal(parseP2Invocation('@@agentPlannerL2 mensalidadesAcademia').module, MODULE);
+  const parsed = parseP2Invocation('@@agentPlannerL2 mensalidadesAcademia');
+  assert.equal(parsed.module, MODULE);
+  assert.equal(parsed.candidate, '');
+  assert.equal(parsed.hasCandidate, false);
   assert.equal(parseP2Invocation('mensalidadesAcademia').module, MODULE);
   assert.equal(parseP2Invocation('@@_102020_/l2/agentPlannerL2 mensalidadesAcademia').module, MODULE);
   assert.equal(parseP2Invocation('').module, '');
 });
 
 void test('p2InvocationRefusal refuses a missing or non-lowerCamel module', () => {
-  assert.equal(p2InvocationRefusal({ module: MODULE }), '');
-  assert.match(p2InvocationRefusal({ module: '' }), /Pass @@agentPlannerL2/);
-  assert.match(p2InvocationRefusal({ module: 'MensalidadesAcademia' }), /lowerCamel/);
-  assert.match(p2InvocationRefusal({ module: 'mensalidades-academia' }), /lowerCamel/);
+  assert.equal(p2InvocationRefusal({ module: MODULE, candidate: '', hasCandidate: false }), '');
+  assert.match(p2InvocationRefusal({ module: '', candidate: '', hasCandidate: false }), /Pass @@agentPlannerL2/);
+  assert.match(p2InvocationRefusal({ module: 'MensalidadesAcademia', candidate: '', hasCandidate: false }), /lowerCamel/);
+  assert.match(p2InvocationRefusal({ module: 'mensalidades-academia', candidate: '', hasCandidate: false }), /lowerCamel/);
+});
+
+void test('parseP2Invocation /candidate alone points at <mod>/tobe/plan', () => {
+  const parsed = parseP2Invocation('@@agentPlannerL2 mensalidadesAcademia /candidate');
+  assert.equal(parsed.module, MODULE);
+  assert.equal(parsed.hasCandidate, true);
+  assert.equal(parsed.candidate, `${MODULE}/${P2_DEFAULT_CANDIDATE_REL}`);
+  assert.equal(resolveCandidateFolder(MODULE, ''), `${MODULE}/tobe/plan`);
+});
+
+void test('parseP2Invocation /candidate with a relative root keeps the module token', () => {
+  const parsed = parseP2Invocation('mensalidadesAcademia /candidate pipeline/changes/c1/revisions/r1/l4');
+  assert.equal(parsed.module, MODULE);
+  assert.equal(parsed.hasCandidate, true);
+  assert.equal(parsed.candidate, `${MODULE}/pipeline/changes/c1/revisions/r1/l4`);
+});
+
+void test('p2InvocationRefusal refuses a candidate path with ..', () => {
+  const parsed = parseP2Invocation(`${MODULE} /candidate ../evil`);
+  assert.equal(parsed.hasCandidate, true);
+  assert.equal(parsed.candidate, '');
+  assert.match(p2InvocationRefusal(parsed), /must not contain '\.\.'/);
 });
 
 void test('moduleTokenOk accepts lowerCamel only', () => {
@@ -148,6 +181,20 @@ void test('planned tree is the menu conversation unless the message is l1 backen
   assert.deepEqual(steps.find(step => step.planning?.planId === 'menu20')?.planning?.dependsOn, [...P2_STEP_DEPENDS_ON.menu20]);
   assert.deepEqual(steps.find(step => step.planning?.planId === 'needs30')?.planning?.dependsOn, [...P2_STEP_DEPENDS_ON.needs30]);
   assert.deepEqual([...P2_FLOW_STEP_IDS], ['entry10', 'menu20', 'needs30', 'effort40']);
+  assert.equal(
+    steps[0].prompt,
+    JSON.stringify({ planId: 'entry10', moduleName: MODULE, thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY }),
+  );
+  const withFlag = buildP2PlannedSteps(MODULE, {
+    thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY, candidate: `${MODULE}/tobe/plan`,
+  });
+  assert.equal(
+    withFlag[0].prompt,
+    JSON.stringify({
+      planId: 'entry10', moduleName: MODULE, thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY,
+      candidate: `${MODULE}/tobe/plan`,
+    }),
+  );
 });
 
 void test('ownerStepId maps L4 dispatch prompt to entry10 and ignores done-anchors', () => {
@@ -164,10 +211,24 @@ void test('ownerStepId maps L4 dispatch prompt to entry10 and ignores done-ancho
 void test('parseP2StepPrompt distinguishes L4 dispatch from a planned entry10', () => {
   assert.deepEqual(
     parseP2StepPrompt(JSON.stringify({ moduleName: MODULE, thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY })),
-    { kind: 'step', moduleName: MODULE, thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY },
+    { kind: 'step', moduleName: MODULE, thread: 'mensalidadesAcademia-20260918103000', file: DISPLAY, candidate: '' },
   );
-  assert.deepEqual(parseP2StepPrompt(JSON.stringify({ planId: 'entry10', moduleName: MODULE })), { kind: 'entry', moduleName: MODULE });
+  assert.deepEqual(
+    parseP2StepPrompt(JSON.stringify({ planId: 'entry10', moduleName: MODULE })),
+    { kind: 'entry', moduleName: MODULE, candidate: '' },
+  );
+  assert.deepEqual(
+    parseP2StepPrompt(JSON.stringify({
+      moduleName: MODULE, thread: 't-20260918103000', file: DISPLAY, candidate: `${MODULE}/tobe/plan`,
+    })),
+    { kind: 'step', moduleName: MODULE, thread: 't-20260918103000', file: DISPLAY, candidate: `${MODULE}/tobe/plan` },
+  );
   assert.equal(parseP2StepPrompt('not-json').kind, 'refusal');
+  const dotdot = parseP2StepPrompt(JSON.stringify({
+    moduleName: MODULE, thread: 't-20260918103000', file: DISPLAY, candidate: '../evil',
+  }));
+  assert.equal(dotdot.kind, 'refusal');
+  if (dotdot.kind === 'refusal') assert.match(dotdot.refusal, /must not contain '\.\.'/);
 });
 
 void test('fixture of the pool/l2 message is a valid PoolMessage', () => {
@@ -554,4 +615,121 @@ void test('effort entry refuses without menu.json', async () => {
   assert.equal('refusal' in written, true);
   if (!('refusal' in written)) return;
   assert.match(written.refusal, /menu.json is missing/);
+});
+
+const CANDIDATE = `${MODULE}/tobe/plan`;
+const CANONICAL_MARKER = 'CANONICAL-must-not-move';
+
+function hostSnapshot(host: Host) {
+  return snapshotEntries(
+    Object.values(host.files)
+      .filter(file => file.status !== 'deleted')
+      .map(file => ({
+        rel: `l${file.level}/${file.folder}/${file.shortName}${file.extension}`,
+        fingerprint: `${file.status}\0${file.content}`,
+      })),
+  );
+}
+
+function seedCandidate(host: Host): void {
+  seed(host, `${CANDIDATE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(host, `${CANDIDATE}/pool/l2`, SHORT, `${JSON.stringify(FIXTURE, null, 2)}\n`);
+  seed(host, `${CANDIDATE}/pipeline`, 'pipeline', '{}\n', 2);
+}
+
+void test('without /candidate moduleFolder is the canonical name and the pipeline lands there', async () => {
+  const host = installHost();
+  seedReady(host);
+  const result = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in result, false);
+  if ('refusal' in result) return;
+  assert.equal(moduleFolder(MODULE), MODULE);
+  assert.deepEqual(p2PipelineFile(MODULE).folder, `${MODULE}/pipeline`);
+  assert.equal(p2PipelineFile(MODULE).level, 2);
+  assert.ok(host.files[keyOf(p2PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL2"'));
+  assert.deepEqual(result.pipeline.steps.entry10?.artifactPaths, [`l2/${MODULE}/pipeline/pipeline.json`]);
+});
+
+void test('with /candidate pipeline and scratch wipe stay in the override; canonical l2/l4/l1 are untouched', async () => {
+  const host = installHost();
+  seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(host, MODULE, 'module', CANONICAL_MARKER, 4, '.defs.ts');
+  seed(host, `${MODULE}/pipeline`, 'pipeline', '"canonical-l2-pipeline"\n', 2);
+  seed(host, `${MODULE}/pipeline`, 'menu20-draft', '"canonical-draft"\n', 2);
+  seed(host, `${MODULE}/web/contracts`, 'matriculas', '"canonical-web"\n', 2);
+  seed(host, `${MODULE}/pipeline`, 'pipeline', '"canonical-l1-pipeline"\n', 1);
+  seedCandidate(host);
+  seed(host, `${CANDIDATE}/pipeline`, 'menu20-draft', '"candidate-draft"\n', 2);
+  seed(host, `${CANDIDATE}/web/contracts`, 'matriculas', '"candidate-web"\n', 2);
+  const before = hostSnapshot(host);
+
+  const result = await executeP2Entry({ kind: 'hand', moduleName: MODULE, candidate: CANDIDATE }, AT);
+  assert.equal('refusal' in result, false);
+  if ('refusal' in result) return;
+  assert.equal(moduleFolder(MODULE), CANDIDATE);
+  assert.equal(p2PipelineFile(MODULE).folder, `${CANDIDATE}/pipeline`);
+  assert.ok(host.files[keyOf(p2PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL2"'));
+  assert.deepEqual(result.pipeline.steps.entry10?.artifactPaths, [`l2/${CANDIDATE}/pipeline/pipeline.json`]);
+
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: MODULE, shortName: 'module', extension: '.defs.ts' })].content, CANONICAL_MARKER);
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content, '"canonical-l2-pipeline"\n');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].status, 'changed');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'changed');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'matriculas', extension: '.json' })].status, 'changed');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content, '"canonical-l1-pipeline"\n');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'deleted');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/web/contracts`, shortName: 'matriculas', extension: '.json' })].status, 'deleted');
+
+  const after = hostSnapshot(host);
+  const diff = diffTrees(before, after);
+  assert.deepEqual(
+    changedOutside(diff, [`l4/${CANDIDATE}`, `l2/${CANDIDATE}`, `l1/${CANDIDATE}`]),
+    [],
+  );
+});
+
+void test('candidate path with .. refuses and does not set the module root', async () => {
+  const host = installHost();
+  seedReady(host);
+  setModuleRoot(MODULE, CANDIDATE);
+  const result = await loadP2Entry({ kind: 'hand', moduleName: MODULE, candidate: '../evil' });
+  assert.equal('refusal' in result && /must not contain '\.\.'/.test(result.refusal), true);
+  assert.equal(moduleFolder(MODULE), MODULE);
+});
+
+void test('a later task without /candidate does not inherit the previous module root', async () => {
+  const host = installHost();
+  seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seedCandidate(host);
+  const first = await executeP2Entry({ kind: 'hand', moduleName: MODULE, candidate: CANDIDATE }, AT);
+  assert.equal('refusal' in first, false);
+  if ('refusal' in first) return;
+  assert.equal(moduleFolder(MODULE), CANDIDATE);
+
+  seedReady(host);
+  const second = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in second, false);
+  if ('refusal' in second) return;
+  assert.equal(moduleFolder(MODULE), MODULE);
+  assert.equal(p2PipelineFile(MODULE).folder, `${MODULE}/pipeline`);
+  assert.ok(host.files[keyOf(p2PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL2"'));
+});
+
+void test('with /candidate removeDir targets the override web folder, not the canonical one', async () => {
+  const host = installHost();
+  const removed: string[] = [];
+  (mls.stor.localStor as unknown as { removeDir: (project: number, level: number, folder: string) => void }).removeDir = (_project, _level, folder) => {
+    removed.push(folder);
+  };
+  seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(host, `${MODULE}/web/contracts`, 'stale', '', 2);
+  seedCandidate(host);
+  seed(host, `${CANDIDATE}/web/contracts`, 'stale', '', 2);
+  const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE, candidate: CANDIDATE }, AT);
+  assert.equal('refusal' in written, false);
+  if ('refusal' in written) return;
+  assert.equal(written.pipeline.webDir, P2_WEB_DIR_REMOVED);
+  assert.deepEqual(removed, [`${CANDIDATE}/web`]);
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'stale', extension: '.json' })].status, 'changed');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/web/contracts`, shortName: 'stale', extension: '.json' })].status, 'deleted');
 });

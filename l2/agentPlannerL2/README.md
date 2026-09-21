@@ -19,15 +19,25 @@ to `agentChangeFrontend`. Unique name `agentPlannerL2`.
 
 ```
 @@agentPlannerL2 <lowerCamel>
+@@agentPlannerL2 <lowerCamel> /candidate
+@@agentPlannerL2 <lowerCamel> /candidate pipeline/changes/<id>/revisions/<rev>/l4
 ```
 
-Or a step created by L4 whose prompt is JSON `{ moduleName, thread, file }`. Both
-paths read the same `pool/l2` messages and write the same
-`l2/<mod>/pipeline/pipeline.json`.
+Or a step created by L4 whose prompt is JSON `{ moduleName, thread, file, candidate }`.
+`candidate` is optional; L4 writes the resolved folder when it dispatched with
+`/candidate`. Both paths read the same `pool/l2` messages and write the same
+pipeline (`l2/<mod>/pipeline/pipeline.json`, or under the `/candidate` root).
+
+- `/candidate` alone points `moduleFolder` at `<mod>/tobe/plan`. A relative path
+  is joined under the module. Without the flag the canonical tree is byte-identical.
+- Writes (l2 pipeline, `pool/l2`) and the scratch wipe follow `moduleFile`, so they
+  land inside the candidate when the flag is set. Canonical `l2/<mod>/pipeline` and
+  `l2/<mod>/web` are never listed or deleted.
 
 ## Refusals (English, no LLM)
 
 - missing / not lowerCamel module token
+- `/candidate` path containing `..`
 - module l4 `pipeline.json` missing or not `status: complete`
 - empty `pool/l2` (or only `menu.json` / a device folder): `nothing pending for <mod> in pool/l2`
 - two different requests in the box: `pool/l2 has N different requests; resolve with the l4 supervisor`
@@ -38,8 +48,8 @@ paths read the same `pool/l2` messages and write the same
 effort conversation `entry10 → effort40`. `entry10`, `needs30` and `effort40`
 are deterministic. `menu20` spends one reasoning call. `effort40`, on approve,
 sets `pipeline.status = complete` when every flow step is approved. The menu
-conversation wipes the l2 pipeline and `web/` files; the effort conversation
-does not. Both overwrite their artefact and leave the pool messages intact.
+conversation wipes the l2 pipeline and `web/` files of the **active root**; the
+effort conversation does not. Both overwrite their artefact and leave the pool messages intact.
 Empty `web/` folders stay: `deleteFile` does not remove directories;
 `pipeline.webDir` records that.
 

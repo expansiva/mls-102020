@@ -1,5 +1,12 @@
 # entry10
 
+## 2026-09-21 (p2_23)
+
+- Honors `/candidate` on the hand invocation and on the L4 step prompt. Applies
+  `setModuleRoot` before reading l4 / pool / pipeline; restores the canonical
+  folder when the flag is absent. Scratch wipe follows that same root, so a
+  candidate run cannot delete `l2/<mod>/pipeline` or `l2/<mod>/web`.
+
 ## 2026-09-21 (p2_22)
 
 - Partitions `pool/l2` by `message.from` before grouping. An `l1` message whose

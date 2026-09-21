@@ -58,6 +58,7 @@ function forbiddenImportReason(spec: string): string | null {
   if (spec.includes('collabMessagesHelper')) return `static import of collabMessagesHelper (${spec})`;
   if (spec.includes('mls.editor')) return `static import of mls.editor (${spec})`;
   if (spec.includes('/l1/')) return `static import of l1 (${spec})`;
+  if (spec.includes('/_102021_/')) return `static import of 102021 (${spec})`;
   if (spec.includes('agentChangeFrontend')) return `static import of agentChangeFrontend (${spec})`;
   if (spec.startsWith('/_102035_/') && !ALLOWED_102035.has(spec)) {
     return `static import of 102035 outside solution/{pool,fs,types} (${spec})`;

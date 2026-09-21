@@ -204,3 +204,28 @@ void test('entry10 leaves empty web/ folders as a recorded pipeline line', async
   assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'stale', extension: '.json' })].status, 'deleted');
   assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/shared`, shortName: 'stale', extension: '.json' })].status, 'deleted');
 });
+
+void test('hand /candidate writes the l2 pipeline in the override and leaves canonical scratch', async () => {
+  const host = installHost();
+  const candidate = `${MODULE}/tobe/plan`;
+  seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(host, `${MODULE}/pipeline`, 'pipeline', '"canonical-l2"\n', 2);
+  seed(host, `${MODULE}/pipeline`, 'menu20-draft', '"canonical-draft"\n', 2);
+  seed(host, `${candidate}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(host, `${candidate}/pool/l2`, SHORT, `${JSON.stringify(FIXTURE, null, 2)}\n`);
+  seed(host, `${candidate}/pipeline`, 'pipeline', '{}\n', 2);
+  seed(host, `${candidate}/pipeline`, 'menu20-draft', '"candidate-draft"\n', 2);
+  const agent = createAgent();
+  const ctx = contextWith(`@@agentPlannerL2 ${MODULE} /candidate`);
+  const hand = await agent.beforePromptImplicit!(agentMeta(), ctx, `@@agentPlannerL2 ${MODULE} /candidate`);
+  const added = hand.filter((intent): intent is mls.msg.AgentIntentAddStep => intent.type === 'add-step');
+  const entryStep = added[0].step as mls.msg.AIAgentStep;
+  entryStep.stepId = 10;
+  assert.match(String(entryStep.prompt), /"candidate":"mensalidadesAcademia\/tobe\/plan"/);
+  await beforeP2EntryPromptStep(agentMeta(), ctx, ctx.task!.iaCompressed!.nextSteps[0] as mls.msg.AIAgentStep, entryStep, 1);
+  const written = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { steps: { entry10: { artifactPaths: string[] } } };
+  assert.deepEqual(written.steps.entry10.artifactPaths, [`l2/${candidate}/pipeline/pipeline.json`]);
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content, '"canonical-l2"\n');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'changed');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${candidate}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'deleted');
+});

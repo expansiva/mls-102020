@@ -8,6 +8,7 @@ import {
   normalizeModuleName,
   readJson,
   readPipeline,
+  setModuleRoot,
   writeJson,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
@@ -82,13 +83,24 @@ export const P2_STEP_DEPENDS_ON: Record<P2StepId, readonly string[]> = {
 /** Pool message file: `<stamp>_<thread>_<round>`. `menu.json` does not match. */
 const POOL_MESSAGE_SHORT = /^\d{14}_[A-Za-z0-9]+-\d{14}_[123]$/;
 
+/** Copied from `p1Core.ts:53` — L2 must not import the L1 planner. */
+const CANDIDATE_RE = /(^|\s)\/candidate(?:\s+(?!\/)(\S+))?(?=\s|$)/i;
+const CANDIDATE_DOTDOT = 'Candidate path must not contain \'..\'.';
+
+/** Same default as `P1_DEFAULT_CANDIDATE_REL` in `p1Core.ts`. */
+export const P2_DEFAULT_CANDIDATE_REL = 'tobe/plan' as const;
+
 export interface P2ParsedInvocation {
   module: string;
+  /** Resolved `l4/` folder when `/candidate` is present; otherwise `''`. */
+  candidate: string;
+  /** True when the `/candidate` token was present, even if the path was refused. */
+  hasCandidate: boolean;
 }
 
 export type P2EntrySource =
-  | { kind: 'hand'; moduleName: string }
-  | { kind: 'step'; moduleName: string; thread: string; file: string };
+  | { kind: 'hand'; moduleName: string; candidate?: string }
+  | { kind: 'step'; moduleName: string; thread: string; file: string; candidate?: string };
 
 export interface P2PipelineState {
   schemaVersion: typeof P2_PIPELINE_SCHEMA_VERSION;
@@ -140,6 +152,41 @@ export function moduleTokenOk(moduleName: string): boolean {
   return /^[a-z][A-Za-z0-9]*$/.test(moduleName);
 }
 
+/** Copied from `p1Core.ts:122`. `..` in the relative path returns `''`. */
+export function resolveCandidateFolder(moduleName: string, relativePath = ''): string {
+  const mod = normalizeModuleName(moduleName);
+  const rel = String(relativePath || '').trim().replace(/^\/+|\/+$/g, '') || P2_DEFAULT_CANDIDATE_REL;
+  if (rel.includes('..')) return '';
+  if (rel === mod || rel.startsWith(`${mod}/`)) return rel;
+  return `${mod}/${rel}`;
+}
+
+/**
+ * Point `moduleFolder` at `candidate`, or restore the canonical root when it is
+ * empty. `..` is a refusal, not a silent "no candidate". Always call this before
+ * reading l4 / pool / pipeline so a previous task cannot leak its root.
+ */
+export function applyP2CandidateRoot(moduleName: string, candidate: string): string {
+  const name = normalizeModuleName(moduleName, '');
+  if (!name) return '';
+  const raw = String(candidate || '').trim();
+  if (!raw) {
+    setModuleRoot(name, null);
+    return '';
+  }
+  if (raw.includes('..')) {
+    setModuleRoot(name, null);
+    return CANDIDATE_DOTDOT;
+  }
+  const resolved = resolveCandidateFolder(name, raw);
+  if (!resolved) {
+    setModuleRoot(name, null);
+    return CANDIDATE_DOTDOT;
+  }
+  setModuleRoot(name, resolved);
+  return '';
+}
+
 /**
  * Maps child planIds back to the owning step. Done-anchors stay unmatched so they
  * are not dispatched. A step prompt `{ moduleName, thread, file }` (L4 dispatch)
@@ -163,19 +210,30 @@ export function isL4EntryPrompt(prompt?: string): boolean {
 export function parseP2Invocation(value: string): P2ParsedInvocation {
   let raw = String(value || '');
   for (const prefix of AGENT_PREFIXES) raw = raw.replace(prefix, ' ');
-  const tokens = raw.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
-  return { module: tokens[0] || '' };
+  const candidateMatch = CANDIDATE_RE.exec(raw);
+  const hasCandidate = !!candidateMatch;
+  const candidateRel = candidateMatch?.[2] || '';
+  const tokens = raw
+    .replace(new RegExp(CANDIDATE_RE.source, 'gi'), ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+  const module = tokens[0] || '';
+  const candidate = hasCandidate && module ? resolveCandidateFolder(module, candidateRel) : '';
+  return { module, candidate, hasCandidate };
 }
 
 export function p2InvocationRefusal(invocation: P2ParsedInvocation): string {
   if (!invocation.module) return 'Pass @@agentPlannerL2 <lowerCamel>.';
   if (!moduleTokenOk(invocation.module)) return 'Module name must be lowerCamel (example: stockControl).';
+  if (invocation.hasCandidate && !invocation.candidate) return CANDIDATE_DOTDOT;
   return '';
 }
 
 export type P2StepPrompt =
-  | { kind: 'step'; moduleName: string; thread: string; file: string }
-  | { kind: 'entry'; moduleName: string }
+  | { kind: 'step'; moduleName: string; thread: string; file: string; candidate: string }
+  | { kind: 'entry'; moduleName: string; candidate: string }
   | { kind: 'refusal'; refusal: string };
 
 export function parseP2StepPrompt(prompt: string): P2StepPrompt {
@@ -192,8 +250,10 @@ export function parseP2StepPrompt(prompt: string): P2StepPrompt {
   const moduleName = typeof raw.moduleName === 'string' ? raw.moduleName.trim() : '';
   const thread = typeof raw.thread === 'string' ? raw.thread.trim() : '';
   const file = typeof raw.file === 'string' ? raw.file.trim() : '';
-  if (moduleName && thread && file) return { kind: 'step', moduleName, thread, file };
-  if (moduleName) return { kind: 'entry', moduleName };
+  const candidate = typeof raw.candidate === 'string' ? raw.candidate.trim() : '';
+  if (candidate.includes('..')) return { kind: 'refusal', refusal: CANDIDATE_DOTDOT };
+  if (moduleName && thread && file) return { kind: 'step', moduleName, thread, file, candidate };
+  if (moduleName) return { kind: 'entry', moduleName, candidate };
   return { kind: 'refusal', refusal: 'step prompt needs moduleName.' };
 }
 
@@ -227,7 +287,7 @@ export function createP2Pipeline(
       entry10: {
         status: 'approved',
         updatedAt,
-        artifactPaths: [`l2/${moduleName}/pipeline/pipeline.json`],
+        artifactPaths: [displayPath(p2PipelineFile(moduleName))],
       },
     },
     thread: message.thread,
@@ -242,9 +302,11 @@ export function createP2Pipeline(
 export function createP2AgentStep(
   stepId: P2StepId,
   moduleName: string,
-  entry: { thread: string; file: string },
+  entry: { thread: string; file: string; candidate?: string },
 ): mls.msg.AIAgentStep {
   const dependsOn = [...P2_STEP_DEPENDS_ON[stepId]];
+  const prompt: Record<string, string> = { planId: stepId, moduleName, thread: entry.thread, file: entry.file };
+  if (entry.candidate) prompt.candidate = entry.candidate;
   return {
     type: 'agent',
     stepId: 0,
@@ -253,7 +315,7 @@ export function createP2AgentStep(
     status: dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     nextSteps: [],
     agentName: P2_AGENT_NAME,
-    prompt: JSON.stringify({ planId: stepId, moduleName, thread: entry.thread, file: entry.file }),
+    prompt: JSON.stringify(prompt),
     rags: [],
     planning: {
       planId: stepId,
@@ -280,7 +342,7 @@ export function plannedP2StepIds(message?: PoolMessage): readonly P2FlowStepId[]
 
 export function buildP2PlannedSteps(
   moduleName: string,
-  entry: { thread: string; file: string },
+  entry: { thread: string; file: string; candidate?: string },
   message?: PoolMessage,
 ): mls.msg.AIAgentStep[] {
   return plannedP2StepIds(message).map(stepId => createP2AgentStep(stepId, moduleName, entry));
@@ -380,6 +442,9 @@ export async function loadP2Entry(source: P2EntrySource): Promise<P2LoadResult> 
     return { refusal: 'Module name must be lowerCamel (example: stockControl).' };
   }
 
+  const rootRefusal = applyP2CandidateRoot(moduleName, source.candidate || '');
+  if (rootRefusal) return { refusal: rootRefusal };
+
   const l4 = await readPipeline(moduleName);
   if (!l4 || l4.status !== 'complete') {
     return { refusal: `Module "${moduleName}" has no complete l4.` };
@@ -467,7 +532,7 @@ export async function writeP2EffortEntry(loaded: P2LoadedEntry, now: Date): Prom
       entry10: {
         status: 'approved',
         updatedAt,
-        artifactPaths: [`l2/${loaded.moduleName}/pipeline/pipeline.json`],
+        artifactPaths: [displayPath(p2PipelineFile(loaded.moduleName))],
       },
     },
   };
@@ -475,14 +540,15 @@ export async function writeP2EffortEntry(loaded: P2LoadedEntry, now: Date): Prom
   return next;
 }
 
-function isP2ScratchFolder(folder: string, moduleName: string): boolean {
-  return folder === `${moduleName}/pipeline`
-    || folder === `${moduleName}/web`
-    || folder.startsWith(`${moduleName}/web/`);
+function isP2ScratchFolder(folder: string, root: string): boolean {
+  return folder === `${root}/pipeline`
+    || folder === `${root}/web`
+    || folder.startsWith(`${root}/web/`);
 }
 
 function listP2ScratchFiles(moduleName: string): Ns5FileInfo[] {
   const base = moduleFile(moduleName);
+  const root = base.folder;
   const files = mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>;
   const found = new Map<string, Ns5FileInfo>();
   const remember = (info: Ns5FileInfo) => {
@@ -491,7 +557,7 @@ function listP2ScratchFiles(moduleName: string): Ns5FileInfo[] {
   for (const file of Object.values(files)) {
     if (!file || file.project !== base.project || Number(file.level) !== 2 || file.status === 'deleted') continue;
     const folder = String(file.folder || '');
-    if (!isP2ScratchFolder(folder, moduleName) || !file.shortName) continue;
+    if (!isP2ScratchFolder(folder, root) || !file.shortName) continue;
     remember({
       project: base.project,
       level: 2,
@@ -502,7 +568,7 @@ function listP2ScratchFiles(moduleName: string): Ns5FileInfo[] {
   }
   const listFolder = hostListFolder();
   if (listFolder) {
-    const folders = new Set<string>([`${moduleName}/pipeline`, `${moduleName}/web`, `${moduleName}/web/contracts`, `${moduleName}/web/shared`]);
+    const folders = new Set<string>([`${root}/pipeline`, `${root}/web`, `${root}/web/contracts`, `${root}/web/shared`]);
     for (const info of found.values()) folders.add(info.folder);
     for (const folder of folders) {
       for (const info of listFolder(base.project, 2, folder)) {
@@ -545,7 +611,7 @@ async function removeEmptyWebDir(moduleName: string): Promise<P2WebDir> {
   const removeDir = hostRemoveDir();
   if (!removeDir) return P2_WEB_DIR_EMPTY_LEFT;
   const base = moduleFile(moduleName);
-  await Promise.resolve(removeDir(base.project, 2, `${moduleName}/web`));
+  await Promise.resolve(removeDir(base.project, 2, `${base.folder}/web`));
   return P2_WEB_DIR_REMOVED;
 }
 
