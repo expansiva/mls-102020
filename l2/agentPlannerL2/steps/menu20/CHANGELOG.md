@@ -1,5 +1,12 @@
 # menu20
 
+## 2026-09-21 (p2_24)
+
+- In `/candidate` the human prompt includes the canonical menu under
+  "the module's current screens — keep their ids, labels and wording;
+  change only what the l4 diff changes". Read via `p2CanonicalMenuFile`
+  (literal module name). Not `previousMenu`, not a tree diff.
+
 ## 2026-09-21 (p2_21)
 
 - No longer calls `markP2Complete`. The last flow step is `effort40`.

@@ -37,6 +37,7 @@ import {
   type MenuPageNode,
   type MenuStampedNode,
   type MenuV2,
+  type P2MenuFile,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { validateP2Menu } from '/_102020_/l2/agentPlannerL2/steps/menu20/gate.js';
 import {
@@ -733,7 +734,40 @@ void test('human prompt carries journeys, grants, processes and candidates', () 
   assert.match(human, /alertarGerenciaGeracao/);
   assert.match(human, /recordsKept/);
   assert.match(human, /"entityRef": "Plano"/);
+  assert.equal(human.includes('the module\'s current screens'), false);
+  assert.equal(human.includes('previousMenu'), false);
+  assert.equal(human.includes('diffMenuTrees'), false);
   assert.ok(loaded.grants.length > 0);
+});
+
+void test('planner source does not mention previousMenu or diffMenuTrees', () => {
+  const root = path.resolve(HERE, '../..');
+  const walk = (dir: string, files: string[]) => {
+    for (const name of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, name.name);
+      if (name.isDirectory()) walk(full, files);
+      else if (name.name.endsWith('.ts') && !name.name.endsWith('.test.ts')) files.push(full);
+    }
+    return files;
+  };
+  for (const file of walk(root, [])) {
+    const source = readFileSync(file, 'utf8');
+    assert.equal(source.includes('previousMenu'), false, file);
+    assert.equal(source.includes('diffMenuTrees'), false, file);
+  }
+});
+
+void test('candidate prompt includes the canonical menu as current screens, not previousMenu', () => {
+  const loaded = loadSources();
+  const canonical = JSON.parse(readFileSync(path.join(HERE, '../needs30/fixtures/menu.json'), 'utf8')) as P2MenuFile;
+  const human = buildP2MenuHumanPrompt({
+    menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes },
+    canonicalMenu: canonical,
+  });
+  assert.match(human, /the module's current screens — keep their ids, labels and wording; change only what the l4 diff changes/);
+  assert.match(human, /mensalidades_pagamentos/);
+  assert.equal(human.includes('previousMenu'), false);
+  assert.equal(human.includes('diffMenuTrees'), false);
 });
 
 void test('buildP2MenuFile fills the envelope from code, not the model', () => {

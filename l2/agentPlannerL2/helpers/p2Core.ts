@@ -5,6 +5,7 @@ import {
   displayPath,
   hostListFolder,
   moduleFile,
+  moduleFolder,
   normalizeModuleName,
   readJson,
   readPipeline,
@@ -185,6 +186,13 @@ export function applyP2CandidateRoot(moduleName: string, candidate: string): str
   }
   setModuleRoot(name, resolved);
   return '';
+}
+
+/** True when `moduleFolder` is the `/candidate` override, not the canonical name. */
+export function isP2CandidateRoot(moduleName: string): boolean {
+  const name = normalizeModuleName(moduleName, '');
+  if (!name) return false;
+  return moduleFolder(moduleName) !== name;
 }
 
 /**
@@ -378,6 +386,26 @@ export function p2MenuFile(moduleName: string, device: P2MenuDevice = P2_MENU_DE
   };
 }
 
+/**
+ * Canonical `l4/<mod>/pool/l2/<device>/menu.json`.
+ *
+ * Same form p2_23 removed from `p2MenuFile` (literal `normalizeModuleName`, not
+ * `moduleFile().folder`). Here it is the right one: `/candidate` redirects
+ * `moduleFolder`, but the module in force still lives at the canonical path.
+ * Read-only — `listP2ScratchFiles` / `clearP2Scratch` only enumerate level-2
+ * scratch under `moduleFile().folder`, so they cannot reach this file.
+ */
+export function p2CanonicalMenuFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
+  const name = normalizeModuleName(moduleName);
+  return {
+    project: moduleFile(moduleName).project,
+    level: 4,
+    folder: `${name}/pool/l2/${device}`,
+    shortName: 'menu',
+    extension: '.json',
+  };
+}
+
 /** `l4/<module>/pool/l1/<device>/needs.json` — overwritten each run. Not a pool message. */
 export function p2NeedsFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
   const base = moduleFile(moduleName);
@@ -410,6 +438,18 @@ export function p2EffortFile(moduleName: string, device: P2MenuDevice = P2_MENU_
     level: 4,
     folder: `${base.folder}/pool/l2/${device}`,
     shortName: 'effort',
+    extension: '.json',
+  };
+}
+
+/** `l4/<module>/pool/l2/<device>/l4diff.json` — written by L4 on the candidate. */
+export function p2L4DiffFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
+  const base = moduleFile(moduleName);
+  return {
+    project: base.project,
+    level: 4,
+    folder: `${base.folder}/pool/l2/${device}`,
+    shortName: 'l4diff',
     extension: '.json',
   };
 }

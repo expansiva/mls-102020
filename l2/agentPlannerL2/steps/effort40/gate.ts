@@ -27,12 +27,17 @@ export interface P2EffortGateResult {
   issues: P2EffortGateIssue[];
 }
 
-export function validateP2Effort(file: P2EffortFile, menu: P2MenuFile): P2EffortGateResult {
+export function validateP2Effort(
+  file: P2EffortFile,
+  menu: P2MenuFile,
+  options?: { screenStatusFromAction?: boolean },
+): P2EffortGateResult {
   const issues: P2EffortGateIssue[] = [];
   if (file.schemaVersion !== P2_EFFORT_SCHEMA_VERSION) {
     error(issues, 'P2_EFFORT_SCHEMA', `schemaVersion must be ${P2_EFFORT_SCHEMA_VERSION}.`, '$.schemaVersion');
   }
 
+  const fromAction = options?.screenStatusFromAction !== false;
   const menuPages = stampedPages(menu.tree);
   const screenIds = new Set(file.screens.map(screen => screen.pageId));
   for (const page of menuPages) {
@@ -41,6 +46,7 @@ export function validateP2Effort(file: P2EffortFile, menu: P2MenuFile): P2Effort
       error(issues, 'P2_EFFORT_SCREEN_MISSING', `Menu page ${page.id} is missing from screens.`, '$.screens');
       continue;
     }
+    if (!fromAction) continue;
     const expected = p2StatusFromMenuAction(page.action);
     if (screen.status !== expected) {
       error(
@@ -51,18 +57,20 @@ export function validateP2Effort(file: P2EffortFile, menu: P2MenuFile): P2Effort
       );
     }
   }
-  for (const page of stampedPages(menu.meta.removed)) {
-    if (screenIds.has(page.id) && menuPages.some(item => item.id === page.id)) continue;
-    const screen = file.screens.find(item => item.pageId === page.id);
-    if (!screen) {
-      error(issues, 'P2_EFFORT_SCREEN_MISSING', `Removed page ${page.id} is missing from screens.`, '$.screens');
-    } else if (screen.status !== 'toRemove') {
-      error(
-        issues,
-        'P2_EFFORT_SCREEN_STATUS',
-        `Removed page ${page.id} status must be toRemove.`,
-        `$.screens[pageId=${page.id}].status`,
-      );
+  if (fromAction) {
+    for (const page of stampedPages(menu.meta.removed)) {
+      if (screenIds.has(page.id) && menuPages.some(item => item.id === page.id)) continue;
+      const screen = file.screens.find(item => item.pageId === page.id);
+      if (!screen) {
+        error(issues, 'P2_EFFORT_SCREEN_MISSING', `Removed page ${page.id} is missing from screens.`, '$.screens');
+      } else if (screen.status !== 'toRemove') {
+        error(
+          issues,
+          'P2_EFFORT_SCREEN_STATUS',
+          `Removed page ${page.id} status must be toRemove.`,
+          `$.screens[pageId=${page.id}].status`,
+        );
+      }
     }
   }
 

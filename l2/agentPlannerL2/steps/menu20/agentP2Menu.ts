@@ -12,8 +12,10 @@ import type { Ns5AccessArtifact, Ns5WorkflowsArtifact } from '/_102035_/l2/solut
 import {
   P2_MENU_DEVICE,
   createP2RetryStep,
+  isP2CandidateRoot,
   markP2Step,
   p2AgentFile,
+  p2CanonicalMenuFile,
   p2DraftFile,
   p2MenuFile,
   p2PipelineFile,
@@ -76,6 +78,7 @@ export function buildP2MenuHumanPrompt(input: {
   menuSources: P2MenuSources;
   gateFeedback?: string;
   previousDraft?: unknown;
+  canonicalMenu?: P2MenuFile | null;
 }): string {
   const { sources, grants, processes } = input.menuSources;
   const candidates = menuCandidates(sources, grants, processes);
@@ -111,6 +114,11 @@ export function buildP2MenuHumanPrompt(input: {
   return [
     `## userLanguage`,
     sources.userLanguage,
+    input.canonicalMenu ? [
+      '',
+      '## the module\'s current screens — keep their ids, labels and wording; change only what the l4 diff changes',
+      JSON.stringify(input.canonicalMenu, null, 2),
+    ].join('\n') : '',
     '',
     '## Candidates (deterministic; candidates, not the answer)',
     JSON.stringify({
@@ -168,11 +176,14 @@ export async function beforeP2MenuPromptStep(
     const parsed = resolveArgs(context, args || step.prompt);
     moduleName = parsed.moduleName;
     const menuSources = await loadP2MenuSources(moduleName);
-    const [skill, prompt, schema, previous] = await Promise.all([
+    const [skill, prompt, schema, previous, canonicalMenu] = await Promise.all([
       readP2AgentText('skills', 'menu', '.md'),
       readP2AgentText('steps/menu20', 'prompt', '.md'),
       readJson<Record<string, unknown>>(p2AgentFile('schemas', 'menu.schema', '.json')),
       moduleName ? readJson(p2DraftFile(moduleName, 'menu20')) : Promise.resolve(null),
+      moduleName && isP2CandidateRoot(moduleName)
+        ? readJson<P2MenuFile>(p2CanonicalMenuFile(moduleName, P2_MENU_DEVICE))
+        : Promise.resolve(null),
     ]);
     if (!schema) throw new Error('menu.schema.json is missing.');
     const tool = buildP2MenuTool(schema);
@@ -180,6 +191,7 @@ export async function beforeP2MenuPromptStep(
       menuSources,
       gateFeedback: parsed.gateFeedback,
       previousDraft: previous,
+      canonicalMenu,
     });
     return [promptReady(
       context,

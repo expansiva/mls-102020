@@ -27,10 +27,13 @@ import {
   ownerStepId,
   parseP2Invocation,
   parseP2StepPrompt,
+  isP2CandidateRoot,
   p2BackendFile,
+  p2CanonicalMenuFile,
   p2DifferentRequestsRefusal,
   p2EffortFile,
   p2InvocationRefusal,
+  p2L4DiffFile,
   p2MenuFile,
   p2NeedsFile,
   p2PipelineFile,
@@ -342,6 +345,44 @@ void test('p2MenuFile is pool/l2/<device>/menu.json', () => {
     shortName: 'menu',
     extension: '.json',
   });
+});
+
+void test('p2CanonicalMenuFile stays on the literal module name when /candidate is on', () => {
+  installHost();
+  const candidateRoot = `${MODULE}/${P2_DEFAULT_CANDIDATE_REL}`;
+  setModuleRoot(MODULE, candidateRoot);
+  try {
+    assert.equal(isP2CandidateRoot(MODULE), true);
+    assert.equal(moduleFolder(MODULE), candidateRoot);
+    assert.deepEqual(p2CanonicalMenuFile(MODULE), {
+      project: PROJECT,
+      level: 4,
+      folder: `${MODULE}/pool/l2/${P2_MENU_DEVICE}`,
+      shortName: 'menu',
+      extension: '.json',
+    });
+    assert.deepEqual(p2MenuFile(MODULE).folder, `${candidateRoot}/pool/l2/${P2_MENU_DEVICE}`);
+    assert.deepEqual(p2L4DiffFile(MODULE).folder, `${candidateRoot}/pool/l2/${P2_MENU_DEVICE}`);
+  } finally {
+    setModuleRoot(MODULE, null);
+  }
+  assert.equal(isP2CandidateRoot(MODULE), false);
+  assert.deepEqual(p2CanonicalMenuFile(MODULE).folder, p2MenuFile(MODULE).folder);
+});
+
+void test('p2CanonicalMenuFile is never passed to writeJson', () => {
+  const sources = [
+    readFileSync(path.join(HERE, 'p2Core.ts'), 'utf8'),
+    readFileSync(path.join(HERE, '../steps/menu20/agentP2Menu.ts'), 'utf8'),
+    readFileSync(path.join(HERE, '../steps/effort40/agentP2Effort.ts'), 'utf8'),
+  ];
+  for (const source of sources) {
+    assert.equal(/writeJson\s*\(\s*p2CanonicalMenuFile/.test(source), false);
+  }
+  const wipe = readFileSync(path.join(HERE, 'p2Core.ts'), 'utf8');
+  const listFn = wipe.match(/function listP2ScratchFiles[\s\S]*?\nasync function clearP2Scratch/);
+  assert.ok(listFn);
+  assert.equal(listFn[0].includes('p2CanonicalMenuFile'), false);
 });
 
 void test('p2NeedsFile is pool/l1/<device>/needs.json', () => {
@@ -658,6 +699,7 @@ void test('with /candidate pipeline and scratch wipe stay in the override; canon
   seed(host, `${MODULE}/pipeline`, 'menu20-draft', '"canonical-draft"\n', 2);
   seed(host, `${MODULE}/web/contracts`, 'matriculas', '"canonical-web"\n', 2);
   seed(host, `${MODULE}/pipeline`, 'pipeline', '"canonical-l1-pipeline"\n', 1);
+  seed(host, `${MODULE}/pool/l2/web`, 'menu', '"canonical-menu"\n');
   seedCandidate(host);
   seed(host, `${CANDIDATE}/pipeline`, 'menu20-draft', '"candidate-draft"\n', 2);
   seed(host, `${CANDIDATE}/web/contracts`, 'matriculas', '"candidate-web"\n', 2);
@@ -677,6 +719,8 @@ void test('with /candidate pipeline and scratch wipe stay in the override; canon
   assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'changed');
   assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'matriculas', extension: '.json' })].status, 'changed');
   assert.equal(host.files[keyOf({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content, '"canonical-l1-pipeline"\n');
+  assert.equal(host.files[keyOf(p2CanonicalMenuFile(MODULE))].content, '"canonical-menu"\n');
+  assert.equal(host.files[keyOf(p2CanonicalMenuFile(MODULE))].status, 'changed');
   assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'deleted');
   assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/web/contracts`, shortName: 'matriculas', extension: '.json' })].status, 'deleted');
 

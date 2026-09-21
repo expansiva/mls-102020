@@ -8,13 +8,17 @@ import { fileURLToPath } from 'node:url';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102020_/l2/agentPlannerL2/agentPlannerL2.js';
+import { setModuleRoot } from '/_102035_/l2/solution/fs.js';
 import { p2EffortFile, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import { P2_STEP_HOOKS } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import {
   beforeP2EffortPromptStep,
   executeP2Effort,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/agentP2Effort.js';
-import type { P2EffortFile } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
+import {
+  P2_EFFORT_SCHEMA_VERSION,
+  type P2EffortFile,
+} from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solution/pool.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -28,6 +32,7 @@ const AT = new Date(Date.UTC(2026, 8, 21, 12, 0, 0));
 const L1_SHORT = '20260921120000_mensalidadesAcademia-20260918103000_1';
 const L4_SHORT = '20260918103000_mensalidadesAcademia-20260918103000_1';
 const DISPLAY = `l4/${MODULE}/pool/l2/${L1_SHORT}.json`;
+const CANDIDATE = `${MODULE}/tobe/plan`;
 
 type Stored = {
   project: number; level: number; folder: string; shortName: string; extension: string;
@@ -195,7 +200,8 @@ void test('execute writes effort.json, one l2→l4 message, delivered trace, and
   seedReady(host);
   const result = await executeP2Effort(MODULE, AT);
   const written = JSON.parse(host.files[keyOf(p2EffortFile(MODULE))].content) as P2EffortFile;
-  assert.equal(written.schemaVersion, '2026-09-21-p2-effort-v1');
+  assert.equal(written.schemaVersion, P2_EFFORT_SCHEMA_VERSION);
+  assert.deepEqual(written.unattributed, []);
   assert.equal(result.effortPath, `l4/${MODULE}/pool/l2/web/effort.json`);
   assert.equal(written.totals.screens.toCreate, 6);
   assert.equal(written.totals.endpoints.done, 1);
@@ -244,4 +250,157 @@ void test('beforePromptStep approves effort40 and closes the pipeline', async ()
   };
   assert.equal(pipeline.steps.effort40.status, 'approved');
   assert.equal(pipeline.status, 'complete');
+});
+
+void test('candidate effort attributes declared rules and warns on orphans', async () => {
+  const host = installHost();
+  seedReady(host);
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8'));
+  const pipeline = JSON.parse(host.files[keyOf({
+    project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json',
+  })].content) as { messageFile: string };
+  pipeline.messageFile = `l4/${CANDIDATE}/pool/l2/${L1_SHORT}.json`;
+  seed(host, {
+    folder: `${CANDIDATE}/pipeline`,
+    shortName: 'pipeline',
+    level: 2,
+    content: `${JSON.stringify(pipeline, null, 2)}\n`,
+  });
+  seed(host, { folder: `${CANDIDATE}/pool/l2`, shortName: L1_SHORT, content: `${readFileSync(RECEIVED_PATH, 'utf8')}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'menu', content: `${readFileSync(MENU_PATH, 'utf8')}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'backend', content: `${readFileSync(BACKEND_PATH, 'utf8')}\n` });
+  seed(host, {
+    folder: `${CANDIDATE}/pool/l1/web`,
+    shortName: 'needs',
+    content: `${JSON.stringify({
+      schemaVersion: '2026-09-21-p2-needs-v1',
+      moduleName: MODULE,
+      device: 'web',
+      menuSchema: '2026-09-20-p2-menu-v2.2',
+      pages: [
+        { pageId: 'mensalidades_pagamentos', actors: ['recepcao'], reads: [{ entity: 'Mensalidade', family: 'tdm', scope: 'organization', derived: [], from: [] }], writes: [] },
+        { pageId: 'planos', actors: ['gerencia'], reads: [{ entity: 'Plano', family: 'tdm', scope: 'organization', derived: [], from: [] }], writes: [] },
+      ],
+      meta: { sourceMenu: 'pool/l2/web/menu.json', generatedAt: AT.toISOString() },
+    }, null, 2)}\n`,
+  });
+  seed(host, {
+    folder: `${CANDIDATE}/pool/l2/web`,
+    shortName: 'l4diff',
+    content: `${JSON.stringify({
+      schemaVersion: '2026-09-21-p4-l4diff-v1',
+      moduleName: MODULE,
+      base: 'canonical',
+      candidate: CANDIDATE,
+      items: [
+        { changeId: 'rule:situacaoMensalidadeDerivada', kind: 'rule', op: 'changed', entity: '', source: 'ontology/Mensalidade.defs.ts' },
+        { changeId: 'rule:alunoBloqueadoPorDuasMensalidadesVencidas', kind: 'rule', op: 'changed', entity: '', source: 'rules.defs.ts' },
+      ],
+    }, null, 2)}\n`,
+  });
+  seed(host, {
+    folder: `${CANDIDATE}/ontology`,
+    shortName: 'index',
+    extension: '.defs.ts',
+    content: `export const idx = ${JSON.stringify({ entities: [{ entityId: 'Mensalidade' }] })};\n`,
+  });
+  seed(host, {
+    folder: `${CANDIDATE}/ontology`,
+    shortName: 'Mensalidade',
+    extension: '.defs.ts',
+    content: `export const e = ${JSON.stringify({ entityId: 'Mensalidade', rules: ['situacaoMensalidadeDerivada'] })};\n`,
+  });
+  const canonicalContent = host.files[keyOf({
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
+  })].content;
+  setModuleRoot(MODULE, CANDIDATE);
+  try {
+    const result = await executeP2Effort(MODULE, AT);
+    const written = JSON.parse(host.files[keyOf(p2EffortFile(MODULE))].content) as P2EffortFile;
+    assert.equal(result.effort.unattributed.length, 1);
+    assert.equal(written.unattributed[0].changeId, 'rule:alunoBloqueadoPorDuasMensalidadesVencidas');
+    const payments = written.screens.find(screen => screen.pageId === 'mensalidades_pagamentos');
+    const plans = written.screens.find(screen => screen.pageId === 'planos');
+    assert.equal(payments?.status, 'toUpdate');
+    assert.equal(plans?.status, 'done');
+    assert.equal(host.files[keyOf({
+      project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
+    })].content, canonicalContent);
+    assert.equal(JSON.stringify(menu).includes('situacaoMensalidadeDerivada'), false);
+  } finally {
+    setModuleRoot(MODULE, null);
+  }
+});
+
+void test('beforePromptStep in candidate appends unattributed warnings and does not write the canonical menu', async () => {
+  const host = installHost();
+  seedReady(host);
+  const pipelineSeed = JSON.parse(host.files[keyOf({
+    project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json',
+  })].content) as { messageFile: string };
+  pipelineSeed.messageFile = `l4/${CANDIDATE}/pool/l2/${L1_SHORT}.json`;
+  seed(host, {
+    folder: `${CANDIDATE}/pipeline`,
+    shortName: 'pipeline',
+    level: 2,
+    content: `${JSON.stringify(pipelineSeed, null, 2)}\n`,
+  });
+  seed(host, { folder: `${CANDIDATE}/pool/l2`, shortName: L1_SHORT, content: `${readFileSync(RECEIVED_PATH, 'utf8')}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'menu', content: `${readFileSync(MENU_PATH, 'utf8')}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'backend', content: `${readFileSync(BACKEND_PATH, 'utf8')}\n` });
+  seed(host, {
+    folder: `${CANDIDATE}/pool/l1/web`,
+    shortName: 'needs',
+    content: `${JSON.stringify({
+      schemaVersion: '2026-09-21-p2-needs-v1',
+      moduleName: MODULE,
+      device: 'web',
+      menuSchema: '2026-09-20-p2-menu-v2.2',
+      pages: [{ pageId: 'planos', actors: ['gerencia'], reads: [{ entity: 'Plano', family: 'tdm', scope: 'organization', derived: [], from: [] }], writes: [] }],
+      meta: { sourceMenu: 'pool/l2/web/menu.json', generatedAt: AT.toISOString() },
+    }, null, 2)}\n`,
+  });
+  seed(host, {
+    folder: `${CANDIDATE}/pool/l2/web`,
+    shortName: 'l4diff',
+    content: `${JSON.stringify({
+      schemaVersion: '2026-09-21-p4-l4diff-v1',
+      moduleName: MODULE,
+      base: 'canonical',
+      candidate: CANDIDATE,
+      items: [{ changeId: 'rule:alunoBloqueadoPorDuasMensalidadesVencidas', kind: 'rule', op: 'changed', entity: '', source: 'rules.defs.ts' }],
+    }, null, 2)}\n`,
+  });
+  const canonicalBefore = host.files[keyOf({
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
+  })].content;
+  const step: mls.msg.AIAgentStep = {
+    type: 'agent',
+    stepId: 40,
+    interaction: null,
+    stepTitle: 'Effort',
+    status: 'waiting_human_input',
+    nextSteps: [],
+    agentName: 'agentPlannerL2',
+    prompt: JSON.stringify({ planId: 'effort40', moduleName: MODULE, candidate: CANDIDATE }),
+    rags: [],
+    planning: { planId: 'effort40', dependsOn: ['entry10-done'], executionMode: 'sequential', executionHost: 'client' },
+  };
+  setModuleRoot(MODULE, CANDIDATE);
+  try {
+    const intents = await beforeP2EffortPromptStep(agentMeta(), contextWith([step]), step, step, 1);
+    const status = intents.find(intent => intent.type === 'update-status') as mls.msg.AgentIntentUpdateStatus | undefined;
+    assert.equal(status?.status, 'completed', status?.traceMsg);
+    const pipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as {
+      status: string;
+      warnings?: string[];
+    };
+    assert.equal(pipeline.status, 'complete');
+    assert.ok((pipeline.warnings || []).some(line => line.includes('alunoBloqueadoPorDuasMensalidadesVencidas')));
+    assert.equal(host.files[keyOf({
+      project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/web`, shortName: 'menu', extension: '.json',
+    })].content, canonicalBefore);
+  } finally {
+    setModuleRoot(MODULE, null);
+  }
 });
