@@ -1,5 +1,18 @@
 # agentPlannerL2
 
+## 2026-09-21 (p2_23)
+
+- `entry10` honors `/candidate`. Hand invocation parses `@@agentPlannerL2 <mod>
+  /candidate [<rel>]`; the L4 step prompt already carries `candidate`. Both call
+  `applyP2CandidateRoot` (copied from L1, not imported) before any l4/pool/pipeline
+  read. Empty or absent resets the canonical folder so a later task does not
+  inherit. `..` is refused in English.
+- Scratch wipe (`clearP2Scratch` / `isP2ScratchFolder` / `removeEmptyWebDir`) and
+  `artifactPaths` derive the folder from `moduleFile(moduleName)`, the same root
+  the writes already used. Without the flag the canonical tree is byte-identical.
+- Whole-tree fingerprint helper `helpers/treeFingerprint.ts` is pure (`node:fs` /
+  `node:path` only) so L1/L4 can copy it later. It stays in 102020.
+
 ## 2026-09-21 (p2_22)
 
 - Flow v6: `entry10 → menu20 → needs30` (menu conversation) and

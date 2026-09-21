@@ -1,12 +1,13 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/agentPlannerL2.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { displayPath } from '/_102035_/l2/solution/fs.js';
+import { displayPath, setModuleRoot } from '/_102035_/l2/solution/fs.js';
 import {
   P2_AGENT_NAME,
   buildP2PlannedSteps,
   isP2StepId,
   loadP2Entry,
+  moduleTokenOk,
   parseP2Invocation,
   p2InvocationRefusal,
   readP2Pipeline,
@@ -49,12 +50,23 @@ async function beforePromptImplicit(
 ): Promise<mls.msg.AgentIntent[]> {
   const invocation = parseP2Invocation(userPrompt || context.message.content || '');
   const syntax = p2InvocationRefusal(invocation);
-  if (syntax) return statusTask(agent, context, syntax);
+  if (syntax) {
+    if (invocation.module && moduleTokenOk(invocation.module)) setModuleRoot(invocation.module, null);
+    return statusTask(agent, context, syntax);
+  }
 
-  const loaded = await loadP2Entry({ kind: 'hand', moduleName: invocation.module });
+  const loaded = await loadP2Entry({
+    kind: 'hand',
+    moduleName: invocation.module,
+    candidate: invocation.candidate,
+  });
   if ('refusal' in loaded) return statusTask(agent, context, loaded.refusal);
 
-  const entry = { thread: loaded.message.thread, file: displayPath(loaded.file) };
+  const entry = {
+    thread: loaded.message.thread,
+    file: displayPath(loaded.file),
+    candidate: invocation.candidate,
+  };
   const addMessage: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
     skipRootLLM: true,
@@ -74,6 +86,7 @@ async function beforePromptImplicit(
         moduleName: invocation.module,
         thread: entry.thread,
         file: entry.file,
+        ...(invocation.candidate ? { candidate: invocation.candidate } : {}),
       },
     },
   };
