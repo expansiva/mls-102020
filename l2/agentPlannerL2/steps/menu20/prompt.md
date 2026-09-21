@@ -46,7 +46,13 @@ Each page is an array of organisms. `kind` is exactly one of: `list`, `detail`, 
 
 `actions` may only name what that actor's grants allow.
 
-The actor's home is three derived organisms: `summary` / `highlights` (numbers and stand-outs), `alerts` (deadlines and recurring duties), `inbox` (what waits for that person's action). The entity page carries `timeline` for what the system did on its own.
+Home organisms come from **what this actor must see, beyond journeys**. `summary` / `highlights` only from derived fields and `ddm` entities in that block; `alerts` only from alert stages; `inbox` only from human stages waiting for that actor. If the block has nothing for a kind, do not emit that organism. Never write text stating that something is absent. If nothing in the block applies to an actor, that actor has no home: their entry is their first work page.
+
+The five classes (data, not a rule to invent screens):
+- condition on data / derived / `ddm` → `summary` / `highlights`
+- recurring scheduled duty → `alerts`
+- human stage waiting for the actor → `inbox`
+- what the system did on its own (mechanical effect or inbound/outbound integration) → `timeline` on the entity page
 
 ## Rules
 

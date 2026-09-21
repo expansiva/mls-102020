@@ -17,7 +17,7 @@ Trace `delivered` on the l2 pipeline. The pool is not deleted.
 ## Invariants
 
 - Grain is entity + operation. No projection fields.
-- `reads`: locate/inspect of the page's journeys, act entities of those journeys, process entities, ddm when the page has summary/highlights, crud entity on a form page with no journey. Home (`inicio_*` / first page of the actor, no journey) is reads only (derived/ddm of the actor).
+- `reads`: locate/inspect of the page's journeys, act entities of those journeys, process entities, ddm when the page has summary/highlights, crud entity on a form page with no journey. Home (`inicio_*` / first page of the actor, no journey) is reads only (derived/ddm of the actor; inbox reads the human-stage `entityRef` when present).
 - `writes`: act steps (`effect` → operation, `transitionRef`); form + `writer: crud` on a page with no journey → create+update.
 - `family`: `kind: role` → mdm; `isDdmEntity` → ddm; else tdm.
 - `scope`: widest grant of the page's actors on the entity (`own < related < organization`).

@@ -723,6 +723,22 @@ void test('afterPromptStep approves the draft, overwrites menu.json and leaves p
   assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: poolShort, extension: '.json' })].content, poolContent);
 });
 
+void test('menu20 prompt: home organisms only from beyond-journeys sources', () => {
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
+  assert.match(prompt, /what this actor must see, beyond journeys/);
+  assert.match(prompt, /`summary` \/ `highlights` only from derived fields and `ddm` entities/);
+  assert.match(prompt, /`alerts` only from alert stages/);
+  assert.match(prompt, /`inbox` only from human stages waiting for that actor/);
+  assert.match(prompt, /If the block has nothing for a kind, do not emit that organism/);
+  assert.match(prompt, /Never write text stating that something is absent/);
+  assert.match(prompt, /that actor has no home: their entry is their first work page/);
+  assert.match(prompt, /condition on data \/ derived \/ `ddm` → `summary` \/ `highlights`/);
+  assert.match(prompt, /recurring scheduled duty → `alerts`/);
+  assert.match(prompt, /human stage waiting for the actor → `inbox`/);
+  assert.match(prompt, /what the system did on its own \(mechanical effect or inbound\/outbound integration\) → `timeline` on the entity page/);
+  assert.equal(prompt.includes("The actor's home is three derived organisms"), false);
+});
+
 void test('human prompt carries journeys, grants, processes and candidates', () => {
   const loaded = loadSources();
   const human = buildP2MenuHumanPrompt({ menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes } });

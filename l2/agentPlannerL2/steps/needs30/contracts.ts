@@ -250,6 +250,13 @@ function homeReads(
       }
     }
   }
+  if (hasOrganism(page, 'inbox')) {
+    for (const row of see) {
+      for (const task of row.human) {
+        if (task.entityRef) add(task.entityRef, 'organism:inbox');
+      }
+    }
+  }
   return [...reads.values()];
 }
 

@@ -1,5 +1,9 @@
 # needs30
 
+## 2026-09-21 (p2_26)
+
+- Home `inbox` reads the human-stage `entityRef` (`from: organism:inbox`). Empty `entityRef` adds no read.
+
 ## 2026-09-21 (p2_22)
 
 - No longer closes the pipeline. `effort40` is the last `flow.json` step.
