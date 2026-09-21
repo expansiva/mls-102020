@@ -11,14 +11,14 @@ import {
   changedOutside,
   diffTrees,
   pathUnder,
-  snapshotDir,
   snapshotEntries,
 } from '/_102020_/l2/agentPlannerL2/helpers/treeFingerprint.js';
+import { snapshotDir } from '/_102020_/l2/agentPlannerL2/helpers/nodejsTreeFingerprint.js';
 
-void test('treeFingerprint.ts imports only node:fs and node:path', () => {
+void test('treeFingerprint.ts has no Node runtime imports', () => {
   const source = readFileSync(fileURLToPath(new URL('./treeFingerprint.ts', import.meta.url)), 'utf8');
   const specs = [...source.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g)].map(match => match[1]);
-  assert.deepEqual([...new Set(specs)].sort(), ['node:fs', 'node:path']);
+  assert.deepEqual(specs.filter(spec => spec.startsWith('node:')), []);
 });
 
 void test('snapshotDir plus diffTrees reports created, modified and deleted files', () => {

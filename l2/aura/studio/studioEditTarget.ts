@@ -113,9 +113,10 @@ export async function resolveEditTarget(host: HTMLElement): Promise<StudioEditTa
 
   // Monaco backs the model. The studio switch kicks its download off (loadStudioDefinitions), which
   // can still be in flight when the user arms the editor.
-  if (window.monacoReady) {
+  const monacoReady = (window as Window & { monacoReady?: Promise<void> }).monacoReady;
+  if (monacoReady) {
     try {
-      await window.monacoReady;
+      await monacoReady;
     } catch {
       return { ok: false, reason: { id: 'reason.monacoMissing' } };
     }
