@@ -1,0 +1,125 @@
+{
+  "flowId": "agentDefsL2",
+  "schemaVersion": "2026-09-21-agent-defs-l2-flow-v1",
+  "status": "entry10",
+  "description": "Generate L2 definition sources from approved L4 and planner artifacts without materializing runtime files.",
+  "invocation": {
+    "message": "@@agentDefsL2 <lowerCamel>",
+    "help": "@@agentDefsL2 /help",
+    "taskStepArgs": { "project": "positive integer", "module": "lowerCamel" },
+    "rules": [
+      "The message entry takes project from the current context and requires one explicit module.",
+      "The task-step entry requires project and module and must match the current project.",
+      "/candidate and every unknown flag are refused. No module is inferred from storage, a room, a prior run or the current folder."
+    ]
+  },
+  "state": {
+    "root": "l2/{module}/pipeline/agentDefsL2/",
+    "pipeline": "l2/{module}/pipeline/agentDefsL2/pipeline.json",
+    "input": "l2/{module}/pipeline/agentDefsL2/input.json",
+    "report": "l2/{module}/pipeline/agentDefsL2/report.json",
+    "ownership": "Never write l2/{module}/pipeline/pipeline.json."
+  },
+  "limits": {
+    "defaultMaxParallel": 5,
+    "llmAttemptsPerItemPerPhase": 2,
+    "operationalFailureRetries": 0,
+    "repairRoundsPerFailedItem": 1,
+    "liveFinancialLimit": "unavailable until the supervisor sets it before a live proof"
+  },
+  "dynamicPlanIds": {
+    "contractsWorker": "contracts30-page-{pageId}",
+    "contractsRepair": "contracts30-repair-{pageId}-a{attempt}",
+    "sharedWorker": "shared40-page-{pageId}",
+    "sharedRepair": "shared40-repair-{pageId}-a{attempt}",
+    "pagesWorker": "pages50-page-{pageId}",
+    "pagesRepair": "pages50-repair-{pageId}-a{attempt}"
+  },
+  "progressTitles": {
+    "contracts30": "Creating typed contracts {{completed}}/{{total}}, failed {{failed}}",
+    "shared40": "Defining shared behavior {{completed}}/{{total}}, failed {{failed}}",
+    "pages50": "Describing pages {{completed}}/{{total}}, failed {{failed}}"
+  },
+  "agents": [
+    { "name": "agentDefsL2", "visibility": "public", "role": "message entry, task-step entry and unavailable-step diagnostics" },
+    { "name": "agentD2Entry", "visibility": "private", "role": "entry10 deterministic worker" }
+  ],
+  "hookImports": [
+    "l2/agentDefsL2/agentDefsL2.ts",
+    "l2/agentDefsL2/steps/entry10/agentD2Entry.ts"
+  ],
+  "artifacts": {
+    "contract": "l2/{module}/web/contracts/{pageId}.defs.ts",
+    "shared": "l2/{module}/web/shared/{pageId}.defs.ts",
+    "desktopPage": "l2/{module}/web/desktop/page11/{pageId}.defs.ts",
+    "mobilePage": "l2/{module}/web/mobile/page11/{pageId}.defs.ts"
+  },
+  "steps": [
+    {
+      "id": "entry10",
+      "agent": "agentD2Entry",
+      "kind": "deterministic",
+      "availability": "available",
+      "dependsOn": [],
+      "doneAnchor": "entry10-done",
+      "inputs": ["current project", "explicit module"],
+      "outputs": ["l2/{module}/pipeline/agentDefsL2/pipeline.json"],
+      "goal": "Validate run identity and initialize only the owned pipeline."
+    },
+    {
+      "id": "input20",
+      "agent": "agentDefsL2",
+      "kind": "deterministic",
+      "availability": "unavailable",
+      "dependsOn": ["entry10-done"],
+      "doneAnchor": "input20-done",
+      "inputs": ["module.defs.ts", "L4 indices", "menu.json", "needs.json", "backend.json", "effort.json"],
+      "outputs": ["l2/{module}/pipeline/agentDefsL2/input.json"],
+      "goal": "Validate a coherent immutable input snapshot."
+    },
+    {
+      "id": "contracts30",
+      "agent": "agentDefsL2",
+      "kind": "deterministic-fanout",
+      "availability": "unavailable",
+      "dependsOn": ["input20-done"],
+      "doneAnchor": "contracts30-done",
+      "inputs": ["input.json selected pages and exact backend routes"],
+      "outputs": ["web/contracts/{pageId}.defs.ts"],
+      "goal": "Derive typed contracts without an LLM call."
+    },
+    {
+      "id": "shared40",
+      "agent": "agentDefsL2",
+      "kind": "parallel_dynamic",
+      "availability": "unavailable",
+      "dependsOn": ["contracts30-done"],
+      "doneAnchor": "shared40-done",
+      "inputs": ["typed page contract", "approved input slice"],
+      "outputs": ["web/shared/{pageId}.defs.ts", "shared trace per page"],
+      "goal": "Generate and gate device-independent behavior."
+    },
+    {
+      "id": "pages50",
+      "agent": "agentDefsL2",
+      "kind": "parallel_dynamic",
+      "availability": "unavailable",
+      "dependsOn": ["shared40-done"],
+      "doneAnchor": "pages50-done",
+      "inputs": ["shared definition", "compact molecule group catalog"],
+      "outputs": ["web/desktop/page11/{pageId}.defs.ts", "web/mobile/page11/{pageId}.defs.ts", "page trace per page"],
+      "goal": "Describe both presentations without prescribing layout."
+    },
+    {
+      "id": "finalize60",
+      "agent": "agentDefsL2",
+      "kind": "deterministic",
+      "availability": "unavailable",
+      "dependsOn": ["pages50-done"],
+      "doneAnchor": "finalize60-done",
+      "inputs": ["input snapshot", "owned manifest", "all gated artifacts"],
+      "outputs": ["l2/{module}/pipeline/agentDefsL2/report.json"],
+      "goal": "Verify integrity and coverage; complete only when every required artifact exists and sources still match."
+    }
+  ]
+}

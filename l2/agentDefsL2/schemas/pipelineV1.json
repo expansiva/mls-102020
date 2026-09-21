@@ -1,0 +1,19 @@
+{
+  "$id": "https://collab.codes/schemas/agent-defs-l2/pipeline-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agentDefsL2 pipeline v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "flowId", "project", "module", "status", "steps", "createdAt", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "2026-09-21-agent-defs-l2-pipeline-v1" },
+    "flowId": { "type": "string", "const": "agentDefsL2" },
+    "project": { "type": "integer", "minimum": 1 },
+    "module": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]{0,59}$" },
+    "status": { "type": "string", "enum": ["inProgress", "awaitingStep"] },
+    "awaitingStep": { "type": "string", "enum": ["entry10", "input20", "contracts30", "shared40", "pages50", "finalize60"] },
+    "steps": { "type": "object" },
+    "createdAt": { "type": "string" },
+    "updatedAt": { "type": "string" }
+  }
+}
