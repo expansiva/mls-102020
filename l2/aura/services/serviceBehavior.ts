@@ -16,6 +16,7 @@ import {
     listNs5ModuleSummaries,
     type NewReleaseModuleSummary,
 } from '/_102035_/l2/newRelease/helpers/l4Reader.js';
+import { listReleaseChoices, revisionsForKnob, selectedRevisionIndex, type ReleaseChoice } from '/_102035_/l2/newRelease/helpers/revisionSelection.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
@@ -31,7 +32,9 @@ const message_en = {
     moduleDesc: 'Level 4 modules available for human review.',
     versionDesc: 'Current definition or a prepared future version.',
     current: 'Current',
-    tobe: 'To be',
+    tobe: 'In progress',
+    history: 'Snapshot {{id}} · {{date}}',
+    historyUnverified: 'Local base; publication not verified',
     loading: 'Loading release context…',
     empty: 'No eligible project was found.',
     moduleMap: 'Module blueprint',
@@ -61,7 +64,9 @@ const messages: Record<string, MessageType> = {
         moduleDesc: 'Módulos do nível 4 disponíveis para revisão humana.',
         versionDesc: 'Definição atual ou uma versão futura preparada.',
         current: 'Atual',
-        tobe: 'Tobe',
+        tobe: 'Em alteração',
+        history: 'Snapshot {{id}} · {{date}}',
+        historyUnverified: 'Base local; publicação não verificada',
         loading: 'Carregando o contexto da release…',
         empty: 'Nenhum projeto elegível foi encontrado.',
         moduleMap: 'Mapa do módulo',
@@ -88,7 +93,9 @@ const messages: Record<string, MessageType> = {
         moduleDesc: 'Módulos de nivel 4 disponibles para revisión humana.',
         versionDesc: 'Definición actual o una versión futura preparada.',
         current: 'Actual',
-        tobe: 'Tobe',
+        tobe: 'En edición',
+        history: 'Instantánea {{id}} · {{date}}',
+        historyUnverified: 'Base local; publicación no verificada',
         loading: 'Cargando el contexto de la release…',
         empty: 'No se encontró ningún proyecto elegible.',
         moduleMap: 'Mapa del módulo',
@@ -147,6 +154,7 @@ export class ServiceBehavior102020 extends ServiceBase {
     @state() private _readableProjects: number[] = [];
     @state() private _eligibleProjects: number[] = [];
     @state() private _modules: NewReleaseModuleSummary[] = [];
+    @state() private _releases: ReleaseChoice[] = [];
     @state() private _projectValue = 1;
     @state() private _moduleValue = 1;
     @state() private _versionValue = 1;
@@ -168,7 +176,7 @@ export class ServiceBehavior102020 extends ServiceBase {
     }
 
     private get _versions(): NewReleaseVersion[] {
-        return this._module?.tobeChanges ? ['asis', 'tobe'] : ['asis'];
+        return revisionsForKnob(this._releases);
     }
 
     private get _version(): NewReleaseVersion {
@@ -191,8 +199,8 @@ export class ServiceBehavior102020 extends ServiceBase {
         const currentModule = this._module;
         if (!currentModule || detail?.project !== this._project || detail?.moduleName !== currentModule.name) return;
         const selected = currentModule.name;
-        await this._loadModules(selected);
-        this._versionValue = this._module?.tobeChanges ? 2 : 1;
+        await this._loadModules(selected, ++this._loadToken, 'tobe');
+        if (this._module?.name !== selected) return;
         this._announceContext();
     };
 
@@ -227,12 +235,23 @@ export class ServiceBehavior102020 extends ServiceBase {
         this.requestUpdate();
     }
 
-    private async _loadModules(preferredModule = '', token = ++this._loadToken): Promise<void> {
-        this._modules = this._projectEligible ? await listNs5ModuleSummaries(this._project) : [];
+    private async _loadModules(preferredModule = '', token = ++this._loadToken, preferredVersion: NewReleaseVersion = 'asis'): Promise<void> {
+        const modules = this._projectEligible ? await listNs5ModuleSummaries(this._project) : [];
         if (token !== this._loadToken) return;
+        this._modules = modules;
         const preferredIndex = this._modules.findIndex(module => module.name === preferredModule);
         this._moduleValue = preferredIndex >= 0 ? preferredIndex + 1 : 1;
-        this._versionValue = 1;
+        await this._loadVersions(token, preferredVersion);
+    }
+
+    private async _loadVersions(token: number, preferredVersion: NewReleaseVersion = 'asis'): Promise<void> {
+        const project = this._project;
+        const moduleName = this._module?.name;
+        this._releases = [];
+        const releases = moduleName ? await listReleaseChoices(project, moduleName) : [];
+        if (token !== this._loadToken || project !== this._project || moduleName !== this._module?.name) return;
+        this._releases = releases;
+        this._versionValue = selectedRevisionIndex(this._versions, preferredVersion);
     }
 
     private _knobConfig(key: ContextKey): IKnobConfig {
@@ -251,6 +270,7 @@ export class ServiceBehavior102020 extends ServiceBase {
         } else if (key === 'module' && value !== this._moduleValue) {
             this._moduleValue = value;
             this._versionValue = 1;
+            await this._loadVersions(++this._loadToken);
         } else if (key === 'version') {
             this._versionValue = value;
         }
@@ -348,13 +368,16 @@ export class ServiceBehavior102020 extends ServiceBase {
     private _selectedLabel(): string {
         if (this._selectedKnob === 'project') return this._project ? String(this._project) : '—';
         if (this._selectedKnob === 'module') return this._module?.title ?? '—';
-        return this._version === 'tobe' ? this.msg.tobe : this.msg.current;
+        if (this._version === 'tobe') return this.msg.tobe;
+        const release = this._releases.find(item => item.version === this._version);
+        return release ? this.msg.history.replace('{{id}}', release.baseId).replace('{{date}}', new Date(release.createdAt).toLocaleDateString(document.documentElement.lang || 'en-US')) : this.msg.current;
     }
 
     private _selectedDescription(): string {
         if (this._selectedKnob === 'project') return this.msg.projectDesc;
         if (this._selectedKnob === 'module') return this.msg.moduleDesc;
-        return this.msg.versionDesc;
+        const release = this._releases.find(item => item.version === this._version);
+        return release?.provenance.status === 'unverified' ? this.msg.historyUnverified : this.msg.versionDesc;
     }
 
     private _renderNavigator() {
