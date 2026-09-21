@@ -1,7 +1,14 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/effort40/agentP2Effort.ts" enhancement="_blank"/>
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { displayPath, readJson, writeJson } from '/_102035_/l2/solution/fs.js';
+import {
+  displayPath,
+  ontologyEntityFile,
+  ontologyIndexFile,
+  readDefsJson,
+  readJson,
+  writeJson,
+} from '/_102035_/l2/solution/fs.js';
 import {
   readPoolMessage,
   tracePoolAt,
@@ -10,11 +17,15 @@ import {
 } from '/_102035_/l2/solution/pool.js';
 import {
   P2_MENU_DEVICE,
+  isP2CandidateRoot,
   markP2Complete,
   markP2Step,
   p2BackendFile,
+  p2CanonicalMenuFile,
   p2EffortFile,
+  p2L4DiffFile,
   p2MenuFile,
+  p2NeedsFile,
   p2PipelineFile,
   readP2Pipeline,
   type P2PipelineState,
@@ -25,12 +36,17 @@ import {
   updateStatus,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import type { P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
+import type { P2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/steps/requests50/agentP2Requests.js';
 import {
   buildP2EffortFile,
   buildP2EffortMessage,
   parseP2BackendFile,
+  parseP2L4DiffFile,
+  p2EntityRulesMap,
+  type P2BuildEffortCandidate,
   type P2EffortFile,
+  type P2EffortUnattributed,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import {
   formatP2EffortGate,
@@ -52,8 +68,9 @@ export async function executeP2Effort(moduleName: string, now: Date): Promise<P2
   const rawBackend = await readJson<unknown>(p2BackendFile(moduleName, device));
   if (rawBackend === null) throw new Error(`pool/l2/${device}/backend.json is missing; the l1 plan must run first.`);
   const backend = parseP2BackendFile(rawBackend);
-  const effort = buildP2EffortFile({ menu, backend, now });
-  const gate = validateP2Effort(effort, menu);
+  const candidate = await loadCandidateEffort(moduleName, device);
+  const effort = buildP2EffortFile({ menu, backend, now, candidate });
+  const gate = validateP2Effort(effort, menu, { screenStatusFromAction: !candidate });
   if (!gate.ok) throw new Error(formatP2EffortGate(gate.issues));
 
   const receivedFile = receivedPoolFile(moduleName, pipeline.messageFile);
@@ -90,7 +107,7 @@ export async function beforeP2EffortPromptStep(
     if (!moduleName) throw new Error('effort40 needs a moduleName.');
     const mutationParent = findOpenParent(context, parentStep);
     const delivered = await executeP2Effort(moduleName, new Date());
-    await writeApproved(moduleName, [delivered.effortPath, delivered.messagePath]);
+    await writeApproved(moduleName, [delivered.effortPath, delivered.messagePath], delivered.effort.unattributed);
     return [
       doneAnchor(context, mutationParent, moduleName, [delivered.effortPath, delivered.messagePath]),
       updateStatus(
@@ -128,14 +145,51 @@ async function requirePipeline(moduleName: string): Promise<P2PipelineState> {
   return pipeline;
 }
 
-async function writeApproved(moduleName: string, artifactPaths: string[]): Promise<void> {
+async function writeApproved(
+  moduleName: string,
+  artifactPaths: string[],
+  unattributed: readonly P2EffortUnattributed[],
+): Promise<void> {
   const pipeline = await requirePipeline(moduleName);
-  const updated = markP2Step(pipeline, 'effort40', {
+  const extra = unattributed.map(item => `unattributed ${item.changeId}: ${item.reason}`);
+  const warnings = extra.length ? [...(pipeline.warnings || []), ...extra] : pipeline.warnings;
+  const updated = markP2Step({ ...pipeline, warnings }, 'effort40', {
     status: 'approved',
     updatedAt: new Date().toISOString(),
     artifactPaths,
   });
   await writeJson(p2PipelineFile(moduleName), markP2Complete(updated));
+}
+
+async function loadCandidateEffort(moduleName: string, device: typeof P2_MENU_DEVICE): Promise<P2BuildEffortCandidate | undefined> {
+  if (!isP2CandidateRoot(moduleName)) return undefined;
+  const rawDiff = await readJson<unknown>(p2L4DiffFile(moduleName, device));
+  if (rawDiff === null) throw new Error(`pool/l2/${device}/l4diff.json is missing; the l4 candidate diff must run first.`);
+  const needs = await readJson<P2NeedsFile>(p2NeedsFile(moduleName, device));
+  if (!needs) throw new Error(`pool/l1/${device}/needs.json is missing; the menu flow must run first.`);
+  const canonicalMenu = await readJson<P2MenuFile>(p2CanonicalMenuFile(moduleName, device));
+  const entityRules = await loadEntityRules(moduleName);
+  return {
+    canonicalMenu,
+    l4diff: parseP2L4DiffFile(rawDiff),
+    needs,
+    entityRules,
+  };
+}
+
+async function loadEntityRules(moduleName: string): Promise<Map<string, readonly string[]>> {
+  const index = await readDefsJson<{ entities?: { entityId?: string }[] }>(ontologyIndexFile(moduleName));
+  const rows: { entityId: string; rules?: string[] }[] = [];
+  for (const row of index?.entities || []) {
+    const entityId = typeof row.entityId === 'string' ? row.entityId.trim() : '';
+    if (!entityId) continue;
+    const entity = await readDefsJson<{ rules?: unknown }>(ontologyEntityFile(moduleName, entityId));
+    const rules = Array.isArray(entity?.rules)
+      ? entity.rules.filter((item): item is string => typeof item === 'string' && !!item.trim()).map(item => item.trim())
+      : [];
+    rows.push({ entityId, rules });
+  }
+  return p2EntityRulesMap(rows);
 }
 
 async function recordFailure(moduleName: string, error: string): Promise<void> {

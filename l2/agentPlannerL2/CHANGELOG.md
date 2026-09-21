@@ -1,5 +1,16 @@
 # agentPlannerL2
 
+## 2026-09-21 (p2_24)
+
+- In `/candidate`, `menu20` receives the canonical menu as prompt data (ids,
+  labels, wording). `effort40` reads `l4diff.json` plus that menu: a page whose
+  needs cite an entity that declares a changed rule (or entity/transition) is
+  `toUpdate`; same `pageId` with no citation is `done`; no canonical pair is
+  `toCreate`; canonical page missing from the candidate is `toRemove`. Diff
+  items that bind to no page go to `effort.json` `unattributed[]` and to
+  `pipeline.warnings`. No free-text matching. Outside `/candidate` nothing
+  changes.
+
 ## 2026-09-21 (p2_23)
 
 - `entry10` honors `/candidate`. Hand invocation parses `@@agentPlannerL2 <mod>

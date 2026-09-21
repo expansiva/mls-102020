@@ -46,6 +46,8 @@ export interface P2OntologyEntityView {
   capabilities: string[];
   /** contracts30: decide ⇒ one cmd per branching origin. */
   transitions: P2OntologyTransitionView[];
+  /** ontology entity.rules[] — ids only. effort40 attributes l4diff rules through this list. */
+  rules?: string[];
 }
 
 export interface P2AccessActorView {
@@ -197,6 +199,7 @@ export function parseP2L4Sources(input: {
       idField: fields.id ? 'id' : undefined,
       writer: ontologyWriter(file.writer),
       capabilities: Object.keys(capabilities),
+      rules: list(file.rules).map(item => text(item)).filter(Boolean),
       transitions: list(file.transitions).map(item => {
         const transition = record(item);
         return {

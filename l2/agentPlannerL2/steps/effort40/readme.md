@@ -17,8 +17,11 @@ the pipeline (`status: complete`) when every `flow.json` step is approved.
 
 ## Invariants
 
-- Screen `status` is the menu `action` mapped `new→toCreate`, `change→toUpdate`,
-  `remove→toRemove`, `keep→done`. `toRemove` screens come from `meta.removed[]`.
+- Without `/candidate`, screen `status` is the menu `action` mapped
+  `new→toCreate`, `change→toUpdate`, `remove→toRemove`, `keep→done`.
+  `toRemove` screens come from `meta.removed[]`.
+- In `/candidate`, screen `status` comes from the canonical menu + `l4diff.json`
+  (needs × `entity.rules[]`). Unbound diff items are `unattributed[]`.
 - Endpoints, usecases, tables and `removed[]` are copied from `backend.json`.
 - Totals are recounted from the lists. Gate: every menu page appears, every
   endpoint has a known `usecaseRef`, totals match, enums. No judgment.

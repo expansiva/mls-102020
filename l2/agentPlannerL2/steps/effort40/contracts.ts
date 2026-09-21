@@ -11,8 +11,10 @@ import {
   type MenuStampedPageNode,
   type P2MenuFile,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
+import type { P2NeedsFile, P2NeedsPage } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 
-export const P2_EFFORT_SCHEMA_VERSION = '2026-09-21-p2-effort-v1' as const;
+export const P2_EFFORT_SCHEMA_VERSION = '2026-09-21-p2-effort-v1.1' as const;
+export const P2_L4DIFF_SCHEMA = '2026-09-21-p4-l4diff-v1' as const;
 export const P2_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1' as const;
 export const P2_EFFORT_ARTIFACT = 'pool/l2/web/effort.json' as const;
 
@@ -88,6 +90,14 @@ export interface P2EffortRemoved {
   status: 'toRemove';
 }
 
+/** l4diff item that did not reach any page. Reader: the person, in this JSON. */
+export interface P2EffortUnattributed {
+  changeId: string;
+  kind: string;
+  op: string;
+  reason: string;
+}
+
 export interface P2EffortFile {
   schemaVersion: typeof P2_EFFORT_SCHEMA_VERSION;
   moduleName: string;
@@ -98,7 +108,31 @@ export interface P2EffortFile {
   usecases: P2EffortUsecase[];
   tables: P2EffortTable[];
   removed: P2EffortRemoved[];
+  unattributed: P2EffortUnattributed[];
   meta: { sourceMenu: string; sourceBackend: string; generatedAt: string };
+}
+
+export interface P2EffortL4DiffItem {
+  changeId: string;
+  kind: string;
+  op: string;
+  entity: string;
+  source: string;
+}
+
+export interface P2EffortL4DiffFile {
+  schemaVersion: string;
+  moduleName: string;
+  base: string;
+  candidate: string;
+  items: P2EffortL4DiffItem[];
+}
+
+export interface P2BuildEffortCandidate {
+  canonicalMenu: P2MenuFile | null;
+  l4diff: P2EffortL4DiffFile;
+  needs: P2NeedsFile;
+  entityRules: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface P2BackendEndpoint {
@@ -143,6 +177,8 @@ export interface P2BuildEffortInput {
   menu: P2MenuFile;
   backend: P2BackendFile;
   now: Date;
+  /** Present only in `/candidate`. Screen status then comes from canonical + l4diff, not menu action. */
+  candidate?: P2BuildEffortCandidate;
 }
 
 export function isP2EffortStatus(value: string): value is P2EffortStatus {
@@ -195,7 +231,12 @@ export function buildP2EffortFile(input: P2BuildEffortInput): P2EffortFile {
   const usecases = input.backend.usecases.map(copyUsecase);
   const tables = input.backend.tables.map(copyTable);
   const removed = input.backend.removed.map(copyRemoved);
-  const screens = collectScreens(input.menu, endpoints);
+  const attributed = input.candidate
+    ? attributeL4Diff(input.candidate.l4diff.items, input.candidate.needs, input.candidate.entityRules)
+    : { pageIds: new Set<string>(), unattributed: [] as P2EffortUnattributed[] };
+  const screens = input.candidate
+    ? collectScreensFromL4Diff(input.menu, endpoints, input.candidate, attributed.pageIds)
+    : collectScreens(input.menu, endpoints);
   return {
     schemaVersion: P2_EFFORT_SCHEMA_VERSION,
     moduleName: input.menu.moduleName || input.backend.moduleName,
@@ -211,6 +252,7 @@ export function buildP2EffortFile(input: P2BuildEffortInput): P2EffortFile {
     usecases,
     tables,
     removed,
+    unattributed: attributed.unattributed,
     meta: {
       sourceMenu: `pool/l2/${device}/menu.json`,
       sourceBackend: `pool/l2/${device}/backend.json`,
@@ -248,6 +290,94 @@ export function parseP2BackendFile(value: unknown): P2BackendFile {
     tables: asArray(value.tables).map((item, index) => parseTable(item, index)),
     removed: asArray(value.removed).map((item, index) => parseRemoved(item, index)),
   };
+}
+
+export function parseP2L4DiffFile(value: unknown): P2EffortL4DiffFile {
+  if (!isRecord(value)) throw new Error('l4diff.json must be an object.');
+  return {
+    schemaVersion: text(value.schemaVersion) || P2_L4DIFF_SCHEMA,
+    moduleName: text(value.moduleName),
+    base: text(value.base),
+    candidate: text(value.candidate),
+    items: asArray(value.items).map((item, index) => parseL4DiffItem(item, index)),
+  };
+}
+
+export function p2EntityRulesMap(
+  entities: readonly { entityId: string; rules?: readonly string[] }[],
+): Map<string, readonly string[]> {
+  const out = new Map<string, readonly string[]>();
+  for (const entity of entities) {
+    if (!entity.entityId) continue;
+    out.set(entity.entityId, [...(entity.rules || [])]);
+  }
+  return out;
+}
+
+export function attributeL4Diff(
+  items: readonly P2EffortL4DiffItem[],
+  needs: P2NeedsFile,
+  entityRules: ReadonlyMap<string, readonly string[]>,
+): { pageIds: Set<string>; unattributed: P2EffortUnattributed[] } {
+  const pageIds = new Set<string>();
+  const unattributed: P2EffortUnattributed[] = [];
+  for (const item of items) {
+    const cited = pagesCitingChange(item, needs, entityRules);
+    if (cited.length === 0) {
+      unattributed.push({
+        changeId: item.changeId,
+        kind: item.kind,
+        op: item.op,
+        reason: unattributedReason(item, entityRules),
+      });
+      continue;
+    }
+    for (const pageId of cited) pageIds.add(pageId);
+  }
+  return { pageIds, unattributed };
+}
+
+function collectScreensFromL4Diff(
+  menu: P2MenuFile,
+  endpoints: readonly P2EffortEndpoint[],
+  candidate: P2BuildEffortCandidate,
+  updatedIds: ReadonlySet<string>,
+): P2EffortScreen[] {
+  const pages = stampedPages(menu.tree);
+  const canonicalPages = candidate.canonicalMenu ? stampedPages(candidate.canonicalMenu.tree) : [];
+  const canonicalIds = new Set(canonicalPages.map(page => page.id));
+  const actorsOfPage = pageActors(menu, pages);
+  const canonicalActors = candidate.canonicalMenu
+    ? pageActors(candidate.canonicalMenu, canonicalPages)
+    : new Map<string, string[]>();
+  const routesByPage = routesByPageId(endpoints);
+  const seen = new Set<string>();
+  const screens: P2EffortScreen[] = [];
+  for (const page of pages) {
+    seen.add(page.id);
+    const status: P2EffortStatus = !canonicalIds.has(page.id)
+      ? 'toCreate'
+      : updatedIds.has(page.id) ? 'toUpdate' : 'done';
+    screens.push({
+      pageId: page.id,
+      label: page.label,
+      actors: actorsOfPage.get(page.id) || [],
+      status,
+      endpoints: routesByPage.get(page.id) || [],
+    });
+  }
+  for (const page of canonicalPages) {
+    if (seen.has(page.id)) continue;
+    seen.add(page.id);
+    screens.push({
+      pageId: page.id,
+      label: page.label,
+      actors: canonicalActors.get(page.id) || [],
+      status: 'toRemove',
+      endpoints: routesByPage.get(page.id) || [],
+    });
+  }
+  return screens;
 }
 
 function collectScreens(menu: P2MenuFile, endpoints: readonly P2EffortEndpoint[]): P2EffortScreen[] {
@@ -458,4 +588,96 @@ function requiredText(value: unknown, path: string): string {
   const out = text(value);
   if (!out) throw new Error(`backend.json ${path} is required.`);
   return out;
+}
+
+function parseL4DiffItem(value: unknown, index: number): P2EffortL4DiffItem {
+  if (!isRecord(value)) throw new Error(`l4diff.json items[${index}] must be an object.`);
+  return {
+    changeId: requiredDiffText(value.changeId, `items[${index}].changeId`),
+    kind: requiredDiffText(value.kind, `items[${index}].kind`),
+    op: requiredDiffText(value.op, `items[${index}].op`),
+    entity: text(value.entity),
+    source: text(value.source),
+  };
+}
+
+function requiredDiffText(value: unknown, path: string): string {
+  const out = text(value);
+  if (!out) throw new Error(`l4diff.json ${path} is required.`);
+  return out;
+}
+
+function pagesCitingChange(
+  item: P2EffortL4DiffItem,
+  needs: P2NeedsFile,
+  entityRules: ReadonlyMap<string, readonly string[]>,
+): string[] {
+  if (item.kind === 'rule') {
+    const ruleId = stripKindPrefix(item.changeId, 'rule');
+    const entities = entitiesDeclaringRule(ruleId, entityRules);
+    if (entities.size === 0) return [];
+    return needs.pages.filter(page => pageCitesAnyEntity(page, entities)).map(page => page.pageId);
+  }
+  if (item.kind === 'transition') {
+    const transitionId = stripKindPrefix(item.changeId, 'transition');
+    const byRef = needs.pages.filter(page => page.writes.some(write => write.transitionRef === transitionId));
+    if (byRef.length) return byRef.map(page => page.pageId);
+    if (item.entity) return needs.pages.filter(page => pageCitesEntity(page, item.entity)).map(page => page.pageId);
+    return [];
+  }
+  if (item.kind === 'process') {
+    const processId = stripKindPrefix(item.changeId, 'process');
+    const marker = `process:${processId}`;
+    const byFrom = needs.pages.filter(page => pageCitesFrom(page, marker));
+    if (byFrom.length) return byFrom.map(page => page.pageId);
+  }
+  const entityId = item.entity || (item.kind === 'entity' ? stripKindPrefix(item.changeId, 'entity') : '');
+  if (!entityId) return [];
+  return needs.pages.filter(page => pageCitesEntity(page, entityId)).map(page => page.pageId);
+}
+
+function unattributedReason(
+  item: P2EffortL4DiffItem,
+  entityRules: ReadonlyMap<string, readonly string[]>,
+): string {
+  if (item.kind === 'rule') {
+    const ruleId = stripKindPrefix(item.changeId, 'rule');
+    const declared = entitiesDeclaringRule(ruleId, entityRules);
+    if (declared.size === 0) return `rule '${ruleId}' is not in any entity.rules[]`;
+    return `rule '${ruleId}' is declared on ${[...declared].join(', ')} but no page reads or writes those entities`;
+  }
+  if (item.kind === 'transition') {
+    return `transition '${stripKindPrefix(item.changeId, 'transition')}' is not in any page writes.transitionRef`;
+  }
+  if (!item.entity) return `${item.kind} '${item.changeId}' has empty entity and cites no page`;
+  return `entity '${item.entity}' is not read or written by any page`;
+}
+
+function entitiesDeclaringRule(
+  ruleId: string,
+  entityRules: ReadonlyMap<string, readonly string[]>,
+): Set<string> {
+  const out = new Set<string>();
+  if (!ruleId) return out;
+  for (const [entityId, rules] of entityRules) {
+    if (rules.includes(ruleId)) out.add(entityId);
+  }
+  return out;
+}
+
+function pageCitesEntity(page: P2NeedsPage, entityId: string): boolean {
+  return page.reads.some(read => read.entity === entityId) || page.writes.some(write => write.entity === entityId);
+}
+
+function pageCitesAnyEntity(page: P2NeedsPage, entities: ReadonlySet<string>): boolean {
+  return page.reads.some(read => entities.has(read.entity)) || page.writes.some(write => entities.has(write.entity));
+}
+
+function pageCitesFrom(page: P2NeedsPage, marker: string): boolean {
+  return page.reads.some(read => read.from.includes(marker)) || page.writes.some(write => write.from.includes(marker));
+}
+
+function stripKindPrefix(changeId: string, kind: string): string {
+  const prefix = `${kind}:`;
+  return changeId.startsWith(prefix) ? changeId.slice(prefix.length) : changeId;
 }

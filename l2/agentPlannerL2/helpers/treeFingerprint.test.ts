@@ -50,6 +50,25 @@ void test('snapshotDir plus diffTrees reports created, modified and deleted file
   }
 });
 
+void test('candidate mode: canonical menu is read, not written; writes stay under the override', () => {
+  const before = snapshotEntries([
+    { rel: 'l4/mod/pool/l2/web/menu.json', fingerprint: 'canonical-menu' },
+    { rel: 'l2/mod/pipeline/pipeline.json', fingerprint: 'canonical-pipe' },
+  ]);
+  const after = snapshotEntries([
+    { rel: 'l4/mod/pool/l2/web/menu.json', fingerprint: 'canonical-menu' },
+    { rel: 'l2/mod/pipeline/pipeline.json', fingerprint: 'canonical-pipe' },
+    { rel: 'l4/mod/tobe/plan/pool/l2/web/menu.json', fingerprint: 'candidate-menu' },
+    { rel: 'l4/mod/tobe/plan/pool/l2/web/l4diff.json', fingerprint: 'diff' },
+    { rel: 'l2/mod/tobe/plan/pipeline/pipeline.json', fingerprint: 'candidate-pipe' },
+  ]);
+  const diff = diffTrees(before, after);
+  assert.deepEqual(diff.modified, []);
+  assert.deepEqual(diff.deleted, []);
+  assert.equal(diff.created.includes('l4/mod/pool/l2/web/menu.json'), false);
+  assert.deepEqual(changedOutside(diff, ['l4/mod/tobe/plan', 'l2/mod/tobe/plan', 'l1/mod/tobe/plan']), []);
+});
+
 void test('snapshotEntries and pathUnder work without touching disk', () => {
   const before = snapshotEntries([
     { rel: 'l2/mod/pipeline/pipeline.json', fingerprint: 'a' },

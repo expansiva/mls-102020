@@ -15,6 +15,7 @@ Call the tool `submitP2Menu` once. Do not write Markdown around the tool argumen
 - processes: id, trigger, stages
 - **candidates**, labelled "candidates, not the answer": hubs = grant anchors; pages = grouping (entity, actor); records kept by this module and who is granted on them; the grant description says whether that actor maintains or only consults
 - **what this actor must see, beyond journeys**: human stages waiting for that actor, alert stages, mechanical effects their grant reaches, derived fields and `ddm` entities their grant reaches
+- **in `/candidate` only**: the module's current screens — keep their ids, labels and wording; change only what the l4 diff changes
 
 ## What to emit
 
