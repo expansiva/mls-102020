@@ -1,7 +1,7 @@
 {
   "heads": {
-    "generator": "e46eda5b",
-    "app": "cbb20465",
+    "generator": "d6e18331",
+    "app": "151e9a29",
     "catalog": "f5845db5"
   },
   "pinned": {
@@ -11,8 +11,8 @@
     "historical": "7d3b2ac"
   },
   "statusesBefore": {
-    "generator": " M l2/agentChangeFrontend/nodejsSaveConfigJson.test.ts\n M l2/agentChangeFrontend/nodejsSaveConfigJson.ts\n M l2/agentDefsL2/steps/input20/gate.test.ts\n M l2/agentDefsL2/steps/input20/gate.ts\n M l2/aura/services/serviceBehavior.ts\n?? l2/certificacao/\n",
-    "app": "",
+    "generator": " M l2/agentDefsL2/steps/input20/gate.test.ts\n M l2/agentDefsL2/steps/input20/gate.ts\n M l2/aura/services/serviceBehavior.ts\n?? l2/certificacao/\n",
+    "app": " M .collab-msg.lock\n",
     "catalog": ""
   },
   "loader": "readD2InputBundle using a read-only git-show host pinned to a2f929ed",

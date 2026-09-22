@@ -1,13 +1,14 @@
 {
   "task": "d2_09_agentDefsL2_prova_agendaClinica",
-  "outcome": "partial-source-blocked",
+  "outcome": "live-source-blocked",
   "proved": [
-    "pinned HEAD input",
+    "live task on pinned HEAD",
     "5 pages",
     "19 endpoints",
     "20 defs",
     "15 materialization items",
-    "real contracts diagnostic"
+    "real contracts diagnostic",
+    "zero LLM cost"
   ],
   "blocked": [
     "contracts30 and every downstream phase",
@@ -15,5 +16,6 @@
     "live partial maintenance",
     "live interruption"
   ],
+  "liveTaskId": "20260922033113.1001",
   "nextStage": "Reconcile transition.payload in the owning L4 source before materialization."
 }

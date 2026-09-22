@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "2026-09-21-agent-defs-l2-pipeline-v1",
+  "flowId": "agentDefsL2",
+  "project": 102047,
+  "module": "agendaClinica",
+  "status": "failed",
+  "steps": {
+    "entry10": {
+      "status": "approved",
+      "updatedAt": "2026-09-22T03:31:13.679Z"
+    },
+    "input20": {
+      "status": "approved",
+      "updatedAt": "2026-09-22T03:31:13.878Z",
+      "artifactPaths": [
+        "l2/agendaClinica/pipeline/agentDefsL2/input.json"
+      ],
+      "snapshotHash": "sha256:4cf77d786246fd29954761dcd8a586335c29910d224f763dd619c6257ac6e813"
+    },
+    "contracts30": {
+      "status": "failed",
+      "diagnostic": "D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.registrarAtendimento: transition 'registrarAtendimento' does not declare payload; D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.confirmarConsulta: transition 'confirmarConsulta' does not declare payload; D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.registrarFalta: transition 'registrarFalta' does not declare payload",
+      "updatedAt": "2026-09-22T03:31:14.048Z"
+    }
+  },
+  "createdAt": "2026-09-22T03:31:13.679Z",
+  "updatedAt": "2026-09-22T03:31:14.048Z",
+  "awaitingStep": "contracts30"
+}

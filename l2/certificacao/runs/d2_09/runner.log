@@ -123,7 +123,7 @@ XXXXX..X............
 
 Failed tests:
 
-✖ find e content iguais a menos de espaçamento é erro, não substituição vazia (1.596208ms)
+✖ find e content iguais a menos de espaçamento é erro, não substituição vazia (1.626ms)
   AssertionError [ERR_ASSERTION]: The input did not match the regular expression /identical/. Input:
   
   'every edit applied but the content is unchanged'
@@ -142,7 +142,7 @@ Failed tests:
     operator: 'match',
     diff: 'simple'
   }
-✖ the two new imports are inserted right after the last existing import line, blank line before the class preserved (1.340292ms)
+✖ the two new imports are inserted right after the last existing import line, blank line before the class preserved (2.448125ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
   + actual - expected
   
@@ -163,7 +163,7 @@ Failed tests:
     operator: 'strictEqual',
     diff: 'simple'
   }
-✖ a file already importing from ./index.defs is left untouched (0.166125ms)
+✖ a file already importing from ./index.defs is left untouched (0.216667ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
   
   true !== false
@@ -182,7 +182,7 @@ Failed tests:
     operator: 'strictEqual',
     diff: 'simple'
   }
-✖ a page migrated by the OLD relative-import build is still recognized as migrated (0.083291ms)
+✖ a page migrated by the OLD relative-import build is still recognized as migrated (0.09275ms)
   AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
   
   true !== false
@@ -201,7 +201,7 @@ Failed tests:
     operator: 'strictEqual',
     diff: 'simple'
   }
-✖ no file points at a document that exists only on one machine (251.890042ms)
+✖ no file points at a document that exists only on one machine (173.145083ms)
   AssertionError [ERR_ASSERTION]: 
   todo_path: aura/molecules/agentImproveMolecule2/steps/i3-edit/CHANGELOG.md:122 → 'todo/resolvidos/202609/todo-gates-papel-e-neutralidade.md' — state the reason where it ships (spec.md / flow.json / the step CHANGELOG), then drop the path
   todo_path: aura/molecules/agentImproveMolecule2/steps/i3-edit/CHANGELOG.md:163 → 'todo/resolvidos/202609/todo-gate-fallback-migracao.md' — state the reason where it ships (spec.md / flow.json / the step CHANGELOG), then drop the path
@@ -238,7 +238,7 @@ Failed tests:
     operator: 'deepStrictEqual',
     diff: 'simple'
   }
-✖ a molecule in a HELPER method is found and swapped (1.205125ms)
+✖ a molecule in a HELPER method is found and swapped (3.728416ms)
   TypeError: Cannot read properties of undefined (reading 'getProjectDependencies')
       at resolveNewTag (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:62:43)
       at resolveTagToFile (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:26:16)
@@ -249,7 +249,7 @@ Failed tests:
       at Test.run (node:internal/test_runner/test:1118:25)
       at Test.start (node:internal/test_runner/test:1015:17)
       at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17)
-✖ everything the element carries survives — only the NAME changes (0.159958ms)
+✖ everything the element carries survives — only the NAME changes (3.127625ms)
   TypeError: Cannot read properties of undefined (reading 'getProjectDependencies')
       at resolveNewTag (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:62:43)
       at resolveTagToFile (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:26:16)
@@ -261,7 +261,7 @@ Failed tests:
       at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
       at Test.postRun (node:internal/test_runner/test:1247:19)
       at Test.run (node:internal/test_runner/test:1175:12)
-✖ the occurrence decides WHICH one, across different helper methods (0.137542ms)
+✖ the occurrence decides WHICH one, across different helper methods (0.368875ms)
   TypeError: Cannot read properties of undefined (reading 'getProjectDependencies')
       at resolveNewTag (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:62:43)
       at resolveTagToFile (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:26:16)
@@ -273,7 +273,7 @@ Failed tests:
       at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
       at Test.postRun (node:internal/test_runner/test:1247:19)
       at Test.run (node:internal/test_runner/test:1175:12)
-✖ mode "all" swaps every occurrence, wherever it lives (0.094041ms)
+✖ mode "all" swaps every occurrence, wherever it lives (0.525917ms)
   TypeError: Cannot read properties of undefined (reading 'getProjectDependencies')
       at resolveNewTag (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:62:43)
       at resolveTagToFile (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:26:16)
@@ -285,7 +285,7 @@ Failed tests:
       at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
       at Test.postRun (node:internal/test_runner/test:1247:19)
       at Test.run (node:internal/test_runner/test:1175:12)
-✖ the import follows the swap (0.070958ms)
+✖ the import follows the swap (0.126666ms)
   TypeError: Cannot read properties of undefined (reading 'getProjectDependencies')
       at resolveNewTag (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:62:43)
       at resolveTagToFile (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:26:16)
@@ -297,7 +297,7 @@ Failed tests:
       at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
       at Test.postRun (node:internal/test_runner/test:1247:19)
       at Test.run (node:internal/test_runner/test:1175:12)
-✖ the import of the old molecule STAYS while another occurrence still uses it (0.076208ms)
+✖ the import of the old molecule STAYS while another occurrence still uses it (0.096875ms)
   TypeError: Cannot read properties of undefined (reading 'getProjectDependencies')
       at resolveNewTag (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:62:43)
       at resolveTagToFile (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:26:16)
@@ -309,7 +309,7 @@ Failed tests:
       at Test.processPendingSubtests (node:internal/test_runner/test:787:18)
       at Test.postRun (node:internal/test_runner/test:1247:19)
       at Test.run (node:internal/test_runner/test:1175:12)
-✖ a tag written inside TypeScript is not markup and is not swapped (0.08575ms)
+✖ a tag written inside TypeScript is not markup and is not swapped (0.089417ms)
   TypeError: Cannot read properties of undefined (reading 'getProjectDependencies')
       at resolveNewTag (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:62:43)
       at resolveTagToFile (/Volumes/WagnerSSD1/collab/mls-base/mls-102020/l2/utils.ts:26:16)
