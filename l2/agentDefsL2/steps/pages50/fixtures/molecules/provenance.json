@@ -1,0 +1,11 @@
+{
+  "project": 102040,
+  "commit": "f5845db580f3199c5f68e6ff4d5207aaa35705f5",
+  "expectedGroups": 31,
+  "expectedVariants": 154,
+  "sha256": {
+    "skill.ts": "a243774aee05d980d07cae75cf2e574b3a9c93761f3cec240a457e3dc5d5b78d",
+    "groupenterdate/index.defs.ts": "6903ec52561132be9ecb7c41b2975b4bd8d966be798fdf42ebfbbd776a60314a",
+    "groupenterdatetime/index.defs.ts": "822567c3081f0f798b4c8e2b9739d21a093e36f0bce9bb3e3d3e08a16eb90a26"
+  }
+}
