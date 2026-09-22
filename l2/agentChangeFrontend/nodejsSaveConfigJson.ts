@@ -524,15 +524,12 @@ export function composeFrontendRuntimeConfig(root: string, clientId: string): Co
       composed.push({ moduleName, pageCount: result.pageCount });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      warn(`module '${moduleName}' skipped: ${reason}`);
-      skipped.push({ moduleName, reason });
+      throw new FrontendConfigComposeError(`module '${moduleName}' could not be composed: ${reason}`);
     }
   }
 
   if (composed.length === 0) {
-    throw new FrontendConfigComposeError(
-      `no module could be composed from l2 (declared ${moduleNames.length}, skipped ${skipped.length}); project looks broken`,
-    );
+    warn(`no module could be composed from l2 (declared ${moduleNames.length}, skipped ${skipped.length}); publishing base runtime config without frontend pages`);
   }
 
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);

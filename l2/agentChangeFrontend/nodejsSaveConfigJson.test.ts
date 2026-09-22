@@ -251,12 +251,92 @@ test('T3 CF pass keeps backendControllers and persistenceModules written by the 
   });
 });
 
-test('zero resolvable modules fail the compose', () => {
+test('phase-l4 project with zero materialized pages writes the base Studio/backend config', () => {
   withRoot((root, clientRoot) => {
-    writeProjectJson(clientRoot, ['todo', 'listaAssinatura']);
+    writeFile(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify({
+      projectId: CLIENT_ID,
+      domain: 'localhost',
+      port: 2047,
+      environment: 'development',
+      studioEnabled: true,
+      masters: {
+        frontend: { runtimeProject: 102033 },
+        backend: { runtimeProject: 102034 },
+      },
+      modules: [{ moduleName: 'todo' }, { moduleName: 'listaAssinatura' }],
+    }, null, 2)}\n`);
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      projects: {
+        [CLIENT_ID]: {
+          root: '.',
+          type: 'client',
+          modules: [{
+            moduleId: 'todo',
+            backendControllers: './_109001_/l1/todo/layer_1_external/adapters/http/controllers',
+          }],
+          persistenceModules: [{
+            moduleId: 'todo',
+            tableDefsDir: './_109001_/l1/todo/layer_1_external/adapters/persistence',
+          }],
+        },
+      },
+    }, null, 2)}\n`);
+
+    const result = composeFrontendRuntimeConfig(root, CLIENT_ID);
+
+    assert.deepEqual(result.composed, []);
+    assert.deepEqual(result.skipped.map(item => item.moduleName), ['todo', 'listaAssinatura']);
+    const config = readConfig(clientRoot);
+    const projects = config.projects as Record<string, Record<string, unknown>>;
+    assert.equal(config.defaultProjectId, CLIENT_ID);
+    assert.ok(config.shellTemplates);
+    assert.ok(config.clientShell);
+    assert.equal(projects['102033'].type, 'master frontend');
+    assert.equal(projects['102034'].type, 'master backend');
+    assert.equal(projects['102029'].type, 'lib');
+    assert.deepEqual(projects[CLIENT_ID].runtime, {
+      projectId: CLIENT_ID,
+      domain: 'localhost',
+      port: 2047,
+      environment: 'development',
+      studioEnabled: true,
+    });
+    const todo = (projects[CLIENT_ID].modules as Record<string, unknown>[])[0];
+    assert.equal(todo.backendControllers, './_109001_/l1/todo/layer_1_external/adapters/http/controllers');
+    assert.deepEqual(projects[CLIENT_ID].persistenceModules, [{
+      moduleId: 'todo',
+      tableDefsDir: './_109001_/l1/todo/layer_1_external/adapters/persistence',
+    }]);
+    assert.equal(fs.existsSync(path.join(clientRoot, 'mlsDep.json')), true);
+  });
+});
+
+test('invalid l5 schema remains a hard compose error', () => {
+  withRoot((root, clientRoot) => {
+    writeFile(path.join(clientRoot, 'l5', 'project.json'), '{ invalid json');
     assert.throws(
       () => composeFrontendRuntimeConfig(root, CLIENT_ID),
-      (error: unknown) => error instanceof FrontendConfigComposeError && /no module could be composed from l2/.test(error.message),
+      (error: unknown) => error instanceof FrontendConfigComposeError && /cannot read/.test(error.message),
+    );
+    assert.equal(fs.existsSync(path.join(clientRoot, 'l5', 'config.json')), false);
+  });
+});
+
+test('filesystem errors while composing a module remain hard errors', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeFile(path.join(clientRoot, 'l4', 'todo', 'workspaces', 'taskCatalogue.defs.ts'), defs({
+      workspaceId: 'taskCatalogue',
+      title: 'Tarefa',
+    }));
+    writeFile(path.join(clientRoot, 'l2', 'todo', 'web', 'shared', 'taskCatalogue.ts'), 'export {};\n');
+    writeFile(path.join(clientRoot, 'l2', 'todo', 'web', 'contracts', 'taskCatalogue.ts'), 'export {};\n');
+    writeFile(path.join(clientRoot, 'l2', 'todo', 'web', 'desktop'), 'not a directory\n');
+
+    assert.throws(
+      () => composeFrontendRuntimeConfig(root, CLIENT_ID),
+      (error: unknown) => error instanceof FrontendConfigComposeError
+        && /module 'todo' could not be composed/.test(error.message),
     );
     assert.equal(fs.existsSync(path.join(clientRoot, 'l5', 'config.json')), false);
   });

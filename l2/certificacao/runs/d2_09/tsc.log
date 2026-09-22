@@ -6,18 +6,6 @@ mls-102020/l2/aura/studio/studioLiveUpdateHotSwap.test.ts(88,21): error TS2554: 
 mls-102021/l2/agentChangeBackend/helpers/cbPortMethods.test.ts(68,29): error TS2339: Property 'systemDecisions' does not exist on type '{ entityId: string; interfaceName: string; methods: { name: string; params: string[]; returns: string; }[]; }'.
 mls-102021/l2/agentChangeBackend/steps/gen-usecase/agentCbUsecase.test.ts(433,5): error TS2322: Type '{ inputId: string; fieldRef: string; type: string; required: true; source: string; description: string; }' is not assignable to type 'never'.
 mls-102021/l2/agentChangeBackend/steps/gen-usecase/agentCbUsecase.test.ts(434,5): error TS2322: Type '{ inputId: string; fieldRef: string; type: string; required: false; source: string; description: string; }' is not assignable to type 'never'.
-mls-102021/l2/agentDefsL1/steps/usecases50/worker.ts(143,83): error TS2322: Type 'Record<string, string>' is not assignable to type 'D1WorkerStep'.
-  Type 'Record<string, string>' is missing the following properties from type 'D1WorkerMdm': kind, namespace, call, entity
-mls-102021/l2/agentDefsL1/steps/usecases50/worker.ts(145,67): error TS2339: Property 'call' does not exist on type 'D1WorkerStep'.
-  Property 'call' does not exist on type 'D1WorkerRule'.
-mls-102021/l2/agentDefsL1/steps/usecases50/worker.ts(146,102): error TS2339: Property 'call' does not exist on type 'D1WorkerStep'.
-  Property 'call' does not exist on type 'D1WorkerRule'.
-mls-102021/l2/agentDefsL1/steps/usecases50/worker.ts(148,58): error TS2339: Property 'namespace' does not exist on type 'D1WorkerStep'.
-  Property 'namespace' does not exist on type 'D1WorkerPort'.
-mls-102021/l2/agentDefsL1/steps/usecases50/worker.ts(148,87): error TS2339: Property 'call' does not exist on type 'D1WorkerStep'.
-  Property 'call' does not exist on type 'D1WorkerRule'.
-mls-102021/l2/agentDefsL1/steps/usecases50/worker.ts(148,113): error TS2339: Property 'entity' does not exist on type 'D1WorkerStep'.
-  Property 'entity' does not exist on type 'D1WorkerPort'.
 mls-102025/l2/collabMessagesEnvironmentBase.test.ts(43,20): error TS2352: Conversion of type 'typeof globalThis' to type 'MlsHolder' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
   The types returned by 'mls.bots.getBotContextVarsBeforeMessageSend(...)' are incompatible between these types.
     Type 'string[]' is missing the following properties from type 'Promise<string[]>': then, catch, finally, [Symbol.toStringTag]

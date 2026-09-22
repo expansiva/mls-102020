@@ -84,16 +84,19 @@
   "consultaTransitions": [
     {
       "transitionId": "confirmarConsulta",
+      "payloadPresent": false,
       "payload": null
     },
     {
       "transitionId": "registrarFalta",
+      "payloadPresent": false,
       "payload": null
     },
     {
       "transitionId": "registrarAtendimento",
+      "payloadPresent": false,
       "payload": null
     }
   ],
-  "backendDtoAbsentAccepted": true
+  "backendDtoAbsentAcceptedByInput20": true
 }

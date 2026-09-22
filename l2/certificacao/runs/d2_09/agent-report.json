@@ -1,22 +1,83 @@
 {
   "invocation": "@@agentDefsL2 agendaClinica",
-  "snapshot": null,
+  "snapshot": {
+    "hash": "sha256:4cf77d786246fd29954761dcd8a586335c29910d224f763dd619c6257ac6e813",
+    "counts": {
+      "pages": 5,
+      "endpoints": 19,
+      "usecases": 13,
+      "destinations": 20,
+      "materializationItems": 15
+    },
+    "pages": [
+      {
+        "pageId": "cadastro_profissional",
+        "status": "toCreate",
+        "endpoints": 3
+      },
+      {
+        "pageId": "cadastro_recepcionista",
+        "status": "toCreate",
+        "endpoints": 6
+      },
+      {
+        "pageId": "consultas_profissional",
+        "status": "toCreate",
+        "endpoints": 2
+      },
+      {
+        "pageId": "consultas_recepcionista",
+        "status": "toCreate",
+        "endpoints": 6
+      },
+      {
+        "pageId": "pacientes",
+        "status": "toCreate",
+        "endpoints": 2
+      }
+    ]
+  },
   "phases": {
     "input20": {
-      "status": "failed",
-      "diagnostic": "MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''"
+      "status": "approved"
     },
     "contracts30": {
-      "status": "approved",
-      "units": 0
+      "status": "failed",
+      "diagnostic": "D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.registrarAtendimento: transition 'registrarAtendimento' does not declare payload; D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.confirmarConsulta: transition 'confirmarConsulta' does not declare payload; D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.registrarFalta: transition 'registrarFalta' does not declare payload",
+      "issues": [
+        {
+          "code": "D2_CONTRACT_TRANSITION_PAYLOAD_MISSING",
+          "source": "ontology",
+          "pageId": "consultas_profissional",
+          "route": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
+          "path": "Consulta.transitions.registrarAtendimento",
+          "message": "transition 'registrarAtendimento' does not declare payload"
+        },
+        {
+          "code": "D2_CONTRACT_TRANSITION_PAYLOAD_MISSING",
+          "source": "ontology",
+          "pageId": "consultas_recepcionista",
+          "route": "agendaClinica.consultas_recepcionista.cmdConfirmarConsulta",
+          "path": "Consulta.transitions.confirmarConsulta",
+          "message": "transition 'confirmarConsulta' does not declare payload"
+        },
+        {
+          "code": "D2_CONTRACT_TRANSITION_PAYLOAD_MISSING",
+          "source": "ontology",
+          "pageId": "consultas_recepcionista",
+          "route": "agendaClinica.consultas_recepcionista.cmdRegistrarFalta",
+          "path": "Consulta.transitions.registrarFalta",
+          "message": "transition 'registrarFalta' does not declare payload"
+        }
+      ]
     },
     "shared40": {
       "status": "not-run",
-      "reason": "contracts30 did not approve"
+      "reason": "contracts30 rejected the real L4 source"
     },
     "pages50": {
       "status": "not-run",
-      "reason": "contracts30 did not approve"
+      "reason": "contracts30 rejected the real L4 source"
     },
     "finalize60": {
       "status": "not-run",
@@ -26,7 +87,7 @@
   "liveRun": {
     "performed": false,
     "owner": "supervisor L2",
-    "reason": "Instance unavailable: neutral-folder `collabmsg --project 102047 rooms` timed out before room selection; no room id was invented and no message/task was sent.",
+    "reason": "Instance unavailable before room selection; no message/task was sent.",
     "exitCode": 3,
     "endpoint": "https://102056.collabcodes.com/msg",
     "httpStatus": 0

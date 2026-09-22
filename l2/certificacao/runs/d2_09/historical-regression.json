@@ -9,7 +9,25 @@
     "agenda",
     "cadastro_profissional"
   ],
-  "homePages": [],
+  "endpointPages": [
+    "agenda",
+    "cadastro_profissional",
+    "cadastro_recepcionista",
+    "consultas",
+    "pacientes"
+  ],
+  "sourceLessPages": [
+    "painel_clinica",
+    "painel"
+  ],
+  "sourceLessPagesRemovedAtCurrentHead": [
+    "painel_clinica",
+    "painel"
+  ],
+  "broadCadastroPages": [
+    "cadastro_recepcionista",
+    "cadastro_profissional"
+  ],
   "currentRevision": "a2f929ed",
   "currentPages": [
     "consultas_profissional",
@@ -17,6 +35,5 @@
     "consultas_recepcionista",
     "pacientes",
     "cadastro_recepcionista"
-  ],
-  "removedHomes": []
+  ]
 }

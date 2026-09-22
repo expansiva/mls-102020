@@ -1,0 +1,19 @@
+{
+  "task": "d2_09_agentDefsL2_prova_agendaClinica",
+  "outcome": "partial-source-blocked",
+  "proved": [
+    "pinned HEAD input",
+    "5 pages",
+    "19 endpoints",
+    "20 defs",
+    "15 materialization items",
+    "real contracts diagnostic"
+  ],
+  "blocked": [
+    "contracts30 and every downstream phase",
+    "full no-op",
+    "live partial maintenance",
+    "live interruption"
+  ],
+  "nextStage": "Reconcile transition.payload in the owning L4 source before materialization."
+}

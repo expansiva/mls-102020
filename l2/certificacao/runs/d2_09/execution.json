@@ -1,6 +1,7 @@
 {
   "llmCalls": 0,
   "attempts": 0,
+  "repairsUsed": 0,
   "repairLimitPerUnit": 1,
   "cost": 0,
   "moleculeContext": {
@@ -9,14 +10,17 @@
     "reason": "contracts30 barrier failed before shared/pages context"
   },
   "noOp": {
-    "status": "not-reachable"
+    "status": "blocked-before-full-run",
+    "inputSnapshotStable": true
   },
   "partialMaintenance": {
-    "status": "fixture-covered-by-d2_08",
-    "livePlanMutationAuthorized": false
+    "status": "fixture-only",
+    "livePlanMutationAuthorized": false,
+    "evidence": "agentDefsL2/steps/finalize60/finalize.test.ts"
   },
   "interruption": {
-    "status": "fixture-covered-by-pages50-run-test",
-    "liveFaultInjected": false
+    "status": "fixture-only",
+    "liveFaultInjected": false,
+    "evidence": "agentDefsL2/steps/pages50/run.test.ts"
   }
 }
