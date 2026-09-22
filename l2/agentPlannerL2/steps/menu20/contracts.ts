@@ -131,10 +131,10 @@ export interface P2ActorMustSeeTask {
   processId: string;
   taskId: string;
   description: string;
+  entityRef: string;
 }
 
 export interface P2ActorMustSeeEffect extends P2ActorMustSeeTask {
-  entityRef: string;
   effect: string;
 }
 
@@ -355,6 +355,7 @@ export function collectBeyondJourneys(
           processId: process.processId,
           taskId: task.taskId,
           description: task.description,
+          entityRef: task.entityRef,
         });
       }
       if (task.kind === 'alert' && task.actorRef) {
@@ -362,6 +363,7 @@ export function collectBeyondJourneys(
           processId: process.processId,
           taskId: task.taskId,
           description: task.description,
+          entityRef: task.entityRef,
         });
       }
       if (isMechanicalEffectTask(task) && task.entityRef) {

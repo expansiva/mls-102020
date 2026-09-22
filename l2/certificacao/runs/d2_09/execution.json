@@ -1,0 +1,22 @@
+{
+  "llmCalls": 0,
+  "attempts": 0,
+  "repairLimitPerUnit": 1,
+  "cost": 0,
+  "moleculeContext": {
+    "status": "not-read",
+    "bytes": 0,
+    "reason": "contracts30 barrier failed before shared/pages context"
+  },
+  "noOp": {
+    "status": "not-reachable"
+  },
+  "partialMaintenance": {
+    "status": "fixture-covered-by-d2_08",
+    "livePlanMutationAuthorized": false
+  },
+  "interruption": {
+    "status": "fixture-covered-by-pages50-run-test",
+    "liveFaultInjected": false
+  }
+}

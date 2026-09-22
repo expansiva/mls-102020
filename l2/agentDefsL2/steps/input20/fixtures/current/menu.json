@@ -1,0 +1,171 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "agendaClinica",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "consultas_profissional",
+      "kind": "page",
+      "label": "Agenda do dia",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo só as minhas consultas de hoje."
+        },
+        {
+          "kind": "detail",
+          "text": "Abro a consulta e vejo o paciente, o horário e se já foi atendida."
+        },
+        {
+          "kind": "form",
+          "text": "Marco como atendida e escrevo a anotação do atendimento."
+        },
+        {
+          "kind": "actions",
+          "text": "Registro o atendimento realizado."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "profissional",
+      "kind": "hub",
+      "label": "Meu cadastro",
+      "context": "Profissional",
+      "text": "Abre já no meu registro de profissional, sem eu precisar escolher.",
+      "children": [
+        {
+          "id": "cadastro_profissional",
+          "kind": "page",
+          "label": "Dados",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Vejo os dados do meu cadastro de profissional."
+            },
+            {
+              "kind": "form",
+              "text": "Atualizo minha identificação."
+            },
+            {
+              "kind": "actions",
+              "text": "Salvo meu cadastro."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "consultas_recepcionista",
+      "kind": "page",
+      "label": "Agenda",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Vejo as consultas da clínica para marcar, confirmar ou registrar falta."
+        },
+        {
+          "kind": "detail",
+          "text": "Abro a consulta e vejo paciente, profissional, horário e se já foi confirmada."
+        },
+        {
+          "kind": "form",
+          "text": "Busco paciente e profissional, confiro os horários livres e marco a consulta; registro a confirmação por telefone ou a falta."
+        },
+        {
+          "kind": "actions",
+          "text": "Agendo a consulta, confirmo pelo telefone ou registro a falta do paciente."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pacientes",
+      "kind": "page",
+      "label": "Pacientes",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Busco o paciente pelo nome para ver se já está cadastrado."
+        },
+        {
+          "kind": "form",
+          "text": "Preencho os dados e o contato do paciente novo."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastro o paciente na clínica."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "recepcionista",
+      "kind": "hub",
+      "label": "Meu cadastro",
+      "context": "Recepcionista",
+      "text": "Abre já no meu registro de recepcionista, sem eu precisar escolher.",
+      "children": [
+        {
+          "id": "cadastro_recepcionista",
+          "kind": "page",
+          "label": "Dados",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Vejo os dados do meu cadastro de recepcionista."
+            },
+            {
+              "kind": "form",
+              "text": "Atualizo minha identificação."
+            },
+            {
+              "kind": "actions",
+              "text": "Salvo meu cadastro."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:profissional": [
+      "consultas_profissional",
+      "profissional"
+    ],
+    "actor:recepcionista": [
+      "consultas_recepcionista",
+      "pacientes",
+      "recepcionista"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "cadastrarPaciente": [
+        "pacientes"
+      ],
+      "agendarConsulta": [
+        "consultas_recepcionista"
+      ],
+      "confirmarConsulta": [
+        "consultas_recepcionista"
+      ],
+      "registrarFalta": [
+        "consultas_recepcionista"
+      ],
+      "consultarAgendaDiaria": [
+        "consultas_profissional"
+      ],
+      "registrarAtendimento": [
+        "consultas_profissional"
+      ]
+    },
+    "processes": {},
+    "removed": []
+  }
+}

@@ -1,5 +1,9 @@
 # menu20
 
+## 2026-09-21 (p2_26)
+
+- Home organisms only from the beyond-journeys block; `P2ActorMustSeeTask` carries `entityRef`.
+
 ## 2026-09-21 (p2_24)
 
 - In `/candidate` the human prompt includes the canonical menu under

@@ -1,0 +1,34 @@
+{
+  "invocation": "@@agentDefsL2 agendaClinica",
+  "snapshot": null,
+  "phases": {
+    "input20": {
+      "status": "failed",
+      "diagnostic": "MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''; MODULE_IDENTITY_MISMATCH: expected module 'agendaClinica', got ''"
+    },
+    "contracts30": {
+      "status": "approved",
+      "units": 0
+    },
+    "shared40": {
+      "status": "not-run",
+      "reason": "contracts30 did not approve"
+    },
+    "pages50": {
+      "status": "not-run",
+      "reason": "contracts30 did not approve"
+    },
+    "finalize60": {
+      "status": "not-run",
+      "reason": "upstream barrier absent"
+    }
+  },
+  "liveRun": {
+    "performed": false,
+    "owner": "supervisor L2",
+    "reason": "Instance unavailable: neutral-folder `collabmsg --project 102047 rooms` timed out before room selection; no room id was invented and no message/task was sent.",
+    "exitCode": 3,
+    "endpoint": "https://102056.collabcodes.com/msg",
+    "httpStatus": 0
+  }
+}

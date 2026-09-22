@@ -10,6 +10,7 @@ import {
   parseP2Grants,
   parseP2Processes,
   type P2MenuFile,
+  type P2ProcessView,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import {
   parseP2L4Sources,
@@ -196,4 +197,50 @@ void test('needs message is English, one line per page, current thread round', (
   assert.match(message.body, /mensalidades_pagamentos: 2 reads \/ 1 writes/);
   assert.match(message.body, /inicio_recepcao: \d+ reads \/ 0 writes/);
   assert.equal(message.body.includes('lê'), false);
+});
+
+void test('inbox home reads the human-stage entity when entityRef is set, and nothing when it is not', () => {
+  const { sources, grants, menu } = loadBuilt();
+  const homeOnlyInbox = structuredClone(menu);
+  const home = homeOnlyInbox.tree.find(node => node.id === 'inicio_recepcao');
+  assert.ok(home && home.kind === 'page');
+  home.organisms = [{ kind: 'inbox', text: 'What waits for you.' }];
+
+  const humanProcess = (entityRef: string): P2ProcessView[] => [{
+    processId: 'aprovarPedidoAcimaDoLimite',
+    trigger: { kind: 'manual', schedule: '', event: '', actorRef: 'recepcao' },
+    tasks: [{
+      taskId: 'decidirPedidoEncaminhado',
+      kind: 'human',
+      description: 'The purchasing manager decides the forwarded order.',
+      actorRef: 'recepcao',
+      entityRef,
+      effect: '',
+      journeyRef: '',
+      transitionRef: '',
+    }],
+  }];
+
+  const withRef = buildP2NeedsFile({
+    menu: homeOnlyInbox,
+    sources,
+    grants,
+    processes: humanProcess('Mensalidade'),
+    now: AT,
+  });
+  const inboxPage = pageOf(withRef.pages, 'inicio_recepcao');
+  assert.deepEqual(inboxPage.writes, []);
+  assert.deepEqual(inboxPage.reads.map(item => item.entity), ['Mensalidade']);
+  assert.deepEqual(inboxPage.reads[0].from, ['organism:inbox']);
+
+  const withoutRef = buildP2NeedsFile({
+    menu: homeOnlyInbox,
+    sources,
+    grants,
+    processes: humanProcess(''),
+    now: AT,
+  });
+  const empty = pageOf(withoutRef.pages, 'inicio_recepcao');
+  assert.deepEqual(empty.reads, []);
+  assert.deepEqual(empty.writes, []);
 });

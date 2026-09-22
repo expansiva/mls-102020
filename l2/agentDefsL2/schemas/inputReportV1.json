@@ -1,0 +1,16 @@
+{
+  "$id": "https://collab.codes/schemas/agent-defs-l2/input-report-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agentDefsL2 input validation report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "project", "module", "outcome", "problems"],
+  "properties": {
+    "schemaVersion": { "const": "2026-09-21-agent-defs-l2-input-report-v1" },
+    "project": { "type": "integer", "minimum": 1 },
+    "module": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]{0,59}$" },
+    "outcome": { "enum": ["accepted", "refused"] },
+    "snapshotHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "problems": { "type": "array" }
+  }
+}

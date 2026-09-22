@@ -1,0 +1,22 @@
+{
+  "revision": "7d3b2ac",
+  "pages": [
+    "painel_clinica",
+    "pacientes",
+    "consultas",
+    "cadastro_recepcionista",
+    "painel",
+    "agenda",
+    "cadastro_profissional"
+  ],
+  "homePages": [],
+  "currentRevision": "a2f929ed",
+  "currentPages": [
+    "consultas_profissional",
+    "cadastro_profissional",
+    "consultas_recepcionista",
+    "pacientes",
+    "cadastro_recepcionista"
+  ],
+  "removedHomes": []
+}

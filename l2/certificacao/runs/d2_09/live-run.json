@@ -1,0 +1,11 @@
+{
+  "command": "collabmsg --project 102047 rooms",
+  "cwd": "neutral folder",
+  "exitCode": 3,
+  "endpoint": "https://102056.collabcodes.com/msg",
+  "httpStatus": 0,
+  "diagnostic": "Operation timed out during TCP connection; instance unavailable before room discovery.",
+  "messagesSent": 0,
+  "tasksCreated": 0,
+  "source": "supervisor check"
+}

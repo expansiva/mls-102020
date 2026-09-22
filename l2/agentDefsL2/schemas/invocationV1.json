@@ -1,0 +1,12 @@
+{
+  "$id": "https://collab.codes/schemas/agent-defs-l2/invocation-v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "agentDefsL2 task-step invocation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "module"],
+  "properties": {
+    "project": { "type": "integer", "minimum": 1 },
+    "module": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]{0,59}$" }
+  }
+}
