@@ -10,6 +10,7 @@ export const D2_SHARED_AGENT_NAME = 'agentD2Shared' as const;
 export const D2_SHARED_PAGE_AGENT_NAME = 'agentD2SharedPage' as const;
 export const D2_PAGES_AGENT_NAME = 'agentD2Pages' as const;
 export const D2_PAGES_PAGE_AGENT_NAME = 'agentD2PagesPage' as const;
+export const D2_FINALIZE_AGENT_NAME = 'agentD2Finalize' as const;
 export const D2_FLOW_ID = 'agentDefsL2' as const;
 export const D2_FLOW_VERSION = '2026-09-21-agent-defs-l2-flow-v3' as const;
 export const D2_PIPELINE_VERSION = '2026-09-21-agent-defs-l2-pipeline-v1' as const;
@@ -61,7 +62,7 @@ export interface D2PipelineState {
   flowId: typeof D2_FLOW_ID;
   project: number;
   module: string;
-  status: 'inProgress' | 'awaitingStep' | 'failed';
+  status: 'inProgress' | 'awaitingStep' | 'failed' | 'complete';
   awaitingStep?: D2StepId;
   steps: Partial<Record<D2StepId, D2PipelineStepState>>;
   createdAt: string;
@@ -165,6 +166,7 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity): ml
         : stepId === 'contracts30' ? D2_CONTRACTS_AGENT_NAME
           : stepId === 'shared40' ? D2_SHARED_AGENT_NAME
             : stepId === 'pages50' ? D2_PAGES_AGENT_NAME
+              : stepId === 'finalize60' ? D2_FINALIZE_AGENT_NAME
               : D2_AGENT_NAME,
     prompt: JSON.stringify(identity),
     rags: [],
@@ -224,7 +226,7 @@ export async function initializeD2Pipeline(identity: D2RunIdentity, now = new Da
 
 export async function markD2Unavailable(identity: D2RunIdentity, stepId: D2StepId, diagnostic: string): Promise<void> {
   const pipeline = await readD2Pipeline(identity);
-  if (!pipeline) return;
+  if (!pipeline || pipeline.status === 'complete' || pipeline.steps[stepId]?.status === 'approved') return;
   const updatedAt = new Date().toISOString();
   await writeJson(d2PipelineFile(identity), {
     ...pipeline,
@@ -243,6 +245,9 @@ export async function markD2StepApproved(
 ): Promise<void> {
   const pipeline = await readD2Pipeline(identity);
   if (!pipeline) throw new Error('agentDefsL2 pipeline is missing; entry10 must run first.');
+  const prior = pipeline.steps[stepId];
+  if (prior?.status === 'approved' && prior.snapshotHash === snapshotHash
+    && JSON.stringify(prior.artifactPaths || []) === JSON.stringify(artifactPaths)) return;
   const updatedAt = new Date().toISOString();
   await writeJson(d2PipelineFile(identity), {
     ...pipeline,
@@ -258,7 +263,7 @@ export async function markD2StepApproved(
 
 export async function markD2StepFailed(identity: D2RunIdentity, stepId: D2StepId, diagnostic: string): Promise<void> {
   const pipeline = await readD2Pipeline(identity);
-  if (!pipeline) return;
+  if (!pipeline || pipeline.status === 'complete' || pipeline.steps[stepId]?.status === 'approved') return;
   const updatedAt = new Date().toISOString();
   await writeJson(d2PipelineFile(identity), {
     ...pipeline,
@@ -269,8 +274,39 @@ export async function markD2StepFailed(identity: D2RunIdentity, stepId: D2StepId
   } satisfies D2PipelineState);
 }
 
+export async function markD2Complete(identity: D2RunIdentity, artifactPaths: string[], snapshotHash: string): Promise<void> {
+  const pipeline = await readD2Pipeline(identity);
+  if (!pipeline) throw new Error('agentDefsL2 pipeline is missing; entry10 must run first.');
+  const prior = pipeline.steps.finalize60;
+  if (pipeline.status === 'complete' && prior?.status === 'approved' && prior.snapshotHash === snapshotHash
+    && JSON.stringify(prior.artifactPaths || []) === JSON.stringify(artifactPaths)) return;
+  const updatedAt = new Date().toISOString();
+  await writeJson(d2PipelineFile(identity), {
+    ...pipeline,
+    status: 'complete',
+    awaitingStep: undefined,
+    steps: { ...pipeline.steps, finalize60: { status: 'approved', updatedAt, artifactPaths, snapshotHash } },
+    updatedAt,
+  } satisfies D2PipelineState);
+}
+
+/** finalize60 is the single owner allowed to revoke complete after a fresh disk-integrity check. */
+export async function markD2FinalizeBlocked(identity: D2RunIdentity, diagnostic: string, snapshotHash?: string): Promise<void> {
+  const pipeline = await readD2Pipeline(identity);
+  if (!pipeline) return;
+  if (pipeline.status === 'complete' && (!snapshotHash || pipeline.steps.finalize60?.snapshotHash !== snapshotHash)) return;
+  const updatedAt = new Date().toISOString();
+  await writeJson(d2PipelineFile(identity), {
+    ...pipeline,
+    status: 'failed',
+    awaitingStep: 'finalize60',
+    steps: { ...pipeline.steps, finalize60: { status: 'failed', diagnostic, updatedAt, ...(snapshotHash ? { snapshotHash } : {}) } },
+    updatedAt,
+  } satisfies D2PipelineState);
+}
+
 export const D2_HELP = [
   'Usage: @@agentDefsL2 <lowerCamel>',
   'The module is explicit and the project comes from the current context.',
-  'Available now: entry10, input20, contracts30, shared40 and pages50. finalize60 is declared but unavailable.',
+  'Available now: entry10, input20, contracts30, shared40, pages50 and finalize60.',
 ].join('\n');

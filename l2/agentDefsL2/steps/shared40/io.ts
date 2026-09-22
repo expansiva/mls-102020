@@ -10,7 +10,7 @@ export function d2SharedDisplayPath(identity: D2RunIdentity, pageId: string): st
 export async function readD2SharedSource(identity: D2RunIdentity, pageId: string): Promise<string> { try { return await readSourceText(d2SharedFile(identity, pageId)); } catch { return ''; } }
 export async function writeD2SharedSource(identity: D2RunIdentity, pageId: string, source: string): Promise<void> { await writeSourceText(d2SharedFile(identity, pageId), source); }
 export async function readD2SharedResult(identity: D2RunIdentity, pageId: string): Promise<D2SharedUnitResult | null> { return readJson<D2SharedUnitResult>(d2SharedResultFile(identity, pageId)); }
-export async function writeD2SharedResult(identity: D2RunIdentity, result: D2SharedUnitResult): Promise<void> { await writeJson(d2SharedResultFile(identity, result.pageId), result); }
+export async function writeD2SharedResult(identity: D2RunIdentity, result: D2SharedUnitResult): Promise<void> { if (JSON.stringify(await readD2SharedResult(identity, result.pageId)) !== JSON.stringify(result)) await writeJson(d2SharedResultFile(identity, result.pageId), result); }
 export async function readD2SharedManifest(identity: D2RunIdentity): Promise<D2SharedManifest | null> { return readJson<D2SharedManifest>(d2SharedManifestFile(identity)); }
-export async function writeD2SharedManifest(identity: D2RunIdentity, manifest: D2SharedManifest): Promise<void> { await writeJson(d2SharedManifestFile(identity), manifest); }
+export async function writeD2SharedManifest(identity: D2RunIdentity, manifest: D2SharedManifest): Promise<void> { if (JSON.stringify(await readD2SharedManifest(identity)) !== JSON.stringify(manifest)) await writeJson(d2SharedManifestFile(identity), manifest); }
 function safe(value: string): string { if (!/^[a-z][A-Za-z0-9_-]*$/.test(value)) throw new Error(`D2_SHARED_PAGE_ID_UNSAFE: ${value}`); return value; }

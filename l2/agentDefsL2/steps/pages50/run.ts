@@ -41,6 +41,13 @@ export async function approveD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
 export async function persistD2PagesUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, sources: Record<D2PageDevice, string>, itemIds: [string, string], attempt: number, expectedSharedHash?: string, verifySources: () => Promise<void> = async () => undefined): Promise<D2PagesUnitResult> {
   const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
   if (expectedSharedHash && dependency.sourceHash !== expectedSharedHash) throw new Error(`D2_PAGES_SHARED_CHANGED: ${pageId}`);
+  const prior = await readD2PagesResult(identity, pageId);
+  if (prior?.status === 'approved' && prior.snapshotHash === snapshot.snapshotHash) {
+    for (const device of ['desktop', 'mobile'] as const) {
+      if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== prior.sourceHashes[device]) throw new Error(`D2_PAGES_APPROVED_SOURCE_CHANGED: ${pageId}/${device}`);
+    }
+    return prior;
+  }
   const sourceHashes = { desktop: await sha256Text(sources.desktop), mobile: await sha256Text(sources.mobile) };
   for (const device of ['desktop', 'mobile'] as const) {
     await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);

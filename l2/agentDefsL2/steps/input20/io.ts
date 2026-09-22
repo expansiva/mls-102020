@@ -54,14 +54,17 @@ export async function writeAcceptedD2Input(identity: D2RunIdentity, snapshot: D2
   const existing = await readD2Input(identity);
   const reused = existing?.snapshotHash === snapshot.snapshotHash;
   if (!reused) await writeJson(d2InputFile(identity), snapshot);
-  await writeJson(d2InputReportFile(identity), {
+  const report: D2InputReport = {
     schemaVersion: D2_INPUT_REPORT_VERSION,
     project: identity.project,
     module: identity.module,
     outcome: 'accepted',
     snapshotHash: snapshot.snapshotHash,
     problems: snapshot.problems,
-  } satisfies D2InputReport);
+  };
+  if (JSON.stringify(await readJson<D2InputReport>(d2InputReportFile(identity))) !== JSON.stringify(report)) {
+    await writeJson(d2InputReportFile(identity), report);
+  }
   return { reused };
 }
 

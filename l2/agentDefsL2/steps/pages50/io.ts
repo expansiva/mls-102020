@@ -12,7 +12,7 @@ export function d2PageDisplayPath(identity: D2RunIdentity, pageId: string, devic
 export async function readD2PageSource(identity: D2RunIdentity, pageId: string, device: D2PageDevice): Promise<string> { try { return await readSourceText(d2PageFile(identity, pageId, device)); } catch { return ''; } }
 export async function writeD2PageSource(identity: D2RunIdentity, pageId: string, device: D2PageDevice, source: string): Promise<void> { await writeSourceText(d2PageFile(identity, pageId, device), source); }
 export async function readD2PagesResult(identity: D2RunIdentity, pageId: string): Promise<D2PagesUnitResult | null> { return readJson<D2PagesUnitResult>(d2PagesResultFile(identity, pageId)); }
-export async function writeD2PagesResult(identity: D2RunIdentity, value: D2PagesUnitResult): Promise<void> { await writeJson(d2PagesResultFile(identity, value.pageId), value); }
+export async function writeD2PagesResult(identity: D2RunIdentity, value: D2PagesUnitResult): Promise<void> { if (JSON.stringify(await readD2PagesResult(identity, value.pageId)) !== JSON.stringify(value)) await writeJson(d2PagesResultFile(identity, value.pageId), value); }
 export async function readD2PagesManifest(identity: D2RunIdentity): Promise<D2PagesManifest | null> { return readJson<D2PagesManifest>(d2PagesManifestFile(identity)); }
-export async function writeD2PagesManifest(identity: D2RunIdentity, value: D2PagesManifest): Promise<void> { await writeJson(d2PagesManifestFile(identity), value); }
+export async function writeD2PagesManifest(identity: D2RunIdentity, value: D2PagesManifest): Promise<void> { if (JSON.stringify(await readD2PagesManifest(identity)) !== JSON.stringify(value)) await writeJson(d2PagesManifestFile(identity), value); }
 function safe(value: string): string { if (!/^[a-z][A-Za-z0-9_-]*$/.test(value)) throw new Error(`D2_PAGES_PAGE_ID_UNSAFE: ${value}`); return value; }

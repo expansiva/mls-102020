@@ -33,6 +33,11 @@ export async function approveD2SharedUnit(identity: D2RunIdentity, snapshot: D2I
 
 export async function persistD2SharedUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, source: string, attempt: number, verifySources: () => Promise<void> = async () => undefined): Promise<D2SharedUnitResult> {
   const contractUnit = await assertD2SharedDependencies(identity, snapshot, pageId, verifySources);
+  const prior = await readD2SharedResult(identity, pageId);
+  if (prior?.status === 'approved' && prior.snapshotHash === snapshot.snapshotHash) {
+    if (await sha256Text(await readD2SharedSource(identity, pageId)) !== prior.sourceHash) throw new Error(`D2_SHARED_APPROVED_SOURCE_CHANGED: ${pageId}`);
+    return prior;
+  }
   const sourceHash = await sha256Text(source);
   await assertD2SharedDependencies(identity, snapshot, pageId, verifySources);
   if (await sha256Text(await readD2SharedSource(identity, pageId)) !== sourceHash) await writeD2SharedSource(identity, pageId, source);
