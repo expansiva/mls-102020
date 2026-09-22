@@ -15,9 +15,9 @@ import '/_102020_/l2/agentDefsL2/steps/entry10/agentD2Entry.js';
 import '/_102020_/l2/agentDefsL2/steps/input20/agentD2Input.js';
 import '/_102020_/l2/agentDefsL2/steps/contracts30/agentD2Contracts.js';
 import '/_102020_/l2/agentDefsL2/steps/shared40/agentD2Shared.js';
-import '/_102020_/l2/agentDefsL2/steps/shared40/agentD2SharedPage.js';
+import '/_102020_/l2/agentDefsL2/steps/shared-page/agentD2SharedPage.js';
 import '/_102020_/l2/agentDefsL2/steps/pages50/agentD2Pages.js';
-import '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import '/_102020_/l2/agentDefsL2/steps/pages-page/agentD2PagesPage.js';
 import '/_102020_/l2/agentDefsL2/steps/finalize60/agentD2Finalize.js';
 
 export function createAgent(): IAgentAsync {

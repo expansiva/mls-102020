@@ -1,0 +1,472 @@
+{
+  "PK": "20260922092518.1001",
+  "SK": "metadata",
+  "title": "define l2 agendaClinica",
+  "owner": "20250828124716.1000",
+  "team": "unassigned",
+  "status": "failed",
+  "last_updated": 1790069162473,
+  "last_update_log": "Task failed at 2026-09-22T09:26:02.406Z | reason: mls.l5.getProjectDetails is not a function",
+  "source": "",
+  "iaCompressed": {
+    "queueBackEnd": [],
+    "queueFrontEnd": [],
+    "longMemory": {
+      "actualDate": "2026-09-22",
+      "userName": "Wagner",
+      "taskName": "agentDefsL2",
+      "flowName": "agentDefsL2",
+      "project": "102047",
+      "module": "agendaClinica"
+    },
+    "nextSteps": [
+      {
+        "stepId": 1,
+        "type": "agent",
+        "agentName": "agentDefsL2",
+        "nextSteps": [
+          {
+            "type": "agent",
+            "stepId": 2,
+            "status": "completed",
+            "stepTitle": "Start L2 definitions",
+            "planning": {
+              "planId": "entry10",
+              "dependsOn": [],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Entry",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 3,
+            "status": "completed",
+            "stepTitle": "Validate inputs",
+            "planning": {
+              "planId": "input20",
+              "dependsOn": [
+                "entry10-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Input",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 4,
+            "status": "completed",
+            "stepTitle": "Create typed contracts",
+            "planning": {
+              "planId": "contracts30",
+              "dependsOn": [
+                "input20-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Contracts",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 5,
+            "status": "completed",
+            "stepTitle": "Define shared behavior",
+            "planning": {
+              "planId": "shared40",
+              "dependsOn": [
+                "contracts30-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Shared",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 6,
+            "status": "completed",
+            "stepTitle": "Describe desktop and mobile pages",
+            "planning": {
+              "planId": "pages50",
+              "dependsOn": [
+                "shared40-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Pages",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 7,
+            "status": "waiting_dependency",
+            "stepTitle": "Validate definitions",
+            "planning": {
+              "planId": "finalize60",
+              "dependsOn": [
+                "pages50-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Finalize",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 8,
+            "status": "completed",
+            "stepTitle": "Entry ready",
+            "planning": {
+              "planId": "entry10-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"entry10\",\"nextStep\":\"input20\"}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 9,
+            "status": "completed",
+            "stepTitle": "Inputs ready",
+            "planning": {
+              "planId": "input20-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"input20\",\"nextStep\":\"contracts30\",\"snapshotHash\":\"sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3\",\"writePages\":5,\"removedPages\":0,\"reused\":false}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 10,
+            "status": "completed",
+            "stepTitle": "Contracts ready",
+            "planning": {
+              "planId": "contracts30-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"contracts30\",\"nextStep\":\"shared40\",\"snapshotHash\":\"sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3\",\"contracts\":5,\"written\":5,\"reused\":0}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 11,
+            "status": "completed",
+            "stepTitle": "Shared cadastro_profissional",
+            "planning": {
+              "planId": "shared40-page-cadastro_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"cadastro_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.0582,
+              "trace": [
+                "starting at 2026-09-22T09:25:19.571Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:32464 outputTokens:1590 cost:$0.0582 llmTime: 00:00:18.541",
+                "finished at 2026-09-22T09:25:38.146Z",
+                "shared40 cadastro_profissional scheduled its only repair: D2_SHARED_ACTION_COVERAGE"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 12,
+            "status": "completed",
+            "stepTitle": "Shared cadastro_recepcionista",
+            "planning": {
+              "planId": "shared40-page-cadastro_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"cadastro_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.0948,
+              "trace": [
+                "starting at 2026-09-22T09:25:20.000Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:52452 outputTokens:2727 cost:$0.0948 llmTime: 00:00:26.796",
+                "finished at 2026-09-22T09:25:46.839Z",
+                "shared40 cadastro_recepcionista approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 13,
+            "status": "completed",
+            "stepTitle": "Shared consultas_profissional",
+            "planning": {
+              "planId": "shared40-page-consultas_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.0343,
+              "trace": [
+                "starting at 2026-09-22T09:25:20.304Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:16506 outputTokens:1001 cost:$0.0343 llmTime: 00:00:09.816",
+                "finished at 2026-09-22T09:25:30.161Z",
+                "shared40 consultas_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 14,
+            "status": "completed",
+            "stepTitle": "Shared consultas_recepcionista",
+            "planning": {
+              "planId": "shared40-page-consultas_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.1004,
+              "trace": [
+                "starting at 2026-09-22T09:25:20.517Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:41054 outputTokens:3727 cost:$0.1004 llmTime: 00:00:37.727",
+                "finished at 2026-09-22T09:25:58.267Z",
+                "shared40 consultas_recepcionista approved (barrier complete)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 15,
+            "status": "completed",
+            "stepTitle": "Shared pacientes",
+            "planning": {
+              "planId": "shared40-page-pacientes",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"pacientes\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.0421,
+              "trace": [
+                "starting at 2026-09-22T09:25:20.702Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:22473 outputTokens:1156 cost:$0.0421 llmTime: 00:00:13.842",
+                "finished at 2026-09-22T09:25:34.569Z",
+                "shared40 pacientes approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 17,
+            "status": "completed",
+            "stepTitle": "Repair shared cadastro_profissional",
+            "planning": {
+              "planId": "shared40-repair-cadastro_profissional-a2",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"cadastro_profissional\",\"attempt\":2,\"feedback\":\"D2_SHARED_ACTION_COVERAGE\",\"previous\":{\"schemaVersion\":\"2026-09-21-agent-defs-l2-shared-judgment-v1\",\"pageId\":\"cadastro_profissional\",\"scenaries\":[{\"value\":\"base\",\"kind\":\"base\",\"actionId\":\"listProfissional\",\"preconditions\":[]}],\"initialLoadActionIds\":[],\"actionBehaviors\":[{\"actionId\":\"listProfissional\",\"refreshActionIds\":[],\"destructive\":false}]}}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.0665,
+              "trace": [
+                "starting at 2026-09-22T09:25:44.113Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:32859 outputTokens:1050 cost:$0.0665 llmTime: 00:00:10.384",
+                "finished at 2026-09-22T09:25:54.528Z",
+                "shared40 cadastro_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 18,
+            "status": "completed",
+            "stepTitle": "Shared ready",
+            "planning": {
+              "planId": "shared40-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"shared40\",\"nextStep\":\"pages50\",\"pages\":5}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 19,
+            "status": "failed",
+            "stepTitle": "Pages cadastro_profissional",
+            "planning": {
+              "planId": "pages50-page-cadastro_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"cadastro_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 20,
+            "status": "failed",
+            "stepTitle": "Pages cadastro_recepcionista",
+            "planning": {
+              "planId": "pages50-page-cadastro_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"cadastro_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 21,
+            "status": "failed",
+            "stepTitle": "Pages consultas_profissional",
+            "planning": {
+              "planId": "pages50-page-consultas_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 22,
+            "status": "failed",
+            "stepTitle": "Pages consultas_recepcionista",
+            "planning": {
+              "planId": "pages50-page-consultas_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 23,
+            "status": "failed",
+            "stepTitle": "Pages pacientes",
+            "planning": {
+              "planId": "pages50-page-pacientes",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"pacientes\",\"attempt\":1}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          }
+        ],
+        "status": "in_progress",
+        "rags": [],
+        "interaction": {
+          "input": [
+            {
+              "type": "system",
+              "content": "agentDefsL2 deterministic bootstrap. The root model is disabled."
+            },
+            {
+              "type": "human",
+              "content": "agendaClinica"
+            }
+          ],
+          "cost": 0,
+          "trace": [
+            "Root LLM skipped by AgentIntentAddMessageAI.skipRootLLM",
+            "Removing pooling hook after 26 executions, task status: failed"
+          ],
+          "payload": null
+        }
+      }
+    ]
+  },
+  "messageid_created": "20260909210506.1000/20260922092518.1000"
+}

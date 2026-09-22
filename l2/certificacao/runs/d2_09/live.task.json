@@ -1,0 +1,195 @@
+{
+  "PK": "20260922033113.1001",
+  "SK": "metadata",
+  "title": "define l2 agendaClinica",
+  "owner": "20250828124716.1000",
+  "team": "unassigned",
+  "status": "failed",
+  "last_updated": 1790047874191,
+  "last_update_log": "Task failed at 2026-09-22T03:31:14.121Z | reason: D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.registrarAtendimento: transition 'registrarAtendimento' does not declare payload; D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.confirmarConsulta: transition 'confirmarConsulta' does not declare payload; D2_CONTRACT_TRANSITION_PAYLOAD_MISSING Consulta.transitions.registrarFalta: transition 'registrarFalta' does not declare payload",
+  "source": "",
+  "iaCompressed": {
+    "queueBackEnd": [],
+    "queueFrontEnd": [],
+    "longMemory": {
+      "actualDate": "2026-09-22",
+      "userName": "Wagner",
+      "taskName": "agentDefsL2",
+      "flowName": "agentDefsL2",
+      "project": "102047",
+      "module": "agendaClinica"
+    },
+    "nextSteps": [
+      {
+        "stepId": 1,
+        "type": "agent",
+        "agentName": "agentDefsL2",
+        "nextSteps": [
+          {
+            "type": "agent",
+            "stepId": 2,
+            "status": "completed",
+            "stepTitle": "Start L2 definitions",
+            "planning": {
+              "planId": "entry10",
+              "dependsOn": [],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Entry",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 3,
+            "status": "completed",
+            "stepTitle": "Validate inputs",
+            "planning": {
+              "planId": "input20",
+              "dependsOn": [
+                "entry10-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Input",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 4,
+            "status": "failed",
+            "stepTitle": "Create typed contracts",
+            "planning": {
+              "planId": "contracts30",
+              "dependsOn": [
+                "input20-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Contracts",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 5,
+            "status": "waiting_dependency",
+            "stepTitle": "Define shared behavior",
+            "planning": {
+              "planId": "shared40",
+              "dependsOn": [
+                "contracts30-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Shared",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 6,
+            "status": "waiting_dependency",
+            "stepTitle": "Describe desktop and mobile pages",
+            "planning": {
+              "planId": "pages50",
+              "dependsOn": [
+                "shared40-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Pages",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 7,
+            "status": "waiting_dependency",
+            "stepTitle": "Validate definitions",
+            "planning": {
+              "planId": "finalize60",
+              "dependsOn": [
+                "pages50-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Finalize",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 8,
+            "status": "completed",
+            "stepTitle": "Entry ready",
+            "planning": {
+              "planId": "entry10-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"entry10\",\"nextStep\":\"input20\"}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 9,
+            "status": "completed",
+            "stepTitle": "Inputs ready",
+            "planning": {
+              "planId": "input20-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"input20\",\"nextStep\":\"contracts30\",\"snapshotHash\":\"sha256:4cf77d786246fd29954761dcd8a586335c29910d224f763dd619c6257ac6e813\",\"writePages\":5,\"removedPages\":0,\"reused\":false}",
+            "interaction": null,
+            "nextSteps": []
+          }
+        ],
+        "status": "in_progress",
+        "rags": [],
+        "interaction": {
+          "input": [
+            {
+              "type": "system",
+              "content": "agentDefsL2 deterministic bootstrap. The root model is disabled."
+            },
+            {
+              "type": "human",
+              "content": "agendaClinica"
+            }
+          ],
+          "cost": 0,
+          "trace": [
+            "Root LLM skipped by AgentIntentAddMessageAI.skipRootLLM",
+            "Removing pooling hook after 4 executions, task status: failed"
+          ],
+          "payload": null
+        }
+      }
+    ]
+  },
+  "messageid_created": "20260515174326.1000/20260922033113.1000"
+}

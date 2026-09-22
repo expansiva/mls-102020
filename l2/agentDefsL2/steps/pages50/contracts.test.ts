@@ -14,6 +14,7 @@ import type { D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40
 import { D2_PAGES_JUDGMENT_VERSION, type D2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { gateD2Pages, parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
 import { assertD2RenderedPage, parseD2RenderedPage, renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
+import { unwrapD2PagesToolPayload } from '/_102020_/l2/agentDefsL2/steps/pages-page/agentD2PagesPage.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(HERE, '..', 'input20', 'fixtures');
@@ -72,10 +73,28 @@ void test('minimal consumer and TypeScript accept quotes, backticks and multilin
 });
 
 void test('page worker has one bounded repair and no live model call outside orchestration', () => {
-  const source = readFileSync(path.join(HERE, 'agentD2PagesPage.ts'), 'utf8');
+  const source = readFileSync(path.join(HERE, '../pages-page/agentD2PagesPage.ts'), 'utf8');
   assert.match(source, /parsed\.attempt < 2/);
   assert.match(source, /D2_PAGES_REPAIR_LIMIT/);
   assert.doesNotMatch(source, /getBestModel|callLLM|agentCfeMaterializeGen/);
+});
+
+void test('page worker preserves raw initial hook args without adding feedback', () => {
+  const raw = '{"project":102047,"module":"fixture","pageId":"page","attempt":1}';
+  assert.notEqual(JSON.stringify({ ...JSON.parse(raw), feedback: '' }), raw);
+  const source = readFileSync(path.join(HERE, '../pages-page/agentD2PagesPage.ts'), 'utf8');
+  assert.match(source, /const rawArgs = args \|\| step\.prompt \|\| '';/);
+  assert.match(source, /const parsed = parseArgs\(rawArgs\);/);
+  assert.match(source, /type: 'prompt_ready', args: rawArgs,/);
+  assert.doesNotMatch(source, /type: 'prompt_ready', args: JSON\.stringify\(parsed\),/);
+});
+
+void test('page worker extracts the observed flexible envelope and validates its tool name', () => {
+  const args = { schemaVersion: 'v', pageId: 'page' };
+  assert.deepEqual(unwrapD2PagesToolPayload({ type: 'flexible', result: { toolName: 'submitD2Pages', arguments: args } }), args);
+  assert.deepEqual(unwrapD2PagesToolPayload({ payload: args }), args, 'direct payload format remains accepted');
+  assert.deepEqual(unwrapD2PagesToolPayload(args), args, 'direct judgment format remains accepted');
+  assert.throws(() => unwrapD2PagesToolPayload({ type: 'flexible', result: { toolName: 'submitD2Shared', arguments: args } }), /D2_PAGES_TOOL_MISMATCH/);
 });
 
 void test('unamended HEAD transition payload remains an upstream contracts diagnostic', () => {

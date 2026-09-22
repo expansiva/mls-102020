@@ -59,16 +59,27 @@ export async function persistD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
   await writeD2PagesResult(identity, result); return result;
 }
 
-export async function finalizeD2PagesBarrier(identity: D2RunIdentity, snapshot: D2InputSnapshot, verifySources: () => Promise<void> = async () => undefined): Promise<D2PagesManifest | null> {
+export async function findReusableD2PagesUnits(identity: D2RunIdentity, snapshot: D2InputSnapshot, verifySources: () => Promise<void> = async () => undefined): Promise<D2PagesUnitResult[]> {
   const units: D2PagesUnitResult[] = [];
   await assertSnapshot(identity, snapshot.snapshotHash); await verifySources();
   for (const pageId of [...snapshot.selection.writePageIds].sort()) {
     const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
     const unit = await readD2PagesResult(identity, pageId);
-    if (!unit || unit.status !== 'approved' || unit.snapshotHash !== snapshot.snapshotHash || unit.sharedHash !== dependency.sourceHash) return null;
-    for (const device of ['desktop', 'mobile'] as const) if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== unit.sourceHashes[device]) return null;
+    if (!unit || unit.status !== 'approved' || unit.snapshotHash !== snapshot.snapshotHash || unit.sharedHash !== dependency.sourceHash) continue;
+    let valid = true;
+    for (const device of ['desktop', 'mobile'] as const) {
+      if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== unit.sourceHashes?.[device]) valid = false;
+    }
+    if (!valid) continue;
     units.push(unit);
   }
+  await assertSnapshot(identity, snapshot.snapshotHash); await verifySources(); await assertSnapshot(identity, snapshot.snapshotHash);
+  return units;
+}
+
+export async function finalizeD2PagesBarrier(identity: D2RunIdentity, snapshot: D2InputSnapshot, verifySources: () => Promise<void> = async () => undefined): Promise<D2PagesManifest | null> {
+  const units = await findReusableD2PagesUnits(identity, snapshot, verifySources);
+  if (units.length !== snapshot.selection.writePageIds.length) return null;
   await assertSnapshot(identity, snapshot.snapshotHash); await verifySources(); await assertSnapshot(identity, snapshot.snapshotHash);
   for (const unit of units) {
     const dependency = await assertD2PagesDependencies(identity, snapshot, unit.pageId, verifySources);

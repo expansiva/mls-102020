@@ -1,0 +1,70 @@
+{
+  "invocation": "local deterministic preflight for @@agentDefsL2 agendaClinica",
+  "snapshot": {
+    "hash": "sha256:01637ed7a51bec8304e42d31e80a0918f98e5caeceadf9f1ea3cf314a3abf8ac",
+    "counts": {
+      "pages": 5,
+      "endpoints": 19,
+      "usecases": 13,
+      "destinations": 20,
+      "materializationItems": 15
+    },
+    "pages": [
+      {
+        "pageId": "cadastro_profissional",
+        "status": "toCreate",
+        "endpoints": 3
+      },
+      {
+        "pageId": "cadastro_recepcionista",
+        "status": "toCreate",
+        "endpoints": 6
+      },
+      {
+        "pageId": "consultas_profissional",
+        "status": "toCreate",
+        "endpoints": 2
+      },
+      {
+        "pageId": "consultas_recepcionista",
+        "status": "toCreate",
+        "endpoints": 6
+      },
+      {
+        "pageId": "pacientes",
+        "status": "toCreate",
+        "endpoints": 2
+      }
+    ]
+  },
+  "phases": {
+    "input20": {
+      "status": "approved"
+    },
+    "contracts30": {
+      "status": "approved",
+      "units": 5
+    },
+    "shared40": {
+      "status": "not-run",
+      "reason": "live LLM run belongs to supervisor after review"
+    },
+    "pages50": {
+      "status": "not-run",
+      "reason": "live LLM run belongs to supervisor after review"
+    },
+    "finalize60": {
+      "status": "not-run",
+      "reason": "live LLM run belongs to supervisor after review"
+    }
+  },
+  "previousLiveRun": {
+    "taskId": "20260922033113.1001",
+    "status": "failed-before-source-fix",
+    "cost": 0
+  },
+  "nextLiveRun": {
+    "owner": "supervisor L2",
+    "status": "pending-review"
+  }
+}

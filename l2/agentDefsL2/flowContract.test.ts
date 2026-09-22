@@ -86,6 +86,21 @@ void test('flow declares bounded workers, repairs, limits and progress counters'
   }
 });
 
+void test('completed coordinator reuse re-emits the anchor that releases the next phase', () => {
+  for (const expected of [
+    { step: 'shared40', next: 'pages50', coordinator: 'shared40/agentD2Shared.ts', closer: 'shared-page/agentD2SharedPage.ts' },
+    { step: 'pages50', next: 'finalize60', coordinator: 'pages50/agentD2Pages.ts', closer: 'pages-page/agentD2PagesPage.ts' },
+  ]) {
+    const anchor = `${expected.step}-done`;
+    assert.deepEqual(D2_STEP_DEPENDS_ON[expected.next as keyof typeof D2_STEP_DEPENDS_ON], [anchor]);
+    const coordinator = readFileSync(path.join(HERE, 'steps', expected.coordinator), 'utf8');
+    const reuse = coordinator.match(/if \(complete\) return \[([\s\S]*?)\n    \];/)?.[1] || '';
+    assert.match(reuse, new RegExp(`d2Result\\([\\s\\S]*?'${anchor}'\\)`), `${expected.step} reuse must emit ${anchor}`);
+    const closer = readFileSync(path.join(HERE, 'steps', expected.closer), 'utf8');
+    assert.match(closer, new RegExp(`d2Result\\([\\s\\S]*?'${anchor}'\\)`), `${expected.step} normal close must emit ${anchor}`);
+  }
+});
+
 void test('all referenced JSON schemas are versioned and strict', () => {
   for (const name of ['invocationV1.json', 'pipelineV1.json', 'inputV1.json', 'inputReportV1.json', 'sharedJudgmentV1.json', 'pagesJudgmentV1.json']) {
     const schema = JSON.parse(readFileSync(path.join(HERE, 'schemas', name), 'utf8')) as Record<string, unknown>;

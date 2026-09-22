@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "2026-09-21-agent-defs-l2-finalize-v1",
+  "project": 102047,
+  "module": "agendaClinica",
+  "artifacts": [
+    {
+      "pageId": "cadastro_profissional",
+      "kind": "contract",
+      "path": "l2/agendaClinica/web/contracts/cadastro_profissional.defs.ts",
+      "sha256": "sha256:3ead5d368fbce24db9aa9fec533abddc4a2606b5d4c03dc7b7e0594d045a6ce7"
+    },
+    {
+      "pageId": "cadastro_recepcionista",
+      "kind": "contract",
+      "path": "l2/agendaClinica/web/contracts/cadastro_recepcionista.defs.ts",
+      "sha256": "sha256:bb2ab37ecdf0e8cb5bf634955c0e45d5a88b0f5c7c3f754fcf914fd56dbc1cbf"
+    },
+    {
+      "pageId": "consultas_profissional",
+      "kind": "contract",
+      "path": "l2/agendaClinica/web/contracts/consultas_profissional.defs.ts",
+      "sha256": "sha256:511f24c3844f253f4833550c1b5a735a42046ead347b193f2f46c085567e9389"
+    },
+    {
+      "pageId": "consultas_recepcionista",
+      "kind": "contract",
+      "path": "l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts",
+      "sha256": "sha256:06c053bcb7c16a3f8a23327df446f2fad96498fd3650a3e359917730a6c0543f"
+    },
+    {
+      "pageId": "pacientes",
+      "kind": "contract",
+      "path": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+      "sha256": "sha256:95048d3836ce0076d9c8a82c31b0d445defddd22aa54622f1715c1b0ecf6b8b9"
+    },
+    {
+      "pageId": "cadastro_profissional",
+      "kind": "desktopPage",
+      "path": "l2/agendaClinica/web/desktop/page11/cadastro_profissional.defs.ts",
+      "sha256": "sha256:8329c5e9d574db62590bc596ff73ebcd5a91355f2168e161ff68eb890af8789c"
+    },
+    {
+      "pageId": "cadastro_recepcionista",
+      "kind": "desktopPage",
+      "path": "l2/agendaClinica/web/desktop/page11/cadastro_recepcionista.defs.ts",
+      "sha256": "sha256:4954ae1e36f92f62833ed2c99501a2f5c28e69956402002b99e7114a0d80bc09"
+    },
+    {
+      "pageId": "consultas_profissional",
+      "kind": "desktopPage",
+      "path": "l2/agendaClinica/web/desktop/page11/consultas_profissional.defs.ts",
+      "sha256": "sha256:c29c4d5bc7d5825621dcab1850b15caaa4e5a658a1ace558252fc21358252ea9"
+    },
+    {
+      "pageId": "consultas_recepcionista",
+      "kind": "desktopPage",
+      "path": "l2/agendaClinica/web/desktop/page11/consultas_recepcionista.defs.ts",
+      "sha256": "sha256:cb62a089506eba9025f93e1140cf0bf9388691c2ad3916172ec8f4b1f02d35c6"
+    },
+    {
+      "pageId": "pacientes",
+      "kind": "desktopPage",
+      "path": "l2/agendaClinica/web/desktop/page11/pacientes.defs.ts",
+      "sha256": "sha256:2aa2ed39a065a7e3046ef9079b60a5eb5439792db4246b03bc26a24af2c67272"
+    },
+    {
+      "pageId": "cadastro_profissional",
+      "kind": "mobilePage",
+      "path": "l2/agendaClinica/web/mobile/page11/cadastro_profissional.defs.ts",
+      "sha256": "sha256:770ead5023ef3e975a6dbb641e51efc01ae35e29b1cca65e6a5fcb31aefb184c"
+    },
+    {
+      "pageId": "cadastro_recepcionista",
+      "kind": "mobilePage",
+      "path": "l2/agendaClinica/web/mobile/page11/cadastro_recepcionista.defs.ts",
+      "sha256": "sha256:838347f5b29eba1f8e20b4442f4f01395cb12a22b4ad0ebeb1fbd4694152b811"
+    },
+    {
+      "pageId": "consultas_profissional",
+      "kind": "mobilePage",
+      "path": "l2/agendaClinica/web/mobile/page11/consultas_profissional.defs.ts",
+      "sha256": "sha256:4b37d95e3e0c4949a361e0414bbdee5f6d429aedd9925b92ed20dc3411a63626"
+    },
+    {
+      "pageId": "consultas_recepcionista",
+      "kind": "mobilePage",
+      "path": "l2/agendaClinica/web/mobile/page11/consultas_recepcionista.defs.ts",
+      "sha256": "sha256:8d0f7d662ecceff4ad79f7b8e72fe5cf854bd8614fe514dee7d05d46abecba50"
+    },
+    {
+      "pageId": "pacientes",
+      "kind": "mobilePage",
+      "path": "l2/agendaClinica/web/mobile/page11/pacientes.defs.ts",
+      "sha256": "sha256:1d4c0ab64cce91a83037e0517c8e4307ddff93fbaba648956a95cba6cc7d0272"
+    },
+    {
+      "pageId": "cadastro_profissional",
+      "kind": "shared",
+      "path": "l2/agendaClinica/web/shared/cadastro_profissional.defs.ts",
+      "sha256": "sha256:c67be8b6c4aa5fb7bcd0c4647020b99cab03ee94af8fbc0e97c76ed5c81d703a"
+    },
+    {
+      "pageId": "cadastro_recepcionista",
+      "kind": "shared",
+      "path": "l2/agendaClinica/web/shared/cadastro_recepcionista.defs.ts",
+      "sha256": "sha256:305c8823d6af28a5fd235ccdb965ff814ac0bc968992dcd2a6426fa01cb9bda1"
+    },
+    {
+      "pageId": "consultas_profissional",
+      "kind": "shared",
+      "path": "l2/agendaClinica/web/shared/consultas_profissional.defs.ts",
+      "sha256": "sha256:341a006daf4162f642f245e9be203ae77d953072b6d71c6b404d8d1b218dd586"
+    },
+    {
+      "pageId": "consultas_recepcionista",
+      "kind": "shared",
+      "path": "l2/agendaClinica/web/shared/consultas_recepcionista.defs.ts",
+      "sha256": "sha256:5e36e304c859a6db43c843bf83c8140126e3df3f28df7edb237c482f58ca5b34"
+    },
+    {
+      "pageId": "pacientes",
+      "kind": "shared",
+      "path": "l2/agendaClinica/web/shared/pacientes.defs.ts",
+      "sha256": "sha256:e5a248e75b567469f06492f7124a3b7ea10ae6e26dc9daeb01a68b4a69a078d4"
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "2026-09-21-agent-defs-l2-pages-v1",
+  "project": 102047,
+  "module": "agendaClinica",
+  "status": "approved",
+  "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+  "units": [
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-pages-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "cadastro_profissional",
+      "status": "approved",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "sharedHash": "sha256:c67be8b6c4aa5fb7bcd0c4647020b99cab03ee94af8fbc0e97c76ed5c81d703a",
+      "sourceHashes": {
+        "desktop": "sha256:8329c5e9d574db62590bc596ff73ebcd5a91355f2168e161ff68eb890af8789c",
+        "mobile": "sha256:770ead5023ef3e975a6dbb641e51efc01ae35e29b1cca65e6a5fcb31aefb184c"
+      },
+      "artifactPaths": {
+        "desktop": "l2/agendaClinica/web/desktop/page11/cadastro_profissional.defs.ts",
+        "mobile": "l2/agendaClinica/web/mobile/page11/cadastro_profissional.defs.ts"
+      },
+      "pipelineItemIds": {
+        "desktop": "cadastro_profissional__desktop__page11",
+        "mobile": "cadastro_profissional__mobile__page11"
+      },
+      "attempts": 2
+    },
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-pages-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "cadastro_recepcionista",
+      "status": "approved",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "sharedHash": "sha256:305c8823d6af28a5fd235ccdb965ff814ac0bc968992dcd2a6426fa01cb9bda1",
+      "sourceHashes": {
+        "desktop": "sha256:4954ae1e36f92f62833ed2c99501a2f5c28e69956402002b99e7114a0d80bc09",
+        "mobile": "sha256:838347f5b29eba1f8e20b4442f4f01395cb12a22b4ad0ebeb1fbd4694152b811"
+      },
+      "artifactPaths": {
+        "desktop": "l2/agendaClinica/web/desktop/page11/cadastro_recepcionista.defs.ts",
+        "mobile": "l2/agendaClinica/web/mobile/page11/cadastro_recepcionista.defs.ts"
+      },
+      "pipelineItemIds": {
+        "desktop": "cadastro_recepcionista__desktop__page11",
+        "mobile": "cadastro_recepcionista__mobile__page11"
+      },
+      "attempts": 1
+    },
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-pages-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "consultas_profissional",
+      "status": "approved",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "sharedHash": "sha256:341a006daf4162f642f245e9be203ae77d953072b6d71c6b404d8d1b218dd586",
+      "sourceHashes": {
+        "desktop": "sha256:c29c4d5bc7d5825621dcab1850b15caaa4e5a658a1ace558252fc21358252ea9",
+        "mobile": "sha256:4b37d95e3e0c4949a361e0414bbdee5f6d429aedd9925b92ed20dc3411a63626"
+      },
+      "artifactPaths": {
+        "desktop": "l2/agendaClinica/web/desktop/page11/consultas_profissional.defs.ts",
+        "mobile": "l2/agendaClinica/web/mobile/page11/consultas_profissional.defs.ts"
+      },
+      "pipelineItemIds": {
+        "desktop": "consultas_profissional__desktop__page11",
+        "mobile": "consultas_profissional__mobile__page11"
+      },
+      "attempts": 1
+    },
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-pages-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "consultas_recepcionista",
+      "status": "approved",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "sharedHash": "sha256:5e36e304c859a6db43c843bf83c8140126e3df3f28df7edb237c482f58ca5b34",
+      "sourceHashes": {
+        "desktop": "sha256:cb62a089506eba9025f93e1140cf0bf9388691c2ad3916172ec8f4b1f02d35c6",
+        "mobile": "sha256:8d0f7d662ecceff4ad79f7b8e72fe5cf854bd8614fe514dee7d05d46abecba50"
+      },
+      "artifactPaths": {
+        "desktop": "l2/agendaClinica/web/desktop/page11/consultas_recepcionista.defs.ts",
+        "mobile": "l2/agendaClinica/web/mobile/page11/consultas_recepcionista.defs.ts"
+      },
+      "pipelineItemIds": {
+        "desktop": "consultas_recepcionista__desktop__page11",
+        "mobile": "consultas_recepcionista__mobile__page11"
+      },
+      "attempts": 1
+    },
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-pages-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "pacientes",
+      "status": "approved",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "sharedHash": "sha256:e5a248e75b567469f06492f7124a3b7ea10ae6e26dc9daeb01a68b4a69a078d4",
+      "sourceHashes": {
+        "desktop": "sha256:2aa2ed39a065a7e3046ef9079b60a5eb5439792db4246b03bc26a24af2c67272",
+        "mobile": "sha256:1d4c0ab64cce91a83037e0517c8e4307ddff93fbaba648956a95cba6cc7d0272"
+      },
+      "artifactPaths": {
+        "desktop": "l2/agendaClinica/web/desktop/page11/pacientes.defs.ts",
+        "mobile": "l2/agendaClinica/web/mobile/page11/pacientes.defs.ts"
+      },
+      "pipelineItemIds": {
+        "desktop": "pacientes__desktop__page11",
+        "mobile": "pacientes__mobile__page11"
+      },
+      "attempts": 1
+    }
+  ]
+}

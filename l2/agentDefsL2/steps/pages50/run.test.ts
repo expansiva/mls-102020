@@ -8,7 +8,7 @@ import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
 import { D2_SHARED_VERSION } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { d2SharedFile, d2SharedManifestFile } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
 import { d2PageFile, d2PagesManifestFile, d2PagesResultFile, readD2PagesManifest } from '/_102020_/l2/agentDefsL2/steps/pages50/io.js';
-import { finalizeD2PagesBarrier, persistD2PagesUnit } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { finalizeD2PagesBarrier, findReusableD2PagesUnits, persistD2PagesUnit } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const IDENTITY: D2RunIdentity = { project: 102047, module: 'fixture' };
 const PAGES = ['alpha', 'beta'];
@@ -40,13 +40,30 @@ void test('one failed page leaves its approved sibling untouched and barrier wai
   assert.equal(host.writes.filter(key => key === alphaDesktop || key === alphaMobile).length, alphaWrites);
 });
 
-async function installHost() {
+void test('partial resume reuses four valid pages and redispatches missing or corrupted units', async () => {
+  const pages = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'];
+  const host = await installHost(pages);
+  for (const pageId of pages.slice(0, 4)) {
+    await persistD2PagesUnit(IDENTITY, host.snapshot, pageId, sources(pageId), [`${pageId}__desktop__page11`, `${pageId}__mobile__page11`], 1);
+  }
+
+  const reusable = await findReusableD2PagesUnits(IDENTITY, host.snapshot);
+  assert.deepEqual(reusable.map(unit => unit.pageId), ['alpha', 'beta', 'delta', 'gamma']);
+  assert.deepEqual(pages.filter(pageId => !reusable.some(unit => unit.pageId === pageId)), ['epsilon']);
+  host.files[keyOf(d2PageFile(IDENTITY, 'beta', 'mobile'))].content = 'corrupted mobile artifact';
+  const afterCorruption = await findReusableD2PagesUnits(IDENTITY, host.snapshot);
+  assert.deepEqual(afterCorruption.map(unit => unit.pageId), ['alpha', 'delta', 'gamma']);
+  assert.deepEqual(pages.filter(pageId => !afterCorruption.some(unit => unit.pageId === pageId)), ['beta', 'epsilon']);
+  assert.equal(await finalizeD2PagesBarrier(IDENTITY, host.snapshot), null);
+});
+
+async function installHost(pages = PAGES) {
   const files: Record<string, Stored> = {}; const writes: string[] = []; const state = { failKey: '' };
-  const snapshot: D2InputSnapshot = { ...IDENTITY, schemaVersion: D2_INPUT_VERSION, device: 'web', snapshotHash: `sha256:${'a'.repeat(64)}`, releaseIdentity: null, sources: [], l4: {} as D2InputSnapshot['l4'], selection: { pages: [], writePageIds: PAGES, preservePageIds: [], remove: [], counts: { pages: 2, endpoints: 0, usecases: 0, destinations: 4, materializationItems: 4 } }, normalizations: [], problems: [] };
+  const snapshot: D2InputSnapshot = { ...IDENTITY, schemaVersion: D2_INPUT_VERSION, device: 'web', snapshotHash: `sha256:${'a'.repeat(64)}`, releaseIdentity: null, sources: [], l4: {} as D2InputSnapshot['l4'], selection: { pages: [], writePageIds: pages, preservePageIds: [], remove: [], counts: { pages: pages.length, endpoints: 0, usecases: 0, destinations: pages.length * 2, materializationItems: pages.length * 2 } }, normalizations: [], problems: [] };
   const seed = (info: Info, content = '') => { const file: Stored = { ...info, status: 'changed', content, getContent: async () => file.content }; files[keyOf(info)] = file; return file; };
   seed(d2InputFile(IDENTITY), JSON.stringify(snapshot));
   const units = [];
-  for (const pageId of PAGES) { const source = `export const definition = {"pageId":"${pageId}"} as const;\nexport const pipeline = {} as const;\n`; const sourceHash = await sha256Text(source); seed(d2SharedFile(IDENTITY, pageId), source); units.push({ schemaVersion: D2_SHARED_VERSION, ...IDENTITY, pageId, status: 'approved', snapshotHash: snapshot.snapshotHash, contractHash: 'fixture', sourceHash, artifactPath: `l2/fixture/web/shared/${pageId}.defs.ts`, pipelineItemId: `${pageId}__l2_shared`, attempts: 1 }); for (const device of ['desktop', 'mobile'] as const) seed(d2PageFile(IDENTITY, pageId, device)); seed(d2PagesResultFile(IDENTITY, pageId)); }
+  for (const pageId of pages) { const source = `export const definition = {"pageId":"${pageId}"} as const;\nexport const pipeline = {} as const;\n`; const sourceHash = await sha256Text(source); seed(d2SharedFile(IDENTITY, pageId), source); units.push({ schemaVersion: D2_SHARED_VERSION, ...IDENTITY, pageId, status: 'approved', snapshotHash: snapshot.snapshotHash, contractHash: 'fixture', sourceHash, artifactPath: `l2/fixture/web/shared/${pageId}.defs.ts`, pipelineItemId: `${pageId}__l2_shared`, attempts: 1 }); for (const device of ['desktop', 'mobile'] as const) seed(d2PageFile(IDENTITY, pageId, device)); seed(d2PagesResultFile(IDENTITY, pageId)); }
   seed(d2SharedManifestFile(IDENTITY), JSON.stringify({ schemaVersion: D2_SHARED_VERSION, ...IDENTITY, status: 'approved', snapshotHash: snapshot.snapshotHash, units })); seed(d2PagesManifestFile(IDENTITY));
   (globalThis as unknown as { mls: unknown }).mls = { actualProject: IDENTITY.project, stor: { files, getKeyToFile: keyOf, localStor: { setContent: async (file: Stored, value: { content: string }) => { const key = keyOf(file); if (key === state.failKey) throw new Error('simulated write failure'); file.content = value.content; writes.push(key); } } } };
   return { snapshot, files, writes, get failKey() { return state.failKey; }, set failKey(value: string) { state.failKey = value; } };

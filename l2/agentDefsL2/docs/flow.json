@@ -57,9 +57,9 @@
     "l2/agentDefsL2/steps/entry10/agentD2Entry.ts",
     "l2/agentDefsL2/steps/input20/agentD2Input.ts",
     "l2/agentDefsL2/steps/shared40/agentD2Shared.ts",
-    "l2/agentDefsL2/steps/shared40/agentD2SharedPage.ts",
+    "l2/agentDefsL2/steps/shared-page/agentD2SharedPage.ts",
     "l2/agentDefsL2/steps/pages50/agentD2Pages.ts",
-    "l2/agentDefsL2/steps/pages50/agentD2PagesPage.ts"
+    "l2/agentDefsL2/steps/pages-page/agentD2PagesPage.ts"
   ],
   "artifacts": {
     "contract": "l2/{module}/web/contracts/{pageId}.defs.ts",

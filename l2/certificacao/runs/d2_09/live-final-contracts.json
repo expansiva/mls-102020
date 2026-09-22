@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "2026-09-21-agent-defs-l2-contracts-v1",
+  "project": 102047,
+  "module": "agendaClinica",
+  "status": "approved",
+  "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+  "units": [
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-contracts-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "cadastro_profissional",
+      "mode": "create",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "artifactPath": "l2/agendaClinica/web/contracts/cadastro_profissional.defs.ts",
+      "sourceHash": "sha256:3ead5d368fbce24db9aa9fec533abddc4a2606b5d4c03dc7b7e0594d045a6ce7",
+      "routes": [
+        "agendaClinica.cadastro_profissional.cmdCreateProfissional",
+        "agendaClinica.cadastro_profissional.cmdUpdateProfissional",
+        "agendaClinica.cadastro_profissional.qryListProfissional"
+      ],
+      "normalizations": [],
+      "status": "approved"
+    },
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-contracts-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "cadastro_recepcionista",
+      "mode": "create",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "artifactPath": "l2/agendaClinica/web/contracts/cadastro_recepcionista.defs.ts",
+      "sourceHash": "sha256:bb2ab37ecdf0e8cb5bf634955c0e45d5a88b0f5c7c3f754fcf914fd56dbc1cbf",
+      "routes": [
+        "agendaClinica.cadastro_recepcionista.cmdCreateProfissional",
+        "agendaClinica.cadastro_recepcionista.cmdCreateRecepcionista",
+        "agendaClinica.cadastro_recepcionista.cmdUpdateProfissional",
+        "agendaClinica.cadastro_recepcionista.cmdUpdateRecepcionista",
+        "agendaClinica.cadastro_recepcionista.qryListProfissional",
+        "agendaClinica.cadastro_recepcionista.qryListRecepcionista"
+      ],
+      "normalizations": [],
+      "status": "approved"
+    },
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-contracts-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "consultas_profissional",
+      "mode": "create",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "artifactPath": "l2/agendaClinica/web/contracts/consultas_profissional.defs.ts",
+      "sourceHash": "sha256:511f24c3844f253f4833550c1b5a735a42046ead347b193f2f46c085567e9389",
+      "routes": [
+        "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
+        "agendaClinica.consultas_profissional.qryListConsulta"
+      ],
+      "normalizations": [
+        {
+          "code": "transition-payload-qualified",
+          "pageId": "consultas_profissional",
+          "route": "agendaClinica.consultas_profissional.cmdRegistrarAtendimento",
+          "detail": "details.attendanceNote -> Consulta.details.attendanceNote"
+        }
+      ],
+      "status": "approved"
+    },
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-contracts-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "consultas_recepcionista",
+      "mode": "create",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "artifactPath": "l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts",
+      "sourceHash": "sha256:06c053bcb7c16a3f8a23327df446f2fad96498fd3650a3e359917730a6c0543f",
+      "routes": [
+        "agendaClinica.consultas_recepcionista.cmdConfirmarConsulta",
+        "agendaClinica.consultas_recepcionista.cmdCreateConsulta",
+        "agendaClinica.consultas_recepcionista.cmdRegistrarFalta",
+        "agendaClinica.consultas_recepcionista.qryListConsulta",
+        "agendaClinica.consultas_recepcionista.qryListPaciente",
+        "agendaClinica.consultas_recepcionista.qryListProfissional"
+      ],
+      "normalizations": [],
+      "status": "approved"
+    },
+    {
+      "schemaVersion": "2026-09-21-agent-defs-l2-contracts-v1",
+      "project": 102047,
+      "module": "agendaClinica",
+      "pageId": "pacientes",
+      "mode": "create",
+      "snapshotHash": "sha256:915581ad163a4d66fb7db01809fd44de0f094296bce50919851d6d15b85632d3",
+      "artifactPath": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+      "sourceHash": "sha256:95048d3836ce0076d9c8a82c31b0d445defddd22aa54622f1715c1b0ecf6b8b9",
+      "routes": [
+        "agendaClinica.pacientes.cmdCreatePaciente",
+        "agendaClinica.pacientes.qryListPaciente"
+      ],
+      "normalizations": [],
+      "status": "approved"
+    }
+  ]
+}

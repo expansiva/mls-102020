@@ -43,11 +43,8 @@ export async function finalizeD2(identity: D2RunIdentity, port: D2FinalizePort =
   const idsByDoneStatus = snapshot.selection.pages.filter(page => page.status === 'done').map(page => page.pageId).sort();
   const allSelectionIds = [...snapshot.selection.pages.map(page => page.pageId), ...snapshot.selection.remove.map(page => page.pageId)];
   if (idsByWriteStatus.join('\0') !== writeIds.join('\0') || idsByDoneStatus.join('\0') !== preserveIds.join('\0') || new Set(allSelectionIds).size !== allSelectionIds.length) pending.push('effort status and selection sets are inconsistent');
-  const counts = snapshot.selection.counts;
-  if (counts.pages !== snapshot.selection.pages.length || counts.destinations !== snapshot.selection.pages.length * 4
-    || counts.materializationItems !== snapshot.selection.pages.length * 3
-    || counts.endpoints !== snapshot.selection.pages.reduce((sum, page) => sum + page.endpoints.length, 0)
-    || counts.usecases !== snapshot.selection.pages.reduce((sum, page) => sum + page.usecases.length, 0)) pending.push('input selection counts are inconsistent');
+  const countProblems = validateD2SelectionCounts(snapshot);
+  if (countProblems.length) pending.push(`input selection counts are inconsistent: ${countProblems.join('; ')}`);
   if (!contracts || contracts.schemaVersion !== D2_CONTRACTS_VERSION || contracts.status !== 'approved' || contracts.snapshotHash !== snapshot.snapshotHash || contracts.units.some(unit => unit.status !== 'approved' || unit.schemaVersion !== D2_CONTRACTS_VERSION) || contracts.units.map(unit => unit.pageId).sort().join('\0') !== expectedWrite) pending.push('contracts30 barrier does not match the exact write set');
   if (!shared || shared.schemaVersion !== D2_SHARED_VERSION || shared.status !== 'approved' || shared.snapshotHash !== snapshot.snapshotHash || shared.units.some(unit => unit.status !== 'approved' || unit.schemaVersion !== D2_SHARED_VERSION) || shared.units.map(unit => unit.pageId).sort().join('\0') !== expectedWrite) pending.push('shared40 barrier does not match the exact write set');
   if (!pages || pages.schemaVersion !== D2_PAGES_VERSION || pages.status !== 'approved' || pages.snapshotHash !== snapshot.snapshotHash || pages.units.some(unit => unit.status !== 'approved' || unit.schemaVersion !== D2_PAGES_VERSION) || pages.units.map(unit => unit.pageId).sort().join('\0') !== expectedWrite) pending.push('pages50 barrier does not match the exact write set');
@@ -117,6 +114,45 @@ export async function finalizeD2(identity: D2RunIdentity, port: D2FinalizePort =
   await markD2Complete(identity, [...report.artifactPaths, displayPath(d2FinalizeReportFile(identity))], snapshot.snapshotHash);
   return { report, writes, deletes: removals.length };
 }
+
+export function validateD2SelectionCounts(snapshot: D2InputSnapshot): string[] {
+  const problems: string[] = [];
+  const routes = new Set<string>();
+  const usecases = new Map<string, string>();
+  const usecaseRefs = new Set<string>();
+  for (const page of snapshot.selection.pages) {
+    const pageUsecases = new Set<string>();
+    for (const usecase of page.usecases) {
+      const usecaseId = fieldId(usecase.usecaseId);
+      if (!usecaseId) { problems.push(`usecaseId missing in ${page.pageId}`); continue; }
+      if (pageUsecases.has(usecaseId)) problems.push(`usecaseId duplicated in ${page.pageId}: ${usecaseId}`);
+      pageUsecases.add(usecaseId);
+      const encoded = JSON.stringify(usecase);
+      const prior = usecases.get(usecaseId);
+      if (prior !== undefined && prior !== encoded) problems.push(`usecaseId has conflicting definitions: ${usecaseId}`);
+      else usecases.set(usecaseId, encoded);
+    }
+    for (const endpoint of page.endpoints) {
+      const route = fieldId(endpoint.route);
+      const usecaseRef = fieldId(endpoint.usecaseRef);
+      if (!route) problems.push(`endpoint route missing in ${page.pageId}`);
+      else if (routes.has(route)) problems.push(`endpoint route duplicated: ${route}`);
+      else routes.add(route);
+      if (!usecaseRef) problems.push(`endpoint usecaseRef missing in ${page.pageId}${route ? ` (${route})` : ''}`);
+      else usecaseRefs.add(usecaseRef);
+    }
+  }
+  for (const usecaseRef of usecaseRefs) if (!usecases.has(usecaseRef)) problems.push(`endpoint references missing usecaseId: ${usecaseRef}`);
+  const counts = snapshot.selection.counts;
+  if (counts.pages !== snapshot.selection.pages.length) problems.push(`pages=${counts.pages}, expected ${snapshot.selection.pages.length}`);
+  if (counts.destinations !== snapshot.selection.pages.length * 4) problems.push(`destinations=${counts.destinations}, expected ${snapshot.selection.pages.length * 4}`);
+  if (counts.materializationItems !== snapshot.selection.pages.length * 3) problems.push(`materializationItems=${counts.materializationItems}, expected ${snapshot.selection.pages.length * 3}`);
+  if (counts.endpoints !== routes.size) problems.push(`endpoints=${counts.endpoints}, expected ${routes.size} unique routes`);
+  if (counts.usecases !== usecases.size) problems.push(`usecases=${counts.usecases}, expected ${usecases.size} unique usecaseIds`);
+  return [...new Set(problems)].sort();
+}
+
+function fieldId(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
 
 function hashFromManifests(kind: D2FinalSource['kind'], path: string, pageId: string, contracts: Awaited<ReturnType<typeof readD2ContractsManifest>>, shared: Awaited<ReturnType<typeof readD2SharedManifest>>, pages: Awaited<ReturnType<typeof readD2PagesManifest>>): string {
   if (kind === 'contract') { const unit = contracts?.units.find(value => value.pageId === pageId); return unit?.artifactPath === path ? unit.sourceHash : ''; }

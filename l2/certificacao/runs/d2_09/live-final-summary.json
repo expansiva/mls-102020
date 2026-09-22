@@ -1,0 +1,49 @@
+{
+  "schemaVersion": "2026-09-22-d2-09-live-final-v1",
+  "target": {
+    "project": 102047,
+    "module": "agendaClinica",
+    "baseCommit": "a2f929ed8778c9d8240ac445d6206d401434fdc9",
+    "authorizedConsultaPatchSha256": "68105c96d7a6fa7531000fd450b8469fbc025bbc0e3204ac69841f223c85b421",
+    "pages": 5,
+    "endpoints": 19,
+    "usecases": 13,
+    "definitions": 20,
+    "materializationItems": 15
+  },
+  "completion": {
+    "taskId": "20260922095820.1001",
+    "status": "done",
+    "cost": 0,
+    "reportStatus": "complete",
+    "pending": []
+  },
+  "noop": {
+    "taskId": "20260922095854.1001",
+    "status": "done",
+    "cost": 0,
+    "llmCalls": 0,
+    "writeTraceLines": 0,
+    "definitionHashesEqual": true,
+    "definitionMtimesEqual": true,
+    "definitionCount": 20
+  },
+  "recoverySequence": {
+    "llmWorkerExecutions": 18,
+    "totalObservedCost": 2.1712,
+    "partialResume": "four approved pages were reused and only consultas_profissional was redispatched",
+    "repairLimit": "one repair per unit",
+    "externalPause": "one consultas_profissional repair paused after provider/tool-schema failure; the next task reused all approved units"
+  },
+  "qualityGates": {
+    "focusedTests": "green",
+    "fullRunnerNamedFailures": "unchanged from baseline: 12 external previewTextEditor tests",
+    "typescript": "one new external diagnostic in mls-102035/l2/newRelease/helpers/reviewRunWorker.test.ts; zero new diagnostics in changed d2_09 paths",
+    "diffCheck": "clean"
+  },
+  "limits": {
+    "materializationExecuted": false,
+    "visualDesignApproved": false,
+    "pushPerformed": false
+  }
+}

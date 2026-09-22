@@ -1,0 +1,23 @@
+{
+  "supersededByAuthorizedSourcePatch": true,
+  "command": "collabmsg --project 102047 --thread 20260515174326.1000 send '@@agentDefsL2 agendaClinica' --max-cost 6",
+  "cwd": "neutral folder",
+  "isolatedMlsBase": "/private/tmp/d2_09_mls_base",
+  "pinnedAppCommit": "a2f929ed",
+  "exitCode": 1,
+  "taskId": "20260922033113.1001",
+  "messageId": "20260515174326.1000/20260922033113.1000",
+  "taskStatus": "failed-before-source-fix",
+  "cost": 0,
+  "diagnostic": "D2_CONTRACT_TRANSITION_PAYLOAD_MISSING on the three Consulta transitions",
+  "messagesSent": 1,
+  "tasksCreated": 1,
+  "evidence": [
+    "live.task.json",
+    "live.trace.log",
+    "live.pipeline.json",
+    "live.input.json",
+    "live.inputReport.json"
+  ],
+  "nextRunOwner": "supervisor L2"
+}

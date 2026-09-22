@@ -1,0 +1,44 @@
+{
+  "commands": [
+    "rtk proxy node_modules/.bin/tsc --noEmit",
+    "rtk proxy node scripts/run-tests.mjs 102020 l2"
+  ],
+  "tscExitCode": 2,
+  "tscNormalizedTupleCount": 240,
+  "recordedPreviousBaselineCount": 239,
+  "remeasuredCountDelta": 1,
+  "countsByProject": {
+    "mls-102020": 5,
+    "mls-102021": 3,
+    "mls-102025": 17,
+    "mls-102029": 6,
+    "mls-102033": 2,
+    "mls-102035": 74,
+    "mls-102039": 17,
+    "mls-102043": 22,
+    "mls-102046": 76,
+    "mls-102051": 1,
+    "mls-102052": 17
+  },
+  "agentDefsOrProofDiagnostics": [],
+  "comparisonLimit": "The prior 239 tuple list is not retained here. Current normalized tuples are complete in ts-tuples.json; zero diagnostics point to agentDefsL2 or this proof.",
+  "runnerExitCode": 1,
+  "runnerNamedFailureCount": 13,
+  "runnerNamedFailures": [
+    "a file already importing from ./index.defs is left untouched",
+    "a molecule in a HELPER method is found and swapped",
+    "a page migrated by the OLD relative-import build is still recognized as migrated",
+    "a tag written inside TypeScript is not markup and is not swapped",
+    "everything the element carries survives — only the NAME changes",
+    "find e content iguais a menos de espaçamento é erro, não substituição vazia",
+    "l4 fixtures are byte-for-byte copies of the real modules",
+    "mode \"all\" swaps every occurrence, wherever it lives",
+    "no file points at a document that exists only on one machine",
+    "the import follows the swap",
+    "the import of the old molecule STAYS while another occurrence still uses it",
+    "the occurrence decides WHICH one, across different helper methods",
+    "the two new imports are inserted right after the last existing import line, blank line before the class preserved"
+  ],
+  "runnerFiles": "192",
+  "runnerStubs": "12"
+}

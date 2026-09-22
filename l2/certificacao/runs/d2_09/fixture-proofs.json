@@ -1,0 +1,10 @@
+{
+  "limit": "No authorized live plan mutation or fault injection; isolated fixtures only.",
+  "partialMaintenance": [
+    "l2/agentDefsL2/steps/finalize60/finalize.test.ts"
+  ],
+  "interruptionAndResume": [
+    "l2/agentDefsL2/steps/pages50/run.test.ts",
+    "l2/agentDefsL2/steps/shared40/run.test.ts"
+  ]
+}

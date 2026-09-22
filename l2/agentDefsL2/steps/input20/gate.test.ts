@@ -64,7 +64,8 @@ function artifacts(kind: 'current' | 'historical'): D2InputArtifacts {
   for (const page of rows(needs.pages)) for (const item of [...rows(page.reads), ...rows(page.writes)]) {
     for (const source of strings(item.from)) { const match = /^journey:([^/]+)/.exec(source); if (match) journeyIds.add(match[1]); }
   }
-  const journeys = Object.fromEntries([...journeyIds].map(journeyId => [journeyId, { schemaVersion: versions.journey, moduleName: IDENTITY.module, journeyId }]));
+  // Ns5JourneyArtifact has no moduleName; identity comes from its indexed journeyId and pinned path.
+  const journeys = Object.fromEntries([...journeyIds].map(journeyId => [journeyId, { schemaVersion: versions.journey, journeyId }]));
   const entities = Object.fromEntries([...entityIds].map(entityId => [entityId, { schemaVersion: versions.ontology, moduleName: IDENTITY.module, entityId }]));
   const defs = {
     module: { schemaVersion: versions.module, moduleName: IDENTITY.module },

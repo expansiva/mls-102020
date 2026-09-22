@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { D2InputSnapshot, D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { buildD2SharedPipeline } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { buildD2PagePipeline } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
@@ -7,7 +10,7 @@ import { renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.j
 import { renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { changedOutsideD2Scope, gateD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
 import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
-import { revalidateD2RemovalSet } from '/_102020_/l2/agentDefsL2/steps/finalize60/run.js';
+import { revalidateD2RemovalSet, validateD2SelectionCounts } from '/_102020_/l2/agentDefsL2/steps/finalize60/run.js';
 
 const moduleName = 'agendaClinica';
 const ids = ['agenda', 'cadastro', 'dashboard', 'prontuario', 'recepcao'];
@@ -67,6 +70,31 @@ test('remove preflight catches an edit and a new snapshot between scan and delet
   live = owned; snapshotHash = 'old';
   await assert.rejects(() => revalidateD2RemovalSet([{ path, info }], ownership, async () => live, verify, async () => { snapshotHash = 'new'; }), /STALE_RUN/);
   assert.equal(deletes, 0);
+});
+
+test('agendaClinica snapshot counts unique routes and usecaseIds and rejects illegible identities', () => {
+  const fixture = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../input20/fixtures/current/backend.json'), 'utf8')) as {
+    endpoints: Array<Record<string, unknown>>;
+    usecases: Array<Record<string, unknown>>;
+  };
+  const usecases = new Map(fixture.usecases.map(usecase => [String(usecase.usecaseId), usecase]));
+  const pageIds = [...new Set(fixture.endpoints.map(endpoint => String(endpoint.page)))].sort();
+  const pages = pageIds.map(pageId => {
+    const endpoints = fixture.endpoints.filter(endpoint => endpoint.page === pageId);
+    const refs = new Set(endpoints.map(endpoint => String(endpoint.usecaseRef)));
+    return { ...page(pageId), endpoints, usecases: [...refs].map(ref => usecases.get(ref)!) };
+  });
+  const agendaSnapshot = { ...snapshot, selection: { ...snapshot.selection, pages, writePageIds: pageIds,
+    counts: { pages: 5, endpoints: 19, usecases: 13, destinations: 20, materializationItems: 15 } } } as D2InputSnapshot;
+  assert.equal(pages.reduce((sum, item) => sum + item.usecases.length, 0), 19, 'page occurrences intentionally repeat usecases');
+  assert.deepEqual(validateD2SelectionCounts(agendaSnapshot), []);
+
+  const adulterated = structuredClone(agendaSnapshot);
+  adulterated.selection.pages[0].usecases[0].usecaseId = '';
+  adulterated.selection.pages[1].endpoints[0].route = String(adulterated.selection.pages[0].endpoints[0].route);
+  const problems = validateD2SelectionCounts(adulterated).join('; ');
+  assert.match(problems, /usecaseId missing/);
+  assert.match(problems, /endpoint route duplicated/);
 });
 
 function page(pageId: string): D2SelectedPage {
