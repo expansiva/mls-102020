@@ -90,8 +90,8 @@ export async function buildD2InputSnapshot(
 
   const journeyIds = uniqueIds(state, rows(journeyIndex.journeys), 'journeyId', 'l4/journeys/index.defs.ts');
   const entityIds = uniqueIds(state, rows(ontologyIndex.entities), 'entityId', 'l4/ontology/index.defs.ts');
-  validateResolvedFiles(state, identity, artifacts.journeys, journeyIds, 'journeyId', SUPPORTED.journey, 'l4/journeys');
-  validateResolvedFiles(state, identity, artifacts.entities, entityIds, 'entityId', SUPPORTED.ontology, 'l4/ontology');
+  validateResolvedFiles(state, identity, artifacts.journeys, journeyIds, 'journeyId', SUPPORTED.journey, 'l4/journeys', false);
+  validateResolvedFiles(state, identity, artifacts.entities, entityIds, 'entityId', SUPPORTED.ontology, 'l4/ontology', true);
 
   const menuScan = scanMenu(state, menu);
   const authority = expandAuthorities(state, menu, menuScan);
@@ -247,12 +247,12 @@ function resolvedL4(artifacts: D2InputArtifacts, journeyIds: string[], entityIds
   };
 }
 
-function validateResolvedFiles(state: GateState, identity: D2RunIdentity, values: Record<string, unknown>, expected: string[], idKey: string, version: string, folder: string): void {
+function validateResolvedFiles(state: GateState, identity: D2RunIdentity, values: Record<string, unknown>, expected: string[], idKey: string, version: string, folder: string, hasModuleIdentity: boolean): void {
   const actual = Object.keys(values).sort();
   if (actual.join('\0') !== [...expected].sort().join('\0')) error(state, 'INDEX_FILE_SET_MISMATCH', folder, 'resolved files do not equal index ids');
   for (const id of expected) {
     const value = rec(values[id]);
-    checkIdentity(state, value, identity.module, `${folder}/${id}.defs.ts`);
+    if (hasModuleIdentity) checkIdentity(state, value, identity.module, `${folder}/${id}.defs.ts`);
     checkVersion(state, value, version, `${folder}/${id}.defs.ts`);
     if (text(value[idKey]) !== id) error(state, 'INDEX_ID_MISMATCH', `${folder}/${id}.defs.ts`, `${idKey} does not match index id`);
   }
