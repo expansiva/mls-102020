@@ -1,7 +1,7 @@
 {
   "flowId": "agentDefsL2",
-  "schemaVersion": "2026-09-21-agent-defs-l2-flow-v2",
-  "status": "input20",
+  "schemaVersion": "2026-09-21-agent-defs-l2-flow-v3",
+  "status": "contracts30",
   "description": "Generate L2 definition sources from approved L4 and planner artifacts without materializing runtime files.",
   "invocation": {
     "message": "@@agentDefsL2 <lowerCamel>",
@@ -43,11 +43,13 @@
   },
   "agents": [
     { "name": "agentDefsL2", "visibility": "public", "role": "message entry, task-step entry and unavailable-step diagnostics" },
+    { "name": "agentD2Contracts", "visibility": "private", "role": "contracts30 deterministic per-page derivation, gate, persistence and hash barrier" },
     { "name": "agentD2Entry", "visibility": "private", "role": "entry10 deterministic worker" },
     { "name": "agentD2Input", "visibility": "private", "role": "input20 deterministic validation and snapshot worker" }
   ],
   "hookImports": [
     "l2/agentDefsL2/agentDefsL2.ts",
+    "l2/agentDefsL2/steps/contracts30/agentD2Contracts.ts",
     "l2/agentDefsL2/steps/entry10/agentD2Entry.ts",
     "l2/agentDefsL2/steps/input20/agentD2Input.ts"
   ],
@@ -82,13 +84,13 @@
     },
     {
       "id": "contracts30",
-      "agent": "agentDefsL2",
+      "agent": "agentD2Contracts",
       "kind": "deterministic-fanout",
-      "availability": "unavailable",
+      "availability": "available",
       "dependsOn": ["input20-done"],
       "doneAnchor": "contracts30-done",
       "inputs": ["input.json selected pages and exact backend routes"],
-      "outputs": ["web/contracts/{pageId}.defs.ts"],
+      "outputs": ["web/contracts/{pageId}.defs.ts", "pipeline/agentDefsL2/contracts30/results/{pageId}.json", "pipeline/agentDefsL2/contracts.json"],
       "goal": "Derive typed contracts without an LLM call."
     },
     {

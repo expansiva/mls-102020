@@ -43,7 +43,8 @@ void test('flow declares the six acyclic phases with inputs, outputs and honest 
   }
   assert.equal(FLOW.steps[0].availability, 'available');
   assert.equal(FLOW.steps[1].availability, 'available');
-  for (const step of FLOW.steps.slice(2)) assert.equal(step.availability, 'unavailable');
+  assert.equal(FLOW.steps[2].availability, 'available');
+  for (const step of FLOW.steps.slice(3)) assert.equal(step.availability, 'unavailable');
 });
 
 void test('flow references only existing agents and each step has its own maintenance folder', () => {
@@ -55,6 +56,7 @@ void test('flow references only existing agents and each step has its own mainte
   }
   assert.deepEqual(FLOW.agents, [
     { name: 'agentDefsL2', visibility: 'public', role: 'message entry, task-step entry and unavailable-step diagnostics' },
+    { name: 'agentD2Contracts', visibility: 'private', role: 'contracts30 deterministic per-page derivation, gate, persistence and hash barrier' },
     { name: 'agentD2Entry', visibility: 'private', role: 'entry10 deterministic worker' },
     { name: 'agentD2Input', visibility: 'private', role: 'input20 deterministic validation and snapshot worker' },
   ]);

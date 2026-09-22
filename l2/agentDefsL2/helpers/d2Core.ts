@@ -5,8 +5,9 @@ import { readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.
 export const D2_AGENT_NAME = 'agentDefsL2' as const;
 export const D2_ENTRY_AGENT_NAME = 'agentD2Entry' as const;
 export const D2_INPUT_AGENT_NAME = 'agentD2Input' as const;
+export const D2_CONTRACTS_AGENT_NAME = 'agentD2Contracts' as const;
 export const D2_FLOW_ID = 'agentDefsL2' as const;
-export const D2_FLOW_VERSION = '2026-09-21-agent-defs-l2-flow-v2' as const;
+export const D2_FLOW_VERSION = '2026-09-21-agent-defs-l2-flow-v3' as const;
 export const D2_PIPELINE_VERSION = '2026-09-21-agent-defs-l2-pipeline-v1' as const;
 
 export const D2_FLOW_STEP_IDS = [
@@ -155,7 +156,10 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity): ml
     stepTitle: D2_STEP_TITLES[stepId],
     status: dependsOn.length ? 'waiting_dependency' : 'waiting_human_input',
     nextSteps: [],
-    agentName: stepId === 'entry10' ? D2_ENTRY_AGENT_NAME : stepId === 'input20' ? D2_INPUT_AGENT_NAME : D2_AGENT_NAME,
+    agentName: stepId === 'entry10' ? D2_ENTRY_AGENT_NAME
+      : stepId === 'input20' ? D2_INPUT_AGENT_NAME
+        : stepId === 'contracts30' ? D2_CONTRACTS_AGENT_NAME
+          : D2_AGENT_NAME,
     prompt: JSON.stringify(identity),
     rags: [],
     planning: {
@@ -262,5 +266,5 @@ export async function markD2StepFailed(identity: D2RunIdentity, stepId: D2StepId
 export const D2_HELP = [
   'Usage: @@agentDefsL2 <lowerCamel>',
   'The module is explicit and the project comes from the current context.',
-  'Available now: entry10 and input20. contracts30 and later phases are declared but unavailable.',
+  'Available now: entry10, input20 and contracts30. shared40 and later phases are declared but unavailable.',
 ].join('\n');

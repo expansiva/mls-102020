@@ -6,10 +6,10 @@ Invocation: `@@agentDefsL2 <lowerCamel>` or `/help`. An existing task may add an
 JSON args `{ "project": 102047, "module": "agendaClinica" }`. Both forms plant the same six-step
 plan; only the message entry creates an `add-message-ai` intent.
 
-Current delivery implements `entry10` and deterministic `input20`. The input phase freezes coherent
-L4/planner inputs with content hashes, exact page destinations and structured review findings.
-The pure `contracts30` catalog/renderer is implemented but its flow hook and live writes remain
-deliberately unavailable until integration. `shared40` through `finalize60` remain unavailable.
-No materialization, publication, room message or L5 mutation exists in this delivery.
+Current delivery implements `entry10`, deterministic `input20` and deterministic `contracts30`.
+The input phase freezes coherent L4/planner inputs with content hashes, exact page destinations and
+structured review findings. The contracts phase gates and reconciles one typed contract per selected
+create/update page and publishes a hash-verified barrier. `shared40` through `finalize60` remain
+unavailable. No LLM call, materialization, publication, room message or L5 mutation exists here.
 
 State belongs only to `l2/<module>/pipeline/agentDefsL2/`.

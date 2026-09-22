@@ -28,6 +28,7 @@ void test('createAgent export graph has one public root and only private workers
   });
   assert.deepEqual(agents.map(agent => [agent.file, agent.visibility]), [
     ['agentDefsL2.ts', 'public'],
+    ['steps/contracts30/agentD2Contracts.ts', 'private'],
     ['steps/entry10/agentD2Entry.ts', 'private'],
     ['steps/input20/agentD2Input.ts', 'private'],
   ]);

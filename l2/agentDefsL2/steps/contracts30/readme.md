@@ -9,5 +9,8 @@ diagnostic with the transition origin, while `payload: []` explicitly declares a
 
 The renderer emits only `contracts/<pageId>.defs.ts` content: exact route constants plus
 `<CallPascal>Input`/`Output` declarations. List output is an explicit Item array; static pages emit
-`export {}`. This task provides no agent hook and performs no live write or materialization; flow
-integration remains unavailable until d2_04.
+`export {}`. The deterministic `agentD2Contracts` hook gates every selected create/update unit,
+persists a draft, promotes the contract only after validation, rereads its SHA-256, and then records
+an approved per-page result. `contracts.json` is the downstream barrier and becomes approved only
+when every expected result and artifact hash matches the still-current input snapshot. Restarts reuse
+approved units byte-for-byte; `done` and `toRemove` pages are not emitted. No model is called.
