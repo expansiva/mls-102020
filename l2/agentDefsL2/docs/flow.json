@@ -1,7 +1,7 @@
 {
   "flowId": "agentDefsL2",
   "schemaVersion": "2026-09-21-agent-defs-l2-flow-v3",
-  "status": "contracts30",
+  "status": "shared40",
   "description": "Generate L2 definition sources from approved L4 and planner artifacts without materializing runtime files.",
   "invocation": {
     "message": "@@agentDefsL2 <lowerCamel>",
@@ -45,13 +45,17 @@
     { "name": "agentDefsL2", "visibility": "public", "role": "message entry, task-step entry and unavailable-step diagnostics" },
     { "name": "agentD2Contracts", "visibility": "private", "role": "contracts30 deterministic per-page derivation, gate, persistence and hash barrier" },
     { "name": "agentD2Entry", "visibility": "private", "role": "entry10 deterministic worker" },
-    { "name": "agentD2Input", "visibility": "private", "role": "input20 deterministic validation and snapshot worker" }
+    { "name": "agentD2Input", "visibility": "private", "role": "input20 deterministic validation and snapshot worker" },
+    { "name": "agentD2Shared", "visibility": "private", "role": "shared40 deterministic coordinator and page fan-out" },
+    { "name": "agentD2SharedPage", "visibility": "private", "role": "isolated shared40 LLM page worker with one repair" }
   ],
   "hookImports": [
     "l2/agentDefsL2/agentDefsL2.ts",
     "l2/agentDefsL2/steps/contracts30/agentD2Contracts.ts",
     "l2/agentDefsL2/steps/entry10/agentD2Entry.ts",
-    "l2/agentDefsL2/steps/input20/agentD2Input.ts"
+    "l2/agentDefsL2/steps/input20/agentD2Input.ts",
+    "l2/agentDefsL2/steps/shared40/agentD2Shared.ts",
+    "l2/agentDefsL2/steps/shared40/agentD2SharedPage.ts"
   ],
   "artifacts": {
     "contract": "l2/{module}/web/contracts/{pageId}.defs.ts",
@@ -95,9 +99,9 @@
     },
     {
       "id": "shared40",
-      "agent": "agentDefsL2",
+      "agent": "agentD2Shared",
       "kind": "parallel_dynamic",
-      "availability": "unavailable",
+      "availability": "available",
       "dependsOn": ["contracts30-done"],
       "doneAnchor": "shared40-done",
       "inputs": ["typed page contract", "approved input slice"],

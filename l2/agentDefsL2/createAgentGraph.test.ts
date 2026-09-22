@@ -31,6 +31,8 @@ void test('createAgent export graph has one public root and only private workers
     ['steps/contracts30/agentD2Contracts.ts', 'private'],
     ['steps/entry10/agentD2Entry.ts', 'private'],
     ['steps/input20/agentD2Input.ts', 'private'],
+    ['steps/shared40/agentD2Shared.ts', 'private'],
+    ['steps/shared40/agentD2SharedPage.ts', 'private'],
   ]);
   assert.match(agents[0].source, /beforePromptImplicit/);
   for (const agent of agents.slice(1)) assert.doesNotMatch(agent.source, /beforePromptImplicit/);

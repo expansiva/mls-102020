@@ -14,6 +14,8 @@ import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/he
 import '/_102020_/l2/agentDefsL2/steps/entry10/agentD2Entry.js';
 import '/_102020_/l2/agentDefsL2/steps/input20/agentD2Input.js';
 import '/_102020_/l2/agentDefsL2/steps/contracts30/agentD2Contracts.js';
+import '/_102020_/l2/agentDefsL2/steps/shared40/agentD2Shared.js';
+import '/_102020_/l2/agentDefsL2/steps/shared40/agentD2SharedPage.js';
 
 export function createAgent(): IAgentAsync {
   return {
