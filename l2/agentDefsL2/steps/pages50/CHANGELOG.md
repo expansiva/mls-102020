@@ -4,3 +4,5 @@
 - 2026-09-21 — d2_06 added the compact molecule inventory and selected-group resolver. Discovery stays
   project-relative, all reads record stor/published provenance, selected index + handwritten usage refs
   are normalized/deduplicated for `pipeline.skills`, and real UTF-8 context bytes are measured.
+- 2026-09-21 — d2_07 implemented the pages50 coordinator/worker, closed two-device judgment, shared
+  capability parity gate, deterministic defs/pipeline rendering, minimal consumer parser and hash barrier.

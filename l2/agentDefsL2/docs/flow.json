@@ -1,7 +1,7 @@
 {
   "flowId": "agentDefsL2",
   "schemaVersion": "2026-09-21-agent-defs-l2-flow-v3",
-  "status": "shared40",
+  "status": "pages50",
   "description": "Generate L2 definition sources from approved L4 and planner artifacts without materializing runtime files.",
   "invocation": {
     "message": "@@agentDefsL2 <lowerCamel>",
@@ -47,7 +47,9 @@
     { "name": "agentD2Entry", "visibility": "private", "role": "entry10 deterministic worker" },
     { "name": "agentD2Input", "visibility": "private", "role": "input20 deterministic validation and snapshot worker" },
     { "name": "agentD2Shared", "visibility": "private", "role": "shared40 deterministic coordinator and page fan-out" },
-    { "name": "agentD2SharedPage", "visibility": "private", "role": "isolated shared40 LLM page worker with one repair" }
+    { "name": "agentD2SharedPage", "visibility": "private", "role": "isolated shared40 LLM page worker with one repair" },
+    { "name": "agentD2Pages", "visibility": "private", "role": "pages50 deterministic coordinator and page fan-out" },
+    { "name": "agentD2PagesPage", "visibility": "private", "role": "isolated pages50 LLM page worker producing both devices with one repair" }
   ],
   "hookImports": [
     "l2/agentDefsL2/agentDefsL2.ts",
@@ -55,7 +57,9 @@
     "l2/agentDefsL2/steps/entry10/agentD2Entry.ts",
     "l2/agentDefsL2/steps/input20/agentD2Input.ts",
     "l2/agentDefsL2/steps/shared40/agentD2Shared.ts",
-    "l2/agentDefsL2/steps/shared40/agentD2SharedPage.ts"
+    "l2/agentDefsL2/steps/shared40/agentD2SharedPage.ts",
+    "l2/agentDefsL2/steps/pages50/agentD2Pages.ts",
+    "l2/agentDefsL2/steps/pages50/agentD2PagesPage.ts"
   ],
   "artifacts": {
     "contract": "l2/{module}/web/contracts/{pageId}.defs.ts",
@@ -110,9 +114,9 @@
     },
     {
       "id": "pages50",
-      "agent": "agentDefsL2",
+      "agent": "agentD2Pages",
       "kind": "parallel_dynamic",
-      "availability": "unavailable",
+      "availability": "available",
       "dependsOn": ["shared40-done"],
       "doneAnchor": "pages50-done",
       "inputs": ["shared definition", "compact molecule group catalog"],

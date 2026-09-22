@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collab.codes/schemas/agentDefsL2/pagesJudgmentV1.json",
+  "title": "agentDefsL2 pages50 page judgment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "pageId", "presentations"],
+  "properties": {
+    "schemaVersion": { "const": "2026-09-21-agent-defs-l2-pages-judgment-v1" },
+    "pageId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9_-]*$" },
+    "presentations": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["device", "descriptions", "capabilityRefs", "groupIds"],
+        "properties": {
+          "device": { "enum": ["desktop", "mobile"] },
+          "descriptions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+          "capabilityRefs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "groupIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        }
+      }
+    }
+  }
+}

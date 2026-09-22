@@ -31,6 +31,8 @@ void test('createAgent export graph has one public root and only private workers
     ['steps/contracts30/agentD2Contracts.ts', 'private'],
     ['steps/entry10/agentD2Entry.ts', 'private'],
     ['steps/input20/agentD2Input.ts', 'private'],
+    ['steps/pages50/agentD2Pages.ts', 'private'],
+    ['steps/pages50/agentD2PagesPage.ts', 'private'],
     ['steps/shared40/agentD2Shared.ts', 'private'],
     ['steps/shared40/agentD2SharedPage.ts', 'private'],
   ]);

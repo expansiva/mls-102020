@@ -8,6 +8,8 @@ export const D2_INPUT_AGENT_NAME = 'agentD2Input' as const;
 export const D2_CONTRACTS_AGENT_NAME = 'agentD2Contracts' as const;
 export const D2_SHARED_AGENT_NAME = 'agentD2Shared' as const;
 export const D2_SHARED_PAGE_AGENT_NAME = 'agentD2SharedPage' as const;
+export const D2_PAGES_AGENT_NAME = 'agentD2Pages' as const;
+export const D2_PAGES_PAGE_AGENT_NAME = 'agentD2PagesPage' as const;
 export const D2_FLOW_ID = 'agentDefsL2' as const;
 export const D2_FLOW_VERSION = '2026-09-21-agent-defs-l2-flow-v3' as const;
 export const D2_PIPELINE_VERSION = '2026-09-21-agent-defs-l2-pipeline-v1' as const;
@@ -162,7 +164,8 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity): ml
       : stepId === 'input20' ? D2_INPUT_AGENT_NAME
         : stepId === 'contracts30' ? D2_CONTRACTS_AGENT_NAME
           : stepId === 'shared40' ? D2_SHARED_AGENT_NAME
-            : D2_AGENT_NAME,
+            : stepId === 'pages50' ? D2_PAGES_AGENT_NAME
+              : D2_AGENT_NAME,
     prompt: JSON.stringify(identity),
     rags: [],
     planning: {
@@ -269,5 +272,5 @@ export async function markD2StepFailed(identity: D2RunIdentity, stepId: D2StepId
 export const D2_HELP = [
   'Usage: @@agentDefsL2 <lowerCamel>',
   'The module is explicit and the project comes from the current context.',
-  'Available now: entry10, input20, contracts30 and shared40. pages50 and finalize60 are declared but unavailable.',
+  'Available now: entry10, input20, contracts30, shared40 and pages50. finalize60 is declared but unavailable.',
 ].join('\n');

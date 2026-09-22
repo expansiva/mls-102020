@@ -1,7 +1,7 @@
 # pages50
 
-Per-page desktop/mobile description fan-out. The page-generation agent remains unavailable until its
-implementation spec, but its molecule-context boundary is implemented here:
+Per-page desktop/mobile description fan-out. One private coordinator opens one isolated LLM worker per
+selected page; that worker owns the desktop/mobile pair and has one bounded repair.
 
 - `moleculeContext.ts` is the pure builder. Level 1 exposes only group id, purpose, variant count and
   index reference; selected groups then expose the literal group catalog and handwritten usage contract.
@@ -13,3 +13,8 @@ implementation spec, but its molecule-context boundary is implemented here:
 
 No component variant is selected at this stage. The later materializer receives the selected group's
 variant list and usage API, plus normalized `pipeline.skills` references for index and contract.
+
+The LLM returns only descriptions, capability references and group ids. Code owns both paths, ids,
+dependencies and pipeline items. The unit gate requires both devices, exact shared-capability parity,
+different presentation prose and existing molecule groups before either defs is promoted. The hash
+barrier approves pages50 only when both files of every selected page still match the input/shared snapshot.

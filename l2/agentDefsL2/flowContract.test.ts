@@ -45,7 +45,8 @@ void test('flow declares the six acyclic phases with inputs, outputs and honest 
   assert.equal(FLOW.steps[1].availability, 'available');
   assert.equal(FLOW.steps[2].availability, 'available');
   assert.equal(FLOW.steps[3].availability, 'available');
-  for (const step of FLOW.steps.slice(4)) assert.equal(step.availability, 'unavailable');
+  assert.equal(FLOW.steps[4].availability, 'available');
+  assert.equal(FLOW.steps[5].availability, 'unavailable');
 });
 
 void test('flow references only existing agents and each step has its own maintenance folder', () => {
@@ -62,6 +63,8 @@ void test('flow references only existing agents and each step has its own mainte
     { name: 'agentD2Input', visibility: 'private', role: 'input20 deterministic validation and snapshot worker' },
     { name: 'agentD2Shared', visibility: 'private', role: 'shared40 deterministic coordinator and page fan-out' },
     { name: 'agentD2SharedPage', visibility: 'private', role: 'isolated shared40 LLM page worker with one repair' },
+    { name: 'agentD2Pages', visibility: 'private', role: 'pages50 deterministic coordinator and page fan-out' },
+    { name: 'agentD2PagesPage', visibility: 'private', role: 'isolated pages50 LLM page worker producing both devices with one repair' },
   ]);
   for (const imported of FLOW.hookImports) {
     assert.equal(existsSync(path.resolve(HERE, '..', imported.replace(/^l2\//, ''))), true, `missing hook import ${imported}`);
@@ -84,7 +87,7 @@ void test('flow declares bounded workers, repairs, limits and progress counters'
 });
 
 void test('all referenced JSON schemas are versioned and strict', () => {
-  for (const name of ['invocationV1.json', 'pipelineV1.json', 'inputV1.json', 'inputReportV1.json', 'sharedJudgmentV1.json']) {
+  for (const name of ['invocationV1.json', 'pipelineV1.json', 'inputV1.json', 'inputReportV1.json', 'sharedJudgmentV1.json', 'pagesJudgmentV1.json']) {
     const schema = JSON.parse(readFileSync(path.join(HERE, 'schemas', name), 'utf8')) as Record<string, unknown>;
     assert.match(String(schema.$id), /^https:\/\//);
     assert.equal(schema.additionalProperties, false);
