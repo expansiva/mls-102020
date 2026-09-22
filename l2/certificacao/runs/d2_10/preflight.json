@@ -1,0 +1,47 @@
+{
+  "capturedAt": "2026-09-22",
+  "host": {
+    "profile": "remoto",
+    "baseUrl": "https://102056.collabcodes.com",
+    "mlsBase": "/Volumes/WagnerSSD1/collab/mls-base",
+    "actualProject": 102047,
+    "effectiveProjectRoot": "/Volumes/WagnerSSD1/collab/mls-base/mls-102047"
+  },
+  "repositories": {
+    "mls-102047": {
+      "head": "c418e57899aabc9ee3a6090b1df71020fb322e99",
+      "status": "clean"
+    },
+    "mls-102020": {
+      "head": "d10ec9cbe6561800e257508214b9f7b515f3f547",
+      "preExistingChanges": ["l2/aura/services/serviceBehavior.ts"]
+    }
+  },
+  "inputs": [
+    {"path":"l4/agendaClinica/pool/l2/web/menu.json","sha256":"948671eb3f10a3fba02b2cc57d4174c91ed31f777fb8d5d619a56160081e4011","bytes":4727},
+    {"path":"l4/agendaClinica/pool/l1/web/needs.json","sha256":"4e61f126f934e0c7a424fa66f6e398ef7190a9b11a6f9663baec28a4f86c9c0a","bytes":7642},
+    {"path":"l4/agendaClinica/pool/l2/web/backend.json","sha256":"f567e557e9ddc50760993cae660feb3db7585a0928fb82da01e1b80d16401e54","bytes":13339},
+    {"path":"l4/agendaClinica/pool/l2/web/effort.json","sha256":"8d055293171593c545dd64388972e2280352a66f20a313bb2089890ea7d850f4","bytes":11068}
+  ],
+  "plan": {
+    "pages": ["consultas_recepcionista","pacientes","profissionais","consultas_profissional","dados_profissional","dados_recepcionista"],
+    "endpoints": 26,
+    "uniqueRoutes": 26,
+    "usecases": 13,
+    "uniqueUsecaseIds": 13,
+    "tables": 1,
+    "effortStatus": "all toCreate",
+    "expectedDefs": 24,
+    "expectedMaterializationItems": 18
+  },
+  "destinationBefore": {
+    "defs": 0
+  },
+  "baseline": {
+    "tscErrorTuples": 240,
+    "runnerFiles": 193,
+    "runnerSkippedStubs": 12,
+    "runnerFailures": 12,
+    "logs": ["tsc-before.log","runner-before.log"]
+  }
+}

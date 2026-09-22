@@ -1,0 +1,53 @@
+{
+  "root": "/Volumes/WagnerSSD1/collab/mls-base/mls-102047",
+  "defs": 24,
+  "byFolder": {
+    "contracts": [
+      "consultas_profissional",
+      "consultas_recepcionista",
+      "dados_profissional",
+      "dados_recepcionista",
+      "pacientes",
+      "profissionais"
+    ],
+    "shared": [
+      "consultas_profissional",
+      "consultas_recepcionista",
+      "dados_profissional",
+      "dados_recepcionista",
+      "pacientes",
+      "profissionais"
+    ],
+    "desktop/page11": [
+      "consultas_profissional",
+      "consultas_recepcionista",
+      "dados_profissional",
+      "dados_recepcionista",
+      "pacientes",
+      "profissionais"
+    ],
+    "mobile/page11": [
+      "consultas_profissional",
+      "consultas_recepcionista",
+      "dados_profissional",
+      "dados_recepcionista",
+      "pacientes",
+      "profissionais"
+    ]
+  },
+  "backendRoutes": 26,
+  "contractRoutes": 26,
+  "materializationItems": 18,
+  "uniqueMaterializationIds": 18,
+  "pageExports": [
+    "descriptions",
+    "pipeline"
+  ],
+  "unexpectedMaterializedTs": [],
+  "report": {
+    "status": "complete",
+    "pending": [],
+    "snapshotHash": "sha256:0a532b467d0a4a86031a57c2f0b9c8522c809e6f37d6642277faf78e6f152d27",
+    "artifactPaths": 24
+  }
+}
