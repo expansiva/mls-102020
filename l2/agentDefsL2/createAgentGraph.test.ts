@@ -12,7 +12,7 @@ function tsFiles(folder: string): string[] {
   const result: string[] = [];
   for (const name of readdirSync(folder)) {
     const file = path.join(folder, name);
-    if (statSync(file).isDirectory()) result.push(...tsFiles(file));
+    if (statSync(file).isDirectory() && name !== 'fixtures') result.push(...tsFiles(file));
     else if (name.endsWith('.ts') && !name.endsWith('.test.ts')) result.push(file);
   }
   return result;

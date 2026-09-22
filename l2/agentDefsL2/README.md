@@ -8,7 +8,8 @@ plan; only the message entry creates an `add-message-ai` intent.
 
 Current delivery implements `entry10` and deterministic `input20`. The input phase freezes coherent
 L4/planner inputs with content hashes, exact page destinations and structured review findings.
-`contracts30` through `finalize60` remain deliberately unavailable. No generation, materialization,
-publication, room message or L5 mutation exists in this delivery.
+The pure `contracts30` catalog/renderer is implemented but its flow hook and live writes remain
+deliberately unavailable until integration. `shared40` through `finalize60` remain unavailable.
+No materialization, publication, room message or L5 mutation exists in this delivery.
 
 State belongs only to `l2/<module>/pipeline/agentDefsL2/`.
