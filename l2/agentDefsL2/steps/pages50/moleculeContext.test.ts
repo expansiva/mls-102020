@@ -12,6 +12,8 @@ import type { ChDiscovery, ChGroupCatalog, ChLevel1 } from '/_102020_/l2/aura/mo
 import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
 import {
   buildD2MoleculeInventory,
+  buildD2MoleculeCandidateContext,
+  assertD2MoleculeCandidates,
   D2MoleculeContextError,
   normalizeD2MlsReference,
   resolveD2MoleculeSelection,
@@ -116,6 +118,17 @@ void test('empty catalog has a reason; invalid/unknown/ambiguous refs are diagno
   };
   const deduped = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate', 'groupEnterDatetime']);
   assert.equal(deduped.pipelineSkills.length, 3);
+});
+
+void test('candidate context exposes only real scenario recommendations and rejects an invented tag', async () => {
+  const fixture = fixturePort(); const inventory = await buildD2MoleculeInventory(fixture.port);
+  inventory.groups = inventory.groups.filter(item => item.groupId === 'groupEnterDate' || item.groupId === 'groupEnterDatetime');
+  const candidates = await buildD2MoleculeCandidateContext(fixture.port, inventory);
+  assert.equal(candidates.groups.length, 2);
+  assert.ok(candidates.groups.flatMap(group => group.scenarios.flatMap(item => item.candidates)).every(tag => tag.includes('--ml-')));
+  const selected = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate']);
+  assert.doesNotThrow(() => assertD2MoleculeCandidates(selected, [{ groupId: 'groupEnterDate', candidates: ['groupenterdate--ml-date-picker'] }]));
+  assert.throws(() => assertD2MoleculeCandidates(selected, [{ groupId: 'groupEnterDate', candidates: ['invented--tag'] }]), errorCode('D2_MOLECULE_CANDIDATE_UNKNOWN'));
 });
 
 void test('production discovery stays on own/direct dependency catalogs and never falls through to 102040', async () => {

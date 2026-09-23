@@ -64,7 +64,7 @@ function assertGraph(moduleName: string, pageIds: string[], items: Array<D2Share
       const item = items.find(candidate => candidate.id === `${pageId}__${device}__page11`) as D2PagePipelineItem | undefined;
       if (!item || item.type !== 'l2_page' || item.defPath !== `l2/${moduleName}/web/${device}/page11/${pageId}.defs.ts`
         || item.dependsOn.join('\0') !== shared.id || item.dependsFiles.join('\0') !== `l2/${moduleName}/web/shared/${pageId}.ts`
-        || !canonicalMoleculeSkills(item.skills)) throw new Error(`D2_FINALIZE_PAGE_REF_INVALID: ${pageId}/${device}`);
+        || !canonicalPageSkills(item.categoryRef, item.skills)) throw new Error(`D2_FINALIZE_PAGE_REF_INVALID: ${pageId}/${device}`);
     }
   }
   const visiting = new Set<string>(); const visited = new Set<string>();
@@ -72,10 +72,11 @@ function assertGraph(moduleName: string, pageIds: string[], items: Array<D2Share
   for (const id of ids) visit(id);
 }
 
-function canonicalMoleculeSkills(skills: string[]): boolean {
-  if (!skills.length) return true;
-  if (skills.length % 2 !== 0 || new Set(skills).size !== skills.length) return false;
-  for (let index = 0; index < skills.length; index += 2) {
+function canonicalPageSkills(categoryRef: string, skills: string[]): boolean {
+  if (!/^[a-z][A-Za-z0-9]*$/.test(categoryRef) || skills.length < 2 || (skills.length - 2) % 2 !== 0 || new Set(skills).size !== skills.length) return false;
+  if (skills[0] !== '_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts') return false;
+  if (skills[1] !== `_102020_/l2/agentDefsL2/skills/pageCategories/${categoryRef}.md`) return false;
+  for (let index = 2; index < skills.length; index += 2) {
     if (!/^_[0-9]+_\/l2\/molecules\/[a-z0-9_-]+\/index\.defs\.ts$/.test(skills[index])) return false;
     if (!/^_102020_\/l2\/aura\/molecules\/skills\/[A-Za-z0-9_-]+\/usage\.ts$/.test(skills[index + 1])) return false;
   }

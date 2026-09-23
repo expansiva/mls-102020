@@ -107,12 +107,12 @@ function page(pageId: string): D2SelectedPage {
   ] };
 }
 function files(pageId: string, withoutSkills = false): D2FinalSource[] {
-  const p = page(pageId); const skill = withoutSkills ? [] : ['_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts'];
+  const p = page(pageId); const mandatory = ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts', '_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md']; const skill = withoutSkills ? mandatory : [...mandatory, '_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts'];
   return [
     { pageId, kind: 'contract', path: p.destinations[0].path, source: 'export interface Input { "id": string; }\n' },
     { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({} as never, buildD2SharedPipeline(moduleName, pageId)) },
-    { pageId, kind: 'desktopPage', path: p.destinations[2].path, source: renderD2Page({ device: 'desktop', descriptions: ['desktop'], pipeline: [buildD2PagePipeline(moduleName, pageId, 'desktop', skill)] }) },
-    { pageId, kind: 'mobilePage', path: p.destinations[3].path, source: renderD2Page({ device: 'mobile', descriptions: ['mobile'], pipeline: [buildD2PagePipeline(moduleName, pageId, 'mobile', skill)] }) },
+    { pageId, kind: 'desktopPage', path: p.destinations[2].path, source: renderD2Page({ device: 'desktop', descriptions: ['desktop'], pipeline: [buildD2PagePipeline(moduleName, pageId, 'desktop', 'calendarScheduling', skill)] }) },
+    { pageId, kind: 'mobilePage', path: p.destinations[3].path, source: renderD2Page({ device: 'mobile', descriptions: ['mobile'], pipeline: [buildD2PagePipeline(moduleName, pageId, 'mobile', 'calendarScheduling', skill)] }) },
   ];
 }
 function replacePipeline(all: D2FinalSource[], pageId: string, kind: D2FinalSource['kind'], patch: Record<string, unknown>): D2FinalSource[] {

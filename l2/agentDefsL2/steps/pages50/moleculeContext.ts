@@ -55,6 +55,11 @@ export interface D2MoleculeSelection {
   metrics: D2MoleculeInventory['metrics'] & { selectedBytes: number };
 }
 
+export interface D2MoleculeCandidateContext {
+  groups: Array<{ groupId: string; scenarios: Array<{ scenario: string; candidates: string[] }> }>;
+  context: string;
+}
+
 export interface D2UsageContractRead {
   reference: string;
   via: ChCatalogVia;
@@ -158,6 +163,33 @@ export async function resolveD2MoleculeSelection(
       reads,
     },
   };
+}
+
+export async function buildD2MoleculeCandidateContext(port: D2MoleculeCatalogPort, inventory: D2MoleculeInventory): Promise<D2MoleculeCandidateContext> {
+  const groups: D2MoleculeCandidateContext['groups'] = [];
+  for (const entry of inventory.groups) {
+    const loaded = await port.readGroup(entry.indexReference);
+    if (!loaded.catalog) throw new D2MoleculeContextError('D2_MOLECULE_INDEX_UNREADABLE', `${entry.groupId}: ${loaded.error}`);
+    if (loaded.catalog.group !== entry.groupId) throw new D2MoleculeContextError('D2_MOLECULE_GROUP_MISMATCH', `${entry.indexReference} exports '${loaded.catalog.group}', expected '${entry.groupId}'`);
+    const tags = new Set(loaded.catalog.molecules.map(item => item.tag));
+    const scenarios = loaded.catalog.scenarios.map(item => {
+      const candidates = dedupe(item.recommended);
+      for (const candidate of candidates) if (!tags.has(candidate)) throw new D2MoleculeContextError('D2_MOLECULE_CANDIDATE_UNKNOWN', `${entry.groupId}: ${candidate}`);
+      return { scenario: item.scenario, candidates };
+    });
+    groups.push({ groupId: entry.groupId, scenarios });
+  }
+  const context = JSON.stringify({ moleculeCandidates: { instruction: 'Recommend only listed exact candidate tags when useful; no recommendation is valid when there is no useful match.', groups } }, null, 2);
+  return { groups, context };
+}
+
+export function assertD2MoleculeCandidates(selection: D2MoleculeSelection, recommendations: Array<{ groupId: string; candidates: string[] }>): void {
+  const byGroup = new Map(selection.groups.map(group => [group.groupId, new Set(group.molecules.map(item => item.tag))]));
+  for (const recommendation of recommendations) {
+    const candidates = byGroup.get(recommendation.groupId);
+    if (!candidates) throw new D2MoleculeContextError('D2_MOLECULE_GROUP_UNKNOWN', `recommendation uses unselected group '${recommendation.groupId}'`);
+    for (const candidate of recommendation.candidates) if (!candidates.has(candidate)) throw new D2MoleculeContextError('D2_MOLECULE_CANDIDATE_UNKNOWN', `${recommendation.groupId}: ${candidate}`);
+  }
 }
 
 export function normalizeD2MlsReference(reference: string): string {

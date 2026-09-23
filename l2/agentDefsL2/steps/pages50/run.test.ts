@@ -57,6 +57,21 @@ void test('partial resume reuses four valid pages and redispatches missing or co
   assert.equal(await finalizeD2PagesBarrier(IDENTITY, host.snapshot), null);
 });
 
+void test('unchanged context is a byte no-op while a skill hash invalidates reuse', async () => {
+  const host = await installHost(['alpha']); const receipt = (hash: string) => ({ contextHash: hash, catalogHash: 'catalog', skillHashes: { technical: hash }, categoryRef: 'calendarScheduling', categoryReason: 'Scheduling capability.', categoryEvidenceRefs: ['list'], moleculeRecommendations: { desktop: { reason: 'none', recommendations: [] }, mobile: { reason: 'none', recommendations: [] } } });
+  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, undefined, async () => undefined, receipt('context-a'));
+  const desktop = keyOf(d2PageFile(IDENTITY, 'alpha', 'desktop')); const mobile = keyOf(d2PageFile(IDENTITY, 'alpha', 'mobile'));
+  const artifactWrites = () => host.writes.filter(item => item === desktop || item === mobile).length;
+  const before = artifactWrites();
+  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, undefined, async () => undefined, receipt('context-a'));
+  assert.equal(artifactWrites(), before);
+  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a')).length, 1);
+  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-b')).length, 0);
+  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, undefined, async () => undefined, receipt('context-b'));
+  assert.equal(artifactWrites(), before, 'context regeneration preserves identical artifact bytes');
+  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-b')).length, 1);
+});
+
 async function installHost(pages = PAGES) {
   const files: Record<string, Stored> = {}; const writes: string[] = []; const state = { failKey: '' };
   const snapshot: D2InputSnapshot = { ...IDENTITY, schemaVersion: D2_INPUT_VERSION, device: 'web', snapshotHash: `sha256:${'a'.repeat(64)}`, releaseIdentity: null, sources: [], l4: {} as D2InputSnapshot['l4'], selection: { pages: [], writePageIds: pages, preservePageIds: [], remove: [], counts: { pages: pages.length, endpoints: 0, usecases: 0, destinations: pages.length * 2, materializationItems: pages.length * 2 } }, normalizations: [], problems: [] };
