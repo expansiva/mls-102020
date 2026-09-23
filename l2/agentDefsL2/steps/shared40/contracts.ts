@@ -3,8 +3,10 @@
 import type { D2ContractCall, D2ContractField, D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 
-export const D2_SHARED_VERSION = '2026-09-21-agent-defs-l2-shared-v1' as const;
+export const D2_SHARED_VERSION = '2026-09-23-agent-defs-l2-shared-v2' as const;
 export const D2_SHARED_JUDGMENT_VERSION = '2026-09-21-agent-defs-l2-shared-judgment-v1' as const;
+export const D2_SHARED_SKILL = '_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts' as const;
+export const D2_SHARED_RUNTIME_CONTEXT = '_102029_.d.ts' as const;
 export const D2_SHARED_KEYS = ['schemaVersion', 'moduleName', 'pageId', 'pageName', 'baseClassName', 'routePattern', 'contractRef', 'states', 'actions', 'scenaries', 'initialLoads', 'dataBindings'] as const;
 
 export interface D2SharedScenarioJudgment { value: string; kind: 'base' | 'detail' | 'command'; actionId: string; preconditions: string[]; }
@@ -14,7 +16,7 @@ export interface D2SharedState { stateKey: string; name: string; kind: string; d
 export interface D2SharedAction { actionId: string; kind: 'query' | 'command' | 'stateSetter'; commandRef?: string; routeRef?: string; inputTypeRef?: string; outputTypeRef?: string; inputStateKeys: string[]; outputStateKeys: string[]; statusStateKey: string; errorStateKey: string; refreshActionIds: string[]; confirmation?: { required: true; title: string; description: string }; stateKey?: string; }
 export interface D2SharedBinding { actionId: string; kind: 'query' | 'command'; routeRef: string; inputTypeRef: string; outputTypeRef: string; inputStateKeys: string[]; resultStateKey: string; }
 export interface D2SharedDefinition { schemaVersion: typeof D2_SHARED_VERSION; moduleName: string; pageId: string; pageName: string; baseClassName: string; routePattern: string; contractRef: { defPath: string; calls: Array<{ actionId: string; routeConst: string; inputType: string; outputType: string }> }; states: D2SharedState[]; actions: D2SharedAction[]; scenaries: D2SharedScenarioJudgment[]; initialLoads: Array<{ actionId: string; stateKey: string }>; dataBindings: D2SharedBinding[]; }
-export interface D2SharedPipelineItem { id: string; type: 'l2_shared'; defPath: string; outputPath: string; dependsFiles: string[]; dependsOn: string[]; }
+export interface D2SharedPipelineItem { id: string; type: 'l2_shared'; defPath: string; outputPath: string; dependsFiles: string[]; dependsOn: string[]; skills: string[]; }
 
 export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage, contract: D2PageContract, judgment: D2SharedJudgment): D2SharedDefinition {
   const states: D2SharedState[] = [
@@ -57,7 +59,7 @@ export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage
 }
 
 export function buildD2SharedPipeline(moduleName: string, pageId: string): D2SharedPipelineItem {
-  return { id: `${pageId}__l2_shared`, type: 'l2_shared', defPath: `l2/${moduleName}/web/shared/${pageId}.defs.ts`, outputPath: `l2/${moduleName}/web/shared/${pageId}.ts`, dependsFiles: [`l2/${moduleName}/web/contracts/${pageId}.defs.ts`], dependsOn: [] };
+  return { id: `${pageId}__l2_shared`, type: 'l2_shared', defPath: `l2/${moduleName}/web/shared/${pageId}.defs.ts`, outputPath: `l2/${moduleName}/web/shared/${pageId}.ts`, dependsFiles: [`l2/${moduleName}/web/contracts/${pageId}.defs.ts`, D2_SHARED_RUNTIME_CONTEXT], dependsOn: [], skills: [D2_SHARED_SKILL] };
 }
 
 export function suggestedD2SharedJudgment(page: D2SelectedPage, contract: D2PageContract): D2SharedJudgment {

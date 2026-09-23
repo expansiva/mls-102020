@@ -5,6 +5,8 @@
 // and prompt assembly rules.
 
 import { SHARED_SCENARY_MEMBERS } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+export { CONTRACTS_102029, expandContextRef } from '/_102020_/l2/runtime102029Context.js';
+import { CONTRACTS_102029, expandContextRef } from '/_102020_/l2/runtime102029Context.js';
 
 export interface PipelineItem {
   id: string;
@@ -1117,17 +1119,6 @@ export function collectMissingImageRenderIssues(defsSource: string, pageCode: st
   if (!match) return [];                                   // no image field in this page's contract
   if (/<img\b/u.test(pageCode)) return [];                 // renders an image -> fine
   return [`page binds the image field '${match[0]}' but renders no <img> tag: bind it as an image (src=item.${match[0]} with an alt and a nothing/null empty branch) instead of a placeholder box or raw URL text`];
-}
-
-export const CONTRACTS_102029: readonly string[] = [
-  '_102029_/l2/collabLitElement.ts',
-  '_102029_/l2/bffClient.ts',
-  '_102029_/l2/collabState.ts',
-  '_102029_/l2/interactionRuntime.ts',
-];
-
-export function expandContextRef(ref: string): string[] {
-  return ref === '_102029_.d.ts' ? [...CONTRACTS_102029] : [ref];
 }
 
 // ---------------------------------------------------------------------------

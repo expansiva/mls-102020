@@ -13,7 +13,7 @@ import { renderD2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { D2_SHARED_KEYS, buildD2SharedPipeline, suggestedD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { assertD2RenderedShared, gateD2Shared, parseD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
-import { renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
+import { parseD2RenderedShared, renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -44,13 +44,28 @@ void test('five selected pages emit one exact shared definition and one l2_share
     const source = renderD2Shared(definition, pipeline); assertD2RenderedShared(source);
     assert.deepEqual(Object.keys(definition), [...D2_SHARED_KEYS]);
     assert.equal(pipeline.type, 'l2_shared');
-    assert.equal(pipeline.dependsFiles[0], `l2/fixture/web/contracts/${page.pageId}.defs.ts`);
+    assert.deepEqual(pipeline.dependsFiles, [`l2/fixture/web/contracts/${page.pageId}.defs.ts`, '_102029_.d.ts']);
+    assert.deepEqual(pipeline.skills, ['_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts']);
+    assert.equal(parseD2RenderedShared(source).pipeline.length, 1);
+    assert.equal(Object.hasOwn(pipeline, 'agent'), false);
     assert.match(source, /\.defs\.ts/); assert.doesNotMatch(source, /layoutRef|sections/);
     return { definition, pipeline };
   });
   assert.equal(new Set(emitted.map(item => item.definition.pageId)).size, 5);
   assert.equal(new Set(emitted.map(item => item.pipeline.id)).size, 5);
   for (const item of emitted) { const consumer = { desktop: item.definition, mobile: item.definition }; assert.strictEqual(consumer.desktop, consumer.mobile); }
+});
+
+void test('shared parser rejects legacy, empty, multiple, missing skill and orphan id pipelines', () => {
+  const page = selected('records'); const contract = pageContract(page.pageId);
+  const definition = gateD2Shared('fixture', page, contract, suggestedD2SharedJudgment(page, contract));
+  const item = buildD2SharedPipeline('fixture', page.pageId);
+  const source = renderD2Shared(definition, item);
+  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), JSON.stringify(item, null, 2))), /D2_SHARED_CONSUMER_SHAPE/);
+  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), '[]')), /D2_SHARED_PIPELINE_COUNT/);
+  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), JSON.stringify([item, item], null, 2))), /D2_SHARED_PIPELINE_COUNT/);
+  assert.throws(() => assertD2RenderedShared(renderD2Shared(definition, { ...item, skills: [] })), /D2_SHARED_PIPELINE_SKILL/);
+  assert.throws(() => assertD2RenderedShared(renderD2Shared(definition, { ...item, id: 'orphan__l2_shared' })), /D2_SHARED_PIPELINE_ID/);
 });
 
 void test('actions, contracts, states and bindings close and input sources are non-editable for selection', () => {
@@ -92,6 +107,15 @@ void test('destructive behavior requires confirmation and invalid/truncated sche
   assert.throws(() => parseD2SharedJudgment({ schemaVersion: 'bad' }), /D2_SHARED_SCHEMA_VERSION/);
   assert.throws(() => parseD2SharedJudgment({ schemaVersion: base.schemaVersion, pageId: page.pageId }), /D2_SHARED_SCHEMA_TRUNCATED/);
   assert.throws(() => parseD2SharedJudgment({ ...base, layoutRef: 'x' }), /D2_SHARED_SCHEMA_UNKNOWN_KEY/);
+});
+
+void test('skill-compatible shared fixture exposes page behavior and keeps selected entity contextual', () => {
+  const source = readFileSync(path.join(HERE, 'fixtures', 'skill', 'records.ts'), 'utf8');
+  assert.match(source, /extends StateLitElement/); assert.match(source, /ListRecordsOutput = \[\]/);
+  assert.match(source, /execBff<ListRecordsOutput>\(listRecordsRoute, params/);
+  assert.match(source, /response\.error\?\.message/); assert.match(source, /listRecordsStatus = 'success'/);
+  assert.match(source, /enterDeleteRecordScenario/); assert.match(source, /selectedRecordId/);
+  assert.doesNotMatch(source, /setSelectedRecordId|customElement|\brender\s*\(/);
 });
 
 function selected(pageId: string): D2SelectedPage { return { pageId, status: 'toCreate', label: `Page ${pageId}`, actors: ['actor'], authorityRefs: [], ancestors: [{ id: 'hub', kind: 'group', label: 'Hub', context: 'selection' }], journeyRefs: [], organisms: [], reads: [], writes: [], endpoints: [], usecases: [], destinations: [] }; }

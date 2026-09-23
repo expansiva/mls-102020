@@ -1,0 +1,17 @@
+/// <mls fileReference="_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts" enhancement="_blank"/>
+
+export const skill = `# Generate one D2 shared TypeScript class
+
+Generate only the headless shared behavior described by the supplied D2 definition. Export the class named by baseClassName, extend StateLitElement, and do not register a custom element or implement render(). Never invent a route, state, action, field, permission, message, layout, section or i18n catalog.
+
+Use the contract .defs.ts named by contractRef.defPath as the only source of route constants and Input/Output types. Import its route constants as values and its used interfaces/types with import type; the generated import uses the corresponding .js specifier. Do not require or guess a contracts/*.ts file.
+
+Use only APIs present in the expanded _102029_.d.ts context: StateLitElement from stateLitElement.js; execBff and BffClientOptions from bffClient.js; getState, setState, subscribe and unsubscribe from collabState.js; and runBlockingUiAction from interactionRuntime.js. execBff(routeConst, params, options) returns { ok, data, error }. Queries use mode silent; commands run through runBlockingUiAction with mode blocking. Store response.data only after ok, and store the real error otherwise.
+
+Expose one typed public property for every definition state, initialized from defaultValue. Array outputs remain arrays. Status value sets remain literal unions. Build every request parameter only from inputStateKeys and the contract input type. States whose source is selectedEntity, routeParam or session are contextual inputs: they may be read and sent, but must not become editable setters. Generate stateSetter methods only for declared editable states and use setState with the exact stateKey.
+
+Generate every declared query and command action, update its exact loading/success/error states, write its declared output states, honor confirmations and refreshActionIds, and never silently stub a call. Generate initialLoads exactly as declared. Represent scenaries with the declared scenary state/value set; check each precondition before entering or invoking a scenario and preserve actionable error feedback. dataBindings are the closed mapping from actions to routes and result states.
+
+In connectedCallback call super, hydrate/subscribe declared state keys, then execute initialLoads. In disconnectedCallback unsubscribe the same keys before super. Implement handleIcaStateChange so subscribed values update their matching public properties and request an update. Derive member names deterministically from declared names/actionIds; if two names collide after normalization, fail instead of suffixing or dropping one.
+
+The generated class is the public surface consumed by page11: its state properties and action methods must remain public and typed. Emit no HTML, CSS, customElement, render method, layoutRef, translations or endpoint not present in the definition and contract context.`;

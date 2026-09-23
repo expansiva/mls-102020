@@ -36,7 +36,7 @@ test('finalize60 refuses a missing def, duplicate id, cycle and invalid referenc
   const duplicate = replacePipeline(complete, 'cadastro', 'desktopPage', { id: 'agenda__desktop__page11' });
   assert.throws(() => gateD2FinalSources(snapshot, duplicate), /PIPELINE_ID_SET_INVALID/);
   const cycle = replacePipeline(complete, 'agenda', 'shared', { dependsOn: ['agenda__desktop__page11'] });
-  assert.throws(() => gateD2FinalSources(snapshot, cycle), /SHARED_REF_INVALID|PIPELINE_CYCLE/);
+  assert.throws(() => gateD2FinalSources(snapshot, cycle), /SHARED_PIPELINE_CONTEXT|SHARED_REF_INVALID|PIPELINE_CYCLE/);
   const invalid = replacePipeline(complete, 'agenda', 'mobilePage', { dependsFiles: ['l2/wrong/web/shared/agenda.ts'] });
   assert.throws(() => gateD2FinalSources(snapshot, invalid), /PAGE_REF_INVALID/);
   const invalidUsage = replacePipeline(complete, 'agenda', 'mobilePage', { skills: ['_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.defs.ts'] });
@@ -110,7 +110,7 @@ function files(pageId: string, withoutSkills = false): D2FinalSource[] {
   const p = page(pageId); const mandatory = ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts', '_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md']; const skill = withoutSkills ? mandatory : [...mandatory, '_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts'];
   return [
     { pageId, kind: 'contract', path: p.destinations[0].path, source: 'export interface Input { "id": string; }\n' },
-    { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({} as never, buildD2SharedPipeline(moduleName, pageId)) },
+    { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({ moduleName, pageId, contractRef: { defPath: `l2/${moduleName}/web/contracts/${pageId}.defs.ts` } } as never, buildD2SharedPipeline(moduleName, pageId)) },
     { pageId, kind: 'desktopPage', path: p.destinations[2].path, source: renderD2Page({ device: 'desktop', descriptions: [description(pageId, 'desktop')], pipeline: [buildD2PagePipeline(moduleName, pageId, 'desktop', 'calendarScheduling', skill)] }) },
     { pageId, kind: 'mobilePage', path: p.destinations[3].path, source: renderD2Page({ device: 'mobile', descriptions: [description(pageId, 'mobile')], pipeline: [buildD2PagePipeline(moduleName, pageId, 'mobile', 'calendarScheduling', skill)] }) },
   ];
