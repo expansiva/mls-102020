@@ -1,0 +1,631 @@
+{
+  "PK": "20260923130210.1001",
+  "SK": "metadata",
+  "title": "define l2 agendaClinica",
+  "owner": "20250828124716.1000",
+  "team": "unassigned",
+  "status": "paused",
+  "last_updated": 1790168880195,
+  "last_update_log": "[admin action required] llm.model.alias_not_found: We are experiencing technical difficulties. Please try again later.",
+  "source": "",
+  "iaCompressed": {
+    "queueBackEnd": [],
+    "queueFrontEnd": [],
+    "longMemory": {
+      "actualDate": "2026-09-23",
+      "userName": "Wagner",
+      "taskName": "agentDefsL2",
+      "flowName": "agentDefsL2",
+      "project": "102047",
+      "module": "agendaClinica"
+    },
+    "nextSteps": [
+      {
+        "stepId": 1,
+        "type": "agent",
+        "agentName": "agentDefsL2",
+        "nextSteps": [
+          {
+            "type": "agent",
+            "stepId": 2,
+            "status": "completed",
+            "stepTitle": "Start L2 definitions",
+            "planning": {
+              "planId": "entry10",
+              "dependsOn": [],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Entry",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 3,
+            "status": "completed",
+            "stepTitle": "Validate inputs",
+            "planning": {
+              "planId": "input20",
+              "dependsOn": [
+                "entry10-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Input",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 4,
+            "status": "completed",
+            "stepTitle": "Create typed contracts",
+            "planning": {
+              "planId": "contracts30",
+              "dependsOn": [
+                "input20-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Contracts",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 5,
+            "status": "completed",
+            "stepTitle": "Define shared behavior",
+            "planning": {
+              "planId": "shared40",
+              "dependsOn": [
+                "contracts30-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Shared",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 6,
+            "status": "completed",
+            "stepTitle": "Describe desktop and mobile pages",
+            "planning": {
+              "planId": "pages50",
+              "dependsOn": [
+                "shared40-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Pages",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 7,
+            "status": "waiting_dependency",
+            "stepTitle": "Validate definitions",
+            "planning": {
+              "planId": "finalize60",
+              "dependsOn": [
+                "pages50-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Finalize",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 8,
+            "status": "completed",
+            "stepTitle": "Entry ready",
+            "planning": {
+              "planId": "entry10-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"entry10\",\"nextStep\":\"input20\"}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 9,
+            "status": "completed",
+            "stepTitle": "Inputs ready",
+            "planning": {
+              "planId": "input20-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"input20\",\"nextStep\":\"contracts30\",\"snapshotHash\":\"sha256:dc381e789e50b210394250fff14729a842be0a1e72ad4b4fe1c4069c052521ce\",\"writePages\":6,\"removedPages\":0,\"reused\":true}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 10,
+            "status": "completed",
+            "stepTitle": "Contracts ready",
+            "planning": {
+              "planId": "contracts30-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"contracts30\",\"nextStep\":\"shared40\",\"snapshotHash\":\"sha256:dc381e789e50b210394250fff14729a842be0a1e72ad4b4fe1c4069c052521ce\",\"contracts\":6,\"written\":0,\"reused\":6}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 11,
+            "status": "completed",
+            "stepTitle": "Shared ready",
+            "planning": {
+              "planId": "shared40-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"shared40\",\"nextStep\":\"pages50\",\"pages\":6}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 12,
+            "status": "in_progress",
+            "stepTitle": "Pages consultas_profissional",
+            "planning": {
+              "planId": "pages50-page-consultas_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [
+                {
+                  "type": "system",
+                  "content": "<!-- mls fileReference=\"_102020_/l2/agentDefsL2/steps/pages50/prompt.md\" enhancement=\"_blank\" -->\nClassify and describe exactly one page in two presentations: desktop and mobile. Call `submitD2Pages` once.\nReturn exactly one description object for every supplied organism, using its organismId and kind unchanged.\nIts prose explains that organism's objective, information, actions, relevant loading/empty/error states\nand accessible interaction in userLanguage. Assign it to one existing shared scenary through contentRef\nand cite only real shared capabilities in capabilityRefs. Static content may have no capability; every\nother organism needs at least one. Preserve the same organism capabilities/contentRef on both devices.\nMobile may discuss touch, reading priority and constrained space, but it must not remove capabilities.\nDo not emit HTML, CSS, coordinates, columns, grids, wireframes, fixed sections, component tags or a\nmandatory molecule variant. Do not invent statistics, methods, data, routes, permissions or APIs. The\napproved shared object is the closed capability vocabulary. Do not create contentRef values: several\norganisms may share one scenary, and a shared scenary does not require an artificial organism.\nChoose one categoryRef from the compact pageCategoryCatalog for the whole page. Explain the choice and\ncite real shared capability identifiers in evidenceRefs. Use bespoke only when no published category fits,\nwith a specific reason; category guidance never grants an operation or prescribes layout.\nInside each organism, moleculeRecommendations contains exact tags listed in moleculeCandidates.\nUse the scenario text and that organism's declared data/actions as evidence. When the listed groups contain\na compatible display/query, data-entry/input, or trigger/command candidate, recommend at least one for that\norganism. Never invent a tag or attach a group when capabilityRefs do not support it. Recommendations remain\nconsultative, may differ by device and do not mandate a component. Empty recommendations are valid only for\nstatic content or when no listed group matches the organism capabilities; moleculeReason must say which, and\nmust never claim that the catalog is empty when moleculeCandidates.groups is non-empty.\nNames, paths, ids, pipeline items, dependencies and skill references are emitted by code. Return only\nthe schema fields. On repair, correct the whole two-device unit using the diagnostic and prior answer.\n## Content Memory\nactualDate: 2026-09-23\nuserName: Wagner\ntaskName: agentDefsL2\nflowName: agentDefsL2\nproject: 102047\nmodule: agendaClinica\n"
+                },
+                {
+                  "type": "human",
+                  "content": "{\n\"page\": {\n\"pageId\": \"consultas_profissional\",\n\"label\": \"Agenda do dia\",\n\"userLanguage\": \"pt-BR\",\n\"actors\": [\n\"profissional\"\n],\n\"ancestors\": [],\n\"authorityRefs\": [\n\"actor:profissional\"\n],\n\"journeys\": [\n{\n\"schemaVersion\": \"2026-09-10-ns5-journey-v1\",\n\"journeyId\": \"consultarAgendaDiaria\",\n\"business\": {\n\"actorRef\": \"profissional\",\n\"title\": \"Consultar agenda diária\",\n\"goal\": \"Visualizar apenas as próprias consultas do dia.\",\n\"entry\": {\n\"mode\": \"coldStart\"\n},\n\"steps\": [\n{\n\"stepId\": \"localizarMinhasConsultasDoDia\",\n\"kind\": \"locate\",\n\"entity\": \"Consulta\",\n\"title\": \"x\",\n\"description\": \"Localiza as consultas do dia vinculadas ao próprio profissional.\"\n},\n{\n\"stepId\": \"inspecionarAgendaDiaria\",\n\"kind\": \"inspect\",\n\"entity\": \"Consulta\",\n\"title\": \"x\",\n\"description\": \"Consulta os horários e os dados necessários das próprias consultas do dia.\"\n}\n],\n\"outcome\": {\n\"statement\": \"O profissional visualiza sua agenda diária sem acesso às agendas dos demais profissionais.\",\n\"evidence\": [\n\"Lista de consultas do dia vinculadas ao profissional autenticado.\"\n]\n}\n},\n\"businessHash\": \"sha256:bc8e664418886361b0408161bcf6aa7e1ac00567d16857b3f86e448fac84ebf0\"\n},\n{\n\"schemaVersion\": \"2026-09-10-ns5-journey-v1\",\n\"journeyId\": \"registrarAtendimento\",\n\"business\": {\n\"actorRef\": \"profissional\",\n\"title\": \"Registrar atendimento\",\n\"goal\": \"Marcar uma consulta própria como atendida e registrar uma anotação do atendimento.\",\n\"entry\": {\n\"mode\": \"contextOrLookup\"\n},\n\"steps\": [\n{\n\"stepId\": \"localizarMinhaConsulta\",\n\"kind\": \"locate\",\n\"entity\": \"Consulta\",\n\"title\": \"x\",\n\"description\": \"Localiza uma consulta vinculada ao próprio profissional.\"\n},\n{\n\"stepId\": \"inspecionarMinhaConsulta\",\n\"kind\": \"inspect\",\n\"entity\": \"Consulta\",\n\"title\": \"x\",\n\"description\": \"Confere os dados da própria consulta antes de concluir o atendimento.\"\n},\n{\n\"stepId\": \"registrarAtendimentoRealizado\",\n\"kind\": \"act\",\n\"entity\": \"Consulta\",\n\"effect\": \"transition\",\n\"transitionRef\": \"registrarAtendimento\",\n\"title\": \"x\",\n\"description\": \"Marca a consulta como atendida e registra a anotação do profissional sobre o atendimento.\"\n}\n],\n\"outcome\": {\n\"statement\": \"A consulta fica registrada como atendida com a anotação do profissional.\",\n\"evidence\": [\n\"Situação da consulta registrada como atendida.\",\n\"Anotação do atendimento disponível na consulta.\"\n]\n}\n},\n\"businessHash\": \"sha256:ed3afb283a60e389c01776d5c9f233e59e9467dd340e45b58264aa738dd0fe5e\"\n}\n],\n\"relevantRules\": [],\n\"organisms\": [\n{\n\"organismId\": \"organism.list.1\",\n\"kind\": \"list\",\n\"intent\": \"Vejo apenas as minhas consultas do dia.\",\n\"staticContent\": false\n},\n{\n\"organismId\": \"organism.detail.1\",\n\"kind\": \"detail\",\n\"intent\": \"Abro a consulta e confiro o paciente e o horário.\",\n\"staticContent\": false\n},\n{\n\"organismId\": \"organism.form.1\",\n\"kind\": \"form\",\n\"intent\": \"Registro o atendimento e anoto o que aconteceu na consulta.\",\n\"staticContent\": false\n},\n{\n\"organismId\": \"organism.actions.1\",\n\"kind\": \"actions\",\n\"intent\": \"Marco a consulta como atendida.\",\n\"staticContent\": false\n}\n],\n\"reads\": [\n{\n\"entity\": \"Consulta\",\n\"family\": \"tdm\",\n\"scope\": \"own\",\n\"derived\": [],\n\"from\": [\n\"journey:consultarAgendaDiaria/inspecionarAgendaDiaria\",\n\"journey:consultarAgendaDiaria/localizarMinhasConsultasDoDia\",\n\"journey:registrarAtendimento/inspecionarMinhaConsulta\",\n\"journey:registrarAtendimento/localizarMinhaConsulta\",\n\"journey:registrarAtendimento/registrarAtendimentoRealizado\"\n]\n}\n],\n\"writes\": [\n{\n\"entity\": \"Consulta\",\n\"operation\": \"transition\",\n\"transitionRef\": \"registrarAtendimento\",\n\"from\": [\n\"journey:registrarAtendimento/registrarAtendimentoRealizado\"\n]\n}\n]\n},\n\"shared\": {\n\"schemaVersion\": \"2026-09-21-agent-defs-l2-shared-v1\",\n\"moduleName\": \"agendaClinica\",\n\"pageId\": \"consultas_profissional\",\n\"pageName\": \"Agenda do dia\",\n\"baseClassName\": \"ConsultasProfissionalShared\",\n\"routePattern\": \"/consultas_profissional\",\n\"contractRef\": {\n\"defPath\": \"l2/agendaClinica/web/contracts/consultas_profissional.defs.ts\",\n\"calls\": [\n{\n\"actionId\": \"registrarAtendimento\",\n\"routeConst\": \"registrarAtendimentoRoute\",\n\"inputType\": \"RegistrarAtendimentoInput\",\n\"outputType\": \"RegistrarAtendimentoOutput\"\n},\n{\n\"actionId\": \"listConsulta\",\n\"routeConst\": \"listConsultaRoute\",\n\"inputType\": \"ListConsultaInput\",\n\"outputType\": \"ListConsultaOutput\"\n}\n]\n},\n\"states\": [\n{\n\"stateKey\": \"ui.consultas_profissional.pageStatus\",\n\"name\": \"pageStatus\",\n\"kind\": \"pageStatus\",\n\"defaultValue\": \"idle\",\n\"valueSet\": [\n\"idle\",\n\"loading\",\n\"empty\",\n\"success\",\n\"error\"\n]\n},\n{\n\"stateKey\": \"ui.consultas_profissional.scenary\",\n\"name\": \"scenary\",\n\"kind\": \"uiScenary\",\n\"defaultValue\": \"base\",\n\"valueSet\": [\n\"base\",\n\"registrarAtendimento\"\n]\n},\n{\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.input.id\",\n\"name\": \"id\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"registrarAtendimento\",\n\"contractRef\": \"RegistrarAtendimentoInput.Consulta.id\",\n\"source\": \"selectedEntity\",\n\"presentation\": \"selection\",\n\"editable\": false,\n\"required\": true\n},\n{\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.input.details\",\n\"name\": \"details\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"registrarAtendimento\",\n\"contractRef\": \"RegistrarAtendimentoInput.Consulta.details\",\n\"source\": \"userInput\",\n\"presentation\": \"form\",\n\"editable\": true,\n\"required\": true\n},\n{\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.input.details_attendanceNote\",\n\"name\": \"attendanceNote\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"registrarAtendimento\",\n\"contractRef\": \"RegistrarAtendimentoInput.Consulta.details.attendanceNote\",\n\"source\": \"userInput\",\n\"presentation\": \"form\",\n\"editable\": true,\n\"required\": false\n},\n{\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.status\",\n\"name\": \"registrarAtendimentoStatus\",\n\"kind\": \"actionStatus\",\n\"defaultValue\": \"idle\",\n\"valueSet\": [\n\"idle\",\n\"loading\",\n\"success\",\n\"error\"\n],\n\"actionRef\": \"registrarAtendimento\"\n},\n{\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.error\",\n\"name\": \"registrarAtendimentoError\",\n\"kind\": \"actionError\",\n\"defaultValue\": null,\n\"actionRef\": \"registrarAtendimento\"\n},\n{\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.result\",\n\"name\": \"registrarAtendimentoResult\",\n\"kind\": \"commandOutput\",\n\"defaultValue\": null,\n\"actionRef\": \"registrarAtendimento\",\n\"contractRef\": \"RegistrarAtendimentoOutput\",\n\"outputShape\": \"object\"\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.id\",\n\"name\": \"id\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"listConsulta\",\n\"contractRef\": \"ListConsultaInput.Consulta.id\",\n\"source\": \"userInput\",\n\"presentation\": \"form\",\n\"editable\": true,\n\"required\": true\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.patientId\",\n\"name\": \"patientId\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"listConsulta\",\n\"contractRef\": \"ListConsultaInput.Consulta.patientId\",\n\"source\": \"userInput\",\n\"presentation\": \"form\",\n\"editable\": true,\n\"required\": true\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.professionalId\",\n\"name\": \"professionalId\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"listConsulta\",\n\"contractRef\": \"ListConsultaInput.Consulta.professionalId\",\n\"source\": \"userInput\",\n\"presentation\": \"form\",\n\"editable\": true,\n\"required\": true\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.scheduledAt\",\n\"name\": \"scheduledAt\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"listConsulta\",\n\"contractRef\": \"ListConsultaInput.Consulta.scheduledAt\",\n\"source\": \"userInput\",\n\"presentation\": \"form\",\n\"editable\": true,\n\"required\": true\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.status\",\n\"name\": \"status\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"listConsulta\",\n\"contractRef\": \"ListConsultaInput.Consulta.status\",\n\"source\": \"userInput\",\n\"presentation\": \"form\",\n\"editable\": true,\n\"required\": true\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.page\",\n\"name\": \"page\",\n\"kind\": \"input\",\n\"defaultValue\": null,\n\"actionRef\": \"listConsulta\",\n\"contractRef\": \"ListConsultaInput.Consulta.$page\",\n\"source\": \"userInput\",\n\"presentation\": \"form\",\n\"editable\": true,\n\"required\": false\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.status\",\n\"name\": \"listConsultaStatus\",\n\"kind\": \"actionStatus\",\n\"defaultValue\": \"idle\",\n\"valueSet\": [\n\"idle\",\n\"loading\",\n\"success\",\n\"error\"\n],\n\"actionRef\": \"listConsulta\"\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.error\",\n\"name\": \"listConsultaError\",\n\"kind\": \"actionError\",\n\"defaultValue\": null,\n\"actionRef\": \"listConsulta\"\n},\n{\n\"stateKey\": \"ui.consultas_profissional.listConsulta.result\",\n\"name\": \"listConsultaResult\",\n\"kind\": \"queryResult\",\n\"defaultValue\": [],\n\"actionRef\": \"listConsulta\",\n\"contractRef\": \"ListConsultaOutput\",\n\"outputShape\": \"array\"\n}\n],\n\"actions\": [\n{\n\"actionId\": \"setRegistrarAtendimentoId\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.registrarAtendimento.input.id\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.input.id\"\n},\n{\n\"actionId\": \"setRegistrarAtendimentoDetails\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.registrarAtendimento.input.details\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.input.details\"\n},\n{\n\"actionId\": \"setRegistrarAtendimentoDetailsAttendanceNote\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.registrarAtendimento.input.details_attendanceNote\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.registrarAtendimento.input.details_attendanceNote\"\n},\n{\n\"actionId\": \"registrarAtendimento\",\n\"kind\": \"command\",\n\"commandRef\": \"registrarAtendimento\",\n\"routeRef\": \"registrarAtendimentoRoute\",\n\"inputTypeRef\": \"RegistrarAtendimentoInput\",\n\"outputTypeRef\": \"RegistrarAtendimentoOutput\",\n\"inputStateKeys\": [\n\"ui.consultas_profissional.registrarAtendimento.input.id\",\n\"ui.consultas_profissional.registrarAtendimento.input.details\",\n\"ui.consultas_profissional.registrarAtendimento.input.details_attendanceNote\"\n],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.registrarAtendimento.result\"\n],\n\"statusStateKey\": \"ui.consultas_profissional.registrarAtendimento.status\",\n\"errorStateKey\": \"ui.consultas_profissional.registrarAtendimento.error\",\n\"refreshActionIds\": [\n\"listConsulta\"\n]\n},\n{\n\"actionId\": \"setListConsultaId\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.id\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.id\"\n},\n{\n\"actionId\": \"setListConsultaPatientId\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.patientId\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.patientId\"\n},\n{\n\"actionId\": \"setListConsultaProfessionalId\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.professionalId\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.professionalId\"\n},\n{\n\"actionId\": \"setListConsultaScheduledAt\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.scheduledAt\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.scheduledAt\"\n},\n{\n\"actionId\": \"setListConsultaStatus\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.status\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.status\"\n},\n{\n\"actionId\": \"setListConsultaPage\",\n\"kind\": \"stateSetter\",\n\"inputStateKeys\": [],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.page\"\n],\n\"statusStateKey\": \"\",\n\"errorStateKey\": \"\",\n\"refreshActionIds\": [],\n\"stateKey\": \"ui.consultas_profissional.listConsulta.input.page\"\n},\n{\n\"actionId\": \"listConsulta\",\n\"kind\": \"query\",\n\"commandRef\": \"listConsulta\",\n\"routeRef\": \"listConsultaRoute\",\n\"inputTypeRef\": \"ListConsultaInput\",\n\"outputTypeRef\": \"ListConsultaOutput\",\n\"inputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.id\",\n\"ui.consultas_profissional.listConsulta.input.patientId\",\n\"ui.consultas_profissional.listConsulta.input.professionalId\",\n\"ui.consultas_profissional.listConsulta.input.scheduledAt\",\n\"ui.consultas_profissional.listConsulta.input.status\",\n\"ui.consultas_profissional.listConsulta.input.page\"\n],\n\"outputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.result\"\n],\n\"statusStateKey\": \"ui.consultas_profissional.listConsulta.status\",\n\"errorStateKey\": \"ui.consultas_profissional.listConsulta.error\",\n\"refreshActionIds\": []\n}\n],\n\"scenaries\": [\n{\n\"value\": \"base\",\n\"kind\": \"base\",\n\"actionId\": \"listConsulta\",\n\"preconditions\": []\n},\n{\n\"value\": \"registrarAtendimento\",\n\"kind\": \"command\",\n\"actionId\": \"registrarAtendimento\",\n\"preconditions\": [\n\"ui.consultas_profissional.registrarAtendimento.input.id\"\n]\n}\n],\n\"initialLoads\": [],\n\"dataBindings\": [\n{\n\"actionId\": \"registrarAtendimento\",\n\"kind\": \"command\",\n\"routeRef\": \"registrarAtendimentoRoute\",\n\"inputTypeRef\": \"RegistrarAtendimentoInput\",\n\"outputTypeRef\": \"RegistrarAtendimentoOutput\",\n\"inputStateKeys\": [\n\"ui.consultas_profissional.registrarAtendimento.input.id\",\n\"ui.consultas_profissional.registrarAtendimento.input.details\",\n\"ui.consultas_profissional.registrarAtendimento.input.details_attendanceNote\"\n],\n\"resultStateKey\": \"ui.consultas_profissional.registrarAtendimento.result\"\n},\n{\n\"actionId\": \"listConsulta\",\n\"kind\": \"query\",\n\"routeRef\": \"listConsultaRoute\",\n\"inputTypeRef\": \"ListConsultaInput\",\n\"outputTypeRef\": \"ListConsultaOutput\",\n\"inputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.id\",\n\"ui.consultas_profissional.listConsulta.input.patientId\",\n\"ui.consultas_profissional.listConsulta.input.professionalId\",\n\"ui.consultas_profissional.listConsulta.input.scheduledAt\",\n\"ui.consultas_profissional.listConsulta.input.status\",\n\"ui.consultas_profissional.listConsulta.input.page\"\n],\n\"resultStateKey\": \"ui.consultas_profissional.listConsulta.result\"\n}\n]\n},\n\"sceneSurface\": {\n\"state\": {\n\"stateKey\": \"ui.consultas_profissional.scenary\",\n\"defaultValue\": \"base\"\n},\n\"scenaries\": [\n{\n\"contentRef\": \"base\",\n\"actionId\": \"listConsulta\",\n\"kind\": \"base\",\n\"inputStateKeys\": [\n\"ui.consultas_profissional.listConsulta.input.id\",\n\"ui.consultas_profissional.listConsulta.input.patientId\",\n\"ui.consultas_profissional.listConsulta.input.professionalId\",\n\"ui.consultas_profissional.listConsulta.input.scheduledAt\",\n\"ui.consultas_profissional.listConsulta.input.status\",\n\"ui.consultas_profissional.listConsulta.input.page\"\n],\n\"statusStateKey\": \"ui.consultas_profissional.listConsulta.status\",\n\"errorStateKey\": \"ui.consultas_profissional.listConsulta.error\"\n},\n{\n\"contentRef\": \"registrarAtendimento\",\n\"actionId\": \"registrarAtendimento\",\n\"kind\": \"command\",\n\"inputStateKeys\": [\n\"ui.consultas_profissional.registrarAtendimento.input.id\",\n\"ui.consultas_profissional.registrarAtendimento.input.details\",\n\"ui.consultas_profissional.registrarAtendimento.input.details_attendanceNote\"\n],\n\"statusStateKey\": \"ui.consultas_profissional.registrarAtendimento.status\",\n\"errorStateKey\": \"ui.consultas_profissional.registrarAtendimento.error\"\n}\n]\n},\n\"pageCategoryCatalog\": {\n\"pageCategories\": {\n\"instruction\": \"Choose exactly one categoryRef for the page, or bespoke with an explicit reason.\",\n\"categories\": [\n{\n\"categoryRef\": \"productCatalog\",\n\"name\": \"Product Catalog\",\n\"meaning\": \"Cadastro e manutenção de produtos, SKUs, serviços ou itens vendáveis.\"\n},\n{\n\"categoryRef\": \"inventoryControl\",\n\"name\": \"Inventory Control\",\n\"meaning\": \"Controle de estoque, saldos, níveis mínimos, alertas e ajustes manuais.\"\n},\n{\n\"categoryRef\": \"customerManagement\",\n\"name\": \"Customer Management\",\n\"meaning\": \"Cadastro e gestão de clientes, contatos, dados comerciais e relacionamento.\"\n},\n{\n\"categoryRef\": \"supplierManagement\",\n\"name\": \"Supplier Management\",\n\"meaning\": \"Cadastro e controle de fornecedores, dados fiscais, contatos e condições comerciais.\"\n},\n{\n\"categoryRef\": \"orderManagement\",\n\"name\": \"Order Management\",\n\"meaning\": \"Gestão de pedidos, status, itens, valores, clientes e ações operacionais.\"\n},\n{\n\"categoryRef\": \"posWorkbench\",\n\"name\": \"POS Workbench\",\n\"meaning\": \"Tela operacional rápida para venda, lançamento de itens, carrinho e pagamento.\"\n},\n{\n\"categoryRef\": \"operationsQueue\",\n\"name\": \"Operations Queue\",\n\"meaning\": \"Fila operacional para acompanhar itens por status, etapa ou prioridade.\"\n},\n{\n\"categoryRef\": \"approvalWorkflow\",\n\"name\": \"Approval Workflow\",\n\"meaning\": \"Fluxo de aprovação com revisão, decisão, comentários e trilha de auditoria.\"\n},\n{\n\"categoryRef\": \"processWizard\",\n\"name\": \"Process Wizard\",\n\"meaning\": \"Processos guiados em etapas, com validação forte e resumo final.\"\n},\n{\n\"categoryRef\": \"financialTransactions\",\n\"name\": \"Financial Transactions\",\n\"meaning\": \"Listagem e controle de lançamentos financeiros, contas, pagamentos e recebimentos.\"\n},\n{\n\"categoryRef\": \"documentManagement\",\n\"name\": \"Document Management\",\n\"meaning\": \"Gestão de documentos, anexos, versões, status e aprovação.\"\n},\n{\n\"categoryRef\": \"userAccessManagement\",\n\"name\": \"User Access Management\",\n\"meaning\": \"Gestão de usuários, papéis, permissões, status de acesso e segurança.\"\n},\n{\n\"categoryRef\": \"settingsConsole\",\n\"name\": \"Settings Console\",\n\"meaning\": \"Configurações administrativas do módulo ou organização.\"\n},\n{\n\"categoryRef\": \"auditTrail\",\n\"name\": \"Audit Trail\",\n\"meaning\": \"Consulta de eventos, alterações, usuários responsáveis e histórico operacional.\"\n},\n{\n\"categoryRef\": \"dashboardCommandCenter\",\n\"name\": \"Dashboard Command Center\",\n\"meaning\": \"Dashboard com KPIs, alertas, tendências e ações recomendadas.\"\n},\n{\n\"categoryRef\": \"calendarScheduling\",\n\"name\": \"Calendar Scheduling\",\n\"meaning\": \"Agenda, alocação de horários, reservas, turnos ou compromissos.\"\n},\n{\n\"categoryRef\": \"assetManagement\",\n\"name\": \"Asset Management\",\n\"meaning\": \"Gestão de ativos, equipamentos, manutenção, localização e ciclo de vida.\"\n},\n{\n\"categoryRef\": \"caseManagement\",\n\"name\": \"Case Management\",\n\"meaning\": \"Gestão de casos, solicitações, incidentes ou atendimento ao cliente.\"\n},\n{\n\"categoryRef\": \"reportExplorer\",\n\"name\": \"Report Explorer\",\n\"meaning\": \"Consulta, filtros, visualização e exportação de relatórios operacionais.\"\n},\n{\n\"categoryRef\": \"masterDataManagement\",\n\"name\": \"Master Data Management\",\n\"meaning\": \"Cadastro base de dados mestres usados por vários módulos.\"\n},\n{\n\"categoryRef\": \"entityRecordManagement\",\n\"name\": \"Entity Record Management\",\n\"meaning\": \"Criação e edição de um registro de negócio (sem listagem), com transições de ciclo de vida por ações contextuais.\"\n},\n{\n\"categoryRef\": \"fieldDataCapture\",\n\"name\": \"Field Data Capture\",\n\"meaning\": \"Captura rápida de apontamentos em campo ou operação, geralmente mobile: horas, consumo, leituras, ocorrências. Formulários curtos, reset após envio.\"\n},\n{\n\"categoryRef\": \"readOnlyDetailPortal\",\n\"name\": \"Read-Only Detail Portal\",\n\"meaning\": \"Visão somente-leitura de um registro único para stakeholder externo ou consulta interna, summary-first, sem nenhuma ação de escrita.\"\n},\n{\n\"categoryRef\": \"workPlanningBoard\",\n\"name\": \"Work Planning Board\",\n\"meaning\": \"Planejamento e acompanhamento de trabalho: criar tarefas, atribuir responsáveis inline, timeline por prazo e edição em master-detail.\"\n},\n{\n\"categoryRef\": \"aiAssistedAuthoring\",\n\"name\": \"AI-Assisted Authoring\",\n\"meaning\": \"Geração de artefato assistida por IA seguida de revisão humana e publicação/compartilhamento: gerar → revisar → publicar.\"\n},\n{\n\"categoryRef\": \"globalSearchResults\",\n\"name\": \"Global Search Results\",\n\"meaning\": \"Tela de resultados de busca transversal por entidades, com agrupamento por tipo, filtros e ações rápidas sobre o resultado.\"\n},\n{\n\"categoryRef\": \"activityNotificationHub\",\n\"name\": \"Activity / Notification Hub\",\n\"meaning\": \"Central de notificações, menções, atividades recentes e alertas operacionais, com marcação de lido e ações contextuais.\"\n},\n{\n\"categoryRef\": \"hierarchyTreeView\",\n\"name\": \"Hierarchy / Tree View\",\n\"meaning\": \"Visualização e edição de estruturas hierárquicas: BOM, organograma, categorias aninhadas ou localizações.\"\n},\n{\n\"categoryRef\": \"comparisonView\",\n\"name\": \"Comparison View\",\n\"meaning\": \"Comparação lado a lado de dois ou mais registros para análise de diferenças e decisão.\"\n},\n{\n\"categoryRef\": \"importMappingWizard\",\n\"name\": \"Import / Mapping Wizard\",\n\"meaning\": \"Processo guiado de importação com upload de arquivo, mapeamento de colunas, validação e confirmação final.\"\n},\n{\n\"categoryRef\": \"kanbanBoardView\",\n\"name\": \"Kanban / Board View\",\n\"meaning\": \"Quadro visual por colunas de status com arrastar-e-soltar, filtros e ações rápidas nos cards. Distinto de workPlanningBoard (timeline/master-detail) e operationsQueue (lista por status): a superfície é o board de colunas.\"\n},\n{\n\"categoryRef\": \"analyticalList\",\n\"name\": \"Analytical List\",\n\"meaning\": \"Lista analítica combinando tabela, filtros avançados, KPIs e gráficos no mesmo contexto para análise e ação. Distinto de dashboardCommandCenter (monitorar exceções) e reportExplorer (consulta ad-hoc): aqui KPI, gráfico e tabela acionável operam sobre o mesmo conjunto filtrado.\"\n},\n{\n\"categoryRef\": \"contentLanding\",\n\"name\": \"Content Landing\",\n\"meaning\": \"Página pública de apresentação ou campanha: conteúdo primeiro (textos e imagens), ação(ões) simples embutidas no final, sem cadastro CRUD. Distinto de processWizard (passo a passo operacional) e entityRecordManagement (manutenção de registros).\"\n},\n{\n\"categoryRef\": \"bespoke\",\n\"name\": \"Bespoke\",\n\"meaning\": \"No published category fits the page capabilities; the judgment must explain why.\"\n}\n]\n}\n},\n\"moleculeInventory\": {\n\"moleculeCatalog\": {\n\"project\": 102040,\n\"instruction\": \"Select zero or more useful groupId values. Do not select a visual variant here.\",\n\"groups\": [\n{\n\"groupId\": \"groupEnterBoolean\",\n\"purpose\": \"Allows the user to input a true/false decision. Value is boolean — starts as false until the user changes it. Supports Label and Helper slot tags. Implementations are toggle/switch and checkbox, fully interchangeable by swapping the component tag.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupenterboolean/index.defs\"\n},\n{\n\"groupId\": \"groupEnterDate\",\n\"purpose\": \"Allows the user to input a date only (no time). Ideal for birth dates, due dates, contract effective dates, expiration dates, and any scenario where the time of day is irrelevant. Implementations include date picker, masked date input, inline calendar, and month/year picker.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupenterdate/index.defs\"\n},\n{\n\"groupId\": \"groupEnterDateInterval\",\n\"purpose\": \"Allows the user to input a date range with a start date and an end date (no time). Ideal for vacation periods, report filters, campaign durations, contract validity, and hotel or flight booking dates. Implementations include date range picker with dual calendar, inline date range, and range picker with presets.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupenterdateinterval/index.defs\"\n},\n{\n\"groupId\": \"groupEnterDatetime\",\n\"purpose\": \"Allows the user to input date and/or time values. Ideal for scheduling, deadlines, date ranges, and appointments. Implementations include date picker, time picker, datetime picker, date range picker, inline calendar, month picker, and year picker.\",\n\"moleculeCount\": 2,\n\"indexReference\": \"/_102040_/l2/molecules/groupenterdatetime/index.defs\"\n},\n{\n\"groupId\": \"groupEnterDateTimeInterval\",\n\"purpose\": \"Allows the user to input a date+time range with a start datetime and an end datetime. Ideal for meeting scheduling, room reservations, maintenance windows, task time tracking, and any booking that requires exact start and end timestamps. Implementations include datetime range picker, event scheduler, and booking widget.\",\n\"moleculeCount\": 3,\n\"indexReference\": \"/_102040_/l2/molecules/groupenterdatetimeinterval/index.defs\"\n},\n{\n\"groupId\": \"groupEnterMoney\",\n\"purpose\": \"Allows the user to input monetary values with locale-aware formatting. Ideal for prices, payments, budgets, and financial transactions. Handles currency symbols, thousand separators, and decimal precision. Implementations include currency input, price field, money input, and currency converter.\",\n\"moleculeCount\": 2,\n\"indexReference\": \"/_102040_/l2/molecules/groupentermoney/index.defs\"\n},\n{\n\"groupId\": \"groupEnterNumber\",\n\"purpose\": \"Allows the user to input numeric values. Ideal for quantities, measurements, percentages, ages, weights, and numeric configurations. Implementations include number input, stepper, slider, percentage input, and quantity selector.\",\n\"moleculeCount\": 3,\n\"indexReference\": \"/_102040_/l2/molecules/groupenternumber/index.defs\"\n},\n{\n\"groupId\": \"groupEnterNumberInterval\",\n\"purpose\": \"Allows the user to input a numeric range with a lower and an upper value. Ideal for price bands, age brackets, value filters, weight or measurement ranges, and any bounded numeric interval. Supports min/max bounds, step, decimals, locale formatting, and minimum/maximum gap between values. Implementations include dual-handle range slider, from/to number inputs, and histogram range.\",\n\"moleculeCount\": 2,\n\"indexReference\": \"/_102040_/l2/molecules/groupenternumberinterval/index.defs\"\n},\n{\n\"groupId\": \"groupEnterText\",\n\"purpose\": \"Allows the user to input free-form text. Ideal for names, descriptions, comments, emails, passwords, and any textual data. Implementations include input, textarea, password input, masked input, input OTP, search input, and tag input.\",\n\"moleculeCount\": 8,\n\"indexReference\": \"/_102040_/l2/molecules/groupentertext/index.defs\"\n},\n{\n\"groupId\": \"groupEnterTime\",\n\"purpose\": \"Allows the user to input a time only (no date). Ideal for business hours, recurring daily schedules, alarm times, opening and closing times, and shift configurations. Implementations include time picker with scrollable columns, masked time input, time spinner, and clock face.\",\n\"moleculeCount\": 3,\n\"indexReference\": \"/_102040_/l2/molecules/groupentertime/index.defs\"\n},\n{\n\"groupId\": \"groupEnterTimeInterval\",\n\"purpose\": \"Allows the user to input a time range with a start time and an end time (no date). Ideal for work shifts, business hours configuration, recurring availability windows, class schedules, and break intervals. Supports overnight intervals that cross midnight. Implementations include time range picker, dual-handle timeline slider, and business hours grid.\",\n\"moleculeCount\": 6,\n\"indexReference\": \"/_102040_/l2/molecules/groupentertimeinterval/index.defs\"\n},\n{\n\"groupId\": \"groupExpandContent\",\n\"purpose\": \"Allows the user to expand or collapse content sections to see more or less details. Manages multiple sections via Section slot tags with title, disabled, and expanded attributes. Supports accordion mode (single open) or multiple open simultaneously. Implementations include accordion, collapsible, show more/show less, expandable row, and details/summary.\",\n\"moleculeCount\": 5,\n\"indexReference\": \"/_102040_/l2/molecules/groupexpandcontent/index.defs\"\n},\n{\n\"groupId\": \"groupLocatePosition\",\n\"purpose\": \"Allows the user to inform or visualize a geographic location. Supports address search with autocomplete (suggestions provided by the page via BFF), geolocation capture, and map preview. Value is stored as a JSON string containing lat, lng, and address. Implementations include address autocomplete, map picker, geolocation button, and area selector.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/grouplocateposition/index.defs\"\n},\n{\n\"groupId\": \"groupNavigateSection\",\n\"purpose\": \"Allows the user to switch between sections within the same context. Sections defined via Tab slot tags with value, title, icon, and disabled attributes. Value is the active tab identifier. Page is responsible for displaying each section content. Implementations include tabs, pills/segmented control, navigation menu, bottom navigation, and pagination.\",\n\"moleculeCount\": 5,\n\"indexReference\": \"/_102040_/l2/molecules/groupnavigatesection/index.defs\"\n},\n{\n\"groupId\": \"groupNavigateSteps\",\n\"purpose\": \"Allows the user to advance through a sequential multi-step process. Steps defined via Step slot tags with title, description, completed, and disabled attributes. Value is the active step index. Supports linear mode (must complete in order) and free navigation. Implementations include horizontal stepper, vertical stepper, wizard, progress steps.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupnavigatesteps/index.defs\"\n},\n{\n\"groupId\": \"groupNotifyUser\",\n\"purpose\": \"Informs the user about events, status changes, or action results. Controlled via visible property. Supports notification types (info, success, warning, error), auto-dismiss with configurable duration, position hints, dismissible toggle, and optional action slot. Implementations include toast, snackbar, banner, alert, and inline alert.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupnotifyuser/index.defs\"\n},\n{\n\"groupId\": \"groupPlayMedia\",\n\"purpose\": \"Plays audio or video content. Media sources provided via Source slot tags with fallback format support. Shared contract for both audio and video — swap the component tag to change the player style. Supports autoplay, loop, mute, poster thumbnail, and subtitle tracks. Implementations include video player, audio player, mini player, and media controls.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupplaymedia/index.defs\"\n},\n{\n\"groupId\": \"groupRateItem\",\n\"purpose\": \"Allows the user to rate or score an item. Supports auto-generated options from a numeric range (min/max/step) or custom options via Item slot tags (emoji, icons, text). Value is always a number. Implementations include star rating, thumbs up/down, emoji rating, NPS scale, and satisfaction slider.\",\n\"moleculeCount\": 8,\n\"indexReference\": \"/_102040_/l2/molecules/grouprateitem/index.defs\"\n},\n{\n\"groupId\": \"groupScanCode\",\n\"purpose\": \"Captures information via camera (QR code, barcode, document). Component captures image frames and emits them; the page is responsible for decoding via BFF. Supports rear/front camera, auto-capture with configurable interval, and custom result display. Implementations include QR code scanner, barcode reader, document scanner (OCR), and camera viewfinder.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupscancode/index.defs\"\n},\n{\n\"groupId\": \"groupSearchContent\",\n\"purpose\": \"Allows the user to find content using text search. Emits search events with debounce; page provides suggestions via Suggestion slot tags. Value holds the confirmed result — either a suggestion value or the raw typed text. Supports clear, loading state, and empty state. Implementations include search field, command palette (cmd+k), search with suggestions, and combobox.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupsearchcontent/index.defs\"\n},\n{\n\"groupId\": \"groupSelectFileForUpload\",\n\"purpose\": \"Allows the user to select one or more files to be uploaded. Stateless — emits selected File objects via change event; the page is responsible for uploading via BFF. Supports drag-and-drop, file type and size validation, and emits a reject event for invalid files. Implementations include drag-drop zone, file button, multi-file upload, camera capture, and paste from clipboard.\",\n\"moleculeCount\": 5,\n\"indexReference\": \"/_102040_/l2/molecules/groupselectfileforupload/index.defs\"\n},\n{\n\"groupId\": \"groupSelectMany\",\n\"purpose\": \"Allows the user to select one or more options from a list. Value is a comma-separated string of selected item values. Supports searchable filtering, min/max selection limits, grouped items, and disabled options. Implementations include checkbox group, chips/tags, multi-select dropdown, dual list (transfer list), card grid with selection, toggle group, and table (checkbox rows with column headers for comparing attributes).\",\n\"moleculeCount\": 6,\n\"indexReference\": \"/_102040_/l2/molecules/groupselectmany/index.defs\"\n},\n{\n\"groupId\": \"groupSelectOne\",\n\"purpose\": \"Allows the user to select exactly one option from a list of mutually exclusive choices. Ideal for scenarios where a single, clear decision is required. Layout is chosen via the \\\\`variant\\\\` property: dropdown/combobox (default), radio group, segmented control, list picker, and table (a radio group laid out as a table with column headers — for comparing options that each have multiple attributes, e.g. plan name/price/limits). The selected value is always the chosen item value, regardless of variant.\",\n\"moleculeCount\": 12,\n\"indexReference\": \"/_102040_/l2/molecules/groupselectone/index.defs\"\n},\n{\n\"groupId\": \"groupShowProgress\",\n\"purpose\": \"Indicates the progress of an operation or process. Visual primitive designed for composition inside other components. Supports determinate mode (0-100%) and indeterminate mode (unknown duration). Implementations include progress bar, progress ring/circle, spinner, and percentage indicator.\",\n\"moleculeCount\": 5,\n\"indexReference\": \"/_102040_/l2/molecules/groupshowprogress/index.defs\"\n},\n{\n\"groupId\": \"groupTriggerAction\",\n\"purpose\": \"Allows the user to execute an action or command. Supports Label and Icon slot tags with flexible composition (text only, icon only, or both). Configurable variant (primary, secondary, danger, ghost, link), size, loading state, and icon position. Implementations include button, icon button, FAB, split button, and button group.\",\n\"moleculeCount\": 6,\n\"indexReference\": \"/_102040_/l2/molecules/grouptriggeraction/index.defs\"\n},\n{\n\"groupId\": \"groupViewCard\",\n\"purpose\": \"Displays an item as an independent visual unit. Composition primitive with flexible slot structure: header (title, description), content, footer, and action areas. All slots are optional. Supports variants (default, outlined, elevated, ghost), clickable, selectable, and loading states. Implementations include standard card, media card, compact card, horizontal card, and interactive card.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupviewcard/index.defs\"\n},\n{\n\"groupId\": \"groupViewChart\",\n\"purpose\": \"Displays data through graphical representation. Data provided via Series and Point slot tags. All chart implementations share the same data contract — swap the component tag to change visualization. Supports multi-series (Line, Bar, Area, Radar, Scatter) and single-series (Pie, Donut, Funnel). Implementations include bar chart, line chart, area chart, pie chart, donut chart, scatter chart, radar chart, and funnel chart.\",\n\"moleculeCount\": 6,\n\"indexReference\": \"/_102040_/l2/molecules/groupviewchart/index.defs\"\n},\n{\n\"groupId\": \"groupViewData\",\n\"purpose\": \"Display a collection of data with adaptive layout. The component decides the best presentation based on context (viewport, configuration). Use when displaying multiple records with defined fields and rich content.\",\n\"moleculeCount\": 5,\n\"indexReference\": \"/_102040_/l2/molecules/groupviewdata/index.defs\"\n},\n{\n\"groupId\": \"groupViewHierarchy\",\n\"purpose\": \"Displays hierarchical data structures with parent-child relationships. Uses recursive Node slot tags with free content that can nest indefinitely. Supports expand/collapse of nodes with children, accordion mode (one per level), and expand-all. Implementations include tree view, org chart, cascader, nested list, and mind map.\",\n\"moleculeCount\": 4,\n\"indexReference\": \"/_102040_/l2/molecules/groupviewhierarchy/index.defs\"\n},\n{\n\"groupId\": \"groupViewMetric\",\n\"purpose\": \"Displays a highlighted indicator or metric. Purely visual — all data via slot tags (Label, Value, Icon, Trend with direction attribute, Helper). No value property, no events. Supports loading state. Implementations include big number, KPI card, sparkline, gauge/speedometer, and trend indicator.\",\n\"moleculeCount\": 5,\n\"indexReference\": \"/_102040_/l2/molecules/groupviewmetric/index.defs\"\n},\n{\n\"groupId\": \"groupViewTable\",\n\"purpose\": \"Displays structured data in tabular format. Data provided via TableHeader, TableBody, TableRow, TableHead, and TableCell slot tags. Supports column sorting, row selection with checkboxes, pagination, and isEditing propagation to web components inside cells. Implementations include data table, simple table, editable grid, virtualized table, and tree table.\",\n\"moleculeCount\": 13,\n\"indexReference\": \"/_102040_/l2/molecules/groupviewtable/index.defs\"\n}\n]\n}\n},\n\"moleculeCandidates\": {\n\"moleculeCandidates\": {\n\"instruction\": \"Recommend at least one listed exact candidate for each organism with a compatible group. An empty recommendation is valid only for static content or when no listed group matches its capabilities; never claim the catalog is empty when groups are listed.\",\n\"groups\": [\n{\n\"groupId\": \"groupEnterBoolean\",\n\"scenarios\": [\n{\n\"scenario\": \"Need an explicit yes/no choice that reads like a segmented control in forms.\",\n\"candidates\": [\n\"groupenterboolean--ml-boolean-segmented\"\n]\n},\n{\n\"scenario\": \"Require a legal agreement or acknowledgement before submission.\",\n\"candidates\": [\n\"groupenterboolean--ml-checkbox-preference\"\n]\n},\n{\n\"scenario\": \"Prefer a compact icon-based toggle for dense preference lists.\",\n\"candidates\": [\n\"groupenterboolean--ml-toggle-icon\"\n]\n},\n{\n\"scenario\": \"Need a familiar settings switch for longer configuration screens.\",\n\"candidates\": [\n\"groupenterboolean--ml-toggle-switch\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterDate\",\n\"scenarios\": [\n{\n\"scenario\": \"Space-constrained layouts that still need a month grid.\",\n\"candidates\": [\n\"groupenterdate--ml-compact-calendar\"\n]\n},\n{\n\"scenario\": \"Standard form field with a dropdown calendar and placeholder.\",\n\"candidates\": [\n\"groupenterdate--ml-date-picker\"\n]\n},\n{\n\"scenario\": \"Fast selection with preset dates like today or next week.\",\n\"candidates\": [\n\"groupenterdate--ml-date-shortcut-picker\"\n]\n},\n{\n\"scenario\": \"Always-visible calendar embedded in dashboards or scheduling views.\",\n\"candidates\": [\n\"groupenterdate--ml-inline-calendar\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterDateInterval\",\n\"scenarios\": [\n{\n\"scenario\": \"Users should drag across a single calendar for quick selection.\",\n\"candidates\": [\n\"groupenterdateinterval--ml-date-interval-drag\"\n]\n},\n{\n\"scenario\": \"Longer ranges need two months visible at once.\",\n\"candidates\": [\n\"groupenterdateinterval--ml-date-range-dual-calendar\"\n]\n},\n{\n\"scenario\": \"Reporting requires full months or year spans rather than exact days.\",\n\"candidates\": [\n\"groupenterdateinterval--ml-month-year-range\"\n]\n},\n{\n\"scenario\": \"Fast selection from predefined ranges like last 7 or 30 days.\",\n\"candidates\": [\n\"groupenterdateinterval--ml-date-interval-presets\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterDatetime\",\n\"scenarios\": [\n{\n\"scenario\": \"Guided appointment scheduling\",\n\"candidates\": [\n\"groupenterdatetime--ml-datetime-picker\"\n]\n},\n{\n\"scenario\": \"Fast keyboard entry of a deadline\",\n\"candidates\": [\n\"groupenterdatetime--ml-enter-datetime-masked-input\"\n]\n},\n{\n\"scenario\": \"Accessible date and time selection with locale formatting\",\n\"candidates\": [\n\"groupenterdatetime--ml-datetime-picker\",\n\"groupenterdatetime--ml-enter-datetime-masked-input\"\n]\n},\n{\n\"scenario\": \"Entering a datetime in a fixed format\",\n\"candidates\": [\n\"groupenterdatetime--ml-enter-datetime-masked-input\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterDateTimeInterval\",\n\"scenarios\": [\n{\n\"scenario\": \"Need a visual timeline to drag across a maintenance window or availability block.\",\n\"candidates\": [\n\"groupenterdatetimeinterval--ml-datetime-interval-timeline\"\n]\n},\n{\n\"scenario\": \"Simple form-driven meeting scheduling with start/end fields and validation.\",\n\"candidates\": [\n\"groupenterdatetimeinterval--ml-enter-datetime-interval\"\n]\n},\n{\n\"scenario\": \"Bookings with strict min/max duration rules and event context.\",\n\"candidates\": [\n\"groupenterdatetimeinterval--ml-event-duration-interval\"\n]\n},\n{\n\"scenario\": \"Users need a clear range input but no duration constraints.\",\n\"candidates\": [\n\"groupenterdatetimeinterval--ml-enter-datetime-interval\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterMoney\",\n\"scenarios\": [\n{\n\"scenario\": \"Locale‑aware editing\",\n\"candidates\": [\n\"groupentermoney--ml-enter-money-br\",\n\"groupentermoney--ml-currency-input\"\n]\n},\n{\n\"scenario\": \"Read‑only formatted view\",\n\"candidates\": []\n},\n{\n\"scenario\": \"Bare‑bones UI\",\n\"candidates\": []\n},\n{\n\"scenario\": \"Full feature set (symbol, decimals, loading)\",\n\"candidates\": [\n\"groupentermoney--ml-currency-input\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterNumber\",\n\"scenarios\": [\n{\n\"scenario\": \"Simple quantity\",\n\"candidates\": [\n\"groupenternumber--ml-number-input\",\n\"groupenternumber--ml-number-stepper\"\n]\n},\n{\n\"scenario\": \"Precise measurement\",\n\"candidates\": [\n\"groupenternumber--ml-number-input\",\n\"groupenternumber--ml-number-stepper\",\n\"groupenternumber--ml-floating-number-input\"\n]\n},\n{\n\"scenario\": \"Percentage\",\n\"candidates\": []\n},\n{\n\"scenario\": \"Range selection\",\n\"candidates\": []\n}\n]\n},\n{\n\"groupId\": \"groupEnterNumberInterval\",\n\"scenarios\": [\n{\n\"scenario\": \"Visual continuous selection (price filters, dashboards)\",\n\"candidates\": [\n\"groupenternumberinterval--ml-number-range-slider\"\n]\n},\n{\n\"scenario\": \"Precise numeric entry with keyboard (forms, admin panels)\",\n\"candidates\": [\n\"groupenternumberinterval--ml-number-interval-inputs\"\n]\n},\n{\n\"scenario\": \"Touch-friendly mobile range picking\",\n\"candidates\": [\n\"groupenternumberinterval--ml-number-range-slider\"\n]\n},\n{\n\"scenario\": \"Large value domains needing exact from/to figures\",\n\"candidates\": [\n\"groupenternumberinterval--ml-number-interval-inputs\"\n]\n},\n{\n\"scenario\": \"Bounded interval with min/max gap constraints\",\n\"candidates\": [\n\"groupenternumberinterval--ml-number-range-slider\",\n\"groupenternumberinterval--ml-number-interval-inputs\"\n]\n},\n{\n\"scenario\": \"Decimal measurements (weight, length, ratings)\",\n\"candidates\": [\n\"groupenternumberinterval--ml-number-range-slider\",\n\"groupenternumberinterval--ml-number-interval-inputs\"\n]\n},\n{\n\"scenario\": \"Compact UI where a slider saves vertical space\",\n\"candidates\": [\n\"groupenternumberinterval--ml-number-range-slider\"\n]\n},\n{\n\"scenario\": \"Accessibility-first keyboard data entry\",\n\"candidates\": [\n\"groupenternumberinterval--ml-number-interval-inputs\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterText\",\n\"scenarios\": [\n{\n\"scenario\": \"Single‑line address entry\",\n\"candidates\": [\n\"groupentertext--ml-address-field\",\n\"groupentertext--ml-enter-text\"\n]\n},\n{\n\"scenario\": \"Brazilian CPF number\",\n\"candidates\": [\n\"groupentertext--ml-cpf-input\"\n]\n},\n{\n\"scenario\": \"Search field with floating label\",\n\"candidates\": [\n\"groupentertext--ml-floating-text-input\"\n]\n},\n{\n\"scenario\": \"Long comment or description\",\n\"candidates\": [\n\"groupentertext--ml-multiline-text\"\n]\n},\n{\n\"scenario\": \"Password creation with strength meter\",\n\"candidates\": [\n\"groupentertext--ml-password-strength-input\"\n]\n},\n{\n\"scenario\": \"International phone number\",\n\"candidates\": [\n\"groupentertext--ml-phone-input\"\n]\n},\n{\n\"scenario\": \"Multiple tags / keywords\",\n\"candidates\": [\n\"groupentertext--ml-tag-input\"\n]\n},\n{\n\"scenario\": \"Simple single‑line text\",\n\"candidates\": [\n\"groupentertext--ml-enter-text\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterTime\",\n\"scenarios\": [\n{\n\"scenario\": \"Users want an analog-style clock for quick selection.\",\n\"candidates\": [\n\"groupentertime--ml-clock-time-picker\"\n]\n},\n{\n\"scenario\": \"Kiosk or mobile UI where time columns spin quickly.\",\n\"candidates\": [\n\"groupentertime--ml-time-scroll-picker\"\n]\n},\n{\n\"scenario\": \"Capturing elapsed time or shift length with seconds.\",\n\"candidates\": [\n\"groupentertime--ml-enter-time-duration\"\n]\n},\n{\n\"scenario\": \"Choosing opening/closing hours in 15-minute steps.\",\n\"candidates\": [\n\"groupentertime--ml-time-scroll-picker\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupEnterTimeInterval\",\n\"scenarios\": [\n{\n\"scenario\": \"Need a quick dropdown-like selector for standard shifts or office hours.\",\n\"candidates\": [\n\"groupentertimeinterval--ml-time-interval-selector\",\n\"groupentertimeinterval--ml-time-interval\"\n]\n},\n{\n\"scenario\": \"Users should drag a visual timeline to set availability windows.\",\n\"candidates\": [\n\"groupentertimeinterval--ml-time-interval-slider\"\n]\n},\n{\n\"scenario\": \"Configuring shifts that can cross midnight with duration rules.\",\n\"candidates\": [\n\"groupentertimeinterval--ml-work-shift-interval\",\n\"groupentertimeinterval--ml-enter-time-interval\"\n]\n},\n{\n\"scenario\": \"Collecting short session ranges with a compact inline layout.\",\n\"candidates\": [\n\"groupentertimeinterval--ml-time-interval-range\",\n\"groupentertimeinterval--ml-time-interval\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupExpandContent\",\n\"scenarios\": [\n{\n\"scenario\": \"Only one section should stay open at a time (classic accordion behavior).\",\n\"candidates\": [\n\"groupexpandcontent--ml-accordion\"\n]\n},\n{\n\"scenario\": \"Show a teaser with an optional longer explanation.\",\n\"candidates\": [\n\"groupexpandcontent--ml-readmore-expand\"\n]\n},\n{\n\"scenario\": \"Highlight a single expandable detail with optional disabled items.\",\n\"candidates\": [\n\"groupexpandcontent--ml-single-expand-content\"\n]\n},\n{\n\"scenario\": \"Let users open several configuration panels at once.\",\n\"candidates\": [\n\"groupexpandcontent--ml-collapsible-panel\"\n]\n},\n{\n\"scenario\": \"Hide sensitive content behind a deliberate reveal action.\",\n\"candidates\": [\n\"groupexpandcontent--ml-reveal-overlay\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupLocatePosition\",\n\"scenarios\": [\n{\n\"scenario\": \"User types an address and expects search suggestions from your backend.\",\n\"candidates\": [\n\"grouplocateposition--ml-address-autocomplete\"\n]\n},\n{\n\"scenario\": \"Only need a single action to capture the current coordinates.\",\n\"candidates\": [\n\"grouplocateposition--ml-geolocation-trigger\"\n]\n},\n{\n\"scenario\": \"User should select a precise pin with an embedded map preview.\",\n\"candidates\": [\n\"grouplocateposition--ml-locate-map-picker\"\n]\n},\n{\n\"scenario\": \"Choose a nearby area once a base location is known.\",\n\"candidates\": [\n\"grouplocateposition--ml-locate-nearby\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupNavigateSection\",\n\"scenarios\": [\n{\n\"scenario\": \"Expose hierarchical sections with a breadcrumb feel at the top of a detail page.\",\n\"candidates\": [\n\"groupnavigatesection--ml-breadcrumb-trail\"\n]\n},\n{\n\"scenario\": \"Quickly swap between 3–4 short, peer sections without leaving context.\",\n\"candidates\": [\n\"groupnavigatesection--ml-navigate-pills\",\n\"groupnavigatesection--ml-tabs\",\n\"groupnavigatesection--ml-navigate-tabs\"\n]\n},\n{\n\"scenario\": \"Long-form documentation needs section anchors and scroll awareness.\",\n\"candidates\": [\n\"groupnavigatesection--ml-side-nav-scrollspy\"\n]\n},\n{\n\"scenario\": \"Provide a classic tabbed interface with clear labels and icons.\",\n\"candidates\": [\n\"groupnavigatesection--ml-tabs\",\n\"groupnavigatesection--ml-navigate-tabs\"\n]\n},\n{\n\"scenario\": \"Step-by-step checkout or onboarding where the tabs read like navigation.\",\n\"candidates\": [\n\"groupnavigatesection--ml-navigate-tabs\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupNavigateSteps\",\n\"scenarios\": [\n{\n\"scenario\": \"Need a classic, single-row progress tracker for checkout or onboarding.\",\n\"candidates\": [\n\"groupnavigatesteps--ml-horizontal-stepper\"\n]\n},\n{\n\"scenario\": \"Want rich descriptions per step with more vertical space.\",\n\"candidates\": [\n\"groupnavigatesteps--ml-vertical-stepper\"\n]\n},\n{\n\"scenario\": \"Building a guided wizard flow with step-by-step emphasis.\",\n\"candidates\": [\n\"groupnavigatesteps--ml-wizard-steps\"\n]\n},\n{\n\"scenario\": \"Space is tight but you still need progress visibility.\",\n\"candidates\": [\n\"groupnavigatesteps--ml-compact-step-indicator\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupNotifyUser\",\n\"scenarios\": [\n{\n\"scenario\": \"Persistent update at the top of the page with a clear action.\",\n\"candidates\": [\n\"groupnotifyuser--ml-notify-banner\"\n]\n},\n{\n\"scenario\": \"Quick success confirmation that should disappear automatically.\",\n\"candidates\": [\n\"groupnotifyuser--ml-toast-notification\"\n]\n},\n{\n\"scenario\": \"Critical failure that must be acknowledged before continuing.\",\n\"candidates\": [\n\"groupnotifyuser--ml-alert-modal\"\n]\n},\n{\n\"scenario\": \"Inline guidance tied to a specific form field or action.\",\n\"candidates\": [\n\"groupnotifyuser--ml-contextual-feedback\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupPlayMedia\",\n\"scenarios\": [\n{\n\"scenario\": \"Need a compact audio-only playback bar for podcasts or voice notes.\",\n\"candidates\": [\n\"groupplaymedia--ml-audio-player\"\n]\n},\n{\n\"scenario\": \"Need full video playback with poster art and subtitle tracks.\",\n\"candidates\": [\n\"groupplaymedia--ml-video-player\"\n]\n},\n{\n\"scenario\": \"Need inline document preview for PDFs inside a workflow.\",\n\"candidates\": [\n\"groupplaymedia--ml-pdf-viewer\"\n]\n},\n{\n\"scenario\": \"Need a gallery-style browsing experience for multiple images.\",\n\"candidates\": [\n\"groupplaymedia--ml-image-gallery\"\n]\n},\n{\n\"scenario\": \"Need media playback with a shared slot contract across assets.\",\n\"candidates\": [\n\"groupplaymedia--ml-audio-player\",\n\"groupplaymedia--ml-video-player\",\n\"groupplaymedia--ml-pdf-viewer\",\n\"groupplaymedia--ml-image-gallery\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupRateItem\",\n\"scenarios\": [\n{\n\"scenario\": \"Express emotional sentiment with visual cues.\",\n\"candidates\": [\n\"grouprateitem--ml-emoji-mood-scale\"\n]\n},\n{\n\"scenario\": \"Measure likelihood to recommend on a 0–10 scale.\",\n\"candidates\": [\n\"grouprateitem--ml-numeric-rating-nps\"\n]\n},\n{\n\"scenario\": \"Capture a single descriptive issue or reason.\",\n\"candidates\": [\n\"grouprateitem--ml-qualitative-feedback-tags\"\n]\n},\n{\n\"scenario\": \"Allow a continuous score with fine granularity.\",\n\"candidates\": [\n\"grouprateitem--ml-rating-slider\"\n]\n},\n{\n\"scenario\": \"Use a familiar star-based rating pattern.\",\n\"candidates\": [\n\"grouprateitem--ml-star-rating\"\n]\n},\n{\n\"scenario\": \"Collect a quick yes/no sentiment.\",\n\"candidates\": [\n\"grouprateitem--ml-thumbs-rating\"\n]\n},\n{\n\"scenario\": \"Ask for satisfaction using descriptive labels.\",\n\"candidates\": [\n\"grouprateitem--ml-csat-rating\"\n]\n},\n{\n\"scenario\": \"Measure effort required to complete a task.\",\n\"candidates\": [\n\"grouprateitem--ml-ces-scale\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupScanCode\",\n\"scenarios\": [\n{\n\"scenario\": \"Scan linear barcodes on retail labels or tickets.\",\n\"candidates\": [\n\"groupscancode--ml-scan-code-1d\"\n]\n},\n{\n\"scenario\": \"Capture QR codes for payments, check-ins, or deep links.\",\n\"candidates\": [\n\"groupscancode--ml-scan-code\"\n]\n},\n{\n\"scenario\": \"Extract text blocks from receipts or invoices with OCR.\",\n\"candidates\": [\n\"groupscancode--ml-scan-ocr\"\n]\n},\n{\n\"scenario\": \"Capture full-page documents or IDs with edge detection.\",\n\"candidates\": [\n\"groupscancode--ml-scan-document\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupSearchContent\",\n\"scenarios\": [\n{\n\"scenario\": \"Default search entry point with live suggestions and clear states.\",\n\"candidates\": [\n\"groupsearchcontent--ml-search-bar\"\n]\n},\n{\n\"scenario\": \"Highlight recent queries so users can re-run a search quickly.\",\n\"candidates\": [\n\"groupsearchcontent--ml-search-history\"\n]\n},\n{\n\"scenario\": \"Provide a rich search experience with facet-driven discovery.\",\n\"candidates\": [\n\"groupsearchcontent--ml-faceted-search\"\n]\n},\n{\n\"scenario\": \"Search directly within a filtered list or table of content.\",\n\"candidates\": [\n\"groupsearchcontent--ml-search-filters\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupSelectFileForUpload\",\n\"scenarios\": [\n{\n\"scenario\": \"Need drag-and-drop and bulk validation for many files.\",\n\"candidates\": [\n\"groupselectfileforupload--ml-file-upload-dropzone\",\n\"groupselectfileforupload--ml-upload-file-list\"\n]\n},\n{\n\"scenario\": \"Single document upload with an inline preview.\",\n\"candidates\": [\n\"groupselectfileforupload--ml-file-upload-preview\"\n]\n},\n{\n\"scenario\": \"Capture a headshot directly from the camera.\",\n\"candidates\": [\n\"groupselectfileforupload--ml-user-photo-upload\"\n]\n},\n{\n\"scenario\": \"Collect many spreadsheet files and manage a list.\",\n\"candidates\": [\n\"groupselectfileforupload--ml-upload-file-list\"\n]\n},\n{\n\"scenario\": \"Upload CSVs that must include metadata constraints.\",\n\"candidates\": [\n\"groupselectfileforupload--ml-file-metadata-uploader\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupSelectMany\",\n\"scenarios\": [\n{\n\"scenario\": \"Users need to move items between two distinct lists with clear selection counts.\",\n\"candidates\": [\n\"groupselectmany--ml-dual-list-select\"\n]\n},\n{\n\"scenario\": \"All options should stay visible without opening a panel.\",\n\"candidates\": [\n\"groupselectmany--ml-multi-checkbox-list\",\n\"groupselectmany--ml-table-multi-select\"\n]\n},\n{\n\"scenario\": \"Screen space is limited and the list can be searched or filtered.\",\n\"candidates\": [\n\"groupselectmany--ml-multi-select-dropdown\",\n\"groupselectmany--ml-popover-multi-select\"\n]\n},\n{\n\"scenario\": \"Selections come from nested categories or organizational hierarchies.\",\n\"candidates\": [\n\"groupselectmany--ml-tree-multi-select\"\n]\n},\n{\n\"scenario\": \"You need a compact, chip-based picker with a customizable trigger.\",\n\"candidates\": [\n\"groupselectmany--ml-popover-multi-select\"\n]\n},\n{\n\"scenario\": \"Each option has multiple comparable attributes and the user picks several rows.\",\n\"candidates\": [\n\"groupselectmany--ml-table-multi-select\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupSelectOne\",\n\"scenarios\": [\n{\n\"scenario\": \"Large visual tiles for plan or package selection.\",\n\"candidates\": [\n\"groupselectone--ml-card-selector\"\n]\n},\n{\n\"scenario\": \"Long lists where users need search or autocomplete.\",\n\"candidates\": [\n\"groupselectone--ml-combobox\",\n\"groupselectone--ml-select-one-autocomplete\"\n]\n},\n{\n\"scenario\": \"Compact toolbar or mode switch with few options.\",\n\"candidates\": [\n\"groupselectone--ml-segmented-control\"\n]\n},\n{\n\"scenario\": \"Stepped scale or rotational control for levels.\",\n\"candidates\": [\n\"groupselectone--ml-dial-select\",\n\"groupselectone--ml-discrete-slider\"\n]\n},\n{\n\"scenario\": \"Sidebar navigation with persistent option list.\",\n\"candidates\": [\n\"groupselectone--ml-listbox-sidebar-select\"\n]\n},\n{\n\"scenario\": \"Traditional form radio options and short lists.\",\n\"candidates\": [\n\"groupselectone--ml-radio-group\",\n\"groupselectone--ml-select\"\n]\n},\n{\n\"scenario\": \"Standard dropdowns with minimal chrome.\",\n\"candidates\": [\n\"groupselectone--ml-select-dropdown\",\n\"groupselectone--ml-select\"\n]\n},\n{\n\"scenario\": \"Option lists that need imagery or icons.\",\n\"candidates\": [\n\"groupselectone--ml-select-dropdown-img\"\n]\n},\n{\n\"scenario\": \"Comparing multiple attributes before choosing one.\",\n\"candidates\": [\n\"groupselectone--ml-table-single-select\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupShowProgress\",\n\"scenarios\": [\n{\n\"scenario\": \"Need a compact percentage indicator for a determinate task.\",\n\"candidates\": [\n\"groupshowprogress--ml-circular-progress\"\n]\n},\n{\n\"scenario\": \"Duration is unknown and the UI should stay lightweight.\",\n\"candidates\": [\n\"groupshowprogress--ml-indeterminate-spinner\"\n]\n},\n{\n\"scenario\": \"Show a full-width progress bar in a form or modal.\",\n\"candidates\": [\n\"groupshowprogress--ml-linear-progress\"\n]\n},\n{\n\"scenario\": \"Represent a multi-step workflow with segment milestones.\",\n\"candidates\": [\n\"groupshowprogress--ml-segmented-progress\"\n]\n},\n{\n\"scenario\": \"Highlight file transfer completion with a percent readout.\",\n\"candidates\": [\n\"groupshowprogress--ml-upload-progress-indicator\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupTriggerAction\",\n\"scenarios\": [\n{\n\"scenario\": \"Ação primária única com rótulo visível (Salvar, Enviar, Confirmar)\",\n\"candidates\": [\n\"grouptriggeraction--ml-button-standard\"\n]\n},\n{\n\"scenario\": \"Ação compacta só com ícone (toolbar, cards densos)\",\n\"candidates\": [\n\"grouptriggeraction--ml-icon-button\"\n]\n},\n{\n\"scenario\": \"Várias ações relacionadas exibidas juntas (alinhamento, filtros)\",\n\"candidates\": [\n\"grouptriggeraction--ml-button-group\"\n]\n},\n{\n\"scenario\": \"Ação principal + alternativas no mesmo controle (Publicar / Agendar)\",\n\"candidates\": [\n\"grouptriggeraction--ml-split-button\"\n]\n},\n{\n\"scenario\": \"Menu de overflow para ações secundárias ou contextuais (⋮)\",\n\"candidates\": [\n\"grouptriggeraction--ml-kebab-action-trigger\"\n]\n},\n{\n\"scenario\": \"Navegar entre páginas de um conjunto de dados (listas, tabelas)\",\n\"candidates\": [\n\"grouptriggeraction--ml-pagination-control\"\n]\n},\n{\n\"scenario\": \"Disparar comando imediato com feedback de loading/disabled\",\n\"candidates\": [\n\"grouptriggeraction--ml-button-standard\",\n\"grouptriggeraction--ml-icon-button\",\n\"grouptriggeraction--ml-button-group\",\n\"grouptriggeraction--ml-split-button\",\n\"grouptriggeraction--ml-kebab-action-trigger\"\n]\n},\n{\n\"scenario\": \"Trocar de página emitindo evento com a página selecionada\",\n\"candidates\": [\n\"grouptriggeraction--ml-pagination-control\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupViewCard\",\n\"scenarios\": [\n{\n\"scenario\": \"Grid-based product or content tiles with prominent imagery.\",\n\"candidates\": [\n\"groupviewcard--ml-vertical-card\",\n\"groupviewcard--ml-view-card-media\"\n]\n},\n{\n\"scenario\": \"Dense list views that need metadata plus a primary action.\",\n\"candidates\": [\n\"groupviewcard--ml-view-card-horizontal\"\n]\n},\n{\n\"scenario\": \"Profile or people cards with status, role, and quick actions.\",\n\"candidates\": [\n\"groupviewcard--ml-profile-card\"\n]\n},\n{\n\"scenario\": \"Editorial or marketing highlights anchored by a hero visual.\",\n\"candidates\": [\n\"groupviewcard--ml-view-card-media\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupViewChart\",\n\"scenarios\": [\n{\n\"scenario\": \"Compare multi-series trends over time with stacked context.\",\n\"candidates\": [\n\"groupviewchart--ml-area-chart\"\n]\n},\n{\n\"scenario\": \"Compare category totals for the same time period.\",\n\"candidates\": [\n\"groupviewchart--ml-bar-chart\"\n]\n},\n{\n\"scenario\": \"Track precise series movement across intervals.\",\n\"candidates\": [\n\"groupviewchart--ml-line-chart\"\n]\n},\n{\n\"scenario\": \"Show share of total for a single series breakdown.\",\n\"candidates\": [\n\"groupviewchart--ml-pie-chart\"\n]\n},\n{\n\"scenario\": \"Explore correlation between two metrics across segments.\",\n\"candidates\": [\n\"groupviewchart--ml-scatter-plot\"\n]\n},\n{\n\"scenario\": \"Evaluate balanced performance across multiple dimensions.\",\n\"candidates\": [\n\"groupviewchart--ml-radar-chart\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupViewData\",\n\"scenarios\": [\n{\n\"scenario\": \"Summarize multiple records visually with equal emphasis on each item.\",\n\"candidates\": [\n\"groupviewdata--ml-card-grid\"\n]\n},\n{\n\"scenario\": \"Highlight milestones or events ordered by time.\",\n\"candidates\": [\n\"groupviewdata--ml-timeline-view\",\n\"groupviewdata--ml-calendar-view\"\n]\n},\n{\n\"scenario\": \"Show a scannable list with stacked detail rows.\",\n\"candidates\": [\n\"groupviewdata--ml-vertical-record-list\"\n]\n},\n{\n\"scenario\": \"Track work items moving through status columns.\",\n\"candidates\": [\n\"groupviewdata--ml-kanban-board\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupViewHierarchy\",\n\"scenarios\": [\n{\n\"scenario\": \"You need to show reporting structure and leadership layers.\",\n\"candidates\": []\n},\n{\n\"scenario\": \"You are mapping systems or services with multiple branches open.\",\n\"candidates\": [\n\"groupviewhierarchy--ml-hierarchy-tree-diagram\"\n]\n},\n{\n\"scenario\": \"You want familiar file or category navigation with expandable items.\",\n\"candidates\": [\n\"groupviewhierarchy--ml-hierarchy-tree\"\n]\n},\n{\n\"scenario\": \"You are brainstorming ideas around a central topic.\",\n\"candidates\": []\n}\n]\n},\n{\n\"groupId\": \"groupViewMetric\",\n\"scenarios\": [\n{\n\"scenario\": \"Single headline KPI that should dominate the dashboard.\",\n\"candidates\": [\n\"groupviewmetric--ml-metric-big-number\",\n\"groupviewmetric--ml-metric-card\"\n]\n},\n{\n\"scenario\": \"Metric needs to be read against a target or capacity threshold.\",\n\"candidates\": [\n\"groupviewmetric--ml-metric-gauge\"\n]\n},\n{\n\"scenario\": \"Show a short trend line alongside the main value.\",\n\"candidates\": [\n\"groupviewmetric--ml-compact-metric-sparkline\"\n]\n},\n{\n\"scenario\": \"Communicate comparison vs a previous period or benchmark.\",\n\"candidates\": [\n\"groupviewmetric--ml-metric-card\",\n\"groupviewmetric--ml-metric-trend-compare\"\n]\n}\n]\n},\n{\n\"groupId\": \"groupViewTable\",\n\"scenarios\": [\n{\n\"scenario\": \"Precisa de ordenação, seleção e recursos completos\",\n\"candidates\": [\n\"groupviewtable--ml-advanced-data-table\",\n\"groupviewtable--ml-data-table\"\n]\n},\n{\n\"scenario\": \"Leitura simples e com o mínimo de elementos visuais\",\n\"candidates\": [\n\"groupviewtable--ml-data-table\",\n\"groupviewtable--ml-data-table-minimal\",\n\"groupviewtable--ml-responsive-table\",\n\"groupviewtable--ml-view-table\"\n]\n},\n{\n\"scenario\": \"Seleção de várias linhas para ações em lote\",\n\"candidates\": [\n\"groupviewtable--ml-advanced-data-table\",\n\"groupviewtable--ml-lcrud-detail-grid\"\n]\n},\n{\n\"scenario\": \"Agrupar registros por uma dimensão\",\n\"candidates\": [\n\"groupviewtable--ml-advanced-data-table\",\n\"groupviewtable--ml-grouping-table\",\n\"groupviewtable--ml-pivot-table\"\n]\n},\n{\n\"scenario\": \"Editar valores diretamente na tabela\",\n\"candidates\": [\n\"groupviewtable--ml-inline-edit-table\",\n\"groupviewtable--ml-lcrud-detail-grid\"\n]\n},\n{\n\"scenario\": \"Colunas móveis, redimensionáveis e ações de linha\",\n\"candidates\": [\n\"groupviewtable--ml-lcrud-detail-grid\"\n]\n},\n{\n\"scenario\": \"Abrir detalhes somente quando necessário\",\n\"candidates\": [\n\"groupviewtable--ml-lazy-record-detail-table\",\n\"groupviewtable--ml-lcrud-detail-grid\"\n]\n},\n{\n\"scenario\": \"Análise cruzada de métricas e dimensões\",\n\"candidates\": [\n\"groupviewtable--ml-grouping-table\",\n\"groupviewtable--ml-pivot-table\"\n]\n},\n{\n\"scenario\": \"Exibir dados em telas estreitas ou móveis\",\n\"candidates\": [\n\"groupviewtable--ml-responsive-data-table\",\n\"groupviewtable--ml-responsive-table\"\n]\n},\n{\n\"scenario\": \"Fluxo completo de criação, edição e exclusão\",\n\"candidates\": [\n\"groupviewtable--ml-inline-edit-table\",\n\"groupviewtable--ml-lcrud-detail-grid\"\n]\n}\n]\n}\n]\n}\n},\n\"repair\": null\n}"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "submitD2Pages",
+                    "description": "Submit one structured description per source organism for desktop and mobile.",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "$id": "https://collab.codes/schemas/agentDefsL2/pagesJudgmentV3.json",
+                      "title": "agentDefsL2 pages50 organism judgment",
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "schemaVersion",
+                        "pageId",
+                        "category",
+                        "presentations"
+                      ],
+                      "properties": {
+                        "schemaVersion": {
+                          "const": "2026-09-23-agent-defs-l2-pages-judgment-v3"
+                        },
+                        "pageId": {
+                          "type": "string",
+                          "pattern": "^[a-z][A-Za-z0-9_-]*$"
+                        },
+                        "category": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "categoryRef",
+                            "reason",
+                            "evidenceRefs"
+                          ],
+                          "properties": {
+                            "categoryRef": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "reason": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "evidenceRefs": {
+                              "type": "array",
+                              "minItems": 1,
+                              "uniqueItems": true,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          }
+                        },
+                        "presentations": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 2,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "device",
+                              "descriptions",
+                              "moleculeReason"
+                            ],
+                            "properties": {
+                              "device": {
+                                "enum": [
+                                  "desktop",
+                                  "mobile"
+                                ]
+                              },
+                              "descriptions": {
+                                "type": "array",
+                                "minItems": 1,
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": [
+                                    "organismId",
+                                    "kind",
+                                    "description",
+                                    "contentRef",
+                                    "capabilityRefs",
+                                    "moleculeRecommendations"
+                                  ],
+                                  "properties": {
+                                    "organismId": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "kind": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "description": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "contentRef": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "capabilityRefs": {
+                                      "type": "array",
+                                      "uniqueItems": true,
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "moleculeRecommendations": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": [
+                                          "groupId",
+                                          "candidates",
+                                          "reason"
+                                        ],
+                                        "properties": {
+                                          "groupId": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "candidates": {
+                                            "type": "array",
+                                            "minItems": 1,
+                                            "uniqueItems": true,
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1
+                                            }
+                                          },
+                                          "reason": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "moleculeReason": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "toolChoice": {
+                "type": "function",
+                "function": {
+                  "name": "submitD2Pages"
+                }
+              },
+              "cost": 0.2371,
+              "trace": [
+                "starting at 2026-09-23T13:02:11.685Z",
+                "preparing user:'wagnerexpansiva@gmail.com' org:'collabcodes' modelType:'reasoning'",
+                "starting provider: collab-llm model: reasoning user:'wagnerexpansiva@gmail.com'",
+                "x-tool-strict: active — tool arguments schema-validated via ajv",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:74064 outputTokens:8006 cost:$0.2371 ERROR(TOOL_ARGS_SCHEMA) llmTime: 00:00:45.768",
+                "provider: xai model:grok-4.6 alias:general stage:fallback user:'wagnerexpansiva@gmail.com' inputTokens:0 outputTokens:0 cost:$0.0000 ERROR(FALLBACK_EXCEPTION) llmTime: 00:05:00.412",
+                "[provider-failure] {\"userMessage\":\"We are experiencing technical difficulties. Please try again later.\",\"userMsgCode\":\"llm.provider.unavailable\",\"providerMsgCode\":\"llm.model.tool_schema\",\"requiresAdmin\":false,\"retryable\":true,\"adminDetail\":\"The model returned invalid tool arguments (schema drift) — model openai/gpt-5.6-terra-pro (primary) on openrouter. Action: none; retry/repair handles it.\\n## Schema violations\\n\\n- submitD2Pages: /presentations/0 must have required property 'moleculeReason'\\n- submitD2Pages: /presentations/0/descriptions/0 must NOT have additional properties\\n- submitD2Pages: /presentations/0/descriptions/1 must NOT have additional properties\\n- submitD2Pages: /presentations/0/descriptions/2 must NOT have additional properties\\n- submitD2Pages: /presentations/0/descriptions/3 must NOT have additional properties\\n- submitD2Pages: /presentations/1 must have required property 'moleculeReason'\\n- submitD2Pages: /presentations/1/descriptions/0 must NOT have additional properties\\n- submitD2Pages: /presentations/1/descriptions/1 must NOT have additional properties\\n- submitD2Pages: /presentations/1/descriptions/2 must NOT have additional properties\\n- submitD2Pages: /presentations/1/descriptions/3 must NOT have additional properties\\n\\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n\\n         \\n{\\\"id\\\":\\\"gen-1790168531-Zscri4H2Ba9FyoeO52EI\\\",\\\"object\\\":\\\"chat.completion\\\",\\\"created\\\":1790168531,\\\"model\\\":\\\"openai/gpt-5.6-terra-pro\\\",\\\"provider\\\":\\\"Azure\\\",\\\"system_fingerprint\\\":null,\\\"service_tier\\\":\\\"default\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"logprobs\\\":null,\\\"finish_reason\\\":\\\"tool_calls\\\",\\\"native_finish_reason\\\":\\\"completed\\\",\\\"message\\\":{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":null,\\\"refusal\\\":null,\\\"reasoning\\\":null,\\\"tool_calls\\\":[{\\\"type\\\":\\\"function\\\",\\\"index\\\":0,\\\"id\\\":\\\"call_PkKjUoGeG8UcQIvAqj8OJeyx\\\",\\\"function\\\":{\\\"name\\\":\\\"submitD2Pages\\\",\\\"arguments\\\":\\\"{\\\\\\\"schemaVersion\\\\\\\":\\\\\\\"2026-09-23-agent-defs-l2-pages-judgment-v3\\\\\\\",\\\\\\\"pageId\\\\\\\":\\\\\\\"consultas_profissional\\\\\\\",\\\\\\\"category\\\\\\\":{\\\\\\\"categoryRef\\\\\\\":\\\\\\\"calendarScheduling\\\\\\\",\\\\\\\"reason\\\\\\\":\\\\\\\"A página permite ao profissional consultar a própria agenda diária de consultas, inspecionar uma consulta e registrar seu atendimento.\\\\\\\",\\\\\\\"evidenceRefs\\\\\\\":[\\\\\\\"listConsulta\\\\\\\",\\\\\\\"registrarAtendimento\\\\\\\"]},\\\\\\\"presentations\\\\\\\":[{\\\\\\\"device\\\\\\\":\\\\\\\"desktop\\\\\\\",\\\\\\\"descriptions\\\\\\\":[{\\\\\\\"organismId\\\\\\\":\\\\\\\"organism.li\"}",
+                "[admin] The model returned invalid tool arguments (schema drift) — model openai/gpt-5.6-terra-pro (primary) on openrouter. Action: none; retry/repair handles it.\n## Schema violations\n\n- submitD2Pages: /presentations/0 must have required property 'moleculeReason'\n- submitD2Pages: /presentations/0/descriptions/0 must NOT have additional properties\n- submitD2Pages: /presentations/0/descriptions/1 must NOT have additional properties\n- submitD2Pages: /presentations/0/descriptions/2 must NOT have additional properties\n- submitD2Pages: /presentations/0/descriptions/3 must NOT have additional properties\n- submitD2Pages: /presentations/1 must have required property 'moleculeReason'\n- submitD2Pages: /presentations/1/descriptions/0 must NOT have additional properties\n- submitD2Pages: /presentations/1/descriptions/1 must NOT have additional properties\n- submitD2Pages: /presentations/1/descriptions/2 must NOT have additional properties\n- submitD2Pages: /presentations/1/descriptions/3 must NOT have additional properties\n\n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n{\"id\":\"gen-1790168531-Zscri4H2Ba9FyoeO52EI\",\"object\":\"chat.completion\",\"created\":1790168531,\"model\":\"openai/gpt-5.6-terra-pro\",\"provider\":\"Azure\",\"system_fingerprint\":null,\"service_tier\":\"default\",\"choices\":[{\"index\":0,\"logprobs\":null,\"finish_reason\":\"tool_calls\",\"native_finish_reason\":\"completed\",\"message\":{\"role\":\"assistant\",\"content\":null,\"refusal\":null,\"reasoning\":null,\"tool_calls\":[{\"type\":\"function\",\"index\":0,\"id\":\"call_PkKjUoGeG8UcQIvAqj8OJeyx\",\"function\":{\"name\":\"submitD2Pages\",\"arguments\":\"{\\\"schemaVersion\\\":\\\"2026-09-23-agent-defs-l2-pages-judgment-v3\\\",\\\"pageId\\\":\\\"consultas_profissional\\\",\\\"category\\\":{\\\"categoryRef\\\":\\\"calendarScheduling\\\",\\\"reason\\\":\\\"A página permite ao profissional consultar a própria agenda diária de consultas, inspecionar uma consulta e registrar seu atendimento.\\\",\\\"evidenceRefs\\\":[\\\"listConsulta\\\",\\\"registrarAtendimento\\\"]},\\\"presentations\\\":[{\\\"device\\\":\\\"desktop\\\",\\\"descriptions\\\":[{\\\"organismId\\\":\\\"organism.li",
+                "Error invoking Collab LLM proxy: The model returned invalid tool arguments (schema drift) — model openai/gpt-5.6-terra-pro (primary) on openrouter. Action: none; retry/repair handles it.\n## Schema violations\n\n- submitD2Pages: /presentations/0 must have required property 'moleculeReason'\n- submitD2Pages: /presentations/0/descriptions/0 must NOT have additional properties\n- submitD2Pages: /presentations/0/descriptions/1 must NOT have additional properties\n- submitD2Pages: /presentations/0/descriptions/2 must NOT have additional properties\n- submitD2Pages: /presentations/0/descriptions/3 must NOT have additional properties\n- submitD2Pages: /presentations/1 must have required property 'moleculeReason'\n- submitD2Pages: /presentations/1/descriptions/0 must NOT have additional properties\n- submitD2Pages: /presentations/1/descriptions/1 must NOT have additional properties\n- submitD2Pages: /presentations/1/descriptions/2 must NOT have additional properties\n- submitD2Pages: /presentations/1/descriptions/3 must NOT have additional properties\n\n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n\n         \n{\"id\":\"gen-1790168531-Zscri4H2Ba9FyoeO52EI\",\"object\":\"chat.completion\",\"created\":1790168531,\"model\":\"openai/gpt-5.6-terra-pro\",\"provider\":\"Azure\",\"system_fingerprint\":null,\"service_tier\":\"default\",\"choices\":[{\"index\":0,\"logprobs\":null,\"finish_reason\":\"tool_calls\",\"native_finish_reason\":\"completed\",\"message\":{\"role\":\"assistant\",\"content\":null,\"refusal\":null,\"reasoning\":null,\"tool_calls\":[{\"type\":\"function\",\"index\":0,\"id\":\"call_PkKjUoGeG8UcQIvAqj8OJeyx\",\"function\":{\"name\":\"submitD2Pages\",\"arguments\":\"{\\\"schemaVersion\\\":\\\"2026-09-23-agent-defs-l2-pages-judgment-v3\\\",\\\"pageId\\\":\\\"consultas_profissional\\\",\\\"category\\\":{\\\"categoryRef\\\":\\\"calendarScheduling\\\",\\\"reason\\\":\\\"A página permite ao profissional consultar a própria agenda diária de consultas, inspecionar uma consulta e registrar seu atendimento.\\\",\\\"evidenceRefs\\\":[\\\"listConsulta\\\",\\\"registrarAtendimento\\\"]},\\\"presentations\\\":[{\\\"device\\\":\\\"desktop\\\",\\\"descriptions\\\":[{\\\"organismId\\\":\\\"organism.li",
+                "Error executing AI task: Error: AI request failed: We are experiencing technical difficulties. Please try again later.",
+                "preparing user:'wagnerexpansiva@gmail.com' org:'collabcodes' modelType:'cost'",
+                "comments: {}",
+                "starting provider: collab-llm model: cost user:'wagnerexpansiva@gmail.com'",
+                "x-tool-strict: not used — agent did not opt in (no <!-- x-tool-strict: true --> in system prompt)",
+                "provider: collab-llm model:cost alias:? user:'wagnerexpansiva@gmail.com', cost: undefined, llmTime: 00:00:00.019",
+                "[provider-failure] {\"userMessage\":\"We are experiencing technical difficulties. Please try again later.\",\"userMsgCode\":\"llm.provider.unavailable\",\"providerMsgCode\":\"llm.model.alias_not_found\",\"requiresAdmin\":true,\"retryable\":false,\"adminDetail\":\"Model alias not found or inactive: cost\"}",
+                "[admin] Model alias not found or inactive: cost",
+                "Error invoking Collab LLM proxy: Model alias not found or inactive: cost",
+                "Error executing AI task: Error: AI request failed: We are experiencing technical difficulties. Please try again later.",
+                "[admin] Model alias not found or inactive: cost"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 13,
+            "status": "completed",
+            "stepTitle": "Pages consultas_recepcionista",
+            "planning": {
+              "planId": "pages50-page-consultas_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.3645,
+              "trace": [
+                "starting at 2026-09-23T13:02:12.432Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:107216 outputTokens:13029 cost:$0.3645 llmTime: 00:01:28.263",
+                "finished at 2026-09-23T13:03:40.737Z",
+                "pages50 consultas_recepcionista scheduled its only repair: D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: consultas_recepcionista/desktop/organism.list.1 -> groupTriggerAction\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: consultas_recepcionista/mobile/organism.list.1 -> groupTriggerAction"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 14,
+            "status": "completed",
+            "stepTitle": "Pages dados_profissional",
+            "planning": {
+              "planId": "pages50-page-dados_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"dados_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.2529,
+              "trace": [
+                "starting at 2026-09-23T13:02:12.921Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:93744 outputTokens:7225 cost:$0.2529 llmTime: 00:00:53.947",
+                "finished at 2026-09-23T13:03:06.915Z",
+                "pages50 dados_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 15,
+            "status": "completed",
+            "stepTitle": "Pages dados_recepcionista",
+            "planning": {
+              "planId": "pages50-page-dados_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"dados_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.295,
+              "trace": [
+                "starting at 2026-09-23T13:02:13.431Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:122793 outputTokens:7273 cost:$0.2950 llmTime: 00:01:09.754",
+                "finished at 2026-09-23T13:03:23.228Z",
+                "pages50 dados_recepcionista approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 16,
+            "status": "completed",
+            "stepTitle": "Pages pacientes",
+            "planning": {
+              "planId": "pages50-page-pacientes",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"pacientes\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.3055,
+              "trace": [
+                "starting at 2026-09-23T13:02:13.836Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:105490 outputTokens:9472 cost:$0.3055 llmTime: 00:01:04.216",
+                "finished at 2026-09-23T13:03:18.121Z",
+                "pages50 pacientes approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 17,
+            "status": "completed",
+            "stepTitle": "Pages profissionais",
+            "planning": {
+              "planId": "pages50-page-profissionais",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"profissionais\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.3869,
+              "trace": [
+                "starting at 2026-09-23T13:02:14.131Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:91430 outputTokens:8125 cost:$0.2627 ERROR(TOOL_ARGS_SCHEMA) llmTime: 00:00:58.711",
+                "provider: xai model:grok-4.6 alias:general stage:fallback user:'wagnerexpansiva@gmail.com' inputTokens:24338 outputTokens:2374 cost:$0.1242 llmTime: 00:02:46.949",
+                "finished at 2026-09-23T13:05:59.869Z",
+                "pages50 profissionais scheduled its only repair: D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: profissionais/desktop/organism.list.1 -> groupTriggerAction\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: profissionais/mobile/organism.list.1 -> groupTriggerAction"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 19,
+            "status": "completed",
+            "stepTitle": "Repair pages consultas_recepcionista",
+            "planning": {
+              "planId": "pages50-repair-consultas_recepcionista-a2",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_recepcionista\",\"attempt\":2,\"feedback\":\"D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: consultas_recepcionista/desktop/organism.list.1 -> groupTriggerAction\\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: consultas_recepcionista/mobile/organism.list.1 -> groupTriggerAction\",\"previous\":{\"schemaVersion\":\"2026-09-23-agent-defs-l2-pages-judgment-v3\",\"pageId\":\"consultas_recepcionista\",\"category\":{\"categoryRef\":\"calendarScheduling\",\"reason\":\"A página apoia a consulta de horários ocupados e o agendamento de consultas, além de transições operacionais da consulta agendada.\",\"evidenceRefs\":[\"listConsulta\",\"createConsulta\",\"confirmarConsulta\",\"registrarFalta\"]},\"presentations\":[{\"device\":\"desktop\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Permite à recepcionista consultar as consultas da clínica e seus horários registrados, usando os critérios disponíveis de identificação, paciente, profissional, data e situação para localizar registros. A consulta informa os horários ocupados do profissional para apoiar a identificação de disponibilidade antes do agendamento. Enquanto a busca estiver em andamento, comunica carregamento; se não houver resultados, informa que nenhuma consulta foi encontrada; se falhar, apresenta o erro da consulta e permite tentar novamente. A paginação, quando houver resultados em mais de uma página, deve poder ser acionada por teclado e anunciada de forma compreensível por tecnologias assistivas.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"listConsulta\",\"setListConsultaId\",\"setListConsultaPatientId\",\"setListConsultaProfessionalId\",\"setListConsultaScheduledAt\",\"setListConsultaStatus\",\"setListConsultaPage\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewTable\",\"candidates\":[\"groupviewtable--ml-advanced-data-table\",\"groupviewtable--ml-data-table\"],\"reason\":\"A consulta retorna uma coleção de consultas com critérios e paginação.\"},{\"groupId\":\"groupEnterDatetime\",\"candidates\":[\"groupenterdatetime--ml-datetime-picker\",\"groupenterdatetime--ml-enter-datetime-masked-input\"],\"reason\":\"Há critério editável de data e horário da consulta.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-pagination-control\"],\"reason\":\"A busca aceita a página como critério opcional.\"}]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Apresenta os dados da consulta localizada para conferência, incluindo paciente, profissional, data e horário. A recepcionista pode informar a identificação da consulta e executar a consulta do registro. Durante o carregamento, anuncia que os dados estão sendo buscados; se nenhum registro corresponder, informa a ausência de consulta; se houver falha, expõe uma mensagem de erro acessível e uma forma de repetir a consulta. Os dados devem permanecer legíveis e identificados para navegação por teclado e leitores de tela.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"setListConsultaId\",\"listConsulta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewCard\",\"candidates\":[\"groupviewcard--ml-view-card-horizontal\"],\"reason\":\"Os dados de uma consulta individual reúnem informações essenciais para conferência.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"A consulta possui estados de carregamento, ausência de resultado e erro que requerem retorno acessível.\"}]},{\"organismId\":\"organism.form.1\",\"kind\":\"form\",\"description\":\"Permite marcar uma consulta selecionando o paciente e o profissional, informando data e horário e a situação exigida. A recepcionista pode consultar pacientes e profissionais para realizar as seleções. O envio só deve concluir o agendamento quando não existir outra consulta do mesmo profissional no mesmo horário. Campos obrigatórios devem comunicar sua exigência, os controles devem funcionar por teclado e seus rótulos e erros devem ser anunciados. Durante o envio, informa processamento e evita novo envio; após sucesso, informa que a consulta foi criada; em caso de erro, preserva os dados informados e comunica o problema para correção e nova tentativa.\",\"contentRef\":\"createConsulta\",\"capabilityRefs\":[\"listPaciente\",\"listProfissional\",\"setCreateConsultaPatientId\",\"setCreateConsultaProfessionalId\",\"setCreateConsultaScheduledAt\",\"setCreateConsultaStatus\",\"createConsulta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupSelectOne\",\"candidates\":[\"groupselectone--ml-combobox\",\"groupselectone--ml-select-one-autocomplete\"],\"reason\":\"Paciente e profissional são escolhas únicas obtidas nas consultas disponíveis.\"},{\"groupId\":\"groupEnterDatetime\",\"candidates\":[\"groupenterdatetime--ml-datetime-picker\"],\"reason\":\"O agendamento exige informar data e horário.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"O comando cria a consulta com os valores obrigatórios informados.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\",\"groupnotifyuser--ml-toast-notification\"],\"reason\":\"O envio possui estados de sucesso e erro que devem ser comunicados.\"}]},{\"organismId\":\"organism.actions.1\",\"kind\":\"actions\",\"description\":\"Permite atuar sobre uma consulta selecionada: registrar a confirmação feita por telefone ou registrar a falta do paciente. Cada ação exige que a consulta esteja identificada; antes de executar, deve deixar claro qual ação será aplicada. Durante a execução, comunica processamento e impede repetição acidental. Após êxito, informa a atualização e a lista de consultas é atualizada; em erro, apresenta mensagem acessível e permite nova tentativa. As ações devem ter nomes claros, foco visível e operação por teclado.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"setConfirmarConsultaId\",\"confirmarConsulta\",\"setRegistrarFaltaId\",\"registrarFalta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\",\"grouptriggeraction--ml-kebab-action-trigger\"],\"reason\":\"Há comandos contextuais para confirmar a consulta ou registrar falta, ambos com estado de execução.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-toast-notification\",\"groupnotifyuser--ml-alert-modal\"],\"reason\":\"Os comandos expõem estados de sucesso e erro que precisam de retorno ao usuário.\"}]}],\"moleculeReason\":\"As recomendações apoiam a consulta de registros, a conferência de uma consulta, o preenchimento do agendamento e os comandos declarados para a página.\"},{\"device\":\"mobile\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Permite à recepcionista consultar as consultas da clínica e seus horários registrados, usando os critérios disponíveis de identificação, paciente, profissional, data e situação para localizar registros. A consulta informa os horários ocupados do profissional para apoiar a identificação de disponibilidade antes do agendamento. Em espaço reduzido, prioriza a leitura de paciente, profissional, data, horário e situação, mantendo acesso aos demais critérios e à paginação. Enquanto a busca estiver em andamento, comunica carregamento; se não houver resultados, informa que nenhuma consulta foi encontrada; se falhar, apresenta o erro da consulta e permite tentar novamente. Os controles devem ser acionáveis por toque, teclado e tecnologias assistivas.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"listConsulta\",\"setListConsultaId\",\"setListConsultaPatientId\",\"setListConsultaProfessionalId\",\"setListConsultaScheduledAt\",\"setListConsultaStatus\",\"setListConsultaPage\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewTable\",\"candidates\":[\"groupviewtable--ml-responsive-data-table\",\"groupviewtable--ml-responsive-table\"],\"reason\":\"A consulta retorna uma coleção de consultas que deve se adaptar a telas estreitas.\"},{\"groupId\":\"groupEnterDatetime\",\"candidates\":[\"groupenterdatetime--ml-datetime-picker\"],\"reason\":\"Há critério editável de data e horário da consulta.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-pagination-control\"],\"reason\":\"A busca aceita a página como critério opcional.\"}]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Apresenta os dados da consulta localizada para conferência, incluindo paciente, profissional, data e horário, priorizando essas informações na leitura em tela reduzida. A recepcionista pode informar a identificação da consulta e executar a consulta do registro. Durante o carregamento, anuncia que os dados estão sendo buscados; se nenhum registro corresponder, informa a ausência de consulta; se houver falha, expõe uma mensagem de erro acessível e uma forma de repetir a consulta. O conteúdo deve ser legível, navegável por toque e teclado, e corretamente anunciado por leitores de tela.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"setListConsultaId\",\"listConsulta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewCard\",\"candidates\":[\"groupviewcard--ml-view-card-horizontal\"],\"reason\":\"Os dados de uma consulta individual reúnem informações essenciais para conferência em leitura compacta.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"A consulta possui estados de carregamento, ausência de resultado e erro que requerem retorno acessível.\"}]},{\"organismId\":\"organism.form.1\",\"kind\":\"form\",\"description\":\"Permite marcar uma consulta selecionando o paciente e o profissional, informando data e horário e a situação exigida. A recepcionista pode consultar pacientes e profissionais para realizar as seleções. Em tela reduzida, a leitura e o preenchimento devem manter prioridade para os campos obrigatórios, sem retirar nenhuma capacidade. O envio só deve concluir o agendamento quando não existir outra consulta do mesmo profissional no mesmo horário. Campos obrigatórios e erros devem ser anunciados, e os controles devem suportar toque e teclado. Durante o envio, informa processamento e evita novo envio; após sucesso, informa que a consulta foi criada; em caso de erro, preserva os dados informados e comunica o problema para correção e nova tentativa.\",\"contentRef\":\"createConsulta\",\"capabilityRefs\":[\"listPaciente\",\"listProfissional\",\"setCreateConsultaPatientId\",\"setCreateConsultaProfessionalId\",\"setCreateConsultaScheduledAt\",\"setCreateConsultaStatus\",\"createConsulta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupSelectOne\",\"candidates\":[\"groupselectone--ml-combobox\",\"groupselectone--ml-select-one-autocomplete\"],\"reason\":\"Paciente e profissional são escolhas únicas obtidas nas consultas disponíveis.\"},{\"groupId\":\"groupEnterDatetime\",\"candidates\":[\"groupenterdatetime--ml-datetime-picker\"],\"reason\":\"O agendamento exige informar data e horário.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"O comando cria a consulta com os valores obrigatórios informados.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\",\"groupnotifyuser--ml-toast-notification\"],\"reason\":\"O envio possui estados de sucesso e erro que devem ser comunicados.\"}]},{\"organismId\":\"organism.actions.1\",\"kind\":\"actions\",\"description\":\"Permite atuar sobre uma consulta selecionada: registrar a confirmação feita por telefone ou registrar a falta do paciente. Cada ação exige que a consulta esteja identificada; antes de executar, deve deixar claro qual ação será aplicada. Em tela reduzida, os acionamentos devem ter rótulos inequívocos e área de toque adequada, sem remover nenhuma ação. Durante a execução, comunica processamento e impede repetição acidental. Após êxito, informa a atualização e a lista de consultas é atualizada; em erro, apresenta mensagem acessível e permite nova tentativa. As ações devem manter foco visível e operação por teclado.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"setConfirmarConsultaId\",\"confirmarConsulta\",\"setRegistrarFaltaId\",\"registrarFalta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\",\"grouptriggeraction--ml-kebab-action-trigger\"],\"reason\":\"Há comandos contextuais para confirmar a consulta ou registrar falta, ambos com estado de execução.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-toast-notification\",\"groupnotifyuser--ml-alert-modal\"],\"reason\":\"Os comandos expõem estados de sucesso e erro que precisam de retorno ao usuário.\"}]}],\"moleculeReason\":\"As mesmas capacidades são preservadas no mobile, com recomendações adequadas para leitura, toque e retorno de estado em espaço reduzido.\"}]}}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.3887,
+              "trace": [
+                "starting at 2026-09-23T13:03:43.626Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:117086 outputTokens:8880 cost:$0.3887 llmTime: 00:00:56.044",
+                "finished at 2026-09-23T13:04:39.707Z",
+                "pages50 consultas_recepcionista approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 20,
+            "status": "completed",
+            "stepTitle": "Repair pages profissionais",
+            "planning": {
+              "planId": "pages50-repair-profissionais-a2",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"profissionais\",\"attempt\":2,\"feedback\":\"D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: profissionais/desktop/organism.list.1 -> groupTriggerAction\\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: profissionais/mobile/organism.list.1 -> groupTriggerAction\",\"previous\":{\"schemaVersion\":\"2026-09-23-agent-defs-l2-pages-judgment-v3\",\"pageId\":\"profissionais\",\"category\":{\"categoryRef\":\"calendarScheduling\",\"reason\":\"A página Profissionais existe para a recepcionista localizar o médico ou terapeuta e seguir o agendamento: consulta profissionais, inspeciona horários ocupados e registra a consulta em horário livre, o que corresponde a agenda e alocação de compromissos — não a cadastro mestre isolado.\",\"evidenceRefs\":[\"listProfissional\",\"listConsulta\",\"createConsulta\"]},\"presentations\":[{\"device\":\"desktop\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Objetivo: a recepcionista encontra o médico ou terapeuta ativo para marcar a consulta. Informações: a coleção mostra nome e status de identificação de cada profissional. Ações: informar nome, restringir a status ativo, disparar a listagem, escolher um profissional e mudar de página. Em carregamento, o progresso é anunciado e busca, filtro e paginação ficam indisponíveis até a resposta. Sem correspondências, o estado vazio explica que não há profissional ativo para os critérios. Em erro, a falha é comunicada e permite nova tentativa. A interação é acessível por teclado, com rótulos na busca, no status e na paginação, foco visível e anúncio do resultado aos leitores de tela.\",\"contentRef\":\"listProfissional\",\"capabilityRefs\":[\"listProfissional\",\"setListProfissionalDetailsIdentificationName\",\"setListProfissionalDetailsIdentificationStatus\",\"setListProfissionalPage\",\"setListProfissionalId\"],\"moleculeRecommendations\":[{\"groupId\":\"groupSearchContent\",\"candidates\":[\"groupsearchcontent--ml-search-bar\"],\"reason\":\"A busca por nome alimenta o critério de identificação e dispara listProfissional.\"},{\"groupId\":\"groupSelectOne\",\"candidates\":[\"groupselectone--ml-select\"],\"reason\":\"O status ativo é uma escolha única antes de listar profissionais.\"},{\"groupId\":\"groupViewTable\",\"candidates\":[\"groupviewtable--ml-data-table\"],\"reason\":\"O resultado de listProfissional é uma coleção com nome e status para leitura estruturada no desktop.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-pagination-control\"],\"reason\":\"A página opcional de listProfissional exige comando para navegar o conjunto.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"O erro e o vazio da consulta precisam ser anunciados junto da listagem.\"}]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Objetivo: a recepcionista confere o nome do profissional escolhido. Informações: o detalhe apresenta o nome e o status de identificação obtidos na listagem. Ações: leitura para confirmar a identidade antes de seguir o agendamento. Em carregamento, o estado é anunciado para não concluir a conferência cedo demais. Se não houver profissional em contexto ou o resultado estiver vazio, o estado vazio deixa claro que não há nome para conferir. Em erro, a falha ao obter os dados é comunicada de forma perceptível. A acessibilidade usa texto semântico para o nome, ordem de leitura previsível e anúncio quando o profissional em detalhe muda.\",\"contentRef\":\"listProfissional\",\"capabilityRefs\":[\"listProfissional\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewCard\",\"candidates\":[\"groupviewcard--ml-profile-card\"],\"reason\":\"Conferir o nome do profissional é leitura de uma pessoa a partir do resultado de listProfissional.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"Carregamento, vazio e erro da consulta do profissional precisam de feedback perceptível no detalhe.\"}]}],\"moleculeReason\":\"No desktop a listagem usa busca, filtro de status, tabela e paginação porque listProfissional é consulta com critérios e página; o detalhe usa cartão de perfil só para conferir o nome. Nenhum organismo é estático e os grupos listados cobrem exibição, entrada e comando.\"},{\"device\":\"mobile\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Objetivo: a recepcionista encontra o médico ou terapeuta ativo para marcar a consulta em tela estreita. Informações: a prioridade de leitura é o nome, depois o status de identificação. Ações: busca por nome, filtro de status ativo, toque para escolher um profissional e paginação — as mesmas capacidades da listagem, adaptadas ao toque. Em carregamento, o progresso é anunciado e os controles ficam indisponíveis. Sem resultados, o estado vazio ocupa o espaço principal. Em erro, a falha é visível e permite nova tentativa. Alvos de toque são amplos na busca, nos itens e na paginação; leitores de tela anunciam nome, status e o resultado da listagem.\",\"contentRef\":\"listProfissional\",\"capabilityRefs\":[\"listProfissional\",\"setListProfissionalDetailsIdentificationName\",\"setListProfissionalDetailsIdentificationStatus\",\"setListProfissionalPage\",\"setListProfissionalId\"],\"moleculeRecommendations\":[{\"groupId\":\"groupSearchContent\",\"candidates\":[\"groupsearchcontent--ml-search-bar\"],\"reason\":\"A busca por nome permanece o critério principal, com campo amplo para toque.\"},{\"groupId\":\"groupSelectOne\",\"candidates\":[\"groupselectone--ml-segmented-control\"],\"reason\":\"O status ativo cabe em controle compacto de escolha única no espaço reduzido.\"},{\"groupId\":\"groupViewData\",\"candidates\":[\"groupviewdata--ml-vertical-record-list\"],\"reason\":\"No mobile a coleção de listProfissional se lê melhor em lista vertical com nome em primeiro.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-pagination-control\"],\"reason\":\"A página de listProfissional continua disponível, com alvo de toque para mudar o conjunto.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"Erro e vazio da listagem precisam aparecer no fluxo de leitura da tela estreita.\"}]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Objetivo: a recepcionista confere o nome do profissional no espaço reduzido. Informações: o nome vem primeiro na ordem de leitura, seguido do status de identificação. Ações: leitura para confirmar a identidade; a consulta que alimenta o detalhe não é removida. Em carregamento, o estado é anunciado. Sem profissional em contexto, o estado vazio é evidente. Em erro, a falha é comunicada de forma perceptível. O nome permanece em texto acessível, com anúncio ao atualizar o detalhe depois da escolha na lista.\",\"contentRef\":\"listProfissional\",\"capabilityRefs\":[\"listProfissional\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewCard\",\"candidates\":[\"groupviewcard--ml-profile-card\"],\"reason\":\"O cartão de perfil mantém o nome em destaque na leitura móvel a partir de listProfissional.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"Vazio, carregamento e erro do detalhe precisam de feedback no espaço reduzido.\"}]}],\"moleculeReason\":\"No mobile a listagem troca a tabela por lista vertical e o status por controle segmentado, mantendo busca e paginação; o detalhe permanece no cartão de perfil. As capacidades não são removidas; os grupos listados ainda cobrem consulta, entrada e comando.\"}]}}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.2592,
+              "trace": [
+                "starting at 2026-09-23T13:06:01.877Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:98659 outputTokens:7233 cost:$0.2592 llmTime: 00:00:45.554",
+                "finished at 2026-09-23T13:06:47.466Z",
+                "pages50 profissionais approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          }
+        ],
+        "status": "in_progress",
+        "rags": [],
+        "interaction": {
+          "input": [
+            {
+              "type": "system",
+              "content": "agentDefsL2 deterministic bootstrap. The root model is disabled."
+            },
+            {
+              "type": "human",
+              "content": "agendaClinica"
+            }
+          ],
+          "cost": 0,
+          "trace": [
+            "Root LLM skipped by AgentIntentAddMessageAI.skipRootLLM",
+            "Removing pooling hook after 81 executions, task status: paused"
+          ],
+          "payload": null
+        }
+      }
+    ]
+  },
+  "messageid_created": "20260515174326.1000/20260923130210.1000"
+}

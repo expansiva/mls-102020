@@ -126,6 +126,7 @@ void test('candidate context exposes only real scenario recommendations and reje
   const candidates = await buildD2MoleculeCandidateContext(fixture.port, inventory);
   assert.equal(candidates.groups.length, 2);
   assert.ok(candidates.groups.flatMap(group => group.scenarios.flatMap(item => item.candidates)).every(tag => tag.includes('--ml-')));
+  assert.match(candidates.context, /never claim the catalog is empty when groups are listed/u);
   const selected = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate']);
   assert.doesNotThrow(() => assertD2MoleculeCandidates(selected, [{ groupId: 'groupEnterDate', candidates: ['groupenterdate--ml-date-picker'] }]));
   assert.throws(() => assertD2MoleculeCandidates(selected, [{ groupId: 'groupEnterDate', candidates: ['invented--tag'] }]), errorCode('D2_MOLECULE_CANDIDATE_UNKNOWN'));
@@ -142,6 +143,28 @@ void test('production discovery stays on own/direct dependency catalogs and neve
   assert.equal(dependencyChoice.project, 701);
   assert.deepEqual(dependencyChoice.candidates, [701]);
   assert.equal(dependencyChoice.candidates.includes(102040), false);
+});
+
+void test('agendaClinica declares 102040 directly in all three runtime dependency surfaces', async () => {
+  const root = path.resolve(HERE, '../../../../..');
+  const config = json(path.join(root, 'mls-102047', 'l5', 'config.json')) as {
+    workspaceDependencies: string[];
+    projects: Record<string, { root: string; type: string }>;
+  };
+  const manifest = json(path.join(root, 'mls-102047', 'mlsDep.json')) as { workspaceDependencies: string[] };
+  assert.equal(config.workspaceDependencies.filter(id => id === '102040').length, 1);
+  assert.deepEqual(config.projects['102040'], { root: '../mls-102040', type: 'lib' });
+  assert.equal(manifest.workspaceDependencies.filter(id => id === '102040').length, 1);
+
+  installDiscoveryHost(102047, config.workspaceDependencies.map(Number), [102040]);
+  const choice = await d2MoleculeCatalogPort.discover(null);
+  assert.equal(choice.project, 102040);
+  assert.equal(choice.selectedBy, 'dependency');
+  assert.deepEqual(choice.candidates, [102040]);
+
+  const inventory = await buildD2MoleculeInventory(fixturePort().port);
+  assert.equal(inventory.catalogProject, 102040);
+  assert.equal(inventory.groups.length, 31);
 });
 
 function fixturePort(): { port: D2MoleculeCatalogPort; calls: string[] } {

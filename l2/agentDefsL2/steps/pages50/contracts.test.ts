@@ -20,7 +20,7 @@ import { unwrapD2PagesToolPayload } from '/_102020_/l2/agentDefsL2/steps/pages-p
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(HERE, '..', 'input20', 'fixtures');
 const GROUPS = new Map([['groupEnterDate', ['_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts']]]);
-const CANDIDATES = new Map([['groupEnterDate', new Set(['groupenterdate--ml-date-picker'])]]);
+const CANDIDATES = new Map<string, Set<string>>();
 const PAGE_SKILLS = pageSkillsFixture();
 
 void test('current five-page fixture emits 10 defs/items and five shared refs with functional device parity', () => {
@@ -129,6 +129,25 @@ void test('four professional organisms map to two real scenes without multiplyin
   assert.deepEqual(capabilityMarker(rendered[0].descriptions), capabilityMarker(rendered[1].descriptions));
 });
 
+void test('valid shared scenes need not each have an artificial organism', () => {
+  const page = selected('profissionais', [
+    { kind: 'list', text: 'Professionals list' },
+    { kind: 'actions', text: 'Professional actions' },
+  ]);
+  const shared = twoSceneShared(page.pageId);
+  shared.states.find(item => item.kind === 'viewState')!.valueSet = ['base', 'registrarAtendimento', 'revisarAtendimento'];
+  shared.scenaries.push({ value: 'revisarAtendimento', kind: 'command', actionId: 'registrarAtendimento', preconditions: [] });
+  const value = judgment(page.pageId, ['listConsulta'], 'entityRecordManagement', page);
+  for (const presentation of value.presentations) presentation.descriptions = presentation.descriptions.map((item, index) => index
+    ? { ...item, contentRef: 'registrarAtendimento', capabilityRefs: ['registrarAtendimento'] }
+    : { ...item, contentRef: 'base', capabilityRefs: ['listConsulta'] });
+
+  const rendered = gated(page, shared, value);
+  assert.equal(shared.scenaries.length, 3);
+  assert.equal(rendered[0].descriptions.length, 2);
+  assert.deepEqual(new Set(rendered[0].descriptions.map(item => item.contentRef)), new Set(['base', 'registrarAtendimento']));
+});
+
 void test('repeated kinds and static content get stable ids while nominal organism failures are diagnosed', () => {
   const page = selected('pacientes', [{ kind: 'list' }, { kind: 'list' }, { kind: 'static' }, { id: 'patient.actions', kind: 'actions' }]);
   const shared = sharedFor(page.pageId, ['listPaciente']);
@@ -152,7 +171,9 @@ void test('a static page accepts a base scene without actions or data bindings',
   shared.actions = []; shared.dataBindings = []; shared.scenaries = [{ value: 'base', kind: 'base', actionId: '', preconditions: [] }];
   const value = judgment(page.pageId, ['base'], 'bespoke', page);
   assert.equal(value.presentations[0].descriptions[0].capabilityRefs.length, 0);
-  const rendered = gated(page, shared, value);
+  const rendered = gateD2Pages('fixture', page, shared, value,
+    new Map([['groupViewData', ['view-index', 'view-usage']]]), PAGE_SKILLS,
+    new Map([['groupViewData', new Set(['groupviewdata--ml-table'])]]));
   assert.equal(rendered[0].descriptions[0].contentRef, 'base');
   assert.deepEqual(resolveD2PageScenarioSurfaces(shared), [{ contentRef: 'base', actionId: '', kind: 'base', inputStateKeys: [], statusStateKey: '', errorStateKey: '' }]);
 });
@@ -177,6 +198,11 @@ void test('molecule recommendations are organism-scoped, useful and capability-c
   ]);
   const rendered = gateD2Pages('fixture', page, shared, value, groups, PAGE_SKILLS, candidates);
   assert.ok(rendered.every(item => item.pipeline[0].skills.includes('action-usage')));
+  for (const [index, groupId] of ['groupViewData', 'groupEnterDate', 'groupTriggerAction'].entries()) {
+    const missing = structuredClone(value);
+    missing.presentations[0].descriptions[index].moleculeRecommendations = [];
+    assert.throws(() => gateD2Pages('fixture', page, shared, missing, groups, PAGE_SKILLS, candidates), new RegExp(`D2_PAGES_MOLECULE_RECOMMENDATION_MISSING: [^\\n]*compatible=[^\\n]*${groupId}`));
+  }
   const wrong = structuredClone(value); wrong.presentations[0].descriptions[0].moleculeRecommendations[0].candidates = ['groupenterdate--ml-date-picker'];
   assert.throws(() => gateD2Pages('fixture', page, shared, wrong, groups, PAGE_SKILLS, candidates), /D2_PAGES_MOLECULE_CANDIDATE_UNKNOWN/);
   const incompatible = structuredClone(value); incompatible.presentations[0].descriptions[2].capabilityRefs = ['listConsulta'];
@@ -212,9 +238,12 @@ void test('minimal consumer and TypeScript accept quotes, backticks and multilin
 
 void test('page worker has one bounded repair and no live model call outside orchestration', () => {
   const source = readFileSync(path.join(HERE, '../pages-page/agentD2PagesPage.ts'), 'utf8');
+  const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
   assert.match(source, /parsed\.attempt < 2/);
   assert.match(source, /D2_PAGES_REPAIR_LIMIT/);
   assert.doesNotMatch(source, /getBestModel|callLLM|agentCfeMaterializeGen/);
+  assert.match(prompt, /must never claim that the catalog is empty when moleculeCandidates\.groups is non-empty/u);
+  assert.doesNotMatch(prompt, /every shared scenary must contain at least one organism/u);
 });
 
 void test('page worker preserves raw initial hook args without adding feedback', () => {

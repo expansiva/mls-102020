@@ -8,3 +8,7 @@
   capability parity gate, deterministic defs/pipeline rendering, minimal consumer parser and hash barrier.
 - 2026-09-23 — d2_12 added canonical category classification, mandatory technical/category skills,
   scenario-backed molecule candidates with exact tag validation, and catalog/skill context hashes for reuse.
+- 2026-09-23 — d2_13 added per-organism descriptions, real Scene/content references and capability parity.
+- 2026-09-23 — d2_14 removed inverse Scene coverage and made a real compatible molecule recommendation
+  mandatory per non-static organism for query/view, input/entry and command/trigger families. Receipt v4
+  invalidates earlier all-empty results; static or genuinely unmatched organisms retain an explained empty.

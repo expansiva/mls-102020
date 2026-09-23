@@ -1,0 +1,615 @@
+{
+  "PK": "20260923113920.1001",
+  "SK": "metadata",
+  "title": "define l2 agendaClinica",
+  "owner": "20250828124716.1000",
+  "team": "unassigned",
+  "status": "failed",
+  "last_updated": 1790163639708,
+  "last_update_log": "Task failed at 2026-09-23T11:40:39.625Z | reason: D2_PAGES_REPAIR_LIMIT profissionais: D2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/listPaciente\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/listProfissional\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/listPaciente\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/listProfissional",
+  "source": "",
+  "iaCompressed": {
+    "queueBackEnd": [],
+    "queueFrontEnd": [],
+    "longMemory": {
+      "actualDate": "2026-09-23",
+      "userName": "Wagner",
+      "taskName": "agentDefsL2",
+      "flowName": "agentDefsL2",
+      "project": "102047",
+      "module": "agendaClinica"
+    },
+    "nextSteps": [
+      {
+        "stepId": 1,
+        "type": "agent",
+        "agentName": "agentDefsL2",
+        "nextSteps": [
+          {
+            "type": "agent",
+            "stepId": 2,
+            "status": "completed",
+            "stepTitle": "Start L2 definitions",
+            "planning": {
+              "planId": "entry10",
+              "dependsOn": [],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Entry",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 3,
+            "status": "completed",
+            "stepTitle": "Validate inputs",
+            "planning": {
+              "planId": "input20",
+              "dependsOn": [
+                "entry10-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Input",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 4,
+            "status": "completed",
+            "stepTitle": "Create typed contracts",
+            "planning": {
+              "planId": "contracts30",
+              "dependsOn": [
+                "input20-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Contracts",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 5,
+            "status": "completed",
+            "stepTitle": "Define shared behavior",
+            "planning": {
+              "planId": "shared40",
+              "dependsOn": [
+                "contracts30-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Shared",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 6,
+            "status": "completed",
+            "stepTitle": "Describe desktop and mobile pages",
+            "planning": {
+              "planId": "pages50",
+              "dependsOn": [
+                "shared40-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Pages",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 7,
+            "status": "waiting_dependency",
+            "stepTitle": "Validate definitions",
+            "planning": {
+              "planId": "finalize60",
+              "dependsOn": [
+                "pages50-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Finalize",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 8,
+            "status": "completed",
+            "stepTitle": "Entry ready",
+            "planning": {
+              "planId": "entry10-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"entry10\",\"nextStep\":\"input20\"}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 9,
+            "status": "completed",
+            "stepTitle": "Inputs ready",
+            "planning": {
+              "planId": "input20-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"input20\",\"nextStep\":\"contracts30\",\"snapshotHash\":\"sha256:0a532b467d0a4a86031a57c2f0b9c8522c809e6f37d6642277faf78e6f152d27\",\"writePages\":6,\"removedPages\":0,\"reused\":true}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 10,
+            "status": "completed",
+            "stepTitle": "Contracts ready",
+            "planning": {
+              "planId": "contracts30-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"contracts30\",\"nextStep\":\"shared40\",\"snapshotHash\":\"sha256:0a532b467d0a4a86031a57c2f0b9c8522c809e6f37d6642277faf78e6f152d27\",\"contracts\":6,\"written\":0,\"reused\":6}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 11,
+            "status": "completed",
+            "stepTitle": "Shared ready",
+            "planning": {
+              "planId": "shared40-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"shared40\",\"nextStep\":\"pages50\",\"pages\":6}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 12,
+            "status": "completed",
+            "stepTitle": "Pages consultas_profissional",
+            "planning": {
+              "planId": "pages50-page-consultas_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.1416,
+              "trace": [
+                "starting at 2026-09-23T11:39:21.500Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:31947 outputTokens:5663 cost:$0.1416 llmTime: 00:00:42.012",
+                "finished at 2026-09-23T11:40:03.566Z",
+                "pages50 consultas_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 13,
+            "status": "completed",
+            "stepTitle": "Pages consultas_recepcionista",
+            "planning": {
+              "planId": "pages50-page-consultas_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.2024,
+              "trace": [
+                "starting at 2026-09-23T11:39:22.113Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:64012 outputTokens:6752 cost:$0.2024 llmTime: 00:00:38.316",
+                "finished at 2026-09-23T11:40:00.477Z",
+                "pages50 consultas_recepcionista approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 14,
+            "status": "completed",
+            "stepTitle": "Pages dados_profissional",
+            "planning": {
+              "planId": "pages50-page-dados_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"dados_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.162,
+              "trace": [
+                "starting at 2026-09-23T11:39:22.582Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:51493 outputTokens:5011 cost:$0.1620 llmTime: 00:00:57.745",
+                "finished at 2026-09-23T11:40:20.393Z",
+                "pages50 dados_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 15,
+            "status": "completed",
+            "stepTitle": "Pages dados_recepcionista",
+            "planning": {
+              "planId": "pages50-page-dados_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"dados_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.2058,
+              "trace": [
+                "starting at 2026-09-23T11:39:22.973Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:80640 outputTokens:4858 cost:$0.2058 llmTime: 00:00:35.793",
+                "finished at 2026-09-23T11:39:58.808Z",
+                "pages50 dados_recepcionista approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 16,
+            "status": "completed",
+            "stepTitle": "Pages pacientes",
+            "planning": {
+              "planId": "pages50-page-pacientes",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"pacientes\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.202,
+              "trace": [
+                "starting at 2026-09-23T11:39:23.353Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:63780 outputTokens:6808 cost:$0.2020 llmTime: 00:01:04.429",
+                "finished at 2026-09-23T11:40:27.823Z",
+                "pages50 pacientes scheduled its only repair: D2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/base\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/localizarProfissional\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/createConsulta\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/base\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/localizarProfissional\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/createConsulta"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 17,
+            "status": "completed",
+            "stepTitle": "Pages profissionais",
+            "planning": {
+              "planId": "pages50-page-profissionais",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"profissionais\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.1382,
+              "trace": [
+                "starting at 2026-09-23T11:39:23.589Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:49747 outputTokens:3621 cost:$0.1382 llmTime: 00:00:28.854",
+                "finished at 2026-09-23T11:39:52.492Z",
+                "pages50 profissionais scheduled its only repair: D2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/base\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/listPaciente\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/createConsulta\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/base\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/listPaciente\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/createConsulta"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 19,
+            "status": "failed",
+            "stepTitle": "Repair pages profissionais",
+            "planning": {
+              "planId": "pages50-repair-profissionais-a2",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"profissionais\",\"attempt\":2,\"feedback\":\"D2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/base\\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/listPaciente\\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/createConsulta\\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/base\\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/listPaciente\\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/createConsulta\",\"previous\":{\"schemaVersion\":\"2026-09-23-agent-defs-l2-pages-judgment-v3\",\"pageId\":\"profissionais\",\"category\":{\"categoryRef\":\"calendarScheduling\",\"reason\":\"A página apoia o agendamento de consultas ao localizar o profissional e consultar ou registrar consultas em horários disponíveis.\",\"evidenceRefs\":[\"listProfissional\",\"listConsulta\",\"createConsulta\"]},\"presentations\":[{\"device\":\"desktop\",\"moleculeReason\":\"Não há candidatos de moléculas disponíveis no catálogo para recomendar.\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Permite à recepcionista localizar o médico ou terapeuta para o agendamento, consultando os profissionais retornados. Enquanto a consulta estiver em carregamento, informa o progresso; se não houver resultados, comunica que nenhum profissional foi encontrado; em erro, apresenta a falha da consulta de forma compreensível. Os resultados e ações de consulta devem ser acessíveis por teclado e anunciados adequadamente por tecnologias assistivas.\",\"contentRef\":\"listProfissional\",\"capabilityRefs\":[\"listProfissional\"],\"moleculeRecommendations\":[]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Exibe as informações de identificação disponíveis do profissional consultado, com prioridade para a conferência do nome antes de seguir com o agendamento. Indica carregamento da consulta, ausência de dados quando nenhum profissional for retornado e erro quando a consulta não puder ser concluída. O conteúdo deve ter nome e estado perceptíveis por tecnologias assistivas e permanecer navegável por teclado.\",\"contentRef\":\"listProfissional\",\"capabilityRefs\":[\"listProfissional\"],\"moleculeRecommendations\":[]}]},{\"device\":\"mobile\",\"moleculeReason\":\"Não há candidatos de moléculas disponíveis no catálogo para recomendar.\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Permite à recepcionista localizar por toque o médico ou terapeuta retornado pela consulta, priorizando a leitura dos profissionais para apoiar o agendamento. Enquanto carrega, informa o progresso; sem resultados, comunica que nenhum profissional foi encontrado; em erro, apresenta a falha de modo compreensível. Resultados e ações de consulta devem manter rótulos acessíveis, foco e anúncios para tecnologias assistivas.\",\"contentRef\":\"listProfissional\",\"capabilityRefs\":[\"listProfissional\"],\"moleculeRecommendations\":[]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Apresenta, em espaço reduzido, as informações de identificação do profissional consultado, priorizando o nome para conferência antes do agendamento. Comunica carregamento, ausência de dados e erro da consulta. A leitura deve ser clara por tecnologias assistivas, e qualquer interação disponível deve funcionar por toque e também por navegação acessível.\",\"contentRef\":\"listProfissional\",\"capabilityRefs\":[\"listProfissional\"],\"moleculeRecommendations\":[]}]}]}}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.1558,
+              "trace": [
+                "starting at 2026-09-23T11:39:58.621Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:53508 outputTokens:4839 cost:$0.1558 llmTime: 00:00:37.003",
+                "finished at 2026-09-23T11:40:35.704Z",
+                "D2_PAGES_REPAIR_LIMIT profissionais: D2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/listPaciente\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/desktop/listProfissional\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/listPaciente\nD2_PAGES_SCENARIO_UNCOVERED: profissionais/mobile/listProfissional"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 20,
+            "status": "in_progress",
+            "stepTitle": "Repair pages pacientes",
+            "planning": {
+              "planId": "pages50-repair-pacientes-a2",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"pacientes\",\"attempt\":2,\"feedback\":\"D2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/base\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/localizarProfissional\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/createConsulta\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/base\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/localizarProfissional\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/createConsulta\",\"previous\":{\"schemaVersion\":\"2026-09-23-agent-defs-l2-pages-judgment-v3\",\"pageId\":\"pacientes\",\"category\":{\"categoryRef\":\"masterDataManagement\",\"reason\":\"A página concentra a localização, consulta e criação de registros mestres de pacientes que serão usados no agendamento de consultas.\",\"evidenceRefs\":[\"listPaciente\",\"createPaciente\"]},\"presentations\":[{\"device\":\"desktop\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Permite à recepcionista localizar pacientes já cadastrados pelos dados disponíveis, para evitar duplicidade e identificar quem poderá receber consultas. Apresenta os resultados retornados pela consulta de pacientes e permite informar os critérios de identificação suportados, incluindo nome e, quando aplicável, tipo e número de documento e código do país. Enquanto a busca estiver em andamento, comunica o carregamento; se não houver resultados, informa que nenhum paciente foi localizado; em falha, expõe uma mensagem de erro acessível. Os controles têm rótulos e estado anunciável por tecnologias assistivas.\",\"contentRef\":\"localizarPaciente\",\"capabilityRefs\":[\"setListPacienteDetailsIdentificationName\",\"setListPacienteDetailsIdentificationDocType\",\"setListPacienteDetailsIdentificationDocId\",\"setListPacienteDetailsIdentificationCountryCode\",\"listPaciente\"],\"moleculeRecommendations\":[]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Permite conferir o registro do paciente localizado, com foco no nome e nos dados de identificação disponíveis, antes de prosseguir com o atendimento. Pode informar o identificador e os critérios de identificação suportados para consultar o paciente. Durante a consulta, informa carregamento; quando não houver registro correspondente, comunica o estado vazio; em caso de erro, apresenta uma mensagem acessível. Os campos e o resultado possuem nomes claros para leitura por teclado e leitor de tela.\",\"contentRef\":\"localizarPaciente\",\"capabilityRefs\":[\"setListPacienteId\",\"setListPacienteDetailsIdentificationName\",\"setListPacienteDetailsIdentificationDocType\",\"setListPacienteDetailsIdentificationDocId\",\"setListPacienteDetailsIdentificationCountryCode\",\"listPaciente\"],\"moleculeRecommendations\":[]},{\"organismId\":\"organism.form.1\",\"kind\":\"form\",\"description\":\"Coleta os dados cadastrais necessários para criar ou associar um paciente à clínica: detalhes do paciente, nome e código do país, além de tipo e número de documento, apelidos e observações quando disponíveis. Identifica os campos obrigatórios antes do envio e preserva valores informados para correção. Ao registrar, anuncia o processamento, o resultado de sucesso ou o erro retornado de forma acessível.\",\"contentRef\":\"createPaciente\",\"capabilityRefs\":[\"setCreatePacienteDetails\",\"setCreatePacienteDetailsIdentification\",\"setCreatePacienteDetailsIdentificationName\",\"setCreatePacienteDetailsIdentificationDocType\",\"setCreatePacienteDetailsIdentificationDocId\",\"setCreatePacienteDetailsIdentificationCountryCode\",\"setCreatePacienteDetailsBase\",\"setCreatePacienteDetailsBaseAliases\",\"setCreatePacienteDetailsBaseNotes\",\"createPaciente\"],\"moleculeRecommendations\":[]},{\"organismId\":\"organism.actions.1\",\"kind\":\"actions\",\"description\":\"Oferece a ação de registrar o paciente preenchido para que ele fique disponível à clínica e possa receber consultas. A ação só é acionável com os dados obrigatórios informados; durante o envio, comunica que o registro está sendo processado, confirma a conclusão quando houver sucesso e apresenta o erro retornado quando falhar. O controle tem nome acessível e pode ser operado por teclado.\",\"contentRef\":\"createPaciente\",\"capabilityRefs\":[\"createPaciente\"],\"moleculeRecommendations\":[]}],\"moleculeReason\":\"Não há candidatos de moléculas disponíveis para recomendar nesta página.\"},{\"device\":\"mobile\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Permite à recepcionista localizar pacientes já cadastrados pelos dados disponíveis, priorizando a leitura dos resultados e dos critérios de identificação em espaço reduzido. Permite informar nome e, quando aplicável, tipo e número de documento e código do país. Durante a busca, comunica carregamento; se não houver resultados, informa que nenhum paciente foi localizado; em falha, expõe uma mensagem de erro acessível. Os controles são acionáveis por toque e têm rótulos e estados anunciáveis por tecnologias assistivas.\",\"contentRef\":\"localizarPaciente\",\"capabilityRefs\":[\"setListPacienteDetailsIdentificationName\",\"setListPacienteDetailsIdentificationDocType\",\"setListPacienteDetailsIdentificationDocId\",\"setListPacienteDetailsIdentificationCountryCode\",\"listPaciente\"],\"moleculeRecommendations\":[]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Permite conferir o registro do paciente localizado, priorizando nome e dados de identificação disponíveis para leitura em tela menor. Pode informar o identificador e os critérios de identificação suportados para consultar o paciente. Durante a consulta, informa carregamento; quando não houver registro correspondente, comunica o estado vazio; em caso de erro, apresenta uma mensagem acessível. Campos, resultados e controles por toque têm nomes claros para leitores de tela.\",\"contentRef\":\"localizarPaciente\",\"capabilityRefs\":[\"setListPacienteId\",\"setListPacienteDetailsIdentificationName\",\"setListPacienteDetailsIdentificationDocType\",\"setListPacienteDetailsIdentificationDocId\",\"setListPacienteDetailsIdentificationCountryCode\",\"listPaciente\"],\"moleculeRecommendations\":[]},{\"organismId\":\"organism.form.1\",\"kind\":\"form\",\"description\":\"Coleta os dados cadastrais necessários para criar ou associar um paciente à clínica, com prioridade aos campos obrigatórios em tela reduzida: detalhes do paciente, nome e código do país. Também permite informar tipo e número de documento, apelidos e observações quando disponíveis. Identifica requisitos antes do envio e preserva valores para correção. Ao registrar, anuncia processamento, sucesso ou erro de forma acessível; os campos são operáveis por toque e leitor de tela.\",\"contentRef\":\"createPaciente\",\"capabilityRefs\":[\"setCreatePacienteDetails\",\"setCreatePacienteDetailsIdentification\",\"setCreatePacienteDetailsIdentificationName\",\"setCreatePacienteDetailsIdentificationDocType\",\"setCreatePacienteDetailsIdentificationDocId\",\"setCreatePacienteDetailsIdentificationCountryCode\",\"setCreatePacienteDetailsBase\",\"setCreatePacienteDetailsBaseAliases\",\"setCreatePacienteDetailsBaseNotes\",\"createPaciente\"],\"moleculeRecommendations\":[]},{\"organismId\":\"organism.actions.1\",\"kind\":\"actions\",\"description\":\"Oferece por toque a ação de registrar o paciente preenchido para que ele fique disponível à clínica e possa receber consultas. A ação só é acionável com os dados obrigatórios informados; durante o envio, comunica processamento, confirma a conclusão quando houver sucesso e apresenta o erro retornado quando falhar. O controle tem nome acessível e permanece disponível para operação assistiva.\",\"contentRef\":\"createPaciente\",\"capabilityRefs\":[\"createPaciente\"],\"moleculeRecommendations\":[]}],\"moleculeReason\":\"Não há candidatos de moléculas disponíveis para recomendar nesta página.\"}]}}",
+            "rags": [],
+            "interaction": {
+              "input": [
+                {
+                  "type": "system",
+                  "content": "<!-- mls fileReference=\"_102020_/l2/agentDefsL2/steps/pages50/prompt.md\" enhancement=\"_blank\" -->\n<!-- modelType: reasoning -->\n<!-- reasoningEffort: high -->\n<!-- x-tool-strict: true -->\n\nClassify and describe exactly one page in two presentations: desktop and mobile. Call `submitD2Pages` once.\n\nReturn exactly one description object for every supplied organism, using its organismId and kind unchanged.\nIts prose explains that organism's objective, information, actions, relevant loading/empty/error states\nand accessible interaction in userLanguage. Assign it to one existing shared scenary through contentRef\nand cite only real shared capabilities in capabilityRefs. Static content may have no capability; every\nother organism needs at least one. Preserve the same organism capabilities/contentRef on both devices.\nMobile may discuss touch, reading priority and constrained space, but it must not remove capabilities.\n\nDo not emit HTML, CSS, coordinates, columns, grids, wireframes, fixed sections, component tags or a\nmandatory molecule variant. Do not invent statistics, methods, data, routes, permissions or APIs. The\napproved shared object is the closed capability vocabulary. Do not create contentRef values: several\norganisms may share one scenary, and every shared scenary must contain at least one organism.\n\nChoose one categoryRef from the compact pageCategoryCatalog for the whole page. Explain the choice and\ncite real shared capability identifiers in evidenceRefs. Use bespoke only when no published category fits,\nwith a specific reason; category guidance never grants an operation or prescribes layout.\n\nInside each organism, moleculeRecommendations may recommend exact tags listed in moleculeCandidates.\nUse the scenario text and that organism's declared data/actions as evidence. Never invent a tag or attach\na data-entry/action/display group when capabilityRefs do not support it. Recommendations are consultative,\nmay differ by device and do not mandate a component. Explain their useful absence in moleculeReason.\n\nNames, paths, ids, pipeline items, dependencies and skill references are emitted by code. Return only\nthe schema fields. On repair, correct the whole two-device unit using the diagnostic and prior answer.\n"
+                },
+                {
+                  "type": "system",
+                  "content": "## Content Memory\nactualDate: 2026-09-23\nuserName: Wagner\ntaskName: agentDefsL2\nflowName: agentDefsL2\nproject: 102047\nmodule: agendaClinica\n"
+                },
+                {
+                  "type": "human",
+                  "content": "{\n  \"page\": {\n    \"pageId\": \"pacientes\",\n    \"label\": \"Pacientes\",\n    \"userLanguage\": \"pt-BR\",\n    \"actors\": [\n      \"recepcionista\"\n    ],\n    \"ancestors\": [],\n    \"authorityRefs\": [\n      \"actor:recepcionista\"\n    ],\n    \"journeys\": [\n      {\n        \"schemaVersion\": \"2026-09-10-ns5-journey-v1\",\n        \"journeyId\": \"agendarConsulta\",\n        \"business\": {\n          \"actorRef\": \"recepcionista\",\n          \"title\": \"Agendar consulta\",\n          \"goal\": \"Marcar uma consulta para um paciente com um profissional em data e horário disponíveis.\",\n          \"entry\": {\n            \"mode\": \"coldStart\"\n          },\n          \"steps\": [\n            {\n              \"stepId\": \"localizarPacienteParaAgendamento\",\n              \"kind\": \"locate\",\n              \"entity\": \"Paciente\",\n              \"title\": \"x\",\n              \"description\": \"Localiza o paciente que receberá a consulta.\"\n            },\n            {\n              \"stepId\": \"localizarProfissional\",\n              \"kind\": \"locate\",\n              \"entity\": \"Profissional\",\n              \"title\": \"x\",\n              \"description\": \"Localiza o médico ou terapeuta que realizará a consulta.\"\n            },\n            {\n              \"stepId\": \"consultarDisponibilidade\",\n              \"kind\": \"inspect\",\n              \"entity\": \"Consulta\",\n              \"title\": \"x\",\n              \"description\": \"Consulta os horários já ocupados do profissional na data pretendida.\"\n            },\n            {\n              \"stepId\": \"criarConsulta\",\n              \"kind\": \"act\",\n              \"entity\": \"Consulta\",\n              \"effect\": \"create\",\n              \"title\": \"x\",\n              \"description\": \"Registra a consulta para o paciente e o profissional selecionados, com data e hora. O agendamento somente é concluído se não houver outra consulta do mesmo profissional no mesmo horário.\"\n            }\n          ],\n          \"outcome\": {\n            \"statement\": \"A consulta fica marcada em um horário disponível do profissional.\",\n            \"evidence\": [\n              \"Consulta criada com paciente, profissional, data e hora.\",\n              \"Não há outra consulta do profissional no mesmo horário.\"\n            ]\n          }\n        },\n        \"businessHash\": \"sha256:92c7882e6189d1b4c7692c0e14545635cf3bd5f909a1437cbbf2b35545383c77\"\n      },\n      {\n        \"schemaVersion\": \"2026-09-10-ns5-journey-v1\",\n        \"journeyId\": \"cadastrarPaciente\",\n        \"business\": {\n          \"actorRef\": \"recepcionista\",\n          \"title\": \"Cadastrar paciente\",\n          \"goal\": \"Registrar ou associar o paciente à clínica para que possa receber consultas.\",\n          \"entry\": {\n            \"mode\": \"coldStart\"\n          },\n          \"steps\": [\n            {\n              \"stepId\": \"localizarPaciente\",\n              \"kind\": \"locate\",\n              \"entity\": \"Paciente\",\n              \"title\": \"x\",\n              \"description\": \"Busca o paciente pelos dados disponíveis para evitar um cadastro duplicado.\"\n            },\n            {\n              \"stepId\": \"registrarPaciente\",\n              \"kind\": \"act\",\n              \"entity\": \"Paciente\",\n              \"effect\": \"create\",\n              \"title\": \"x\",\n              \"description\": \"Cadastra ou associa o paciente encontrado à clínica, mantendo seus dados cadastrais atualizados.\"\n            }\n          ],\n          \"outcome\": {\n            \"statement\": \"O paciente fica disponível na agenda da clínica.\",\n            \"evidence\": [\n              \"Cadastro do paciente localizado ou criado e associado à clínica.\"\n            ]\n          }\n        },\n        \"businessHash\": \"sha256:5eb5e8ae725c989c7e48287ea2c80d60e51e59fd834cc2b1228ad6784bcbd2db\"\n      }\n    ],\n    \"relevantRules\": [],\n    \"organisms\": [\n      {\n        \"organismId\": \"organism.list.1\",\n        \"kind\": \"list\",\n        \"intent\": \"Vejo os pacientes da clínica e acho quem já está cadastrado.\",\n        \"staticContent\": false\n      },\n      {\n        \"organismId\": \"organism.detail.1\",\n        \"kind\": \"detail\",\n        \"intent\": \"Abro o paciente e confiro o nome e os dados.\",\n        \"staticContent\": false\n      },\n      {\n        \"organismId\": \"organism.form.1\",\n        \"kind\": \"form\",\n        \"intent\": \"Preencho o cadastro de um paciente novo para associar à clínica.\",\n        \"staticContent\": false\n      },\n      {\n        \"organismId\": \"organism.actions.1\",\n        \"kind\": \"actions\",\n        \"intent\": \"Registro o paciente para ele poder receber consultas.\",\n        \"staticContent\": false\n      }\n    ],\n    \"reads\": [\n      {\n        \"entity\": \"Consulta\",\n        \"family\": \"tdm\",\n        \"scope\": \"organization\",\n        \"derived\": [],\n        \"from\": [\n          \"journey:agendarConsulta/consultarDisponibilidade\",\n          \"journey:agendarConsulta/criarConsulta\"\n        ]\n      },\n      {\n        \"entity\": \"Paciente\",\n        \"family\": \"mdm\",\n        \"scope\": \"organization\",\n        \"derived\": [],\n        \"from\": [\n          \"journey:agendarConsulta/localizarPacienteParaAgendamento\",\n          \"journey:cadastrarPaciente/localizarPaciente\",\n          \"journey:cadastrarPaciente/registrarPaciente\"\n        ]\n      },\n      {\n        \"entity\": \"Profissional\",\n        \"family\": \"mdm\",\n        \"scope\": \"organization\",\n        \"derived\": [],\n        \"from\": [\n          \"journey:agendarConsulta/localizarProfissional\"\n        ]\n      }\n    ],\n    \"writes\": [\n      {\n        \"entity\": \"Consulta\",\n        \"operation\": \"create\",\n        \"transitionRef\": \"\",\n        \"from\": [\n          \"journey:agendarConsulta/criarConsulta\"\n        ]\n      },\n      {\n        \"entity\": \"Paciente\",\n        \"operation\": \"create\",\n        \"transitionRef\": \"\",\n        \"from\": [\n          \"journey:cadastrarPaciente/registrarPaciente\"\n        ]\n      }\n    ]\n  },\n  \"shared\": {\n    \"schemaVersion\": \"2026-09-21-agent-defs-l2-shared-v1\",\n    \"moduleName\": \"agendaClinica\",\n    \"pageId\": \"pacientes\",\n    \"pageName\": \"Pacientes\",\n    \"baseClassName\": \"PacientesShared\",\n    \"routePattern\": \"/pacientes\",\n    \"contractRef\": {\n      \"defPath\": \"l2/agendaClinica/web/contracts/pacientes.defs.ts\",\n      \"calls\": [\n        {\n          \"actionId\": \"createConsulta\",\n          \"routeConst\": \"createConsultaRoute\",\n          \"inputType\": \"CreateConsultaInput\",\n          \"outputType\": \"CreateConsultaOutput\"\n        },\n        {\n          \"actionId\": \"createPaciente\",\n          \"routeConst\": \"createPacienteRoute\",\n          \"inputType\": \"CreatePacienteInput\",\n          \"outputType\": \"CreatePacienteOutput\"\n        },\n        {\n          \"actionId\": \"listConsulta\",\n          \"routeConst\": \"listConsultaRoute\",\n          \"inputType\": \"ListConsultaInput\",\n          \"outputType\": \"ListConsultaOutput\"\n        },\n        {\n          \"actionId\": \"listPaciente\",\n          \"routeConst\": \"listPacienteRoute\",\n          \"inputType\": \"ListPacienteInput\",\n          \"outputType\": \"ListPacienteOutput\"\n        },\n        {\n          \"actionId\": \"listProfissional\",\n          \"routeConst\": \"listProfissionalRoute\",\n          \"inputType\": \"ListProfissionalInput\",\n          \"outputType\": \"ListProfissionalOutput\"\n        }\n      ]\n    },\n    \"states\": [\n      {\n        \"stateKey\": \"ui.pacientes.pageStatus\",\n        \"name\": \"pageStatus\",\n        \"kind\": \"pageStatus\",\n        \"defaultValue\": \"idle\",\n        \"valueSet\": [\n          \"idle\",\n          \"loading\",\n          \"empty\",\n          \"success\",\n          \"error\"\n        ]\n      },\n      {\n        \"stateKey\": \"ui.pacientes.scenary\",\n        \"name\": \"scenary\",\n        \"kind\": \"uiScenary\",\n        \"defaultValue\": \"base\",\n        \"valueSet\": [\n          \"base\",\n          \"localizarPaciente\",\n          \"localizarProfissional\",\n          \"createConsulta\",\n          \"createPaciente\"\n        ]\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createConsulta.input.patientId\",\n        \"name\": \"patientId\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createConsulta\",\n        \"contractRef\": \"CreateConsultaInput.Consulta.patientId\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createConsulta.input.professionalId\",\n        \"name\": \"professionalId\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createConsulta\",\n        \"contractRef\": \"CreateConsultaInput.Consulta.professionalId\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createConsulta.input.scheduledAt\",\n        \"name\": \"scheduledAt\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createConsulta\",\n        \"contractRef\": \"CreateConsultaInput.Consulta.scheduledAt\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createConsulta.input.status\",\n        \"name\": \"status\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createConsulta\",\n        \"contractRef\": \"CreateConsultaInput.Consulta.status\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createConsulta.status\",\n        \"name\": \"createConsultaStatus\",\n        \"kind\": \"actionStatus\",\n        \"defaultValue\": \"idle\",\n        \"valueSet\": [\n          \"idle\",\n          \"loading\",\n          \"success\",\n          \"error\"\n        ],\n        \"actionRef\": \"createConsulta\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createConsulta.error\",\n        \"name\": \"createConsultaError\",\n        \"kind\": \"actionError\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createConsulta\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createConsulta.result\",\n        \"name\": \"createConsultaResult\",\n        \"kind\": \"commandOutput\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createConsulta\",\n        \"contractRef\": \"CreateConsultaOutput\",\n        \"outputShape\": \"object\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details\",\n        \"name\": \"details\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification\",\n        \"name\": \"identification\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details.identification\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification_name\",\n        \"name\": \"name\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details.identification.name\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification_docType\",\n        \"name\": \"docType\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details.identification.docType\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification_docId\",\n        \"name\": \"docId\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details.identification.docId\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification_countryCode\",\n        \"name\": \"countryCode\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details.identification.countryCode\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_base\",\n        \"name\": \"base\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details.base\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_base_aliases\",\n        \"name\": \"aliases\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details.base.aliases\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_base_notes\",\n        \"name\": \"notes\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteInput.Paciente.details.base.notes\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.status\",\n        \"name\": \"createPacienteStatus\",\n        \"kind\": \"actionStatus\",\n        \"defaultValue\": \"idle\",\n        \"valueSet\": [\n          \"idle\",\n          \"loading\",\n          \"success\",\n          \"error\"\n        ],\n        \"actionRef\": \"createPaciente\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.error\",\n        \"name\": \"createPacienteError\",\n        \"kind\": \"actionError\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.createPaciente.result\",\n        \"name\": \"createPacienteResult\",\n        \"kind\": \"commandOutput\",\n        \"defaultValue\": null,\n        \"actionRef\": \"createPaciente\",\n        \"contractRef\": \"CreatePacienteOutput\",\n        \"outputShape\": \"object\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.input.id\",\n        \"name\": \"id\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listConsulta\",\n        \"contractRef\": \"ListConsultaInput.Consulta.id\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.input.patientId\",\n        \"name\": \"patientId\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listConsulta\",\n        \"contractRef\": \"ListConsultaInput.Consulta.patientId\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.input.professionalId\",\n        \"name\": \"professionalId\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listConsulta\",\n        \"contractRef\": \"ListConsultaInput.Consulta.professionalId\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.input.scheduledAt\",\n        \"name\": \"scheduledAt\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listConsulta\",\n        \"contractRef\": \"ListConsultaInput.Consulta.scheduledAt\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.input.status\",\n        \"name\": \"status\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listConsulta\",\n        \"contractRef\": \"ListConsultaInput.Consulta.status\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.input.page\",\n        \"name\": \"page\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listConsulta\",\n        \"contractRef\": \"ListConsultaInput.Consulta.$page\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.status\",\n        \"name\": \"listConsultaStatus\",\n        \"kind\": \"actionStatus\",\n        \"defaultValue\": \"idle\",\n        \"valueSet\": [\n          \"idle\",\n          \"loading\",\n          \"success\",\n          \"error\"\n        ],\n        \"actionRef\": \"listConsulta\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.error\",\n        \"name\": \"listConsultaError\",\n        \"kind\": \"actionError\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listConsulta\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listConsulta.result\",\n        \"name\": \"listConsultaResult\",\n        \"kind\": \"queryResult\",\n        \"defaultValue\": [],\n        \"actionRef\": \"listConsulta\",\n        \"contractRef\": \"ListConsultaOutput\",\n        \"outputShape\": \"array\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.id\",\n        \"name\": \"id\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.id\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details\",\n        \"name\": \"details\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.details\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification\",\n        \"name\": \"identification\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.details.identification\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_subtype\",\n        \"name\": \"subtype\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.details.identification.subtype\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_name\",\n        \"name\": \"name\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.details.identification.name\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_status\",\n        \"name\": \"status\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.details.identification.status\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_docType\",\n        \"name\": \"docType\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.details.identification.docType\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_docId\",\n        \"name\": \"docId\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.details.identification.docId\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_countryCode\",\n        \"name\": \"countryCode\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.details.identification.countryCode\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.input.page\",\n        \"name\": \"page\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteInput.Paciente.$page\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.status\",\n        \"name\": \"listPacienteStatus\",\n        \"kind\": \"actionStatus\",\n        \"defaultValue\": \"idle\",\n        \"valueSet\": [\n          \"idle\",\n          \"loading\",\n          \"success\",\n          \"error\"\n        ],\n        \"actionRef\": \"listPaciente\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.error\",\n        \"name\": \"listPacienteError\",\n        \"kind\": \"actionError\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listPaciente\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listPaciente.result\",\n        \"name\": \"listPacienteResult\",\n        \"kind\": \"queryResult\",\n        \"defaultValue\": [],\n        \"actionRef\": \"listPaciente\",\n        \"contractRef\": \"ListPacienteOutput\",\n        \"outputShape\": \"array\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.id\",\n        \"name\": \"id\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.id\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details\",\n        \"name\": \"details\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.details\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification\",\n        \"name\": \"identification\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.details.identification\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_subtype\",\n        \"name\": \"subtype\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.details.identification.subtype\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_name\",\n        \"name\": \"name\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.details.identification.name\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_status\",\n        \"name\": \"status\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.details.identification.status\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_docType\",\n        \"name\": \"docType\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.details.identification.docType\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_docId\",\n        \"name\": \"docId\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.details.identification.docId\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_countryCode\",\n        \"name\": \"countryCode\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.details.identification.countryCode\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": true\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.input.page\",\n        \"name\": \"page\",\n        \"kind\": \"input\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalInput.Profissional.$page\",\n        \"source\": \"userInput\",\n        \"presentation\": \"form\",\n        \"editable\": true,\n        \"required\": false\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.status\",\n        \"name\": \"listProfissionalStatus\",\n        \"kind\": \"actionStatus\",\n        \"defaultValue\": \"idle\",\n        \"valueSet\": [\n          \"idle\",\n          \"loading\",\n          \"success\",\n          \"error\"\n        ],\n        \"actionRef\": \"listProfissional\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.error\",\n        \"name\": \"listProfissionalError\",\n        \"kind\": \"actionError\",\n        \"defaultValue\": null,\n        \"actionRef\": \"listProfissional\"\n      },\n      {\n        \"stateKey\": \"ui.pacientes.listProfissional.result\",\n        \"name\": \"listProfissionalResult\",\n        \"kind\": \"queryResult\",\n        \"defaultValue\": [],\n        \"actionRef\": \"listProfissional\",\n        \"contractRef\": \"ListProfissionalOutput\",\n        \"outputShape\": \"array\"\n      }\n    ],\n    \"actions\": [\n      {\n        \"actionId\": \"setCreateConsultaPatientId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createConsulta.input.patientId\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createConsulta.input.patientId\"\n      },\n      {\n        \"actionId\": \"setCreateConsultaProfessionalId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createConsulta.input.professionalId\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createConsulta.input.professionalId\"\n      },\n      {\n        \"actionId\": \"setCreateConsultaScheduledAt\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createConsulta.input.scheduledAt\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createConsulta.input.scheduledAt\"\n      },\n      {\n        \"actionId\": \"setCreateConsultaStatus\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createConsulta.input.status\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createConsulta.input.status\"\n      },\n      {\n        \"actionId\": \"createConsulta\",\n        \"kind\": \"command\",\n        \"commandRef\": \"createConsulta\",\n        \"routeRef\": \"createConsultaRoute\",\n        \"inputTypeRef\": \"CreateConsultaInput\",\n        \"outputTypeRef\": \"CreateConsultaOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.createConsulta.input.patientId\",\n          \"ui.pacientes.createConsulta.input.professionalId\",\n          \"ui.pacientes.createConsulta.input.scheduledAt\",\n          \"ui.pacientes.createConsulta.input.status\"\n        ],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createConsulta.result\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.createConsulta.status\",\n        \"errorStateKey\": \"ui.pacientes.createConsulta.error\",\n        \"refreshActionIds\": [\n          \"listConsulta\",\n          \"listPaciente\"\n        ]\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetails\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details\"\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetailsIdentification\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details_identification\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification\"\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetailsIdentificationName\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details_identification_name\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification_name\"\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetailsIdentificationDocType\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details_identification_docType\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification_docType\"\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetailsIdentificationDocId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details_identification_docId\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification_docId\"\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetailsIdentificationCountryCode\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details_identification_countryCode\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_identification_countryCode\"\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetailsBase\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details_base\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_base\"\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetailsBaseAliases\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details_base_aliases\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_base_aliases\"\n      },\n      {\n        \"actionId\": \"setCreatePacienteDetailsBaseNotes\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details_base_notes\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.createPaciente.input.details_base_notes\"\n      },\n      {\n        \"actionId\": \"createPaciente\",\n        \"kind\": \"command\",\n        \"commandRef\": \"createPaciente\",\n        \"routeRef\": \"createPacienteRoute\",\n        \"inputTypeRef\": \"CreatePacienteInput\",\n        \"outputTypeRef\": \"CreatePacienteOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details\",\n          \"ui.pacientes.createPaciente.input.details_identification\",\n          \"ui.pacientes.createPaciente.input.details_identification_name\",\n          \"ui.pacientes.createPaciente.input.details_identification_docType\",\n          \"ui.pacientes.createPaciente.input.details_identification_docId\",\n          \"ui.pacientes.createPaciente.input.details_identification_countryCode\",\n          \"ui.pacientes.createPaciente.input.details_base\",\n          \"ui.pacientes.createPaciente.input.details_base_aliases\",\n          \"ui.pacientes.createPaciente.input.details_base_notes\"\n        ],\n        \"outputStateKeys\": [\n          \"ui.pacientes.createPaciente.result\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.createPaciente.status\",\n        \"errorStateKey\": \"ui.pacientes.createPaciente.error\",\n        \"refreshActionIds\": [\n          \"listPaciente\"\n        ]\n      },\n      {\n        \"actionId\": \"setListConsultaId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.id\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listConsulta.input.id\"\n      },\n      {\n        \"actionId\": \"setListConsultaPatientId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.patientId\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listConsulta.input.patientId\"\n      },\n      {\n        \"actionId\": \"setListConsultaProfessionalId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.professionalId\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listConsulta.input.professionalId\"\n      },\n      {\n        \"actionId\": \"setListConsultaScheduledAt\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.scheduledAt\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listConsulta.input.scheduledAt\"\n      },\n      {\n        \"actionId\": \"setListConsultaStatus\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.status\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listConsulta.input.status\"\n      },\n      {\n        \"actionId\": \"setListConsultaPage\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.page\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listConsulta.input.page\"\n      },\n      {\n        \"actionId\": \"listConsulta\",\n        \"kind\": \"query\",\n        \"commandRef\": \"listConsulta\",\n        \"routeRef\": \"listConsultaRoute\",\n        \"inputTypeRef\": \"ListConsultaInput\",\n        \"outputTypeRef\": \"ListConsultaOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.id\",\n          \"ui.pacientes.listConsulta.input.patientId\",\n          \"ui.pacientes.listConsulta.input.professionalId\",\n          \"ui.pacientes.listConsulta.input.scheduledAt\",\n          \"ui.pacientes.listConsulta.input.status\",\n          \"ui.pacientes.listConsulta.input.page\"\n        ],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listConsulta.result\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.listConsulta.status\",\n        \"errorStateKey\": \"ui.pacientes.listConsulta.error\",\n        \"refreshActionIds\": []\n      },\n      {\n        \"actionId\": \"setListPacienteId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.id\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.id\"\n      },\n      {\n        \"actionId\": \"setListPacienteDetails\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.details\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details\"\n      },\n      {\n        \"actionId\": \"setListPacienteDetailsIdentification\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.details_identification\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification\"\n      },\n      {\n        \"actionId\": \"setListPacienteDetailsIdentificationSubtype\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.details_identification_subtype\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_subtype\"\n      },\n      {\n        \"actionId\": \"setListPacienteDetailsIdentificationName\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.details_identification_name\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_name\"\n      },\n      {\n        \"actionId\": \"setListPacienteDetailsIdentificationStatus\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.details_identification_status\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_status\"\n      },\n      {\n        \"actionId\": \"setListPacienteDetailsIdentificationDocType\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.details_identification_docType\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_docType\"\n      },\n      {\n        \"actionId\": \"setListPacienteDetailsIdentificationDocId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.details_identification_docId\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_docId\"\n      },\n      {\n        \"actionId\": \"setListPacienteDetailsIdentificationCountryCode\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.details_identification_countryCode\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.details_identification_countryCode\"\n      },\n      {\n        \"actionId\": \"setListPacientePage\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.page\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listPaciente.input.page\"\n      },\n      {\n        \"actionId\": \"listPaciente\",\n        \"kind\": \"query\",\n        \"commandRef\": \"listPaciente\",\n        \"routeRef\": \"listPacienteRoute\",\n        \"inputTypeRef\": \"ListPacienteInput\",\n        \"outputTypeRef\": \"ListPacienteOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.id\",\n          \"ui.pacientes.listPaciente.input.details\",\n          \"ui.pacientes.listPaciente.input.details_identification\",\n          \"ui.pacientes.listPaciente.input.details_identification_subtype\",\n          \"ui.pacientes.listPaciente.input.details_identification_name\",\n          \"ui.pacientes.listPaciente.input.details_identification_status\",\n          \"ui.pacientes.listPaciente.input.details_identification_docType\",\n          \"ui.pacientes.listPaciente.input.details_identification_docId\",\n          \"ui.pacientes.listPaciente.input.details_identification_countryCode\",\n          \"ui.pacientes.listPaciente.input.page\"\n        ],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listPaciente.result\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.listPaciente.status\",\n        \"errorStateKey\": \"ui.pacientes.listPaciente.error\",\n        \"refreshActionIds\": []\n      },\n      {\n        \"actionId\": \"setListProfissionalId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.id\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.id\"\n      },\n      {\n        \"actionId\": \"setListProfissionalDetails\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.details\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details\"\n      },\n      {\n        \"actionId\": \"setListProfissionalDetailsIdentification\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.details_identification\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification\"\n      },\n      {\n        \"actionId\": \"setListProfissionalDetailsIdentificationSubtype\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.details_identification_subtype\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_subtype\"\n      },\n      {\n        \"actionId\": \"setListProfissionalDetailsIdentificationName\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.details_identification_name\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_name\"\n      },\n      {\n        \"actionId\": \"setListProfissionalDetailsIdentificationStatus\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.details_identification_status\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_status\"\n      },\n      {\n        \"actionId\": \"setListProfissionalDetailsIdentificationDocType\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.details_identification_docType\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_docType\"\n      },\n      {\n        \"actionId\": \"setListProfissionalDetailsIdentificationDocId\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.details_identification_docId\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_docId\"\n      },\n      {\n        \"actionId\": \"setListProfissionalDetailsIdentificationCountryCode\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.details_identification_countryCode\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.details_identification_countryCode\"\n      },\n      {\n        \"actionId\": \"setListProfissionalPage\",\n        \"kind\": \"stateSetter\",\n        \"inputStateKeys\": [],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.page\"\n        ],\n        \"statusStateKey\": \"\",\n        \"errorStateKey\": \"\",\n        \"refreshActionIds\": [],\n        \"stateKey\": \"ui.pacientes.listProfissional.input.page\"\n      },\n      {\n        \"actionId\": \"listProfissional\",\n        \"kind\": \"query\",\n        \"commandRef\": \"listProfissional\",\n        \"routeRef\": \"listProfissionalRoute\",\n        \"inputTypeRef\": \"ListProfissionalInput\",\n        \"outputTypeRef\": \"ListProfissionalOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.id\",\n          \"ui.pacientes.listProfissional.input.details\",\n          \"ui.pacientes.listProfissional.input.details_identification\",\n          \"ui.pacientes.listProfissional.input.details_identification_subtype\",\n          \"ui.pacientes.listProfissional.input.details_identification_name\",\n          \"ui.pacientes.listProfissional.input.details_identification_status\",\n          \"ui.pacientes.listProfissional.input.details_identification_docType\",\n          \"ui.pacientes.listProfissional.input.details_identification_docId\",\n          \"ui.pacientes.listProfissional.input.details_identification_countryCode\",\n          \"ui.pacientes.listProfissional.input.page\"\n        ],\n        \"outputStateKeys\": [\n          \"ui.pacientes.listProfissional.result\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.listProfissional.status\",\n        \"errorStateKey\": \"ui.pacientes.listProfissional.error\",\n        \"refreshActionIds\": []\n      }\n    ],\n    \"scenaries\": [\n      {\n        \"value\": \"base\",\n        \"kind\": \"base\",\n        \"actionId\": \"listConsulta\",\n        \"preconditions\": []\n      },\n      {\n        \"value\": \"localizarPaciente\",\n        \"kind\": \"detail\",\n        \"actionId\": \"listPaciente\",\n        \"preconditions\": []\n      },\n      {\n        \"value\": \"localizarProfissional\",\n        \"kind\": \"detail\",\n        \"actionId\": \"listProfissional\",\n        \"preconditions\": []\n      },\n      {\n        \"value\": \"createConsulta\",\n        \"kind\": \"command\",\n        \"actionId\": \"createConsulta\",\n        \"preconditions\": []\n      },\n      {\n        \"value\": \"createPaciente\",\n        \"kind\": \"command\",\n        \"actionId\": \"createPaciente\",\n        \"preconditions\": []\n      }\n    ],\n    \"initialLoads\": [],\n    \"dataBindings\": [\n      {\n        \"actionId\": \"createConsulta\",\n        \"kind\": \"command\",\n        \"routeRef\": \"createConsultaRoute\",\n        \"inputTypeRef\": \"CreateConsultaInput\",\n        \"outputTypeRef\": \"CreateConsultaOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.createConsulta.input.patientId\",\n          \"ui.pacientes.createConsulta.input.professionalId\",\n          \"ui.pacientes.createConsulta.input.scheduledAt\",\n          \"ui.pacientes.createConsulta.input.status\"\n        ],\n        \"resultStateKey\": \"ui.pacientes.createConsulta.result\"\n      },\n      {\n        \"actionId\": \"createPaciente\",\n        \"kind\": \"command\",\n        \"routeRef\": \"createPacienteRoute\",\n        \"inputTypeRef\": \"CreatePacienteInput\",\n        \"outputTypeRef\": \"CreatePacienteOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details\",\n          \"ui.pacientes.createPaciente.input.details_identification\",\n          \"ui.pacientes.createPaciente.input.details_identification_name\",\n          \"ui.pacientes.createPaciente.input.details_identification_docType\",\n          \"ui.pacientes.createPaciente.input.details_identification_docId\",\n          \"ui.pacientes.createPaciente.input.details_identification_countryCode\",\n          \"ui.pacientes.createPaciente.input.details_base\",\n          \"ui.pacientes.createPaciente.input.details_base_aliases\",\n          \"ui.pacientes.createPaciente.input.details_base_notes\"\n        ],\n        \"resultStateKey\": \"ui.pacientes.createPaciente.result\"\n      },\n      {\n        \"actionId\": \"listConsulta\",\n        \"kind\": \"query\",\n        \"routeRef\": \"listConsultaRoute\",\n        \"inputTypeRef\": \"ListConsultaInput\",\n        \"outputTypeRef\": \"ListConsultaOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.id\",\n          \"ui.pacientes.listConsulta.input.patientId\",\n          \"ui.pacientes.listConsulta.input.professionalId\",\n          \"ui.pacientes.listConsulta.input.scheduledAt\",\n          \"ui.pacientes.listConsulta.input.status\",\n          \"ui.pacientes.listConsulta.input.page\"\n        ],\n        \"resultStateKey\": \"ui.pacientes.listConsulta.result\"\n      },\n      {\n        \"actionId\": \"listPaciente\",\n        \"kind\": \"query\",\n        \"routeRef\": \"listPacienteRoute\",\n        \"inputTypeRef\": \"ListPacienteInput\",\n        \"outputTypeRef\": \"ListPacienteOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.id\",\n          \"ui.pacientes.listPaciente.input.details\",\n          \"ui.pacientes.listPaciente.input.details_identification\",\n          \"ui.pacientes.listPaciente.input.details_identification_subtype\",\n          \"ui.pacientes.listPaciente.input.details_identification_name\",\n          \"ui.pacientes.listPaciente.input.details_identification_status\",\n          \"ui.pacientes.listPaciente.input.details_identification_docType\",\n          \"ui.pacientes.listPaciente.input.details_identification_docId\",\n          \"ui.pacientes.listPaciente.input.details_identification_countryCode\",\n          \"ui.pacientes.listPaciente.input.page\"\n        ],\n        \"resultStateKey\": \"ui.pacientes.listPaciente.result\"\n      },\n      {\n        \"actionId\": \"listProfissional\",\n        \"kind\": \"query\",\n        \"routeRef\": \"listProfissionalRoute\",\n        \"inputTypeRef\": \"ListProfissionalInput\",\n        \"outputTypeRef\": \"ListProfissionalOutput\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.id\",\n          \"ui.pacientes.listProfissional.input.details\",\n          \"ui.pacientes.listProfissional.input.details_identification\",\n          \"ui.pacientes.listProfissional.input.details_identification_subtype\",\n          \"ui.pacientes.listProfissional.input.details_identification_name\",\n          \"ui.pacientes.listProfissional.input.details_identification_status\",\n          \"ui.pacientes.listProfissional.input.details_identification_docType\",\n          \"ui.pacientes.listProfissional.input.details_identification_docId\",\n          \"ui.pacientes.listProfissional.input.details_identification_countryCode\",\n          \"ui.pacientes.listProfissional.input.page\"\n        ],\n        \"resultStateKey\": \"ui.pacientes.listProfissional.result\"\n      }\n    ]\n  },\n  \"sceneSurface\": {\n    \"state\": {\n      \"stateKey\": \"ui.pacientes.scenary\",\n      \"defaultValue\": \"base\"\n    },\n    \"scenaries\": [\n      {\n        \"contentRef\": \"base\",\n        \"actionId\": \"listConsulta\",\n        \"kind\": \"base\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listConsulta.input.id\",\n          \"ui.pacientes.listConsulta.input.patientId\",\n          \"ui.pacientes.listConsulta.input.professionalId\",\n          \"ui.pacientes.listConsulta.input.scheduledAt\",\n          \"ui.pacientes.listConsulta.input.status\",\n          \"ui.pacientes.listConsulta.input.page\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.listConsulta.status\",\n        \"errorStateKey\": \"ui.pacientes.listConsulta.error\"\n      },\n      {\n        \"contentRef\": \"localizarPaciente\",\n        \"actionId\": \"listPaciente\",\n        \"kind\": \"detail\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listPaciente.input.id\",\n          \"ui.pacientes.listPaciente.input.details\",\n          \"ui.pacientes.listPaciente.input.details_identification\",\n          \"ui.pacientes.listPaciente.input.details_identification_subtype\",\n          \"ui.pacientes.listPaciente.input.details_identification_name\",\n          \"ui.pacientes.listPaciente.input.details_identification_status\",\n          \"ui.pacientes.listPaciente.input.details_identification_docType\",\n          \"ui.pacientes.listPaciente.input.details_identification_docId\",\n          \"ui.pacientes.listPaciente.input.details_identification_countryCode\",\n          \"ui.pacientes.listPaciente.input.page\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.listPaciente.status\",\n        \"errorStateKey\": \"ui.pacientes.listPaciente.error\"\n      },\n      {\n        \"contentRef\": \"localizarProfissional\",\n        \"actionId\": \"listProfissional\",\n        \"kind\": \"detail\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.listProfissional.input.id\",\n          \"ui.pacientes.listProfissional.input.details\",\n          \"ui.pacientes.listProfissional.input.details_identification\",\n          \"ui.pacientes.listProfissional.input.details_identification_subtype\",\n          \"ui.pacientes.listProfissional.input.details_identification_name\",\n          \"ui.pacientes.listProfissional.input.details_identification_status\",\n          \"ui.pacientes.listProfissional.input.details_identification_docType\",\n          \"ui.pacientes.listProfissional.input.details_identification_docId\",\n          \"ui.pacientes.listProfissional.input.details_identification_countryCode\",\n          \"ui.pacientes.listProfissional.input.page\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.listProfissional.status\",\n        \"errorStateKey\": \"ui.pacientes.listProfissional.error\"\n      },\n      {\n        \"contentRef\": \"createConsulta\",\n        \"actionId\": \"createConsulta\",\n        \"kind\": \"command\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.createConsulta.input.patientId\",\n          \"ui.pacientes.createConsulta.input.professionalId\",\n          \"ui.pacientes.createConsulta.input.scheduledAt\",\n          \"ui.pacientes.createConsulta.input.status\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.createConsulta.status\",\n        \"errorStateKey\": \"ui.pacientes.createConsulta.error\"\n      },\n      {\n        \"contentRef\": \"createPaciente\",\n        \"actionId\": \"createPaciente\",\n        \"kind\": \"command\",\n        \"inputStateKeys\": [\n          \"ui.pacientes.createPaciente.input.details\",\n          \"ui.pacientes.createPaciente.input.details_identification\",\n          \"ui.pacientes.createPaciente.input.details_identification_name\",\n          \"ui.pacientes.createPaciente.input.details_identification_docType\",\n          \"ui.pacientes.createPaciente.input.details_identification_docId\",\n          \"ui.pacientes.createPaciente.input.details_identification_countryCode\",\n          \"ui.pacientes.createPaciente.input.details_base\",\n          \"ui.pacientes.createPaciente.input.details_base_aliases\",\n          \"ui.pacientes.createPaciente.input.details_base_notes\"\n        ],\n        \"statusStateKey\": \"ui.pacientes.createPaciente.status\",\n        \"errorStateKey\": \"ui.pacientes.createPaciente.error\"\n      }\n    ]\n  },\n  \"pageCategoryCatalog\": {\n    \"pageCategories\": {\n      \"instruction\": \"Choose exactly one categoryRef for the page, or bespoke with an explicit reason.\",\n      \"categories\": [\n        {\n          \"categoryRef\": \"productCatalog\",\n          \"name\": \"Product Catalog\",\n          \"meaning\": \"Cadastro e manutenção de produtos, SKUs, serviços ou itens vendáveis.\"\n        },\n        {\n          \"categoryRef\": \"inventoryControl\",\n          \"name\": \"Inventory Control\",\n          \"meaning\": \"Controle de estoque, saldos, níveis mínimos, alertas e ajustes manuais.\"\n        },\n        {\n          \"categoryRef\": \"customerManagement\",\n          \"name\": \"Customer Management\",\n          \"meaning\": \"Cadastro e gestão de clientes, contatos, dados comerciais e relacionamento.\"\n        },\n        {\n          \"categoryRef\": \"supplierManagement\",\n          \"name\": \"Supplier Management\",\n          \"meaning\": \"Cadastro e controle de fornecedores, dados fiscais, contatos e condições comerciais.\"\n        },\n        {\n          \"categoryRef\": \"orderManagement\",\n          \"name\": \"Order Management\",\n          \"meaning\": \"Gestão de pedidos, status, itens, valores, clientes e ações operacionais.\"\n        },\n        {\n          \"categoryRef\": \"posWorkbench\",\n          \"name\": \"POS Workbench\",\n          \"meaning\": \"Tela operacional rápida para venda, lançamento de itens, carrinho e pagamento.\"\n        },\n        {\n          \"categoryRef\": \"operationsQueue\",\n          \"name\": \"Operations Queue\",\n          \"meaning\": \"Fila operacional para acompanhar itens por status, etapa ou prioridade.\"\n        },\n        {\n          \"categoryRef\": \"approvalWorkflow\",\n          \"name\": \"Approval Workflow\",\n          \"meaning\": \"Fluxo de aprovação com revisão, decisão, comentários e trilha de auditoria.\"\n        },\n        {\n          \"categoryRef\": \"processWizard\",\n          \"name\": \"Process Wizard\",\n          \"meaning\": \"Processos guiados em etapas, com validação forte e resumo final.\"\n        },\n        {\n          \"categoryRef\": \"financialTransactions\",\n          \"name\": \"Financial Transactions\",\n          \"meaning\": \"Listagem e controle de lançamentos financeiros, contas, pagamentos e recebimentos.\"\n        },\n        {\n          \"categoryRef\": \"documentManagement\",\n          \"name\": \"Document Management\",\n          \"meaning\": \"Gestão de documentos, anexos, versões, status e aprovação.\"\n        },\n        {\n          \"categoryRef\": \"userAccessManagement\",\n          \"name\": \"User Access Management\",\n          \"meaning\": \"Gestão de usuários, papéis, permissões, status de acesso e segurança.\"\n        },\n        {\n          \"categoryRef\": \"settingsConsole\",\n          \"name\": \"Settings Console\",\n          \"meaning\": \"Configurações administrativas do módulo ou organização.\"\n        },\n        {\n          \"categoryRef\": \"auditTrail\",\n          \"name\": \"Audit Trail\",\n          \"meaning\": \"Consulta de eventos, alterações, usuários responsáveis e histórico operacional.\"\n        },\n        {\n          \"categoryRef\": \"dashboardCommandCenter\",\n          \"name\": \"Dashboard Command Center\",\n          \"meaning\": \"Dashboard com KPIs, alertas, tendências e ações recomendadas.\"\n        },\n        {\n          \"categoryRef\": \"calendarScheduling\",\n          \"name\": \"Calendar Scheduling\",\n          \"meaning\": \"Agenda, alocação de horários, reservas, turnos ou compromissos.\"\n        },\n        {\n          \"categoryRef\": \"assetManagement\",\n          \"name\": \"Asset Management\",\n          \"meaning\": \"Gestão de ativos, equipamentos, manutenção, localização e ciclo de vida.\"\n        },\n        {\n          \"categoryRef\": \"caseManagement\",\n          \"name\": \"Case Management\",\n          \"meaning\": \"Gestão de casos, solicitações, incidentes ou atendimento ao cliente.\"\n        },\n        {\n          \"categoryRef\": \"reportExplorer\",\n          \"name\": \"Report Explorer\",\n          \"meaning\": \"Consulta, filtros, visualização e exportação de relatórios operacionais.\"\n        },\n        {\n          \"categoryRef\": \"masterDataManagement\",\n          \"name\": \"Master Data Management\",\n          \"meaning\": \"Cadastro base de dados mestres usados por vários módulos.\"\n        },\n        {\n          \"categoryRef\": \"entityRecordManagement\",\n          \"name\": \"Entity Record Management\",\n          \"meaning\": \"Criação e edição de um registro de negócio (sem listagem), com transições de ciclo de vida por ações contextuais.\"\n        },\n        {\n          \"categoryRef\": \"fieldDataCapture\",\n          \"name\": \"Field Data Capture\",\n          \"meaning\": \"Captura rápida de apontamentos em campo ou operação, geralmente mobile: horas, consumo, leituras, ocorrências. Formulários curtos, reset após envio.\"\n        },\n        {\n          \"categoryRef\": \"readOnlyDetailPortal\",\n          \"name\": \"Read-Only Detail Portal\",\n          \"meaning\": \"Visão somente-leitura de um registro único para stakeholder externo ou consulta interna, summary-first, sem nenhuma ação de escrita.\"\n        },\n        {\n          \"categoryRef\": \"workPlanningBoard\",\n          \"name\": \"Work Planning Board\",\n          \"meaning\": \"Planejamento e acompanhamento de trabalho: criar tarefas, atribuir responsáveis inline, timeline por prazo e edição em master-detail.\"\n        },\n        {\n          \"categoryRef\": \"aiAssistedAuthoring\",\n          \"name\": \"AI-Assisted Authoring\",\n          \"meaning\": \"Geração de artefato assistida por IA seguida de revisão humana e publicação/compartilhamento: gerar → revisar → publicar.\"\n        },\n        {\n          \"categoryRef\": \"globalSearchResults\",\n          \"name\": \"Global Search Results\",\n          \"meaning\": \"Tela de resultados de busca transversal por entidades, com agrupamento por tipo, filtros e ações rápidas sobre o resultado.\"\n        },\n        {\n          \"categoryRef\": \"activityNotificationHub\",\n          \"name\": \"Activity / Notification Hub\",\n          \"meaning\": \"Central de notificações, menções, atividades recentes e alertas operacionais, com marcação de lido e ações contextuais.\"\n        },\n        {\n          \"categoryRef\": \"hierarchyTreeView\",\n          \"name\": \"Hierarchy / Tree View\",\n          \"meaning\": \"Visualização e edição de estruturas hierárquicas: BOM, organograma, categorias aninhadas ou localizações.\"\n        },\n        {\n          \"categoryRef\": \"comparisonView\",\n          \"name\": \"Comparison View\",\n          \"meaning\": \"Comparação lado a lado de dois ou mais registros para análise de diferenças e decisão.\"\n        },\n        {\n          \"categoryRef\": \"importMappingWizard\",\n          \"name\": \"Import / Mapping Wizard\",\n          \"meaning\": \"Processo guiado de importação com upload de arquivo, mapeamento de colunas, validação e confirmação final.\"\n        },\n        {\n          \"categoryRef\": \"kanbanBoardView\",\n          \"name\": \"Kanban / Board View\",\n          \"meaning\": \"Quadro visual por colunas de status com arrastar-e-soltar, filtros e ações rápidas nos cards. Distinto de workPlanningBoard (timeline/master-detail) e operationsQueue (lista por status): a superfície é o board de colunas.\"\n        },\n        {\n          \"categoryRef\": \"analyticalList\",\n          \"name\": \"Analytical List\",\n          \"meaning\": \"Lista analítica combinando tabela, filtros avançados, KPIs e gráficos no mesmo contexto para análise e ação. Distinto de dashboardCommandCenter (monitorar exceções) e reportExplorer (consulta ad-hoc): aqui KPI, gráfico e tabela acionável operam sobre o mesmo conjunto filtrado.\"\n        },\n        {\n          \"categoryRef\": \"contentLanding\",\n          \"name\": \"Content Landing\",\n          \"meaning\": \"Página pública de apresentação ou campanha: conteúdo primeiro (textos e imagens), ação(ões) simples embutidas no final, sem cadastro CRUD. Distinto de processWizard (passo a passo operacional) e entityRecordManagement (manutenção de registros).\"\n        },\n        {\n          \"categoryRef\": \"bespoke\",\n          \"name\": \"Bespoke\",\n          \"meaning\": \"No published category fits the page capabilities; the judgment must explain why.\"\n        }\n      ]\n    }\n  },\n  \"moleculeInventory\": {\n    \"moleculeCatalog\": {\n      \"groups\": [],\n      \"reason\": \"no molecule catalog found. Looked for l2/molecules/skill.ts in 102047 and in its direct dependencies (102047, 102020, 102035, 102021, 102027, 102029, 102036, 102025)\"\n    }\n  },\n  \"moleculeCandidates\": {\n    \"moleculeCandidates\": {\n      \"instruction\": \"Recommend only listed exact candidate tags when useful; no recommendation is valid when there is no useful match.\",\n      \"groups\": []\n    }\n  },\n  \"repair\": {\n    \"feedback\": \"D2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/base\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/localizarProfissional\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/desktop/createConsulta\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/base\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/localizarProfissional\\nD2_PAGES_SCENARIO_UNCOVERED: pacientes/mobile/createConsulta\",\n    \"previous\": {\n      \"schemaVersion\": \"2026-09-23-agent-defs-l2-pages-judgment-v3\",\n      \"pageId\": \"pacientes\",\n      \"category\": {\n        \"categoryRef\": \"masterDataManagement\",\n        \"reason\": \"A página concentra a localização, consulta e criação de registros mestres de pacientes que serão usados no agendamento de consultas.\",\n        \"evidenceRefs\": [\n          \"listPaciente\",\n          \"createPaciente\"\n        ]\n      },\n      \"presentations\": [\n        {\n          \"device\": \"desktop\",\n          \"descriptions\": [\n            {\n              \"organismId\": \"organism.list.1\",\n              \"kind\": \"list\",\n              \"description\": \"Permite à recepcionista localizar pacientes já cadastrados pelos dados disponíveis, para evitar duplicidade e identificar quem poderá receber consultas. Apresenta os resultados retornados pela consulta de pacientes e permite informar os critérios de identificação suportados, incluindo nome e, quando aplicável, tipo e número de documento e código do país. Enquanto a busca estiver em andamento, comunica o carregamento; se não houver resultados, informa que nenhum paciente foi localizado; em falha, expõe uma mensagem de erro acessível. Os controles têm rótulos e estado anunciável por tecnologias assistivas.\",\n              \"contentRef\": \"localizarPaciente\",\n              \"capabilityRefs\": [\n                \"setListPacienteDetailsIdentificationName\",\n                \"setListPacienteDetailsIdentificationDocType\",\n                \"setListPacienteDetailsIdentificationDocId\",\n                \"setListPacienteDetailsIdentificationCountryCode\",\n                \"listPaciente\"\n              ],\n              \"moleculeRecommendations\": []\n            },\n            {\n              \"organismId\": \"organism.detail.1\",\n              \"kind\": \"detail\",\n              \"description\": \"Permite conferir o registro do paciente localizado, com foco no nome e nos dados de identificação disponíveis, antes de prosseguir com o atendimento. Pode informar o identificador e os critérios de identificação suportados para consultar o paciente. Durante a consulta, informa carregamento; quando não houver registro correspondente, comunica o estado vazio; em caso de erro, apresenta uma mensagem acessível. Os campos e o resultado possuem nomes claros para leitura por teclado e leitor de tela.\",\n              \"contentRef\": \"localizarPaciente\",\n              \"capabilityRefs\": [\n                \"setListPacienteId\",\n                \"setListPacienteDetailsIdentificationName\",\n                \"setListPacienteDetailsIdentificationDocType\",\n                \"setListPacienteDetailsIdentificationDocId\",\n                \"setListPacienteDetailsIdentificationCountryCode\",\n                \"listPaciente\"\n              ],\n              \"moleculeRecommendations\": []\n            },\n            {\n              \"organismId\": \"organism.form.1\",\n              \"kind\": \"form\",\n              \"description\": \"Coleta os dados cadastrais necessários para criar ou associar um paciente à clínica: detalhes do paciente, nome e código do país, além de tipo e número de documento, apelidos e observações quando disponíveis. Identifica os campos obrigatórios antes do envio e preserva valores informados para correção. Ao registrar, anuncia o processamento, o resultado de sucesso ou o erro retornado de forma acessível.\",\n              \"contentRef\": \"createPaciente\",\n              \"capabilityRefs\": [\n                \"setCreatePacienteDetails\",\n                \"setCreatePacienteDetailsIdentification\",\n                \"setCreatePacienteDetailsIdentificationName\",\n                \"setCreatePacienteDetailsIdentificationDocType\",\n                \"setCreatePacienteDetailsIdentificationDocId\",\n                \"setCreatePacienteDetailsIdentificationCountryCode\",\n                \"setCreatePacienteDetailsBase\",\n                \"setCreatePacienteDetailsBaseAliases\",\n                \"setCreatePacienteDetailsBaseNotes\",\n                \"createPaciente\"\n              ],\n              \"moleculeRecommendations\": []\n            },\n            {\n              \"organismId\": \"organism.actions.1\",\n              \"kind\": \"actions\",\n              \"description\": \"Oferece a ação de registrar o paciente preenchido para que ele fique disponível à clínica e possa receber consultas. A ação só é acionável com os dados obrigatórios informados; durante o envio, comunica que o registro está sendo processado, confirma a conclusão quando houver sucesso e apresenta o erro retornado quando falhar. O controle tem nome acessível e pode ser operado por teclado.\",\n              \"contentRef\": \"createPaciente\",\n              \"capabilityRefs\": [\n                \"createPaciente\"\n              ],\n              \"moleculeRecommendations\": []\n            }\n          ],\n          \"moleculeReason\": \"Não há candidatos de moléculas disponíveis para recomendar nesta página.\"\n        },\n        {\n          \"device\": \"mobile\",\n          \"descriptions\": [\n            {\n              \"organismId\": \"organism.list.1\",\n              \"kind\": \"list\",\n              \"description\": \"Permite à recepcionista localizar pacientes já cadastrados pelos dados disponíveis, priorizando a leitura dos resultados e dos critérios de identificação em espaço reduzido. Permite informar nome e, quando aplicável, tipo e número de documento e código do país. Durante a busca, comunica carregamento; se não houver resultados, informa que nenhum paciente foi localizado; em falha, expõe uma mensagem de erro acessível. Os controles são acionáveis por toque e têm rótulos e estados anunciáveis por tecnologias assistivas.\",\n              \"contentRef\": \"localizarPaciente\",\n              \"capabilityRefs\": [\n                \"setListPacienteDetailsIdentificationName\",\n                \"setListPacienteDetailsIdentificationDocType\",\n                \"setListPacienteDetailsIdentificationDocId\",\n                \"setListPacienteDetailsIdentificationCountryCode\",\n                \"listPaciente\"\n              ],\n              \"moleculeRecommendations\": []\n            },\n            {\n              \"organismId\": \"organism.detail.1\",\n              \"kind\": \"detail\",\n              \"description\": \"Permite conferir o registro do paciente localizado, priorizando nome e dados de identificação disponíveis para leitura em tela menor. Pode informar o identificador e os critérios de identificação suportados para consultar o paciente. Durante a consulta, informa carregamento; quando não houver registro correspondente, comunica o estado vazio; em caso de erro, apresenta uma mensagem acessível. Campos, resultados e controles por toque têm nomes claros para leitores de tela.\",\n              \"contentRef\": \"localizarPaciente\",\n              \"capabilityRefs\": [\n                \"setListPacienteId\",\n                \"setListPacienteDetailsIdentificationName\",\n                \"setListPacienteDetailsIdentificationDocType\",\n                \"setListPacienteDetailsIdentificationDocId\",\n                \"setListPacienteDetailsIdentificationCountryCode\",\n                \"listPaciente\"\n              ],\n              \"moleculeRecommendations\": []\n            },\n            {\n              \"organismId\": \"organism.form.1\",\n              \"kind\": \"form\",\n              \"description\": \"Coleta os dados cadastrais necessários para criar ou associar um paciente à clínica, com prioridade aos campos obrigatórios em tela reduzida: detalhes do paciente, nome e código do país. Também permite informar tipo e número de documento, apelidos e observações quando disponíveis. Identifica requisitos antes do envio e preserva valores para correção. Ao registrar, anuncia processamento, sucesso ou erro de forma acessível; os campos são operáveis por toque e leitor de tela.\",\n              \"contentRef\": \"createPaciente\",\n              \"capabilityRefs\": [\n                \"setCreatePacienteDetails\",\n                \"setCreatePacienteDetailsIdentification\",\n                \"setCreatePacienteDetailsIdentificationName\",\n                \"setCreatePacienteDetailsIdentificationDocType\",\n                \"setCreatePacienteDetailsIdentificationDocId\",\n                \"setCreatePacienteDetailsIdentificationCountryCode\",\n                \"setCreatePacienteDetailsBase\",\n                \"setCreatePacienteDetailsBaseAliases\",\n                \"setCreatePacienteDetailsBaseNotes\",\n                \"createPaciente\"\n              ],\n              \"moleculeRecommendations\": []\n            },\n            {\n              \"organismId\": \"organism.actions.1\",\n              \"kind\": \"actions\",\n              \"description\": \"Oferece por toque a ação de registrar o paciente preenchido para que ele fique disponível à clínica e possa receber consultas. A ação só é acionável com os dados obrigatórios informados; durante o envio, comunica processamento, confirma a conclusão quando houver sucesso e apresenta o erro retornado quando falhar. O controle tem nome acessível e permanece disponível para operação assistiva.\",\n              \"contentRef\": \"createPaciente\",\n              \"capabilityRefs\": [\n                \"createPaciente\"\n              ],\n              \"moleculeRecommendations\": []\n            }\n          ],\n          \"moleculeReason\": \"Não há candidatos de moléculas disponíveis para recomendar nesta página.\"\n        }\n      ]\n    }\n  }\n}"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "submitD2Pages",
+                    "description": "Submit one structured description per source organism for desktop and mobile.",
+                    "parameters": {
+                      "$schema": "https://json-schema.org/draft/2020-12/schema",
+                      "$id": "https://collab.codes/schemas/agentDefsL2/pagesJudgmentV3.json",
+                      "title": "agentDefsL2 pages50 organism judgment",
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "schemaVersion",
+                        "pageId",
+                        "category",
+                        "presentations"
+                      ],
+                      "properties": {
+                        "schemaVersion": {
+                          "const": "2026-09-23-agent-defs-l2-pages-judgment-v3"
+                        },
+                        "pageId": {
+                          "type": "string",
+                          "pattern": "^[a-z][A-Za-z0-9_-]*$"
+                        },
+                        "category": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "categoryRef",
+                            "reason",
+                            "evidenceRefs"
+                          ],
+                          "properties": {
+                            "categoryRef": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "reason": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "evidenceRefs": {
+                              "type": "array",
+                              "minItems": 1,
+                              "uniqueItems": true,
+                              "items": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          }
+                        },
+                        "presentations": {
+                          "type": "array",
+                          "minItems": 2,
+                          "maxItems": 2,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "device",
+                              "descriptions",
+                              "moleculeReason"
+                            ],
+                            "properties": {
+                              "device": {
+                                "enum": [
+                                  "desktop",
+                                  "mobile"
+                                ]
+                              },
+                              "descriptions": {
+                                "type": "array",
+                                "minItems": 1,
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": [
+                                    "organismId",
+                                    "kind",
+                                    "description",
+                                    "contentRef",
+                                    "capabilityRefs",
+                                    "moleculeRecommendations"
+                                  ],
+                                  "properties": {
+                                    "organismId": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "kind": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "description": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "contentRef": {
+                                      "type": "string",
+                                      "minLength": 1
+                                    },
+                                    "capabilityRefs": {
+                                      "type": "array",
+                                      "uniqueItems": true,
+                                      "items": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "moleculeRecommendations": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": [
+                                          "groupId",
+                                          "candidates",
+                                          "reason"
+                                        ],
+                                        "properties": {
+                                          "groupId": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "candidates": {
+                                            "type": "array",
+                                            "minItems": 1,
+                                            "uniqueItems": true,
+                                            "items": {
+                                              "type": "string",
+                                              "minLength": 1
+                                            }
+                                          },
+                                          "reason": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "moleculeReason": {
+                                "type": "string",
+                                "minLength": 1
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              ],
+              "toolChoice": {
+                "type": "function",
+                "function": {
+                  "name": "submitD2Pages"
+                }
+              },
+              "cost": 0,
+              "trace": [
+                "starting at 2026-09-23T11:40:33.849Z"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          }
+        ],
+        "status": "in_progress",
+        "rags": [],
+        "interaction": {
+          "input": [
+            {
+              "type": "system",
+              "content": "agentDefsL2 deterministic bootstrap. The root model is disabled."
+            },
+            {
+              "type": "human",
+              "content": "agendaClinica"
+            }
+          ],
+          "cost": 0,
+          "trace": [
+            "Root LLM skipped by AgentIntentAddMessageAI.skipRootLLM",
+            "Removing pooling hook after 32 executions, task status: failed"
+          ],
+          "payload": null
+        }
+      }
+    ]
+  },
+  "messageid_created": "20260515174326.1000/20260923113920.1000"
+}

@@ -1,0 +1,617 @@
+{
+  "capturedAt": "2026-09-23T11:20:27.561Z",
+  "repositories": {
+    "mls-102020": {
+      "head": "26ee8ee13a3265c429276871c3381ef3782a6367",
+      "status": [
+        "M l2/aura/services/serviceBehavior.ts",
+        "?? l2/certificacao/runs/d2_14/"
+      ]
+    },
+    "mls-102047": {
+      "head": "ec8525145c2a2eca3c1ebac5bc76268e2ae99280",
+      "status": [
+        "D .collab-msg.lock"
+      ]
+    }
+  },
+  "sources": {
+    "hash": "0d339d3b6ddf6a72e630a5a4663f06c1b7b560020009bd866e87ebe642c83290",
+    "files": [
+      {
+        "path": "l4/agendaClinica/pool/l1/20260921224728_agendaClinica-20260921224728_1.json",
+        "sha256": "8b32ae537ffe817e3ef6ee5e3adbd3af628dda110dbe059bfd9ffc9680893faa",
+        "bytes": 1017,
+        "mtimeMs": 1790030848637.2856
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/20260921225305_agendaClinica-20260921224728_1.json",
+        "sha256": "688d1b42601cfe20257ff21dba4d5fd8bca6e6ba0731c7ff6926376f9fbd9af5",
+        "bytes": 458,
+        "mtimeMs": 1790031185767.1301
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/l4diff.json",
+        "sha256": "63d77be7bd415f6942564967b7a6389e55c80f92766b06c3cf090556f6506558",
+        "bytes": 150,
+        "mtimeMs": 1790030848445.7124
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "4e61f126f934e0c7a424fa66f6e398ef7190a9b11a6f9663baec28a4f86c9c0a",
+        "bytes": 7642,
+        "mtimeMs": 1790031185762.147
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/20260921224728_agendaClinica-20260921224728_1.json",
+        "sha256": "6c7160afff741a8196f102010baf12e7b04c45bbf00ae70f1bd464c09d2dba83",
+        "bytes": 1017,
+        "mtimeMs": 1790030848632.4417
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/20260921225306_agendaClinica-20260921224728_1.json",
+        "sha256": "232817838fd49b827d6b80e6266074f413ee9158c4c9eb968f30b8022db6518c",
+        "bytes": 316,
+        "mtimeMs": 1790031186360.83
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/web/backend.json",
+        "sha256": "f567e557e9ddc50760993cae660feb3db7585a0928fb82da01e1b80d16401e54",
+        "bytes": 13339,
+        "mtimeMs": 1790031186355.4185
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/web/effort.json",
+        "sha256": "8d055293171593c545dd64388972e2280352a66f20a313bb2089890ea7d850f4",
+        "bytes": 11068,
+        "mtimeMs": 1790031187027.6528
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/web/l4diff.json",
+        "sha256": "63d77be7bd415f6942564967b7a6389e55c80f92766b06c3cf090556f6506558",
+        "bytes": 150,
+        "mtimeMs": 1790030848451.4602
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/web/menu.json",
+        "sha256": "948671eb3f10a3fba02b2cc57d4174c91ed31f777fb8d5d619a56160081e4011",
+        "bytes": 4727,
+        "mtimeMs": 1790031185576.7136
+      },
+      {
+        "path": "l4/agendaClinica/pool/l4/20260921225307_agendaClinica-20260921224728_1.json",
+        "sha256": "ac44e258775a09bac578f20b93b20f14d9a5fabc3f87265fd88c869be4ca2cc0",
+        "bytes": 430,
+        "mtimeMs": 1790031187032.7847
+      }
+    ],
+    "pages": [
+      {
+        "pageId": "consultas_recepcionista",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Vejo as consultas da clínica e os horários que ainda estão livres."
+          },
+          {
+            "kind": "detail",
+            "text": "Abro a consulta e confiro paciente, profissional, data e horário."
+          },
+          {
+            "kind": "form",
+            "text": "Marco a consulta para o paciente com o profissional no horário disponível."
+          },
+          {
+            "kind": "actions",
+            "text": "Confirmo a consulta por telefone ou registro que o paciente faltou."
+          }
+        ]
+      },
+      {
+        "pageId": "pacientes",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Vejo os pacientes da clínica e acho quem já está cadastrado."
+          },
+          {
+            "kind": "detail",
+            "text": "Abro o paciente e confiro o nome e os dados."
+          },
+          {
+            "kind": "form",
+            "text": "Preencho o cadastro de um paciente novo para associar à clínica."
+          },
+          {
+            "kind": "actions",
+            "text": "Registro o paciente para ele poder receber consultas."
+          }
+        ]
+      },
+      {
+        "pageId": "profissionais",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Acho o médico ou terapeuta ativo para marcar a consulta."
+          },
+          {
+            "kind": "detail",
+            "text": "Confiro o nome do profissional."
+          }
+        ]
+      },
+      {
+        "pageId": "consultas_profissional",
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Vejo apenas as minhas consultas do dia."
+          },
+          {
+            "kind": "detail",
+            "text": "Abro a consulta e confiro o paciente e o horário."
+          },
+          {
+            "kind": "form",
+            "text": "Registro o atendimento e anoto o que aconteceu na consulta."
+          },
+          {
+            "kind": "actions",
+            "text": "Marco a consulta como atendida."
+          }
+        ]
+      },
+      {
+        "pageId": "dados_profissional",
+        "organisms": [
+          {
+            "kind": "detail",
+            "text": "Vejo o meu cadastro de profissional."
+          },
+          {
+            "kind": "form",
+            "text": "Atualizo os meus dados de atuação clínica."
+          }
+        ]
+      },
+      {
+        "pageId": "dados_recepcionista",
+        "organisms": [
+          {
+            "kind": "detail",
+            "text": "Vejo o meu cadastro de recepcionista."
+          },
+          {
+            "kind": "form",
+            "text": "Atualizo os meus dados de atuação na clínica."
+          }
+        ]
+      }
+    ],
+    "pageCount": 6,
+    "organismCount": 18,
+    "endpoints": 26,
+    "uniqueRoutes": 26,
+    "usecases": 13,
+    "uniqueUsecaseIds": 13
+  },
+  "categorySkills": {
+    "hash": "93abbea729e02c658e1c084532510857dab65152be1e10ca1977c86f9e5c847f",
+    "files": [
+      {
+        "path": "l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+        "sha256": "0f1b75371ad60594e5e23936aea30c0c6ca00c220e959a54642ac33a5eb54fb6",
+        "bytes": 1901,
+        "mtimeMs": 1790161981900.6672
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/activityNotificationHub.md",
+        "sha256": "043a1466fd7c8b65f7d62ded73530618ed04be9261dfc9a92a3d6223720c8a4c",
+        "bytes": 279,
+        "mtimeMs": 1790161981820.3022
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/aiAssistedAuthoring.md",
+        "sha256": "94a7fea38c638137596a02fc9e2bb65a4fcbfd2deb311a41d20e8e3684611d6f",
+        "bytes": 289,
+        "mtimeMs": 1790161981820.3787
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/analyticalList.md",
+        "sha256": "3d238c61ad6da9216b56d735be39bf8632e741501f4dcbf01a6c5748ef453dc5",
+        "bytes": 292,
+        "mtimeMs": 1790161981820.454
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/approvalWorkflow.md",
+        "sha256": "2313ba9a12ab1f818467fd9ecdac148994324b39e0abd097e19d6f04dfe3e993",
+        "bytes": 316,
+        "mtimeMs": 1790161981820.5256
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/assetManagement.md",
+        "sha256": "22d1176423439eb769239c0fcfb514fbc2f26e1233f7e4d003fc240f4eba49a4",
+        "bytes": 283,
+        "mtimeMs": 1790161981820.603
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/auditTrail.md",
+        "sha256": "e731d27ed40ffb456013a2fb875658580f2663e0b3874a48fbc981390add9f4a",
+        "bytes": 298,
+        "mtimeMs": 1790161981820.6958
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/bespoke.md",
+        "sha256": "249cb011093d4c09d060fbef2b10ad62a8ef3a1273df2ffdc5e12b6a1f43ed25",
+        "bytes": 315,
+        "mtimeMs": 1790161981820.7727
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/calendarScheduling.md",
+        "sha256": "faa6253f837f2b45870d738f024855f2e83d17456fcfe4f8368920bd93e3416a",
+        "bytes": 321,
+        "mtimeMs": 1790161981820.8584
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/caseManagement.md",
+        "sha256": "df14c2284c602472a1740553828767ba838f7f5e1a0ea2a6ae371893a877d7ba",
+        "bytes": 293,
+        "mtimeMs": 1790161981820.9456
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/comparisonView.md",
+        "sha256": "fc6eaebd2d00a8cfcf29a061f009f90579482a6f017ab274159b638e3f4ea7f2",
+        "bytes": 296,
+        "mtimeMs": 1790161981821.019
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/contentLanding.md",
+        "sha256": "4c34e52bb4cd6292710253fe2940cbc05a92b52ae53209f4c8876a12723aa50a",
+        "bytes": 294,
+        "mtimeMs": 1790161981821.1104
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/customerManagement.md",
+        "sha256": "bff2715530f51933ffef68a03944e62c678c816aa44be5d71d00f7f770e8217e",
+        "bytes": 303,
+        "mtimeMs": 1790161981821.2249
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/dashboardCommandCenter.md",
+        "sha256": "9d1749830c9b980c5725a4ad8785c1e378e8e0b3e7912d1c4d2c031cc7afed58",
+        "bytes": 284,
+        "mtimeMs": 1790161981821.3037
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/documentManagement.md",
+        "sha256": "f03d6084f60b4f29a0ffab68b8f73dbd9183a2382b5409fb5b6b71d7754adbb5",
+        "bytes": 303,
+        "mtimeMs": 1790161981821.464
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/entityRecordManagement.md",
+        "sha256": "af517d7cfc07fd47c8feaba76b0597c99d578646f7e1f4a47d2af141ba57ef99",
+        "bytes": 297,
+        "mtimeMs": 1790161981821.5466
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/fieldDataCapture.md",
+        "sha256": "e14bb7fd9bce62d7ce36bde419130157c2accc51266bb3125d1bc3b36a60f586",
+        "bytes": 296,
+        "mtimeMs": 1790161981821.6226
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/financialTransactions.md",
+        "sha256": "603aa75d365021e73aeea7723b719fa77678540c12db6c42bd6b16e0ca011d6b",
+        "bytes": 311,
+        "mtimeMs": 1790161981821.7256
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/globalSearchResults.md",
+        "sha256": "4bb5a57215f8229caf6f7693333fedfa0add14b32c08c3d7e165dd6ed529f755",
+        "bytes": 292,
+        "mtimeMs": 1790161981821.807
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/hierarchyTreeView.md",
+        "sha256": "c873f8d6bafa1e9f9189c19d21269349a2dacae6339fa1c881e9034a6a25fe2d",
+        "bytes": 297,
+        "mtimeMs": 1790161981821.9536
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/importMappingWizard.md",
+        "sha256": "c19dac407649fa330c125a1740d23a3e1300be17b720781542ce7974ffdd04ca",
+        "bytes": 310,
+        "mtimeMs": 1790161981822.0444
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/inventoryControl.md",
+        "sha256": "c7c546b14df520e4c4b9808883803fa4fdfdacd02731ffe83bd8f8aed4ff3c90",
+        "bytes": 300,
+        "mtimeMs": 1790161981822.134
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/kanbanBoardView.md",
+        "sha256": "7f4a925d4a78b23a9254a2acd3cdf632b18a51b382ab6b57782048fe06515209",
+        "bytes": 295,
+        "mtimeMs": 1790161981822.2166
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/masterDataManagement.md",
+        "sha256": "bbad1f33d53032c8f7665f5f26dd90419635f26aa5649f500c202a93434c7aa8",
+        "bytes": 299,
+        "mtimeMs": 1790161981822.2908
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/operationsQueue.md",
+        "sha256": "09c4498daa5c5d733dce962d0999c793056715af7e5725ea334031865ca1996e",
+        "bytes": 285,
+        "mtimeMs": 1790161981822.3745
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/orderManagement.md",
+        "sha256": "498ab3d0cf663844469af72ad1ec8eb6ed8b9093a1ed10976df1bbb1caceca7a",
+        "bytes": 294,
+        "mtimeMs": 1790161981822.4614
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/posWorkbench.md",
+        "sha256": "20c1cf0e1ea98279af47793242bfcc1c2578d6aa174493ef838fa7e448b1d893",
+        "bytes": 298,
+        "mtimeMs": 1790161981822.5608
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/processWizard.md",
+        "sha256": "1698a4bfc90cb697fdec1ddd2f3e32b6ab622a8480a740246150a6c4727e3eff",
+        "bytes": 298,
+        "mtimeMs": 1790161981822.6433
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/productCatalog.md",
+        "sha256": "85ca25ae79005b157e23d5b19044d5a7da81976ac68d4f6c7de26751eaed047a",
+        "bytes": 311,
+        "mtimeMs": 1790161981822.7239
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/readOnlyDetailPortal.md",
+        "sha256": "7964c190d01f6666dc44d12f1ee90da4d84b725110677c7e1d54e408b7bf6b46",
+        "bytes": 276,
+        "mtimeMs": 1790161981822.8008
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/reportExplorer.md",
+        "sha256": "f8c815ab1f0b9d4e51ec068b61acfe7c407e87a69760792610bf9aeaba748dbb",
+        "bytes": 300,
+        "mtimeMs": 1790161981822.878
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/settingsConsole.md",
+        "sha256": "239184ad5ed6413cd7a43599877e32590e73f1bc46f9d1741cfd9833c8094c82",
+        "bytes": 297,
+        "mtimeMs": 1790161981822.9548
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/supplierManagement.md",
+        "sha256": "760be66895d01e481b2a9d618a28e09a5b435be6af42f0d96efd5e48f41c1f02",
+        "bytes": 281,
+        "mtimeMs": 1790161981823.0488
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/userAccessManagement.md",
+        "sha256": "a5b89b65f928bea386b8d4c6aded7c86b84b316c496b222db4c7e05f97784cb8",
+        "bytes": 285,
+        "mtimeMs": 1790161981823.1294
+      },
+      {
+        "path": "l2/agentDefsL2/skills/pageCategories/workPlanningBoard.md",
+        "sha256": "afdb004b28f09f9e56a52b0b41e54385c136fe7f164e6cd0891e821d7735b98f",
+        "bytes": 303,
+        "mtimeMs": 1790161981823.2065
+      },
+      {
+        "path": "l4/collabux/templates/categoryList.json",
+        "sha256": "285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc",
+        "bytes": 25523,
+        "mtimeMs": 1788035197556.7683
+      }
+    ]
+  },
+  "schemas": {
+    "hash": "15e8e9b83c81f95fce79d92eb063350a5d3e5b714f4dfa989dfdf934be6eaed2",
+    "files": [
+      {
+        "path": "l2/agentDefsL2/schemas/pagesJudgmentV1.json",
+        "sha256": "12805ae20e6a6d0c6646453397e513716ea1c87c93515a41695b287eee787222",
+        "bytes": 1156,
+        "mtimeMs": 1790152108731.6821
+      },
+      {
+        "path": "l2/agentDefsL2/schemas/pagesJudgmentV2.json",
+        "sha256": "bc987b8fc194047943f7d46084aa4b82f1474a6f1d810d0c41d607304f929596",
+        "bytes": 2234,
+        "mtimeMs": 1790161981820.0789
+      },
+      {
+        "path": "l2/agentDefsL2/schemas/pagesJudgmentV3.json",
+        "sha256": "6e641afeecb4a1d8d99d01cbe0a47545435a153271c574bab2dfe455c16e3a99",
+        "bytes": 2639,
+        "mtimeMs": 1790161981911.4124
+      }
+    ]
+  },
+  "generatorCode": {
+    "hash": "1d61f0ffb0eb49a552a7f2fc33c90c4ac47ed967272ac240e037a48d0514ab17",
+    "files": 138
+  },
+  "moleculeCatalog": {
+    "hash": "220f2effb67b51d8c34bfeac360a3cb939531d2e7cabcabea473326b9a30b818",
+    "indexes": 31,
+    "usages": 31,
+    "files": 62
+  },
+  "destinationBefore": {
+    "hash": "3c8fd3ad4af0082604c1b0a63fe787b3564020f9c7beb7aa3a88e0fa5e633242",
+    "defs": 24,
+    "files": [
+      {
+        "path": "l2/agendaClinica/web/contracts/consultas_profissional.defs.ts",
+        "sha256": "511f24c3844f253f4833550c1b5a735a42046ead347b193f2f46c085567e9389",
+        "bytes": 1138,
+        "mtimeMs": 1790082241556.021
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts",
+        "sha256": "06c053bcb7c16a3f8a23327df446f2fad96498fd3650a3e359917730a6c0543f",
+        "bytes": 4048,
+        "mtimeMs": 1790082241567.024
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/dados_profissional.defs.ts",
+        "sha256": "7773359a35ee0789de6b1cd85126bf68d47e484119dad5b40dfd92ebec837671",
+        "bytes": 3421,
+        "mtimeMs": 1790082241577.957
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/dados_recepcionista.defs.ts",
+        "sha256": "73a5a4d7a232a07059bd122ab5004552ed36d06afc6ac3c2163e63697cea026e",
+        "bytes": 5866,
+        "mtimeMs": 1790082241588.1316
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+        "sha256": "3b586791f72fb024553cd0310577d64bf214aa576228a6bbf2f8711ba704fa7f",
+        "bytes": 4226,
+        "mtimeMs": 1790082241607.0625
+      },
+      {
+        "path": "l2/agendaClinica/web/contracts/profissionais.defs.ts",
+        "sha256": "7df6c3adabced3a33a88460a0fb8a1857566e6db2858030ce4b70e8a365425d0",
+        "bytes": 3234,
+        "mtimeMs": 1790082241616.108
+      },
+      {
+        "path": "l2/agendaClinica/web/desktop/page11/consultas_profissional.defs.ts",
+        "sha256": "8c881ddf4c94efd805a2f2189317877f51d2767d012a1e9a00ab766b0bb12bba",
+        "bytes": 2529,
+        "mtimeMs": 1790082504324.177
+      },
+      {
+        "path": "l2/agendaClinica/web/desktop/page11/consultas_recepcionista.defs.ts",
+        "sha256": "dbf228c958b50af50a339125caf81b09370a0af8883190a9e0cbfd4806baf702",
+        "bytes": 2713,
+        "mtimeMs": 1790082554456.829
+      },
+      {
+        "path": "l2/agendaClinica/web/desktop/page11/dados_profissional.defs.ts",
+        "sha256": "8819f6f22a7be4167de3ebdfeb202399f9b69d5cafa1b63060eea0ac7b72a29c",
+        "bytes": 2142,
+        "mtimeMs": 1790082387217.6833
+      },
+      {
+        "path": "l2/agendaClinica/web/desktop/page11/dados_recepcionista.defs.ts",
+        "sha256": "bc892fc268e8532678dcb4627570b2ea41ff824dac634d247da7fadced969f8f",
+        "bytes": 1793,
+        "mtimeMs": 1790082375666.4785
+      },
+      {
+        "path": "l2/agendaClinica/web/desktop/page11/pacientes.defs.ts",
+        "sha256": "48d7dc5716a152f7ee63f72f41b1e6b3c5dfd67f1052c2043193d5951c982f7a",
+        "bytes": 2606,
+        "mtimeMs": 1790082398743.775
+      },
+      {
+        "path": "l2/agendaClinica/web/desktop/page11/profissionais.defs.ts",
+        "sha256": "795138f497d0519bf9025e1a58fc72ee27967ffb6122821a12b4fb4ae0bf92af",
+        "bytes": 2742,
+        "mtimeMs": 1790082481993.5405
+      },
+      {
+        "path": "l2/agendaClinica/web/mobile/page11/consultas_profissional.defs.ts",
+        "sha256": "1df9664fcf1378fd285d1a8a24d909ec48c0a9b64f14b9c9be929027357a093b",
+        "bytes": 2025,
+        "mtimeMs": 1790082504331.9282
+      },
+      {
+        "path": "l2/agendaClinica/web/mobile/page11/consultas_recepcionista.defs.ts",
+        "sha256": "27d5200671182436bd3beb48bee30d9cb04b7f4c217e2a7cdb8cbeaf80b1e439",
+        "bytes": 2576,
+        "mtimeMs": 1790082554465.1707
+      },
+      {
+        "path": "l2/agendaClinica/web/mobile/page11/dados_profissional.defs.ts",
+        "sha256": "6f096426f89ac951bcc5b9753a859e3761bc38720890bfed77fef74225c02cc8",
+        "bytes": 2032,
+        "mtimeMs": 1790082387224.4812
+      },
+      {
+        "path": "l2/agendaClinica/web/mobile/page11/dados_recepcionista.defs.ts",
+        "sha256": "204ee3ff5bbb175f3a3177aac73d6196f1888a4fc31071e22fd14f4a562851bb",
+        "bytes": 1767,
+        "mtimeMs": 1790082375673.4202
+      },
+      {
+        "path": "l2/agendaClinica/web/mobile/page11/pacientes.defs.ts",
+        "sha256": "164125a10aa63ed14c2baa707e7824e69f0e741adcd0f8c8f2d5ecbd4b6a1515",
+        "bytes": 2451,
+        "mtimeMs": 1790082398751.657
+      },
+      {
+        "path": "l2/agendaClinica/web/mobile/page11/profissionais.defs.ts",
+        "sha256": "6ad568547f8be4c82c52beb09c4dc86fde993597f53368f1dfe35cf6383260d9",
+        "bytes": 2343,
+        "mtimeMs": 1790082482001.2107
+      },
+      {
+        "path": "l2/agendaClinica/web/shared/consultas_profissional.defs.ts",
+        "sha256": "341a006daf4162f642f245e9be203ae77d953072b6d71c6b404d8d1b218dd586",
+        "bytes": 13658,
+        "mtimeMs": 1790082260885.1836
+      },
+      {
+        "path": "l2/agendaClinica/web/shared/consultas_recepcionista.defs.ts",
+        "sha256": "4997576a43e9f9b88239a07af0abe320d50a463b6dbf0cfedbef7d8cde73c351",
+        "bytes": 43735,
+        "mtimeMs": 1790082266915.754
+      },
+      {
+        "path": "l2/agendaClinica/web/shared/dados_profissional.defs.ts",
+        "sha256": "4634b1e68e65f54f0d26dd0cd83819f96db1e639dd4e4a46e7d7903c8e906764",
+        "bytes": 41940,
+        "mtimeMs": 1790082272651.4512
+      },
+      {
+        "path": "l2/agendaClinica/web/shared/dados_recepcionista.defs.ts",
+        "sha256": "fcd2fb93327073a9bc65a9a52b3ba5e694633a68434af55015fcccecfab605d2",
+        "bytes": 73244,
+        "mtimeMs": 1790082260909.699
+      },
+      {
+        "path": "l2/agendaClinica/web/shared/pacientes.defs.ts",
+        "sha256": "013158ec43fb9952904423a31ec951fcc5b3055923952ed921117529fc7aaa6e",
+        "bytes": 45592,
+        "mtimeMs": 1790082328663.7932
+      },
+      {
+        "path": "l2/agendaClinica/web/shared/profissionais.defs.ts",
+        "sha256": "a11b91912073afd614fb1a1af6d3cb2918b0936431821a3d3bdf7d95b9b1efc3",
+        "bytes": 36081,
+        "mtimeMs": 1790082323065.6064
+      }
+    ]
+  },
+  "expectedFromCurrentSources": {
+    "defs": 24,
+    "pageDefs": 12,
+    "organismDescriptions": 36,
+    "materializationItems": 18
+  },
+  "limits": {
+    "runBySupervisor": true,
+    "maxCostUsd": 6,
+    "collabmsgByExecutor": false,
+    "materializeTs": false,
+    "commit": false,
+    "push": false
+  }
+}

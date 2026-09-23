@@ -12,8 +12,11 @@ selected page; that worker owns the desktop/mobile pair and has one bounded repa
 - every returned context includes measured UTF-8 bytes and a read ledger. Empty availability has a
   reason; ambiguity, invalid references and missing selected files are explicit errors.
 
-No component variant is compulsory at this stage. Recommendations contain only exact tags actually read
-from selected indexes. The later materializer chooses a compatible candidate after reading its defs.
+No component variant is compulsory at this stage. When a query/view, input/entry or command/trigger group
+has real candidate tags compatible with an organism's cited capabilities, the judgment must recommend at
+least one; static content and organisms without a compatible published group may remain empty with an
+honest reason. Recommendations contain only exact tags actually read from selected indexes. The later
+materializer chooses a compatible variant after reading its defs.
 
 The same call selects one category for both devices from the canonical 33-entry L4 taxonomy or explicit
 `bespoke`. Code prepends the technical render skill and selected category skill, then deduplicates group
@@ -21,5 +24,6 @@ index/usage skills. Category reason/evidence, catalog hash, every mandatory skil
 context hash are persisted in the unit receipt. Reuse requires the same context hash and artifact bytes.
 
 The gate requires both devices, exact shared-capability parity, different presentation prose, category
-evidence, existing groups and real candidate tags before either defs is promoted. Structured per-organism
-descriptions and Scene/content assignment remain the d2_13 contract; this step keeps `descriptions` as prose.
+evidence, existing groups, real candidate tags and the compatible recommendation rule before either defs
+is promoted. Structured descriptions remain per organism and bind each organism to one real Scene through
+`contentRef`; a Scene does not need an artificial organism.

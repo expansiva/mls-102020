@@ -179,7 +179,7 @@ export async function buildD2MoleculeCandidateContext(port: D2MoleculeCatalogPor
     });
     groups.push({ groupId: entry.groupId, scenarios });
   }
-  const context = JSON.stringify({ moleculeCandidates: { instruction: 'Recommend only listed exact candidate tags when useful; no recommendation is valid when there is no useful match.', groups } }, null, 2);
+  const context = JSON.stringify({ moleculeCandidates: { instruction: 'Recommend at least one listed exact candidate for each organism with a compatible group. An empty recommendation is valid only for static content or when no listed group matches its capabilities; never claim the catalog is empty when groups are listed.', groups } }, null, 2);
   return { groups, context };
 }
 

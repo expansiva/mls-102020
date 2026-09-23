@@ -7,7 +7,7 @@ import { readD2Input } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
 import { readD2SharedManifest, readD2SharedSource } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
 import type { D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import type { D2MoleculeCatalogPort, D2MoleculeInventory } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { assertD2MoleculeCandidates, resolveD2MoleculeSelection } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
+import { assertD2MoleculeCandidates, buildD2MoleculeCandidateContext, resolveD2MoleculeSelection } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import type { D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { D2_PAGE_TECHNICAL_SKILL, d2PageUnitContextHash, resolveD2PageCategory } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { D2_PAGES_VERSION, type D2PageDevice, type D2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
@@ -33,10 +33,13 @@ export async function approveD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
   const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
   const { page, shared } = await getD2PagesContext(identity, snapshot, pageId);
   const requested = [...new Set(judgment.presentations.flatMap(item => item.descriptions.flatMap(description => description.moleculeRecommendations.map(recommendation => recommendation.groupId))))];
-  const molecules = await resolveD2MoleculeSelection(port, inventory, requested);
+  const [molecules, candidateContext] = await Promise.all([
+    resolveD2MoleculeSelection(port, inventory, requested),
+    buildD2MoleculeCandidateContext(port, inventory),
+  ]);
   assertD2MoleculeCandidates(molecules, judgment.presentations.flatMap(item => item.descriptions.flatMap(description => description.moleculeRecommendations)));
   const groupSkills = new Map(molecules.groups.map(group => [group.groupId, [group.indexPipelineReference, group.usageContractPipelineReference]]));
-  const groupCandidates = new Map(molecules.groups.map(group => [group.groupId, new Set(group.molecules.map(item => item.tag))]));
+  const groupCandidates = new Map(candidateContext.groups.map(group => [group.groupId, new Set(group.scenarios.flatMap(item => item.candidates))]));
   const rendered = gateD2Pages(identity.module, page, shared, judgment, groupSkills, pageSkills, groupCandidates);
   const sources = Object.fromEntries(rendered.map(item => { const source = renderD2Page(item); assertD2RenderedPage(source); return [item.device, source]; })) as Record<D2PageDevice, string>;
   const category = resolveD2PageCategory(pageSkills, judgment.category.categoryRef);

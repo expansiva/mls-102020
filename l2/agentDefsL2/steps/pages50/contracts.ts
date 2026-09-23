@@ -3,7 +3,7 @@
 import type { D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 
-export const D2_PAGES_VERSION = '2026-09-23-agent-defs-l2-pages-v3' as const;
+export const D2_PAGES_VERSION = '2026-09-23-agent-defs-l2-pages-v4' as const;
 export const D2_PAGES_JUDGMENT_VERSION = '2026-09-23-agent-defs-l2-pages-judgment-v3' as const;
 export type D2PageDevice = 'desktop' | 'mobile';
 

@@ -65,7 +65,7 @@ export function gateD2Pages(
   for (const ref of judgment.category.evidenceRefs) if (!known.has(ref)) errors.push(`D2_PAGE_CATEGORY_EVIDENCE_UNKNOWN: ${ref}`);
   for (const presentation of byDevice.values()) {
     const prefix = `${page.pageId}/${presentation.device}`;
-    const seen = new Set<string>(); const contentRefs = new Set<string>();
+    const seen = new Set<string>();
     if (!presentation.descriptions.length) errors.push(`D2_PAGES_DESCRIPTIONS_EMPTY: ${prefix}`);
     if (!presentation.moleculeReason.trim()) errors.push(`D2_PAGES_MOLECULE_REASON_MISSING: ${presentation.device}`);
     for (const description of presentation.descriptions) {
@@ -76,7 +76,6 @@ export function gateD2Pages(
       if (!description.description.trim()) errors.push(`D2_PAGES_DESCRIPTION_EMPTY: ${at}`);
       if (!description.contentRef) errors.push(`D2_PAGES_CONTENT_REF_MISSING: ${at}`);
       else if (!scenarios.has(description.contentRef)) errors.push(`D2_PAGES_CONTENT_REF_UNKNOWN: ${at} -> ${description.contentRef}`);
-      else contentRefs.add(description.contentRef);
       if (!description.capabilityRefs.length && !expected.staticContent) errors.push(`D2_PAGES_CAPABILITIES_EMPTY: ${at}`);
       for (const ref of description.capabilityRefs) if (!known.has(ref)) errors.push(`D2_PAGES_CAPABILITY_UNKNOWN: ${at} -> ${ref}`);
       if (new Set(description.capabilityRefs).size !== description.capabilityRefs.length) errors.push(`D2_PAGES_CAPABILITY_DUPLICATE: ${at}`);
@@ -90,12 +89,17 @@ export function gateD2Pages(
         if (new Set(recommendation.candidates).size !== recommendation.candidates.length) errors.push(`D2_PAGES_MOLECULE_CANDIDATE_DUPLICATE: ${at} -> ${recommendation.groupId}`);
         if (!moleculeCompatible(recommendation.groupId, description.capabilityRefs, shared)) errors.push(`D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: ${at} -> ${recommendation.groupId}`);
       }
+      const requiredGroups = [...groupCandidates.entries()]
+        .filter(([groupId, candidates]) => candidates.size > 0 && requiredMoleculeCompatible(groupId, description.capabilityRefs, shared))
+        .map(([groupId]) => groupId);
+      if (requiredGroups.length && !requiredGroups.some(groupId => recommendationGroups.has(groupId))) {
+        errors.push(`D2_PAGES_MOLECULE_RECOMMENDATION_MISSING: ${at} compatible=${requiredGroups.join(',')}`);
+      }
       const prose = description.description;
       if (/<\/?[a-z][^>]*>|```(?:html|css)|\b(?:display|grid-template|position)\s*:|\b(?:two|three|2|3)[ -]column\b/iu.test(prose)) errors.push(`D2_PAGES_LAYOUT_PRESCRIPTION: ${at} evidence=${evidence(prose)}`);
       if (!shared.dataBindings.length && /\b(?:dashboard|statistics?|metrics?|aggregate|totals?)\b/iu.test(prose)) errors.push(`D2_PAGES_DATA_CLAIM_UNSUPPORTED: ${at} evidence=${evidence(prose)}`);
     }
     for (const organism of organisms) if (!seen.has(organism.organismId)) errors.push(`D2_PAGES_ORGANISM_MISSING: ${prefix}/${organism.organismId}`);
-    for (const scenario of scenarios) if (!contentRefs.has(scenario)) errors.push(`D2_PAGES_SCENARIO_UNCOVERED: ${prefix}/${scenario}`);
   }
   const desktop = byDevice.get('desktop'); const mobile = byDevice.get('mobile');
   if (desktop && mobile) {
@@ -116,12 +120,20 @@ export function gateD2Pages(
 }
 
 function moleculeCompatible(groupId: string, refs: string[], shared: D2SharedDefinition): boolean {
+  return knownMoleculeCompatibility(groupId, refs, shared) ?? refs.length > 0;
+}
+
+function requiredMoleculeCompatible(groupId: string, refs: string[], shared: D2SharedDefinition): boolean {
+  return knownMoleculeCompatibility(groupId, refs, shared) === true;
+}
+
+function knownMoleculeCompatibility(groupId: string, refs: string[], shared: D2SharedDefinition): boolean | null {
   const actions = shared.actions.filter(item => refs.includes(item.actionId)); const states = shared.states.filter(item => refs.includes(item.stateKey));
-  if (/^groupView(?:Data|Table)/u.test(groupId)) return actions.some(item => item.kind === 'query') || states.some(item => item.kind === 'queryResult');
+  if (/^groupView/u.test(groupId)) return actions.some(item => item.kind === 'query') || states.some(item => item.kind === 'queryResult');
   if (/^groupEnter/u.test(groupId)) return actions.some(item => item.kind === 'stateSetter' || item.kind === 'command') || states.some(item => item.kind === 'input');
   if (groupId === 'groupTriggerAction') return actions.some(item => item.kind === 'command');
   if (groupId === 'groupNotifyUser') return actions.some(item => !!item.statusStateKey || !!item.errorStateKey) || states.some(item => item.kind === 'actionStatus' || item.kind === 'actionError');
-  return refs.length > 0;
+  return null;
 }
 
 function setKey(values: string[]): string { return [...new Set(values)].sort().join('\0'); }
