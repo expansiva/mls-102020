@@ -37,7 +37,8 @@ export function gateD2Shared(moduleName: string, page: D2SelectedPage, contract:
     scenes.add(scene.value);
     if (!callById.has(scene.actionId)) errors.push(`D2_SHARED_SCENARY_ACTION_UNKNOWN: ${scene.actionId}`);
     if (behaviorById.get(scene.actionId)?.destructive && scene.kind === 'command') errors.push(`D2_SHARED_DESTRUCTIVE_SCENARY: ${scene.actionId}`);
-    const knownStates = new Set(contract.calls.flatMap(call => flatten(call.input).map(field => inputStateKey(page.pageId, call, field))));
+    const sceneCall = callById.get(scene.actionId);
+    const knownStates = new Set(sceneCall ? flatten(sceneCall.input).map(field => inputStateKey(page.pageId, sceneCall, field)) : []);
     for (const state of scene.preconditions) if (!knownStates.has(state)) errors.push(`D2_SHARED_PRECONDITION_UNKNOWN: ${state}`);
   }
   for (const actionId of judgment.initialLoadActionIds) {

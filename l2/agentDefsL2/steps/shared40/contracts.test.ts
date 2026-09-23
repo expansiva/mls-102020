@@ -100,6 +100,18 @@ void test('initial loads reject required unavailable input and commands; paramet
   assert.throws(() => gateD2Shared('fixture', page, contract, { ...good, initialLoadActionIds: ['deleteRecord'] }), /D2_SHARED_INITIAL_LOAD_NOT_QUERY/);
 });
 
+void test('scenary preconditions cannot borrow an exact stateKey from another action', () => {
+  const page = selected('records'); const contract = pageContract(page.pageId);
+  const judgment = suggestedD2SharedJudgment(page, contract);
+  judgment.scenaries.push({
+    value: 'detail',
+    kind: 'detail',
+    actionId: 'getRecord',
+    preconditions: ['ui.records.deleteRecord.input.id'],
+  });
+  assert.throws(() => gateD2Shared('fixture', page, contract, judgment), /D2_SHARED_PRECONDITION_UNKNOWN/);
+});
+
 void test('destructive behavior requires confirmation and invalid/truncated schema is diagnosed', () => {
   const page = selected('records'); const contract = pageContract(page.pageId); const base = suggestedD2SharedJudgment(page, contract);
   const actionBehaviors = base.actionBehaviors.map(item => item.actionId === 'deleteRecord' ? { ...item, confirmation: undefined } : item);

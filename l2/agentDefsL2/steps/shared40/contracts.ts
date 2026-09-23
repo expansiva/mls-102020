@@ -74,6 +74,13 @@ export function suggestedD2SharedJudgment(page: D2SelectedPage, contract: D2Page
   };
 }
 
+export function d2SharedPreconditionStateKeysByAction(page: D2SelectedPage, contract: D2PageContract): Record<string, string[]> {
+  return Object.fromEntries(contract.calls.map(call => [
+    call.callName,
+    flatten(call.input).map(field => inputStateKey(page.pageId, call, field)),
+  ]));
+}
+
 export function flatten(fields: D2ContractField[]): D2ContractField[] { return fields.flatMap(field => [field, ...flatten(field.children)]); }
 export function inputStateKey(pageId: string, call: D2ContractCall, field: D2ContractField): string { return `ui.${pageId}.${call.callName}.input.${field.path.replace(/^[^.]+\./, '').replace(/\./g, '_').replace('$', '')}`; }
 function selectedKeys(pageId: string, call: D2ContractCall): string[] { return flatten(call.input).filter(field => isSelectedEntity(call, field) && field.required).map(field => inputStateKey(pageId, call, field)); }

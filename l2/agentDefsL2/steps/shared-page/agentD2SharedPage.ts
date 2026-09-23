@@ -4,7 +4,9 @@ import { readJson, readSourceText } from '/_102035_/l2/solution/fs.js';
 import { D2_SHARED_PAGE_AGENT_NAME, markD2StepApproved, markD2StepFailed, moduleTokenOk } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
-import { suggestedD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
+import type { D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
+import { d2SharedPreconditionStateKeysByAction, suggestedD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { parseD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
 import { approveD2SharedUnit, finalizeD2SharedBarrier, getD2SharedContext } from '/_102020_/l2/agentDefsL2/steps/shared40/run.js';
 
@@ -24,7 +26,7 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
       readJson<Record<string, unknown>>({ project: 102020, level: 2, folder: 'agentDefsL2/schemas', shortName: 'sharedJudgmentV1', extension: '.json' }),
     ]);
     if (!schema) throw new Error('D2_SHARED_SCHEMA_MISSING');
-    const humanPrompt = JSON.stringify({ page: { pageId: page.pageId, pageName: page.label, ancestors: page.ancestors, journeys: page.journeyRefs.map(id => bundle.artifacts.journeys[id]).filter(Boolean) }, contract, mechanicalStartingCut: suggestedD2SharedJudgment(page, contract), repair: parsed.feedback ? { feedback: parsed.feedback, previous: parsed.previous } : null }, null, 2);
+    const humanPrompt = buildD2SharedHumanPrompt(page, page.journeyRefs.map(id => bundle.artifacts.journeys[id]).filter(Boolean), contract, parsed.feedback ? { feedback: parsed.feedback, previous: parsed.previous } : null);
     const tool: mls.msg.LLMTool = { type: 'function', function: { name: 'submitD2Shared', description: 'Submit one page shared behavior judgment.', parameters: schema } };
     return [{ type: 'prompt_ready', args: rawArgs, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: prompt, humanPrompt, tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } }];
   } catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
@@ -56,6 +58,22 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     await markD2StepFailed(identity, 'shared40', `D2_SHARED_REPAIR_LIMIT ${parsed.pageId}: ${diagnostic}`);
     return [updateD2Status(context, parentStep, step, hookSequential, 'failed', `D2_SHARED_REPAIR_LIMIT ${parsed.pageId}: ${diagnostic}`)];
   }
+}
+
+export function buildD2SharedHumanPrompt(
+  page: D2SelectedPage,
+  journeys: unknown[],
+  contract: D2PageContract,
+  repair: { feedback: string; previous: unknown } | null,
+): string {
+  return JSON.stringify({
+    page: { pageId: page.pageId, pageName: page.label, ancestors: page.ancestors, journeys },
+    contract,
+    mechanicalStartingCut: suggestedD2SharedJudgment(page, contract),
+    preconditionStateKeysByAction: d2SharedPreconditionStateKeysByAction(page, contract),
+    preconditionRule: 'For each scenary, preconditions may only copy exact stateKey strings from preconditionStateKeysByAction[actionId], or be empty. Never use labels, scenary values, or actionIds.',
+    repair,
+  }, null, 2);
 }
 
 function parseArgs(value: unknown): Args { let raw: unknown; try { raw = JSON.parse(String(value)); } catch { throw new Error('D2_SHARED_ARGS_INVALID'); } const item = record(raw); const parsed: Args = { project: Number(item.project), module: text(item.module), pageId: text(item.pageId), attempt: Number(item.attempt), feedback: text(item.feedback), previous: item.previous }; if (!Number.isSafeInteger(parsed.project) || parsed.project !== Number(mls.actualProject || 0) || !moduleTokenOk(parsed.module) || !/^[a-z][A-Za-z0-9_-]*$/.test(parsed.pageId) || ![1, 2].includes(parsed.attempt)) throw new Error('D2_SHARED_ARGS_INVALID'); return parsed; }

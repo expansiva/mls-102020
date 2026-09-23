@@ -12,7 +12,7 @@
     "scenaries": {
       "type": "array", "minItems": 1,
       "items": { "type": "object", "additionalProperties": false, "required": ["value", "kind", "actionId", "preconditions"], "properties": {
-        "value": { "type": "string", "minLength": 1 }, "kind": { "enum": ["base", "detail", "command"] }, "actionId": { "type": "string", "minLength": 1 }, "preconditions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+        "value": { "type": "string", "minLength": 1 }, "kind": { "enum": ["base", "detail", "command"] }, "actionId": { "type": "string", "minLength": 1 }, "preconditions": { "description": "Copy only exact stateKey strings from preconditionStateKeysByAction[actionId] in the human prompt, or use an empty array. Never use labels, scenary values, or actionIds.", "type": "array", "items": { "type": "string", "pattern": "^ui\\." }, "uniqueItems": true }
       } }
     },
     "initialLoadActionIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
