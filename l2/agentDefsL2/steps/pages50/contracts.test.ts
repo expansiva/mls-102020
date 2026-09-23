@@ -259,7 +259,7 @@ void test('page worker has one bounded repair and no live model call outside orc
 });
 
 void test('page worker preserves raw initial hook args without adding feedback', () => {
-  const raw = '{"project":102047,"module":"fixture","pageId":"page","attempt":1}';
+  const raw = `{"project":102047,"module":"fixture","pageId":"page","attempt":1,"moleculeContextHash":"sha256:${'a'.repeat(64)}"}`;
   assert.notEqual(JSON.stringify({ ...JSON.parse(raw), feedback: '' }), raw);
   const source = readFileSync(path.join(HERE, '../pages-page/agentD2PagesPage.ts'), 'utf8');
   assert.match(source, /const rawArgs = args \|\| step\.prompt \|\| '';/);

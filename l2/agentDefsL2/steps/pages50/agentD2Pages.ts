@@ -7,6 +7,8 @@ import { readD2SharedManifest } from '/_102020_/l2/agentDefsL2/steps/shared40/io
 import { finalizeD2PagesBarrier, findReusableD2PagesUnits } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { buildD2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { d2PageSkillPort } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryCatalog.js';
+import { prepareD2MoleculeContext } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
+import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
 
 export function createAgent(): IAgentAsync { return { agentName: D2_PAGES_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2/steps/pages50', agentDescription: 'Dispatch one isolated desktop/mobile page-description worker per page', visibility: 'private', beforePromptStep }; }
 async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -18,16 +20,17 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     const bundle = await readD2InputBundle(identity); await assertD2InputSourcesStable(bundle);
     const shared = await readD2SharedManifest(identity);
     if (!shared || shared.status !== 'approved' || shared.snapshotHash !== snapshot.snapshotHash) throw new Error('D2_PAGES_SHARED_BARRIER_MISSING');
-    const pageSkills = await buildD2PageSkillsContext(d2PageSkillPort);
-    const complete = await finalizeD2PagesBarrier(identity, snapshot, () => assertD2InputSourcesStable(bundle), pageSkills);
+    const [pageSkills, prepared] = await Promise.all([buildD2PageSkillsContext(d2PageSkillPort), prepareD2MoleculeContext(d2MoleculeCatalogPort)]);
+    const molecular = { port: d2MoleculeCatalogPort, prepared };
+    const complete = await finalizeD2PagesBarrier(identity, snapshot, () => assertD2InputSourcesStable(bundle), pageSkills, molecular);
     if (complete) return [
       addD2Step(context, parentStep.stepId, d2Result('Pages ready', JSON.stringify({ ...identity, completedStep: 'pages50', nextStep: 'finalize60', pages: complete.units.length, defs: complete.units.length * 2 }), 'pages50-done')),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `pages50 reused ${complete.units.length} approved unit(s).`),
     ];
-    const reusablePageIds = new Set((await findReusableD2PagesUnits(identity, snapshot, () => assertD2InputSourcesStable(bundle), pageSkills)).map(unit => unit.pageId));
+    const reusablePageIds = new Set((await findReusableD2PagesUnits(identity, snapshot, () => assertD2InputSourcesStable(bundle), pageSkills, molecular)).map(unit => unit.pageId));
     const workers = [...snapshot.selection.writePageIds].sort().filter(pageId => !reusablePageIds.has(pageId)).map(pageId => addD2Step(context, parentStep.stepId, {
       type: 'agent', stepId: 0, interaction: null, stepTitle: `Pages ${pageId}`, status: 'waiting_human_input', nextSteps: [], agentName: D2_PAGES_PAGE_AGENT_NAME,
-      prompt: JSON.stringify({ ...identity, pageId, attempt: 1 }), rags: [], planning: { planId: `pages50-page-${pageId}`, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },
+      prompt: JSON.stringify({ ...identity, pageId, attempt: 1, moleculeContextHash: prepared.receipt.contextHash }), rags: [], planning: { planId: `pages50-page-${pageId}`, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },
     } as mls.msg.AIAgentStep));
     return [...workers, updateD2Status(context, parentStep, step, hookSequential, 'completed', `pages50 dispatched ${workers.length} isolated page worker(s).`)];
   } catch (error) { const diagnostic = error instanceof Error ? error.message : String(error); await markD2StepFailed(identity, 'pages50', diagnostic); return [updateD2Status(context, parentStep, step, hookSequential, 'failed', diagnostic)]; }

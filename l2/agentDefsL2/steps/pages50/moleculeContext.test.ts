@@ -14,6 +14,7 @@ import {
   buildD2MoleculeInventory,
   buildD2MoleculeCandidateContext,
   assertD2MoleculeCandidates,
+  buildD2MoleculeReceipt,
   D2MoleculeContextError,
   normalizeD2MlsReference,
   resolveD2MoleculeSelection,
@@ -130,6 +131,38 @@ void test('candidate context exposes only real scenario recommendations and reje
   const selected = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate']);
   assert.doesNotThrow(() => assertD2MoleculeCandidates(selected, [{ groupId: 'groupEnterDate', candidates: ['groupenterdate--ml-date-picker'] }]));
   assert.throws(() => assertD2MoleculeCandidates(selected, [{ groupId: 'groupEnterDate', candidates: ['invented--tag'] }]), errorCode('D2_MOLECULE_CANDIDATE_UNKNOWN'));
+});
+
+void test('molecular receipt distinguishes honest absence, valid no-match and selected provenance', async () => {
+  const absentFixture = fixturePort();
+  absentFixture.port.discover = async () => discovery(null, [], 'no molecule catalog found in the consumer or its dependencies');
+  const absentInventory = await buildD2MoleculeInventory(absentFixture.port);
+  const absentCandidates = await buildD2MoleculeCandidateContext(absentFixture.port, absentInventory);
+  const absent = await buildD2MoleculeReceipt(absentInventory, absentCandidates);
+  assert.equal(absent.outcome, 'catalog-absent');
+  assert.equal(absent.code, 'D2_MOLECULE_CATALOG_ABSENT');
+  assert.equal(absent.catalogProject, null);
+  assert.equal(absent.sources.length, 0);
+
+  const fixture = fixturePort();
+  const inventory = await buildD2MoleculeInventory(fixture.port);
+  inventory.groups = inventory.groups.filter(item => item.groupId === 'groupEnterDate');
+  const candidates = await buildD2MoleculeCandidateContext(fixture.port, inventory);
+  const none = await resolveD2MoleculeSelection(fixture.port, inventory, [], candidates);
+  const noMatch = await buildD2MoleculeReceipt(inventory, candidates, none);
+  assert.equal(noMatch.outcome, 'catalog-valid-no-match');
+  assert.equal(noMatch.code, 'D2_MOLECULE_VALID_NO_MATCH');
+  assert.equal(noMatch.groupCount, 1);
+  assert.ok(noMatch.candidateCount > 0);
+  assert.deepEqual(noMatch.sources.map(source => source.role), ['group-index', 'inventory']);
+
+  const selected = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate'], candidates);
+  const receipt = await buildD2MoleculeReceipt(inventory, candidates, selected);
+  assert.equal(receipt.outcome, 'catalog-selection');
+  assert.equal(receipt.consumerProject, 999);
+  assert.equal(receipt.catalogProject, 102040);
+  assert.equal(receipt.selectedBy, 'dependency');
+  assert.ok(receipt.sources.some(source => source.role === 'usage-contract' && source.sha256.startsWith('sha256:')));
 });
 
 void test('production discovery stays on own/direct dependency catalogs and never falls through to 102040', async () => {

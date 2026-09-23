@@ -7,11 +7,15 @@ import type {
   ChLevel1,
 } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chCatalog.js';
 import { chFileRefFromImport, type ChCatalogVia } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
+import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
+
+export const D2_MOLECULE_RECEIPT_VERSION = '2026-09-23-agent-defs-l2-molecule-receipt-v1' as const;
 
 export interface D2MoleculeRead {
   role: 'inventory' | 'group-index' | 'usage-contract';
   reference: string;
   via: ChCatalogVia;
+  sha256: string;
 }
 
 export interface D2MoleculeInventoryEntry {
@@ -22,8 +26,12 @@ export interface D2MoleculeInventoryEntry {
 }
 
 export interface D2MoleculeInventory {
+  consumerProject: number;
   catalogProject: number | null;
   selectedBy: string | null;
+  directDeps: number[];
+  resolvedDeps: number[];
+  candidates: number[];
   reason: string | null;
   groups: D2MoleculeInventoryEntry[];
   context: string;
@@ -58,6 +66,25 @@ export interface D2MoleculeSelection {
 export interface D2MoleculeCandidateContext {
   groups: Array<{ groupId: string; scenarios: Array<{ scenario: string; candidates: string[] }> }>;
   context: string;
+  catalogs: ChGroupCatalog[];
+  reads: D2MoleculeRead[];
+}
+
+export interface D2MoleculePreparedContext { inventory: D2MoleculeInventory; candidates: D2MoleculeCandidateContext; receipt: D2MoleculeReceipt; }
+export interface D2MoleculeReceipt {
+  schemaVersion: typeof D2_MOLECULE_RECEIPT_VERSION;
+  consumerProject: number;
+  catalogProject: number | null;
+  selectedBy: string | null;
+  outcome: 'catalog-absent' | 'catalog-available' | 'catalog-valid-no-match' | 'catalog-selection';
+  code: 'D2_MOLECULE_CATALOG_ABSENT' | 'D2_MOLECULE_CATALOG_AVAILABLE' | 'D2_MOLECULE_VALID_NO_MATCH' | 'D2_MOLECULE_SELECTION';
+  reason: string;
+  groupCount: number;
+  candidateCount: number;
+  selectedGroupIds: string[];
+  discoveryHash: string;
+  sources: D2MoleculeRead[];
+  contextHash: string;
 }
 
 export interface D2UsageContractRead {
@@ -89,19 +116,20 @@ export async function buildD2MoleculeInventory(
     if (/more than one catalog/iu.test(discovery.error)) {
       throw new D2MoleculeContextError('D2_MOLECULE_CATALOG_AMBIGUOUS', discovery.error);
     }
-    return emptyInventory(discovery.selectedBy, discovery.error);
+    return emptyInventory(discovery, discovery.error);
   }
-  if (discovery.project === null) return emptyInventory(discovery.selectedBy, 'No molecule catalog is available to this project.');
+  if (discovery.project === null) return emptyInventory(discovery, 'No molecule catalog is available to this project.');
 
   const loaded = await port.readLevel1(discovery.project);
   if (!loaded.level1) throw new D2MoleculeContextError('D2_MOLECULE_CATALOG_UNREADABLE', loaded.error);
   const groups = inventoryGroups(loaded.level1.groups, loaded.level1.skill);
   const context = renderInventoryContext(loaded.level1.project, groups);
-  const read: D2MoleculeRead = { role: 'inventory', reference: loaded.level1.reference, via: loaded.level1.via };
+  const read: D2MoleculeRead = { role: 'inventory', reference: loaded.level1.reference, via: loaded.level1.via, sha256: await sha256Text(JSON.stringify({ groups: loaded.level1.groups, skill: loaded.level1.skill, theme: loaded.level1.theme })) };
   const inventoryBytes = utf8Bytes(context);
   return {
-    catalogProject: loaded.level1.project,
+    consumerProject: discovery.activeProject, catalogProject: loaded.level1.project,
     selectedBy: discovery.selectedBy,
+    directDeps: [...discovery.directDeps], resolvedDeps: [...discovery.resolvedDeps], candidates: [...discovery.candidates],
     reason: groups.length ? null : 'The selected catalog publishes no usable molecule group.',
     groups,
     context,
@@ -113,6 +141,7 @@ export async function resolveD2MoleculeSelection(
   port: D2MoleculeCatalogPort,
   inventory: D2MoleculeInventory,
   selectedGroupIds: string[],
+  candidateContext?: D2MoleculeCandidateContext,
 ): Promise<D2MoleculeSelection> {
   const selected = canonicalSelection(inventory.groups, selectedGroupIds);
   const groups: D2ResolvedMoleculeGroup[] = [];
@@ -120,12 +149,13 @@ export async function resolveD2MoleculeSelection(
 
   for (const entry of selected) {
     const indexPipelineReference = normalizeD2MlsReference(entry.indexReference);
-    const loaded = await port.readGroup(entry.indexReference);
+    const cached = candidateContext?.catalogs.find(item => item.reference === entry.indexReference);
+    const loaded = cached ? { catalog: cached, error: '' } : await port.readGroup(entry.indexReference);
     if (!loaded.catalog) throw new D2MoleculeContextError('D2_MOLECULE_INDEX_UNREADABLE', `${entry.groupId}: ${loaded.error}`);
     if (loaded.catalog.group !== entry.groupId) {
       throw new D2MoleculeContextError('D2_MOLECULE_GROUP_MISMATCH', `${entry.indexReference} exports '${loaded.catalog.group}', expected '${entry.groupId}'`);
     }
-    reads.push({ role: 'group-index', reference: entry.indexReference, via: loaded.catalog.via });
+    reads.push({ role: 'group-index', reference: entry.indexReference, via: loaded.catalog.via, sha256: await sha256Text(JSON.stringify(loaded.catalog)) });
 
     const usageLiteral = loaded.catalog.usageContract;
     if (!usageLiteral) throw new D2MoleculeContextError('D2_MOLECULE_USAGE_MISSING', `${entry.indexReference} exports no usageContract reference`);
@@ -134,7 +164,7 @@ export async function resolveD2MoleculeSelection(
     if (!usage.contract?.skill.trim()) {
       throw new D2MoleculeContextError('D2_MOLECULE_USAGE_UNREADABLE', `${entry.groupId}: ${usage.error || usageLiteral}`);
     }
-    reads.push({ role: 'usage-contract', reference: usageLiteral, via: usage.contract.via });
+    reads.push({ role: 'usage-contract', reference: usageLiteral, via: usage.contract.via, sha256: await sha256Text(usage.contract.skill) });
     groups.push({
       groupId: entry.groupId,
       indexReference: entry.indexReference,
@@ -167,10 +197,14 @@ export async function resolveD2MoleculeSelection(
 
 export async function buildD2MoleculeCandidateContext(port: D2MoleculeCatalogPort, inventory: D2MoleculeInventory): Promise<D2MoleculeCandidateContext> {
   const groups: D2MoleculeCandidateContext['groups'] = [];
+  const catalogs: ChGroupCatalog[] = [];
+  const reads: D2MoleculeRead[] = [];
   for (const entry of inventory.groups) {
     const loaded = await port.readGroup(entry.indexReference);
     if (!loaded.catalog) throw new D2MoleculeContextError('D2_MOLECULE_INDEX_UNREADABLE', `${entry.groupId}: ${loaded.error}`);
     if (loaded.catalog.group !== entry.groupId) throw new D2MoleculeContextError('D2_MOLECULE_GROUP_MISMATCH', `${entry.indexReference} exports '${loaded.catalog.group}', expected '${entry.groupId}'`);
+    catalogs.push(loaded.catalog);
+    reads.push({ role: 'group-index', reference: entry.indexReference, via: loaded.catalog.via, sha256: await sha256Text(JSON.stringify(loaded.catalog)) });
     const tags = new Set(loaded.catalog.molecules.map(item => item.tag));
     const scenarios = loaded.catalog.scenarios.map(item => {
       const candidates = dedupe(item.recommended);
@@ -180,7 +214,25 @@ export async function buildD2MoleculeCandidateContext(port: D2MoleculeCatalogPor
     groups.push({ groupId: entry.groupId, scenarios });
   }
   const context = JSON.stringify({ moleculeCandidates: { instruction: 'Recommend at least one listed exact candidate for each organism with a compatible group. An empty recommendation is valid only for static content or when no listed group matches its capabilities; never claim the catalog is empty when groups are listed.', groups } }, null, 2);
-  return { groups, context };
+  return { groups, context, catalogs, reads };
+}
+
+export async function prepareD2MoleculeContext(port: D2MoleculeCatalogPort, explicitCatalogProject: number | null = null): Promise<D2MoleculePreparedContext> {
+  const inventory = await buildD2MoleculeInventory(port, explicitCatalogProject);
+  const candidates = await buildD2MoleculeCandidateContext(port, inventory);
+  return { inventory, candidates, receipt: await buildD2MoleculeReceipt(inventory, candidates) };
+}
+
+export async function buildD2MoleculeReceipt(inventory: D2MoleculeInventory, candidates: D2MoleculeCandidateContext, selection?: D2MoleculeSelection): Promise<D2MoleculeReceipt> {
+  const selectedGroupIds = selection?.groups.map(group => group.groupId) ?? [];
+  const sources = dedupeReads([...inventory.metrics.reads, ...candidates.reads, ...(selection?.metrics.reads.filter(read => read.role === 'usage-contract') ?? [])]);
+  const absent = inventory.catalogProject === null;
+  const outcome = absent ? 'catalog-absent' : selection ? (selectedGroupIds.length ? 'catalog-selection' : 'catalog-valid-no-match') : 'catalog-available';
+  const code = absent ? 'D2_MOLECULE_CATALOG_ABSENT' : selection ? (selectedGroupIds.length ? 'D2_MOLECULE_SELECTION' : 'D2_MOLECULE_VALID_NO_MATCH') : 'D2_MOLECULE_CATALOG_AVAILABLE';
+  const reason = absent ? (inventory.reason || 'No molecule catalog is available to this project.') : selection ? (selectedGroupIds.length ? `Selected ${selectedGroupIds.length} catalog group(s).` : 'The catalog is valid; this page selected no matching group.') : `Catalog exposes ${inventory.groups.length} group(s) to the worker.`;
+  const discoveryHash = await sha256Text(JSON.stringify({ consumerProject: inventory.consumerProject, catalogProject: inventory.catalogProject, selectedBy: inventory.selectedBy, directDeps: inventory.directDeps, candidates: inventory.candidates }));
+  const base: Omit<D2MoleculeReceipt, 'contextHash'> = { schemaVersion: D2_MOLECULE_RECEIPT_VERSION, consumerProject: inventory.consumerProject, catalogProject: inventory.catalogProject, selectedBy: inventory.selectedBy, outcome, code, reason, groupCount: inventory.groups.length, candidateCount: candidates.groups.reduce((sum, group) => sum + group.scenarios.reduce((count, scenario) => count + scenario.candidates.length, 0), 0), selectedGroupIds, discoveryHash, sources };
+  return { ...base, contextHash: await sha256Text(JSON.stringify(base)) };
 }
 
 export function assertD2MoleculeCandidates(selection: D2MoleculeSelection, recommendations: Array<{ groupId: string; candidates: string[] }>): void {
@@ -244,11 +296,12 @@ function renderInventoryContext(project: number, groups: D2MoleculeInventoryEntr
   }, null, 2);
 }
 
-function emptyInventory(selectedBy: string | null, reason: string): D2MoleculeInventory {
+function emptyInventory(discovery: ChDiscovery, reason: string): D2MoleculeInventory {
   const context = JSON.stringify({ moleculeCatalog: { groups: [], reason } }, null, 2);
   const inventoryBytes = utf8Bytes(context);
-  return { catalogProject: null, selectedBy, reason, groups: [], context, metrics: { inventoryBytes, totalBytes: inventoryBytes, reads: [] } };
+  return { consumerProject: discovery.activeProject, catalogProject: null, selectedBy: discovery.selectedBy, directDeps: [...discovery.directDeps], resolvedDeps: [...discovery.resolvedDeps], candidates: [...discovery.candidates], reason, groups: [], context, metrics: { inventoryBytes, totalBytes: inventoryBytes, reads: [] } };
 }
 
 function dedupe(values: string[]): string[] { return [...new Set(values)]; }
+function dedupeReads(values: D2MoleculeRead[]): D2MoleculeRead[] { return [...new Map(values.map(read => [`${read.role}\0${read.reference}`, read])).values()].sort((a, b) => `${a.role}\0${a.reference}`.localeCompare(`${b.role}\0${b.reference}`)); }
 function utf8Bytes(value: string): number { return new TextEncoder().encode(value).byteLength; }

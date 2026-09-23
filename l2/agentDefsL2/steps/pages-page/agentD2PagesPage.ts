@@ -4,7 +4,7 @@ import { readJson, readSourceText } from '/_102035_/l2/solution/fs.js';
 import { D2_PAGES_PAGE_AGENT_NAME, markD2StepApproved, markD2StepFailed, moduleTokenOk } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
-import { buildD2MoleculeCandidateContext, buildD2MoleculeInventory } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
+import { prepareD2MoleculeContext } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
 import { buildD2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { d2PageSkillPort } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryCatalog.js';
@@ -12,28 +12,29 @@ import { parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gat
 import { approveD2PagesUnit, finalizeD2PagesBarrier, getD2PagesContext } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 
-interface Args { project: number; module: string; pageId: string; attempt: number; feedback?: string; previous?: unknown; }
+interface Args { project: number; module: string; pageId: string; attempt: number; moleculeContextHash: string; feedback?: string; previous?: unknown; }
 export function createAgent(): IAgentAsync { return { agentName: D2_PAGES_PAGE_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2/steps/pages-page', agentDescription: 'Describe desktop and mobile presentations for one page with one bounded repair', visibility: 'private', beforePromptStep, afterPromptStep }; }
 
 export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
+  let identity: { project: number; module: string } | null = null;
   try {
     const rawArgs = args || step.prompt || '';
-    const parsed = parseArgs(rawArgs); const identity = { project: parsed.project, module: parsed.module };
+    const parsed = parseArgs(rawArgs); identity = { project: parsed.project, module: parsed.module };
     const snapshot = await readD2Input(identity); if (!snapshot) throw new Error('D2_PAGES_INPUT_MISSING');
     const bundle = await readD2InputBundle(identity); await assertD2InputSourcesStable(bundle);
-    const [{ page, shared }, inventory, pageSkills, prompt, schema] = await Promise.all([
-      getD2PagesContext(identity, snapshot, parsed.pageId), buildD2MoleculeInventory(d2MoleculeCatalogPort),
+    const [{ page, shared }, molecular, pageSkills, prompt, schema] = await Promise.all([
+      getD2PagesContext(identity, snapshot, parsed.pageId), prepareD2MoleculeContext(d2MoleculeCatalogPort),
       buildD2PageSkillsContext(d2PageSkillPort),
       readSourceText({ project: 102020, level: 2, folder: 'agentDefsL2/steps/pages50', shortName: 'prompt', extension: '.md' }),
       readJson<Record<string, unknown>>({ project: 102020, level: 2, folder: 'agentDefsL2/schemas', shortName: 'pagesJudgmentV3', extension: '.json' }),
     ]);
     if (!schema) throw new Error('D2_PAGES_SCHEMA_MISSING');
-    const moleculeCandidates = await buildD2MoleculeCandidateContext(d2MoleculeCatalogPort, inventory);
+    if (molecular.receipt.contextHash !== parsed.moleculeContextHash) throw new Error(`D2_MOLECULE_CONTEXT_CHANGED: ${parsed.pageId}`);
     const journeys = page.journeyRefs.map(id => bundle.artifacts.journeys[id]).filter(Boolean);
-    const humanPrompt = JSON.stringify({ page: { pageId: page.pageId, label: page.label, userLanguage: text(record(bundle.artifacts.menu).userLanguage) || 'en', actors: page.actors, ancestors: page.ancestors, authorityRefs: page.authorityRefs, journeys, relevantRules: relevantRules(bundle.artifacts.rules, [...page.authorityRefs, ...page.journeyRefs, page.pageId]), organisms: deriveD2PageOrganisms(page), reads: page.reads, writes: page.writes }, shared, sceneSurface: { state: resolveD2PageScenarioState(shared), scenaries: resolveD2PageScenarioSurfaces(shared) }, pageCategoryCatalog: JSON.parse(pageSkills.context), moleculeInventory: JSON.parse(inventory.context), moleculeCandidates: JSON.parse(moleculeCandidates.context), repair: parsed.feedback ? { feedback: parsed.feedback, previous: parsed.previous } : null }, null, 2);
+    const humanPrompt = JSON.stringify({ page: { pageId: page.pageId, label: page.label, userLanguage: text(record(bundle.artifacts.menu).userLanguage) || 'en', actors: page.actors, ancestors: page.ancestors, authorityRefs: page.authorityRefs, journeys, relevantRules: relevantRules(bundle.artifacts.rules, [...page.authorityRefs, ...page.journeyRefs, page.pageId]), organisms: deriveD2PageOrganisms(page), reads: page.reads, writes: page.writes }, shared, sceneSurface: { state: resolveD2PageScenarioState(shared), scenaries: resolveD2PageScenarioSurfaces(shared) }, pageCategoryCatalog: JSON.parse(pageSkills.context), moleculeInventory: JSON.parse(molecular.inventory.context), moleculeCandidates: JSON.parse(molecular.candidates.context), moleculeProvenance: molecular.receipt, repair: parsed.feedback ? { feedback: parsed.feedback, previous: parsed.previous } : null }, null, 2);
     const tool: mls.msg.LLMTool = { type: 'function', function: { name: 'submitD2Pages', description: 'Submit one structured description per source organism for desktop and mobile.', parameters: schema } };
     return [{ type: 'prompt_ready', args: rawArgs, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: prompt, humanPrompt, tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } }];
-  } catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
+  } catch (error) { const diagnostic = error instanceof Error ? error.message : String(error); if (identity) await markD2StepFailed(identity, 'pages50', diagnostic); return [updateD2Status(context, parentStep, step, hookSequential, 'failed', diagnostic)]; }
 }
 
 export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -42,9 +43,12 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     const judgment = parseD2PagesJudgment(unwrapD2PagesToolPayload(step.interaction?.payload?.[0]));
     const snapshot = await readD2Input(identity); if (!snapshot) throw new Error('D2_PAGES_INPUT_MISSING');
     const bundle = await readD2InputBundle(identity); await assertD2InputSourcesStable(bundle); const verify = () => assertD2InputSourcesStable(bundle);
-    const [inventory, pageSkills] = await Promise.all([buildD2MoleculeInventory(d2MoleculeCatalogPort), buildD2PageSkillsContext(d2PageSkillPort)]);
-    await approveD2PagesUnit(identity, snapshot, parsed.pageId, judgment, inventory, d2MoleculeCatalogPort, pageSkills, parsed.attempt, verify);
-    const manifest = await finalizeD2PagesBarrier(identity, snapshot, verify, pageSkills); const intents: mls.msg.AgentIntent[] = [];
+    const [prepared, pageSkills] = await Promise.all([prepareD2MoleculeContext(d2MoleculeCatalogPort), buildD2PageSkillsContext(d2PageSkillPort)]);
+    if (prepared.receipt.contextHash !== parsed.moleculeContextHash) throw new Error(`D2_MOLECULE_CONTEXT_CHANGED: ${parsed.pageId}`);
+    const molecular = { port: d2MoleculeCatalogPort, prepared };
+    await approveD2PagesUnit(identity, snapshot, parsed.pageId, judgment, molecular, pageSkills, parsed.attempt, verify, parsed.moleculeContextHash);
+    const refreshed = await prepareD2MoleculeContext(d2MoleculeCatalogPort);
+    const manifest = await finalizeD2PagesBarrier(identity, snapshot, verify, pageSkills, { port: d2MoleculeCatalogPort, prepared: refreshed }); const intents: mls.msg.AgentIntent[] = [];
     if (manifest) { await markD2StepApproved(identity, 'pages50', manifest.units.flatMap(unit => Object.values(unit.artifactPaths)), snapshot.snapshotHash); intents.push(addD2Step(context, parentStep.stepId, d2Result('Pages ready', JSON.stringify({ ...identity, completedStep: 'pages50', nextStep: 'finalize60', pages: manifest.units.length, defs: manifest.units.length * 2 }), 'pages50-done'))); }
     intents.push(updateD2Status(context, parentStep, step, hookSequential, 'completed', `pages50 ${parsed.pageId} approved (${manifest ? 'barrier complete' : 'waiting siblings'}).`)); return intents;
   } catch (error) {
@@ -53,7 +57,7 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     await markD2StepFailed(identity, 'pages50', `D2_PAGES_REPAIR_LIMIT ${parsed.pageId}: ${diagnostic}`); return [updateD2Status(context, parentStep, step, hookSequential, 'failed', `D2_PAGES_REPAIR_LIMIT ${parsed.pageId}: ${diagnostic}`)];
   }
 }
-function parseArgs(value: unknown): Args { let raw: unknown; try { raw = JSON.parse(String(value)); } catch { throw new Error('D2_PAGES_ARGS_INVALID'); } const item = record(raw); const parsed: Args = { project: Number(item.project), module: text(item.module), pageId: text(item.pageId), attempt: Number(item.attempt), feedback: text(item.feedback), previous: item.previous }; if (!Number.isSafeInteger(parsed.project) || parsed.project !== Number(mls.actualProject || 0) || !moduleTokenOk(parsed.module) || !/^[a-z][A-Za-z0-9_-]*$/.test(parsed.pageId) || ![1, 2].includes(parsed.attempt)) throw new Error('D2_PAGES_ARGS_INVALID'); return parsed; }
+function parseArgs(value: unknown): Args { let raw: unknown; try { raw = JSON.parse(String(value)); } catch { throw new Error('D2_PAGES_ARGS_INVALID'); } const item = record(raw); const parsed: Args = { project: Number(item.project), module: text(item.module), pageId: text(item.pageId), attempt: Number(item.attempt), moleculeContextHash: text(item.moleculeContextHash), feedback: text(item.feedback), previous: item.previous }; if (!Number.isSafeInteger(parsed.project) || parsed.project !== Number(mls.actualProject || 0) || !moduleTokenOk(parsed.module) || !/^[a-z][A-Za-z0-9_-]*$/.test(parsed.pageId) || ![1, 2].includes(parsed.attempt) || !/^sha256:[a-f0-9]{64}$/u.test(parsed.moleculeContextHash)) throw new Error('D2_PAGES_ARGS_INVALID'); return parsed; }
 export function unwrapD2PagesToolPayload(value: unknown): unknown {
   const root = record(value);
   if (root.type === 'flexible') {
