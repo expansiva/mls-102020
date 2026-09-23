@@ -1,0 +1,21 @@
+{
+  "focused": {
+    "files": [
+      "l2/agentDefsL2/steps/shared-page/agentD2SharedPage.test.ts",
+      "l2/agentDefsL2/steps/shared40/contextCatalog.test.ts",
+      "l2/agentDefsL2/steps/shared40/context.test.ts",
+      "l2/agentDefsL2/steps/shared40/contracts.test.ts",
+      "l2/agentDefsL2/steps/shared40/run.test.ts"
+    ],
+    "tests": 19,
+    "passed": 19,
+    "failed": 0
+  },
+  "typecheck102020": {
+    "l1": 0,
+    "l2": 0,
+    "other": 0,
+    "blocking": 0,
+    "fatal": false
+  }
+}

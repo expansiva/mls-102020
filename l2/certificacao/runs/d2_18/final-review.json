@@ -1,0 +1,118 @@
+{
+  "reviewedAt": "2026-09-23",
+  "costs": {
+    "currency": "USD",
+    "method": "sum of every positive iaCompressed.nextSteps interaction.cost in the raw task JSON",
+    "rounds": [
+      { "round": "v1", "taskId": "20260923163335.1001", "status": "failed", "llmCalls": 0, "cost": 0 },
+      { "round": "v2", "taskId": "20260923164004.1001", "status": "failed", "llmCalls": 9, "cost": 0.8894 },
+      { "round": "v3", "taskId": "20260923164824.1001", "status": "done", "llmCalls": 14, "cost": 3.1354 },
+      { "round": "v4", "taskId": "20260923170721.1001", "status": "failed", "llmCalls": 0, "cost": 0 },
+      { "round": "v5", "taskId": "20260923171143.1001", "status": "done", "llmCalls": 10, "cost": 3.0683 },
+      { "round": "noop", "taskId": "20260923171824.1001", "status": "done", "llmCalls": 0, "cost": 0 }
+    ],
+    "total": 7.0931
+  },
+  "noOp": {
+    "taskId": "20260923171824.1001",
+    "status": "done",
+    "traceWrites": 0,
+    "llmCalls": 0,
+    "cost": 0,
+    "defs": 24,
+    "organismDescriptions": 36,
+    "moleculeRecommendations": 80,
+    "materializationItems": 18,
+    "molecularReceipts": 6,
+    "byteIdentical": true,
+    "mtimesInvariant": true,
+    "l1Preserved": true,
+    "evidence": [
+      "live-noop.task.json",
+      "live-noop.trace.log",
+      "inventory-noop.json",
+      "verification-noop.json",
+      "molecular-noop.json"
+    ]
+  },
+  "issues": [
+    {
+      "id": "GL-01",
+      "before": "review had already decided that agent must be absent",
+      "after": "all 18 materialization items have no agent field",
+      "status": "resolved",
+      "evidence": "verification-noop.json:noAgentFields"
+    },
+    {
+      "id": "SH-01",
+      "before": "six shared items had no generation skill",
+      "after": "all shared items use _102020_/l2/agentDefsL2/skills/genD2SharedTs.ts",
+      "status": "resolved",
+      "evidence": "verification-noop.json:examples.shared[].item.skills"
+    },
+    {
+      "id": "SH-02",
+      "before": "six shared pipelines were serialized as objects",
+      "after": "six shared items are strict unit arrays and the graph has 18 unique acyclic items",
+      "status": "resolved",
+      "evidence": "verification-noop.json:materializationItems,graphAcyclic,receipts.sharedUnits"
+    },
+    {
+      "id": "SH-03",
+      "before": "shared generation lacked effective 102029 runtime context",
+      "after": "each shared item declares _102029_.d.ts and the verifier reads and hashes five runtime sources",
+      "status": "resolved",
+      "evidence": "verification-noop.json:consumerContext.runtime102029,examples.shared[].consumer.runtimeContext"
+    },
+    {
+      "id": "PG-01",
+      "before": "12 page items omitted l2/designSystem.ts from dependsFiles",
+      "after": "desktop/mobile page items declare shared first and l2/designSystem.ts second; 215 tokens were read",
+      "status": "resolved",
+      "evidence": "verification-noop.json:examples.pages[].item.dependsFiles,consumer.designSystem"
+    },
+    {
+      "id": "PG-02",
+      "before": "recommendations existed but molecular origin, receipt integrity and reuse were not proven",
+      "after": "80 recommendations are validated per device; six v2 receipts select catalog 102040 by dependency and the no-op preserves bytes and mtimes",
+      "status": "resolved",
+      "evidence": "verification-noop.json:recommendationGroupAudit,noOp; molecular-noop.json"
+    }
+  ],
+  "examples": {
+    "shared": {
+      "pageId": "consultas_recepcionista",
+      "itemId": "consultas_recepcionista__l2_shared",
+      "dependsFiles": [
+        "l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts",
+        "_102029_.d.ts"
+      ],
+      "skill": "_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts",
+      "definitionSummary": { "states": 52, "actions": 38, "scenaries": 4 }
+    },
+    "page": {
+      "pageId": "consultas_profissional",
+      "device": "desktop",
+      "itemId": "consultas_profissional__desktop__page11",
+      "dependsFiles": [
+        "l2/agendaClinica/web/shared/consultas_profissional.ts",
+        "l2/designSystem.ts"
+      ],
+      "categoryRef": "calendarScheduling",
+      "descriptions": 4,
+      "recommendations": 5,
+      "molecularGroups": [
+        "groupViewData",
+        "groupViewCard",
+        "groupEnterText",
+        "groupTriggerAction",
+        "groupNotifyUser"
+      ]
+    },
+    "fullEvidence": "verification-noop.json:examples"
+  },
+  "knownSeparateDecisions": [
+    "attendance-note-requiredness",
+    "shared-input-human-decision-review"
+  ]
+}

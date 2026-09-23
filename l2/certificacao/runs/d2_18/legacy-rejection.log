@@ -1,0 +1,6 @@
+command: node l2/certificacao/runs/d2_18/verify.mjs inventory-generation.json verification-generation.json '' molecular-generation.json
+exit: 1
+Error: shared receipt is not current: 2026-09-21-agent-defs-l2-shared-v1
+
+Expected control result before live: the accepted generator requires shared-v2 and pages-v6,
+so the existing shared-v1/pages-v4 run cannot be reused as a no-op.

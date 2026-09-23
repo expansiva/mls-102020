@@ -1,0 +1,454 @@
+{
+  "capturedAt": "2026-09-23T16:31:00.239Z",
+  "repositories": {
+    "mls-102020": {
+      "head": "bc9a1f2b0269064dba3ad9ec51f9fd971bb58f43",
+      "acceptedGeneratorCommits": [
+        "558b15e5",
+        "298c070f",
+        "bc9a1f2b"
+      ],
+      "status": [
+        "M l2/aura/services/serviceBehavior.ts",
+        "?? l2/certificacao/runs/d2_18/"
+      ]
+    },
+    "mls-102047": {
+      "head": "34d8e67a3dfa4740eb86354a15e6bfdeb6b238cf",
+      "status": []
+    }
+  },
+  "plan": {
+    "module": "agendaClinica",
+    "pages": [
+      "consultas_profissional",
+      "consultas_recepcionista",
+      "dados_profissional",
+      "dados_recepcionista",
+      "pacientes",
+      "profissionais"
+    ],
+    "pageCount": 6,
+    "sourceOrganisms": 18,
+    "expectedDescriptions": 36,
+    "expectedDefs": 24,
+    "expectedPageDefs": 12,
+    "expectedMaterializationItems": 18,
+    "endpoints": 26,
+    "uniqueRoutes": 26,
+    "usecaseOccurrences": 13,
+    "uniqueUsecaseIds": 13
+  },
+  "discovery": {
+    "activeProject": 102047,
+    "directDeps": [
+      102020,
+      102035,
+      102021,
+      102027,
+      102029,
+      102036,
+      102025,
+      102040
+    ],
+    "candidates": [
+      102040
+    ],
+    "project": 102040,
+    "selectedBy": "dependency",
+    "configProject": {
+      "root": "../mls-102040",
+      "type": "lib"
+    },
+    "manifestHas102040": true
+  },
+  "sources": {
+    "hash": "d8482c4494c4a1cd40c69d13d52c475cad73f55770fdecb425e55a7bebe214ae",
+    "files": [
+      {
+        "path": "l4/agendaClinica/pool/l1/20260921224728_agendaClinica-20260921224728_1.json",
+        "sha256": "8b32ae537ffe817e3ef6ee5e3adbd3af628dda110dbe059bfd9ffc9680893faa",
+        "bytes": 1017,
+        "mtimeMs": 1790030848637.2856
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/20260921225305_agendaClinica-20260921224728_1.json",
+        "sha256": "688d1b42601cfe20257ff21dba4d5fd8bca6e6ba0731c7ff6926376f9fbd9af5",
+        "bytes": 458,
+        "mtimeMs": 1790031185767.1301
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/l4diff.json",
+        "sha256": "63d77be7bd415f6942564967b7a6389e55c80f92766b06c3cf090556f6506558",
+        "bytes": 150,
+        "mtimeMs": 1790030848445.7124
+      },
+      {
+        "path": "l4/agendaClinica/pool/l1/web/needs.json",
+        "sha256": "4e61f126f934e0c7a424fa66f6e398ef7190a9b11a6f9663baec28a4f86c9c0a",
+        "bytes": 7642,
+        "mtimeMs": 1790031185762.147
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/20260921224728_agendaClinica-20260921224728_1.json",
+        "sha256": "6c7160afff741a8196f102010baf12e7b04c45bbf00ae70f1bd464c09d2dba83",
+        "bytes": 1017,
+        "mtimeMs": 1790030848632.4417
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/20260921225306_agendaClinica-20260921224728_1.json",
+        "sha256": "232817838fd49b827d6b80e6266074f413ee9158c4c9eb968f30b8022db6518c",
+        "bytes": 316,
+        "mtimeMs": 1790031186360.83
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/web/backend.json",
+        "sha256": "f567e557e9ddc50760993cae660feb3db7585a0928fb82da01e1b80d16401e54",
+        "bytes": 13339,
+        "mtimeMs": 1790031186355.4185
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/web/effort.json",
+        "sha256": "0b47787b424c6296ebaa16fe6abdf5f30a6b7cb4526e563ee694237fefea1b12",
+        "bytes": 11068,
+        "mtimeMs": 1790168458238.3777
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/web/l4diff.json",
+        "sha256": "63d77be7bd415f6942564967b7a6389e55c80f92766b06c3cf090556f6506558",
+        "bytes": 150,
+        "mtimeMs": 1790030848451.4602
+      },
+      {
+        "path": "l4/agendaClinica/pool/l2/web/menu.json",
+        "sha256": "948671eb3f10a3fba02b2cc57d4174c91ed31f777fb8d5d619a56160081e4011",
+        "bytes": 4727,
+        "mtimeMs": 1790031185576.7136
+      },
+      {
+        "path": "l4/agendaClinica/pool/l4/20260921225307_agendaClinica-20260921224728_1.json",
+        "sha256": "ac44e258775a09bac578f20b93b20f14d9a5fabc3f87265fd88c869be4ca2cc0",
+        "bytes": 430,
+        "mtimeMs": 1790031187032.7847
+      },
+      {
+        "path": "l4/agendaClinica/pool/l4/20260923125306_agendaClinica-20260921224728_1.json",
+        "sha256": "ac44e258775a09bac578f20b93b20f14d9a5fabc3f87265fd88c869be4ca2cc0",
+        "bytes": 430,
+        "mtimeMs": 1790168458238.5806
+      }
+    ]
+  },
+  "l1Before": {
+    "hash": "afc34724492a9fa4696d61644b72e12615bd97c713e5ecc656c69efee5190d1c",
+    "files": 74,
+    "inventoryFile": "l1-before.json"
+  },
+  "generator": {
+    "hash": "cbc46364d10b039b43fca7d1eccafad293219895f0d40a28e0a95cbdd9db507c",
+    "files": 142
+  },
+  "consumerContext": {
+    "sharedSkill": {
+      "hash": "cfbe8208891c120405e4f3b34925d06ebf48d8d671455bae2ebfd0e6d561936f",
+      "files": [
+        {
+          "path": "l2/agentDefsL2/skills/genD2SharedTs.ts",
+          "sha256": "b145f1114a148bbdc3a0b5f62a845586691306479cfcc0a6464a8dff1c3973dd",
+          "bytes": 2970,
+          "mtimeMs": 1790177575122.068
+        }
+      ]
+    },
+    "runtime102029": {
+      "logicalRef": "_102029_.d.ts",
+      "hash": "e8736627378c334a0853da6776f27555a2f516a2e239dd1e76c18451797c1b44",
+      "files": [
+        {
+          "path": "mls-102029/l2/bffClient.ts",
+          "sha256": "326d67248b1489c4bea082530a4503d32bcb65449f25ba6378e60044206502b0",
+          "bytes": 11604,
+          "mtimeMs": 1787621868327.745
+        },
+        {
+          "path": "mls-102029/l2/collabLitElement.ts",
+          "sha256": "6541fb9f7f9c6e1942dac686f8ffd8a9b8a787c35140de37213d60bb4ad841a8",
+          "bytes": 1849,
+          "mtimeMs": 1785076699126.0652
+        },
+        {
+          "path": "mls-102029/l2/collabState.ts",
+          "sha256": "502f35ad62648c4a2be695d5b1be02c09b8ed349129f4f45d111b84f54d3997e",
+          "bytes": 14706,
+          "mtimeMs": 1784380322890.36
+        },
+        {
+          "path": "mls-102029/l2/interactionRuntime.ts",
+          "sha256": "176af97fb9350d48bab4a5944a6b88fb58fdb0b0f4d953b23b3686d9b3a9b03e",
+          "bytes": 7993,
+          "mtimeMs": 1782822366066.148
+        },
+        {
+          "path": "mls-102029/l2/stateLitElement.ts",
+          "sha256": "e15dec79dc81ebf74edb73c852ee2722f198b6d50670293c50f19036d89b20e3",
+          "bytes": 6092,
+          "mtimeMs": 1785076699125.5386
+        }
+      ]
+    },
+    "designSystem": {
+      "logicalRef": "l2/designSystem.ts",
+      "hash": "6f24c7ab26784df1692a7cc1278f9eb0ff1882672d642d1502f7e11c158e5662",
+      "files": [
+        {
+          "path": "l2/designSystem.ts",
+          "sha256": "6bf2135bac15c461924a8f0c6f408a99258d0cfc268be3b44d92e9b17fa72632",
+          "bytes": 41546,
+          "mtimeMs": 1788263052739.0706
+        }
+      ]
+    },
+    "pageSkills": {
+      "hash": "dd9d1e71d4eadcab0e7b97a6c6ddc30720baeb053c7b66d58209553664b41655",
+      "files": [
+        {
+          "path": "l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+          "sha256": "756ce0d5a6e991e1ee2a5d00decde1a8202ed59829535ce51a4d02340c817feb",
+          "bytes": 2236,
+          "mtimeMs": 1790178881043.5042
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/activityNotificationHub.md",
+          "sha256": "043a1466fd7c8b65f7d62ded73530618ed04be9261dfc9a92a3d6223720c8a4c",
+          "bytes": 279,
+          "mtimeMs": 1790161981820.3022
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/aiAssistedAuthoring.md",
+          "sha256": "94a7fea38c638137596a02fc9e2bb65a4fcbfd2deb311a41d20e8e3684611d6f",
+          "bytes": 289,
+          "mtimeMs": 1790161981820.3787
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/analyticalList.md",
+          "sha256": "3d238c61ad6da9216b56d735be39bf8632e741501f4dcbf01a6c5748ef453dc5",
+          "bytes": 292,
+          "mtimeMs": 1790161981820.454
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/approvalWorkflow.md",
+          "sha256": "2313ba9a12ab1f818467fd9ecdac148994324b39e0abd097e19d6f04dfe3e993",
+          "bytes": 316,
+          "mtimeMs": 1790161981820.5256
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/assetManagement.md",
+          "sha256": "22d1176423439eb769239c0fcfb514fbc2f26e1233f7e4d003fc240f4eba49a4",
+          "bytes": 283,
+          "mtimeMs": 1790161981820.603
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/auditTrail.md",
+          "sha256": "e731d27ed40ffb456013a2fb875658580f2663e0b3874a48fbc981390add9f4a",
+          "bytes": 298,
+          "mtimeMs": 1790161981820.6958
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/bespoke.md",
+          "sha256": "249cb011093d4c09d060fbef2b10ad62a8ef3a1273df2ffdc5e12b6a1f43ed25",
+          "bytes": 315,
+          "mtimeMs": 1790161981820.7727
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/calendarScheduling.md",
+          "sha256": "faa6253f837f2b45870d738f024855f2e83d17456fcfe4f8368920bd93e3416a",
+          "bytes": 321,
+          "mtimeMs": 1790161981820.8584
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/caseManagement.md",
+          "sha256": "df14c2284c602472a1740553828767ba838f7f5e1a0ea2a6ae371893a877d7ba",
+          "bytes": 293,
+          "mtimeMs": 1790161981820.9456
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/comparisonView.md",
+          "sha256": "fc6eaebd2d00a8cfcf29a061f009f90579482a6f017ab274159b638e3f4ea7f2",
+          "bytes": 296,
+          "mtimeMs": 1790161981821.019
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/contentLanding.md",
+          "sha256": "4c34e52bb4cd6292710253fe2940cbc05a92b52ae53209f4c8876a12723aa50a",
+          "bytes": 294,
+          "mtimeMs": 1790161981821.1104
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/customerManagement.md",
+          "sha256": "bff2715530f51933ffef68a03944e62c678c816aa44be5d71d00f7f770e8217e",
+          "bytes": 303,
+          "mtimeMs": 1790161981821.2249
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/dashboardCommandCenter.md",
+          "sha256": "9d1749830c9b980c5725a4ad8785c1e378e8e0b3e7912d1c4d2c031cc7afed58",
+          "bytes": 284,
+          "mtimeMs": 1790161981821.3037
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/documentManagement.md",
+          "sha256": "f03d6084f60b4f29a0ffab68b8f73dbd9183a2382b5409fb5b6b71d7754adbb5",
+          "bytes": 303,
+          "mtimeMs": 1790161981821.464
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/entityRecordManagement.md",
+          "sha256": "af517d7cfc07fd47c8feaba76b0597c99d578646f7e1f4a47d2af141ba57ef99",
+          "bytes": 297,
+          "mtimeMs": 1790161981821.5466
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/fieldDataCapture.md",
+          "sha256": "e14bb7fd9bce62d7ce36bde419130157c2accc51266bb3125d1bc3b36a60f586",
+          "bytes": 296,
+          "mtimeMs": 1790161981821.6226
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/financialTransactions.md",
+          "sha256": "603aa75d365021e73aeea7723b719fa77678540c12db6c42bd6b16e0ca011d6b",
+          "bytes": 311,
+          "mtimeMs": 1790161981821.7256
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/globalSearchResults.md",
+          "sha256": "4bb5a57215f8229caf6f7693333fedfa0add14b32c08c3d7e165dd6ed529f755",
+          "bytes": 292,
+          "mtimeMs": 1790161981821.807
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/hierarchyTreeView.md",
+          "sha256": "c873f8d6bafa1e9f9189c19d21269349a2dacae6339fa1c881e9034a6a25fe2d",
+          "bytes": 297,
+          "mtimeMs": 1790161981821.9536
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/importMappingWizard.md",
+          "sha256": "c19dac407649fa330c125a1740d23a3e1300be17b720781542ce7974ffdd04ca",
+          "bytes": 310,
+          "mtimeMs": 1790161981822.0444
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/inventoryControl.md",
+          "sha256": "c7c546b14df520e4c4b9808883803fa4fdfdacd02731ffe83bd8f8aed4ff3c90",
+          "bytes": 300,
+          "mtimeMs": 1790161981822.134
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/kanbanBoardView.md",
+          "sha256": "7f4a925d4a78b23a9254a2acd3cdf632b18a51b382ab6b57782048fe06515209",
+          "bytes": 295,
+          "mtimeMs": 1790161981822.2166
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/masterDataManagement.md",
+          "sha256": "bbad1f33d53032c8f7665f5f26dd90419635f26aa5649f500c202a93434c7aa8",
+          "bytes": 299,
+          "mtimeMs": 1790161981822.2908
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/operationsQueue.md",
+          "sha256": "09c4498daa5c5d733dce962d0999c793056715af7e5725ea334031865ca1996e",
+          "bytes": 285,
+          "mtimeMs": 1790161981822.3745
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/orderManagement.md",
+          "sha256": "498ab3d0cf663844469af72ad1ec8eb6ed8b9093a1ed10976df1bbb1caceca7a",
+          "bytes": 294,
+          "mtimeMs": 1790161981822.4614
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/posWorkbench.md",
+          "sha256": "20c1cf0e1ea98279af47793242bfcc1c2578d6aa174493ef838fa7e448b1d893",
+          "bytes": 298,
+          "mtimeMs": 1790161981822.5608
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/processWizard.md",
+          "sha256": "1698a4bfc90cb697fdec1ddd2f3e32b6ab622a8480a740246150a6c4727e3eff",
+          "bytes": 298,
+          "mtimeMs": 1790161981822.6433
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/productCatalog.md",
+          "sha256": "85ca25ae79005b157e23d5b19044d5a7da81976ac68d4f6c7de26751eaed047a",
+          "bytes": 311,
+          "mtimeMs": 1790161981822.7239
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/readOnlyDetailPortal.md",
+          "sha256": "7964c190d01f6666dc44d12f1ee90da4d84b725110677c7e1d54e408b7bf6b46",
+          "bytes": 276,
+          "mtimeMs": 1790161981822.8008
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/reportExplorer.md",
+          "sha256": "f8c815ab1f0b9d4e51ec068b61acfe7c407e87a69760792610bf9aeaba748dbb",
+          "bytes": 300,
+          "mtimeMs": 1790161981822.878
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/settingsConsole.md",
+          "sha256": "239184ad5ed6413cd7a43599877e32590e73f1bc46f9d1741cfd9833c8094c82",
+          "bytes": 297,
+          "mtimeMs": 1790161981822.9548
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/supplierManagement.md",
+          "sha256": "760be66895d01e481b2a9d618a28e09a5b435be6af42f0d96efd5e48f41c1f02",
+          "bytes": 281,
+          "mtimeMs": 1790161981823.0488
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/userAccessManagement.md",
+          "sha256": "a5b89b65f928bea386b8d4c6aded7c86b84b316c496b222db4c7e05f97784cb8",
+          "bytes": 285,
+          "mtimeMs": 1790161981823.1294
+        },
+        {
+          "path": "l2/agentDefsL2/skills/pageCategories/workPlanningBoard.md",
+          "sha256": "afdb004b28f09f9e56a52b0b41e54385c136fe7f164e6cd0891e821d7735b98f",
+          "bytes": 303,
+          "mtimeMs": 1790161981823.2065
+        },
+        {
+          "path": "l4/collabux/templates/categoryList.json",
+          "sha256": "285e42e596b7bde092824c38a446f23d7bd4ac40fc551a0e0d58be6d08f135dc",
+          "bytes": 25523,
+          "mtimeMs": 1788035197556.7683
+        }
+      ]
+    },
+    "moleculeCatalog": {
+      "hash": "6c70a03ba809bd61b458d775be85c63350482e95d8fafab1f750f17ea8a9ea98",
+      "files": 63,
+      "indexes": 31,
+      "usages": 31
+    }
+  },
+  "destinationBefore": {
+    "hash": "fc99790f97d7dfc36968b1cf5ed93eab419b2bfbb0d6cf1981d64c04439f630c",
+    "files": 56,
+    "inventoryFile": "inventory-before.json"
+  },
+  "limits": {
+    "liveBySupervisor": true,
+    "noopBySupervisor": true,
+    "collabmsgByExecutor": false,
+    "materializeTs": false,
+    "preserveL1": true,
+    "preserveServiceBehavior": true,
+    "commit": false,
+    "push": false
+  }
+}

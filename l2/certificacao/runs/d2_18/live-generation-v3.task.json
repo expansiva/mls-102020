@@ -1,0 +1,633 @@
+{
+  "PK": "20260923164824.1001",
+  "SK": "metadata",
+  "title": "define l2 agendaClinica",
+  "owner": "20250828124716.1000",
+  "team": "unassigned",
+  "status": "done",
+  "last_updated": 1790182326669,
+  "last_update_log": "",
+  "source": "",
+  "iaCompressed": {
+    "queueBackEnd": [],
+    "queueFrontEnd": [],
+    "longMemory": {
+      "actualDate": "2026-09-23",
+      "userName": "Wagner",
+      "taskName": "agentDefsL2",
+      "flowName": "agentDefsL2",
+      "project": "102047",
+      "module": "agendaClinica"
+    },
+    "nextSteps": [
+      {
+        "stepId": 1,
+        "type": "agent",
+        "agentName": "agentDefsL2",
+        "nextSteps": [
+          {
+            "type": "agent",
+            "stepId": 2,
+            "status": "completed",
+            "stepTitle": "Start L2 definitions",
+            "planning": {
+              "planId": "entry10",
+              "dependsOn": [],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Entry",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 3,
+            "status": "completed",
+            "stepTitle": "Validate inputs",
+            "planning": {
+              "planId": "input20",
+              "dependsOn": [
+                "entry10-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Input",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 4,
+            "status": "completed",
+            "stepTitle": "Create typed contracts",
+            "planning": {
+              "planId": "contracts30",
+              "dependsOn": [
+                "input20-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Contracts",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 5,
+            "status": "completed",
+            "stepTitle": "Define shared behavior",
+            "planning": {
+              "planId": "shared40",
+              "dependsOn": [
+                "contracts30-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Shared",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 6,
+            "status": "completed",
+            "stepTitle": "Describe desktop and mobile pages",
+            "planning": {
+              "planId": "pages50",
+              "dependsOn": [
+                "shared40-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Pages",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 7,
+            "status": "completed",
+            "stepTitle": "Validate definitions",
+            "planning": {
+              "planId": "finalize60",
+              "dependsOn": [
+                "pages50-done"
+              ],
+              "executionMode": "sequential",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2Finalize",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\"}",
+            "rags": [],
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 8,
+            "status": "completed",
+            "stepTitle": "Entry ready",
+            "planning": {
+              "planId": "entry10-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"entry10\",\"nextStep\":\"input20\"}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 9,
+            "status": "completed",
+            "stepTitle": "Inputs ready",
+            "planning": {
+              "planId": "input20-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"input20\",\"nextStep\":\"contracts30\",\"snapshotHash\":\"sha256:dc381e789e50b210394250fff14729a842be0a1e72ad4b4fe1c4069c052521ce\",\"writePages\":6,\"removedPages\":0,\"reused\":true}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 10,
+            "status": "completed",
+            "stepTitle": "Contracts ready",
+            "planning": {
+              "planId": "contracts30-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"contracts30\",\"nextStep\":\"shared40\",\"snapshotHash\":\"sha256:dc381e789e50b210394250fff14729a842be0a1e72ad4b4fe1c4069c052521ce\",\"contracts\":6,\"written\":0,\"reused\":6}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 11,
+            "status": "completed",
+            "stepTitle": "Shared consultas_profissional",
+            "planning": {
+              "planId": "shared40-page-consultas_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.0451,
+              "trace": [
+                "starting at 2026-09-23T16:48:26.059Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:17898 outputTokens:1085 cost:$0.0451 llmTime: 00:00:19.643",
+                "finished at 2026-09-23T16:48:45.734Z",
+                "shared40 consultas_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 12,
+            "status": "completed",
+            "stepTitle": "Shared consultas_recepcionista",
+            "planning": {
+              "planId": "shared40-page-consultas_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.1059,
+              "trace": [
+                "starting at 2026-09-23T16:48:26.513Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:44051 outputTokens:2485 cost:$0.1059 llmTime: 00:00:17.500",
+                "finished at 2026-09-23T16:48:44.040Z",
+                "shared40 consultas_recepcionista approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 13,
+            "status": "completed",
+            "stepTitle": "Shared dados_profissional",
+            "planning": {
+              "planId": "shared40-page-dados_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"dados_profissional\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.074,
+              "trace": [
+                "starting at 2026-09-23T16:48:26.834Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:35330 outputTokens:1316 cost:$0.0740 llmTime: 00:00:12.596",
+                "finished at 2026-09-23T16:48:39.451Z",
+                "shared40 dados_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 14,
+            "status": "completed",
+            "stepTitle": "Shared dados_recepcionista",
+            "planning": {
+              "planId": "shared40-page-dados_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"dados_recepcionista\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.126,
+              "trace": [
+                "starting at 2026-09-23T16:48:27.164Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:57476 outputTokens:2562 cost:$0.1260 llmTime: 00:00:22.271",
+                "finished at 2026-09-23T16:48:49.460Z",
+                "shared40 dados_recepcionista approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 15,
+            "status": "completed",
+            "stepTitle": "Shared pacientes",
+            "planning": {
+              "planId": "shared40-page-pacientes",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"pacientes\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.1771,
+              "trace": [
+                "starting at 2026-09-23T16:48:27.367Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:46740 outputTokens:6755 cost:$0.1771 llmTime: 00:00:57.070",
+                "finished at 2026-09-23T16:49:24.486Z",
+                "shared40 pacientes approved (barrier complete)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 16,
+            "status": "completed",
+            "stepTitle": "Shared profissionais",
+            "planning": {
+              "planId": "shared40-page-profissionais",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2SharedPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"profissionais\",\"attempt\":1}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.1284,
+              "trace": [
+                "starting at 2026-09-23T16:48:27.604Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:36215 outputTokens:4600 cost:$0.1284 llmTime: 00:00:44.873",
+                "finished at 2026-09-23T16:49:12.505Z",
+                "shared40 profissionais approved (barrier complete)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 18,
+            "status": "completed",
+            "stepTitle": "Shared ready",
+            "planning": {
+              "planId": "shared40-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"shared40\",\"nextStep\":\"pages50\",\"pages\":6}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 19,
+            "status": "completed",
+            "stepTitle": "Pages consultas_profissional",
+            "planning": {
+              "planId": "pages50-page-consultas_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_profissional\",\"attempt\":1,\"moleculeContextHash\":\"sha256:a68302012dda600e4003b0cd421224f7f2a342cd8f4155cf45fb27d2f093ed85\"}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.237,
+              "trace": [
+                "starting at 2026-09-23T16:49:13.997Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:84738 outputTokens:7061 cost:$0.2370 llmTime: 00:00:52.281",
+                "finished at 2026-09-23T16:50:06.315Z",
+                "pages50 consultas_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 20,
+            "status": "completed",
+            "stepTitle": "Pages consultas_recepcionista",
+            "planning": {
+              "planId": "pages50-page-consultas_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_recepcionista\",\"attempt\":1,\"moleculeContextHash\":\"sha256:a68302012dda600e4003b0cd421224f7f2a342cd8f4155cf45fb27d2f093ed85\"}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.3705,
+              "trace": [
+                "starting at 2026-09-23T16:49:14.367Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:118009 outputTokens:12465 cost:$0.3705 llmTime: 00:01:54.788",
+                "finished at 2026-09-23T16:51:09.211Z",
+                "pages50 consultas_recepcionista scheduled its only repair: D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: consultas_recepcionista/desktop/organism.list.1 -> groupTriggerAction\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: consultas_recepcionista/mobile/organism.list.1 -> groupTriggerAction"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 21,
+            "status": "completed",
+            "stepTitle": "Pages dados_profissional",
+            "planning": {
+              "planId": "pages50-page-dados_profissional",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"dados_profissional\",\"attempt\":1,\"moleculeContextHash\":\"sha256:a68302012dda600e4003b0cd421224f7f2a342cd8f4155cf45fb27d2f093ed85\"}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.2839,
+              "trace": [
+                "starting at 2026-09-23T16:49:14.620Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:106322 outputTokens:7185 cost:$0.2839 llmTime: 00:00:52.322",
+                "finished at 2026-09-23T16:50:06.982Z",
+                "pages50 dados_profissional approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 22,
+            "status": "completed",
+            "stepTitle": "Pages dados_recepcionista",
+            "planning": {
+              "planId": "pages50-page-dados_recepcionista",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"dados_recepcionista\",\"attempt\":1,\"moleculeContextHash\":\"sha256:a68302012dda600e4003b0cd421224f7f2a342cd8f4155cf45fb27d2f093ed85\"}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.3023,
+              "trace": [
+                "starting at 2026-09-23T16:49:14.889Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:133891 outputTokens:6746 cost:$0.3023 llmTime: 00:00:37.224",
+                "finished at 2026-09-23T16:49:52.195Z",
+                "pages50 dados_recepcionista approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 23,
+            "status": "completed",
+            "stepTitle": "Pages pacientes",
+            "planning": {
+              "planId": "pages50-page-pacientes",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"pacientes\",\"attempt\":1,\"moleculeContextHash\":\"sha256:a68302012dda600e4003b0cd421224f7f2a342cd8f4155cf45fb27d2f093ed85\"}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.3441,
+              "trace": [
+                "starting at 2026-09-23T16:49:15.183Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:117301 outputTokens:9805 cost:$0.3441 llmTime: 00:01:58.479",
+                "finished at 2026-09-23T16:51:13.728Z",
+                "pages50 pacientes scheduled its only repair: D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: pacientes/desktop/organism.list.1 -> groupTriggerAction\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: pacientes/desktop/organism.detail.1 -> groupTriggerAction\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: pacientes/mobile/organism.list.1 -> groupTriggerAction\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: pacientes/mobile/organism.detail.1 -> groupTriggerAction"
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 24,
+            "status": "completed",
+            "stepTitle": "Pages profissionais",
+            "planning": {
+              "planId": "pages50-page-profissionais",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"profissionais\",\"attempt\":1,\"moleculeContextHash\":\"sha256:a68302012dda600e4003b0cd421224f7f2a342cd8f4155cf45fb27d2f093ed85\"}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.2559,
+              "trace": [
+                "starting at 2026-09-23T16:49:15.625Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:102059 outputTokens:5804 cost:$0.2559 llmTime: 00:00:36.523",
+                "finished at 2026-09-23T16:49:52.233Z",
+                "pages50 profissionais approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 25,
+            "status": "completed",
+            "stepTitle": "Shared ready",
+            "planning": {
+              "planId": "shared40-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"shared40\",\"nextStep\":\"pages50\",\"pages\":6}",
+            "interaction": null,
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 26,
+            "status": "completed",
+            "stepTitle": "Repair pages consultas_recepcionista",
+            "planning": {
+              "planId": "pages50-repair-consultas_recepcionista-a2",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"consultas_recepcionista\",\"attempt\":2,\"moleculeContextHash\":\"sha256:a68302012dda600e4003b0cd421224f7f2a342cd8f4155cf45fb27d2f093ed85\",\"feedback\":\"D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: consultas_recepcionista/desktop/organism.list.1 -> groupTriggerAction\\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: consultas_recepcionista/mobile/organism.list.1 -> groupTriggerAction\",\"previous\":{\"schemaVersion\":\"2026-09-23-agent-defs-l2-pages-judgment-v3\",\"pageId\":\"consultas_recepcionista\",\"category\":{\"categoryRef\":\"calendarScheduling\",\"reason\":\"A página permite consultar consultas e horários, criar agendamentos e atualizar a situação de uma consulta, atividades próprias de agenda e compromissos.\",\"evidenceRefs\":[\"listConsulta\",\"createConsulta\",\"confirmarConsulta\",\"registrarFalta\"]},\"presentations\":[{\"device\":\"desktop\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Apresenta as consultas da clínica para que a recepcionista localize registros e confira os horários cadastrados. Permite informar os critérios disponíveis de consulta, incluindo identificação, paciente, profissional, data e situação, e avançar de página quando aplicável. Enquanto a consulta é carregada, comunica o carregamento; se não houver resultados, informa que não há consultas para os critérios atuais; em falha, expõe o erro da consulta de forma acessível e permite tentar novamente. Os resultados e controles devem ter rótulos compreensíveis e permanecer operáveis por teclado.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"listConsulta\",\"setListConsultaId\",\"setListConsultaPatientId\",\"setListConsultaProfessionalId\",\"setListConsultaScheduledAt\",\"setListConsultaStatus\",\"setListConsultaPage\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewTable\",\"candidates\":[\"groupviewtable--ml-advanced-data-table\",\"groupviewtable--ml-data-table\"],\"reason\":\"A consulta retorna uma coleção de consultas que pode ser examinada e paginada.\"},{\"groupId\":\"groupEnterDatetime\",\"candidates\":[\"groupenterdatetime--ml-datetime-picker\",\"groupenterdatetime--ml-enter-datetime-masked-input\"],\"reason\":\"O critério scheduledAt aceita data e horário.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-pagination-control\"],\"reason\":\"A consulta aceita o parâmetro opcional de página.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-notify-banner\",\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"Há estados de carregamento e erro para a consulta.\"}]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Exibe os dados disponíveis da consulta selecionada, incluindo paciente, profissional, data, horário e situação, para conferência antes de uma atualização. A consulta é localizada pelo identificador quando necessário; enquanto os dados são buscados, anuncia o carregamento, informa a ausência de resultado quando não houver consulta correspondente e apresenta o erro com alternativa de nova tentativa. A informação deve ser legível, ter nomes acessíveis e poder ser revisada por teclado.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"listConsulta\",\"setListConsultaId\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewCard\",\"candidates\":[\"groupviewcard--ml-view-card-horizontal\"],\"reason\":\"Os dados de uma única consulta podem ser apresentados como um registro independente com metadados.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-notify-banner\"],\"reason\":\"A busca da consulta possui estados de carregamento, ausência de resultado e erro.\"}]},{\"organismId\":\"organism.form.1\",\"kind\":\"form\",\"description\":\"Orienta a recepcionista a marcar uma consulta selecionando o paciente e o profissional localizados, informando data e horário e a situação exigida. O envio cria o agendamento somente quando o horário do profissional estiver disponível. Campos obrigatórios precisam ser identificados e ter instruções e mensagens de validação acessíveis; a ação indica processamento, sucesso ou o erro retornado sem apagar os dados informados. Os controles devem ser utilizáveis por teclado e anunciados por seus rótulos.\",\"contentRef\":\"createConsulta\",\"capabilityRefs\":[\"listPaciente\",\"listProfissional\",\"setCreateConsultaPatientId\",\"setCreateConsultaProfessionalId\",\"setCreateConsultaScheduledAt\",\"setCreateConsultaStatus\",\"createConsulta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupSelectOne\",\"candidates\":[\"groupselectone--ml-combobox\",\"groupselectone--ml-select-one-autocomplete\"],\"reason\":\"Paciente e profissional são escolhas únicas apoiadas pelas consultas de pacientes e profissionais.\"},{\"groupId\":\"groupEnterDatetime\",\"candidates\":[\"groupenterdatetime--ml-datetime-picker\",\"groupenterdatetime--ml-enter-datetime-masked-input\"],\"reason\":\"scheduledAt é um campo obrigatório de data e horário do agendamento.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"createConsulta é o comando principal de envio do agendamento.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\",\"groupnotifyuser--ml-toast-notification\"],\"reason\":\"O comando possui estados de processamento, sucesso e erro.\"}]},{\"organismId\":\"organism.actions.1\",\"kind\":\"actions\",\"description\":\"Oferece ações contextuais para a consulta selecionada: registrar a confirmação por telefone ou marcar a falta do paciente. Cada ação exige uma consulta identificada, informa claramente seu efeito e, ao ser executada, comunica processamento, sucesso ou erro; depois do sucesso, a relação de consultas é atualizada. Os acionadores devem ter nomes acessíveis, confirmação de foco e operação por teclado.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"setConfirmarConsultaId\",\"confirmarConsulta\",\"setRegistrarFaltaId\",\"registrarFalta\",\"listConsulta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\",\"grouptriggeraction--ml-button-group\"],\"reason\":\"Confirmar consulta e registrar falta são comandos contextuais sobre a consulta selecionada.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-toast-notification\",\"groupnotifyuser--ml-alert-modal\"],\"reason\":\"Os dois comandos expõem estados de processamento, sucesso e erro.\"}]}],\"moleculeReason\":\"As recomendações usam apenas grupos compatíveis com as consultas, entradas e comandos declarados, para apoiar consulta, agendamento e atualização de situação.\"},{\"device\":\"mobile\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Prioriza a leitura das consultas e dos horários cadastrados em espaço reduzido, permitindo à recepcionista informar os critérios disponíveis — identificação, paciente, profissional, data e situação — e mudar de página quando aplicável. Durante o carregamento, anuncia o progresso; sem resultados, informa que não há consultas para os critérios atuais; em erro, apresenta o problema e a opção de tentar novamente. Resultados e controles mantêm rótulos acessíveis, foco e uso por toque e teclado.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"listConsulta\",\"setListConsultaId\",\"setListConsultaPatientId\",\"setListConsultaProfessionalId\",\"setListConsultaScheduledAt\",\"setListConsultaStatus\",\"setListConsultaPage\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewTable\",\"candidates\":[\"groupviewtable--ml-responsive-data-table\",\"groupviewtable--ml-responsive-table\"],\"reason\":\"A consulta retorna uma coleção de consultas que precisa permanecer legível em telas estreitas.\"},{\"groupId\":\"groupEnterDatetime\",\"candidates\":[\"groupenterdatetime--ml-datetime-picker\"],\"reason\":\"O critério scheduledAt aceita data e horário.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-pagination-control\"],\"reason\":\"A consulta aceita o parâmetro opcional de página.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-notify-banner\",\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"Há estados de carregamento e erro para a consulta.\"}]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Mostra primeiro os dados essenciais da consulta selecionada — paciente, profissional, data, horário e situação — para uma conferência rápida em tela menor. Pode localizar a consulta pelo identificador e anuncia carregamento, ausência de resultado e erro, com possibilidade de nova tentativa. Os dados permanecem acessíveis por toque, teclado e leitores de tela, com rótulos claros.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"listConsulta\",\"setListConsultaId\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewCard\",\"candidates\":[\"groupviewcard--ml-view-card-horizontal\"],\"reason\":\"Os dados de uma única consulta podem ser apresentados como um registro independente com metadados.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-notify-banner\"],\"reason\":\"A busca da consulta possui estados de carregamento, ausência de resultado e erro.\"}]},{\"organismId\":\"organism.form.1\",\"kind\":\"form\",\"description\":\"Permite marcar uma consulta com foco na seleção de paciente e profissional, seguida de data e horário e da situação obrigatória. A busca pelos registros de paciente e profissional permanece disponível, e o envio só conclui o agendamento quando não houver consulta do mesmo profissional naquele horário. Em tela reduzida, campos obrigatórios, validações e estado de processamento devem ser fáceis de ler e tocar; sucesso e erro são anunciados sem perder os valores informados. Todos os controles conservam rótulos e interação por teclado.\",\"contentRef\":\"createConsulta\",\"capabilityRefs\":[\"listPaciente\",\"listProfissional\",\"setCreateConsultaPatientId\",\"setCreateConsultaProfessionalId\",\"setCreateConsultaScheduledAt\",\"setCreateConsultaStatus\",\"createConsulta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupSelectOne\",\"candidates\":[\"groupselectone--ml-combobox\",\"groupselectone--ml-select-one-autocomplete\"],\"reason\":\"Paciente e profissional são escolhas únicas apoiadas pelas consultas de pacientes e profissionais.\"},{\"groupId\":\"groupEnterDatetime\",\"candidates\":[\"groupenterdatetime--ml-datetime-picker\"],\"reason\":\"scheduledAt é um campo obrigatório de data e horário do agendamento.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"createConsulta é o comando principal de envio do agendamento.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\",\"groupnotifyuser--ml-toast-notification\"],\"reason\":\"O comando possui estados de processamento, sucesso e erro.\"}]},{\"organismId\":\"organism.actions.1\",\"kind\":\"actions\",\"description\":\"Disponibiliza, para a consulta selecionada, os comandos de confirmar por telefone e registrar falta, com alvos de toque claros e identificação explícita do efeito de cada comando. Cada ação requer a consulta identificada, anuncia processamento, sucesso ou erro e atualiza a consulta listada após sucesso. Os acionadores continuam acessíveis por teclado e leitores de tela.\",\"contentRef\":\"base\",\"capabilityRefs\":[\"setConfirmarConsultaId\",\"confirmarConsulta\",\"setRegistrarFaltaId\",\"registrarFalta\",\"listConsulta\"],\"moleculeRecommendations\":[{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\",\"grouptriggeraction--ml-button-group\"],\"reason\":\"Confirmar consulta e registrar falta são comandos contextuais sobre a consulta selecionada.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-toast-notification\",\"groupnotifyuser--ml-alert-modal\"],\"reason\":\"Os dois comandos expõem estados de processamento, sucesso e erro.\"}]}],\"moleculeReason\":\"As recomendações preservam no mobile as capacidades de consulta, agendamento e atualização, priorizando leitura e toque em espaço reduzido.\"}]}}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.326,
+              "trace": [
+                "starting at 2026-09-23T16:51:13.903Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:128020 outputTokens:8701 cost:$0.3260 llmTime: 00:00:48.407",
+                "finished at 2026-09-23T16:52:02.346Z",
+                "pages50 consultas_recepcionista approved (barrier complete)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "agent",
+            "stepId": 27,
+            "status": "completed",
+            "stepTitle": "Repair pages pacientes",
+            "planning": {
+              "planId": "pages50-repair-pacientes-a2",
+              "dependsOn": [],
+              "executionMode": "parallel_dynamic",
+              "executionHost": "client"
+            },
+            "agentName": "agentD2PagesPage",
+            "prompt": "{\"project\":102047,\"module\":\"agendaClinica\",\"pageId\":\"pacientes\",\"attempt\":2,\"moleculeContextHash\":\"sha256:a68302012dda600e4003b0cd421224f7f2a342cd8f4155cf45fb27d2f093ed85\",\"feedback\":\"D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: pacientes/desktop/organism.list.1 -> groupTriggerAction\\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: pacientes/desktop/organism.detail.1 -> groupTriggerAction\\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: pacientes/mobile/organism.list.1 -> groupTriggerAction\\nD2_PAGES_MOLECULE_CAPABILITY_MISMATCH: pacientes/mobile/organism.detail.1 -> groupTriggerAction\",\"previous\":{\"schemaVersion\":\"2026-09-23-agent-defs-l2-pages-judgment-v3\",\"pageId\":\"pacientes\",\"category\":{\"categoryRef\":\"masterDataManagement\",\"reason\":\"A página mantém o cadastro mestre de pacientes da clínica, permitindo localizar registros existentes e criar ou associar um novo paciente para uso no agendamento.\",\"evidenceRefs\":[\"listPaciente\",\"createPaciente\"]},\"presentations\":[{\"device\":\"desktop\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Permite à recepcionista localizar pacientes já cadastrados para evitar duplicidade e encontrar quem poderá receber consultas. A busca consulta os pacientes e apresenta os resultados disponíveis; durante o carregamento informa que a consulta está em andamento, quando não houver resultados comunica o estado vazio e, se a consulta falhar, expõe o erro de forma compreensível e permite tentar novamente. Os controles de busca, paginação e abertura de um resultado devem ter rótulos acessíveis, suporte a teclado e anúncio das mudanças de resultado.\",\"contentRef\":\"localizarPaciente\",\"capabilityRefs\":[\"listPaciente\",\"setListPacienteId\",\"setListPacienteDetailsIdentificationName\",\"setListPacienteDetailsIdentificationDocType\",\"setListPacienteDetailsIdentificationDocId\",\"setListPacienteDetailsIdentificationCountryCode\",\"setListPacientePage\"],\"moleculeRecommendations\":[{\"groupId\":\"groupSearchContent\",\"candidates\":[\"groupsearchcontent--ml-search-filters\"],\"reason\":\"A consulta de pacientes aceita critérios textuais de identificação e nome, com estado de consulta e resultado.\"},{\"groupId\":\"groupViewData\",\"candidates\":[\"groupviewdata--ml-vertical-record-list\"],\"reason\":\"Os resultados de listPaciente formam uma coleção de registros de pacientes para leitura e escolha.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-pagination-control\"],\"reason\":\"listPaciente aceita o critério opcional de página.\"}]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Mostra os dados disponíveis do paciente localizado, com prioridade para nome e identificação, para que a recepcionista confira se é o registro correto antes de prosseguir. Enquanto os dados são consultados, comunica o carregamento; se nenhum paciente corresponder aos critérios, explica que não há registro para exibir; se houver falha, informa o erro e oferece nova tentativa. As informações devem ser lidas em sequência lógica e qualquer acionamento do registro precisa ter nome acessível e funcionar por teclado.\",\"contentRef\":\"localizarPaciente\",\"capabilityRefs\":[\"listPaciente\",\"setListPacienteId\",\"setListPacienteDetailsIdentificationName\",\"setListPacienteDetailsIdentificationDocType\",\"setListPacienteDetailsIdentificationDocId\",\"setListPacienteDetailsIdentificationCountryCode\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewCard\",\"candidates\":[\"groupviewcard--ml-profile-card\"],\"reason\":\"O paciente é um registro de pessoa cujos dados de identificação precisam ser conferidos de forma individual.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"A consulta de paciente pode ser disparada novamente após ajustar os critérios.\"}]},{\"organismId\":\"organism.form.1\",\"kind\":\"form\",\"description\":\"Coleta os dados cadastrais necessários para criar ou associar um paciente à clínica: nome e código do país são obrigatórios; tipo e número de documento e observações são opcionais; aliases também são informados conforme o contrato. Identifica claramente obrigatoriedade, valida e descreve erros junto aos campos, preserva os valores informados e permite revisão antes do envio. Durante o envio, impede reenvio acidental e anuncia o progresso; em caso de erro, apresenta a falha associada ao cadastro para correção; após sucesso, confirma que o paciente foi registrado.\",\"contentRef\":\"createPaciente\",\"capabilityRefs\":[\"setCreatePacienteDetails\",\"setCreatePacienteDetailsIdentification\",\"setCreatePacienteDetailsIdentificationName\",\"setCreatePacienteDetailsIdentificationDocType\",\"setCreatePacienteDetailsIdentificationDocId\",\"setCreatePacienteDetailsIdentificationCountryCode\",\"setCreatePacienteDetailsBase\",\"setCreatePacienteDetailsBaseAliases\",\"setCreatePacienteDetailsBaseNotes\",\"createPaciente\"],\"moleculeRecommendations\":[{\"groupId\":\"groupEnterText\",\"candidates\":[\"groupentertext--ml-enter-text\",\"groupentertext--ml-multiline-text\",\"groupentertext--ml-tag-input\"],\"reason\":\"O cadastro contém valores textuais de identificação, observações e aliases.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"createPaciente é o comando primário para registrar o paciente.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\",\"groupnotifyuser--ml-toast-notification\"],\"reason\":\"O comando possui estados de sucesso e erro que exigem retorno acessível.\"},{\"groupId\":\"groupShowProgress\",\"candidates\":[\"groupshowprogress--ml-indeterminate-spinner\"],\"reason\":\"O estado de carregamento de createPaciente informa envio em andamento.\"}]},{\"organismId\":\"organism.actions.1\",\"kind\":\"actions\",\"description\":\"Oferece a ação de concluir o registro do paciente quando os dados obrigatórios estiverem preenchidos. Ao executar, informa que o cadastro está sendo processado, evita disparos repetidos, confirma o sucesso e comunica qualquer erro para que a recepcionista possa corrigi-lo e tentar novamente. A ação deve ter rótulo claro, estado indisponível quando faltar informação obrigatória e feedback anunciado por tecnologias assistivas.\",\"contentRef\":\"createPaciente\",\"capabilityRefs\":[\"createPaciente\"],\"moleculeRecommendations\":[{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"createPaciente é um comando explícito de registro.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-toast-notification\",\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"O comando disponibiliza estados de sucesso e erro para retorno à recepcionista.\"},{\"groupId\":\"groupShowProgress\",\"candidates\":[\"groupshowprogress--ml-indeterminate-spinner\"],\"reason\":\"O status de createPaciente permite comunicar processamento em andamento.\"}]}],\"moleculeReason\":\"As recomendações usam apenas grupos compatíveis com consulta de pacientes, visualização de registros, entrada dos dados cadastrais e execução do comando de criação; os candidatos permanecem consultivos.\"},{\"device\":\"mobile\",\"descriptions\":[{\"organismId\":\"organism.list.1\",\"kind\":\"list\",\"description\":\"Permite à recepcionista localizar pacientes já cadastrados para evitar duplicidade e encontrar quem poderá receber consultas. Em espaço reduzido, prioriza a busca e os dados que identificam cada resultado, preservando a consulta, a paginação e a abertura do registro por toque. Durante o carregamento informa que a consulta está em andamento, quando não houver resultados comunica o estado vazio e, se a consulta falhar, expõe o erro de forma compreensível e permite tentar novamente. Os alvos de toque e controles devem ter rótulos acessíveis e as mudanças de resultado devem ser anunciadas.\",\"contentRef\":\"localizarPaciente\",\"capabilityRefs\":[\"listPaciente\",\"setListPacienteId\",\"setListPacienteDetailsIdentificationName\",\"setListPacienteDetailsIdentificationDocType\",\"setListPacienteDetailsIdentificationDocId\",\"setListPacienteDetailsIdentificationCountryCode\",\"setListPacientePage\"],\"moleculeRecommendations\":[{\"groupId\":\"groupSearchContent\",\"candidates\":[\"groupsearchcontent--ml-search-bar\"],\"reason\":\"A busca de pacientes usa critérios de identificação e nome e precisa expor seus estados em uma entrada direta.\"},{\"groupId\":\"groupViewData\",\"candidates\":[\"groupviewdata--ml-vertical-record-list\"],\"reason\":\"Uma lista vertical mantém os pacientes localizáveis e legíveis em tela estreita.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-pagination-control\"],\"reason\":\"listPaciente aceita o critério opcional de página.\"}]},{\"organismId\":\"organism.detail.1\",\"kind\":\"detail\",\"description\":\"Mostra os dados disponíveis do paciente localizado, priorizando nome e identificação para conferência rápida antes de prosseguir. Mantém a consulta do registro por toque e leitura assistiva; durante o carregamento, na ausência de resultado ou em falha, comunica respectivamente o andamento, o estado vazio ou o erro e permite nova tentativa. As informações são apresentadas em ordem de leitura clara e toda ação associada ao registro deve ter nome acessível.\",\"contentRef\":\"localizarPaciente\",\"capabilityRefs\":[\"listPaciente\",\"setListPacienteId\",\"setListPacienteDetailsIdentificationName\",\"setListPacienteDetailsIdentificationDocType\",\"setListPacienteDetailsIdentificationDocId\",\"setListPacienteDetailsIdentificationCountryCode\"],\"moleculeRecommendations\":[{\"groupId\":\"groupViewCard\",\"candidates\":[\"groupviewcard--ml-profile-card\"],\"reason\":\"O registro de pessoa pode destacar os dados de identificação em uma unidade individual compacta.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"A consulta de paciente pode ser disparada novamente após ajustar os critérios.\"}]},{\"organismId\":\"organism.form.1\",\"kind\":\"form\",\"description\":\"Coleta os dados cadastrais para criar ou associar um paciente à clínica, priorizando na leitura móvel o nome e o código do país obrigatórios, sem remover documento, aliases e observações. Cada campo informa obrigatoriedade e erro de forma acessível, conserva o que foi digitado e permite revisão antes do envio por toque. No envio, evita repetição, anuncia o processamento, comunica a falha para correção e confirma o registro concluído.\",\"contentRef\":\"createPaciente\",\"capabilityRefs\":[\"setCreatePacienteDetails\",\"setCreatePacienteDetailsIdentification\",\"setCreatePacienteDetailsIdentificationName\",\"setCreatePacienteDetailsIdentificationDocType\",\"setCreatePacienteDetailsIdentificationDocId\",\"setCreatePacienteDetailsIdentificationCountryCode\",\"setCreatePacienteDetailsBase\",\"setCreatePacienteDetailsBaseAliases\",\"setCreatePacienteDetailsBaseNotes\",\"createPaciente\"],\"moleculeRecommendations\":[{\"groupId\":\"groupEnterText\",\"candidates\":[\"groupentertext--ml-enter-text\",\"groupentertext--ml-multiline-text\",\"groupentertext--ml-tag-input\"],\"reason\":\"O cadastro contém valores textuais de identificação, observações e aliases.\"},{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"createPaciente é o comando primário para registrar o paciente.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-contextual-feedback\",\"groupnotifyuser--ml-toast-notification\"],\"reason\":\"O comando possui estados de sucesso e erro que exigem retorno acessível.\"},{\"groupId\":\"groupShowProgress\",\"candidates\":[\"groupshowprogress--ml-indeterminate-spinner\"],\"reason\":\"O estado de carregamento de createPaciente informa envio em andamento.\"}]},{\"organismId\":\"organism.actions.1\",\"kind\":\"actions\",\"description\":\"Oferece a ação de concluir o registro do paciente quando os dados obrigatórios estiverem preenchidos, com alvo de toque identificável e rótulo claro. Ao executar, informa que o cadastro está sendo processado, evita disparos repetidos, confirma o sucesso e comunica qualquer erro para que a recepcionista possa corrigi-lo e tentar novamente. O estado indisponível por dados obrigatórios ausentes e os retornos da ação devem ser anunciados por tecnologias assistivas.\",\"contentRef\":\"createPaciente\",\"capabilityRefs\":[\"createPaciente\"],\"moleculeRecommendations\":[{\"groupId\":\"groupTriggerAction\",\"candidates\":[\"grouptriggeraction--ml-button-standard\"],\"reason\":\"createPaciente é um comando explícito de registro.\"},{\"groupId\":\"groupNotifyUser\",\"candidates\":[\"groupnotifyuser--ml-toast-notification\",\"groupnotifyuser--ml-contextual-feedback\"],\"reason\":\"O comando disponibiliza estados de sucesso e erro para retorno à recepcionista.\"},{\"groupId\":\"groupShowProgress\",\"candidates\":[\"groupshowprogress--ml-indeterminate-spinner\"],\"reason\":\"O status de createPaciente permite comunicar processamento em andamento.\"}]}],\"moleculeReason\":\"Em mobile, as recomendações preservam todas as capacidades de consulta e cadastro, priorizando busca direta, leitura vertical, entrada por toque e feedback acessível.\"}]}}",
+            "rags": [],
+            "interaction": {
+              "input": [],
+              "cost": 0.3592,
+              "trace": [
+                "starting at 2026-09-23T16:51:14.379Z",
+                "provider: openrouter model:openai/gpt-5.6-terra-pro alias:reasoning stage:primary user:'wagnerexpansiva@gmail.com' inputTokens:129286 outputTokens:9570 cost:$0.3592 llmTime: 00:00:46.688",
+                "finished at 2026-09-23T16:52:01.129Z",
+                "pages50 pacientes approved (waiting siblings)."
+              ],
+              "payload": null
+            },
+            "nextSteps": []
+          },
+          {
+            "type": "result",
+            "stepId": 29,
+            "status": "completed",
+            "stepTitle": "Pages ready",
+            "planning": {
+              "planId": "pages50-done",
+              "dependsOn": [],
+              "executionMode": "manual_later",
+              "executionHost": "client"
+            },
+            "result": "{\"project\":102047,\"module\":\"agendaClinica\",\"completedStep\":\"pages50\",\"nextStep\":\"finalize60\",\"pages\":6,\"defs\":12}",
+            "interaction": null,
+            "nextSteps": []
+          }
+        ],
+        "status": "completed",
+        "rags": [],
+        "interaction": {
+          "input": [
+            {
+              "type": "system",
+              "content": "agentDefsL2 deterministic bootstrap. The root model is disabled."
+            },
+            {
+              "type": "human",
+              "content": "agendaClinica"
+            }
+          ],
+          "cost": 0,
+          "trace": [
+            "Root LLM skipped by AgentIntentAddMessageAI.skipRootLLM",
+            "Removing pooling hook after 67 executions, task status: done"
+          ],
+          "payload": null
+        }
+      }
+    ]
+  },
+  "messageid_created": "20260515174326.1000/20260923164824.1000"
+}

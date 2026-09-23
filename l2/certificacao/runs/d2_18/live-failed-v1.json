@@ -1,0 +1,8 @@
+{
+  "taskId": "20260923163335.1001",
+  "status": "failed",
+  "costUsd": 0,
+  "failedStep": "shared40",
+  "diagnostic": "D2_SHARED_CONTEXT_REF_INVALID: _102029_/l2/stateLitElement.ts",
+  "cause": "The context catalog reference parser required a subfolder after l2/, while runtime context files are stored directly under l2/."
+}

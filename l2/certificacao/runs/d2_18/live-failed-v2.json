@@ -1,0 +1,10 @@
+{
+  "taskId": "20260923164004.1001",
+  "status": "failed",
+  "costUsd": 0.0859,
+  "failedStep": "shared40",
+  "sharedUnitsWritten": 5,
+  "sharedUnitsExpected": 6,
+  "diagnostic": "D2_SHARED_REPAIR_LIMIT profissionais",
+  "cause": "The model used natural-language labels and then scenary/action values (localizarPaciente, localizarProfissional and base) as preconditions instead of exact deterministic stateKeys."
+}

@@ -1,0 +1,2348 @@
+{
+  "root": "/Volumes/WagnerSSD1/collab/mls-base/mls-102047",
+  "pages": [
+    "consultas_profissional",
+    "consultas_recepcionista",
+    "dados_profissional",
+    "dados_recepcionista",
+    "pacientes",
+    "profissionais"
+  ],
+  "defs": 24,
+  "pageDefs": 12,
+  "routes": 26,
+  "organismDescriptions": 36,
+  "moleculeRecommendations": 80,
+  "recommendationCapabilityKinds": {
+    "desktop": [
+      "actions",
+      "detail",
+      "form",
+      "list"
+    ],
+    "mobile": [
+      "actions",
+      "detail",
+      "form",
+      "list"
+    ]
+  },
+  "capabilityKinds": {
+    "list": 8,
+    "detail": 12,
+    "form": 10,
+    "actions": 6
+  },
+  "recommendationGroupAudit": [
+    {
+      "pageId": "consultas_recepcionista",
+      "devices": {
+        "desktop": [
+          "groupEnterDatetime",
+          "groupNotifyUser",
+          "groupSelectOne",
+          "groupTriggerAction",
+          "groupViewCard",
+          "groupViewTable"
+        ],
+        "mobile": [
+          "groupEnterDatetime",
+          "groupNotifyUser",
+          "groupSelectOne",
+          "groupTriggerAction",
+          "groupViewCard",
+          "groupViewData"
+        ]
+      },
+      "union": [
+        "groupEnterDatetime",
+        "groupNotifyUser",
+        "groupSelectOne",
+        "groupTriggerAction",
+        "groupViewCard",
+        "groupViewData",
+        "groupViewTable"
+      ],
+      "receipt": [
+        "groupEnterDatetime",
+        "groupNotifyUser",
+        "groupSelectOne",
+        "groupTriggerAction",
+        "groupViewCard",
+        "groupViewData",
+        "groupViewTable"
+      ]
+    },
+    {
+      "pageId": "pacientes",
+      "devices": {
+        "desktop": [
+          "groupEnterText",
+          "groupNotifyUser",
+          "groupSearchContent",
+          "groupShowProgress",
+          "groupTriggerAction",
+          "groupViewData"
+        ],
+        "mobile": [
+          "groupEnterText",
+          "groupNotifyUser",
+          "groupSearchContent",
+          "groupShowProgress",
+          "groupTriggerAction",
+          "groupViewData"
+        ]
+      },
+      "union": [
+        "groupEnterText",
+        "groupNotifyUser",
+        "groupSearchContent",
+        "groupShowProgress",
+        "groupTriggerAction",
+        "groupViewData"
+      ],
+      "receipt": [
+        "groupEnterText",
+        "groupNotifyUser",
+        "groupSearchContent",
+        "groupShowProgress",
+        "groupTriggerAction",
+        "groupViewData"
+      ]
+    },
+    {
+      "pageId": "profissionais",
+      "devices": {
+        "desktop": [
+          "groupEnterText",
+          "groupViewCard",
+          "groupViewData"
+        ],
+        "mobile": [
+          "groupEnterText",
+          "groupViewCard",
+          "groupViewData"
+        ]
+      },
+      "union": [
+        "groupEnterText",
+        "groupViewCard",
+        "groupViewData"
+      ],
+      "receipt": [
+        "groupEnterText",
+        "groupViewCard",
+        "groupViewData"
+      ]
+    },
+    {
+      "pageId": "consultas_profissional",
+      "devices": {
+        "desktop": [
+          "groupEnterText",
+          "groupNotifyUser",
+          "groupTriggerAction",
+          "groupViewCard",
+          "groupViewData"
+        ],
+        "mobile": [
+          "groupEnterText",
+          "groupNotifyUser",
+          "groupTriggerAction",
+          "groupViewCard",
+          "groupViewData"
+        ]
+      },
+      "union": [
+        "groupEnterText",
+        "groupNotifyUser",
+        "groupTriggerAction",
+        "groupViewCard",
+        "groupViewData"
+      ],
+      "receipt": [
+        "groupEnterText",
+        "groupNotifyUser",
+        "groupTriggerAction",
+        "groupViewCard",
+        "groupViewData"
+      ]
+    },
+    {
+      "pageId": "dados_profissional",
+      "devices": {
+        "desktop": [
+          "groupEnterBoolean",
+          "groupEnterText",
+          "groupNotifyUser",
+          "groupShowProgress",
+          "groupTriggerAction",
+          "groupViewData"
+        ],
+        "mobile": [
+          "groupEnterBoolean",
+          "groupEnterText",
+          "groupNotifyUser",
+          "groupShowProgress",
+          "groupTriggerAction",
+          "groupViewData"
+        ]
+      },
+      "union": [
+        "groupEnterBoolean",
+        "groupEnterText",
+        "groupNotifyUser",
+        "groupShowProgress",
+        "groupTriggerAction",
+        "groupViewData"
+      ],
+      "receipt": [
+        "groupEnterBoolean",
+        "groupEnterText",
+        "groupNotifyUser",
+        "groupShowProgress",
+        "groupTriggerAction",
+        "groupViewData"
+      ]
+    },
+    {
+      "pageId": "dados_recepcionista",
+      "devices": {
+        "desktop": [
+          "groupEnterBoolean",
+          "groupEnterText",
+          "groupTriggerAction",
+          "groupViewData"
+        ],
+        "mobile": [
+          "groupEnterBoolean",
+          "groupEnterText",
+          "groupTriggerAction",
+          "groupViewData"
+        ]
+      },
+      "union": [
+        "groupEnterBoolean",
+        "groupEnterText",
+        "groupTriggerAction",
+        "groupViewData"
+      ],
+      "receipt": [
+        "groupEnterBoolean",
+        "groupEnterText",
+        "groupTriggerAction",
+        "groupViewData"
+      ]
+    }
+  ],
+  "materializationItems": 18,
+  "graphAcyclic": true,
+  "noAgentFields": true,
+  "consumerContext": {
+    "sharedSkill": {
+      "reference": "_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts",
+      "sha256": "b145f1114a148bbdc3a0b5f62a845586691306479cfcc0a6464a8dff1c3973dd",
+      "bytes": 2970
+    },
+    "runtime102029": [
+      {
+        "reference": "_102029_/l2/stateLitElement.ts",
+        "sha256": "e15dec79dc81ebf74edb73c852ee2722f198b6d50670293c50f19036d89b20e3",
+        "bytes": 6092
+      },
+      {
+        "reference": "_102029_/l2/collabLitElement.ts",
+        "sha256": "6541fb9f7f9c6e1942dac686f8ffd8a9b8a787c35140de37213d60bb4ad841a8",
+        "bytes": 1849
+      },
+      {
+        "reference": "_102029_/l2/bffClient.ts",
+        "sha256": "326d67248b1489c4bea082530a4503d32bcb65449f25ba6378e60044206502b0",
+        "bytes": 11604
+      },
+      {
+        "reference": "_102029_/l2/collabState.ts",
+        "sha256": "502f35ad62648c4a2be695d5b1be02c09b8ed349129f4f45d111b84f54d3997e",
+        "bytes": 14706
+      },
+      {
+        "reference": "_102029_/l2/interactionRuntime.ts",
+        "sha256": "176af97fb9350d48bab4a5944a6b88fb58fdb0b0f4d953b23b3686d9b3a9b03e",
+        "bytes": 7993
+      }
+    ],
+    "designSystem": {
+      "path": "l2/designSystem.ts",
+      "sha256": "6bf2135bac15c461924a8f0c6f408a99258d0cfc268be3b44d92e9b17fa72632",
+      "bytes": 41546,
+      "tokenCount": 215
+    },
+    "molecular": {
+      "consumerProject": 102047,
+      "catalogProject": 102040,
+      "selectedBy": "dependency",
+      "productiveDiscovery": {
+        "directDeps": [
+          102020,
+          102035,
+          102021,
+          102027,
+          102029,
+          102036,
+          102025,
+          102040
+        ],
+        "resolvedDeps": [
+          102020,
+          102035,
+          102021,
+          102027,
+          102029,
+          102036,
+          102025,
+          102040
+        ],
+        "candidates": [
+          102040
+        ]
+      },
+      "localDiscovery": {
+        "directDeps": [
+          102020,
+          102035,
+          102021,
+          102027,
+          102029,
+          102036,
+          102025,
+          102040
+        ],
+        "candidates": [
+          102040
+        ]
+      },
+      "groupCount": 31,
+      "candidateCount": 198,
+      "preflightContextHash": "sha256:2b52b9d84663ae9143b039349c460e2f9ed13415b0fa05edaecf5eddf1b6859e",
+      "pages": [
+        {
+          "pageId": "consultas_profissional",
+          "outcome": "catalog-selection",
+          "code": "D2_MOLECULE_SELECTION",
+          "selectedGroupIds": [
+            "groupViewData",
+            "groupViewCard",
+            "groupEnterText",
+            "groupTriggerAction",
+            "groupNotifyUser"
+          ],
+          "groupCount": 31,
+          "candidateCount": 198,
+          "discoveryHash": "sha256:6c5f142b3555e8362116eed80227bd568e4e91f72665a690b223d5b519dadfd1",
+          "contextHash": "sha256:9c62edac3a34ea26e7e4848482e503fcf591dbe159bdd2ef96b9b52d48fa170f",
+          "sources": [
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterboolean/index.defs",
+              "via": "stor",
+              "sha256": "sha256:6015c7f4b1b09a9e0111388a6a19b58a34fdbbbb96d3cd769e6afd2684d54188"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdate/index.defs",
+              "via": "stor",
+              "sha256": "sha256:67a4488db2fe33adb92bacf235dc827a90a1c90ca3ed637ea9548d1c373bc0a4"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdateinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:131ae1b61ab958bb6e30a40b3fa41b6067662de905f7f0bce5ee9c86f429a44e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:2ba95b71fec77f2f7ee120e37d41d2a11a6672423a7a0a924112d5cf90a717dd"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3ba0c4a5e86fb155e939dffe8dd6eb4d51ba6dab64634391bbfb3d711fcde9d7"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentermoney/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4215f6a85d293204c4d4e4b801473ea599139df521bdbaeddff50177d88daf9a"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumber/index.defs",
+              "via": "stor",
+              "sha256": "sha256:94a52c28ec828918c77800447f098381bc32de7e922344d8f4ec68924211cc62"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumberinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3d1d6f6b72bf27dde9fc3c7d270b00ad7a8977bca56dd58f1fe3669fcfc6161e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertext/index.defs",
+              "via": "stor",
+              "sha256": "sha256:089c8921c9d583031b2f96aedf143e414381aa723b3157ae66e0c30687de53c8"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:ff7f0b4b7321a73827308e858f13897062a01712328ab1e8451d920fe20ec0fe"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:bd3a25a8d165a2241c898a77e1b6926c032f670d6e4679a0d75a03cf2efe4f88"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupexpandcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:102e038150a1245862c6f2f1546287badc66fa809e14d8841ee05502f6119b67"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouplocateposition/index.defs",
+              "via": "stor",
+              "sha256": "sha256:728f4331d0f0c7588d2053091a8a2f3c7ba000b6aceb17cd8143da6a878e7c99"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesection/index.defs",
+              "via": "stor",
+              "sha256": "sha256:f1e64a73229d5cc04c2e3db59b4bbae20ce8a36f704d870740b5679e89e05585"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesteps/index.defs",
+              "via": "stor",
+              "sha256": "sha256:b2a882c1bdd6e717eb39ce9d3e0f7212ac08ff941b662957cd5444f48859731c"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnotifyuser/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d6045d25ede4c750e8e83a688aa7ab8522974310c3d6c8c8c561cc431c7b1d51"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupplaymedia/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8b2659d48d8b0d5e5d24a8a45e2c7fb8cf880a2e171fa0edf3dcdcba1f7ee768"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouprateitem/index.defs",
+              "via": "stor",
+              "sha256": "sha256:80953828e94685dfc8945ef99a910dcea40ea3e42b8e02e331ee269cb1db9c12"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupscancode/index.defs",
+              "via": "stor",
+              "sha256": "sha256:1d5565a899128034c5c77d3a559168678570a435d76aad7ffc2c6fdf5b67a85f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupsearchcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4458436e93cf3d9d2ee59d0b9d1e27cbfd4b8c93c5c46f7f877f9eedef966867"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectfileforupload/index.defs",
+              "via": "stor",
+              "sha256": "sha256:a459a34dc220a56620dea8331228064a4551f17380f3bf8afba7f1144cd85a43"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectmany/index.defs",
+              "via": "stor",
+              "sha256": "sha256:69c925441df1e1f12af0d5dea129e59de9435f58815993e22288945c3159f92f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectone/index.defs",
+              "via": "stor",
+              "sha256": "sha256:20b935861b3c60bddb4b2d6890d5189988430900c74338e5b58f2f2243273a5e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupshowprogress/index.defs",
+              "via": "stor",
+              "sha256": "sha256:7b5a4118bf3f85a2f200d83b81c9d282d25d27432ef2980a443d4f9c46460acc"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouptriggeraction/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8a650a22d598e2b7333c52173b8ed3948b19ed67e2667abd3a017646afd34ede"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewcard/index.defs",
+              "via": "stor",
+              "sha256": "sha256:35d078f5a9a2465ef80397b2aac9410dd7a638fd71240c8de6c152765ad299a6"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewchart/index.defs",
+              "via": "stor",
+              "sha256": "sha256:cd4629d8ead7b0172e9f9692f2f2d464c00c866c32235c4f7f50728210823d69"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewdata/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4d535828bb7c613334d5ac3ce318888c9dca2fb6bc6fe61befa374e0f7eba6f3"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewhierarchy/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d3d6233dad844bb913b2bb229935318e99e417435b53306d0b20d4f72ae4827f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewmetric/index.defs",
+              "via": "stor",
+              "sha256": "sha256:db81a801be9fefc5debc5eca4984aafd56e527734b3b0235ed644fb6c6d51cbb"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewtable/index.defs",
+              "via": "stor",
+              "sha256": "sha256:c63469f28e5e81594f34672f8959fba283b99c9869c60e3def070091642e70c9"
+            },
+            {
+              "role": "inventory",
+              "reference": "/_102040_/l2/molecules/skill",
+              "via": "stor",
+              "sha256": "sha256:31bca4b224e7602ba3c79feae49b917b40619b1ed547b8431284f1f712974e76"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupEnterText/usage",
+              "via": "stor",
+              "sha256": "sha256:c57e495141b51f81e60a306db0db72d02cfbf54a44411a6c058c0eba991721fe"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupNotifyUser/usage",
+              "via": "stor",
+              "sha256": "sha256:cd28451580a3c836dd0994a1db0f52073e5d3a86b3d473c0996a0227d18fc149"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupTriggerAction/usage",
+              "via": "stor",
+              "sha256": "sha256:02c55363ce18fdc7e876148e9c37350c7b6d2fb93b625ac4c174a21b165810ac"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewCard/usage",
+              "via": "stor",
+              "sha256": "sha256:6008119a716515f041d6c1ca0808f00a16170bf2dfcd8f23cf11d788c1bd8764"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewData/usage",
+              "via": "stor",
+              "sha256": "sha256:919a6f6cba43af94b8d8e900ea45166f921f69fd969877d3a7a50e9917bfb5a2"
+            }
+          ]
+        },
+        {
+          "pageId": "consultas_recepcionista",
+          "outcome": "catalog-selection",
+          "code": "D2_MOLECULE_SELECTION",
+          "selectedGroupIds": [
+            "groupViewTable",
+            "groupViewCard",
+            "groupSelectOne",
+            "groupEnterDatetime",
+            "groupTriggerAction",
+            "groupNotifyUser",
+            "groupViewData"
+          ],
+          "groupCount": 31,
+          "candidateCount": 198,
+          "discoveryHash": "sha256:6c5f142b3555e8362116eed80227bd568e4e91f72665a690b223d5b519dadfd1",
+          "contextHash": "sha256:8c27303c4389f00adcbb49dcf460a4ad0a6c30a9ceee96b3afa02c7c3700c2b2",
+          "sources": [
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterboolean/index.defs",
+              "via": "stor",
+              "sha256": "sha256:6015c7f4b1b09a9e0111388a6a19b58a34fdbbbb96d3cd769e6afd2684d54188"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdate/index.defs",
+              "via": "stor",
+              "sha256": "sha256:67a4488db2fe33adb92bacf235dc827a90a1c90ca3ed637ea9548d1c373bc0a4"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdateinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:131ae1b61ab958bb6e30a40b3fa41b6067662de905f7f0bce5ee9c86f429a44e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:2ba95b71fec77f2f7ee120e37d41d2a11a6672423a7a0a924112d5cf90a717dd"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3ba0c4a5e86fb155e939dffe8dd6eb4d51ba6dab64634391bbfb3d711fcde9d7"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentermoney/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4215f6a85d293204c4d4e4b801473ea599139df521bdbaeddff50177d88daf9a"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumber/index.defs",
+              "via": "stor",
+              "sha256": "sha256:94a52c28ec828918c77800447f098381bc32de7e922344d8f4ec68924211cc62"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumberinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3d1d6f6b72bf27dde9fc3c7d270b00ad7a8977bca56dd58f1fe3669fcfc6161e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertext/index.defs",
+              "via": "stor",
+              "sha256": "sha256:089c8921c9d583031b2f96aedf143e414381aa723b3157ae66e0c30687de53c8"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:ff7f0b4b7321a73827308e858f13897062a01712328ab1e8451d920fe20ec0fe"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:bd3a25a8d165a2241c898a77e1b6926c032f670d6e4679a0d75a03cf2efe4f88"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupexpandcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:102e038150a1245862c6f2f1546287badc66fa809e14d8841ee05502f6119b67"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouplocateposition/index.defs",
+              "via": "stor",
+              "sha256": "sha256:728f4331d0f0c7588d2053091a8a2f3c7ba000b6aceb17cd8143da6a878e7c99"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesection/index.defs",
+              "via": "stor",
+              "sha256": "sha256:f1e64a73229d5cc04c2e3db59b4bbae20ce8a36f704d870740b5679e89e05585"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesteps/index.defs",
+              "via": "stor",
+              "sha256": "sha256:b2a882c1bdd6e717eb39ce9d3e0f7212ac08ff941b662957cd5444f48859731c"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnotifyuser/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d6045d25ede4c750e8e83a688aa7ab8522974310c3d6c8c8c561cc431c7b1d51"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupplaymedia/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8b2659d48d8b0d5e5d24a8a45e2c7fb8cf880a2e171fa0edf3dcdcba1f7ee768"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouprateitem/index.defs",
+              "via": "stor",
+              "sha256": "sha256:80953828e94685dfc8945ef99a910dcea40ea3e42b8e02e331ee269cb1db9c12"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupscancode/index.defs",
+              "via": "stor",
+              "sha256": "sha256:1d5565a899128034c5c77d3a559168678570a435d76aad7ffc2c6fdf5b67a85f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupsearchcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4458436e93cf3d9d2ee59d0b9d1e27cbfd4b8c93c5c46f7f877f9eedef966867"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectfileforupload/index.defs",
+              "via": "stor",
+              "sha256": "sha256:a459a34dc220a56620dea8331228064a4551f17380f3bf8afba7f1144cd85a43"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectmany/index.defs",
+              "via": "stor",
+              "sha256": "sha256:69c925441df1e1f12af0d5dea129e59de9435f58815993e22288945c3159f92f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectone/index.defs",
+              "via": "stor",
+              "sha256": "sha256:20b935861b3c60bddb4b2d6890d5189988430900c74338e5b58f2f2243273a5e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupshowprogress/index.defs",
+              "via": "stor",
+              "sha256": "sha256:7b5a4118bf3f85a2f200d83b81c9d282d25d27432ef2980a443d4f9c46460acc"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouptriggeraction/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8a650a22d598e2b7333c52173b8ed3948b19ed67e2667abd3a017646afd34ede"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewcard/index.defs",
+              "via": "stor",
+              "sha256": "sha256:35d078f5a9a2465ef80397b2aac9410dd7a638fd71240c8de6c152765ad299a6"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewchart/index.defs",
+              "via": "stor",
+              "sha256": "sha256:cd4629d8ead7b0172e9f9692f2f2d464c00c866c32235c4f7f50728210823d69"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewdata/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4d535828bb7c613334d5ac3ce318888c9dca2fb6bc6fe61befa374e0f7eba6f3"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewhierarchy/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d3d6233dad844bb913b2bb229935318e99e417435b53306d0b20d4f72ae4827f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewmetric/index.defs",
+              "via": "stor",
+              "sha256": "sha256:db81a801be9fefc5debc5eca4984aafd56e527734b3b0235ed644fb6c6d51cbb"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewtable/index.defs",
+              "via": "stor",
+              "sha256": "sha256:c63469f28e5e81594f34672f8959fba283b99c9869c60e3def070091642e70c9"
+            },
+            {
+              "role": "inventory",
+              "reference": "/_102040_/l2/molecules/skill",
+              "via": "stor",
+              "sha256": "sha256:31bca4b224e7602ba3c79feae49b917b40619b1ed547b8431284f1f712974e76"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupEnterDateTime/usage",
+              "via": "stor",
+              "sha256": "sha256:fb8791c26c8fb8e42cfde8d236e5d5ed78f84014117039443c658c8b8fd55b1c"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupNotifyUser/usage",
+              "via": "stor",
+              "sha256": "sha256:cd28451580a3c836dd0994a1db0f52073e5d3a86b3d473c0996a0227d18fc149"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupSelectOne/usage",
+              "via": "stor",
+              "sha256": "sha256:2cf0a8f67a5b1015d98095c02800e71906141a6c2df28a780bb097d92fc56948"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupTriggerAction/usage",
+              "via": "stor",
+              "sha256": "sha256:02c55363ce18fdc7e876148e9c37350c7b6d2fb93b625ac4c174a21b165810ac"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewCard/usage",
+              "via": "stor",
+              "sha256": "sha256:6008119a716515f041d6c1ca0808f00a16170bf2dfcd8f23cf11d788c1bd8764"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewData/usage",
+              "via": "stor",
+              "sha256": "sha256:919a6f6cba43af94b8d8e900ea45166f921f69fd969877d3a7a50e9917bfb5a2"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewTable/usage",
+              "via": "stor",
+              "sha256": "sha256:5343bc86a9d33451e81cd90dbd783c2216a27e161e5ee38b9d6255829bfc2a64"
+            }
+          ]
+        },
+        {
+          "pageId": "dados_profissional",
+          "outcome": "catalog-selection",
+          "code": "D2_MOLECULE_SELECTION",
+          "selectedGroupIds": [
+            "groupViewData",
+            "groupShowProgress",
+            "groupNotifyUser",
+            "groupEnterText",
+            "groupEnterBoolean",
+            "groupTriggerAction"
+          ],
+          "groupCount": 31,
+          "candidateCount": 198,
+          "discoveryHash": "sha256:6c5f142b3555e8362116eed80227bd568e4e91f72665a690b223d5b519dadfd1",
+          "contextHash": "sha256:8a333ae2a25069d4bdaf06f7fc91a4d5522ec240c3beb0dae28aa18837a171ed",
+          "sources": [
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterboolean/index.defs",
+              "via": "stor",
+              "sha256": "sha256:6015c7f4b1b09a9e0111388a6a19b58a34fdbbbb96d3cd769e6afd2684d54188"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdate/index.defs",
+              "via": "stor",
+              "sha256": "sha256:67a4488db2fe33adb92bacf235dc827a90a1c90ca3ed637ea9548d1c373bc0a4"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdateinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:131ae1b61ab958bb6e30a40b3fa41b6067662de905f7f0bce5ee9c86f429a44e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:2ba95b71fec77f2f7ee120e37d41d2a11a6672423a7a0a924112d5cf90a717dd"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3ba0c4a5e86fb155e939dffe8dd6eb4d51ba6dab64634391bbfb3d711fcde9d7"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentermoney/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4215f6a85d293204c4d4e4b801473ea599139df521bdbaeddff50177d88daf9a"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumber/index.defs",
+              "via": "stor",
+              "sha256": "sha256:94a52c28ec828918c77800447f098381bc32de7e922344d8f4ec68924211cc62"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumberinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3d1d6f6b72bf27dde9fc3c7d270b00ad7a8977bca56dd58f1fe3669fcfc6161e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertext/index.defs",
+              "via": "stor",
+              "sha256": "sha256:089c8921c9d583031b2f96aedf143e414381aa723b3157ae66e0c30687de53c8"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:ff7f0b4b7321a73827308e858f13897062a01712328ab1e8451d920fe20ec0fe"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:bd3a25a8d165a2241c898a77e1b6926c032f670d6e4679a0d75a03cf2efe4f88"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupexpandcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:102e038150a1245862c6f2f1546287badc66fa809e14d8841ee05502f6119b67"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouplocateposition/index.defs",
+              "via": "stor",
+              "sha256": "sha256:728f4331d0f0c7588d2053091a8a2f3c7ba000b6aceb17cd8143da6a878e7c99"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesection/index.defs",
+              "via": "stor",
+              "sha256": "sha256:f1e64a73229d5cc04c2e3db59b4bbae20ce8a36f704d870740b5679e89e05585"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesteps/index.defs",
+              "via": "stor",
+              "sha256": "sha256:b2a882c1bdd6e717eb39ce9d3e0f7212ac08ff941b662957cd5444f48859731c"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnotifyuser/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d6045d25ede4c750e8e83a688aa7ab8522974310c3d6c8c8c561cc431c7b1d51"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupplaymedia/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8b2659d48d8b0d5e5d24a8a45e2c7fb8cf880a2e171fa0edf3dcdcba1f7ee768"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouprateitem/index.defs",
+              "via": "stor",
+              "sha256": "sha256:80953828e94685dfc8945ef99a910dcea40ea3e42b8e02e331ee269cb1db9c12"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupscancode/index.defs",
+              "via": "stor",
+              "sha256": "sha256:1d5565a899128034c5c77d3a559168678570a435d76aad7ffc2c6fdf5b67a85f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupsearchcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4458436e93cf3d9d2ee59d0b9d1e27cbfd4b8c93c5c46f7f877f9eedef966867"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectfileforupload/index.defs",
+              "via": "stor",
+              "sha256": "sha256:a459a34dc220a56620dea8331228064a4551f17380f3bf8afba7f1144cd85a43"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectmany/index.defs",
+              "via": "stor",
+              "sha256": "sha256:69c925441df1e1f12af0d5dea129e59de9435f58815993e22288945c3159f92f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectone/index.defs",
+              "via": "stor",
+              "sha256": "sha256:20b935861b3c60bddb4b2d6890d5189988430900c74338e5b58f2f2243273a5e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupshowprogress/index.defs",
+              "via": "stor",
+              "sha256": "sha256:7b5a4118bf3f85a2f200d83b81c9d282d25d27432ef2980a443d4f9c46460acc"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouptriggeraction/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8a650a22d598e2b7333c52173b8ed3948b19ed67e2667abd3a017646afd34ede"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewcard/index.defs",
+              "via": "stor",
+              "sha256": "sha256:35d078f5a9a2465ef80397b2aac9410dd7a638fd71240c8de6c152765ad299a6"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewchart/index.defs",
+              "via": "stor",
+              "sha256": "sha256:cd4629d8ead7b0172e9f9692f2f2d464c00c866c32235c4f7f50728210823d69"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewdata/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4d535828bb7c613334d5ac3ce318888c9dca2fb6bc6fe61befa374e0f7eba6f3"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewhierarchy/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d3d6233dad844bb913b2bb229935318e99e417435b53306d0b20d4f72ae4827f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewmetric/index.defs",
+              "via": "stor",
+              "sha256": "sha256:db81a801be9fefc5debc5eca4984aafd56e527734b3b0235ed644fb6c6d51cbb"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewtable/index.defs",
+              "via": "stor",
+              "sha256": "sha256:c63469f28e5e81594f34672f8959fba283b99c9869c60e3def070091642e70c9"
+            },
+            {
+              "role": "inventory",
+              "reference": "/_102040_/l2/molecules/skill",
+              "via": "stor",
+              "sha256": "sha256:31bca4b224e7602ba3c79feae49b917b40619b1ed547b8431284f1f712974e76"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupEnterBoolean/usage",
+              "via": "stor",
+              "sha256": "sha256:16795bcd7ea3863d4df5578d8aa4048b828dc6a3e4b9bfe8b05e0fc89ab0fb72"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupEnterText/usage",
+              "via": "stor",
+              "sha256": "sha256:c57e495141b51f81e60a306db0db72d02cfbf54a44411a6c058c0eba991721fe"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupNotifyUser/usage",
+              "via": "stor",
+              "sha256": "sha256:cd28451580a3c836dd0994a1db0f52073e5d3a86b3d473c0996a0227d18fc149"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupShowProgress/usage",
+              "via": "stor",
+              "sha256": "sha256:e7f8a57a452ee5a96e6e771b707655d3a1186e7d988f5d8b609d54144ca4e24d"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupTriggerAction/usage",
+              "via": "stor",
+              "sha256": "sha256:02c55363ce18fdc7e876148e9c37350c7b6d2fb93b625ac4c174a21b165810ac"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewData/usage",
+              "via": "stor",
+              "sha256": "sha256:919a6f6cba43af94b8d8e900ea45166f921f69fd969877d3a7a50e9917bfb5a2"
+            }
+          ]
+        },
+        {
+          "pageId": "dados_recepcionista",
+          "outcome": "catalog-selection",
+          "code": "D2_MOLECULE_SELECTION",
+          "selectedGroupIds": [
+            "groupViewData",
+            "groupEnterText",
+            "groupEnterBoolean",
+            "groupTriggerAction"
+          ],
+          "groupCount": 31,
+          "candidateCount": 198,
+          "discoveryHash": "sha256:6c5f142b3555e8362116eed80227bd568e4e91f72665a690b223d5b519dadfd1",
+          "contextHash": "sha256:326edc09397b0d54e5772a4685dea508549031538268422b88e09e9700515f6f",
+          "sources": [
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterboolean/index.defs",
+              "via": "stor",
+              "sha256": "sha256:6015c7f4b1b09a9e0111388a6a19b58a34fdbbbb96d3cd769e6afd2684d54188"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdate/index.defs",
+              "via": "stor",
+              "sha256": "sha256:67a4488db2fe33adb92bacf235dc827a90a1c90ca3ed637ea9548d1c373bc0a4"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdateinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:131ae1b61ab958bb6e30a40b3fa41b6067662de905f7f0bce5ee9c86f429a44e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:2ba95b71fec77f2f7ee120e37d41d2a11a6672423a7a0a924112d5cf90a717dd"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3ba0c4a5e86fb155e939dffe8dd6eb4d51ba6dab64634391bbfb3d711fcde9d7"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentermoney/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4215f6a85d293204c4d4e4b801473ea599139df521bdbaeddff50177d88daf9a"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumber/index.defs",
+              "via": "stor",
+              "sha256": "sha256:94a52c28ec828918c77800447f098381bc32de7e922344d8f4ec68924211cc62"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumberinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3d1d6f6b72bf27dde9fc3c7d270b00ad7a8977bca56dd58f1fe3669fcfc6161e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertext/index.defs",
+              "via": "stor",
+              "sha256": "sha256:089c8921c9d583031b2f96aedf143e414381aa723b3157ae66e0c30687de53c8"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:ff7f0b4b7321a73827308e858f13897062a01712328ab1e8451d920fe20ec0fe"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:bd3a25a8d165a2241c898a77e1b6926c032f670d6e4679a0d75a03cf2efe4f88"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupexpandcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:102e038150a1245862c6f2f1546287badc66fa809e14d8841ee05502f6119b67"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouplocateposition/index.defs",
+              "via": "stor",
+              "sha256": "sha256:728f4331d0f0c7588d2053091a8a2f3c7ba000b6aceb17cd8143da6a878e7c99"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesection/index.defs",
+              "via": "stor",
+              "sha256": "sha256:f1e64a73229d5cc04c2e3db59b4bbae20ce8a36f704d870740b5679e89e05585"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesteps/index.defs",
+              "via": "stor",
+              "sha256": "sha256:b2a882c1bdd6e717eb39ce9d3e0f7212ac08ff941b662957cd5444f48859731c"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnotifyuser/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d6045d25ede4c750e8e83a688aa7ab8522974310c3d6c8c8c561cc431c7b1d51"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupplaymedia/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8b2659d48d8b0d5e5d24a8a45e2c7fb8cf880a2e171fa0edf3dcdcba1f7ee768"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouprateitem/index.defs",
+              "via": "stor",
+              "sha256": "sha256:80953828e94685dfc8945ef99a910dcea40ea3e42b8e02e331ee269cb1db9c12"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupscancode/index.defs",
+              "via": "stor",
+              "sha256": "sha256:1d5565a899128034c5c77d3a559168678570a435d76aad7ffc2c6fdf5b67a85f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupsearchcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4458436e93cf3d9d2ee59d0b9d1e27cbfd4b8c93c5c46f7f877f9eedef966867"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectfileforupload/index.defs",
+              "via": "stor",
+              "sha256": "sha256:a459a34dc220a56620dea8331228064a4551f17380f3bf8afba7f1144cd85a43"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectmany/index.defs",
+              "via": "stor",
+              "sha256": "sha256:69c925441df1e1f12af0d5dea129e59de9435f58815993e22288945c3159f92f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectone/index.defs",
+              "via": "stor",
+              "sha256": "sha256:20b935861b3c60bddb4b2d6890d5189988430900c74338e5b58f2f2243273a5e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupshowprogress/index.defs",
+              "via": "stor",
+              "sha256": "sha256:7b5a4118bf3f85a2f200d83b81c9d282d25d27432ef2980a443d4f9c46460acc"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouptriggeraction/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8a650a22d598e2b7333c52173b8ed3948b19ed67e2667abd3a017646afd34ede"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewcard/index.defs",
+              "via": "stor",
+              "sha256": "sha256:35d078f5a9a2465ef80397b2aac9410dd7a638fd71240c8de6c152765ad299a6"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewchart/index.defs",
+              "via": "stor",
+              "sha256": "sha256:cd4629d8ead7b0172e9f9692f2f2d464c00c866c32235c4f7f50728210823d69"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewdata/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4d535828bb7c613334d5ac3ce318888c9dca2fb6bc6fe61befa374e0f7eba6f3"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewhierarchy/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d3d6233dad844bb913b2bb229935318e99e417435b53306d0b20d4f72ae4827f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewmetric/index.defs",
+              "via": "stor",
+              "sha256": "sha256:db81a801be9fefc5debc5eca4984aafd56e527734b3b0235ed644fb6c6d51cbb"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewtable/index.defs",
+              "via": "stor",
+              "sha256": "sha256:c63469f28e5e81594f34672f8959fba283b99c9869c60e3def070091642e70c9"
+            },
+            {
+              "role": "inventory",
+              "reference": "/_102040_/l2/molecules/skill",
+              "via": "stor",
+              "sha256": "sha256:31bca4b224e7602ba3c79feae49b917b40619b1ed547b8431284f1f712974e76"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupEnterBoolean/usage",
+              "via": "stor",
+              "sha256": "sha256:16795bcd7ea3863d4df5578d8aa4048b828dc6a3e4b9bfe8b05e0fc89ab0fb72"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupEnterText/usage",
+              "via": "stor",
+              "sha256": "sha256:c57e495141b51f81e60a306db0db72d02cfbf54a44411a6c058c0eba991721fe"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupTriggerAction/usage",
+              "via": "stor",
+              "sha256": "sha256:02c55363ce18fdc7e876148e9c37350c7b6d2fb93b625ac4c174a21b165810ac"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewData/usage",
+              "via": "stor",
+              "sha256": "sha256:919a6f6cba43af94b8d8e900ea45166f921f69fd969877d3a7a50e9917bfb5a2"
+            }
+          ]
+        },
+        {
+          "pageId": "pacientes",
+          "outcome": "catalog-selection",
+          "code": "D2_MOLECULE_SELECTION",
+          "selectedGroupIds": [
+            "groupSearchContent",
+            "groupViewData",
+            "groupEnterText",
+            "groupTriggerAction",
+            "groupShowProgress",
+            "groupNotifyUser"
+          ],
+          "groupCount": 31,
+          "candidateCount": 198,
+          "discoveryHash": "sha256:6c5f142b3555e8362116eed80227bd568e4e91f72665a690b223d5b519dadfd1",
+          "contextHash": "sha256:fda7ffa919c943abcfb4a2dac91ea8f7004faafb121d1dbbe1b7ff6c942f8911",
+          "sources": [
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterboolean/index.defs",
+              "via": "stor",
+              "sha256": "sha256:6015c7f4b1b09a9e0111388a6a19b58a34fdbbbb96d3cd769e6afd2684d54188"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdate/index.defs",
+              "via": "stor",
+              "sha256": "sha256:67a4488db2fe33adb92bacf235dc827a90a1c90ca3ed637ea9548d1c373bc0a4"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdateinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:131ae1b61ab958bb6e30a40b3fa41b6067662de905f7f0bce5ee9c86f429a44e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:2ba95b71fec77f2f7ee120e37d41d2a11a6672423a7a0a924112d5cf90a717dd"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3ba0c4a5e86fb155e939dffe8dd6eb4d51ba6dab64634391bbfb3d711fcde9d7"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentermoney/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4215f6a85d293204c4d4e4b801473ea599139df521bdbaeddff50177d88daf9a"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumber/index.defs",
+              "via": "stor",
+              "sha256": "sha256:94a52c28ec828918c77800447f098381bc32de7e922344d8f4ec68924211cc62"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumberinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3d1d6f6b72bf27dde9fc3c7d270b00ad7a8977bca56dd58f1fe3669fcfc6161e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertext/index.defs",
+              "via": "stor",
+              "sha256": "sha256:089c8921c9d583031b2f96aedf143e414381aa723b3157ae66e0c30687de53c8"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:ff7f0b4b7321a73827308e858f13897062a01712328ab1e8451d920fe20ec0fe"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:bd3a25a8d165a2241c898a77e1b6926c032f670d6e4679a0d75a03cf2efe4f88"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupexpandcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:102e038150a1245862c6f2f1546287badc66fa809e14d8841ee05502f6119b67"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouplocateposition/index.defs",
+              "via": "stor",
+              "sha256": "sha256:728f4331d0f0c7588d2053091a8a2f3c7ba000b6aceb17cd8143da6a878e7c99"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesection/index.defs",
+              "via": "stor",
+              "sha256": "sha256:f1e64a73229d5cc04c2e3db59b4bbae20ce8a36f704d870740b5679e89e05585"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesteps/index.defs",
+              "via": "stor",
+              "sha256": "sha256:b2a882c1bdd6e717eb39ce9d3e0f7212ac08ff941b662957cd5444f48859731c"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnotifyuser/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d6045d25ede4c750e8e83a688aa7ab8522974310c3d6c8c8c561cc431c7b1d51"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupplaymedia/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8b2659d48d8b0d5e5d24a8a45e2c7fb8cf880a2e171fa0edf3dcdcba1f7ee768"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouprateitem/index.defs",
+              "via": "stor",
+              "sha256": "sha256:80953828e94685dfc8945ef99a910dcea40ea3e42b8e02e331ee269cb1db9c12"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupscancode/index.defs",
+              "via": "stor",
+              "sha256": "sha256:1d5565a899128034c5c77d3a559168678570a435d76aad7ffc2c6fdf5b67a85f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupsearchcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4458436e93cf3d9d2ee59d0b9d1e27cbfd4b8c93c5c46f7f877f9eedef966867"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectfileforupload/index.defs",
+              "via": "stor",
+              "sha256": "sha256:a459a34dc220a56620dea8331228064a4551f17380f3bf8afba7f1144cd85a43"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectmany/index.defs",
+              "via": "stor",
+              "sha256": "sha256:69c925441df1e1f12af0d5dea129e59de9435f58815993e22288945c3159f92f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectone/index.defs",
+              "via": "stor",
+              "sha256": "sha256:20b935861b3c60bddb4b2d6890d5189988430900c74338e5b58f2f2243273a5e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupshowprogress/index.defs",
+              "via": "stor",
+              "sha256": "sha256:7b5a4118bf3f85a2f200d83b81c9d282d25d27432ef2980a443d4f9c46460acc"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouptriggeraction/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8a650a22d598e2b7333c52173b8ed3948b19ed67e2667abd3a017646afd34ede"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewcard/index.defs",
+              "via": "stor",
+              "sha256": "sha256:35d078f5a9a2465ef80397b2aac9410dd7a638fd71240c8de6c152765ad299a6"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewchart/index.defs",
+              "via": "stor",
+              "sha256": "sha256:cd4629d8ead7b0172e9f9692f2f2d464c00c866c32235c4f7f50728210823d69"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewdata/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4d535828bb7c613334d5ac3ce318888c9dca2fb6bc6fe61befa374e0f7eba6f3"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewhierarchy/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d3d6233dad844bb913b2bb229935318e99e417435b53306d0b20d4f72ae4827f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewmetric/index.defs",
+              "via": "stor",
+              "sha256": "sha256:db81a801be9fefc5debc5eca4984aafd56e527734b3b0235ed644fb6c6d51cbb"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewtable/index.defs",
+              "via": "stor",
+              "sha256": "sha256:c63469f28e5e81594f34672f8959fba283b99c9869c60e3def070091642e70c9"
+            },
+            {
+              "role": "inventory",
+              "reference": "/_102040_/l2/molecules/skill",
+              "via": "stor",
+              "sha256": "sha256:31bca4b224e7602ba3c79feae49b917b40619b1ed547b8431284f1f712974e76"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupEnterText/usage",
+              "via": "stor",
+              "sha256": "sha256:c57e495141b51f81e60a306db0db72d02cfbf54a44411a6c058c0eba991721fe"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupNotifyUser/usage",
+              "via": "stor",
+              "sha256": "sha256:cd28451580a3c836dd0994a1db0f52073e5d3a86b3d473c0996a0227d18fc149"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupSearchContent/usage",
+              "via": "stor",
+              "sha256": "sha256:6dafdc4539efe51f4d97f1f7f7e571cd6d35adebc0b3d3f7bca75656bffcf7a1"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupShowProgress/usage",
+              "via": "stor",
+              "sha256": "sha256:e7f8a57a452ee5a96e6e771b707655d3a1186e7d988f5d8b609d54144ca4e24d"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupTriggerAction/usage",
+              "via": "stor",
+              "sha256": "sha256:02c55363ce18fdc7e876148e9c37350c7b6d2fb93b625ac4c174a21b165810ac"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewData/usage",
+              "via": "stor",
+              "sha256": "sha256:919a6f6cba43af94b8d8e900ea45166f921f69fd969877d3a7a50e9917bfb5a2"
+            }
+          ]
+        },
+        {
+          "pageId": "profissionais",
+          "outcome": "catalog-selection",
+          "code": "D2_MOLECULE_SELECTION",
+          "selectedGroupIds": [
+            "groupEnterText",
+            "groupViewData",
+            "groupViewCard"
+          ],
+          "groupCount": 31,
+          "candidateCount": 198,
+          "discoveryHash": "sha256:6c5f142b3555e8362116eed80227bd568e4e91f72665a690b223d5b519dadfd1",
+          "contextHash": "sha256:7adc46ab0537171561c9aa1df178c9af4079461447c515c75f8273d87654252f",
+          "sources": [
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterboolean/index.defs",
+              "via": "stor",
+              "sha256": "sha256:6015c7f4b1b09a9e0111388a6a19b58a34fdbbbb96d3cd769e6afd2684d54188"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdate/index.defs",
+              "via": "stor",
+              "sha256": "sha256:67a4488db2fe33adb92bacf235dc827a90a1c90ca3ed637ea9548d1c373bc0a4"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdateinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:131ae1b61ab958bb6e30a40b3fa41b6067662de905f7f0bce5ee9c86f429a44e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:2ba95b71fec77f2f7ee120e37d41d2a11a6672423a7a0a924112d5cf90a717dd"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenterdatetimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3ba0c4a5e86fb155e939dffe8dd6eb4d51ba6dab64634391bbfb3d711fcde9d7"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentermoney/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4215f6a85d293204c4d4e4b801473ea599139df521bdbaeddff50177d88daf9a"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumber/index.defs",
+              "via": "stor",
+              "sha256": "sha256:94a52c28ec828918c77800447f098381bc32de7e922344d8f4ec68924211cc62"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupenternumberinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:3d1d6f6b72bf27dde9fc3c7d270b00ad7a8977bca56dd58f1fe3669fcfc6161e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertext/index.defs",
+              "via": "stor",
+              "sha256": "sha256:089c8921c9d583031b2f96aedf143e414381aa723b3157ae66e0c30687de53c8"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertime/index.defs",
+              "via": "stor",
+              "sha256": "sha256:ff7f0b4b7321a73827308e858f13897062a01712328ab1e8451d920fe20ec0fe"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupentertimeinterval/index.defs",
+              "via": "stor",
+              "sha256": "sha256:bd3a25a8d165a2241c898a77e1b6926c032f670d6e4679a0d75a03cf2efe4f88"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupexpandcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:102e038150a1245862c6f2f1546287badc66fa809e14d8841ee05502f6119b67"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouplocateposition/index.defs",
+              "via": "stor",
+              "sha256": "sha256:728f4331d0f0c7588d2053091a8a2f3c7ba000b6aceb17cd8143da6a878e7c99"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesection/index.defs",
+              "via": "stor",
+              "sha256": "sha256:f1e64a73229d5cc04c2e3db59b4bbae20ce8a36f704d870740b5679e89e05585"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnavigatesteps/index.defs",
+              "via": "stor",
+              "sha256": "sha256:b2a882c1bdd6e717eb39ce9d3e0f7212ac08ff941b662957cd5444f48859731c"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupnotifyuser/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d6045d25ede4c750e8e83a688aa7ab8522974310c3d6c8c8c561cc431c7b1d51"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupplaymedia/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8b2659d48d8b0d5e5d24a8a45e2c7fb8cf880a2e171fa0edf3dcdcba1f7ee768"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouprateitem/index.defs",
+              "via": "stor",
+              "sha256": "sha256:80953828e94685dfc8945ef99a910dcea40ea3e42b8e02e331ee269cb1db9c12"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupscancode/index.defs",
+              "via": "stor",
+              "sha256": "sha256:1d5565a899128034c5c77d3a559168678570a435d76aad7ffc2c6fdf5b67a85f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupsearchcontent/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4458436e93cf3d9d2ee59d0b9d1e27cbfd4b8c93c5c46f7f877f9eedef966867"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectfileforupload/index.defs",
+              "via": "stor",
+              "sha256": "sha256:a459a34dc220a56620dea8331228064a4551f17380f3bf8afba7f1144cd85a43"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectmany/index.defs",
+              "via": "stor",
+              "sha256": "sha256:69c925441df1e1f12af0d5dea129e59de9435f58815993e22288945c3159f92f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupselectone/index.defs",
+              "via": "stor",
+              "sha256": "sha256:20b935861b3c60bddb4b2d6890d5189988430900c74338e5b58f2f2243273a5e"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupshowprogress/index.defs",
+              "via": "stor",
+              "sha256": "sha256:7b5a4118bf3f85a2f200d83b81c9d282d25d27432ef2980a443d4f9c46460acc"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/grouptriggeraction/index.defs",
+              "via": "stor",
+              "sha256": "sha256:8a650a22d598e2b7333c52173b8ed3948b19ed67e2667abd3a017646afd34ede"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewcard/index.defs",
+              "via": "stor",
+              "sha256": "sha256:35d078f5a9a2465ef80397b2aac9410dd7a638fd71240c8de6c152765ad299a6"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewchart/index.defs",
+              "via": "stor",
+              "sha256": "sha256:cd4629d8ead7b0172e9f9692f2f2d464c00c866c32235c4f7f50728210823d69"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewdata/index.defs",
+              "via": "stor",
+              "sha256": "sha256:4d535828bb7c613334d5ac3ce318888c9dca2fb6bc6fe61befa374e0f7eba6f3"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewhierarchy/index.defs",
+              "via": "stor",
+              "sha256": "sha256:d3d6233dad844bb913b2bb229935318e99e417435b53306d0b20d4f72ae4827f"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewmetric/index.defs",
+              "via": "stor",
+              "sha256": "sha256:db81a801be9fefc5debc5eca4984aafd56e527734b3b0235ed644fb6c6d51cbb"
+            },
+            {
+              "role": "group-index",
+              "reference": "/_102040_/l2/molecules/groupviewtable/index.defs",
+              "via": "stor",
+              "sha256": "sha256:c63469f28e5e81594f34672f8959fba283b99c9869c60e3def070091642e70c9"
+            },
+            {
+              "role": "inventory",
+              "reference": "/_102040_/l2/molecules/skill",
+              "via": "stor",
+              "sha256": "sha256:31bca4b224e7602ba3c79feae49b917b40619b1ed547b8431284f1f712974e76"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupEnterText/usage",
+              "via": "stor",
+              "sha256": "sha256:c57e495141b51f81e60a306db0db72d02cfbf54a44411a6c058c0eba991721fe"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewCard/usage",
+              "via": "stor",
+              "sha256": "sha256:6008119a716515f041d6c1ca0808f00a16170bf2dfcd8f23cf11d788c1bd8764"
+            },
+            {
+              "role": "usage-contract",
+              "reference": "/_102020_/l2/aura/molecules/skills/groupViewData/usage",
+              "via": "stor",
+              "sha256": "sha256:919a6f6cba43af94b8d8e900ea45166f921f69fd969877d3a7a50e9917bfb5a2"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "receipts": {
+    "sharedSchema": "2026-09-23-agent-defs-l2-shared-v2",
+    "pagesSchema": "2026-09-23-agent-defs-l2-pages-v6",
+    "sharedUnits": 6,
+    "pageUnits": 6
+  },
+  "finalReport": {
+    "status": "complete",
+    "pending": [],
+    "snapshotHash": "sha256:dc381e789e50b210394250fff14729a842be0a1e72ad4b4fe1c4069c052521ce",
+    "artifactPaths": 24
+  },
+  "l1Preserved": true,
+  "examples": {
+    "shared": [
+      {
+        "pageId": "consultas_recepcionista",
+        "item": {
+          "id": "consultas_recepcionista__l2_shared",
+          "type": "l2_shared",
+          "defPath": "l2/agendaClinica/web/shared/consultas_recepcionista.defs.ts",
+          "outputPath": "l2/agendaClinica/web/shared/consultas_recepcionista.ts",
+          "dependsFiles": [
+            "l2/agendaClinica/web/contracts/consultas_recepcionista.defs.ts",
+            "_102029_.d.ts"
+          ],
+          "dependsOn": [],
+          "skills": [
+            "_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts"
+          ]
+        },
+        "definitionSummary": {
+          "states": 52,
+          "actions": 38,
+          "scenaries": 4
+        },
+        "consumer": {
+          "skillHash": "b145f1114a148bbdc3a0b5f62a845586691306479cfcc0a6464a8dff1c3973dd",
+          "runtimeContext": [
+            {
+              "reference": "_102029_/l2/stateLitElement.ts",
+              "sha256": "e15dec79dc81ebf74edb73c852ee2722f198b6d50670293c50f19036d89b20e3",
+              "bytes": 6092
+            },
+            {
+              "reference": "_102029_/l2/collabLitElement.ts",
+              "sha256": "6541fb9f7f9c6e1942dac686f8ffd8a9b8a787c35140de37213d60bb4ad841a8",
+              "bytes": 1849
+            },
+            {
+              "reference": "_102029_/l2/bffClient.ts",
+              "sha256": "326d67248b1489c4bea082530a4503d32bcb65449f25ba6378e60044206502b0",
+              "bytes": 11604
+            },
+            {
+              "reference": "_102029_/l2/collabState.ts",
+              "sha256": "502f35ad62648c4a2be695d5b1be02c09b8ed349129f4f45d111b84f54d3997e",
+              "bytes": 14706
+            },
+            {
+              "reference": "_102029_/l2/interactionRuntime.ts",
+              "sha256": "176af97fb9350d48bab4a5944a6b88fb58fdb0b0f4d953b23b3686d9b3a9b03e",
+              "bytes": 7993
+            }
+          ]
+        }
+      },
+      {
+        "pageId": "pacientes",
+        "item": {
+          "id": "pacientes__l2_shared",
+          "type": "l2_shared",
+          "defPath": "l2/agendaClinica/web/shared/pacientes.defs.ts",
+          "outputPath": "l2/agendaClinica/web/shared/pacientes.ts",
+          "dependsFiles": [
+            "l2/agendaClinica/web/contracts/pacientes.defs.ts",
+            "_102029_.d.ts"
+          ],
+          "dependsOn": [],
+          "skills": [
+            "_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts"
+          ]
+        },
+        "definitionSummary": {
+          "states": 56,
+          "actions": 44,
+          "scenaries": 5
+        },
+        "consumer": {
+          "skillHash": "b145f1114a148bbdc3a0b5f62a845586691306479cfcc0a6464a8dff1c3973dd",
+          "runtimeContext": [
+            {
+              "reference": "_102029_/l2/stateLitElement.ts",
+              "sha256": "e15dec79dc81ebf74edb73c852ee2722f198b6d50670293c50f19036d89b20e3",
+              "bytes": 6092
+            },
+            {
+              "reference": "_102029_/l2/collabLitElement.ts",
+              "sha256": "6541fb9f7f9c6e1942dac686f8ffd8a9b8a787c35140de37213d60bb4ad841a8",
+              "bytes": 1849
+            },
+            {
+              "reference": "_102029_/l2/bffClient.ts",
+              "sha256": "326d67248b1489c4bea082530a4503d32bcb65449f25ba6378e60044206502b0",
+              "bytes": 11604
+            },
+            {
+              "reference": "_102029_/l2/collabState.ts",
+              "sha256": "502f35ad62648c4a2be695d5b1be02c09b8ed349129f4f45d111b84f54d3997e",
+              "bytes": 14706
+            },
+            {
+              "reference": "_102029_/l2/interactionRuntime.ts",
+              "sha256": "176af97fb9350d48bab4a5944a6b88fb58fdb0b0f4d953b23b3686d9b3a9b03e",
+              "bytes": 7993
+            }
+          ]
+        }
+      }
+    ],
+    "pages": [
+      {
+        "pageId": "pacientes",
+        "device": "desktop",
+        "item": {
+          "id": "pacientes__desktop__page11",
+          "type": "l2_page",
+          "defPath": "l2/agendaClinica/web/desktop/page11/pacientes.defs.ts",
+          "outputPath": "l2/agendaClinica/web/desktop/page11/pacientes.ts",
+          "dependsFiles": [
+            "l2/agendaClinica/web/shared/pacientes.ts",
+            "l2/designSystem.ts"
+          ],
+          "dependsOn": [
+            "pacientes__l2_shared"
+          ],
+          "categoryRef": "masterDataManagement",
+          "skills": [
+            "_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+            "_102020_/l2/agentDefsL2/skills/pageCategories/masterDataManagement.md",
+            "_102040_/l2/molecules/groupsearchcontent/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupSearchContent/usage.ts",
+            "_102040_/l2/molecules/groupviewdata/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupViewData/usage.ts",
+            "_102040_/l2/molecules/groupentertext/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+            "_102040_/l2/molecules/grouptriggeraction/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupTriggerAction/usage.ts",
+            "_102040_/l2/molecules/groupshowprogress/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupShowProgress/usage.ts",
+            "_102040_/l2/molecules/groupnotifyuser/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts"
+          ]
+        },
+        "descriptions": 4,
+        "recommendations": 11,
+        "consumer": {
+          "designSystem": {
+            "sha256": "6bf2135bac15c461924a8f0c6f408a99258d0cfc268be3b44d92e9b17fa72632",
+            "bytes": 41546,
+            "tokenCount": 215
+          },
+          "skills": [
+            {
+              "reference": "_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+              "sha256": "756ce0d5a6e991e1ee2a5d00decde1a8202ed59829535ce51a4d02340c817feb",
+              "bytes": 2236
+            },
+            {
+              "reference": "_102020_/l2/agentDefsL2/skills/pageCategories/masterDataManagement.md",
+              "sha256": "bbad1f33d53032c8f7665f5f26dd90419635f26aa5649f500c202a93434c7aa8",
+              "bytes": 299
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupsearchcontent/index.defs.ts",
+              "sha256": "20cbe68f6548f9e4d34c419441ae362b31469873860ed9bf6115c22029ea1d34",
+              "bytes": 4663
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupSearchContent/usage.ts",
+              "sha256": "f13c7afad0d9558296da16e56bd8b948d91df384337f3a5f0cd3a9fbe4f64d25",
+              "bytes": 4039
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupviewdata/index.defs.ts",
+              "sha256": "2d42f8714cee50226ed0ed787b48ba2aea34c9331d7571c25c90fb9c29326409",
+              "bytes": 4941
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupViewData/usage.ts",
+              "sha256": "df8289403106d49531760a9bf13b2abb553543b373e9a175f387df3ddeae7b74",
+              "bytes": 5963
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupentertext/index.defs.ts",
+              "sha256": "29c3c075180ca2c3b007447c05507486e6261481c43a4df33541601ac89e5b73",
+              "bytes": 6975
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+              "sha256": "826c440a66a3d5ea952f58a9ea5f86d95d96d65709a606535c905861d616ca03",
+              "bytes": 4504
+            },
+            {
+              "reference": "_102040_/l2/molecules/grouptriggeraction/index.defs.ts",
+              "sha256": "a42585cfd1ab3030a759b6a77b09fcc42320d4ea163903b0b067cd2b53de2a58",
+              "bytes": 6973
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupTriggerAction/usage.ts",
+              "sha256": "1439ab5aaeffa06d31b2b324cb9f46091b755e80903276eef0264ef3633387a6",
+              "bytes": 3463
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupshowprogress/index.defs.ts",
+              "sha256": "4e46a7772f2eef01f82623d51f86665ad911b2f018af51fa68244c4fc2b598cc",
+              "bytes": 5288
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupShowProgress/usage.ts",
+              "sha256": "4b5bf508cc54e0a6364c5f400733d135c37a6fd743ce251ff2a1c7b723959903",
+              "bytes": 2816
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupnotifyuser/index.defs.ts",
+              "sha256": "975f4a32850b43d85a232b3fcd8d26a919ab0cc29698bd6693fdc01a0214284d",
+              "bytes": 4717
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts",
+              "sha256": "ad088e57f6ef5e41c68460417c05bc870be744665d33b5fac8c87d63f8399664",
+              "bytes": 3868
+            }
+          ]
+        }
+      },
+      {
+        "pageId": "pacientes",
+        "device": "mobile",
+        "item": {
+          "id": "pacientes__mobile__page11",
+          "type": "l2_page",
+          "defPath": "l2/agendaClinica/web/mobile/page11/pacientes.defs.ts",
+          "outputPath": "l2/agendaClinica/web/mobile/page11/pacientes.ts",
+          "dependsFiles": [
+            "l2/agendaClinica/web/shared/pacientes.ts",
+            "l2/designSystem.ts"
+          ],
+          "dependsOn": [
+            "pacientes__l2_shared"
+          ],
+          "categoryRef": "masterDataManagement",
+          "skills": [
+            "_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+            "_102020_/l2/agentDefsL2/skills/pageCategories/masterDataManagement.md",
+            "_102040_/l2/molecules/groupsearchcontent/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupSearchContent/usage.ts",
+            "_102040_/l2/molecules/groupviewdata/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupViewData/usage.ts",
+            "_102040_/l2/molecules/groupentertext/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+            "_102040_/l2/molecules/grouptriggeraction/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupTriggerAction/usage.ts",
+            "_102040_/l2/molecules/groupshowprogress/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupShowProgress/usage.ts",
+            "_102040_/l2/molecules/groupnotifyuser/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts"
+          ]
+        },
+        "descriptions": 4,
+        "recommendations": 11,
+        "consumer": {
+          "designSystem": {
+            "sha256": "6bf2135bac15c461924a8f0c6f408a99258d0cfc268be3b44d92e9b17fa72632",
+            "bytes": 41546,
+            "tokenCount": 215
+          },
+          "skills": [
+            {
+              "reference": "_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+              "sha256": "756ce0d5a6e991e1ee2a5d00decde1a8202ed59829535ce51a4d02340c817feb",
+              "bytes": 2236
+            },
+            {
+              "reference": "_102020_/l2/agentDefsL2/skills/pageCategories/masterDataManagement.md",
+              "sha256": "bbad1f33d53032c8f7665f5f26dd90419635f26aa5649f500c202a93434c7aa8",
+              "bytes": 299
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupsearchcontent/index.defs.ts",
+              "sha256": "20cbe68f6548f9e4d34c419441ae362b31469873860ed9bf6115c22029ea1d34",
+              "bytes": 4663
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupSearchContent/usage.ts",
+              "sha256": "f13c7afad0d9558296da16e56bd8b948d91df384337f3a5f0cd3a9fbe4f64d25",
+              "bytes": 4039
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupviewdata/index.defs.ts",
+              "sha256": "2d42f8714cee50226ed0ed787b48ba2aea34c9331d7571c25c90fb9c29326409",
+              "bytes": 4941
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupViewData/usage.ts",
+              "sha256": "df8289403106d49531760a9bf13b2abb553543b373e9a175f387df3ddeae7b74",
+              "bytes": 5963
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupentertext/index.defs.ts",
+              "sha256": "29c3c075180ca2c3b007447c05507486e6261481c43a4df33541601ac89e5b73",
+              "bytes": 6975
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+              "sha256": "826c440a66a3d5ea952f58a9ea5f86d95d96d65709a606535c905861d616ca03",
+              "bytes": 4504
+            },
+            {
+              "reference": "_102040_/l2/molecules/grouptriggeraction/index.defs.ts",
+              "sha256": "a42585cfd1ab3030a759b6a77b09fcc42320d4ea163903b0b067cd2b53de2a58",
+              "bytes": 6973
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupTriggerAction/usage.ts",
+              "sha256": "1439ab5aaeffa06d31b2b324cb9f46091b755e80903276eef0264ef3633387a6",
+              "bytes": 3463
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupshowprogress/index.defs.ts",
+              "sha256": "4e46a7772f2eef01f82623d51f86665ad911b2f018af51fa68244c4fc2b598cc",
+              "bytes": 5288
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupShowProgress/usage.ts",
+              "sha256": "4b5bf508cc54e0a6364c5f400733d135c37a6fd743ce251ff2a1c7b723959903",
+              "bytes": 2816
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupnotifyuser/index.defs.ts",
+              "sha256": "975f4a32850b43d85a232b3fcd8d26a919ab0cc29698bd6693fdc01a0214284d",
+              "bytes": 4717
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts",
+              "sha256": "ad088e57f6ef5e41c68460417c05bc870be744665d33b5fac8c87d63f8399664",
+              "bytes": 3868
+            }
+          ]
+        }
+      },
+      {
+        "pageId": "consultas_profissional",
+        "device": "desktop",
+        "item": {
+          "id": "consultas_profissional__desktop__page11",
+          "type": "l2_page",
+          "defPath": "l2/agendaClinica/web/desktop/page11/consultas_profissional.defs.ts",
+          "outputPath": "l2/agendaClinica/web/desktop/page11/consultas_profissional.ts",
+          "dependsFiles": [
+            "l2/agendaClinica/web/shared/consultas_profissional.ts",
+            "l2/designSystem.ts"
+          ],
+          "dependsOn": [
+            "consultas_profissional__l2_shared"
+          ],
+          "categoryRef": "calendarScheduling",
+          "skills": [
+            "_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+            "_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md",
+            "_102040_/l2/molecules/groupviewdata/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupViewData/usage.ts",
+            "_102040_/l2/molecules/groupviewcard/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupViewCard/usage.ts",
+            "_102040_/l2/molecules/groupentertext/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+            "_102040_/l2/molecules/grouptriggeraction/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupTriggerAction/usage.ts",
+            "_102040_/l2/molecules/groupnotifyuser/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts"
+          ]
+        },
+        "descriptions": 4,
+        "recommendations": 5,
+        "consumer": {
+          "designSystem": {
+            "sha256": "6bf2135bac15c461924a8f0c6f408a99258d0cfc268be3b44d92e9b17fa72632",
+            "bytes": 41546,
+            "tokenCount": 215
+          },
+          "skills": [
+            {
+              "reference": "_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+              "sha256": "756ce0d5a6e991e1ee2a5d00decde1a8202ed59829535ce51a4d02340c817feb",
+              "bytes": 2236
+            },
+            {
+              "reference": "_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md",
+              "sha256": "faa6253f837f2b45870d738f024855f2e83d17456fcfe4f8368920bd93e3416a",
+              "bytes": 321
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupviewdata/index.defs.ts",
+              "sha256": "2d42f8714cee50226ed0ed787b48ba2aea34c9331d7571c25c90fb9c29326409",
+              "bytes": 4941
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupViewData/usage.ts",
+              "sha256": "df8289403106d49531760a9bf13b2abb553543b373e9a175f387df3ddeae7b74",
+              "bytes": 5963
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupviewcard/index.defs.ts",
+              "sha256": "42da950385c409bd507fbe57e09fdb84dd4a00e4f73e3aceb850f85ff592b078",
+              "bytes": 4683
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupViewCard/usage.ts",
+              "sha256": "14652b2caee13fbe427e84f9f552b2e44f9d8797150e75ee458e67a9c382cef8",
+              "bytes": 2994
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupentertext/index.defs.ts",
+              "sha256": "29c3c075180ca2c3b007447c05507486e6261481c43a4df33541601ac89e5b73",
+              "bytes": 6975
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+              "sha256": "826c440a66a3d5ea952f58a9ea5f86d95d96d65709a606535c905861d616ca03",
+              "bytes": 4504
+            },
+            {
+              "reference": "_102040_/l2/molecules/grouptriggeraction/index.defs.ts",
+              "sha256": "a42585cfd1ab3030a759b6a77b09fcc42320d4ea163903b0b067cd2b53de2a58",
+              "bytes": 6973
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupTriggerAction/usage.ts",
+              "sha256": "1439ab5aaeffa06d31b2b324cb9f46091b755e80903276eef0264ef3633387a6",
+              "bytes": 3463
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupnotifyuser/index.defs.ts",
+              "sha256": "975f4a32850b43d85a232b3fcd8d26a919ab0cc29698bd6693fdc01a0214284d",
+              "bytes": 4717
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts",
+              "sha256": "ad088e57f6ef5e41c68460417c05bc870be744665d33b5fac8c87d63f8399664",
+              "bytes": 3868
+            }
+          ]
+        }
+      },
+      {
+        "pageId": "consultas_profissional",
+        "device": "mobile",
+        "item": {
+          "id": "consultas_profissional__mobile__page11",
+          "type": "l2_page",
+          "defPath": "l2/agendaClinica/web/mobile/page11/consultas_profissional.defs.ts",
+          "outputPath": "l2/agendaClinica/web/mobile/page11/consultas_profissional.ts",
+          "dependsFiles": [
+            "l2/agendaClinica/web/shared/consultas_profissional.ts",
+            "l2/designSystem.ts"
+          ],
+          "dependsOn": [
+            "consultas_profissional__l2_shared"
+          ],
+          "categoryRef": "calendarScheduling",
+          "skills": [
+            "_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+            "_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md",
+            "_102040_/l2/molecules/groupviewdata/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupViewData/usage.ts",
+            "_102040_/l2/molecules/groupviewcard/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupViewCard/usage.ts",
+            "_102040_/l2/molecules/groupentertext/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+            "_102040_/l2/molecules/grouptriggeraction/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupTriggerAction/usage.ts",
+            "_102040_/l2/molecules/groupnotifyuser/index.defs.ts",
+            "_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts"
+          ]
+        },
+        "descriptions": 4,
+        "recommendations": 5,
+        "consumer": {
+          "designSystem": {
+            "sha256": "6bf2135bac15c461924a8f0c6f408a99258d0cfc268be3b44d92e9b17fa72632",
+            "bytes": 41546,
+            "tokenCount": 215
+          },
+          "skills": [
+            {
+              "reference": "_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts",
+              "sha256": "756ce0d5a6e991e1ee2a5d00decde1a8202ed59829535ce51a4d02340c817feb",
+              "bytes": 2236
+            },
+            {
+              "reference": "_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md",
+              "sha256": "faa6253f837f2b45870d738f024855f2e83d17456fcfe4f8368920bd93e3416a",
+              "bytes": 321
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupviewdata/index.defs.ts",
+              "sha256": "2d42f8714cee50226ed0ed787b48ba2aea34c9331d7571c25c90fb9c29326409",
+              "bytes": 4941
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupViewData/usage.ts",
+              "sha256": "df8289403106d49531760a9bf13b2abb553543b373e9a175f387df3ddeae7b74",
+              "bytes": 5963
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupviewcard/index.defs.ts",
+              "sha256": "42da950385c409bd507fbe57e09fdb84dd4a00e4f73e3aceb850f85ff592b078",
+              "bytes": 4683
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupViewCard/usage.ts",
+              "sha256": "14652b2caee13fbe427e84f9f552b2e44f9d8797150e75ee458e67a9c382cef8",
+              "bytes": 2994
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupentertext/index.defs.ts",
+              "sha256": "29c3c075180ca2c3b007447c05507486e6261481c43a4df33541601ac89e5b73",
+              "bytes": 6975
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
+              "sha256": "826c440a66a3d5ea952f58a9ea5f86d95d96d65709a606535c905861d616ca03",
+              "bytes": 4504
+            },
+            {
+              "reference": "_102040_/l2/molecules/grouptriggeraction/index.defs.ts",
+              "sha256": "a42585cfd1ab3030a759b6a77b09fcc42320d4ea163903b0b067cd2b53de2a58",
+              "bytes": 6973
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupTriggerAction/usage.ts",
+              "sha256": "1439ab5aaeffa06d31b2b324cb9f46091b755e80903276eef0264ef3633387a6",
+              "bytes": 3463
+            },
+            {
+              "reference": "_102040_/l2/molecules/groupnotifyuser/index.defs.ts",
+              "sha256": "975f4a32850b43d85a232b3fcd8d26a919ab0cc29698bd6693fdc01a0214284d",
+              "bytes": 4717
+            },
+            {
+              "reference": "_102020_/l2/aura/molecules/skills/groupNotifyUser/usage.ts",
+              "sha256": "ad088e57f6ef5e41c68460417c05bc870be744665d33b5fac8c87d63f8399664",
+              "bytes": 3868
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "noOp": null,
+  "knownPending": [
+    {
+      "id": "attendance-note-requiredness",
+      "description": "L4 requires the attendance note while generated contract/shared may expose it as optional; this is not complete app approval."
+    },
+    {
+      "id": "shared-input-human-decision-review",
+      "description": "Review technical transport inputs separately from human decisions."
+    }
+  ]
+}
