@@ -15,6 +15,7 @@ import {
   buildD2MoleculeCandidateContext,
   assertD2MoleculeCandidates,
   buildD2MoleculeReceipt,
+  assertD2MoleculeReceiptIntegrity,
   D2MoleculeContextError,
   normalizeD2MlsReference,
   resolveD2MoleculeSelection,
@@ -163,6 +164,17 @@ void test('molecular receipt distinguishes honest absence, valid no-match and se
   assert.equal(receipt.catalogProject, 102040);
   assert.equal(receipt.selectedBy, 'dependency');
   assert.ok(receipt.sources.some(source => source.role === 'usage-contract' && source.sha256.startsWith('sha256:')));
+  assert.deepEqual(receipt.discovery, { directDeps: [102040], resolvedDeps: [102040], candidates: [102040] });
+  await assert.doesNotReject(() => assertD2MoleculeReceiptIntegrity(receipt));
+
+  const directDrift = structuredClone(receipt); directDrift.discovery.directDeps.push(102099);
+  await assert.rejects(() => assertD2MoleculeReceiptIntegrity(directDrift), errorCode('D2_MOLECULE_DISCOVERY_HASH'));
+  const resolvedDrift = structuredClone(receipt); resolvedDrift.discovery.resolvedDeps.push(102099);
+  await assert.rejects(() => assertD2MoleculeReceiptIntegrity(resolvedDrift), errorCode('D2_MOLECULE_DISCOVERY_HASH'));
+  const candidateDrift = structuredClone(receipt); candidateDrift.discovery.candidates.push(102099);
+  await assert.rejects(() => assertD2MoleculeReceiptIntegrity(candidateDrift), errorCode('D2_MOLECULE_DISCOVERY_SELECTION'));
+  const contextDrift = structuredClone(receipt); contextDrift.sources[0].sha256 = `sha256:${'0'.repeat(64)}`;
+  await assert.rejects(() => assertD2MoleculeReceiptIntegrity(contextDrift), errorCode('D2_MOLECULE_RECEIPT_HASH'));
 });
 
 void test('production discovery stays on own/direct dependency catalogs and never falls through to 102040', async () => {
@@ -247,7 +259,7 @@ function fixtureGroup(reference: string): { catalog: ChGroupCatalog | null; erro
 }
 
 function discovery(project: number | null, candidates: number[], error: string): ChDiscovery {
-  return { activeProject: 999, directDeps: [], resolvedDeps: [], candidates, project, selectedBy: project === null ? null : 'dependency', error, warnings: [] };
+  return { activeProject: 999, directDeps: [...candidates], resolvedDeps: [...candidates], candidates, project, selectedBy: project === null ? null : 'dependency', error, warnings: [] };
 }
 
 function installDiscoveryHost(activeProject: number, deps: number[], initialCandidates: number[]): { setCandidates(value: number[]): void } {

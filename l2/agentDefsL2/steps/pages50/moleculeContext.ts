@@ -9,7 +9,7 @@ import type {
 import { chFileRefFromImport, type ChCatalogVia } from '/_102020_/l2/aura/molecules/agentChooseMolecules/helpers/chTypes.js';
 import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
 
-export const D2_MOLECULE_RECEIPT_VERSION = '2026-09-23-agent-defs-l2-molecule-receipt-v1' as const;
+export const D2_MOLECULE_RECEIPT_VERSION = '2026-09-23-agent-defs-l2-molecule-receipt-v2' as const;
 
 export interface D2MoleculeRead {
   role: 'inventory' | 'group-index' | 'usage-contract';
@@ -71,6 +71,11 @@ export interface D2MoleculeCandidateContext {
 }
 
 export interface D2MoleculePreparedContext { inventory: D2MoleculeInventory; candidates: D2MoleculeCandidateContext; receipt: D2MoleculeReceipt; }
+export interface D2MoleculeDiscoveryReceipt {
+  directDeps: number[];
+  resolvedDeps: number[];
+  candidates: number[];
+}
 export interface D2MoleculeReceipt {
   schemaVersion: typeof D2_MOLECULE_RECEIPT_VERSION;
   consumerProject: number;
@@ -82,6 +87,7 @@ export interface D2MoleculeReceipt {
   groupCount: number;
   candidateCount: number;
   selectedGroupIds: string[];
+  discovery: D2MoleculeDiscoveryReceipt;
   discoveryHash: string;
   sources: D2MoleculeRead[];
   contextHash: string;
@@ -230,9 +236,21 @@ export async function buildD2MoleculeReceipt(inventory: D2MoleculeInventory, can
   const outcome = absent ? 'catalog-absent' : selection ? (selectedGroupIds.length ? 'catalog-selection' : 'catalog-valid-no-match') : 'catalog-available';
   const code = absent ? 'D2_MOLECULE_CATALOG_ABSENT' : selection ? (selectedGroupIds.length ? 'D2_MOLECULE_SELECTION' : 'D2_MOLECULE_VALID_NO_MATCH') : 'D2_MOLECULE_CATALOG_AVAILABLE';
   const reason = absent ? (inventory.reason || 'No molecule catalog is available to this project.') : selection ? (selectedGroupIds.length ? `Selected ${selectedGroupIds.length} catalog group(s).` : 'The catalog is valid; this page selected no matching group.') : `Catalog exposes ${inventory.groups.length} group(s) to the worker.`;
-  const discoveryHash = await sha256Text(JSON.stringify({ consumerProject: inventory.consumerProject, catalogProject: inventory.catalogProject, selectedBy: inventory.selectedBy, directDeps: inventory.directDeps, candidates: inventory.candidates }));
-  const base: Omit<D2MoleculeReceipt, 'contextHash'> = { schemaVersion: D2_MOLECULE_RECEIPT_VERSION, consumerProject: inventory.consumerProject, catalogProject: inventory.catalogProject, selectedBy: inventory.selectedBy, outcome, code, reason, groupCount: inventory.groups.length, candidateCount: candidates.groups.reduce((sum, group) => sum + group.scenarios.reduce((count, scenario) => count + scenario.candidates.length, 0), 0), selectedGroupIds, discoveryHash, sources };
+  const discovery: D2MoleculeDiscoveryReceipt = { directDeps: [...inventory.directDeps], resolvedDeps: [...inventory.resolvedDeps], candidates: [...inventory.candidates] };
+  assertD2MoleculeDiscovery(inventory.consumerProject, inventory.catalogProject, inventory.selectedBy, discovery);
+  const discoveryHash = await sha256Text(JSON.stringify({ consumerProject: inventory.consumerProject, catalogProject: inventory.catalogProject, selectedBy: inventory.selectedBy, ...discovery }));
+  const base: Omit<D2MoleculeReceipt, 'contextHash'> = { schemaVersion: D2_MOLECULE_RECEIPT_VERSION, consumerProject: inventory.consumerProject, catalogProject: inventory.catalogProject, selectedBy: inventory.selectedBy, outcome, code, reason, groupCount: inventory.groups.length, candidateCount: candidates.groups.reduce((sum, group) => sum + group.scenarios.reduce((count, scenario) => count + scenario.candidates.length, 0), 0), selectedGroupIds, discovery, discoveryHash, sources };
   return { ...base, contextHash: await sha256Text(JSON.stringify(base)) };
+}
+
+export async function assertD2MoleculeReceiptIntegrity(receipt: D2MoleculeReceipt): Promise<void> {
+  if (receipt.schemaVersion !== D2_MOLECULE_RECEIPT_VERSION) throw new D2MoleculeContextError('D2_MOLECULE_RECEIPT_VERSION', String(receipt.schemaVersion));
+  assertD2MoleculeDiscovery(receipt.consumerProject, receipt.catalogProject, receipt.selectedBy, receipt.discovery);
+  const discoveryHash = await sha256Text(JSON.stringify({ consumerProject: receipt.consumerProject, catalogProject: receipt.catalogProject, selectedBy: receipt.selectedBy, ...receipt.discovery }));
+  if (discoveryHash !== receipt.discoveryHash) throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_HASH', `${receipt.discoveryHash} != ${discoveryHash}`);
+  const { contextHash: _contextHash, ...base } = receipt;
+  const contextHash = await sha256Text(JSON.stringify(base));
+  if (contextHash !== receipt.contextHash) throw new D2MoleculeContextError('D2_MOLECULE_RECEIPT_HASH', `${receipt.contextHash} != ${contextHash}`);
 }
 
 export function assertD2MoleculeCandidates(selection: D2MoleculeSelection, recommendations: Array<{ groupId: string; candidates: string[] }>): void {
@@ -277,6 +295,24 @@ function canonicalSelection(groups: D2MoleculeInventoryEntry[], requested: strin
     if (!seen.has(matches[0].groupId)) { seen.add(matches[0].groupId); chosen.push(matches[0]); }
   }
   return chosen;
+}
+
+function assertD2MoleculeDiscovery(consumerProject: number, catalogProject: number | null, selectedBy: string | null, discovery: D2MoleculeDiscoveryReceipt): void {
+  for (const [name, values] of Object.entries(discovery)) {
+    if (!Array.isArray(values) || values.some(value => !Number.isSafeInteger(value)) || new Set(values).size !== values.length) {
+      throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_VECTOR', name);
+    }
+  }
+  if (discovery.directDeps.includes(consumerProject)) throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_VECTOR', 'directDeps contains the consumer project');
+  if (catalogProject === null) {
+    if (selectedBy !== null) throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_SELECTION', 'a missing catalog cannot have selectedBy');
+    return;
+  }
+  if (!discovery.candidates.includes(catalogProject)) throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_SELECTION', 'catalogProject is absent from candidates');
+  if (discovery.candidates.some(project => project !== consumerProject && !discovery.directDeps.includes(project))) throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_SELECTION', 'candidate is neither local nor a direct dependency');
+  if (selectedBy === 'local' && catalogProject !== consumerProject) throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_SELECTION', 'local catalogProject differs from consumerProject');
+  if (selectedBy === 'dependency' && !discovery.directDeps.includes(catalogProject)) throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_SELECTION', 'dependency catalogProject is absent from directDeps');
+  if (!selectedBy) throw new D2MoleculeContextError('D2_MOLECULE_DISCOVERY_SELECTION', 'selected catalog has no selectedBy');
 }
 
 function purposeByGroup(skill: string): Map<string, string> {

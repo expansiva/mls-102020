@@ -60,7 +60,7 @@ void test('partial resume reuses four valid pages and redispatches missing or co
   assert.equal(await finalizeD2PagesBarrier(IDENTITY, host.snapshot, async () => undefined, undefined, molecular), null);
 });
 
-void test('unchanged context is a byte no-op while a skill hash invalidates reuse', async () => {
+void test('unchanged context is a byte no-op while discovery or skill context drift invalidates reuse', async () => {
   const host = await installHost(['alpha']); const molecular = await molecularFixture(); const receipt = (hash: string) => pageReceipt(molecular, hash);
   await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, await receipt('context-a'));
   const desktop = keyOf(d2PageFile(IDENTITY, 'alpha', 'desktop')); const mobile = keyOf(d2PageFile(IDENTITY, 'alpha', 'mobile'));
@@ -71,7 +71,7 @@ void test('unchanged context is a byte no-op while a skill hash invalidates reus
   assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', molecular)).length, 1);
 
   const unrelatedResolvedDependency = await changedMolecular(molecular, prepared => { prepared.inventory.resolvedDeps = [102040, 102099]; });
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', unrelatedResolvedDependency)).length, 1, 'transitive dependency metadata does not participate in direct catalog discovery');
+  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', unrelatedResolvedDependency)).length, 0, 'the persisted discovery preimage detects resolved dependency drift');
   assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-b', molecular)).length, 0);
   await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, await receipt('context-b'));
   assert.equal(artifactWrites(), before, 'context regeneration preserves identical artifact bytes');
