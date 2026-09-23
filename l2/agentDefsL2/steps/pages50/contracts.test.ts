@@ -11,7 +11,7 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2ContractsCatalog, type D2ContractsSources } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import type { D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
-import { D2_PAGES_JUDGMENT_VERSION, deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
+import { D2_PAGES_JUDGMENT_VERSION, buildD2PagePipeline, deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { buildD2PageSkillsContext, d2PageUnitContextHash, type D2PageSkillPort, type D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { gateD2Pages, parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
 import { assertD2RenderedPage, parseD2RenderedPage, renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
@@ -29,6 +29,7 @@ void test('current five-page fixture emits 10 defs/items and five shared refs wi
   assert.equal(new Set(emitted.map(item => item.pipeline[0].id)).size, 10);
   assert.equal(new Set(emitted.map(item => item.pipeline[0].dependsOn[0])).size, 5);
   assert.ok(emitted.every(item => item.pipeline[0].type === 'l2_page' && !('agent' in item.pipeline[0])));
+  assert.ok(emitted.every(item => item.pipeline[0].dependsFiles.join('\0') === `l2/fixture/web/shared/${item.pipeline[0].id.split('__')[0]}.ts\0l2/designSystem.ts`));
   assert.ok(emitted.every(item => item.pipeline[0].outputPath === item.pipeline[0].defPath.replace('.defs.ts', '.ts')));
   assert.ok(emitted.every(item => !item.pipeline[0].id.includes('_O') && item.pipeline[0].defPath.includes('/page11/')));
   for (const pageId of pages) {
@@ -37,6 +38,17 @@ void test('current five-page fixture emits 10 defs/items and five shared refs wi
     assert.ok(pair.every(item => item.pipeline[0].skills.length === 2));
     assert.equal(new Set(pair.map(item => item.pipeline[0].categoryRef)).size, 1);
   }
+});
+
+void test('page pipeline keeps project design system ordered and rejects legacy or malformed context', () => {
+  const item = buildD2PagePipeline('otherModule', 'records', 'desktop', 'bespoke', ['skill']);
+  assert.deepEqual(item.dependsFiles, ['l2/otherModule/web/shared/records.ts', 'l2/designSystem.ts']);
+  assert.equal(Object.hasOwn(item, 'agent'), false);
+  const source = renderD2Page({ device: 'desktop', descriptions: [{ organismId: 'organism.content.1', kind: 'content', description: 'Content.', contentRef: 'base', capabilityRefs: [], moleculeRecommendations: [] }], pipeline: [item] });
+  assert.doesNotThrow(() => assertD2RenderedPage(source));
+  const legacy = source.replace(/,\n\s*"l2\/designSystem\.ts"/u, '');
+  assert.throws(() => assertD2RenderedPage(legacy), /D2_PAGES_PIPELINE_CONTEXT/);
+  assert.throws(() => assertD2RenderedPage(renderD2Page({ device: 'desktop', descriptions: parseD2RenderedPage(source).descriptions, pipeline: [{ ...item, dependsFiles: [...item.dependsFiles].reverse() }] })), /D2_PAGES_PIPELINE_CONTEXT/);
 });
 
 void test('historical seven-page fixture remains a 14-def regression', () => {

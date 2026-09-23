@@ -3,7 +3,7 @@
 import type { D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 
-export const D2_PAGES_VERSION = '2026-09-23-agent-defs-l2-pages-v4' as const;
+export const D2_PAGES_VERSION = '2026-09-23-agent-defs-l2-pages-v5' as const;
 export const D2_PAGES_JUDGMENT_VERSION = '2026-09-23-agent-defs-l2-pages-judgment-v3' as const;
 export type D2PageDevice = 'desktop' | 'mobile';
 
@@ -26,7 +26,7 @@ export function buildD2PagePipeline(moduleName: string, pageId: string, device: 
   const base = `l2/${moduleName}/web/${device}/page11/${pageId}`;
   return {
     id: `${pageId}__${device}__page11`, type: 'l2_page', defPath: `${base}.defs.ts`, outputPath: `${base}.ts`,
-    dependsFiles: [`l2/${moduleName}/web/shared/${pageId}.ts`], dependsOn: [`${pageId}__l2_shared`], categoryRef, skills: [...new Set(skills)],
+    dependsFiles: [`l2/${moduleName}/web/shared/${pageId}.ts`, 'l2/designSystem.ts'], dependsOn: [`${pageId}__l2_shared`], categoryRef, skills: [...new Set(skills)],
   };
 }
 

@@ -34,11 +34,13 @@ test('finalize60 refuses a missing def, duplicate id, cycle and invalid referenc
   const complete = ids.flatMap(pageId => files(pageId));
   assert.throws(() => gateD2FinalSources(snapshot, complete.slice(1)), /OUTPUT_SET_MISMATCH/);
   const duplicate = replacePipeline(complete, 'cadastro', 'desktopPage', { id: 'agenda__desktop__page11' });
-  assert.throws(() => gateD2FinalSources(snapshot, duplicate), /PIPELINE_ID_SET_INVALID/);
+  assert.throws(() => gateD2FinalSources(snapshot, duplicate), /PAGES_PIPELINE_CONTEXT|PIPELINE_ID_SET_INVALID/);
   const cycle = replacePipeline(complete, 'agenda', 'shared', { dependsOn: ['agenda__desktop__page11'] });
   assert.throws(() => gateD2FinalSources(snapshot, cycle), /SHARED_PIPELINE_CONTEXT|SHARED_REF_INVALID|PIPELINE_CYCLE/);
   const invalid = replacePipeline(complete, 'agenda', 'mobilePage', { dependsFiles: ['l2/wrong/web/shared/agenda.ts'] });
-  assert.throws(() => gateD2FinalSources(snapshot, invalid), /PAGE_REF_INVALID/);
+  assert.throws(() => gateD2FinalSources(snapshot, invalid), /PAGES_PIPELINE_CONTEXT|PAGE_REF_INVALID/);
+  const legacyPage = replacePipeline(complete, 'agenda', 'desktopPage', { dependsFiles: ['l2/agendaClinica/web/shared/agenda.ts'] });
+  assert.throws(() => gateD2FinalSources(snapshot, legacyPage), /PAGES_PIPELINE_CONTEXT|PAGE_REF_INVALID/);
   const invalidUsage = replacePipeline(complete, 'agenda', 'mobilePage', { skills: ['_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.defs.ts'] });
   assert.throws(() => gateD2FinalSources(snapshot, invalidUsage), /PAGE_REF_INVALID/);
   const incompletePair = replacePipeline(complete, 'agenda', 'desktopPage', { skills: ['_102040_/l2/molecules/groupenterdate/index.defs.ts'] });

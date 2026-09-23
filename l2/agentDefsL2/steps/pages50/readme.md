@@ -27,3 +27,8 @@ The gate requires both devices, exact shared-capability parity, different presen
 evidence, existing groups, real candidate tags and the compatible recommendation rule before either defs
 is promoted. Structured descriptions remain per organism and bind each organism to one real Scene through
 `contentRef`; a Scene does not need an artificial organism.
+
+Every page11 pipeline item declares exactly two ordered context dependencies: its shared `.ts`, then the
+project-level `l2/designSystem.ts`. The logical design-system ref stays module-independent in defs and is
+resolved against the active project by Studio and Node consumers. Materialization receives only the real
+token vocabulary summary; missing content is an error, never an empty approved context or invented palette.

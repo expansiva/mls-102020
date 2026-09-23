@@ -6,6 +6,8 @@ Read the generated page defs and its approved shared definition before writing c
 
 Use StateLitElement without Shadow DOM: page CSS belongs in the matching scoped .less file, never in static styles. Keep visible text in the project's i18n mechanism and make keyboard, focus, loading, empty and error behavior accessible. Adapt the composition to desktop or mobile without removing capabilities.
 
+Read the declared project-level \`l2/designSystem.ts\` context. Use only token names that it actually exposes, through \`var(--<token>, <neutral fallback>)\`; never invent a token, copy token values into the page, or infer a palette when the dependency is missing.
+
 Read \`/_102020_/l2/molecules/ml-scenary.defs.ts\` before rendering scenario content. Use one \`molecules--ml-scenary-102020\` host and exactly one \`Scene\` child for every scenario declared by the real shared definition. Bind the host value to the actual shared scenario state; do not invent \`uiScenary\`, a local state or a handler. Place every described organism in its declared contentRef Scene and keep it identifiable by organismId. Inactive Scenes stay mounted and are hidden, inert and outside focus according to the molecule contract; never conditionally remove their descendants. Error keeps the active form and its values; success and cancel change content only through behavior actually declared by shared.
 
 Treat molecule recommendations as consultative candidates: read the selected molecule defs and usage contract first, validate slots/events against the organism's shared capabilities, and choose the compatible variant during materialization rather than assuming or rendering every candidate.

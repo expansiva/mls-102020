@@ -65,7 +65,7 @@ function assertGraph(moduleName: string, pageIds: string[], items: Array<D2Share
     for (const device of ['desktop', 'mobile'] as const) {
       const item = items.find(candidate => candidate.id === `${pageId}__${device}__page11`) as D2PagePipelineItem | undefined;
       if (!item || item.type !== 'l2_page' || item.defPath !== `l2/${moduleName}/web/${device}/page11/${pageId}.defs.ts`
-        || item.dependsOn.join('\0') !== shared.id || item.dependsFiles.join('\0') !== `l2/${moduleName}/web/shared/${pageId}.ts`
+        || item.dependsOn.join('\0') !== shared.id || item.dependsFiles.join('\0') !== `l2/${moduleName}/web/shared/${pageId}.ts\0l2/designSystem.ts`
         || !canonicalPageSkills(item.categoryRef, item.skills)) throw new Error(`D2_FINALIZE_PAGE_REF_INVALID: ${pageId}/${device}`);
     }
   }

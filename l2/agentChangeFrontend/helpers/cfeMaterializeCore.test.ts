@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, mlsL2ModuleName, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, mlsL2ModuleName, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp, buildContextSection, requireDeclaredDependency, resolveProjectRelativeRef } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGateFixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
@@ -1217,6 +1217,18 @@ test('dependencyProbeRefs expands an artifact dep to its shared .ts for stalenes
   const artifact = '_102047_/l2/todo/web/shared/taskCatalogueDts.txt';
   assert.deepEqual(dependencyProbeRefs(artifact), [artifact, '_102047_/l2/todo/web/shared/taskCatalogue.ts']);
   assert.deepEqual(dependencyProbeRefs('_102047_/l2/designSystem.ts'), ['_102047_/l2/designSystem.ts']);
+});
+
+test('project-relative design system is read as real token context and missing content is nominal', () => {
+  const logical = 'l2/designSystem.ts';
+  assert.equal(resolveProjectRelativeRef(logical, 102047), '_102047_/l2/designSystem.ts');
+  assert.equal(resolveProjectRelativeRef('_102029_/l2/collabState.ts', 102047), '_102029_/l2/collabState.ts');
+  const source = readFileSync(new URL('../../../../mls-102047/l2/designSystem.ts', import.meta.url), 'utf8');
+  const first = buildContextSection(resolveProjectRelativeRef(logical, 102047), requireDeclaredDependency(logical, source, 102047)!);
+  assert.match(first, /design tokens — names only/u); assert.match(first, /page-bg/u); assert.match(first, /button-primary-text/u);
+  const changed = buildContextSection(resolveProjectRelativeRef(logical, 102047), source.replace('"page-bg"', '"brand-page-bg"'));
+  assert.notEqual(changed, first); assert.match(changed, /brand-page-bg/u);
+  assert.throws(() => requireDeclaredDependency(logical, null, 102047), /D2_PAGE_DESIGN_SYSTEM_MISSING: _102047_\/l2\/designSystem\.ts/u);
 });
 
 // ---------------------------------------------------------------------------------------------------

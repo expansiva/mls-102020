@@ -12,3 +12,7 @@
 - 2026-09-23 — d2_14 removed inverse Scene coverage and made a real compatible molecule recommendation
   mandatory per non-static organism for query/view, input/entry and command/trigger families. Receipt v4
   invalidates earlier all-empty results; static or genuinely unmatched organisms retain an explained empty.
+- 2026-09-23 — d2_16 adds project-level `l2/designSystem.ts` after shared in every page11
+  `dependsFiles`. Parser/finalize require the exact ordered pair; materializers resolve the relative ref
+  against the active project, summarize real token names, fail nominally when absent and observe token edits.
+  Receipt v5 invalidates defs emitted with the old dependency list.

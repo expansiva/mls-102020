@@ -72,7 +72,7 @@ void test('unchanged context is a byte no-op while a skill hash invalidates reus
   assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-b')).length, 1);
 });
 
-void test('the v3 receipt never approves the required molecule recommendation contract', async () => {
+void test('an older receipt never approves the current page dependency contract', async () => {
   const host = await installHost(['alpha']);
   await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1);
   const resultKey = keyOf(d2PagesResultFile(IDENTITY, 'alpha'));
@@ -82,7 +82,7 @@ void test('the v3 receipt never approves the required molecule recommendation co
   const before = host.writes.length;
   const changed = { desktop: `${sources('alpha').desktop}// v4\n`, mobile: `${sources('alpha').mobile}// v4\n` };
   const approved = await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', changed, ['alpha__desktop__page11', 'alpha__mobile__page11'], 2);
-  assert.equal(approved.schemaVersion, '2026-09-23-agent-defs-l2-pages-v4');
+  assert.equal(approved.schemaVersion, '2026-09-23-agent-defs-l2-pages-v5');
   assert.ok(host.writes.length > before, 'old receipt triggers a new persistence pass');
 });
 

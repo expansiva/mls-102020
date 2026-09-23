@@ -28,6 +28,8 @@ import {
   isSharedRuntimeTsRef,
   sharedTsRefOfDtsArtifact,
   parseDefs,
+  resolveProjectRelativeRef,
+  requireDeclaredDependency,
   normalizeGeneratedCode,
   sharedDtsArtifactRef,
   testPathForOutputPath,
@@ -602,7 +604,8 @@ function consumeContextTrace(outputPath: string): string | undefined {
 async function readContextSections(pipelineItem: PipelineItem): Promise<string[]> {
   const sections: string[] = [];
   for (const requestedPath of pipelineItem.dependsFiles ?? []) {
-    for (const path of expandContextRef(requestedPath)) {
+    for (const unresolvedPath of expandContextRef(requestedPath)) {
+      const path = resolveProjectRelativeRef(unresolvedPath, Number(mls.actualProject || 0));
       // Declared shared-dts artifact (web/shared/<page>Dts.txt) — the page defs points at the
       // artifact itself since 27/ago, so nothing is swapped implicitly. Resolution: fresh artifact
       // -> compile on demand -> raw .ts fallback, and the choice is recorded for the step trace.
@@ -639,7 +642,10 @@ async function readContextSections(pipelineItem: PipelineItem): Promise<string[]
         }
       }
       const content = await getContentByMlsPath(path);
-      if (!content) continue;
+      if (!content) {
+        requireDeclaredDependency(requestedPath, null, Number(mls.actualProject || 0));
+        continue;
+      }
       // Raw-source fallback for the shared: strip every non-default locale. The page needs the key NAMES
       // to reference them, not three translations of each string — 18KB of a 95KB shared on
       // projectDetailWorkspace. Same trim the CLI applies (i18n.md §12.1).
