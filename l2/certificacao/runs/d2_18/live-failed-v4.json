@@ -1,8 +1,0 @@
-{
-  "taskId": "20260923170721.1001",
-  "status": "failed",
-  "failedBeforeLlm": true,
-  "writes": 0,
-  "diagnostic": "D2_MOLECULE_DISCOVERY_VECTOR: directDeps contains the consumer project",
-  "cause": "The runtime discovery supplied the consumer project in a dependency vector, while receipt v2 validated the raw vector before defining a canonical representation."
-}

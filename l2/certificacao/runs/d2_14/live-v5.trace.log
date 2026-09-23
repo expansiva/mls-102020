@@ -1,8 +1,0 @@
-trace  pooling  start 20260923125404.1001
-trace  write    _102047_/l2/agendaClinica/pipeline/agentDefsL2/shared40/results/consultas_recepcionista.json
-trace  write    _102047_/l2/agendaClinica/pipeline/agentDefsL2/shared40/results/profissionais.json
-trace  write    _102047_/l2/agendaClinica/web/shared/pacientes.defs.ts
-trace  write    _102047_/l2/agendaClinica/pipeline/agentDefsL2/shared40/results/pacientes.json
-trace  write    _102047_/l2/agendaClinica/pipeline/agentDefsL2/shared.json
-trace  write    _102047_/l2/agendaClinica/pipeline/agentDefsL2/pipeline.json
-trace  pooling  end 20260923125404.1001
