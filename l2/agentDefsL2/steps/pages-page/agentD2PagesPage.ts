@@ -10,6 +10,7 @@ import { buildD2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50
 import { d2PageSkillPort } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryCatalog.js';
 import { parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
 import { approveD2PagesUnit, finalizeD2PagesBarrier, getD2PagesContext } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 
 interface Args { project: number; module: string; pageId: string; attempt: number; feedback?: string; previous?: unknown; }
 export function createAgent(): IAgentAsync { return { agentName: D2_PAGES_PAGE_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2/steps/pages-page', agentDescription: 'Describe desktop and mobile presentations for one page with one bounded repair', visibility: 'private', beforePromptStep, afterPromptStep }; }
@@ -24,13 +25,13 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
       getD2PagesContext(identity, snapshot, parsed.pageId), buildD2MoleculeInventory(d2MoleculeCatalogPort),
       buildD2PageSkillsContext(d2PageSkillPort),
       readSourceText({ project: 102020, level: 2, folder: 'agentDefsL2/steps/pages50', shortName: 'prompt', extension: '.md' }),
-      readJson<Record<string, unknown>>({ project: 102020, level: 2, folder: 'agentDefsL2/schemas', shortName: 'pagesJudgmentV2', extension: '.json' }),
+      readJson<Record<string, unknown>>({ project: 102020, level: 2, folder: 'agentDefsL2/schemas', shortName: 'pagesJudgmentV3', extension: '.json' }),
     ]);
     if (!schema) throw new Error('D2_PAGES_SCHEMA_MISSING');
     const moleculeCandidates = await buildD2MoleculeCandidateContext(d2MoleculeCatalogPort, inventory);
     const journeys = page.journeyRefs.map(id => bundle.artifacts.journeys[id]).filter(Boolean);
-    const humanPrompt = JSON.stringify({ page: { pageId: page.pageId, label: page.label, actors: page.actors, ancestors: page.ancestors, authorityRefs: page.authorityRefs, journeys, relevantRules: relevantRules(bundle.artifacts.rules, [...page.authorityRefs, ...page.journeyRefs, page.pageId]), organismIntent: page.organisms, reads: page.reads, writes: page.writes }, shared, pageCategoryCatalog: JSON.parse(pageSkills.context), moleculeInventory: JSON.parse(inventory.context), moleculeCandidates: JSON.parse(moleculeCandidates.context), repair: parsed.feedback ? { feedback: parsed.feedback, previous: parsed.previous } : null }, null, 2);
-    const tool: mls.msg.LLMTool = { type: 'function', function: { name: 'submitD2Pages', description: 'Submit desktop and mobile prose plus structured capability/group references.', parameters: schema } };
+    const humanPrompt = JSON.stringify({ page: { pageId: page.pageId, label: page.label, userLanguage: text(record(bundle.artifacts.menu).userLanguage) || 'en', actors: page.actors, ancestors: page.ancestors, authorityRefs: page.authorityRefs, journeys, relevantRules: relevantRules(bundle.artifacts.rules, [...page.authorityRefs, ...page.journeyRefs, page.pageId]), organisms: deriveD2PageOrganisms(page), reads: page.reads, writes: page.writes }, shared, sceneSurface: { state: resolveD2PageScenarioState(shared), scenaries: resolveD2PageScenarioSurfaces(shared) }, pageCategoryCatalog: JSON.parse(pageSkills.context), moleculeInventory: JSON.parse(inventory.context), moleculeCandidates: JSON.parse(moleculeCandidates.context), repair: parsed.feedback ? { feedback: parsed.feedback, previous: parsed.previous } : null }, null, 2);
+    const tool: mls.msg.LLMTool = { type: 'function', function: { name: 'submitD2Pages', description: 'Submit one structured description per source organism for desktop and mobile.', parameters: schema } };
     return [{ type: 'prompt_ready', args: rawArgs, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: prompt, humanPrompt, tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } }];
   } catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
 }

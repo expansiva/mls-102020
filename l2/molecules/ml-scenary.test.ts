@@ -1,6 +1,11 @@
 /// <mls fileReference="_102020_/l2/molecules/ml-scenary.test.ts" enhancement="_blank"/>
 
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
+import { build } from 'esbuild';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
@@ -201,4 +206,21 @@ test('readSceneElements only takes direct Scene children and reads backTo', () =
   assert.equal(inputs.length, 2);
   assert.equal(inputs[1].backTo, 'list');
   assert.equal(inputs[1].nav, 'back');
+});
+
+const browserDomTest = process.env.D2_BROWSER_DOM_TEST === '1' ? test : test.skip;
+browserDomTest('real ml-scenary mounts in Chrome and preserves inactive Scene DOM while switching', async () => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+  const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  assert.ok(existsSync(chrome), 'Chrome is required by the mounted DOM gate');
+  const folder = mkdtempSync(path.join(tmpdir(), 'ml-scenary-browser-'));
+  try {
+    const entry = `globalThis.mls={actualProject:102020};
+(async()=>{try{const mod=await import('/_102020_/l2/molecules/ml-scenary.js');const host=document.createElement(mod.ML_SCENARY_TAG);host.mode='scenary';host.value='list';const scene=(value,title,id)=>{const node=document.createElement('Scene');node.setAttribute('value',value);node.setAttribute('title',title);const input=document.createElement('input');input.id=id;input.value='preserved';node.append(input);return node};host.append(scene('list','List','list-control'),scene('form','Form','form-control'));document.body.append(host);await host.updateComplete;const panels=()=>[...host.querySelectorAll('.ml-scenary-panel')];const first=panels();const listInput=host.querySelector('#list-control');if(first.length!==2||first[0].hidden||first[0].inert||!first[1].hidden||!first[1].inert)throw Error('initial visibility');listInput.focus();host.value='form';await host.updateComplete;const second=panels();if(!second[0].hidden||!second[0].inert||second[1].hidden||second[1].inert||second[0].contains(document.activeElement))throw Error('switched visibility/focus');host.value='list';await host.updateComplete;const third=panels();if(third[0].hidden||!third[1].hidden||host.querySelector('#list-control')!==listInput||listInput.value!=='preserved')throw Error('descendant identity');document.body.setAttribute('data-d2-dom','pass')}catch(error){document.body.setAttribute('data-d2-dom','fail');document.body.textContent=String(error)}})();`;
+    await build({ stdin: { contents: entry, resolveDir: root, sourcefile: 'mlScenaryBrowserEntry.ts', loader: 'ts' }, outfile: path.join(folder, 'bundle.js'), bundle: true, platform: 'browser', format: 'iife', target: 'chrome120', tsconfigRaw: { compilerOptions: { experimentalDecorators: true, useDefineForClassFields: false } }, plugins: [{ name: 'mls-paths', setup(build) { build.onResolve({ filter: /^\/_\d+_\// }, args => { const match = /^\/_([0-9]+)_\/(.+)$/.exec(args.path)!; const raw = path.join(root, `mls-${match[1]}`, match[2]); const source = raw.endsWith('.js') && existsSync(raw.slice(0, -3) + '.ts') ? raw.slice(0, -3) + '.ts' : raw; return { path: source }; }); } }] });
+    writeFileSync(path.join(folder, 'index.html'), '<!doctype html><html><body><script src="./bundle.js"></script></body></html>');
+    const result = spawnSync(chrome, ['--headless=new', '--no-sandbox', '--disable-gpu', '--allow-file-access-from-files', '--dump-dom', `file://${path.join(folder, 'index.html')}`], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(result.status, 0, JSON.stringify({ signal: result.signal, error: result.error?.message, stderr: result.stderr }));
+    assert.match(result.stdout, /data-d2-dom="pass"/u, `${result.stdout}\n${result.stderr}`);
+  } finally { rmSync(folder, { recursive: true, force: true }); }
 });

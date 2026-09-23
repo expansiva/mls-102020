@@ -102,7 +102,7 @@ void test('completed coordinator reuse re-emits the anchor that releases the nex
 });
 
 void test('all referenced JSON schemas are versioned and strict', () => {
-  for (const name of ['invocationV1.json', 'pipelineV1.json', 'inputV1.json', 'inputReportV1.json', 'sharedJudgmentV1.json', 'pagesJudgmentV1.json', 'pagesJudgmentV2.json']) {
+  for (const name of ['invocationV1.json', 'pipelineV1.json', 'inputV1.json', 'inputReportV1.json', 'sharedJudgmentV1.json', 'pagesJudgmentV1.json', 'pagesJudgmentV2.json', 'pagesJudgmentV3.json']) {
     const schema = JSON.parse(readFileSync(path.join(HERE, 'schemas', name), 'utf8')) as Record<string, unknown>;
     assert.match(String(schema.$id), /^https:\/\//);
     assert.equal(schema.additionalProperties, false);

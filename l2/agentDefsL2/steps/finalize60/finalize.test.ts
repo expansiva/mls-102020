@@ -111,10 +111,11 @@ function files(pageId: string, withoutSkills = false): D2FinalSource[] {
   return [
     { pageId, kind: 'contract', path: p.destinations[0].path, source: 'export interface Input { "id": string; }\n' },
     { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({} as never, buildD2SharedPipeline(moduleName, pageId)) },
-    { pageId, kind: 'desktopPage', path: p.destinations[2].path, source: renderD2Page({ device: 'desktop', descriptions: ['desktop'], pipeline: [buildD2PagePipeline(moduleName, pageId, 'desktop', 'calendarScheduling', skill)] }) },
-    { pageId, kind: 'mobilePage', path: p.destinations[3].path, source: renderD2Page({ device: 'mobile', descriptions: ['mobile'], pipeline: [buildD2PagePipeline(moduleName, pageId, 'mobile', 'calendarScheduling', skill)] }) },
+    { pageId, kind: 'desktopPage', path: p.destinations[2].path, source: renderD2Page({ device: 'desktop', descriptions: [description(pageId, 'desktop')], pipeline: [buildD2PagePipeline(moduleName, pageId, 'desktop', 'calendarScheduling', skill)] }) },
+    { pageId, kind: 'mobilePage', path: p.destinations[3].path, source: renderD2Page({ device: 'mobile', descriptions: [description(pageId, 'mobile')], pipeline: [buildD2PagePipeline(moduleName, pageId, 'mobile', 'calendarScheduling', skill)] }) },
   ];
 }
+function description(pageId: string, device: string) { return { organismId: 'organism.content.1', kind: 'content', description: `${pageId} ${device}`, contentRef: 'base', capabilityRefs: [], moleculeRecommendations: [] }; }
 function replacePipeline(all: D2FinalSource[], pageId: string, kind: D2FinalSource['kind'], patch: Record<string, unknown>): D2FinalSource[] {
   return all.map(file => {
     if (file.pageId !== pageId || file.kind !== kind) return file;

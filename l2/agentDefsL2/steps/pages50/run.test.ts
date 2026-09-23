@@ -58,7 +58,7 @@ void test('partial resume reuses four valid pages and redispatches missing or co
 });
 
 void test('unchanged context is a byte no-op while a skill hash invalidates reuse', async () => {
-  const host = await installHost(['alpha']); const receipt = (hash: string) => ({ contextHash: hash, catalogHash: 'catalog', skillHashes: { technical: hash }, categoryRef: 'calendarScheduling', categoryReason: 'Scheduling capability.', categoryEvidenceRefs: ['list'], moleculeRecommendations: { desktop: { reason: 'none', recommendations: [] }, mobile: { reason: 'none', recommendations: [] } } });
+  const host = await installHost(['alpha']); const receipt = (hash: string) => ({ contextHash: hash, catalogHash: 'catalog', skillHashes: { technical: hash }, categoryRef: 'calendarScheduling', categoryReason: 'Scheduling capability.', categoryEvidenceRefs: ['list'], organismIds: ['organism.list.1'], moleculeReasons: { desktop: 'none', mobile: 'none' } });
   await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, undefined, async () => undefined, receipt('context-a'));
   const desktop = keyOf(d2PageFile(IDENTITY, 'alpha', 'desktop')); const mobile = keyOf(d2PageFile(IDENTITY, 'alpha', 'mobile'));
   const artifactWrites = () => host.writes.filter(item => item === desktop || item === mobile).length;
@@ -70,6 +70,20 @@ void test('unchanged context is a byte no-op while a skill hash invalidates reus
   await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, undefined, async () => undefined, receipt('context-b'));
   assert.equal(artifactWrites(), before, 'context regeneration preserves identical artifact bytes');
   assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-b')).length, 1);
+});
+
+void test('a prior pages receipt version never approves the additive organism contract', async () => {
+  const host = await installHost(['alpha']);
+  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1);
+  const resultKey = keyOf(d2PagesResultFile(IDENTITY, 'alpha'));
+  const old = JSON.parse(host.files[resultKey].content) as Record<string, unknown>;
+  old.schemaVersion = '2026-09-22-agent-defs-l2-pages-v2';
+  host.files[resultKey].content = JSON.stringify(old);
+  const before = host.writes.length;
+  const changed = { desktop: `${sources('alpha').desktop}// v3\n`, mobile: `${sources('alpha').mobile}// v3\n` };
+  const approved = await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', changed, ['alpha__desktop__page11', 'alpha__mobile__page11'], 2);
+  assert.equal(approved.schemaVersion, '2026-09-23-agent-defs-l2-pages-v3');
+  assert.ok(host.writes.length > before, 'old receipt triggers a new persistence pass');
 });
 
 async function installHost(pages = PAGES) {

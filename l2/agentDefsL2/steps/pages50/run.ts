@@ -15,7 +15,7 @@ import { gateD2Pages } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
 import { assertD2RenderedPage, renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { d2PageDisplayPath, readD2PageSource, readD2PagesResult, writeD2PageSource, writeD2PagesManifest, writeD2PagesResult } from '/_102020_/l2/agentDefsL2/steps/pages50/io.js';
 
-export interface D2PagesUnitResult extends D2RunIdentity { schemaVersion: typeof D2_PAGES_VERSION; pageId: string; status: 'approved'; snapshotHash: string; sharedHash: string; contextHash: string; catalogHash: string; skillHashes: Record<string, string>; categoryRef: string; categoryReason: string; categoryEvidenceRefs: string[]; moleculeRecommendations: Record<D2PageDevice, { reason: string; recommendations: D2PagesJudgment['presentations'][number]['moleculeRecommendations'] }>; sourceHashes: Record<D2PageDevice, string>; artifactPaths: Record<D2PageDevice, string>; pipelineItemIds: Record<D2PageDevice, string>; attempts: number; }
+export interface D2PagesUnitResult extends D2RunIdentity { schemaVersion: typeof D2_PAGES_VERSION; pageId: string; status: 'approved'; snapshotHash: string; sharedHash: string; contextHash: string; catalogHash: string; skillHashes: Record<string, string>; categoryRef: string; categoryReason: string; categoryEvidenceRefs: string[]; organismIds: string[]; moleculeReasons: Record<D2PageDevice, string>; sourceHashes: Record<D2PageDevice, string>; artifactPaths: Record<D2PageDevice, string>; pipelineItemIds: Record<D2PageDevice, string>; attempts: number; }
 export interface D2PagesManifest extends D2RunIdentity { schemaVersion: typeof D2_PAGES_VERSION; status: 'approved'; snapshotHash: string; units: D2PagesUnitResult[]; }
 
 export async function getD2PagesContext(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string): Promise<{ page: D2InputSnapshot['selection']['pages'][number]; shared: D2SharedDefinition }> {
@@ -32,27 +32,28 @@ export async function getD2PagesContext(identity: D2RunIdentity, snapshot: D2Inp
 export async function approveD2PagesUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, judgment: D2PagesJudgment, inventory: D2MoleculeInventory, port: D2MoleculeCatalogPort, pageSkills: D2PageSkillsContext, attempt: number, verifySources: () => Promise<void> = async () => undefined): Promise<D2PagesUnitResult> {
   const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
   const { page, shared } = await getD2PagesContext(identity, snapshot, pageId);
-  const requested = [...new Set(judgment.presentations.flatMap(item => item.groupIds))];
+  const requested = [...new Set(judgment.presentations.flatMap(item => item.descriptions.flatMap(description => description.moleculeRecommendations.map(recommendation => recommendation.groupId))))];
   const molecules = await resolveD2MoleculeSelection(port, inventory, requested);
-  assertD2MoleculeCandidates(molecules, judgment.presentations.flatMap(item => item.moleculeRecommendations));
+  assertD2MoleculeCandidates(molecules, judgment.presentations.flatMap(item => item.descriptions.flatMap(description => description.moleculeRecommendations)));
   const groupSkills = new Map(molecules.groups.map(group => [group.groupId, [group.indexPipelineReference, group.usageContractPipelineReference]]));
   const groupCandidates = new Map(molecules.groups.map(group => [group.groupId, new Set(group.molecules.map(item => item.tag))]));
   const rendered = gateD2Pages(identity.module, page, shared, judgment, groupSkills, pageSkills, groupCandidates);
   const sources = Object.fromEntries(rendered.map(item => { const source = renderD2Page(item); assertD2RenderedPage(source); return [item.device, source]; })) as Record<D2PageDevice, string>;
   const category = resolveD2PageCategory(pageSkills, judgment.category.categoryRef);
   const skillHashes = { [D2_PAGE_TECHNICAL_SKILL]: pageSkills.skillHashes[D2_PAGE_TECHNICAL_SKILL], [category.skillReference]: pageSkills.skillHashes[category.skillReference] };
-  const moleculeRecommendations = Object.fromEntries(judgment.presentations.map(item => [item.device, { reason: item.moleculeReason, recommendations: item.moleculeRecommendations }])) as D2PagesUnitResult['moleculeRecommendations'];
-  return persistD2PagesUnit(identity, snapshot, pageId, sources, rendered.map(item => item.pipeline[0].id) as [string, string], attempt, dependency.sourceHash, verifySources, { contextHash: await d2PageUnitContextHash(pageSkills, judgment.category.categoryRef), catalogHash: pageSkills.catalogHash, skillHashes, categoryRef: judgment.category.categoryRef, categoryReason: judgment.category.reason, categoryEvidenceRefs: judgment.category.evidenceRefs, moleculeRecommendations });
+  const organismIds = rendered[0].descriptions.map(item => item.organismId);
+  const moleculeReasons = Object.fromEntries(judgment.presentations.map(item => [item.device, item.moleculeReason])) as Record<D2PageDevice, string>;
+  return persistD2PagesUnit(identity, snapshot, pageId, sources, rendered.map(item => item.pipeline[0].id) as [string, string], attempt, dependency.sourceHash, verifySources, { contextHash: await d2PageUnitContextHash(pageSkills, judgment.category.categoryRef), catalogHash: pageSkills.catalogHash, skillHashes, categoryRef: judgment.category.categoryRef, categoryReason: judgment.category.reason, categoryEvidenceRefs: judgment.category.evidenceRefs, organismIds, moleculeReasons });
 }
 
-interface D2PagesContextReceipt { contextHash: string; catalogHash: string; skillHashes: Record<string, string>; categoryRef: string; categoryReason: string; categoryEvidenceRefs: string[]; moleculeRecommendations: D2PagesUnitResult['moleculeRecommendations']; }
-const DIRECT_RECEIPT: D2PagesContextReceipt = { contextHash: 'direct-test-context', catalogHash: 'direct-test-catalog', skillHashes: {}, categoryRef: 'bespoke', categoryReason: 'Direct persistence fixture.', categoryEvidenceRefs: ['fixture'], moleculeRecommendations: { desktop: { reason: 'fixture', recommendations: [] }, mobile: { reason: 'fixture', recommendations: [] } } };
+interface D2PagesContextReceipt { contextHash: string; catalogHash: string; skillHashes: Record<string, string>; categoryRef: string; categoryReason: string; categoryEvidenceRefs: string[]; organismIds: string[]; moleculeReasons: Record<D2PageDevice, string>; }
+const DIRECT_RECEIPT: D2PagesContextReceipt = { contextHash: 'direct-test-context', catalogHash: 'direct-test-catalog', skillHashes: {}, categoryRef: 'bespoke', categoryReason: 'Direct persistence fixture.', categoryEvidenceRefs: ['fixture'], organismIds: [], moleculeReasons: { desktop: 'fixture', mobile: 'fixture' } };
 
 export async function persistD2PagesUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, sources: Record<D2PageDevice, string>, itemIds: [string, string], attempt: number, expectedSharedHash?: string, verifySources: () => Promise<void> = async () => undefined, receipt: D2PagesContextReceipt = DIRECT_RECEIPT): Promise<D2PagesUnitResult> {
   const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
   if (expectedSharedHash && dependency.sourceHash !== expectedSharedHash) throw new Error(`D2_PAGES_SHARED_CHANGED: ${pageId}`);
   const prior = await readD2PagesResult(identity, pageId);
-  if (prior?.status === 'approved' && prior.snapshotHash === snapshot.snapshotHash && prior.contextHash === receipt.contextHash) {
+  if (prior?.schemaVersion === D2_PAGES_VERSION && prior.status === 'approved' && prior.snapshotHash === snapshot.snapshotHash && prior.contextHash === receipt.contextHash) {
     for (const device of ['desktop', 'mobile'] as const) {
       if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== prior.sourceHashes[device]) throw new Error(`D2_PAGES_APPROVED_SOURCE_CHANGED: ${pageId}/${device}`);
     }
@@ -75,7 +76,7 @@ export async function findReusableD2PagesUnits(identity: D2RunIdentity, snapshot
   for (const pageId of [...snapshot.selection.writePageIds].sort()) {
     const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
     const unit = await readD2PagesResult(identity, pageId);
-    if (!unit || unit.status !== 'approved' || unit.snapshotHash !== snapshot.snapshotHash || unit.sharedHash !== dependency.sourceHash) continue;
+    if (!unit || unit.schemaVersion !== D2_PAGES_VERSION || unit.status !== 'approved' || unit.snapshotHash !== snapshot.snapshotHash || unit.sharedHash !== dependency.sourceHash) continue;
     let expectedContextHash = typeof expectedContext === 'string' ? expectedContext : undefined;
     if (expectedContext && typeof expectedContext !== 'string') {
       try { expectedContextHash = await d2PageUnitContextHash(expectedContext, unit.categoryRef); } catch { continue; }

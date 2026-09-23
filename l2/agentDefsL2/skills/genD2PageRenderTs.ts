@@ -6,6 +6,8 @@ Read the generated page defs and its approved shared definition before writing c
 
 Use StateLitElement without Shadow DOM: page CSS belongs in the matching scoped .less file, never in static styles. Keep visible text in the project's i18n mechanism and make keyboard, focus, loading, empty and error behavior accessible. Adapt the composition to desktop or mobile without removing capabilities.
 
-Render page content through the Scene contract published by the real shared definition. Use one scenario host and a Scene for each declared scenario; inactive scenes remain governed by that contract. Render semantic organisms inside their assigned Scene when the defs provide them. Treat molecule recommendations as optional candidates: read the selected molecule defs and usage contract first, validate slots/events against shared, and do not assume a variant.
+Read \`/_102020_/l2/molecules/ml-scenary.defs.ts\` before rendering scenario content. Use one \`molecules--ml-scenary-102020\` host and exactly one \`Scene\` child for every scenario declared by the real shared definition. Bind the host value to the actual shared scenario state; do not invent \`uiScenary\`, a local state or a handler. Place every described organism in its declared contentRef Scene and keep it identifiable by organismId. Inactive Scenes stay mounted and are hidden, inert and outside focus according to the molecule contract; never conditionally remove their descendants. Error keeps the active form and its values; success and cancel change content only through behavior actually declared by shared.
+
+Treat molecule recommendations as optional candidates: read the selected molecule defs and usage contract first, validate slots/events against the organism's shared capabilities, and do not assume or render every variant.
 
 Fail with a precise incompatibility when a required shared name, type, Scene, translation facility or referenced skill cannot be read. Do not fabricate a substitute.`;
