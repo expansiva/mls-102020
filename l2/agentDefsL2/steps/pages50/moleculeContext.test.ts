@@ -177,6 +177,25 @@ void test('molecular receipt distinguishes honest absence, valid no-match and se
   await assert.rejects(() => assertD2MoleculeReceiptIntegrity(contextDrift), errorCode('D2_MOLECULE_RECEIPT_HASH'));
 });
 
+void test('receipt canonicalizes runtime discovery self entries and duplicates without changing dependency selection', async () => {
+  const fixture = fixturePort();
+  const inventory = await buildD2MoleculeInventory(fixture.port);
+  inventory.groups = inventory.groups.filter(item => item.groupId === 'groupEnterDate');
+  inventory.directDeps = [999, 102040, 102040, 999];
+  inventory.resolvedDeps = [999, 102040, 999, 102040];
+  inventory.candidates = [102040, 102040];
+  const raw = structuredClone({ directDeps: inventory.directDeps, resolvedDeps: inventory.resolvedDeps, candidates: inventory.candidates });
+  const candidates = await buildD2MoleculeCandidateContext(fixture.port, inventory);
+  const selection = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate'], candidates);
+  const receipt = await buildD2MoleculeReceipt(inventory, candidates, selection);
+
+  assert.deepEqual(receipt.discovery, { directDeps: [102040], resolvedDeps: [102040], candidates: [102040] });
+  assert.equal(receipt.catalogProject, 102040);
+  assert.equal(receipt.selectedBy, 'dependency');
+  await assert.doesNotReject(() => assertD2MoleculeReceiptIntegrity(receipt));
+  assert.deepEqual({ directDeps: inventory.directDeps, resolvedDeps: inventory.resolvedDeps, candidates: inventory.candidates }, raw, 'receipt creation does not mutate observed runtime vectors');
+});
+
 void test('production discovery stays on own/direct dependency catalogs and never falls through to 102040', async () => {
   const own = installDiscoveryHost(700, [701], [700]);
   const ownChoice = await d2MoleculeCatalogPort.discover(null);
