@@ -394,7 +394,6 @@ export class ClassPickerPanel extends StateLitElement {
   private static readonly SCENARIO_KEY = 'aura.scenario.simulated';
 
   connectedCallback(): void {
-    console.info('[picker] connected : teste publish 102020 - 2');
     super.connectedCallback();
     this.readScenario();
     subscribe(ClassPickerPanel.SCENARIO_KEY, this);
