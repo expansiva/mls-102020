@@ -13,6 +13,7 @@ export interface D2ContractField {
   tsType: string;
   required: boolean;
   derived: boolean;
+  writePrecondition: boolean;
   indexed: boolean;
   collection: boolean;
   enumValues: string[];
@@ -173,6 +174,7 @@ export function collectD2EntityFields(entity: Ns5OntologyAnyEntity): D2ContractF
       ...mapped,
       required: field.required === true,
       derived: field.derived === true,
+      writePrecondition: field.writePrecondition === true,
       indexed: field.indexed === true,
       collection: field.collection === true || text(field.type) === 'array',
       enumValues: enumValues(field.values, path),
@@ -203,7 +205,8 @@ function inputFields(
     return [...indexed, syntheticPageField(text(rec(entity).entityId))];
   }
   if (operation === 'create') return writableTree(visible);
-  if (operation === 'update') return mergeIdentity(identity!, writableTree(visible));
+  const preconditions = writePreconditionTree(visible);
+  if (operation === 'update') return mergeFields([identity!], preconditions, writableTree(visible));
   const transition = rows(rec(entity).transitions).find(item => text(item.transitionId) === callName);
   if (!transition) {
     issues.push({ code: 'D2_CONTRACT_TRANSITION_MISSING', source: 'ontology', pageId, route, message: `transition '${callName}' is absent` });
@@ -223,7 +226,7 @@ function inputFields(
   for (const path of payloadPaths) if (!available.has(path)) {
     issues.push({ code: 'D2_CONTRACT_TRANSITION_PATH_INVALID', source: 'ontology', pageId, route, path, message: `transition payload path '${path}' is absent or forbidden` });
   }
-  return mergeIdentity(identity!, filterTree(visible, new Set(payloadPaths)));
+  return mergeFields([identity!], preconditions, filterTree(visible, new Set(payloadPaths)));
 }
 
 function allowedPathsByPageActor(
@@ -280,16 +283,31 @@ function mapFieldType(type: string, field: Record<string, unknown>, path: string
 
 function writableTree(fields: D2ContractField[]): D2ContractField[] {
   return fields.flatMap(field => {
-    if (field.derived) return [];
+    if (field.derived || field.writePrecondition) return [];
     const children = writableTree(field.children);
     if (field.children.length && !children.length) return [];
     return [{ ...field, children }];
   });
 }
 
-function mergeIdentity(identity: D2ContractField, fields: D2ContractField[]): D2ContractField[] {
-  const without = filterTree(fields, new Set(flatten(fields).filter(field => field.path !== identity.path).map(field => field.path)));
-  return [identity, ...without.filter(field => field.path !== identity.path)];
+function writePreconditionTree(fields: D2ContractField[]): D2ContractField[] {
+  return fields.flatMap(field => {
+    const children = writePreconditionTree(field.children);
+    if (!field.writePrecondition && !children.length) return [];
+    return [{ ...field, required: true, children }];
+  });
+}
+
+function mergeFields(...groups: D2ContractField[][]): D2ContractField[] {
+  const out: D2ContractField[] = [];
+  for (const field of groups.flat()) {
+    const prior = out.find(item => item.path === field.path);
+    if (!prior) { out.push({ ...field, children: mergeFields(field.children) }); continue; }
+    prior.required = prior.required || field.required;
+    prior.writePrecondition = prior.writePrecondition || field.writePrecondition;
+    prior.children = mergeFields(prior.children, field.children);
+  }
+  return out;
 }
 
 function filterTree(fields: D2ContractField[], allowed: Set<string>): D2ContractField[] {
@@ -307,7 +325,7 @@ function findIdentity(fields: D2ContractField[]): D2ContractField | undefined {
 function flatten(fields: D2ContractField[]): D2ContractField[] { return fields.flatMap(field => [field, ...flatten(field.children)]); }
 
 function syntheticPageField(entityId: string): D2ContractField {
-  return { path: `${entityId}.$page`, name: 'page', scalar: 'number', tsType: 'number', required: false, derived: false, indexed: false, collection: false, enumValues: [], referenceTo: [], children: [] };
+  return { path: `${entityId}.$page`, name: 'page', scalar: 'number', tsType: 'number', required: false, derived: false, writePrecondition: false, indexed: false, collection: false, enumValues: [], referenceTo: [], children: [] };
 }
 
 function contractOperation(value: unknown): D2ContractOperation | '' {

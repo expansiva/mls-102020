@@ -11,9 +11,9 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2ContractsCatalog, type D2ContractCall, type D2ContractField, type D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import { renderD2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/render.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { D2_SHARED_KEYS, buildD2SharedPipeline, suggestedD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { D2_SHARED_KEYS, buildD2SharedPipeline, captureD2SelectedSnapshot, missingD2SnapshotPreconditions, suggestedD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { assertD2RenderedShared, gateD2Shared, parseD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
-import { renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
+import { parseD2RenderedShared, renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -44,13 +44,28 @@ void test('five selected pages emit one exact shared definition and one l2_share
     const source = renderD2Shared(definition, pipeline); assertD2RenderedShared(source);
     assert.deepEqual(Object.keys(definition), [...D2_SHARED_KEYS]);
     assert.equal(pipeline.type, 'l2_shared');
-    assert.equal(pipeline.dependsFiles[0], `l2/fixture/web/contracts/${page.pageId}.defs.ts`);
+    assert.deepEqual(pipeline.dependsFiles, [`l2/fixture/web/contracts/${page.pageId}.defs.ts`, '_102029_.d.ts']);
+    assert.deepEqual(pipeline.skills, ['_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts']);
+    assert.equal(parseD2RenderedShared(source).pipeline.length, 1);
+    assert.equal(Object.hasOwn(pipeline, 'agent'), false);
     assert.match(source, /\.defs\.ts/); assert.doesNotMatch(source, /layoutRef|sections/);
     return { definition, pipeline };
   });
   assert.equal(new Set(emitted.map(item => item.definition.pageId)).size, 5);
   assert.equal(new Set(emitted.map(item => item.pipeline.id)).size, 5);
   for (const item of emitted) { const consumer = { desktop: item.definition, mobile: item.definition }; assert.strictEqual(consumer.desktop, consumer.mobile); }
+});
+
+void test('shared parser rejects legacy, empty, multiple, missing skill and orphan id pipelines', () => {
+  const page = selected('records'); const contract = pageContract(page.pageId);
+  const definition = gateD2Shared('fixture', page, contract, suggestedD2SharedJudgment(page, contract));
+  const item = buildD2SharedPipeline('fixture', page.pageId);
+  const source = renderD2Shared(definition, item);
+  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), JSON.stringify(item, null, 2))), /D2_SHARED_CONSUMER_SHAPE/);
+  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), '[]')), /D2_SHARED_PIPELINE_COUNT/);
+  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), JSON.stringify([item, item], null, 2))), /D2_SHARED_PIPELINE_COUNT/);
+  assert.throws(() => assertD2RenderedShared(renderD2Shared(definition, { ...item, skills: [] })), /D2_SHARED_PIPELINE_SKILL/);
+  assert.throws(() => assertD2RenderedShared(renderD2Shared(definition, { ...item, id: 'orphan__l2_shared' })), /D2_SHARED_PIPELINE_ID/);
 });
 
 void test('actions, contracts, states and bindings close and input sources are non-editable for selection', () => {
@@ -64,9 +79,34 @@ void test('actions, contracts, states and bindings close and input sources are n
   assert.ok(definition.states.some(item => item.kind === 'pageStatus' && item.valueSet?.join() === 'idle,loading,empty,success,error'));
 });
 
+void test('write precondition captures the selected snapshot, stays frozen on refresh and blocks missing or invalid tokens', () => {
+  const page = selected('records');
+  const identity = field(true);
+  const token: D2ContractField = { ...field(true), path: 'Record.revisionToken', name: 'revisionToken', scalar: 'number', tsType: 'number', indexed: false, writePrecondition: true };
+  const editable: D2ContractField = { ...field(false), path: 'Record.details.name', name: 'name', derived: false, indexed: false };
+  const query = call('listRecord', 'ListRecord', 'list', []); query.output = [identity, token, editable];
+  const update = call('updateRecord', 'UpdateRecord', 'update', [identity, token, editable]); update.output = [identity, token, editable];
+  const contract: D2PageContract = { pageId: page.pageId, calls: [query, update] };
+  const definition = gateD2Shared('fixture', page, contract, suggestedD2SharedJudgment(page, contract));
+  const state = definition.states.find(item => item.stateKey.endsWith('.updateRecord.input.revisionToken'))!;
+  assert.deepEqual({ source: state.source, presentation: state.presentation, editable: state.editable, required: state.required, value: state.defaultValue }, { source: 'selectedEntity', presentation: 'hidden', editable: false, required: true, value: null });
+  assert.equal(definition.actions.some(item => item.kind === 'stateSetter' && item.stateKey === state.stateKey), false);
+  const binding = definition.dataBindings.find(item => item.actionId === 'updateRecord')!.snapshotPreconditions![0];
+  const rows = [{ id: 'A', revisionToken: 4 }, { id: 'B', revisionToken: 9 }];
+  assert.equal(captureD2SelectedSnapshot(binding, 'A', rows), 4);
+  assert.equal(captureD2SelectedSnapshot(binding, 'A', [{ id: 'A', revisionToken: 5 }], { selectedIdentity: 'A', value: 4 }), 4, 'refresh does not replace the edit token');
+  assert.equal(captureD2SelectedSnapshot(binding, 'B', rows, { selectedIdentity: 'A', value: 4 }), 9, 'selection change captures the new record');
+  assert.equal(captureD2SelectedSnapshot(binding, null, rows, { selectedIdentity: 'B', value: 9 }), null, 'clearing selection invalidates the token');
+  assert.equal(captureD2SelectedSnapshot(binding, 'A', [{ id: 'A', revisionToken: 'bad' }]), null, 'invalid token blocks the command');
+  assert.equal(captureD2SelectedSnapshot(binding, 'missing', rows), null, 'missing token blocks the command');
+  const actionBinding = definition.dataBindings.find(item => item.actionId === 'updateRecord')!;
+  assert.deepEqual(missingD2SnapshotPreconditions(actionBinding, {}), [state.stateKey]);
+  assert.deepEqual(missingD2SnapshotPreconditions(actionBinding, { [state.stateKey]: 4 }), [], 'a valid captured token permits request construction');
+});
+
 void test('setter ids use the complete nested path and the gate rejects duplicate state/action ids', () => {
   const page = selected('nested');
-  const leaf = (branch: string): D2ContractField => ({ path: `Record.${branch}.code`, name: 'code', scalar: 'string', tsType: 'string', required: false, derived: false, indexed: false, collection: false, enumValues: [], referenceTo: [], children: [] });
+  const leaf = (branch: string): D2ContractField => ({ path: `Record.${branch}.code`, name: 'code', scalar: 'string', tsType: 'string', required: false, derived: false, writePrecondition: false, indexed: false, collection: false, enumValues: [], referenceTo: [], children: [] });
   const contract: D2PageContract = { pageId: page.pageId, calls: [call('createRecord', 'CreateRecord', 'create', [leaf('left'), leaf('right')])] };
   const definition = gateD2Shared('fixture', page, contract, suggestedD2SharedJudgment(page, contract));
   assert.ok(definition.actions.some(item => item.actionId === 'setCreateRecordLeftCode'));
@@ -85,6 +125,18 @@ void test('initial loads reject required unavailable input and commands; paramet
   assert.throws(() => gateD2Shared('fixture', page, contract, { ...good, initialLoadActionIds: ['deleteRecord'] }), /D2_SHARED_INITIAL_LOAD_NOT_QUERY/);
 });
 
+void test('scenary preconditions cannot borrow an exact stateKey from another action', () => {
+  const page = selected('records'); const contract = pageContract(page.pageId);
+  const judgment = suggestedD2SharedJudgment(page, contract);
+  judgment.scenaries.push({
+    value: 'detail',
+    kind: 'detail',
+    actionId: 'getRecord',
+    preconditions: ['ui.records.deleteRecord.input.id'],
+  });
+  assert.throws(() => gateD2Shared('fixture', page, contract, judgment), /D2_SHARED_PRECONDITION_UNKNOWN/);
+});
+
 void test('destructive behavior requires confirmation and invalid/truncated schema is diagnosed', () => {
   const page = selected('records'); const contract = pageContract(page.pageId); const base = suggestedD2SharedJudgment(page, contract);
   const actionBehaviors = base.actionBehaviors.map(item => item.actionId === 'deleteRecord' ? { ...item, confirmation: undefined } : item);
@@ -94,10 +146,19 @@ void test('destructive behavior requires confirmation and invalid/truncated sche
   assert.throws(() => parseD2SharedJudgment({ ...base, layoutRef: 'x' }), /D2_SHARED_SCHEMA_UNKNOWN_KEY/);
 });
 
+void test('skill-compatible shared fixture exposes page behavior and keeps selected entity contextual', () => {
+  const source = readFileSync(path.join(HERE, 'fixtures', 'skill', 'records.ts'), 'utf8');
+  assert.match(source, /extends StateLitElement/); assert.match(source, /ListRecordsOutput = \[\]/);
+  assert.match(source, /execBff<ListRecordsOutput>\(listRecordsRoute, params/);
+  assert.match(source, /response\.error\?\.message/); assert.match(source, /listRecordsStatus = 'success'/);
+  assert.match(source, /enterDeleteRecordScenario/); assert.match(source, /selectedRecordId/);
+  assert.doesNotMatch(source, /setSelectedRecordId|customElement|\brender\s*\(/);
+});
+
 function selected(pageId: string): D2SelectedPage { return { pageId, status: 'toCreate', label: `Page ${pageId}`, actors: ['actor'], authorityRefs: [], ancestors: [{ id: 'hub', kind: 'group', label: 'Hub', context: 'selection' }], journeyRefs: [], organisms: [], reads: [], writes: [], endpoints: [], usecases: [], destinations: [] }; }
 function pageContract(pageId: string): D2PageContract { return { pageId, calls: [call('listRecord', 'ListRecord', 'list', []), call('getRecord', 'GetRecord', 'get', [field(true)]), call('deleteRecord', 'DeleteRecord', 'transition', [field(true)])] }; }
 function call(callName: string, callPascal: string, operation: D2ContractCall['operation'], input: D2ContractField[]): D2ContractCall { return { callName, callPascal, operation, routeName: `${callName}Route`, route: `fixture.records.${operation === 'list' || operation === 'get' ? 'qry' : 'cmd'}${callPascal}`, entityId: 'Record', actors: ['actor'], relationships: [], input, output: [field(false)], outputShape: operation === 'list' ? 'array' : 'object' }; }
-function field(required: boolean): D2ContractField { return { path: 'Record.id', name: 'id', scalar: 'string', tsType: 'string', required, derived: true, indexed: true, collection: false, enumValues: [], referenceTo: [], children: [] }; }
+function field(required: boolean): D2ContractField { return { path: 'Record.id', name: 'id', scalar: 'string', tsType: 'string', required, derived: true, writePrecondition: false, indexed: true, collection: false, enumValues: [], referenceTo: [], children: [] }; }
 function json(file: string): Record<string, unknown> { return JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>; }
 function defs(file: string): Record<string, unknown> { const parsed = parseNs4ClassicDefsSource<Record<string, unknown>>(readFileSync(file, 'utf8')); assert.ok(parsed); return parsed; }
 function rows(value: unknown): Array<Record<string, unknown>> { return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Array<Record<string, unknown>> : []; }

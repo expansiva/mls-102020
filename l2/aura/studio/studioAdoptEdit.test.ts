@@ -25,7 +25,9 @@ import {
   planAdopt,
   planUnadopt,
   roleInLiteral,
+  shapeCache,
   writeAttribute,
+  type IElementShape,
 } from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
 
 const CORE_FILE = fileURLToPath(new URL('studioAdoptEdit.ts', import.meta.url));
@@ -105,6 +107,129 @@ test('describeElement keeps the content of an element whole, `${...}` included',
 
   assert.equal(shape.inner, "${msg['common.refresh']}");
   assert.equal(source.slice(shape.span.start, shape.span.end).endsWith('</button>'), true);
+});
+
+// ── How deep the reading goes ───────────────────────────────────────────────
+
+/**
+ * A table in the shape the generator writes one — copied down from
+ * `mls-102048/l2/buildFlowFsm/web/desktop/page11/clientManagement.ts:89`, with 8 columns cut to 2.
+ *
+ * The two facts that matter are both in it: the header row is written literally, and the body rows
+ * live inside a `${…map(…)}` — measured 22/09/2026, 79 of the 84 tables of the corpus write them
+ * that way, so a reading that stopped at the expression would see no row at all.
+ */
+const TABLE = [
+  '<div class="overflow-x-auto">',
+  '<table class="w-full text-sm border-collapse">',
+  '<thead><tr class="border-b text-left">',
+  '<th class="py-2 px-3 font-medium">${this.msg[\'column.clientId\']}</th>',
+  '<th class="py-2 px-3 font-medium">${this.msg[\'column.name\']}</th>',
+  '</tr></thead>',
+  '<tbody>${items.map((item: Row) => html`',
+  '<tr class="border-b">',
+  '<td class="py-2 px-3">${item.clientId}</td>',
+  '<td class="py-2 px-3">${item.name}</td>',
+  '</tr>`)}</tbody>',
+  '</table>',
+  '</div>',
+].join('');
+
+/** The tags of a shape's children, nested — the reading, without the spans. */
+function levels(shape: IElementShape): unknown[] {
+  return shape.children.map((child) => (child.children.length ? { [child.tag]: levels(child) } : child.tag));
+}
+
+test('with no depth asked for, the reading is ONE level — the shape every group has today', () => {
+  const source = page(TABLE);
+  const tree = scanTemplateTree(source);
+  const shape = describeElement(source, tree, indexOf(source, 'table'))!;
+
+  // Named one by one, and not just "it did not break": this is the control of the whole change.
+  assert.deepEqual(levels(shape), ['thead', 'tbody']);
+  assert.equal(shape.children.length, 2);
+  for (const child of shape.children) {
+    assert.deepEqual(child.children, [], `<${child.tag}>: the level below is NOT read`);
+    assert.equal(child.parent, null, `<${child.tag}>: a child never carries its parent back`);
+  }
+  assert.equal(shape.parent?.tag, 'div', 'one level up, as before');
+  // The default is the same reading as an explicit 1, field for field.
+  assert.deepEqual(shape, describeElement(source, tree, indexOf(source, 'table'), 1));
+});
+
+test('asked for 3, the reading brings the rows and the cells, each with its own span', () => {
+  const source = page(TABLE);
+  const tree = scanTemplateTree(source);
+  const shape = describeElement(source, tree, indexOf(source, 'table'), 3)!;
+
+  assert.deepEqual(levels(shape), [
+    { thead: [{ tr: ['th', 'th'] }] },
+    { tbody: [{ tr: ['td', 'td'] }] },
+  ]);
+
+  // Level 3 is what the group contract writes as `<TableHead>`/`<TableCell>`, so each cell has to
+  // carry its own slice of the source — a tag with no span is a cell nobody can rewrite.
+  const cells = shape.children[1].children[0].children;
+  assert.equal(cells.length, 2);
+  assert.equal(source.slice(cells[0].span.start, cells[0].span.end),
+    '<td class="py-2 px-3">${item.clientId}</td>');
+  assert.equal(cells[0].inner, '${item.clientId}');
+  assert.equal(cells[0].literal, 'py-2 px-3');
+  // The row read three levels down is the one written inside the `${…map(…)}`, not a second copy.
+  assert.equal(shape.children[1].children[0].tag, 'tr');
+  assert.equal(shape.parent?.tag, 'div', 'upwards stays at one level whatever depth asks for');
+  assert.deepEqual(shape.parent?.children.map((child) => child.tag), ['table']);
+});
+
+test('the shape factory builds once per depth, whatever the order of the questions', () => {
+  const source = page(TABLE);
+  const tree = scanTemplateTree(source);
+  const index = indexOf(source, 'table');
+  const at = shapeCache(source, tree, index);
+
+  const deep = at(3);
+  assert.equal(at(3), deep, 'the same depth gives the same object, not a second reading');
+  const shallow = at(1);
+  assert.notEqual(shallow, deep, 'a different depth is a different shape');
+  assert.equal(at(1), shallow, 'and asking 1 after 3 does not rebuild it either');
+  // The key is the depth and not the order: what a group gets cannot depend on who asked first.
+  const other = shapeCache(source, tree, index);
+  assert.deepEqual(other(1), shallow);
+  assert.deepEqual(other(3), deep);
+  // A depth nobody can act on reads as 1 — a group declaring nonsense gets a well-formed shape.
+  assert.deepEqual(levels(at(0)!), ['thead', 'tbody']);
+  assert.deepEqual(levels(at(Number.NaN)!), ['thead', 'tbody']);
+});
+
+test('a depth deeper than the markup invents no level and breaks nothing', () => {
+  const source = page(TABLE);
+  const tree = scanTemplateTree(source);
+  const shape = describeElement(source, tree, indexOf(source, 'table'), 9)!;
+
+  assert.deepEqual(levels(shape), [
+    { thead: [{ tr: ['th', 'th'] }] },
+    { tbody: [{ tr: ['td', 'td'] }] },
+  ]);
+  const cell = shape.children[1].children[0].children[0];
+  assert.deepEqual(cell.children, [], 'a cell whose content is text has no child to read');
+  // An element with nothing under it answers the same at any depth.
+  const leaf = describeElement(source, tree, indexOf(source, 'th'), 9)!;
+  assert.deepEqual(leaf.children, []);
+  assert.equal(shapeCache(source, tree, -1)(3), null, 'an index outside the tree is still null');
+});
+
+test('who decides the depth is the GROUP, and the default lives in one place', () => {
+  // Risk 3 of the task: `studioAdoptCatalog.ts` has no suite of its own, so the fiação is asserted
+  // here — a second default, written somewhere else, is how a group starts being asked at a depth
+  // it never declared.
+  const catalog = readFileSync(fileURLToPath(new URL('studioAdoptCatalog.ts', import.meta.url)), 'utf8');
+  assert.match(catalog, /shapeAt\(rules\.depth \?\? 1\)/u, 'each group is asked at its own depth');
+  assert.equal(catalog.includes('describeElement('), false, 'the catalog never reads at a fixed depth');
+
+  const editor = readFileSync(fileURLToPath(new URL('studioEditor.ts', import.meta.url)), 'utf8');
+  assert.match(editor, /shapeCache\(source, resolved\.tree, resolved\.index\)/u);
+  assert.match(editor, /shapeAt\(offer\.rules\.depth \?\? 1\)/u, 'convert reads what candidate read');
+  assert.equal(editor.includes('describeElement('), false, 'the editor never reads at a fixed depth');
 });
 
 test('innerWithout cuts only what it is given', () => {

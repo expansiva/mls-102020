@@ -36,6 +36,8 @@ import {
   orderItems,
   bindingCommandsOf,
   parseDefs,
+  resolveProjectRelativeRef,
+  requireDeclaredDependency,
   sharedDtsArtifactRef,
   testPathForOutputPath,
   trimDefinitionForPrompt,
@@ -52,8 +54,10 @@ import { cfePipelineTraceMlsPath } from './helpers/cfePipelineTrace.js';
 
 const HERE = path.dirname(process.argv[1] ? path.resolve(process.argv[1]) : process.cwd());
 let ROOT = process.env.MATERIALIZE_L2_ROOT ? path.resolve(process.env.MATERIALIZE_L2_ROOT) : path.resolve(HERE, '../../../');
+let ACTIVE_PROJECT = 0;
 
 function mlsToFs(ref: string): string {
+  ref = resolveProjectRelativeRef(ref, ACTIVE_PROJECT);
   if (/^_(\d+)_\.d\.ts$/.test(ref)) return path.join(ROOT, ref.replace(/^_(\d+)_\.d\.ts$/, 'mls-$1.d.ts'));
   return path.join(ROOT, ref.replace(/^_(\d+)_\//, 'mls-$1/'));
 }
@@ -359,6 +363,7 @@ function assemble(item: PipelineItem, data: unknown, modelType: string): { syste
         ? ' context=raw-ts (artifact missing or stale; this runner has no compiler)'
         : '';
       depReport.push(`${r.found ? 'OK ' : 'MISS'} ${ref === d ? d : `${d} -> ${ref}`}${contextNote}`);
+      requireDeclaredDependency(d, r.found ? r.content : null, ACTIVE_PROJECT);
       // A page gets the shared with only the default locale catalog: it needs the key NAMES, not three
       // translations of every string (see trimSharedI18nForPageContext).
       const content = item.type === 'l2_page' && isSharedRuntimeTsRef(r.ref) ? trimSharedI18nForPageContext(r.content) : r.content;
@@ -606,6 +611,7 @@ async function main(): Promise<void> {
     console.error('usage: nodejsMaterializeL2 <project> <module> [--dry-run] [--force] [--only <substr>] [--config <path>] [--out <dir>] [--no-check]');
     process.exit(1);
   }
+  ACTIVE_PROJECT = args.project;
 
   const scanned = scanModule(args.project, args.moduleName);
   if (!scanned.length) { console.error(`no L2 .defs.ts pipeline found for ${args.project}/${args.moduleName}`); process.exit(1); }

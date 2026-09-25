@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/shared40/agentD2Shared.ts" enhancement="_blank"/>
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { D2_SHARED_AGENT_NAME, D2_SHARED_PAGE_AGENT_NAME, markD2StepFailed, parseD2StepInvocation } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
-import { addD2Step, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
+import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { readApprovedD2ContractsManifest } from '/_102020_/l2/agentDefsL2/steps/contracts30/io.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
 import { finalizeD2SharedBarrier } from '/_102020_/l2/agentDefsL2/steps/shared40/run.js';
@@ -18,7 +18,10 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     await assertD2InputSourcesStable(bundle);
     if (!await readApprovedD2ContractsManifest(identity, snapshot.snapshotHash)) throw new Error('D2_SHARED_CONTRACT_BARRIER_MISSING');
     const complete = await finalizeD2SharedBarrier(identity, snapshot, () => assertD2InputSourcesStable(bundle));
-    if (complete) return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `shared40 reused ${complete.units.length} approved unit(s).`)];
+    if (complete) return [
+      addD2Step(context, parentStep.stepId, d2Result('Shared ready', JSON.stringify({ ...identity, completedStep: 'shared40', nextStep: 'pages50', pages: complete.units.length }), 'shared40-done')),
+      updateD2Status(context, parentStep, step, hookSequential, 'completed', `shared40 reused ${complete.units.length} approved unit(s).`),
+    ];
     const workers = [...snapshot.selection.writePageIds].sort().map(pageId => addD2Step(context, parentStep.stepId, {
       type: 'agent', stepId: 0, interaction: null, stepTitle: `Shared ${pageId}`, status: 'waiting_human_input', nextSteps: [], agentName: D2_SHARED_PAGE_AGENT_NAME,
       prompt: JSON.stringify({ ...identity, pageId, attempt: 1 }), rags: [], planning: { planId: `shared40-page-${pageId}`, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },

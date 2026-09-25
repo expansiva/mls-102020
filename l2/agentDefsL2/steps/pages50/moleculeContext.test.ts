@@ -12,6 +12,10 @@ import type { ChDiscovery, ChGroupCatalog, ChLevel1 } from '/_102020_/l2/aura/mo
 import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
 import {
   buildD2MoleculeInventory,
+  buildD2MoleculeCandidateContext,
+  assertD2MoleculeCandidates,
+  buildD2MoleculeReceipt,
+  assertD2MoleculeReceiptIntegrity,
   D2MoleculeContextError,
   normalizeD2MlsReference,
   resolveD2MoleculeSelection,
@@ -118,6 +122,80 @@ void test('empty catalog has a reason; invalid/unknown/ambiguous refs are diagno
   assert.equal(deduped.pipelineSkills.length, 3);
 });
 
+void test('candidate context exposes only real scenario recommendations and rejects an invented tag', async () => {
+  const fixture = fixturePort(); const inventory = await buildD2MoleculeInventory(fixture.port);
+  inventory.groups = inventory.groups.filter(item => item.groupId === 'groupEnterDate' || item.groupId === 'groupEnterDatetime');
+  const candidates = await buildD2MoleculeCandidateContext(fixture.port, inventory);
+  assert.equal(candidates.groups.length, 2);
+  assert.ok(candidates.groups.flatMap(group => group.scenarios.flatMap(item => item.candidates)).every(tag => tag.includes('--ml-')));
+  assert.match(candidates.context, /never claim the catalog is empty when groups are listed/u);
+  const selected = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate']);
+  assert.doesNotThrow(() => assertD2MoleculeCandidates(selected, [{ groupId: 'groupEnterDate', candidates: ['groupenterdate--ml-date-picker'] }]));
+  assert.throws(() => assertD2MoleculeCandidates(selected, [{ groupId: 'groupEnterDate', candidates: ['invented--tag'] }]), errorCode('D2_MOLECULE_CANDIDATE_UNKNOWN'));
+});
+
+void test('molecular receipt distinguishes honest absence, valid no-match and selected provenance', async () => {
+  const absentFixture = fixturePort();
+  absentFixture.port.discover = async () => discovery(null, [], 'no molecule catalog found in the consumer or its dependencies');
+  const absentInventory = await buildD2MoleculeInventory(absentFixture.port);
+  const absentCandidates = await buildD2MoleculeCandidateContext(absentFixture.port, absentInventory);
+  const absent = await buildD2MoleculeReceipt(absentInventory, absentCandidates);
+  assert.equal(absent.outcome, 'catalog-absent');
+  assert.equal(absent.code, 'D2_MOLECULE_CATALOG_ABSENT');
+  assert.equal(absent.catalogProject, null);
+  assert.equal(absent.sources.length, 0);
+
+  const fixture = fixturePort();
+  const inventory = await buildD2MoleculeInventory(fixture.port);
+  inventory.groups = inventory.groups.filter(item => item.groupId === 'groupEnterDate');
+  const candidates = await buildD2MoleculeCandidateContext(fixture.port, inventory);
+  const none = await resolveD2MoleculeSelection(fixture.port, inventory, [], candidates);
+  const noMatch = await buildD2MoleculeReceipt(inventory, candidates, none);
+  assert.equal(noMatch.outcome, 'catalog-valid-no-match');
+  assert.equal(noMatch.code, 'D2_MOLECULE_VALID_NO_MATCH');
+  assert.equal(noMatch.groupCount, 1);
+  assert.ok(noMatch.candidateCount > 0);
+  assert.deepEqual(noMatch.sources.map(source => source.role), ['group-index', 'inventory']);
+
+  const selected = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate'], candidates);
+  const receipt = await buildD2MoleculeReceipt(inventory, candidates, selected);
+  assert.equal(receipt.outcome, 'catalog-selection');
+  assert.equal(receipt.consumerProject, 999);
+  assert.equal(receipt.catalogProject, 102040);
+  assert.equal(receipt.selectedBy, 'dependency');
+  assert.ok(receipt.sources.some(source => source.role === 'usage-contract' && source.sha256.startsWith('sha256:')));
+  assert.deepEqual(receipt.discovery, { directDeps: [102040], resolvedDeps: [102040], candidates: [102040] });
+  await assert.doesNotReject(() => assertD2MoleculeReceiptIntegrity(receipt));
+
+  const directDrift = structuredClone(receipt); directDrift.discovery.directDeps.push(102099);
+  await assert.rejects(() => assertD2MoleculeReceiptIntegrity(directDrift), errorCode('D2_MOLECULE_DISCOVERY_HASH'));
+  const resolvedDrift = structuredClone(receipt); resolvedDrift.discovery.resolvedDeps.push(102099);
+  await assert.rejects(() => assertD2MoleculeReceiptIntegrity(resolvedDrift), errorCode('D2_MOLECULE_DISCOVERY_HASH'));
+  const candidateDrift = structuredClone(receipt); candidateDrift.discovery.candidates.push(102099);
+  await assert.rejects(() => assertD2MoleculeReceiptIntegrity(candidateDrift), errorCode('D2_MOLECULE_DISCOVERY_SELECTION'));
+  const contextDrift = structuredClone(receipt); contextDrift.sources[0].sha256 = `sha256:${'0'.repeat(64)}`;
+  await assert.rejects(() => assertD2MoleculeReceiptIntegrity(contextDrift), errorCode('D2_MOLECULE_RECEIPT_HASH'));
+});
+
+void test('receipt canonicalizes runtime discovery self entries and duplicates without changing dependency selection', async () => {
+  const fixture = fixturePort();
+  const inventory = await buildD2MoleculeInventory(fixture.port);
+  inventory.groups = inventory.groups.filter(item => item.groupId === 'groupEnterDate');
+  inventory.directDeps = [999, 102040, 102040, 999];
+  inventory.resolvedDeps = [999, 102040, 999, 102040];
+  inventory.candidates = [102040, 102040];
+  const raw = structuredClone({ directDeps: inventory.directDeps, resolvedDeps: inventory.resolvedDeps, candidates: inventory.candidates });
+  const candidates = await buildD2MoleculeCandidateContext(fixture.port, inventory);
+  const selection = await resolveD2MoleculeSelection(fixture.port, inventory, ['groupEnterDate'], candidates);
+  const receipt = await buildD2MoleculeReceipt(inventory, candidates, selection);
+
+  assert.deepEqual(receipt.discovery, { directDeps: [102040], resolvedDeps: [102040], candidates: [102040] });
+  assert.equal(receipt.catalogProject, 102040);
+  assert.equal(receipt.selectedBy, 'dependency');
+  await assert.doesNotReject(() => assertD2MoleculeReceiptIntegrity(receipt));
+  assert.deepEqual({ directDeps: inventory.directDeps, resolvedDeps: inventory.resolvedDeps, candidates: inventory.candidates }, raw, 'receipt creation does not mutate observed runtime vectors');
+});
+
 void test('production discovery stays on own/direct dependency catalogs and never falls through to 102040', async () => {
   const own = installDiscoveryHost(700, [701], [700]);
   const ownChoice = await d2MoleculeCatalogPort.discover(null);
@@ -129,6 +207,28 @@ void test('production discovery stays on own/direct dependency catalogs and neve
   assert.equal(dependencyChoice.project, 701);
   assert.deepEqual(dependencyChoice.candidates, [701]);
   assert.equal(dependencyChoice.candidates.includes(102040), false);
+});
+
+void test('agendaClinica declares 102040 directly in all three runtime dependency surfaces', async () => {
+  const root = path.resolve(HERE, '../../../../..');
+  const config = json(path.join(root, 'mls-102047', 'l5', 'config.json')) as {
+    workspaceDependencies: string[];
+    projects: Record<string, { root: string; type: string }>;
+  };
+  const manifest = json(path.join(root, 'mls-102047', 'mlsDep.json')) as { workspaceDependencies: string[] };
+  assert.equal(config.workspaceDependencies.filter(id => id === '102040').length, 1);
+  assert.deepEqual(config.projects['102040'], { root: '../mls-102040', type: 'lib' });
+  assert.equal(manifest.workspaceDependencies.filter(id => id === '102040').length, 1);
+
+  installDiscoveryHost(102047, config.workspaceDependencies.map(Number), [102040]);
+  const choice = await d2MoleculeCatalogPort.discover(null);
+  assert.equal(choice.project, 102040);
+  assert.equal(choice.selectedBy, 'dependency');
+  assert.deepEqual(choice.candidates, [102040]);
+
+  const inventory = await buildD2MoleculeInventory(fixturePort().port);
+  assert.equal(inventory.catalogProject, 102040);
+  assert.equal(inventory.groups.length, 31);
 });
 
 function fixturePort(): { port: D2MoleculeCatalogPort; calls: string[] } {
@@ -178,7 +278,7 @@ function fixtureGroup(reference: string): { catalog: ChGroupCatalog | null; erro
 }
 
 function discovery(project: number | null, candidates: number[], error: string): ChDiscovery {
-  return { activeProject: 999, directDeps: [], resolvedDeps: [], candidates, project, selectedBy: project === null ? null : 'dependency', error, warnings: [] };
+  return { activeProject: 999, directDeps: [...candidates], resolvedDeps: [...candidates], candidates, project, selectedBy: project === null ? null : 'dependency', error, warnings: [] };
 }
 
 function installDiscoveryHost(activeProject: number, deps: number[], initialCandidates: number[]): { setCandidates(value: number[]): void } {

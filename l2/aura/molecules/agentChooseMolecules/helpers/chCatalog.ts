@@ -168,7 +168,9 @@ export async function discoverChCatalog(argProject: number | null): Promise<ChDi
     // Best effort: if it fails, the scan below simply sees whatever is loaded and the error names it.
   }
 
-  const declared = mls.l5.getProjectDetails(activeProject)?.prj_dependencies;
+  const declared = typeof mls.l5.getProjectDetails === 'function'
+    ? mls.l5.getProjectDetails(activeProject)?.prj_dependencies
+    : undefined;
   const resolvedDeps = mls.l5.getProjectDependencies(activeProject, false) || [];
   const directDeps = Array.isArray(declared) ? declared.filter(project => project !== activeProject) : resolvedDeps;
 

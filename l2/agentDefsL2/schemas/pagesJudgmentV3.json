@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collab.codes/schemas/agentDefsL2/pagesJudgmentV3.json",
+  "title": "agentDefsL2 pages50 organism judgment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "pageId", "category", "presentations"],
+  "properties": {
+    "schemaVersion": { "const": "2026-09-23-agent-defs-l2-pages-judgment-v3" },
+    "pageId": { "type": "string", "pattern": "^[a-z][A-Za-z0-9_-]*$" },
+    "category": {
+      "type": "object", "additionalProperties": false,
+      "required": ["categoryRef", "reason", "evidenceRefs"],
+      "properties": {
+        "categoryRef": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidenceRefs": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "presentations": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["device", "descriptions", "moleculeReason"],
+        "properties": {
+          "device": { "enum": ["desktop", "mobile"] },
+          "descriptions": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object", "additionalProperties": false,
+              "required": ["organismId", "kind", "description", "contentRef", "capabilityRefs", "moleculeRecommendations"],
+              "properties": {
+                "organismId": { "type": "string", "minLength": 1 },
+                "kind": { "type": "string", "minLength": 1 },
+                "description": { "type": "string", "minLength": 1 },
+                "contentRef": { "type": "string", "minLength": 1 },
+                "capabilityRefs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+                "moleculeRecommendations": {
+                  "type": "array", "items": {
+                    "type": "object", "additionalProperties": false,
+                    "required": ["groupId", "candidates", "reason"],
+                    "properties": {
+                      "groupId": { "type": "string", "minLength": 1 },
+                      "candidates": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+                      "reason": { "type": "string", "minLength": 1 }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "moleculeReason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

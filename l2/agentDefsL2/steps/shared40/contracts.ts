@@ -3,8 +3,10 @@
 import type { D2ContractCall, D2ContractField, D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 
-export const D2_SHARED_VERSION = '2026-09-21-agent-defs-l2-shared-v1' as const;
+export const D2_SHARED_VERSION = '2026-09-24-agent-defs-l2-shared-v3' as const;
 export const D2_SHARED_JUDGMENT_VERSION = '2026-09-21-agent-defs-l2-shared-judgment-v1' as const;
+export const D2_SHARED_SKILL = '_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts' as const;
+export const D2_SHARED_RUNTIME_CONTEXT = '_102029_.d.ts' as const;
 export const D2_SHARED_KEYS = ['schemaVersion', 'moduleName', 'pageId', 'pageName', 'baseClassName', 'routePattern', 'contractRef', 'states', 'actions', 'scenaries', 'initialLoads', 'dataBindings'] as const;
 
 export interface D2SharedScenarioJudgment { value: string; kind: 'base' | 'detail' | 'command'; actionId: string; preconditions: string[]; }
@@ -12,9 +14,10 @@ export interface D2SharedActionBehavior { actionId: string; refreshActionIds: st
 export interface D2SharedJudgment { schemaVersion: typeof D2_SHARED_JUDGMENT_VERSION; pageId: string; scenaries: D2SharedScenarioJudgment[]; initialLoadActionIds: string[]; actionBehaviors: D2SharedActionBehavior[]; }
 export interface D2SharedState { stateKey: string; name: string; kind: string; defaultValue: unknown; valueSet?: string[]; actionRef?: string; contractRef?: string; outputShape?: 'array' | 'object'; source?: 'userInput' | 'selectedEntity' | 'routeParam' | 'session'; presentation?: 'form' | 'selection' | 'route' | 'hidden'; editable?: boolean; required?: boolean; }
 export interface D2SharedAction { actionId: string; kind: 'query' | 'command' | 'stateSetter'; commandRef?: string; routeRef?: string; inputTypeRef?: string; outputTypeRef?: string; inputStateKeys: string[]; outputStateKeys: string[]; statusStateKey: string; errorStateKey: string; refreshActionIds: string[]; confirmation?: { required: true; title: string; description: string }; stateKey?: string; }
-export interface D2SharedBinding { actionId: string; kind: 'query' | 'command'; routeRef: string; inputTypeRef: string; outputTypeRef: string; inputStateKeys: string[]; resultStateKey: string; }
+export interface D2SharedSnapshotPrecondition { inputStateKey: string; selectedIdentityStateKey: string; sourceActionId: string; resultStateKey: string; identityPath: string; valuePath: string; valueScalar: D2ContractField['scalar']; capture: 'onSelection'; missing: 'blockCommandPreserveEdit'; }
+export interface D2SharedBinding { actionId: string; kind: 'query' | 'command'; routeRef: string; inputTypeRef: string; outputTypeRef: string; inputStateKeys: string[]; resultStateKey: string; snapshotPreconditions?: D2SharedSnapshotPrecondition[]; }
 export interface D2SharedDefinition { schemaVersion: typeof D2_SHARED_VERSION; moduleName: string; pageId: string; pageName: string; baseClassName: string; routePattern: string; contractRef: { defPath: string; calls: Array<{ actionId: string; routeConst: string; inputType: string; outputType: string }> }; states: D2SharedState[]; actions: D2SharedAction[]; scenaries: D2SharedScenarioJudgment[]; initialLoads: Array<{ actionId: string; stateKey: string }>; dataBindings: D2SharedBinding[]; }
-export interface D2SharedPipelineItem { id: string; type: 'l2_shared'; defPath: string; outputPath: string; dependsFiles: string[]; dependsOn: string[]; }
+export interface D2SharedPipelineItem { id: string; type: 'l2_shared'; defPath: string; outputPath: string; dependsFiles: string[]; dependsOn: string[]; skills: string[]; }
 
 export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage, contract: D2PageContract, judgment: D2SharedJudgment): D2SharedDefinition {
   const states: D2SharedState[] = [
@@ -29,8 +32,10 @@ export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage
     const inputStates = flatten(call.input).map(field => {
       const stateKey = `${prefix}.input.${field.path.replace(/^[^.]+\./, '').replace(/\./g, '_').replace('$', '')}`;
       const selected = isSelectedEntity(call, field);
-      states.push({ stateKey, name: field.name, kind: 'input', defaultValue: null, actionRef: call.callName, contractRef: `${call.callPascal}Input.${field.path}`, source: selected ? 'selectedEntity' : 'userInput', presentation: selected ? 'selection' : 'form', editable: !selected, required: field.required });
-      actions.push({ actionId: `set${call.callPascal}${field.path.split('.').slice(1).map(part => pascal(part.replace(/^\$/, ''))).join('')}`, kind: 'stateSetter', inputStateKeys: [], outputStateKeys: [stateKey], statusStateKey: '', errorStateKey: '', refreshActionIds: [], stateKey });
+      const snapshot = field.writePrecondition;
+      const editable = !selected && !snapshot;
+      states.push({ stateKey, name: field.name, kind: 'input', defaultValue: null, actionRef: call.callName, contractRef: `${call.callPascal}Input.${field.path}`, source: selected || snapshot ? 'selectedEntity' : 'userInput', presentation: snapshot ? 'hidden' : selected ? 'selection' : 'form', editable, required: field.required });
+      if (editable) actions.push({ actionId: `set${call.callPascal}${field.path.split('.').slice(1).map(part => pascal(part.replace(/^\$/, ''))).join('')}`, kind: 'stateSetter', inputStateKeys: [], outputStateKeys: [stateKey], statusStateKey: '', errorStateKey: '', refreshActionIds: [], stateKey });
       return stateKey;
     });
     const statusStateKey = `${prefix}.status`;
@@ -44,7 +49,8 @@ export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage
     const item = behavior.get(call.callName);
     const kind = call.operation === 'list' || call.operation === 'get' ? 'query' : 'command';
     actions.push({ actionId: call.callName, kind, commandRef: call.callName, routeRef: call.routeName, inputTypeRef: `${call.callPascal}Input`, outputTypeRef: `${call.callPascal}Output`, inputStateKeys: inputStates, outputStateKeys: [resultStateKey], statusStateKey, errorStateKey, refreshActionIds: item?.refreshActionIds || [], ...(item?.destructive && item.confirmation ? { confirmation: { required: true, ...item.confirmation } } : {}) });
-    dataBindings.push({ actionId: call.callName, kind, routeRef: call.routeName, inputTypeRef: `${call.callPascal}Input`, outputTypeRef: `${call.callPascal}Output`, inputStateKeys: inputStates, resultStateKey });
+    const snapshotPreconditions = buildSnapshotPreconditions(page.pageId, contract, call);
+    dataBindings.push({ actionId: call.callName, kind, routeRef: call.routeName, inputTypeRef: `${call.callPascal}Input`, outputTypeRef: `${call.callPascal}Output`, inputStateKeys: inputStates, resultStateKey, ...(snapshotPreconditions.length ? { snapshotPreconditions } : {}) });
   }
   return {
     schemaVersion: D2_SHARED_VERSION, moduleName, pageId: page.pageId, pageName: page.label,
@@ -57,7 +63,7 @@ export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage
 }
 
 export function buildD2SharedPipeline(moduleName: string, pageId: string): D2SharedPipelineItem {
-  return { id: `${pageId}__l2_shared`, type: 'l2_shared', defPath: `l2/${moduleName}/web/shared/${pageId}.defs.ts`, outputPath: `l2/${moduleName}/web/shared/${pageId}.ts`, dependsFiles: [`l2/${moduleName}/web/contracts/${pageId}.defs.ts`], dependsOn: [] };
+  return { id: `${pageId}__l2_shared`, type: 'l2_shared', defPath: `l2/${moduleName}/web/shared/${pageId}.defs.ts`, outputPath: `l2/${moduleName}/web/shared/${pageId}.ts`, dependsFiles: [`l2/${moduleName}/web/contracts/${pageId}.defs.ts`, D2_SHARED_RUNTIME_CONTEXT], dependsOn: [], skills: [D2_SHARED_SKILL] };
 }
 
 export function suggestedD2SharedJudgment(page: D2SelectedPage, contract: D2PageContract): D2SharedJudgment {
@@ -72,8 +78,57 @@ export function suggestedD2SharedJudgment(page: D2SelectedPage, contract: D2Page
   };
 }
 
+export function d2SharedPreconditionStateKeysByAction(page: D2SelectedPage, contract: D2PageContract): Record<string, string[]> {
+  return Object.fromEntries(contract.calls.map(call => [
+    call.callName,
+    flatten(call.input).map(field => inputStateKey(page.pageId, call, field)),
+  ]));
+}
+
 export function flatten(fields: D2ContractField[]): D2ContractField[] { return fields.flatMap(field => [field, ...flatten(field.children)]); }
 export function inputStateKey(pageId: string, call: D2ContractCall, field: D2ContractField): string { return `ui.${pageId}.${call.callName}.input.${field.path.replace(/^[^.]+\./, '').replace(/\./g, '_').replace('$', '')}`; }
+export function captureD2SelectedSnapshot(binding: D2SharedSnapshotPrecondition, selectedIdentity: unknown, result: unknown, active?: { selectedIdentity: unknown; value: unknown }): unknown {
+  if (selectedIdentity === null || selectedIdentity === undefined) return null;
+  if (active?.selectedIdentity === selectedIdentity && validScalar(active.value, binding.valueScalar)) return active.value;
+  const rows = Array.isArray(result) ? result : result && typeof result === 'object' ? [result] : [];
+  const selected = rows.find(row => readPath(row, binding.identityPath) === selectedIdentity);
+  const value = selected ? readPath(selected, binding.valuePath) : undefined;
+  return validScalar(value, binding.valueScalar) ? value : null;
+}
+
+export function missingD2SnapshotPreconditions(binding: D2SharedBinding, state: Readonly<Record<string, unknown>>): string[] {
+  return (binding.snapshotPreconditions ?? []).filter(item => !validScalar(state[item.inputStateKey], item.valueScalar)).map(item => item.inputStateKey);
+}
+
+function buildSnapshotPreconditions(pageId: string, contract: D2PageContract, call: D2ContractCall): D2SharedSnapshotPrecondition[] {
+  const fields = flatten(call.input).filter(field => field.writePrecondition);
+  if (!fields.length) return [];
+  const identity = flatten(call.input).find(field => isSelectedEntity(call, field));
+  const source = contract.calls.find(candidate => (candidate.operation === 'list' || candidate.operation === 'get')
+    && candidate.entityId === call.entityId
+    && fields.every(field => flatten(candidate.output).some(output => output.path === field.path))
+    && identity && flatten(candidate.output).some(output => output.path === identity.path));
+  if (!identity || !source) throw new Error(`D2_SHARED_WRITE_PRECONDITION_SOURCE_MISSING: ${call.callName}`);
+  return fields.map(field => ({
+    inputStateKey: inputStateKey(pageId, call, field),
+    selectedIdentityStateKey: inputStateKey(pageId, call, identity),
+    sourceActionId: source.callName,
+    resultStateKey: `ui.${pageId}.${source.callName}.result`,
+    identityPath: identity.path.replace(/^[^.]+\./, ''),
+    valuePath: field.path.replace(/^[^.]+\./, ''),
+    valueScalar: field.scalar,
+    capture: 'onSelection',
+    missing: 'blockCommandPreserveEdit',
+  }));
+}
+
+function readPath(value: unknown, dotted: string): unknown {
+  return dotted.split('.').reduce<unknown>((current, part) => current && typeof current === 'object' ? (current as Record<string, unknown>)[part] : undefined, value);
+}
+function validScalar(value: unknown, scalar: D2ContractField['scalar']): boolean {
+  if (value === null || value === undefined) return false;
+  return scalar === 'object' ? typeof value === 'object' : typeof value === scalar;
+}
 function selectedKeys(pageId: string, call: D2ContractCall): string[] { return flatten(call.input).filter(field => isSelectedEntity(call, field) && field.required).map(field => inputStateKey(pageId, call, field)); }
 function isSelectedEntity(call: D2ContractCall, field: D2ContractField): boolean { return field.derived && field.name === 'id' && (call.operation === 'get' || call.operation === 'update' || call.operation === 'transition'); }
 export function isObviouslyDestructive(actionId: string): boolean { return /^(delete|remove|cancel|revoke|deactivate|archive)/i.test(actionId); }

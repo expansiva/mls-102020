@@ -140,6 +140,14 @@ export class MlScenaryMolecule extends MoleculeAuraElement {
 
   updated(changed: Map<string | number | symbol, unknown>): void {
     super.updated(changed);
+    if (!this.pendingFocus && changed.has('value')) {
+      const focused = document.activeElement as HTMLElement | null;
+      const hiddenPanel = focused?.closest('.ml-scenary-panel[hidden]');
+      if (focused && hiddenPanel && this.contains(focused)) {
+        const active = resolveActive(this.scenes(), this.value);
+        if (active) (this.querySelector(`#${this.headingId(active)}`) as HTMLElement | null)?.focus();
+      }
+    }
     if (!this.pendingFocus) return;
     const target = this.pendingFocus;
     this.pendingFocus = null;

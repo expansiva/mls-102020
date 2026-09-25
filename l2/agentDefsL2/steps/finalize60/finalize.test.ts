@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { D2InputSnapshot, D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { buildD2SharedPipeline } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { buildD2PagePipeline } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
@@ -7,7 +10,7 @@ import { renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.j
 import { renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { changedOutsideD2Scope, gateD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
 import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
-import { revalidateD2RemovalSet } from '/_102020_/l2/agentDefsL2/steps/finalize60/run.js';
+import { revalidateD2RemovalSet, validateD2SelectionCounts } from '/_102020_/l2/agentDefsL2/steps/finalize60/run.js';
 
 const moduleName = 'agendaClinica';
 const ids = ['agenda', 'cadastro', 'dashboard', 'prontuario', 'recepcao'];
@@ -31,11 +34,13 @@ test('finalize60 refuses a missing def, duplicate id, cycle and invalid referenc
   const complete = ids.flatMap(pageId => files(pageId));
   assert.throws(() => gateD2FinalSources(snapshot, complete.slice(1)), /OUTPUT_SET_MISMATCH/);
   const duplicate = replacePipeline(complete, 'cadastro', 'desktopPage', { id: 'agenda__desktop__page11' });
-  assert.throws(() => gateD2FinalSources(snapshot, duplicate), /PIPELINE_ID_SET_INVALID/);
+  assert.throws(() => gateD2FinalSources(snapshot, duplicate), /PAGES_PIPELINE_CONTEXT|PIPELINE_ID_SET_INVALID/);
   const cycle = replacePipeline(complete, 'agenda', 'shared', { dependsOn: ['agenda__desktop__page11'] });
-  assert.throws(() => gateD2FinalSources(snapshot, cycle), /SHARED_REF_INVALID|PIPELINE_CYCLE/);
+  assert.throws(() => gateD2FinalSources(snapshot, cycle), /SHARED_PIPELINE_CONTEXT|SHARED_REF_INVALID|PIPELINE_CYCLE/);
   const invalid = replacePipeline(complete, 'agenda', 'mobilePage', { dependsFiles: ['l2/wrong/web/shared/agenda.ts'] });
-  assert.throws(() => gateD2FinalSources(snapshot, invalid), /PAGE_REF_INVALID/);
+  assert.throws(() => gateD2FinalSources(snapshot, invalid), /PAGES_PIPELINE_CONTEXT|PAGE_REF_INVALID/);
+  const legacyPage = replacePipeline(complete, 'agenda', 'desktopPage', { dependsFiles: ['l2/agendaClinica/web/shared/agenda.ts'] });
+  assert.throws(() => gateD2FinalSources(snapshot, legacyPage), /PAGES_PIPELINE_CONTEXT|PAGE_REF_INVALID/);
   const invalidUsage = replacePipeline(complete, 'agenda', 'mobilePage', { skills: ['_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.defs.ts'] });
   assert.throws(() => gateD2FinalSources(snapshot, invalidUsage), /PAGE_REF_INVALID/);
   const incompletePair = replacePipeline(complete, 'agenda', 'desktopPage', { skills: ['_102040_/l2/molecules/groupenterdate/index.defs.ts'] });
@@ -69,6 +74,31 @@ test('remove preflight catches an edit and a new snapshot between scan and delet
   assert.equal(deletes, 0);
 });
 
+test('agendaClinica snapshot counts unique routes and usecaseIds and rejects illegible identities', () => {
+  const fixture = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../input20/fixtures/current/backend.json'), 'utf8')) as {
+    endpoints: Array<Record<string, unknown>>;
+    usecases: Array<Record<string, unknown>>;
+  };
+  const usecases = new Map(fixture.usecases.map(usecase => [String(usecase.usecaseId), usecase]));
+  const pageIds = [...new Set(fixture.endpoints.map(endpoint => String(endpoint.page)))].sort();
+  const pages = pageIds.map(pageId => {
+    const endpoints = fixture.endpoints.filter(endpoint => endpoint.page === pageId);
+    const refs = new Set(endpoints.map(endpoint => String(endpoint.usecaseRef)));
+    return { ...page(pageId), endpoints, usecases: [...refs].map(ref => usecases.get(ref)!) };
+  });
+  const agendaSnapshot = { ...snapshot, selection: { ...snapshot.selection, pages, writePageIds: pageIds,
+    counts: { pages: 5, endpoints: 19, usecases: 13, destinations: 20, materializationItems: 15 } } } as D2InputSnapshot;
+  assert.equal(pages.reduce((sum, item) => sum + item.usecases.length, 0), 19, 'page occurrences intentionally repeat usecases');
+  assert.deepEqual(validateD2SelectionCounts(agendaSnapshot), []);
+
+  const adulterated = structuredClone(agendaSnapshot);
+  adulterated.selection.pages[0].usecases[0].usecaseId = '';
+  adulterated.selection.pages[1].endpoints[0].route = String(adulterated.selection.pages[0].endpoints[0].route);
+  const problems = validateD2SelectionCounts(adulterated).join('; ');
+  assert.match(problems, /usecaseId missing/);
+  assert.match(problems, /endpoint route duplicated/);
+});
+
 function page(pageId: string): D2SelectedPage {
   const base = `l2/${moduleName}/web`;
   return { pageId, status: 'toCreate', label: pageId, actors: [], authorityRefs: [], ancestors: [], journeyRefs: [], organisms: [], reads: [], writes: [], endpoints: [], usecases: [], destinations: [
@@ -79,14 +109,15 @@ function page(pageId: string): D2SelectedPage {
   ] };
 }
 function files(pageId: string, withoutSkills = false): D2FinalSource[] {
-  const p = page(pageId); const skill = withoutSkills ? [] : ['_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts'];
+  const p = page(pageId); const mandatory = ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts', '_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md']; const skill = withoutSkills ? mandatory : [...mandatory, '_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts'];
   return [
     { pageId, kind: 'contract', path: p.destinations[0].path, source: 'export interface Input { "id": string; }\n' },
-    { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({} as never, buildD2SharedPipeline(moduleName, pageId)) },
-    { pageId, kind: 'desktopPage', path: p.destinations[2].path, source: renderD2Page({ device: 'desktop', descriptions: ['desktop'], pipeline: [buildD2PagePipeline(moduleName, pageId, 'desktop', skill)] }) },
-    { pageId, kind: 'mobilePage', path: p.destinations[3].path, source: renderD2Page({ device: 'mobile', descriptions: ['mobile'], pipeline: [buildD2PagePipeline(moduleName, pageId, 'mobile', skill)] }) },
+    { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({ moduleName, pageId, contractRef: { defPath: `l2/${moduleName}/web/contracts/${pageId}.defs.ts` } } as never, buildD2SharedPipeline(moduleName, pageId)) },
+    { pageId, kind: 'desktopPage', path: p.destinations[2].path, source: renderD2Page({ device: 'desktop', descriptions: [description(pageId, 'desktop')], pipeline: [buildD2PagePipeline(moduleName, pageId, 'desktop', 'calendarScheduling', skill)] }) },
+    { pageId, kind: 'mobilePage', path: p.destinations[3].path, source: renderD2Page({ device: 'mobile', descriptions: [description(pageId, 'mobile')], pipeline: [buildD2PagePipeline(moduleName, pageId, 'mobile', 'calendarScheduling', skill)] }) },
   ];
 }
+function description(pageId: string, device: string) { return { organismId: 'organism.content.1', kind: 'content', description: `${pageId} ${device}`, contentRef: 'base', capabilityRefs: [], moleculeRecommendations: [] }; }
 function replacePipeline(all: D2FinalSource[], pageId: string, kind: D2FinalSource['kind'], patch: Record<string, unknown>): D2FinalSource[] {
   return all.map(file => {
     if (file.pageId !== pageId || file.kind !== kind) return file;

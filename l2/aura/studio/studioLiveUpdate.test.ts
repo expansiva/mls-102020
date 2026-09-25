@@ -34,13 +34,13 @@ test('the modes are the four documented ones', async () => {
   assert.deepEqual(listLiveUpdateModes(), ['remount', 'hotSwap', 'reload', 'off']);
 });
 
-test('the default is OFF while the hot swap is suspended', async () => {
-  // Suspended on 2026-09-02: the hot swap is inconsistent and throwing in the running app, and an
-  // edit that reports "applied live" while the screen disagrees is worse than one that says nothing
-  // happened. The edit is unaffected — file written, module recompiled; what is suspended is
-  // re-registering the compiled class.
+test('the default is the REMOUNT, so a fresh origin already updates live', async () => {
+  // The live update was off from 2026-09-02 (the hot swap threw in the running app) until the
+  // remount answered it. It has to be the DEFAULT and not something the user switches on, because
+  // the choice is persisted per ORIGIN: moving the test app to another port (102047 -> 102050)
+  // brought it back to `off` and made the live update look broken.
   const { getLiveUpdateMode } = await load();
-  assert.equal(getLiveUpdateMode(), 'off');
+  assert.equal(getLiveUpdateMode(), 'remount');
 });
 
 test('a stored hotSwap does not resurrect it, and a stored reload still counts', async () => {
@@ -49,10 +49,11 @@ test('a stored hotSwap does not resurrect it, and a stored reload still counts',
   // tested through `resolveStoredMode` because the getter memoises: after its first answer no stored
   // value is ever read again.
   const { resolveStoredMode } = await load();
-  assert.equal(resolveStoredMode('hotSwap'), 'off', 'suspended');
+  assert.equal(resolveStoredMode('hotSwap'), 'remount', 'suspended, so it falls back to the default');
   assert.equal(resolveStoredMode('reload'), 'reload', 'not suspended, so honoured');
-  assert.equal(resolveStoredMode('turbo'), 'off', 'nonsense falls back');
-  assert.equal(resolveStoredMode(null), 'off', 'nothing stored');
+  assert.equal(resolveStoredMode('off'), 'off', 'turning it off by hand is still honoured');
+  assert.equal(resolveStoredMode('turbo'), 'remount', 'nonsense falls back');
+  assert.equal(resolveStoredMode(null), 'remount', 'nothing stored');
 });
 
 test('setting a mode persists it, so it survives the reload the `reload` mode causes', async () => {

@@ -14,3 +14,10 @@ valor confiável estiver disponível. Cenários não aceitam layout/sections/lay
 Antes de gravar um result e novamente antes da barreira, o worker relê o snapshot vivo, repete a
 estabilidade das fontes e compara o SHA-256 do contrato `.defs.ts` persistido com `contracts.json`.
 Setters usam o path completo do campo; o gate recusa colisão de `stateKey` ou `actionId`.
+Cada defs exporta somente `definition` e `pipeline`. `pipeline` é um array com exatamente um item
+`l2_shared`, sem `agent`, que declara a skill `genD2SharedTs.ts` e, nesta ordem, o contrato da página
+`.defs.ts` e o alias lógico `_102029_.d.ts`. O leitor nunca procura um arquivo físico para o alias:
+ele o expande pelas fontes canônicas do runtime 102029 e falha indicando a fonte concreta ausente.
+
+O recibo v2 inclui os hashes do contexto expandido e da skill. Alterar qualquer um invalida o reuso
+da unidade sem regravar um defs cujos bytes continuem idênticos.

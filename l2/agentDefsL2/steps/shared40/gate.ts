@@ -2,7 +2,8 @@
 
 import type { D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { D2_SHARED_JUDGMENT_VERSION, D2_SHARED_KEYS, buildD2SharedDefinition, flatten, inputStateKey, isObviouslyDestructive, type D2SharedDefinition, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { D2_SHARED_JUDGMENT_VERSION, D2_SHARED_KEYS, D2_SHARED_RUNTIME_CONTEXT, D2_SHARED_SKILL, buildD2SharedDefinition, flatten, inputStateKey, isObviouslyDestructive, type D2SharedDefinition, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { parseD2RenderedShared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
 
 export function parseD2SharedJudgment(value: unknown): D2SharedJudgment {
   const root = record(value);
@@ -36,7 +37,8 @@ export function gateD2Shared(moduleName: string, page: D2SelectedPage, contract:
     scenes.add(scene.value);
     if (!callById.has(scene.actionId)) errors.push(`D2_SHARED_SCENARY_ACTION_UNKNOWN: ${scene.actionId}`);
     if (behaviorById.get(scene.actionId)?.destructive && scene.kind === 'command') errors.push(`D2_SHARED_DESTRUCTIVE_SCENARY: ${scene.actionId}`);
-    const knownStates = new Set(contract.calls.flatMap(call => flatten(call.input).map(field => inputStateKey(page.pageId, call, field))));
+    const sceneCall = callById.get(scene.actionId);
+    const knownStates = new Set(sceneCall ? flatten(sceneCall.input).map(field => inputStateKey(page.pageId, sceneCall, field)) : []);
     for (const state of scene.preconditions) if (!knownStates.has(state)) errors.push(`D2_SHARED_PRECONDITION_UNKNOWN: ${state}`);
   }
   for (const actionId of judgment.initialLoadActionIds) {
@@ -51,15 +53,42 @@ export function gateD2Shared(moduleName: string, page: D2SelectedPage, contract:
   assertUnique(definition.states.map(item => item.stateKey), 'D2_SHARED_STATE_ID_DUPLICATE', errors);
   assertUnique(definition.actions.map(item => item.actionId), 'D2_SHARED_ACTION_ID_DUPLICATE', errors);
   const actions = new Set(definition.actions.map(item => item.actionId));
-  for (const binding of definition.dataBindings) if (!actions.has(binding.actionId)) errors.push(`D2_SHARED_BINDING_ACTION_UNKNOWN: ${binding.actionId}`);
+  const states = new Map(definition.states.map(item => [item.stateKey, item]));
+  const bindings = new Map(definition.dataBindings.map(item => [item.actionId, item]));
+  for (const binding of definition.dataBindings) {
+    if (!actions.has(binding.actionId)) errors.push(`D2_SHARED_BINDING_ACTION_UNKNOWN: ${binding.actionId}`);
+    for (const snapshot of binding.snapshotPreconditions ?? []) {
+      const token = states.get(snapshot.inputStateKey);
+      const identity = states.get(snapshot.selectedIdentityStateKey);
+      const source = bindings.get(snapshot.sourceActionId);
+      if (!token || token.source !== 'selectedEntity' || token.presentation !== 'hidden' || token.editable !== false || token.required !== true) errors.push(`D2_SHARED_WRITE_PRECONDITION_STATE_INVALID: ${snapshot.inputStateKey}`);
+      if (!identity || identity.source !== 'selectedEntity') errors.push(`D2_SHARED_WRITE_PRECONDITION_IDENTITY_INVALID: ${snapshot.selectedIdentityStateKey}`);
+      if (!source || source.kind !== 'query' || source.resultStateKey !== snapshot.resultStateKey) errors.push(`D2_SHARED_WRITE_PRECONDITION_SOURCE_INVALID: ${snapshot.sourceActionId}`);
+      if (snapshot.capture !== 'onSelection' || snapshot.missing !== 'blockCommandPreserveEdit' || !snapshot.identityPath || !snapshot.valuePath || !['string', 'number', 'boolean', 'object'].includes(snapshot.valueScalar)) errors.push(`D2_SHARED_WRITE_PRECONDITION_POLICY_INVALID: ${snapshot.inputStateKey}`);
+    }
+  }
   if (errors.length) throw new Error(errors.join('\n'));
   return definition;
 }
 
 export function assertD2RenderedShared(source: string): void {
-  if (!source.includes('export const definition =') || !source.includes('export const pipeline =')) fail('D2_SHARED_RENDER_EXPORTS');
+  const exports = [...source.matchAll(/export const\s+([A-Za-z0-9_]+)/gu)].map(match => match[1]);
+  if (exports.join(',') !== 'definition,pipeline') fail('D2_SHARED_RENDER_EXPORTS');
+  const { definition, pipeline } = parseD2RenderedShared(source);
+  if (pipeline.length !== 1) fail('D2_SHARED_PIPELINE_COUNT');
+  const renderedDefinition = record(definition);
+  const renderedContract = record(renderedDefinition.contractRef);
+  const moduleName = typeof renderedDefinition.moduleName === 'string' ? renderedDefinition.moduleName : '';
+  const pageId = typeof renderedDefinition.pageId === 'string' ? renderedDefinition.pageId : '';
+  const contractPath = typeof renderedContract.defPath === 'string' ? renderedContract.defPath : '';
+  if (!moduleName || !pageId || contractPath !== `l2/${moduleName}/web/contracts/${pageId}.defs.ts`) fail('D2_SHARED_DEFINITION_SHAPE');
+  const item = record(pipeline[0]);
+  const keys = Object.keys(item);
+  if (keys.some(key => !['id', 'type', 'defPath', 'outputPath', 'dependsFiles', 'dependsOn', 'skills'].includes(key)) || keys.length !== 7) fail('D2_SHARED_PIPELINE_SHAPE');
+  if (item.type !== 'l2_shared' || item.id !== `${pageId}__l2_shared` || item.defPath !== `l2/${moduleName}/web/shared/${pageId}.defs.ts` || item.outputPath !== `l2/${moduleName}/web/shared/${pageId}.ts`) fail('D2_SHARED_PIPELINE_ID');
+  if (!Array.isArray(item.dependsOn) || item.dependsOn.length || !Array.isArray(item.dependsFiles) || item.dependsFiles.join('\0') !== `${contractPath}\0${D2_SHARED_RUNTIME_CONTEXT}`) fail('D2_SHARED_PIPELINE_CONTEXT');
+  if (!Array.isArray(item.skills) || item.skills.join('\0') !== D2_SHARED_SKILL) fail('D2_SHARED_PIPELINE_SKILL');
   if (/layoutRef|\bsections\b|\blayout\b/.test(source)) fail('D2_SHARED_LAYOUT_FORBIDDEN');
-  if (!source.includes('.defs.ts')) fail('D2_SHARED_CONTRACT_DEFS_REF_MISSING');
 }
 function fail(message: string): never { throw new Error(message); }
 function assertUnique(values: string[], code: string, errors: string[]): void { const seen = new Set<string>(); for (const value of values) { if (seen.has(value)) errors.push(`${code}: ${value}`); seen.add(value); } }

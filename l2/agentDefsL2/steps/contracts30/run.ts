@@ -181,7 +181,8 @@ export function assertD2ContractUnit(contract: D2PageContract): void {
     if (!field.derived) continue;
     const existingRecordIdentity = (call.operation === 'get' || call.operation === 'update' || call.operation === 'transition') && field.name === 'id';
     const indexedListFilter = call.operation === 'list' && field.indexed;
-    if (!existingRecordIdentity && !indexedListFilter) throw new Error(`D2_CONTRACT_DERIVED_INPUT_FORBIDDEN: ${call.route} ${field.path}`);
+    const writePrecondition = (call.operation === 'update' || call.operation === 'transition') && field.writePrecondition;
+    if (!existingRecordIdentity && !indexedListFilter && !writePrecondition) throw new Error(`D2_CONTRACT_DERIVED_INPUT_FORBIDDEN: ${call.route} ${field.path}`);
   }
 }
 

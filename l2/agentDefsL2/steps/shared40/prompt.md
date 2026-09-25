@@ -13,6 +13,11 @@ the supplied contract and starting cut are authoritative for this decision. Afte
 refresh only queries whose results can be affected. Mark genuinely destructive commands and write
 their confirmation meaning; a destructive command is not a scenary.
 
+For every scenary, `preconditions` is a machine-owned reference list, not prose. It may only copy
+exact `stateKey` strings from `preconditionStateKeysByAction[actionId]` in the human prompt, or be
+empty. Never put a human label, scenary value (such as `base`), or `actionId` in `preconditions`.
+On repair, replace every rejected precondition using that same allowlist; do not paraphrase it.
+
 Names, paths, contract references, states, actions, bindings and pipeline items are emitted by
 code. Input sources are also deterministic: existing-record identities are selections and are not
 editable; ordinary payload fields are user input. No session or route source is invented. If a

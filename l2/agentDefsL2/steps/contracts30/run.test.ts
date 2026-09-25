@@ -126,6 +126,18 @@ void test('unit gate identifies a derived create input instead of publishing it'
   assert.throws(() => assertD2ContractUnit(contracts.find(contract => contract.calls.includes(create))!), /D2_CONTRACT_DERIVED_INPUT_FORBIDDEN/);
 });
 
+void test('unit gate accepts a marked update precondition and rejects the same derived field when unmarked', () => {
+  const fixture = runFixture(true);
+  const contracts = buildD2ContractsCatalog(d2ContractsSources(fixture.snapshot, fixture.artifacts));
+  const update = contracts.flatMap(contract => contract.calls).find(call => call.operation === 'update')!;
+  const identity = update.input.find(field => field.name === 'id')!;
+  const token = { ...identity, path: `${update.entityId}.revisionToken`, name: 'revisionToken', scalar: 'number' as const, tsType: 'number', indexed: false, writePrecondition: true, children: [] };
+  update.input.push(token);
+  assert.doesNotThrow(() => assertD2ContractUnit(contracts.find(contract => contract.calls.includes(update))!));
+  token.writePrecondition = false;
+  assert.throws(() => assertD2ContractUnit(contracts.find(contract => contract.calls.includes(update))!), /D2_CONTRACT_DERIVED_INPUT_FORBIDDEN/);
+});
+
 function runFixture(explicitPayload: boolean): { snapshot: D2InputSnapshot; artifacts: D2InputArtifacts } {
   const backend = json(path.join(INPUT, 'backend.json'));
   const needs = json(path.join(INPUT, 'needs.json'));

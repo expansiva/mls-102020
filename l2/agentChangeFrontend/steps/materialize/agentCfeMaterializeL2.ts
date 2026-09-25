@@ -14,6 +14,7 @@ import {
   layerRank,
   materializePlanIdFromPipelineId,
   orderItems,
+  resolveProjectRelativeRef,
   testPathForOutputPath,
   type PipelineItem,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
@@ -231,6 +232,7 @@ function newestDependencyMs(item: PipelineItem): number | null {
 }
 
 function modifiedMs(ref: string): number | null {
+  ref = resolveProjectRelativeRef(ref, Number(mls.actualProject || 0));
   const parsed = parseMlsPath(ref);
   if (!parsed) return null;
   return getFileModified(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);

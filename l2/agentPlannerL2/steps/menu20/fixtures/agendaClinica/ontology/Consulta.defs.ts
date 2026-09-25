@@ -200,6 +200,7 @@ export const agendaClinicaEntityConsulta = {
         "recepcionista"
       ],
       "description": "Registra a confirmação da consulta por telefone.",
+      "payload": [],
       "ruleRefs": [
         "consultationTransitionFlow"
       ]
@@ -215,6 +216,7 @@ export const agendaClinicaEntityConsulta = {
         "recepcionista"
       ],
       "description": "Registra a falta quando o paciente não comparece à consulta.",
+      "payload": [],
       "ruleRefs": [
         "consultationTransitionFlow"
       ]
@@ -230,6 +232,9 @@ export const agendaClinicaEntityConsulta = {
         "profissional"
       ],
       "description": "Conclui a própria consulta como atendida e exige a anotação do atendimento.",
+      "payload": [
+        "details.attendanceNote"
+      ],
       "ruleRefs": [
         "consultationTransitionFlow",
         "attendanceNoteRequired",

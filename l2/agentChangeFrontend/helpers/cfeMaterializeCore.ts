@@ -5,6 +5,8 @@
 // and prompt assembly rules.
 
 import { SHARED_SCENARY_MEMBERS } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+export { CONTRACTS_102029, expandContextRef } from '/_102020_/l2/runtime102029Context.js';
+import { CONTRACTS_102029, expandContextRef } from '/_102020_/l2/runtime102029Context.js';
 
 export interface PipelineItem {
   id: string;
@@ -51,6 +53,16 @@ export interface MaterializeEnv {
 }
 
 export interface GenResult { code: string; }
+
+/** Resolve a project-local L2 reference without changing the declarative pipeline representation. */
+export function resolveProjectRelativeRef(ref: string, project: number): string {
+  return ref.startsWith('l2/') && Number.isSafeInteger(project) && project > 0 ? `_${project}_/${ref}` : ref;
+}
+
+export function requireDeclaredDependency(ref: string, content: string | null, project: number): string | null {
+  if (!content && ref === 'l2/designSystem.ts') throw new Error(`D2_PAGE_DESIGN_SYSTEM_MISSING: ${resolveProjectRelativeRef(ref, project)}`);
+  return content;
+}
 
 /** Minimum page11 items before an all-broken first compile counts as systemic (a 1-2 page module never trips). */
 export const SYSTEMIC_FAILURE_MIN_PAGES = 3;
@@ -1119,17 +1131,6 @@ export function collectMissingImageRenderIssues(defsSource: string, pageCode: st
   return [`page binds the image field '${match[0]}' but renders no <img> tag: bind it as an image (src=item.${match[0]} with an alt and a nothing/null empty branch) instead of a placeholder box or raw URL text`];
 }
 
-export const CONTRACTS_102029: readonly string[] = [
-  '_102029_/l2/collabLitElement.ts',
-  '_102029_/l2/bffClient.ts',
-  '_102029_/l2/collabState.ts',
-  '_102029_/l2/interactionRuntime.ts',
-];
-
-export function expandContextRef(ref: string): string[] {
-  return ref === '_102029_.d.ts' ? [...CONTRACTS_102029] : [ref];
-}
-
 // ---------------------------------------------------------------------------
 // Materialization context diet (flow.json materializationContextPolicy).
 // Shared by BOTH runtimes (Studio agentCfeMaterializeGen and nodejsMaterializeL2)
@@ -1486,7 +1487,7 @@ export function parseDefs(src: string): ParsedDefs {
   const dataExportName = firstExportName(src);
   const artifact = dataExportName ? extractConstObject(src, dataExportName) as Record<string, unknown> | unknown[] | string | null : null;
   const pipelineArr = extractConstObject(src, 'pipeline');
-  const items = Array.isArray(pipelineArr) ? pipelineArr as PipelineItem[] : [];
+  const items = Array.isArray(pipelineArr) ? (pipelineArr as PipelineItem[]).map(withActualProjectPaths) : [];
   const item = items.length ? items[0] : null;
   const bindingsRaw = extractConstObject(src, 'bindings');
   const bindings = Array.isArray(bindingsRaw) ? bindingsRaw : null;
@@ -1494,6 +1495,29 @@ export function parseDefs(src: string): ParsedDefs {
     ? (artifact as { data: unknown }).data
     : artifact;
   return { dataExportName, artifact, data, bindings, item, items };
+}
+
+/**
+ * `lN/...` with no project -> `_<mls.actualProject>_/lN/...`; anything else is returned as is.
+ *
+ * agentDefsL2 writes the pipeline paths project-relative (`l2/agendaClinica/web/shared/x.ts`), while
+ * every reader here expects `_NNNNN_/lN/...`: parseMlsPath refused the outputPath and the generator
+ * dropped the model's code with "invalid outputPath" (102047 agendaClinica). Without `mls` (the Node
+ * CLI) or without a current project the ref is left untouched.
+ */
+export function withActualProject(ref: string): string {
+  if (!/^l\d+\//u.test(ref)) return ref;
+  const project = typeof mls !== 'undefined' ? Number(mls.actualProject || 0) : 0;
+  return Number.isSafeInteger(project) && project > 0 ? `_${project}_/${ref}` : ref;
+}
+
+function withActualProjectPaths(item: PipelineItem): PipelineItem {
+  if (!item || typeof item !== 'object') return item;
+  return {
+    ...item,
+    ...(typeof item.outputPath === 'string' ? { outputPath: withActualProject(item.outputPath) } : {}),
+    ...(typeof item.defPath === 'string' ? { defPath: withActualProject(item.defPath) } : {}),
+  };
 }
 
 /**

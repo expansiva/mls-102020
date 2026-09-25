@@ -50,10 +50,12 @@ export function adoptUnknownAttributes(names: readonly string[]): IMessageRef {
  * shadow root, a value already interpolated) while the conversion rewrites markup, and the two
  * disagree about exactly the things that matter — a binding, an `${...}`, a slot.
  *
- * ONE LEVEL EACH WAY. `children` because a button may carry an icon and a `<label>` a control, and
- * `parent` because the unit replaced is often an ancestor of what was clicked (see `lift`): measured
- * on the real pages, 98,8% of the `<input>`s live inside a `<label>` that carries their text. Deeper
- * than that nothing needs, and every extra level is source held twice.
+ * ONE LEVEL UP, AND AS MANY DOWN AS THE GROUP ASKED FOR. `parent` is always one level, because the
+ * unit replaced is at most an ancestor of what was clicked (see `lift`): measured on the real pages,
+ * 98,8% of the `<input>`s live inside a `<label>` that carries their text, and nothing has ever
+ * needed a grandparent. Downwards the depth is the GROUP's to declare (`IAdoptGroupRules.depth`,
+ * 1 when absent), because a button carries an icon one level down while a table's cells live three:
+ * measured 22/09/2026 on the adopt corpus, 0 of the 84 `<table>`s fit in one level.
  */
 export interface IElementShape {
   /** Index in `tree.elements` — the handle the caller resolves back to an element. */
@@ -67,7 +69,13 @@ export interface IElementShape {
   /** Between the open tag and the close tag. Empty for a void element. */
   innerSpan: { start: number; end: number };
   inner: string;
-  /** Element children, in source order. Their own `children` are empty and their `parent` is null. */
+  /**
+   * Element children, in source order, down to the depth that was asked for — 1 by default.
+   *
+   * At the last level asked for, `children` is empty: an empty array means "not read", never "this
+   * element has no children". Every child has `parent` null, whatever the depth: upwards is the
+   * caller's own shape, and threading it back would make the shape cyclic.
+   */
   children: IElementShape[];
   /** The element that contains this one, with ITS children — null at a template root. */
   parent: IElementShape | null;
@@ -150,6 +158,14 @@ export type AdoptMarkup =
  */
 export interface IAdoptGroupRules {
   group: string;
+  /**
+   * How many levels of children this group needs in the shape it is asked with — 1 when absent.
+   *
+   * Declared here and nowhere else: the editor must never learn that a `<td>` lives under a `<tr>`.
+   * A group whose content is one control says nothing (a `<button>`'s icon is one level down); a
+   * group whose contract writes rows and cells declares 3.
+   */
+  depth?: number;
   candidate(shape: IElementShape): IAdoptCandidate | null;
   convert(shape: IElementShape, candidate: IAdoptCandidate, target: IAdoptTarget): AdoptMarkup;
 }
@@ -277,14 +293,57 @@ function shapeOf(source: string, tree: ITemplateTree, index: number, depth: numb
  *
  * The parent comes with ITS children (one level) because that is the question `lift` answers: a
  * `<label>` is the unit only when the control is its single element child, and counting those needs
- * the siblings.
+ * the siblings. It stays at one level whatever `depth` says: `lift` never climbs twice.
+ *
+ * `depth` is how many levels of children to read, 1 by default — which is the shape every caller got
+ * before there was a parameter, byte for byte. Anything below 1, or not a number, reads as 1: a
+ * group that declares nothing and a group that declares nonsense must get the same well-formed
+ * shape, and "no children at all" is not a question anyone has asked.
  */
-export function describeElement(source: string, tree: ITemplateTree, index: number): IElementShape | null {
-  const shape = shapeOf(source, tree, index, 1);
+export function describeElement(
+  source: string,
+  tree: ITemplateTree,
+  index: number,
+  depth = 1,
+): IElementShape | null {
+  const shape = shapeOf(source, tree, index, levelsOf(depth));
   if (!shape) return null;
   const parentIndex = tree.elements[index].parent;
   if (parentIndex >= 0) shape.parent = shapeOf(source, tree, parentIndex, 1);
   return shape;
+}
+
+/** The depth actually read: whole, at least 1, and 1 for anything that is not a number. */
+function levelsOf(depth: number): number {
+  return Number.isFinite(depth) && depth > 1 ? Math.floor(depth) : 1;
+}
+
+/**
+ * The shapes of ONE element, by depth — each depth built at most once.
+ *
+ * It exists because the shape is now asked for by several groups in a row, each at its own depth
+ * (`adoptOffer`), and the element is the same one every time. Without it the offer would either
+ * build one shape per group or force every group to share the deepest one — and sharing the deepest
+ * is exactly the change of behaviour this factory was chosen to avoid: a group that asks for 1 gets
+ * the shape it got yesterday, with the levels below genuinely absent.
+ *
+ * Memoised BY DEPTH and not by call order: asking 3 then 1 and asking 1 then 3 give the same two
+ * shapes. `null` (the index is not in the tree) is memoised too — it does not become true later.
+ */
+export function shapeCache(
+  source: string,
+  tree: ITemplateTree,
+  index: number,
+): (depth: number) => IElementShape | null {
+  const byDepth = new Map<number, IElementShape | null>();
+  return (depth: number): IElementShape | null => {
+    const level = levelsOf(depth);
+    const cached = byDepth.get(level);
+    if (cached !== undefined) return cached;
+    const shape = describeElement(source, tree, index, level);
+    byDepth.set(level, shape);
+    return shape;
+  };
 }
 
 /**

@@ -59,17 +59,19 @@ export type LiveUpdateModeName = 'remount' | 'hotSwap' | 'reload' | 'off';
 const STORAGE_KEY = 'studioLiveUpdateMode';
 
 /**
- * OFF for now, on purpose (2026-09-02).
+ * ON by default since 2026-09-21, through the remount.
  *
- * The hot swap is inconsistent and throwing in the running app, and an edit that reports "applied
- * live" while the screen disagrees is worse than one that says nothing happened. The edit itself is
- * unaffected: the class/text is already on the element, the file is written and the module is
- * recompiled — what is suspended is only re-registering the compiled class in the custom element
- * registry, which is what a remount would have needed.
+ * History: the live update was turned off on 2026-09-02 because the hot swap was inconsistent and
+ * throwing in the running app, and an edit that reports "applied live" while the screen disagrees is
+ * worse than one that says nothing happened. The remount (registered stand-in + rebuilding the page
+ * node, 2026-09-14) answered that, and its smoke was approved — so the default is the remount, not
+ * the hot swap, which stays in `SUSPENDED_MODES`.
  *
- * To put it back: `DEFAULT_MODE = 'hotSwap'` and drop `SUSPENDED_MODES`.
+ * Why this matters as a DEFAULT and not as something the user switches on: the mode is persisted per
+ * ORIGIN, so moving the test app to another port (102047 -> 102050) silently brought it back to `off`
+ * and made the live update look broken.
  */
-const DEFAULT_MODE: LiveUpdateModeName = 'off';
+const DEFAULT_MODE: LiveUpdateModeName = 'remount';
 
 /**
  * Modes a PERSISTED choice cannot resurrect.

@@ -130,7 +130,15 @@ export async function loadAdoptRules(group: string): Promise<IAdoptGroupRules | 
   try {
     const module = await import(`/_${STUDIO_PROJECT}_/l2/aura/molecules/skills/${group}/adopt.js`) as Partial<IAdoptGroupRules>;
     if (typeof module.candidate === 'function' && typeof module.convert === 'function') {
-      rules = { group: module.group ?? group, candidate: module.candidate, convert: module.convert };
+      rules = {
+        group: module.group ?? group,
+        // Carried across VERBATIM, `undefined` included. This function applies no default of its
+        // own: a group that declared nothing arrives here undeclared and leaves here undeclared, and
+        // reading the absence as 1 is the job of whoever asks for the shape (see `adoptOffer`).
+        depth: module.depth,
+        candidate: module.candidate,
+        convert: module.convert,
+      };
     } else {
       console.warn(`[studioAdopt] ${group}/adopt.ts does not export candidate/convert`);
     }
@@ -148,12 +156,25 @@ export async function loadAdoptRules(group: string): Promise<IAdoptGroupRules | 
  * is the DESIGN SYSTEM's, resolved by the same pure `matchVariant` the generator uses, so the studio
  * and the generator cannot disagree. When the DS matches nothing, no molecule is marked as chosen and
  * the list is still offered — the user picks, which is better than an arbitrary default.
+ *
+ * NOT A SHAPE BUT A WAY OF ASKING FOR ONE. Every group is asked about the same element, and each one
+ * needs a different number of levels below it (`rules.depth`) — a shape built before the loop could
+ * only be one of them. `shapeAt` (`shapeCache`) is the element frozen at an offset, answering each
+ * group at the depth it declared and building each depth once.
+ *
+ * "Absent means 1" is written as a `?? 1` at each of the TWO points where a group is handed a shape
+ * — `candidate`, here, and `convert`, in `resolveAdopt` — and not centralised: two readings, two
+ * defaults, in plain sight. What keeps them from drifting apart is a test, not a helper: *"who
+ * decides the depth is the GROUP, and the default lives in one place"* in `studioAdoptEdit.test.ts`
+ * asserts both call sites verbatim, because this file has no suite of its own.
  */
 export async function adoptOffer(
-  shape: IElementShape,
+  shapeAt: (depth: number) => IElementShape | null,
   dsRules: ResolvedLayoutRules,
 ): Promise<AdoptOfferResult> {
   await ensureProjectsLoaded();
+  // Only for the log lines: what the element IS does not depend on how deep anyone read it.
+  const tag = shapeAt(1)?.tag ?? '?';
 
   const catalog = await buildMoleculeCatalog();
   if (!catalog.length) {
@@ -167,6 +188,8 @@ export async function adoptOffer(
     const rules = await loadAdoptRules(group);
     if (!rules) continue;
     loaded += 1;
+    const shape = shapeAt(rules.depth ?? 1);
+    if (!shape) continue;
     const candidate = rules.candidate(shape);
     if (!candidate) continue;
 
@@ -175,7 +198,7 @@ export async function adoptOffer(
     // The group claimed the element and the catalog has nothing to put in its place: that is a fact
     // about the catalog, not about the element, and the sentence has to say so.
     if (!options.length) {
-      console.warn(`[studioAdopt] ${candidate.group} claims <${shape.tag}> but the catalog has no molecule for it`);
+      console.warn(`[studioAdopt] ${candidate.group} claims <${tag}> but the catalog has no molecule for it`);
       return { ok: false, reason: ADOPT_NO_GROUP_MOLECULE };
     }
     return { ok: true, offer: { candidate, rules, options } };
@@ -186,7 +209,7 @@ export async function adoptOffer(
     console.warn(`[studioAdopt] no conversion file loaded (asked: ${asked.join(', ') || 'none'})`);
     return { ok: false, reason: ADOPT_NO_GROUP_FILES };
   }
-  console.info(`[studioAdopt] <${shape.tag}>: ${loaded} group(s) asked, none claims it`);
+  console.info(`[studioAdopt] <${tag}>: ${loaded} group(s) asked, none claims it`);
   return { ok: false, reason: ADOPT_NO_CANDIDATE };
 }
 

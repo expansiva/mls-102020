@@ -52,9 +52,9 @@ import {
 import {
   ADOPT_NO_TARGET,
   composeAdopt,
-  describeElement,
   planAdopt,
   planUnadopt,
+  shapeCache,
   type IAdoptTarget,
   type IElementShape,
 } from '/_102020_/l2/aura/studio/studioAdoptEdit.js';
@@ -3029,10 +3029,13 @@ export class StudioEditor {
     if (!resolved.ok) return { ok: false, reason: resolved.reason };
 
     const source = resolved.file.model.model.getValue();
-    const shape = describeElement(source, resolved.tree, resolved.index);
+    // One element, several readings of it: each group is asked at the depth it declares, and the
+    // editor's own questions below (the index, the lift) are asked at 1, as they always were.
+    const shapeAt = shapeCache(source, resolved.tree, resolved.index);
+    const shape = shapeAt(1);
     if (!shape) return { ok: false, reason: NOT_LOCATED };
 
-    const answer = await adoptOffer(shape, await this.designSystemRules(resolved.file));
+    const answer = await adoptOffer(shapeAt, await this.designSystemRules(resolved.file));
     if (!answer.ok) return { ok: false, reason: answer.reason };
     const offer = answer.offer;
 
@@ -3050,7 +3053,10 @@ export class StudioEditor {
     const index = lifted ? parent : shape.index;
 
     const target: IAdoptTarget = { tag: option.tag, importPath: option.importPath };
-    const markup = offer.rules.convert(shape, offer.candidate, target);
+    // `convert` reads the same shape `candidate` answered on — a group that claimed an element by
+    // what is three levels below it has to be able to write those three levels.
+    const groupShape = shapeAt(offer.rules.depth ?? 1) ?? shape;
+    const markup = offer.rules.convert(groupShape, offer.candidate, target);
 
     return {
       ok: true,
