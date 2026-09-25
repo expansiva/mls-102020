@@ -65,10 +65,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupenterdateinterval--ml-<name>\` (e.g. \`groupenterdateinterval--ml-date-range-dual-calendar\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic
 
 \`\`\`html
-<molecules--date-interval-102020
+<groupenterdateinterval--ml-date-range-dual-calendar
   startDate="{{ui.form.vacationStart}}"
   endDate="{{ui.form.vacationEnd}}"
   error="{{ui.form.vacationError}}"
@@ -77,13 +79,13 @@ export const skill = `
   <Label>Vacation Period</Label>
   <LabelStart>From</LabelStart>
   <LabelEnd>To</LabelEnd>
-</molecules--date-interval-102020>
+</groupenterdateinterval--ml-date-range-dual-calendar>
 \`\`\`
 
 ### With range constraints and helper
 
 \`\`\`html
-<molecules--date-interval-102020
+<groupenterdateinterval--ml-date-range-dual-calendar
   startDate="{{ui.report.startDate}}"
   endDate="{{ui.report.endDate}}"
   error="{{ui.report.dateError}}"
@@ -93,7 +95,7 @@ export const skill = `
   maxRangeDays="90">
   <Label>Report Period</Label>
   <Helper>Maximum range is 90 days</Helper>
-</molecules--date-interval-102020>
+</groupenterdateinterval--ml-date-range-dual-calendar>
 \`\`\`
 
 ---

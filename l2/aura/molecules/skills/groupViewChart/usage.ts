@@ -45,10 +45,12 @@ export const skill =
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupviewchart--ml-<name>\` (e.g. \`groupviewchart--ml-bar-chart\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Bar chart — monthly revenue comparison
 
 \`\`\`html
-<molecules--bar-chart-102020
+<groupviewchart--ml-bar-chart
   show-values="true">
   <Label>Monthly Revenue</Label>
   <Series name="2024" color="#3b82f6">
@@ -61,7 +63,7 @@ export const skill =
     <Point label="Feb" value="2100" />
     <Point label="Mar" value="1300" />
   </Series>
-</molecules--bar-chart-102020>
+</groupviewchart--ml-bar-chart>
 \`\`\`
 
 ---

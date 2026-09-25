@@ -50,25 +50,27 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupenterboolean--ml-<name>\` (e.g. \`groupenterboolean--ml-toggle-switch\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Simple toggle (on/off setting)
 
 \`\`\`html
-<molecules--toggle-102020
+<groupenterboolean--ml-toggle-switch
   value="{{ui.settings.notifications}}"
   error="{{ui.settings.notificationsError}}">
   <Label>Enable notifications</Label>
-</molecules--toggle-102020>
+</groupenterboolean--ml-toggle-switch>
 \`\`\`
 
 ### Checkbox with terms acceptance
 
 \`\`\`html
-<molecules--checkbox-102020
+<groupenterboolean--ml-checkbox-preference
   value="{{ui.form.acceptTerms}}"
   error="{{ui.form.acceptTermsError}}">
   <Label>I accept the terms and conditions</Label>
   <Helper>You must accept to continue</Helper>
-</molecules--checkbox-102020>
+</groupenterboolean--ml-checkbox-preference>
 \`\`\`
 
 ### Interchangeability — swapping toggle for checkbox
@@ -76,12 +78,12 @@ export const skill = `
 Both components share the same contract. Only the tag changes:
 
 \`\`\`html
-<molecules--toggle-102020
+<groupenterboolean--ml-toggle-switch
   value="{{ui.form.acceptTerms}}"
   error="{{ui.form.acceptTermsError}}">
   <Label>I accept the terms and conditions</Label>
   <Helper>You must accept to continue</Helper>
-</molecules--toggle-102020>
+</groupenterboolean--ml-toggle-switch>
 \`\`\`
 
 ---

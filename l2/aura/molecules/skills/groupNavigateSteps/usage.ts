@@ -47,10 +47,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupnavigatesteps--ml-<name>\` (e.g. \`groupnavigatesteps--ml-horizontal-stepper\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Checkout process (linear)
 
 \`\`\`html
-<molecules--stepper-102020
+<groupnavigatesteps--ml-horizontal-stepper
   value="{{ui.checkout.currentStep}}"
   linear="true">
   <Label>Checkout</Label>
@@ -58,7 +60,7 @@ export const skill = `
   <Step title="Shipping" completed></Step>
   <Step title="Payment"></Step>
   <Step title="Confirmation"></Step>
-</molecules--stepper-102020>
+</groupnavigatesteps--ml-horizontal-stepper>
 \`\`\`
 
 ---

@@ -60,21 +60,23 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupentertime--ml-<name>\` (e.g. \`groupentertime--ml-clock-time-picker\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic
 
 \`\`\`html
-<molecules--time-input-102020
+<groupentertime--ml-clock-time-picker
   value="{{ui.form.openingTime}}"
   error="{{ui.form.openingTimeError}}"
   required>
   <Label>Opening Time</Label>
-</molecules--time-input-102020>
+</groupentertime--ml-clock-time-picker>
 \`\`\`
 
 ### With 15-minute step and AM/PM display
 
 \`\`\`html
-<molecules--time-input-102020
+<groupentertime--ml-time-scroll-picker
   value="{{ui.schedule.alarmTime}}"
   error="{{ui.schedule.alarmTimeError}}"
   locale="en-US"
@@ -84,7 +86,7 @@ export const skill = `
   maxTime="22:00">
   <Label>Alarm Time</Label>
   <Helper>Choose a time between 6:00 AM and 10:00 PM</Helper>
-</molecules--time-input-102020>
+</groupentertime--ml-time-scroll-picker>
 \`\`\`
 
 ---

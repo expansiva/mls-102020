@@ -63,10 +63,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupselectone--ml-<name>\` (e.g. \`groupselectone--ml-select\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Simple dropdown
 
 \`\`\`html
-<molecules--dropdown-102020
+<groupselectone--ml-select
   value="{{ui.form.country}}"
   error="{{ui.form.countryError}}"
   required>
@@ -75,13 +77,13 @@ export const skill = `
   <Item value="br">Brazil</Item>
   <Item value="us">United States</Item>
   <Item value="de">Germany</Item>
-</molecules--dropdown-102020>
+</groupselectone--ml-select>
 \`\`\`
 
 ### Grouped options
 
 \`\`\`html
-<molecules--dropdown-102020
+<groupselectone--ml-select
   value="{{ui.form.category}}"
   error="{{ui.form.categoryError}}">
   <Label>Category</Label>
@@ -95,7 +97,7 @@ export const skill = `
     <Item value="shoes">Shoes</Item>
   </Group>
   <Empty>No categories available</Empty>
-</molecules--dropdown-102020>
+</groupselectone--ml-select>
 \`\`\`
 
 ### Table variant (compare options across columns)

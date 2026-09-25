@@ -59,22 +59,24 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupenterdatetime--ml-<name>\` (e.g. \`groupenterdatetime--ml-datetime-picker\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic
 
 \`\`\`html
-<molecules--datetime-input-102020
+<groupenterdatetime--ml-datetime-picker
   value="{{ui.form.scheduledAt}}"
   error="{{ui.form.scheduledAtError}}"
   locale="en-US"
   required>
   <Label>Scheduled At</Label>
-</molecules--datetime-input-102020>
+</groupenterdatetime--ml-datetime-picker>
 \`\`\`
 
 ### With helper and minute step
 
 \`\`\`html
-<molecules--datetime-input-102020
+<groupenterdatetime--ml-datetime-picker
   value="{{ui.meeting.startsAt}}"
   error="{{ui.meeting.startsAtError}}"
   locale="pt-BR"
@@ -83,29 +85,29 @@ export const skill = `
   required>
   <Label>Meeting Start</Label>
   <Helper>Select a date and time at least 15 minutes from now</Helper>
-</molecules--datetime-input-102020>
+</groupenterdatetime--ml-datetime-picker>
 \`\`\`
 
 ### View mode (read-only display)
 
 \`\`\`html
-<molecules--datetime-input-102020
+<groupenterdatetime--ml-datetime-picker
   value="{{ui.order.confirmedAt}}"
   isEditing="false"
   locale="en-US">
   <Label>Confirmed At</Label>
-</molecules--datetime-input-102020>
+</groupenterdatetime--ml-datetime-picker>
 \`\`\`
 
 ### Disabled
 
 \`\`\`html
-<molecules--datetime-input-102020
+<groupenterdatetime--ml-datetime-picker
   value="{{ui.form.lockedAt}}"
   disabled="true"
   locale="en-US">
   <Label>Locked At</Label>
-</molecules--datetime-input-102020>
+</groupenterdatetime--ml-datetime-picker>
 \`\`\`
 
 ---

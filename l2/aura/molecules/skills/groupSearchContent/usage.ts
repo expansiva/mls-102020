@@ -57,10 +57,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupsearchcontent--ml-<name>\` (e.g. \`groupsearchcontent--ml-search-bar\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Product search with suggestions
 
 \`\`\`html
-<molecules--search-field-102020
+<groupsearchcontent--ml-search-bar
   value="{{ui.catalog.selectedProduct}}"
   error="{{ui.catalog.searchError}}"
   loading="{{ui.catalog.isSearching}}"
@@ -71,7 +73,7 @@ export const skill = `
   <Suggestion value="prod-002">Bluetooth Speaker</Suggestion>
   <Suggestion value="prod-003">USB-C Cable</Suggestion>
   <Empty>No products found</Empty>
-</molecules--search-field-102020>
+</groupsearchcontent--ml-search-bar>
 \`\`\`
 
 ---

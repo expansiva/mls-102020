@@ -38,15 +38,17 @@ None. This component is purely visual.
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupviewmetric--ml-<name>\` (e.g. \`groupviewmetric--ml-metric-big-number\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Big number — monthly revenue
 
 \`\`\`html
-<molecules--big-number-102020>
+<groupviewmetric--ml-metric-big-number>
   <Label>Monthly Revenue</Label>
   <Value>$127,450</Value>
   <Trend direction="up">↑ 12.5%</Trend>
   <Helper>vs last month</Helper>
-</molecules--big-number-102020>
+</groupviewmetric--ml-metric-big-number>
 \`\`\`
 
 ---

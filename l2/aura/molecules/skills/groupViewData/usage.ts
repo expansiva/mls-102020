@@ -44,10 +44,12 @@ export const skill = `
 
 ## Examples
 
-### Simple data table
+> **Tag names:** every molecule in this group is \`groupviewdata--ml-<name>\` (e.g. \`groupviewdata--ml-card-grid\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
+### Simple record list
 
 \`\`\`html
-<molecules--data-table-102020 .hoverable=\${true}>
+<groupviewdata--ml-vertical-record-list .hoverable=\${true}>
   <Columns>
     <Column field="name" header="Name" />
     <Column field="email" header="Email" />
@@ -68,13 +70,13 @@ export const skill = `
   <Empty>
     <div class="text-center py-8 text-slate-500">No records found</div>
   </Empty>
-</molecules--data-table-102020>
+</groupviewdata--ml-vertical-record-list>
 \`\`\`
 
 ### Selectable rows
 
 \`\`\`html
-<molecules--data-table-102020
+<groupviewdata--ml-vertical-record-list
   .selectable=\${true}
   @selection-change=\${(e) => { this.selectedRows = e.detail.selected; }}>
   <Columns>
@@ -99,13 +101,13 @@ export const skill = `
       <Cell>R$ 59,00</Cell>
     </Row>
   </Rows>
-</molecules--data-table-102020>
+</groupviewdata--ml-vertical-record-list>
 \`\`\`
 
 ### Rich cell content
 
 \`\`\`html
-<molecules--data-table-102020>
+<groupviewdata--ml-vertical-record-list>
   <Columns>
     <Column field="user" header="User" />
     <Column field="role" header="Role" align="center" />
@@ -128,13 +130,13 @@ export const skill = `
       </Cell>
     </Row>
   </Rows>
-</molecules--data-table-102020>
+</groupviewdata--ml-vertical-record-list>
 \`\`\`
 
 ### Loading state
 
 \`\`\`html
-<molecules--data-table-102020 .loading=\${true}>
+<groupviewdata--ml-vertical-record-list .loading=\${true}>
   <Columns>
     <Column field="name" header="Name" />
     <Column field="status" header="Status" />
@@ -143,13 +145,13 @@ export const skill = `
   <Loading>
     <div class="text-center py-10 text-slate-400">Loading records...</div>
   </Loading>
-</molecules--data-table-102020>
+</groupviewdata--ml-vertical-record-list>
 \`\`\`
 
 ### Card grid — same contract, different component
 
 \`\`\`html
-<molecules--card-grid-102020 .hoverable=\${true} @row-click=\${this.onCardClick}>
+<groupviewdata--ml-card-grid .hoverable=\${true} @row-click=\${this.onCardClick}>
   <Columns>
     <Column field="title" header="Title" />
     <Column field="description" header="Description" />
@@ -170,7 +172,7 @@ export const skill = `
   <Empty>
     <div class="text-center py-12 text-slate-400">No items to display</div>
   </Empty>
-</molecules--card-grid-102020>
+</groupviewdata--ml-card-grid>
 \`\`\`
 
 ---

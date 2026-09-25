@@ -57,27 +57,29 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`grouprateitem--ml-<name>\` (e.g. \`grouprateitem--ml-star-rating\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Star rating (auto-generated, 1–5)
 
 \`\`\`html
-<molecules--star-rating-102020
+<grouprateitem--ml-star-rating
   value="{{ui.review.rating}}"
   error="{{ui.review.ratingError}}"
   min="1"
   max="5"
   required>
   <Label>Rate this product</Label>
-</molecules--star-rating-102020>
+</grouprateitem--ml-star-rating>
 \`\`\`
 
 ### Thumbs up/down
 
 \`\`\`html
-<molecules--thumbs-102020
+<grouprateitem--ml-thumbs-rating
   value="{{ui.comment.vote}}">
   <Item value="0">👎</Item>
   <Item value="1">👍</Item>
-</molecules--thumbs-102020>
+</grouprateitem--ml-thumbs-rating>
 \`\`\`
 
 ---

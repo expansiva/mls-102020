@@ -63,10 +63,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupselectmany--ml-<name>\` (e.g. \`groupselectmany--ml-multi-checkbox-list\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Checkbox group — permissions
 
 \`\`\`html
-<molecules--checkbox-group-102020
+<groupselectmany--ml-multi-checkbox-list
   value="{{ui.user.permissions}}"
   error="{{ui.user.permissionsError}}"
   required>
@@ -75,7 +77,7 @@ export const skill = `
   <Item value="write">Write</Item>
   <Item value="execute">Execute</Item>
   <Item value="admin" disabled>Admin (restricted)</Item>
-</molecules--checkbox-group-102020>
+</groupselectmany--ml-multi-checkbox-list>
 \`\`\`
 
 ### Table variant (compare and select multiple rows)

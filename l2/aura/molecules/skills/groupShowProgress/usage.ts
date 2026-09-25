@@ -42,25 +42,27 @@ None. This component is purely visual.
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupshowprogress--ml-<name>\` (e.g. \`groupshowprogress--ml-indeterminate-spinner\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Spinner inside a button (indeterminate)
 
 \`\`\`html
-<molecules--spinner-102020
+<groupshowprogress--ml-indeterminate-spinner
   size="sm"
   label="Saving...">
-</molecules--spinner-102020>
+</groupshowprogress--ml-indeterminate-spinner>
 \`\`\`
 
 
 ### Determinate ring with percentage
 
 \`\`\`html
-<molecules--progress-ring-102020
+<groupshowprogress--ml-circular-progress
   value="{{ui.report.progress}}"
   size="md"
   show-value="true"
   label="Generating report">
-</molecules--progress-ring-102020>
+</groupshowprogress--ml-circular-progress>
 \`\`\`
 
 ---
