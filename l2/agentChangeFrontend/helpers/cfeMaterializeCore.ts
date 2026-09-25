@@ -1487,7 +1487,7 @@ export function parseDefs(src: string): ParsedDefs {
   const dataExportName = firstExportName(src);
   const artifact = dataExportName ? extractConstObject(src, dataExportName) as Record<string, unknown> | unknown[] | string | null : null;
   const pipelineArr = extractConstObject(src, 'pipeline');
-  const items = Array.isArray(pipelineArr) ? pipelineArr as PipelineItem[] : [];
+  const items = Array.isArray(pipelineArr) ? (pipelineArr as PipelineItem[]).map(withActualProjectPaths) : [];
   const item = items.length ? items[0] : null;
   const bindingsRaw = extractConstObject(src, 'bindings');
   const bindings = Array.isArray(bindingsRaw) ? bindingsRaw : null;
@@ -1495,6 +1495,29 @@ export function parseDefs(src: string): ParsedDefs {
     ? (artifact as { data: unknown }).data
     : artifact;
   return { dataExportName, artifact, data, bindings, item, items };
+}
+
+/**
+ * `lN/...` with no project -> `_<mls.actualProject>_/lN/...`; anything else is returned as is.
+ *
+ * agentDefsL2 writes the pipeline paths project-relative (`l2/agendaClinica/web/shared/x.ts`), while
+ * every reader here expects `_NNNNN_/lN/...`: parseMlsPath refused the outputPath and the generator
+ * dropped the model's code with "invalid outputPath" (102047 agendaClinica). Without `mls` (the Node
+ * CLI) or without a current project the ref is left untouched.
+ */
+export function withActualProject(ref: string): string {
+  if (!/^l\d+\//u.test(ref)) return ref;
+  const project = typeof mls !== 'undefined' ? Number(mls.actualProject || 0) : 0;
+  return Number.isSafeInteger(project) && project > 0 ? `_${project}_/${ref}` : ref;
+}
+
+function withActualProjectPaths(item: PipelineItem): PipelineItem {
+  if (!item || typeof item !== 'object') return item;
+  return {
+    ...item,
+    ...(typeof item.outputPath === 'string' ? { outputPath: withActualProject(item.outputPath) } : {}),
+    ...(typeof item.defPath === 'string' ? { defPath: withActualProject(item.defPath) } : {}),
+  };
 }
 
 /**
