@@ -53,7 +53,20 @@ export function gateD2Shared(moduleName: string, page: D2SelectedPage, contract:
   assertUnique(definition.states.map(item => item.stateKey), 'D2_SHARED_STATE_ID_DUPLICATE', errors);
   assertUnique(definition.actions.map(item => item.actionId), 'D2_SHARED_ACTION_ID_DUPLICATE', errors);
   const actions = new Set(definition.actions.map(item => item.actionId));
-  for (const binding of definition.dataBindings) if (!actions.has(binding.actionId)) errors.push(`D2_SHARED_BINDING_ACTION_UNKNOWN: ${binding.actionId}`);
+  const states = new Map(definition.states.map(item => [item.stateKey, item]));
+  const bindings = new Map(definition.dataBindings.map(item => [item.actionId, item]));
+  for (const binding of definition.dataBindings) {
+    if (!actions.has(binding.actionId)) errors.push(`D2_SHARED_BINDING_ACTION_UNKNOWN: ${binding.actionId}`);
+    for (const snapshot of binding.snapshotPreconditions ?? []) {
+      const token = states.get(snapshot.inputStateKey);
+      const identity = states.get(snapshot.selectedIdentityStateKey);
+      const source = bindings.get(snapshot.sourceActionId);
+      if (!token || token.source !== 'selectedEntity' || token.presentation !== 'hidden' || token.editable !== false || token.required !== true) errors.push(`D2_SHARED_WRITE_PRECONDITION_STATE_INVALID: ${snapshot.inputStateKey}`);
+      if (!identity || identity.source !== 'selectedEntity') errors.push(`D2_SHARED_WRITE_PRECONDITION_IDENTITY_INVALID: ${snapshot.selectedIdentityStateKey}`);
+      if (!source || source.kind !== 'query' || source.resultStateKey !== snapshot.resultStateKey) errors.push(`D2_SHARED_WRITE_PRECONDITION_SOURCE_INVALID: ${snapshot.sourceActionId}`);
+      if (snapshot.capture !== 'onSelection' || snapshot.missing !== 'blockCommandPreserveEdit' || !snapshot.identityPath || !snapshot.valuePath || !['string', 'number', 'boolean', 'object'].includes(snapshot.valueScalar)) errors.push(`D2_SHARED_WRITE_PRECONDITION_POLICY_INVALID: ${snapshot.inputStateKey}`);
+    }
+  }
   if (errors.length) throw new Error(errors.join('\n'));
   return definition;
 }

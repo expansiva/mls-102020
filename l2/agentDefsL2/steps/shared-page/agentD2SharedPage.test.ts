@@ -42,7 +42,7 @@ void test('observed flexible tool envelope yields arguments and rejects another 
 
 void test('repair prompt replaces natural labels, scenary values and actionIds with exact stateKey allowlists', () => {
   const page = { pageId: 'profissionais', label: 'Profissionais', ancestors: [], journeyRefs: [] } as unknown as D2SelectedPage;
-  const field = (entity: string) => ({ path: `${entity}.id`, name: 'id', scalar: 'string', tsType: 'string', required: true, derived: true, indexed: true, collection: false, enumValues: [], referenceTo: [], children: [] });
+  const field = (entity: string) => ({ path: `${entity}.id`, name: 'id', scalar: 'string', tsType: 'string', required: true, derived: true, writePrecondition: false, indexed: true, collection: false, enumValues: [], referenceTo: [], children: [] });
   const contract = { pageId: page.pageId, calls: [
     { callName: 'localizarPaciente', callPascal: 'LocalizarPaciente', operation: 'get', input: [field('Paciente')] },
     { callName: 'localizarProfissional', callPascal: 'LocalizarProfissional', operation: 'get', input: [field('Profissional')] },

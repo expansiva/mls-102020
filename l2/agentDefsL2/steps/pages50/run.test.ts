@@ -60,6 +60,30 @@ void test('partial resume reuses four valid pages and redispatches missing or co
   assert.equal(await finalizeD2PagesBarrier(IDENTITY, host.snapshot, async () => undefined, undefined, molecular), null);
 });
 
+void test('changing shared A invalidates both devices of A while page B stays reusable without writes', async () => {
+  const host = await installHost(['alpha', 'beta']);
+  const molecular = await molecularFixture(); const receipt = await pageReceipt(molecular, 'direct-test-context');
+  for (const pageId of ['alpha', 'beta']) {
+    await persistD2PagesUnit(IDENTITY, host.snapshot, pageId, sources(pageId), [`${pageId}__desktop__page11`, `${pageId}__mobile__page11`], 1, receipt);
+  }
+  const betaResultKey = keyOf(d2PagesResultFile(IDENTITY, 'beta'));
+  const betaDesktopKey = keyOf(d2PageFile(IDENTITY, 'beta', 'desktop'));
+  const betaMobileKey = keyOf(d2PageFile(IDENTITY, 'beta', 'mobile'));
+  const betaBefore = [host.files[betaResultKey].content, host.files[betaDesktopKey].content, host.files[betaMobileKey].content];
+  const writesBefore = host.writes.length;
+
+  const alphaShared = host.files[keyOf(d2SharedFile(IDENTITY, 'alpha'))];
+  alphaShared.content = `${alphaShared.content}// shared A v2\n`;
+  const sharedManifest = JSON.parse(host.files[keyOf(d2SharedManifestFile(IDENTITY))].content) as { units: Array<{ pageId: string; sourceHash: string }> };
+  sharedManifest.units.find(unit => unit.pageId === 'alpha')!.sourceHash = await sha256Text(alphaShared.content);
+  host.files[keyOf(d2SharedManifestFile(IDENTITY))].content = JSON.stringify(sharedManifest);
+
+  const reusable = await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, undefined, molecular);
+  assert.deepEqual(reusable.map(unit => unit.pageId), ['beta'], 'only A is dispatched, and its worker regenerates desktop plus mobile');
+  assert.equal(host.writes.length, writesBefore, 'reuse discovery performs no page writes or model work');
+  assert.deepEqual([host.files[betaResultKey].content, host.files[betaDesktopKey].content, host.files[betaMobileKey].content], betaBefore, 'B receipt and both artifacts remain byte-identical');
+});
+
 void test('unchanged context is a byte no-op while discovery or skill context drift invalidates reuse', async () => {
   const host = await installHost(['alpha']); const molecular = await molecularFixture(); const receipt = (hash: string) => pageReceipt(molecular, hash);
   await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, await receipt('context-a'));

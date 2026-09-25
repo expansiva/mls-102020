@@ -77,6 +77,40 @@ void test('agendaClinica contracts obey operations, grants and exact backend rou
   assert.ok(pages.flatMap(page => page.calls).every(call => call.route === `agendaClinica.${pages.find(page => page.calls.includes(call))!.pageId}.${call.route.startsWith(`agendaClinica.${pages.find(page => page.calls.includes(call))!.pageId}.qry`) ? 'qry' : 'cmd'}${call.callPascal}`));
 });
 
+void test('write preconditions are metadata-driven and remain separate from writable payloads', () => {
+  const sources = declaredPayloadSources();
+  const receptionist = structuredClone(sources.entities.Recepcionista) as unknown as Record<string, unknown>;
+  const fields = rec(rec(receptionist.record).fields);
+  fields.revisionToken = { type: 'integer', required: true, derived: true, writePrecondition: true };
+  const identification = rec(rec(rec(fields.details).fields).identification);
+  const identificationFields = rec(identification.fields);
+  identificationFields.name = { ...rec(identificationFields.name), writePrecondition: true };
+  sources.entities.Recepcionista = receptionist as unknown as Ns5OntologyAnyEntity;
+  const consulta = structuredClone(sources.entities.Consulta) as unknown as Record<string, unknown>;
+  rec(rec(consulta.record).fields).version = { type: 'integer', required: true, derived: true, writePrecondition: true };
+  sources.entities.Consulta = consulta as unknown as Ns5OntologyAnyEntity;
+
+  const pages = buildD2ContractsCatalog(sources);
+  const calls = pages.find(page => page.pageId === 'cadastro_recepcionista')!.calls;
+  const create = calls.find(call => call.callName === 'createRecepcionista')!;
+  const update = calls.find(call => call.callName === 'updateRecepcionista')!;
+  const token = flatten(update.input).find(field => field.path === 'Recepcionista.revisionToken');
+  assert.equal(token?.writePrecondition, true);
+  assert.equal(token?.required, true);
+  assert.equal(flatten(create.input).some(field => field.writePrecondition), false, 'create never asks for a prior snapshot');
+  assert.equal(flatten(update.input).filter(field => field.path === 'Recepcionista.revisionToken').length, 1);
+  assert.equal(flatten(update.input).filter(field => field.path === 'Recepcionista.details.identification.name').length, 1, 'nested precondition is not duplicated when trees merge');
+  assert.ok(flatten(update.input).some(field => field.path === 'Recepcionista.details.identification.docId'), 'a nested precondition does not drop writable siblings');
+
+  const transition = pages.find(page => page.pageId === 'consultas_profissional')!.calls.find(call => call.callName === 'registrarAtendimento')!;
+  assert.deepEqual(flatten(transition.input).filter(field => field.writePrecondition).map(field => field.path), ['Consulta.version']);
+  assert.ok(flatten(transition.input).some(field => field.path === 'Consulta.details.attendanceNote'), 'explicit transition payload remains present');
+
+  const unmarked = declaredPayloadSources();
+  const consultaVersion = collectD2EntityFields(unmarked.entities.Consulta).find(field => field.path === 'Consulta.version')!;
+  assert.equal(consultaVersion.writePrecondition, false, 'an unmarked non-MDM version is not inferred by name');
+});
+
 void test('missing or invalid payload, unsupported types, invalid grants and changed routes are identified', () => {
   assert.throws(() => buildD2ContractsCatalog(currentSources()), (error: unknown) => {
     if (!(error instanceof D2ContractDerivationError)) return false;
