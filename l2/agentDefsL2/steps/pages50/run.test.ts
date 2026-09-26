@@ -120,7 +120,7 @@ void test('an older receipt never approves the current page dependency contract'
   const before = host.writes.length;
   const changed = { desktop: `${sources('alpha').desktop}// v4\n`, mobile: `${sources('alpha').mobile}// v4\n` };
   const approved = await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', changed, ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, await pageReceipt(molecular, 'direct-test-context'));
-  assert.equal(approved.schemaVersion, '2026-09-23-agent-defs-l2-pages-v6');
+  assert.equal(approved.schemaVersion, '2026-09-26-agent-defs-l2-pages-v7');
   assert.ok(host.writes.length > before, 'old receipt triggers a new persistence pass');
 });
 
@@ -169,7 +169,7 @@ async function installHost(pages = PAGES) {
   (globalThis as unknown as { mls: unknown }).mls = { actualProject: IDENTITY.project, stor: { files, getKeyToFile: keyOf, localStor: { setContent: async (file: Stored, value: { content: string }) => { const key = keyOf(file); if (key === state.failKey) throw new Error('simulated write failure'); file.content = value.content; writes.push(key); } } } };
   return { snapshot, files, writes, get failKey() { return state.failKey; }, set failKey(value: string) { state.failKey = value; } };
 }
-function sources(pageId: string) { return { desktop: `export const descriptions = ["${pageId} desktop"] as const;\nexport const pipeline = [] as const;\n`, mobile: `export const descriptions = ["${pageId} mobile"] as const;\nexport const pipeline = [] as const;\n` }; }
+function sources(pageId: string) { return { desktop: `export const definition = ["${pageId} desktop"] as const;\nexport const pipeline = [] as const;\n`, mobile: `export const definition = ["${pageId} mobile"] as const;\nexport const pipeline = [] as const;\n` }; }
 async function molecularFixture() {
   const catalog = { reference: '/_102040_/l2/molecules/groupfixture/index.defs', via: 'stor' as const, group: 'groupFixture', usageContract: '/_102020_/l2/aura/molecules/skills/groupFixture/usage', molecules: [{ tag: 'groupfixture--ml-card', defs: '/_102040_/l2/molecules/groupfixture/ml-card.defs' }], scenarios: [{ scenario: 'show', recommended: ['groupfixture--ml-card'] }], skill: 'Fixture group.' };
   const inventory = { consumerProject: 102047, catalogProject: 102040, selectedBy: 'dependency', directDeps: [102040], resolvedDeps: [102040], candidates: [102040], reason: null, groups: [{ groupId: 'groupFixture', purpose: 'Fixture.', moleculeCount: 1, indexReference: catalog.reference }], context: '{}', metrics: { inventoryBytes: 2, totalBytes: 2, reads: [{ role: 'inventory' as const, reference: '/_102040_/l2/molecules/skill', via: 'stor' as const, sha256: `sha256:${'1'.repeat(64)}` }] } };

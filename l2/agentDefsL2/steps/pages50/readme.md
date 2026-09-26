@@ -25,8 +25,13 @@ context hash are persisted in the unit receipt. Reuse requires the same context 
 
 The gate requires both devices, exact shared-capability parity, different presentation prose, category
 evidence, existing groups, real candidate tags and the compatible recommendation rule before either defs
-is promoted. Structured descriptions remain per organism and bind each organism to one real Scene through
-`contentRef`; a Scene does not need an artificial organism.
+is promoted. Page11 exports a textual `definition` and `pipeline`. Judgment descriptions are validated
+against the approved shared coverage and converted into prose; the pipeline retains derived per-organism
+coverage and recommendation source hashes. Each organism belongs to its approved `contentRef`; a Scene
+does not need an artificial organism. The selected page11 or page21 orientation Markdown is referenced
+with a hash in `templateSelection` and included in skills. Its digest participates in unit reuse.
+Mobile guidance uses fluid narrow composition with a 390px preview and 360/430px checks; layout remains
+a materialization choice within shared capability and accessibility requirements.
 
 Every page11 pipeline item declares exactly two ordered context dependencies: its shared `.ts`, then the
 project-level `l2/designSystem.ts`. The logical design-system ref stays module-independent in defs and is

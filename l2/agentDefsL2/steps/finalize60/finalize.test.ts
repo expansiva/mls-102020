@@ -113,11 +113,15 @@ function files(pageId: string, withoutSkills = false): D2FinalSource[] {
   return [
     { pageId, kind: 'contract', path: p.destinations[0].path, source: 'export interface Input { "id": string; }\n' },
     { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({ moduleName, pageId, contractRef: { defPath: `l2/${moduleName}/web/contracts/${pageId}.defs.ts` } } as never, buildD2SharedPipeline(moduleName, pageId)) },
-    { pageId, kind: 'desktopPage', path: p.destinations[2].path, source: renderD2Page({ device: 'desktop', descriptions: [description(pageId, 'desktop')], pipeline: [buildD2PagePipeline(moduleName, pageId, 'desktop', 'calendarScheduling', skill)] }) },
-    { pageId, kind: 'mobilePage', path: p.destinations[3].path, source: renderD2Page({ device: 'mobile', descriptions: [description(pageId, 'mobile')], pipeline: [buildD2PagePipeline(moduleName, pageId, 'mobile', 'calendarScheduling', skill)] }) },
+    ...(['desktop', 'mobile'] as const).map(device => ({ pageId, kind: device === 'desktop' ? 'desktopPage' as const : 'mobilePage' as const, path: p.destinations[device === 'desktop' ? 2 : 3].path, source: pageSource(pageId, device, skill) })),
   ];
 }
 function description(pageId: string, device: string) { return { organismId: 'organism.content.1', kind: 'content', description: `${pageId} ${device}`, contentRef: 'base', capabilityRefs: [], moleculeRecommendations: [] }; }
+function pageSource(pageId: string, device: 'desktop' | 'mobile', skill: string[]) {
+  const templateSelection = { categoryRef: 'calendarScheduling', targetPage: 'page11' as const, experiencePage: null, experienceId: null, styleId: null, layoutId: null, reason: 'Fixture guidance.', requirementsMet: [], digest: `sha256:${'1'.repeat(64)}`, sources: [] };
+  const coverage = [{ organismId: 'organism.content.1', sourceIndex: 0, kind: 'content', contentRef: 'base', scenarioRefs: ['base'], capabilityRefs: [], moleculeRecommendations: [] }];
+  return renderD2Page({ device, pageId, pageLabel: pageId, pageIntent: 'Read published content.', actors: [], authorityRefs: [], operationBindings: [], descriptions: [description(pageId, device)], templateSelection, coverage, pipeline: [buildD2PagePipeline(moduleName, pageId, device, 'calendarScheduling', skill, templateSelection, coverage)] });
+}
 function replacePipeline(all: D2FinalSource[], pageId: string, kind: D2FinalSource['kind'], patch: Record<string, unknown>): D2FinalSource[] {
   return all.map(file => {
     if (file.pageId !== pageId || file.kind !== kind) return file;

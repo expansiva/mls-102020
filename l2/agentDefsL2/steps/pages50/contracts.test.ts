@@ -13,9 +13,10 @@ import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/cont
 import { D2_SHARED_VERSION, type D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { D2_PAGES_JUDGMENT_VERSION, buildD2PagePipeline, deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { buildD2PageSkillsContext, d2PageUnitContextHash, type D2PageSkillPort, type D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
-import { gateD2Pages, parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
+import { gateD2Pages as productionGate, parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
 import { assertD2RenderedPage, parseD2RenderedPage, renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { unwrapD2PagesToolPayload } from '/_102020_/l2/agentDefsL2/steps/pages-page/agentD2PagesPage.js';
+import { pageTemplate } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(HERE, '..', 'input20', 'fixtures');
@@ -41,14 +42,14 @@ void test('current five-page fixture emits 10 defs/items and five shared refs wi
 });
 
 void test('page pipeline keeps project design system ordered and rejects legacy or malformed context', () => {
-  const item = buildD2PagePipeline('otherModule', 'records', 'desktop', 'bespoke', ['skill']);
-  assert.deepEqual(item.dependsFiles, ['l2/otherModule/web/shared/records.ts', 'l2/designSystem.ts']);
+  const page = emit('records')[0]; const item = page.pipeline[0];
+  assert.deepEqual(item.dependsFiles, ['l2/fixture/web/shared/records.ts', 'l2/designSystem.ts']);
   assert.equal(Object.hasOwn(item, 'agent'), false);
-  const source = renderD2Page({ device: 'desktop', descriptions: [{ organismId: 'organism.content.1', kind: 'content', description: 'Content.', contentRef: 'base', capabilityRefs: [], moleculeRecommendations: [] }], pipeline: [item] });
+  const source = renderD2Page(page);
   assert.doesNotThrow(() => assertD2RenderedPage(source));
   const legacy = source.replace(/,\n\s*"l2\/designSystem\.ts"/u, '');
   assert.throws(() => assertD2RenderedPage(legacy), /D2_PAGES_PIPELINE_CONTEXT/);
-  assert.throws(() => assertD2RenderedPage(renderD2Page({ device: 'desktop', descriptions: parseD2RenderedPage(source).descriptions, pipeline: [{ ...item, dependsFiles: [...item.dependsFiles].reverse() }] })), /D2_PAGES_PIPELINE_CONTEXT/);
+  assert.throws(() => assertD2RenderedPage(renderD2Page({ ...page, pipeline: [{ ...item, dependsFiles: [...item.dependsFiles].reverse() }] })), /D2_PAGES_PIPELINE_CONTEXT/);
 });
 
 void test('historical seven-page fixture remains a 14-def regression', () => {
@@ -74,7 +75,7 @@ void test('closed gate rejects HTML/layout, invented method/group, missing devic
   assert.throws(() => gated(page, shared, mutateDescription('desktop', { moleculeRecommendations: [{ groupId: 'groupMissing', candidates: ['missing'], reason: 'Useful.' }] })), /D2_PAGES_GROUP_UNKNOWN/);
   assert.throws(() => gated(page, { ...shared, dataBindings: [] }, mutateDescription('desktop', { description: 'Show a statistics dashboard total.' })), /D2_PAGES_DATA_CLAIM_UNSUPPORTED/);
   assert.throws(() => parseD2PagesJudgment({ ...good, layout: {} }), /D2_PAGES_SCHEMA_UNKNOWN_KEY/);
-  assert.throws(() => parseD2PagesJudgment({ schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId: 'records', presentations: [{ device: 'desktop' }] }), /D2_PAGES_SCHEMA_TRUNCATED/);
+  assert.throws(() => parseD2PagesJudgment({ schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId: 'records', pageIntent: 'Review records.', presentations: [{ device: 'desktop' }] }), /D2_PAGES_SCHEMA_TRUNCATED/);
 });
 
 void test('canonical catalog resolves 33 category skills plus bespoke and reads both mandatory skills', async () => {
@@ -241,7 +242,7 @@ void test('minimal consumer and TypeScript accept quotes, backticks and multilin
   const folder = mkdtempSync(path.join(tmpdir(), 'd2-pages-'));
   try {
     rendered.forEach((item, index) => { const source = renderD2Page(item); assertD2RenderedPage(source); assert.equal(parseD2RenderedPage(source).pipeline.length, 1); writeFileSync(path.join(folder, `page${index}.defs.ts`), source); });
-    writeFileSync(path.join(folder, 'consumer.ts'), "import { descriptions, pipeline } from './page0.defs.js';\nconst organismId: string = descriptions[0].organismId; const contentRef: string = descriptions[0].contentRef; const id: string = pipeline[0].id; void organismId; void contentRef; void id;\n");
+    writeFileSync(path.join(folder, 'consumer.ts'), "import { definition, pipeline } from './page0.defs.js';\nconst organismId: string = pipeline[0].coverage[0].organismId; const contentRef: string = pipeline[0].coverage[0].contentRef; const prose: string = definition; void prose; const id: string = pipeline[0].id; void organismId; void contentRef; void id;\n");
     const tsc = path.resolve(HERE, '../../../../..', 'node_modules', '.bin', 'tsc');
     const result = spawnSync(tsc, ['--noEmit', '--strict', '--skipLibCheck', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', 'consumer.ts', 'page0.defs.ts', 'page1.defs.ts'], { cwd: folder, encoding: 'utf8' });
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
@@ -281,6 +282,48 @@ void test('unamended HEAD transition payload remains an upstream contracts diagn
 });
 
 function emit(pageId: string) { return gated(selected(pageId), sharedFor(pageId, capabilities(pageId)), judgment(pageId, capabilities(pageId))); }
+// Older isolated fixtures specify their approved coverage explicitly at the gate boundary.
+function gateD2Pages(moduleName: string, page: D2SelectedPage, shared: D2SharedDefinition, value: D2PagesJudgment, groups: Map<string, string[]>, skills: D2PageSkillsContext, candidates: Map<string, Set<string>>) {
+  shared.coverage ??= value.presentations[0].descriptions.map((item, sourceIndex) => ({ organismId: item.organismId, sourceIndex, kind: item.kind, contentRef: item.contentRef, content: item.description, scenarioRefs: [item.contentRef], capabilityRefs: [...item.capabilityRefs], source: page.organisms[sourceIndex] }));
+  return productionGate(moduleName, page, shared, value, groups, skills, candidates, template(value.category.categoryRef), new Map([...groups.keys()].map(groupId => [groupId, { indexReference: groups.get(groupId)![0], indexVia: 'fixture', indexSha256: `sha256:${'1'.repeat(64)}`, usageContractReference: groups.get(groupId)![1], usageContractVia: 'fixture', usageContractSha256: `sha256:${'2'.repeat(64)}` }])));
+}
+function template(categoryRef: string) { return { categoryRef, targetPage: 'page11' as const, experiencePage: null, experienceId: null, styleId: null, layoutId: null, reason: 'Fixture guidance.', requirementsMet: [], digest: `sha256:${'3'.repeat(64)}`, sources: [] }; }
+
+void test('productive template adapter yields exact pipeline receipt and selected Markdown source hash', async () => {
+  const categoryRef = 'genericCollection'; const catalogRef = '_102020_/l4/collabux/templates/categoryList.json'; const mdRef = `_102020_/l4/collabux/templates/${categoryRef}/page21.md`;
+  const contents = new Map([[catalogRef, JSON.stringify({ categories: [{ categoryId: categoryRef, experiences: { page21: 'recordCollection' } }] })], [mdRef, 'Show the approved collection using accessible molecule APIs.']]);
+  const port = { discover: async () => ({ categoryCatalog: catalogRef, files: [{ reference: mdRef, role: 'category' as const, categoryRef }] }), readText: async (ref: string) => contents.get(ref) ?? null };
+  const selectedTemplate = await pageTemplate(sharedFor('renamedCatalog', ['loadRecords']), categoryRef, port);
+  assert.equal(Object.hasOwn(selectedTemplate, 'context'), false);
+  assert.equal(selectedTemplate.experienceId, 'recordCollection');
+  assert.ok(selectedTemplate.sources.every(source => /^sha256:[a-f0-9]{64}$/u.test(source.sha256)));
+  const page = emit('records')[0]; page.templateSelection = selectedTemplate; page.pipeline = [buildD2PagePipeline('fixture', 'records', 'desktop', categoryRef, ['skill', ...selectedTemplate.sources.map(source => source.reference)], selectedTemplate, page.coverage)];
+  assert.doesNotThrow(() => assertD2RenderedPage(renderD2Page(page)));
+  const prose = parseD2RenderedPage(renderD2Page(page)).definition;
+  for (const source of selectedTemplate.sources) assert.equal(prose.split(`${source.reference} ${source.sha256}`).length - 1, 1);
+  assert.doesNotMatch(prose, /sha256:sha256:/u);
+  contents.set(mdRef, 'Changed accessible guidance.');
+  assert.notEqual((await pageTemplate(sharedFor('renamedCatalog', ['loadRecords']), categoryRef, port)).digest, selectedTemplate.digest);
+});
+
+void test('renamed page keeps derived content and rejects omitted or cross-organism capabilities independent of prose', () => {
+  const page = selected('renamedInventory', [{ kind: 'list', text: 'Browse authorized records.' }, { kind: 'actions', text: 'Choose a record.' }]);
+  const shared = sharedFor(page.pageId, ['loadRecords', 'selectRecord']);
+  const value = judgment(page.pageId, ['loadRecords', 'selectRecord'], 'bespoke', page);
+  gateD2Pages('genericWorkspace', page, shared, value, GROUPS, PAGE_SKILLS, CANDIDATES);
+  const omitted = structuredClone(value); omitted.presentations.forEach(presentation => { presentation.descriptions[1].capabilityRefs = ['loadRecords']; });
+  assert.throws(() => gateD2Pages('genericWorkspace', page, shared, omitted, GROUPS, PAGE_SKILLS, CANDIDATES), /D2_PAGES_CAPABILITY_MISSING/);
+  const missingContent = structuredClone(value); missingContent.presentations[0].descriptions[0].contentRef = 'invented';
+  assert.throws(() => gateD2Pages('genericWorkspace', page, shared, missingContent, GROUPS, PAGE_SKILLS, CANDIDATES), /D2_PAGES_CONTENT_REF_UNKNOWN/);
+  const pair = gateD2Pages('genericWorkspace', page, shared, value, GROUPS, PAGE_SKILLS, CANDIDATES);
+  pair[0].descriptions[0].description = 'Literal `code`, ${untrusted}, "quote", \\ and as const; remain text.';
+  const source = renderD2Page(pair[0]);
+  const parsed = parseD2RenderedPage(source);
+  assert.match(parsed.definition, /\$\{untrusted\}/u);
+  assert.equal(parsed.pipeline[0].coverage.length, 2);
+  assert.deepEqual(parsed.pipeline[0].coverage.map(item => item.contentRef), ['base', 'base']);
+  assert.match(parseD2RenderedPage(renderD2Page(pair[1])).definition, /390px.*360px.*430px/u);
+});
 function capabilities(pageId: string): string[] { return pageId.includes('profissional') && pageId.startsWith('consultas') ? ['listConsulta', 'registrarAtendimento'] : pageId.includes('recepcionista') && pageId.startsWith('consultas') ? ['listConsulta', 'confirmarConsulta'] : [`load${pascal(pageId)}`]; }
 function judgment(pageId: string, refs: string[], categoryRef = 'calendarScheduling', page = selected(pageId)): D2PagesJudgment {
   const organisms = deriveD2PageOrganisms(page); const describe = (device: 'Desktop' | 'Mobile') => organisms.map((organism, index) => ({
@@ -288,7 +331,7 @@ function judgment(pageId: string, refs: string[], categoryRef = 'calendarSchedul
     description: `${business(pageId)} ${device} ${organism.intent || organism.kind} supports ${refs.join(',')}, keyboard use, loading, empty and error states.`,
     contentRef: 'base', capabilityRefs: organism.staticContent ? [] : refs, moleculeRecommendations: [],
   }));
-  return { schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId, category: { categoryRef, reason: `The ${categoryRef} intent matches the declared capability.`, evidenceRefs: [refs[0]] }, presentations: [
+  return { schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId, pageIntent: business(pageId), category: { categoryRef, reason: `The ${categoryRef} intent matches the declared capability.`, evidenceRefs: [refs[0]] }, presentations: [
     { device: 'desktop', descriptions: describe('Desktop'), moleculeReason: 'No useful molecule correspondence is required by this fixture.' },
     { device: 'mobile', descriptions: describe('Mobile'), moleculeReason: 'No useful molecule correspondence is required by this fixture.' },
   ] };

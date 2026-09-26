@@ -2,13 +2,14 @@
 
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import type { D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
-import { D2_PAGES_JUDGMENT_VERSION, buildD2PagePipeline, deriveD2PageOrganisms, knownD2PageCapabilities, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PageDevice, type D2PagesJudgment, type D2RenderedPage } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
+import { D2_PAGES_JUDGMENT_VERSION, buildD2PagePipeline, deriveD2PageOrganisms, knownD2PageCapabilities, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PageDevice, type D2PagesJudgment, type D2RenderedPage, type D2PageTemplateSelection, type D2MoleculeRecommendationProvenance } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import type { D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { D2_PAGE_TECHNICAL_SKILL, resolveD2PageCategory } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 
 export function parseD2PagesJudgment(value: unknown): D2PagesJudgment {
   const root = record(value);
-  exactKeys(root, ['schemaVersion', 'pageId', 'category', 'presentations'], 'D2_PAGES_SCHEMA');
+  exactKeys(root, ['schemaVersion', 'pageId', 'pageIntent', 'category', 'presentations'], 'D2_PAGES_SCHEMA');
+  if (typeof root.pageIntent !== 'string' || !root.pageIntent.trim()) fail('D2_PAGES_INTENT_MISSING');
   if (root.schemaVersion !== D2_PAGES_JUDGMENT_VERSION) fail('D2_PAGES_SCHEMA_VERSION');
   if (typeof root.pageId !== 'string' || !Array.isArray(root.presentations)) fail('D2_PAGES_SCHEMA_TRUNCATED');
   const category = record(root.category);
@@ -40,9 +41,12 @@ export function gateD2Pages(
   groupSkills: ReadonlyMap<string, string[]>,
   categoryContext: D2PageSkillsContext,
   groupCandidates: ReadonlyMap<string, ReadonlySet<string>>,
+  templateSelection: D2PageTemplateSelection,
+  provenance: ReadonlyMap<string, Omit<D2MoleculeRecommendationProvenance, 'groupId' | 'candidates' | 'reason'>>,
 ): D2RenderedPage[] {
   const errors: string[] = [];
   if (judgment.pageId !== page.pageId) errors.push(`D2_PAGES_PAGE_CHANGED: ${judgment.pageId}`);
+  if (!judgment.pageIntent?.trim()) errors.push('D2_PAGES_INTENT_MISSING');
   const byDevice = new Map<D2PageDevice, D2PagesJudgment['presentations'][number]>();
   for (const presentation of judgment.presentations) {
     if (presentation.device !== 'desktop' && presentation.device !== 'mobile') { errors.push(`D2_PAGES_DEVICE_UNKNOWN: ${presentation.device}`); continue; }
@@ -79,6 +83,13 @@ export function gateD2Pages(
       if (!description.capabilityRefs.length && !expected.staticContent) errors.push(`D2_PAGES_CAPABILITIES_EMPTY: ${at}`);
       for (const ref of description.capabilityRefs) if (!known.has(ref)) errors.push(`D2_PAGES_CAPABILITY_UNKNOWN: ${at} -> ${ref}`);
       if (new Set(description.capabilityRefs).size !== description.capabilityRefs.length) errors.push(`D2_PAGES_CAPABILITY_DUPLICATE: ${at}`);
+      const coverage = shared.coverage.find(item => item.organismId === description.organismId);
+      if (!coverage) errors.push(`D2_PAGES_SHARED_COVERAGE_MISSING: ${at}`);
+      else {
+        if (coverage.contentRef !== description.contentRef) errors.push(`D2_PAGES_CONTENT_CHANGED: ${at}`);
+        for (const ref of coverage.capabilityRefs) if (!description.capabilityRefs.includes(ref)) errors.push(`D2_PAGES_CAPABILITY_MISSING: ${at} -> ${ref}`);
+        for (const ref of description.capabilityRefs) if (!coverage.capabilityRefs.includes(ref)) errors.push(`D2_PAGES_CAPABILITY_OUTSIDE_ORGANISM: ${at} -> ${ref}`);
+      }
       const recommendationGroups = new Set<string>();
       for (const recommendation of description.moleculeRecommendations) {
         if (recommendationGroups.has(recommendation.groupId)) errors.push(`D2_PAGES_MOLECULE_GROUP_DUPLICATE: ${at} -> ${recommendation.groupId}`); recommendationGroups.add(recommendation.groupId);
@@ -113,9 +124,17 @@ export function gateD2Pages(
   return (['desktop', 'mobile'] as const).map(device => {
     const presentation = byDevice.get(device)!;
     const groups = presentation.descriptions.flatMap(item => item.moleculeRecommendations.map(recommendation => recommendation.groupId));
-    const skills = [D2_PAGE_TECHNICAL_SKILL, category!.skillReference, ...groups.flatMap(group => groupSkills.get(group) || [])];
+    const skills = [D2_PAGE_TECHNICAL_SKILL, category!.skillReference, ...templateSelection.sources.map(source => source.reference), ...groups.flatMap(group => groupSkills.get(group) || [])];
     const descriptions = organisms.map(organism => { const submitted = presentation.descriptions.find(item => item.organismId === organism.organismId)!; return { ...submitted, organismId: organism.organismId, kind: organism.kind, description: submitted.description.trim() } as D2PageDescription; });
-    return { device, descriptions, pipeline: [buildD2PagePipeline(moduleName, page.pageId, device, category!.categoryRef, skills)] };
+    const coverage = descriptions.map(description => {
+      const source = shared.coverage.find(item => item.organismId === description.organismId)!;
+      return { organismId: source.organismId, sourceIndex: source.sourceIndex, kind: source.kind, contentRef: source.contentRef, scenarioRefs: [...source.scenarioRefs], capabilityRefs: [...source.capabilityRefs], moleculeRecommendations: description.moleculeRecommendations.map(recommendation => {
+        const origin = provenance.get(recommendation.groupId);
+        if (!origin) throw new Error(`D2_PAGES_MOLECULE_PROVENANCE_MISSING: ${recommendation.groupId}`);
+        return { ...recommendation, ...origin };
+      }) };
+    });
+    return { device, pageId: page.pageId, pageLabel: page.label, pageIntent: judgment.pageIntent, actors: page.actors, authorityRefs: page.authorityRefs, operationBindings: page.operationBindings, descriptions, coverage, templateSelection, pipeline: [buildD2PagePipeline(moduleName, page.pageId, device, category!.categoryRef, skills, templateSelection, coverage)] };
   });
 }
 
