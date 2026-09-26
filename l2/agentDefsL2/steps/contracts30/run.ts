@@ -78,6 +78,7 @@ export function d2ContractsSources(snapshot: D2InputSnapshot, artifacts: D2Input
       actors: page.actors,
       endpoints: page.endpoints,
       usecases: page.usecases,
+      operationBindings: page.operationBindings ?? [],
     })),
   };
 }

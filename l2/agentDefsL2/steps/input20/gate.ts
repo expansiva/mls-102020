@@ -499,7 +499,10 @@ function operationField(entity: unknown, path: string): Record<string, unknown> 
 
 function matchesOperationValue(field: Record<string, unknown>, value: unknown): boolean {
   const type = text(field.type);
-  if (type === 'enum') return typeof value === 'string' && strings(field.values).includes(value);
+  if (type === 'enum') {
+    const values = Array.isArray(field.values) ? field.values.map(item => typeof item === 'string' ? item : rec(item).value) : [];
+    return typeof value === 'string' && values.includes(value);
+  }
   if (['string', 'text', 'uuid', 'record', 'timestamp', 'date'].includes(type)) return typeof value === 'string';
   if (type === 'integer') return Number.isInteger(value);
   if (type === 'number' || type === 'money') return typeof value === 'number' && Number.isFinite(value);

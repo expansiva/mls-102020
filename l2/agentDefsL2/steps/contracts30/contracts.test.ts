@@ -58,6 +58,7 @@ void test('agendaClinica contracts obey operations, grants and exact backend rou
   const list = professional.calls.find(call => call.callName === 'listConsulta')!;
   assert.equal(list.outputShape, 'array');
   assert.ok(flatten(list.input).filter(field => field.name !== 'page').every(field => field.indexed));
+  assert.ok(flatten(list.input).filter(field => field.name !== 'page').every(field => !field.required), 'list filters are optional unless an operation binding requires them');
   assert.ok(flatten(list.input).some(field => field.name === 'page'));
   const status = flatten(list.output).find(field => field.path === 'Consulta.status')!;
   assert.equal(status.tsType, '"scheduled" | "confirmed" | "noShow" | "attended"');
@@ -77,6 +78,40 @@ void test('agendaClinica contracts obey operations, grants and exact backend rou
   assert.ok(pages.flatMap(page => page.calls).every(call => call.route === `agendaClinica.${pages.find(page => page.calls.includes(call))!.pageId}.${call.route.startsWith(`agendaClinica.${pages.find(page => page.calls.includes(call))!.pageId}.qry`) ? 'qry' : 'cmd'}${call.callPascal}`));
 });
 
+void test('renamed record fixture emits operation DTOs, optional filters, server assignment and deny boundaries', () => {
+  const sources = genericOperationSources();
+  const calls = buildD2ContractsCatalog(sources)[0].calls;
+  const flattenPaths = (name: string) => flatten(calls.find(call => call.callName === name)!.input).map(field => field.path);
+  const list = calls.find(call => call.callName === 'listRecord')!;
+  assert.ok(flatten(list.input).filter(field => field.name !== 'page').every(field => !field.required));
+  assert.deepEqual(flattenPaths('getRecord'), ['Record.id']);
+  assert.deepEqual(flattenPaths('createRecord').sort(), ['Record.details', 'Record.details.publicName', 'Record.ownerId']);
+  assert.equal(flatten(calls.find(call => call.callName === 'createRecord')!.input).find(field => field.path === 'Record.ownerId')?.required, true);
+  assert.equal(flatten(calls.find(call => call.callName === 'createRecord')!.input).find(field => field.path === 'Record.details.publicName')?.required, true);
+  assert.deepEqual(flattenPaths('updateRecord').sort(), ['Record.details', 'Record.details.publicName', 'Record.id', 'Record.revision']);
+  assert.deepEqual(flattenPaths('completeRecord').sort(), ['Record.details', 'Record.details.eventNote', 'Record.id', 'Record.revision']);
+  assert.equal(calls.flatMap(call => flatten(call.output)).some(field => field.path === 'Record.details.privateFlag'), false);
+  const deniedBinding = structuredClone(sources);
+  deniedBinding.pages[0].operationBindings.find(item => item.route.endsWith('cmdCreateRecord'))!.inputFields.push({ path: 'Record.details.privateFlag', origin: 'actor', required: false });
+  assert.throws(() => buildD2ContractsCatalog(deniedBinding), (error: unknown) => error instanceof D2ContractDerivationError
+    && error.issues.some(issue => issue.code === 'D2_CONTRACT_OPERATION_PATH_FORBIDDEN' && issue.path === 'Record.details.privateFlag'));
+});
+
+void test('list honors an explicit required filter binding and remains optional without one', () => {
+  const sources = genericOperationSources();
+  const listInput = () => flatten(buildD2ContractsCatalog(sources)[0].calls.find(call => call.callName === 'listRecord')!.input);
+  assert.ok(listInput().filter(field => field.name !== 'page').every(field => !field.required));
+  const binding = structuredClone(sources.pages[0].operationBindings[0]);
+  binding.route = sources.pages[0].endpoints.find(endpoint => endpoint.usecaseRef === 'listRecord')!.route;
+  binding.operation = 'list';
+  binding.inputFields = [{ path: 'Record.ownerId', origin: 'actor', required: true }];
+  sources.pages[0].operationBindings.push(binding);
+  assert.equal(listInput().find(field => field.path === 'Record.ownerId')?.required, true);
+  assert.ok(listInput().filter(field => field.path !== 'Record.ownerId').every(field => !field.required));
+  binding.actorRef = 'unselected';
+  assertCode(() => buildD2ContractsCatalog(sources), 'D2_CONTRACT_OPERATION_BINDING_AMBIGUOUS');
+});
+
 void test('write preconditions are metadata-driven and remain separate from writable payloads', () => {
   const sources = declaredPayloadSources();
   const receptionist = structuredClone(sources.entities.Recepcionista) as unknown as Record<string, unknown>;
@@ -85,6 +120,10 @@ void test('write preconditions are metadata-driven and remain separate from writ
   const identification = rec(rec(rec(fields.details).fields).identification);
   const identificationFields = rec(identification.fields);
   identificationFields.name = { ...rec(identificationFields.name), writePrecondition: true };
+  const registration = sources.pages.find(page => page.pageId === 'cadastro_recepcionista')!;
+  registration.operationBindings.find(item => item.route.endsWith('cmdUpdateRecepcionista'))!.inputFields.push({
+    path: 'Recepcionista.details.identification.docId', origin: 'actor', required: false,
+  });
   sources.entities.Recepcionista = receptionist as unknown as Ns5OntologyAnyEntity;
   const consulta = structuredClone(sources.entities.Consulta) as unknown as Record<string, unknown>;
   rec(rec(consulta.record).fields).version = { type: 'integer', required: true, derived: true, writePrecondition: true };
@@ -100,7 +139,7 @@ void test('write preconditions are metadata-driven and remain separate from writ
   assert.equal(flatten(create.input).some(field => field.writePrecondition), false, 'create never asks for a prior snapshot');
   assert.equal(flatten(update.input).filter(field => field.path === 'Recepcionista.revisionToken').length, 1);
   assert.equal(flatten(update.input).filter(field => field.path === 'Recepcionista.details.identification.name').length, 1, 'nested precondition is not duplicated when trees merge');
-  assert.ok(flatten(update.input).some(field => field.path === 'Recepcionista.details.identification.docId'), 'a nested precondition does not drop writable siblings');
+  assert.ok(flatten(update.input).some(field => field.path === 'Recepcionista.details.identification.docId'), 'a nested precondition does not drop explicitly bound writable siblings');
 
   const transition = pages.find(page => page.pageId === 'consultas_profissional')!.calls.find(call => call.callName === 'registrarAtendimento')!;
   assert.deepEqual(flatten(transition.input).filter(field => field.writePrecondition).map(field => field.path), ['Consulta.version']);
@@ -130,6 +169,7 @@ void test('missing or invalid payload, unsupported types, invalid grants and cha
   const transition = rows(payloadEntity.transitions).find(item => item.transitionId === 'registrarAtendimento')!;
   transition.payload = ['details.missing'];
   badPayload.entities.Consulta = payloadEntity as unknown as Ns5OntologyAnyEntity;
+  bindTestSources(badPayload);
   assertCode(() => buildD2ContractsCatalog(badPayload), 'D2_CONTRACT_TRANSITION_PATH_INVALID');
 
   const badGrant = declaredPayloadSources();
@@ -187,15 +227,16 @@ function currentSources(): D2ContractsSources {
     entities[String(rec(entity).entityId)] = entity;
   }
   const usecases = rows(backend.usecases);
-  return {
+  const result: D2ContractsSources = {
     module: 'agendaClinica', entities, access,
     pages: rows(needs.pages).map(page => {
       const pageId = String(page.pageId);
       const endpoints = rows(backend.endpoints).filter(endpoint => endpoint.page === pageId);
       const ids = new Set(endpoints.map(endpoint => endpoint.usecaseRef));
-      return { pageId, actors: strings(page.actors), endpoints, usecases: usecases.filter(usecase => ids.has(usecase.usecaseId)) };
+      return { pageId, actors: strings(page.actors), endpoints, usecases: usecases.filter(usecase => ids.has(usecase.usecaseId)), operationBindings: [] };
     }),
   };
+  return bindTestSources(result);
 }
 
 function declaredPayloadSources(): D2ContractsSources {
@@ -205,6 +246,46 @@ function declaredPayloadSources(): D2ContractsSources {
     transition.payload = transition.transitionId === 'registrarAtendimento' ? ['details.attendanceNote'] : [];
   }
   sources.entities.Consulta = consulta as unknown as Ns5OntologyAnyEntity;
+  return bindTestSources(sources);
+}
+
+function bindTestSources(sources: D2ContractsSources): D2ContractsSources {
+  for (const page of sources.pages) {
+    page.operationBindings = [];
+    const usecases = new Map(page.usecases.map(usecase => [text(usecase.usecaseId), usecase]));
+    for (const endpoint of page.endpoints) {
+      const route = text(endpoint.route);
+      const usecaseId = text(endpoint.usecaseRef);
+      const usecase = usecases.get(usecaseId) ?? {};
+      const entityId = text(usecase.entity);
+      const operation = text(usecase.operation);
+      if (!['create', 'update', 'transition'].includes(operation)) continue;
+      const entity = rec(sources.entities[entityId]);
+      const transition = rows(entity.transitions).find(row => row.transitionId === usecaseId);
+      const operationSpec = rec(rec(entity.operations)[operation]);
+      const writable = operation === 'transition'
+        ? strings(transition?.payload)
+        : [...strings(operationSpec.writable), ...Object.keys(rec(operationSpec.assigned))];
+      const required = new Set(operation === 'transition' ? strings(transition?.payload) : strings(operationSpec.required));
+      const normalized = writable.map(path => path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`);
+      const actorRefs = operation === 'transition' ? strings(transition?.by).filter(actor => page.actors.includes(actor)).slice(0, 1) : page.actors;
+      for (const actorRef of actorRefs) {
+        const grants = rows(rec(sources.access).grants).filter(grant => text(grant.actorRef) === actorRef && strings(grant.entityRefs).includes(entityId));
+        const inputFields = normalized.flatMap((path, index) => {
+          const relative = writable[index].replace(`${entityId}.`, '');
+          const denied = grants.some(grant => strings(rec(grant.disclosure).deniedFields).some(item => item === entityId || item === path || path.startsWith(`${item}.`)));
+          const disclosed = grants.some(grant => text(rec(grant.disclosure).mode) === 'fullRecord' || strings(rec(grant.disclosure).allowedFields).some(item => item === entityId || item === path || path.startsWith(`${item}.`) || item.startsWith(`${path}.`)));
+          if (denied || !disclosed) return [];
+          return [{ path, origin: Object.hasOwn(rec(operationSpec.assigned), writable[index]) ? 'server' as const : 'actor' as const, required: required.has(writable[index]) || required.has(relative) }];
+        });
+        page.operationBindings.push({
+          pageId: page.pageId, route, entityId, operation, actorRef, grantRefs: [], authorities: [], inputFields,
+          ...(transition ? { transition: { transitionId: usecaseId, from: strings(transition.from), to: text(transition.to), by: strings(transition.by), payload: strings(transition.payload) } } : {}),
+          ruleRefs: [], sourceHashes: [],
+        });
+      }
+    }
+  }
   return sources;
 }
 
@@ -223,6 +304,52 @@ function syntheticNestedEntity(): Ns5OntologyAnyEntity {
   } as unknown as Ns5OntologyAnyEntity;
 }
 
+function genericOperationSources(): D2ContractsSources {
+  const entity = {
+    schemaVersion: '2026-09-17-ns5-ontology-v3.1', moduleName: 'example', entityId: 'Record', title: 'Record', description: 'fixture', displayField: 'details.publicName',
+    kind: 'entity', class: 'core', storage: { target: 'moduleDatabase', table: 'example_record', kind: 'relational' }, relationships: {}, capabilities: {}, rules: [],
+    record: { fields: {
+      id: { type: 'uuid', required: true, derived: true, indexed: true },
+      revision: { type: 'integer', required: true, derived: true, writePrecondition: true },
+      ownerId: { type: 'uuid', required: true, indexed: true },
+      state: { type: 'enum', required: true, indexed: true, values: [{ value: 'ready' }, { value: 'done' }] },
+      details: { type: 'object', required: true, fields: {
+        publicName: { type: 'string', required: true },
+        eventNote: { type: 'string' },
+        privateFlag: { type: 'boolean' },
+      } },
+    } },
+    operations: {
+      create: { writable: ['ownerId', 'details.publicName'], required: ['ownerId', 'details.publicName'], assigned: { state: 'ready' } },
+      update: { writable: ['details.publicName'], required: [] },
+    },
+    transitions: [{ transitionId: 'completeRecord', from: ['ready'], to: 'done', by: ['operator'], description: 'Complete the record.', payload: ['details.eventNote'], ruleRefs: [] }],
+    uniqueKeys: [], lifecycleStates: [],
+  } as unknown as Ns5OntologyAnyEntity;
+  const routes = [
+    ['listRecord', 'qry'], ['getRecord', 'qry'], ['createRecord', 'cmd'], ['updateRecord', 'cmd'], ['completeRecord', 'cmd'],
+  ] as const;
+  const endpoints = routes.map(([usecaseRef, kind]) => ({ usecaseRef, kind, route: `example.records.${kind}${usecaseRef[0].toUpperCase()}${usecaseRef.slice(1)}` }));
+  const usecases = routes.map(([usecaseId]) => ({ usecaseId, entity: 'Record', operation: usecaseId === 'completeRecord' ? 'transition' : usecaseId.replace(/Record$/, '').toLowerCase() }));
+  const bindings = endpoints.flatMap(endpoint => {
+    const usecase = usecases.find(item => item.usecaseId === endpoint.usecaseRef)!;
+    const operation = String(usecase.operation);
+    if (!['create', 'update', 'transition'].includes(operation)) return [];
+    const fields = operation === 'transition' ? ['details.eventNote'] : operation === 'create' ? ['ownerId', 'details.publicName'] : ['details.publicName'];
+    return [{
+      pageId: 'records', route: endpoint.route, entityId: 'Record', operation, actorRef: 'operator', grantRefs: ['recordAccess'], authorities: ['operator'],
+      inputFields: fields.map(path => ({ path: `Record.${path}`, origin: 'actor' as const, required: operation === 'create' || operation === 'transition' })),
+      ...(operation === 'transition' ? { transition: { transitionId: 'completeRecord', from: ['ready'], to: 'done', by: ['operator'], payload: ['details.eventNote'] } } : {}),
+      ruleRefs: [], sourceHashes: [],
+    }];
+  });
+  return {
+    module: 'example', entities: { Record: entity },
+    access: { grants: [{ grantId: 'recordAccess', actorRef: 'operator', entityRefs: ['Record'], disclosure: { mode: 'fieldsOnly', allowedFields: ['Record'], deniedFields: ['Record.details.privateFlag'] } }] },
+    pages: [{ pageId: 'records', actors: ['operator'], endpoints, usecases, operationBindings: bindings }],
+  };
+}
+
 function assertCode(run: () => unknown, code: string): void {
   assert.throws(run, (error: unknown) => error instanceof D2ContractDerivationError && error.issues.some(issue => issue.code === code));
 }
@@ -233,3 +360,4 @@ function defs(file: string): Record<string, unknown> { const value = parseNs4Cla
 function rec(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function rows(value: unknown): Array<Record<string, unknown>> { return Array.isArray(value) ? value.map(rec) : []; }
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []; }
+function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }

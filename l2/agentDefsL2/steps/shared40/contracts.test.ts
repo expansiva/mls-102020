@@ -17,7 +17,7 @@ import { parseD2RenderedShared, renderD2Shared } from '/_102020_/l2/agentDefsL2/
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-void test('positive pinned fixture with explicit transition payload produces five shared defs/items', () => {
+void test('pinned fixture without d2_23 operation bindings reports the missing binding', () => {
   const input = path.resolve(HERE, '..', 'input20', 'fixtures', 'current');
   const head = path.resolve(HERE, '..', 'contracts30', 'fixtures', 'head', 'l4');
   const backend = json(path.join(input, 'backend.json')); const needs = json(path.join(input, 'needs.json'));
@@ -27,12 +27,11 @@ void test('positive pinned fixture with explicit transition payload produces fiv
   }
   for (const transition of rows((entities.Consulta as unknown as Record<string, unknown>).transitions)) transition.payload = transition.transitionId === 'registrarAtendimento' ? ['details.attendanceNote'] : [];
   const usecases = rows(backend.usecases);
-  const pages = rows(needs.pages).map(raw => { const pageId = text(raw.pageId); const endpoints = rows(backend.endpoints).filter(item => item.page === pageId); const ids = new Set(endpoints.map(item => item.usecaseRef)); return { pageId, actors: strings(raw.actors), endpoints, usecases: usecases.filter(item => ids.has(item.usecaseId)) }; });
-  const contracts = buildD2ContractsCatalog({ module: 'agendaClinica', entities, access: defs(path.join(input, 'access.defs.ts')), pages });
-  const emitted = contracts.map(contract => { const page = selected(contract.pageId); const definition = gateD2Shared('agendaClinica', page, contract, suggestedD2SharedJudgment(page, contract)); const pipeline = buildD2SharedPipeline('agendaClinica', page.pageId); assertD2RenderedShared(renderD2Shared(definition, pipeline)); return { definition, pipeline }; });
-  assert.equal(emitted.length, 5); assert.equal(emitted.filter(item => item.pipeline.type === 'l2_shared').length, 5);
-  const contract = contracts[0]; const page = selected(contract.pageId); const definition = gateD2Shared('agendaClinica', page, contract, suggestedD2SharedJudgment(page, contract));
-  compileConsumer(contract, renderD2Shared(definition, buildD2SharedPipeline('agendaClinica', page.pageId)));
+  const pages = rows(needs.pages).map(raw => { const pageId = text(raw.pageId); const endpoints = rows(backend.endpoints).filter(item => item.page === pageId); const ids = new Set(endpoints.map(item => item.usecaseRef)); return { pageId, actors: strings(raw.actors), endpoints, usecases: usecases.filter(item => ids.has(item.usecaseId)), operationBindings: [] }; });
+  assert.throws(
+    () => buildD2ContractsCatalog({ module: 'agendaClinica', entities, access: defs(path.join(input, 'access.defs.ts')), pages }),
+    /D2_CONTRACT_OPERATION_BINDING_MISSING/,
+  );
 });
 
 void test('five selected pages emit one exact shared definition and one l2_shared item each', () => {

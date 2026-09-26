@@ -161,6 +161,26 @@ function runFixture(explicitPayload: boolean): { snapshot: D2InputSnapshot; arti
       organisms: [], reads: rows(raw.reads), writes: rows(raw.writes), endpoints, usecases: usecases.filter(usecase => ids.has(usecase.usecaseId)), destinations: [],
     };
   });
+  const access = defs(path.join(INPUT, 'access.defs.ts'));
+  // This fixture exercises persistence/reuse barriers only; operation semantics are
+  // supplied as empty bindings because its pinned L4 snapshot predates d2_23.
+  for (const page of pages) {
+    page.operationBindings = page.endpoints.flatMap(endpoint => {
+      const usecaseId = text(endpoint.usecaseRef);
+      const usecase = page.usecases.find(item => item.usecaseId === usecaseId);
+      const operation = text(usecase?.operation);
+      if (!['create', 'update', 'transition'].includes(operation)) return [];
+      const entity = rec(entities[text(usecase?.entity)]);
+      const transition = rows(entity.transitions).find(item => item.transitionId === usecaseId);
+      const actors = operation === 'transition' ? strings(transition?.by).filter(actor => page.actors.includes(actor)).slice(0, 1) : page.actors;
+      return actors.map(actorRef => ({
+        pageId: page.pageId, route: text(endpoint.route), entityId: text(usecase?.entity), operation, actorRef,
+        grantRefs: [], authorities: [], inputFields: operation === 'transition' ? strings(transition?.payload).map(path => ({ path: path.startsWith(`${text(usecase?.entity)}.`) ? path : `${text(usecase?.entity)}.${path}`, origin: 'actor' as const, required: true })) : [], ruleRefs: [], sourceHashes: [],
+        ...(transition ? { transition: { transitionId: usecaseId, from: strings(transition.from), to: text(transition.to), by: strings(transition.by), payload: strings(transition.payload) } } : {}),
+      }));
+    });
+  }
+  const rules = {};
   const snapshot: D2InputSnapshot = {
     ...IDENTITY, schemaVersion: D2_INPUT_VERSION, device: 'web', snapshotHash: `sha256:${'c'.repeat(64)}`, releaseIdentity: null, sources: [],
     l4: {} as D2InputSnapshot['l4'],
@@ -169,7 +189,7 @@ function runFixture(explicitPayload: boolean): { snapshot: D2InputSnapshot; arti
   };
   const artifacts: D2InputArtifacts = {
     sources: [], module: {}, journeyIndex: {}, journeys: {}, ontologyIndex: {}, entities,
-    rules: {}, workflows: {}, access: defs(path.join(INPUT, 'access.defs.ts')), integration: {}, menu: {}, needs, backend, effort: {},
+    rules, workflows: {}, access, integration: {}, menu: {}, needs, backend, effort: {},
   };
   return { snapshot, artifacts };
 }

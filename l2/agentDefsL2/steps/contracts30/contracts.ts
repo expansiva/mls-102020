@@ -2,6 +2,7 @@
 
 import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
+import type { D2OperationBinding } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 
 export type D2ContractScalar = 'string' | 'number' | 'boolean' | 'object';
 export type D2ContractOperation = 'list' | 'get' | 'create' | 'update' | 'transition';
@@ -53,6 +54,7 @@ export interface D2ContractsPageSource {
   actors: string[];
   endpoints: Array<Record<string, unknown>>;
   usecases: Array<Record<string, unknown>>;
+  operationBindings: D2OperationBinding[];
 }
 
 export interface D2ContractsSources {
@@ -122,6 +124,9 @@ export function buildD2ContractsCatalog(sources: D2ContractsSources): D2PageCont
       const allowed = allowedPathsByPageActor(page, entityId, allFields, grants, issues, route);
       if (!allowed) continue;
       const visible = filterTree(allFields, allowed);
+      const binding = operation === 'get'
+        ? undefined
+        : operationBinding(page, route, entityId, operation, usecaseId, issues);
       const callPascal = pascal(usecaseId);
       calls.push({
         callName: usecaseId,
@@ -132,7 +137,7 @@ export function buildD2ContractsCatalog(sources: D2ContractsSources): D2PageCont
         operation,
         actors: [...page.actors].sort(),
         relationships: relationshipsOf(entity),
-        input: inputFields(operation, entity, visible, usecaseId, page.pageId, route, issues),
+        input: inputFields(operation, entity, visible, usecaseId, page.pageId, route, issues, binding),
         output: visible,
         outputShape: operation === 'list' ? 'array' : 'object',
       });
@@ -193,6 +198,7 @@ function inputFields(
   pageId: string,
   route: string,
   issues: D2ContractIssue[],
+  binding?: D2OperationBinding,
 ): D2ContractField[] {
   const identity = findIdentity(visible);
   if ((operation === 'get' || operation === 'update' || operation === 'transition') && !identity) {
@@ -202,11 +208,12 @@ function inputFields(
   if (operation === 'get') return [identity!];
   if (operation === 'list') {
     const indexed = filterTree(visible, new Set(flatten(visible).filter(field => field.indexed).map(field => field.path)));
-    return [...indexed, syntheticPageField(text(rec(entity).entityId))];
+    const required = new Set(binding?.inputFields.filter(field => field.origin === 'actor' && field.required).map(field => field.path) ?? []);
+    return [...setRequired(indexed, required), syntheticPageField(text(rec(entity).entityId))];
   }
-  if (operation === 'create') return writableTree(visible);
+  if (operation === 'create') return operationInputTree(visible, binding, pageId, route, issues);
   const preconditions = writePreconditionTree(visible);
-  if (operation === 'update') return mergeFields([identity!], preconditions, writableTree(visible));
+  if (operation === 'update') return mergeFields([identity!], preconditions, operationInputTree(visible, binding, pageId, route, issues));
   const transition = rows(rec(entity).transitions).find(item => text(item.transitionId) === callName);
   if (!transition) {
     issues.push({ code: 'D2_CONTRACT_TRANSITION_MISSING', source: 'ontology', pageId, route, message: `transition '${callName}' is absent` });
@@ -220,13 +227,74 @@ function inputFields(
     });
     return [identity!];
   }
-  const declaredPayload = strings(transition.payload);
+  const declaredPayload = binding?.transition?.payload ?? strings(transition.payload);
   const payloadPaths = declaredPayload.map(path => path.startsWith(`${text(rec(entity).entityId)}.`) ? path : `${text(rec(entity).entityId)}.${path}`);
   const available = new Set(flatten(visible).map(field => field.path));
   for (const path of payloadPaths) if (!available.has(path)) {
     issues.push({ code: 'D2_CONTRACT_TRANSITION_PATH_INVALID', source: 'ontology', pageId, route, path, message: `transition payload path '${path}' is absent or forbidden` });
   }
-  return mergeFields([identity!], preconditions, filterTree(visible, new Set(payloadPaths)));
+  return mergeFields([identity!], preconditions, operationInputTree(visible, binding, pageId, route, issues));
+}
+
+function operationBinding(
+  page: D2ContractsPageSource,
+  route: string,
+  entityId: string,
+  operation: D2ContractOperation,
+  callName: string,
+  issues: D2ContractIssue[],
+): D2OperationBinding | undefined {
+  if (operation === 'get') return undefined;
+  const bindings = (page.operationBindings ?? []).filter(item => item.route === route);
+  if (operation === 'list' && !bindings.length) return undefined;
+  const valid = bindings.filter(item => item.pageId === page.pageId && item.entityId === entityId && item.operation === operation);
+  if (!valid.length) {
+    issues.push({ code: 'D2_CONTRACT_OPERATION_BINDING_MISSING', source: 'input.json', pageId: page.pageId, route, message: `operation '${operation}' has no matching d2_23 binding` });
+    return undefined;
+  }
+  const actors = operation === 'transition' ? [valid[0].actorRef] : [...page.actors].sort();
+  for (const actor of actors) {
+    if (valid.filter(item => item.actorRef === actor).length !== 1) {
+      issues.push({ code: 'D2_CONTRACT_OPERATION_BINDING_AMBIGUOUS', source: 'input.json', pageId: page.pageId, route, message: `operation '${operation}' must have one binding for actor '${actor}'` });
+    }
+  }
+  if (valid.some(item => !actors.includes(item.actorRef))) {
+    issues.push({ code: 'D2_CONTRACT_OPERATION_BINDING_AMBIGUOUS', source: 'input.json', pageId: page.pageId, route, message: `operation '${operation}' has a binding for an unselected actor` });
+  }
+  if (operation === 'transition' && (valid[0].transition?.transitionId !== callName)) {
+    issues.push({ code: 'D2_CONTRACT_TRANSITION_BINDING_MISMATCH', source: 'input.json', pageId: page.pageId, route, message: `transition binding does not match '${callName}'` });
+  }
+  const signatures = valid.map(item => item.inputFields.map(field => `${field.path}\0${field.origin}\0${field.required}`).sort().join('\n'));
+  if (new Set(signatures).size !== 1) {
+    issues.push({ code: 'D2_CONTRACT_OPERATION_BINDING_AMBIGUOUS', source: 'input.json', pageId: page.pageId, route, message: `actors have different operation input fields for '${entityId}'` });
+  }
+  return valid[0];
+}
+
+function operationInputTree(
+  visible: D2ContractField[],
+  binding: D2OperationBinding | undefined,
+  pageId: string,
+  route: string,
+  issues: D2ContractIssue[],
+): D2ContractField[] {
+  if (!binding) return [];
+  const catalog = new Map(flatten(visible).map(field => [field.path, field]));
+  const actorFields = binding.inputFields.filter(field => field.origin === 'actor');
+  const writable = new Set(actorFields.map(field => field.path));
+  for (const field of actorFields) {
+    if (!catalog.has(field.path)) issues.push({ code: 'D2_CONTRACT_OPERATION_PATH_FORBIDDEN', source: 'input.json', pageId, route, path: field.path, message: 'd2_23 actor input is absent from the fields disclosed to this operation' });
+  }
+  const required = new Set(actorFields.filter(field => field.required).map(field => field.path));
+  return setRequired(filterTree(visible, writable), required);
+}
+
+function setRequired(fields: D2ContractField[], required: Set<string>): D2ContractField[] {
+  return fields.map(field => ({
+    ...field,
+    required: [...required].some(path => path === field.path || path.startsWith(`${field.path}.`)),
+    children: setRequired(field.children, required),
+  }));
 }
 
 function allowedPathsByPageActor(
@@ -259,6 +327,13 @@ function allowedPathsByPageActor(
         for (const path of matches) allowed.add(path);
       }
     }
+    const denied = new Set(actorGrants.flatMap(grant => strings(rec(grant.disclosure).deniedFields)));
+    for (const path of [...allowed]) {
+      if ([...denied].some(ref => {
+        const full = ref === entityId ? entityId : ref.startsWith(`${entityId}.`) ? ref : `${entityId}.${ref}`;
+        return path === full || path.startsWith(`${full}.`);
+      })) allowed.delete(path);
+    }
     return allowed;
   });
   if (perActor.some(paths => paths.size === 0)) return null;
@@ -279,15 +354,6 @@ function mapFieldType(type: string, field: Record<string, unknown>, path: string
   if (type === 'boolean') return { scalar: 'boolean', tsType: 'boolean' };
   if (type === 'array' && children.length) return { scalar: 'object', tsType: 'object' };
   throw issueError('D2_CONTRACT_TYPE_UNSUPPORTED', path, `unsupported ontology type '${type}'`);
-}
-
-function writableTree(fields: D2ContractField[]): D2ContractField[] {
-  return fields.flatMap(field => {
-    if (field.derived || field.writePrecondition) return [];
-    const children = writableTree(field.children);
-    if (field.children.length && !children.length) return [];
-    return [{ ...field, children }];
-  });
 }
 
 function writePreconditionTree(fields: D2ContractField[]): D2ContractField[] {

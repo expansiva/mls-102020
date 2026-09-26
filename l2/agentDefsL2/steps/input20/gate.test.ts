@@ -134,6 +134,30 @@ void test('fixture operation assignment is flagged without synthesizing user inp
   assert.ok(snapshot.problems.some(item => item.code === 'OPERATION_SEMANTICS_MISSING'));
 });
 
+void test('renamed nested assignments accept declared enum codes and reject titles and scalar mismatches', async () => {
+  const input = artifacts('current');
+  input.entities.Packet = {
+    schemaVersion: versions.ontology, moduleName: IDENTITY.module, entityId: 'Packet',
+    record: { fields: {
+      phase: { type: 'enum', values: [{ value: 'queued', title: 'Waiting' }] },
+      details: { type: 'object', fields: { category: { type: 'enum', values: ['Item'] }, count: { type: 'integer' } } },
+    } },
+    operations: { create: { assigned: { phase: 'queued', 'details.category': 'Item', 'details.count': 2 } } },
+  };
+  rec(input.ontologyIndex).entities = [...rows(rec(input.ontologyIndex).entities), { entityId: 'Packet' }];
+  const source = JSON.stringify(input.entities.Packet);
+  input.sources.push({ path: `l4/${IDENTITY.module}/ontology/Packet.defs.ts`, sha256: `sha256:${createHash('sha256').update(source).digest('hex')}`, bytes: Buffer.byteLength(source), schemaVersion: versions.ontology });
+  await buildD2InputSnapshot(IDENTITY, input);
+  const assigned = rec(rec(rec(input.entities.Packet).operations).create).assigned as Record<string, unknown>;
+  for (const [key, invalid] of [['phase', 'Waiting'], ['details.category', 'Other'], ['details.count', '2']] as const) {
+    const previous = assigned[key];
+    assigned[key] = invalid;
+    await assert.rejects(() => buildD2InputSnapshot(IDENTITY, input), (error: unknown) => error instanceof D2InputValidationError
+      && error.problems.some(item => item.code === 'OPERATION_ASSIGNED_VALUE_INVALID' && item.file.endsWith('/Packet.defs.ts')));
+    assigned[key] = previous;
+  }
+});
+
 void test('historical immutable fixture preserves the two static homes as review findings', async () => {
   const snapshot = await buildD2InputSnapshot(IDENTITY, artifacts('historical'));
   assert.deepEqual(snapshot.selection.counts, { pages: 7, endpoints: 22, usecases: 13, destinations: 28, materializationItems: 21 });
