@@ -44,8 +44,8 @@ void test('repair prompt replaces natural labels, scenary values and actionIds w
   const page = { pageId: 'profissionais', label: 'Profissionais', ancestors: [], journeyRefs: [] } as unknown as D2SelectedPage;
   const field = (entity: string) => ({ path: `${entity}.id`, name: 'id', scalar: 'string', tsType: 'string', required: true, derived: true, writePrecondition: false, indexed: true, collection: false, enumValues: [], referenceTo: [], children: [] });
   const contract = { pageId: page.pageId, calls: [
-    { callName: 'localizarPaciente', callPascal: 'LocalizarPaciente', operation: 'get', input: [field('Paciente')] },
-    { callName: 'localizarProfissional', callPascal: 'LocalizarProfissional', operation: 'get', input: [field('Profissional')] },
+    { callName: 'localizarPaciente', callPascal: 'LocalizarPaciente', entityId: 'Paciente', operation: 'get', input: [field('Paciente')] },
+    { callName: 'localizarProfissional', callPascal: 'LocalizarProfissional', entityId: 'Profissional', operation: 'get', input: [field('Profissional')] },
   ] } as unknown as D2PageContract;
   const previous = { scenaries: [
     { value: 'paciente', actionId: 'localizarPaciente', preconditions: ['Paciente selecionado'] },

@@ -2,7 +2,7 @@
 
 import type { D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { D2_SHARED_JUDGMENT_VERSION, D2_SHARED_KEYS, D2_SHARED_RUNTIME_CONTEXT, D2_SHARED_SKILL, buildD2SharedDefinition, flatten, inputStateKey, isObviouslyDestructive, type D2SharedDefinition, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { D2_SHARED_JUDGMENT_VERSION, D2_SHARED_KEYS, D2_SHARED_RUNTIME_CONTEXT, D2_SHARED_SKILL, buildD2SharedDefinition, inputLeaves, inputStateKey, isObviouslyDestructive, type D2SharedDefinition, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { parseD2RenderedShared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
 
 export function parseD2SharedJudgment(value: unknown): D2SharedJudgment {
@@ -10,6 +10,18 @@ export function parseD2SharedJudgment(value: unknown): D2SharedJudgment {
   if (root.schemaVersion !== D2_SHARED_JUDGMENT_VERSION) fail('D2_SHARED_SCHEMA_VERSION');
   for (const key of Object.keys(root)) if (!['schemaVersion', 'pageId', 'scenaries', 'initialLoadActionIds', 'actionBehaviors'].includes(key)) fail(`D2_SHARED_SCHEMA_UNKNOWN_KEY: ${key}`);
   if (!Array.isArray(root.scenaries) || !Array.isArray(root.initialLoadActionIds) || !Array.isArray(root.actionBehaviors)) fail('D2_SHARED_SCHEMA_TRUNCATED');
+  if (typeof root.pageId !== 'string' || !root.pageId) fail('D2_SHARED_SCHEMA_PAGE_ID');
+  for (const raw of root.scenaries) {
+    const scene = record(raw);
+    if (Object.keys(scene).some(key => !['value', 'kind', 'actionId', 'preconditions'].includes(key))) fail('D2_SHARED_SCHEMA_UNKNOWN_SCENARY_KEY');
+    if (typeof scene.value !== 'string' || typeof scene.actionId !== 'string' || !['base', 'detail', 'command'].includes(String(scene.kind)) || !stringArray(scene.preconditions)) fail('D2_SHARED_SCHEMA_SCENARY');
+  }
+  if (!stringArray(root.initialLoadActionIds)) fail('D2_SHARED_SCHEMA_INITIAL_LOADS');
+  for (const raw of root.actionBehaviors) {
+    const behavior = record(raw);
+    if (Object.keys(behavior).some(key => !['actionId', 'refreshActionIds', 'destructive', 'confirmation'].includes(key))) fail('D2_SHARED_SCHEMA_UNKNOWN_BEHAVIOR_KEY');
+    if (typeof behavior.actionId !== 'string' || typeof behavior.destructive !== 'boolean' || !stringArray(behavior.refreshActionIds)) fail('D2_SHARED_SCHEMA_BEHAVIOR');
+  }
   return root as unknown as D2SharedJudgment;
 }
 
@@ -17,6 +29,16 @@ export function gateD2Shared(moduleName: string, page: D2SelectedPage, contract:
   const errors: string[] = [];
   const callById = new Map(contract.calls.map(call => [call.callName, call]));
   const behaviorById = new Map(judgment.actionBehaviors.map(item => [item.actionId, item]));
+  const operationBindings = page.operationBindings ?? [];
+  const operationBindingRoutes = operationBindings.map(item => `${item.route}\0${item.actorRef}`);
+  if (new Set(operationBindingRoutes).size !== operationBindingRoutes.length) errors.push('D2_SHARED_OPERATION_BINDING_DUPLICATE');
+  for (const call of contract.calls) {
+    const matches = operationBindings.filter(item => item.route === call.route);
+    if (!matches.length && call.operation !== 'get' && call.operation !== 'list') errors.push(`D2_SHARED_OPERATION_BINDING_COVERAGE: ${call.route}`);
+    if (matches.some(item => item.entityId !== call.entityId || item.operation !== call.operation)) errors.push(`D2_SHARED_OPERATION_BINDING_MISMATCH: ${call.route}`);
+    const signatures = matches.map(item => JSON.stringify(item.inputFields.map(field => [field.path, field.origin, field.required]).sort()));
+    if (new Set(signatures).size > 1) errors.push(`D2_SHARED_OPERATION_BINDING_AMBIGUOUS: ${call.route}`);
+  }
   if (judgment.pageId !== page.pageId) errors.push('D2_SHARED_PAGE_CHANGED');
   if (behaviorById.size !== contract.calls.length || contract.calls.some(call => !behaviorById.has(call.callName))) errors.push('D2_SHARED_ACTION_COVERAGE');
   for (const behavior of judgment.actionBehaviors) {
@@ -35,23 +57,32 @@ export function gateD2Shared(moduleName: string, page: D2SelectedPage, contract:
   for (const scene of judgment.scenaries) {
     if (!scene.value || scenes.has(scene.value)) errors.push(`D2_SHARED_SCENARY_DUPLICATE: ${scene.value}`);
     scenes.add(scene.value);
-    if (!callById.has(scene.actionId)) errors.push(`D2_SHARED_SCENARY_ACTION_UNKNOWN: ${scene.actionId}`);
+    if (!callById.has(scene.actionId) && !(scene.kind === 'base' && !scene.actionId && !scene.preconditions.length && !contract.calls.length)) errors.push(`D2_SHARED_SCENARY_ACTION_UNKNOWN: ${scene.actionId}`);
     if (behaviorById.get(scene.actionId)?.destructive && scene.kind === 'command') errors.push(`D2_SHARED_DESTRUCTIVE_SCENARY: ${scene.actionId}`);
     const sceneCall = callById.get(scene.actionId);
-    const knownStates = new Set(sceneCall ? flatten(sceneCall.input).map(field => inputStateKey(page.pageId, sceneCall, field)) : []);
+    const knownStates = new Set(sceneCall ? inputLeaves(sceneCall.input).map(field => inputStateKey(page.pageId, sceneCall, field)) : []);
     for (const state of scene.preconditions) if (!knownStates.has(state)) errors.push(`D2_SHARED_PRECONDITION_UNKNOWN: ${state}`);
   }
   for (const actionId of judgment.initialLoadActionIds) {
     const call = callById.get(actionId);
     if (!call || (call.operation !== 'list' && call.operation !== 'get')) { errors.push(`D2_SHARED_INITIAL_LOAD_NOT_QUERY: ${actionId}`); continue; }
-    const unavailable = flatten(call.input).filter(field => field.required);
+    const unavailable = inputLeaves(call.input).filter(field => {
+      const input = operationBindings.find(item => item.route === call.route)?.inputFields.find(item => item.path === field.path);
+      return (input?.required ?? field.required) && input?.origin !== 'server' && !field.writePrecondition && !field.path.endsWith('$page');
+    });
     if (unavailable.length) errors.push(`D2_SHARED_INITIAL_LOAD_INPUT_UNAVAILABLE: ${actionId} ${unavailable.map(field => field.path).join(',')}`);
   }
+  assertUnique(judgment.initialLoadActionIds, 'D2_SHARED_INITIAL_LOAD_DUPLICATE', errors);
   if (errors.length) throw new Error(errors.join('\n'));
   const definition = buildD2SharedDefinition(moduleName, page, contract, judgment);
   if (Object.keys(definition).join('\0') !== D2_SHARED_KEYS.join('\0')) fail('D2_SHARED_DEFINITION_KEYS');
   assertUnique(definition.states.map(item => item.stateKey), 'D2_SHARED_STATE_ID_DUPLICATE', errors);
   assertUnique(definition.actions.map(item => item.actionId), 'D2_SHARED_ACTION_ID_DUPLICATE', errors);
+  assertUnique([...definition.states.map(item => item.memberName), ...definition.actions.map(item => item.methodName), ...definition.scenaries.map(item => item.methodName || '')], 'D2_SHARED_MEMBER_COLLISION', errors);
+  const inherited = new Set(['stateKeys', 'updateStateKeys', 'createRenderRoot', 'connectedCallback', 'disconnectedCallback', 'firstUpdated', 'updated', 'handleIcaStateChange', 'connectMonitoring', 'render', 'requestUpdate', 'update', 'performUpdate', 'willUpdate', 'shouldUpdate']);
+  for (const name of [...definition.states.map(item => item.memberName), ...definition.actions.map(item => item.methodName), ...definition.scenaries.map(item => item.methodName || '')]) {
+    if (inherited.has(name)) errors.push(`D2_SHARED_MEMBER_INHERITED: ${name}`);
+  }
   const actions = new Set(definition.actions.map(item => item.actionId));
   const states = new Map(definition.states.map(item => [item.stateKey, item]));
   const bindings = new Map(definition.dataBindings.map(item => [item.actionId, item]));
@@ -93,3 +124,4 @@ export function assertD2RenderedShared(source: string): void {
 function fail(message: string): never { throw new Error(message); }
 function assertUnique(values: string[], code: string, errors: string[]): void { const seen = new Set<string>(); for (const value of values) { if (seen.has(value)) errors.push(`${code}: ${value}`); seen.add(value); } }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+function stringArray(value: unknown): value is string[] { return Array.isArray(value) && value.every(item => typeof item === 'string'); }
