@@ -2,8 +2,9 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
-import { getFileModified, type GenStepArgs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+import { getContentByMlsPath, getFileModified, type GenStepArgs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
 import { isStale } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { cfeMaterializationFresh } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeReceipt.js';
 
 /**
  * Batch materialization of the level-2 `.defs.ts` of the CURRENT project, in two ordered waves.
@@ -258,6 +259,25 @@ export function moduleOf(folder: string): string {
   return String(folder || '').split('/').filter(Boolean)[0] ?? '';
 }
 
+/** Receipt validation runs on the production scan, including units whose TS is newer. */
+export async function planSpecFrontendWithReceipts(prompt: string): Promise<SpecPlanResult> {
+  const result = planSpecFrontend(prompt);
+  if (result.error || parseSpecCommand(prompt).kind === 'target') return result;
+  for (const plan of result.plans) {
+    const priorQueued = new Set(plan.queued.map(item => item.defPath));
+    const entries = [...plan.queued.map(item => ({ defPath: item.defPath, reason: SKIP_UP_TO_DATE })), ...plan.skipped];
+    plan.queued = []; plan.skipped = [];
+    for (const entry of entries) {
+      const fresh = await cfeMaterializationFresh(entry.defPath, resolveProject(), getContentByMlsPath);
+      if (fresh === false || (fresh === null && priorQueued.has(entry.defPath))) {
+        const info = mls.stor.convertFileReferenceToFile(entry.defPath);
+        plan.queued.push({ defPath: entry.defPath, folder: String(info?.folder ?? '') });
+      } else plan.skipped.push({ defPath: entry.defPath, reason: fresh === true ? SKIP_UP_TO_DATE : entry.reason });
+    }
+  }
+  return { ...result, report: buildReport(result.plans) };
+}
+
 function safeId(value: string): string {
   return value.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase();
 }
@@ -332,7 +352,7 @@ function createReportStep(report: string): mls.msg.AIPayload {
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   const raw = userPrompt || context.message.content || '';
-  const result = planSpecFrontend(raw);
+  const result = await planSpecFrontendWithReceipts(raw);
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',

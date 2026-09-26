@@ -1,9 +1,10 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/pages50/render.ts" enhancement="_blank"/>
 
 import type { D2PageCoverageItem, D2PagePipelineItem, D2RenderedPage } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
+import { assertD2HeaderReference, d2Header } from '/_102020_/l2/agentDefsL2/helpers/d2Header.js';
 
-export function renderD2Page(page: D2RenderedPage): string {
-  return `export const definition = ${JSON.stringify(pageDefinition(page))} as const;\n\nexport const pipeline = ${JSON.stringify(page.pipeline, null, 2)} as const;\n`;
+export function renderD2Page(page: D2RenderedPage, project?: number): string {
+  return `${d2Header(page.pipeline[0].defPath, project)}\n\nexport const definition = ${JSON.stringify(pageDefinition(page))} as const;\n\nexport const pipeline = ${JSON.stringify(page.pipeline, null, 2)} as const;\n`;
 }
 
 export function pageDefinition(page: D2RenderedPage): string {
@@ -55,7 +56,8 @@ function validatePipeline(item: Record<string, unknown>): void {
   const pageId = match[1]; const device = match[2];
   const defMatch = new RegExp(`^l2/([^/]+)/web/${device}/page11/${escapeRegExp(pageId)}\\.defs\\.ts$`, 'u').exec(text(item.defPath));
   if (!defMatch || item.outputPath !== text(item.defPath).replace('.defs.ts', '.ts') || (item.dependsOn as string[]).join('\0') !== `${pageId}__l2_shared`
-    || (item.dependsFiles as string[]).join('\0') !== `l2/${defMatch[1]}/web/shared/${pageId}.ts\0l2/designSystem.ts`) throw new Error('D2_PAGES_PIPELINE_CONTEXT');
+    || (item.dependsFiles as string[]).slice(0, 5).join('\0') !== `l2/${defMatch[1]}/web/shared/${pageId}.ts\0l2/designSystem.ts\0l2/${defMatch[1]}/web/contracts/${pageId}.defs.ts\0_102029_.d.ts\0_102020_/l2/molecules/ml-scenary.ts`
+    || (item.dependsFiles as string[]).slice(5).some(ref => !/^(?:_[0-9]+_\/)?l4\/[A-Za-z0-9_/-]+\.(?:defs\.ts|json|ts|md)$/u.test(ref))) throw new Error('D2_PAGES_PIPELINE_CONTEXT');
   const refs = (template.sources as unknown[]).map(raw => text(record(raw).reference));
   if (refs.some(reference => !(item.skills as string[]).includes(reference))) throw new Error('D2_PAGES_TEMPLATE_SKILL_MISSING');
 }
@@ -88,9 +90,10 @@ function escapeRegExp(value: string): string { return value.replace(/[.*+?^${}()
 export function assertD2RenderedPage(source: string): void {
   const parsed = parseD2RenderedPage(source);
   if (parsed.pipeline.length !== 1) throw new Error('D2_PAGES_PIPELINE_COUNT');
+  assertD2HeaderReference(source, parsed.pipeline[0].defPath);
   const exports = [...source.matchAll(/export const\s+([A-Za-z0-9_]+)/gu)].map(match => match[1]);
   if (exports.join(',') !== 'definition,pipeline') throw new Error(`D2_PAGES_EXPORTS: ${exports.join(',')}`);
-  if (!parsed.definition.trim() || /```(?:html|css)/iu.test(parsed.definition)) throw new Error('D2_PAGES_DEFINITION_INVALID');
+  if (!parsed.definition.trim() || /```(?:html|css)|<\/?[A-Za-z][^>]*>/iu.test(parsed.definition)) throw new Error('D2_PAGES_DEFINITION_INVALID');
 }
 
 function parseExport(source: string, name: string): unknown {

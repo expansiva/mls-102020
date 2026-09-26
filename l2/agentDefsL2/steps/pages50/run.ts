@@ -5,7 +5,7 @@ import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
 import type { D2InputSnapshot } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { readD2Input } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
 import { readD2SharedManifest, readD2SharedSource } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
-import type { D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { d2PageSemanticRefs, type D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import type { D2MoleculeCatalogPort, D2MoleculePreparedContext, D2MoleculeReceipt } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { assertD2MoleculeCandidates, buildD2MoleculeReceipt, prepareD2MoleculeContext, resolveD2MoleculeSelection } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import type { D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
@@ -50,7 +50,8 @@ export async function approveD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
     usageContractReference: group.usageContractPipelineReference, usageContractVia: group.usageContractVia, usageContractSha256: molecules.metrics.reads.find(read => read.role === 'usage-contract' && read.reference === group.usageContractReference)!.sha256,
   }]));
   const rendered = gateD2Pages(identity.module, page, shared, judgment, groupSkills, pageSkills, groupCandidates, templateSelection, provenance);
-  const sources = Object.fromEntries(rendered.map(item => { const source = renderD2Page(item); assertD2RenderedPage(source); return [item.device, source]; })) as Record<D2PageDevice, string>;
+  for (const item of rendered) item.pipeline[0].dependsFiles.push(...d2PageSemanticRefs(snapshot, pageId));
+  const sources = Object.fromEntries(rendered.map(item => { const source = renderD2Page(item, identity.project); assertD2RenderedPage(source); return [item.device, source]; })) as Record<D2PageDevice, string>;
   const category = resolveD2PageCategory(pageSkills, judgment.category.categoryRef);
   const skillHashes = { [D2_PAGE_TECHNICAL_SKILL]: pageSkills.skillHashes[D2_PAGE_TECHNICAL_SKILL], [category.skillReference]: pageSkills.skillHashes[category.skillReference] };
   const organismIds = rendered[0].descriptions.map(item => item.organismId);
@@ -72,7 +73,7 @@ export async function persistD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
   const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
   if (expectedSharedHash && dependency.sourceHash !== expectedSharedHash) throw new Error(`D2_PAGES_SHARED_CHANGED: ${pageId}`);
   const prior = await readD2PagesResult(identity, pageId);
-  if (prior?.schemaVersion === D2_PAGES_VERSION && prior.status === 'approved' && prior.snapshotHash === snapshot.snapshotHash && prior.sharedHash === dependency.sourceHash && prior.contextHash === receipt.contextHash && prior.moleculeReceipt?.contextHash === receipt.moleculeReceipt.contextHash) {
+  if (prior?.schemaVersion === D2_PAGES_VERSION && prior.status === 'approved' && prior.snapshotHash === snapshot.snapshotHash && prior.sharedHash === dependency.sourceHash && prior.contextHash === receipt.contextHash && prior.moleculeReceipt?.contextHash === receipt.moleculeReceipt.contextHash && prior.sourceHashes.desktop === await sha256Text(sources.desktop) && prior.sourceHashes.mobile === await sha256Text(sources.mobile)) {
     for (const device of ['desktop', 'mobile'] as const) {
       if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== prior.sourceHashes[device]) throw new Error(`D2_PAGES_APPROVED_SOURCE_CHANGED: ${pageId}/${device}`);
     }
@@ -110,7 +111,9 @@ export async function findReusableD2PagesUnits(identity: D2RunIdentity, snapshot
     } catch { continue; }
     let valid = true;
     for (const device of ['desktop', 'mobile'] as const) {
-      if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== unit.sourceHashes?.[device]) valid = false;
+      const source = await readD2PageSource(identity, pageId, device);
+      try { assertD2RenderedPage(source); } catch { valid = false; }
+      if (await sha256Text(source) !== unit.sourceHashes?.[device]) valid = false;
     }
     if (!valid) continue;
     units.push(unit);

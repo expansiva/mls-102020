@@ -5,7 +5,8 @@ import { assertD2RenderedShared } from '/_102020_/l2/agentDefsL2/steps/shared40/
 import { parseD2RenderedShared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
 import { assertD2RenderedPage, parseD2RenderedPage } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import type { D2PagePipelineItem } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
-import type { D2SharedPipelineItem } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { d2PageSemanticRefs, type D2SharedPipelineItem } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { assertD2Header } from '/_102020_/l2/agentDefsL2/helpers/d2Header.js';
 
 export interface D2FinalSource { pageId: string; kind: 'contract' | 'shared' | 'desktopPage' | 'mobilePage'; path: string; source: string; }
 
@@ -38,8 +39,9 @@ export function gateD2FinalSources(snapshot: D2InputSnapshot, sources: D2FinalSo
   const items: Array<D2SharedPipelineItem | D2PagePipelineItem> = [];
   for (const file of sources) {
     if (!file.source) throw new Error(`D2_FINALIZE_FILE_MISSING: ${file.path}`);
+    const body = assertD2Header(file.source, file.path, snapshot.project);
     if (file.kind === 'contract') {
-      if (/\bany\b|\bunknown\b/.test(file.source)) throw new Error(`D2_FINALIZE_CONTRACT_INVALID: ${file.path}`);
+      if (/\bany\b|\bunknown\b/.test(body)) throw new Error(`D2_FINALIZE_CONTRACT_INVALID: ${file.path}`);
       continue;
     }
     if (file.kind === 'shared') {
@@ -50,22 +52,22 @@ export function gateD2FinalSources(snapshot: D2InputSnapshot, sources: D2FinalSo
       items.push(...parseD2RenderedPage(file.source).pipeline as D2PagePipelineItem[]);
     }
   }
-  assertGraph(snapshot.module, active, items);
+  assertGraph(snapshot.module, active, items, snapshot);
 }
 
-function assertGraph(moduleName: string, pageIds: string[], items: Array<D2SharedPipelineItem | D2PagePipelineItem>): void {
+function assertGraph(moduleName: string, pageIds: string[], items: Array<D2SharedPipelineItem | D2PagePipelineItem>, snapshot: D2InputSnapshot): void {
   const ids = items.map(item => item.id);
   if (new Set(ids).size !== ids.length || ids.length !== pageIds.length * 3) throw new Error('D2_FINALIZE_PIPELINE_ID_SET_INVALID');
   const known = new Set(ids);
   for (const pageId of pageIds) {
     const shared = items.find(item => item.id === `${pageId}__l2_shared`);
     if (!shared || shared.type !== 'l2_shared' || shared.defPath !== `l2/${moduleName}/web/shared/${pageId}.defs.ts`
-      || shared.dependsFiles.join('\0') !== `l2/${moduleName}/web/contracts/${pageId}.defs.ts\0_102029_.d.ts` || shared.dependsOn.length
+      || shared.dependsFiles.join('\0') !== [`l2/${moduleName}/web/contracts/${pageId}.defs.ts`, '_102029_.d.ts', ...d2PageSemanticRefs(snapshot, pageId)].join('\0') || shared.dependsOn.length
       || shared.skills.join('\0') !== '_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts') throw new Error(`D2_FINALIZE_SHARED_REF_INVALID: ${pageId}`);
     for (const device of ['desktop', 'mobile'] as const) {
       const item = items.find(candidate => candidate.id === `${pageId}__${device}__page11`) as D2PagePipelineItem | undefined;
       if (!item || item.type !== 'l2_page' || item.defPath !== `l2/${moduleName}/web/${device}/page11/${pageId}.defs.ts`
-        || item.dependsOn.join('\0') !== shared.id || item.dependsFiles.join('\0') !== `l2/${moduleName}/web/shared/${pageId}.ts\0l2/designSystem.ts`
+        || item.dependsOn.join('\0') !== shared.id || item.dependsFiles.join('\0') !== [`l2/${moduleName}/web/shared/${pageId}.ts`, 'l2/designSystem.ts', `l2/${moduleName}/web/contracts/${pageId}.defs.ts`, '_102029_.d.ts', '_102020_/l2/molecules/ml-scenary.ts', ...d2PageSemanticRefs(snapshot, pageId)].join('\0')
         || !canonicalPageSkills(item.categoryRef, item.skills, item.templateSelection.sources.map(source => source.reference))) throw new Error(`D2_FINALIZE_PAGE_REF_INVALID: ${pageId}/${device}`);
     }
   }

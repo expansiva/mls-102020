@@ -26,11 +26,11 @@ export interface D2MoleculeRecommendationProvenance extends D2MoleculeRecommenda
 export interface D2PagePipelineItem { id: string; type: 'l2_page'; defPath: string; outputPath: string; dependsFiles: string[]; dependsOn: string[]; categoryRef: string; skills: string[]; templateSelection: D2PageTemplateSelection; coverage: D2PageCoverageItem[]; }
 export interface D2RenderedPage { device: D2PageDevice; pageId: string; pageLabel: string; pageIntent: string; actors: string[]; authorityRefs: string[]; operationBindings: D2SelectedPage['operationBindings']; descriptions: D2PageDescription[]; templateSelection: D2PageTemplateSelection; coverage: D2PageCoverageItem[]; pipeline: readonly [D2PagePipelineItem]; }
 
-export function buildD2PagePipeline(moduleName: string, pageId: string, device: D2PageDevice, categoryRef: string, skills: string[], templateSelection: D2PageTemplateSelection, coverage: D2PageCoverageItem[]): D2PagePipelineItem {
+export function buildD2PagePipeline(moduleName: string, pageId: string, device: D2PageDevice, categoryRef: string, skills: string[], templateSelection: D2PageTemplateSelection, coverage: D2PageCoverageItem[], semanticRefs: string[] = []): D2PagePipelineItem {
   const base = `l2/${moduleName}/web/${device}/page11/${pageId}`;
   return {
     id: `${pageId}__${device}__page11`, type: 'l2_page', defPath: `${base}.defs.ts`, outputPath: `${base}.ts`,
-    dependsFiles: [`l2/${moduleName}/web/shared/${pageId}.ts`, 'l2/designSystem.ts'], dependsOn: [`${pageId}__l2_shared`], categoryRef, skills: [...new Set(skills)], templateSelection, coverage,
+    dependsFiles: [`l2/${moduleName}/web/shared/${pageId}.ts`, 'l2/designSystem.ts', `l2/${moduleName}/web/contracts/${pageId}.defs.ts`, '_102029_.d.ts', '_102020_/l2/molecules/ml-scenary.ts', ...new Set(semanticRefs)], dependsOn: [`${pageId}__l2_shared`], categoryRef, skills: [...new Set(skills)], templateSelection, coverage,
   };
 }
 

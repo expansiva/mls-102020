@@ -11,6 +11,7 @@ import { renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { changedOutsideD2Scope, gateD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
 import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
 import { revalidateD2RemovalSet, validateD2SelectionCounts } from '/_102020_/l2/agentDefsL2/steps/finalize60/run.js';
+import { d2Header } from '/_102020_/l2/agentDefsL2/helpers/d2Header.js';
 
 const moduleName = 'agendaClinica';
 const ids = ['agenda', 'cadastro', 'dashboard', 'prontuario', 'recepcao'];
@@ -111,7 +112,7 @@ function page(pageId: string): D2SelectedPage {
 function files(pageId: string, withoutSkills = false): D2FinalSource[] {
   const p = page(pageId); const mandatory = ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts', '_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md']; const skill = withoutSkills ? mandatory : [...mandatory, '_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts'];
   return [
-    { pageId, kind: 'contract', path: p.destinations[0].path, source: 'export interface Input { "id": string; }\n' },
+    { pageId, kind: 'contract', path: p.destinations[0].path, source: `${d2Header(p.destinations[0].path)}\nexport interface Input { "id": string; }\n` },
     { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({ moduleName, pageId, contractRef: { defPath: `l2/${moduleName}/web/contracts/${pageId}.defs.ts` } } as never, buildD2SharedPipeline(moduleName, pageId)) },
     ...(['desktop', 'mobile'] as const).map(device => ({ pageId, kind: device === 'desktop' ? 'desktopPage' as const : 'mobilePage' as const, path: p.destinations[device === 'desktop' ? 2 : 3].path, source: pageSource(pageId, device, skill) })),
   ];

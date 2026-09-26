@@ -30,7 +30,7 @@ void test('current five-page fixture emits 10 defs/items and five shared refs wi
   assert.equal(new Set(emitted.map(item => item.pipeline[0].id)).size, 10);
   assert.equal(new Set(emitted.map(item => item.pipeline[0].dependsOn[0])).size, 5);
   assert.ok(emitted.every(item => item.pipeline[0].type === 'l2_page' && !('agent' in item.pipeline[0])));
-  assert.ok(emitted.every(item => item.pipeline[0].dependsFiles.join('\0') === `l2/fixture/web/shared/${item.pipeline[0].id.split('__')[0]}.ts\0l2/designSystem.ts`));
+  assert.ok(emitted.every(item => item.pipeline[0].dependsFiles.join('\0') === `l2/fixture/web/shared/${item.pipeline[0].id.split('__')[0]}.ts\0l2/designSystem.ts\0l2/fixture/web/contracts/${item.pipeline[0].id.split('__')[0]}.defs.ts\0_102029_.d.ts\0_102020_/l2/molecules/ml-scenary.ts`));
   assert.ok(emitted.every(item => item.pipeline[0].outputPath === item.pipeline[0].defPath.replace('.defs.ts', '.ts')));
   assert.ok(emitted.every(item => !item.pipeline[0].id.includes('_O') && item.pipeline[0].defPath.includes('/page11/')));
   for (const pageId of pages) {
@@ -43,7 +43,7 @@ void test('current five-page fixture emits 10 defs/items and five shared refs wi
 
 void test('page pipeline keeps project design system ordered and rejects legacy or malformed context', () => {
   const page = emit('records')[0]; const item = page.pipeline[0];
-  assert.deepEqual(item.dependsFiles, ['l2/fixture/web/shared/records.ts', 'l2/designSystem.ts']);
+  assert.deepEqual(item.dependsFiles, ['l2/fixture/web/shared/records.ts', 'l2/designSystem.ts', 'l2/fixture/web/contracts/records.defs.ts', '_102029_.d.ts', '_102020_/l2/molecules/ml-scenary.ts']);
   assert.equal(Object.hasOwn(item, 'agent'), false);
   const source = renderD2Page(page);
   assert.doesNotThrow(() => assertD2RenderedPage(source));

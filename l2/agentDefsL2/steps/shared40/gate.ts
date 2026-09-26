@@ -114,12 +114,14 @@ export function assertD2RenderedShared(source: string): void {
   const contractPath = typeof renderedContract.defPath === 'string' ? renderedContract.defPath : '';
   if (!moduleName || !pageId || contractPath !== `l2/${moduleName}/web/contracts/${pageId}.defs.ts`) fail('D2_SHARED_DEFINITION_SHAPE');
   const item = record(pipeline[0]);
+  const header = /^\/\/\/ <mls fileReference="(?:_[0-9]+_\/)?(l2\/[^"\n]+)" enhancement="_blank"\/>\n/u.exec(source);
+  if (!header || header[1] !== item.defPath || source.slice(header[0].length).split('\n').some(line => /^\s*\/\/\/\s*<mls\b/u.test(line))) fail('D2_HEADER_INVALID');
   const keys = Object.keys(item);
   if (keys.some(key => !['id', 'type', 'defPath', 'outputPath', 'dependsFiles', 'dependsOn', 'skills'].includes(key)) || keys.length !== 7) fail('D2_SHARED_PIPELINE_SHAPE');
   if (item.type !== 'l2_shared' || item.id !== `${pageId}__l2_shared` || item.defPath !== `l2/${moduleName}/web/shared/${pageId}.defs.ts` || item.outputPath !== `l2/${moduleName}/web/shared/${pageId}.ts`) fail('D2_SHARED_PIPELINE_ID');
-  if (!Array.isArray(item.dependsOn) || item.dependsOn.length || !Array.isArray(item.dependsFiles) || item.dependsFiles.join('\0') !== `${contractPath}\0${D2_SHARED_RUNTIME_CONTEXT}`) fail('D2_SHARED_PIPELINE_CONTEXT');
+  if (!Array.isArray(item.dependsOn) || item.dependsOn.length || !Array.isArray(item.dependsFiles) || item.dependsFiles.slice(0, 2).join('\0') !== `${contractPath}\0${D2_SHARED_RUNTIME_CONTEXT}` || item.dependsFiles.slice(2).some(ref => typeof ref !== 'string' || !/^(?:_[0-9]+_\/)?l4\/[A-Za-z0-9_/-]+\.(?:defs\.ts|json|ts|md)$/u.test(ref))) fail('D2_SHARED_PIPELINE_CONTEXT');
   if (!Array.isArray(item.skills) || item.skills.join('\0') !== D2_SHARED_SKILL) fail('D2_SHARED_PIPELINE_SKILL');
-  if (/layoutRef|\bsections\b|\blayout\b/.test(source)) fail('D2_SHARED_LAYOUT_FORBIDDEN');
+  if (/layoutRef|\bsections\b|\blayout\b/.test(source.slice(header[0].length))) fail('D2_SHARED_LAYOUT_FORBIDDEN');
 }
 function fail(message: string): never { throw new Error(message); }
 function assertUnique(values: string[], code: string, errors: string[]): void { const seen = new Set<string>(); for (const value of values) { if (seen.has(value)) errors.push(`${code}: ${value}`); seen.add(value); } }

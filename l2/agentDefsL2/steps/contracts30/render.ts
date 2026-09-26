@@ -1,9 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/contracts30/render.ts" enhancement="_blank"/>
 
 import type { D2ContractCall, D2ContractField, D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
+import { d2Header } from '/_102020_/l2/agentDefsL2/helpers/d2Header.js';
 
-export function renderD2PageContract(contract: D2PageContract): string {
-  if (!contract.calls.length) return 'export {};\n';
+export function renderD2PageContract(contract: D2PageContract, reference?: string, project?: number): string {
+  const header = reference ? `${d2Header(reference, project)}\n\n` : '';
+  if (!contract.calls.length) return `${header}export {};\n`;
   const lines: string[] = [];
   for (const call of contract.calls) {
     lines.push(`export const ${call.routeName} = ${JSON.stringify(call.route)} as const;`, '');
@@ -13,7 +15,7 @@ export function renderD2PageContract(contract: D2PageContract): string {
       lines.push(`export type ${call.callPascal}Output = ${call.callPascal}Item[];`, '');
     } else renderInterface(lines, `${call.callPascal}Output`, call.output);
   }
-  return `${lines.join('\n').trim()}\n`;
+  return `${header}${lines.join('\n').trim()}\n`;
 }
 
 function renderInterface(lines: string[], name: string, fields: D2ContractField[]): void {

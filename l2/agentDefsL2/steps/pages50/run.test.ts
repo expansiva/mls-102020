@@ -10,6 +10,8 @@ import { d2SharedFile, d2SharedManifestFile } from '/_102020_/l2/agentDefsL2/ste
 import { d2PageFile, d2PagesManifestFile, d2PagesResultFile, readD2PagesManifest, readD2PagesResult } from '/_102020_/l2/agentDefsL2/steps/pages50/io.js';
 import { finalizeD2PagesBarrier, findReusableD2PagesUnits, persistD2PagesUnit } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { buildD2MoleculeReceipt, resolveD2MoleculeSelection, type D2MoleculePreparedContext, type D2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
+import { buildD2PagePipeline } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
+import { renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 
 const IDENTITY: D2RunIdentity = { project: 102047, module: 'fixture' };
 const PAGES = ['alpha', 'beta'];
@@ -169,7 +171,10 @@ async function installHost(pages = PAGES) {
   (globalThis as unknown as { mls: unknown }).mls = { actualProject: IDENTITY.project, stor: { files, getKeyToFile: keyOf, localStor: { setContent: async (file: Stored, value: { content: string }) => { const key = keyOf(file); if (key === state.failKey) throw new Error('simulated write failure'); file.content = value.content; writes.push(key); } } } };
   return { snapshot, files, writes, get failKey() { return state.failKey; }, set failKey(value: string) { state.failKey = value; } };
 }
-function sources(pageId: string) { return { desktop: `export const definition = ["${pageId} desktop"] as const;\nexport const pipeline = [] as const;\n`, mobile: `export const definition = ["${pageId} mobile"] as const;\nexport const pipeline = [] as const;\n` }; }
+function sources(pageId: string) {
+  const templateSelection = { categoryRef: 'calendarScheduling', targetPage: 'page11' as const, experiencePage: null, experienceId: null, styleId: null, layoutId: null, reason: 'Fixture published guidance.', requirementsMet: [], digest: `sha256:${'1'.repeat(64)}`, sources: [] };
+  return Object.fromEntries((['desktop', 'mobile'] as const).map(device => [device, renderD2Page({ device, pageId, pageLabel: pageId, pageIntent: `Read ${pageId} ${device}.`, actors: [], authorityRefs: [], operationBindings: [], descriptions: [], templateSelection, coverage: [], pipeline: [buildD2PagePipeline('fixture', pageId, device, 'calendarScheduling', ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts'], templateSelection, [])] }, IDENTITY.project)])) as Record<'desktop' | 'mobile', string>;
+}
 async function molecularFixture() {
   const catalog = { reference: '/_102040_/l2/molecules/groupfixture/index.defs', via: 'stor' as const, group: 'groupFixture', usageContract: '/_102020_/l2/aura/molecules/skills/groupFixture/usage', molecules: [{ tag: 'groupfixture--ml-card', defs: '/_102040_/l2/molecules/groupfixture/ml-card.defs' }], scenarios: [{ scenario: 'show', recommended: ['groupfixture--ml-card'] }], skill: 'Fixture group.' };
   const inventory = { consumerProject: 102047, catalogProject: 102040, selectedBy: 'dependency', directDeps: [102040], resolvedDeps: [102040], candidates: [102040], reason: null, groups: [{ groupId: 'groupFixture', purpose: 'Fixture.', moleculeCount: 1, indexReference: catalog.reference }], context: '{}', metrics: { inventoryBytes: 2, totalBytes: 2, reads: [{ role: 'inventory' as const, reference: '/_102040_/l2/molecules/skill', via: 'stor' as const, sha256: `sha256:${'1'.repeat(64)}` }] } };
