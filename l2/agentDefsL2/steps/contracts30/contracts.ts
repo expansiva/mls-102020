@@ -10,6 +10,8 @@ export type D2ContractOperation = 'list' | 'get' | 'create' | 'update' | 'transi
 export interface D2ContractField {
   path: string;
   name: string;
+  title?: string;
+  description?: string;
   scalar: D2ContractScalar;
   tsType: string;
   required: boolean;
@@ -18,8 +20,14 @@ export interface D2ContractField {
   indexed: boolean;
   collection: boolean;
   enumValues: string[];
+  enumOptions?: D2ContractEnumOption[];
   referenceTo: string[];
   children: D2ContractField[];
+}
+
+export interface D2ContractEnumOption {
+  value: string;
+  label: string;
 }
 
 export interface D2ContractCall {
@@ -176,6 +184,8 @@ export function collectD2EntityFields(entity: Ns5OntologyAnyEntity): D2ContractF
     return {
       path,
       name,
+      ...(text(field.title) ? { title: text(field.title) } : {}),
+      ...(text(field.description) ? { description: text(field.description) } : {}),
       ...mapped,
       required: field.required === true,
       derived: field.derived === true,
@@ -183,6 +193,7 @@ export function collectD2EntityFields(entity: Ns5OntologyAnyEntity): D2ContractF
       indexed: field.indexed === true,
       collection: field.collection === true || text(field.type) === 'array',
       enumValues: enumValues(field.values, path),
+      ...(enumValues(field.values, path).length ? { enumOptions: enumOptions(field.values, path) } : {}),
       referenceTo: strings(field.to),
       children,
     };
@@ -404,6 +415,13 @@ function enumValues(value: unknown, path: string): string[] {
   const result = value.map(item => typeof item === 'string' ? item : text(rec(item).value));
   if (result.some(item => !item)) throw issueError('D2_CONTRACT_ENUM_INVALID', path, 'enum contains an empty code');
   return result;
+}
+
+function enumOptions(value: unknown, path: string): D2ContractEnumOption[] {
+  return enumValues(value, path).map((code, index) => {
+    const item = Array.isArray(value) ? rec(value[index]) : {};
+    return { value: code, label: text(item.title) || code };
+  });
 }
 
 function issueError(code: string, path: string, message: string): Error {

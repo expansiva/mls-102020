@@ -40,8 +40,15 @@ void test('nested catalog preserves paths, metadata, enum codes, references and 
   assert.equal(new Set(flat.map(field => field.path)).size, flat.length);
   const status = flat.find(field => field.path === 'Example.status')!;
   assert.deepEqual(status.enumValues, ['open', 'closed']);
+  assert.deepEqual(status.enumOptions, [{ value: 'open', label: 'Open' }, { value: 'closed', label: 'Closed' }]);
   assert.equal(status.tsType, '"open" | "closed"');
   assert.equal(status.required, true);
+  const named = flat.find(field => field.path === 'Example.left.code')!;
+  assert.equal(named.title, 'Public code');
+  assert.equal(named.description, 'A human-readable code.');
+  const stringOptions = flat.find(field => field.path === 'Example.mode')!;
+  assert.deepEqual(stringOptions.enumValues, ['quiet', 'active']);
+  assert.deepEqual(stringOptions.enumOptions, [{ value: 'quiet', label: 'quiet' }, { value: 'active', label: 'active' }]);
   const reference = flat.find(field => field.path === 'Example.ownerId')!;
   assert.deepEqual(reference.referenceTo, ['Owner']);
   const tags = flat.find(field => field.path === 'Example.tags')!;
@@ -295,9 +302,10 @@ function syntheticNestedEntity(): Ns5OntologyAnyEntity {
     kind: 'entity', class: 'core', storage: { target: 'moduleDatabase', table: 'fixture_example', kind: 'relational' }, relationships: {}, capabilities: {}, rules: [],
     record: { fields: {
       id: { type: 'uuid', required: true, derived: true },
-      left: { type: 'object', fields: { code: { type: 'string', required: true } } },
+      left: { type: 'object', fields: { code: { type: 'string', required: true, title: 'Public code', description: 'A human-readable code.' } } },
       right: { type: 'object', fields: { code: { type: 'string' } } },
       status: { type: 'enum', required: true, values: [{ value: 'open', title: 'Open', description: '' }, { value: 'closed', title: 'Closed', description: '' }] },
+      mode: { type: 'enum', values: ['quiet', 'active'] },
       ownerId: { type: 'record', to: ['Owner'] },
       tags: { type: 'array', collection: true, fields: { value: { type: 'string' } } },
     } }, uniqueKeys: [], lifecycleStates: [], transitions: [],
