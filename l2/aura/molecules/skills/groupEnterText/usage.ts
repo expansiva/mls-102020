@@ -64,17 +64,19 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupentertext--ml-<name>\` (e.g. \`groupentertext--ml-enter-text\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Simple text field
 
 \`\`\`html
-<molecules--text-input-102020
+<groupentertext--ml-enter-text
   value="{{ui.form.firstName}}"
   error="{{ui.form.firstNameError}}"
   placeholder="John"
   maxLength="200"
   required>
   <Label>First Name</Label>
-</molecules--text-input-102020>
+</groupentertext--ml-enter-text>
 \`\`\`
 
 ---

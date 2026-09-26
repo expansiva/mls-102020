@@ -75,10 +75,12 @@ The molecule does **not** call any API directly. The page is responsible for fet
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`grouplocateposition--ml-<name>\` (e.g. \`grouplocateposition--ml-address-autocomplete\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Address autocomplete
 
 \`\`\`html
-<molecules--address-autocomplete-102020
+<grouplocateposition--ml-address-autocomplete
   value="{{ui.order.deliveryCoords}}"
   error="{{ui.order.addressError}}"
   placeholder="Search address..."
@@ -88,7 +90,7 @@ The molecule does **not** call any API directly. The page is responsible for fet
     <Item value="-23.55,-46.63">São Paulo, SP</Item>
     <Item value="-22.90,-43.17">Rio de Janeiro, RJ</Item>
   </Suggestions>
-</molecules--address-autocomplete-102020>
+</grouplocateposition--ml-address-autocomplete>
 \`\`\`
 
 ---

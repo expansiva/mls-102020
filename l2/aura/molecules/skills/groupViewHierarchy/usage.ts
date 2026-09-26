@@ -40,10 +40,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupviewhierarchy--ml-<name>\` (e.g. \`groupviewhierarchy--ml-hierarchy-tree\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Folder structure (tree view)
 
 \`\`\`html
-<molecules--tree-view-102020>
+<groupviewhierarchy--ml-hierarchy-tree>
   <Label>Project Files</Label>
   <Node>
     📁 src
@@ -63,7 +65,7 @@ export const skill = `
     <Node>📄 index.html</Node>
   </Node>
   <Node>📄 package.json</Node>
-</molecules--tree-view-102020>
+</groupviewhierarchy--ml-hierarchy-tree>
 \`\`\`
 
 ---

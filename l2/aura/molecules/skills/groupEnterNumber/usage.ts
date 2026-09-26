@@ -61,10 +61,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupenternumber--ml-<name>\` (e.g. \`groupenternumber--ml-number-stepper\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic quantity
 
 \`\`\`html
-<molecules--number-stepper-102020
+<groupenternumber--ml-number-stepper
   value="{{ui.order.quantity}}"
   error="{{ui.order.quantityError}}"
   min="1"
@@ -72,7 +74,7 @@ export const skill = `
   step="1"
   required>
   <Label>Quantity</Label>
-</molecules--number-stepper-102020>
+</groupenternumber--ml-number-stepper>
 \`\`\`
 
 ---

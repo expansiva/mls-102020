@@ -47,9 +47,11 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupplaymedia--ml-<name>\` (e.g. \`groupplaymedia--ml-video-player\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 
 \`\`\`html
-<molecules--video-player-102020
+<groupplaymedia--ml-video-player
   poster="thumbnail.jpg"
   preload="metadata">
   <Label>Product Demo</Label>
@@ -57,7 +59,7 @@ export const skill = `
   <Source src="demo.mp4" type="video/mp4" />
   <Track src="subs-en.vtt" kind="subtitles" lang="en" label="English" />
   <Track src="subs-pt.vtt" kind="subtitles" lang="pt" label="Português" />
-</molecules--video-player-102020>
+</groupplaymedia--ml-video-player>
 \`\`\`
 
 ---

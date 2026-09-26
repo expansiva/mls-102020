@@ -67,10 +67,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupenterdatetimeinterval--ml-<name>\` (e.g. \`groupenterdatetimeinterval--ml-enter-datetime-interval\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic
 
 \`\`\`html
-<molecules--datetime-interval-102020
+<groupenterdatetimeinterval--ml-enter-datetime-interval
   startDatetime="{{ui.form.meetingStart}}"
   endDatetime="{{ui.form.meetingEnd}}"
   error="{{ui.form.meetingError}}"
@@ -80,13 +82,13 @@ export const skill = `
   <Label>Meeting Period</Label>
   <LabelStart>Start</LabelStart>
   <LabelEnd>End</LabelEnd>
-</molecules--datetime-interval-102020>
+</groupenterdatetimeinterval--ml-enter-datetime-interval>
 \`\`\`
 
 ### With duration constraints
 
 \`\`\`html
-<molecules--datetime-interval-102020
+<groupenterdatetimeinterval--ml-enter-datetime-interval
   startDatetime="{{ui.booking.checkIn}}"
   endDatetime="{{ui.booking.checkOut}}"
   error="{{ui.booking.periodError}}"
@@ -97,7 +99,7 @@ export const skill = `
   <LabelStart>Check-in</LabelStart>
   <LabelEnd>Check-out</LabelEnd>
   <Helper>Reservations between 1 and 8 hours</Helper>
-</molecules--datetime-interval-102020>
+</groupenterdatetimeinterval--ml-enter-datetime-interval>
 \`\`\`
 
 ---

@@ -37,10 +37,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupexpandcontent--ml-<name>\` (e.g. \`groupexpandcontent--ml-accordion\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### FAQ accordion (one at a time)
 
 \`\`\`html
-<molecules--accordion-102020
+<groupexpandcontent--ml-accordion
   multiple="false">
   <Label>Frequently Asked Questions</Label>
   <Section title="How do I reset my password?">
@@ -52,7 +54,7 @@ export const skill = `
   <Section title="How do I contact support?">
     Use the chat widget or email support@example.com.
   </Section>
-</molecules--accordion-102020>
+</groupexpandcontent--ml-accordion>
 \`\`\`
 
 ---

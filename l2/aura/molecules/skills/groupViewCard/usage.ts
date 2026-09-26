@@ -46,10 +46,12 @@ All slots are optional. The card renders only what is present.
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupviewcard--ml-<name>\` (e.g. \`groupviewcard--ml-vertical-card\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic product card
 
 \`\`\`html
-<molecules--card-102020>
+<groupviewcard--ml-vertical-card>
   <CardHeader>
     <CardTitle>Wireless Headphones</CardTitle>
     <CardDescription>Noise cancelling, 30h battery</CardDescription>
@@ -58,7 +60,7 @@ All slots are optional. The card renders only what is present.
     <img src="headphones.jpg" alt="Headphones" />
   </CardContent>
   <CardFooter>$299.00</CardFooter>
-</molecules--card-102020>
+</groupviewcard--ml-vertical-card>
 \`\`\`
 
 ---

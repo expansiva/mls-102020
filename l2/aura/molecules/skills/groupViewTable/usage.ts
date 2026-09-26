@@ -128,6 +128,8 @@ back. **Never invent a name in this vocabulary.**
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupviewtable--ml-<name>\` (e.g. \`groupviewtable--ml-data-table\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Simple data table with sorting
 
 \`\`\`html

@@ -61,10 +61,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupentermoney--ml-<name>\` (e.g. \`groupentermoney--ml-enter-money-br\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Product price (USD)
 
 \`\`\`html
-<molecules--currency-input-102020
+<groupentermoney--ml-enter-money-br
   value="{{ui.product.price}}"
   error="{{ui.product.priceError}}"
   currency="USD"
@@ -72,7 +74,7 @@ export const skill = `
   min="0"
   required>
   <Label>Price</Label>
-</molecules--currency-input-102020>
+</groupentermoney--ml-enter-money-br>
 \`\`\`
 
 ---

@@ -54,22 +54,12 @@ export const skill = `
 
 ## Examples
 
-### Simple file button
-
-\`\`\`html
-<molecules--file-button-102020
-  value="{{ui.form.attachments}}"
-  accept=".pdf,.docx"
-  error="{{ui.form.attachmentError}}">
-  <Label>Attachment</Label>
-  <Helper>PDF or Word, up to 5MB</Helper>
-</molecules--file-button-102020>
-\`\`\`
+> **Tag names:** every molecule in this group is \`groupselectfileforupload--ml-<name>\` (e.g. \`groupselectfileforupload--ml-file-upload-dropzone\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
 
 ### Multi-file drag-drop zone
 
 \`\`\`html
-<molecules--dropzone-102020
+<groupselectfileforupload--ml-file-upload-dropzone
   value="{{ui.upload.files}}"
   multiple="true"
   accept="image/*"
@@ -80,7 +70,7 @@ export const skill = `
   <Label>Product Images</Label>
   <Trigger>Drop images here or click to browse</Trigger>
   <Helper>Up to 5 images, max 2MB each</Helper>
-</molecules--dropzone-102020>
+</groupselectfileforupload--ml-file-upload-dropzone>
 \`\`\`
 
 ---

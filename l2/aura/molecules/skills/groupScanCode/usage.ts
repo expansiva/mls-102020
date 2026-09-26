@@ -60,10 +60,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupscancode--ml-<name>\` (e.g. \`groupscancode--ml-scan-code\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### QR code scanner
 
 \`\`\`html
-<molecules--qr-scanner-102020
+<groupscancode--ml-scan-code
   value="{{ui.payment.qrResult}}"
   error="{{ui.payment.scanError}}"
   loading="{{ui.payment.isDecoding}}"
@@ -72,7 +74,7 @@ export const skill = `
   <Label>Scan QR Code</Label>
   <Trigger>📷 Open Camera</Trigger>
   <Helper>Point at a QR code to scan automatically</Helper>
-</molecules--qr-scanner-102020>
+</groupscancode--ml-scan-code>
 \`\`\`
 
 ---

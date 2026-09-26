@@ -60,22 +60,24 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupenterdate--ml-<name>\` (e.g. \`groupenterdate--ml-date-picker\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic
 
 \`\`\`html
-<molecules--date-input-102020
+<groupenterdate--ml-date-picker
   value="{{ui.form.birthDate}}"
   error="{{ui.form.birthDateError}}"
   locale="en-US"
   required>
   <Label>Date of Birth</Label>
-</molecules--date-input-102020>
+</groupenterdate--ml-date-picker>
 \`\`\`
 
 ### With min/max and helper
 
 \`\`\`html
-<molecules--date-input-102020
+<groupenterdate--ml-date-picker
   value="{{ui.form.dueDate}}"
   error="{{ui.form.dueDateError}}"
   locale="pt-BR"
@@ -84,7 +86,7 @@ export const skill = `
   required>
   <Label>Due Date</Label>
   <Helper>Select a date within the current year</Helper>
-</molecules--date-input-102020>
+</groupenterdate--ml-date-picker>
 \`\`\`
 
 ---

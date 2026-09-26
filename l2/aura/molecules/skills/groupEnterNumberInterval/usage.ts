@@ -68,10 +68,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupenternumberinterval--ml-<name>\` (e.g. \`groupenternumberinterval--ml-number-range-slider\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic — price band
 
 \`\`\`html
-<groupenternumberinterval--ml-range-slider
+<groupenternumberinterval--ml-number-range-slider
   startValue="{{ui.filter.priceMin}}"
   endValue="{{ui.filter.priceMax}}"
   error="{{ui.filter.priceError}}"
@@ -83,13 +85,13 @@ export const skill = `
   <LabelStart>De</LabelStart>
   <LabelEnd>Até</LabelEnd>
   <Prefix>R$</Prefix>
-</groupenternumberinterval--ml-range-slider>
+</groupenternumberinterval--ml-number-range-slider>
 \`\`\`
 
 ### With decimals and a minimum gap
 
 \`\`\`html
-<groupenternumberinterval--ml-range-slider
+<groupenternumberinterval--ml-number-range-slider
   startValue="{{ui.config.weightMin}}"
   endValue="{{ui.config.weightMax}}"
   min="0"
@@ -103,7 +105,7 @@ export const skill = `
   <LabelEnd>Máximo</LabelEnd>
   <Suffix>kg</Suffix>
   <Helper>Diferença mínima de 5 kg entre os limites</Helper>
-</groupenternumberinterval--ml-range-slider>
+</groupenternumberinterval--ml-number-range-slider>
 \`\`\`
 
 ---

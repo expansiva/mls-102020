@@ -47,24 +47,26 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupnavigatesection--ml-<name>\` (e.g. \`groupnavigatesection--ml-tabs\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Product detail tabs
 
 \`\`\`html
-<molecules--tabs-102020
+<groupnavigatesection--ml-tabs
   value="{{ui.product.activeTab}}">
   <Tab value="overview" title="Overview">
     <p>Full product description and images here...</p>
   </Tab>
   <Tab value="specs" title="Specifications">
-    <molecules--data-table-102020>
+    <groupviewtable--ml-data-table>
       ...specs table...
-    </molecules--data-table-102020>
+    </groupviewtable--ml-data-table>
   </Tab>
   <Tab value="reviews" title="Reviews">
     <p>Customer reviews list here...</p>
   </Tab>
   <Tab value="support" title="Support" disabled></Tab>
-</molecules--tabs-102020>
+</groupnavigatesection--ml-tabs>
 \`\`\`
 
 ---

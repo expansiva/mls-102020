@@ -53,13 +53,15 @@ colour. Reach for \`data-class\` only for what the variant does not set (margin,
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`grouptriggeraction--ml-<name>\` (e.g. \`grouptriggeraction--ml-button-standard\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Primary button
 
 \`\`\`html
-<molecules--button-102020
+<grouptriggeraction--ml-button-standard
   size="md">
   <Label>Save Changes</Label>
-</molecules--button-102020>
+</grouptriggeraction--ml-button-standard>
 \`\`\`
 
 ---

@@ -69,10 +69,12 @@ export const skill = `
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupentertimeinterval--ml-<name>\` (e.g. \`groupentertimeinterval--ml-time-interval\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Basic
 
 \`\`\`html
-<molecules--time-interval-102020
+<groupentertimeinterval--ml-time-interval
   startTime="{{ui.form.shiftStart}}"
   endTime="{{ui.form.shiftEnd}}"
   error="{{ui.form.shiftError}}"
@@ -81,13 +83,13 @@ export const skill = `
   <Label>Work Shift</Label>
   <LabelStart>From</LabelStart>
   <LabelEnd>To</LabelEnd>
-</molecules--time-interval-102020>
+</groupentertimeinterval--ml-time-interval>
 \`\`\`
 
 ### With overnight support and AM/PM display
 
 \`\`\`html
-<molecules--time-interval-102020
+<groupentertimeinterval--ml-time-interval
   startTime="{{ui.config.openTime}}"
   endTime="{{ui.config.closeTime}}"
   error="{{ui.config.hoursError}}"
@@ -100,7 +102,7 @@ export const skill = `
   <LabelStart>Opens</LabelStart>
   <LabelEnd>Closes</LabelEnd>
   <Helper>Minimum 1 hour. Overnight hours allowed</Helper>
-</molecules--time-interval-102020>
+</groupentertimeinterval--ml-time-interval>
 \`\`\`
 
 ---

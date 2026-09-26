@@ -57,10 +57,12 @@ not \`position="top"\`, which means *floating at the top of the screen*. Read wh
 
 ## Examples
 
+> **Tag names:** every molecule in this group is \`groupnotifyuser--ml-<name>\` (e.g. \`groupnotifyuser--ml-notify-banner\`), with no \`molecules--\` prefix and no project suffix. Copy the exact tag from the molecule's \`.defs.ts\` (\`TagName\`); never compose it.
+
 ### Warning banner with action
 
 \`\`\`html
-<molecules--banner-102020
+<groupnotifyuser--ml-notify-banner
   type="warning"
   visible="{{ui.system.showUpdateBanner}}"
   position="top"
@@ -70,7 +72,7 @@ not \`position="top"\`, which means *floating at the top of the screen*. Read wh
   <Action>
     <button>Update Now</button>
   </Action>
-</molecules--banner-102020>
+</groupnotifyuser--ml-notify-banner>
 \`\`\`
 
 ---
