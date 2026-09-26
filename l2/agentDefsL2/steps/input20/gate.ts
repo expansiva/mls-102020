@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/input20/gate.ts" enhancement="_blank"/>
 
 import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { resolveD2OperationBindings } from '/_102020_/l2/agentDefsL2/steps/input20/operationSemantics.js';
 import {
   D2_INPUT_VERSION,
   D2InputValidationError,
@@ -60,6 +61,26 @@ export async function buildD2InputSnapshot(
   checkVersion(state, module, SUPPORTED.module, 'l4/module.defs.ts');
   checkVersion(state, journeyIndex, SUPPORTED.journey, 'l4/journeys/index.defs.ts');
   checkVersion(state, ontologyIndex, SUPPORTED.ontology, 'l4/ontology/index.defs.ts');
+  for (const entity of Object.values(rec(artifacts.entities))) {
+    const operations = rec(rec(entity).operations);
+    for (const [operation, raw] of Object.entries(operations)) {
+      const item = rec(raw);
+      const file = `l4/${identity.module}/ontology/${text(rec(entity).entityId)}.defs.ts`;
+      const writable = strings(item.writable);
+      const required = strings(item.required);
+      const assigned = Object.keys(rec(item.assigned));
+      const paths = [...writable, ...required, ...assigned];
+      for (const path of paths) {
+        if (!operationFieldExists(entity, path)) error(state, 'OPERATION_FIELD_REF_MISSING', file, `operations.${operation} references missing record field '${path}'`);
+      }
+      for (const [path, assignedValue] of Object.entries(rec(item.assigned))) {
+        const field = operationField(entity, path);
+        if (!field || !matchesOperationValue(field, assignedValue)) error(state, 'OPERATION_ASSIGNED_VALUE_INVALID', file, `operations.${operation}.assigned '${path}' does not match its declared record field type`);
+      }
+      for (const path of required) if (!writable.includes(path) && !assigned.includes(path)) error(state, 'OPERATION_REQUIRED_NOT_WRITABLE', file, `operations.${operation}.required path '${path}' is not writable or server-assigned`);
+      for (const ruleId of strings(item.ruleRefs)) if (!hasRule(rules.rules, ruleId)) error(state, 'OPERATION_RULE_REF_MISSING', `l4/${identity.module}/rules.defs.ts`, `operations.${operation} cites missing rule '${ruleId}'`);
+    }
+  }
   checkVersion(state, rules, SUPPORTED.rules, 'l4/rules.defs.ts');
   checkVersion(state, workflows, SUPPORTED.workflows, 'l4/workflows.defs.ts');
   checkVersion(state, access, SUPPORTED.access, 'l4/access.defs.ts');
@@ -126,6 +147,7 @@ export async function buildD2InputSnapshot(
   }
 
   const pages: D2SelectedPage[] = [];
+  const semanticErrors: Error[] = [];
   for (const page of menuScan.pages.values()) {
     const pageId = page.pageId;
     const need = needRows.get(pageId) || {};
@@ -136,6 +158,13 @@ export async function buildD2InputSnapshot(
       .sort((left, right) => text(left.route).localeCompare(text(right.route)));
     const usecaseIds = new Set(endpointRows.map(endpoint => text(endpoint.usecaseRef)).filter(Boolean));
     const destinations = destinationsFor(identity, pageId);
+    let operationBindings: D2SelectedPage['operationBindings'] = [];
+    try {
+      operationBindings = resolveD2OperationBindings({
+        module: identity.module, entities: artifacts.entities, access, rules, digests: artifacts.sources,
+      }, pageId, endpointRows, [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0),
+      unique([...strings(need.actors), ...(authority.actorsByPage.get(pageId) || [])]));
+    } catch (error) { semanticErrors.push(error instanceof Error ? error : new Error(String(error))); }
     pages.push({
       pageId,
       status,
@@ -149,6 +178,7 @@ export async function buildD2InputSnapshot(
       writes: arr(need.writes),
       endpoints: endpointRows,
       usecases: [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0),
+      operationBindings,
       destinations,
     });
     if (endpointRows.length === 0 && arr(page.node.organisms).length > 0) {
@@ -159,6 +189,12 @@ export async function buildD2InputSnapshot(
   validateDestinationCollisions(state, pages, remove);
   semanticAccessFindings(state, access, entityIds, pages);
   semanticPageScopeFindings(state, pages);
+  for (const semanticError of semanticErrors) {
+    const message = semanticError.message;
+    const [code, sourcePath] = message.split(' ');
+    const [file, ...symbol] = (sourcePath || 'input20').split('#');
+    state.problems.push({ severity: 'review', code, file, message, ...(symbol.length ? { route: symbol.join('#') } : {}) });
+  }
 
   state.problems.push({
     severity: 'info',
@@ -442,6 +478,37 @@ function semanticPageScopeFindings(state: GateState, pages: D2SelectedPage[]): v
       );
     }
   }
+}
+
+function operationFieldExists(entity: unknown, path: string): boolean {
+  return operationField(entity, path) !== null;
+}
+
+function operationField(entity: unknown, path: string): Record<string, unknown> | null {
+  const parts = path.split('.');
+  let fields = rec(rec(rec(entity).record).fields);
+  let result: Record<string, unknown> | null = null;
+  for (const part of parts) {
+    const field = rec(fields[part]);
+    if (!Object.keys(field).length) return null;
+    result = field;
+    fields = rec(field.fields);
+  }
+  return result;
+}
+
+function matchesOperationValue(field: Record<string, unknown>, value: unknown): boolean {
+  const type = text(field.type);
+  if (type === 'enum') return typeof value === 'string' && strings(field.values).includes(value);
+  if (['string', 'text', 'uuid', 'record', 'timestamp', 'date'].includes(type)) return typeof value === 'string';
+  if (type === 'integer') return Number.isInteger(value);
+  if (type === 'number' || type === 'money') return typeof value === 'number' && Number.isFinite(value);
+  return type === 'boolean' && typeof value === 'boolean';
+}
+
+function hasRule(source: unknown, ruleId: string): boolean {
+  if (Array.isArray(source)) return rows(source).some(item => text(item.ruleId) === ruleId);
+  return Object.prototype.hasOwnProperty.call(rec(source), ruleId);
 }
 
 function validateDestinationCollisions(state: GateState, pages: D2SelectedPage[], remove: Array<{ pageId: string; destinations: D2Destination[] }>): void {

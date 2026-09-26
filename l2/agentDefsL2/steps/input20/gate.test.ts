@@ -124,6 +124,16 @@ void test('current immutable fixture produces the exact agendaClinica inventory'
   assert.ok(reread.some(item => item.code === 'PAGE_OWN_SCOPE_WITH_OTHER_ENTITY_CRUD' && item.pageId === 'cadastro_recepcionista' && item.route));
 });
 
+void test('fixture operation assignment is flagged without synthesizing user input', async () => {
+  const input = artifacts('current');
+  const entity = rec(input.entities.Consulta);
+  rec(entity.operations).create = { writable: ['pacienteId'], required: [], assigned: { status: 'scheduled' } };
+  const snapshot = await buildD2InputSnapshot(IDENTITY, input);
+  const bindings = snapshot.selection.pages.flatMap(page => page.operationBindings || []);
+  assert.equal(bindings.some(item => item.operation === 'create' && item.entityId === 'Consulta' && item.inputFields.some(field => field.path === 'Consulta.status')), false);
+  assert.ok(snapshot.problems.some(item => item.code === 'OPERATION_SEMANTICS_MISSING'));
+});
+
 void test('historical immutable fixture preserves the two static homes as review findings', async () => {
   const snapshot = await buildD2InputSnapshot(IDENTITY, artifacts('historical'));
   assert.deepEqual(snapshot.selection.counts, { pages: 7, endpoints: 22, usecases: 13, destinations: 28, materializationItems: 21 });

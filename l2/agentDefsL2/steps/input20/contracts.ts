@@ -53,7 +53,22 @@ export interface D2SelectedPage {
   writes: unknown[];
   endpoints: Array<Record<string, unknown>>;
   usecases: Array<Record<string, unknown>>;
+  operationBindings?: D2OperationBinding[];
   destinations: D2Destination[];
+}
+
+export interface D2OperationBinding {
+  pageId: string;
+  route: string;
+  entityId: string;
+  operation: string;
+  actorRef: string;
+  grantRefs: string[];
+  authorities: string[];
+  inputFields: Array<{ path: string; origin: 'actor' | 'server'; required: boolean }>;
+  transition?: { transitionId: string; from: string[]; to: string; by: string[]; payload: string[] };
+  ruleRefs: Array<{ ruleId: string; file: string; symbol: string; description: string }>;
+  sourceHashes: string[];
 }
 
 export interface D2RemovedPage {
