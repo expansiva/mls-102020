@@ -3,12 +3,178 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { validateGeneratedPageQuality, materializeVerdictAllClear } from './cfeMaterializeCore.js';
 import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, mlsL2ModuleName, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp, buildContextSection, requireDeclaredDependency, resolveProjectRelativeRef } from './cfeMaterializeCore.js';
 import { FE3_PAGE21_CHOOSE_SERVICE_EXECUTION, FE3_PAGE21_CONTRACT, FE3_PAGE11_RECURSIVE_RENDER_RECORD, FE3_PAGE11_ORPHAN_I18N_KEY } from '../steps/finalize/fixtures/fe3PetShopGateFixture.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
 } from '../steps/materialize/fixtures/fe2PetShopCatalogueFixture.js';
 import { RUN01_TASK_CATALOGUE_DTS, RUN01_TASK_CATALOGUE_SHARED } from '../steps/materialize/fixtures/run01TaskCatalogueDtsFixture.js';
+
+test('renamed prose page restores encoded padding only from its mechanical reference and recovers action feedback binding', () => {
+  const status = 'stateSaveRecordStatusX00007300007400006100007400006500003a00006900006e000070000075000074';
+  const typo = status.replace('00006e', '0006e');
+  const reference = `// Public API: ${status}, saveError, runSaveRecord`;
+  const item = { id: 'records', type: 'l2_page', outputPath: '_102045_/l2/ledger/web/desktop/page11/records.ts' };
+  const code = `class Ledger extends RecordsShared {
+private renderFeedback(){const status=this.${typo};const failure=this.saveError;return html\`\${status === 'success' ? html\`<p>\${this.msg('saved')}</p>\` : nothing}\${failure ? html\`<p>\${failure.message}</p>\` : nothing}\`;}
+}`;
+  const shared = { schemaVersion: 'agent-defs-l2-shared-v4', states: [{ stateKey: 'save.status', memberName: status }, { stateKey: 'save.error', memberName: 'saveError' }], actions: [{ kind: 'command', actionId: 'saveRecord', statusStateKey: 'save.status', errorStateKey: 'save.error' }] };
+  assert.ok(validateGeneratedPageQuality({}, shared, code).some(issue => issue.includes('does not render textual mutation feedback')));
+  const fixed = normalizeGeneratedCode(item, 'prose', code, reference);
+  assert.ok(fixed.includes(`this.${status}`));
+  assert.ok(!fixed.includes(typo));
+  assert.deepEqual(validateGeneratedPageQuality({}, shared, fixed), []);
+  assert.equal(normalizeGeneratedCode(item, 'prose', fixed, reference), fixed);
+  assert.equal(normalizeGeneratedCode(item, 'prose', code), code);
+  const ambiguous = `${reference}, ${status.replace('00006e', '0000006e')}`;
+  assert.equal(normalizeGeneratedCode(item, 'prose', code, ambiguous), code);
+  assert.equal(normalizeGeneratedCode(item, 'prose', 'this.runSaveRecrod()', reference), 'this.runSaveRecrod()');
+});
+
+test('renamed page accepts typed msg method and action-bound structural feedback, never inline or unrelated text', () => {
+  const shared = { schemaVersion: 'agent-defs-l2-shared-v4', pageId: 'ledger', pageName: 'Ledger', states: [{ stateKey: 'ui.ledger.save.status', memberName: 'saveStatus' }, { stateKey: 'ui.ledger.save.error', memberName: 'saveError' }], actions: [{ kind: 'command', actionId: 'saveRecord', statusStateKey: 'ui.ledger.save.status', errorStateKey: 'ui.ledger.save.error' }] };
+  const code = `class Ledger extends RecordsShared {
+protected msg<K extends keyof PageMessageType>(key: K): PageMessageType[K] { return messages[key]; }
+private renderFeedback() {
+const status = this.saveStatus; const failure = this.saveError;
+return html\`\${status === 'success' ? html\`<p>\${this.msg('recordSaved')}</p>\` : nothing}\${failure ? html\`<p>\${failure.message}</p>\` : nothing}\`;
+}
+}`;
+  assert.ok(!collectPageTemplateHygieneIssues(code).some(issue => issue.includes('defines no `get msg()')));
+  assert.deepEqual(validateGeneratedPageQuality({ pageId: 'ledger' }, shared, code), []);
+  assert.deepEqual(validateGeneratedPageQuality({}, { ...shared, actions: shared.actions.map(action => ({ ...action, feedback: {} })) }, code), []);
+  assert.deepEqual(validateGeneratedPageQuality({}, shared, code.replace("status === 'success'", "this.saveStatus === 'success'").replace('failure ? html', 'this.saveError ? html').replace('failure.message', 'this.saveError?.message')), []);
+  const branches = `class Ledger extends RecordsShared {
+private renderFeedback(){const failure=this.saveError;if(failure){return html\`<p>\${failure.message}</p>\`;}if(this.saveStatus === 'success'){return html\`<p>\${this.msg.saved}</p>\`;}return nothing;}
+}`;
+  assert.deepEqual(validateGeneratedPageQuality({}, shared, branches), []);
+  assert.deepEqual(validateGeneratedPageQuality({}, shared, branches.replace('this.msg.saved', "this.msg['saved']")), []);
+  assert.ok(validateGeneratedPageQuality({}, shared, branches.replace('this.msg.saved', "'Saved'" )).some(issue => issue.includes('does not render textual mutation feedback')));
+  for (const broken of [code.replace("this.msg('recordSaved')", "'Record saved'"), code.replace("this.msg('recordSaved')", "failure?.message ?? 'Record saved'"), code.replace('this.saveStatus', 'this.otherStatus'), code.replace('this.saveError', 'this.otherError'), code.replace('failure.message', "this.msg('unrelatedFailure')")]) {
+    assert.ok(validateGeneratedPageQuality({ pageId: 'ledger' }, shared, broken).some(issue => issue.includes('does not render textual mutation feedback')));
+  }
+  const missing = code.replace(/protected msg<[^>]+>\([^)]*\):[^\{]+\{[^}]*\}/u, '');
+  assert.ok(collectPageTemplateHygieneIssues(missing).some(issue => issue.includes('defines no `get msg()')));
+  const classic = { i18n: { saved: 'Saved', failed: 'Failed' }, states: [], actions: [{ kind: 'command', actionId: 'saveRecord', errorStateKey: 'save.error', clearInputStateKeys: [], feedback: { successMessageKey: 'saved', errorMessageKey: 'failed' } }] };
+  assert.deepEqual(validateGeneratedPageQuality({}, classic, "this.msg('saved'); this.msg('failed');"), []);
+  assert.ok(validateGeneratedPageQuality({}, classic, "'saved'; 'failed';").some(issue => issue.includes('does not render textual mutation feedback')));
+  assert.ok(validateGeneratedPageQuality({}, classic, code).some(issue => issue.includes('does not render textual mutation feedback')));
+});
+
+test('renamed page imports retain or recover the output project identity for local dependency refs', () => {
+  const outputPath = '_102045_/l2/ledger/web/mobile/page11/records.ts';
+  const code = "import { RecordsShared } from '/l2/ledger/web/shared/records.js'; import type { CreateRecordInput } from '../../../contracts/records.defs.js';";
+  for (const prefix of ['', '/', '_102045_/', '/_102045_/']) {
+    const item = { id: 'records', type: 'l2_page', outputPath, dependsFiles: [`${prefix}l2/ledger/web/shared/recordsDts.txt`, `${prefix}l2/ledger/web/contracts/records.defs.ts`] };
+    const fixed = normalizeGeneratedCode(item, 'prose', code);
+    assert.ok(fixed.includes("'/_102045_/l2/ledger/web/shared/records.js'"));
+    assert.ok(fixed.includes("'/_102045_/l2/ledger/web/contracts/records.defs.js'"));
+    assert.ok(!fixed.includes("'/l2/"));
+    assert.equal(normalizeGeneratedCode(item, 'prose', fixed), fixed);
+  }
+  const explicitOtherProject = { id: 'records', type: 'l2_page', outputPath, dependsFiles: ['_102046_/l2/ledger/web/shared/records.ts'] };
+  assert.ok(normalizeGeneratedCode(explicitOtherProject, 'prose', code).includes("'/_102046_/l2/ledger/web/shared/records.js'"));
+});
+
+test('renamed three mutations share a generic transport with a proven nullable envelope alias', () => {
+  const defs = { actions: ['createRecord', 'flagRecord', 'updateRecord'].map(actionId => ({ actionId, kind: 'command', methodName: `run${actionId[0].toUpperCase()}${actionId.slice(1)}` })) };
+  const source = `class Ledger {
+    async runCreateRecord(){await this.command<CreateInput,CreateOutput>(route,input);}
+    async runFlagRecord(){if(!this.id)return;await this.command<FlagInput,FlagOutput>(route,input);}
+    async runUpdateRecord(){const input={id:this.id};await this.command<UpdateInput,UpdateOutput>(route,input);}
+    private async command<TInput,TOutput>(route:string,input:TInput):Promise<void>{
+      const result = await runBlockingUiAction(signal => execBff<TOutput>(route,input,{signal}));
+      if(!result?.ok){const failureEnvelope = result?.error;
+        const text = failureEnvelope && typeof failureEnvelope === 'object' && 'message' in failureEnvelope && typeof failureEnvelope.message === 'string' ? failureEnvelope.message : undefined;
+        this.feedback = text;return;}
+    }
+  }`;
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(defs, source), []);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(defs, source.replace('result?.error', 'result.error')), []);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(defs, source.replaceAll('failureEnvelope.message', 'failureEnvelope?.message')), []);
+  assert.equal(collectMutationEnvelopeErrorIssues(defs, source.replaceAll('failureEnvelope.message', 'result.status')).length, 3);
+  assert.equal(collectMutationEnvelopeErrorIssues(defs, source.replace('result?.error', 'unrelated.error')).length, 3);
+  assert.equal(collectMutationEnvelopeErrorIssues(defs, source.replace('result?.error', 'result.status')).length, 3);
+  assert.equal(collectMutationEnvelopeErrorIssues(defs, source.replace('const failureEnvelope', 'let failureEnvelope')).length, 3);
+});
+
+test('renamed shared preserves opaque public API padding without conflating state identities', () => {
+  const input = 'stateListRecordStatusX00007300007400006100007400006500003a00006900006e000070000075000074';
+  const status = 'stateListRecordStatusX00007300007400006100007400006500003a000073000074000061000074000075000073';
+  const typo = input.replace('00006e', '0000006e');
+  const defs = { states: [{ memberName: input }, { memberName: status }], actions: [{ methodName: 'runListRecord' }] };
+  const item = { id: 'records', type: 'l2_shared', outputPath: '_102045_/l2/ledger/web/shared/records.ts' };
+  const source = `public ${input}: string|null=null; public ${status}='idle'; const map={input:'${typo}'}; if(this.${typo}) input.status=this.${typo};`;
+  const normalized = normalizeGeneratedCode(item, defs, source);
+  assert.ok(!normalized.includes(typo));
+  assert.equal(normalized.match(new RegExp(input, 'gu'))?.length, 4);
+  assert.ok(normalized.includes(status));
+  assert.equal(normalizeGeneratedCode(item, defs, normalized), normalized);
+  const ambiguous = { states: [{ memberName: input }, { memberName: typo }], actions: [] };
+  const third = input.replace('00006e', '000000006e');
+  assert.equal(normalizeGeneratedCode(item, ambiguous, third), third);
+  assert.equal(normalizeGeneratedCode(item, defs, 'this.stateListRecrodStatus'), 'this.stateListRecrodStatus');
+  const prompt = buildHumanPrompt(defs, [], item.outputPath, 'repair');
+  assert.ok(prompt.includes(input));
+  assert.match(prompt, /NonNullable<ErrorState>/u);
+  assert.match(prompt, /typeof error\.message === 'string'/u);
+});
+
+test('renamed nullable feedback normalization preserves error.message and safely handles null helper feedback', () => {
+  const item = { id: 'records', type: 'l2_shared', outputPath: '_102045_/l2/ledger/web/shared/records.ts' };
+  const code = 'const feedback=this.errorOf(error); return feedback.message;';
+  const fixed = normalizeGeneratedCode(item, { states: [], actions: [] }, code);
+  assert.match(fixed, /feedback\?\.message \?\? String\(error\)/u);
+  assert.match(fixed, /typeof error\.message === 'string' \? error\.message/u);
+  const execute = new Function('error', fixed);
+  assert.equal(execute.call({ errorOf: () => null }, { message: 'Envelope text' }), 'Envelope text');
+  assert.equal(execute.call({ errorOf: () => null }, null), 'null');
+  assert.equal(execute.call({ errorOf: () => ({ message: 'Fallback text' }) }, {}), 'Fallback text');
+  assert.equal(normalizeGeneratedCode(item, { states: [], actions: [] }, fixed), fixed);
+  assert.ok(normalizeGeneratedCode(item, { states: [], actions: [] }, code + ' function unrelated(feedback){ return feedback.message; }').endsWith('function unrelated(feedback){ return feedback.message; }'));
+});
+
+test('renamed guarded mutation follows its compact generic transport helper, never unrelated error readers', () => {
+  const defs = { actions: [{ actionId: 'saveRecord', kind: 'command', methodName: 'runSaveRecord' }] };
+  const source = `class Records { async runSaveRecord():Promise<void>{if(!this.id){return;}const input={id:this.id};await this.transport(route,input);}private async transport<T>(route:string,input:T):Promise<void>{const response=await execBff(route,input);if(!response.ok){const error=response.error;this.feedback=error?.message;}}private unrelated(){return error.message;} }`;
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(defs, source), []);
+  assert.deepEqual(collectMutationEnvelopeErrorIssues(defs, source.replace('error?.message', '(error as {message:string}).message')), []);
+  assert.equal(collectMutationEnvelopeErrorIssues(defs, source.replace('error?.message', 'response.status')).length, 1);
+  assert.equal(collectMutationEnvelopeErrorIssues(defs, source.replace('this.transport(route,input)', 'this.unrelated()')).length, 1);
+});
+
+test('renamed page mechanical identities converge without guessing relative import depth', () => {
+  const item = { id: 'ledger', type: 'l2_page', outputPath: '_102045_/l2/sample/web/mobile/page11/ledger.ts', dependsFiles: ['_102045_/l2/sample/web/shared/ledgerDts.txt', '_102045_/l2/sample/web/contracts/ledger.defs.ts'] };
+  const code = `import { LedgerBase } from '../../../shared/ledger.js';
+import type { ListRecordOutput } from '../../../contracts/ledger.defs.js';
+/// **collab_i18n_start
+const pageMessage_en = { 'short.key': 'Keep this text' };
+/// **collab_i18n_end
+@customElement(TAG)
+export default class Ledger extends LedgerBase { protected get msg() { return pageMessage_en; } render() { return this.msg['short.key']; } }`;
+  const fixed = normalizeGeneratedCode(item, 'prose', code);
+  assert.match(fixed, /from '\/_102045_\/l2\/sample\/web\/shared\/ledger.js'/u);
+  assert.match(fixed, /from '\/_102045_\/l2\/sample\/web\/contracts\/ledger.defs.js'/u);
+  assert.match(fixed, /\/\/\/ \*\*collab_i18n_start\*\*/u);
+  assert.match(fixed, /\/\/\/ \*\*collab_i18n_end\*\*/u);
+  assert.match(fixed, /'short.key': 'Keep this text'/u);
+  assert.deepEqual(collectPageCustomElementTagIssues(fixed, item.outputPath), []);
+  assert.equal(normalizeGeneratedCode(item, 'prose', fixed), fixed);
+  const missingGetter = fixed.replace(/protected get msg\(\) \{ return pageMessage_en; \}/u, '');
+  assert.ok(collectPageTemplateHygieneIssues(missingGetter).some(issue => issue.includes('defines no `get msg()')));
+  assert.ok(collectPageTemplateHygieneIssues("export function renderLedger(host) { return this.msg['short.key']; }").some(issue => issue.includes('render FUNCTION')));
+});
+
+test('renamed structural mutation feedback uses the page catalogue and unavailable verdict never clears', () => {
+  const shared = { schemaVersion: '2026-09-26-agent-defs-l2-shared-v4', pageId: 'ledger', pageName: 'Ledger', states: [], actions: [{ kind: 'command', actionId: 'createRecord', errorStateKey: 'ui.ledger.error' }] };
+  assert.deepEqual(validateGeneratedPageQuality({ pageId: 'ledger' }, shared, `const msg = this.msg; html\`\${msg['action.createRecord.success']}\${msg["action.createRecord.error"]}\`;`), []);
+  assert.ok(validateGeneratedPageQuality({ pageId: 'ledger' }, shared, 'html``').some(issue => issue.includes('does not render textual mutation feedback')));
+  assert.equal(materializeVerdictAllClear([], [], [{ errors: ['malformed catalogue'] }]), false);
+  assert.equal(materializeVerdictAllClear([{ typecheck: 'unavailable' }], [], []), false);
+  assert.equal(materializeVerdictAllClear([{ typecheck: 'failed' }], [], []), false);
+  assert.equal(materializeVerdictAllClear([{ typecheck: 'passed' }], [], []), true);
+});
 
 // bugpage21: the EXACT shape generated into
 // mls-102051/l2/cafeFlow/web/desktop/page21/shiftWorkspace.ts — `: nothing` in the template with a
@@ -1318,15 +1484,16 @@ test('D4: o hint de repair carrega o arquivo em disco e manda partir DELE', () =
   assert.doesNotMatch(bare, /START FROM THIS FILE/u);
 });
 
-test('D4: um humanPrompt de repair leva achados + arquivo e NENHUM esqueleto em branco', () => {
+test('D4: repair starts from current code with a mechanical skeleton reference', () => {
   const hint = buildCompileRepairHint('_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts', ['qryListTask.sortBy is collection wiring'], 'export class P {}');
-  const prompt = buildHumanPrompt({ pageId: 'taskCatalogue' }, [], '_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts', hint, undefined);
+  const prompt = buildHumanPrompt({ pageId: 'taskCatalogue' }, [], '_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts', hint, 'mechanical reference');
   assert.match(prompt, /qryListTask\.sortBy is collection wiring/u);
   assert.match(prompt, /START FROM THIS FILE/u);
-  assert.doesNotMatch(prompt, /## Skeleton/u);
+  assert.match(prompt, /## Skeleton — mechanical reference for repair/u);
+  assert.match(prompt, /preserve its implemented render methods/u);
   // e é o chamador que garante a exclusão: hint => sem esqueleto
   const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
-  assert.match(gen, /repairHint \? undefined : skeleton/u);
+  assert.match(gen, /repairHint, skeleton, sharedTemplate/u);
 });
 
 test('D4: CLI e agentRenderEdit passam o arquivo atual no hint de repair (não só o Studio)', () => {
@@ -1345,7 +1512,7 @@ test('D4: CLI e agentRenderEdit passam o arquivo atual no hint de repair (não s
 // manda o esqueleto em branco e o modelo reescreve às cegas. Por isso o verify grava os achados em disco.
 test('D4: o verify grava os achados do item e o gen os lê antes de montar o hint', () => {
   const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
-  assert.match(phase, /saveMaterializeItemFindings\(moduleName, entry\.item\.planId, nextAttempt, \[\.\.\.entry\.blocking, \.\.\.entry\.repairable, \.\.\.entry\.warnings\]\)/u);
+  assert.match(phase, /persistAuditableFindings\(moduleName, nextAttempt, toRepair, args\.attempt\)/u);
   const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
   assert.match(gen, /readMaterializeItemFindings\(moduleOfMlsPath\(outputPath\), planId, attempt\)/u);
   // e eles entram no hint junto com o que foi recomputado
@@ -1510,7 +1677,7 @@ html\`<molecules--ml-scenary-102020 .value=\${this.uiScenary}>
 test('T3: verify persists warnings into frontend-materialize-findings (not only repairable)', () => {
   const phase = readFileSync(new URL('../steps/materialize/agentCfeMaterializePhase.ts', import.meta.url), 'utf8');
   assert.match(phase, /persistAuditableFindings\(moduleName, args\.attempt, checkedItems\)/);
-  assert.match(phase, /\[\.\.\.entry\.blocking, \.\.\.entry\.repairable, \.\.\.entry\.warnings\]/);
+  assert.match(phase, /\[\.\.\.entry\.blocking, \.\.\.entry\.repairable, \.\.\.entry\.declared, \.\.\.entry\.warnings\]/);
 });
 
 test('scenary gate degrades in verify (warnings) and the page skills teach the host', () => {

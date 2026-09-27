@@ -770,7 +770,24 @@ export interface SharedI18nCatalogue {
 export function parseSharedI18nCatalogue(data: unknown): SharedI18nCatalogue | null {
   if (!isRecord(data)) return null;
 
-  const i18nRaw = isRecord(data.i18n) ? data.i18n : null;
+  const structural = stringOf(data.schemaVersion).includes('agent-defs-l2-shared') && Array.isArray(data.states) && Array.isArray(data.actions);
+  const projected: Record<string, string> = {};
+  if (structural) {
+    projected['page.title'] = stringOf(data.pageName) || stringOf(data.pageId);
+    for (const state of (Array.isArray(data.states) ? data.states.filter(isRecord) : [])) {
+      const key = stringOf(state.stateKey);
+      if (stringOf(state.title)) projected[`field.${key}`] = stringOf(state.title);
+      for (const option of (Array.isArray(state.enumOptions) ? state.enumOptions.filter(isRecord) : [])) {
+        projected[`enum.${key}.${stringOf(option.value)}`] = stringOf(option.label) || stringOf(option.value);
+      }
+    }
+    for (const action of (Array.isArray(data.actions) ? data.actions.filter(isRecord) : [])) {
+      if (action.kind !== 'command') continue;
+      projected[`action.${stringOf(action.actionId)}.success`] = 'Completed.';
+      projected[`action.${stringOf(action.actionId)}.error`] = 'Unable to complete the action.';
+    }
+  }
+  const i18nRaw = isRecord(data.i18n) ? data.i18n : structural ? projected : null;
   if (!i18nRaw) return null;
   const i18n: Record<string, string> = {};
   for (const [key, value] of Object.entries(i18nRaw)) {

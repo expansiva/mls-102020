@@ -4,7 +4,7 @@
 // no DOM dependency so the Node runner and the Studio agent can reuse parser, ordering, staleness
 // and prompt assembly rules.
 
-import { SHARED_SCENARY_MEMBERS } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
+import { SHARED_SCENARY_MEMBERS, parseSharedI18nCatalogue } from '/_102020_/l2/agentChangeFrontend/helpers/cfeSharedScaffold.js';
 export { CONTRACTS_102029, expandContextRef } from '/_102020_/l2/runtime102029Context.js';
 import { CONTRACTS_102029, expandContextRef } from '/_102020_/l2/runtime102029Context.js';
 
@@ -213,6 +213,11 @@ export function compileBlockedPlanIdsFromVerdict(verdict: unknown, finalOnly = f
 
 export function describeVerifyBuckets(counts: { blocked: number; repaired: number; declared: number }): string {
   return `blocked=${counts.blocked} repaired=${counts.repaired} declared=${counts.declared}`;
+}
+
+export function materializeVerdictAllClear(passed: Array<{ typecheck?: string }>, broken: unknown[], declared: Array<{ errors: string[] }>): boolean {
+  return broken.length === 0 && declared.every(item => item.errors.length === 0)
+    && passed.every(item => item.typecheck === 'passed' || item.typecheck === 'not-applicable');
 }
 
 /**
@@ -620,12 +625,25 @@ export function collectMutationEnvelopeErrorIssues(sharedDefinition: unknown, sh
 }
 
 function sliceGeneratedMethodBody(source: string, methodName: string): string | null {
-  const match = new RegExp(`(?:async\\s+)?${escapeForRegExp(methodName)}\\s*\\([^)]*\\)\\s*(?::\\s*[^{]+)?\\{`, 'u').exec(source);
+  const match = new RegExp(`(?:async\\s+)?${escapeForRegExp(methodName)}\\s*(?:<[^>{}]+>)?\\s*\\([^)]*\\)\\s*(?::\\s*[^{]+)?\\{`, 'u').exec(source);
   if (!match) return null;
   const start = match.index + match[0].length;
-  const rest = source.slice(start);
-  const end = rest.search(/\n  (?:async |[A-Za-z_]|\/\*\*)/);
-  return end < 0 ? rest : rest.slice(0, end);
+  let depth = 1;
+  let quote = '';
+  for (let index = start; index < source.length; index++) {
+    const char = source[index];
+    if (quote) {
+      if (char === '\\') index++;
+      else if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') { quote = char; continue; }
+    if (source.startsWith('//', index)) { index = source.indexOf('\n', index); if (index < 0) break; continue; }
+    if (source.startsWith('/*', index)) { const end = source.indexOf('*/', index + 2); if (end < 0) break; index = end + 1; continue; }
+    if (char === '{') depth++;
+    if (char === '}' && --depth === 0) return source.slice(start, index);
+  }
+  return null;
 }
 
 /**
@@ -641,9 +659,25 @@ function commandErrorPathReadsEnvelope(body: string, source: string): boolean {
   if (/\breadErrorMessage\s*\(/.test(body)) return true;
   // Optional chaining (`error?.message`) is the generated form; `\berror\.message\b` does not match it.
   if (/\berror\??\.message\b/.test(body) || /\brecord\??\.message\b/.test(body)) return true;
+  if (/\(\s*error\s+as\s+\{[^}]*\}\s*\)\s*\??\.message\b/u.test(body)) return true;
+  // A renamed local error alias is evidence only when both assignments are immutable and the
+  // receiver comes from transport. Merely reading an unrelated feedback.message is insufficient.
+  for (const alias of body.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*(?::[^=;]+)?=\s*([A-Za-z_$][\w$]*)\s*\??\.\s*error\s*;/gu)) {
+    const receiver = new RegExp(`\\bconst\\s+${escapeForRegExp(alias[2])}\\s*(?::[^=;]+)?=\\s*await\\s+(?:execBff|runBlockingUiAction)\\s*(?:<[^>]+>)?\\s*\\(`, 'u');
+    const message = new RegExp(`\\b${escapeForRegExp(alias[1])}\\s*\\??\\.\\s*message\\b`, 'u');
+    if (receiver.test(body.slice(0, alias.index)) && message.test(body.slice(alias.index + alias[0].length))) return true;
+  }
   if (/\.code\b/.test(body) && /\b(?:this\.)?msg(?:Messages)?\s*\[/.test(body)) return true;
   const delegate = delegatedMethodName(body);
-  if (!delegate) return false;
+  if (!delegate) {
+    // Guards/parameter construction may precede a transport helper. Follow only awaited helpers
+    // that actually own transport, not unrelated helpers that happen to read an error message.
+    for (const match of body.matchAll(/\bawait\s+this\.([A-Za-z_$][\w$]*)\s*(?:<[^>]+>)?\s*\(/gu)) {
+      const callee = sliceGeneratedMethodBody(source, match[1]);
+      if (callee && /\b(?:execBff|runBlockingUiAction)\s*(?:<[^>]+>)?\s*\(/u.test(callee) && commandErrorPathReadsEnvelope(callee, '')) return true;
+    }
+    return false;
+  }
   const delegateBody = sliceGeneratedMethodBody(source, delegate);
   // ONE hop, and only into the callee of a body that does nothing else: a method that also does work of
   // its own keeps its own error path, and following every `this.x()` call would clear a genuinely broken
@@ -838,7 +872,8 @@ export function validateGeneratedPageQuality(pageDefinition: unknown, sharedDefi
   const pageId = stringValue(pageDefinition.pageId);
   const layout = isRecord(pageDefinition.layout) ? pageDefinition.layout : null;
   const sections = Array.isArray(layout?.sections) ? layout.sections.filter(isRecord) : [];
-  const i18n = isRecord(sharedDefinition.i18n) ? sharedDefinition.i18n : {};
+  const i18n = parseSharedI18nCatalogue(sharedDefinition)?.i18n ?? {};
+  const structural = stringValue(sharedDefinition.schemaVersion).includes('agent-defs-l2-shared');
   const states = Array.isArray(sharedDefinition.states) ? sharedDefinition.states.filter(isRecord) : [];
   const actions = Array.isArray(sharedDefinition.actions) ? sharedDefinition.actions.filter(isRecord) : [];
   const stateByKey = new Map(states.map(state => [stringValue(state.stateKey), state]));
@@ -870,21 +905,51 @@ export function validateGeneratedPageQuality(pageDefinition: unknown, sharedDefi
     if (stringValue(action.kind) !== 'command') continue;
     const actionId = stringValue(action.actionId);
     const feedback = isRecord(action.feedback) ? action.feedback : null;
-    const successKey = stringValue(feedback?.successMessageKey);
-    const errorKey = stringValue(feedback?.errorMessageKey);
+    if (structural && !stringValue(feedback?.successMessageKey) && !stringValue(feedback?.errorMessageKey)
+      && rendersStructuralMutationFeedback(action, stateByKey, pageCode)) continue;
+    const successKey = stringValue(feedback?.successMessageKey) || (structural ? `action.${actionId}.success` : '');
+    const errorKey = stringValue(feedback?.errorMessageKey) || (structural ? `action.${actionId}.error` : '');
     if (!successKey || !errorKey || !stringValue(i18n[successKey]) || !stringValue(i18n[errorKey])) {
       errors.push(`mutation feedback i18n missing: ${actionId}`);
       continue;
     }
-    if (!stringValue(action.errorStateKey) || !Array.isArray(action.clearInputStateKeys)) {
+    if (!stringValue(action.errorStateKey) || (!structural && !Array.isArray(action.clearInputStateKeys))) {
       errors.push(`mutation feedback wiring incomplete: ${actionId}`);
     }
-    if (pageCode && (!pageCode.includes(`this.msg['${successKey}']`) || !pageCode.includes(`this.msg['${errorKey}']`))) {
+    const cites = (key: string) => new RegExp(`\\b(?:this\\.)?msg\\s*(?:\\[\\s*['"]${escapeForRegExp(key)}['"]\\s*\\]|\\(\\s*['"]${escapeForRegExp(key)}['"]\\s*\\))`, 'u').test(pageCode);
+    if (pageCode && (!cites(successKey) || !cites(errorKey))) {
       errors.push(`generated page does not render textual mutation feedback: ${actionId}`);
     }
   }
 
   return errors.map(error => pageId ? `${pageId}: ${error}` : error);
+}
+
+/** Shared-v4 has no prescribed feedback keys: accept equivalent rendering bound to this action. */
+function rendersStructuralMutationFeedback(action: Record<string, unknown>, states: Map<string, Record<string, unknown>>, code: string): boolean {
+  const member = (key: unknown): string => {
+    const state = states.get(stringValue(key));
+    return stringValue(state?.memberName) || stringValue(state?.name);
+  };
+  const status = member(action.statusStateKey);
+  const error = member(action.errorStateKey);
+  if (!status || !error) return false;
+  for (const method of code.matchAll(/^[ \t]*(?:(?:public|private|protected|override|async)\s+)*([A-Za-z_$][\w$]*)\s*(?:<[^>{}]+>)?\s*\([^)]*\)\s*(?::\s*[^{]+)?\{/gmu)) {
+    const body = sliceGeneratedMethodBody(code, method[1]);
+    if (!body) continue;
+    const references = (property: string): string => {
+      const direct = `this\\.${escapeForRegExp(property)}\\b`;
+      const aliases = [...body.matchAll(new RegExp(`\\bconst\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${direct}\\s*;`, 'gu'))].map(match => escapeForRegExp(match[1]));
+      return `(?:${[direct, ...aliases.map(alias => `${alias}\\b`)].join('|')})`;
+    };
+    const statusRef = references(status);
+    const errorRef = references(error);
+    const branch = (condition: string): string => new RegExp(`(?:${condition}\\s*\\?|if\\s*\\(\\s*${condition}\\s*\\)\\s*\\{\\s*return)\\s*html\x60([^\x60]*)\x60`, 'u').exec(body)?.[1] || '';
+    const successBranch = branch(`${statusRef}\\s*===\\s*['"]success['"]`);
+    const errorBranch = branch(`(?:${errorRef}|${statusRef}\\s*===\\s*['"]error['"])`);
+    if (/\bthis\.msg\s*(?:\(\s*['"][^'"]+['"]\s*\)|\[\s*['"][^'"]+['"]\s*\]|\.[A-Za-z_$][\w$]*)/u.test(successBranch) && new RegExp(`${errorRef}\\s*\\??\\.message\\b`, 'u').test(errorBranch)) return true;
+  }
+  return false;
 }
 
 /**
@@ -953,10 +1018,12 @@ export function collectPageTemplateHygieneIssues(pageCode: string): string[] {
   // TS2339 and the shared keys they reference are unreachable. Caught here it costs no round: it is
   // named in the same loop that saved the file, instead of arriving as a compiler diagnostic that says
   // nothing about the cause.
-  if (/\bthis\.msg\b/u.test(pageCode) && !/\bget\s+msg\s*\(/u.test(pageCode)) {
+  const ownsMessageAccessor = /\bget\s+msg\s*\(/u.test(pageCode)
+    || /\bmsg\s*(?:<[^>{}]+>)?\s*\(\s*[A-Za-z_$][\w$]*\s*:\s*[^)]+\)\s*:\s*[^{]+\{/u.test(pageCode);
+  if (/\bthis\.msg\b/u.test(pageCode) && !ownsMessageAccessor) {
     // The remedy differs by artifact, and this gate also runs on organisms: an organism is a plain
     // function taking `host`, so telling it to add a getter would send the repair the wrong way.
-    issues.push(/^export\s+class\s/mu.test(pageCode)
+    issues.push(/\bclass\s+[\w$]+\s+extends\b/u.test(pageCode)
       ? '`this.msg` is used but this file defines no `get msg()`: the i18n block of the skeleton (/// **collab_i18n_start** … the messages consts … `protected get msg()`) was deleted — the shared base class does NOT provide `msg`. Restore the block with the keys this render references.'
       : '`this.msg` is used in a render FUNCTION, which has no `this`: an organism reads its own catalog — `const msg = o<N>Messages[host.getMessageKey(o<N>Messages)] || o<N>Fallback` — and takes everything else from `host`.');
   }
@@ -1688,7 +1755,7 @@ ${skills}`;
  *        writing from scratch — see cfePageSkeleton. The imports, the i18n block for every locale and the
  *        language-cached `msg` getter come pre-written, so the model stops re-deriving them (and stops
  *        getting them wrong: relative imports, prefixed DTO names, `nothing` without its import).
- *        Omitted on a repair round: there the file on disk already IS the skeleton, filled in.
+ *        On repair it is a mechanical reference; the current file remains the implementation to fix.
  * @param sharedTemplate l2_shared LLM fallback. Full scaffold (start from / keep these members) or
  *        the deterministic scenary block when the scaffold bailed. Travels on repair too — the
  *        current file is in the repair hint; this is what the four scenary members MUST look like.
@@ -1699,7 +1766,7 @@ export function buildHumanPrompt(
   outputPath: string,
   repairHint?: string,
   skeleton?: string,
-  sharedTemplate?: { code: string; mode: 'scaffold' | 'scenary-block' },
+  sharedTemplate?: { code: string; mode: 'scaffold' | 'scenary-block' | 'public-reference' },
 ): string {
   const lines = typeof data === 'string'
     ? ['## Definition', '', data, '']
@@ -1708,19 +1775,29 @@ export function buildHumanPrompt(
     lines.push('## Context files (dependsFiles)', '');
     for (const c of contextSections) lines.push(c, '');
   }
+  if (isRecord(data) && Array.isArray(data.states) && Array.isArray(data.actions)) {
+    const names = sharedPublicNames(data);
+    lines.push('## Canonical public API and mutation errors', '',
+      'Copy these public identifiers byte-for-byte in declarations, reads, setters and state maps; never retype or shorten encoded suffixes:',
+      names.join('\n'), '',
+      'Mutation feedback helpers that always return an error object must return NonNullable<ErrorState>, not the nullable state type.',
+      "Read the envelope using `error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'` before using `error.message`; preserve code/details. Use the declared i18n error key as fallback. Guard nullable feedback with `feedback?.message ?? fallback`, never `feedback.message` without narrowing.", '');
+  }
   if (skeleton) {
     lines.push(
-      '## Skeleton — complete this file', '',
-      'Return THIS file with every `/* to implement */` replaced by your code, and everything else',
+      repairHint ? '## Skeleton — mechanical reference for repair' : '## Skeleton — complete this file', '',
+      repairHint ? 'Repair the current file below. Restore missing mechanical sections from this reference; preserve its implemented render methods.' : 'Return THIS file with every `/* to implement */` replaced by your code, and everything else',
       'unchanged: the header, the imports, the i18n block structure, the class and tag names, and the',
       '`msg` getter. Do not rewrite them and do not add a second i18n block.', '',
-      'The i18n markers are yours too: YOU decide which keys exist. Reference the shared text you need',
+      'Keep both marker lines exactly, including the closing **. Add keys inside the catalogues. Reference the text you need',
       '(never inline it) and add the copy you invent, with short keys — in EVERY locale below.', '',
       '```typescript', skeleton, '```', '',
     );
   }
   if (sharedTemplate) {
-    if (sharedTemplate.mode === 'scaffold') {
+    if (sharedTemplate.mode === 'public-reference') {
+      lines.push('## Inherited shared public API reference', '', 'This is the inherited shared source, not the page to generate. Copy public identifiers exactly when referencing them; do not copy the shared implementation into the page.', '', '```typescript', sharedTemplate.code, '```', '');
+    } else if (sharedTemplate.mode === 'scaffold') {
       lines.push(
         repairHint
           ? '## Shared scaffold (reference — these members must survive the repair)'
@@ -2327,19 +2404,63 @@ export function applyHeader(outputPath: string, code: string): string {
  * The model still owns the implementation; it cannot choose a different shared import extension
  * or base class name because both are already fixed by the page/shared definitions.
  */
-export function normalizeGeneratedCode(item: PipelineItem, data: unknown, code: string): string {
+function sharedPublicNames(data: Record<string, unknown>): string[] {
+  return [...new Set([
+    ...arrayRecords(data.states).map(state => stringValue(state.memberName) || stringValue(state.name)),
+    ...arrayRecords(data.actions).flatMap(action => [stringValue(action.methodName), stringValue(action.handlerName)]),
+  ].filter(name => /^[A-Za-z_$][\w$]*$/u.test(name)))];
+}
+
+function normalizeSharedPublicNames(data: Record<string, unknown>, code: string): string {
+  return normalizeEncodedPublicNames(sharedPublicNames(data), code);
+}
+
+function normalizeEncodedPublicNames(names: string[], code: string): string {
+  const canonical = new Set(names);
+  // Encoded collision suffixes are opaque identities. Repair only inserted/deleted zero padding,
+  // and only when one canonical identity matches. Never fuzzy-match ordinary API names.
+  const signature = (name: string): string => name.replace(/0+/gu, '0');
+  return code.replace(/\b[A-Za-z_$][\w$]*\b/gu, token => {
+    if (canonical.has(token) || !/X[0-9a-f]{24,}$/u.test(token)) return token;
+    const candidates = names.filter(name => /X[0-9a-f]{24,}$/u.test(name) && signature(name) === signature(token));
+    return candidates.length === 1 ? candidates[0] : token;
+  });
+}
+
+export function normalizeGeneratedCode(item: PipelineItem, data: unknown, code: string, mechanicalReference?: string, sharedTemplate?: string): string {
   if (item.type === 'l2_shared') {
     if (!isRecord(data)) return code;
+    code = normalizeSharedPublicNames(data, code);
+    // A response error remains the fallback even when a model incorrectly typed its helper nullable.
+    // Limit this mechanical correction to local feedback derived directly from that error argument.
+    code = code.replace(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*this\.[A-Za-z_$][\w$]*\(\s*error\b[^;]*;\s*[^;]*;/gu, (statements, feedback: string) =>
+      statements.replace(new RegExp(`\\b${escapeForRegExp(feedback)}\\.message\\b`, 'gu'), `(error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' ? error.message : ${feedback}?.message ?? String(error))`));
     const baseClassName = typeof data.baseClassName === 'string' ? data.baseClassName : '';
     if (!baseClassName) return code;
     return code.replace(/export\s+class\s+[A-Za-z_$][A-Za-z0-9_$]*\s+extends\s+CollabLitElement\b/, `export class ${baseClassName} extends CollabLitElement`);
   }
   if (item.type !== 'l2_page') return code;
+  if (mechanicalReference || sharedTemplate) {
+    const names = [...new Set([mechanicalReference, sharedTemplate].filter(Boolean).join('\n').match(/\b[A-Za-z_$][\w$]*X[0-9a-f]{24,}\b/gu) ?? [])];
+    code = normalizeEncodedPublicNames(names, code);
+  }
 
   // page11 definition is prose — still fix the shared import extension; the class name comes from
   // the skeleton / shared defs, so a missing baseClassName here is not a skip of the .js rewrite.
   const baseClassName = isRecord(data) && typeof data.baseClassName === 'string' ? data.baseClassName : '';
+  const expectedTag = expectedPageCustomElementTag(item.outputPath);
+  const project = Number(/^\/?_(\d+)_\//u.exec(item.outputPath)?.[1] || 0);
+  const refs = (item.dependsFiles ?? []).map(ref => resolveProjectRelativeRef(ref, project))
+    .flatMap(ref => [ref, sharedTsRefOfDtsArtifact(ref)].filter((value): value is string => !!value));
   return code
+    .replace(/^([ \t]*\/\/\/\s*\*\*collab_i18n_(?:start|end))(?:\*\*)?\s*$/gmu, '$1**')
+    .replace(/@customElement\s*\(\s*(?:['"][^'"]*['"]|[A-Za-z_$][\w$]*)\s*\)/gu, match => expectedTag ? `@customElement('${expectedTag}')` : match)
+    .replace(/(from\s+['"])([^'"]+)(['"])/gu, (match, start, specifier, end) => {
+      if (!/\/(?:shared|contracts)\//u.test(specifier)) return match;
+      const basename = specifier.split('/').pop().replace(/\.(?:ts|js)$/u, '');
+      const matches = [...new Set(refs.filter(ref => ref.split('/').pop()?.replace(/\.(?:ts|js)$/u, '') === basename && /\/(?:shared|contracts)\//u.test(ref)).map(ref => `/${ref.replace(/^\/+/, '').replace(/\.(?:ts|js)$/u, '.js')}`))];
+      return matches.length === 1 ? `${start}${matches[0]}${end}` : match;
+    })
     .replace(/(from\s+['"][^'"]+\/web\/shared\/[^'"]+)\.ts(['"])/g, '$1.js$2')
     .replace(/(import\s*\{\s*)[A-Za-z_$][A-Za-z0-9_$]*(\s*\}\s*from\s*['"][^'"]+\/web\/shared\/[^'"]+\.js['"])/g, (_match, start, end) => baseClassName ? `${start}${baseClassName}${end}` : _match);
 }
