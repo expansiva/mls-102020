@@ -104,6 +104,10 @@ test('renamed receipt scan reopens changed output and failed verify even with cu
   assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 0);
   finding = { outputPath, errorCount: 1, firstError: 'repairable current error', severity: 'repairable' };
   assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
+  g.mls.stor.files.summary.getContent = async () => JSON.stringify({ allClear: false, final: true, broken: [], passed: [{ outputPath }], declared: [{ outputPath, errorCount: 1, firstError: 'accepted quality declaration', severity: 'declared' }] });
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 0);
+  g.mls.stor.files.summary.getContent = async () => JSON.stringify({ allClear: false, final: true, broken: [{ outputPath, errorCount: 1, firstError: 'blocking compile error', severity: 'blocked' }], declared: [] });
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
 });
 
 /** The real shape of the 102050: 4 pages x 3 page folders + 4 shared = 16 .defs.ts of level 2. */

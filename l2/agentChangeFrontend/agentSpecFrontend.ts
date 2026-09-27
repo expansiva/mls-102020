@@ -271,7 +271,9 @@ export async function planSpecFrontendWithReceipts(prompt: string): Promise<Spec
     try {
       const verdict = JSON.parse(String(await file.getContent()));
       if (verdict.allClear !== false) continue;
-      for (const entry of [...(verdict.broken ?? []), ...(verdict.declared ?? [])]) {
+      // Final declared findings are accepted evidence, not unfinished repairs.
+      // Reopening them would make a successful run permanently non-idempotent.
+      for (const entry of (verdict.broken ?? [])) {
         const hasErrors = Number(entry.errorCount) > 0 || (Array.isArray(entry.errors) && entry.errors.length > 0);
         if (typeof entry.outputPath === 'string' && entry.severity !== 'warning' && entry.severity !== 'warnings'
           && (hasErrors || entry.severity === 'blocked')) failedOutputs.add(entry.outputPath);
