@@ -13,9 +13,10 @@ import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/cont
 import { D2_SHARED_VERSION, type D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { D2_PAGES_JUDGMENT_VERSION, buildD2PagePipeline, deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { buildD2PageSkillsContext, d2PageUnitContextHash, type D2PageSkillPort, type D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
-import { gateD2Pages, parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
+import { gateD2Pages as productionGate, normalizeD2PageCoverage, parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
 import { assertD2RenderedPage, parseD2RenderedPage, renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { unwrapD2PagesToolPayload } from '/_102020_/l2/agentDefsL2/steps/pages-page/agentD2PagesPage.js';
+import { pageTemplate } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = path.resolve(HERE, '..', 'input20', 'fixtures');
@@ -29,7 +30,7 @@ void test('current five-page fixture emits 10 defs/items and five shared refs wi
   assert.equal(new Set(emitted.map(item => item.pipeline[0].id)).size, 10);
   assert.equal(new Set(emitted.map(item => item.pipeline[0].dependsOn[0])).size, 5);
   assert.ok(emitted.every(item => item.pipeline[0].type === 'l2_page' && !('agent' in item.pipeline[0])));
-  assert.ok(emitted.every(item => item.pipeline[0].dependsFiles.join('\0') === `l2/fixture/web/shared/${item.pipeline[0].id.split('__')[0]}.ts\0l2/designSystem.ts`));
+  assert.ok(emitted.every(item => item.pipeline[0].dependsFiles.join('\0') === `l2/fixture/web/shared/${item.pipeline[0].id.split('__')[0]}.ts\0l2/designSystem.ts\0l2/fixture/web/contracts/${item.pipeline[0].id.split('__')[0]}.defs.ts\0_102029_.d.ts\0_102020_/l2/molecules/ml-scenary.ts`));
   assert.ok(emitted.every(item => item.pipeline[0].outputPath === item.pipeline[0].defPath.replace('.defs.ts', '.ts')));
   assert.ok(emitted.every(item => !item.pipeline[0].id.includes('_O') && item.pipeline[0].defPath.includes('/page11/')));
   for (const pageId of pages) {
@@ -41,14 +42,14 @@ void test('current five-page fixture emits 10 defs/items and five shared refs wi
 });
 
 void test('page pipeline keeps project design system ordered and rejects legacy or malformed context', () => {
-  const item = buildD2PagePipeline('otherModule', 'records', 'desktop', 'bespoke', ['skill']);
-  assert.deepEqual(item.dependsFiles, ['l2/otherModule/web/shared/records.ts', 'l2/designSystem.ts']);
+  const page = emit('records')[0]; const item = page.pipeline[0];
+  assert.deepEqual(item.dependsFiles, ['l2/fixture/web/shared/records.ts', 'l2/designSystem.ts', 'l2/fixture/web/contracts/records.defs.ts', '_102029_.d.ts', '_102020_/l2/molecules/ml-scenary.ts']);
   assert.equal(Object.hasOwn(item, 'agent'), false);
-  const source = renderD2Page({ device: 'desktop', descriptions: [{ organismId: 'organism.content.1', kind: 'content', description: 'Content.', contentRef: 'base', capabilityRefs: [], moleculeRecommendations: [] }], pipeline: [item] });
+  const source = renderD2Page(page);
   assert.doesNotThrow(() => assertD2RenderedPage(source));
   const legacy = source.replace(/,\n\s*"l2\/designSystem\.ts"/u, '');
   assert.throws(() => assertD2RenderedPage(legacy), /D2_PAGES_PIPELINE_CONTEXT/);
-  assert.throws(() => assertD2RenderedPage(renderD2Page({ device: 'desktop', descriptions: parseD2RenderedPage(source).descriptions, pipeline: [{ ...item, dependsFiles: [...item.dependsFiles].reverse() }] })), /D2_PAGES_PIPELINE_CONTEXT/);
+  assert.throws(() => assertD2RenderedPage(renderD2Page({ ...page, pipeline: [{ ...item, dependsFiles: [...item.dependsFiles].reverse() }] })), /D2_PAGES_PIPELINE_CONTEXT/);
 });
 
 void test('historical seven-page fixture remains a 14-def regression', () => {
@@ -70,11 +71,49 @@ void test('closed gate rejects HTML/layout, invented method/group, missing devic
   assert.throws(() => gated(page, shared, { ...good, presentations: good.presentations.slice(0, 1) }), /D2_PAGES_DEVICE_MISSING/);
   const mutateDescription = (device: 'desktop' | 'mobile', patch: Partial<D2PageDescription>) => ({ ...good, presentations: good.presentations.map(item => item.device === device ? { ...item, descriptions: item.descriptions.map((description, index) => index ? description : { ...description, ...patch }) } : item) });
   assert.throws(() => gated(page, shared, mutateDescription('desktop', { description: '<section>two-column grid</section>' })), /D2_PAGES_LAYOUT_PRESCRIPTION/);
-  assert.throws(() => gated(page, shared, mutateDescription('desktop', { capabilityRefs: ['inventMethod'] })), /D2_PAGES_CAPABILITY_UNKNOWN/);
+  assert.throws(() => productionGate('fixture', page, shared, mutateDescription('desktop', { capabilityRefs: ['inventMethod'] }), GROUPS, PAGE_SKILLS, CANDIDATES, template(good.category.categoryRef), new Map()), /D2_PAGES_CAPABILITY_UNKNOWN/);
   assert.throws(() => gated(page, shared, mutateDescription('desktop', { moleculeRecommendations: [{ groupId: 'groupMissing', candidates: ['missing'], reason: 'Useful.' }] })), /D2_PAGES_GROUP_UNKNOWN/);
   assert.throws(() => gated(page, { ...shared, dataBindings: [] }, mutateDescription('desktop', { description: 'Show a statistics dashboard total.' })), /D2_PAGES_DATA_CLAIM_UNSUPPORTED/);
   assert.throws(() => parseD2PagesJudgment({ ...good, layout: {} }), /D2_PAGES_SCHEMA_UNKNOWN_KEY/);
-  assert.throws(() => parseD2PagesJudgment({ schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId: 'records', presentations: [{ device: 'desktop' }] }), /D2_PAGES_SCHEMA_TRUNCATED/);
+  assert.throws(() => parseD2PagesJudgment({ schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId: 'records', pageIntent: 'Review records.', presentations: [{ device: 'desktop' }] }), /D2_PAGES_SCHEMA_TRUNCATED/);
+});
+
+void test('renamed coverage is restored by organism identity while unknown and duplicate organisms remain visible', () => {
+  const page = selected('renamedRecords', [{ id: 'record.second', kind: 'detail' }, { id: 'record.first', kind: 'list' }]);
+  const shared = sharedFor(page.pageId, ['listRecord']);
+  shared.coverage = [
+    { organismId: 'record.first', sourceIndex: 1, kind: 'list', contentRef: 'recordsSurface', content: 'list', scenarioRefs: ['base'], capabilityRefs: ['listRecord'], outputFieldsByCapability: { listRecord: [{ actionId: 'listRecord', outputTypeRef: 'ListRecordOutput', path: 'Record.id' }] }, source: {} },
+    { organismId: 'record.second', sourceIndex: 0, kind: 'detail', contentRef: 'recordsSurface', content: 'detail', scenarioRefs: ['base'], capabilityRefs: ['listRecord'], outputFieldsByCapability: { listRecord: [{ actionId: 'listRecord', outputTypeRef: 'ListRecordOutput', path: 'Record.id' }] }, source: {} },
+  ];
+  const value = judgment(page.pageId, ['listRecord'], 'entityRecordManagement', page);
+  for (const presentation of value.presentations) presentation.descriptions = presentation.descriptions.map(item => ({ ...item, contentRef: 'content.invented', capabilityRefs: ['inventedCapability'], outputFieldRefs: [] }));
+  const normalized = normalizeD2PageCoverage(parseD2PagesJudgment(value), shared);
+  assert.deepEqual(normalized.presentations[0].descriptions.map(item => [item.organismId, item.contentRef, item.capabilityRefs, item.outputFieldRefs]), [
+    ['record.second', 'recordsSurface', ['listRecord'], []], ['record.first', 'recordsSurface', ['listRecord'], []],
+  ]);
+  const validValue = { ...value, presentations: value.presentations.map(item => ({ ...item, descriptions: item.descriptions.map(description => ({ ...description, outputFieldRefs: ['ListRecordOutput.Record.id'] })) })) };
+  assert.deepEqual(gated(page, shared, validValue)[0].descriptions.map(item => item.organismId), ['record.second', 'record.first']);
+  assert.deepEqual(gated(page, shared, validValue)[0].descriptions.map(item => item.contentRef), ['recordsSurface', 'recordsSurface']);
+  assert.ok(!shared.scenaries.some(item => item.value === 'recordsSurface'), 'coverage contentRef is independent of scenario values');
+  const unknown = structuredClone(value); unknown.presentations[0].descriptions[0].organismId = 'unknown.organism';
+  assert.throws(() => productionGate('fixture', page, shared, normalizeD2PageCoverage(unknown, shared), GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_ORGANISM_UNKNOWN/);
+  const duplicateCoverage = { ...shared, coverage: [...shared.coverage, structuredClone(shared.coverage[0])] };
+  assert.throws(() => normalizeD2PageCoverage(parseD2PagesJudgment(value), duplicateCoverage), /D2_PAGES_SHARED_COVERAGE_ID_INVALID/);
+  const duplicateDescription = structuredClone(value); duplicateDescription.presentations[0].descriptions[1].organismId = 'record.second';
+  assert.throws(() => productionGate('fixture', page, shared, normalizeD2PageCoverage(duplicateDescription, shared), GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_ORGANISM_DUPLICATE/);
+});
+
+void test('output citations are limited to the selected capability output surface', () => {
+  const page = selected('renamedRecords', [{ kind: 'list' }]);
+  const shared = sharedFor(page.pageId, ['listRecords']);
+  shared.coverage = [{ organismId: 'organism.list.1', sourceIndex: 0, kind: 'list', contentRef: 'base', content: 'records', scenarioRefs: ['base'], capabilityRefs: ['listRecords'], outputFieldsByCapability: { listRecords: [{ actionId: 'listRecords', outputTypeRef: 'ListRecordsOutput', path: 'Record.id' }] }, source: {} }];
+  const value = judgment(page.pageId, ['listRecords'], 'bespoke', page);
+  for (const presentation of value.presentations) { presentation.descriptions[0].capabilityRefs = ['listRecords']; presentation.descriptions[0].outputFieldRefs = ['ListRecordsOutput.Record.id']; }
+  assert.doesNotThrow(() => productionGate('fixture', page, shared, value, GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()));
+  const unsupported = structuredClone(value); unsupported.presentations[0].descriptions[0].outputFieldRefs = ['ListRecordsOutput.Record.phone'];
+  assert.throws(() => productionGate('fixture', page, shared, unsupported, GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_OUTPUT_FIELD_OUTSIDE_CAPABILITY/);
+  const absent = structuredClone(value); absent.presentations[1].descriptions[0].outputFieldRefs = [];
+  assert.throws(() => productionGate('fixture', page, shared, absent, GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_OUTPUT_FIELD_EVIDENCE_MISSING/);
 });
 
 void test('canonical catalog resolves 33 category skills plus bespoke and reads both mandatory skills', async () => {
@@ -172,8 +211,8 @@ void test('repeated kinds and static content get stable ids while nominal organi
   assert.throws(() => gated(page, shared, patch(base.slice(1))), /D2_PAGES_ORGANISM_MISSING/);
   assert.throws(() => gated(page, shared, patch([...base, base[0]])), /D2_PAGES_ORGANISM_DUPLICATE/);
   assert.throws(() => gated(page, shared, patch(base.map((item, index) => index ? item : { ...item, organismId: 'invented' }))), /D2_PAGES_ORGANISM_UNKNOWN/);
-  assert.throws(() => gated(page, shared, patch(base.map((item, index) => index ? item : { ...item, contentRef: '' }))), /D2_PAGES_CONTENT_REF_MISSING/);
-  assert.throws(() => gated(page, shared, patch(base.map((item, index) => index ? item : { ...item, contentRef: 'invented' }))), /D2_PAGES_CONTENT_REF_UNKNOWN/);
+  assert.throws(() => productionGate('fixture', page, shared, patch(base.map((item, index) => index ? item : { ...item, contentRef: '' })), GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_CONTENT_REF_MISSING/);
+  assert.throws(() => productionGate('fixture', page, shared, patch(base.map((item, index) => index ? item : { ...item, contentRef: 'invented' })), GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_CONTENT_REF_UNKNOWN/);
   assert.throws(() => gated(page, { ...shared, states: shared.states.filter(item => item.kind !== 'viewState') }, value), /D2_PAGES_SCENARIO_STATE_INCOMPATIBLE/);
 });
 
@@ -197,7 +236,7 @@ void test('molecule recommendations are organism-scoped, useful and capability-c
   for (const presentation of value.presentations) presentation.descriptions = presentation.descriptions.map((item, index) => ({
     ...item,
     contentRef: index ? 'registrarAtendimento' : 'base',
-    capabilityRefs: index ? ['registrarAtendimento'] : ['listConsulta'],
+    capabilityRefs: index ? ['registrarAtendimento'] : ['listConsulta'], outputFieldRefs: [],
     moleculeRecommendations: index === 0 ? [{ groupId: 'groupViewData', candidates: ['groupviewdata--ml-table'], reason: 'Shows the declared query result.' }]
       : index === 1 ? [{ groupId: 'groupEnterDate', candidates: ['groupenterdate--ml-date-picker'], reason: 'Edits command input.' }]
       : [{ groupId: 'groupTriggerAction', candidates: ['grouptriggeraction--ml-button'], reason: 'Runs the declared command.' }],
@@ -241,7 +280,7 @@ void test('minimal consumer and TypeScript accept quotes, backticks and multilin
   const folder = mkdtempSync(path.join(tmpdir(), 'd2-pages-'));
   try {
     rendered.forEach((item, index) => { const source = renderD2Page(item); assertD2RenderedPage(source); assert.equal(parseD2RenderedPage(source).pipeline.length, 1); writeFileSync(path.join(folder, `page${index}.defs.ts`), source); });
-    writeFileSync(path.join(folder, 'consumer.ts'), "import { descriptions, pipeline } from './page0.defs.js';\nconst organismId: string = descriptions[0].organismId; const contentRef: string = descriptions[0].contentRef; const id: string = pipeline[0].id; void organismId; void contentRef; void id;\n");
+    writeFileSync(path.join(folder, 'consumer.ts'), "import { definition, pipeline } from './page0.defs.js';\nconst organismId: string = pipeline[0].coverage[0].organismId; const contentRef: string = pipeline[0].coverage[0].contentRef; const prose: string = definition; void prose; const id: string = pipeline[0].id; void organismId; void contentRef; void id;\n");
     const tsc = path.resolve(HERE, '../../../../..', 'node_modules', '.bin', 'tsc');
     const result = spawnSync(tsc, ['--noEmit', '--strict', '--skipLibCheck', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', 'consumer.ts', 'page0.defs.ts', 'page1.defs.ts'], { cwd: folder, encoding: 'utf8' });
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
@@ -281,19 +320,64 @@ void test('unamended HEAD transition payload remains an upstream contracts diagn
 });
 
 function emit(pageId: string) { return gated(selected(pageId), sharedFor(pageId, capabilities(pageId)), judgment(pageId, capabilities(pageId))); }
+// Older isolated fixtures specify their approved coverage explicitly at the gate boundary.
+function gateD2Pages(moduleName: string, page: D2SelectedPage, shared: D2SharedDefinition, value: D2PagesJudgment, groups: Map<string, string[]>, skills: D2PageSkillsContext, candidates: Map<string, Set<string>>) {
+  shared.coverage ??= value.presentations[0].descriptions.map((item, sourceIndex) => ({ organismId: item.organismId, sourceIndex, kind: item.kind, contentRef: item.contentRef, content: item.description, scenarioRefs: [item.contentRef], capabilityRefs: [...item.capabilityRefs], outputFieldsByCapability: Object.fromEntries(item.capabilityRefs.map(capability => [capability, []])), source: page.organisms[sourceIndex] }));
+  return productionGate(moduleName, page, shared, value, groups, skills, candidates, template(value.category.categoryRef), new Map([...groups.keys()].map(groupId => [groupId, { indexReference: groups.get(groupId)![0], indexVia: 'fixture', indexSha256: `sha256:${'1'.repeat(64)}`, usageContractReference: groups.get(groupId)![1], usageContractVia: 'fixture', usageContractSha256: `sha256:${'2'.repeat(64)}` }])));
+}
+function template(categoryRef: string) { return { categoryRef, targetPage: 'page11' as const, experiencePage: null, experienceId: null, styleId: null, layoutId: null, reason: 'Fixture guidance.', requirementsMet: [], digest: `sha256:${'3'.repeat(64)}`, sources: [] }; }
+
+void test('productive template adapter yields exact pipeline receipt and selected Markdown source hash', async () => {
+  const categoryRef = 'genericCollection'; const catalogRef = '_102020_/l4/collabux/templates/categoryList.json'; const mdRef = `_102020_/l4/collabux/templates/${categoryRef}/page21.md`;
+  const contents = new Map([[catalogRef, JSON.stringify({ categories: [{ categoryId: categoryRef, experiences: { page21: 'recordCollection' } }] })], [mdRef, 'Show the approved collection using accessible molecule APIs.']]);
+  const port = { discover: async () => ({ categoryCatalog: catalogRef, files: [{ reference: mdRef, role: 'category' as const, categoryRef }] }), readText: async (ref: string) => contents.get(ref) ?? null };
+  const selectedTemplate = await pageTemplate(sharedFor('renamedCatalog', ['loadRecords']), categoryRef, port);
+  assert.equal(Object.hasOwn(selectedTemplate, 'context'), false);
+  assert.equal(selectedTemplate.experienceId, 'recordCollection');
+  assert.ok(selectedTemplate.sources.every(source => /^sha256:[a-f0-9]{64}$/u.test(source.sha256)));
+  const page = emit('records')[0]; page.templateSelection = selectedTemplate; page.pipeline = [buildD2PagePipeline('fixture', 'records', 'desktop', categoryRef, ['skill', ...selectedTemplate.sources.map(source => source.reference)], selectedTemplate, page.coverage)];
+  assert.doesNotThrow(() => assertD2RenderedPage(renderD2Page(page)));
+  const prose = parseD2RenderedPage(renderD2Page(page)).definition;
+  for (const source of selectedTemplate.sources) assert.equal(prose.split(`${source.reference} ${source.sha256}`).length - 1, 1);
+  assert.doesNotMatch(prose, /sha256:sha256:/u);
+  contents.set(mdRef, 'Changed accessible guidance.');
+  assert.notEqual((await pageTemplate(sharedFor('renamedCatalog', ['loadRecords']), categoryRef, port)).digest, selectedTemplate.digest);
+});
+
+void test('renamed page keeps derived content and rejects omitted or cross-organism capabilities independent of prose', () => {
+  const page = selected('renamedInventory', [{ kind: 'list', text: 'Browse authorized records.' }, { kind: 'actions', text: 'Choose a record.' }]);
+  const shared = sharedFor(page.pageId, ['loadRecords', 'selectRecord']);
+  const value = judgment(page.pageId, ['loadRecords', 'selectRecord'], 'bespoke', page);
+  gateD2Pages('genericWorkspace', page, shared, value, GROUPS, PAGE_SKILLS, CANDIDATES);
+  const omitted = structuredClone(value); omitted.presentations.forEach(presentation => { presentation.descriptions[1].capabilityRefs = ['loadRecords']; });
+  assert.throws(() => gateD2Pages('genericWorkspace', page, shared, omitted, GROUPS, PAGE_SKILLS, CANDIDATES), /D2_PAGES_CAPABILITY_MISSING/);
+  const missingContent = structuredClone(value); missingContent.presentations[0].descriptions[0].contentRef = 'invented';
+  assert.throws(() => gateD2Pages('genericWorkspace', page, shared, missingContent, GROUPS, PAGE_SKILLS, CANDIDATES), /D2_PAGES_CONTENT_REF_UNKNOWN/);
+  const pair = gateD2Pages('genericWorkspace', page, shared, value, GROUPS, PAGE_SKILLS, CANDIDATES);
+  pair[0].descriptions[0].description = 'Literal `code`, ${untrusted}, "quote", \\ and as const; remain text.';
+  const source = renderD2Page(pair[0]);
+  const parsed = parseD2RenderedPage(source);
+  assert.match(parsed.definition, /\$\{untrusted\}/u);
+  assert.equal(parsed.pipeline[0].coverage.length, 2);
+  assert.deepEqual(parsed.pipeline[0].coverage.map(item => item.contentRef), ['base', 'base']);
+  assert.match(parseD2RenderedPage(renderD2Page(pair[1])).definition, /390px.*360px.*430px/u);
+});
 function capabilities(pageId: string): string[] { return pageId.includes('profissional') && pageId.startsWith('consultas') ? ['listConsulta', 'registrarAtendimento'] : pageId.includes('recepcionista') && pageId.startsWith('consultas') ? ['listConsulta', 'confirmarConsulta'] : [`load${pascal(pageId)}`]; }
 function judgment(pageId: string, refs: string[], categoryRef = 'calendarScheduling', page = selected(pageId)): D2PagesJudgment {
   const organisms = deriveD2PageOrganisms(page); const describe = (device: 'Desktop' | 'Mobile') => organisms.map((organism, index) => ({
     organismId: organism.organismId, kind: organism.kind,
     description: `${business(pageId)} ${device} ${organism.intent || organism.kind} supports ${refs.join(',')}, keyboard use, loading, empty and error states.`,
-    contentRef: 'base', capabilityRefs: organism.staticContent ? [] : refs, moleculeRecommendations: [],
+    contentRef: 'base', capabilityRefs: organism.staticContent ? [] : refs, outputFieldRefs: [], moleculeRecommendations: [],
   }));
-  return { schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId, category: { categoryRef, reason: `The ${categoryRef} intent matches the declared capability.`, evidenceRefs: [refs[0]] }, presentations: [
+  return { schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId, pageIntent: business(pageId), category: { categoryRef, reason: `The ${categoryRef} intent matches the declared capability.`, evidenceRefs: [refs[0]] }, presentations: [
     { device: 'desktop', descriptions: describe('Desktop'), moleculeReason: 'No useful molecule correspondence is required by this fixture.' },
     { device: 'mobile', descriptions: describe('Mobile'), moleculeReason: 'No useful molecule correspondence is required by this fixture.' },
   ] };
 }
-function gated(page: D2SelectedPage, shared: D2SharedDefinition, value: D2PagesJudgment) { return gateD2Pages('fixture', page, shared, value, GROUPS, PAGE_SKILLS, CANDIDATES); }
+function gated(page: D2SelectedPage, shared: D2SharedDefinition, value: D2PagesJudgment) {
+  shared.coverage ??= value.presentations[0].descriptions.map((item, sourceIndex) => ({ organismId: item.organismId, sourceIndex, kind: item.kind, contentRef: item.contentRef, content: item.description, scenarioRefs: [item.contentRef], capabilityRefs: [...item.capabilityRefs], outputFieldsByCapability: Object.fromEntries(item.capabilityRefs.map(capability => [capability, []])), source: page.organisms[sourceIndex] }));
+  return gateD2Pages('fixture', page, shared, normalizeD2PageCoverage(value, shared), GROUPS, PAGE_SKILLS, CANDIDATES);
+}
 function pageSkillsFixture(): D2PageSkillsContext { const refs = ['calendarScheduling', 'entityRecordManagement', 'approvalWorkflow', 'bespoke']; const categories = refs.map(categoryRef => ({ categoryRef, name: categoryRef, meaning: categoryRef, skillReference: `_102020_/l2/agentDefsL2/skills/pageCategories/${categoryRef}.md` })); return { categories, context: '{}', catalogHash: 'catalog', contextHash: 'context', skillHashes: {} }; }
 function realPageSkillPort(root: string, overrides: Record<string, string> = {}): D2PageSkillPort { return { readText: async reference => { if (Object.prototype.hasOwnProperty.call(overrides, reference)) return overrides[reference]; const match = /^_(\d+)_\/(l[24])\/(.+)$/.exec(reference); if (!match) return null; try { return readFileSync(path.join(root, `mls-${match[1]}`, match[2], match[3]), 'utf8'); } catch { return null; } } }; }
 function business(pageId: string): string { if (pageId === 'consultas_profissional') return 'The professional can review each consultation and record attendance.'; if (pageId === 'consultas_recepcionista') return 'The receptionist completes the reception scheduling flow.'; return `The actor completes the ${pageId} task with accessible feedback.`; }
@@ -319,7 +403,7 @@ function currentContractSources(): D2ContractsSources {
   const backend = JSON.parse(readFileSync(path.join(input, 'backend.json'), 'utf8')) as Record<string, unknown>; const needs = JSON.parse(readFileSync(path.join(input, 'needs.json'), 'utf8')) as Record<string, unknown>;
   const entities: Record<string, Ns5OntologyAnyEntity> = {}; for (const name of readdirSync(path.join(head, 'ontology')).filter(name => name !== 'index.defs.ts')) { const entity = defs(path.join(head, 'ontology', name)); entities[String(entity.entityId)] = entity as unknown as Ns5OntologyAnyEntity; }
   const endpoints = rows(backend.endpoints); const usecases = rows(backend.usecases);
-  return { module: 'agendaClinica', entities, access: defs(path.join(input, 'access.defs.ts')), pages: rows(needs.pages).map(raw => { const pageId = String(raw.pageId); const pageEndpoints = endpoints.filter(item => item.page === pageId); const ids = new Set(pageEndpoints.map(item => item.usecaseRef)); return { pageId, actors: strings(raw.actors), endpoints: pageEndpoints, usecases: usecases.filter(item => ids.has(item.usecaseId)) }; }) };
+  return { module: 'agendaClinica', entities, access: defs(path.join(input, 'access.defs.ts')), pages: rows(needs.pages).map(raw => { const pageId = String(raw.pageId); const pageEndpoints = endpoints.filter(item => item.page === pageId); const ids = new Set(pageEndpoints.map(item => item.usecaseRef)); return { pageId, actors: strings(raw.actors), endpoints: pageEndpoints, usecases: usecases.filter(item => ids.has(item.usecaseId)), operationBindings: [] }; }) };
 }
 function defs(file: string): Record<string, unknown> { const value = parseNs4ClassicDefsSource<Record<string, unknown>>(readFileSync(file, 'utf8')); assert.ok(value); return value; }
 function rows(value: unknown): Array<Record<string, unknown>> { return Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Array<Record<string, unknown>> : []; }

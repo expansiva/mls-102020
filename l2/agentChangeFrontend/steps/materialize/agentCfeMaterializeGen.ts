@@ -59,6 +59,21 @@ import { ensureSharedScenaryMembers, generateSharedScaffold, sharedLlmFallbackTe
 import { buildPageSkeleton, markMissingOrganisms, organismFileRef, type PageOrganism } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSkeleton.js';
 import { buildSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
 import { cfePipelineTraceMlsPath, recordCfeDegradation } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
+import { buildCfeContextReceipt, cfeContextReceiptPath, cfeContextSourcesCurrent, readCfeContextSources, readCfeUsedApis, type CfeContextReceipt } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeReceipt.js';
+import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
+
+const pendingContextReceipts = new Map<string, CfeContextReceipt>();
+
+export async function persistConsumedContext(item: PipelineItem): Promise<void> {
+  const receipt = pendingContextReceipts.get(item.outputPath);
+  if (!receipt || !await cfeContextSourcesCurrent(receipt.sources, getContentByMlsPath)) throw new Error(`CFE_MATERIALIZATION_CONTEXT_CHANGED: ${item.outputPath}`);
+  const output = await getContentByMlsPath(item.outputPath);
+  if (!output) throw new Error(`CFE_MATERIALIZATION_OUTPUT_MISSING: ${item.outputPath}`);
+  receipt.usedApis = await readCfeUsedApis(output, Number(mls.actualProject || 0), getContentByMlsPath);
+  receipt.outputHash = await sha256Text(output);
+  if (!await saveArtifactTextByMlsPath(cfeContextReceiptPath(item.outputPath), `${JSON.stringify(receipt)}\n`)) throw new Error(`CFE_MATERIALIZATION_RECEIPT_WRITE_FAILED: ${item.outputPath}`);
+  pendingContextReceipts.delete(item.outputPath);
+}
 
 interface ToolOutput {
   code: string;
@@ -194,6 +209,7 @@ async function materializeSharedDeterministic(
     }
 
     await persistSharedDtsArtifact(pipelineItem.outputPath);
+    await persistConsumedContext(pipelineItem);
     // ONLY on the success path. The contract preloaded above is this item's own (one per shared) and has
     // no reader once the compiles are done — but a `return null` above falls through to the LLM path IN
     // THIS SAME HOOK, whose compile (afterPromptStep) resolves the shared against that very contract
@@ -307,6 +323,7 @@ async function afterPromptStep(
     // Persist the compiled .d.ts of a freshly materialized shared so downstream page items (and
     // the CLI runtime) read the same authoritative context from disk. Best-effort: never blocks.
     if (pipelineItem.type === 'l2_shared') await persistSharedDtsArtifact(pipelineItem.outputPath);
+    await persistConsumedContext(pipelineItem);
 
     const completedNotes = [
       ...(contextNote ? [contextNote] : []),
@@ -557,7 +574,7 @@ function moduleOfMlsPath(mlsPath: string): string {
   return moduleName === 'trace' ? '' : moduleName;
 }
 
-async function buildGenContext(defPath: string, itemId?: string): Promise<{
+export async function buildGenContext(defPath: string, itemId?: string): Promise<{
   pipelineItem: PipelineItem;
   siblings: PipelineItem[];
   definitionData: unknown;
@@ -573,8 +590,12 @@ async function buildGenContext(defPath: string, itemId?: string): Promise<{
   const pipelineItem = (itemId ? parsed.items.find(candidate => candidate.id === itemId) : null) ?? parsed.item;
   if (!pipelineItem) throw new Error(`[agentCfeMaterializeGen] pipeline item not found: ${itemId ?? '(first)'} in ${defPath}`);
 
+  const sources = await readCfeContextSources(defPath, pipelineItem, Number(mls.actualProject || 0), getContentByMlsPath);
+  if (sources[0].sha256 !== await sha256Text(defsContent)) throw new Error(`CFE_MATERIALIZATION_CONTEXT_CHANGED: ${defPath}`);
   const skillSections = await readSections(pipelineItem.skills ?? [], 'skill');
   const contextSections = await readContextSections(pipelineItem);
+  if (!await cfeContextSourcesCurrent(sources, getContentByMlsPath)) throw new Error(`CFE_MATERIALIZATION_CONTEXT_CHANGED: ${defPath}`);
+  pendingContextReceipts.set(pipelineItem.outputPath, await buildCfeContextReceipt(defPath, pipelineItem, sources, skillSections, contextSections, ''));
   return { pipelineItem, siblings: parsed.items, definitionData: parsed.data, skillSections, contextSections };
 }
 
@@ -618,9 +639,9 @@ async function readContextSections(pipelineItem: PipelineItem): Promise<string[]
           sections.push(buildSharedDtsSection(sharedTsPath, resolved.dts));
         } else {
           const raw = await getContentByMlsPath(sharedTsPath);
-          if (!raw) continue;
+          requireDeclaredDependency(sharedTsPath, raw, Number(mls.actualProject || 0));
           contextTraceByOutput.set(pipelineItem.outputPath, `context=raw-ts (${resolved.reason})`);
-          sections.push(buildContextSection(sharedTsPath, trimSharedI18nForPageContext(raw)));
+          sections.push(buildContextSection(sharedTsPath, trimSharedI18nForPageContext(raw!)));
         }
         continue;
       }
@@ -693,9 +714,10 @@ async function resolveSharedDts(sharedTsPath: string): Promise<{ dts: string | n
 async function readSections(paths: string[], kind: 'skill'): Promise<string[]> {
   void kind;
   const sections: string[] = [];
-  for (const path of paths) {
+  for (const requested of paths) {
+    const path = resolveProjectRelativeRef(requested, Number(mls.actualProject || 0));
     const content = await getContentByMlsPath(path);
-    if (!content) continue;
+    requireDeclaredDependency(path, content, Number(mls.actualProject || 0));
     sections.push(`<!-- skill: ${path} -->\n${content}`);
   }
   return sections;

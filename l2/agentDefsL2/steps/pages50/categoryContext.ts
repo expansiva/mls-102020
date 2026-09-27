@@ -28,7 +28,6 @@ export async function buildD2PageSkillsContext(port: D2PageSkillPort): Promise<D
     if (!categoryRef || !text(item.name) || !text(item.description)) throw new Error('D2_PAGE_CATEGORY_CATALOG_INVALID: category fields');
     return { categoryRef, name: text(item.name), meaning: text(item.description), skillReference: categorySkillReference(categoryRef) };
   });
-  if (categories.length !== 33) throw new Error(`D2_PAGE_CATEGORY_COUNT: ${categories.length}`);
   assertUnique(categories.map(item => item.categoryRef), 'D2_PAGE_CATEGORY_DUPLICATE');
   categories.push({ categoryRef: 'bespoke', name: 'Bespoke', meaning: 'No published category fits the page capabilities; the judgment must explain why.', skillReference: categorySkillReference('bespoke') });
   const references = [D2_PAGE_TECHNICAL_SKILL, ...categories.map(item => item.skillReference)];

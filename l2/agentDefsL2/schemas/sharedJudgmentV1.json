@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://collab.codes/schemas/agentDefsL2/sharedJudgmentV1.json",
   "title": "agentDefsL2 shared40 page judgment",
-  "description": "LLM-owned logical sequencing only. Input sources are code-owned: selected identity is non-editable selection, ordinary fields are user input, and session/route sources may only come from future trusted structured context. No layout vocabulary is accepted.",
+  "description": "LLM-owned logical sequencing only. Public names, DTO paths, labels, origins, selection reads, snapshot policy and organism/content coverage are code-owned. Session and route sources require trusted structured context. Rules and grants remain traceable metadata applied by the backend. No layout vocabulary is accepted.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "pageId", "scenaries", "initialLoadActionIds", "actionBehaviors"],
@@ -12,7 +12,7 @@
     "scenaries": {
       "type": "array", "minItems": 1,
       "items": { "type": "object", "additionalProperties": false, "required": ["value", "kind", "actionId", "preconditions"], "properties": {
-        "value": { "type": "string", "minLength": 1 }, "kind": { "enum": ["base", "detail", "command"] }, "actionId": { "type": "string", "minLength": 1 }, "preconditions": { "description": "Copy only exact stateKey strings from preconditionStateKeysByAction[actionId] in the human prompt, or use an empty array. Never use labels, scenary values, or actionIds.", "type": "array", "items": { "type": "string", "pattern": "^ui\\." }, "uniqueItems": true }
+        "value": { "type": "string", "minLength": 1 }, "kind": { "enum": ["base", "detail", "command"] }, "actionId": { "type": "string", "description": "An existing call id, or empty only for a static base scenario with no calls." }, "preconditions": { "description": "Copy only exact stateKey strings from preconditionStateKeysByAction[actionId] in the human prompt, or use an empty array. Never use labels, scenary values, or actionIds.", "type": "array", "items": { "type": "string", "pattern": "^ui\\." }, "uniqueItems": true }
       } }
     },
     "initialLoadActionIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },

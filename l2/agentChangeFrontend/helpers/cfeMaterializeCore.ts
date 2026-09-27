@@ -56,11 +56,13 @@ export interface GenResult { code: string; }
 
 /** Resolve a project-local L2 reference without changing the declarative pipeline representation. */
 export function resolveProjectRelativeRef(ref: string, project: number): string {
-  return ref.startsWith('l2/') && Number.isSafeInteger(project) && project > 0 ? `_${project}_/${ref}` : ref;
+  ref = ref.replace(/^\//u, '');
+  return /^l\d+\//u.test(ref) && Number.isSafeInteger(project) && project > 0 ? `_${project}_/${ref}` : ref;
 }
 
 export function requireDeclaredDependency(ref: string, content: string | null, project: number): string | null {
   if (!content && ref === 'l2/designSystem.ts') throw new Error(`D2_PAGE_DESIGN_SYSTEM_MISSING: ${resolveProjectRelativeRef(ref, project)}`);
+  if (!content) throw new Error(`CFE_DECLARED_CONTEXT_MISSING: ${resolveProjectRelativeRef(ref, project)}`);
   return content;
 }
 

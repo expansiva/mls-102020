@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/input20/gate.ts" enhancement="_blank"/>
 
 import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { resolveD2OperationBindings } from '/_102020_/l2/agentDefsL2/steps/input20/operationSemantics.js';
 import {
   D2_INPUT_VERSION,
   D2InputValidationError,
@@ -126,6 +127,7 @@ export async function buildD2InputSnapshot(
   }
 
   const pages: D2SelectedPage[] = [];
+  const semanticErrors: Error[] = [];
   for (const page of menuScan.pages.values()) {
     const pageId = page.pageId;
     const need = needRows.get(pageId) || {};
@@ -136,6 +138,13 @@ export async function buildD2InputSnapshot(
       .sort((left, right) => text(left.route).localeCompare(text(right.route)));
     const usecaseIds = new Set(endpointRows.map(endpoint => text(endpoint.usecaseRef)).filter(Boolean));
     const destinations = destinationsFor(identity, pageId);
+    let operationBindings: D2SelectedPage['operationBindings'] = [];
+    try {
+      operationBindings = resolveD2OperationBindings({
+        module: identity.module, entities: artifacts.entities, access, rules, digests: artifacts.sources,
+      }, pageId, endpointRows, [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0),
+      unique([...strings(need.actors), ...(authority.actorsByPage.get(pageId) || [])]));
+    } catch (error) { semanticErrors.push(error instanceof Error ? error : new Error(String(error))); }
     pages.push({
       pageId,
       status,
@@ -149,6 +158,7 @@ export async function buildD2InputSnapshot(
       writes: arr(need.writes),
       endpoints: endpointRows,
       usecases: [...usecaseIds].map(id => backendUsecases.get(id) || {}).filter(row => Object.keys(row).length > 0),
+      operationBindings,
       destinations,
     });
     if (endpointRows.length === 0 && arr(page.node.organisms).length > 0) {
@@ -159,6 +169,12 @@ export async function buildD2InputSnapshot(
   validateDestinationCollisions(state, pages, remove);
   semanticAccessFindings(state, access, entityIds, pages);
   semanticPageScopeFindings(state, pages);
+  for (const semanticError of semanticErrors) {
+    const message = semanticError.message;
+    const [code, sourcePath] = message.split(' ');
+    const [file, ...symbol] = (sourcePath || 'input20').split('#');
+    state.problems.push({ severity: 'review', code, file, message, ...(symbol.length ? { route: symbol.join('#') } : {}) });
+  }
 
   state.problems.push({
     severity: 'info',

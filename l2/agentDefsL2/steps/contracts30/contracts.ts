@@ -2,6 +2,7 @@
 
 import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
+import type { D2OperationBinding } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 
 export type D2ContractScalar = 'string' | 'number' | 'boolean' | 'object';
 export type D2ContractOperation = 'list' | 'get' | 'create' | 'update' | 'transition';
@@ -9,6 +10,8 @@ export type D2ContractOperation = 'list' | 'get' | 'create' | 'update' | 'transi
 export interface D2ContractField {
   path: string;
   name: string;
+  title?: string;
+  description?: string;
   scalar: D2ContractScalar;
   tsType: string;
   required: boolean;
@@ -17,8 +20,14 @@ export interface D2ContractField {
   indexed: boolean;
   collection: boolean;
   enumValues: string[];
+  enumOptions?: D2ContractEnumOption[];
   referenceTo: string[];
   children: D2ContractField[];
+}
+
+export interface D2ContractEnumOption {
+  value: string;
+  label: string;
 }
 
 export interface D2ContractCall {
@@ -29,7 +38,7 @@ export interface D2ContractCall {
   entityId: string;
   operation: D2ContractOperation;
   actors: string[];
-  relationships: D2ContractRelationship[];
+  relationships: Array<Omit<D2ContractRelationship, 'identity' | 'display'>>;
   input: D2ContractField[];
   output: D2ContractField[];
   outputShape: 'array' | 'object';
@@ -41,6 +50,8 @@ export interface D2ContractRelationship {
   via: string;
   cardinality: string;
   collection: boolean;
+  identity: D2ContractField;
+  display: D2ContractField;
 }
 
 export interface D2PageContract {
@@ -53,11 +64,13 @@ export interface D2ContractsPageSource {
   actors: string[];
   endpoints: Array<Record<string, unknown>>;
   usecases: Array<Record<string, unknown>>;
+  operationBindings: D2OperationBinding[];
 }
 
 export interface D2ContractsSources {
   module: string;
   entities: Record<string, Ns5OntologyAnyEntity>;
+  ontologyIndex?: unknown;
   access: unknown;
   pages: D2ContractsPageSource[];
 }
@@ -122,6 +135,11 @@ export function buildD2ContractsCatalog(sources: D2ContractsSources): D2PageCont
       const allowed = allowedPathsByPageActor(page, entityId, allFields, grants, issues, route);
       if (!allowed) continue;
       const visible = filterTree(allFields, allowed);
+      const relationships = relationshipsOf(entity, sources.ontologyIndex, sources.entities, grants, page.actors, issues, page.pageId, route);
+      const output = withRelationshipProjection(visible, relationships);
+      const binding = operation === 'get'
+        ? undefined
+        : operationBinding(page, route, entityId, operation, usecaseId, issues);
       const callPascal = pascal(usecaseId);
       calls.push({
         callName: usecaseId,
@@ -131,9 +149,9 @@ export function buildD2ContractsCatalog(sources: D2ContractsSources): D2PageCont
         entityId,
         operation,
         actors: [...page.actors].sort(),
-        relationships: relationshipsOf(entity),
-        input: inputFields(operation, entity, visible, usecaseId, page.pageId, route, issues),
-        output: visible,
+        relationships: relationships.map(({ identity: _identity, display: _display, ...relationship }) => relationship),
+        input: inputFields(operation, entity, visible, usecaseId, page.pageId, route, issues, binding),
+        output,
         outputShape: operation === 'list' ? 'array' : 'object',
       });
     }
@@ -143,18 +161,75 @@ export function buildD2ContractsCatalog(sources: D2ContractsSources): D2PageCont
   return pages.sort((a, b) => a.pageId.localeCompare(b.pageId));
 }
 
-function relationshipsOf(entity: Ns5OntologyAnyEntity): D2ContractRelationship[] {
-  return Object.values(rec(rec(entity).relationships)).map(raw => {
-    const relationship = rec(raw);
-    const cardinality = text(relationship.cardinality);
-    return {
+function relationshipsOf(entity: Ns5OntologyAnyEntity, ontologyIndex: unknown, entities: Record<string, Ns5OntologyAnyEntity>, grants: Record<string, unknown>[], actors: string[], issues: D2ContractIssue[], pageId: string, route: string): D2ContractRelationship[] {
+  const entityId = text(rec(entity).entityId);
+  return rows(rec(ontologyIndex).relationships).filter(relationship => text(relationship.from) === entityId && relationship.required === true).flatMap(relationship => {
+    const declared = Object.values(rec(rec(entity).relationships)).map(rec).find(item => text(item.relationshipId) === text(relationship.relationshipId));
+    const cardinality = text(declared?.cardinality) || ({ oneToMany: '1:N', manyToMany: 'N:N', manyToOne: 'N:1', oneToOne: '1:1' } as Record<string, string>)[text(relationship.type)] || '';
+    const via = text(relationship.field) || text(declared?.via);
+    const child = entities[text(relationship.to)];
+    const childId = text(rec(child).entityId);
+    const displayField = text(rec(child).displayField);
+    const parentFields = new Set(flatten(collectD2EntityFields(entity)).map(field => field.path));
+    const parentIdentityVisible = parentFields.has(via) || parentFields.has(`${entityId}.${via}`);
+    let childDisplayVisible = false;
+    try { childDisplayVisible = !!displayField && flatten(collectD2EntityFields(child)).some(item => item.path === `${childId}.${displayField}` || item.path === displayField); }
+    catch { return []; }
+    if (!parentIdentityVisible || !child || !childDisplayVisible) return [];
+    const prefix = displayField.startsWith(`${childId}.`) ? displayField : `${childId}.${displayField}`;
+    const childFields = collectD2EntityFields(child);
+    const identity = flatten(childFields).find(field => field.name === 'id' && field.derived);
+    const display = flatten(childFields).find(field => field.path === prefix);
+    if (!identity || !display) {
+      issues.push({ code: 'D2_CONTRACT_RELATIONSHIP_PROJECTION_INVALID', source: 'ontology', pageId, route, path: `${entityId}.relationships.${text(relationship.relationshipId)}`, message: 'required child relation has no resolvable identity/displayField pair' });
+      return [];
+    }
+    const grantsForAllActors = actors.every(actor => grants.some(grant => {
+      if (text(grant.actorRef) !== actor || !strings(grant.entityRefs).includes(childId)) return false;
+      const disclosure = rec(grant.disclosure);
+      return [identity.path, display.path].every(fieldPath => {
+        const allows = text(disclosure.mode) === 'fullRecord' || strings(disclosure.allowedFields).some(path => path === childId || path === fieldPath || fieldPath.startsWith(`${path}.`));
+        const denied = strings(disclosure.deniedFields).some(path => path === childId || fieldPath === path || fieldPath.startsWith(`${path}.`));
+        return allows && !denied;
+      });
+    }));
+    if (!grantsForAllActors) return [];
+    return [{
       relationshipId: text(relationship.relationshipId),
-      to: text(relationship.to),
-      via: text(relationship.via),
+      to: childId,
+      via,
       cardinality,
       collection: cardinality.endsWith(':N'),
-    };
+      identity: { ...identity },
+      display: { ...display },
+    }];
   }).filter(relationship => relationship.relationshipId && relationship.to);
+}
+
+function withRelationshipProjection(fields: D2ContractField[], relationships: D2ContractRelationship[]): D2ContractField[] {
+  const output = fields.map(field => ({ ...field, children: [...field.children] }));
+  for (const relationship of relationships) {
+    const projection: D2ContractField = { path: relationship.relationshipId, name: relationship.relationshipId, scalar: 'object', tsType: 'object', required: false, derived: false, writePrecondition: false, indexed: false, collection: relationship.collection, enumValues: [], referenceTo: [relationship.to], children: [] };
+    output.push(projection);
+    for (const field of [relationship.identity, relationship.display]) {
+      const parts = field.path.split('.').slice(1);
+      const leaf = parts.pop()!;
+      let level = projection.children;
+      let parentPath = relationship.relationshipId;
+      for (const part of parts) {
+        parentPath = parentPath ? `${parentPath}.${part}` : part;
+        let parent = level.find(item => item.path === parentPath);
+        if (!parent) {
+          parent = { path: parentPath, name: part, scalar: 'object', tsType: 'object', required: false, derived: false, writePrecondition: false, indexed: false, collection: false, enumValues: [], referenceTo: [], children: [] };
+          level.push(parent);
+        }
+        level = parent.children;
+      }
+      const path = `${parentPath}.${leaf}`;
+      if (!level.some(item => item.path === path)) level.push({ ...field, path });
+    }
+  }
+  return output;
 }
 
 export function collectD2EntityFields(entity: Ns5OntologyAnyEntity): D2ContractField[] {
@@ -171,6 +246,8 @@ export function collectD2EntityFields(entity: Ns5OntologyAnyEntity): D2ContractF
     return {
       path,
       name,
+      ...(text(field.title) ? { title: text(field.title) } : {}),
+      ...(text(field.description) ? { description: text(field.description) } : {}),
       ...mapped,
       required: field.required === true,
       derived: field.derived === true,
@@ -178,6 +255,7 @@ export function collectD2EntityFields(entity: Ns5OntologyAnyEntity): D2ContractF
       indexed: field.indexed === true,
       collection: field.collection === true || text(field.type) === 'array',
       enumValues: enumValues(field.values, path),
+      ...(enumValues(field.values, path).length ? { enumOptions: enumOptions(field.values, path) } : {}),
       referenceTo: strings(field.to),
       children,
     };
@@ -193,6 +271,7 @@ function inputFields(
   pageId: string,
   route: string,
   issues: D2ContractIssue[],
+  binding?: D2OperationBinding,
 ): D2ContractField[] {
   const identity = findIdentity(visible);
   if ((operation === 'get' || operation === 'update' || operation === 'transition') && !identity) {
@@ -202,11 +281,12 @@ function inputFields(
   if (operation === 'get') return [identity!];
   if (operation === 'list') {
     const indexed = filterTree(visible, new Set(flatten(visible).filter(field => field.indexed).map(field => field.path)));
-    return [...indexed, syntheticPageField(text(rec(entity).entityId))];
+    const required = new Set(binding?.inputFields.filter(field => field.origin === 'actor' && field.required).map(field => field.path) ?? []);
+    return [...setRequired(indexed, required), syntheticPageField(text(rec(entity).entityId))];
   }
-  if (operation === 'create') return writableTree(visible);
+  if (operation === 'create') return operationInputTree(visible, binding, pageId, route, issues);
   const preconditions = writePreconditionTree(visible);
-  if (operation === 'update') return mergeFields([identity!], preconditions, writableTree(visible));
+  if (operation === 'update') return mergeFields([identity!], preconditions, operationInputTree(visible, binding, pageId, route, issues));
   const transition = rows(rec(entity).transitions).find(item => text(item.transitionId) === callName);
   if (!transition) {
     issues.push({ code: 'D2_CONTRACT_TRANSITION_MISSING', source: 'ontology', pageId, route, message: `transition '${callName}' is absent` });
@@ -220,13 +300,74 @@ function inputFields(
     });
     return [identity!];
   }
-  const declaredPayload = strings(transition.payload);
+  const declaredPayload = binding?.transition?.payload ?? strings(transition.payload);
   const payloadPaths = declaredPayload.map(path => path.startsWith(`${text(rec(entity).entityId)}.`) ? path : `${text(rec(entity).entityId)}.${path}`);
   const available = new Set(flatten(visible).map(field => field.path));
   for (const path of payloadPaths) if (!available.has(path)) {
     issues.push({ code: 'D2_CONTRACT_TRANSITION_PATH_INVALID', source: 'ontology', pageId, route, path, message: `transition payload path '${path}' is absent or forbidden` });
   }
-  return mergeFields([identity!], preconditions, filterTree(visible, new Set(payloadPaths)));
+  return mergeFields([identity!], preconditions, operationInputTree(visible, binding, pageId, route, issues));
+}
+
+function operationBinding(
+  page: D2ContractsPageSource,
+  route: string,
+  entityId: string,
+  operation: D2ContractOperation,
+  callName: string,
+  issues: D2ContractIssue[],
+): D2OperationBinding | undefined {
+  if (operation === 'get') return undefined;
+  const bindings = (page.operationBindings ?? []).filter(item => item.route === route);
+  if (operation === 'list' && !bindings.length) return undefined;
+  const valid = bindings.filter(item => item.pageId === page.pageId && item.entityId === entityId && item.operation === operation);
+  if (!valid.length) {
+    issues.push({ code: 'D2_CONTRACT_OPERATION_BINDING_MISSING', source: 'input.json', pageId: page.pageId, route, message: `operation '${operation}' has no matching d2_23 binding` });
+    return undefined;
+  }
+  const actors = operation === 'transition' ? [valid[0].actorRef] : [...page.actors].sort();
+  for (const actor of actors) {
+    if (valid.filter(item => item.actorRef === actor).length !== 1) {
+      issues.push({ code: 'D2_CONTRACT_OPERATION_BINDING_AMBIGUOUS', source: 'input.json', pageId: page.pageId, route, message: `operation '${operation}' must have one binding for actor '${actor}'` });
+    }
+  }
+  if (valid.some(item => !actors.includes(item.actorRef))) {
+    issues.push({ code: 'D2_CONTRACT_OPERATION_BINDING_AMBIGUOUS', source: 'input.json', pageId: page.pageId, route, message: `operation '${operation}' has a binding for an unselected actor` });
+  }
+  if (operation === 'transition' && (valid[0].transition?.transitionId !== callName)) {
+    issues.push({ code: 'D2_CONTRACT_TRANSITION_BINDING_MISMATCH', source: 'input.json', pageId: page.pageId, route, message: `transition binding does not match '${callName}'` });
+  }
+  const signatures = valid.map(item => item.inputFields.map(field => `${field.path}\0${field.origin}\0${field.required}`).sort().join('\n'));
+  if (new Set(signatures).size !== 1) {
+    issues.push({ code: 'D2_CONTRACT_OPERATION_BINDING_AMBIGUOUS', source: 'input.json', pageId: page.pageId, route, message: `actors have different operation input fields for '${entityId}'` });
+  }
+  return valid[0];
+}
+
+function operationInputTree(
+  visible: D2ContractField[],
+  binding: D2OperationBinding | undefined,
+  pageId: string,
+  route: string,
+  issues: D2ContractIssue[],
+): D2ContractField[] {
+  if (!binding) return [];
+  const catalog = new Map(flatten(visible).map(field => [field.path, field]));
+  const actorFields = binding.inputFields.filter(field => field.origin === 'actor');
+  const writable = new Set(actorFields.map(field => field.path));
+  for (const field of actorFields) {
+    if (!catalog.has(field.path)) issues.push({ code: 'D2_CONTRACT_OPERATION_PATH_FORBIDDEN', source: 'input.json', pageId, route, path: field.path, message: 'd2_23 actor input is absent from the fields disclosed to this operation' });
+  }
+  const required = new Set(actorFields.filter(field => field.required).map(field => field.path));
+  return setRequired(filterTree(visible, writable), required);
+}
+
+function setRequired(fields: D2ContractField[], required: Set<string>): D2ContractField[] {
+  return fields.map(field => ({
+    ...field,
+    required: [...required].some(path => path === field.path || path.startsWith(`${field.path}.`)),
+    children: setRequired(field.children, required),
+  }));
 }
 
 function allowedPathsByPageActor(
@@ -259,6 +400,13 @@ function allowedPathsByPageActor(
         for (const path of matches) allowed.add(path);
       }
     }
+    const denied = new Set(actorGrants.flatMap(grant => strings(rec(grant.disclosure).deniedFields)));
+    for (const path of [...allowed]) {
+      if ([...denied].some(ref => {
+        const full = ref === entityId ? entityId : ref.startsWith(`${entityId}.`) ? ref : `${entityId}.${ref}`;
+        return path === full || path.startsWith(`${full}.`);
+      })) allowed.delete(path);
+    }
     return allowed;
   });
   if (perActor.some(paths => paths.size === 0)) return null;
@@ -279,15 +427,6 @@ function mapFieldType(type: string, field: Record<string, unknown>, path: string
   if (type === 'boolean') return { scalar: 'boolean', tsType: 'boolean' };
   if (type === 'array' && children.length) return { scalar: 'object', tsType: 'object' };
   throw issueError('D2_CONTRACT_TYPE_UNSUPPORTED', path, `unsupported ontology type '${type}'`);
-}
-
-function writableTree(fields: D2ContractField[]): D2ContractField[] {
-  return fields.flatMap(field => {
-    if (field.derived || field.writePrecondition) return [];
-    const children = writableTree(field.children);
-    if (field.children.length && !children.length) return [];
-    return [{ ...field, children }];
-  });
 }
 
 function writePreconditionTree(fields: D2ContractField[]): D2ContractField[] {
@@ -338,6 +477,13 @@ function enumValues(value: unknown, path: string): string[] {
   const result = value.map(item => typeof item === 'string' ? item : text(rec(item).value));
   if (result.some(item => !item)) throw issueError('D2_CONTRACT_ENUM_INVALID', path, 'enum contains an empty code');
   return result;
+}
+
+function enumOptions(value: unknown, path: string): D2ContractEnumOption[] {
+  return enumValues(value, path).map((code, index) => {
+    const item = Array.isArray(value) ? rec(value[index]) : {};
+    return { value: code, label: text(item.title) || code };
+  });
 }
 
 function issueError(code: string, path: string, message: string): Error {

@@ -72,12 +72,14 @@ export function d2ContractsSources(snapshot: D2InputSnapshot, artifacts: D2Input
   return {
     module: snapshot.module,
     entities,
+    ontologyIndex: artifacts.ontologyIndex,
     access: artifacts.access,
     pages: snapshot.selection.pages.filter(page => writeIds.has(page.pageId)).map(page => ({
       pageId: page.pageId,
       actors: page.actors,
       endpoints: page.endpoints,
       usecases: page.usecases,
+      operationBindings: page.operationBindings ?? [],
     })),
   };
 }
@@ -157,7 +159,7 @@ async function prepareUnits(identity: D2RunIdentity, snapshot: D2InputSnapshot, 
     const page = pages.get(contract.pageId)!;
     assertRoutesEqual(page, contract);
     assertD2ContractUnit(contract);
-    const source = renderD2PageContract(contract);
+    const source = renderD2PageContract(contract, `l2/${identity.module}/web/contracts/${contract.pageId}.defs.ts`, identity.project);
     assertD2RenderedContract(source, contract);
     result.push({ draft: {
       schemaVersion: D2_CONTRACTS_VERSION,

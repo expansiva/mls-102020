@@ -4,6 +4,9 @@
 <!-- x-tool-strict: true -->
 
 Classify and describe exactly one page in two presentations: desktop and mobile. Call `submitD2Pages` once.
+Provide pageIntent in userLanguage: the authorized actor's purpose and scope. The emitted page11 is a textual definition; structured coverage is derived from approved shared.coverage. Code fills each organism's contentRef and capabilityRefs from shared.coverage by organismId. For each capability, cite output fields only using the exact structured reference `${outputTypeRef}.${path}` from that organism's `outputFieldsByCapability[capability]`; cite only what supports the description, and never guess or combine fields across capabilities. Never turn a state setter, hidden snapshot, route or session value into an editable visual field.
+Mobile is its own composition for narrow fluid viewports: preview 390px, validate 360/430px, accessible touch targets, readable sequential panels or cards where appropriate, without horizontal overflow or a squeezed desktop table. Do not freeze a grid or choose one layout for every page.
+The selected category Markdown and any explicit style/layout preference guide materialization. Shared, DTOs, grants and rule references prevail over suggestions for totals, tab saves or filters.
 
 Return exactly one description object for every supplied organism, using its organismId and kind unchanged.
 Its prose explains that organism's objective, information, actions, relevant loading/empty/error states
