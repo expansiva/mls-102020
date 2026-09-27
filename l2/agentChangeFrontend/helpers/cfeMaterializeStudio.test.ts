@@ -296,6 +296,21 @@ test('storDiskPath calls diskPath as a method (host class, private field)', asyn
   assert.equal(studio.storDiskPath(info), null);
 });
 
+test('renamed Node compiler rejects infrastructure failures but preserves real file diagnostics', async () => {
+  const studio = await loadModule();
+  for (const [output, exitCode, expected] of [
+    ['', 0, ''],
+    ["error TS5058: The specified path does not exist", 1, null],
+    ['mls-102045/l2/ledger/web/shared/records.ts(42,3): error TS2551: Property misspelled does not exist.', 2, 'diagnostic'],
+  ] as const) {
+    const got = await studio.runProjectFrontendTsc('/fixture', () => ({
+      stdout: { on: (_event, callback) => callback(output) },
+      on: (event, callback) => { if (event === 'close') callback(exitCode); },
+    }));
+    assert.equal(got, expected === 'diagnostic' ? output : expected);
+  }
+});
+
 test('compileModuleViaProjectTsc uses injected runner and does not sniff the host', async () => {
   const studio = await loadModule();
   const src = await import('node:fs').then(fs => fs.readFileSync(new URL('./cfeMaterializeStudio.ts', import.meta.url), 'utf8'));

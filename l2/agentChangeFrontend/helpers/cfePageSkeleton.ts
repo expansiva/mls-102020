@@ -148,6 +148,12 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   if (input.current && !current) return { code: null, reason: `no organism ${input.current} in the split plan` };
   // Host + Scenes are a PAGE concern. An organism is a fragment; wrapping it would nest hosts.
   const scenaries = current ? [] : scenariesOf(input.sharedDefsData);
+  const scenarioState = Array.isArray(shared.states) ? shared.states.find(item => isRecord(item) && item.kind === 'uiScenary') : undefined;
+  const scenarioSetter = Array.isArray(shared.actions) ? shared.actions.find(item => isRecord(item) && item.kind === 'stateSetter' && isRecord(scenarioState) && item.stateKey === scenarioState.stateKey) : undefined;
+  const scenarioMember = isRecord(scenarioState) ? stringOf(scenarioState.memberName) || stringOf(scenarioState.name) : 'uiScenary';
+  const scenarioHandler = isRecord(scenarioSetter) && stringOf(scenarioSetter.methodName)
+    ? `(event: CustomEvent<{ value: string }>) => this.${scenarioSetter.methodName}(event.detail.value)`
+    : 'this.handleUiScenaryChange';
 
   // LEADING SLASH is mandatory: mls refs travel without it ('_102045_/l2/…') but a runtime import must be
   // '/_102045_/l2/…'. Emitting it unrooted made the module unresolvable (TS2307), which then took down the
@@ -251,6 +257,8 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
     return { code: lines.join('\n') };
   }
 
+  if (Array.isArray(shared.states)) lines.push(`// Exact public state members: ${shared.states.filter(isRecord).map(state => stringOf(state.memberName) || stringOf(state.name)).filter(Boolean).join(', ')}`);
+  if (Array.isArray(shared.actions)) lines.push(`// Exact public action methods: ${shared.actions.filter(isRecord).map(action => stringOf(action.methodName)).filter(Boolean).join(', ')}`);
   lines.push(`@customElement('${convertFileToTag(parsed)}')`);
   lines.push(`export class ${pageClassName(parsed, baseClassName)} extends ${baseClassName} {`);
   lines.push('  #msgLang: string | null = null;');
@@ -276,10 +284,10 @@ export function buildPageSkeleton(input: PageSkeletonInput): PageSkeletonResult 
   if (scenaries.length) {
     const hasDetail = scenaries.some(scene => scene.kind === 'detail');
     lines.push('    return html`');
-    lines.push('      <molecules--ml-scenary-102020 mode="scenary" .value=${this.uiScenary}');
+    lines.push(`      <molecules--ml-scenary-102020 mode="scenary" .value=\${this.${scenarioMember}}`);
     lines.push(hasDetail
-      ? "          @change=${this.handleUiScenaryChange} backLabel=${msg['scenary.back']}>"
-      : '          @change=${this.handleUiScenaryChange}>');
+      ? `          @change=\${${scenarioHandler}} backLabel=\${msg['scenary.back']}>`
+      : `          @change=\${${scenarioHandler}}>`);
     for (const scene of scenaries) {
       const nav = scene.kind === 'detail' ? ' nav="back"' : '';
       lines.push(`        <Scene value="${scene.value}" title=\${msg['scenary.${scene.value}']}${nav}>`);

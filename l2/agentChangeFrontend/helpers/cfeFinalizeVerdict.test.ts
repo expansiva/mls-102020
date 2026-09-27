@@ -18,6 +18,62 @@ const g = globalThis as unknown as Record<string, any>;
 const priorMls = g.mls;
 after(() => { g.mls = priorMls; });
 
+test('renamed verify snapshot replaces error A with B for final summary, finding file and next repair prompt', async () => {
+  const { saveMaterializeVerifySummary, readMaterializeItemFindings } = await loadModule();
+  const { persistAuditableFindings } = await import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializePhase.js');
+  const { computeRepairHint } = await import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializeGen.js');
+  const { buildHumanPrompt } = await import('/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js');
+  const planId = 'materialize-ledger-l2-page';
+  const outputPath = '_102047_/l2/todo/web/desktop/page11/ledger.ts';
+  const finding = storFile('todo/pipeline/trace/l2/frontend-materialize-findings', planId, {});
+  g.mls.stor.files[keyOf(finding as any)] = finding;
+  const output = { project: PROJECT, level: 2, folder: 'todo/web/desktop/page11', shortName: 'ledger', extension: '.ts', status: 'active', getContent: async () => 'export class Ledger extends Base {}' };
+  g.mls.stor.files[keyOf(output)] = output;
+  g.mls.stor.convertFileReferenceToFile = (ref: string) => ref === outputPath ? output : null;
+  g.mls.l2 = undefined;
+  const item = { planId, defPath: 'ledger.defs.ts', itemId: 'ledger' };
+  const snapshot = (error: string) => [{ item, outputPath, blocking: error ? [error] : [], repairable: [], declared: [], warnings: [], errors: error ? [error] : [], typecheck: 'failed' as const }];
+  const a = 'TS2551: obsolete member';
+  const b = 'TS2367: current status comparison';
+  await persistAuditableFindings('todo', 4, snapshot(a), 3);
+  assert.deepEqual(await readMaterializeItemFindings('todo', planId, 4), [a]);
+  await persistAuditableFindings('todo', 4, snapshot(b));
+  await saveMaterializeVerifySummary('todo', 'materialize-phase-pages-verify', 4, [], [{ planId, defPath: item.defPath, outputPath, typecheck: 'failed', errors: [b], warnings: [] }], {}, true);
+  assert.deepEqual(await readMaterializeItemFindings('todo', planId, 4), [b]);
+  const record = JSON.parse(String(finding.source));
+  assert.equal(record.attempt, 4);
+  assert.equal(record.verifiedAttempt, 4);
+  const summary = JSON.parse(g.mls.stor.files['todo/pipeline/trace/l2/frontend-materialize-verify/materialize-phase-pages-verify-summary.json'].source);
+  assert.equal(summary.broken[0].firstError, record.findings[0]);
+  await persistAuditableFindings('todo', 5, snapshot(b), 4);
+  const hint = await computeRepairHint({ id: 'ledger', type: 'l2_page', outputPath }, planId, 5);
+  const prompt = buildHumanPrompt('prose', [], outputPath, hint);
+  assert.ok(prompt.includes(b));
+  assert.ok(!prompt.includes(a));
+  assert.equal(JSON.parse(String(finding.source)).verifiedAttempt, summary.attempt);
+  await persistAuditableFindings('todo', 5, snapshot(''));
+  assert.deepEqual(await readMaterializeItemFindings('todo', planId, 5), []);
+  g.mls.actualProject = 0;
+  await assert.rejects(persistAuditableFindings('todo', 6, snapshot(b)), /FINDINGS_WRITE_FAILED/u);
+});
+
+void test('renamed final verdict cannot clear six declared pages or an unavailable typecheck', async () => {
+  const { saveMaterializeVerifySummary } = await loadModule();
+  const declared = Array.from({ length: 6 }, (_, index) => ({
+    planId: `materialize-ledger-${index}-l2-page`, defPath: '', outputPath: `_102047_/l2/sample/web/mobile/page11/ledger${index}.ts`,
+    typecheck: 'unavailable', errors: ['i18n markers malformed'], warnings: [],
+  }));
+  await saveMaterializeVerifySummary('todo', 'materialize-phase-pages-verify', 4, [], [], { declared }, true);
+  const summaries = Object.values(g.mls.stor.files).filter((file: any) => file.folder?.startsWith('todo/') && file.shortName === 'materialize-phase-pages-verify-summary') as any[];
+  assert.equal(summaries.length, 1);
+  const verdict = JSON.parse(summaries[0].source);
+  assert.equal(verdict.allClear, false);
+  assert.equal(verdict.passedCount, 0);
+  assert.equal(verdict.declaredCount, 6);
+  await saveMaterializeVerifySummary('todo', 'materialize-phase-pages-verify', 4, [{ planId: 'materialize-ledger-l2-page', typecheck: 'unavailable' }], [], {}, true);
+  assert.equal(JSON.parse(summaries[0].source).allClear, false);
+});
+
 // Recorte VERBATIM do veredito que o run01 deixou em
 // _102047_/l2/todo/trace/frontend-materialize-verify/materialize-phase-pages-verify-summary.json.
 const RUN01_PAGES_VERDICT = {

@@ -47,12 +47,16 @@ import {
   mlsL2ModuleName,
   pageDefinitionForChecks,
   parseDefs,
+  sharedTsRefOfDtsArtifact,
   testPathForOutputPath,
   validateGeneratedPageQuality,
   type PipelineItem,
 } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   compileMlsPathAndGetErrors,
+  compileModuleViaProjectTsc,
+  monacoCompileAvailable,
+  parseMlsPath,
   releaseBorrowedModelScope,
   persistSharedDtsArtifactIfStale,
   preloadTypecheckDeps,
@@ -215,15 +219,31 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     ? (args.skipped ?? []).filter(item => mlsL2ModuleName(item.defPath) === moduleName || mlsL2ModuleName(item.outputPath || '') === moduleName)
     : (args.skipped ?? []);
   const checkedItems: BrokenItem[] = [];
+  let projectErrors: string[] | undefined;
+  if (!monacoCompileAvailable()) {
+    let targetProject = mls.actualProject || 0;
+    const files: Array<{ folder: string; shortName: string }> = [];
+    for (const item of scopedItems) {
+      const source = await getContentByMlsPath(item.defPath);
+      const pipelineItem = source ? pipelineItemForStep(source, item.itemId) : null;
+      const parsed = pipelineItem ? parseMlsPath(pipelineItem.outputPath) : null;
+      if (parsed) {
+        targetProject = parsed.project;
+        files.push({ folder: parsed.folder, shortName: parsed.shortName });
+      }
+    }
+    const compiled = await compileModuleViaProjectTsc(targetProject, moduleName, files);
+    if (compiled.trace.path === 'project-tsc') projectErrors = compiled.errors;
+  }
   for (const item of scopedItems) {
-    const checked = await verifyItem(item);
+    const checked = await verifyItem(item, projectErrors);
     checkedItems.push(checked);
   }
   const blocked = checkedItems.filter(checked => checked.blocking.length > 0);
   const toRepair = checkedItems.filter(checked => checked.blocking.length > 0 || checked.repairable.length > 0);
   const declaredItems = checkedItems.filter(checked => checked.blocking.length === 0 && checked.repairable.length === 0 && (checked.declared.length > 0 || checked.warnings.length > 0));
   const passedNow: MaterializeVerifyPassed[] = checkedItems
-    .filter(checked => checked.blocking.length === 0 && checked.repairable.length === 0)
+    .filter(checked => checked.blocking.length === 0 && checked.repairable.length === 0 && checked.declared.length === 0 && checked.typecheck !== 'unavailable' && checked.typecheck !== 'failed')
     .map(checked => ({ planId: checked.item.planId, typecheck: checked.typecheck }));
   const skippedDeclared: MaterializeVerifyBrokenTrace[] = scopedSkipped.map(item => ({
     planId: item.planId,
@@ -254,6 +274,8 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   const blockingView = checkedItems.map(item => ({ outputPath: item.outputPath, errors: item.blocking }));
   const systemic = isSystemicPageFailure(args.attempt, blockingView) || isSystemicSharedFailure(args.attempt, blockingView);
   const final = toRepair.length === 0 || args.attempt > MATERIALIZE_REPAIR_ROUNDS || systemic;
+  // Refresh even on terminal/systemic/clean exits: the prior repair's errors are not this verdict.
+  await persistAuditableFindings(moduleName, args.attempt, checkedItems);
   // ALWAYS write the stable verdict file (overwrites each round) so "was this phase resolved?" has one
   // place to look — passed items + any still-broken — instead of inferring it from the presence of
   // cryptic per-round trace files (102051 run19: no file meant "clean" AND "not run", indistinguishable).
@@ -267,7 +289,6 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     // Warnings never block, but they MUST land in frontend-materialize-findings — that is the
     // folder a human greps. Skipping this write is how run01 listed allClear while 7 shareds
     // were missing the scenary members (the verify-summary `declared` list named them; findings did not).
-    await persistAuditableFindings(moduleName, args.attempt, checkedItems);
     const trace = checkedItems.map(checked => {
       const declared = checked.declared.length ? `; declared: ${checked.declared.join(' | ')}` : '';
       const warnings = checked.warnings.length ? `; UX warnings: ${checked.warnings.join(' | ')}` : '';
@@ -329,7 +350,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
         parentStep,
         step,
         hookSequential,
-        'completed',
+        'failed',
         `quality findings declared after repair budget (${MATERIALIZE_REPAIR_ROUNDS}/${MATERIALIZE_REPAIR_ROUNDS}) (${bucketsNote}):\n${summary}`,
       )];
     }
@@ -340,7 +361,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
       parentStep,
       step,
       hookSequential,
-      'completed',
+      'failed',
       `MATERIALIZE-CLI-PENDING: repair budget exhausted (${MATERIALIZE_REPAIR_ROUNDS}/${MATERIALIZE_REPAIR_ROUNDS}) (${bucketsNote}). Complete materialization with the CLI:\n${summary}`,
     )];
   }
@@ -375,9 +396,7 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   // above may not grow (400KB task cap) and the slot cannot recompute the defs-level detectors. Without
   // this an item broken only by those got an empty hint, which the gen agent cannot tell apart from a
   // first pass — it sends the blank skeleton and the model rewrites the file blind (run01/102047).
-  for (const entry of toRepair) {
-    await saveMaterializeItemFindings(moduleName, entry.item.planId, nextAttempt, [...entry.blocking, ...entry.repairable, ...entry.warnings]);
-  }
+  await persistAuditableFindings(moduleName, nextAttempt, toRepair, args.attempt);
   const nextVerifyPlanId = `${args.planId}-v${nextAttempt}`;
   const nextVerify = createAddStepIntent(context, anchor, createAgentStepPayload(
     nextVerifyPlanId,
@@ -544,11 +563,12 @@ function toBrokenTrace(entry: BrokenItem, severity?: 'blocked' | 'repair' | 'dec
 }
 
 /** Write every auditable finding (errors + warnings) into frontend-materialize-findings/. */
-async function persistAuditableFindings(moduleName: string, attempt: number, items: BrokenItem[]): Promise<void> {
+export async function persistAuditableFindings(moduleName: string, attempt: number, items: BrokenItem[], verifiedAttempt = attempt): Promise<void> {
   for (const entry of items) {
-    const findings = [...entry.blocking, ...entry.repairable, ...entry.warnings];
-    if (!findings.length) continue;
-    await saveMaterializeItemFindings(moduleName, entry.item.planId, attempt, findings);
+    const findings = [...entry.blocking, ...entry.repairable, ...entry.declared, ...entry.warnings];
+    if (!await saveMaterializeItemFindings(moduleName, entry.item.planId, attempt, findings, verifiedAttempt)) {
+      throw new Error(`CFE_MATERIALIZATION_FINDINGS_WRITE_FAILED: ${entry.item.planId} attempt ${attempt}`);
+    }
   }
 }
 
@@ -567,7 +587,12 @@ function withFindings(item: GenStepArgs, outputPath: string | null, typecheck: B
   return { item, outputPath, blocking, repairable, declared, warnings, errors: [...blocking, ...repairable, ...declared], typecheck };
 }
 
-async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
+export function projectCompileErrorsForItem(errors: string[], refs: Array<string | null>): string[] {
+  const selected = new Set(refs.filter((ref): ref is string => !!ref).map(ref => ref.replace(/^\/+/u, '')));
+  return errors.filter(error => selected.has(compileErrorRef(error)));
+}
+
+async function verifyItem(item: GenStepArgs, projectErrors?: string[]): Promise<BrokenItem> {
   const defsContent = await getContentByMlsPath(item.defPath);
   const pipelineItem = defsContent ? pipelineItemForStep(defsContent, item.itemId) : null;
   if (!pipelineItem) return withFindings(item, null, 'not-applicable', { blocking: [`pipeline not found in defs: ${item.defPath}`] });
@@ -590,10 +615,15 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     await preloadTypecheckDeps([contractTsPathOf(defsContent)]);
   }
 
-  const blocking = [...(await compileMlsPathAndGetErrors(outputPath) ?? [])];
+  const outputCompileErrors = projectErrors === undefined ? await compileMlsPathAndGetErrors(outputPath) : projectCompileErrorsForItem(projectErrors, [outputPath]);
+  const blocking = [...(outputCompileErrors ?? ['materialization compile unavailable: output was not verified'])];
   const repairable: string[] = [];
   const declared: string[] = [];
   const warnings: string[] = [];
+  if (projectErrors !== undefined) {
+    const dependencyRefs = (pipelineItem.dependsFiles ?? []).map(ref => sharedTsRefOfDtsArtifact(ref) ?? ref);
+    blocking.push(...projectCompileErrorsForItem(projectErrors, dependencyRefs));
+  }
   if (pipelineItem.type === 'l2_shared' && defsContent) {
     repairable.push(...collectMutationEnvelopeErrorIssues(parseDefs(defsContent).data, content));
     // Defs-level: rewriting the shared .ts cannot add an initialLoad the defs omitted. Warning
@@ -605,7 +635,9 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   }
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
-  const typecheckErrors = testContent && testContent.trim() ? await compileMlsPathAndGetErrors(testPath) : [];
+  const typecheckErrors = testContent && testContent.trim()
+    ? projectErrors === undefined ? await compileMlsPathAndGetErrors(testPath) : projectCompileErrorsForItem(projectErrors, [testPath])
+    : [];
   // The companion .test.ts imports the shipped .ts, so this compile can name EITHER file. The shipped
   // one is already compiled on its own above, but usage inside the test surfaces errors a lone compile
   // misses — those still block, because the file that does not compile is the one that ships. An error
@@ -615,6 +647,8 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
     if (compileErrorRef(error) === outputPath.replace(/^\/+/u, '')) blocking.push(error);
     else declared.push(error);
   }
+  if (typecheckErrors === null) blocking.push('materialization typecheck unavailable: companion was not verified');
+  if (declared.length) blocking.push(...declared);
   if (pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism') {
     // run02/102047: a page born WITHOUT the skeleton i18n block passed every gate and @@addLanguage then
     // skipped it ('without catalogue') — the inverse of the hand-rebuilt-catalogue check below. Repairable:
@@ -691,7 +725,7 @@ async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   if (pipelineItem.type === 'l2_shared' && blocking.length === 0) {
     await persistSharedDtsArtifactIfStale(outputPath);
   }
-  return withFindings(item, outputPath, typecheckFromCompile(testContent, typecheckErrors), {
+  return withFindings(item, outputPath, outputCompileErrors === null ? 'unavailable' : testContent?.trim() ? typecheckFromCompile(testContent, typecheckErrors) : outputCompileErrors.length ? 'failed' : 'passed', {
     blocking, repairable, declared, warnings,
   });
 }

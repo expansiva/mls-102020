@@ -34,6 +34,34 @@ const ORGANISMS = [
   { n: 2, organism: 'delayRisk', bindings: ['triggerDelayRiskSuggestions', 'listDelayRiskSuggestions'] },
 ];
 
+test('renamed structural shared gets a page catalogue and its exact public scenario API', () => {
+  const input = {
+    outputPath: '_102045_/l2/sample/web/mobile/page11/ledger.ts',
+    data: 'Browse authorised records.', sharedTsRef: '_102045_/l2/sample/web/shared/ledger.ts',
+    sharedSource: 'export class LedgerBase {}',
+    sharedDefsData: {
+      schemaVersion: '2026-09-26-agent-defs-l2-shared-v4', pageId: 'ledger', pageName: 'Ledger', baseClassName: 'LedgerBase',
+      states: [{ stateKey: 'ui.ledger.scenary', kind: 'uiScenary', memberName: 'activeView' }, { stateKey: 'ui.ledger.input.name', memberName: 'stateCreateRecordDetailsName', title: 'Display name' }],
+      actions: [{ kind: 'stateSetter', stateKey: 'ui.ledger.scenary', methodName: 'setView' }, { kind: 'command', actionId: 'createRecord', methodName: 'createRecord', errorStateKey: 'ui.ledger.error' }],
+      scenaries: [{ value: 'base', kind: 'base' }, { value: 'create', kind: 'command' }],
+    },
+  };
+  const built = buildPageSkeleton(input);
+  assert.ok(built.code, built.reason);
+  const code = built.code!;
+  assert.match(code, /\/\/\/ \*\*collab_i18n_start\*\*/u);
+  assert.match(code, /\/\/\/ \*\*collab_i18n_end\*\*/u);
+  assert.match(code, /'action.createRecord.success': 'Completed\.'/u);
+  assert.match(code, /'action.createRecord.error': 'Unable to complete the action\.'/u);
+  assert.match(code, /from '\/_102045_\/l2\/sample\/web\/shared\/ledger.js'/u);
+  assert.match(code, /@customElement\('sample--web--mobile--page11--ledger-102045'\)/u);
+  assert.match(code, /\.value=\$\{this.activeView\}/u);
+  assert.match(code, /this.setView\(event.detail.value\)/u);
+  assert.match(code, /Exact public state members: activeView, stateCreateRecordDetailsName/u);
+  assert.match(code, /protected get msg\(\)/u);
+  assert.doesNotMatch(code, /this.uiScenary|this.handleUiScenaryChange/u);
+});
+
 test('localesOf keeps the region and the declaration order (default first)', () => {
   assert.deepEqual(localesOf(SHARED_DEFS_DATA), ['en', 'pt-br']);
   assert.deepEqual(localesOf({ i18n: {} }), []);

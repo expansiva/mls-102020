@@ -63,6 +63,7 @@ import { buildCfeContextReceipt, cfeContextReceiptPath, cfeContextSourcesCurrent
 import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
 
 const pendingContextReceipts = new Map<string, CfeContextReceipt>();
+const pendingMechanicalReferences = new Map<string, { skeleton?: string; sharedTemplate?: string }>();
 
 export async function persistConsumedContext(item: PipelineItem): Promise<void> {
   const receipt = pendingContextReceipts.get(item.outputPath);
@@ -113,13 +114,15 @@ async function beforePromptStep(
     // ~55k-token file in ONE tool call and the LLM path died with MAX_TOKENS_REACHED at 50000 after
     // 11m39s ($0.30), failing the whole task. The scaffold returns {code:null, reason} on any defs shape
     // it does not model, and then we fall through to the LLM exactly as before.
-    let sharedTemplate: { code: string; mode: 'scaffold' | 'scenary-block' } | undefined;
+    let sharedTemplate: { code: string; mode: 'scaffold' | 'scenary-block' | 'public-reference' } | undefined;
     if (genContext.pipelineItem.type === 'l2_shared') {
       const deterministic = await materializeSharedDeterministic(context, parentStep, step, hookSequential, genContext.pipelineItem, genContext.definitionData, genArgs.attempt ?? 1);
       if (deterministic) return deterministic;
       // LLM fallback: send the scaffold (or the scenary block if the scaffold bailed) so the model
       // does not write the shared from scratch and drop setUiScenary / applyUrlScenary.
       sharedTemplate = await sharedTemplateForLlm(genContext.pipelineItem, genContext.definitionData);
+    } else if (genContext.pipelineItem.type === 'l2_page') {
+      sharedTemplate = await pageSharedPublicReference(genContext.pipelineItem);
     }
     // Repair rounds (attempt >= 2) arrive as fan-out slots carrying only compact refs — the
     // compiler errors are recomputed from disk HERE and injected into the LLM input (cleaned
@@ -129,8 +132,9 @@ async function beforePromptStep(
       ? genArgs.repairHint ?? await computeRepairHint(genContext.pipelineItem, genArgs.planId, genArgs.attempt ?? 2)
       : undefined;
     // Deterministic page skeleton (i18n.md §4) — same helper the CLI uses, so both surfaces emit the
-    // identical file shape. Only on the first attempt (see createPromptReadyIntent).
-    const skeleton = repairHint ? undefined : await pageSkeletonFor(genContext.pipelineItem, genContext.siblings, genContext.definitionData);
+    // identical file shape. Repair receives it as a mechanical reference beside the current file.
+    const skeleton = await pageSkeletonFor(genContext.pipelineItem, genContext.siblings, genContext.definitionData);
+    pendingMechanicalReferences.set(genContext.pipelineItem.outputPath, { skeleton, sharedTemplate: sharedTemplate?.code });
     return [createPromptReadyIntent(context, parentStep, hookSequential, args, genContext, repairHint, skeleton, sharedTemplate)];
   } catch (error) {
     const message = formatError('beforePromptStep', error);
@@ -272,7 +276,8 @@ async function afterPromptStep(
     // Formatted BEFORE the textual gates below and before the save, so the hygiene checks, the
     // compile and the phase verify (which re-reads from disk) all see exactly the bytes that were
     // written — the safe order the format×gates contract requires (cf_format_codigo_gerado).
-    const formatted = await formatGeneratedTsInStudio(applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code)));
+    const mechanical = pendingMechanicalReferences.get(pipelineItem.outputPath);
+    const formatted = await formatGeneratedTsInStudio(applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code, mechanical?.skeleton, mechanical?.sharedTemplate)));
     const sharedGuard = pipelineItem.type === 'l2_shared'
       ? await applySharedScenaryGuard(pipelineItem, parsedDefs?.data, formatted)
       : { code: formatted, injected: false, original: formatted };
@@ -324,6 +329,7 @@ async function afterPromptStep(
     // the CLI runtime) read the same authoritative context from disk. Best-effort: never blocks.
     if (pipelineItem.type === 'l2_shared') await persistSharedDtsArtifact(pipelineItem.outputPath);
     await persistConsumedContext(pipelineItem);
+    pendingMechanicalReferences.delete(pipelineItem.outputPath);
 
     const completedNotes = [
       ...(contextNote ? [contextNote] : []),
@@ -350,7 +356,7 @@ function createPromptReadyIntent(
   },
   repairHint?: string,
   skeleton?: string,
-  sharedTemplate?: { code: string; mode: 'scaffold' | 'scenary-block' },
+  sharedTemplate?: { code: string; mode: 'scaffold' | 'scenary-block' | 'public-reference' },
 ): mls.msg.AgentIntentPromptReady {
   // The args of the slot travel VERBATIM: the server matches the waiting slot by exact string
   // (`q.args === args`), so re-serializing the parsed object silently changed the key order on a
@@ -368,11 +374,11 @@ function createPromptReadyIntent(
     hookSequential,
     parentStepId: parentStep.stepId,
     systemPrompt: buildSystemPrompt(genContext.skillSections, genContext.pipelineItem.outputPath, DEFAULT_MODEL_TYPE),
-    // The skeleton travels only on the FIRST attempt: on a repair the file on disk already is the
-    // skeleton filled in, and re-sending the empty one would invite a rewrite from scratch.
+    // On repair the skeleton is reference only; buildHumanPrompt keeps the current implementation
+    // as the file to repair while supplying authoritative missing mechanical sections.
     // The shared template travels on repair too: the current file is in the hint; the scaffold is
     // what the four scenary members must look like.
-    humanPrompt: buildHumanPrompt(trimDefinitionForPrompt(genContext.pipelineItem.type, genContext.definitionData), genContext.contextSections, genContext.pipelineItem.outputPath, repairHint, repairHint ? undefined : skeleton, sharedTemplate),
+    humanPrompt: buildHumanPrompt(trimDefinitionForPrompt(genContext.pipelineItem.type, genContext.definitionData), genContext.contextSections, genContext.pipelineItem.outputPath, repairHint, skeleton, sharedTemplate),
     tools: [GEN_TOOL as unknown as mls.msg.LLMTool],
     toolChoice: { type: 'function', function: { name: GEN_TOOL_NAME } },
   };
@@ -412,6 +418,14 @@ async function applySharedScenaryGuard(
  * Reads the RAW shared .ts, never the compiled .d.ts the context carries: the page imports DTO types from
  * it. The i18n catalogue comes from the shared .defs.ts, which is where it is planned.
  */
+export async function pageSharedPublicReference(pipelineItem: PipelineItem, readRef = getContentByMlsPath): Promise<{ code: string; mode: 'public-reference' } | undefined> {
+  const project = parseMlsPath(pipelineItem.outputPath)?.project || 0;
+  const refs = (pipelineItem.dependsFiles ?? []).map(ref => resolveProjectRelativeRef(ref, project));
+  const sharedRef = refs.find(isSharedRuntimeTsRef) ?? refs.map(sharedTsRefOfDtsArtifact).find((ref): ref is string => !!ref);
+  const source = sharedRef ? await readRef(sharedRef) : null;
+  return source ? { code: source, mode: 'public-reference' } : undefined;
+}
+
 async function pageSkeletonFor(pipelineItem: PipelineItem, siblings: PipelineItem[], data: unknown): Promise<string | undefined> {
   if (pipelineItem.type !== 'l2_page' && pipelineItem.type !== 'l2_page_organism') return undefined;
   // The page item now declares the shared-dts ARTIFACT (web/shared/<page>Dts.txt); the raw .ts ref
@@ -528,7 +542,7 @@ function extractFirstExportedObject(source: string): unknown {
   return null;
 }
 
-async function computeRepairHint(pipelineItem: PipelineItem, planId: string, attempt: number): Promise<string | undefined> {
+export async function computeRepairHint(pipelineItem: PipelineItem, planId: string, attempt: number): Promise<string | undefined> {
   const outputPath = pipelineItem.outputPath;
   const content = await getContentByMlsPath(outputPath);
   if (!content || !content.trim()) {

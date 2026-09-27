@@ -12,6 +12,31 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MLS_BASE = path.resolve(HERE, '../../../../..');
 const MODEL_TYPES = ['code', 'design'] as const;
 
+test('page worker carries the mechanical reference from prompt preparation into normalization before saving', () => {
+  const source = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
+  assert.match(source, /pendingMechanicalReferences\.set\(genContext\.pipelineItem\.outputPath, \{ skeleton, sharedTemplate: sharedTemplate\?\.code \}/u);
+  assert.match(source, /normalizeGeneratedCode\(pipelineItem, parsedDefs\?\.data, output\.code, mechanical\?\.skeleton, mechanical\?\.sharedTemplate\)/u);
+  assert.match(source, /pendingMechanicalReferences\.delete\(pipelineItem\.outputPath\)/u);
+});
+
+test('renamed page public reference includes full shared source even when skeleton omits an encoded state', async () => {
+  const { pageSharedPublicReference } = await import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializeGen.js');
+  const { normalizeGeneratedCode, buildHumanPrompt } = await loadMaterializeCore();
+  const name = 'stateFilterStatusX00007300007400006100007400006500003a00006900006e000070000075000074';
+  const typo = name.replace('00006e', '0006e');
+  const item = { id: 'ledger', type: 'l2_page', outputPath: '_102045_/l2/ledger/web/mobile/page11/records.ts', dependsFiles: ['l2/ledger/web/shared/recordsDts.txt'] };
+  const seen: string[] = [];
+  const sharedTemplate = await pageSharedPublicReference(item, async ref => { seen.push(ref); return `export class RecordsShared { public ${name}:string|null=null; }`; });
+  assert.deepEqual(seen, ['_102045_/l2/ledger/web/shared/records.ts']);
+  assert.ok(sharedTemplate);
+  const skeleton = 'class Ledger extends RecordsShared {}';
+  const code = `this.${typo}`;
+  assert.equal(normalizeGeneratedCode(item, 'prose', code, skeleton), code);
+  assert.equal(normalizeGeneratedCode(item, 'prose', code, skeleton, sharedTemplate.code), `this.${name}`);
+  assert.equal(normalizeGeneratedCode(item, 'prose', code, `${skeleton} ${typo}`, sharedTemplate.code), code);
+  assert.match(buildHumanPrompt('prose', [], item.outputPath, undefined, skeleton, sharedTemplate), /Inherited shared public API reference/u);
+});
+
 void test('agentCfeMaterializeGen tool schema is provider-clean', async () => {
   const mod = await loadMaterializeCore();
   const errs = lintToolSchema(JSON.stringify(mod.GEN_TOOL.function.parameters));

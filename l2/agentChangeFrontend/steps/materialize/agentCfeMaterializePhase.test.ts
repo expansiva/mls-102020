@@ -265,10 +265,12 @@ void test('a .test.ts finding is declared, never blocking, and never queued for 
   assert.match(src, /isSystemicPageFailure\(args\.attempt, blockingView\)/);
 });
 
-void test('quality gates enter repair and are declared after the budget, they never fail the phase', () => {
+void test('quality gates retain the repair limit and fail when findings remain after the budget', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
   assert.match(src, /repairable\.push\(\.\.\.collectMutationEnvelopeErrorIssues/);
   assert.match(src, /quality findings declared after repair budget/);
+  assert.match(src, /'failed',\s*`quality findings declared after repair budget/u);
+  assert.match(src, /'failed',\s*`MATERIALIZE-CLI-PENDING/u);
   assert.match(src, /describeVerifyBuckets/);
   assert.equal(describeVerifyBuckets({ blocked: 1, repaired: 2, declared: 3 }), 'blocked=1 repaired=2 declared=3');
 });
@@ -424,6 +426,30 @@ async function loadPhase(): Promise<typeof import('/_102020_/l2/agentChangeFront
   return import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializePhase.js');
 }
 
+test('every verify publishes current findings before summary and next repair routing, including terminal attempts', () => {
+  const source = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  const persist = source.indexOf('await persistAuditableFindings(moduleName, args.attempt, checkedItems)');
+  assert.ok(persist >= 0 && persist < source.indexOf('const summaryRef = await saveMaterializeVerifySummary'));
+  assert.ok(persist < source.indexOf('if (toRepair.length === 0)'));
+  const nextSnapshot = source.indexOf('await persistAuditableFindings(moduleName, nextAttempt, toRepair, args.attempt)');
+  assert.ok(nextSnapshot > persist && nextSnapshot < source.indexOf('const nextVerifyPlanId'));
+  assert.doesNotMatch(source, /if \(!findings\.length\) continue/u);
+});
+
+void test('renamed headless verify routes real Node diagnostics to output and shared dependencies only', async () => {
+  const { projectCompileErrorsForItem } = await loadPhase();
+  const shared = '_102045_/l2/ledger/web/shared/records.ts';
+  const page = '_102045_/l2/ledger/web/mobile/page11/records.ts';
+  const errors = [`${shared}: TS2551: Property misspelled does not exist`, `${page}: TS2307: Cannot find module`, '_102045_/l2/ledger/web/desktop/page11/other.ts: TS2322: unrelated'];
+  assert.deepEqual(projectCompileErrorsForItem(errors, [page]), [errors[1]]);
+  assert.deepEqual(projectCompileErrorsForItem(errors, [shared, page]), errors.slice(0, 2));
+  assert.deepEqual(projectCompileErrorsForItem([], [page]), []);
+  const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
+  assert.match(src, /if \(!monacoCompileAvailable\(\)\)/u);
+  assert.match(src, /compiled\.trace\.path === 'project-tsc'/u);
+  assert.match(src, /sharedTsRefOfDtsArtifact\(ref\)/u);
+});
+
 function splitVerifyAttempt(intents: mls.msg.AgentIntent[]): number | null {
   const verify = intents.find(intent =>
     intent.type === 'add-step' && intent.step.type === 'agent' && intent.step.agentName === 'agentCfeMaterializePhase');
@@ -490,4 +516,3 @@ void test('T3.4: no re-verify path hardcodes attempt: 1', () => {
   assert.equal(hardcoded.length, 1, 'only the initial phase verify starts the budget at 1');
   assert.match(hardcoded[0][0], /items: runnable/);
 });
-

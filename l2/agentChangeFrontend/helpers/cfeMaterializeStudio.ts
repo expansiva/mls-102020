@@ -416,7 +416,7 @@ export async function runProjectFrontendTsc(cwd: string, spawnFn?: ProjectTscSpa
       child.stdout?.on('data', chunk => { out += String(chunk); });
       child.stderr?.on('data', chunk => { out += String(chunk); });
       child.on('error', () => resolve(null));
-      child.on('close', () => resolve(out));
+      child.on('close', code => resolve(code === 0 || /\(\d+,\d+\): error TS\d+:/u.test(out) ? out : null));
     });
   } catch {
     return null;

@@ -55,7 +55,7 @@ import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/a
 import { pageSlotRecipe, pageSlotRecipes, primaryGenomeOf, type PageSlotRecipe, type UxVariantsMode } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageRecipe.js';
 import { buildOrganismSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSplitPlan.js';
 import { enumDisplayLabel, enumLabelFallbackWarnings, readEnumLabels, type CfeEnumLabel } from '/_102020_/l2/agentChangeFrontend/helpers/cfeEnumLabels.js';
-import { compileBlockedPlanIdsFromVerdict, sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { compileBlockedPlanIdsFromVerdict, sharedDtsArtifactRef, materializeVerdictAllClear } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
 import {
   cfePipelineTraceFileInfo,
   isCfeMaterializeVerifyFolder,
@@ -2322,15 +2322,15 @@ export async function saveMaterializeVerifyTrace(moduleName: string, planId: str
  *
  * Written by the verify right before it queues the round, keyed by the ITEM planId and stamped with the
  * attempt the slot will carry, so a slot can never pick up a previous round's (or a previous run's) list.
- * Best-effort on both sides: without the file the slot falls back to the compile recompute, exactly as
- * before.
+ * verifiedAttempt identifies the verify snapshot; attempt identifies its current/next repair consumer.
+ * The phase requires persistence before publishing a verdict or queuing another repair.
  */
-export async function saveMaterializeItemFindings(moduleName: string, planId: string, attempt: number, findings: string[]): Promise<boolean> {
+export async function saveMaterializeItemFindings(moduleName: string, planId: string, attempt: number, findings: string[], verifiedAttempt = attempt): Promise<boolean> {
   try {
     const project = mls.actualProject || 0;
     if (!project || !moduleName || !planId) return false;
     const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, toSafeShortName(planId), 'frontend-materialize-findings', project);
-    await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), planId, attempt, findings }, null, 2)}\n`);
+    await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), planId, attempt, verifiedAttempt, findings }, null, 2)}\n`);
     return true;
   } catch (error) {
     console.error(`[saveMaterializeItemFindings] ${error instanceof Error ? error.message : String(error)}`);
@@ -2401,8 +2401,8 @@ export async function saveMaterializeVerifySummary(
       attempt,
       // false while a repair round is still queued: that allClear:false is in-progress, not a barrier.
       final,
-      // allClear means nothing BLOCKS the next phase / a later plan. Declared findings stay named.
-      allClear: broken.length === 0,
+      // Declared errors and unavailable typechecks cannot certify a completed phase.
+      allClear: materializeVerdictAllClear(passed, broken, declared),
       blockedCount: broken.length,
       repairedCount: repaired.length,
       declaredCount: declared.length,
