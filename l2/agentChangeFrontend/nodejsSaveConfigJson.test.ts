@@ -84,6 +84,68 @@ function pageIdsOf(mod: Record<string, unknown>): string[] {
   return (frontend?.pages || []).map(page => page.pageId);
 }
 
+function materializeL2Page(clientRoot: string, pageId: string, title: string, pageTs = true): void {
+  const web = path.join(clientRoot, 'l2', 'studioVisits', 'web');
+  for (const device of ['desktop', 'mobile']) {
+    const defPath = `l2/studioVisits/web/${device}/page11/${pageId}.defs.ts`;
+    writeFile(path.join(clientRoot, defPath), `export const definition = ${JSON.stringify(`Page: ${title} (${pageId}).\n\nActors: clinician.`)} as const;\nexport const pipeline = ${JSON.stringify([{ type: 'l2_page', defPath, outputPath: defPath.replace('.defs.ts', '.ts') }])} as const;\n`);
+    if (pageTs) writeFile(path.join(web, device, 'page11', `${pageId}.ts`), 'export {};\n');
+  }
+  writeFile(path.join(web, 'shared', `${pageId}.ts`), 'export {};\n');
+  writeFile(path.join(web, 'shared', `${pageId}.defs.ts`), defs({ pageId, states: [{ source: 'routeParam', dtoPath: 'visitId' }] }));
+  writeFile(path.join(web, 'contracts', `${pageId}.defs.ts`), defs({ pageId }));
+}
+
+test('renamed L2 page11 fallback discovers three pages with defs-only contracts and metadata', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['studioVisits']);
+    writeDesignSystem(clientRoot);
+    for (const [id, title] of [['scheduleBoard', 'Schedule'], ['visitLedger', 'Visits'], ['clientDirectory', 'Clients']]) materializeL2Page(clientRoot, id, title);
+    writeFile(path.join(clientRoot, 'l4', 'studioVisits', 'siteMap.defs.ts'), defs({ landings: [{ actorId: 'clinician', workspaceId: 'scheduleBoard' }] }));
+    const result = composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.equal(result.skipped.length, 0);
+    const mod = modulesOf(readConfig(clientRoot))[0];
+    assert.deepEqual(pageIdsOf(mod), ['clientDirectory', 'scheduleBoard', 'visitLedger']);
+    const pages = (mod.frontend as { pages: Record<string, unknown>[] }).pages;
+    const board = pages.find(page => page.pageId === 'scheduleBoard')!;
+    assert.equal(board.title, 'Schedule');
+    assert.deepEqual(board.actors, ['clinician']);
+    assert.equal(board.route, '/studioVisits/scheduleBoard/:visitId?');
+    assert.equal(board.public, true);
+  });
+});
+
+test('renamed L4 owners retain precedence over L2 fallback and canonical defs contract is accepted', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['studioVisits']);
+    writeDesignSystem(clientRoot);
+    materializeL2Page(clientRoot, 'scheduleBoard', 'L2 schedule');
+    materializeL2Page(clientRoot, 'visitLedger', 'L2 visits');
+    writeFile(path.join(clientRoot, 'l4', 'studioVisits', 'workspaces', 'scheduleBoard.defs.ts'), defs({ workspaceId: 'scheduleBoard', title: 'Approved workspace', actors: ['owner'] }));
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const mod = modulesOf(readConfig(clientRoot))[0];
+    assert.deepEqual(pageIdsOf(mod), ['scheduleBoard']);
+    assert.equal((mod.frontend as { pages: Record<string, unknown>[] }).pages[0].title, 'Approved workspace');
+  });
+});
+
+test('renamed fallback rejects malformed page metadata and requires page TS plus shared and contract', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['studioVisits']);
+    writeDesignSystem(clientRoot);
+    materializeL2Page(clientRoot, 'unfinishedBoard', 'Unfinished', false);
+    materializeL2Page(clientRoot, 'badBoard', 'Bad');
+    for (const device of ['desktop', 'mobile']) writeFile(path.join(clientRoot, 'l2', 'studioVisits', 'web', device, 'page11', 'badBoard.defs.ts'), 'export const definition = "Page: Bad (otherId)." as const;\nexport const pipeline = [] as const;\n');
+    materializeL2Page(clientRoot, 'noShared', 'No shared');
+    fs.unlinkSync(path.join(clientRoot, 'l2', 'studioVisits', 'web', 'shared', 'noShared.ts'));
+    materializeL2Page(clientRoot, 'noContract', 'No contract');
+    fs.unlinkSync(path.join(clientRoot, 'l2', 'studioVisits', 'web', 'contracts', 'noContract.defs.ts'));
+    const result = composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.equal(result.composed.length, 0);
+    assert.equal(result.skipped[0].reason, 'no discovered page is materialized in l2');
+  });
+});
+
 test('T3 multi-module: todo + listaAssinatura each keep their own pages', () => {
   withRoot((root, clientRoot) => {
     writeProjectJson(clientRoot, ['todo', 'listaAssinatura']);

@@ -259,8 +259,55 @@ function discoverPages(clientRoot: string, moduleName: string): DiscoveredPage[]
   }
 
   const seen = new Set<string>();
+  if (pages.length === 0) pages.push(...discoverL2Pages(clientRoot, moduleName, landingWorkspaceIds));
   return pages.filter(page => seen.has(page.pageId) ? false : (seen.add(page.pageId), true))
     .sort((a, b) => a.pageId.localeCompare(b.pageId));
+}
+
+// Page11 definitions are data, not executable modules. Read only their JSON exports.
+function readPageExport(source: string, name: string): unknown {
+  const marker = new RegExp(`export const ${name}\\s*=\\s*`).exec(source);
+  if (!marker) return null;
+  const start = marker.index + marker[0].length;
+  let quoted = false;
+  for (let end = start; end < source.length; end++) {
+    if (quoted && source[end] === '\\') { end++; continue; }
+    if (source[end] === '"') quoted = !quoted;
+    if (!quoted && source.startsWith(' as const;', end)) {
+      try { return JSON.parse(source.slice(start, end)); } catch { return null; }
+    }
+  }
+  return null;
+}
+
+function discoverL2Pages(clientRoot: string, moduleName: string, landings: Set<string>): DiscoveredPage[] {
+  const web = path.join(clientRoot, 'l2', moduleName, 'web');
+  const pages: DiscoveredPage[] = [];
+  for (const device of ['desktop', 'mobile']) {
+    const dir = path.join(web, device, 'page11');
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir).filter(name => name.endsWith('.defs.ts')).sort()) {
+      const pageId = file.slice(0, -'.defs.ts'.length);
+      if (!pageId || toSafeShortName(pageId) !== pageId) continue;
+      const source = fs.readFileSync(path.join(dir, file), 'utf8');
+      const definition = readPageExport(source, 'definition');
+      if (typeof definition !== 'string') continue;
+      const title = /^Page: (.+) \(([^\n]+)\)\.$/m.exec(definition);
+      const actorsLine = /^Actors: (.+)\.$/m.exec(definition);
+      const pipeline = readPageExport(source, 'pipeline');
+      const defPath = `l2/${moduleName}/web/${device}/page11/${file}`;
+      if (!title || title[2] !== pageId || !Array.isArray(pipeline)
+        || !pipeline.some(item => item && item.type === 'l2_page' && item.defPath === defPath
+          && item.outputPath === defPath.replace('.defs.ts', '.ts'))) continue;
+      const actors = actorsLine ? actorsLine[1].split(',').map(actor => actor.trim()).filter(actor => /^[A-Za-z0-9_-]+$/.test(actor)) : [];
+      const shared = readDefsData(path.join(web, 'shared', `${pageId}.defs.ts`));
+      const states = shared && Array.isArray(shared.states) ? shared.states as Record<string, unknown>[] : [];
+      const routeParams = [...new Set(states.filter(state => state.source === 'routeParam')
+        .map(state => readString(state.dtoPath) || readString(state.name)).filter(param => /^[A-Za-z0-9_]+$/.test(param)))];
+      pages.push({ pageId, label: title[1], actors, routeParams, landing: landings.has(pageId) || shared?.landing === true });
+    }
+  }
+  return pages;
 }
 
 function pageRoute(moduleName: string, pageId: string, routeParams: string[]): string {
@@ -284,10 +331,10 @@ function isMaterialized(clientRoot: string, moduleName: string, pageId: string):
   const web = path.join(clientRoot, 'l2', moduleName, 'web');
   const sharedOk = fs.existsSync(path.join(web, 'shared', `${pageId}.ts`));
   const pageOk = desktopGenomesWithTs(clientRoot, moduleName, pageId).length > 0;
-  // Contracts: legacy is one per-page `<pageId>.ts`; l4 v2 (F3) is one per bffCall `<pageId>.<bffId>.ts`.
-  // Accept either — a page is materialized when its shared + a page genome exist and at least one contract does.
+  // Canonical contracts are defs-only; retain legacy per-page/per-bff implementation support.
   const contractsDir = path.join(web, 'contracts');
   const contractOk = fs.existsSync(path.join(contractsDir, `${pageId}.ts`))
+    || fs.existsSync(path.join(contractsDir, `${pageId}.defs.ts`))
     || (fs.existsSync(contractsDir) && fs.readdirSync(contractsDir).some(name =>
       name.startsWith(`${pageId}.`) && name.endsWith('.ts') && !name.endsWith('.d.ts') && !name.endsWith('.defs.ts') && !name.endsWith('.test.ts')));
   return sharedOk && pageOk && contractOk;
