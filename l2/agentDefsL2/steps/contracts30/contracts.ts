@@ -38,7 +38,7 @@ export interface D2ContractCall {
   entityId: string;
   operation: D2ContractOperation;
   actors: string[];
-  relationships: D2ContractRelationship[];
+  relationships: Array<Omit<D2ContractRelationship, 'identity' | 'display'>>;
   input: D2ContractField[];
   output: D2ContractField[];
   outputShape: 'array' | 'object';
@@ -50,6 +50,8 @@ export interface D2ContractRelationship {
   via: string;
   cardinality: string;
   collection: boolean;
+  identity: D2ContractField;
+  display: D2ContractField;
 }
 
 export interface D2PageContract {
@@ -68,6 +70,7 @@ export interface D2ContractsPageSource {
 export interface D2ContractsSources {
   module: string;
   entities: Record<string, Ns5OntologyAnyEntity>;
+  ontologyIndex?: unknown;
   access: unknown;
   pages: D2ContractsPageSource[];
 }
@@ -132,6 +135,8 @@ export function buildD2ContractsCatalog(sources: D2ContractsSources): D2PageCont
       const allowed = allowedPathsByPageActor(page, entityId, allFields, grants, issues, route);
       if (!allowed) continue;
       const visible = filterTree(allFields, allowed);
+      const relationships = relationshipsOf(entity, sources.ontologyIndex, sources.entities, grants, page.actors, issues, page.pageId, route);
+      const output = withRelationshipProjection(visible, relationships);
       const binding = operation === 'get'
         ? undefined
         : operationBinding(page, route, entityId, operation, usecaseId, issues);
@@ -144,9 +149,9 @@ export function buildD2ContractsCatalog(sources: D2ContractsSources): D2PageCont
         entityId,
         operation,
         actors: [...page.actors].sort(),
-        relationships: relationshipsOf(entity),
+        relationships: relationships.map(({ identity: _identity, display: _display, ...relationship }) => relationship),
         input: inputFields(operation, entity, visible, usecaseId, page.pageId, route, issues, binding),
-        output: visible,
+        output,
         outputShape: operation === 'list' ? 'array' : 'object',
       });
     }
@@ -156,18 +161,75 @@ export function buildD2ContractsCatalog(sources: D2ContractsSources): D2PageCont
   return pages.sort((a, b) => a.pageId.localeCompare(b.pageId));
 }
 
-function relationshipsOf(entity: Ns5OntologyAnyEntity): D2ContractRelationship[] {
-  return Object.values(rec(rec(entity).relationships)).map(raw => {
-    const relationship = rec(raw);
-    const cardinality = text(relationship.cardinality);
-    return {
+function relationshipsOf(entity: Ns5OntologyAnyEntity, ontologyIndex: unknown, entities: Record<string, Ns5OntologyAnyEntity>, grants: Record<string, unknown>[], actors: string[], issues: D2ContractIssue[], pageId: string, route: string): D2ContractRelationship[] {
+  const entityId = text(rec(entity).entityId);
+  return rows(rec(ontologyIndex).relationships).filter(relationship => text(relationship.from) === entityId && relationship.required === true).flatMap(relationship => {
+    const declared = Object.values(rec(rec(entity).relationships)).map(rec).find(item => text(item.relationshipId) === text(relationship.relationshipId));
+    const cardinality = text(declared?.cardinality) || ({ oneToMany: '1:N', manyToMany: 'N:N', manyToOne: 'N:1', oneToOne: '1:1' } as Record<string, string>)[text(relationship.type)] || '';
+    const via = text(relationship.field) || text(declared?.via);
+    const child = entities[text(relationship.to)];
+    const childId = text(rec(child).entityId);
+    const displayField = text(rec(child).displayField);
+    const parentFields = new Set(flatten(collectD2EntityFields(entity)).map(field => field.path));
+    const parentIdentityVisible = parentFields.has(via) || parentFields.has(`${entityId}.${via}`);
+    let childDisplayVisible = false;
+    try { childDisplayVisible = !!displayField && flatten(collectD2EntityFields(child)).some(item => item.path === `${childId}.${displayField}` || item.path === displayField); }
+    catch { return []; }
+    if (!parentIdentityVisible || !child || !childDisplayVisible) return [];
+    const prefix = displayField.startsWith(`${childId}.`) ? displayField : `${childId}.${displayField}`;
+    const childFields = collectD2EntityFields(child);
+    const identity = flatten(childFields).find(field => field.name === 'id' && field.derived);
+    const display = flatten(childFields).find(field => field.path === prefix);
+    if (!identity || !display) {
+      issues.push({ code: 'D2_CONTRACT_RELATIONSHIP_PROJECTION_INVALID', source: 'ontology', pageId, route, path: `${entityId}.relationships.${text(relationship.relationshipId)}`, message: 'required child relation has no resolvable identity/displayField pair' });
+      return [];
+    }
+    const grantsForAllActors = actors.every(actor => grants.some(grant => {
+      if (text(grant.actorRef) !== actor || !strings(grant.entityRefs).includes(childId)) return false;
+      const disclosure = rec(grant.disclosure);
+      return [identity.path, display.path].every(fieldPath => {
+        const allows = text(disclosure.mode) === 'fullRecord' || strings(disclosure.allowedFields).some(path => path === childId || path === fieldPath || fieldPath.startsWith(`${path}.`));
+        const denied = strings(disclosure.deniedFields).some(path => path === childId || fieldPath === path || fieldPath.startsWith(`${path}.`));
+        return allows && !denied;
+      });
+    }));
+    if (!grantsForAllActors) return [];
+    return [{
       relationshipId: text(relationship.relationshipId),
-      to: text(relationship.to),
-      via: text(relationship.via),
+      to: childId,
+      via,
       cardinality,
       collection: cardinality.endsWith(':N'),
-    };
+      identity: { ...identity },
+      display: { ...display },
+    }];
   }).filter(relationship => relationship.relationshipId && relationship.to);
+}
+
+function withRelationshipProjection(fields: D2ContractField[], relationships: D2ContractRelationship[]): D2ContractField[] {
+  const output = fields.map(field => ({ ...field, children: [...field.children] }));
+  for (const relationship of relationships) {
+    const projection: D2ContractField = { path: relationship.relationshipId, name: relationship.relationshipId, scalar: 'object', tsType: 'object', required: false, derived: false, writePrecondition: false, indexed: false, collection: relationship.collection, enumValues: [], referenceTo: [relationship.to], children: [] };
+    output.push(projection);
+    for (const field of [relationship.identity, relationship.display]) {
+      const parts = field.path.split('.').slice(1);
+      const leaf = parts.pop()!;
+      let level = projection.children;
+      let parentPath = relationship.relationshipId;
+      for (const part of parts) {
+        parentPath = parentPath ? `${parentPath}.${part}` : part;
+        let parent = level.find(item => item.path === parentPath);
+        if (!parent) {
+          parent = { path: parentPath, name: part, scalar: 'object', tsType: 'object', required: false, derived: false, writePrecondition: false, indexed: false, collection: false, enumValues: [], referenceTo: [], children: [] };
+          level.push(parent);
+        }
+        level = parent.children;
+      }
+      const path = `${parentPath}.${leaf}`;
+      if (!level.some(item => item.path === path)) level.push({ ...field, path });
+    }
+  }
+  return output;
 }
 
 export function collectD2EntityFields(entity: Ns5OntologyAnyEntity): D2ContractField[] {

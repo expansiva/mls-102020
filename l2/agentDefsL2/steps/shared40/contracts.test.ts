@@ -81,6 +81,32 @@ void test('actions, contracts, states and bindings close and input sources are n
   assert.ok(definition.states.some(item => item.kind === 'pageStatus' && item.valueSet?.join() === 'idle,loading,empty,success,error'));
 });
 
+void test('optional list reference filters need no selection source; command references still do', () => {
+  const page = selected('renamedRecords');
+  const optionalReference: D2ContractField = { ...field(false), path: 'Record.details.ownerId', name: 'ownerId', derived: false, referenceTo: ['Owner'], children: [] };
+  const requiredReference: D2ContractField = { ...optionalReference, path: 'Record.details.requiredOwnerId', name: 'requiredOwnerId', required: true };
+  const list = call('listRecords', 'ListRecords', 'list', [optionalReference]);
+  const ownerList = call('listOwners', 'ListOwners', 'list', []);
+  ownerList.entityId = 'Owner'; ownerList.output = [{ ...field(false), path: 'Owner.id' }];
+  const contract: D2PageContract = { pageId: page.pageId, calls: [list] };
+  const withoutSource = gated(page, contract, suggestedD2SharedJudgment(page, contract));
+  const optionalState = withoutSource.states.find(state => state.ontologyRef === optionalReference.path)!;
+  assert.equal(optionalState.source, 'userInput');
+  assert.equal(optionalState.required, false);
+  assert.equal(withoutSource.actions.some(action => action.kind === 'selection' && action.stateKey === optionalState.stateKey), false);
+
+  const requiredList: D2PageContract = { pageId: page.pageId, calls: [call('listRequiredRecords', 'ListRequiredRecords', 'list', [requiredReference])] };
+  assert.throws(() => gated(page, requiredList, suggestedD2SharedJudgment(page, requiredList)), /D2_SHARED_SELECTION_SOURCE_MISSING/);
+  const withSource: D2PageContract = { pageId: page.pageId, calls: [list, ownerList] };
+  ownerList.output = [{ ...field(false), path: 'Owner.id', derived: true }];
+  const sourced = gated(page, withSource, suggestedD2SharedJudgment(page, withSource));
+  assert.ok(sourced.actions.some(action => action.kind === 'selection' && action.selection?.sourceActionId === 'listOwners'));
+
+  const update = call('updateRecords', 'UpdateRecords', 'update', [{ ...field(true), path: 'Record.id' }]);
+  const commandContract: D2PageContract = { pageId: page.pageId, calls: [update] };
+  assert.throws(() => gated(page, commandContract, suggestedD2SharedJudgment(page, commandContract)), /D2_SHARED_SELECTION_SOURCE_MISSING/);
+});
+
 void test('DTO paths stay nested, enum values and operational payload provenance are preserved', () => {
   const page = selected('catalog');
   const name: D2ContractField = { ...field(false), path: 'Record.details.name', name: 'name', derived: false, enumValues: ['short', 'full'], children: [] };
@@ -198,8 +224,38 @@ void test('productive reader retains coverage, labels and public API across rena
     const parsed = parseDefs(renderD2Shared(definition, buildD2SharedPipeline('fixture', pageId)));
     assert.equal(parsed.items[0].type, 'l2_shared');
     assert.deepEqual((parsed.data as typeof definition).coverage.map(item => [item.organismId, item.contentRef]), [['organism.list.1', 'content.list'], ['organism.list.2', 'content.list']]);
+    assert.ok(definition.coverage.every(item => Object.hasOwn(item.outputFieldsByCapability, 'listRecord')));
     assert.equal(definition.actions.find(action => action.actionId === 'set:scenario')?.methodName, 'setScenario');
   }
+});
+
+void test('renamed coverage rejects an undeclared capability instead of dropping it', () => {
+  const page = selected('renamedInventory');
+  page.organisms = [{ organismId: 'inventory.rows', kind: 'list', text: 'Browse records.', capabilityRefs: ['inventedCapability'] }];
+  const contract = pageContract(page.pageId);
+  assert.throws(() => gated(page, contract, suggestedD2SharedJudgment(page, contract)), /D2_SHARED_COVERAGE_CAPABILITY_UNKNOWN: inventory\.rows/);
+});
+
+void test('renamed output coverage resolves ontology fields and declared relation DTO paths without ambiguity', () => {
+  const page = selected('renamedLedger');
+  page.organisms = [{ organismId: 'ledger.rows', kind: 'list', text: 'Browse authorised records.', capabilityRefs: ['listRecord'] }];
+  const list = call('listRecord', 'ListRecord', 'list', []);
+  list.relationships = [{ relationshipId: 'recordOwner', to: 'Owner', via: 'Record.ownerId', cardinality: 'N:1', collection: false }];
+  const projection: D2ContractField = { ...field(false), path: 'recordOwner', name: 'recordOwner', scalar: 'object', tsType: 'object', derived: false, children: [
+    { ...field(true), path: 'recordOwner.id' }, { ...field(true), path: 'recordOwner.label', name: 'label', derived: false },
+  ] };
+  list.output.push(projection);
+  const contract = { pageId: page.pageId, calls: [list] };
+  const definition = () => gated(page, contract, suggestedD2SharedJudgment(page, contract));
+  assert.deepEqual(definition().coverage[0].outputFieldsByCapability.listRecord.map(item => item.path), ['id', 'recordOwner', 'recordOwner.id', 'recordOwner.label']);
+  list.output.push({ ...field(true), path: 'Record.recordOwner', name: 'recordOwner' });
+  assert.throws(definition, /D2_SHARED_DTO_PATH_AMBIGUOUS: recordOwner/);
+  list.output.pop();
+  projection.children[1].path = 'Owner.label';
+  assert.throws(definition, /D2_SHARED_DTO_PATH_INVALID: Owner.label/);
+  projection.children[1].path = 'recordOwner.label';
+  list.relationships = [];
+  assert.throws(definition, /D2_SHARED_DTO_PATH_INVALID: recordOwner/);
 });
 
 void test('shared accepts structural reads, preserves all actor bindings and omits parent DTO containers', () => {

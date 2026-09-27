@@ -11,7 +11,7 @@ import { assertD2MoleculeCandidates, buildD2MoleculeReceipt, prepareD2MoleculeCo
 import type { D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { D2_PAGE_TECHNICAL_SKILL, d2PageUnitContextHash, resolveD2PageCategory } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { D2_PAGES_VERSION, type D2PageDevice, type D2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
-import { gateD2Pages } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
+import { gateD2Pages, normalizeD2PageCoverage } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
 import { selectD2Template, type D2TemplatePort } from '/_102020_/l2/agentDefsL2/steps/pages50/templateContext.js';
 import { d2TemplatePort } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryCatalog.js';
 import type { D2PageTemplateSelection, D2PageCoverageItem } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
@@ -49,13 +49,14 @@ export async function approveD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
     indexReference: group.indexPipelineReference, indexVia: group.indexVia, indexSha256: molecules.metrics.reads.find(read => read.role === 'group-index' && read.reference === group.indexReference)!.sha256,
     usageContractReference: group.usageContractPipelineReference, usageContractVia: group.usageContractVia, usageContractSha256: molecules.metrics.reads.find(read => read.role === 'usage-contract' && read.reference === group.usageContractReference)!.sha256,
   }]));
-  const rendered = gateD2Pages(identity.module, page, shared, judgment, groupSkills, pageSkills, groupCandidates, templateSelection, provenance);
+  const normalizedJudgment = normalizeD2PageCoverage(judgment, shared);
+  const rendered = gateD2Pages(identity.module, page, shared, normalizedJudgment, groupSkills, pageSkills, groupCandidates, templateSelection, provenance);
   for (const item of rendered) item.pipeline[0].dependsFiles.push(...d2PageSemanticRefs(snapshot, pageId));
   const sources = Object.fromEntries(rendered.map(item => { const source = renderD2Page(item, identity.project); assertD2RenderedPage(source); return [item.device, source]; })) as Record<D2PageDevice, string>;
   const category = resolveD2PageCategory(pageSkills, judgment.category.categoryRef);
   const skillHashes = { [D2_PAGE_TECHNICAL_SKILL]: pageSkills.skillHashes[D2_PAGE_TECHNICAL_SKILL], [category.skillReference]: pageSkills.skillHashes[category.skillReference] };
   const organismIds = rendered[0].descriptions.map(item => item.organismId);
-  const moleculeReasons = Object.fromEntries(judgment.presentations.map(item => [item.device, item.moleculeReason])) as Record<D2PageDevice, string>;
+  const moleculeReasons = Object.fromEntries(normalizedJudgment.presentations.map(item => [item.device, item.moleculeReason])) as Record<D2PageDevice, string>;
   const moleculeReceipt = await buildD2MoleculeReceipt(molecular.prepared.inventory, molecular.prepared.candidates, molecules);
   const verifyContext = async () => {
     await verifySources();

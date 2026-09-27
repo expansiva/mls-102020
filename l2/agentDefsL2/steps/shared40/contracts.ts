@@ -17,7 +17,8 @@ export interface D2SharedOperationBinding { actorRef: string; grantRefs: string[
 export interface D2SharedAction { actionId: string; methodName: string; kind: 'query' | 'command' | 'stateSetter' | 'selection'; commandRef?: string; routeRef?: string; inputTypeRef?: string; outputTypeRef?: string; inputStateKeys: string[]; outputStateKeys: string[]; statusStateKey: string; errorStateKey: string; refreshActionIds: string[]; operationBinding?: D2SharedOperationBinding; operationBindings?: D2SharedOperationBinding[]; selection?: { sourceActionId: string; resultStateKey: string; identityPath: string }; confirmation?: { required: true; title: string; description: string }; stateKey?: string; }
 export interface D2SharedSnapshotPrecondition { inputStateKey: string; selectedIdentityStateKey: string; sourceActionId: string; resultStateKey: string; identityPath: string; valuePath: string; valueScalar: D2ContractField['scalar']; capture: 'onSelection'; missing: 'blockCommandPreserveEdit'; }
 export interface D2SharedBinding { actionId: string; kind: 'query' | 'command'; routeRef: string; inputTypeRef: string; outputTypeRef: string; inputStateKeys: string[]; resultStateKey: string; snapshotPreconditions?: D2SharedSnapshotPrecondition[]; }
-export interface D2SharedCoverage { organismId: string; sourceIndex: number; kind: string; contentRef: string; content: string; scenarioRefs: string[]; capabilityRefs: string[]; source: unknown; }
+export interface D2SharedOutputField { actionId: string; outputTypeRef: string; path: string; }
+export interface D2SharedCoverage { organismId: string; sourceIndex: number; kind: string; contentRef: string; content: string; scenarioRefs: string[]; capabilityRefs: string[]; outputFieldsByCapability: Record<string, D2SharedOutputField[]>; source: unknown; }
 export interface D2SharedDefinition { schemaVersion: typeof D2_SHARED_VERSION; moduleName: string; pageId: string; pageName: string; baseClassName: string; routePattern: string; contractRef: { defPath: string; calls: Array<{ actionId: string; routeConst: string; inputType: string; outputType: string }> }; states: D2SharedState[]; actions: D2SharedAction[]; scenaries: D2SharedScenarioJudgment[]; initialLoads: Array<{ actionId: string; stateKey: string }>; dataBindings: D2SharedBinding[]; coverage: D2SharedCoverage[]; }
 export interface D2SharedPipelineItem { id: string; type: 'l2_shared'; defPath: string; outputPath: string; dependsFiles: string[]; dependsOn: string[]; skills: string[]; }
 
@@ -38,7 +39,12 @@ export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage
     const inputStates = inputLeaves(call.input).map(field => {
       const dtoPath = dtoPathOf(call.entityId, field.path);
       const stateKey = `${prefix}.input.${dtoPath}`;
-      const selected = isSelectedEntity(call, field) || field.referenceTo.length > 0;
+      const hasSelectionSource = field.referenceTo.length > 0 && contract.calls.some(candidate =>
+        (candidate.operation === 'list' || candidate.operation === 'get')
+        && field.referenceTo.includes(candidate.entityId)
+        && flatten(candidate.output).some(output => output.derived && output.name === 'id'));
+      const selected = isSelectedEntity(call, field)
+        || (field.referenceTo.length > 0 && (call.operation !== 'list' || field.required || hasSelectionSource));
       const snapshot = field.writePrecondition;
       const boundInput = operationBinding?.inputFields.find(item => item.path === field.path);
       const inputOrigin = boundInput?.origin;
@@ -84,7 +90,7 @@ export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage
     contractRef: { defPath: `l2/${moduleName}/web/contracts/${page.pageId}.defs.ts`, calls: contract.calls.map(call => ({ actionId: call.callName, routeConst: call.routeName, inputType: `${call.callPascal}Input`, outputType: `${call.callPascal}Output` })) },
     states, actions, scenaries,
     initialLoads: judgment.initialLoadActionIds.map(actionId => ({ actionId, stateKey: `ui.${page.pageId}.${actionId}.result` })),
-    dataBindings, coverage: deriveCoverage(page, scenaries, actions),
+    dataBindings, coverage: deriveCoverage(page, contract, scenaries, actions),
   };
 }
 
@@ -170,7 +176,26 @@ function dtoPathOf(entityId: string, fieldPath: string): string {
   return path === '$page' ? 'page' : path;
 }
 function memberPath(dtoPath: string): string { return dtoPath.split('.').map(pascal).join(''); }
-function deriveCoverage(page: D2SelectedPage, scenes: D2SharedScenarioJudgment[], actions: D2SharedAction[]): D2SharedCoverage[] {
+function outputDtoPaths(call: D2ContractCall): Array<{ field: D2ContractField; path: string }> {
+  const result: Array<{ field: D2ContractField; path: string }> = [];
+  const seen = new Set<string>();
+  const visit = (field: D2ContractField, parent: string, relational: boolean) => {
+    const path = parent ? `${parent}.${field.name}` : field.name;
+    if (!field.name || field.name.includes('.') || (relational ? field.path : dtoPathOf(call.entityId, field.path)) !== path) {
+      throw new Error(`D2_SHARED_DTO_PATH_INVALID: ${field.path}`);
+    }
+    if (seen.has(path)) throw new Error(`D2_SHARED_DTO_PATH_AMBIGUOUS: ${path}`);
+    seen.add(path);
+    result.push({ field, path });
+    for (const child of field.children) visit(child, path, relational);
+  };
+  for (const field of call.output) {
+    const relational = field.path === field.name && call.relationships.filter(relation => relation.relationshipId === field.name).length === 1;
+    visit(field, '', relational);
+  }
+  return result;
+}
+function deriveCoverage(page: D2SelectedPage, contract: D2PageContract, scenes: D2SharedScenarioJudgment[], actions: D2SharedAction[]): D2SharedCoverage[] {
   const occurrences = new Map<string, number>();
   const ids = new Set<string>();
   return page.organisms.map((source, sourceIndex) => {
@@ -185,9 +210,19 @@ function deriveCoverage(page: D2SelectedPage, scenes: D2SharedScenarioJudgment[]
     if (!content.trim()) throw new Error(`D2_SHARED_COVERAGE_CONTENT_MISSING: ${organismId}`);
     const contentRef = typeof item.contentRef === 'string' ? item.contentRef : `content.${folded}`;
     const scenarioRefs = scenes.map(scene => scene.value);
-    const capabilityRefs = Array.isArray(item.capabilityRefs) ? item.capabilityRefs.filter((value): value is string => typeof value === 'string') : actions.filter(action => action.commandRef).map(action => action.actionId);
+    const capabilityRefs = Array.isArray(item.capabilityRefs)
+      ? item.capabilityRefs.filter((value): value is string => typeof value === 'string')
+      : actions.filter(action => action.commandRef && (action.kind === 'query' || action.kind === 'command')).map(action => action.actionId);
     if (capabilityRefs.some(ref => !actions.some(action => action.actionId === ref))) throw new Error(`D2_SHARED_COVERAGE_CAPABILITY_UNKNOWN: ${organismId}`);
-    return { organismId, sourceIndex, kind, contentRef, content, scenarioRefs, capabilityRefs, source: structuredClone(source) };
+    const outputFieldsByCapability = Object.fromEntries(capabilityRefs.map(capability => {
+      const action = actions.find(candidate => candidate.actionId === capability);
+      const call = contract.calls.find(candidate => candidate.callName === action?.commandRef);
+      const fields = call && (call.operation === 'list' || call.operation === 'get')
+        ? outputDtoPaths(call).map(({ path }) => ({ actionId: call.callName, outputTypeRef: `${call.callPascal}Output`, path }))
+        : [];
+      return [capability, fields];
+    }));
+    return { organismId, sourceIndex, kind, contentRef, content, scenarioRefs, capabilityRefs, outputFieldsByCapability, source: structuredClone(source) };
   });
 }
 function assignPublicNames(states: D2SharedState[], actions: D2SharedAction[], scenes: D2SharedScenarioJudgment[]): void {

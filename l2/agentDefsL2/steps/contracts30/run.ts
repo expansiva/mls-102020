@@ -72,6 +72,7 @@ export function d2ContractsSources(snapshot: D2InputSnapshot, artifacts: D2Input
   return {
     module: snapshot.module,
     entities,
+    ontologyIndex: artifacts.ontologyIndex,
     access: artifacts.access,
     pages: snapshot.selection.pages.filter(page => writeIds.has(page.pageId)).map(page => ({
       pageId: page.pageId,

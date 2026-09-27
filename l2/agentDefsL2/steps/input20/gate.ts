@@ -61,26 +61,6 @@ export async function buildD2InputSnapshot(
   checkVersion(state, module, SUPPORTED.module, 'l4/module.defs.ts');
   checkVersion(state, journeyIndex, SUPPORTED.journey, 'l4/journeys/index.defs.ts');
   checkVersion(state, ontologyIndex, SUPPORTED.ontology, 'l4/ontology/index.defs.ts');
-  for (const entity of Object.values(rec(artifacts.entities))) {
-    const operations = rec(rec(entity).operations);
-    for (const [operation, raw] of Object.entries(operations)) {
-      const item = rec(raw);
-      const file = `l4/${identity.module}/ontology/${text(rec(entity).entityId)}.defs.ts`;
-      const writable = strings(item.writable);
-      const required = strings(item.required);
-      const assigned = Object.keys(rec(item.assigned));
-      const paths = [...writable, ...required, ...assigned];
-      for (const path of paths) {
-        if (!operationFieldExists(entity, path)) error(state, 'OPERATION_FIELD_REF_MISSING', file, `operations.${operation} references missing record field '${path}'`);
-      }
-      for (const [path, assignedValue] of Object.entries(rec(item.assigned))) {
-        const field = operationField(entity, path);
-        if (!field || !matchesOperationValue(field, assignedValue)) error(state, 'OPERATION_ASSIGNED_VALUE_INVALID', file, `operations.${operation}.assigned '${path}' does not match its declared record field type`);
-      }
-      for (const path of required) if (!writable.includes(path) && !assigned.includes(path)) error(state, 'OPERATION_REQUIRED_NOT_WRITABLE', file, `operations.${operation}.required path '${path}' is not writable or server-assigned`);
-      for (const ruleId of strings(item.ruleRefs)) if (!hasRule(rules.rules, ruleId)) error(state, 'OPERATION_RULE_REF_MISSING', `l4/${identity.module}/rules.defs.ts`, `operations.${operation} cites missing rule '${ruleId}'`);
-    }
-  }
   checkVersion(state, rules, SUPPORTED.rules, 'l4/rules.defs.ts');
   checkVersion(state, workflows, SUPPORTED.workflows, 'l4/workflows.defs.ts');
   checkVersion(state, access, SUPPORTED.access, 'l4/access.defs.ts');
@@ -478,40 +458,6 @@ function semanticPageScopeFindings(state: GateState, pages: D2SelectedPage[]): v
       );
     }
   }
-}
-
-function operationFieldExists(entity: unknown, path: string): boolean {
-  return operationField(entity, path) !== null;
-}
-
-function operationField(entity: unknown, path: string): Record<string, unknown> | null {
-  const parts = path.split('.');
-  let fields = rec(rec(rec(entity).record).fields);
-  let result: Record<string, unknown> | null = null;
-  for (const part of parts) {
-    const field = rec(fields[part]);
-    if (!Object.keys(field).length) return null;
-    result = field;
-    fields = rec(field.fields);
-  }
-  return result;
-}
-
-function matchesOperationValue(field: Record<string, unknown>, value: unknown): boolean {
-  const type = text(field.type);
-  if (type === 'enum') {
-    const values = Array.isArray(field.values) ? field.values.map(item => typeof item === 'string' ? item : rec(item).value) : [];
-    return typeof value === 'string' && values.includes(value);
-  }
-  if (['string', 'text', 'uuid', 'record', 'timestamp', 'date'].includes(type)) return typeof value === 'string';
-  if (type === 'integer') return Number.isInteger(value);
-  if (type === 'number' || type === 'money') return typeof value === 'number' && Number.isFinite(value);
-  return type === 'boolean' && typeof value === 'boolean';
-}
-
-function hasRule(source: unknown, ruleId: string): boolean {
-  if (Array.isArray(source)) return rows(source).some(item => text(item.ruleId) === ruleId);
-  return Object.prototype.hasOwnProperty.call(rec(source), ruleId);
 }
 
 function validateDestinationCollisions(state: GateState, pages: D2SelectedPage[], remove: Array<{ pageId: string; destinations: D2Destination[] }>): void {

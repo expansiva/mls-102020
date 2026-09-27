@@ -111,6 +111,7 @@ void test('done pages are excluded, and the historical regression fixture remain
   fixture.snapshot.selection.preservePageIds = [fixture.snapshot.selection.pages[0].pageId];
   fixture.snapshot.selection.remove = [{ pageId: 'removed_page', status: 'toRemove', destinations: [] }];
   assert.equal(d2ContractsSources(fixture.snapshot, fixture.artifacts).pages.some(page => page.pageId === fixture.snapshot.selection.pages[0].pageId), false);
+  assert.equal(d2ContractsSources(fixture.snapshot, fixture.artifacts).ontologyIndex, fixture.artifacts.ontologyIndex);
   const historicalNeeds = json(path.join(HISTORICAL, 'needs.json'));
   const historicalBackend = json(path.join(HISTORICAL, 'backend.json'));
   assert.equal(rows(historicalNeeds.pages).length, 7);

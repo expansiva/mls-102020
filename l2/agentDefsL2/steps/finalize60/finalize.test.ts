@@ -31,6 +31,11 @@ test('finalize60 gates the exact 20 defs and 15-item acyclic graph, including a 
   assert.doesNotThrow(() => gateD2FinalSources(snapshot, sources));
 });
 
+test('legacy internal page descriptions render without output citations while judgment gates stay strict', () => {
+  const source = pageSource('agenda', 'desktop', ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts']);
+  assert.match(source, /Organism organism\.content\.1/);
+});
+
 test('finalize60 refuses a missing def, duplicate id, cycle and invalid reference', () => {
   const complete = ids.flatMap(pageId => files(pageId));
   assert.throws(() => gateD2FinalSources(snapshot, complete.slice(1)), /OUTPUT_SET_MISMATCH/);
@@ -117,10 +122,10 @@ function files(pageId: string, withoutSkills = false): D2FinalSource[] {
     ...(['desktop', 'mobile'] as const).map(device => ({ pageId, kind: device === 'desktop' ? 'desktopPage' as const : 'mobilePage' as const, path: p.destinations[device === 'desktop' ? 2 : 3].path, source: pageSource(pageId, device, skill) })),
   ];
 }
-function description(pageId: string, device: string) { return { organismId: 'organism.content.1', kind: 'content', description: `${pageId} ${device}`, contentRef: 'base', capabilityRefs: [], moleculeRecommendations: [] }; }
+function description(pageId: string, device: string) { return { organismId: 'organism.content.1', kind: 'content', description: `${pageId} ${device}`, contentRef: 'base', capabilityRefs: [], outputFieldRefs: [], moleculeRecommendations: [] }; }
 function pageSource(pageId: string, device: 'desktop' | 'mobile', skill: string[]) {
   const templateSelection = { categoryRef: 'calendarScheduling', targetPage: 'page11' as const, experiencePage: null, experienceId: null, styleId: null, layoutId: null, reason: 'Fixture guidance.', requirementsMet: [], digest: `sha256:${'1'.repeat(64)}`, sources: [] };
-  const coverage = [{ organismId: 'organism.content.1', sourceIndex: 0, kind: 'content', contentRef: 'base', scenarioRefs: ['base'], capabilityRefs: [], moleculeRecommendations: [] }];
+  const coverage = [{ organismId: 'organism.content.1', sourceIndex: 0, kind: 'content', contentRef: 'base', scenarioRefs: ['base'], capabilityRefs: [], outputFieldsByCapability: {}, moleculeRecommendations: [] }];
   return renderD2Page({ device, pageId, pageLabel: pageId, pageIntent: 'Read published content.', actors: [], authorityRefs: [], operationBindings: [], descriptions: [description(pageId, device)], templateSelection, coverage, pipeline: [buildD2PagePipeline(moduleName, pageId, device, 'calendarScheduling', skill, templateSelection, coverage)] });
 }
 function replacePipeline(all: D2FinalSource[], pageId: string, kind: D2FinalSource['kind'], patch: Record<string, unknown>): D2FinalSource[] {

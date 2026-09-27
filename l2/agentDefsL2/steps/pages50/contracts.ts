@@ -9,7 +9,7 @@ export type D2PageDevice = 'desktop' | 'mobile';
 
 export interface D2PageCategoryJudgment { categoryRef: string; reason: string; evidenceRefs: string[]; }
 export interface D2MoleculeRecommendationJudgment { groupId: string; candidates: string[]; reason: string; }
-export interface D2PageDescription { organismId: string; kind: string; description: string; contentRef: string; capabilityRefs: string[]; moleculeRecommendations: D2MoleculeRecommendationJudgment[]; }
+export interface D2PageDescription { organismId: string; kind: string; description: string; contentRef: string; capabilityRefs: string[]; outputFieldRefs: string[]; moleculeRecommendations: D2MoleculeRecommendationJudgment[]; }
 export interface D2PageOrganismSource { organismId: string; kind: string; intent: string; staticContent: boolean; }
 export interface D2PageScenarioSurface { contentRef: string; actionId: string; kind: D2SharedDefinition['scenaries'][number]['kind']; inputStateKeys: string[]; statusStateKey: string; errorStateKey: string; }
 
@@ -21,7 +21,7 @@ export interface D2PagePresentationJudgment {
 export interface D2PagesJudgment { schemaVersion: typeof D2_PAGES_JUDGMENT_VERSION; pageId: string; pageIntent: string; category: D2PageCategoryJudgment; presentations: D2PagePresentationJudgment[]; }
 export interface D2PageTemplateSource { role: string; reference: string; sha256: string; }
 export interface D2PageTemplateSelection { categoryRef: string; targetPage: 'page11'; experiencePage: 'page11' | 'page21' | 'page31' | null; experienceId: string | null; styleId: string | null; layoutId: string | null; reason: string; requirementsMet: string[]; digest: string; sources: D2PageTemplateSource[]; }
-export interface D2PageCoverageItem { organismId: string; sourceIndex: number; kind: string; contentRef: string; scenarioRefs: string[]; capabilityRefs: string[]; moleculeRecommendations: D2MoleculeRecommendationProvenance[]; }
+export interface D2PageCoverageItem { organismId: string; sourceIndex: number; kind: string; contentRef: string; scenarioRefs: string[]; capabilityRefs: string[]; outputFieldsByCapability: D2SharedDefinition['coverage'][number]['outputFieldsByCapability']; moleculeRecommendations: D2MoleculeRecommendationProvenance[]; }
 export interface D2MoleculeRecommendationProvenance extends D2MoleculeRecommendationJudgment { indexReference: string; indexVia: string; indexSha256: string; usageContractReference: string; usageContractVia: string; usageContractSha256: string; }
 export interface D2PagePipelineItem { id: string; type: 'l2_page'; defPath: string; outputPath: string; dependsFiles: string[]; dependsOn: string[]; categoryRef: string; skills: string[]; templateSelection: D2PageTemplateSelection; coverage: D2PageCoverageItem[]; }
 export interface D2RenderedPage { device: D2PageDevice; pageId: string; pageLabel: string; pageIntent: string; actors: string[]; authorityRefs: string[]; operationBindings: D2SelectedPage['operationBindings']; descriptions: D2PageDescription[]; templateSelection: D2PageTemplateSelection; coverage: D2PageCoverageItem[]; pipeline: readonly [D2PagePipelineItem]; }

@@ -17,7 +17,7 @@ export class D2OperationSemanticsError extends Error {
   }
 }
 
-/** Resolve declared operation policy by structural refs; prose and disclosure never grant writes. */
+/** Derive operation inputs from record fields and lifecycle metadata; prose never grants writes. */
 export function resolveD2OperationBindings(
   sources: D2OperationSemanticsSources,
   pageId: string,
@@ -39,28 +39,33 @@ export function resolveD2OperationBindings(
     const entity = rec(sources.entities[entityId]);
     const entityFile = `l4/${sources.module}/ontology/${entityId}.defs.ts`;
     if (!Object.keys(entity).length) throw new D2OperationSemanticsError('ENTITY_MISSING', entityFile, entityId, 'entity source is missing');
-    const opSpec = rec(rec(entity.operations)[operation]);
     const isTransition = operation === 'transition' || (operation !== 'create' && operation !== 'update' && operation !== 'list' && operation !== 'get');
     const transition = rows(entity.transitions).find(item => text(item.transitionId) === usecaseId);
     const actorRef = isTransition ? strings(transition?.by).find(actor => actors.includes(actor)) || actors[0] || '' : actors[0] || '';
     const fields = recordFields(entity);
-    const referenced = isTransition ? strings(transition?.payload) : [...strings(opSpec.writable), ...Object.keys(rec(opSpec.assigned))];
-    const required = new Set(isTransition ? strings(transition?.payload) : strings(opSpec.required));
-    const assigned = new Set(Object.keys(rec(opSpec.assigned)));
+    const initialState = rows(entity.lifecycleStates)[0];
+    const serverAssigned = new Map<string, unknown>();
+    const lifecycleField = text(initialState?.field) || text(entity.lifecycleField) || 'state';
+    if (initialState && fields.has(lifecycleField)) serverAssigned.set(lifecycleField, initialState.state ?? initialState.value);
+    else if (initialState && fields.has('status')) serverAssigned.set('status', initialState.state ?? initialState.value);
+    const subtype = text(entity.subtype);
+    const subtypePath = fields.has('subtype') ? 'subtype' : fields.has('details.identification.subtype') ? 'details.identification.subtype' : fields.has('details.identity.subtype') ? 'details.identity.subtype' : '';
+    if (subtype && subtypePath) serverAssigned.set(subtypePath, subtype);
+    const writablePaths = [...fields].filter(path => {
+      const field = fieldByPath(entity, path);
+      return !field.derived && !field.writePrecondition && !serverAssigned.has(path) && !isContainer(field);
+    });
+    const referenced = isTransition ? strings(transition?.payload) : operation === 'create' || operation === 'update' ? writablePaths : [];
+    const required = new Set(isTransition ? strings(transition?.payload) : referenced.filter(path => fieldByPath(entity, path).required === true));
     const inputFields = unique(referenced).map(path => {
       if (!fields.has(path)) throw new D2OperationSemanticsError('FIELD_REF_MISSING', entityFile, `${entityId}.${path}`, `operation '${operation}' references an undeclared record field`);
-      return { path: path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`, origin: assigned.has(path) ? 'server' as const : 'actor' as const, required: required.has(path) };
+      return { path: path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`, origin: serverAssigned.has(path) ? 'server' as const : 'actor' as const, required: required.has(path) };
     });
-    for (const path of required) if (!referenced.includes(path)) {
-      throw new D2OperationSemanticsError('REQUIRED_FIELD_NOT_WRITABLE', entityFile, `${entityId}.${path}`, `required path '${path}' is not declared writable/payload`);
-    }
     if (isTransition && !transition) throw new D2OperationSemanticsError('TRANSITION_REF_MISSING', entityFile, `transitions.${usecaseId}`, `operation '${usecaseId}' has no matching transition`);
-    const citedRules = unique([...strings(opSpec.ruleRefs), ...strings(transition?.ruleRefs)]);
-    if (['create', 'update'].includes(operation) && !Object.keys(opSpec).length) {
-      throw new D2OperationSemanticsError('OPERATION_SEMANTICS_MISSING', entityFile, `operations.${operation}`, `operation '${operation}' has no declared write semantics`);
-    }
-    const ruleRefs = citedRules.map(ruleId => {
+    const citedRules = unique(isTransition ? strings(transition?.ruleRefs) : operation === 'create' || operation === 'update' ? strings(entity.rules) : []);
+    const ruleRefs = citedRules.flatMap(ruleId => {
       const description = rules.get(ruleId);
+      if (description === undefined && !isTransition) return [{ ruleId, file: entityFile, symbol: `rules[${ruleId}]`, description: '' }];
       if (description === undefined) throw new D2OperationSemanticsError('RULE_REF_MISSING', `l4/${sources.module}/rules.defs.ts`, `rules.${ruleId}`, `rule '${ruleId}' is absent`);
       const file = `l4/${sources.module}/rules.defs.ts`;
       return { ruleId, file, symbol: ruleSymbol(sources.rules, ruleId), description };
@@ -118,6 +123,13 @@ function recordFields(entity: Record<string, unknown>): Set<string> {
   visit(root, '');
   return result;
 }
+function fieldByPath(entity: Record<string, unknown>, path: string): Record<string, unknown> {
+  let current: Record<string, unknown> = rec(rec(entity.record).fields);
+  let field: Record<string, unknown> = {};
+  for (const part of path.split('.')) { field = rec(current[part]); current = rec(field.fields); }
+  return field;
+}
+function isContainer(field: Record<string, unknown>): boolean { return text(field.type) === 'object' || Object.keys(rec(field.fields)).length > 0; }
 function deniedBy(grants: Array<{ grant: Record<string, unknown> }>, actor: string, entityId: string, path: string): boolean {
   const fullPath = path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`;
   return grants.filter(item => text(item.grant.actorRef) === actor).some(item => strings(rec(item.grant.disclosure).deniedFields).some(denied =>

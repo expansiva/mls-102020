@@ -12,6 +12,8 @@ import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { D2InputValidationError, type D2InputArtifacts, type D2SourceDigest } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { buildD2InputSnapshot, destinationsFor } from '/_102020_/l2/agentDefsL2/steps/input20/gate.js';
 import { d2InputFile, d2InputReportFile, readD2InputProblems, writeAcceptedD2Input } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
+import { collectD2EntityFields } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
+import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IDENTITY: D2RunIdentity = { project: 102047, module: 'agendaClinica' };
@@ -124,38 +126,53 @@ void test('current immutable fixture produces the exact agendaClinica inventory'
   assert.ok(reread.some(item => item.code === 'PAGE_OWN_SCOPE_WITH_OTHER_ENTITY_CRUD' && item.pageId === 'cadastro_recepcionista' && item.route));
 });
 
-void test('fixture operation assignment is flagged without synthesizing user input', async () => {
+void test('canonical lifecycle state and subtype never become create or update actor inputs', async () => {
   const input = artifacts('current');
-  const entity = rec(input.entities.Consulta);
-  rec(entity.operations).create = { writable: ['pacienteId'], required: [], assigned: { status: 'scheduled' } };
+  const entity = rec(input.entities.Profissional);
+  entity.subtype = 'Entry';
+  entity.lifecycleStates = [{ state: 'scheduled' }];
+  entity.record = { fields: {
+    status: { type: 'enum', values: ['scheduled', 'done'], required: true },
+    subtype: { type: 'enum', values: ['Entry'] },
+    label: { type: 'string', required: true },
+  } };
   const snapshot = await buildD2InputSnapshot(IDENTITY, input);
-  const bindings = snapshot.selection.pages.flatMap(page => page.operationBindings || []);
-  assert.equal(bindings.some(item => item.operation === 'create' && item.entityId === 'Consulta' && item.inputFields.some(field => field.path === 'Consulta.status')), false);
-  assert.ok(snapshot.problems.some(item => item.code === 'OPERATION_SEMANTICS_MISSING'));
+  const bindings = snapshot.selection.pages.flatMap(page => page.operationBindings || []).filter(item => ['create', 'update'].includes(item.operation) && item.entityId === 'Profissional');
+  assert.ok(bindings.some(item => item.operation === 'create'));
+  assert.ok(bindings.some(item => item.operation === 'update'));
+  assert.ok(bindings.every(item => item.inputFields.every(field => !['Profissional.status', 'Profissional.subtype'].includes(field.path))));
+  assert.ok(bindings.every(item => item.inputFields.some(field => field.path === 'Profissional.label' && field.required)));
+  assert.equal(snapshot.problems.some(item => item.code === 'OPERATION_SEMANTICS_MISSING'), false);
 });
 
-void test('renamed nested assignments accept declared enum codes and reject titles and scalar mismatches', async () => {
-  const input = artifacts('current');
+void test('renamed nested canonical fields preserve enum codes and scalar types with grant filtering', async () => {
+  const input = JSON.parse(JSON.stringify(artifacts('current')).replaceAll('Profissional', 'Packet')) as D2InputArtifacts;
   input.entities.Packet = {
     schemaVersion: versions.ontology, moduleName: IDENTITY.module, entityId: 'Packet',
+    subtype: 'Item', lifecycleStates: [{ state: 'queued', field: 'phase' }],
     record: { fields: {
       phase: { type: 'enum', values: [{ value: 'queued', title: 'Waiting' }] },
-      details: { type: 'object', fields: { category: { type: 'enum', values: ['Item'] }, count: { type: 'integer' } } },
+      details: { type: 'object', fields: {
+        identity: { type: 'object', fields: { subtype: { type: 'enum', values: ['Item'] } } },
+        category: { type: 'enum', values: [{ value: 'Item', title: 'Public item' }], required: true },
+        count: { type: 'integer' }, secret: { type: 'string' },
+      } },
     } },
-    operations: { create: { assigned: { phase: 'queued', 'details.category': 'Item', 'details.count': 2 } } },
   };
-  rec(input.ontologyIndex).entities = [...rows(rec(input.ontologyIndex).entities), { entityId: 'Packet' }];
-  const source = JSON.stringify(input.entities.Packet);
-  input.sources.push({ path: `l4/${IDENTITY.module}/ontology/Packet.defs.ts`, sha256: `sha256:${createHash('sha256').update(source).digest('hex')}`, bytes: Buffer.byteLength(source), schemaVersion: versions.ontology });
-  await buildD2InputSnapshot(IDENTITY, input);
-  const assigned = rec(rec(rec(input.entities.Packet).operations).create).assigned as Record<string, unknown>;
-  for (const [key, invalid] of [['phase', 'Waiting'], ['details.category', 'Other'], ['details.count', '2']] as const) {
-    const previous = assigned[key];
-    assigned[key] = invalid;
-    await assert.rejects(() => buildD2InputSnapshot(IDENTITY, input), (error: unknown) => error instanceof D2InputValidationError
-      && error.problems.some(item => item.code === 'OPERATION_ASSIGNED_VALUE_INVALID' && item.file.endsWith('/Packet.defs.ts')));
-    assigned[key] = previous;
-  }
+  for (const grant of rows(rec(input.access).grants).filter(item => strings(item.entityRefs).includes('Packet'))) rec(grant.disclosure).deniedFields = ['Packet.details.secret'];
+  const snapshot = await buildD2InputSnapshot(IDENTITY, input);
+  const bindings = snapshot.selection.pages.flatMap(page => page.operationBindings || []).filter(item => item.entityId === 'Packet' && ['create', 'update'].includes(item.operation));
+  assert.ok(bindings.some(item => item.operation === 'create'));
+  assert.ok(bindings.some(item => item.operation === 'update'));
+  assert.ok(bindings.every(item => item.inputFields.every(field => !['Packet.phase', 'Packet.details.identity.subtype', 'Packet.details.secret'].includes(field.path))));
+  assert.ok(bindings.every(item => item.inputFields.some(field => field.path === 'Packet.details.category' && field.required)));
+  assert.ok(bindings.every(item => item.inputFields.some(field => field.path === 'Packet.details.count' && !field.required)));
+  const details = collectD2EntityFields(input.entities.Packet as Ns5OntologyAnyEntity).find(field => field.name === 'details')!;
+  assert.deepEqual(details.children.find(field => field.name === 'category')?.enumValues, ['Item']);
+  assert.equal(details.children.find(field => field.name === 'category')?.tsType, '"Item"');
+  assert.equal(details.children.find(field => field.name === 'count')?.tsType, 'number');
+  rec(rec(rec(rec(input.entities.Packet).record).fields).details).fields = { count: { type: 'unsupportedScalar' } };
+  assert.throws(() => collectD2EntityFields(input.entities.Packet as Ns5OntologyAnyEntity), /unsupported ontology type 'unsupportedScalar'/);
 });
 
 void test('historical immutable fixture preserves the two static homes as review findings', async () => {

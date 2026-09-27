@@ -27,7 +27,9 @@ export function pageDefinition(page: D2RenderedPage): string {
       const coverage = pipeline.coverage.find(item => item.organismId === description.organismId);
       if (!coverage) throw new Error(`D2_PAGES_COVERAGE_MISSING: ${page.pageId}/${description.organismId}`);
       const caps = coverage.capabilityRefs.length ? coverage.capabilityRefs.join(', ') : 'static content';
-      return `Organism ${coverage.organismId} (${coverage.kind}) in content ${coverage.contentRef}; declared capabilities/actions: ${caps}. ${description.description.trim()}`;
+      const outputFieldRefs = Array.isArray(description.outputFieldRefs) ? description.outputFieldRefs : [];
+      const outputs = outputFieldRefs.length ? `; cited output fields: ${outputFieldRefs.join(', ')}` : '';
+      return `Organism ${coverage.organismId} (${coverage.kind}) in content ${coverage.contentRef}; declared capabilities/actions: ${caps}${outputs}. ${description.description.trim()}`;
     }),
   ];
   return lines.join('\n\n');
@@ -63,8 +65,12 @@ function validatePipeline(item: Record<string, unknown>): void {
 }
 
 function validateCoverage(item: Record<string, unknown>): void {
-  exactKeys(item, ['organismId', 'sourceIndex', 'kind', 'contentRef', 'scenarioRefs', 'capabilityRefs', 'moleculeRecommendations']);
-  if (!text(item.organismId) || !Number.isSafeInteger(item.sourceIndex) || !text(item.kind) || !text(item.contentRef) || !stringArray(item.scenarioRefs) || !stringArray(item.capabilityRefs) || !Array.isArray(item.moleculeRecommendations)) throw new Error('D2_PAGES_COVERAGE_SHAPE');
+  exactKeys(item, ['organismId', 'sourceIndex', 'kind', 'contentRef', 'scenarioRefs', 'capabilityRefs', 'outputFieldsByCapability', 'moleculeRecommendations']);
+  if (!text(item.organismId) || !Number.isSafeInteger(item.sourceIndex) || !text(item.kind) || !text(item.contentRef) || !stringArray(item.scenarioRefs) || !stringArray(item.capabilityRefs) || !item.outputFieldsByCapability || typeof item.outputFieldsByCapability !== 'object' || !Array.isArray(item.moleculeRecommendations)) throw new Error('D2_PAGES_COVERAGE_SHAPE');
+  for (const [capability, fields] of Object.entries(item.outputFieldsByCapability as Record<string, unknown>)) {
+    if (!text(capability) || !Array.isArray(fields)) throw new Error('D2_PAGES_COVERAGE_OUTPUT_FIELDS');
+    for (const raw of fields) { const field = record(raw); exactKeys(field, ['actionId', 'outputTypeRef', 'path']); if (!text(field.actionId) || !text(field.outputTypeRef) || !text(field.path)) throw new Error('D2_PAGES_COVERAGE_OUTPUT_FIELD'); }
+  }
   for (const raw of item.moleculeRecommendations) {
     const recommendation = record(raw);
     exactKeys(recommendation, ['groupId', 'candidates', 'reason', 'indexReference', 'indexVia', 'indexSha256', 'usageContractReference', 'usageContractVia', 'usageContractSha256']);

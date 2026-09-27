@@ -29,13 +29,14 @@
             "type": "array", "minItems": 1,
             "items": {
               "type": "object", "additionalProperties": false,
-              "required": ["organismId", "kind", "description", "contentRef", "capabilityRefs", "moleculeRecommendations"],
+              "required": ["organismId", "kind", "description", "outputFieldRefs", "moleculeRecommendations"],
               "properties": {
                 "organismId": { "type": "string", "minLength": 1 },
                 "kind": { "type": "string", "minLength": 1 },
                 "description": { "type": "string", "minLength": 1 },
-                "contentRef": { "type": "string", "minLength": 1 },
-                "capabilityRefs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+                "contentRef": { "type": "string" },
+                "capabilityRefs": { "type": "array", "items": { "type": "string" } },
+                "outputFieldRefs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
                 "moleculeRecommendations": {
                   "type": "array", "items": {
                     "type": "object", "additionalProperties": false,
