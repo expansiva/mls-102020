@@ -277,7 +277,9 @@ async function afterPromptStep(
     // compile and the phase verify (which re-reads from disk) all see exactly the bytes that were
     // written — the safe order the format×gates contract requires (cf_format_codigo_gerado).
     const mechanical = pendingMechanicalReferences.get(pipelineItem.outputPath);
-    const formatted = await formatGeneratedTsInStudio(applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code, mechanical?.skeleton, mechanical?.sharedTemplate)));
+    // Hooks may execute in separate workers: process-local prompt caches are not provenance.
+    const currentSharedReference = pipelineItem.type === 'l2_page' ? await pageSharedPublicReference(pipelineItem) : undefined;
+    const formatted = await formatGeneratedTsInStudio(applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code, mechanical?.skeleton, currentSharedReference?.code ?? mechanical?.sharedTemplate)));
     const sharedGuard = pipelineItem.type === 'l2_shared'
       ? await applySharedScenaryGuard(pipelineItem, parsedDefs?.data, formatted)
       : { code: formatted, injected: false, original: formatted };

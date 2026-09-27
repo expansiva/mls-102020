@@ -2440,12 +2440,29 @@ function normalizeSharedPublicNames(data: Record<string, unknown>, code: string)
 
 function normalizeEncodedPublicNames(names: string[], code: string): string {
   const canonical = new Set(names);
-  // Encoded collision suffixes are opaque identities. Repair only inserted/deleted zero padding,
-  // and only when one canonical identity matches. Never fuzzy-match ordinary API names.
+  // Repair padding or one inserted encoded codepoint only against a unique canonical identity.
+  // Never fuzzy-match ordinary API names or replace an encoded codepoint.
   const signature = (name: string): string => name.replace(/0+/gu, '0');
   return code.replace(/\b[A-Za-z_$][\w$]*\b/gu, token => {
     if (canonical.has(token) || !/X[0-9a-f]{24,}$/u.test(token)) return token;
-    const candidates = names.filter(name => /X[0-9a-f]{24,}$/u.test(name) && signature(name) === signature(token));
+    const candidates = names.filter(name => {
+      if (!/X[0-9a-f]{24,}$/u.test(name)) return false;
+      if (signature(name) === signature(token)) return true;
+      const expected = /^(.*X)([0-9a-f]+)$/u.exec(name);
+      const actual = /^(.*X)([0-9a-f]+)$/u.exec(token);
+      if (!expected || !actual || expected[1] !== actual[1] || expected[2].length % 6) return false;
+      const chunks = expected[2].match(/.{6}/gu)!.map(signature);
+      const suffix = signature(actual[2]);
+      // One spurious encoded character (e.g. pluralization), at a canonical codepoint
+      // boundary only. Do not edit ordinary prefixes or substitute an encoded character.
+      for (let at = 0; at <= chunks.length; at++) {
+        const before = chunks.slice(0, at).join(''); const after = chunks.slice(at).join('');
+        if (!suffix.startsWith(before) || !suffix.endsWith(after)) continue;
+        const gap = suffix.slice(before.length, suffix.length - after.length);
+        if (/^0[1-9a-f]{1,5}$/u.test(gap)) return true;
+      }
+      return false;
+    });
     return candidates.length === 1 ? candidates[0] : token;
   });
 }

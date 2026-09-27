@@ -15,7 +15,7 @@ const MODEL_TYPES = ['code', 'design'] as const;
 test('page worker carries the mechanical reference from prompt preparation into normalization before saving', () => {
   const source = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
   assert.match(source, /pendingMechanicalReferences\.set\(genContext\.pipelineItem\.outputPath, \{ skeleton, sharedTemplate: sharedTemplate\?\.code \}/u);
-  assert.match(source, /normalizeGeneratedCode\(pipelineItem, parsedDefs\?\.data, output\.code, mechanical\?\.skeleton, mechanical\?\.sharedTemplate\)/u);
+  assert.match(source, /normalizeGeneratedCode\(pipelineItem, parsedDefs\?\.data, output\.code, mechanical\?\.skeleton, currentSharedReference\?\.code \?\? mechanical\?\.sharedTemplate\)/u);
   assert.match(source, /pendingMechanicalReferences\.delete\(pipelineItem\.outputPath\)/u);
 });
 
