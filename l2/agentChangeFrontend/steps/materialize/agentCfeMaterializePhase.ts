@@ -20,6 +20,7 @@ import {
   collectChartEventIssues,
   collectMutationFeedbackIssues,
   collectMutationEnvelopeErrorIssues,
+  collectUndefinedStateNotificationIssues,
   collectEnumTextInputIssues,
   collectEnumCellLabelIssues,
   collectIdColumnIssues,
@@ -626,6 +627,7 @@ async function verifyItem(item: GenStepArgs, projectErrors?: string[]): Promise<
   }
   if (pipelineItem.type === 'l2_shared' && defsContent) {
     repairable.push(...collectMutationEnvelopeErrorIssues(parseDefs(defsContent).data, content));
+    repairable.push(...collectUndefinedStateNotificationIssues(content));
     // Defs-level: rewriting the shared .ts cannot add an initialLoad the defs omitted. Warning
     // keeps the gap in the verdict; create-shared is what emits the list.
     warnings.push(...collectMissingInitialLoadIssues(parseDefs(defsContent).data));

@@ -891,6 +891,7 @@ function renderStateChange(model: ScaffoldModel): string[] {
   const lines = [
     '  /** handleIcaStateChange — collabState notify contract; maps state keys onto class fields */',
     '  handleIcaStateChange(key: string, value: unknown): void {',
+    '    if (value === undefined) return;',
     '    switch (key) {',
   ];
   for (const state of model.states) {

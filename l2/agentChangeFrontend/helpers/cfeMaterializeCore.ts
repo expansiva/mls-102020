@@ -2427,10 +2427,27 @@ function normalizeEncodedPublicNames(names: string[], code: string): string {
   });
 }
 
+export function preserveUndefinedStateNotifications(code: string): string {
+  return code.replace(/\bhandleIcaStateChange\s*\(\s*([A-Za-z_$][\w$]*)\s*:\s*string\s*,\s*([A-Za-z_$][\w$]*)\s*:\s*(?:unknown|any)\s*\)\s*:\s*void\s*\{/gu,
+    (header, _key: string, value: string, offset: number) => {
+      const tail = code.slice(offset + header.length);
+      const guard = new RegExp(`^\\s*if\\s*\\(\\s*${escapeForRegExp(value)}\\s*===\\s*undefined\\s*\\)\\s*(?:\\{\\s*return\\s*;\\s*\\}|return\\s*;)`);
+      return guard.test(tail) ? header : `${header}\n    if (${value} === undefined) return;`;
+    });
+}
+
+export function collectUndefinedStateNotificationIssues(code: string): string[] {
+  return preserveUndefinedStateNotifications(code) === code ? []
+    : ['handleIcaStateChange must return before assigning when the notified value is undefined; preserve initialized defaults, but apply defined values (including null, false and zero).'];
+}
+
 export function normalizeGeneratedCode(item: PipelineItem, data: unknown, code: string, mechanicalReference?: string, sharedTemplate?: string): string {
   if (item.type === 'l2_shared') {
     if (!isRecord(data)) return code;
     code = normalizeSharedPublicNames(data, code);
+    // Initial notify may have no store value. Keep the locally initialized default;
+    // null, false, zero and all other defined values remain valid notifications.
+    code = preserveUndefinedStateNotifications(code);
     // A response error remains the fallback even when a model incorrectly typed its helper nullable.
     // Limit this mechanical correction to local feedback derived directly from that error argument.
     code = code.replace(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*this\.[A-Za-z_$][\w$]*\(\s*error\b[^;]*;\s*[^;]*;/gu, (statements, feedback: string) =>
