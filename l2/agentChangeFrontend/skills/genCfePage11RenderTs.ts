@@ -3,6 +3,8 @@
 export const skill = `
 # agentChangeFrontend Page11 Render TS Skill
 
+The materializer writes TypeScript only, not LESS/CSS. Never import a local stylesheet unless the exact file already exists in the supplied artifact context. Do not infer its existence from the page filename. Preserve real existing stylesheet imports.
+
 Generate the Lit render file for one Stage 2 frontend page genome: web/desktop/page11.
 This file extends the shared base class and only renders. It must not own state, define handlers or duplicate i18n.
 

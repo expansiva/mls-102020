@@ -60,6 +60,29 @@ export function resolveProjectRelativeRef(ref: string, project: number): string 
   return /^l\d+\//u.test(ref) && Number.isSafeInteger(project) && project > 0 ? `_${project}_/${ref}` : ref;
 }
 
+/** Check runtime stylesheet dependencies against the same artifact reader as verify. */
+export async function collectMissingLocalStylesheetIssues(code: string, outputPath: string, readRef: MaterializeEnv['readRef']): Promise<string[]> {
+  const issues: string[] = [];
+  const checked = new Set<string>();
+  for (const match of code.matchAll(/^\s*import\s+(?:[^'"\n]+?\s+from\s+)?['"]([^'"\n]+\.(?:less|css|scss))['"]\s*;?/gmu)) {
+    const ref = match[1];
+    if (!ref.startsWith('./') && !ref.startsWith('../') && !/^\/?_\d+_\//u.test(ref)) continue;
+    const parts = ref.startsWith('.') ? [...outputPath.replace(/^\//u, '').split('/').slice(0, -1), ...ref.split('/')] : ref.replace(/^\//u, '').split('/');
+    const resolved: string[] = [];
+    let invalid = false;
+    for (const part of parts) {
+      if (part === '.' || !part) continue;
+      if (part === '..') { if (resolved.length <= 1) { invalid = true; break; } resolved.pop(); }
+      else resolved.push(part);
+    }
+    const path = resolved.join('/');
+    if (checked.has(path)) continue;
+    checked.add(path);
+    if (invalid || await readRef(path) === null) issues.push(`local stylesheet import '${ref}' is missing (${path}); remove the import or reference an existing stylesheet. TS materialization does not create LESS/CSS files.`);
+  }
+  return issues;
+}
+
 export function requireDeclaredDependency(ref: string, content: string | null, project: number): string | null {
   if (!content && ref === 'l2/designSystem.ts') throw new Error(`D2_PAGE_DESIGN_SYSTEM_MISSING: ${resolveProjectRelativeRef(ref, project)}`);
   if (!content) throw new Error(`CFE_DECLARED_CONTEXT_MISSING: ${resolveProjectRelativeRef(ref, project)}`);
