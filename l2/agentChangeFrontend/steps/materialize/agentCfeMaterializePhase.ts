@@ -31,6 +31,7 @@ import {
   isL4LookupGap,
   collectTechnicalVocabularyIssues,
   collectPageTemplateHygieneIssues,
+  collectMissingLocalStylesheetIssues,
   collectMissingI18nBlockIssues,
   collectContractFieldIssues,
   collectPageCustomElementTagIssues,
@@ -619,6 +620,7 @@ async function verifyItem(item: GenStepArgs, projectErrors?: string[]): Promise<
   const outputCompileErrors = projectErrors === undefined ? await compileMlsPathAndGetErrors(outputPath) : projectCompileErrorsForItem(projectErrors, [outputPath]);
   const blocking = [...(outputCompileErrors ?? ['materialization compile unavailable: output was not verified'])];
   const repairable: string[] = [];
+  repairable.push(...await collectMissingLocalStylesheetIssues(content, outputPath, getContentByMlsPath));
   const declared: string[] = [];
   const warnings: string[] = [];
   if (projectErrors !== undefined) {

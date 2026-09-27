@@ -3,7 +3,8 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentChangeFrontend/helpers/cfeCreateShared.js';
 import { getContentByMlsPath, getFileModified, type GenStepArgs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
-import { isStale } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { isStale, parseDefs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { isCfeMaterializeVerifyFolder, isCfePipelineTraceLevel } from '/_102020_/l2/agentChangeFrontend/helpers/cfePipelineTrace.js';
 import { cfeMaterializationFresh } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeReceipt.js';
 
 /**
@@ -263,12 +264,30 @@ export function moduleOf(folder: string): string {
 export async function planSpecFrontendWithReceipts(prompt: string): Promise<SpecPlanResult> {
   const result = planSpecFrontend(prompt);
   if (result.error || parseSpecCommand(prompt).kind === 'target') return result;
+  const failedOutputs = new Set<string>();
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== resolveProject() || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted'
+      || file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || '')) || !String(file.shortName || '').endsWith('-summary')) continue;
+    try {
+      const verdict = JSON.parse(String(await file.getContent()));
+      if (verdict.allClear !== false) continue;
+      // Final declared findings are accepted evidence, not unfinished repairs.
+      // Reopening them would make a successful run permanently non-idempotent.
+      for (const entry of (verdict.broken ?? [])) {
+        const hasErrors = Number(entry.errorCount) > 0 || (Array.isArray(entry.errors) && entry.errors.length > 0);
+        if (typeof entry.outputPath === 'string' && entry.severity !== 'warning' && entry.severity !== 'warnings'
+          && (hasErrors || entry.severity === 'blocked')) failedOutputs.add(entry.outputPath);
+      }
+    } catch { /* Receipt validation remains authoritative when a summary cannot be read. */ }
+  }
   for (const plan of result.plans) {
     const priorQueued = new Set(plan.queued.map(item => item.defPath));
     const entries = [...plan.queued.map(item => ({ defPath: item.defPath, reason: SKIP_UP_TO_DATE })), ...plan.skipped];
     plan.queued = []; plan.skipped = [];
     for (const entry of entries) {
-      const fresh = await cfeMaterializationFresh(entry.defPath, resolveProject(), getContentByMlsPath);
+      const parsed = parseDefs(await getContentByMlsPath(entry.defPath) ?? '');
+      const verifyFailed = parsed.items.some(item => failedOutputs.has(item.outputPath));
+      const fresh = verifyFailed ? false : await cfeMaterializationFresh(entry.defPath, resolveProject(), getContentByMlsPath);
       if (fresh === false || (fresh === null && priorQueued.has(entry.defPath))) {
         const info = mls.stor.convertFileReferenceToFile(entry.defPath);
         plan.queued.push({ defPath: entry.defPath, folder: String(info?.folder ?? '') });

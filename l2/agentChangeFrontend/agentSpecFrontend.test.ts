@@ -72,6 +72,44 @@ async function load(): Promise<any> {
 
 const MODULE = 'controleChamados';
 
+test('renamed receipt scan reopens changed output and failed verify even with current timestamps', async () => {
+  const folder = 'visitStudio/web/desktop/page11';
+  const defPath = `_${PROJECT}_/l2/${folder}/ledger.defs.ts`;
+  const outputPath = defPath.replace('.defs.ts', '.ts');
+  const item = { id: 'ledger__desktop__page11', type: 'l2_page', outputPath };
+  const source = `export const definition = "Page: Ledger (ledger)." as const;\nexport const pipeline = ${JSON.stringify([item])} as const;`;
+  const bodies = new Map<string, string>([[defPath, source], [outputPath, 'export const ready = true;']]);
+  installStub([{ folder, shortName: 'ledger' }, { folder, shortName: 'ledger', extension: '.ts' }]);
+  // Model the artifact reader using the same file keys as the production scan.
+  const { buildCfeContextReceipt, readCfeContextSources, cfeContextReceiptPath } = await import('./helpers/cfeMaterializeReceipt.js');
+  const read = async (ref: string) => bodies.get(ref) ?? null;
+  bodies.set(cfeContextReceiptPath(outputPath), JSON.stringify(await buildCfeContextReceipt(defPath, item, await readCfeContextSources(defPath, item, PROJECT, read), [], [], bodies.get(outputPath)!)));
+  g.mls.stor.convertFileReferenceToFile = (ref: string) => ({ reference: ref });
+  g.mls.stor.getKeyToFile = (info: any) => info.reference;
+  const seeds = Object.values(g.mls.stor.files) as any[];
+  g.mls.stor.files = {};
+  for (const [ref] of bodies) g.mls.stor.files[ref] = { getContent: () => read(ref) };
+  for (const seed of seeds) Object.assign(g.mls.stor.files[`_${PROJECT}_/l2/${folder}/ledger${seed.extension}`], seed);
+  const { planSpecFrontendWithReceipts } = await load();
+  const scan = () => planSpecFrontendWithReceipts('{"scope":"visitStudio"}');
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 0);
+  bodies.set(outputPath, 'export const changed = true;');
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
+  bodies.set(outputPath, 'export const ready = true;');
+  const { cfePipelineTraceFolder, CFE_PIPELINE_TRACE_LEVEL } = await import('./helpers/cfePipelineTrace.js');
+  let finding = { outputPath, errorCount: 1, firstError: 'TS2551 current error', severity: 'blocked' };
+  g.mls.stor.files.summary = { project: PROJECT, level: CFE_PIPELINE_TRACE_LEVEL, folder: cfePipelineTraceFolder('visitStudio', 'frontend-materialize-verify'), extension: '.json', shortName: 'pages-summary', getContent: async () => JSON.stringify({ allClear: false, broken: [finding] }) };
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
+  finding = { outputPath, errorCount: 0, firstError: 'warning only', severity: 'warning' };
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 0);
+  finding = { outputPath, errorCount: 1, firstError: 'repairable current error', severity: 'repairable' };
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
+  g.mls.stor.files.summary.getContent = async () => JSON.stringify({ allClear: false, final: true, broken: [], passed: [{ outputPath }], declared: [{ outputPath, errorCount: 1, firstError: 'accepted quality declaration', severity: 'declared' }] });
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 0);
+  g.mls.stor.files.summary.getContent = async () => JSON.stringify({ allClear: false, final: true, broken: [{ outputPath, errorCount: 1, firstError: 'blocking compile error', severity: 'blocked' }], declared: [] });
+  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
+});
+
 /** The real shape of the 102050: 4 pages x 3 page folders + 4 shared = 16 .defs.ts of level 2. */
 function fixture102050(): FileSeed[] {
   const names = ['commentOpenTicket', 'ticketCatalogue', 'ticketCommentCatalogue', 'ticketHub'];
