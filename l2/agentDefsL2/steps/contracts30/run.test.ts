@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { parseNs4ClassicDefsSource } from '/_102035_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
+import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { D2_INPUT_VERSION, type D2InputArtifacts, type D2InputSnapshot, type D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';

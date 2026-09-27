@@ -7,7 +7,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { parseNs4ClassicDefsSource } from '/_102035_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
+import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { D2InputValidationError, type D2InputArtifacts, type D2SourceDigest } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { buildD2InputSnapshot, destinationsFor } from '/_102020_/l2/agentDefsL2/steps/input20/gate.js';
