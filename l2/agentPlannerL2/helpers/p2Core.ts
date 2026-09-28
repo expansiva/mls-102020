@@ -1,9 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/helpers/p2Core.ts" enhancement="_blank"/>
 
 import {
-  diskFileInfo,
   displayPath,
-  hostListFolder,
   moduleFile,
   moduleFolder,
   normalizeModuleName,
@@ -13,7 +11,15 @@ import {
   writeJson,
   type Ns5FileInfo,
 } from '/_102035_/l2/solution/fs.js';
-import { listPoolBox, readPoolMessage, type PoolMessage, type PoolTraceLine } from '/_102035_/l2/solution/pool.js';
+import {
+  deletePoolMessageAt,
+  listPoolBox,
+  readPoolMessage,
+  readPoolTraceAt,
+  tracePoolAt,
+  type PoolMessage,
+  type PoolTraceLine,
+} from '/_102035_/l2/solution/pool.js';
 import type { Ns5PipelineStatus, Ns5PipelineStepState } from '/_102035_/l2/solution/types.js';
 
 export const P2_FLOW_ID = 'agentPlannerL2' as const;
@@ -49,15 +55,13 @@ export type P2StepId = typeof P2_STEP_IDS[number];
 /** Last step of `docs/flow.json` — that step's afterPrompt closes the pipeline. */
 export const P2_FLOW_LAST_STEP_ID: P2FlowStepId = P2_FLOW_STEP_IDS[P2_FLOW_STEP_IDS.length - 1];
 
-/** Host unlinked every file under `l2/<mod>/web/` and removed the empty directory. */
+/** Entry planning does not mutate the generated product tree. */
+export const P2_WEB_DIR_PRESERVED = 'preserved' as const;
+/** @deprecated Kept to read older pipeline files; new entry runs never clean L2. */
 export const P2_WEB_DIR_REMOVED = 'removed' as const;
-/**
- * Files under `web/` were unlinked; the empty directory stays. `deleteFile` (libStor and
- * host `localStor.deleteFile`) unlinks a file path (`shortName+extension`). Studio has no
- * `deleteFile`. `fs.ts` / `removeModule.ts` also only delete files. No `removeDir` on the host.
- */
+/** @deprecated Kept to read older pipeline files; new entry runs never clean L2. */
 export const P2_WEB_DIR_EMPTY_LEFT = 'empty-left: deleteFile does not remove directories' as const;
-export type P2WebDir = typeof P2_WEB_DIR_REMOVED | typeof P2_WEB_DIR_EMPTY_LEFT;
+export type P2WebDir = typeof P2_WEB_DIR_PRESERVED | typeof P2_WEB_DIR_REMOVED | typeof P2_WEB_DIR_EMPTY_LEFT;
 
 export const P2_STEP_TITLES: Record<P2StepId, string> = {
   entry10: 'Entry',
@@ -115,7 +119,7 @@ export interface P2PipelineState {
   messageFile: string;
   sourceMessages: string[];
   pool?: PoolTraceLine[];
-  /** Wipe result of `l2/<mod>/web/`. Always written by entry10 — never a silent leftover. */
+  /** Entry marker confirming it preserved `l2/<mod>/web/`. */
   webDir: P2WebDir;
   /** menu20: gate warnings (journey with no page). Written on approve; omitted before. */
   warnings?: string[];
@@ -265,13 +269,13 @@ export function parseP2StepPrompt(prompt: string): P2StepPrompt {
   return { kind: 'refusal', refusal: 'step prompt needs moduleName.' };
 }
 
-/** `l2/<module>/pipeline/pipeline.json` in the project of the run. */
+/** `l4/<module>/pool/l2/pipeline.json` in the project and root of the run. */
 export function p2PipelineFile(moduleName: string): Ns5FileInfo {
   const base = moduleFile(moduleName);
   return {
     project: base.project,
-    level: 2,
-    folder: `${base.folder}/pipeline`,
+    level: 4,
+    folder: `${base.folder}/pool/l2`,
     shortName: 'pipeline',
     extension: '.json',
   };
@@ -364,10 +368,156 @@ function poolMessageFileName(file: Ns5FileInfo): string {
   return `${file.shortName}${file.extension}`;
 }
 
+interface P2PoolInput {
+  file: Ns5FileInfo;
+  message: PoolMessage;
+}
+
+function p2MessageIdentity(message: PoolMessage): string {
+  return JSON.stringify([
+    message.from,
+    message.to,
+    message.thread,
+    message.round,
+    message.mode,
+    message.subject,
+    message.artifacts,
+    message.body,
+  ]);
+}
+
+function p2ThreadRound(message: PoolMessage): string {
+  return JSON.stringify([message.thread, message.round]);
+}
+
+async function readP2PoolInputs(moduleName: string): Promise<P2PoolInput[]> {
+  const inputs: P2PoolInput[] = [];
+  for (const file of listPoolBox(moduleName, 'l2').filter(item => isP2PoolMessageFile(item.shortName))) {
+    try { inputs.push({ file, message: await readPoolMessage(file) }); }
+    catch { /* Ignore non-message or unreadable pool entries. */ }
+  }
+  return inputs.sort((left, right) => displayPath(left.file).localeCompare(displayPath(right.file)));
+}
+
+async function traceP2DisputedInputs(
+  moduleName: string,
+  inputs: readonly P2PoolInput[],
+  now: Date,
+): Promise<void> {
+  if (!inputs.length) return;
+  const pipelineFile = p2PipelineFile(moduleName);
+  let pipeline = await readP2Pipeline(moduleName);
+  if (!pipeline) {
+    const first = inputs[0];
+    const initial = createP2Pipeline(
+      moduleName,
+      first.message,
+      displayPath(first.file),
+      now,
+      inputs.map(input => poolMessageFileName(input.file)),
+      P2_WEB_DIR_PRESERVED,
+    );
+    pipeline = { ...initial, status: 'inProgress', steps: {} };
+    await writeJson(pipelineFile, pipeline);
+  }
+  const trace = await readPoolTraceAt(pipelineFile);
+  for (const input of inputs) {
+    const path = displayPath(input.file);
+    if (trace.some(line => line.file === path && line.outcome === 'disputed')) continue;
+    await tracePoolAt(pipelineFile, {
+      at: now.toISOString(),
+      file: path,
+      from: input.message.from,
+      to: input.message.to,
+      thread: input.message.thread,
+      round: input.message.round,
+      mode: input.message.mode,
+      outcome: 'disputed',
+    });
+    trace.push({
+      at: now.toISOString(),
+      file: path,
+      from: input.message.from,
+      to: input.message.to,
+      thread: input.message.thread,
+      round: input.message.round,
+      mode: input.message.mode,
+      outcome: 'disputed',
+    });
+  }
+}
+
+export async function findP2Response(
+  moduleName: string,
+  received: PoolMessage,
+  artifactName: string,
+): Promise<{ file: Ns5FileInfo; message: PoolMessage } | null> {
+  for (const box of ['l1', 'l4'] as const) {
+    for (const file of listPoolBox(moduleName, box)) {
+      let message: PoolMessage;
+      try {
+        message = await readPoolMessage(file);
+      } catch {
+        continue;
+      }
+      if (message.from !== 'l2' || message.to !== box) continue;
+      if (message.thread !== received.thread || message.round !== received.round || message.mode !== received.mode) continue;
+      if (!message.artifacts.some(item => artifactEndsWith(item, artifactName))) continue;
+      return { file, message };
+    }
+  }
+  return null;
+}
+
+export async function traceAndConsumeP2Input(
+  moduleName: string,
+  inputFile: Ns5FileInfo,
+  input: PoolMessage,
+  responseFile: Ns5FileInfo,
+  response: PoolMessage,
+  now: Date,
+): Promise<void> {
+  const pipelineFile = p2PipelineFile(moduleName);
+  const pipeline = await readP2Pipeline(moduleName);
+  const sourceNames = new Set(pipeline?.sourceMessages || [poolMessageFileName(inputFile)]);
+  const current = await readP2PoolInputs(moduleName);
+  const selected = current.filter(item => sourceNames.has(poolMessageFileName(item.file)));
+  const expectedIdentity = p2MessageIdentity(input);
+  if (selected.some(item => p2MessageIdentity(item.message) !== expectedIdentity)) {
+    const related = current.filter(item => requestKey(moduleName, item.message) === requestKey(moduleName, input));
+    await traceP2DisputedInputs(moduleName, related, now);
+    throw new Error(`pool/l2 has divergent copies for ${input.thread}/${input.round}; inputs remain pending`);
+  }
+  const inputFiles = selected.length ? selected : [
+    { file: inputFile, message: input },
+  ];
+  const trace = await readPoolTraceAt(pipelineFile);
+  const traceOnce = async (file: Ns5FileInfo, message: PoolMessage, outcome: 'processed' | 'delivered') => {
+    const path = displayPath(file);
+    if (trace.some(line => line.file === path && line.outcome === outcome
+      && line.thread === message.thread && line.round === message.round && line.mode === message.mode)) return;
+    await tracePoolAt(pipelineFile, {
+      at: now.toISOString(),
+      file: path,
+      from: message.from,
+      to: message.to,
+      thread: message.thread,
+      round: message.round,
+      mode: message.mode,
+      outcome,
+    });
+  };
+  for (const item of inputFiles) await traceOnce(item.file, item.message, 'processed');
+  await traceOnce(responseFile, response, 'delivered');
+  for (const item of inputFiles) {
+    const path = displayPath(item.file);
+    const indexed = mls.stor.files[mls.stor.getKeyToFile(item.file)];
+    if (indexed?.status !== 'deleted') await deletePoolMessageAt(pipelineFile, item.file, path);
+  }
+}
+
 function requestKey(moduleName: string, message: PoolMessage): string {
-  const threadModule = message.thread.replace(/-\d{14}$/, '') || moduleName;
-  const artifacts = [...message.artifacts].map(item => item.trim()).filter(Boolean).sort().join('\0');
-  return `${threadModule}\0${message.mode}\0${artifacts}`;
+  return JSON.stringify([moduleName, message.from, message.to, message.thread, message.round, message.mode]);
 }
 
 export function p2DifferentRequestsRefusal(count: number): string {
@@ -392,8 +542,7 @@ export function p2MenuFile(moduleName: string, device: P2MenuDevice = P2_MENU_DE
  * Same form p2_23 removed from `p2MenuFile` (literal `normalizeModuleName`, not
  * `moduleFile().folder`). Here it is the right one: `/candidate` redirects
  * `moduleFolder`, but the module in force still lives at the canonical path.
- * Read-only — `listP2ScratchFiles` / `clearP2Scratch` only enumerate level-2
- * scratch under `moduleFile().folder`, so they cannot reach this file.
+ * Read-only — the planner pipeline and drafts are stored separately in pool/l2.
  */
 export function p2CanonicalMenuFile(moduleName: string, device: P2MenuDevice = P2_MENU_DEVICE): Ns5FileInfo {
   const name = normalizeModuleName(moduleName);
@@ -497,9 +646,35 @@ export async function loadP2Entry(source: P2EntrySource): Promise<P2LoadResult> 
   for (const file of box) {
     loaded.push({ file, message: await readPoolMessage(file) });
   }
+  loaded.sort((left, right) => displayPath(left.file).localeCompare(displayPath(right.file)));
 
-  const effort = loaded.filter(entry => isP2EffortMessage(entry.message));
-  const chosen = effort.length ? effort : loaded.filter(entry => entry.message.from !== 'l1');
+  const byRequest = new Map<string, typeof loaded>();
+  for (const entry of loaded) {
+    const key = requestKey(moduleName, entry.message);
+    const group = byRequest.get(key) || [];
+    group.push(entry);
+    byRequest.set(key, group);
+  }
+  const divergent = [...byRequest.values()].find(group =>
+    new Set(group.map(entry => p2MessageIdentity(entry.message))).size > 1);
+  if (divergent) {
+    await traceP2DisputedInputs(moduleName, divergent, new Date());
+    return { refusal: `pool/l2 has divergent copies for ${divergent[0].message.thread}/${divergent[0].message.round}; resolve with the l4 supervisor` };
+  }
+
+  const estimates = loaded.filter(entry => entry.message.mode === 'estimate');
+  let pertinent = estimates;
+  if (source.kind === 'step') {
+    const specified = estimates.find(entry => matchPoolFile(entry.file, source.file));
+    if (!specified) return { refusal: `pool/l2 message not found: ${source.file}` };
+    if (specified.message.thread !== source.thread) {
+      return { refusal: `message thread does not match '${source.thread}'.` };
+    }
+    const key = requestKey(moduleName, specified.message);
+    pertinent = estimates.filter(entry => requestKey(moduleName, entry.message) === key);
+  }
+  const effort = pertinent.filter(entry => isP2EffortMessage(entry.message));
+  const chosen = effort.length ? effort : pertinent;
   if (!chosen.length) return { refusal: `nothing pending for ${moduleName} in pool/l2` };
 
   const groups = new Map<string, typeof chosen>();
@@ -533,7 +708,6 @@ export async function loadP2Entry(source: P2EntrySource): Promise<P2LoadResult> 
 }
 
 export async function writeP2Entry(loaded: P2LoadedEntry, now: Date): Promise<P2PipelineState> {
-  const webDir = await clearP2Scratch(loaded.moduleName);
   const messageFile = displayPath(loaded.file);
   const pipeline = createP2Pipeline(
     loaded.moduleName,
@@ -541,7 +715,7 @@ export async function writeP2Entry(loaded: P2LoadedEntry, now: Date): Promise<P2
     messageFile,
     now,
     loaded.sourceMessages,
-    webDir,
+    P2_WEB_DIR_PRESERVED,
   );
   await writeJson(p2PipelineFile(loaded.moduleName), pipeline);
   return pipeline;
@@ -580,81 +754,6 @@ export async function writeP2EffortEntry(loaded: P2LoadedEntry, now: Date): Prom
   return next;
 }
 
-function isP2ScratchFolder(folder: string, root: string): boolean {
-  return folder === `${root}/pipeline`
-    || folder === `${root}/web`
-    || folder.startsWith(`${root}/web/`);
-}
-
-function listP2ScratchFiles(moduleName: string): Ns5FileInfo[] {
-  const base = moduleFile(moduleName);
-  const root = base.folder;
-  const files = mls.stor.files as Record<string, mls.stor.IFileInfo | undefined>;
-  const found = new Map<string, Ns5FileInfo>();
-  const remember = (info: Ns5FileInfo) => {
-    found.set(`${info.folder}/${info.shortName}${info.extension}`, info);
-  };
-  for (const file of Object.values(files)) {
-    if (!file || file.project !== base.project || Number(file.level) !== 2 || file.status === 'deleted') continue;
-    const folder = String(file.folder || '');
-    if (!isP2ScratchFolder(folder, root) || !file.shortName) continue;
-    remember({
-      project: base.project,
-      level: 2,
-      folder,
-      shortName: String(file.shortName),
-      extension: String(file.extension || ''),
-    });
-  }
-  const listFolder = hostListFolder();
-  if (listFolder) {
-    const folders = new Set<string>([`${root}/pipeline`, `${root}/web`, `${root}/web/contracts`, `${root}/web/shared`]);
-    for (const info of found.values()) folders.add(info.folder);
-    for (const folder of folders) {
-      for (const info of listFolder(base.project, 2, folder)) {
-        if (!info.shortName) continue;
-        const key = mls.stor.getKeyToFile(info);
-        const indexed = files[key];
-        if (indexed?.status === 'deleted') continue;
-        if (!indexed) files[key] = diskFileInfo(info);
-        remember({
-          project: base.project,
-          level: 2,
-          folder,
-          shortName: String(info.shortName),
-          extension: String(info.extension || ''),
-        });
-      }
-    }
-  }
-  return [...found.values()];
-}
-
-async function clearP2Scratch(moduleName: string): Promise<P2WebDir> {
-  const files = listP2ScratchFiles(moduleName);
-  if (files.length) {
-    const { deleteFile } = await import('/_102027_/l2/libStor.js');
-    for (const file of files) {
-      await deleteFile(diskFileInfo(file));
-    }
-  }
-  return removeEmptyWebDir(moduleName);
-}
-
-/** Same probe pattern as `hostListFolder` in fs.ts. Host and Studio have no such method today. */
-function hostRemoveDir(): ((project: number, level: number, folder: string) => unknown) | undefined {
-  const fn = (mls.stor.localStor as { removeDir?: unknown } | undefined)?.removeDir;
-  return typeof fn === 'function' ? fn as ((project: number, level: number, folder: string) => unknown) : undefined;
-}
-
-async function removeEmptyWebDir(moduleName: string): Promise<P2WebDir> {
-  const removeDir = hostRemoveDir();
-  if (!removeDir) return P2_WEB_DIR_EMPTY_LEFT;
-  const base = moduleFile(moduleName);
-  await Promise.resolve(removeDir(base.project, 2, `${base.folder}/web`));
-  return P2_WEB_DIR_REMOVED;
-}
-
 export async function executeP2Entry(source: P2EntrySource, now: Date): Promise<P2ExecuteResult> {
   const loaded = await loadP2Entry(source);
   if ('refusal' in loaded) return loaded;
@@ -671,13 +770,13 @@ export async function readP2Pipeline(moduleName: string): Promise<P2PipelineStat
   return readJson<P2PipelineState>(p2PipelineFile(moduleName));
 }
 
-/** `l2/<module>/pipeline/<stepId>-draft.json` in the project of the run. */
+/** `l4/<module>/pool/l2/<stepId>-draft.json` in the project and root of the run. */
 export function p2DraftFile(moduleName: string, stepId: P2StepId): Ns5FileInfo {
   const base = moduleFile(moduleName);
   return {
     project: base.project,
-    level: 2,
-    folder: `${base.folder}/pipeline`,
+    level: 4,
+    folder: `${base.folder}/pool/l2`,
     shortName: `${stepId}-draft`,
     extension: '.json',
   };

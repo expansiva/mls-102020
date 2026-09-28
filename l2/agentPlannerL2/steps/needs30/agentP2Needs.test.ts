@@ -111,7 +111,7 @@ function seedReady(host: Host): void {
   seed(host, {
     folder: `${MODULE}/pool/l2`,
     shortName: SHORT,
-    content: `${readFileSync(RECEIVED_PATH, 'utf8')}\n`,
+    content: `${JSON.stringify({ ...JSON.parse(readFileSync(RECEIVED_PATH, 'utf8')) as Record<string, unknown>, mode: 'estimate' }, null, 2)}\n`,
   });
   seed(host, {
     folder: `${MODULE}/pool/l2/web`,
@@ -130,8 +130,8 @@ function seedReady(host: Host): void {
     content: '',
   });
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'pipeline',
     content: `${JSON.stringify({
       schemaVersion: '2026-09-18-p2-pipeline-v2',
@@ -146,7 +146,7 @@ function seedReady(host: Host): void {
       round: 1,
       messageFile: DISPLAY,
       sourceMessages: [`${SHORT}.json`],
-      webDir: 'empty-left: deleteFile does not remove directories',
+      webDir: 'preserved',
       device: 'web',
       updatedAt: AT.toISOString(),
     }, null, 2)}\n`,
@@ -191,7 +191,7 @@ void test('createAgent registers needs30 on the dispatch table', () => {
   assert.equal(P2_STEP_HOOKS.needs30?.beforePromptStep, beforeP2NeedsPromptStep);
 });
 
-void test('execute writes needs.json, one l2→l1 message, delivered trace, and does not delete the pool', async () => {
+void test('execute writes needs.json and response, traces processed+delivered, then deletes its input', async () => {
   const host = installHost();
   seedReady(host);
   const result = await executeP2Needs(MODULE, AT);
@@ -200,7 +200,7 @@ void test('execute writes needs.json, one l2→l1 message, delivered trace, and 
   assert.equal(result.needsPath, `l4/${MODULE}/pool/l1/web/needs.json`);
   const payments = written.pages.find(page => page.pageId === 'mensalidades_pagamentos');
   assert.ok(payments);
-  assert.deepEqual(payments.reads.map(item => item.entity), ['Mensalidade', 'Pagamento']);
+  assert.deepEqual(payments.reads.map(item => item.entity), ['Matricula', 'Mensalidade', 'Pagamento']);
   assert.deepEqual(payments.writes.map(item => `${item.entity}:${item.operation}`), ['Pagamento:create']);
 
   const message = JSON.parse(host.files[keyOf({
@@ -213,13 +213,102 @@ void test('execute writes needs.json, one l2→l1 message, delivered trace, and 
   assert.deepEqual(message.artifacts, ['pool/l1/web/needs.json']);
 
   const trace = await readPoolTraceAt(p2PipelineFile(MODULE));
-  assert.equal(trace.length, 1);
-  assert.equal(trace[0].outcome, 'delivered');
-  assert.equal(trace[0].to, 'l1');
-  assert.deepEqual(host.deleted, []);
-  assert.ok(host.files[keyOf({
+  assert.deepEqual(trace.map(line => [line.file, line.outcome, line.to]), [
+    [DISPLAY, 'processed', 'l2'],
+    [`l4/${MODULE}/pool/l1/${poolStamp(AT)}_mensalidadesAcademia-20260918103000_1.json`, 'delivered', 'l1'],
+  ]);
+  assert.deepEqual(host.deleted, [`${MODULE}/pool/l2/${SHORT}`]);
+  assert.equal(host.files[keyOf({
     project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: SHORT, extension: '.json',
-  })].content.includes('"to": "l2"'));
+  })].status, 'deleted');
+});
+
+void test('retry after trace reuses the accepted needs result and response before deleting input', async () => {
+  const host = installHost();
+  seedReady(host);
+  const local = (mls.stor.localStor as unknown as { deleteFile: (file: Stored) => void });
+  const deleteFile = local.deleteFile;
+  let failOnce = true;
+  local.deleteFile = (file) => {
+    if (failOnce) {
+      failOnce = false;
+      throw new Error('injected delete failure');
+    }
+    deleteFile(file);
+  };
+
+  await assert.rejects(() => executeP2Needs(MODULE, AT), /injected delete failure/);
+  const responseInfo = {
+    project: PROJECT,
+    level: 4,
+    folder: `${MODULE}/pool/l1`,
+    shortName: `${poolStamp(AT)}_mensalidadesAcademia-20260918103000_1`,
+    extension: '.json',
+  };
+  const responsePath = `l4/${MODULE}/pool/l1/${responseInfo.shortName}.json`;
+  assert.ok(host.files[keyOf(responseInfo)].content.includes('"to": "l1"'));
+  const firstNeeds = host.files[keyOf(p2NeedsFile(MODULE))].content;
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: SHORT, extension: '.json' })].status, 'changed');
+
+  const later = new Date(AT.getTime() + 60_000);
+  const resumed = await executeP2Needs(MODULE, later);
+  assert.equal(resumed.messagePath, responsePath);
+  assert.equal(host.files[keyOf(p2NeedsFile(MODULE))].content, firstNeeds);
+  assert.equal(host.files[keyOf({
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l1`,
+    shortName: `${poolStamp(later)}_mensalidadesAcademia-20260918103000_1`, extension: '.json',
+  })], undefined);
+  assert.deepEqual(host.deleted, [`${MODULE}/pool/l2/${SHORT}`]);
+  assert.deepEqual((await readPoolTraceAt(p2PipelineFile(MODULE))).map(line => line.outcome), ['processed', 'delivered']);
+});
+
+void test('retry before response reuses the pool checkpoint instead of rebuilding needs', async () => {
+  const host = installHost();
+  seedReady(host);
+  const local = mls.stor.localStor as unknown as {
+    setContent: (file: Stored, value: { content: string }) => Promise<void>;
+  };
+  const setContent = local.setContent;
+  let failResponseOnce = true;
+  local.setContent = async (file, value) => {
+    if (failResponseOnce && file.folder === `${MODULE}/pool/l1`
+      && file.shortName === `${poolStamp(AT)}_mensalidadesAcademia-20260918103000_1`) {
+      failResponseOnce = false;
+      throw new Error('injected response failure');
+    }
+    await setContent(file, value);
+  };
+
+  await assert.rejects(() => executeP2Needs(MODULE, AT), /injected response failure/);
+  const needsInfo = p2NeedsFile(MODULE);
+  const firstNeeds = host.files[keyOf(needsInfo)].content;
+  const checkpoint = host.files[keyOf({
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'needs30-draft', extension: '.json',
+  })];
+  assert.ok(checkpoint.content.includes('mensalidadesAcademia-20260918103000'));
+  assert.deepEqual(host.deleted, []);
+
+  const later = new Date(AT.getTime() + 60_000);
+  const resumed = await executeP2Needs(MODULE, later);
+  assert.equal(host.files[keyOf(needsInfo)].content, firstNeeds);
+  assert.equal(resumed.needs.meta.generatedAt, AT.toISOString());
+  assert.deepEqual(host.deleted, [`${MODULE}/pool/l2/${SHORT}`]);
+  assert.deepEqual((await readPoolTraceAt(p2PipelineFile(MODULE))).map(line => line.outcome), ['processed', 'delivered']);
+});
+
+void test('needs30 leaves implement input pending without writing result or response', async () => {
+  const host = installHost();
+  seedReady(host);
+  const input = host.files[keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: SHORT, extension: '.json' })];
+  const message = JSON.parse(input.content) as PoolMessage;
+  input.content = `${JSON.stringify({ ...message, mode: 'implement' })}\n`;
+
+  await assert.rejects(() => executeP2Needs(MODULE, AT), /only processes estimate/);
+
+  assert.equal(input.status, 'changed');
+  assert.equal(host.files[keyOf(p2NeedsFile(MODULE))].content, '');
+  assert.deepEqual(host.deleted, []);
+  assert.deepEqual((await readPoolTraceAt(p2PipelineFile(MODULE))), []);
 });
 
 void test('beforePromptStep approves needs30 and does not close the pipeline', async () => {

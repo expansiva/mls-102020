@@ -205,7 +205,7 @@ function l4PipelineJson(): string {
 
 function seedDeliver(host: Host, count: number): { l2: Stored; l4: Stored; received: Stored } {
   const l4 = seed(host, `${MODULE}/pipeline`, 'pipeline', l4PipelineJson());
-  const l2 = seed(host, `${MODULE}/pipeline`, 'pipeline', l2PipelineJson(), 2);
+  const l2 = seed(host, `${MODULE}/pool/l2`, 'pipeline', l2PipelineJson());
   const received = seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(loadReceived(), null, 2)}\n`);
   for (let index = 0; index < count; index += 1) {
     const stamp = poolStamp(p2RequestNow(AT, index));

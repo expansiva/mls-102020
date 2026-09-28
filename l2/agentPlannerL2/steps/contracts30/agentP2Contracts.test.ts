@@ -266,22 +266,22 @@ function seedPipeline(host: Host): void {
     updatedAt: '2026-09-18T10:40:00.000Z',
   };
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'pipeline',
     extension: '.json',
     content: `${JSON.stringify(pipeline, null, 2)}\n`,
   });
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'workspaces20-draft',
     extension: '.json',
     content: `${JSON.stringify(loadWorkspaces(), null, 2)}\n`,
   });
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'contracts30-draft',
     extension: '.json',
     content: '{}\n',

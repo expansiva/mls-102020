@@ -4,17 +4,19 @@ import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { displayPath, readJson, writeJson } from '/_102035_/l2/solution/fs.js';
 import {
   readPoolMessage,
-  tracePoolAt,
   writePoolMessage,
   type PoolMessage,
 } from '/_102035_/l2/solution/pool.js';
 import {
+  findP2Response,
   P2_MENU_DEVICE,
   markP2Step,
+  p2DraftFile,
   p2MenuFile,
   p2NeedsFile,
   p2PipelineFile,
   readP2Pipeline,
+  traceAndConsumeP2Input,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
@@ -42,38 +44,71 @@ export interface P2DeliverNeedsResult {
   messagePath: string;
 }
 
+interface P2NeedsCheckpoint {
+  thread: string;
+  round: number;
+  inputFile: string;
+  needs: P2NeedsFile;
+}
+
 export async function executeP2Needs(moduleName: string, now: Date): Promise<P2DeliverNeedsResult> {
   const pipeline = await requirePipeline(moduleName);
-  const menu = await readJson<P2MenuFile>(p2MenuFile(moduleName, pipeline.device || P2_MENU_DEVICE));
-  if (!menu) throw new Error(`pool/l2/${pipeline.device || P2_MENU_DEVICE}/menu.json is missing; menu20 must run first.`);
-  const menuSources = await loadP2MenuSources(moduleName);
-  const needs = buildP2NeedsFile({
-    menu,
-    sources: menuSources.sources,
-    grants: menuSources.grants,
-    processes: menuSources.processes,
-    now,
-  });
-  const gate = validateP2Needs(needs, menu, menuSources.sources, menuSources.grants);
-  if (!gate.ok) throw new Error(formatP2NeedsGate(gate.issues));
-
   const receivedFile = receivedPoolFile(moduleName, pipeline.messageFile);
   const received = await readPoolMessage(receivedFile);
-  const message = buildP2NeedsMessage({ file: needs, received });
-  const needsInfo = p2NeedsFile(moduleName, needs.device);
-  const needsPath = await writeJson(needsInfo, needs);
-  const messageInfo = await writePoolMessage(moduleName, message, now);
+  if (received.mode !== 'estimate') throw new Error('needs30 only processes estimate messages; input remains pending.');
+  const existing = await findP2Response(moduleName, received, 'needs.json');
+  const checkpointInfo = p2DraftFile(moduleName, 'needs30');
+  const checkpoint = await readJson<P2NeedsCheckpoint>(checkpointInfo);
+  const matchingCheckpoint = checkpoint?.thread === received.thread
+    && checkpoint.round === received.round
+    && checkpoint.inputFile === displayPath(receivedFile)
+    ? checkpoint
+    : null;
+  let needs: P2NeedsFile;
+  let message: PoolMessage;
+  let messageInfo: ReturnType<typeof p2NeedsFile>;
+  let needsPath: string;
+  if (existing) {
+    const needsInfo = p2NeedsFile(moduleName, pipeline.device || P2_MENU_DEVICE);
+    const persisted = await readJson<P2NeedsFile>(needsInfo);
+    if (!persisted) throw new Error('pool/l1 needs.json is missing for the existing response; input remains pending.');
+    needs = persisted;
+    message = existing.message;
+    messageInfo = existing.file;
+    needsPath = displayPath(needsInfo);
+  } else if (matchingCheckpoint) {
+    needs = matchingCheckpoint.needs;
+    const needsInfo = p2NeedsFile(moduleName, needs.device);
+    message = buildP2NeedsMessage({ file: needs, received });
+    needsPath = await writeJson(needsInfo, needs);
+    messageInfo = await writePoolMessage(moduleName, message, now);
+  } else {
+    const menu = await readJson<P2MenuFile>(p2MenuFile(moduleName, pipeline.device || P2_MENU_DEVICE));
+    if (!menu) throw new Error(`pool/l2/${pipeline.device || P2_MENU_DEVICE}/menu.json is missing; menu20 must run first.`);
+    const menuSources = await loadP2MenuSources(moduleName);
+    needs = buildP2NeedsFile({
+      menu,
+      sources: menuSources.sources,
+      grants: menuSources.grants,
+      processes: menuSources.processes,
+      now,
+    });
+    const gate = validateP2Needs(needs, menu, menuSources.sources, menuSources.grants);
+    if (!gate.ok) throw new Error(formatP2NeedsGate(gate.issues));
+    message = buildP2NeedsMessage({ file: needs, received });
+    await writeJson(checkpointInfo, {
+      thread: received.thread,
+      round: received.round,
+      inputFile: displayPath(receivedFile),
+      needs,
+    } satisfies P2NeedsCheckpoint);
+    const needsInfo = p2NeedsFile(moduleName, needs.device);
+    needsPath = await writeJson(needsInfo, needs);
+    messageInfo = await writePoolMessage(moduleName, message, now);
+  }
   const messagePath = displayPath(messageInfo);
-  await tracePoolAt(p2PipelineFile(moduleName), {
-    at: now.toISOString(),
-    file: messagePath,
-    from: message.from,
-    to: message.to,
-    thread: message.thread,
-    round: message.round,
-    mode: message.mode,
-    outcome: 'delivered',
-  });
+  await writeApproved(moduleName, [needsPath, messagePath]);
+  await traceAndConsumeP2Input(moduleName, receivedFile, received, messageInfo, message, now);
   return { needs, needsPath, message, messagePath };
 }
 
@@ -91,7 +126,6 @@ export async function beforeP2NeedsPromptStep(
     if (!moduleName) throw new Error('needs30 needs a moduleName.');
     const mutationParent = findOpenParent(context, parentStep);
     const delivered = await executeP2Needs(moduleName, new Date());
-    await writeApproved(moduleName, [delivered.needsPath, delivered.messagePath]);
     return [
       doneAnchor(context, mutationParent, moduleName, [delivered.needsPath, delivered.messagePath]),
       updateStatus(
