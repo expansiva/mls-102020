@@ -20,7 +20,7 @@
 // So: phase 1 plants i1, i2 and a ROUTER step handled by this same agent; when i2-done lands the
 // router reads the route and plants that branch. The successor knowledge stays in ONE table here
 // and is never scattered across the steps' after-hooks — the pattern agentsBestPractices §6 names
-// as the reason reordering agentChangeBackend meant editing ~20 files.
+// as the reason reordering agentChangeBackend (deleted, p4_15, 27/09) meant editing ~20 files.
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { getAllSteps } from '/_102027_/l2/aiAgentHelper.js';
