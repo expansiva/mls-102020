@@ -5345,7 +5345,7 @@ function buildLayoutsConfig(project: number, pages: CfePagePlan[], previous: Rec
 }
 
 // Update generation status only in l5/{module}/todoFrontend.defs.ts. The l4 owner defs are
-// read-only for this agent (mirrors agentChangeBackend/todoBackend).
+// read-only for this agent (mirrors l5/{module}/todoBackend.defs.ts).
 async function updateOwnerStatuses(context: CfeCreateContext, ownerIds: string[], status: OwnerStatus, runModule: string): Promise<string[]> {
   return setTodoFrontendStatuses(context.project, new Set(ownerIds), status, runModule);
 }

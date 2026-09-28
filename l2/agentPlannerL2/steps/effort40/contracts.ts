@@ -19,8 +19,8 @@ export const P2_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1.2' as const;
 export const P2_EFFORT_ARTIFACT = 'pool/l2/web/effort.json' as const;
 
 /**
- * Subset of OwnerStatus in mls-102021/l2/agentChangeBackend/helpers/cbShared.ts:95
- * (`'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done'`, ALL_STATUSES at :105).
+ * Subset of OwnerStatus in mls-102021/l2/agentPlannerL1/helpers/l1Inventory.ts:7
+ * (`'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done'`, OWNER_STATUSES at :8).
  * `inProgress` is left out on purpose — effort.json is a review snapshot, never a live run.
  * Do not import OwnerStatus from mls-102021.
  */
