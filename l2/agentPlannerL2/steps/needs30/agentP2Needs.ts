@@ -54,7 +54,7 @@ export async function executeP2Needs(moduleName: string, now: Date): Promise<P2D
     processes: menuSources.processes,
     now,
   });
-  const gate = validateP2Needs(needs, menu, menuSources.sources);
+  const gate = validateP2Needs(needs, menu, menuSources.sources, menuSources.grants);
   if (!gate.ok) throw new Error(formatP2NeedsGate(gate.issues));
 
   const receivedFile = receivedPoolFile(moduleName, pipeline.messageFile);

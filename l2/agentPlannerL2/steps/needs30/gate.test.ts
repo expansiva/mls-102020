@@ -79,33 +79,34 @@ function loadSources(): P2L4Sources {
   });
 }
 
-function loadOk(): { file: P2NeedsFile; menu: P2MenuFile; sources: P2L4Sources } {
+function loadOk(): { file: P2NeedsFile; menu: P2MenuFile; sources: P2L4Sources; grants: ReturnType<typeof parseP2Grants> } {
   const sources = loadSources();
   const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+  const grants = parseP2Grants(readDefs(L4_FIXTURE, 'access.defs.ts'));
   const file = buildP2NeedsFile({
     menu,
     sources,
-    grants: parseP2Grants(readDefs(L4_FIXTURE, 'access.defs.ts')),
+    grants,
     processes: parseP2Processes(extractDefsJson(readFileSync(WORKFLOWS, 'utf8'))),
     now: AT,
   });
-  return { file, menu, sources };
+  return { file, menu, sources, grants };
 }
 
 void test('gate accepts the mensalidadesAcademia needs file', () => {
-  const { file, menu, sources } = loadOk();
-  const gate = validateP2Needs(file, menu, sources);
+  const { file, menu, sources, grants } = loadOk();
+  const gate = validateP2Needs(file, menu, sources, grants);
   assert.equal(gate.ok, true, gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
 });
 
 void test('gate is structural: unknown entity, page, transition, enums', () => {
-  const { file, menu, sources } = loadOk();
+  const { file, menu, sources, grants } = loadOk();
 
   const unknownEntity: P2NeedsFile = structuredClone(file);
   unknownEntity.pages[0].reads.push({
     entity: 'NoSuch', family: 'tdm', scope: 'organization', derived: [], from: ['organism:detail'],
   });
-  const entityGate = validateP2Needs(unknownEntity, menu, sources);
+  const entityGate = validateP2Needs(unknownEntity, menu, sources, grants);
   assert.equal(entityGate.ok, false);
   assert.ok(entityGate.issues.some(issue => issue.code === 'P2_NEEDS_ENTITY_UNKNOWN'));
 
@@ -113,7 +114,7 @@ void test('gate is structural: unknown entity, page, transition, enums', () => {
   unknownPage.pages.push({
     pageId: 'no_such_page', actors: ['recepcao'], reads: [], writes: [],
   });
-  const pageGate = validateP2Needs(unknownPage, menu, sources);
+  const pageGate = validateP2Needs(unknownPage, menu, sources, grants);
   assert.equal(pageGate.ok, false);
   assert.ok(pageGate.issues.some(issue => issue.code === 'P2_NEEDS_PAGE_UNKNOWN'));
 
@@ -121,19 +122,43 @@ void test('gate is structural: unknown entity, page, transition, enums', () => {
   unknownTransition.pages[0].writes.push({
     entity: 'Matricula', operation: 'transition', transitionRef: 'settle', from: ['journey:x/y'],
   });
-  const transitionGate = validateP2Needs(unknownTransition, menu, sources);
+  const transitionGate = validateP2Needs(unknownTransition, menu, sources, grants);
   assert.equal(transitionGate.ok, false);
   assert.ok(transitionGate.issues.some(issue => issue.code === 'P2_NEEDS_TRANSITION_UNKNOWN'));
 
   const badOp: P2NeedsFile = structuredClone(file);
   (badOp.pages[0].writes[0] as { operation: string }).operation = 'upsert';
-  const opGate = validateP2Needs(badOp, menu, sources);
+  const opGate = validateP2Needs(badOp, menu, sources, grants);
   assert.equal(opGate.ok, false);
   assert.ok(opGate.issues.some(issue => issue.code === 'P2_NEEDS_OPERATION'));
 
   const badScope: P2NeedsFile = structuredClone(file);
   (badScope.pages.find(page => page.reads.length)?.reads[0] as { scope: string }).scope = 'world';
-  const scopeGate = validateP2Needs(badScope, menu, sources);
+  const scopeGate = validateP2Needs(badScope, menu, sources, grants);
   assert.equal(scopeGate.ok, false);
   assert.ok(scopeGate.issues.some(issue => issue.code === 'P2_NEEDS_SCOPE'));
+
+  const badRelationship: P2NeedsFile = structuredClone(file);
+  const relationalRead = badRelationship.pages.find(page => page.reads.length)?.reads[0];
+  assert.ok(relationalRead);
+  relationalRead.from.push('relationship:UnknownEntity/unknownLink');
+  const relationshipGate = validateP2Needs(badRelationship, menu, sources, grants);
+  assert.equal(relationshipGate.ok, false);
+  assert.ok(relationshipGate.issues.some(issue => issue.code === 'P2_NEEDS_RELATIONSHIP_SOURCE_UNKNOWN'));
+
+  const missingAccess: P2NeedsFile = structuredClone(file);
+  const needsGrant = missingAccess.pages.find(page => page.reads.length)?.reads[0];
+  assert.ok(needsGrant);
+  needsGrant.from = needsGrant.from.filter(reference => !reference.startsWith('grant:'));
+  const accessGate = validateP2Needs(missingAccess, menu, sources, grants);
+  assert.equal(accessGate.ok, false);
+  assert.ok(accessGate.issues.some(issue => issue.code === 'P2_NEEDS_ACCESS_SOURCE_MISSING'));
+
+  const adulteratedGrant: P2NeedsFile = structuredClone(file);
+  const citedRead = adulteratedGrant.pages.find(page => page.reads.length)?.reads[0];
+  assert.ok(citedRead);
+  citedRead.from = citedRead.from.map(reference => reference.startsWith('grant:') ? 'grant:forgedGrant' : reference);
+  const adulteratedGrantGate = validateP2Needs(adulteratedGrant, menu, sources, grants);
+  assert.equal(adulteratedGrantGate.ok, false);
+  assert.ok(adulteratedGrantGate.issues.some(issue => issue.code === 'P2_NEEDS_ACCESS_GRANT_INVALID'));
 });
