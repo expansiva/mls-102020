@@ -349,6 +349,51 @@ test('generateSharedScaffold emits uiScenary, URL guard, command success returns
   assert.match(code, /if \(value\) this\.setUiScenary\('detail'\);/);
 });
 
+// p4_16 (28/09, controleEstoque/movimentacoes): shared defs states can repeat `name` across
+// DIFFERENT contracts on the same page (e.g. `productId` in both createStockMovement.input and
+// listStockMovement.input) — only `memberName` is unique class-wide
+// (mls-102020/l2/agentDefsL2/steps/shared40/gate.ts:81). The scaffold must key class members off
+// memberName, falling back to name only when memberName is absent.
+const CONTRACT_WITH_SHARED_FIELD = CONTRACT
+  .replace('export interface ListThingsInput {\n  nameFilter?: string;', 'export interface ListThingsInput {\n  code?: string;\n  nameFilter?: string;')
+  .replace('export interface CreateThingInput {\n  name: string;', 'export interface CreateThingInput {\n  code?: string;\n  name: string;');
+
+test('generateSharedScaffold uses memberName for the class member, never the repeated field name', () => {
+  const defs = definitionWithScenary();
+  const states = defs.states as Record<string, unknown>[];
+  const actions = defs.actions as Record<string, unknown>[];
+  // Two DIFFERENT actions (listThings query, createThing command) each with an input field
+  // called `code` — same field name, distinct memberName. This is exactly the shape gate.ts
+  // allows (name repeats, memberName is the class-wide unique one) and that broke the scaffold.
+  states.push(
+    { stateKey: 'ui.things.input.listThings.code', name: 'code', memberName: 'listThingsCode', kind: 'input', contractRef: { commandName: 'listThings', direction: 'input', field: 'code' }, defaultValue: '' },
+    { stateKey: 'ui.things.input.createThing.code', name: 'code', memberName: 'createThingCode', kind: 'input', contractRef: { commandName: 'createThing', direction: 'input', field: 'code' }, defaultValue: '' },
+  );
+  const listThings = actions.find(a => a.actionId === 'listThings')!;
+  listThings.inputStateKeys = [...(listThings.inputStateKeys as string[]), 'ui.things.input.listThings.code'];
+  const createThing = actions.find(a => a.actionId === 'createThing')!;
+  createThing.inputStateKeys = [...(createThing.inputStateKeys as string[]), 'ui.things.input.createThing.code'];
+  defs.scenaries = [
+    { value: 'base', kind: 'base', commandName: 'listThings', preconditions: [] },
+    {
+      value: 'detail', kind: 'detail', commandName: 'listThings',
+      preconditions: ['ui.things.input.listThings.code', 'ui.things.input.createThing.code'],
+    },
+    { value: 'createThing', kind: 'command', commandName: 'createThing', preconditions: [] },
+  ];
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', defs, CONTRACT_WITH_SHARED_FIELD).code!;
+  assert.match(code, /@property\(\) listThingsCode: string = '';/);
+  assert.match(code, /@property\(\) createThingCode: string = '';/);
+  // renderParams (params object building) also keys off the member, per action.
+  assert.match(code, /code: this\.listThingsCode,|if \(this\.listThingsCode\) \{\s*\n\s*params\.code = this\.listThingsCode;/);
+  assert.match(code, /if \(this\.createThingCode\) \{\s*\n\s*params\.code = this\.createThingCode;/);
+  // the scenary guard also uses both distinct members
+  assert.match(code, /if \(value === 'detail' && \(!this\.listThingsCode \|\| !this\.createThingCode\)\) next = 'base';/);
+  assert.ok(!/this\.code\b/.test(code), 'the repeated field name must never surface as a class member');
+  // A state without memberName keeps using name (existing states in definitionWithScenary, e.g. uiScenary).
+  assert.match(code, /@property\(\) uiScenary: 'base' \| 'detail' \| 'createThing' = 'base';/);
+});
+
 test('generateSharedScaffold emits a constant uiScenary when the page has one scene', () => {
   const defs = definition();
   defs.actions = (defs.actions as Record<string, unknown>[]).filter(action => {

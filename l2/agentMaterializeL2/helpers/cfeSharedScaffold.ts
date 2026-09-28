@@ -493,9 +493,13 @@ function parseState(raw: Record<string, unknown>): DefsState {
   if (!['pageStatus', 'actionStatus', 'input', 'queryResult', 'commandOutput', 'actionError', 'uiScenary'].includes(kind)) {
     bail(`state ${stringOf(raw.stateKey)} has unsupported kind: ${kind}`);
   }
+  // `name` is the class member the scaffold emits as `this.<name>`. The defs carries `memberName`
+  // (unique across the shared class; mls-102020/l2/agentDefsL2/steps/shared40/gate.ts:81) and
+  // `name` (the field name, which can repeat across contracts, e.g. `productId` in both
+  // createStockMovement.input and listStockMovement.input) — same fallback as cfeMaterializeCore.ts.
   const state: DefsState = {
     stateKey: stringOf(raw.stateKey) || bail('state missing stateKey'),
-    name: stringOf(raw.name) || bail(`state ${stringOf(raw.stateKey)} missing name`),
+    name: stringOf(raw.memberName) || stringOf(raw.name) || bail(`state ${stringOf(raw.stateKey)} missing name`),
     kind: kind as DefsState['kind'],
     defaultValue: raw.defaultValue,
   };

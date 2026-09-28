@@ -2,6 +2,11 @@
 
 # Changelog
 
+- 2026-09-28 (p4_16, controleEstoque/movimentacoes): `cfeSharedScaffold.ts` `parseState` now keys
+  the shared class member on `memberName || name` (was `name`, which can repeat across contracts),
+  the same fallback `cfeMaterializeCore.ts` already uses — was emitting `this.<name>` for a member
+  that doesn't exist on the class.
+
 - 2026-09-07: verify `typecheck` may be `'unavailable'` when `compileMlsPathAndGetErrors` returns
   `null` (no Monaco on this host). That is a state, never `'passed'`. The module gate in finalize
   is who runs project `tsc` — this phase does not spawn `tsc` per file.
