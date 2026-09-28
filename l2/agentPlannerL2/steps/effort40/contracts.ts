@@ -13,9 +13,9 @@ import {
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import type { P2NeedsFile, P2NeedsPage } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 
-export const P2_EFFORT_SCHEMA_VERSION = '2026-09-21-p2-effort-v1.1' as const;
+export const P2_EFFORT_SCHEMA_VERSION = '2026-09-21-p2-effort-v1.2' as const;
 export const P2_L4DIFF_SCHEMA = '2026-09-21-p4-l4diff-v1' as const;
-export const P2_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1' as const;
+export const P2_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1.2' as const;
 export const P2_EFFORT_ARTIFACT = 'pool/l2/web/effort.json' as const;
 
 /**
@@ -26,6 +26,20 @@ export const P2_EFFORT_ARTIFACT = 'pool/l2/web/effort.json' as const;
  */
 export const P2_EFFORT_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'done'] as const;
 export type P2EffortStatus = typeof P2_EFFORT_STATUSES[number];
+export const P2_TEST_SUPPORT_OWNERS = ['L1', 'runtime'] as const;
+export type P2TestSupportOwner = typeof P2_TEST_SUPPORT_OWNERS[number];
+
+export interface P2TestSupportItem {
+  id: string;
+  actorRefs: string[];
+  entityRefs: string[];
+  sourceRefs: string[];
+  status: P2EffortStatus;
+  owner: P2TestSupportOwner;
+  executorRef: string;
+  cleanupRef: string;
+  gap: string;
+}
 
 export const P2_EFFORT_ENDPOINT_KINDS = ['qry', 'cmd'] as const;
 export type P2EffortEndpointKind = typeof P2_EFFORT_ENDPOINT_KINDS[number];
@@ -108,8 +122,9 @@ export interface P2EffortFile {
   usecases: P2EffortUsecase[];
   tables: P2EffortTable[];
   removed: P2EffortRemoved[];
+  testSupport: P2TestSupportItem[];
   unattributed: P2EffortUnattributed[];
-  meta: { sourceMenu: string; sourceBackend: string; generatedAt: string };
+  meta: { sourceMenu: string; sourceBackend: string; sourceVersion: string; generatedAt: string };
 }
 
 export interface P2EffortL4DiffItem {
@@ -164,13 +179,14 @@ export interface P2BackendRemoved {
 }
 
 export interface P2BackendFile {
-  schemaVersion: string;
+  schemaVersion: typeof P2_BACKEND_SCHEMA_VERSION;
   moduleName: string;
   device: P2MenuDevice;
   endpoints: P2BackendEndpoint[];
   usecases: P2BackendUsecase[];
   tables: P2BackendTable[];
   removed: P2BackendRemoved[];
+  testSupport: P2TestSupportItem[];
 }
 
 export interface P2BuildEffortInput {
@@ -183,6 +199,10 @@ export interface P2BuildEffortInput {
 
 export function isP2EffortStatus(value: string): value is P2EffortStatus {
   return (P2_EFFORT_STATUSES as readonly string[]).includes(value);
+}
+
+export function isP2TestSupportOwner(value: string): value is P2TestSupportOwner {
+  return (P2_TEST_SUPPORT_OWNERS as readonly string[]).includes(value);
 }
 
 export function isP2EffortEndpointKind(value: string): value is P2EffortEndpointKind {
@@ -252,10 +272,12 @@ export function buildP2EffortFile(input: P2BuildEffortInput): P2EffortFile {
     usecases,
     tables,
     removed,
+    testSupport: input.backend.testSupport.map(copyTestSupport),
     unattributed: attributed.unattributed,
     meta: {
       sourceMenu: `pool/l2/${device}/menu.json`,
       sourceBackend: `pool/l2/${device}/backend.json`,
+      sourceVersion: input.backend.schemaVersion,
       generatedAt: input.now.toISOString(),
     },
   };
@@ -279,16 +301,20 @@ export function buildP2EffortMessage(input: {
 
 export function parseP2BackendFile(value: unknown): P2BackendFile {
   if (!isRecord(value)) throw new Error('backend.json must be an object.');
+  if (value.schemaVersion !== P2_BACKEND_SCHEMA_VERSION) {
+    throw new Error(`backend.json schemaVersion must be ${P2_BACKEND_SCHEMA_VERSION}.`);
+  }
   const device = typeof value.device === 'string' && value.device.trim() ? value.device.trim() : P2_MENU_DEVICE;
   if (device !== P2_MENU_DEVICE) throw new Error(`backend.json device must be ${P2_MENU_DEVICE}.`);
   return {
-    schemaVersion: text(value.schemaVersion) || P2_BACKEND_SCHEMA_VERSION,
+    schemaVersion: P2_BACKEND_SCHEMA_VERSION,
     moduleName: text(value.moduleName),
     device,
     endpoints: asArray(value.endpoints).map((item, index) => parseEndpoint(item, index)),
     usecases: asArray(value.usecases).map((item, index) => parseUsecase(item, index)),
     tables: asArray(value.tables).map((item, index) => parseTable(item, index)),
     removed: asArray(value.removed).map((item, index) => parseRemoved(item, index)),
+    testSupport: requiredArray(value.testSupport, 'testSupport').map((item, index) => parseTestSupport(item, index)),
   };
 }
 
@@ -458,6 +484,44 @@ function copyRemoved(item: P2BackendRemoved): P2EffortRemoved {
   };
 }
 
+function copyTestSupport(item: P2TestSupportItem): P2TestSupportItem {
+  return {
+    id: item.id,
+    actorRefs: [...item.actorRefs],
+    entityRefs: [...item.entityRefs],
+    sourceRefs: [...item.sourceRefs],
+    status: item.status,
+    owner: item.owner,
+    executorRef: item.executorRef,
+    cleanupRef: item.cleanupRef,
+    gap: item.gap,
+  };
+}
+
+function parseTestSupport(value: unknown, index: number): P2TestSupportItem {
+  const path = `testSupport[${index}]`;
+  if (!isRecord(value)) throw new Error(`backend.json ${path} must be an object.`);
+  const status = supportString(value.status, `${path}.status`, false);
+  if (!isP2EffortStatus(status)) {
+    throw new Error(`backend.json ${path}.status must be ${P2_EFFORT_STATUSES.join('|')}.`);
+  }
+  const owner = supportString(value.owner, `${path}.owner`, false);
+  if (!isP2TestSupportOwner(owner)) {
+    throw new Error(`backend.json ${path}.owner must be ${P2_TEST_SUPPORT_OWNERS.join('|')}.`);
+  }
+  return {
+    id: supportString(value.id, `${path}.id`, false),
+    actorRefs: supportStringArray(value.actorRefs, `${path}.actorRefs`),
+    entityRefs: supportStringArray(value.entityRefs, `${path}.entityRefs`),
+    sourceRefs: supportStringArray(value.sourceRefs, `${path}.sourceRefs`),
+    status,
+    owner,
+    executorRef: supportString(value.executorRef, `${path}.executorRef`, true),
+    cleanupRef: supportString(value.cleanupRef, `${path}.cleanupRef`, true),
+    gap: supportString(value.gap, `${path}.gap`, true),
+  };
+}
+
 function parseEndpoint(value: unknown, index: number): P2BackendEndpoint {
   if (!isRecord(value)) throw new Error(`backend.json endpoints[${index}] must be an object.`);
   return {
@@ -574,6 +638,26 @@ function actorFromKey(key: string): string {
 
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function requiredArray(value: unknown, path: string): unknown[] {
+  if (!Array.isArray(value)) throw new Error(`backend.json ${path} must be an array.`);
+  return value;
+}
+
+function supportString(value: unknown, path: string, allowEmpty: boolean): string {
+  if (typeof value !== 'string' || (!allowEmpty && value.trim() === '')) {
+    throw new Error(`backend.json ${path} must be ${allowEmpty ? 'a string' : 'a non-empty string'}.`);
+  }
+  return value;
+}
+
+function supportStringArray(value: unknown, path: string): string[] {
+  if (!Array.isArray(value)) throw new Error(`backend.json ${path} must be an array of strings.`);
+  return value.map((item, index) => {
+    if (typeof item !== 'string') throw new Error(`backend.json ${path}[${index}] must be a string.`);
+    return item;
+  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

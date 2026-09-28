@@ -6,10 +6,13 @@ import {
   P2_EFFORT_REMOVED_KINDS,
   P2_EFFORT_SCHEMA_VERSION,
   P2_EFFORT_STATUSES,
+  P2_TEST_SUPPORT_OWNERS,
   countP2EffortStatuses,
   isP2EffortEndpointKind,
   isP2EffortRemovedKind,
   isP2EffortStatus,
+  isP2TestSupportOwner,
+  type P2TestSupportItem,
   p2StatusFromMenuAction,
   type P2EffortFile,
   type P2EffortTotalsBucket,
@@ -103,6 +106,11 @@ export function validateP2Effort(
       error(issues, 'P2_EFFORT_STATUS', `status must be ${P2_EFFORT_STATUSES.join('|')}.`, `$.tables[${index}].status`);
     }
   });
+  if (!Array.isArray(file.testSupport)) {
+    error(issues, 'P2_EFFORT_TEST_SUPPORT', 'testSupport must be an array.', '$.testSupport');
+  } else {
+    file.testSupport.forEach((item, index) => validateTestSupport(issues, item, index));
+  }
   file.removed.forEach((row, index) => {
     const path = `$.removed[${index}]`;
     if (!isP2EffortRemovedKind(row.kind)) {
@@ -119,6 +127,33 @@ export function validateP2Effort(
   checkTotals(issues, 'tables', file.totals.tables, countP2EffortStatuses(file.tables));
 
   return { ok: issues.every(issue => issue.severity !== 'error'), issues };
+}
+
+function validateTestSupport(issues: P2EffortGateIssue[], item: P2TestSupportItem, index: number): void {
+  const path = `$.testSupport[${index}]`;
+  if (!item || typeof item !== 'object' || Array.isArray(item)) {
+    error(issues, 'P2_EFFORT_TEST_SUPPORT', 'Each testSupport item must be an object.', path);
+    return;
+  }
+  if (typeof item.id !== 'string' || !item.id.trim()) {
+    error(issues, 'P2_EFFORT_TEST_SUPPORT', 'id must be a non-empty string.', `${path}.id`);
+  }
+  for (const field of ['actorRefs', 'entityRefs', 'sourceRefs'] as const) {
+    if (!Array.isArray(item[field]) || item[field].some(ref => typeof ref !== 'string')) {
+      error(issues, 'P2_EFFORT_TEST_SUPPORT', `${field} must be an array of strings.`, `${path}.${field}`);
+    }
+  }
+  if (!isP2EffortStatus(item.status)) {
+    error(issues, 'P2_EFFORT_STATUS', `status must be ${P2_EFFORT_STATUSES.join('|')}.`, `${path}.status`);
+  }
+  if (typeof item.owner !== 'string' || !isP2TestSupportOwner(item.owner)) {
+    error(issues, 'P2_EFFORT_TEST_SUPPORT_OWNER', `owner must be ${P2_TEST_SUPPORT_OWNERS.join('|')}.`, `${path}.owner`);
+  }
+  for (const field of ['executorRef', 'cleanupRef', 'gap'] as const) {
+    if (typeof item[field] !== 'string') {
+      error(issues, 'P2_EFFORT_TEST_SUPPORT', `${field} must be a string.`, `${path}.${field}`);
+    }
+  }
 }
 
 export function formatP2EffortGate(issues: readonly P2EffortGateIssue[]): string {

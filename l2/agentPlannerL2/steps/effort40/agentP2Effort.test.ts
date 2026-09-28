@@ -23,7 +23,7 @@ import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solut
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
-const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.json');
+const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.v1.2.json');
 const RECEIVED_PATH = path.join(HERE, 'fixtures/pool-l2-backend-mensalidadesAcademia.json');
 const L4_PATH = path.join(HERE, '../entry10/fixtures/pool-l2-mensalidadesAcademia.json');
 const PROJECT = 102047;

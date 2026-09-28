@@ -16,7 +16,7 @@ import { validateP2Effort } from '/_102020_/l2/agentPlannerL2/steps/effort40/gat
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
-const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.json');
+const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.v1.2.json');
 const AT = new Date(Date.UTC(2026, 8, 21, 12, 0, 0));
 
 function sample(): { menu: P2MenuFile; file: P2EffortFile } {
@@ -54,4 +54,14 @@ void test('gate fails when totals do not match the lists', () => {
   const gate = validateP2Effort(file, menu);
   assert.equal(gate.ok, false);
   assert.ok(gate.issues.some(issue => issue.code === 'P2_EFFORT_TOTALS'));
+});
+
+void test('gate rejects invalid testSupport owner and status', () => {
+  const { menu, file } = sample();
+  file.testSupport[0].owner = 'runtime-team' as never;
+  file.testSupport[0].status = 'inProgress' as never;
+  const gate = validateP2Effort(file, menu);
+  assert.equal(gate.ok, false);
+  assert.ok(gate.issues.some(issue => issue.code === 'P2_EFFORT_TEST_SUPPORT_OWNER'));
+  assert.ok(gate.issues.some(issue => issue.code === 'P2_EFFORT_STATUS'));
 });

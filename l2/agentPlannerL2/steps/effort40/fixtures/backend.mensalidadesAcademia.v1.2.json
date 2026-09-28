@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-09-21-p1-backend-v1",
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
   "moduleName": "mensalidadesAcademia",
   "device": "web",
   "sourceNeeds": "pool/l1/web/needs.json",
@@ -168,6 +168,19 @@
       "id": "archivePlano",
       "status": "toRemove",
       "reason": "exists in l1, no page needs it"
+    }
+  ],
+  "testSupport": [
+    {
+      "id": "support:matricula",
+      "actorRefs": ["actor:aluno", ""],
+      "entityRefs": ["Matricula"],
+      "sourceRefs": ["l1/agendaClinica/layer_3_domain/entities/matricula.defs.ts"],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "Verified test executor and cleanup are pending."
     }
   ],
   "meta": {
