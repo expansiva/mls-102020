@@ -349,6 +349,61 @@ test('generateSharedScaffold emits uiScenary, URL guard, command success returns
   assert.match(code, /if \(value\) this\.setUiScenary\('detail'\);/);
 });
 
+// p4_16 rodada 2 (28/09, controleEstoque/movimentacoes): renderApplyUrlScenary assigned the raw
+// URL string straight into an enumerated input member (declared as a string-literal union by
+// propertyType) — TS2322 (`movimentacoes.ts:316`, `MovementType | null`). An enumerated precondition
+// target must be validated against the same valueSet the type declaration uses, then cast.
+test('generateSharedScaffold guards+casts an enumerated URL scenary target; a free-string target stays a plain assignment', () => {
+  const defs = definitionWithScenary();
+  const states = defs.states as Record<string, unknown>[];
+  states.push({
+    stateKey: 'ui.things.input.createThing.kind', name: 'createThingKind', kind: 'input',
+    valueSet: ['alpha', 'beta'], defaultValue: '',
+  });
+  const scenaries = defs.scenaries as Record<string, unknown>[];
+  (scenaries[1].preconditions as string[]).push('ui.things.input.createThing.kind');
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', defs, CONTRACT).code!;
+  // enumerated target: guard against the declared valueSet, then cast to the member's own type
+  assert.match(code, /if \(!this\.createThingKind\) \{\n\s*if \(\['alpha', 'beta'\]\.includes\(rawKind\)\) \{\n\s*this\.createThingKind = rawKind as unknown as typeof this\.createThingKind;\n\s*setState\('ui\.things\.input\.createThing\.kind', rawKind\);\n\s*\}\n\s*\}/);
+  // free-string target (thingId, no valueSet) is unchanged: plain assignment, no guard/cast
+  assert.match(code, /if \(!this\.listThingsThingId\) \{\n\s*this\.listThingsThingId = rawThingId;\n\s*setState\('ui\.things\.input\.listThings\.thingId', rawThingId\);\n\s*\}/);
+});
+
+// p4_16 rodada 3 (28/09, controleEstoque/movimentacoes): the enum guard from rodada 2 is one case
+// of a general problem — renderApplyUrlScenary must parse the raw URL string per the contract
+// field's own type (the same type renderParams already reads for numeric/boolean coercion), not
+// just for enums. `quantity` (number) hit the same TS2322 as `movementType` did.
+const CONTRACT_WITH_URL_TYPES = CONTRACT.replace(
+  'export interface ListThingsInput {\n  nameFilter?: string;\n  page?: number;',
+  'export interface ListThingsInput {\n  nameFilter?: string;\n  page?: number;\n  active?: boolean;\n  tags?: string[];',
+);
+
+test('generateSharedScaffold prefills a URL scenary target by contract field type: number, boolean, string; skips array/opaque', () => {
+  const defs = definitionWithScenary();
+  const states = defs.states as Record<string, unknown>[];
+  states.push(
+    { stateKey: 'ui.things.input.listThings.active', name: 'listThingsActive', kind: 'input', contractRef: { commandName: 'listThings', direction: 'input', field: 'active' }, defaultValue: '' },
+    { stateKey: 'ui.things.input.listThings.tags', name: 'listThingsTags', kind: 'input', contractRef: { commandName: 'listThings', direction: 'input', field: 'tags' }, defaultValue: '' },
+  );
+  const scenaries = defs.scenaries as Record<string, unknown>[];
+  (scenaries[1].preconditions as string[]).push(
+    'ui.things.input.listThings.page', // number, already declared by definition()
+    'ui.things.input.listThings.active', // boolean
+    'ui.things.input.listThings.nameFilter', // string, already declared by definition()
+    'ui.things.input.listThings.tags', // array -> no prefill
+  );
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', defs, CONTRACT_WITH_URL_TYPES).code!;
+  // number: Number.isFinite guard, value cast through unknown (real member type declared elsewhere)
+  assert.match(code, /const listThingsPageNum = Number\(rawPage\);\n\s*if \(Number\.isFinite\(listThingsPageNum\)\) \{\n\s*this\.listThingsPage = listThingsPageNum as unknown as typeof this\.listThingsPage;\n\s*setState\('ui\.things\.input\.listThings\.page', listThingsPageNum\);\n\s*\}/);
+  // boolean: only the two literal strings are accepted
+  assert.match(code, /if \(rawActive === 'true' \|\| rawActive === 'false'\) \{\n\s*this\.listThingsActive = rawActive as unknown as typeof this\.listThingsActive;\n\s*setState\('ui\.things\.input\.listThings\.active', rawActive\);\n\s*\}/);
+  // string: unchanged, direct assignment
+  assert.match(code, /if \(!this\.listThingsNameFilter\) \{\n\s*this\.listThingsNameFilter = rawNameFilter;\n\s*setState\('ui\.things\.input\.listThings\.nameFilter', rawNameFilter\);\n\s*\}/);
+  // array/opaque: no prefill block at all for that field (no safe string->value parse to guess)
+  assert.ok(!code.includes('rawTags'), 'array/opaque contract fields get no URL prefill');
+  assert.ok(!/params\.get\('tags'\)/.test(code));
+});
+
 // p4_16 (28/09, controleEstoque/movimentacoes): shared defs states can repeat `name` across
 // DIFFERENT contracts on the same page (e.g. `productId` in both createStockMovement.input and
 // listStockMovement.input) — only `memberName` is unique class-wide

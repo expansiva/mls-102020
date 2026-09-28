@@ -2,6 +2,15 @@
 
 # Changelog
 
+- 2026-09-28 (p4_16 rodada 3, controleEstoque/movimentacoes): `renderApplyUrlScenary` now parses
+  the raw URL string per the contract field's own type (enum/number/boolean/string), not just for
+  enums — number gets `Number.isFinite`, boolean only `'true'`/`'false'`, array/opaque get no
+  prefill at all; fixes the same TS2322 class for `quantity` (`number`) as rodada 2 fixed for enums.
+
+- 2026-09-28 (p4_16 rodada 2, controleEstoque/movimentacoes): `renderApplyUrlScenary` now guards an
+  enumerated scenary target against its own `valueSet` before assigning the raw URL string, casting
+  to `typeof this.<member>` — was a bare string assignment into the declared union (TS2322).
+
 - 2026-09-28 (p4_16, controleEstoque/movimentacoes): `cfeSharedScaffold.ts` `parseState` now keys
   the shared class member on `memberName || name` (was `name`, which can repeat across contracts),
   the same fallback `cfeMaterializeCore.ts` already uses — was emitting `this.<name>` for a member

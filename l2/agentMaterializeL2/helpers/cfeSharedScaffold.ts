@@ -1286,8 +1286,20 @@ function renderUiScenary(model: ScaffoldModel): string[] {
   return lines;
 }
 
+/**
+ * Contract field type behind an input state (via contractRef), when known. This is the same
+ * per-field type renderParams already reads for numeric/boolean coercion — reused here so
+ * renderApplyUrlScenary parses the raw URL string the same way the rest of the scaffold does.
+ * null when the state carries no contractRef (free field, e.g. a route param) — defaults to string.
+ */
+function inputContractFieldType(model: ScaffoldModel, state: DefsState): ContractField['type'] | null {
+  if (!state.contractRef) return null;
+  const input = model.interfaces.get(`${toPascalCase(state.contractRef.commandName)}Input`);
+  return input?.fields.find(f => f.name === state.contractRef!.field)?.type ?? null;
+}
+
 function renderApplyUrlScenary(model: ScaffoldModel): string[] {
-  const fieldTargets = new Map<string, { propName: string; stateKey: string }[]>();
+  const fieldTargets = new Map<string, { propName: string; stateKey: string; state: DefsState }[]>();
   for (const scene of model.scenaries) {
     for (const key of scene.preconditions) {
       const input = model.stateByKey.get(key);
@@ -1295,7 +1307,7 @@ function renderApplyUrlScenary(model: ScaffoldModel): string[] {
       const field = key.split('.').pop() || '';
       if (!field) continue;
       const list = fieldTargets.get(field) || [];
-      if (!list.some(item => item.stateKey === key)) list.push({ propName: input.name, stateKey: key });
+      if (!list.some(item => item.stateKey === key)) list.push({ propName: input.name, stateKey: key, state: input });
       fieldTargets.set(field, list);
     }
   }
@@ -1304,13 +1316,48 @@ function renderApplyUrlScenary(model: ScaffoldModel): string[] {
     '    const params = new URLSearchParams(window.location.search);',
   ];
   for (const [field, targets] of fieldTargets) {
+    // p4_16 rodada 3: opaque/array contract fields have no safe string->value parse — no prefill
+    // for those targets rather than guess. Skip the whole field when nothing is left to render.
+    const renderable = targets.filter(target => {
+      const type = inputContractFieldType(model, target.state);
+      return inputEnumValues(target.state) !== null || type !== 'array' && type !== 'opaque';
+    });
+    if (!renderable.length) continue;
     const rawName = `raw${toPascalCase(field)}`;
     lines.push(`    const ${rawName}: string = params.get('${escapeSingle(field)}') || '';`);
     lines.push(`    if (${rawName}) {`);
-    for (const target of targets) {
+    for (const target of renderable) {
       lines.push(`      if (!this.${target.propName}) {`);
-      lines.push(`        this.${target.propName} = ${rawName};`);
-      lines.push(`        setState('${target.stateKey}', ${rawName});`);
+      // The URL value is an unchecked string, but the member's declared type follows the input's
+      // own type (enum union / number / boolean / string) — a bare assignment is a TS2322 for
+      // anything but string (p4_16, controleEstoque/movimentacoes: MovementType | null, quantity
+      // number | null). Parse/validate the same way the rest of the scaffold already does per
+      // type, then cast through unknown — the real member type is declared elsewhere, not here.
+      const enumValues = inputEnumValues(target.state);
+      const fieldType = inputContractFieldType(model, target.state);
+      if (enumValues) {
+        const allowedLit = inputEnumAllowedLit(enumValues.filter(value => value !== ''));
+        lines.push(`        if ([${allowedLit}].includes(${rawName})) {`);
+        lines.push(`          this.${target.propName} = ${rawName} as unknown as typeof this.${target.propName};`);
+        lines.push(`          setState('${target.stateKey}', ${rawName});`);
+        lines.push('        }');
+      } else if (fieldType === 'number') {
+        const numName = `${target.propName}Num`;
+        lines.push(`        const ${numName} = Number(${rawName});`);
+        lines.push(`        if (Number.isFinite(${numName})) {`);
+        lines.push(`          this.${target.propName} = ${numName} as unknown as typeof this.${target.propName};`);
+        lines.push(`          setState('${target.stateKey}', ${numName});`);
+        lines.push('        }');
+      } else if (fieldType === 'boolean') {
+        lines.push(`        if (${rawName} === 'true' || ${rawName} === 'false') {`);
+        lines.push(`          this.${target.propName} = ${rawName} as unknown as typeof this.${target.propName};`);
+        lines.push(`          setState('${target.stateKey}', ${rawName});`);
+        lines.push('        }');
+      } else {
+        // string / uuid / date / no contractRef — free string, direct assignment (unchanged).
+        lines.push(`        this.${target.propName} = ${rawName};`);
+        lines.push(`        setState('${target.stateKey}', ${rawName});`);
+      }
       lines.push('      }');
     }
     lines.push('    }');
