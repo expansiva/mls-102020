@@ -22,8 +22,9 @@ function sources(deniedFields: string[] = []) {
           identity: { type: 'object', fields: {
             name: { type: 'string', required: true }, subtype: { type: 'enum', values: ['Person'] },
           } },
-          privateData: { type: 'object', fields: { token: { type: 'string' } } },
-        } },
+        privateData: { type: 'object', fields: { token: { type: 'string' } } },
+      } },
+      items: { type: 'array', fields: { entry: { type: 'object', fields: { code: { type: 'string', required: true } } } } },
       } },
       lifecycleStates: [{ state: 'scheduled', reachedBy: 'actor' }, { state: 'done', reachedBy: 'actor' }],
       rules: ['recordRule'],
@@ -51,17 +52,36 @@ test('derives writable leaf fields and requiredness, assigning initial state and
   const create = result.find(item => item.operation === 'create')!;
   const update = result.find(item => item.operation === 'update')!;
   assert.deepEqual(create.inputFields.map(field => field.path), [
-    'Record.phone', 'Record.details.identity.name', 'Record.details.privateData.token',
+    'Record.phone', 'Record.details', 'Record.details.identity', 'Record.details.identity.name',
+    'Record.details.privateData', 'Record.details.privateData.token', 'Record.items', 'Record.items.entry', 'Record.items.entry.code',
   ]);
-  assert.deepEqual(create.inputFields.map(field => field.required), [true, true, false]);
-  assert.deepEqual(update.inputFields.map(field => field.path), [
-    'Record.phone', 'Record.details.identity.name', 'Record.details.privateData.token',
-  ]);
+  assert.deepEqual(create.inputFields.map(field => field.required), [true, false, false, true, false, false, false, false, true]);
+  assert.deepEqual(update.inputFields.map(field => field.path), create.inputFields.map(field => field.path));
+  assert.deepEqual(update.inputFields.map(field => field.required), create.inputFields.map(field => field.required));
   assert.equal(update.inputFields.some(field => field.path === 'Record.revision'), false);
   assert.ok([create, update].every(binding => binding.inputFields.every(field => !['Record.status', 'Record.details.identity.subtype'].includes(field.path))));
   assert.deepEqual(create.ruleRefs.map(rule => rule.ruleId), ['recordRule']);
   assert.deepEqual(result.find(item => item.transition)?.inputFields, []);
   assert.deepEqual(result.find(item => item.transition)?.ruleRefs.map(rule => rule.ruleId), ['closeRule']);
+});
+
+test('requiredness follows renamed structural ancestors without promoting optional objects', () => {
+  const source = sources();
+  const entity = source.entities.Record as { subtype: string; record: { fields: Record<string, unknown> } };
+  const fields = entity.record.fields;
+  fields.payload = fields.details;
+  delete fields.details;
+  const payload = fields.payload as { fields: Record<string, unknown> };
+  const identity = payload.fields.identity as { fields: Record<string, unknown> };
+  delete identity.fields.subtype;
+  const create = bindings(source).find(item => item.operation === 'create')!;
+  assert.deepEqual(create.inputFields.filter(field => field.path.startsWith('Record.payload')).map(field => [field.path, field.required]), [
+    ['Record.payload', false],
+    ['Record.payload.identity', false],
+    ['Record.payload.identity.name', true],
+    ['Record.payload.privateData', false],
+    ['Record.payload.privateData.token', false],
+  ]);
 });
 
 test('grant denial removes derived writable input without parsing the denied field prose', () => {
