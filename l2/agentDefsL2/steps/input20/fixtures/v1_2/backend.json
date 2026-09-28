@@ -1,9 +1,10 @@
 {
-  "schemaVersion": "2026-09-21-p1-backend-v1.1",
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
   "moduleName": "agendaClinica",
   "device": "web",
   "sourceNeeds": "pool/l1/web/needs.json",
   "inventoryPresent": false,
+  "testSupport": [],
   "endpoints": [
     {
       "route": "agendaClinica.cadastro_profissional.cmdCreateProfissional",

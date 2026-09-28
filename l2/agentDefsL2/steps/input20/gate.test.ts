@@ -24,22 +24,23 @@ const versions = {
   integration: '2026-09-12-ns5-integration-v2',
 } as const;
 
-function fixture(kind: 'current' | 'historical', name: string): Record<string, unknown> {
+function fixture(kind: 'v1_2' | 'historical', name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path.join(HERE, 'fixtures', kind, `${name}.json`), 'utf8')) as Record<string, unknown>;
 }
 
-function currentAccessFixture(): Record<string, unknown> {
-  const source = readFileSync(path.join(HERE, 'fixtures', 'current', 'access.defs.ts'), 'utf8');
+function v1_2AccessFixture(): Record<string, unknown> {
+  const source = readFileSync(path.join(HERE, 'fixtures', 'v1_2', 'access.defs.ts'), 'utf8');
   const parsed = parseNs4ClassicDefsSource<Record<string, unknown>>(source);
-  assert.ok(parsed, 'current access fixture must parse');
+  assert.ok(parsed, 'v1.2 access fixture must parse');
   return parsed;
 }
 
 void test('planner fixtures are byte-pinned to their recorded 102047 revisions', () => {
-  const provenance = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'provenance.json'), 'utf8')) as Record<string, { commit: string; sha256: Record<string, string> }>;
-  assert.equal(provenance.current.commit, 'a2f929ed8778c9d8240ac445d6206d401434fdc9');
+  const provenance = JSON.parse(readFileSync(path.join(HERE, 'fixtures', 'provenance.json'), 'utf8')) as Record<string, { commit?: string; derivedFromCommit?: string; schemaRevision?: string; sha256: Record<string, string> }>;
+  assert.equal(provenance.v1_2.derivedFromCommit, 'a2f929ed8778c9d8240ac445d6206d401434fdc9');
+  assert.equal(provenance.v1_2.schemaRevision, 'd2_33-v1.2');
   assert.equal(provenance.historical.commit, '7d3b2ac3aafc7052bdae5bd3991f9bc24efbc556');
-  for (const kind of ['current', 'historical'] as const) for (const [name, expected] of Object.entries(provenance[kind].sha256)) {
+  for (const kind of ['v1_2', 'historical'] as const) for (const [name, expected] of Object.entries(provenance[kind].sha256)) {
     const bytes = readFileSync(path.join(HERE, 'fixtures', kind, name));
     assert.equal(createHash('sha256').update(bytes).digest('hex'), expected, `${kind}/${name}`);
   }
@@ -49,12 +50,12 @@ function rec(value: unknown): Record<string, unknown> { return value && typeof v
 function rows(value: unknown): Array<Record<string, unknown>> { return Array.isArray(value) ? value.map(rec) : []; }
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []; }
 
-function artifacts(kind: 'current' | 'historical'): D2InputArtifacts {
+function artifacts(kind: 'v1_2' | 'historical'): D2InputArtifacts {
   const menu = fixture(kind, 'menu');
   const needs = fixture(kind, 'needs');
   const backend = fixture(kind, 'backend');
   const effort = fixture(kind, 'effort');
-  const access = kind === 'current' ? currentAccessFixture() : { schemaVersion: versions.access, moduleName: IDENTITY.module, grants: [] };
+  const access = kind === 'v1_2' ? v1_2AccessFixture() : { schemaVersion: versions.access, moduleName: IDENTITY.module, grants: [] };
   const entityIds = new Set<string>();
   for (const usecase of rows(backend.usecases)) if (typeof usecase.entity === 'string') entityIds.add(usecase.entity);
   for (const page of rows(needs.pages)) for (const item of [...rows(page.reads), ...rows(page.writes)]) if (typeof item.entity === 'string') entityIds.add(item.entity);
@@ -95,8 +96,8 @@ function artifacts(kind: 'current' | 'historical'): D2InputArtifacts {
   return { ...defs, journeys, entities, menu, needs, backend, effort, sources };
 }
 
-void test('current immutable fixture produces the exact agendaClinica inventory', async () => {
-  const snapshot = await buildD2InputSnapshot(IDENTITY, artifacts('current'));
+void test('renamed v1.2 fixture produces the exact agendaClinica inventory', async () => {
+  const snapshot = await buildD2InputSnapshot(IDENTITY, artifacts('v1_2'));
   assert.deepEqual(snapshot.selection.counts, { pages: 5, endpoints: 19, usecases: 13, destinations: 20, materializationItems: 15 });
   assert.equal(snapshot.selection.pages.some(page => page.pageId === 'painel'), false);
   assert.equal(snapshot.selection.writePageIds.length, 5);
@@ -127,7 +128,7 @@ void test('current immutable fixture produces the exact agendaClinica inventory'
 });
 
 void test('canonical lifecycle state and subtype never become create or update actor inputs', async () => {
-  const input = artifacts('current');
+  const input = artifacts('v1_2');
   const entity = rec(input.entities.Profissional);
   entity.subtype = 'Entry';
   entity.lifecycleStates = [{ state: 'scheduled' }];
@@ -146,7 +147,7 @@ void test('canonical lifecycle state and subtype never become create or update a
 });
 
 void test('renamed nested canonical fields preserve enum codes and scalar types with grant filtering', async () => {
-  const input = JSON.parse(JSON.stringify(artifacts('current')).replaceAll('Profissional', 'Packet')) as D2InputArtifacts;
+  const input = JSON.parse(JSON.stringify(artifacts('v1_2')).replaceAll('Profissional', 'Packet')) as D2InputArtifacts;
   input.entities.Packet = {
     schemaVersion: versions.ontology, moduleName: IDENTITY.module, entityId: 'Packet',
     subtype: 'Item', lifecycleStates: [{ state: 'queued', field: 'phase' }],
@@ -175,14 +176,44 @@ void test('renamed nested canonical fields preserve enum codes and scalar types 
   assert.throws(() => collectD2EntityFields(input.entities.Packet as Ns5OntologyAnyEntity), /unsupported ontology type 'unsupportedScalar'/);
 });
 
-void test('historical immutable fixture preserves the two static homes as review findings', async () => {
-  const snapshot = await buildD2InputSnapshot(IDENTITY, artifacts('historical'));
-  assert.deepEqual(snapshot.selection.counts, { pages: 7, endpoints: 22, usecases: 13, destinations: 28, materializationItems: 21 });
-  assert.deepEqual(snapshot.problems.filter(item => item.code === 'PAGE_WITHOUT_ENDPOINTS').map(item => item.pageId).sort(), ['painel', 'painel_clinica']);
+void test('historical v1.1 fixture is refused with regeneration guidance', async () => {
+  await assert.rejects(() => buildD2InputSnapshot(IDENTITY, artifacts('historical')), (error: unknown) => {
+    assert.ok(error instanceof D2InputValidationError);
+    const unsupported = error.problems.filter(item => item.code === 'UNSUPPORTED_VERSION');
+    assert.deepEqual(unsupported.map(item => item.file).sort(), ['pool/l2/web/backend.json', 'pool/l2/web/effort.json']);
+    assert.ok(unsupported.every(item => item.message.includes('Regenerate this artifact with its current producer.')));
+    return true;
+  });
+});
+
+void test('testSupport stays in the source digest and does not become page input or a test-run claim', async () => {
+  const input = artifacts('v1_2');
+  const original = structuredClone(input) as D2InputArtifacts;
+  const digestEffortSource = (value: D2InputArtifacts): void => {
+    const source = value.sources.find(item => item.path.endsWith('/pool/l2/web/effort.json'))!;
+    const bytes = `${JSON.stringify(value.effort, null, 2)}\n`;
+    source.sha256 = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+    source.bytes = Buffer.byteLength(bytes);
+  };
+  digestEffortSource(input);
+  const before = await buildD2InputSnapshot(IDENTITY, input);
+
+  rec(original.effort).testSupport = [{
+    id: 'runtimeSupport', actorRefs: ['recepcionista'], entityRefs: ['Paciente'], sourceRefs: ['l4/agendaClinica/module.defs.ts'],
+    status: 'done', owner: 'runtime', executorRef: 'runtimeSuite', cleanupRef: 'runtimeCleanup', gap: 'fixture support item',
+  }];
+  digestEffortSource(original);
+  const after = await buildD2InputSnapshot(IDENTITY, original);
+
+  assert.notEqual(after.snapshotHash, before.snapshotHash);
+  assert.deepEqual(after.selection, before.selection);
+  assert.equal(Object.hasOwn(after, 'testSupport'), false);
+  assert.equal(Object.hasOwn(after.selection, 'testSupport'), false);
+  assert.equal(JSON.stringify(after).includes('runtimeSuite'), false);
 });
 
 void test('a structurally valid suspicious own-anchor is reported for review without refusal', async () => {
-  const input = artifacts('current');
+  const input = artifacts('v1_2');
   const entityIds = rows(rec(input.ontologyIndex).entities).map(row => String(row.entityId));
   rec(input.access).grants = [{ grantId: 'suspicious', entityRefs: [entityIds[0]], dataScope: { mode: 'own', anchorEntity: entityIds[1] } }];
   const snapshot = await buildD2InputSnapshot(IDENTITY, input);
@@ -190,7 +221,7 @@ void test('a structurally valid suspicious own-anchor is reported for review wit
 });
 
 void test('effort status alone selects create, update and done work', async () => {
-  const input = artifacts('current');
+  const input = artifacts('v1_2');
   const effort = structuredClone(input.effort) as Record<string, unknown>;
   const screens = rows(effort.screens);
   screens[0].status = 'toUpdate'; screens[1].status = 'done';
@@ -206,8 +237,8 @@ void test('effort status alone selects create, update and done work', async () =
 });
 
 void test('removal is planned only from effort plus menu tombstone plus prior owned inventory', async () => {
-  const prior = await buildD2InputSnapshot(IDENTITY, artifacts('current'));
-  const input = artifacts('current');
+  const prior = await buildD2InputSnapshot(IDENTITY, artifacts('v1_2'));
+  const input = artifacts('v1_2');
   const pageId = 'cadastro_recepcionista';
   const menu = rec(input.menu);
   const stripNode = (value: unknown): unknown => {
@@ -257,7 +288,7 @@ void test('mechanical mismatches reject before a snapshot can be persisted', asy
     ['dangling usecase', input => { rows(rec(input.backend).endpoints)[0].usecaseRef = 'missing'; }, 'USECASE_REF_MISSING'],
   ];
   for (const [name, mutate, code] of cases) await t.test(name, async () => {
-    const input = artifacts('current'); mutate(input);
+    const input = artifacts('v1_2'); mutate(input);
     await assert.rejects(() => buildD2InputSnapshot(IDENTITY, input), (error: unknown) => error instanceof D2InputValidationError && error.problems.some(item => item.code === code));
   });
 });

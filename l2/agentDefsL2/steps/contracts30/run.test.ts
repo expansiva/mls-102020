@@ -28,14 +28,14 @@ import { assertD2ContractUnit, d2ContractsSources, generateD2Contracts } from '/
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HEAD = path.join(HERE, 'fixtures', 'head');
-const INPUT = path.resolve(HERE, '..', 'input20', 'fixtures', 'current');
+const INPUT = path.resolve(HERE, '..', 'input20', 'fixtures', 'v1_2');
 const HISTORICAL = path.resolve(HERE, '..', 'input20', 'fixtures', 'historical');
 const IDENTITY: D2RunIdentity = { project: 102047, module: 'agendaClinica' };
 
 type Info = { project: number; level: number; folder: string; shortName: string; extension: string };
 type Stored = Info & { status: string; versionRef: string; content: string; getValueInfo: () => Promise<{ content: string }>; getContent: () => Promise<string> };
 
-void test('current target persists exact 5-page/19-route barrier, compiles and reruns byte-identically with zero model calls', async () => {
+void test('v1.2 target persists exact 5-page/19-route barrier, compiles and reruns byte-identically with zero model calls', async () => {
   const fixture = runFixture(true);
   assert.equal(fixture.snapshot.selection.pages.length, 5);
   assert.equal(fixture.snapshot.selection.pages.flatMap(page => page.endpoints).length, 19);

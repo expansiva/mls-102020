@@ -24,8 +24,8 @@ const SUPPORTED = {
   integration: '2026-09-12-ns5-integration-v2',
   menu: '2026-09-20-p2-menu-v2.2',
   needs: '2026-09-21-p2-needs-v1',
-  backend: '2026-09-21-p1-backend-v1.1',
-  effort: '2026-09-21-p2-effort-v1.1',
+  backend: '2026-09-21-p1-backend-v1.2',
+  effort: '2026-09-21-p2-effort-v1.2',
 } as const;
 
 interface MenuPage {
@@ -474,7 +474,12 @@ function validateDestinationCollisions(state: GateState, pages: D2SelectedPage[]
 }
 
 function checkVersion(state: GateState, value: Record<string, unknown>, expected: string, file: string): void {
-  if (text(value.schemaVersion) !== expected) error(state, 'UNSUPPORTED_VERSION', file, `expected ${expected}, got '${text(value.schemaVersion)}'`);
+  if (text(value.schemaVersion) !== expected) {
+    const regenerate = file === 'pool/l2/web/backend.json' || file === 'pool/l2/web/effort.json'
+      ? ' Regenerate this artifact with its current producer.'
+      : '';
+    error(state, 'UNSUPPORTED_VERSION', file, `expected ${expected}, got '${text(value.schemaVersion)}'.${regenerate}`);
+  }
 }
 
 function checkIdentity(state: GateState, value: Record<string, unknown>, module: string, file: string): void {

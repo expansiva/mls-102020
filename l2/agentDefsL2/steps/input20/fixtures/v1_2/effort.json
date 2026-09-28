@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-09-21-p2-effort-v1.1",
+  "schemaVersion": "2026-09-21-p2-effort-v1.2",
   "moduleName": "agendaClinica",
   "device": "web",
   "totals": {
@@ -335,6 +335,7 @@
     }
   ],
   "removed": [],
+  "testSupport": [],
   "unattributed": [],
   "meta": {
     "sourceMenu": "pool/l2/web/menu.json",

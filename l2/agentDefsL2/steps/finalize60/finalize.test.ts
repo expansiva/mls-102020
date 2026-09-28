@@ -81,7 +81,7 @@ test('remove preflight catches an edit and a new snapshot between scan and delet
 });
 
 test('agendaClinica snapshot counts unique routes and usecaseIds and rejects illegible identities', () => {
-  const fixture = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../input20/fixtures/current/backend.json'), 'utf8')) as {
+  const fixture = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../input20/fixtures/v1_2/backend.json'), 'utf8')) as {
     endpoints: Array<Record<string, unknown>>;
     usecases: Array<Record<string, unknown>>;
   };
