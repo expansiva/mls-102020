@@ -22,8 +22,8 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { pageRef, DEFAULT_DEVICE } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
 import { mkAgentStep, mkFail, mkCompleted, makePlanId } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
-import { getContentByMlsPath, getCompiledDtsByMlsPath } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
-import { checkSharedDtsProvenance, sharedDtsArtifactRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { getContentByMlsPath, getCompiledDtsByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
+import { checkSharedDtsProvenance, sharedDtsArtifactRef } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 import { normalizeOperations2, type EditOperation2 } from '/_102020_/l2/aura/agentManagePage2/patchCore.js';
 import { buildPageEditContext, partitionOperationsByScope, scopeVocabulary, type PageEditContext } from '/_102020_/l2/aura/agentManagePage2/pageContextCore.js';
 import { parseUserChanges, summarizeUserChanges } from '/_102020_/l2/aura/agentManagePage2/userChangesCore.js';

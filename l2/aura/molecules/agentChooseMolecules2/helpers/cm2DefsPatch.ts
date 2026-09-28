@@ -138,7 +138,7 @@ export function isCm2MoleculeDependsFile(reference: string): boolean {
 /**
  * Is this skills entry one THIS AGENT put there? A group usage contract always lives at
  * `l2/aura/molecules/skills/<group>/usage.ts` (what the catalog publishes as `usageContract`); the
- * generator's own skills are `l2/agentChangeFrontend/skills/*.ts` and `l4/collabux/templates/*.md`.
+ * generator's own skills are `l2/agentMaterializeL2/skills/*.ts` and `l4/collabux/templates/*.md`.
  */
 export function isCm2UsageSkill(reference: string): boolean {
   return /(?:^|\/)l2\/aura\/molecules\/skills\/[^/]+\/usage\.ts$/u.test(reference);

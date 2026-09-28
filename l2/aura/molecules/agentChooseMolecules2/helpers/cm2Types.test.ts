@@ -21,7 +21,7 @@ void test('cm2PipelineRef turns the IMPORT form the catalog publishes into the P
 });
 
 void test('cm2PipelineRef leaves an already-correct reference untouched (idempotent)', () => {
-  const ref = '_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts';
+  const ref = '_102020_/l2/agentMaterializeL2/skills/genCfePage21RenderTs.ts';
   assert.equal(cm2PipelineRef(ref), ref);
   assert.equal(cm2PipelineRef(cm2PipelineRef(ref)), ref);
 });

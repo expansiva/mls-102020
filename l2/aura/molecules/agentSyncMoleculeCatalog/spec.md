@@ -28,7 +28,7 @@ None of that needs an LLM, and the pilot (`agentChooseMolecules`, 23 runs) alrea
 choose correctly from exactly this shape of catalog. So the root plants its whole step tree — one `s1`
 per group, `s2`, `s4` — in a single deterministic batch, and the ONLY thing resembling an "LLM call" is
 the root's own bootstrap step, which uses `AgentIntentAddMessageAI.skipRootLLM` (the mechanism
-`agentChangeFrontend` already ships with) purely so the platform has a step to hang the tree from. It
+`agentMaterializeL2` already ships with) purely so the platform has a step to hang the tree from. It
 never reaches a model.
 
 ## The one field that is NOT derived: scenarios

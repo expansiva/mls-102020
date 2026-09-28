@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 
 /**
  * The whole PROJECT, not just the molecules: the rule is the same everywhere this repo ships from, and
- * on 2026-08-18 a second sweep found the same dead paths in agentChangeFrontend, agentNewSolution and
+ * on 2026-08-18 a second sweep found the same dead paths in agentMaterializeL2, agentNewSolution and
  * aura (42 files). `shared/` → molecules → aura → l2.
  */
 const ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));

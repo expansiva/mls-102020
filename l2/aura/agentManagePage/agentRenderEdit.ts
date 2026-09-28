@@ -21,10 +21,10 @@ import { buildDeltaSection, type EditOperation } from '/_102020_/l2/aura/agentMa
 import {
   buildSystemPrompt, buildHumanPrompt, buildContextSection, buildCompileRepairHint,
   applyHeader, normalizeGeneratedCode, GEN_TOOL, GEN_TOOL_NAME, DEFAULT_MODEL_TYPE, type PipelineItem,
-} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+} from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 import {
   getContentByMlsPath, saveGeneratedTsByMlsPath, compileMlsPathAndGetErrors, extractToolCallArgs,
-} from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+} from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 
 interface RenderArgs {
   module: string;

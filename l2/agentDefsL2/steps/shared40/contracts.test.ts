@@ -14,7 +14,7 @@ import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/cont
 import { D2_SHARED_KEYS, buildD2SharedPipeline, captureD2SelectedSnapshot, missingD2SnapshotPreconditions, suggestedD2SharedJudgment, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { assertD2RenderedShared, gateD2Shared, parseD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
 import { parseD2RenderedShared, renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
-import { parseDefs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { parseDefs } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 

@@ -258,7 +258,7 @@ function parseMessageObjects(source: string, block: { start: number; end: number
 
   // `message_en`, but ALSO `pageMessage_en` and `o1Message_pt_br`: the current generator emits a
   // PREFIXED catalog in the page and in each organism file
-  // ([cfePageSkeleton.ts:129-133](mls-102020/l2/agentChangeFrontend/helpers/cfePageSkeleton.ts#L129)).
+  // ([cfePageSkeleton.ts:129-133](mls-102020/l2/agentMaterializeL2/helpers/cfePageSkeleton.ts#L129)).
   // Requiring the bare `message_` name found ZERO objects in those files, so every text of a
   // generated page fell through to the shared catalog — and a page-local literal, which exists in no
   // other file, was reported as "data, not code".

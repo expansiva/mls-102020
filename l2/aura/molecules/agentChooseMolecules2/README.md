@@ -47,7 +47,7 @@ extension):
   "_102040_/l2/molecules/groupviewtable/ml-data-table.ts"
 ],
 "skills": [
-  "_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts",
+  "_102020_/l2/agentMaterializeL2/skills/genCfePage21RenderTs.ts",
   "_102020_/l4/collabux/templates/entityRecordManagement/page21.md",
   "_102020_/l2/aura/molecules/skills/groupEnterText/usage.ts",
   "_102020_/l2/aura/molecules/skills/groupViewTable/usage.ts"

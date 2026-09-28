@@ -465,7 +465,7 @@ continuam só-leitura: são contrato mantido à mão em `mls-102033`/`mls-102020
 `moleculeBase`) em todo run de rota B/C do `i3-edit`, sempre — inclusive num conserto de uma linha de
 `.less`. O código foi verificado localmente (typecheck escopado sem `l4` limpo nos arquivos tocados,
 `node scripts/run-tests.mjs --all l2` sem regressão nova — as falhas pré-existentes em
-`agentChangeFrontend`, `agentNewSolution`, `agentManageHeader` e `agentSyncMoleculeCatalog` foram
+`agentMaterializeL2`, `agentNewSolution`, `agentManageHeader` e `agentSyncMoleculeCatalog` foram
 confirmadas idênticas com e sem esta mudança, via `git stash`), mas os runs de aceite A1–A3 — que
 precisam do `mls-102020` publicado e de uma execução real no Studio — não foram executados nesta
 sessão. Os números de tokens/custo desta entrada ficam em aberto até essa medição.

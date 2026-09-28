@@ -59,7 +59,7 @@ function forbiddenImportReason(spec: string): string | null {
   if (spec.includes('mls.editor')) return `static import of mls.editor (${spec})`;
   if (spec.includes('/l1/')) return `static import of l1 (${spec})`;
   if (spec.includes('/_102021_/')) return `static import of 102021 (${spec})`;
-  if (spec.includes('agentChangeFrontend')) return `static import of agentChangeFrontend (${spec})`;
+  if (spec.includes('agentMaterializeL2')) return `static import of agentMaterializeL2 (${spec})`;
   if (spec.startsWith('/_102035_/') && !ALLOWED_102035.has(spec)) {
     return `static import of 102035 outside solution/{pool,fs,types} (${spec})`;
   }
@@ -138,7 +138,7 @@ void test('createAgent static graph stays inside agentPlannerL2 and the three so
   assert.ok(rels.includes('steps/contracts30/agentP2Contracts.ts'), 'contracts30 must be in the graph');
   assert.ok(rels.includes('steps/shared40/agentP2Shared.ts'), 'shared40 must be in the graph');
   assert.ok(rels.includes('steps/requests50/agentP2Requests.ts'), 'requests50 must be in the graph');
-  assert.ok(!rels.some(file => file.includes('agentChangeFrontend')), 'agentChangeFrontend leaked into the graph');
+  assert.ok(!rels.some(file => file.includes('agentMaterializeL2')), 'agentMaterializeL2 leaked into the graph');
   assert.deepEqual(offences, [], offences.map(item => `${item.file}: ${item.reason}`).join('\n'));
 });
 

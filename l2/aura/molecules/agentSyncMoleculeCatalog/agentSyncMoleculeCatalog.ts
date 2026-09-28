@@ -7,7 +7,7 @@
 // migrated (G3) or created (G1 — E8b), are ALL deterministic — word matching (helpers/syEntry), a stor
 // scan (helpers/syDiscover + helpers/syFs), and a text check (helpers/syMigrateIndexTs), never a
 // classifier. So this root's own bootstrap uses AgentIntentAddMessageAI.skipRootLLM (the same mechanism
-// agentChangeFrontend already ships with) to get the step tree the platform needs without spending a
+// agentMaterializeL2 already ships with) to get the step tree the platform needs without spending a
 // call on a decision that was never a classification to begin with. The ONE LLM call this agent ever
 // spends (E8b, creation mode) happens INSIDE the planted s3 step, per G1 group — never here.
 //
@@ -309,7 +309,7 @@ async function afterPromptStep(
 // ---- helpers ----
 
 /**
- * Planted with `parentStepId: 1`, same as agentChangeFrontend's bootstrap: there is no real parent step
+ * Planted with `parentStepId: 1`, same as agentMaterializeL2's bootstrap: there is no real parent step
  * object yet at this point in beforePromptImplicit — the addMessageAI intent in the same batch is what
  * creates it, and the platform's own convention for "the step this message became" is id 1.
  */
