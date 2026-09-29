@@ -314,3 +314,32 @@ test('compiler diagnostics include dependency errors and missing proof never bec
   const src = await import('node:fs').then(fs => fs.readFileSync(new URL('./cfeMaterializeStudio.ts', import.meta.url), 'utf8'));
   assert.doesNotMatch(src, /node:child_process|compileModuleViaProjectTsc|storDiskPath|runProjectFrontendTsc/u);
 });
+
+test('resume removes only a stale generated pageTests companion', async () => {
+  const studio = await loadModule();
+  const mlsPath = `_${PROJECT}_/l2/${FOLDER}/itemA.test.ts`;
+  const info = { project: PROJECT, level: 2, folder: FOLDER, shortName: 'itemA', extension: '.test.ts' };
+  const key = `${PROJECT}:2:${FOLDER}:itemA:.test.ts`;
+  const file: any = {
+    ...info,
+    status: 'changed',
+    content: `/// <mls fileReference="${mlsPath}" enhancement="_blank"/>\n// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\nexport const pageTests = {};\n`,
+    getContent: async () => file.content,
+  };
+  g.mls = {
+    stor: {
+      files: { [key]: file },
+      getKeyToFile: (value: any) => `${value.project}:${value.level}:${value.folder}:${value.shortName}:${value.extension}`,
+      convertFileReferenceToFile: () => info,
+      localStor: { setContent: async () => undefined },
+    },
+    editor: { models: {}, getKeyModel: () => 'unused' },
+  };
+  assert.equal(await studio.deleteGeneratedPageTestsFileByMlsPath(mlsPath), true);
+  assert.equal(file.status, 'deleted');
+
+  file.status = 'changed';
+  file.content = `/// <mls fileReference="${mlsPath}" enhancement="_blank"/>\nexport const pageTests = { manual: true };\n`;
+  assert.equal(await studio.deleteGeneratedPageTestsFileByMlsPath(mlsPath), false, 'manual companion is preserved');
+  assert.equal(file.status, 'changed');
+});

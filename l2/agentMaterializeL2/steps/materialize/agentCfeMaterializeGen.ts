@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeL2/steps/materialize/agentCfeMaterializeGen.ts" enhancement="_102027_/l2/enhancementAgent"/>
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readMaterializeItemFindings } from '/_102020_/l2/agentMaterializeL2/helpers/cfeCreateShared.js';
+import { buildMaterializePageTestsFile, readMaterializeItemFindings } from '/_102020_/l2/agentMaterializeL2/helpers/cfeCreateShared.js';
 import {
   applyHeader,
   bindingCommandsOf,
@@ -39,12 +39,14 @@ import {
 } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 import {
   compileMlsPathAndGetErrors,
+  persistGeneratedPageTestsFileByMlsPath,
   consumeMaterializeStudioMessages,
   extractToolCallArgs,
   formatGeneratedTsInStudio,
   getCompiledDtsByMlsPath,
   releaseBorrowedModelScope,
   preloadItemTypecheckDeps,
+  sharedDefsPathForPageOutput,
   getContentByMlsPath,
   parseMlsPath,
   saveArtifactTextByMlsPath,
@@ -100,6 +102,43 @@ async function compileOutputAndTest(outputPath: string, testPath: string | null)
   const testErrors = await compileMlsPathAndGetErrors(testPath);
   if (testErrors === null) return { unavailable: `Studio compiler unavailable or produced no proof for ${testPath}` };
   return { errors: [...outputErrors, ...testErrors] };
+}
+
+async function saveMaterializePageTests(pipelineItem: PipelineItem, definitionData: unknown): Promise<string | null> {
+  const parsed = parseMlsPath(pipelineItem.outputPath);
+  if (!parsed || pipelineItem.type !== 'l2_page') return null;
+  const genome = parsed.folder.split('/').pop() || '';
+  const testPath = testPathForOutputPath(pipelineItem.outputPath);
+  if (genome !== 'page11') return null;
+
+  const sharedDefsPath = sharedDefsPathForPageOutput(pipelineItem.outputPath);
+  const sharedSource = sharedDefsPath ? await getContentByMlsPath(sharedDefsPath) : null;
+  const sharedData = sharedSource ? parseDefs(sharedSource).data : null;
+  const contractPath = contractDefsPath(definitionData, pipelineItem.outputPath)
+    || contractDefsPath(sharedData, pipelineItem.outputPath);
+  const contractSource = contractPath ? await getContentByMlsPath(contractPath) : null;
+  const moduleName = parsed.folder.split('/')[0] || '';
+  const source = buildMaterializePageTestsFile({
+    project: parsed.project,
+    moduleName,
+    pageId: parsed.shortName,
+    variant: genome,
+    definition: definitionData,
+    shared: sharedData,
+    contract: contractSource,
+  });
+  if (!source) {
+    // A stale generated suite must not keep reporting old cases when today's defs have no runnable
+    // oracle. Manual companions are deliberately left untouched by the ownership check.
+    await persistGeneratedPageTestsFileByMlsPath(testPath, null);
+    await recordCfeDegradation(moduleName, 'page-tests-inconclusive', 'Current page/contract definitions did not provide an executable route and oracle; no empty passing test file was emitted.', testPath);
+    return null;
+  }
+  if (source.includes('// untested:')) {
+    await recordCfeDegradation(moduleName, 'page-tests-inconclusive', 'Some page bindings lacked a justified route/oracle and were emitted as named inconclusive gaps.', testPath);
+  }
+  if (!await persistGeneratedPageTestsFileByMlsPath(testPath, source)) throw new Error(`CFE_PAGE_TEST_WRITE_FAILED_OR_NOT_OWNED: ${testPath}`);
+  return testPath;
 }
 
 async function beforePromptStep(
@@ -299,8 +338,9 @@ async function afterPromptStep(
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
     }
 
+    const pageTestPath = await saveMaterializePageTests(pipelineItem, parsedDefs?.data ?? null);
     const typecheckTest = buildMaterializeTypecheckTest(pipelineItem, parsedDefs ? parsedDefs.data : null);
-    const typecheckPath = typecheckTest ? testPathForOutputPath(pipelineItem.outputPath) : null;
+    const typecheckPath = typecheckTest ? testPathForOutputPath(pipelineItem.outputPath) : pageTestPath;
     if (typecheckPath && typecheckTest) {
       const testSaved = await saveGeneratedTsByMlsPath(typecheckPath, typecheckTest);
       if (!testSaved) {

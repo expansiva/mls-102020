@@ -3,6 +3,7 @@
 import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
 import { emitMlsDepJsonIfHostDisk } from '/_102029_/l2/mlsDepManifest.js';
 import { commandMemberNames, dedupeSharedStateNames } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMemberNames.js';
+import { parseContractInterfaces } from '/_102020_/l2/agentMaterializeL2/helpers/cfeSharedScaffold.js';
 import {
   deriveUiScenaries,
   destructiveCommandIds,
@@ -1199,6 +1200,22 @@ interface PageTestCase {
   expectedFail?: string;
 }
 
+interface PageTestSource {
+  page: Pick<CfePagePlan, 'pageId' | 'moduleName'>;
+  commands: Record<string, unknown>[];
+  operations?: Pick<CfeOperationDef, 'commandName' | 'entity' | 'kind' | 'reads' | 'writes'>[];
+  workspace?: Pick<CfeJourneyWorkspace, 'actor'>;
+  entityFields?: Record<string, string[]>;
+  mdmEntityIds?: string[];
+  externalEntityIds?: string[];
+}
+
+interface PageTestEnvelope {
+  project: number;
+  page: Pick<CfePagePlan, 'pageId' | 'moduleName'>;
+  workspace?: Pick<CfeJourneyWorkspace, 'actor'>;
+}
+
 // A fixed instant for date/datetime literals: the same .test.ts must produce the same result on two runs,
 // so never Date.now() here.
 const TEST_LITERAL_ISO = '2026-01-01T00:00:00.000Z';
@@ -1253,7 +1270,7 @@ function moduleProducedByQuery(runId: string, moduleName: string): Map<string, s
   return produced;
 }
 
-export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: Map<string, string[]>): PageTestCase[] & { untested?: { id: string; reason: string }[] } {
+export function buildPageTestCases(prepared: PageTestSource, moduleProduced?: Map<string, string[]>): PageTestCase[] & { untested?: { id: string; reason: string }[] } {
   const cases: PageTestCase[] = [];
   const untested: { id: string; reason: string }[] = [];
   const deleteOkIds = new Set<string>();
@@ -1404,6 +1421,160 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
 }
 
 /**
+ * Adapt shared-v4 dataBindings and the current TS contract to the monitor case builder. A route
+ * exists only when contractRef.calls names a literal exported route const; DTO fields come from
+ * the same structural parser as the scaffold. Missing or unrepresentable inputs stay named gaps.
+ */
+export function buildMaterializePageTestsFile(input: {
+  project: number;
+  moduleName: string;
+  pageId: string;
+  variant: string;
+  definition: unknown;
+  shared: unknown;
+  contract: string | null;
+}): string | null {
+  const sharedDef = isRecord(input.shared) ? input.shared : {};
+  const bindings = Array.isArray(sharedDef.dataBindings) ? sharedDef.dataBindings.filter(isRecord) : [];
+  const contractRef = isRecord(sharedDef.contractRef) ? sharedDef.contractRef : {};
+  const calls = Array.isArray(contractRef.calls) ? contractRef.calls.filter(isRecord) : [];
+  const states = Array.isArray(sharedDef.states) ? sharedDef.states.filter(isRecord) : [];
+  const actions = Array.isArray(sharedDef.actions) ? sharedDef.actions.filter(isRecord) : [];
+  const contractSource = input.contract || '';
+  const interfaces = parseContractInterfaces(contractSource, true);
+  // Only literal exports are routes. Imports, expressions and similarly named consts are not evidence.
+  const routes = new Map<string, string>();
+  const duplicateRoutes = new Set<string>();
+  for (const match of contractSource.matchAll(/^export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(['"])([^'"\\\n]*)\2\s+as\s+const\s*;/gmu)) {
+    if (routes.has(match[1])) duplicateRoutes.add(match[1]);
+    else routes.set(match[1], match[3]);
+  }
+  for (const name of duplicateRoutes) routes.delete(name);
+  const untested: { id: string; reason: string }[] = [];
+  if (bindings.length === 0) untested.push({ id: `${input.pageId}.cases`, reason: 'current shared defs expose no dataBindings' });
+  const commands: Record<string, unknown>[] = [];
+  const actorRefs = new Set<string>();
+  for (const binding of bindings) {
+    const commandName = readString(binding.actionId);
+    if (!commandName) continue;
+    const call = calls.find(candidate => readString(candidate.actionId) === commandName);
+    if (!call) {
+      untested.push({ id: `${commandName}.oracle`, reason: 'shared contractRef.calls has no matching action' });
+      continue;
+    }
+    const routeRef = readString(binding.routeRef);
+    const inputTypeRef = readString(binding.inputTypeRef);
+    const outputTypeRef = readString(binding.outputTypeRef);
+    if (!routeRef || routeRef !== readString(call.routeConst) || !inputTypeRef || inputTypeRef !== readString(call.inputType) || !outputTypeRef || outputTypeRef !== readString(call.outputType)
+      || ![routeRef, inputTypeRef, outputTypeRef].every(ref => /^[A-Za-z_$][\w$]*$/u.test(ref))) {
+      untested.push({ id: `${commandName}.oracle`, reason: 'dataBinding differs from contractRef.calls route/DTO references' });
+      continue;
+    }
+    const routeKey = routes.get(routeRef) || '';
+    if (!routeKey) {
+      untested.push({ id: `${commandName}.route`, reason: `contract TS has no literal export for ${routeRef}` });
+      continue;
+    }
+    const kind = readString(binding.kind);
+    if (kind !== 'query' && kind !== 'command') {
+      untested.push({ id: `${commandName}.kind`, reason: 'dataBinding has no query/command kind' });
+      continue;
+    }
+    const deleteIntent = kind === 'command' && /^(?:cmd)?(?:delete|remove)/iu.test(commandName);
+    if (deleteIntent && readString(call.storageTarget) !== 'moduleDatabase' && readString(call.deletePolicy) !== 'deletable') {
+      untested.push({ id: `${commandName}.delete`, reason: 'contract does not declare a moduleDatabase delete oracle/policy' });
+      continue;
+    }
+    const inputDto = interfaces.get(inputTypeRef);
+    const outputAlias = new RegExp(`^export\\s+type\\s+${outputTypeRef}\\s*=\\s*([A-Za-z_$][\\w$]*)\\[\\]\\s*;`, 'mu').exec(contractSource);
+    const outputDto = interfaces.get(outputAlias?.[1] || outputTypeRef);
+    if (!inputDto || !outputDto) {
+      untested.push({ id: `${commandName}.oracle`, reason: 'contract TS has no matching input/output DTO' });
+      continue;
+    }
+    const stateKeys = Array.isArray(binding.inputStateKeys) ? binding.inputStateKeys.filter((key): key is string => typeof key === 'string') : [];
+    const stateInputs = stateKeys.map(key => states.find(state => state.stateKey === key));
+    if (stateInputs.some(state => !state)) {
+      untested.push({ id: `${commandName}.input`, reason: 'dataBinding references a missing input state' });
+      continue;
+    }
+    const fields: Record<string, unknown>[] = [];
+    let unsupported = false;
+    for (const state of stateInputs as Record<string, unknown>[]) {
+      const ref = readString(state.contractRef);
+      const path = ref.startsWith(`${inputTypeRef}.`) ? ref.slice(inputTypeRef.length + 1) : '';
+      const field = inputDto.fields.find(item => (item.path || [item.name]).join('.') === path);
+      if (!path || !field || (readString(state.dtoPath) && readString(state.dtoPath) !== path)) { unsupported = true; break; }
+      // The monitor resolves seed markers at the top level. Nested objects need a monitor protocol
+      // extension; a dotted param would be sent as a literal key and is not a valid DTO.
+      if (field.path) {
+        if (!field.optional) unsupported = true;
+        continue;
+      }
+      if (field.type === 'opaque' || field.type === 'array') {
+        if (!field.optional) unsupported = true;
+        continue;
+      }
+      fields.push({ name: field.name, type: field.type === 'stringUnion' ? 'string' : field.type, required: !field.optional,
+        source: readString(state.source), presentation: readString(state.presentation) || 'form',
+        ...(field.literals ? { enum: field.literals } : {}),
+        ...(readString(state.ontologyRef) ? { fieldRef: readString(state.ontologyRef) } : {}),
+      });
+    }
+    if (inputDto.fields.some(field => !field.optional && !field.path && !fields.some(item => item.name === field.name))) unsupported = true;
+    if (unsupported) {
+      untested.push({ id: `${commandName}.input`, reason: 'required DTO input is not representable by the monitor flat params' });
+      continue;
+    }
+    const resultState = states.find(state => state.actionRef === commandName && state.kind === 'queryResult');
+    const declaredShape = readString(resultState?.outputShape);
+    const outputShape = outputAlias ? 'array' : declaredShape || 'object';
+    if (kind === 'command' && outputAlias) {
+      untested.push({ id: `${commandName}.output`, reason: 'command output is not an object DTO' });
+      continue;
+    }
+    if (kind === 'query' && declaredShape && declaredShape !== outputShape) {
+      untested.push({ id: `${commandName}.output`, reason: 'query result shape differs from contract TS DTO' });
+      continue;
+    }
+    const action = actions.find(item => item.actionId === commandName);
+    const operationBinding = isRecord(action?.operationBinding) ? action.operationBinding : {};
+    const actorRef = readString(operationBinding.actorRef);
+    if (actorRef) actorRefs.add(actorRef);
+    commands.push({
+      commandName,
+      routeKey,
+      kind,
+      outputShape,
+      ...(outputShape === 'paginated' ? { collectionField: outputDto.fields.filter(field => !field.path && field.type === 'array').length === 1
+        ? outputDto.fields.find(field => !field.path && field.type === 'array')?.name : '' } : {}),
+      producedFields: outputDto.fields.filter(field => !field.path).map(field => field.name),
+      input: fields,
+    });
+  }
+  const actor = actorRefs.size === 1 ? [...actorRefs][0] : '';
+  const prepared: PageTestSource = {
+    page: { pageId: input.pageId, moduleName: input.moduleName },
+    commands,
+    ...(actor ? { workspace: { actor } } : {}),
+    entityFields: {},
+    mdmEntityIds: [],
+    externalEntityIds: [],
+  };
+  const cases = buildPageTestCases(prepared);
+  // The DTO asserts array shape, but neither the DTO nor shared defs guarantee a nonempty database.
+  for (const testCase of cases) {
+    if (testCase.expect?.ok === true && (testCase.expect.shape === 'array' || testCase.expect.shape === 'paginated')) delete testCase.expect.minItems;
+  }
+  const allUntested = [...(cases.untested ?? []), ...untested];
+  // A file containing only comments (or an empty pageTests export) would look like a successful suite
+  // to the monitor. Keep the named gap in the caller's degradation trace instead.
+  if (cases.length === 0) return null;
+  const envelope = { project: input.project, page: prepared.page, workspace: prepared.workspace };
+  return renderPageTestsFile(envelope, cases, input.variant, allUntested);
+}
+
+/**
  * Does this command read or write an entity that still lives OUTSIDE this module's store?
  *
  * Those are the people the module duplicates in a local table until the MDM rebuild lands. A production
@@ -1411,15 +1582,16 @@ export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: M
  * `PlatformUser not found: <real uuid>` — 4 of the 22 failures. Seeding the duplicated person to "fix" it
  * would reinforce the very defect the rebuild removes, so the case is marked instead.
  */
-function touchesExternalIdentity(prepared: CfePreparedPage, commandName: string): boolean {
+function touchesExternalIdentity(prepared: PageTestSource, commandName: string): boolean {
   // Tolerant reads: this is also called with hand-built prepared pages (tests) and with pages prepared
   // before these classifications existed — an absent list means "nothing classified", never a crash.
-  if (!prepared.externalEntityIds?.length) return false;
+  const externalEntityIds = prepared.externalEntityIds;
+  if (!externalEntityIds?.length) return false;
   const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
   if (!operation) return false;
   return [operation.entity, ...operation.reads, ...operation.writes]
     .filter(Boolean)
-    .some(entityId => prepared.externalEntityIds.includes(entityId));
+    .some(entityId => externalEntityIds.includes(entityId));
 }
 
 /**
@@ -1430,12 +1602,12 @@ function touchesExternalIdentity(prepared: CfePreparedPage, commandName: string)
  * `storage.target: 'mdm'`. A module-local entity keeps its positive delete case — nothing references it
  * across modules, so deleting it is legitimate and the test must keep proving it works.
  */
-function isDeleteCommand(prepared: CfePreparedPage, commandName: string): boolean {
+function isDeleteCommand(prepared: PageTestSource, commandName: string): boolean {
   const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
   return operation ? /delete|remove/i.test(operation.kind) || /^cmdDelete/.test(commandName) : /^cmdDelete/.test(commandName);
 }
 
-function deletesMasterData(prepared: CfePreparedPage, command: Record<string, unknown>, commandName: string): boolean {
+function deletesMasterData(prepared: PageTestSource, command: Record<string, unknown>, commandName: string): boolean {
   if (!prepared.mdmEntityIds?.length) return false;
   if (!isDeleteCommand(prepared, commandName)) return false;
   const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
@@ -1482,7 +1654,7 @@ function getByIdScore(command: Record<string, unknown>, deleteCommandName: strin
 }
 
 function findGetByIdForDelete(
-  prepared: CfePreparedPage,
+  prepared: PageTestSource,
   deleteCommandName: string,
   deleteParams: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
@@ -1502,7 +1674,7 @@ function findGetByIdForDelete(
   return ranked[0]?.command;
 }
 
-function deleteEntityId(prepared: CfePreparedPage, commandName: string): string {
+function deleteEntityId(prepared: PageTestSource, commandName: string): string {
   const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
   if (operation?.entity) return operation.entity;
   const stripped = commandName.replace(/^cmdDelete/i, '').replace(/^cmdRemove/i, '');
@@ -1512,7 +1684,7 @@ function deleteEntityId(prepared: CfePreparedPage, commandName: string): string 
 function deleteCaseFields(
   fields: PageTestField[],
   harvestable: Set<string>,
-  prepared: CfePreparedPage,
+  prepared: PageTestSource,
   commandName: string,
 ): Pick<PageTestCase, 'params' | 'paramFieldRefs'> {
   const base = seedRefCaseFields(fields, harvestable, { okCase: true });
@@ -1576,7 +1748,7 @@ function isSeedMarker(value: unknown): boolean {
   return value === SEED_REF_MARKER || value === SEED_VALUE_MARKER || value === SEED_SPARE_MARKER;
 }
 
-function isCreateCommand(prepared: CfePreparedPage, commandName: string): boolean {
+function isCreateCommand(prepared: PageTestSource, commandName: string): boolean {
   const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
   if (operation?.kind && /create/i.test(operation.kind)) return true;
   return /create/i.test(commandName);
@@ -1767,7 +1939,7 @@ function entityHasWeekdayField(entityId: string, entityFields: Record<string, st
 }
 
 function renderPageTestsFile(
-  prepared: CfePreparedPage,
+  prepared: PageTestEnvelope,
   cases: PageTestCase[],
   genome = PAGE_TESTS_VARIANT,
   untested?: { id: string; reason: string }[],

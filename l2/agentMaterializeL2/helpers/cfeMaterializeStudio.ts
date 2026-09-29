@@ -2,7 +2,7 @@
 
 import { parseDefs, checkSharedDtsProvenance, contractTsPathOf, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stampSharedDtsArtifact, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 import { sessionScope } from '/_102020_/l2/agentMaterializeL2/helpers/cfeSessionScope.js';
-import { createStorFile } from '/_102027_/l2/libStor.js';
+import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
 import {
   enterStudioCompile, formatCompilerDiagnostic, getStudioModel as getGeneratedModel, leaveStudioCompile,
   releaseBorrowedModels, studioCompileAvailable,
@@ -262,6 +262,33 @@ export async function saveGeneratedTsByMlsPath(mlsPath: string, content: string)
   const parsed = parseMlsPath(mlsPath);
   if (!parsed || !isGeneratedTsExtension(parsed.extension)) return false;
   return saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, content, parsed.extension);
+}
+
+/** Remove only a pageTests artifact previously emitted by this materializer. */
+export async function deleteGeneratedPageTestsFileByMlsPath(mlsPath: string): Promise<boolean> {
+  try {
+    const parsed = parseMlsPath(mlsPath);
+    if (!parsed || parsed.extension !== '.test.ts') return false;
+    const key = mls.stor.getKeyToFile(parsed);
+    const file = (mls.stor.files as Record<string, any>)[key];
+    if (!file || file.status === 'deleted') return true;
+    const content = await getContentByMlsPath(mlsPath);
+    if (!content?.startsWith(`/// <mls fileReference="${mlsPath}"`) || !content.includes('// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner') || !content.includes('export const pageTests =')) return false;
+    await deleteFile(file);
+    return true;
+  } catch (error) {
+    recordStudioMessage('error', 'deleteGeneratedPageTestsFileByMlsPath failed', error);
+    return false;
+  }
+}
+
+/** Save a generated monitor suite or remove its stale generated predecessor; never overwrite user data. */
+export async function persistGeneratedPageTestsFileByMlsPath(mlsPath: string, content: string | null): Promise<boolean> {
+  if (content === null) return deleteGeneratedPageTestsFileByMlsPath(mlsPath);
+  const previous = await getContentByMlsPath(mlsPath);
+  if (previous !== null && (!previous.startsWith(`/// <mls fileReference="${mlsPath}"`) || !previous.includes('// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner') || !previous.includes('export const pageTests ='))) return false;
+  if (previous === content) return true;
+  return saveGeneratedTsByMlsPath(mlsPath, content);
 }
 
 // Plain text artifact writer (no editor model, no compile) — used to persist the shared compiled
