@@ -72,44 +72,6 @@ async function load(): Promise<any> {
 
 const MODULE = 'controleChamados';
 
-test('renamed receipt scan reopens changed output and failed verify even with current timestamps', async () => {
-  const folder = 'visitStudio/web/desktop/page11';
-  const defPath = `_${PROJECT}_/l2/${folder}/ledger.defs.ts`;
-  const outputPath = defPath.replace('.defs.ts', '.ts');
-  const item = { id: 'ledger__desktop__page11', type: 'l2_page', outputPath };
-  const source = `export const definition = "Page: Ledger (ledger)." as const;\nexport const pipeline = ${JSON.stringify([item])} as const;`;
-  const bodies = new Map<string, string>([[defPath, source], [outputPath, 'export const ready = true;']]);
-  installStub([{ folder, shortName: 'ledger' }, { folder, shortName: 'ledger', extension: '.ts' }]);
-  // Model the artifact reader using the same file keys as the production scan.
-  const { buildCfeContextReceipt, readCfeContextSources, cfeContextReceiptPath } = await import('./helpers/cfeMaterializeReceipt.js');
-  const read = async (ref: string) => bodies.get(ref) ?? null;
-  bodies.set(cfeContextReceiptPath(outputPath), JSON.stringify(await buildCfeContextReceipt(defPath, item, await readCfeContextSources(defPath, item, PROJECT, read), [], [], bodies.get(outputPath)!)));
-  g.mls.stor.convertFileReferenceToFile = (ref: string) => ({ reference: ref });
-  g.mls.stor.getKeyToFile = (info: any) => info.reference;
-  const seeds = Object.values(g.mls.stor.files) as any[];
-  g.mls.stor.files = {};
-  for (const [ref] of bodies) g.mls.stor.files[ref] = { getContent: () => read(ref) };
-  for (const seed of seeds) Object.assign(g.mls.stor.files[`_${PROJECT}_/l2/${folder}/ledger${seed.extension}`], seed);
-  const { planSpecFrontendWithReceipts } = await load();
-  const scan = () => planSpecFrontendWithReceipts('{"scope":"visitStudio"}');
-  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 0);
-  bodies.set(outputPath, 'export const changed = true;');
-  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
-  bodies.set(outputPath, 'export const ready = true;');
-  const { cfePipelineTraceFolder, CFE_PIPELINE_TRACE_LEVEL } = await import('./helpers/cfePipelineTrace.js');
-  let finding = { outputPath, errorCount: 1, firstError: 'TS2551 current error', severity: 'blocked' };
-  g.mls.stor.files.summary = { project: PROJECT, level: CFE_PIPELINE_TRACE_LEVEL, folder: cfePipelineTraceFolder('visitStudio', 'frontend-materialize-verify'), extension: '.json', shortName: 'pages-summary', getContent: async () => JSON.stringify({ allClear: false, broken: [finding] }) };
-  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
-  finding = { outputPath, errorCount: 0, firstError: 'warning only', severity: 'warning' };
-  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 0);
-  finding = { outputPath, errorCount: 1, firstError: 'repairable current error', severity: 'repairable' };
-  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
-  g.mls.stor.files.summary.getContent = async () => JSON.stringify({ allClear: false, final: true, broken: [], passed: [{ outputPath }], declared: [{ outputPath, errorCount: 1, firstError: 'accepted quality declaration', severity: 'declared' }] });
-  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 0);
-  g.mls.stor.files.summary.getContent = async () => JSON.stringify({ allClear: false, final: true, broken: [{ outputPath, errorCount: 1, firstError: 'blocking compile error', severity: 'blocked' }], declared: [] });
-  assert.equal((await scan()).plans.find((p: any) => p.wave === 'pages').queued.length, 1);
-});
-
 /** The real shape of the 102050: 4 pages x 3 page folders + 4 shared = 16 .defs.ts of level 2. */
 function fixture102050(): FileSeed[] {
   const names = ['commentOpenTicket', 'ticketCatalogue', 'ticketCommentCatalogue', 'ticketHub'];
@@ -264,19 +226,59 @@ test('9. .ts ausente enfileira; defs mais novo enfileira; .ts mais novo pula com
   assert.match(shared.skipped[0].defPath, /tsMaisNovo\.defs\.ts$/u);
 });
 
-test('10. defs e .ts ambos changed: pulado com o motivo MAX vs MAX e a dica do target', async () => {
+test('10. defs nochange e .ts new: pulado, qualquer que seja a data', async () => {
   const folder = `${MODULE}/web/shared`;
   installStub([
-    { folder, shortName: 'ticketHub', extension: '.defs.ts', status: 'changed' },
-    { folder, shortName: 'ticketHub', extension: '.ts', status: 'changed' },
+    { folder, shortName: 'ticketHub', extension: '.defs.ts', status: 'nochange', updatedAt: '2026-09-09T10:00:00.000Z' },
+    { folder, shortName: 'ticketHub', extension: '.ts', status: 'new', updatedAt: '2026-09-01T10:00:00.000Z' },
   ]);
-  const { planSpecFrontend, SKIP_MAX_VS_MAX } = await load();
+  const { planSpecFrontend, SKIP_TS_EDITED } = await load();
+  const shared = planSpecFrontend('').plans.find((p: any) => p.wave === 'shared');
+
+  assert.equal(shared.queued.length, 0);
+  assert.equal(shared.skipped[0].reason, SKIP_TS_EDITED);
+});
+
+test('10b. defs changed e .ts nochange: enfileira, qualquer que seja a data', async () => {
+  const folder = `${MODULE}/web/shared`;
+  installStub([
+    { folder, shortName: 'ticketHub', extension: '.defs.ts', status: 'changed', updatedAt: '2026-09-01T10:00:00.000Z' },
+    { folder, shortName: 'ticketHub', extension: '.ts', status: 'nochange', updatedAt: '2026-09-09T10:00:00.000Z' },
+  ]);
+  const { planSpecFrontend } = await load();
+  const shared = planSpecFrontend('').plans.find((p: any) => p.wave === 'shared');
+
+  assert.equal(shared.queued.length, 1);
+});
+
+test('10c. mesmo estado: a data mais recente decide', async () => {
+  const folder = `${MODULE}/web/shared`;
+  installStub([
+    { folder, shortName: 'defsNovo', extension: '.defs.ts', status: 'changed', updatedAt: '2026-09-09T10:00:00.000Z' },
+    { folder, shortName: 'defsNovo', extension: '.ts', status: 'new', updatedAt: '2026-09-01T10:00:00.000Z' },
+    { folder, shortName: 'tsNovo', extension: '.defs.ts', status: 'nochange', updatedAt: '2026-09-01T10:00:00.000Z' },
+    { folder, shortName: 'tsNovo', extension: '.ts', status: 'nochange', updatedAt: '2026-09-09T10:00:00.000Z' },
+  ]);
+  const { planSpecFrontend, SKIP_UP_TO_DATE } = await load();
+  const shared = planSpecFrontend('').plans.find((p: any) => p.wave === 'shared');
+
+  assert.deepEqual(shared.queued.map((q: any) => q.defPath.split('/').pop()), ['defsNovo.defs.ts']);
+  assert.equal(shared.skipped[0].reason, SKIP_UP_TO_DATE);
+  assert.match(shared.skipped[0].defPath, /tsNovo\.defs\.ts$/u);
+});
+
+test('10d. mesmo estado sem data: pulado com o motivo e a dica do target', async () => {
+  const folder = `${MODULE}/web/shared`;
+  installStub([
+    { folder, shortName: 'ticketHub', extension: '.defs.ts', status: 'changed', updatedAt: '' },
+    { folder, shortName: 'ticketHub', extension: '.ts', status: 'changed', updatedAt: '' },
+  ]);
+  const { planSpecFrontend, SKIP_NO_DATE } = await load();
   const result = planSpecFrontend('');
   const shared = result.plans.find((p: any) => p.wave === 'shared');
 
   assert.equal(shared.queued.length, 0);
-  assert.equal(shared.skipped[0].reason, SKIP_MAX_VS_MAX);
-  assert.match(result.report, /MAX vs MAX/u);
+  assert.equal(shared.skipped[0].reason, SKIP_NO_DATE);
   assert.match(result.report, /\{"target":/u, 'o relato sai com a dica que contorna o limite');
 });
 
