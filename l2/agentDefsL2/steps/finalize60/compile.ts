@@ -1,6 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/finalize60/compile.ts" enhancement="_blank"/>
 
-import { formatCompileDiagnostics, type NmDiagnosticLike } from '/_102020_/l2/aura/molecules/agentNewMolecule2/helpers/nmDiagnostics.js';
+import {
+  studioCompileAvailable, getStudioModel, preloadStudioImports, compileStudioFile,
+  enterStudioCompile, leaveStudioCompile, releaseBorrowedModelScope,
+  type StudioFileInfo,
+} from '/_102035_/l2/solution/studioCompile.js';
+import { readSourceText } from '/_102035_/l2/solution/fs.js';
 import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import type { D2CompileProof } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
 import type { D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
@@ -10,13 +15,29 @@ const ORDER: Record<D2FinalSource['kind'], number> = { contract: 0, shared: 1, d
 
 export interface D2CompilerModel {
   model: { getValue(): string };
-  compilerResults?: { modelNeedCompile: boolean; errors: NmDiagnosticLike[] };
+  compilerResults?: { errors: unknown[] };
 }
 export interface D2StudioCompiler {
-  loadContext(project: number): Promise<void>;
-  createModel(path: string): Promise<D2CompilerModel | undefined>;
-  compile(model: D2CompilerModel): Promise<boolean>;
+  available(): boolean;
+  readStor(info: StudioFileInfo): Promise<string | null>;
+  getModel(info: StudioFileInfo): Promise<D2CompilerModel | null>;
+  preload(info: StudioFileInfo): Promise<string[]>;
+  compile(info: StudioFileInfo): Promise<{ errors: string[] } | null>;
+  enter?(): void;
+  leave?(): void;
+  release(): void;
 }
+
+const STUDIO: D2StudioCompiler = {
+  available: studioCompileAvailable,
+  readStor: async info => { try { return await readSourceText(info); } catch { return null; } },
+  getModel: info => getStudioModel(info.project, info.level, info.folder, info.shortName, info.extension),
+  preload: preloadStudioImports,
+  compile: compileStudioFile,
+  enter: enterStudioCompile,
+  leave: leaveStudioCompile,
+  release: () => { releaseBorrowedModelScope(); },
+};
 
 export async function assertD2CompiledSources(identity: D2RunIdentity, sources: D2FinalSource[]): Promise<void> {
   const hashes = new Map<string, string>();
@@ -32,59 +53,39 @@ export async function assertD2CompiledSources(identity: D2RunIdentity, sources: 
 export async function compileD2FinalSources(identity: D2RunIdentity, sources: D2FinalSource[], hashes: Map<string, string>, suppliedStudio?: D2StudioCompiler): Promise<D2CompileProof[]> {
   const ordered = [...sources].sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || a.path.localeCompare(b.path));
   const proof = (file: D2FinalSource, diagnostics: string[]): D2CompileProof => ({ path: file.path, sha256: hashes.get(file.path) || '', status: diagnostics.length ? 'failed' : 'passed', diagnostics });
-  if (!suppliedStudio && (typeof mls === 'undefined' || typeof mls.l2?.typescript?.compileAndPostProcess !== 'function')) {
-    return ordered.map(file => proof(file, ['Studio TypeScript compiler is unavailable']));
-  }
-  let studio: D2StudioCompiler;
-  try {
-    studio = suppliedStudio ?? await studioCompiler(identity);
-    await studio.loadContext(identity.project);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return ordered.map(file => proof(file, [`Studio TypeScript project context could not be loaded: ${message}`]));
-  }
-
-  const models = new Map<string, D2CompilerModel>();
-  const setupErrors = new Map<string, string>();
-  for (const file of ordered) {
-    try {
-      const model = await studio.createModel(file.path);
-      if (!model?.model || model.model.getValue() !== file.source) throw new Error('Studio model is unavailable or differs from approved source bytes');
-      models.set(file.path, model);
-    } catch (error) {
-      setupErrors.set(file.path, error instanceof Error ? error.message : String(error));
-    }
-  }
-
+  const studio = suppliedStudio ?? STUDIO;
   const results: D2CompileProof[] = [];
-  for (const file of ordered) {
-    const setupError = setupErrors.get(file.path);
-    if (setupError) { results.push(proof(file, [setupError])); continue; }
-    const model = models.get(file.path)!;
-    try {
-      if (model.compilerResults) model.compilerResults.modelNeedCompile = true;
-      const ok = await studio.compile(model);
-      const raw = model.compilerResults?.errors;
-      const diagnostics = Array.isArray(raw) ? formatCompileDiagnostics(raw as NmDiagnosticLike[], file.source) : ['Studio compiler returned no diagnostics result'];
-      if (ok !== true && !diagnostics.length) diagnostics.push('Studio compiler did not confirm successful compilation');
-      results.push(proof(file, diagnostics));
-    } catch (error) {
-      results.push(proof(file, [error instanceof Error ? error.message : String(error)]));
+  let entered = false;
+  try {
+    if (!suppliedStudio && typeof mls === 'undefined') return ordered.map(file => proof(file, ['Studio TypeScript compiler is unavailable']));
+    if (!studio.available()) return ordered.map(file => proof(file, ['Studio TypeScript compiler is unavailable']));
+    studio.enter?.(); entered = true;
+    for (const file of ordered) {
+      try {
+        const info = d2InfoForPath(identity, file.path);
+        if (await studio.readStor(info) !== file.source) throw new Error('Studio storage differs from approved source bytes');
+        const model = await studio.getModel(info);
+        if (!model?.model || model.model.getValue() !== file.source) throw new Error('Studio model is unavailable or differs from approved source bytes');
+        const missing = await studio.preload(info);
+        if (!Array.isArray(missing)) throw new Error('Studio import preload returned no result');
+        if (missing.length) throw new Error(`Studio imports unavailable: ${missing.join(', ')}`);
+        if (model.model.getValue() !== file.source) throw new Error('Studio model differs from approved source bytes after import preload');
+        const compiled = await studio.compile(info);
+        if (!compiled || !Array.isArray(compiled.errors)) throw new Error('Studio compiler returned no diagnostics result');
+        const after = await studio.getModel(info);
+        if (!after?.model || after.model.getValue() !== file.source) throw new Error('Studio model differs from approved source bytes after compilation');
+        if (!Array.isArray(after.compilerResults?.errors)) throw new Error('Studio compiler produced no model result');
+        results.push(proof(file, compiled.errors));
+      } catch (error) {
+        results.push(proof(file, [error instanceof Error ? error.message : String(error)]));
+      }
     }
+    return results;
+  } catch (error) {
+    const diagnostic = error instanceof Error ? error.message : String(error);
+    return ordered.map(file => proof(file, [`Studio TypeScript compiler is unavailable: ${diagnostic}`]));
+  } finally {
+    if (entered) studio.leave?.();
+    studio.release();
   }
-  return results;
-}
-
-async function studioCompiler(identity: D2RunIdentity): Promise<D2StudioCompiler> {
-  const studio = await import('/_102027_/l2/libModel.js');
-  return {
-    loadContext: project => studio.readProjectTypescriptAndCompile(project, '', false),
-    createModel: async path => {
-      const info = d2InfoForPath(identity, path);
-      const storFile = mls.stor.files[mls.stor.getKeyToFile(info)];
-      if (!storFile) throw new Error('Studio storage file is unavailable');
-      return studio.createModel(storFile, false, false) as Promise<D2CompilerModel | undefined>;
-    },
-    compile: model => mls.l2.typescript.compileAndPostProcess(model as mls.editor.IModelTS, false, true),
-  };
 }

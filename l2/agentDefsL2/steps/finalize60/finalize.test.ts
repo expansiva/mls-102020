@@ -47,6 +47,33 @@ test('finalize compilation fails closed when the Studio compiler is unavailable'
   }
 });
 
+test('productive path uses canonical Studio compile capability and releases borrowed model without deleting stor', async () => {
+  const previous = (globalThis as unknown as { mls?: unknown }).mls;
+  const file = renamedSources()[0];
+  const registry: Record<string, unknown> = {};
+  const stor: Record<string, unknown> = {};
+  let compiled = 0; let released = 0;
+  const modelKey = (project: number, shortName: string, folder: string, level: number) => `${project}:${level}:${folder}/${shortName}`;
+  const key = (info: { project: number; level: number; folder: string; shortName: string }) => modelKey(info.project, info.shortName, info.folder, info.level);
+  const info = { project: 817263, level: 2, folder: 'renamed/web/contract', shortName: 'items', extension: '.defs.ts' };
+  const textModel = { getValue: () => file.source, setValue: (_value: string) => {} };
+  const model: { model: typeof textModel; compilerResults?: { errors: unknown[]; prodDTS: string } } = { model: textModel };
+  const storageKey = `${key(info)}${info.extension}`;
+  stor[storageKey] = { ...info, status: 'changed', getContent: async () => file.source, getOrCreateModel: async () => { registry[key(info)] = { ts: model }; return model; } };
+  (globalThis as unknown as { mls: unknown }).mls = {
+    editor: { models: registry, getKeyModel: modelKey, deleteModels: () => { delete registry[key(info)]; released += 1; } },
+    stor: { files: stor, getKeyToFile: (value: typeof info) => `${key(value)}${value.extension}` },
+    l2: { typescript: { compile: async () => { compiled += 1; model.compilerResults = { errors: [], prodDTS: 'export {};' }; }, compileAndPostProcess: () => { throw new Error('wrong compiler API'); } } },
+  };
+  try {
+    const proof = await compileD2FinalSources({ project: 817263, module: 'renamed' }, [file], new Map([[file.path, 'sha256:fixture']]));
+    assert.equal(proof[0].status, 'passed', proof[0].diagnostics.join('; '));
+    assert.equal(compiled, 1);
+    assert.equal(released, 1);
+    assert.ok(stor[storageKey], 'release affects editor model only');
+  } finally { (globalThis as unknown as { mls?: unknown }).mls = previous; }
+});
+
 test('Studio compilation proves valid bytes and reports a real TypeScript type diagnostic', async () => {
   const source = renamedSources();
   const calls: string[] = [];
@@ -69,20 +96,27 @@ test('Studio compilation rejects missing models, missing results, exceptions and
   const identity = { project: 817263, module: 'renamed' };
   const hashes = new Map(sources.map(file => [file.path, 'sha256:fixture']));
   const missingModel = simulatedStudio(sources, []);
-  missingModel.createModel = async () => undefined;
+  missingModel.getModel = async () => null;
   assert.ok((await compileD2FinalSources(identity, sources, hashes, missingModel)).every(item => item.status === 'failed'));
 
   const noResult = simulatedStudio(sources, []);
-  noResult.compile = async () => true;
+  noResult.compile = async () => null;
   assert.ok((await compileD2FinalSources(identity, sources, hashes, noResult)).every(item => item.diagnostics.some(diagnostic => diagnostic.includes('no diagnostics result'))));
 
   const throws = simulatedStudio(sources, []);
+  let released = 0;
   throws.compile = async () => { throw new Error('compiler crashed'); };
+  throws.release = () => { released += 1; };
   assert.ok((await compileD2FinalSources(identity, sources, hashes, throws)).every(item => item.diagnostics.includes('compiler crashed')));
+  assert.equal(released, 1);
 
   const stale = simulatedStudio(sources, []);
-  stale.createModel = async () => ({ model: { getValue: () => 'stale bytes' } });
+  stale.getModel = async () => ({ model: { getValue: () => 'stale bytes' } });
   assert.ok((await compileD2FinalSources(identity, sources, hashes, stale)).every(item => item.diagnostics.some(diagnostic => diagnostic.includes('differs from approved source bytes'))));
+
+  const staleStor = simulatedStudio(sources, []);
+  staleStor.readStor = async () => 'different persisted bytes';
+  assert.ok((await compileD2FinalSources(identity, sources, hashes, staleStor)).every(item => item.diagnostics.some(diagnostic => diagnostic.includes('storage differs'))));
 });
 
 test('a changed source and hash require a new compilation proof', async () => {
@@ -245,18 +279,24 @@ function renamedSources(): D2FinalSource[] {
 
 function simulatedStudio(sources: D2FinalSource[], calls: string[]): D2StudioCompiler {
   const byPath = new Map(sources.map(file => [file.path, file.source]));
-  const models = new WeakMap<D2CompilerModel, string>();
+  const models = new Map<string, D2CompilerModel>();
+  const pathOf = (info: { level: number; folder: string; shortName: string; extension: string }) => `l${info.level}/${info.folder}/${info.shortName}${info.extension}`;
   return {
-    loadContext: async () => {},
-    createModel: async path => {
+    available: () => true,
+    readStor: async info => byPath.get(pathOf(info)) ?? null,
+    getModel: async info => {
+      const path = pathOf(info);
       const source = byPath.get(path);
-      if (source === undefined) return undefined;
-      const model: D2CompilerModel = { model: { getValue: () => source } };
-      models.set(model, path);
+      if (source === undefined) return null;
+      const model = models.get(path) ?? { model: { getValue: () => source } };
+      models.set(path, model);
       return model;
     },
-    compile: async model => {
-      calls.push(models.get(model)!);
+    preload: async () => [],
+    compile: async info => {
+      const path = pathOf(info);
+      calls.push(path);
+      const model = models.get(path)!;
       const source = model.model.getValue();
       const options: ts.CompilerOptions = { noLib: true, noEmit: true, strict: true };
       const host = ts.createCompilerHost(options);
@@ -265,9 +305,10 @@ function simulatedStudio(sources: D2FinalSource[], calls: string[]): D2StudioCom
       host.readFile = name => name === 'fixture.ts' ? source : undefined;
       const program = ts.createProgram(['fixture.ts'], options, host);
       const diagnostics = ts.getPreEmitDiagnostics(program).filter(item => item.file?.fileName === 'fixture.ts');
-      model.compilerResults = { modelNeedCompile: false, errors: diagnostics };
-      return diagnostics.length === 0;
+      model.compilerResults = { errors: diagnostics };
+      return { errors: diagnostics.map(item => `TS${item.code}: ${ts.flattenDiagnosticMessageText(item.messageText, ' ')}`) };
     },
+    release: () => {},
   };
 }
 
