@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { parseNs4ClassicDefsSource } from '/_102035_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
+import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2ContractsCatalog, type D2ContractsSources } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
@@ -24,8 +24,8 @@ const GROUPS = new Map([['groupEnterDate', ['_102040_/l2/molecules/groupenterdat
 const CANDIDATES = new Map<string, Set<string>>();
 const PAGE_SKILLS = pageSkillsFixture();
 
-void test('current five-page fixture emits 10 defs/items and five shared refs with functional device parity', () => {
-  const pages = fixturePageIds('current'); const emitted = pages.flatMap(pageId => emit(pageId));
+void test('v1.2 five-page fixture emits 10 defs/items and five shared refs with functional device parity', () => {
+  const pages = fixturePageIds('v1_2'); const emitted = pages.flatMap(pageId => emit(pageId));
   assert.equal(pages.length, 5); assert.equal(emitted.length, 10);
   assert.equal(new Set(emitted.map(item => item.pipeline[0].id)).size, 10);
   assert.equal(new Set(emitted.map(item => item.pipeline[0].dependsOn[0])).size, 5);
@@ -316,7 +316,7 @@ void test('page worker extracts the observed flexible envelope and validates its
 });
 
 void test('unamended HEAD transition payload remains an upstream contracts diagnostic', () => {
-  assert.throws(() => buildD2ContractsCatalog(currentContractSources()), /D2_CONTRACT_TRANSITION_PAYLOAD_MISSING/);
+  assert.throws(() => buildD2ContractsCatalog(v1_2ContractSources()), /D2_CONTRACT_TRANSITION_PAYLOAD_MISSING/);
 });
 
 function emit(pageId: string) { return gated(selected(pageId), sharedFor(pageId, capabilities(pageId)), judgment(pageId, capabilities(pageId))); }
@@ -397,9 +397,9 @@ function twoSceneShared(pageId: string): D2SharedDefinition {
   return shared;
 }
 function selected(pageId: string, organisms: unknown[] = [{ kind: 'list', text: `${pageId} list` }]): D2SelectedPage { return { pageId, status: 'toCreate', label: pageId, actors: ['actor'], authorityRefs: [], ancestors: [], journeyRefs: [], organisms, reads: [], writes: [], endpoints: [], usecases: [], destinations: [] }; }
-function fixturePageIds(kind: 'current' | 'historical'): string[] { const raw = JSON.parse(readFileSync(path.join(FIXTURES, kind, 'needs.json'), 'utf8')) as { pages: Array<{ pageId: string }> }; return raw.pages.map(item => item.pageId); }
-function currentContractSources(): D2ContractsSources {
-  const input = path.join(FIXTURES, 'current'); const head = path.resolve(HERE, '..', 'contracts30', 'fixtures', 'head', 'l4');
+function fixturePageIds(kind: 'v1_2' | 'historical'): string[] { const raw = JSON.parse(readFileSync(path.join(FIXTURES, kind, 'needs.json'), 'utf8')) as { pages: Array<{ pageId: string }> }; return raw.pages.map(item => item.pageId); }
+function v1_2ContractSources(): D2ContractsSources {
+  const input = path.join(FIXTURES, 'v1_2'); const head = path.resolve(HERE, '..', 'contracts30', 'fixtures', 'head', 'l4');
   const backend = JSON.parse(readFileSync(path.join(input, 'backend.json'), 'utf8')) as Record<string, unknown>; const needs = JSON.parse(readFileSync(path.join(input, 'needs.json'), 'utf8')) as Record<string, unknown>;
   const entities: Record<string, Ns5OntologyAnyEntity> = {}; for (const name of readdirSync(path.join(head, 'ontology')).filter(name => name !== 'index.defs.ts')) { const entity = defs(path.join(head, 'ontology', name)); entities[String(entity.entityId)] = entity as unknown as Ns5OntologyAnyEntity; }
   const endpoints = rows(backend.endpoints); const usecases = rows(backend.usecases);

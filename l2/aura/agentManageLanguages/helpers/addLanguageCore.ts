@@ -7,11 +7,11 @@
  * PURE — no `mls.*`, no filesystem, no model. The agent keeps the IO; this file is what a unit test can
  * exercise, which is the only way the queueing rule gets verified before a run touches 100 files.
  *
- * The marker contract is owned by the emitter (`agentChangeFrontend/helpers/cfePageSkeleton.ts`) and
+ * The marker contract is owned by the emitter (`agentMaterializeL2/helpers/cfePageSkeleton.ts`) and
  * imported from there on purpose: two copies of the same literal would drift the moment one side changed.
  */
 
-import { I18N_UNTRANSLATED_MARKER, untranslatedLocales } from '/_102020_/l2/agentChangeFrontend/helpers/cfePageSkeleton.js';
+import { I18N_UNTRANSLATED_MARKER, untranslatedLocales } from '/_102020_/l2/agentMaterializeL2/helpers/cfePageSkeleton.js';
 
 export { I18N_UNTRANSLATED_MARKER };
 

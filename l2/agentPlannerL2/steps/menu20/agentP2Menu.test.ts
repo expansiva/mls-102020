@@ -336,15 +336,15 @@ function seedPipeline(host: Host, extra: Record<string, unknown> = {}): void {
     ...extra,
   };
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'pipeline',
     extension: '.json',
     content: `${JSON.stringify(pipeline, null, 2)}\n`,
   });
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'menu20-draft',
     extension: '.json',
     content: '{}\n',
@@ -1035,4 +1035,3 @@ void test('gate on the 12 p2_16 menus has no entity codes; unknown journey is st
   }
   assert.deepEqual(remaining, []);
 });
-

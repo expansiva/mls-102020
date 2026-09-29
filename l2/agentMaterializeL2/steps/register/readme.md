@@ -1,0 +1,22 @@
+<!-- mls fileReference="_102020_/l2/agentMaterializeL2/steps/register/readme.md" enhancement="_blank" -->
+
+# register
+
+## Role
+
+`agentCfeRegisterFrontend` registers generated pages and signs `l5/project.json` with the frontend master signature. Leftover page preview `.html` under `web/desktop|mobile/pageN` is soft-deleted (Studio preview no longer uses it).
+
+## Input
+
+- Materialized page files.
+- Generated page metadata and frontend create markers.
+
+## Output
+
+- `l2/{module}/trace/frontend-register-pages/{page}.json`.
+- Updated `l5/project.json`.
+
+## Invariants
+
+- `config.json` is not written in this register step; it is merged in the final frontend step and publish only validates it.
+- Registration happens after materialization barriers complete.

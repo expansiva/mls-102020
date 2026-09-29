@@ -56,8 +56,14 @@ export function resolveD2OperationBindings(
       return !field.derived && !field.writePrecondition && !serverAssigned.has(path) && !isContainer(field);
     });
     const referenced = isTransition ? strings(transition?.payload) : operation === 'create' || operation === 'update' ? writablePaths : [];
-    const required = new Set(isTransition ? strings(transition?.payload) : referenced.filter(path => fieldByPath(entity, path).required === true));
-    const inputFields = unique(referenced).map(path => {
+    const referencedPaths = unique(referenced);
+    const structuralPaths = operation === 'create' || operation === 'update' || isTransition
+      ? withAncestors(referencedPaths, fields)
+      : referencedPaths;
+    const required = new Set(isTransition
+      ? withAncestors(referencedPaths, fields)
+      : structuralPaths.filter(path => fieldByPath(entity, path).required === true));
+    const inputFields = structuralPaths.map(path => {
       if (!fields.has(path)) throw new D2OperationSemanticsError('FIELD_REF_MISSING', entityFile, `${entityId}.${path}`, `operation '${operation}' references an undeclared record field`);
       return { path: path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`, origin: serverAssigned.has(path) ? 'server' as const : 'actor' as const, required: required.has(path) };
     });
@@ -84,11 +90,14 @@ export function resolveD2OperationBindings(
     for (const actor of (isTransition ? [actorRef] : actors)) {
       const applicable = grants.filter(item => text(item.grant.actorRef) === actor);
       const actorPaths = inputFields.filter(field => field.origin === 'actor' && !deniedBy(applicable, actor, entityId, field.path));
+      const actorPathSet = new Set(actorPaths.map(field => field.path));
+      const referencedActorPaths = new Set(referencedPaths.map(path => path.startsWith(`${entityId}.`) ? path : `${entityId}.${path}`));
       output.push({
         pageId, route, entityId, operation, actorRef: actor,
         grantRefs: applicable.map(item => text(item.grant.grantId)).filter(Boolean),
         authorities: applicable.map(item => text(item.grant.actorRef)).filter(Boolean),
-        inputFields: actorPaths,
+        inputFields: actorPaths.filter(field => referencedActorPaths.has(field.path)
+          || [...actorPathSet].some(path => path.startsWith(`${field.path}.`))),
         ...(transition ? { transition: { transitionId: text(transition.transitionId), from: strings(transition.from), to: text(transition.to), by: strings(transition.by), payload: strings(transition.payload) } } : {}),
         ruleRefs, sourceHashes,
       });
@@ -122,6 +131,17 @@ function recordFields(entity: Record<string, unknown>): Set<string> {
   };
   visit(root, '');
   return result;
+}
+function withAncestors(paths: string[], fields: Set<string>): string[] {
+  const selected = new Set<string>();
+  for (const path of paths) {
+    const parts = path.split('.');
+    for (let length = 1; length <= parts.length; length++) {
+      const ancestor = parts.slice(0, length).join('.');
+      if (fields.has(ancestor)) selected.add(ancestor);
+    }
+  }
+  return [...fields].filter(path => selected.has(path));
 }
 function fieldByPath(entity: Record<string, unknown>, path: string): Record<string, unknown> {
   let current: Record<string, unknown> = rec(rec(entity.record).fields);

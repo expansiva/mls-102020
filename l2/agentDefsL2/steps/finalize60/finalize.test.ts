@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 import type { D2InputSnapshot, D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { buildD2SharedPipeline } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { buildD2PagePipeline } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
@@ -10,7 +11,12 @@ import { renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.j
 import { renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { changedOutsideD2Scope, gateD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
 import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
-import { revalidateD2RemovalSet, validateD2SelectionCounts } from '/_102020_/l2/agentDefsL2/steps/finalize60/run.js';
+import { finalizeD2, revalidateD2RemovalSet, validateD2SelectionCounts } from '/_102020_/l2/agentDefsL2/steps/finalize60/run.js';
+import { compileD2FinalSources, type D2CompilerModel, type D2StudioCompiler } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
+import { D2_FINALIZE_VERSION } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
+import { D2_CONTRACTS_VERSION } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
+import { D2_SHARED_VERSION } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { D2_PAGES_VERSION } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { d2Header } from '/_102020_/l2/agentDefsL2/helpers/d2Header.js';
 
 const moduleName = 'agendaClinica';
@@ -21,9 +27,102 @@ const snapshot = {
     writePageIds: ids,
     preservePageIds: [],
     remove: [],
-    pages: ids.map(page),
+    pages: ids.map(id => page(id)),
   },
 } as unknown as D2InputSnapshot;
+
+test('finalize compilation fails closed when the Studio compiler is unavailable', async () => {
+  const previous = (globalThis as unknown as { mls?: unknown }).mls;
+  (globalThis as unknown as { mls?: unknown }).mls = undefined;
+  try {
+    const sources: D2FinalSource[] = (['contract', 'shared', 'desktopPage', 'mobilePage'] as const).map(kind => ({
+      pageId: 'items', kind, path: `l2/renamed/web/${kind}/items.defs.ts`, source: 'export {};',
+    }));
+    const proofs = await compileD2FinalSources({ project: 817263, module: 'renamed' }, sources, new Map(sources.map(file => [file.path, 'sha256:fixture'])));
+    assert.equal(proofs.length, 4);
+    assert.deepEqual(proofs.map(item => item.status), ['failed', 'failed', 'failed', 'failed']);
+    assert.ok(proofs.every(item => item.diagnostics[0].includes('unavailable')));
+  } finally {
+    (globalThis as unknown as { mls?: unknown }).mls = previous;
+  }
+});
+
+test('Studio compilation proves valid bytes and reports a real TypeScript type diagnostic', async () => {
+  const source = renamedSources();
+  const calls: string[] = [];
+  const studio = simulatedStudio(source, calls);
+  const hashes = new Map(source.map(file => [file.path, `sha256:${file.source.length}`]));
+  const valid = await compileD2FinalSources({ project: 817263, module: 'renamed' }, source, hashes, studio);
+  assert.equal(valid.length, 4);
+  assert.ok(valid.every(item => item.status === 'passed'));
+  assert.deepEqual(calls, source.map(item => item.path));
+
+  const invalid = source.map(file => file.kind === 'contract' ? { ...file, source: 'export interface Item { id: MissingType; }' } : file);
+  const failed = await compileD2FinalSources({ project: 817263, module: 'renamed' }, invalid, hashes, simulatedStudio(invalid, []));
+  assert.equal(failed[0].status, 'failed');
+  assert.match(failed[0].diagnostics.join('\n'), /TS2304: Cannot find name 'MissingType'/u);
+  assert.ok(failed.slice(1).every(item => item.status === 'passed'));
+});
+
+test('Studio compilation rejects missing models, missing results, exceptions and stale model bytes', async () => {
+  const sources = renamedSources();
+  const identity = { project: 817263, module: 'renamed' };
+  const hashes = new Map(sources.map(file => [file.path, 'sha256:fixture']));
+  const missingModel = simulatedStudio(sources, []);
+  missingModel.createModel = async () => undefined;
+  assert.ok((await compileD2FinalSources(identity, sources, hashes, missingModel)).every(item => item.status === 'failed'));
+
+  const noResult = simulatedStudio(sources, []);
+  noResult.compile = async () => true;
+  assert.ok((await compileD2FinalSources(identity, sources, hashes, noResult)).every(item => item.diagnostics.some(diagnostic => diagnostic.includes('no diagnostics result'))));
+
+  const throws = simulatedStudio(sources, []);
+  throws.compile = async () => { throw new Error('compiler crashed'); };
+  assert.ok((await compileD2FinalSources(identity, sources, hashes, throws)).every(item => item.diagnostics.includes('compiler crashed')));
+
+  const stale = simulatedStudio(sources, []);
+  stale.createModel = async () => ({ model: { getValue: () => 'stale bytes' } });
+  assert.ok((await compileD2FinalSources(identity, sources, hashes, stale)).every(item => item.diagnostics.some(diagnostic => diagnostic.includes('differs from approved source bytes'))));
+});
+
+test('a changed source and hash require a new compilation proof', async () => {
+  const identity = { project: 817263, module: 'renamed' };
+  const sources = renamedSources();
+  const calls: string[] = [];
+  const studio = simulatedStudio(sources, calls);
+  const initial = await compileD2FinalSources(identity, sources, new Map(sources.map(file => [file.path, 'sha256:old'])), studio);
+  assert.ok(initial.every(item => item.sha256 === 'sha256:old'));
+  const changed = sources.map(file => file.kind === 'shared' ? { ...file, source: 'export const value = 2;' } : file);
+  const updated = await compileD2FinalSources(identity, changed, new Map(changed.map(file => [file.path, 'sha256:new'])), simulatedStudio(changed, calls));
+  assert.ok(updated.every(item => item.sha256 === 'sha256:new' && item.status === 'passed'));
+  assert.equal(calls.length, 8);
+});
+
+test('failed compilation blocks removal, ownership and complete while keeping the prior receipt', async () => {
+  const prior = (globalThis as unknown as { mls?: unknown }).mls;
+  const host = await finalizeHost();
+  try {
+    const beforeOwnership = host.get('l2/renamed/pipeline/agentDefsL2/finalize60/ownership.json');
+    let deletes = 0;
+    const result = await finalizeD2({ project: 817263, module: 'renamed' }, {
+      remove: async () => { deletes += 1; },
+      compile: async (_identity, emitted, hashes) => emitted.map(file => ({ path: file.path, sha256: hashes.get(file.path)!, status: 'failed', diagnostics: ['TS2304: MissingType'] })),
+    });
+    assert.equal(result.report.status, 'blocked');
+    assert.equal(result.report.compilation.length, 4);
+    assert.equal(deletes, 0);
+    assert.equal(host.get('l2/renamed/pipeline/agentDefsL2/finalize60/ownership.json'), beforeOwnership);
+    assert.equal(JSON.parse(host.get('l2/renamed/pipeline/agentDefsL2/pipeline.json')!).status, 'inProgress');
+    const corrected = await finalizeD2({ project: 817263, module: 'renamed' }, {
+      remove: async () => { deletes += 1; },
+      compile: async (_identity, emitted, hashes) => emitted.map(file => ({ path: file.path, sha256: hashes.get(file.path)!, status: 'passed', diagnostics: [] })),
+    });
+    assert.equal(corrected.report.status, 'complete', corrected.report.pending.join('; '));
+    assert.equal(deletes, 4);
+    assert.notEqual(host.get('l2/renamed/pipeline/agentDefsL2/finalize60/ownership.json'), beforeOwnership);
+    assert.equal(JSON.parse(host.get('l2/renamed/pipeline/agentDefsL2/pipeline.json')!).status, 'complete');
+  } finally { (globalThis as unknown as { mls?: unknown }).mls = prior; }
+});
 
 test('finalize60 gates the exact 20 defs and 15-item acyclic graph, including a page without molecule suggestions', () => {
   const sources = ids.flatMap(pageId => files(pageId, pageId === 'agenda'));
@@ -81,7 +180,7 @@ test('remove preflight catches an edit and a new snapshot between scan and delet
 });
 
 test('agendaClinica snapshot counts unique routes and usecaseIds and rejects illegible identities', () => {
-  const fixture = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../input20/fixtures/current/backend.json'), 'utf8')) as {
+  const fixture = JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../input20/fixtures/v1_2/backend.json'), 'utf8')) as {
     endpoints: Array<Record<string, unknown>>;
     usecases: Array<Record<string, unknown>>;
   };
@@ -105,8 +204,8 @@ test('agendaClinica snapshot counts unique routes and usecaseIds and rejects ill
   assert.match(problems, /endpoint route duplicated/);
 });
 
-function page(pageId: string): D2SelectedPage {
-  const base = `l2/${moduleName}/web`;
+function page(pageId: string, currentModule = moduleName): D2SelectedPage {
+  const base = `l2/${currentModule}/web`;
   return { pageId, status: 'toCreate', label: pageId, actors: [], authorityRefs: [], ancestors: [], journeyRefs: [], organisms: [], reads: [], writes: [], endpoints: [], usecases: [], destinations: [
     { kind: 'contract', path: `${base}/contracts/${pageId}.defs.ts`, artifactId: `${pageId}:contract` },
     { kind: 'shared', path: `${base}/shared/${pageId}.defs.ts`, artifactId: `${pageId}:shared` },
@@ -114,19 +213,19 @@ function page(pageId: string): D2SelectedPage {
     { kind: 'mobilePage', path: `${base}/mobile/page11/${pageId}.defs.ts`, artifactId: `${pageId}:mobile` },
   ] };
 }
-function files(pageId: string, withoutSkills = false): D2FinalSource[] {
-  const p = page(pageId); const mandatory = ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts', '_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md']; const skill = withoutSkills ? mandatory : [...mandatory, '_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts'];
+function files(pageId: string, withoutSkills = false, currentModule = moduleName): D2FinalSource[] {
+  const p = page(pageId, currentModule); const mandatory = ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts', '_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md']; const skill = withoutSkills ? mandatory : [...mandatory, '_102040_/l2/molecules/groupenterdate/index.defs.ts', '_102020_/l2/aura/molecules/skills/groupEnterDate/usage.ts'];
   return [
-    { pageId, kind: 'contract', path: p.destinations[0].path, source: `${d2Header(p.destinations[0].path)}\nexport interface Input { "id": string; }\n` },
-    { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({ moduleName, pageId, contractRef: { defPath: `l2/${moduleName}/web/contracts/${pageId}.defs.ts` } } as never, buildD2SharedPipeline(moduleName, pageId)) },
-    ...(['desktop', 'mobile'] as const).map(device => ({ pageId, kind: device === 'desktop' ? 'desktopPage' as const : 'mobilePage' as const, path: p.destinations[device === 'desktop' ? 2 : 3].path, source: pageSource(pageId, device, skill) })),
+    { pageId, kind: 'contract', path: p.destinations[0].path, source: `${d2Header(p.destinations[0].path, currentModule === 'renamed' ? 817263 : undefined)}\nexport interface Input { "id": string; }\n` },
+    { pageId, kind: 'shared', path: p.destinations[1].path, source: renderD2Shared({ moduleName: currentModule, pageId, contractRef: { defPath: `l2/${currentModule}/web/contracts/${pageId}.defs.ts` } } as never, buildD2SharedPipeline(currentModule, pageId), currentModule === 'renamed' ? 817263 : undefined) },
+    ...(['desktop', 'mobile'] as const).map(device => ({ pageId, kind: device === 'desktop' ? 'desktopPage' as const : 'mobilePage' as const, path: p.destinations[device === 'desktop' ? 2 : 3].path, source: pageSource(pageId, device, skill, currentModule) })),
   ];
 }
 function description(pageId: string, device: string) { return { organismId: 'organism.content.1', kind: 'content', description: `${pageId} ${device}`, contentRef: 'base', capabilityRefs: [], outputFieldRefs: [], moleculeRecommendations: [] }; }
-function pageSource(pageId: string, device: 'desktop' | 'mobile', skill: string[]) {
+function pageSource(pageId: string, device: 'desktop' | 'mobile', skill: string[], currentModule = moduleName) {
   const templateSelection = { categoryRef: 'calendarScheduling', targetPage: 'page11' as const, experiencePage: null, experienceId: null, styleId: null, layoutId: null, reason: 'Fixture guidance.', requirementsMet: [], digest: `sha256:${'1'.repeat(64)}`, sources: [] };
   const coverage = [{ organismId: 'organism.content.1', sourceIndex: 0, kind: 'content', contentRef: 'base', scenarioRefs: ['base'], capabilityRefs: [], outputFieldsByCapability: {}, moleculeRecommendations: [] }];
-  return renderD2Page({ device, pageId, pageLabel: pageId, pageIntent: 'Read published content.', actors: [], authorityRefs: [], operationBindings: [], descriptions: [description(pageId, device)], templateSelection, coverage, pipeline: [buildD2PagePipeline(moduleName, pageId, device, 'calendarScheduling', skill, templateSelection, coverage)] });
+  return renderD2Page({ device, pageId, pageLabel: pageId, pageIntent: 'Read published content.', actors: [], authorityRefs: [], operationBindings: [], descriptions: [description(pageId, device)], templateSelection, coverage, pipeline: [buildD2PagePipeline(currentModule, pageId, device, 'calendarScheduling', skill, templateSelection, coverage)] }, currentModule === 'renamed' ? 817263 : undefined);
 }
 function replacePipeline(all: D2FinalSource[], pageId: string, kind: D2FinalSource['kind'], patch: Record<string, unknown>): D2FinalSource[] {
   return all.map(file => {
@@ -137,3 +236,100 @@ function replacePipeline(all: D2FinalSource[], pageId: string, kind: D2FinalSour
     return { ...file, source: file.source.replace(match[1], JSON.stringify(changed, null, 2)) };
   });
 }
+
+function renamedSources(): D2FinalSource[] {
+  return (['contract', 'shared', 'desktopPage', 'mobilePage'] as const).map(kind => ({
+    pageId: 'items', kind, path: `l2/renamed/web/${kind}/items.defs.ts`, source: 'export const value = 1;',
+  }));
+}
+
+function simulatedStudio(sources: D2FinalSource[], calls: string[]): D2StudioCompiler {
+  const byPath = new Map(sources.map(file => [file.path, file.source]));
+  const models = new WeakMap<D2CompilerModel, string>();
+  return {
+    loadContext: async () => {},
+    createModel: async path => {
+      const source = byPath.get(path);
+      if (source === undefined) return undefined;
+      const model: D2CompilerModel = { model: { getValue: () => source } };
+      models.set(model, path);
+      return model;
+    },
+    compile: async model => {
+      calls.push(models.get(model)!);
+      const source = model.model.getValue();
+      const options: ts.CompilerOptions = { noLib: true, noEmit: true, strict: true };
+      const host = ts.createCompilerHost(options);
+      host.getSourceFile = (name, version) => name === 'fixture.ts' ? ts.createSourceFile(name, source, version) : undefined;
+      host.fileExists = name => name === 'fixture.ts';
+      host.readFile = name => name === 'fixture.ts' ? source : undefined;
+      const program = ts.createProgram(['fixture.ts'], options, host);
+      const diagnostics = ts.getPreEmitDiagnostics(program).filter(item => item.file?.fileName === 'fixture.ts');
+      model.compilerResults = { modelNeedCompile: false, errors: diagnostics };
+      return diagnostics.length === 0;
+    },
+  };
+}
+
+async function finalizeHost() {
+  const project = 817263;
+  const content = new Map<string, string>();
+  const files: Record<string, unknown> = {};
+  const key = (info: { project: number; level: number; folder: string; shortName: string; extension: string }) => `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
+  const put = (path: string, source: string) => {
+    const match = /^l(\d+)\/(.+)\/([^/]+?)(\.defs\.ts|\.json)$/u.exec(path);
+    assert.ok(match, path);
+    const info = { project, level: Number(match[1]), folder: match[2], shortName: match[3], extension: match[4] };
+    content.set(path, source);
+    files[key(info)] = { ...info, status: 'changed', versionRef: '1', getValueInfo: async () => ({ content: content.get(path) }), getContent: async () => content.get(path) };
+  };
+  (globalThis as unknown as { mls: unknown }).mls = {
+    actualProject: project,
+    stor: { files, getKeyToFile: key, localStor: { setContent: async (info: { level: number; folder: string; shortName: string; extension: string }, value: { content: string }) => {
+      put(`l${info.level}/${info.folder}/${info.shortName}${info.extension}`, value.content);
+    } } },
+  };
+  const l4 = [
+    ['l4/renamed/module.defs.ts', {}],
+    ['l4/renamed/journeys/index.defs.ts', { journeys: [] }],
+    ['l4/renamed/ontology/index.defs.ts', { entities: [] }],
+    ['l4/renamed/rules.defs.ts', {}],
+    ['l4/renamed/workflows.defs.ts', {}],
+    ['l4/renamed/access.defs.ts', {}],
+    ['l4/renamed/integration.defs.ts', {}],
+    ['l4/renamed/pool/l2/web/menu.json', {}],
+    ['l4/renamed/pool/l1/web/needs.json', {}],
+    ['l4/renamed/pool/l2/web/backend.json', {}],
+    ['l4/renamed/pool/l2/web/effort.json', {}],
+  ] as const;
+  const digests = [];
+  for (const [path, value] of l4) {
+    const source = path.endsWith('.json') ? JSON.stringify(value) : `export const definition = ${JSON.stringify(value)} as const;`;
+    put(path, source);
+    digests.push({ path, sha256: await sha256Text(source), bytes: new TextEncoder().encode(source).length, schemaVersion: '' });
+  }
+  const emitted = filesForRenamed();
+  const hashes = new Map<string, string>();
+  for (const file of emitted) { put(file.path, file.source); hashes.set(file.path, await sha256Text(file.source)); }
+  const old = page('old', 'renamed'); old.status = 'toRemove';
+  const oldArtifacts = [];
+  for (const destination of old.destinations) {
+    const source = 'export const old = true;';
+    put(destination.path, source);
+    oldArtifacts.push({ pageId: 'old', kind: destination.kind, path: destination.path, sha256: await sha256Text(source) });
+  }
+  const snapshotHash = 'sha256:fixture';
+  put('l2/renamed/pipeline/agentDefsL2/input.json', JSON.stringify({
+    project, module: 'renamed', snapshotHash, sources: digests,
+    selection: { writePageIds: ['items'], preservePageIds: [], pages: [page('items', 'renamed')], remove: [old], counts: { pages: 1, endpoints: 0, usecases: 0, destinations: 4, materializationItems: 3 } },
+  }));
+  put('l2/renamed/pipeline/agentDefsL2/pipeline.json', JSON.stringify({ status: 'inProgress', steps: Object.fromEntries(['entry10', 'input20', 'contracts30', 'shared40', 'pages50'].map(step => [step, { status: 'approved' }])) }));
+  put('l2/renamed/pipeline/agentDefsL2/contracts.json', JSON.stringify({ schemaVersion: D2_CONTRACTS_VERSION, status: 'approved', snapshotHash, units: [{ pageId: 'items', status: 'approved', schemaVersion: D2_CONTRACTS_VERSION, artifactPath: emitted[0].path, sourceHash: hashes.get(emitted[0].path) }] }));
+  put('l2/renamed/pipeline/agentDefsL2/shared.json', JSON.stringify({ schemaVersion: D2_SHARED_VERSION, status: 'approved', snapshotHash, units: [{ pageId: 'items', status: 'approved', schemaVersion: D2_SHARED_VERSION, artifactPath: emitted[1].path, sourceHash: hashes.get(emitted[1].path), pipelineItemId: 'items__l2_shared' }] }));
+  put('l2/renamed/pipeline/agentDefsL2/pages.json', JSON.stringify({ schemaVersion: D2_PAGES_VERSION, status: 'approved', snapshotHash, units: [{ pageId: 'items', status: 'approved', schemaVersion: D2_PAGES_VERSION, artifactPaths: { desktop: emitted[2].path, mobile: emitted[3].path }, sourceHashes: { desktop: hashes.get(emitted[2].path), mobile: hashes.get(emitted[3].path) }, pipelineItemIds: { desktop: 'items__desktop__page11', mobile: 'items__mobile__page11' } }] }));
+  put('l2/renamed/pipeline/agentDefsL2/finalize60/ownership.json', JSON.stringify({ schemaVersion: D2_FINALIZE_VERSION, project, module: 'renamed', artifacts: oldArtifacts }));
+  put('l2/renamed/pipeline/agentDefsL2/finalize60/report.json', '{}');
+  return { get: (path: string) => content.get(path) };
+}
+
+function filesForRenamed(): D2FinalSource[] { return files('items', true, 'renamed'); }

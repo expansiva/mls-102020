@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/input20/io.ts" enhancement="_blank"/>
 
-import { parseNs4ClassicDefsSource } from '/_102035_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
+import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import {
   displayPath,
   readJson,

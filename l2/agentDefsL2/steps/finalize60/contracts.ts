@@ -3,7 +3,8 @@
 import type { D2DestinationKind } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 
-export const D2_FINALIZE_VERSION = '2026-09-21-agent-defs-l2-finalize-v1' as const;
+export const D2_FINALIZE_VERSION = '2026-09-29-agent-defs-l2-finalize-v2' as const;
+export interface D2CompileProof { path: string; sha256: string; status: 'passed' | 'failed'; diagnostics: string[]; }
 export interface D2OwnedArtifact { pageId: string; kind: D2DestinationKind; path: string; sha256: string; removed?: true; }
 export interface D2OwnershipReceipt extends D2RunIdentity { schemaVersion: typeof D2_FINALIZE_VERSION; artifacts: D2OwnedArtifact[]; }
 export interface D2FinalizeReport extends D2RunIdentity {
@@ -16,5 +17,6 @@ export interface D2FinalizeReport extends D2RunIdentity {
   pending: string[];
   materializationPendingRemove: string[];
   artifactPaths: string[];
+  compilation: D2CompileProof[];
 }
 export interface D2FinalizeResult { report: D2FinalizeReport; writes: number; deletes: number; }

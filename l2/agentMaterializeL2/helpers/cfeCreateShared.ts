@@ -1,0 +1,5959 @@
+/// <mls fileReference="_102020_/l2/agentMaterializeL2/helpers/cfeCreateShared.ts" enhancement="_102027_/l2/enhancementAgent"/>
+
+import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
+import { emitMlsDepJsonIfHostDisk } from '/_102029_/l2/mlsDepManifest.js';
+import { commandMemberNames, dedupeSharedStateNames } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMemberNames.js';
+import {
+  deriveUiScenaries,
+  destructiveCommandIds,
+  isDestructiveCommandName,
+  isGetByIdQuery,
+  UI_SCENARY_DEFS_CONTRACT,
+  type CfeUiScenaryCommand,
+} from '/_102020_/l2/agentMaterializeL2/helpers/cfeUiScenary.js';
+import {
+  assertArray,
+  assertRecord,
+  assertString,
+  createPlannerToolSchema,
+  extractPlannerOutput,
+  normalizeStringList,
+  optionalString,
+  type PlannerExtractConfig,
+  type PlannerOutput,
+} from '/_102020_/l2/agentMaterializeL2/helpers/cfePlanner.js';
+import {
+  frontendOutputShapeForOperation,
+  frontendQueryStateDefaults,
+  hasL4OperationInputs,
+  hasL4OperationOutputRefs,
+  frontendInputPresentation,
+  queryQualifiesForInitialLoad,
+  isRuntimeResolvedInputSource,
+  isUserFacingOperationInput,
+  l4OperationInputs,
+  l4OperationOutputRefs,
+  normalizeOutputShape,
+  parseWorkspaceBffCalls,
+  parseWorkspaceSections,
+  bffCallCommandShape,
+  buildWorkspaceContractSource,
+  isContentOrganismRole,
+  type CfeL4OperationInput,
+  type CfeBffCall,
+  type CfeBffCallField,
+  type CfeContractField,
+  type CfeContractCall,
+  type CfeWorkspaceSection,
+  type CfeWorkspaceOrganism,
+} from '/_102020_/l2/agentMaterializeL2/helpers/cfeL4Contract.js';
+import { findLanguageByCode } from '/_102027_/l2/collabLanguages.js';
+import { convertFileToTag } from '/_102020_/l2/utils.js';
+import { parseDefsSource, replaceDefsValue } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
+import { navigationFromE8Menu } from '/_102020_/l2/agentMaterializeL2/helpers/cfeModuleNavigation.js';
+import { selectUxTemplateCandidates, type UxScreenSignals } from '/_102020_/l2/agentMaterializeL2/uxTemplates/selectUxTemplates.js';
+import { pageSlotRecipe, pageSlotRecipes, primaryGenomeOf, type PageSlotRecipe, type UxVariantsMode } from '/_102020_/l2/agentMaterializeL2/helpers/cfePageRecipe.js';
+import { buildOrganismSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentMaterializeL2/helpers/cfePageSplitPlan.js';
+import { enumDisplayLabel, enumLabelFallbackWarnings, readEnumLabels, type CfeEnumLabel } from '/_102020_/l2/agentMaterializeL2/helpers/cfeEnumLabels.js';
+import { compileBlockedPlanIdsFromVerdict, sharedDtsArtifactRef, materializeVerdictAllClear } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
+import {
+  cfePipelineTraceFileInfo,
+  isCfeMaterializeVerifyFolder,
+  isCfePipelineTraceLevel,
+  recordCfeDegradation,
+} from '/_102020_/l2/agentMaterializeL2/helpers/cfePipelineTrace.js';
+import { writeIfContentChanged } from '/_102020_/l2/agentMaterializeL2/helpers/cfeWorkspaceArtifacts.js';
+import { sessionScope } from '/_102020_/l2/agentMaterializeL2/helpers/cfeSessionScope.js';
+
+export { enumDisplayLabel, readEnumLabels };
+export type { CfeEnumLabel };
+
+type FileInfo = Pick<mls.stor.IFileInfo, 'project' | 'level' | 'folder' | 'shortName' | 'extension'>;
+type OwnerStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'inProgress' | 'done';
+
+interface CfeFieldDef {
+  fieldId: string; title?: string; type: string; required?: boolean; description?: string;
+  enum?: string[]; enumLabels?: CfeEnumLabel[];
+  /** l4 constraint kind `format` (time, email, date…). */
+  format?: string;
+  /** l4 constraint kind `pattern` (e.g. HH:mm regex). */
+  pattern?: string;
+}
+interface CfeEntityDef {
+  entityId: string; title: string; fields: CfeFieldDef[]; rulesApplied: string[];
+  statusEnum: string[]; lifecycleStates: string[]; lifecycleLabels?: CfeEnumLabel[];
+  /** l4 `storage.target` — where the record LIVES (`mdm` | `moduleDatabase` | `external` | …). */
+  storageTarget: string;
+}
+
+interface CfeOperationDef {
+  operationId: string;
+  commandName: string;
+  pageId: string;
+  bffName: string;
+  title: string;
+  actor: string;
+  entity: string;
+  kind: string;
+  reads: string[];
+  writes: string[];
+  rulesApplied: string[];
+  // Intent-level micro user flow (from l4 operation.story.steps). Drives field/organism ordering
+  // in the layout prompt; layout-agnostic, so any genome (page11/page12) can reinterpret it.
+  storySteps: string[];
+  // Generation status now comes from l5/{module}/todoFrontend.defs.ts (single source of truth).
+  todoStatus: string;
+  // Legacy inline status read from l4 only to warn about divergence; never used for decisions.
+  inlineStatusFrontend: string;
+  capability?: Record<string, unknown>;
+  moduleName: string;
+  // Module taken verbatim from an l4 v2 module-scoped folder (l4/<module>/operations/…); empty for the
+  // legacy flat l4/operations/ layout, where the module is inferred from the operation's entities.
+  folderModule: string;
+  fileInfo: FileInfo;
+  exportName: string;
+  data: Record<string, unknown>;
+}
+
+interface CfeWorkflowDef {
+  workflowId: string;
+  pageId: string;
+  title: string;
+  actors: string[];
+  operationIds: string[];
+  entities: string[];
+  rulesApplied: string[];
+  storySteps: string[];
+  todoStatus: string;
+  inlineStatusFrontend: string;
+  capabilities: Record<string, unknown>[];
+  moduleName: string;
+  folderModule: string;
+  fileInfo: FileInfo;
+  exportName: string;
+  data: Record<string, unknown>;
+}
+
+// L4 v2 workspace. Read either from a standalone l4/<module>/workspaces/<id>.defs.ts (preferred) or,
+// as a fallback, nested inside a legacy l4/<module>/journeys/<module>Journeys.defs.ts. Workspaces are
+// the unit of page grouping: one page per workspace (an actor's coherent area). The v2 workspace also
+// carries bffCalls[] (the projected wire contracts of the page) and sections[].organisms[] (roles that
+// reference a bffId); both are empty when reading a legacy operationIds-only workspace.
+interface CfeJourneyWorkspace {
+  workspaceId: string;
+  title: string;
+  actor: string;             // first actor (back-compat)
+  actors: string[];          // v2: full actor list
+  kind: string;              // workflow | operation | entityManagement | landing | dashboard | ...
+  entity: string;
+  workflowId?: string;
+  operationIds: string[];
+  purpose: string;
+  categoryRef: string;       // l4 presentation.categoryRef — picks the experience skill of page21/page31
+  experienceRef: string;     // l4 presentation.experienceRef — set once the user picks a favourite
+  bffCalls: CfeBffCall[];    // v2; [] for legacy
+  sections: CfeWorkspaceSection[]; // v2; [] for legacy
+}
+
+// A landing entry (l4/<module>/siteMap.defs.ts or navigation.defs.ts): the workspace an actor starts on.
+interface CfeLanding { actorId: string; workspaceId: string; reason: string }
+
+interface CfeJourneyMap {
+  moduleName: string;
+  workspaces: CfeJourneyWorkspace[];
+  navigationEdges: Record<string, unknown>[];
+  landings: CfeLanding[];
+}
+
+// L4 v2 actor (l4/<module>/actors.defs.ts, singular). Menu/authz derive from this per module.
+interface CfeActorDef { actorId: string; title: string; description: string; roleScope: string }
+
+export interface CfePagePlan {
+  pageId: string;
+  pageName: string;
+  moduleName: string;
+  sourceKind: 'workflow' | 'operation';
+  ownerIds: string[];
+  actorIds: string[];
+  entityIds: string[];
+  operationIds: string[];
+  rulesApplied: string[];
+  capabilities: string[];
+  origin: Record<string, unknown>;
+}
+
+interface CfeModuleInfo {
+  moduleName: string;
+  visualStyle?: unknown;
+  entityIds: Set<string>;
+  i18nLocales: string[];
+  i18nDefaultLocale: string;
+  // Region-preserving twins of the two above (see readCreateContext): 'pt-BR' stays 'pt-br'.
+  i18nLocalesRaw: string[];
+  i18nDefaultLocaleRaw: string;
+  /** Raw language tokens that did not resolve to a locale key — last-resort 'en' must not be silent. */
+  i18nUnresolvedDeclaration: string;
+}
+
+export interface CfeCreateContext {
+  project: number;
+  moduleNames: string[];
+  moduleVisualStyle: Record<string, unknown>;
+  moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[]; runtimeLocales: string[] }>;
+  entities: Map<string, CfeEntityDef>;
+  operations: Map<string, CfeOperationDef>;
+  workflows: Map<string, CfeWorkflowDef>;
+  journeys: CfeJourneyMap[];
+  actorsByModule: Record<string, CfeActorDef[]>;
+  pages: CfePagePlan[];
+  warnings: string[];
+  /** E8 model.menu per module — places only. Empty when the L4 has no workspace-model. */
+  menuByModule?: Record<string, Array<{ workspaceId: string; label: string }>>;
+  /** `variants:all` on @@changeFrontend restores the three exploration genomes. */
+  uxVariants?: UxVariantsMode;
+}
+
+export interface CfePreparedPage {
+  project: number;
+  page: CfePagePlan;
+  operations: CfeOperationDef[];
+  commands: Record<string, unknown>[];
+  // L4 v2 workspace backing this page (bffCalls[]/sections[]); undefined for legacy operationIds pages.
+  workspace?: CfeJourneyWorkspace;
+  // F3: per-bffCall l2 contract byte-copies (l4 -> l2). Empty for legacy pages (contract via LLM skill).
+  contractCopies: CfeContractCopy[];
+  navigationRefs: unknown[];
+  baseDefinition: Record<string, unknown>;
+  visualStyle: unknown;
+  /** l4 presentation (categoryRef/experienceRef); null when the workspace was never classified. */
+  presentation: { categoryRef: string; experienceRef?: string } | null;
+  i18nMeta: { defaultLocale: string; activeLocales: string[] };
+  entityFields: Record<string, string[]>;
+  /**
+   * fieldId -> the l4 ontology `title` of that field, already in the module's language. It is what a
+   * column label falls back to: `humanizeId(fieldId)` produced ENGLISH text ('Name', 'Address') in a
+   * Portuguese catalogue, and the carryover per key then perpetuated it through every regenerate.
+   * Flat by fieldId because a layout column names a field, not an entity; the first title wins.
+   */
+  fieldTitles: Record<string, string>;
+  /**
+   * Entities of this page whose l4 declares `storage.target: 'mdm'` — shared master data. A record other
+   * modules reference is not deletable (ajustesMDM §3b: deactivate, never delete), and the page tests
+   * have to expect that instead of a successful delete.
+   */
+  mdmEntityIds: string[];
+  /**
+   * Entities of this page whose l4 declares `storage.target: 'external'` — an identity that lives
+   * OUTSIDE this module (a platform user). Pre-MDM-rebuild the backend still keeps a local copy of those
+   * people, so anything reading them fails against the REAL platform user a production run executes as.
+   * That failure is owned by the MDM wave, and the cases say so instead of counting as new breakage.
+   */
+  externalEntityIds: string[];
+  variantPlan: CfeLayoutVariantPlan[];
+  userJourney: Record<string, unknown>;
+}
+
+export interface CfeLayoutVariantPlan {
+  genome: string;
+  templateId: string;
+  template: Record<string, unknown>;
+  /** Experience skill (.md) appended to this slot's pipeline; absent = bespoke slot. */
+  experienceSkill?: string;
+}
+
+// F3: an l4->l2 contract copy. `tsRef` is the l2 contract path shared/pages import; `source` is the
+// byte-copied l4 body with an l2 header; `contractName` = `<workspaceId>.<bffId>`.
+export interface CfeContractCopy {
+  contractName: string;
+  fileInfo: FileInfo;
+  tsRef: string;
+  source: string;
+}
+
+interface CfeLayoutAction {
+  id: string;
+  action: string;
+  labelKey: string;
+  order: number;
+  displayHint?: string;
+  actionKey?: string;
+}
+
+interface CfeLayoutField {
+  id: string;
+  field: string;
+  labelKey: string;
+  order: number;
+  required?: boolean;
+  inputType?: string;
+  format?: string;
+  source?: string;
+  stateKey?: string;
+}
+
+interface CfeLayoutIntent {
+  id: string;
+  intent: string;
+  order: number;
+  titleKey?: string;
+  source?: string;
+  binding?: string;
+  action?: string;
+  submitAction?: string;
+  emptyKey?: string;
+  displayHint?: string;
+  stateKey?: string;
+  fields: CfeLayoutField[];
+  columns: CfeLayoutField[];
+  filters: CfeLayoutField[];
+  toolbar: CfeLayoutAction[];
+  rowActions: CfeLayoutAction[];
+  actions: CfeLayoutAction[];
+}
+
+interface CfeLayoutOrganism {
+  id: string;
+  type: string;
+  organismName: string;
+  titleKey: string;
+  displayHint?: string;
+  purpose: string;
+  userActions: string[];
+  requiredEntities: string[];
+  readsFields: string[];
+  writesFields: string[];
+  rulesApplied: string[];
+  order: number;
+  intentions: CfeLayoutIntent[];
+}
+
+interface CfeLayoutSection {
+  id: string;
+  type: 'section' | 'sectionTab';
+  sectionName: string;
+  titleKey: string;
+  mode: string;
+  order: number;
+  organisms: CfeLayoutOrganism[];
+}
+
+export interface CfePageLayoutDefinition {
+  pageId: string;
+  layoutId: string;
+  sections: CfeLayoutSection[];
+  i18n: Record<string, string>;
+  dataBindings: {
+    id: string; source: string; entity?: string; command?: string; description?: string;
+    stateKey?: string; inputStateKeys?: string[];
+    kind?: 'query' | 'command';
+    /** Every input with its l4 `source` — what the render (and the gate) needs to decide if it may be a
+     *  form control. Added by enrichLayoutWithStateRefs; the reduced page defs carries it. */
+    inputs?: { name: string; stateKey: string; source: string; required: boolean; presentation?: string }[];
+  }[];
+}
+
+// LLM-facing composition (the tool output shape). Expanded into a full CfePageLayoutDefinition by
+// expandLayoutComposition before any downstream repair/validate/reconcile/render runs.
+interface CfeCompositionOrganism {
+  id: string;
+  organismName: string;
+  purpose: string;
+  order: number;
+  displayHint?: string;
+  uses: string[];
+  notes?: string;
+}
+
+interface CfeCompositionSection {
+  id: string;
+  sectionName?: string;
+  order: number;
+  organisms: CfeCompositionOrganism[];
+}
+
+export interface CfeLayoutComposition {
+  pageId: string;
+  layoutId: string;
+  sections: CfeCompositionSection[];
+}
+
+interface CfeBusinessContextRef {
+  operationId: string;
+  inputId?: string;
+  contextKey: string;
+  originRef: string;
+  targetRef: string;
+  required: boolean;
+  description: string;
+}
+
+export interface CfePageLayoutResult { pageLayout: CfeLayoutComposition; objective?: unknown }
+export type CfePageLayoutOutput = PlannerOutput<CfePageLayoutResult>;
+
+const CFE_LAYOUT_TOOL_NAME = 'submitCfePageLayout';
+
+const strSchema = { type: 'string' } as const;
+const intSchema = { type: 'integer' } as const;
+const strArraySchema = { type: 'array', items: strSchema } as const;
+
+// LLM-facing tool contract: a SEMANTIC COMPOSITION, not the full render tree. The model decides which
+// organisms exist, their order, a composition displayHint, and which bffCall ids each surfaces (`uses`).
+// The concrete intentions/fields/columns/actions are NOT authored by the model — the agent expands each
+// organism deterministically from L4 (expandLayoutComposition), reusing the same builders as the
+// deterministic seed. This keeps the contract tiny (far less drift) and lets the model spend its budget
+// on composition + beautiful presentation instead of filling a rigid field tree.
+const compositionOrganismSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'organismName', 'purpose', 'order'],
+  properties: {
+    id: strSchema,
+    organismName: strSchema,
+    // What this organism shows/does and why — the semantic core the model is good at.
+    purpose: strSchema,
+    order: intSchema,
+    // Composition hint the render skill honors (master-detail, card-board, summary-first, …).
+    displayHint: strSchema,
+    // bffCall/command ids (from shared.actions) this organism surfaces. The agent turns each id into the
+    // concrete fields/columns/actions from L4 — the model must NOT enumerate them.
+    uses: strArraySchema,
+    // Optional free-text guidance for the render (grouping, emphasis) — advisory only.
+    notes: strSchema,
+  },
+} as const;
+
+const layoutSectionSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['id', 'order', 'organisms'],
+  properties: {
+    id: strSchema,
+    sectionName: strSchema,
+    order: intSchema,
+    organisms: { type: 'array', minItems: 1, items: compositionOrganismSchema },
+  },
+} as const;
+
+const pageLayoutObjectSchema = {
+  type: 'object',
+  additionalProperties: false,
+  // i18n and dataBindings are NOT part of the tool contract: i18n is a dynamic key->label map (backfilled
+  // by repairMissingLayoutI18n) and dataBindings are derived from L4 commands during expansion. The model
+  // authors only the composition; keeping the tool tiny + closed minimizes the drift surface.
+  required: ['pageId', 'layoutId', 'sections'],
+  properties: {
+    pageId: strSchema,
+    layoutId: strSchema,
+    sections: { type: 'array', minItems: 1, items: layoutSectionSchema },
+  },
+} as const;
+
+// page21 goal-first objective. All fields are flat strings / string lists (the model's strength, minimal
+// drift) — never a deep tree. Optional as a whole (page11 omits it). The render skill lays the page out
+// around it when present. Kept lint-clean/closed so the tool stays strict-ready.
+const pageObjectiveSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: [],
+  properties: {
+    actor: strSchema,
+    jobToBeDone: strSchema,
+    primaryDecision: strSchema,
+    decisiveInfo: strArraySchema,
+    usageFrequency: strSchema,
+    informationHierarchy: strArraySchema,
+    successCriteria: strSchema,
+    antiPatterns: strArraySchema,
+    criticalActions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['action'],
+        properties: { action: strSchema, presentation: strSchema },
+      },
+    },
+  },
+} as const;
+
+export const cfePageLayoutResultSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['pageLayout'],
+  properties: {
+    pageLayout: pageLayoutObjectSchema,
+    // Optional; only the goal-first genome (page21) emits it. Absent on the page11 baseline.
+    objective: pageObjectiveSchema,
+  },
+} as const;
+
+export const cfePageLayoutToolSchema = createRelaxedCfePageLayoutToolSchema();
+export const cfePageLayoutToolName = CFE_LAYOUT_TOOL_NAME;
+
+function relaxPageLayoutSchema(pageLayoutSchema: any): void {
+  if (!pageLayoutSchema || typeof pageLayoutSchema !== 'object') return;
+  // The composition schema is already minimal; this only reasserts the intended required sets so a bump
+  // of the base schema never silently widens what the model MUST provide.
+  pageLayoutSchema.required = ['pageId', 'layoutId', 'sections'];
+  const sectionSchema = pageLayoutSchema.properties?.sections?.items;
+  if (sectionSchema && typeof sectionSchema === 'object') {
+    sectionSchema.required = ['id', 'order', 'organisms'];
+    const organismSchema = sectionSchema.properties?.organisms?.items;
+    if (organismSchema && typeof organismSchema === 'object') {
+      organismSchema.required = ['id', 'organismName', 'purpose', 'order'];
+    }
+  }
+}
+
+function createRelaxedCfePageLayoutToolSchema(): mls.msg.LLMTool {
+  const resultSchema = JSON.parse(JSON.stringify(cfePageLayoutResultSchema)) as Record<string, any>;
+  relaxPageLayoutSchema(resultSchema.properties?.pageLayout);
+  const tool = createPlannerToolSchema(CFE_LAYOUT_TOOL_NAME, 'Submit the semantic layout for one frontend page variant.', resultSchema) as mls.msg.LLMTool;
+  const parameters = (tool as any).function?.parameters;
+  if (parameters && Array.isArray(parameters.required)) parameters.required = ['status', 'result'];
+  return tool;
+}
+
+export async function readCreateContext(): Promise<CfeCreateContext> {
+  const project = mls.actualProject || 0;
+  const modules = new Map<string, CfeModuleInfo>();
+  const entityToModule = new Map<string, string>();
+  const entities = new Map<string, CfeEntityDef>();
+  const ontologyLabelWarnings: string[] = [];
+  const operations = new Map<string, CfeOperationDef>();
+  const workflows = new Map<string, CfeWorkflowDef>();
+  const journeys = new Map<string, CfeJourneyMap>();
+  // L4 v2 (leitores tolerantes): standalone workspaces/navigation/siteMap/actors read from their own
+  // files, keyed by module; merged with the legacy journeys-nested workspaces below (standalone wins).
+  const standaloneWorkspaces = new Map<string, CfeJourneyWorkspace[]>();
+  const navByModule = new Map<string, { edges: Record<string, unknown>[]; landings: CfeLanding[] }>();
+  const siteMapByModule = new Map<string, { edges: Record<string, unknown>[]; landings: CfeLanding[] }>();
+  const actorsByModule: Record<string, CfeActorDef[]> = {};
+  const menuByModule: Record<string, Array<{ workspaceId: string; label: string }>> = {};
+
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 4 || file.status === 'deleted') continue;
+    const folder = String(file.folder || '');
+    const shortName = String(file.shortName || '');
+    const extension = String(file.extension || '');
+    // l4 holds ONLY .defs.ts (it is not a compilable layer). Never read a .ts/.d.ts from l4 — the l2
+    // contract .ts is generated deterministically from the bffCall in the workspace defs (F3).
+    if (extension !== '.defs.ts') continue;
+    // Pages still come from workspaces/ + siteMap. The workspace-model is only read for `menu`
+    // (E8 places), so the shell navigation is model.menu ∩ materialized pages.
+    if (shortName === 'workspace-model') {
+      const parsedModel = parseDefsSource(String(await file.getContent()));
+      if (parsedModel && Array.isArray((parsedModel.data as Record<string, unknown>).menu)) {
+        const moduleName = folder && !folder.includes('/') ? folder : String((parsedModel.data as Record<string, unknown>).moduleName || '');
+        if (moduleName) {
+          menuByModule[moduleName] = ((parsedModel.data as Record<string, unknown>).menu as Record<string, unknown>[])
+            .map(entry => ({ workspaceId: readString(entry?.workspaceId), label: readString(entry?.label) }))
+            .filter(entry => entry.workspaceId);
+        }
+      }
+      continue;
+    }
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!parsed) continue;
+    const fileInfo: FileInfo = { project: file.project, level: file.level, folder, shortName, extension };
+    // Module-scoped folder path (l4/<module>/operations/…) -> <module>; flat legacy layout -> '' (infer
+    // from entities). Files that live directly under l4/<module>/ (module/actors/navigation/siteMap) have
+    // no slash: their module IS the folder.
+    const folderModule = folder.includes('/') ? folder.split('/')[0] : '';
+    const topModule = folder && !folder.includes('/') ? folder : '';
+
+    if (folder === 'workflows' || folder.endsWith('/workflows')) {
+      // ns4 workflows are entity lifecycles (states/transitions) with no operations and no page: they
+      // are lifecycle metadata, never an owner of frontend work.
+      const workflow = isEntityLifecycle(parsed.data) ? null : workflowFromData(parsed.data, fileInfo, parsed.exportName, folderModule);
+      if (workflow) workflows.set(workflow.workflowId, workflow);
+    } else if (folder === 'operations' || folder.endsWith('/operations')) {
+      const operation = operationFromData(parsed.data, fileInfo, parsed.exportName, folderModule);
+      if (operation) operations.set(operation.operationId, operation);
+    } else if (folder.endsWith('/workspaces')) {
+      const workspace = workspaceFromData(parsed.data);
+      if (workspace && folderModule) {
+        if (folderModule) ensureModule(modules, folderModule);
+        if (!standaloneWorkspaces.has(folderModule)) standaloneWorkspaces.set(folderModule, []);
+        standaloneWorkspaces.get(folderModule)!.push(workspace);
+      }
+    } else if (shortName === 'siteMap' && topModule) {
+      ensureModule(modules, topModule);
+      siteMapByModule.set(topModule, { edges: readRecordArray(parsed.data.navigationEdges), landings: landingsFromData(parsed.data) });
+    } else if (shortName === 'navigation' && topModule) {
+      ensureModule(modules, topModule);
+      navByModule.set(topModule, { edges: readRecordArray(parsed.data.navigationEdges), landings: landingsFromData(parsed.data) });
+    } else if (shortName === 'actors' && topModule) {
+      ensureModule(modules, topModule);
+      actorsByModule[topModule] = actorsFromData(parsed.data);
+    } else if (shortName === 'access-matrix' || folder.endsWith('/access')) {
+      // ns4: the audience of the module is the access matrix, whose profileIds are the same ids the
+      // workspaces and operations already name as actors.
+      const moduleName = readString(parsed.data.moduleName) || folderModule || topModule;
+      if (moduleName) {
+        ensureModule(modules, moduleName);
+        actorsByModule[moduleName] = profilesFromData(parsed.data);
+      }
+    } else if (shortName === 'module' && topModule) {
+      const moduleData = isRecord(parsed.data.module) ? parsed.data.module : parsed.data;
+      const designContext = isRecord(parsed.data.designContext) ? parsed.data.designContext : {};
+      // ns4 also writes the conversation language at presentation.userLanguage (not only designContext).
+      const presentation = isRecord(parsed.data.presentation) ? parsed.data.presentation : {};
+      const moduleName = readString(moduleData.moduleName) || folder;
+      const module = ensureModule(modules, moduleName);
+      module.visualStyle = moduleData.visualStyle;
+      module.i18nLocales = languageKeys(readStringArray(moduleData.languages));
+      // REGION-PRESERVING list (lowercase, '_' -> '-'), the same normalization the runtime applies to the
+      // configured language list (mls-102033 languageRuntime). i18nLocales collapses 'pt-BR' to 'pt',
+      // which makes 'en' + 'en-AU' indistinguishable — a module CAN declare both (a regional variant next
+      // to the plain language), so the runtime config and the translation handoff must use THIS list.
+      module.i18nLocalesRaw = runtimeLocaleKeys(readStringArray(moduleData.languages));
+      // ns/ns3 recorded the user language in designContext; ns4 declares the product languages and
+      // the default in `localization`. Reading only designContext silently defaulted a module to its
+      // first declared language, which is not the one the product was written in.
+      const localization = isRecord(parsed.data.localization) ? parsed.data.localization : isRecord(moduleData.localization) ? moduleData.localization : {};
+      const declaredDefault = readString(localization.defaultLanguage)
+        || readString(designContext.userLanguage)
+        || readString(presentation.userLanguage);
+      if (!module.i18nLocales.length) {
+        module.i18nLocales = languageKeys(readStringArray(localization.productLanguages));
+        module.i18nLocalesRaw = runtimeLocaleKeys(readStringArray(localization.productLanguages));
+      }
+      module.i18nDefaultLocale = languageKey(declaredDefault) || module.i18nLocales[0] || '';
+      module.i18nDefaultLocaleRaw = runtimeLocaleKey(readString(localization.defaultLocale) || declaredDefault) || module.i18nLocalesRaw[0] || '';
+      const rawDeclared = unique([
+        readString(localization.defaultLanguage),
+        readString(designContext.userLanguage),
+        readString(presentation.userLanguage),
+        ...readStringArray(localization.productLanguages),
+        ...readStringArray(moduleData.languages),
+      ]);
+      if (!module.i18nDefaultLocale && !module.i18nLocales.length && rawDeclared.length) {
+        module.i18nUnresolvedDeclaration = rawDeclared.join(', ');
+      }
+    } else if (folder.endsWith('/ontology')) {
+      const moduleName = folder.split('/')[0];
+      const entity = entityFromData(parsed.data, shortName);
+      if (moduleName && entity) {
+        ensureModule(modules, moduleName).entityIds.add(entity.entityId);
+        entityToModule.set(entity.entityId, moduleName);
+        entities.set(entity.entityId, entity);
+        ontologyLabelWarnings.push(...enumLabelFallbackWarnings(entity));
+      }
+    } else if (folder.endsWith('/journeys')) {
+      // ns4 journeys are business artifacts ({journeyId, business, realization}), not the map of
+      // workspaces this agent reads: its map comes entirely from workspaces/ + siteMap.
+      const journey = readString(parsed.data.journeyId) ? null : journeyFromData(parsed.data, folder.split('/')[0]);
+      if (journey) journeys.set(journey.moduleName, journey);
+    }
+  }
+
+  // Standalone workspaces (v2) supersede the legacy journeys-nested workspaces per module; navigation
+  // edges/landings come from siteMap (preferred) or navigation.defs.ts.
+  for (const [moduleName, workspaces] of standaloneWorkspaces) {
+    const nav = siteMapByModule.get(moduleName) || navByModule.get(moduleName) || { edges: [], landings: [] };
+    journeys.set(moduleName, { moduleName, workspaces, navigationEdges: nav.edges, landings: nav.landings });
+  }
+  // Modules that only ship siteMap/navigation (no standalone workspaces) still get their landings/edges.
+  for (const [moduleName, nav] of [...siteMapByModule, ...navByModule]) {
+    const existing = journeys.get(moduleName);
+    if (existing && existing.landings.length === 0 && existing.navigationEdges.length === 0) {
+      journeys.set(moduleName, { ...existing, navigationEdges: nav.edges, landings: nav.landings });
+    }
+  }
+
+  const moduleNames = Array.from(modules.keys()).sort();
+  const moduleFallback = moduleNames.length === 1 ? moduleNames[0] : 'unknown';
+  const moduleVisualStyle: Record<string, unknown> = {};
+  const moduleI18n: Record<string, { defaultLocale: string; activeLocales: string[]; runtimeLocales: string[] }> = {};
+  const i18nWarnings: string[] = [];
+  for (const module of modules.values()) {
+    moduleVisualStyle[module.moduleName] = module.visualStyle || {};
+    if (module.i18nUnresolvedDeclaration) {
+      i18nWarnings.push(`module ${module.moduleName}: localization declared ${module.i18nUnresolvedDeclaration} but none resolved to a locale key; defaulting i18n to 'en'`);
+    }
+    const defaultLocale = module.i18nDefaultLocale || module.i18nLocales[0] || 'en';
+    // runtimeLocales keeps the region ('pt-br', 'en-au') and puts the DEFAULT FIRST — the runtime falls
+    // back to languages[0] when document.lang matches nothing (mls-102033 getRuntimeLanguage), so the
+    // order is load-bearing, not cosmetic. This is the list that reaches l5/config.json.
+    const defaultRuntimeLocale = module.i18nDefaultLocaleRaw || module.i18nLocalesRaw[0] || defaultLocale;
+    moduleI18n[module.moduleName] = {
+      defaultLocale,
+      activeLocales: unique([defaultLocale, ...module.i18nLocales]),
+      runtimeLocales: unique([defaultRuntimeLocale, ...module.i18nLocalesRaw]),
+    };
+  }
+
+  // L4 v2 modules the folder path directly; the legacy flat layout infers from the owner's entities.
+  for (const operation of operations.values()) operation.moduleName = operation.folderModule || inferModule(operationEntities(operation), entityToModule, moduleFallback);
+  for (const workflow of workflows.values()) workflow.moduleName = workflow.folderModule || inferModule(workflow.entities, entityToModule, moduleFallback);
+
+  // Generation status is owned by l5/{module}/todoFrontend.defs.ts; the l4 owner defs are read-only
+  // for this agent. Merge the todo status into each owner and fail loudly on plan/disk divergence.
+  // Scope the todo to modules that exist in l4 so an orphaned module's stale l5 never blocks the run.
+  const todoState = await readFrontendTodoState(project, new Set(moduleNames));
+  const warnings: string[] = [...todoState.warnings, ...ontologyLabelWarnings, ...i18nWarnings];
+  // Every key l4 offers, by owner type. The todo is reconciled ONLY against the types it declares:
+  // ns4 tracks workspace+contract and never mentions an operation, ns/ns3 does the opposite, and
+  // demanding both would make each dialect report the other's owners as missing.
+  const l4Keys: Record<CfeTodoOwnerType, Set<string>> = {
+    operation: new Set(Array.from(operations.values()).map(op => `operation:${op.operationId}`)),
+    workflow: new Set(Array.from(workflows.values()).map(wf => `workflow:${wf.workflowId}`)),
+    workspace: new Set(),
+    contract: new Set(),
+  };
+  for (const workspaces of standaloneWorkspaces.values()) {
+    for (const workspace of workspaces) {
+      l4Keys.workspace.add(`workspace:${workspace.workspaceId}`);
+      for (const call of workspace.bffCalls) if (call.route) l4Keys.contract.add(`contract:${call.route}`);
+    }
+  }
+  const ownerKeys = new Set<string>([...l4Keys.operation, ...l4Keys.workflow]);
+  if (ownerKeys.size > 0 && todoState.files === 0) {
+    throw new Error('l5/{module}/todoFrontend.defs.ts not found; frontend generation status must come from todoFrontend, not inline l4 statusFrontend.');
+  }
+  // Per MODULE: a project can hold one module written by ns4 (workspace owners) next to one written
+  // by ns/ns3 (operation owners), and a project-wide answer would make each one read the other's rule.
+  const declaredByModule = new Map<string, Set<CfeTodoOwnerType>>();
+  for (const owner of allCfeTodoOwners(todoState)) {
+    if (!declaredByModule.has(owner.moduleName)) declaredByModule.set(owner.moduleName, new Set());
+    declaredByModule.get(owner.moduleName)!.add(owner.ownerType);
+  }
+  const declaresType = (moduleName: string, type: CfeTodoOwnerType): boolean =>
+    !!declaredByModule.get(moduleName)?.has(type);
+  const missingTodo: string[] = [];
+  for (const operation of operations.values()) {
+    const todoOwner = lookupCfeTodoOwner(todoState, operation.moduleName, `operation:${operation.operationId}`);
+    if (!todoOwner) { if (declaresType(operation.moduleName, 'operation')) missingTodo.push(`operation:${operation.operationId}`); continue; }
+    operation.todoStatus = todoOwner.status;
+    if (operation.inlineStatusFrontend && operation.inlineStatusFrontend !== todoOwner.status) {
+      warnings.push(`operation:${operation.operationId} inline statusFrontend=${operation.inlineStatusFrontend} ignored; todoFrontend=${todoOwner.status}`);
+    }
+  }
+  for (const workflow of workflows.values()) {
+    const todoOwner = lookupCfeTodoOwner(todoState, workflow.moduleName, `workflow:${workflow.workflowId}`);
+    if (!todoOwner) { if (declaresType(workflow.moduleName, 'workflow')) missingTodo.push(`workflow:${workflow.workflowId}`); continue; }
+    workflow.todoStatus = todoOwner.status;
+    if (workflow.inlineStatusFrontend && workflow.inlineStatusFrontend !== todoOwner.status) {
+      warnings.push(`workflow:${workflow.workflowId} inline statusFrontend=${workflow.inlineStatusFrontend} ignored; todoFrontend=${todoOwner.status}`);
+    }
+  }
+  for (const [moduleName, workspaces] of standaloneWorkspaces) {
+    for (const workspace of workspaces) {
+      if (declaresType(moduleName, 'workspace') && !lookupCfeTodoOwner(todoState, moduleName, `workspace:${workspace.workspaceId}`)) {
+        missingTodo.push(`workspace:${workspace.workspaceId}`);
+      }
+      if (!declaresType(moduleName, 'contract')) continue;
+      for (const call of workspace.bffCalls) {
+        if (call.route && !lookupCfeTodoOwner(todoState, moduleName, `contract:${call.route}`)) missingTodo.push(`contract:${call.route}`);
+      }
+    }
+  }
+  const extraTodo: string[] = [];
+  const extraSeen = new Set<string>();
+  for (const owner of allCfeTodoOwners(todoState)) {
+    const key = `${owner.ownerType}:${owner.ownerId}`;
+    if (extraSeen.has(key)) continue;
+    extraSeen.add(key);
+    if (!l4Keys[owner.ownerType].has(key)) extraTodo.push(key);
+  }
+  if (missingTodo.length || extraTodo.length || todoState.errors.length) {
+    throw new Error([
+      ...todoState.errors,
+      ...(missingTodo.length ? [`todoFrontend missing l4 owner(s): ${missingTodo.slice(0, 12).join(', ')}`] : []),
+      ...(extraTodo.length ? [`todoFrontend has owner(s) absent from l4: ${extraTodo.slice(0, 12).join(', ')}`] : []),
+    ].join('; '));
+  }
+
+  // Navigation edges are advisory in v1: recorded in trace, never blocking (decision improveL2Test §6.7).
+  const journeyList = Array.from(journeys.values());
+  for (const journey of journeyList) {
+    const edgeCount = Array.isArray(journey.navigationEdges) ? journey.navigationEdges.length : 0;
+    if (edgeCount === 0) warnings.push(`journey ${journey.moduleName}: no navigationEdges; navigation falls back to selectedEntity from inputs`);
+  }
+
+  // ns4 tracks the page itself: a workspace owner marked toCreate IS the pending page. A module with
+  // no workspace owners keeps deriving pendency from its pending operations (ns/ns3), so the two
+  // dialects can live in the same project without either reading the other's rule.
+  // Workspace ids repeat across modules: a toCreate in B must not enqueue the homonym of A.
+  const pendingWorkspaceIds = new Map<string, Set<string>>();
+  for (const owner of allCfeTodoOwners(todoState)) {
+    if (owner.ownerType !== 'workspace' || owner.status !== 'toCreate') continue;
+    const ids = pendingWorkspaceIds.get(owner.moduleName) ?? new Set<string>();
+    ids.add(owner.ownerId);
+    pendingWorkspaceIds.set(owner.moduleName, ids);
+  }
+  const pendingWorkspaces = {
+    modules: new Set([...declaredByModule].filter(([, types]) => types.has('workspace')).map(([moduleName]) => moduleName)),
+    ids: pendingWorkspaceIds,
+  };
+  return { project, moduleNames, moduleVisualStyle, moduleI18n, entities, operations, workflows, journeys: journeyList, actorsByModule, pages: buildPagePlans(workflows, operations, moduleFallback, journeyList, pendingWorkspaces), warnings, menuByModule, uxVariants: rememberedUxVariants() };
+}
+
+const CREATE_UX_VARIANTS_KEY = '__agentMaterializeL2UxVariants';
+
+export function rememberedUxVariants(): UxVariantsMode {
+  const value = sessionScope()[CREATE_UX_VARIANTS_KEY];
+  return value === 'all' ? 'all' : 'default';
+}
+
+export function rememberCreateUxVariants(mode: UxVariantsMode): void {
+  sessionScope()[CREATE_UX_VARIANTS_KEY] = mode;
+}
+
+export async function generatePageDefs(page: CfePagePlan): Promise<void> {
+  const prepared = await preparePageCreate(page);
+  await saveContractDefs(prepared);
+  await saveBaseSharedDefs(prepared);
+  const layout = await savePageLayoutDefs(prepared, deterministicLayoutFromBase(prepared));
+  await reconcileSharedDefs(prepared, [layout]);
+}
+
+export async function preparePageCreate(page: CfePagePlan, context?: CfeCreateContext): Promise<CfePreparedPage> {
+  const createContext = context || await readCreateContext();
+  const operations = page.operationIds.map(id => createContext.operations.get(id) || syntheticOperation(page, id, createContext.project));
+  // L4 v2: one command per bffCall (the wire contract of the page). Legacy: one command per operation.
+  const workspace = workspaceForPage(createContext, page);
+  const commands = workspace && workspace.bffCalls.length > 0
+    ? workspace.bffCalls.map(call => commandFromBffCall(call, workspace, page.moduleName, operations, createContext.entities))
+    : operations.map(operation => commandFromOperation(operation, createContext.entities));
+  recordTechnicalIdLookupGaps(page, commands);
+  const navigationRefs: unknown[] = [];
+  const baseDefinition = pageDefinition(page, operations, workspace?.purpose);
+  const visualStyle = createContext.moduleVisualStyle[page.moduleName];
+  const i18nMeta = createContext.moduleI18n[page.moduleName];
+  if (!i18nMeta) {
+    recordCreateWarning(`${page.pageId}: no module i18n metadata; defaulting catalogue to 'en'`);
+  }
+  const resolvedI18nMeta = i18nMeta || { defaultLocale: 'en', activeLocales: ['en'] };
+  const pageEntityIds = unique([...page.entityIds, ...operations.flatMap(operationEntities)]);
+  const entityFields = Object.fromEntries(
+    pageEntityIds.map(entityId => [
+      entityId,
+      (createContext.entities.get(entityId)?.fields || []).map(field => field.fieldId).filter(Boolean),
+    ]),
+  );
+  const fieldTitles: Record<string, string> = {};
+  for (const entityId of pageEntityIds) {
+    for (const field of createContext.entities.get(entityId)?.fields || []) {
+      if (field.fieldId && field.title && !fieldTitles[field.fieldId]) fieldTitles[field.fieldId] = field.title;
+    }
+  }
+  const mdmEntityIds = pageEntityIds.filter(entityId => createContext.entities.get(entityId)?.storageTarget === 'mdm');
+  const externalEntityIds = pageEntityIds.filter(entityId => createContext.entities.get(entityId)?.storageTarget === 'external');
+  const contractCopies = workspace && workspace.bffCalls.length > 0 ? buildContractCopies(createContext, page, workspace) : [];
+  const variantPlan = buildLayoutVariantPlan(createContext, page, operations, commands);
+  const userJourney = buildPageUserJourney(createContext, page, operations, commands);
+    // Machine-readable UX classification from l4 (T5). Travels into the page defs in place of the
+  // free-text visualStyle so a gallery/telemetry can label a slot without opening the skill .md.
+  const presentation = workspace && workspace.categoryRef
+    ? { categoryRef: workspace.categoryRef, ...(workspace.experienceRef ? { experienceRef: workspace.experienceRef } : {}) }
+    : null;
+  return { project: createContext.project, page, operations, commands, workspace, contractCopies, navigationRefs, baseDefinition, visualStyle, presentation, i18nMeta: resolvedI18nMeta, entityFields, fieldTitles, mdmEntityIds, externalEntityIds, variantPlan, userJourney };
+}
+
+// F3: GENERATE ONE l2 contract .ts per WORKSPACE from the workspace defs (l4 holds only .defs.ts; we never
+// read a .ts from l4). The single file holds every bffCall's Input/Output interfaces (Output is the
+// projected item shape for a list/paginated call) + its `<bffId>Route` const; types are resolved from the
+// referenced operations' inputs/outputShape. File name = `<workspaceId>.ts` (= the page id).
+function buildContractCopies(createContext: CfeCreateContext, page: CfePagePlan, workspace: CfeJourneyWorkspace): CfeContractCopy[] {
+  if (workspace.bffCalls.length === 0) return [];
+  const operationsById = createContext.operations;
+  const fileInfo: FileInfo = { project: createContext.project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: page.pageId, extension: '.ts' };
+  const tsRef = toDisplayRef(fileInfo);
+  const calls: CfeContractCall[] = workspace.bffCalls.map(call => ({
+    interfaceName: toPascalCase(call.bffId),
+    bffId: call.bffId,
+    kind: call.kind,
+    outputKind: call.output?.kind || 'object',
+    route: call.route,
+    input: call.input.map(field => ({
+      name: field.name,
+      type: contractInputTsType(field, operationsById, createContext.entities),
+      optional: !bffInputRequired(field, operationsById),
+    })),
+    output: (call.output?.fields || []).map(field => ({
+      name: field.name,
+      type: contractFieldTsType(field, 'output', operationsById, createContext.entities),
+    })),
+  }));
+  const source = buildWorkspaceContractSource({ l2Ref: tsRef, workspaceId: workspace.workspaceId, calls });
+  return [{ contractName: page.pageId, fileInfo, tsRef, source }];
+}
+
+// Resolve the TS type of a bffCall field. Nested array projections (a paginated envelope's `items`, or
+// any field carrying `item.fields`) become an inline object array `{ … }[]`; scalars use the field's own
+// `type` when present, else trace `from` = "<operationId>.<path>" back to the operation's inputs/outputShape.
+/** Wire type for a bffCall INPUT: l4 enum[] becomes a string-literal union, never a widened `string`. */
+function contractInputTsType(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string {
+  return contractFieldTsType(field, 'input', operationsById, entities);
+}
+
+function contractEnumUnionTs(values: string[]): string {
+  return values.map(value => `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`).join(' | ');
+}
+
+/** INPUT and OUTPUT: l4 enum[] / statusEnum become a string-literal union of the stored codes. */
+function contractFieldTsType(field: CfeBffCallField, direction: 'input' | 'output', operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string {
+  const enumValues = bffFieldEnumValues(field, operationsById, entities);
+  if (enumValues.length >= 2) return contractEnumUnionTs(enumValues);
+  return bffFieldTsType(field, direction, operationsById, entities);
+}
+
+export function bffFieldTsType(field: CfeBffCallField, direction: 'input' | 'output', operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string {
+  if (field.item && Array.isArray(field.item.fields) && field.item.fields.length > 0) {
+    const inner = field.item.fields.map(itemField => `${contractPropKey(itemField.name)}: ${contractFieldTsType(itemField, direction, operationsById, entities)}`).join('; ');
+    return `{ ${inner} }[]`;
+  }
+  if (field.type) {
+    const normalized = field.type.toLowerCase();
+    if (normalized === 'array') return 'unknown[]';
+    if (normalized === 'object' || normalized === 'json') return 'Record<string, unknown>';
+    return l4TypeToTs(field.type);
+  }
+  const dot = field.from.indexOf('.');
+  const operationId = dot < 0 ? '' : field.from.slice(0, dot);
+  const path = dot < 0 ? field.from : field.from.slice(dot + 1);
+  const operation = operationsById.get(operationId);
+  if (!operation) return 'string';
+  if (direction === 'input') {
+    const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === path);
+    if (!raw) return 'string';
+    const explicit = readString(raw.type);
+    if (explicit) return l4TypeToTs(explicit);
+    const resolved = resolveFieldRef(readString(raw.fieldRef), operation.entity, entities);
+    return resolved.field ? l4TypeToTs(resolved.field.type) : 'string';
+  }
+  const shape = readCanonicalOutputShape(operation);
+  if (!shape) return 'string';
+  if (path.startsWith('$items.')) {
+    const itemField = shape.fields.find(f => f.item)?.item?.fields.find(f => f.name === path.slice('$items.'.length));
+    return itemField ? l4TypeToTs(itemField.type) : 'string';
+  }
+  const topField = shape.fields.find(f => f.name === path);
+  return topField ? l4TypeToTs(topField.type) : 'string';
+}
+
+// The RAW l4 type of a bffCall input (date, datetime, money, integer…), before l4TypeToTs collapses it to
+// a TS type. The contract needs the TS type; the page-test generator needs the raw one to emit an ISO
+// literal for a date field that TS-wise is just `string`. Empty when it cannot be traced.
+function bffFieldL4Type(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string {
+  if (field.type) return field.type;
+  const dot = field.from.indexOf('.');
+  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
+  if (!operation) return '';
+  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
+  const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === inputId);
+  if (!raw) return '';
+  const explicit = readString(raw.type);
+  if (explicit) return explicit;
+  return resolveFieldRef(readString(raw.fieldRef), operation.entity, entities).field?.type || '';
+}
+
+// Enum'd bffCall field: INPUT traces `from` = "<operationId>.<inputId>" to the operation input's
+// fieldRef; OUTPUT traces the same `from` (often "<operationId>.$items.<field>") to the entity
+// field of that name. Falls back to the entity's statusEnum for a status-like field (l4 declares
+// the lifecycle values there, not on the field). Empty when the field is not an enum.
+function bffFieldEntityTarget(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): { field?: CfeFieldDef; entity?: CfeEntityDef } {
+  const dot = field.from.indexOf('.');
+  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
+  if (!operation) return {};
+  const path = dot < 0 ? field.from : field.from.slice(dot + 1);
+  const raw = (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === path);
+  if (raw) return resolveFieldRef(readString(raw.fieldRef), operation.entity, entities);
+  const entity = entities.get(operation.entity);
+  if (!entity) return {};
+  const fieldId = path.startsWith('$items.') ? path.slice('$items.'.length) : (path || field.name);
+  const def = entity.fields.find(item => item.fieldId === fieldId || item.fieldId === field.name);
+  return { field: def, entity };
+}
+
+/** Raw l4 operation input named by a bffCall field's `from` (`<operationId>.<inputId>`). */
+function bffOperationInput(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>): Record<string, unknown> | undefined {
+  const dot = field.from.indexOf('.');
+  const operation = dot < 0 ? undefined : operationsById.get(field.from.slice(0, dot));
+  if (!operation) return undefined;
+  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
+  return (Array.isArray(operation.data.inputs) ? operation.data.inputs : []).filter(isRecord).find(item => readString(item.inputId) === inputId);
+}
+
+export function bffFieldEnumValues(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): string[] {
+  // The operation input's own enumValues win: sortOrder is 'asc'|'desc' even when fieldRef is borrowed
+  // from Task.status. Falling through to the field enum types a direction control as a lifecycle.
+  const fromInput = readStringArray(bffOperationInput(field, operationsById)?.enumValues);
+  if (fromInput.length >= 2) return fromInput;
+  const resolved = bffFieldEntityTarget(field, operationsById, entities);
+  const declared = resolved.field?.enum;
+  if (Array.isArray(declared) && declared.length > 0) return declared.map(String).filter(Boolean);
+  const statusEnum = resolved.entity?.statusEnum;
+  if (/status$/i.test(field.name) && Array.isArray(statusEnum) && statusEnum.length > 0) return statusEnum.map(String).filter(Boolean);
+  return [];
+}
+
+export function bffFieldEnumLabels(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): CfeEnumLabel[] {
+  const raw = bffOperationInput(field, operationsById);
+  const fromInput = readEnumLabels(raw?.enumLabels);
+  if (fromInput.length) return fromInput;
+  const inputValues = readStringArray(raw?.enumValues);
+  const resolved = bffFieldEntityTarget(field, operationsById, entities);
+  const fieldLabels = fieldEnumLabels(resolved.field, resolved.entity);
+  if (inputValues.length >= 2) {
+    const codes = new Set(inputValues);
+    const matching = fieldLabels.filter(item => codes.has(item.code));
+    return matching.length === inputValues.length ? matching : [];
+  }
+  return fieldLabels;
+}
+
+function bffInputRequired(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>): boolean {
+  if (field.required === true) return true;
+  const raw = bffOperationInput(field, operationsById);
+  return raw ? raw.required === true : false;
+}
+
+// Map an l4 field type to a TS type for the generated contract (dates travel as ISO strings on the wire).
+function l4TypeToTs(type: string): string {
+  const frontend = toFrontendType(type);
+  return frontend === 'number' ? 'number' : frontend === 'boolean' ? 'boolean' : 'string';
+}
+
+// Property key for an inline object type: bare when a valid identifier, quoted otherwise.
+function contractPropKey(name: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name);
+}
+
+// Resolve the l4 v2 workspace backing a page. buildPagePlans records the workspaceId in page.origin
+// ('l4-journey' source); match it within the page's module.
+function workspaceForPage(createContext: CfeCreateContext, page: CfePagePlan): CfeJourneyWorkspace | undefined {
+  const workspaceId = readString((page.origin as Record<string, unknown>).workspaceId);
+  if (!workspaceId) return undefined;
+  for (const journey of createContext.journeys) {
+    if (journey.moduleName !== page.moduleName) continue;
+    const found = journey.workspaces.find(ws => ws.workspaceId === workspaceId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+// F3: one bffCall => one page command. Output/input shape and route come from the bffCall (the wire
+// contract of record); the precise TS types are the byte-copied l4 contract, so this only carries what
+// the deterministic pipeline consumes (shared state, page tests, layout context).
+function commandFromBffCall(bffCall: CfeBffCall, workspace: CfeJourneyWorkspace, moduleName: string, operations: CfeOperationDef[], entities: Map<string, CfeEntityDef>): Record<string, unknown> {
+  const operationInputs = new Map<string, CfeL4OperationInput[]>(
+    bffCall.uses.map(operationId => {
+      const operation = operations.find(op => op.operationId === operationId);
+      return [operationId, operation ? l4OperationInputs(operation.data) : []] as const;
+    }),
+  );
+  const shape = bffCallCommandShape(bffCall, operationInputs);
+  const primaryOperation = operations.find(op => op.operationId === bffCall.uses[0]);
+  const purpose = primaryOperation?.title || humanizeId(bffCall.bffId);
+  const accessPattern = isRecord(primaryOperation?.data) && isRecord(primaryOperation.data.accessPattern)
+    ? primaryOperation.data.accessPattern
+    : {};
+  const selection = readString(accessPattern.selection);
+  const accessKind = readString(accessPattern.kind);
+  const rulesApplied = unique(bffCall.uses.flatMap(id => operations.find(op => op.operationId === id)?.rulesApplied || []));
+  const contractKey = `${workspace.workspaceId}--${bffCall.bffId}`;
+  // The l4 shape of each input, keyed by name: the wire `type` (bffCallCommandShape only keeps
+  // name/required/presentation/source) and the declared enum when the field maps to an enum'd entity
+  // field. Consumed by the page-test generator to emit valid literals for domain fields.
+  const operationsById = new Map(operations.map(operation => [operation.operationId, operation]));
+  const inputByName = new Map(bffCall.input.map(field => [field.name, field]));
+  // The collection of a list/paginated output is the field that carries `item.fields` — the SAME
+  // traversal the contract uses (bffFieldTsType), so the name never diverges from the generated wire.
+  const collection = (bffCall.output?.fields || []).find(field => field.item && Array.isArray(field.item.fields) && field.item.fields.length > 0);
+  // Every field name this call can yield (top level + the collection's item fields) — exactly what the
+  // tests runner can harvest from a read, so the generator knows which ids the page actually produces.
+  const producedFields = unique([
+    ...(bffCall.output?.fields || []).map(field => field.name),
+    ...(collection?.item?.fields || []).map(field => field.name),
+  ].filter(Boolean));
+  return {
+    commandName: shape.commandName,
+    bffName: shape.routeKey,
+    routeKey: shape.routeKey,
+    purpose,
+    kind: shape.kind,
+    outputShape: shape.outputShape,
+    ...(shape.canonicalOutputShape ? { canonicalOutputShape: shape.canonicalOutputShape } : {}),
+    input: shape.input.map(field => {
+      const raw = inputByName.get(field.name);
+      const enumValues = raw ? bffFieldEnumValues(raw, operationsById, entities) : [];
+      const enumLabels = raw ? bffFieldEnumLabels(raw, operationsById, entities) : [];
+      const l4Type = raw ? bffFieldL4Type(raw, operationsById, entities) : '';
+      const fieldRef = bffInputFieldRef(raw, operationInputs);
+      const formatPattern = raw ? bffFieldFormatPattern(raw, operationsById, entities) : { format: '', pattern: '' };
+      return {
+        name: field.name,
+        type: raw ? bffFieldTsType(raw, 'input', operationsById, entities) : 'string',
+        required: field.required,
+        source: field.source,
+        presentation: field.presentation,
+        ...(l4Type ? { l4Type } : {}),
+        ...(fieldRef ? { fieldRef } : {}),
+        ...(formatPattern.format ? { format: formatPattern.format } : {}),
+        ...(formatPattern.pattern ? { pattern: formatPattern.pattern } : {}),
+        ...(enumValues.length > 0 ? { enum: enumValues } : {}),
+        ...(enumLabels.length > 0 ? { enumLabels } : {}),
+      };
+    }),
+    output: shape.output.map(outField => {
+      const raw = (bffCall.output?.fields || []).find(item => item.name === outField.name);
+      const enumValues = raw ? bffFieldEnumValues(raw, operationsById, entities) : [];
+      const enumLabels = raw ? bffFieldEnumLabels(raw, operationsById, entities) : [];
+      return {
+        ...outField,
+        ...(enumValues.length > 0 ? { enum: enumValues } : {}),
+        ...(enumLabels.length > 0 ? { enumLabels } : {}),
+      };
+    }),
+    ...(collection ? { collectionField: collection.name } : {}),
+    producedFields,
+    rulesApplied,
+    ...(selection ? { selection } : {}),
+    ...(accessKind ? { accessKind } : {}),
+    origin: {
+      source: 'l4/workspace-bffCall',
+      ownerId: `bffCall:${contractKey}`,
+      workspaceId: workspace.workspaceId,
+      bffId: bffCall.bffId,
+      route: bffCall.route,
+      uses: bffCall.uses,
+      defPath: `_${mls.actualProject || 0}_/l4/${moduleName}/contracts/${contractKey}.ts`,
+    },
+  };
+}
+
+function bffInputFieldRef(field: CfeBffCallField | undefined, operationInputs: Map<string, CfeL4OperationInput[]>): string {
+  if (!field?.from) return '';
+  const dot = field.from.indexOf('.');
+  const operationId = dot < 0 ? '' : field.from.slice(0, dot);
+  const inputId = dot < 0 ? field.from : field.from.slice(dot + 1);
+  return (operationInputs.get(operationId) || []).find(item => item.inputId === inputId)?.fieldRef || '';
+}
+
+/** Format/pattern constraints of the ontology field behind a bffCall input. Empty when none. */
+function bffFieldFormatPattern(field: CfeBffCallField, operationsById: Map<string, CfeOperationDef>, entities: Map<string, CfeEntityDef>): { format: string; pattern: string } {
+  const resolved = bffFieldEntityTarget(field, operationsById, entities);
+  return { format: resolved.field?.format || '', pattern: resolved.field?.pattern || '' };
+}
+
+export async function saveContractDefs(prepared: CfePreparedPage): Promise<void> {
+  await savePageCreateMarker(prepared, 'inProgress');
+  // F3 (v2): the contract of record is the l4 bffCall contract, byte-copied to l2 deterministically —
+  // no LLM, no readCanonicalOutputShape, no per-page contract .defs.ts. The shared imports these .ts.
+  if (prepared.contractCopies.length > 0) {
+    // Projection of the current l4: rewrite when the generated text differs (stor content, never mtime).
+    // Studio compile loads the model from stor on demand — hooks do not touch mls.editor.
+    for (const copy of prepared.contractCopies) await writeIfContentChanged(copy.fileInfo, copy.source);
+    return;
+  }
+  await saveFrontendDefs(contractFileInfo(prepared.project, prepared.page), 'definition', prepared.commands, contractPipeline(prepared.project, prepared.page));
+}
+
+export async function saveBaseSharedDefs(prepared: CfePreparedPage): Promise<void> {
+  const baseLayout = enrichLayoutWithStateRefs(prepared, deterministicLayoutFromBase(prepared));
+  const definition = sharedDefinition(prepared, baseLayout);
+  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared));
+}
+
+// ---- Item 2a: generated BFF page tests (page11) ----
+// Deterministic, declarative test cases (no LLM, no node:test) executed server-side by the monitor
+// Tests runner (wherever TESTS_ENABLED is on). Written next to the page11 render at
+// web/desktop/page11/<page>.test.ts.
+//
+// Param policy (the thing that decides whether a case can assert anything at all):
+//  - "<seedRef>" ONLY for an entity id THIS page reads — the runner resolves it from the harvested output
+//    of the page's read queries (including the rows of any array in the envelope).
+//  - every other required field gets a deterministic literal valid for its declared l4 type, so a
+//    validation case's ONLY wrong input is the omitted field. A "<seedRef>" on a domain field is
+//    unsolvable: the runner omits the param and the command dies in VALIDATION_ERROR before exercising
+//    anything, which also makes negative cases pass for the wrong reason.
+//  - a required entity id that NO read of this page produces is unsatisfiable by construction: the case
+//    is not emitted (a case that can never pass is permanent noise on the panel).
+// Coverage: 1 "ok" case per BFF routine + 1 validation case per required command field.
+// A successful delete also emits a sibling `.gone` read-by-id (`ok:false`/`NOT_FOUND`) so the
+// case proves the row vanished, not only that the call answered.
+// Compiled outside the defs->materialize pipeline (no .defs.ts), like seeds.ts.
+const PAGE_TESTS_VARIANT = 'page11';
+const SEED_REF_MARKER = '<seedRef>';
+const SEED_VALUE_MARKER = '<seedValue>';
+const SEED_SPARE_MARKER = '<seedSpare>';
+
+interface PageTestCase {
+  id: string;
+  routine: string;
+  params: Record<string, unknown>;
+  /**
+   * Ontology fieldRef (`Task.taskId`) of each seed-marker param, keyed by the input's wire name.
+   * The runner's pool is harvested under the output field name (usually the fieldId); matching by
+   * inputId alone misses `taskTaskId` vs `taskId`. Absent when no seed marker on the case.
+   */
+  paramFieldRefs?: Record<string, string>;
+  // itemsKey names the collection the wire actually returns (e.g. "menuItems"), so the runner checks the
+  // DECLARED key instead of assuming "items". Emitted only for shape 'paginated'.
+  expect: { ok: boolean; errorCode?: string; minItems?: number; shape?: 'object' | 'array' | 'paginated'; itemsKey?: string };
+  mutating?: boolean;
+  /** A failure already owned by a named wave of work; the runner counts it apart from `failed`. */
+  expectedFail?: string;
+}
+
+// A fixed instant for date/datetime literals: the same .test.ts must produce the same result on two runs,
+// so never Date.now() here.
+const TEST_LITERAL_ISO = '2026-01-01T00:00:00.000Z';
+const TEST_LITERAL_DATE = '2026-01-01';
+const TEST_LITERAL_TIME_START = '08:00';
+const TEST_LITERAL_TIME_END = '18:00';
+const TEST_LITERAL_EMAIL = 'a@b.co';
+const TEST_LITERAL_PHONE = '11999990000';
+const TEST_LITERAL_CEP = '01001000';
+const TEST_LITERAL_TEXT = 'teste';
+const TEST_LITERAL_NUMBER = 1;
+
+export async function savePageTestsFile(prepared: CfePreparedPage, runId?: string): Promise<void> {
+  // The tests runner keeps ONE <seedRef> pool per RUN and runs every page's reads before any command, so
+  // an id produced by ANOTHER page of the module resolves here too. Without this the emitted set was
+  // page-scoped and silently dropped satisfiable cases (102045: taskPlanningWorkspace has 4 bffCalls and
+  // only 1 got a case, because projectId is produced by dashboardWorkspace).
+  const cases = buildPageTestCases(prepared, runId ? moduleProducedByQuery(runId, prepared.page.moduleName) : undefined);
+  if (cases.length === 0) return;
+  const genome = prepared.variantPlan[0]?.genome || PAGE_TESTS_VARIANT;
+  const fileInfo: FileInfo = { project: prepared.project, level: 2, folder: `${prepared.page.moduleName}/web/desktop/${genome}`, shortName: prepared.page.pageId, extension: '.test.ts' };
+  await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases, genome, cases.untested));
+}
+
+/**
+ * The field names every QUERY bffCall of a MODULE yields, keyed by bffId — read straight from the l4
+ * workspaces of the run (no page preparation needed). Mirrors the tests runner's per-RUN pool: it runs
+ * all reads of the module before any command, so a page's <seedRef> can resolve from a sibling page.
+ * Keyed (not flattened) so a routine can still be excluded from its OWN harvest.
+ */
+function moduleProducedByQuery(runId: string, moduleName: string): Map<string, string[]> {
+  const produced = new Map<string, string[]>();
+  let context: CfeCreateContext;
+  try {
+    context = getCreateRun(runId).context;
+  } catch {
+    return produced; // no run cache (direct/unit call): fall back to page scope
+  }
+  for (const journey of context.journeys) {
+    if (moduleName && journey.moduleName !== moduleName) continue;
+    for (const workspace of journey.workspaces) {
+      for (const call of workspace.bffCalls) {
+        if (call.kind !== 'query') continue;
+        const collection = (call.output?.fields || []).find(field => field.item && Array.isArray(field.item.fields) && field.item.fields.length > 0);
+        produced.set(call.bffId, unique([
+          ...(call.output?.fields || []).map(field => field.name),
+          ...(collection?.item?.fields || []).map(field => field.name),
+        ].filter(Boolean)));
+      }
+    }
+  }
+  return produced;
+}
+
+export function buildPageTestCases(prepared: CfePreparedPage, moduleProduced?: Map<string, string[]>): PageTestCase[] & { untested?: { id: string; reason: string }[] } {
+  const cases: PageTestCase[] = [];
+  const untested: { id: string; reason: string }[] = [];
+  const deleteOkIds = new Set<string>();
+  // What each READ routine of the page yields — the runner harvests exactly these, so this is the set of
+  // ids a <seedRef> can resolve. From the l4 wire (producedFields), falling back to the declared output
+  // names for the legacy per-operation path. Commands are excluded: they mutate and the runner isolates
+  // them in a rolled-back transaction, so their output never feeds another case.
+  const producedByQuery = new Map<string, string[]>(
+    prepared.commands
+      .filter(command => readString(command.kind) === 'query')
+      .map(command => {
+        const produced = Array.isArray(command.producedFields) ? command.producedFields.map(String) : [];
+        return [readString(command.commandName), (produced.length > 0 ? produced : commandFields(command.output)).filter(Boolean)] as const;
+      }),
+  );
+  // Reads of OTHER pages of the same module count too: the runner's pool is per RUN and every read
+  // executes before any command. The page's own map wins on a key collision (same bffId).
+  const reachable = new Map<string, string[]>([...(moduleProduced ?? new Map<string, string[]>()), ...producedByQuery]);
+  // A routine can never supply its OWN required input (it would have to run before itself), so the
+  // harvest available to a routine is every OTHER read's output. Without this, a getById query whose
+  // output repeats its own key looks satisfiable and emits a case that can never resolve.
+  const harvestableFor = (commandName: string): Set<string> => {
+    const names = new Set<string>();
+    for (const [queryName, fields] of reachable) {
+      if (queryName === commandName) continue;
+      for (const field of fields) names.add(field);
+    }
+    return names;
+  };
+
+  // The wave that owns the failures of the entities that still live outside MDM. Named, not boolean, so
+  // the day it lands the marks are found by one grep — and a marked case that PASSES reports the mark as
+  // stale (the runner does that), which is how the wave gets proved in production.
+  const MDM_REBUILD = 'mdm-rebuild';
+  for (const command of prepared.commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    const knownIssue = touchesExternalIdentity(prepared, commandName) ? MDM_REBUILD : '';
+    const kind = readString(command.kind) === 'query' ? 'query' : 'command';
+    const routine = readString(command.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`;
+    const harvestable = harvestableFor(commandName);
+    const inputFields = commandFieldRecords(command.input);
+    const requiredFields = inputFields.filter(field => field.required);
+    // Boundary cases omit a required FORM field only (route/selection ids stay present, resolved from
+    // the seed pool) — matching the spec example: keep stockItemId, omit unit -> VALIDATION_ERROR.
+    // Runtime-resolved fields are excluded: testParams never sends them, so "omitting" one would produce
+    // params identical to the ok case — the backend would derive the value and succeed, failing a case
+    // that claims to expect VALIDATION_ERROR.
+    const requiredFormFields = requiredFields
+      .filter(field => (field.presentation ?? 'form') === 'form' && !isRuntimeResolvedInputSource(field.source))
+      .map(field => field.name);
+
+    // A CLIENT-supplied entity id the page never reads cannot be resolved by any runner (nothing harvests
+    // it) and no literal would match a real row: the case could never pass, so it is not emitted instead
+    // of sitting on the panel as permanent noise. Runtime-resolved ids (actorSession, businessContext,
+    // activeLifecycleInstance, systemDefault…) are NOT client-supplied — the backend derives them — so
+    // they never disqualify a case; testParams simply omits them.
+    const unresolvableIds = requiredFields
+      .filter(field => isEntityReferenceField(field) && !isHarvestableSeed(field, harvestable) && !isRuntimeResolvedInputSource(field.source))
+      .map(field => field.name);
+    if (unresolvableIds.length > 0 && kind !== 'query') {
+      recordCreateWarning(`${prepared.page.pageId}: skipped test case(s) for ${commandName} — required id(s) ${unresolvableIds.join(', ')} are not produced by any read routine of this page`);
+      continue;
+    }
+    if (unresolvableIds.length > 0 && kind === 'query') {
+      // Inspect-only pages (consultInstitutionalHome, petServiceOverviewView, planScheduleAvailability)
+      // have no sibling read on the same page. The runner harvests <seedRef> from every page of the
+      // run; omitting the case made those screens look untested. A seed that never resolves is
+      // inconclusive, not silent.
+      recordCreateWarning(`${prepared.page.pageId}: ${commandName} required id(s) ${unresolvableIds.join(', ')} will use <seedRef> harvested from other pages / seeds`);
+    }
+
+    // A .ok literal that must match a property of a harvested row (blockDate × dayOfWeek of the
+    // <seedRef>'d BusinessHours) cannot be invented: the generator does not see the seed. Same
+    // policy as an orphan <seedRef> — do not emit an impossible case.
+    if (kind !== 'query' && literalDependsOnUnknownSeed(requiredFields, prepared.entityFields)) {
+      recordCreateWarning(`${prepared.page.pageId}: skipped test case(s) for ${commandName} — a literal would have to match seeded data the generator does not know (date × dayOfWeek of the referenced entity)`);
+      continue;
+    }
+
+    if (kind === 'query') {
+      // shape asserts the wire shape the FE contract expects — the runner compares it against the
+      // ACTUAL backend response, catching object×array drift (Item 5) that minItems alone misses.
+      const outputShape = normalizeOutputShape(command.outputShape);
+      const shape: 'object' | 'array' | 'paginated' = outputShape === 'array' ? 'array' : outputShape === 'paginated' ? 'paginated' : 'object';
+      const isList = shape === 'array' || shape === 'paginated';
+      // The wire names its collection (e.g. { menuItems, total }); without itemsKey the runner assumes
+      // `items` and a correct backend looks broken.
+      const itemsKey = shape === 'paginated' ? readString(command.collectionField) : '';
+      const expect = isList
+        ? { ok: true, shape, minItems: 1, ...(itemsKey ? { itemsKey } : {}) }
+        : { ok: true, shape };
+      cases.push({ id: `${commandName}.ok`, routine, ...seedRefCaseFields(requiredFields, harvestable, { okCase: true }), expect, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+    } else if (deletesMasterData(prepared, command, commandName)) {
+      // An operation that MUST NOT succeed does not get a success case — the case becomes the PROOF that
+      // it fails, and fails readably. Master data is referenced by other records (and by other modules),
+      // so deleting it breaks those references: the policy is deactivate, never delete
+      //. The backend answers CONFLICT; a case expecting `ok` here
+      // reported a POLICY working correctly as a defect — 8 of the 22 failures of the production suite.
+      cases.push({
+        id: `${commandName}.notDeletable`,
+        routine,
+        ...seedRefCaseFields(requiredFields, harvestable),
+        expect: { ok: false, errorCode: 'CONFLICT' },
+        mutating: true,
+        ...(knownIssue ? { expectedFail: knownIssue } : {}),
+      });
+    } else if (isDeleteCommand(prepared, commandName)) {
+      // Required-form negatives first so they stay before the row is deleted. Then `.ok` and, when
+      // the page exposes a get-by-id, the sibling `.gone` (Phase B: ok:false, so it runs after the
+      // delete). The pair is moved to the end of the file so later create/update cases are not
+      // left holding a deleted id.
+      for (const field of requiredFormFields) {
+        cases.push({ id: `${commandName}.${field}.required`, routine, ...seedRefCaseFields(requiredFields.filter(other => other.name !== field), harvestable), expect: { ok: false, errorCode: 'VALIDATION_ERROR' }, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+      }
+      const okFields = deleteCaseFields(requiredFields, harvestable, prepared, commandName);
+      const okId = `${commandName}.ok`;
+      deleteOkIds.add(okId);
+      cases.push({ id: okId, routine, ...okFields, expect: { ok: true, shape: 'object' }, mutating: true, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+      const get = findGetByIdForDelete(prepared, commandName, okFields.params);
+      if (get) {
+        const getName = readString(get.commandName);
+        const getRoutine = readString(get.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${getName}`;
+        cases.push({
+          id: `${commandName}.gone`,
+          routine: getRoutine,
+          params: okFields.params,
+          ...(okFields.paramFieldRefs ? { paramFieldRefs: okFields.paramFieldRefs } : {}),
+          mutating: false,
+          expect: { ok: false, errorCode: 'NOT_FOUND' },
+          ...(knownIssue ? { expectedFail: knownIssue } : {}),
+        });
+      } else {
+        const reason = 'page has no get-by-id query to read the deleted row back';
+        untested.push({ id: `${commandName}.gone`, reason });
+        recordCreateWarning(`${prepared.page.pageId}: no ${commandName}.gone case — ${reason}`);
+      }
+    } else {
+      // Command "ok" case writes -> mutating (runner isolates it in a rolled-back transaction).
+      // A command returns its result object.
+      cases.push({ id: `${commandName}.ok`, routine, ...seedRefCaseFields(requiredFields, harvestable, { okCase: true, create: isCreateCommand(prepared, commandName) }), expect: { ok: true, shape: 'object' }, mutating: true, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+      for (const field of requiredFormFields) {
+        cases.push({ id: `${commandName}.${field}.required`, routine, ...seedRefCaseFields(requiredFields.filter(other => other.name !== field), harvestable), expect: { ok: false, errorCode: 'VALIDATION_ERROR' }, ...(knownIssue ? { expectedFail: knownIssue } : {}) });
+      }
+    }
+  }
+  return Object.assign(moveDeleteGonePairsLast(cases, deleteOkIds), { untested });
+}
+
+/**
+ * Does this command read or write an entity that still lives OUTSIDE this module's store?
+ *
+ * Those are the people the module duplicates in a local table until the MDM rebuild lands. A production
+ * run executes as a REAL platform user, which that local copy has never heard of, so the command dies in
+ * `PlatformUser not found: <real uuid>` — 4 of the 22 failures. Seeding the duplicated person to "fix" it
+ * would reinforce the very defect the rebuild removes, so the case is marked instead.
+ */
+function touchesExternalIdentity(prepared: CfePreparedPage, commandName: string): boolean {
+  // Tolerant reads: this is also called with hand-built prepared pages (tests) and with pages prepared
+  // before these classifications existed — an absent list means "nothing classified", never a crash.
+  if (!prepared.externalEntityIds?.length) return false;
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  if (!operation) return false;
+  return [operation.entity, ...operation.reads, ...operation.writes]
+    .filter(Boolean)
+    .some(entityId => prepared.externalEntityIds.includes(entityId));
+}
+
+/**
+ * Does this command delete a MASTER-DATA record? Then it cannot succeed, and its case is a negative one.
+ *
+ * Deliberately narrow: only a DELETE (by the operation's kind, falling back to the `cmdDelete…`
+ * convention when the command has no operation of its own) over an entity the l4 marks
+ * `storage.target: 'mdm'`. A module-local entity keeps its positive delete case — nothing references it
+ * across modules, so deleting it is legitimate and the test must keep proving it works.
+ */
+function isDeleteCommand(prepared: CfePreparedPage, commandName: string): boolean {
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  return operation ? /delete|remove/i.test(operation.kind) || /^cmdDelete/.test(commandName) : /^cmdDelete/.test(commandName);
+}
+
+function deletesMasterData(prepared: CfePreparedPage, command: Record<string, unknown>, commandName: string): boolean {
+  if (!prepared.mdmEntityIds?.length) return false;
+  if (!isDeleteCommand(prepared, commandName)) return false;
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  const entity = operation?.entity || readString(command.entity);
+  return !!entity && prepared.mdmEntityIds.includes(entity);
+}
+
+function asUiScenaryCommand(command: Record<string, unknown>): CfeUiScenaryCommand {
+  return {
+    commandName: readString(command.commandName),
+    kind: readString(command.kind),
+    accessKind: readString(command.accessKind),
+    selection: readString(command.selection),
+    outputShape: readString(command.outputShape),
+    input: commandFieldRecords(command.input),
+  };
+}
+
+function isReadByIdQuery(command: Record<string, unknown>): boolean {
+  if (readString(command.kind) !== 'query') return false;
+  if (isGetByIdQuery(asUiScenaryCommand(command))) return true;
+  const shape = normalizeOutputShape(command.outputShape);
+  if (shape === 'array' || shape === 'paginated') return false;
+  return commandFieldRecords(command.input).some(field => field.required && isEntityReferenceField(field));
+}
+
+function sameSeedIdentity(left: PageTestField, right: PageTestField): boolean {
+  if (left.fieldRef && right.fieldRef && left.fieldRef === right.fieldRef) return true;
+  if (left.name && left.name === right.name) return true;
+  const leftId = fieldIdOfFieldRef(left.fieldRef) || left.name;
+  const rightId = fieldIdOfFieldRef(right.fieldRef) || right.name;
+  return !!leftId && leftId === rightId;
+}
+
+function getByIdScore(command: Record<string, unknown>, deleteCommandName: string): number {
+  const name = readString(command.commandName);
+  const access = readString(command.accessKind).toLowerCase();
+  let score = 0;
+  if (access === 'getbyid') score += 4;
+  if (/^(qry)?get/i.test(name) || /detail$/i.test(name)) score += 2;
+  const stem = deleteCommandName.replace(/^cmdDelete/i, '').replace(/^cmdRemove/i, '');
+  if (stem && stem !== deleteCommandName && name.toLowerCase().includes(stem.toLowerCase())) score += 3;
+  return score;
+}
+
+function findGetByIdForDelete(
+  prepared: CfePreparedPage,
+  deleteCommandName: string,
+  deleteParams: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const deleteCommand = prepared.commands.find(item => readString(item.commandName) === deleteCommandName);
+  const deleteFields = commandFieldRecords(deleteCommand?.input);
+  const ranked: { command: Record<string, unknown>; score: number }[] = [];
+  for (const command of prepared.commands) {
+    if (readString(command.commandName) === deleteCommandName) continue;
+    if (!isReadByIdQuery(command)) continue;
+    const required = commandFieldRecords(command.input).filter(field => field.required && !isRuntimeResolvedInputSource(field.source));
+    if (required.length === 0) continue;
+    const covered = required.every(field => field.name in deleteParams && deleteFields.some(item => sameSeedIdentity(field, item)));
+    if (!covered) continue;
+    ranked.push({ command, score: getByIdScore(command, deleteCommandName) });
+  }
+  ranked.sort((left, right) => right.score - left.score);
+  return ranked[0]?.command;
+}
+
+function deleteEntityId(prepared: CfePreparedPage, commandName: string): string {
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  if (operation?.entity) return operation.entity;
+  const stripped = commandName.replace(/^cmdDelete/i, '').replace(/^cmdRemove/i, '');
+  return stripped && stripped !== commandName ? stripped : '';
+}
+
+function deleteCaseFields(
+  fields: PageTestField[],
+  harvestable: Set<string>,
+  prepared: CfePreparedPage,
+  commandName: string,
+): Pick<PageTestCase, 'params' | 'paramFieldRefs'> {
+  const base = seedRefCaseFields(fields, harvestable, { okCase: true });
+  const refs: Record<string, string> = { ...(base.paramFieldRefs || {}) };
+  const entity = deleteEntityId(prepared, commandName);
+  for (const field of fields) {
+    if (!isSeedMarker(base.params[field.name])) continue;
+    if (refs[field.name]) continue;
+    if (field.fieldRef) refs[field.name] = field.fieldRef;
+    else if (entity) refs[field.name] = `${entity}.${fieldIdOfFieldRef(field.fieldRef) || field.name}`;
+  }
+  return Object.keys(refs).length ? { params: base.params, paramFieldRefs: refs } : { params: base.params };
+}
+
+function moveDeleteGonePairsLast(cases: PageTestCase[], deleteOkIds: Set<string>): PageTestCase[] {
+  if (deleteOkIds.size === 0) return cases;
+  const rest: PageTestCase[] = [];
+  const tail: PageTestCase[] = [];
+  for (let i = 0; i < cases.length; i++) {
+    const current = cases[i];
+    if (!deleteOkIds.has(current.id)) {
+      rest.push(current);
+      continue;
+    }
+    tail.push(current);
+    const next = cases[i + 1];
+    if (next && next.id === current.id.replace(/\.ok$/, '.gone')) {
+      tail.push(next);
+      i += 1;
+    }
+  }
+  return [...rest, ...tail];
+}
+
+type PageTestField = {
+  name: string; type?: string; l4Type?: string; enum?: string[]; source?: string; presentation?: string;
+  fieldRef?: string; format?: string; pattern?: string;
+};
+
+function fieldIdOfFieldRef(fieldRef: string | undefined): string {
+  if (!fieldRef) return '';
+  const dot = fieldRef.lastIndexOf('.');
+  return dot < 0 ? fieldRef : fieldRef.slice(dot + 1);
+}
+
+function seedRefAliases(field: PageTestField): string[] {
+  const aliases = [field.name];
+  if (field.fieldRef) {
+    aliases.push(field.fieldRef);
+    const fieldId = fieldIdOfFieldRef(field.fieldRef);
+    if (fieldId) aliases.push(fieldId);
+  }
+  return aliases;
+}
+
+function isHarvestableSeed(field: PageTestField, harvestable: Set<string>): boolean {
+  return seedRefAliases(field).some(alias => harvestable.has(alias));
+}
+
+function isSeedMarker(value: unknown): boolean {
+  return value === SEED_REF_MARKER || value === SEED_VALUE_MARKER || value === SEED_SPARE_MARKER;
+}
+
+function isCreateCommand(prepared: CfePreparedPage, commandName: string): boolean {
+  const operation = (prepared.operations ?? []).find(item => item.commandName === commandName);
+  if (operation?.kind && /create/i.test(operation.kind)) return true;
+  return /create/i.test(commandName);
+}
+
+function seedRefCaseFields(
+  fields: PageTestField[],
+  harvestable: Set<string>,
+  options?: { okCase?: boolean; create?: boolean },
+): Pick<PageTestCase, 'params' | 'paramFieldRefs'> {
+  const params = testParams(fields, harvestable, options);
+  const paramFieldRefs: Record<string, string> = {};
+  for (const field of fields) {
+    if (isSeedMarker(params[field.name]) && field.fieldRef) paramFieldRefs[field.name] = field.fieldRef;
+  }
+  return Object.keys(paramFieldRefs).length ? { params, paramFieldRefs } : { params };
+}
+
+/**
+ * Params for one generated case.
+ *
+ * `<seedRef>` is an entity id the page itself reads (the runner resolves it from harvested output /
+ * seed anchors). A `.ok` input whose `fieldRef` points at an entity field is a marker, never an
+ * invented literal: `<seedValue>` (the seeded row) or `<seedSpare>` (a leftover for create). Literals
+ * stay only for free input with no entity counterpart (pagination, typed format, closed enum) and
+ * for negative `<field>.required` cases, which must not change.
+ */
+function testParams(
+  fields: PageTestField[],
+  harvestable: Set<string>,
+  options?: { okCase?: boolean; create?: boolean },
+): Record<string, unknown> {
+  const params: Record<string, unknown> = {};
+  for (const field of fields) {
+    // Runtime-resolved inputs (session actor, business context, active lifecycle instance, clock) are
+    // derived by the backend, never sent by a client — a fake literal id here would only break a lookup.
+    if (isRuntimeResolvedInputSource(field.source)) continue;
+    if (isEntityReferenceField(field)) {
+      params[field.name] = SEED_REF_MARKER;
+      continue;
+    }
+    if (options?.okCase && isEntityBackedPlainString(field)) {
+      params[field.name] = options.create ? SEED_SPARE_MARKER : SEED_VALUE_MARKER;
+      continue;
+    }
+    params[field.name] = testLiteralForField(field);
+  }
+  return params;
+}
+
+/** Plain string whose fieldRef names an entity field — the generator cannot invent a valid value. */
+function isEntityBackedPlainString(field: PageTestField): boolean {
+  if (!field.fieldRef || !field.fieldRef.includes('.')) return false;
+  if (isEntityReferenceField(field)) return false;
+  if (Array.isArray(field.enum) && field.enum.length > 0) return false;
+  const type = (field.l4Type || field.type || '').toLowerCase();
+  if (type && type !== 'string') return false;
+  if (formatKeyForField(field, type)) return false;
+  return true;
+}
+
+/** An entity-identifier field name (`stockItemId`, `id`). */
+function isEntityIdField(name: string): boolean {
+  return /(^|[a-z0-9])Id$/.test(name) || name === 'id';
+}
+
+/**
+ * Is this input an ENTITY REFERENCE — the only kind `<seedRef>` can stand in for?
+ *
+ * The name suffix alone was the test, and l4 does not always add `Id`: the buildFlowFsm decision command
+ * declares its foreign key as `changeOrder` (source `selectedEntity`, presentation `selection`), so the
+ * generator treated it as a domain field, emitted the literal `"teste"`, and every run answered
+ * `NOT_FOUND: ChangeOrder not found: teste` without ever exercising the command. What the field IS shows
+ * in how the page fills it: a value the user PICKS from a list is a reference, whatever it is called.
+ */
+function isEntityReferenceField(field: PageTestField): boolean {
+  return isEntityIdField(field.name)
+    || field.source === 'selectedEntity'
+    || field.source === 'selection'
+    || field.presentation === 'selection';
+}
+
+/**
+ * A deterministic literal valid for the field's declared l4 type, format, or pattern.
+ *
+ * Enum: the FIRST code of a closed domain (`dayOfWeek`, priority). Status/lifecycle is the exception —
+ * a seeded row starts at the first state, so the SECOND is the next legal transition (102051 D2).
+ *
+ * Format/pattern beat the free-text default: `"teste"` on an HH:mm field is a case that is born
+ * impossible (petShop startTime/endTime).
+ */
+function testLiteralForField(field: PageTestField): unknown {
+  if (Array.isArray(field.enum) && field.enum.length > 0) {
+    if (field.enum.length > 1 && /status$/i.test(field.name)) return field.enum[1];
+    return field.enum[0];
+  }
+  const type = (field.l4Type || field.type || '').toLowerCase();
+  const formatKey = formatKeyForField(field, type);
+  if (formatKey === 'time') return timeLiteralForField(field);
+  if (formatKey === 'email') return TEST_LITERAL_EMAIL;
+  if (formatKey === 'phone') return TEST_LITERAL_PHONE;
+  if (formatKey === 'cep') return TEST_LITERAL_CEP;
+  if (formatKey === 'date' || type === 'date') return TEST_LITERAL_DATE;
+  if (formatKey === 'datetime' || ['datetime', 'date-time', 'timestamp', 'timestamptz'].includes(type)) return TEST_LITERAL_ISO;
+  if (['number', 'integer', 'int', 'int32', 'int64', 'float', 'double', 'decimal', 'money', 'currency'].includes(type)) return TEST_LITERAL_NUMBER;
+  if (type === 'boolean' || type === 'bool') return true;
+  if (type === 'time') return timeLiteralForField(field);
+  // Last resort when the type could not be traced: date-ish names still travel as ISO on the wire.
+  if (!type || type === 'string') {
+    if (/Date$/.test(field.name)) return TEST_LITERAL_DATE;
+    if (/(^|[a-z0-9])At$/.test(field.name)) return TEST_LITERAL_ISO;
+  }
+  return TEST_LITERAL_TEXT;
+}
+
+function timeLiteralForField(field: PageTestField): string {
+  if (/^(end|until|finish)/i.test(field.name) || /End(Time|Hour)?$/.test(field.name)) return TEST_LITERAL_TIME_END;
+  return TEST_LITERAL_TIME_START;
+}
+
+/** Classify a field into a format bucket from l4 format/pattern, then from type/name. */
+function formatKeyForField(field: PageTestField, type: string): string {
+  const format = (field.format || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (['time', 'hhmm', 'hora', 'hour'].includes(format)) return 'time';
+  if (format === 'date') return 'date';
+  if (['datetime', 'iso8601', 'timestamp'].includes(format)) return 'datetime';
+  if (format === 'email') return 'email';
+  if (['phone', 'tel', 'telephone', 'e164', 'mobile'].includes(format)) return 'phone';
+  if (['cep', 'zip', 'zipcode', 'postalcode'].includes(format)) return 'cep';
+  const pattern = field.pattern || '';
+  if (patternLooksLikeTime(pattern)) return 'time';
+  if (patternLooksLikeEmail(pattern)) return 'email';
+  if (patternLooksLikeCep(pattern)) return 'cep';
+  if (!type || type === 'string') {
+    if (/(Time|Hour)$/.test(field.name)) return 'time';
+    if (/^(e-?mail|emailAddress)$/i.test(field.name) || /Email$/.test(field.name)) return 'email';
+    if (/^(cep|zipCode|postalCode)$/i.test(field.name)) return 'cep';
+    if (/^(phone|telephone|mobile|celular)$/i.test(field.name) || /Phone$/.test(field.name)) return 'phone';
+  }
+  return '';
+}
+
+function patternLooksLikeTime(pattern: string): boolean {
+  if (!pattern) return false;
+  return /\[0-5\]\\d/.test(pattern) && /2\[0-3\]/.test(pattern);
+}
+
+function patternLooksLikeEmail(pattern: string): boolean {
+  return pattern.includes('@') || /email/i.test(pattern);
+}
+
+function patternLooksLikeCep(pattern: string): boolean {
+  return /\\d\{5\}/.test(pattern) && /\\d\{3\}/.test(pattern);
+}
+
+/**
+ * True when a command would send a date/datetime literal alongside a <seedRef> whose target entity
+ * has a weekday field. The generator cannot pick a date that matches that unknown seeded row
+ * (petShop `blockDate` × `BusinessHours.dayOfWeek`).
+ */
+function literalDependsOnUnknownSeed(fields: PageTestField[], entityFields: Record<string, string[]> | undefined): boolean {
+  const catalog = entityFields || {};
+  const refs = fields.filter(field => isEntityReferenceField(field) && !isRuntimeResolvedInputSource(field.source));
+  const dates = fields.filter(field => isDateLikeTestField(field) && !isEntityReferenceField(field));
+  if (refs.length === 0 || dates.length === 0) return false;
+  return refs.some(field => entityHasWeekdayField(referencedEntityId(field, catalog), catalog));
+}
+
+function isDateLikeTestField(field: PageTestField): boolean {
+  const type = (field.l4Type || field.type || '').toLowerCase();
+  const formatKey = formatKeyForField(field, type);
+  return formatKey === 'date' || formatKey === 'datetime' || type === 'date' || type === 'datetime' || /Date$/.test(field.name);
+}
+
+function referencedEntityId(field: PageTestField, entityFields: Record<string, string[]>): string {
+  if (field.fieldRef && field.fieldRef.includes('.')) return field.fieldRef.split('.')[0];
+  const stem = field.name.replace(/Id$/, '');
+  if (stem && stem !== field.name) {
+    const pascal = stem.charAt(0).toUpperCase() + stem.slice(1);
+    if (entityFields[pascal]) return pascal;
+  }
+  return '';
+}
+
+function entityHasWeekdayField(entityId: string, entityFields: Record<string, string[]>): boolean {
+  if (!entityId) return false;
+  return (entityFields[entityId] || []).some(fieldId => /^(dayOfWeek|weekday)$/i.test(fieldId));
+}
+
+function renderPageTestsFile(
+  prepared: CfePreparedPage,
+  cases: PageTestCase[],
+  genome = PAGE_TESTS_VARIANT,
+  untested?: { id: string; reason: string }[],
+): string {
+  const header = `/// <mls fileReference="_${prepared.project}_/l2/${prepared.page.moduleName}/web/desktop/${genome}/${prepared.page.pageId}.test.ts" enhancement="_blank"/>`;
+  // The workspace's actor rides in the envelope so the tests runner can execute the page's cases AS a
+  // seeded identity for that actor. Without it every actor-scoped route is unrunnable headless: the
+  // usecase reads the id from the session (a field worker sees the tasks assigned to THEM) and fails
+  // 400 with no session (102045 run06: listAssignedTasks). Measured: it is what turns that case from
+  // fail into pass, and unblocks the 2 commands of its page.
+  const actor = readString(prepared.workspace?.actor);
+  const body = { moduleName: prepared.page.moduleName, page: prepared.page.pageId, variant: genome, ...(actor ? { actor } : {}), cases };
+  const undeclared = (untested || []).map(item => `// untested: ${item.id} — ${item.reason}`).join('\n');
+  return `${header}\n\n`
+    + `// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\n`
+    + `// TESTS_ENABLED is on).\n`
+    + `// Data, not a runnable test module: no node:test import, so scripts/run-tests.mjs never captures it.\n`
+    + `// Params valued "${SEED_REF_MARKER}" are ENTITY IDS this page itself reads: the runner resolves them at\n`
+    + `// run time from the harvested output of this page's read queries (including the rows of any array in\n`
+    + `// the envelope). "${SEED_VALUE_MARKER}" is the value of that field on a seeded row; "${SEED_SPARE_MARKER}"\n`
+    + `// is a leftover valid value for a create command (reusing a seeded unique value would collide).\n`
+    + `// paramFieldRefs maps those params to the l4 fieldRef so the pool can match by ontology field, not by\n`
+    + `// the input's wire name. Literals stay for free input with no entity counterpart (pagination, typed\n`
+    + `// format, closed enum). expect.itemsKey names the collection the wire returns\n`
+    + `// for a paginated query (the runner assumes "items" when it is absent). "actor" is this page's l4 actor:\n`
+    + `// the run executes these cases as the seeded platform identity of that actor, so a route that reads the\n`
+    + `// actor id from the session is runnable headless.\n`
+    + (undeclared ? `${undeclared}\n` : '')
+    + `export const pageTests = ${JSON.stringify(body, null, 2)} as const;\n`;
+}
+
+export async function savePageLayoutDefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, genome = 'page11', objective?: unknown): Promise<CfePageLayoutDefinition> {
+  // F4 (v2): the LLM often references the l4 operationId (e.g. browseHighlights) instead of the bffCall
+  // id that serves it (browseHighlightsQuery). Remap operationId action-refs to their owning bffId FIRST,
+  // before the drop/validate steps, since the mapping (bffCall.uses) is deterministic.
+  const bffMapped = remapLayoutActionsToBff(prepared, layout);
+  const repairedLayout = repairMissingLayoutI18n(prepared, repairUnknownLayoutFields(prepared, repairMissingOperationUserActions(prepared, repairUnknownLayoutActions(prepared, repairDuplicateLayoutIds(prepared.page.pageId, bffMapped)))));
+  validatePageLayout(prepared, repairedLayout);
+  const enrichedLayout = enrichLayoutWithStateRefs(prepared, repairedLayout);
+  // REDUCED defs (31/jul slot study): identity + wiring only. `sections`/`layout` are deliberately NOT
+  // written — a complete defs drowns the experience skill out, and the reduced form is what made page31
+  // win. The layout is still built above because everything else derives from it (validation, the shared
+  // reconciliation, the state refs); it just does not travel to the render.
+  // The closed msg-key vocabulary is not duplicated here either: the shared base class MessageType is the
+  // authoritative, type-checked key set, read by the render from the shared .d.ts.
+  const variant = prepared.variantPlan.find(item => item.genome === genome);
+  const exported = pageLayoutDefsExport(genome, prepared, enrichedLayout.dataBindings, objective);
+  const splitOrganisms = await ensureRecipeSplitPlan(prepared, genome, enrichedLayout);
+  await saveFrontendDefs(
+    pageFileInfo(prepared.project, prepared.page, genome),
+    'definition',
+    exported.definition,
+    pagePipeline(prepared.project, prepared.page, prepared.visualStyle, genome, variant?.experienceSkill, splitOrganisms),
+    exported.extras,
+  );
+  return enrichedLayout;
+}
+
+/**
+ * `definition` is intent prose on every genome (no fields, no routines). The structured map lives
+ * once on the workspace shared defs (`dataBindings`); gates read it from there (page11 sibling
+ * `bindings` is only a fallback for already-generated modules).
+ */
+export function pageLayoutDefsExport(
+  genome: string,
+  prepared: Pick<CfePreparedPage, 'page' | 'baseDefinition' | 'presentation'>,
+  dataBindings: CfePageLayoutDefinition['dataBindings'],
+  objective?: unknown,
+): { definition: unknown; extras: { name: string; value: unknown }[] } {
+  const recipe = pageSlotRecipe(prepared.presentation?.categoryRef || '', genome);
+  if (recipe.defsFormat === 'prose') {
+    return { definition: page11DefinitionProse(prepared), extras: [] };
+  }
+  return {
+    definition: {
+      pageId: prepared.page.pageId,
+      pageName: prepared.page.pageName,
+      baseClassName: readString(prepared.baseDefinition.baseClassName),
+      actor: readString(prepared.baseDefinition.actor),
+      purpose: readString(prepared.baseDefinition.purpose),
+      ...(prepared.presentation ? { presentation: prepared.presentation } : {}),
+      ...(isRecord(objective) ? { pageObjective: objective } : {}),
+      dataBindings,
+    },
+    extras: [],
+  };
+}
+
+export function page11DefinitionProse(prepared: Pick<CfePreparedPage, 'page' | 'baseDefinition' | 'presentation'>): string {
+  const pageName = prepared.page.pageName || prepared.page.pageId;
+  const actor = readString(prepared.baseDefinition.actor);
+  const purpose = readString(prepared.baseDefinition.purpose);
+  const category = prepared.presentation?.categoryRef || '';
+  // English labels, l4 values verbatim. Never interpolate module copy into an English sentence —
+  // that produces bilingual prompts. A missing field omits the whole line, not an empty label.
+  const parts: string[] = [];
+  if (pageName) parts.push(`page: ${pageName}`);
+  if (actor) parts.push(`actor: ${actor}`);
+  if (purpose) parts.push(`purpose: ${purpose}`);
+  if (category) parts.push(`uxExperience: ${category}`);
+  parts.push('The page extends the shared base class of this workspace: the shared travels in this pipeline and already carries the states, actions and handlers the page inherits. Render the experience around that intent — do not list fields and do not list routines.');
+  return parts.join('\n');
+}
+
+/** section./organism./intent. ids are per-page; repeating pageId in them inflates every i18n key. */
+function stripPageIdFromTaxonomyId(id: string, pageId: string): string {
+  if (!id || !pageId) return id;
+  const escaped = pageId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return id.replace(new RegExp(`^(section|organism|intent)\\.${escaped}\\.`, 'u'), '$1.');
+}
+
+function layoutTaxonomyId(kind: 'section' | 'organism' | 'intent', pageId: string, rest: string): string {
+  const body = String(rest || '').replace(/^\.+|\.+$/gu, '') || 'main';
+  const prefixed = body === kind || body.startsWith(`${kind}.`) ? body : `${kind}.${body}`;
+  return stripPageIdFromTaxonomyId(prefixed, pageId);
+}
+
+// Expand the LLM's minimal semantic composition into the full internal layout the rest of the pipeline
+// (repairs, validate, reconcile, render, materialize) expects. Each organism's `uses` bffCall ids are
+// turned into concrete intentions/fields/actions with the SAME deterministic builders as the seed, so the
+// model never authors — and never drifts on — the rigid field tree. Composition-only signal (organism
+// identity, order, purpose, displayHint) rides through; rich presentation is the render skill's job.
+export function expandLayoutComposition(prepared: CfePreparedPage, composition: CfeLayoutComposition): CfePageLayoutDefinition {
+  const pageId = prepared.page.pageId;
+  const commandByBff = new Map(prepared.commands.map(command => [readString(command.commandName), command]));
+  const i18n: Record<string, string> = {};
+  const sections: CfeLayoutSection[] = [];
+  composition.sections.forEach((section, sectionIndex) => {
+    const sectionId = layoutTaxonomyId('section', pageId, section.id && section.id.startsWith('section.') ? section.id : (toSafeShortName(section.id || section.sectionName || `s${sectionIndex + 1}`) || 'main'));
+    const sectionTitleKey = `${sectionId}.title`;
+    i18n[sectionTitleKey] = section.sectionName || prepared.page.pageName;
+    const organisms: CfeLayoutOrganism[] = [];
+    let order = 0;
+    let hasMutation = false;
+    for (const compositionOrganism of section.organisms) {
+      order += 10;
+      const built = expandCompositionOrganism(pageId, compositionOrganism, commandByBff, order, i18n, prepared.fieldTitles);
+      if (!built) continue;
+      if (built.intentions.some(intent => intent.intent === 'commandForm')) hasMutation = true;
+      organisms.push(built);
+    }
+    if (organisms.length > 0) {
+      sections.push({ id: sectionId, type: 'section', sectionName: section.sectionName || prepared.page.pageName, titleKey: sectionTitleKey, mode: hasMutation ? 'edit' : 'view', order: (sectionIndex + 1) * 10, organisms });
+    }
+  });
+  // If the composition bound to no known bffCalls (all `uses` empty/unknown), fall back to the
+  // deterministic L4 layout so the page still covers every command instead of failing coverage.
+  if (sections.every(section => section.organisms.length === 0)) return deterministicLayoutFromBase(prepared);
+
+  // Coverage guarantee (was implicit in the deterministic seed): validatePageLayout rejects any command
+  // not surfaced by some organism ("does not represent operation"). The model's `uses` may omit one, so
+  // append a deterministic organism for every uncovered command — no LLM, no failure.
+  const covered = new Set(sections.flatMap(section => section.organisms.flatMap(organism => organism.userActions)));
+  const uncovered = prepared.commands.map(command => readString(command.commandName)).filter(name => name && !covered.has(name));
+  if (uncovered.length > 0) {
+    const target = sections[sections.length - 1];
+    let order = target.organisms.reduce((max, organism) => Math.max(max, organism.order), 0);
+    for (const bffId of uncovered) {
+      order += 10;
+      const command = commandByBff.get(bffId) || {};
+      const built = readString(command.kind) === 'query'
+        ? buildQueryOrganism(pageId, bffId, 'list', order, commandByBff, i18n, prepared.fieldTitles)
+        : buildCommandOrganism(pageId, bffId, order, commandByBff, i18n, prepared.fieldTitles);
+      if (built.intentions.some(intent => intent.intent === 'commandForm')) target.mode = 'edit';
+      target.organisms.push(built);
+    }
+    recordCreateWarning(`${pageId}: appended deterministic organism(s) for command(s) the composition left uncovered: ${uncovered.join(', ')}`);
+  }
+
+  return {
+    pageId,
+    layoutId: composition.layoutId || `page.${pageId}`,
+    sections,
+    i18n,
+    dataBindings: prepared.commands.map(command => ({
+      id: `binding.${pageId}.${readString(command.commandName)}`,
+      source: `bff.${readString(command.commandName)}`,
+      command: readString(command.commandName),
+      description: readString(command.purpose),
+    })),
+  };
+}
+
+function expandCompositionOrganism(pageId: string, composition: CfeCompositionOrganism, commandByBff: Map<string, Record<string, unknown>>, order: number, i18n: Record<string, string>, fieldTitles: Record<string, string>): CfeLayoutOrganism | null {
+  const uses = composition.uses.filter(bffId => commandByBff.has(bffId));
+  if (uses.length === 0) {
+    // No data binding -> a content/landing organism; the displayHint is the content role (hero, showcase…).
+    const content = buildContentOrganism(pageId, composition.displayHint || 'content', order, i18n);
+    return { ...content, id: composition.id ? stripPageIdFromTaxonomyId(composition.id, pageId) : content.id, organismName: composition.organismName || content.organismName, purpose: composition.purpose || content.purpose, displayHint: composition.displayHint, order };
+  }
+  const built = uses.map(bffId => {
+    const command = commandByBff.get(bffId) || {};
+    return readString(command.kind) === 'query'
+      ? buildQueryOrganism(pageId, bffId, 'list', order, commandByBff, i18n, fieldTitles)
+      : buildCommandOrganism(pageId, bffId, order, commandByBff, i18n, fieldTitles);
+  });
+  const base = built[0];
+  // Merge every used bffCall's intentions into one organism; carry the model's identity/hint through.
+  return {
+    ...base,
+    id: composition.id ? stripPageIdFromTaxonomyId(composition.id, pageId) : base.id,
+    organismName: composition.organismName || base.organismName,
+    purpose: composition.purpose || base.purpose,
+    displayHint: composition.displayHint || base.displayHint,
+    order,
+    userActions: unique(built.flatMap(organism => organism.userActions)),
+    requiredEntities: unique(built.flatMap(organism => organism.requiredEntities)),
+    readsFields: unique(built.flatMap(organism => organism.readsFields)),
+    writesFields: unique(built.flatMap(organism => organism.writesFields)),
+    rulesApplied: unique(built.flatMap(organism => organism.rulesApplied)),
+    intentions: built.flatMap(organism => organism.intentions),
+  };
+}
+
+// Persist the goal-first page objective as a per-page trace (flow.json output
+// trace/frontend-page-objective/{page}.json). Best-effort: a trace write must never fail the run.
+export async function savePageObjectiveTrace(prepared: CfePreparedPage, genome: string, objective: unknown): Promise<void> {
+  if (!isRecord(objective)) return;
+  const fileInfo: FileInfo = cfePipelineTraceFileInfo(prepared.page.moduleName, prepared.page.pageId, 'frontend-page-objective', prepared.project);
+  await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), pageId: prepared.page.pageId, genome, objective }, null, 2)}\n`);
+}
+
+// Build shared from the union of all saved variants. States are contract-keyed, so the primary
+// covers the base and extra variants can only add display-state references.
+export async function reconcileSharedDefs(prepared: CfePreparedPage, enrichedLayouts: CfePageLayoutDefinition[]): Promise<void> {
+  const unionLayout = mergeLayoutsForShared(enrichedLayouts);
+  const definition = sharedDefinition(prepared, unionLayout);
+  await saveFrontendDefs(sharedFileInfo(prepared.project, prepared.page), 'definition', definition, sharedPipeline(prepared));
+  await savePageCreateMarker(prepared, 'done');
+}
+
+interface CfeCreateRunCache {
+  context: CfeCreateContext;
+  preparedByPage: Map<string, CfePreparedPage>;
+  layoutsByPage: Map<string, Map<string, CfePageLayoutDefinition>>;
+}
+
+function createRunPageKey(moduleName: string, pageId: string): string {
+  return `${moduleName}:${pageId}`;
+}
+
+const CREATE_RUN_CACHE_KEY = '__agentMaterializeL2CreateRuns';
+
+function getCreateRuns(): Map<string, CfeCreateRunCache> {
+  const browser = sessionScope();
+  const existing = browser[CREATE_RUN_CACHE_KEY];
+  if (existing instanceof Map) return existing as Map<string, CfeCreateRunCache>;
+  const runs = new Map<string, CfeCreateRunCache>();
+  browser[CREATE_RUN_CACHE_KEY] = runs;
+  return runs;
+}
+
+function getCreateRun(runId: string): CfeCreateRunCache {
+  const run = getCreateRuns().get(runId);
+  if (!run) throw new Error(`create execution cache not found for ${runId}; restart @@changeFrontend so L4 is scanned once for this run`);
+  return run;
+}
+
+export function startCreateRun(runId: string, context: CfeCreateContext): void {
+  if (!runId) throw new Error('missing create execution runId');
+  getCreateRuns().set(runId, { context, preparedByPage: new Map(), layoutsByPage: new Map() });
+}
+
+export async function prepareCreateRunPage(runId: string, pageId: string, moduleName: string): Promise<CfePreparedPage> {
+  if (!moduleName) throw new Error(`missing moduleName for page ${pageId} in create execution ${runId}`);
+  const run = getCreateRun(runId);
+  const key = createRunPageKey(moduleName, pageId);
+  const cached = run.preparedByPage.get(key);
+  if (cached) return cached;
+  const page = run.context.pages.find(item => item.pageId === pageId && item.moduleName === moduleName);
+  if (!page) throw new Error(`page not found in create execution ${runId}: ${moduleName}/${pageId}`);
+  const prepared = await preparePageCreate(page, run.context);
+  run.preparedByPage.set(key, prepared);
+  return prepared;
+}
+
+export interface CfeCreatePageArgs {
+  moduleName: string;
+  pageId: string;
+  runId: string;
+}
+
+export interface CfeCreateLayoutArgs extends CfeCreatePageArgs {
+  genome: string;
+  templateId: string;
+}
+
+export function cfeCreatePageArgs(args: CfeCreatePageArgs): CfeCreatePageArgs {
+  return { moduleName: args.moduleName, pageId: args.pageId, runId: args.runId };
+}
+
+export function cfeCreateLayoutArgs(args: CfeCreateLayoutArgs): CfeCreateLayoutArgs {
+  return { moduleName: args.moduleName, pageId: args.pageId, runId: args.runId, genome: args.genome, templateId: args.templateId };
+}
+
+export async function listCreateRunLayoutArgs(runId: string): Promise<CfeCreateLayoutArgs[]> {
+  const run = getCreateRun(runId);
+  const args: CfeCreateLayoutArgs[] = [];
+  for (const page of run.context.pages) {
+    const prepared = await prepareCreateRunPage(runId, page.pageId, page.moduleName);
+    for (const variant of prepared.variantPlan) {
+      args.push(cfeCreateLayoutArgs({ moduleName: page.moduleName, pageId: page.pageId, genome: variant.genome, templateId: variant.templateId, runId }));
+    }
+  }
+  return args;
+}
+
+export function listCreateRunPageArgs(runId: string): CfeCreatePageArgs[] {
+  return getCreateRun(runId).context.pages.map(page => cfeCreatePageArgs({ moduleName: page.moduleName, pageId: page.pageId, runId }));
+}
+
+export function createLayoutPromptContext(prepared: CfePreparedPage, genome: string, templateId: string): Record<string, unknown> {
+  const variant = prepared.variantPlan.find(item => item.genome === genome);
+  if (!variant || variant.templateId !== templateId) throw new Error(`template ${templateId} is not pinned for ${prepared.page.pageId}/${genome}`);
+  const common = baseLayoutPromptContext(prepared);
+  // page21 goal-first: no pinned template. Every scored candidate is supplied as inspiration
+  // and the layout call first synthesizes the page objective (see promptGoalFirst.md).
+  if (templateId === GOAL_FIRST_TEMPLATE_ID) {
+    const candidates = (variant.template as Record<string, unknown>).candidates;
+    return {
+      ...common,
+      mode: 'goal-first',
+      templateCatalog: Array.isArray(candidates) ? candidates : [variant.template],
+      renderVocabulary: goalFirstRenderVocabulary(),
+      // Trimmed journey: keep the neutral signal (microUserFlow, operationsInOrder, lifecycle) but
+      // drop recommendedStages and the commandForm-biased guidance — those pre-encode the
+      // "list on top, one stacked form per mutation" shape the goal-first genome exists to escape.
+      userJourney: goalFirstUserJourney(prepared.userJourney),
+    };
+  }
+  return { ...common, template: variant.template, userJourney: prepared.userJourney };
+}
+
+// The full userJourney (buildPageUserJourney) carries recommendedStages (a commandForm stage per
+// mutation) and a guidance array that instructs the baseline stacked layout. page11 needs both.
+// page21 (goal-first) must NOT receive them — they contradict the objective-first framing — so this
+// keeps only the neutral, useful signal.
+function goalFirstUserJourney(userJourney: Record<string, unknown>): Record<string, unknown> {
+  const { recommendedStages, guidance, ...rest } = userJourney;
+  void recommendedStages;
+  void guidance;
+  return rest;
+}
+
+function baseLayoutPromptContext(prepared: CfePreparedPage): Record<string, unknown> {
+  const baseLayout = enrichLayoutWithStateRefs(prepared, deterministicLayoutFromBase(prepared));
+  const shared = sharedDefinition(prepared, baseLayout);
+  return {
+    page: {
+      pageId: prepared.page.pageId,
+      pageName: prepared.page.pageName,
+      moduleName: prepared.page.moduleName,
+      sourceKind: prepared.page.sourceKind,
+    },
+    shared: {
+      baseClassName: shared.baseClassName,
+      states: shared.states,
+      actions: shared.actions,
+      functions: (shared.actions as Record<string, unknown>[]).map(action => ({
+        actionId: action.actionId,
+        methodName: action.methodName,
+        handlerName: action.handlerName,
+        inputStateKeys: action.inputStateKeys,
+        outputStateKeys: action.outputStateKeys,
+      })),
+      initialLoads: shared.initialLoads,
+      businessContextRefs: shared.businessContextRefs,
+      // Field vocabulary for layout fields/columns/filters. The strict validator rejects any
+      // field name outside this catalog, so the LLM must see the exact allowed names (query
+      // output fields are otherwise invisible: queryResult states only carry an outputShape).
+      fieldCatalog: {
+        byAction: prepared.commands.map(command => ({
+          actionId: readString(command.commandName),
+          kind: readString(command.kind) === 'query' ? 'query' : 'command',
+          inputFields: commandFieldRecords(command.input).map(field => field.name),
+          outputFields: commandFieldRecords(command.output).map(field => field.name),
+          enumFields: uniqueEnumFields([
+            ...commandFieldRecords(command.input),
+            ...commandFieldRecords(command.output),
+          ]),
+        })),
+        byEntity: prepared.entityFields,
+      },
+      statePolicy: 'All filters, form fields, query results, action statuses and navigation requests are shared/global state. Page render must not own mutable state.',
+    },
+    // Module locale metadata only — NOT an output field. The model does not author i18n (see tool
+    // schema note); renamed away from `i18n` so it is not mirrored back as a rejected i18n output key.
+    localeMeta: prepared.i18nMeta,
+    // F4: the l4 v2 workspace declares the authoritative section/organism skeleton. The LLM lays out
+    // AROUND these roles — it does NOT invent a section per query. Absent for legacy operationIds pages.
+    ...(prepared.workspace && prepared.workspace.sections.length > 0 ? {
+      workspace: {
+        note: 'AUTHORITATIVE layout skeleton (l4 v2). Build the page from these sections and organism roles — do NOT turn every query into its own section. primarySurface = the section surface (list/table/panel per output kind); usage summary on a list query = compact KPI strip counted from the loaded items (total, each status except cancelled, overdue), never a getById panel and never "Nenhum registro encontrado" when the list is empty (show zeros); overdue = calendar day of dueDate before today and status not completed/cancelled/canceled; filterControl = filters bound to its surface query INPUTS (fold into that surface, never a separate section); detailPanel = a detail/master-detail panel of its query; contextualAction/batchAction = a command action/form acting on the surface; hero/banner/richText/imageSet/ctaLink/showcase = landing content. dataSource/action are bffCall ids present in shared.actions.',
+        purpose: prepared.workspace.purpose,
+        kind: prepared.workspace.kind,
+        sections: prepared.workspace.sections.map(section => ({
+          sectionId: section.sectionId,
+          intent: section.intent,
+          organisms: section.organisms.map(organism => ({ role: organism.role, dataSource: organism.dataSource, action: organism.action, attachTo: organism.attachTo, slice: organism.slice, usage: organism.usage })),
+        })),
+      },
+    } : {}),
+  };
+}
+
+// Composite render patterns the goal-first genome (page21) may use, materialized by
+// genCfePage21RenderTs. Generic capability vocabulary — never example-specific. The closed
+// field/action catalog and the layout schema still apply; these only widen presentation.
+function goalFirstRenderVocabulary(): Record<string, unknown> {
+  return {
+    note: 'You are NOT limited to one queryList + one commandForm per operation. Compose the layout around the page objective using these presentation patterns. Every field/action still comes from shared.fieldCatalog and shared.actions; intents keep the same schema (fields/columns/filters/toolbar/rowActions/actions).',
+    displayHints: [
+      { hint: 'master-detail', use: 'A selectable list/board on one side and a contextual detail/action panel for the selected item on the other. Prefer this over stacking a separate form section below a list.' },
+      { hint: 'contextual-transition-actions', use: 'For a lifecycle/status mutation, render the allowed next states as one button per valid transition on the selected row/card. Never a free <select> over all enum values and never a manually typed id field.' },
+      { hint: 'card-board', use: 'Group items into lanes by status/stage; the primary action lives inline on each card.' },
+      { hint: 'inline-row-command', use: 'A one-decision command executed directly on a list row, without opening a separate form section.' },
+      { hint: 'summary-first', use: 'Lead with the decisive numbers/status the actor needs, then detail below.' },
+    ],
+    rules: [
+      'Order organisms by the page objective (primaryDecision first), informed by userJourney — not by mechanically mirroring every journey step as its own form.',
+      'A context-derived or system-owned field (ids, status, timestamps) is read-only context or a derived action, never a manual input.',
+      'Keep the layout honest: only actions/fields that exist in the catalog, only shared states.',
+    ],
+  };
+}
+
+export function rememberCreateLayout(runId: string, pageId: string, genome: string, layout: CfePageLayoutDefinition, moduleName: string): void {
+  const run = getCreateRun(runId);
+  const key = createRunPageKey(moduleName, pageId);
+  const variants = run.layoutsByPage.get(key) || new Map<string, CfePageLayoutDefinition>();
+  variants.set(genome, layout);
+  run.layoutsByPage.set(key, variants);
+}
+
+export async function reconcileCreateRunPage(runId: string, pageId: string, moduleName: string): Promise<void> {
+  const prepared = await prepareCreateRunPage(runId, pageId, moduleName);
+  const layouts = getCreateRun(runId).layoutsByPage.get(createRunPageKey(moduleName, pageId));
+  const primaryGenome = prepared.variantPlan[0]?.genome || 'page11';
+  const primary = layouts?.get(primaryGenome);
+  if (!primary) throw new Error(`primary layout ${primaryGenome} was not saved for ${moduleName}/${pageId}`);
+  const savedLayouts = prepared.variantPlan
+    .map(variant => layouts?.get(variant.genome))
+    .filter((layout): layout is CfePageLayoutDefinition => Boolean(layout));
+  await reconcileSharedDefs(prepared, savedLayouts);
+}
+
+export function verifyCreateRunPrimaryLayouts(runId: string): string[] {
+  const run = getCreateRun(runId);
+  return run.context.pages
+    .filter(page => {
+      const categoryRef = readString(workspaceForPage(run.context, page)?.categoryRef);
+      const primary = pageSlotRecipes(categoryRef, run.context.uxVariants || 'default')[0]?.genome || 'page11';
+      return !run.layoutsByPage.get(createRunPageKey(page.moduleName, page.pageId))?.has(primary);
+    })
+    .map(page => {
+      const categoryRef = readString(workspaceForPage(run.context, page)?.categoryRef);
+      const primary = pageSlotRecipes(categoryRef, run.context.uxVariants || 'default')[0]?.genome || 'page11';
+      return `${page.moduleName}/${page.pageId}: missing primary ${primary} layout`;
+    });
+}
+
+export async function saveCreateLayoutFailureTrace(
+  runId: string,
+  pageId: string,
+  genome: string,
+  templateId: string,
+  stage: 'beforePromptStep' | 'afterPromptStep',
+  message: string,
+  moduleName: string,
+): Promise<void> {
+  const prepared = await prepareCreateRunPage(runId, pageId, moduleName);
+  const fileInfo: FileInfo = cfePipelineTraceFileInfo(
+    prepared.page.moduleName,
+    `${toSafeShortName(pageId)}--${toSafeShortName(genome)}`,
+    'frontend-create-layout-errors',
+    prepared.project,
+  );
+  await saveStorContent(fileInfo, `${JSON.stringify({
+    savedAt: new Date().toISOString(),
+    runId,
+    pageId,
+    genome,
+    templateId,
+    stage,
+    message,
+    agent: 'agentCfeCreateLayout',
+  }, null, 2)}\n`);
+}
+
+export interface MaterializeVerifyPassed { planId: string; typecheck: string; }
+
+export interface MaterializeVerifyBrokenTrace {
+  planId: string;
+  defPath: string;
+  outputPath: string | null;
+  typecheck: string;
+  errors: string[];
+  warnings: string[];
+  severity?: 'blocked' | 'repair' | 'declared';
+}
+
+export interface MaterializeVerifySummaryBuckets {
+  declared?: MaterializeVerifyBrokenTrace[];
+  repaired?: MaterializeVerifyPassed[];
+}
+
+// Full, unbounded verify detail (every compile/typecheck error + warning per broken item) written to
+// the file system so the msg-task step trace can stay a short summary (DynamoDB 400KB task cap). One
+// file per verify invocation, keyed by its planId, ALWAYS under the MODULE's trace folder
+// (<module>/trace/frontend-materialize-verify) — a run processes a single module, so the trace lives with
+// that module's other artifacts. `moduleName` comes from the caller (derived from ALL verify items);
+// deriveTraceModule(broken) is only a fallback for callers that do not have it. There is deliberately NO
+// project-root fallback: writing to l2/trace polluted the project root and the junk got committed
+// (mls-102051). Without a derivable module the trace is SKIPPED with a warning. Best-effort: a trace
+// write must never fail the verify. Returns the mls ref of the written file, or null when not written.
+export async function saveMaterializeVerifyTrace(moduleName: string, planId: string, attempt: number, broken: MaterializeVerifyBrokenTrace[]): Promise<string | null> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project) return null;
+    const shortName = toSafeShortName(planId);
+    const module = moduleName || deriveTraceModule(broken);
+    if (!module) {
+      console.warn(`[saveMaterializeVerifyTrace] no module could be derived for ${planId}; trace not written (never write to the project-root l2/trace)`);
+      return null;
+    }
+    const fileInfo = cfePipelineTraceFileInfo(module, shortName, 'frontend-materialize-verify', project);
+    await saveStorContent(fileInfo, `${JSON.stringify({
+      savedAt: new Date().toISOString(),
+      planId,
+      attempt,
+      brokenCount: broken.length,
+      broken,
+      agent: 'agentCfeMaterializePhase',
+    }, null, 2)}\n`);
+    return `_${project}_/l4/${fileInfo.folder}/${shortName}.json`;
+  } catch (error) {
+    console.error(`[saveMaterializeVerifyTrace] ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+/**
+ * The findings ONE repair slot has to close, dropped where that slot can read them.
+ *
+ * A repair slot carries only `{planId, defPath, itemId, attempt}` (the 400KB task cap: no error text in a
+ * step prompt), so `agentCfeMaterializeGen` recomputes what is wrong from disk. It can only recompute the
+ * COMPILER errors and the template hygiene — the dozen defs-level detectors the verify also runs are not
+ * reachable there. An item broken ONLY by those therefore produced an EMPTY hint, and an empty hint makes
+ * a repair round indistinguishable from a first-pass generation: no hint means the deterministic skeleton
+ * is sent instead, and the model rewrites the page from scratch, blind to the finding. That is run01 of
+ * 102047: four rounds, findings churning, `repairedCount` 0.
+ *
+ * Written by the verify right before it queues the round, keyed by the ITEM planId and stamped with the
+ * attempt the slot will carry, so a slot can never pick up a previous round's (or a previous run's) list.
+ * verifiedAttempt identifies the verify snapshot; attempt identifies its current/next repair consumer.
+ * The phase requires persistence before publishing a verdict or queuing another repair.
+ */
+export async function saveMaterializeItemFindings(moduleName: string, planId: string, attempt: number, findings: string[], verifiedAttempt = attempt): Promise<boolean> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project || !moduleName || !planId) return false;
+    const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, toSafeShortName(planId), 'frontend-materialize-findings', project);
+    await saveStorContent(fileInfo, `${JSON.stringify({ savedAt: new Date().toISOString(), planId, attempt, verifiedAttempt, findings }, null, 2)}\n`);
+    return true;
+  } catch (error) {
+    console.error(`[saveMaterializeItemFindings] ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
+
+/** The findings saved for this exact slot (planId + attempt). A different attempt is a stale file: ignored. */
+export async function readMaterializeItemFindings(moduleName: string, planId: string, attempt: number): Promise<string[]> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project || !moduleName || !planId) return [];
+    const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, toSafeShortName(planId), 'frontend-materialize-findings', project);
+    const record = await readJsonFile(fileInfo);
+    if (!isRecord(record) || record.attempt !== attempt || !Array.isArray(record.findings)) return [];
+    return record.findings.map(String).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+// The module name from a broken item's `_<project>_/l2/<module>/...` outputPath/defPath (all items in one
+// verify belong to the same module). Empty when none can be derived — the caller then skips the write.
+function deriveTraceModule(broken: MaterializeVerifyBrokenTrace[]): string {
+  for (const item of broken) {
+    for (const ref of [item.outputPath, item.defPath]) {
+      const parts = String(ref || '').split('/');
+      const l2Index = parts.indexOf('l2');
+      const moduleName = l2Index >= 0 ? parts[l2Index + 1] : '';
+      if (moduleName && moduleName !== 'trace') return moduleName;
+    }
+  }
+  return '';
+}
+
+// A stable, ALWAYS-written verdict for a materialization phase, so "was it resolved?" has one place to
+// look instead of inferring it from the presence/absence of cryptic per-round trace files. The name is
+// derived by stripping the round suffix (`-v2`, `-v2-v3`) from planId, so every round overwrites the
+// SAME file and the last write is the final verdict: allClear + the passed items + any still-broken.
+// Always module-scoped: like the trace, there is NO project-root fallback (that polluted l2/trace and the
+// junk got committed) — without a derivable module the verdict is skipped with a warning.
+export async function saveMaterializeVerifySummary(
+  moduleName: string,
+  planId: string,
+  attempt: number,
+  passed: MaterializeVerifyPassed[],
+  broken: MaterializeVerifyBrokenTrace[],
+  buckets: MaterializeVerifySummaryBuckets = {},
+  final = true,
+): Promise<string | null> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project) return null;
+    const module = moduleName || deriveTraceModule(broken) || deriveTraceModule(buckets.declared ?? []);
+    if (!module) {
+      console.warn(`[saveMaterializeVerifySummary] no module could be derived for ${planId}; verdict not written (never write to the project-root l2/trace)`);
+      return null;
+    }
+    const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
+    const shortName = `${toSafeShortName(basePlanId)}-summary`;
+    const declared = buckets.declared ?? [];
+    const repaired = buckets.repaired ?? [];
+    const fileInfo = cfePipelineTraceFileInfo(module, shortName, 'frontend-materialize-verify', project);
+    await saveStorContent(fileInfo, `${JSON.stringify({
+      savedAt: new Date().toISOString(),
+      phase: basePlanId,
+      lastRoundPlanId: planId,
+      attempt,
+      // false while a repair round is still queued: that allClear:false is in-progress, not a barrier.
+      final,
+      // Declared errors and unavailable typechecks cannot certify a completed phase.
+      allClear: materializeVerdictAllClear(passed, broken, declared),
+      blockedCount: broken.length,
+      repairedCount: repaired.length,
+      declaredCount: declared.length,
+      passedCount: passed.length,
+      passed: passed.map(item => ({ planId: item.planId, typecheck: item.typecheck })),
+      repaired: repaired.map(item => ({ planId: item.planId, typecheck: item.typecheck })),
+      declared: declared.map(item => ({
+        planId: item.planId,
+        outputPath: item.outputPath,
+        errorCount: item.errors.length,
+        warningCount: item.warnings.length,
+        firstError: item.errors[0] ?? item.warnings[0] ?? null,
+        severity: 'declared' as const,
+      })),
+      brokenCount: broken.length,
+      broken: broken.map(item => ({
+        planId: item.planId,
+        outputPath: item.outputPath,
+        errorCount: item.errors.length,
+        warningCount: item.warnings.length,
+        firstError: item.errors[0] ?? null,
+        severity: 'blocked' as const,
+      })),
+      agent: 'agentCfeMaterializePhase',
+    }, null, 2)}\n`);
+    return `_${project}_/l4/${fileInfo.folder}/${shortName}.json`;
+  } catch (error) {
+    console.error(`[saveMaterializeVerifySummary] ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
+export interface UnresolvedMaterializeItem { planId: string; outputPath: string | null; firstError: string }
+
+/**
+ * Move blocked items whose shipped file the finalize repair just made compile-clean out of `broken`
+ * and into `passed`/`repaired`. Last verdict wins: `finalizeGeneratedPages` reads this afterwards.
+ *
+ * Only refs the round actually tried to repair are in `nowCleanRefs` — a blocked item the gate never
+ * reproduced (Monaco-vs-tsc) stays broken so MATERIALIZE-VERDICT-UNREPRODUCED still names it.
+ */
+export function absolveCleanItemsFromVerdict(
+  verdict: Record<string, unknown>,
+  nowCleanRefs: Set<string>,
+): Record<string, unknown> {
+  if (nowCleanRefs.size === 0 || !Array.isArray(verdict.broken)) return verdict;
+  const stillBroken: unknown[] = [];
+  const absolved: MaterializeVerifyPassed[] = [];
+  for (const entry of verdict.broken) {
+    if (!isRecord(entry)) continue;
+    const outputPath = typeof entry.outputPath === 'string' ? entry.outputPath : '';
+    if (outputPath && nowCleanRefs.has(outputPath)) {
+      const planId = readString(entry.planId);
+      if (planId) absolved.push({ planId, typecheck: readString(entry.typecheck) || 'passed' });
+    } else {
+      stillBroken.push(entry);
+    }
+  }
+  if (absolved.length === 0) return verdict;
+  const passed = Array.isArray(verdict.passed) ? [...verdict.passed] : [];
+  const repaired = Array.isArray(verdict.repaired) ? [...verdict.repaired] : [];
+  const passedIds = new Set(passed.filter(isRecord).map(item => readString(item.planId)));
+  const repairedIds = new Set(repaired.filter(isRecord).map(item => readString(item.planId)));
+  for (const item of absolved) {
+    if (!passedIds.has(item.planId)) passed.push(item);
+    if (!repairedIds.has(item.planId)) repaired.push(item);
+  }
+  return {
+    ...verdict,
+    allClear: stillBroken.length === 0,
+    blockedCount: stillBroken.length,
+    brokenCount: stillBroken.length,
+    passedCount: passed.length,
+    repairedCount: repaired.length,
+    broken: stillBroken,
+    passed,
+    repaired,
+  };
+}
+
+function summaryEntryAsBroken(entry: unknown, severity: 'blocked' | 'declared'): MaterializeVerifyBrokenTrace | null {
+  if (!isRecord(entry) || !readString(entry.planId)) return null;
+  return {
+    planId: readString(entry.planId),
+    defPath: readString(entry.defPath),
+    outputPath: typeof entry.outputPath === 'string' ? entry.outputPath : null,
+    typecheck: readString(entry.typecheck) || 'not-applicable',
+    errors: Array.isArray(entry.errors) ? entry.errors.map(String) : (entry.firstError ? [String(entry.firstError)] : []),
+    warnings: Array.isArray(entry.warnings) ? entry.warnings.map(String) : [],
+    severity,
+  };
+}
+
+function summaryEntryAsPassed(entry: unknown): MaterializeVerifyPassed | null {
+  if (!isRecord(entry) || !readString(entry.planId)) return null;
+  return { planId: readString(entry.planId), typecheck: readString(entry.typecheck) };
+}
+
+/**
+ * Persist `absolveCleanItemsFromVerdict` onto every materialize summary of this module.
+ * Returns how many blocked items were moved. The summary file name is still the phase's
+ * (slot planId of a finalize repair is the ROUND id — never the item's materialize planId).
+ */
+export async function rewriteMaterializeVerdictsNowClean(moduleName: string, nowCleanRefs: Set<string>): Promise<number> {
+  if (!moduleName || nowCleanRefs.size === 0) return 0;
+  const project = mls.actualProject || 0;
+  if (!project) return 0;
+  let moved = 0;
+  for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
+    if (!file || file.project !== project || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || ''), moduleName)) continue;
+    if (!String(file.shortName || '').endsWith('-summary')) continue;
+    try {
+      const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
+      if (!isRecord(verdict) || !Array.isArray(verdict.broken) || verdict.broken.length === 0) continue;
+      const next = absolveCleanItemsFromVerdict(verdict, nowCleanRefs);
+      if (next === verdict) continue;
+      const planId = readString(next.lastRoundPlanId) || readString(next.phase);
+      if (!planId) continue;
+      const broken = (Array.isArray(next.broken) ? next.broken : []).map(entry => summaryEntryAsBroken(entry, 'blocked')).filter((item): item is MaterializeVerifyBrokenTrace => !!item);
+      const declared = (Array.isArray(next.declared) ? next.declared : []).map(entry => summaryEntryAsBroken(entry, 'declared')).filter((item): item is MaterializeVerifyBrokenTrace => !!item);
+      const passed = (Array.isArray(next.passed) ? next.passed : []).map(summaryEntryAsPassed).filter((item): item is MaterializeVerifyPassed => !!item);
+      const repaired = (Array.isArray(next.repaired) ? next.repaired : []).map(summaryEntryAsPassed).filter((item): item is MaterializeVerifyPassed => !!item);
+      const attempt = typeof next.attempt === 'number' && Number.isInteger(next.attempt) ? next.attempt : 1;
+      await saveMaterializeVerifySummary(moduleName, planId, attempt, passed, broken, { declared, repaired });
+      moved += verdict.broken.length - broken.length;
+    } catch { /* an unreadable verdict is left as-is */ }
+  }
+  return moved;
+}
+
+/**
+ * What the materialization verdicts of ONE module still list as blocking, for the closing gate to answer for.
+ *
+ * The finalize gate re-derives everything from Monaco and knew nothing about these files. In run01 of
+ * 102047 the pages verdict closed with three `blocked` items whose shipped .ts does not compile, the
+ * module gate reported no blocking Monaco error, and the run went `completed` with `pagesDone` naming all
+ * three pages — while `tsc` finds five errors in exactly those files. The materialize write is a SUSPECT
+ * LIST the gate must answer for: a suspect the gate cannot reproduce is the fidelity gap, recorded as
+ * such. After a finalize repair round actually fixes a file, that item is rewritten here so the last
+ * verdict is the one `finalizeGeneratedPages` reads.
+ */
+export async function readUnresolvedMaterializeItems(moduleName: string): Promise<UnresolvedMaterializeItem[]> {
+  const items: UnresolvedMaterializeItem[] = [];
+  const project = mls.actualProject || 0;
+  if (!project || !moduleName) return items;
+  for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
+    if (!file || file.project !== project || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || ''), moduleName)) continue;
+    if (!String(file.shortName || '').endsWith('-summary')) continue;
+    try {
+      const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
+      if (!verdict || verdict.allClear !== false || !Array.isArray(verdict.broken)) continue;
+      for (const entry of verdict.broken) {
+        if (!isRecord(entry) || !readString(entry.planId)) continue;
+        items.push({
+          planId: readString(entry.planId),
+          outputPath: typeof entry.outputPath === 'string' ? entry.outputPath : null,
+          firstError: readString(entry.firstError),
+        });
+      }
+    } catch { /* an unreadable verdict accuses nobody */ }
+  }
+  return items;
+}
+
+/**
+ * Plan ids the last verify verdict still lists as compile-blocking.
+ * Declared-only is not here. `finalOnly` ignores a round that is still repairing (`final: false`).
+ * `moduleName` keeps a neighbour module's leftover verdict from skipping items in this run.
+ */
+export async function readBlockedMaterializePlanIds(project: number, opts?: { finalOnly?: boolean; moduleName?: string }): Promise<Set<string>> {
+  const blocked = new Set<string>();
+  if (!project) return blocked;
+  for (const file of Object.values(mls.stor.files) as { project?: number; level?: number; folder?: string; shortName?: string; extension?: string; status?: string; getContent?: () => Promise<string> }[]) {
+    if (!file || file.project !== project || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted') continue;
+    if (file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || ''), opts?.moduleName)) continue;
+    if (!String(file.shortName || '').endsWith('-summary')) continue;
+    try {
+      const verdict = JSON.parse(String(await file.getContent?.() ?? ''));
+      for (const planId of compileBlockedPlanIdsFromVerdict(verdict, opts?.finalOnly === true)) blocked.add(planId);
+    } catch { /* an unreadable verdict schedules nothing */ }
+  }
+  return blocked;
+}
+
+export async function readMaterializeVerifySummary(moduleName: string, planId: string): Promise<{
+  passed: MaterializeVerifyPassed[];
+  broken: MaterializeVerifyBrokenTrace[];
+  declared: MaterializeVerifyBrokenTrace[];
+  repaired: MaterializeVerifyPassed[];
+} | null> {
+  try {
+    const project = mls.actualProject || 0;
+    if (!project || !moduleName) return null;
+    const basePlanId = planId.replace(/(?:-v\d+)+$/, '');
+    const shortName = `${toSafeShortName(basePlanId)}-summary`;
+    const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, shortName, 'frontend-materialize-verify', project);
+    const files = mls.stor.files as Record<string, { status?: string; getContent?: () => Promise<string> } | undefined>;
+    const file = files[mls.stor.getKeyToFile(fileInfo)];
+    if (!file || file.status === 'deleted' || !file.getContent) return null;
+    const verdict = JSON.parse(String(await file.getContent()));
+    if (!verdict || typeof verdict !== 'object') return null;
+    const asPassed = (items: unknown): MaterializeVerifyPassed[] =>
+      Array.isArray(items) ? items.filter(isRecord).map(item => ({ planId: readString(item.planId), typecheck: readString(item.typecheck) })).filter(item => item.planId) : [];
+    const asBroken = (items: unknown): MaterializeVerifyBrokenTrace[] =>
+      Array.isArray(items) ? items.filter(isRecord).map(item => ({
+        planId: readString(item.planId),
+        defPath: readString(item.defPath),
+        outputPath: typeof item.outputPath === 'string' ? item.outputPath : null,
+        typecheck: readString(item.typecheck) || 'not-applicable',
+        errors: Array.isArray(item.errors) ? item.errors.map(String) : (item.firstError ? [String(item.firstError)] : []),
+        warnings: Array.isArray(item.warnings) ? item.warnings.map(String) : [],
+      })).filter(item => item.planId) : [];
+    return {
+      passed: asPassed(verdict.passed),
+      broken: asBroken(verdict.broken),
+      declared: asBroken(verdict.declared),
+      repaired: asPassed(verdict.repaired),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function listCreateRunLayoutFailureTraces(runId: string): Promise<string[]> {
+  const run = getCreateRun(runId);
+  const traces: string[] = [];
+  for (const page of run.context.pages) {
+    const prepared = await prepareCreateRunPage(runId, page.pageId, page.moduleName);
+    for (const variant of prepared.variantPlan) {
+      const fileInfo: FileInfo = cfePipelineTraceFileInfo(
+        prepared.page.moduleName,
+        `${toSafeShortName(page.pageId)}--${toSafeShortName(variant.genome)}`,
+        'frontend-create-layout-errors',
+        prepared.project,
+      );
+      const trace = await readJsonFile(fileInfo);
+      const record = isRecord(trace) ? trace : null;
+      if (!record || readString(record.runId) !== runId) continue;
+      const message = readString(record.message);
+      if (message) traces.push(`${page.pageId}/${variant.genome}: ${message}`);
+    }
+  }
+  return traces;
+}
+
+function mergeLayoutsForShared(layouts: CfePageLayoutDefinition[]): CfePageLayoutDefinition {
+  const primary = layouts[0];
+  const i18n: Record<string, string> = {};
+  const dataBindings: CfePageLayoutDefinition['dataBindings'] = [];
+  const seenBinding = new Set<string>();
+  const sections: CfeLayoutSection[] = [];
+  for (const layout of layouts) {
+    Object.assign(i18n, layout.i18n);
+    for (const binding of layout.dataBindings) {
+      if (seenBinding.has(binding.id)) continue;
+      seenBinding.add(binding.id);
+      dataBindings.push(binding);
+    }
+    // Keep every section (dup ids are harmless here: shared collects stateKeys, deduped downstream).
+    sections.push(...layout.sections);
+  }
+  return { pageId: primary.pageId, layoutId: primary.layoutId, sections, i18n, dataBindings };
+}
+
+export interface CfeIncompletePage { page: CfePagePlan; reason: string }
+
+/**
+ * Is this unresolved materialize item one of THIS page's artifacts?
+ * `_102047_/l2/todo/web/desktop/page11/taskCatalogue.ts` belongs to page `taskCatalogue` of module `todo`.
+ */
+export function unresolvedItemBelongsToPage(outputPath: string | null, moduleName: string, pageId: string): boolean {
+  if (!outputPath || !moduleName || !pageId) return false;
+  const match = /^_\d+_\/l\d+\/([^/]+)\/web\/(?:[^/]+\/[^/]+|shared)\/([A-Za-z0-9_]+)\.ts$/u.exec(outputPath);
+  // an organism of a split page (`taskCatalogue_O2.ts`) is an artifact OF that page
+  return !!match && match[1] === moduleName && match[2].replace(/_O\d+$/u, '') === pageId;
+}
+
+export async function finalizeGeneratedPages(runModule = ''): Promise<{ pagesDone: string[]; ownersDone: string[]; skippedPages: string[]; incompletePages: { pageId: string; reason: string }[]; configMsg: string; addLanguageMessage: string | null; moduleName: string }> {
+  const context = await readCreateContext();
+  const knownModule = readString(runModule);
+  // The run module is an explicit argument (command.module). Never pick it from the create-run
+  // cache: that Map is append-only for the tab lifetime and .values() yields the oldest run.
+  if (knownModule) context.pages = context.pages.filter(page => page.moduleName === knownModule);
+  else recordCreateWarning('finalize has no run module; pages were not filtered. todoFrontend writes stay off until a module is known.');
+  const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && await hasRegisteredFrontend(context.project, page) })));
+  const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
+  const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
+  const moduleName = knownModule || (validPages.length > 0 ? readString(validPages[0].moduleName) : '');
+  if (!knownModule) {
+    await recordCfeDegradation(moduleName, 'missing-run-module', 'finalizeGeneratedPages called without a run module; context.pages were not filtered and todoFrontend was not written');
+  }
+  // A page is DONE only when the materialization verdict on disk stopped blocking its artifacts. In run01
+  // of 102047 three genome variants of `taskCatalogue` ended `blocked` (their shipped .ts does not
+  // compile) and the report still listed the page in `pagesDone` — the run declared itself ready and the
+  // publish would fail on the build. Degrading with a record is the house rule; what the record must not
+  // do is say "pronto". Finalize repair rewrites the verdict of the item it actually fixed BEFORE this
+  // runs, so a page that is clean at the last gate can return to pagesDone.
+  const unresolved = await readUnresolvedMaterializeItems(moduleName);
+  const incompletePages: CfeIncompletePage[] = validPages
+    .map(page => ({ page, blocked: unresolved.filter(item => unresolvedItemBelongsToPage(item.outputPath, page.moduleName, page.pageId)) }))
+    .filter(entry => entry.blocked.length > 0)
+    .map(entry => ({ page: entry.page, reason: `${entry.blocked.length} materialization item(s) still blocked: ${entry.blocked.map(item => `${item.planId} (${item.firstError || 'no error recorded'})`).join('; ')}` }));
+  const donePages = validPages.filter(page => !incompletePages.some(entry => entry.page === page));
+  const ownersDone = await updateOwnerStatuses(context, donePages.flatMap(page => page.ownerIds), 'done', knownModule);
+  await saveCreateReport(context.project, donePages, ownersDone, skippedPages, incompletePages);
+  // A page that did not materialize is not in the app: it stays out of l5/config.json. Other modules
+  // already in the file are left alone — this writer still composes N modules on purpose.
+  const configMsg = await saveFrontendWorkspaceConfig(context, validPages, incompletePages.map(entry => entry.page.pageId));
+  return {
+    pagesDone: donePages.map(page => page.pageId),
+    ownersDone,
+    skippedPages,
+    incompletePages: incompletePages.map(entry => ({ pageId: entry.page.pageId, reason: entry.reason })),
+    configMsg,
+    addLanguageMessage: buildAddLanguageMessage(context, donePages),
+    moduleName,
+  };
+}
+
+/**
+ * The `@@addLanguage` handoff for the module just generated, or null when there is nothing to translate.
+ *
+ * The generated shared .ts carries ONE message catalog (the module's default locale) — the scaffold's
+ * renderI18n emits a single `message_<default>` and `messages` map. The extra locales the module declares
+ * are added afterwards by agentAddLanguage, which sends ONLY the i18n block to a cheap translate model
+ * (one call per shared file), so the cost is a fraction of regenerating anything.
+ *
+ * Returns null when the module declares a single language — then no extra task is needed at all.
+ * The payload mirrors what the selectLanguage plugin sends (aura/plugins/selectLanguage.ts):
+ * `[{ languages: [{code, name}], projectId, moduleName }]`, with the language NAME falling back to the
+ * code when the catalog does not know it.
+ */
+export function buildAddLanguageMessage(context: CfeCreateContext, validPages: CfePagePlan[]): string | null {
+  // A run generates a single module; take it from the pages actually finalized (not context.moduleNames,
+  // which lists every module in the project).
+  const moduleName = validPages.length > 0 ? readString(validPages[0].moduleName) : '';
+  if (!moduleName) return null;
+  const meta = context.moduleI18n[moduleName];
+  if (!meta) return null;
+  // runtimeLocales (region preserved, default first) is the SAME list written to l5/config.json, so the
+  // catalog agentAddLanguage creates is keyed exactly like the language the shell will set on
+  // document.lang. Using the 2-letter list here would make 'en' + 'en-AU' collapse into one.
+  const locales = (meta.runtimeLocales ?? []).length > 0 ? meta.runtimeLocales : (meta.activeLocales ?? []);
+  const extras = locales.filter(locale => locale && locale !== locales[0]);
+  if (extras.length === 0) return null;
+  const languages = extras.map(code => ({ code, name: findLanguageByCode(code)?.name || code }));
+  return `@@addLanguage ${JSON.stringify([{ languages, projectId: context.project, moduleName }])}`;
+}
+
+export async function listGeneratedCreatePages(): Promise<{ project: number; pages: CfePagePlan[]; skippedPages: string[] }> {
+  const context = await readCreateContext();
+  const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) })));
+  return {
+    project: context.project,
+    pages: checkedPages.filter(item => item.ok).map(item => item.page),
+    skippedPages: checkedPages.filter(item => !item.ok).map(item => item.page.pageId),
+  };
+}
+
+export async function registerGeneratedFrontendPages(): Promise<{ pagesRegistered: string[]; skippedPages: string[] }> {
+  const context = await readCreateContext();
+  const checkedPages = await Promise.all(context.pages.map(async page => ({ page, ok: await hasGeneratedDefs(context.project, page) && hasMaterializedPageTs(context.project, page) })));
+  const validPages = checkedPages.filter(item => item.ok).map(item => item.page);
+  const skippedPages = checkedPages.filter(item => !item.ok).map(item => item.page.pageId);
+  await deleteLeftoverPageHtml(context.project, context.pages.map(page => page.moduleName));
+  await updateL5FrontendSignature(context.project, validPages);
+  await Promise.all(validPages.map(page => savePageRegisterMarker(context.project, page, 'done')));
+  return { pagesRegistered: validPages.map(page => page.pageId), skippedPages };
+}
+
+export function parseCreatePageArgs(prompt: string | undefined): CfeCreatePageArgs {
+  if (!prompt) throw new Error('missing page args');
+  const parsed = JSON.parse(prompt);
+  const pageId = isRecord(parsed) ? readString(parsed.pageId) : '';
+  const moduleName = isRecord(parsed) ? readString(parsed.moduleName) : '';
+  const runId = isRecord(parsed) ? readString(parsed.runId) : '';
+  if (!pageId || !moduleName || !runId) throw new Error(`invalid page args: ${prompt}`);
+  return cfeCreatePageArgs({ moduleName, pageId, runId });
+}
+
+export function createUpdateStatusIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, status: mls.msg.AIStepStatus, traceMsg?: string): mls.msg.AgentIntentUpdateStatus {
+  return {
+    type: 'update-status',
+    hookSequential,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: parentStep?.stepId ?? step.stepId,
+    stepId: step.stepId,
+    status,
+    traceMsg,
+  };
+}
+
+function recordCreateWarning(message: string): void {
+  const full = `[agentMaterializeL2] ${message}`;
+  const w = sessionScope() as any;
+  if (!Array.isArray(w.__agentMaterializeL2CreateDiagnostics)) w.__agentMaterializeL2CreateDiagnostics = [];
+  w.__agentMaterializeL2CreateDiagnostics.push(full);
+}
+
+export function createPromptReadyIntent(
+  context: mls.msg.ExecutionContext,
+  parentStep: mls.msg.AIAgentStep,
+  hookSequential: number,
+  args: string,
+  systemPrompt: string,
+  humanPrompt: string,
+  toolSchema: mls.msg.LLMTool,
+  toolName: string,
+): mls.msg.AgentIntentPromptReady {
+  if (!context.task) throw new Error('[createPromptReadyIntent] task invalid');
+  return {
+    type: 'prompt_ready',
+    args,
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task.PK,
+    hookSequential,
+    parentStepId: parentStep.stepId,
+    systemPrompt,
+    humanPrompt,
+    tools: [toolSchema],
+    toolChoice: { type: 'function', function: { name: toolName } },
+  };
+}
+
+/**
+ * @param onFailure policy for a step whose LLM call fails. OMITTED unless the caller asks for it: a
+ *        sequential step (phase, verify, register, finalize) is unique and mandatory, and failing the
+ *        task there is the correct outcome. Only a fan-out HOST whose slots call an LLM passes
+ *        'wait_after_prompt' — the children inherit it (addParallelChildStep) and a provider failure
+ *        then reaches the agent's afterPromptStep instead of killing the task (see flow.json
+ *        engineInvariants).
+ */
+export function createAgentStepPayload(planId: string, agentName: string, stepTitle: string, prompt: unknown, dependsOn: string[], executionMode: 'sequential' | 'parallel_dynamic' = 'sequential', status: mls.msg.AIStepStatus = 'waiting_dependency', onFailure?: mls.msg.AIAgentStep['onFailure']): mls.msg.AIAgentStep {
+  return {
+    type: 'agent',
+    stepId: 0,
+    interaction: null,
+    stepTitle,
+    status,
+    nextSteps: [],
+    agentName,
+    prompt: JSON.stringify(prompt),
+    rags: [],
+    ...(onFailure ? { onFailure } : {}),
+    planning: { planId, dependsOn, executionMode, executionHost: 'client' },
+  } as any;
+}
+
+export function createAddStepIntent(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, args?: string[], maxParallel = 10): mls.msg.AgentIntentAddStep {
+  const intent: mls.msg.AgentIntentAddStep = {
+    type: 'add-step',
+    messageId: context.message.orderAt,
+    threadId: context.message.threadId,
+    taskId: context.task?.PK || '',
+    parentStepId: parentStep.stepId,
+    step,
+  };
+  if (args) intent.executionMode = { type: 'parallel', args, maxParallel };
+  return intent;
+}
+
+export function extractCfePageLayoutOutput(payload: unknown): CfePageLayoutOutput {
+  return extractPlannerOutput(payload, cfePageLayoutConfig);
+}
+
+const cfePageLayoutConfig: PlannerExtractConfig<CfePageLayoutResult> = {
+  toolName: CFE_LAYOUT_TOOL_NAME,
+  normalizeResult: normalizeCfePageLayoutResult,
+};
+
+function normalizeCfePageLayoutResult(value: unknown): CfePageLayoutResult {
+  const result = assertRecord(value, 'result');
+  const pageLayoutRaw = isRecord(result.pageLayout) ? result.pageLayout : result;
+  return {
+    pageLayout: normalizeComposition(pageLayoutRaw, 'result.pageLayout'),
+    // Goal-first (page21) also emits the synthesized objective; passed through untyped and
+    // persisted for audit (page21 defs.pageObjective + trace). Absent for page11.
+    ...(result.objective !== undefined ? { objective: result.objective } : {}),
+  };
+}
+
+function normalizeComposition(value: unknown, path: string): CfeLayoutComposition {
+  const pageLayout = assertRecord(value, path);
+  return {
+    pageId: assertString(pageLayout.pageId, `${path}.pageId`),
+    layoutId: assertString(pageLayout.layoutId, `${path}.layoutId`),
+    sections: assertArray(pageLayout.sections, `${path}.sections`).map((item, index) => normalizeCompositionSection(item, `${path}.sections[${index}]`)),
+  };
+}
+
+function normalizeCompositionSection(value: unknown, path: string): CfeCompositionSection {
+  const section = assertRecord(value, path);
+  return {
+    id: assertString(section.id, `${path}.id`),
+    sectionName: optionalString(section.sectionName),
+    order: normalizeOrder(section.order, `${path}.order`),
+    organisms: assertArray(section.organisms, `${path}.organisms`).map((item, index) => normalizeCompositionOrganism(item, `${path}.organisms[${index}]`)),
+  };
+}
+
+function normalizeCompositionOrganism(value: unknown, path: string): CfeCompositionOrganism {
+  const organism = assertRecord(value, path);
+  return {
+    id: assertString(organism.id, `${path}.id`),
+    organismName: assertString(organism.organismName, `${path}.organismName`),
+    purpose: assertString(organism.purpose, `${path}.purpose`),
+    order: normalizeOrder(organism.order, `${path}.order`),
+    displayHint: optionalString(organism.displayHint),
+    uses: Array.isArray(organism.uses) ? normalizeStringList(organism.uses, `${path}.uses`) : [],
+    notes: optionalString(organism.notes),
+  };
+}
+
+function normalizeDataBindings(value: unknown): { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] }[] {
+  if (value === undefined || value === null) return [];
+  return assertArray(value, 'result.pageLayout.dataBindings').map((item, index) => normalizeDataBinding(item, `dataBindings[${index}]`));
+}
+
+function normalizeDataBinding(value: unknown, path: string): { id: string; source: string; entity?: string; command?: string; description?: string; stateKey?: string; inputStateKeys?: string[] } {
+  const binding = assertRecord(value, path);
+  return {
+    id: assertString(binding.id, `${path}.id`),
+    source: assertString(binding.source, `${path}.source`),
+    entity: optionalString(binding.entity),
+    command: optionalString(binding.command),
+    description: optionalString(binding.description),
+    stateKey: optionalString(binding.stateKey),
+    inputStateKeys: Array.isArray(binding.inputStateKeys) ? normalizeStringList(binding.inputStateKeys, `${path}.inputStateKeys`) : undefined,
+  };
+}
+
+function normalizeI18n(value: unknown): Record<string, string> {
+  if (value === undefined || value === null) return {};
+  const { record, defaultLocale } = normalizeI18nSource(value);
+  const normalized: Record<string, string> = {};
+  for (const [key, item] of Object.entries(record)) {
+    if (isI18nMetadataKey(key)) continue;
+    const text = normalizeI18nText(item, defaultLocale);
+    if (text) normalized[key] = text;
+  }
+  return normalized;
+}
+
+function normalizeI18nSource(value: unknown): { record: Record<string, unknown>; defaultLocale: string } {
+  const record = assertRecord(value, 'result.pageLayout.i18n');
+  const defaultLocale = readI18nLocale(record.defaultLocale) || readI18nLocale(record.locale) || readI18nLocale(record.language);
+  const messages = isRecord(record.messages) ? record.messages : undefined;
+  const localeCatalog = selectI18nLocaleCatalog(messages || record, defaultLocale);
+  return { record: localeCatalog || record, defaultLocale };
+}
+
+function selectI18nLocaleCatalog(record: Record<string, unknown>, defaultLocale: string): Record<string, unknown> | undefined {
+  const entries = Object.entries(record).filter(([key, item]) => isI18nLocaleKey(key) && isRecord(item)) as [string, Record<string, unknown>][];
+  if (entries.length === 0) return undefined;
+  if (defaultLocale) {
+    const exact = entries.find(([key]) => sameI18nLocale(key, defaultLocale));
+    if (exact) return exact[1];
+  }
+  return entries[0][1];
+}
+
+function normalizeI18nText(value: unknown, defaultLocale: string): string {
+  if (typeof value === 'string') return value.trim();
+  if (!isRecord(value)) return '';
+  if (defaultLocale) {
+    const explicit = Object.entries(value).find(([key, item]) => sameI18nLocale(key, defaultLocale) && typeof item === 'string' && item.trim());
+    if (explicit && typeof explicit[1] === 'string') return explicit[1].trim();
+  }
+  const localized = Object.entries(value).find(([key, item]) => isI18nLocaleKey(key) && typeof item === 'string' && item.trim());
+  if (localized && typeof localized[1] === 'string') return localized[1].trim();
+  return optionalString(value.text) || optionalString(value.value) || optionalString(value.label) || optionalString(value.title) || '';
+}
+
+function readI18nLocale(value: unknown): string {
+  const locale = readString(value);
+  return isI18nLocaleKey(locale) ? locale : '';
+}
+
+function isI18nLocaleKey(key: string): boolean {
+  return /^[a-z]{2}(?:[-_][a-z0-9]{2,8})*$/i.test(key.trim());
+}
+
+function sameI18nLocale(a: string, b: string): boolean {
+  return normalizeI18nLocale(a) === normalizeI18nLocale(b);
+}
+
+function normalizeI18nLocale(value: string): string {
+  return value.trim().replace(/_/g, '-').toLowerCase();
+}
+
+function languageKeys(values: string[]): string[] {
+  return unique(values.map(languageKey).filter(Boolean));
+}
+
+// Runtime locale key: lowercase, '_' -> '-', REGION PRESERVED — byte-identical to what mls-102033
+// languageRuntime.normalizeLanguage does to the configured list, so l5/config.json, document.lang and the
+// generated i18n catalog key are always the same string. Unlike languageKey it does NOT drop the region.
+function runtimeLocaleKey(value: string): string {
+  const trimmed = readString(value).replace(/_/g, '-').toLowerCase();
+  return /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/.test(trimmed) ? trimmed : '';
+}
+
+function runtimeLocaleKeys(values: string[]): string[] {
+  return unique(values.map(runtimeLocaleKey).filter(Boolean));
+}
+
+function languageKey(value: string): string {
+  const locale = readI18nLocale(value);
+  const primary = normalizeI18nLocale(locale || value).split('-')[0] || '';
+  return /^[a-z]{2,3}$/i.test(primary) ? primary.toLowerCase() : '';
+}
+
+function isI18nMetadataKey(key: string): boolean {
+  return ['defaultlocale', 'locale', 'language', 'messages'].includes(key.trim().toLowerCase());
+}
+
+function normalizeOrder(value: unknown, path: string): number {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
+  throw new Error(`${path} must be an integer`);
+}
+
+export const GOAL_FIRST_TEMPLATE_ID = 'goal_first';
+
+/** Experience skills live one folder per UX category, one .md per slot. */
+function experienceSkillPath(categoryRef: string, genome: string): string {
+  return `_102020_/l4/collabux/templates/${categoryRef}/${genome}.md`;
+}
+
+/** True when the experience skill exists in the stor — a category without one degrades to bespoke. */
+function experienceSkillExists(categoryRef: string, genome: string): boolean {
+  if (!categoryRef) return false;
+  const key = mls.stor.getKeyToFile({ project: 102020, level: 4, folder: `collabux/templates/${categoryRef}`, shortName: genome, extension: '.md' });
+  const file = (mls.stor.files as Record<string, unknown>)[key] as { status?: string } | undefined;
+  return Boolean(file && file.status !== 'deleted');
+}
+
+/**
+ * Slot plan from the category recipe (cfePageRecipe): always the three genomes. Category only
+ * picks the template of page21/page31. A category with no skill file degrades that slot to
+ * bespoke with a warning instead of putting a broken path in the pipeline.
+ */
+function buildLayoutVariantPlan(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): CfeLayoutVariantPlan[] {
+  const candidates = selectUxTemplateCandidates(deriveUxSignals(context, page, operations, commands));
+  const primary = candidates[0];
+  const categoryRef = readString(workspaceForPage(context, page)?.categoryRef);
+  const slots = pageSlotRecipes(categoryRef, context.uxVariants || 'default');
+  return slots.map(slot => {
+    const hasSkill = slot.attachExperienceSkill && experienceSkillExists(categoryRef, slot.genome);
+    if (slot.attachExperienceSkill && categoryRef && !hasSkill) {
+      recordCreateWarning(`${page.pageId}/${slot.genome}: no experience skill for category '${categoryRef}' (${experienceSkillPath(categoryRef, slot.genome)}) — slot degraded to bespoke`);
+    }
+    if (slot.templateMode === 'pinned') {
+      return {
+        genome: slot.genome,
+        templateId: primary.id,
+        template: primary as unknown as Record<string, unknown>,
+        ...(hasSkill ? { experienceSkill: experienceSkillPath(categoryRef, slot.genome) } : {}),
+      };
+    }
+    return {
+      genome: slot.genome,
+      templateId: GOAL_FIRST_TEMPLATE_ID,
+      template: { mode: 'goal-first', candidates: candidates as unknown as Record<string, unknown>[] },
+      ...(hasSkill ? { experienceSkill: experienceSkillPath(categoryRef, slot.genome) } : {}),
+    };
+  });
+}
+
+// Machine-derivable UX signals for template scoring. Prose signals stay for the LLM.
+function deriveUxSignals(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): UxScreenSignals {
+  const queryCommands = commands.filter(command => readString(command.kind) === 'query');
+  const mutationCommands = commands.filter(command => readString(command.kind) !== 'query');
+  const hasStatusOrLifecycle = unique(operations.flatMap(operationEntities))
+    .map(entityId => context.entities.get(entityId))
+    .some(entity => Boolean(entity && (entity.statusEnum.length > 0 || entity.lifecycleStates.length > 0)));
+  const isWorkflow = page.sourceKind === 'workflow';
+
+  const accessPatterns: string[] = [];
+  if (queryCommands.length > 0) accessPatterns.push('list');
+  if (isWorkflow && hasStatusOrLifecycle) accessPatterns.push('queue', 'board');
+  if (mutationCommands.length > 0) accessPatterns.push('commandInput');
+  if (queryCommands.length > 0 && mutationCommands.length === 0 && operations.length === 1) accessPatterns.push('detail');
+
+  const operationKinds = unique([
+    ...operations.map(operation => operation.kind).filter(Boolean),
+    ...(isWorkflow ? ['transition'] : []),
+    ...(mutationCommands.length > 0 ? ['command'] : []),
+    ...(queryCommands.length > 0 ? ['query'] : []),
+  ]);
+
+  const selection = queryCommands.length > 0 && mutationCommands.length > 0 ? 'single' : 'none';
+
+  return {
+    workspaceKind: readString((page.origin as Record<string, unknown>).workspaceKind),
+    accessPatterns: unique(accessPatterns),
+    selection,
+    operationKinds,
+    hasStatusOrLifecycle,
+    hasQueryList: queryCommands.length > 0,
+    isMultiStep: isWorkflow || operations.length > 1 || mutationCommands.length > 1,
+  };
+}
+
+function buildPageUserJourney(context: CfeCreateContext, page: CfePagePlan, operations: CfeOperationDef[], commands: Record<string, unknown>[]): Record<string, unknown> {
+  const queryCommands = commands.filter(command => readString(command.kind) === 'query');
+  const mutationCommands = commands.filter(command => readString(command.kind) !== 'query');
+  const lifecycleEntities = unique(operations.flatMap(operationEntities))
+    .map(entityId => context.entities.get(entityId))
+    .filter((entity): entity is CfeEntityDef => Boolean(entity && (entity.statusEnum.length > 0 || entity.lifecycleStates.length > 0)))
+    .map(entity => ({
+      entityId: entity.entityId,
+      statusEnum: entity.statusEnum,
+      lifecycleStates: entity.lifecycleStates,
+    }));
+  const recommendedStages: Record<string, unknown>[] = [];
+
+  if (queryCommands.length > 0) {
+    recommendedStages.push({
+      stageId: 'discover',
+      intent: 'queryList',
+      purpose: 'Listar, buscar ou selecionar dados existentes antes de executar comandos.',
+      actions: queryCommands.map(command => readString(command.commandName)).filter(Boolean),
+    });
+  }
+
+  for (const command of mutationCommands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    recommendedStages.push({
+      stageId: `execute.${commandName}`,
+      intent: 'commandForm',
+      purpose: readString(command.purpose) || humanizeId(commandName),
+      actions: [commandName],
+      fields: commandFieldRecords(command.input).map(field => field.name),
+    });
+  }
+
+  if (page.sourceKind === 'workflow' || operations.length > 1) {
+    recommendedStages.push({
+      stageId: 'review',
+      intent: 'summary',
+      purpose: 'Revisar o contexto e o resultado das ações principais da página.',
+      actions: [],
+    });
+  }
+
+  const workflowSteps = page.ownerIds
+    .filter(id => id.startsWith('workflow:'))
+    .flatMap(id => context.workflows.get(id.slice('workflow:'.length))?.storySteps || []);
+
+  return {
+    pageId: page.pageId,
+    sourceKind: page.sourceKind,
+    isMultiStep: page.sourceKind === 'workflow' || operations.length > 1 || mutationCommands.length > 1,
+    // Intent-level micro user flow from l4 story.steps: the primary ordering signal for fields/organisms.
+    microUserFlow: {
+      workflowSteps,
+      operations: operations.map(operation => ({
+        operationId: operation.operationId,
+        commandName: operation.commandName || operation.operationId,
+        steps: operation.storySteps,
+      })),
+    },
+    operationsInOrder: operations.map(operation => ({
+      operationId: operation.operationId,
+      title: operation.title,
+      kind: operation.kind,
+      reads: operation.reads,
+      writes: operation.writes,
+      entities: operationEntities(operation),
+    })),
+    lifecycleEntities,
+    recommendedStages,
+    guidance: [
+      'Order fields and organisms following microUserFlow (l4 story.steps): the steps are the intended user sequence within the page.',
+      'Preserve the order of operations when laying out intentions.',
+      'Place query/list/selection context before create/update/status commands when both exist.',
+      'usage summary on a list is a KPI strip from loaded items (total, status counts except cancelled, overdue); overdue is calendar day of dueDate before today and status not completed/cancelled — not a field and not getById.',
+      'For order-like or parent-child flows, a composed input (e.g. items[]) is a repeatable sub-form inside the SAME single submit — never a separate save per child.',
+      'Use progressive disclosure or wizard-like stages only as semantic intent; page11 implementation remains plain render.',
+    ],
+  };
+}
+
+// F4 (v2): map any layout action-ref that is an l4 operationId to the bffCall id that uses it. A ref
+// already equal to a command name (bffId) is left untouched; an operationId used by exactly one bffCall
+// is remapped; anything else is left as-is (the downstream drop/validate handles it). No-op for legacy
+// pages (no bffCalls). This lets the LLM think in operations while the wire model stays bffCall-keyed.
+export function remapLayoutActionsToBff(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const bffCalls = prepared.workspace?.bffCalls || [];
+  if (bffCalls.length === 0) return layout;
+  const commandNames = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
+  const opToBffIds = new Map<string, string[]>();
+  for (const call of bffCalls) {
+    for (const operationId of call.uses) {
+      if (!opToBffIds.has(operationId)) opToBffIds.set(operationId, []);
+      if (!opToBffIds.get(operationId)!.includes(call.bffId)) opToBffIds.get(operationId)!.push(call.bffId);
+    }
+  }
+  const remapped: string[] = [];
+  const remap = (action: string | undefined): string | undefined => {
+    if (!action || commandNames.has(action)) return action;
+    const bffIds = opToBffIds.get(action);
+    if (bffIds && bffIds.length === 1) { remapped.push(`${action}->${bffIds[0]}`); return bffIds[0]; }
+    return action;
+  };
+  const remapList = (actions: CfeLayoutAction[]): CfeLayoutAction[] => actions.map(action => ({ ...action, action: remap(action.action) || action.action }));
+  const sections = layout.sections.map(section => ({
+    ...section,
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      userActions: unique(organism.userActions.map(action => remap(action) || action)),
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        action: remap(intent.action),
+        submitAction: remap(intent.submitAction),
+        toolbar: remapList(intent.toolbar),
+        rowActions: remapList(intent.rowActions),
+        actions: remapList(intent.actions),
+      })),
+    })),
+  }));
+  if (remapped.length === 0) return layout;
+  recordCreateWarning(`remapped operationId action-ref(s) to bffCall id for ${prepared.page.pageId}: ${unique(remapped).join('; ')}`);
+  return { ...layout, sections };
+}
+
+function repairUnknownLayoutActions(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const allowedActions = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
+  const dropped: string[] = [];
+
+  const keepActionName = (action: string, path: string): boolean => {
+    if (allowedActions.has(action)) return true;
+    dropped.push(`${path}=${action}`);
+    return false;
+  };
+  const cleanActionRef = (action: string | undefined, path: string): string | undefined => {
+    if (!action) return undefined;
+    return keepActionName(action, path) ? action : undefined;
+  };
+  const cleanActionList = (actions: CfeLayoutAction[], path: string): CfeLayoutAction[] => actions.filter(action => keepActionName(action.action, `${path}.${action.id}`));
+
+  const sections = layout.sections.map(section => ({
+    ...section,
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      userActions: organism.userActions.filter(action => keepActionName(action, `${organism.id}.userActions`)),
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        action: cleanActionRef(intent.action, `${intent.id}.action`),
+        submitAction: cleanActionRef(intent.submitAction, `${intent.id}.submitAction`),
+        toolbar: cleanActionList(intent.toolbar, `${intent.id}.toolbar`),
+        rowActions: cleanActionList(intent.rowActions, `${intent.id}.rowActions`),
+        actions: cleanActionList(intent.actions, `${intent.id}.actions`),
+      })),
+    })),
+  }));
+
+  if (dropped.length > 0) {
+    recordCreateWarning(`dropped unknown layout action(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
+  }
+  return dropped.length > 0 ? { ...layout, sections } : layout;
+}
+
+// The strict "layout does not represent operation" check only counts organism.userActions, but the
+// LLM legitimately represents a query as a queryList intention (intent.action/toolbar/rowActions)
+// without repeating it in userActions (seen in 102051: browseMenuItems/browseStockItems killed
+// page11). When an expected operation is referenced by any intention of an organism, list it in
+// that organism's userActions instead of failing the variant.
+function repairMissingOperationUserActions(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const seen = new Set<string>(layout.sections.flatMap(section => section.organisms.flatMap(organism => organism.userActions)));
+  // Coverage unit is the page action (command name = v1 operationId / v2 bffCall id), matching validateCreateLayout.
+  const actionNames = [...new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean))];
+  const missing = actionNames.filter(actionName => !seen.has(actionName));
+  if (missing.length === 0) return layout;
+
+  const intentActionRefs = (intent: CfeLayoutIntent): string[] => [
+    intent.action,
+    intent.submitAction,
+    ...[...intent.toolbar, ...intent.rowActions, ...intent.actions].map(action => action.action),
+  ].filter(Boolean) as string[];
+
+  const repaired: string[] = [];
+  const sections = layout.sections.map(section => ({
+    ...section,
+    organisms: section.organisms.map(organism => {
+      const refs = new Set(organism.intentions.flatMap(intentActionRefs));
+      const additions = missing.filter(actionName => refs.has(actionName) && !organism.userActions.includes(actionName));
+      if (additions.length === 0) return organism;
+      for (const actionName of additions) {
+        repaired.push(`${organism.id}+=${actionName}`);
+        missing.splice(missing.indexOf(actionName), 1);
+      }
+      return { ...organism, userActions: [...organism.userActions, ...additions] };
+    }),
+  }));
+
+  if (repaired.length === 0) return layout;
+  recordCreateWarning(`added intention-referenced action(s) to userActions for ${prepared.page.pageId}: ${repaired.join('; ')}`);
+  return { ...layout, sections };
+}
+
+// Symmetric to repairUnknownLayoutActions: a field/column/filter whose field name is outside the
+// allowed vocabulary is dropped with a warning instead of failing the whole variant (seen in
+// 102051: invented query columns like orderNumber/currentLevel killed every page11 layout).
+function repairUnknownLayoutFields(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const allowed = allowedLayoutFields(prepared);
+  const dropped: string[] = [];
+  const cleanFieldList = (fields: CfeLayoutField[], path: string): CfeLayoutField[] => fields.filter(field => {
+    if (allowed.has(field.field)) return true;
+    dropped.push(`${path}.${field.id}=${field.field}`);
+    return false;
+  });
+
+  const sections = layout.sections.map(section => ({
+    ...section,
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        fields: cleanFieldList(intent.fields, `${intent.id}.fields`),
+        columns: cleanFieldList(intent.columns, `${intent.id}.columns`),
+        filters: cleanFieldList(intent.filters, `${intent.id}.filters`),
+      })),
+    })),
+  }));
+
+  if (dropped.length === 0) return layout;
+  recordCreateWarning(`dropped unknown layout field(s) for ${prepared.page.pageId}: ${dropped.join('; ')}`);
+  return { ...layout, sections };
+}
+
+// Section/organism/intention ids are structural only (nothing references them: wiring uses action
+// names, field refs, stateKeys and dataBinding ids), so renaming an LLM-duplicated id is safe.
+// Without this repair a duplicated section id fails the strict page11 validation and kills the
+// whole page (seen in 102049: two sections sharing sec_petManagement / sec_schedulingCapacity).
+function repairDuplicateLayoutIds(pageId: string, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const seen = new Set<string>([layout.layoutId]);
+  const renamed: string[] = [];
+  const uniqueId = (id: string, path: string): string => {
+    if (!seen.has(id)) { seen.add(id); return id; }
+    let suffix = 2;
+    while (seen.has(`${id}${suffix}`)) suffix++;
+    const next = `${id}${suffix}`;
+    seen.add(next);
+    renamed.push(`${path}: ${id} -> ${next}`);
+    return next;
+  };
+
+  const sections = layout.sections.map(section => ({
+    ...section,
+    id: uniqueId(section.id, `section:${section.sectionName}`),
+    organisms: section.organisms.map(organism => ({
+      ...organism,
+      id: uniqueId(organism.id, `organism:${organism.organismName}`),
+      intentions: organism.intentions.map(intent => ({
+        ...intent,
+        id: uniqueId(intent.id, `intent:${intent.intent}`),
+      })),
+    })),
+  }));
+
+  if (renamed.length === 0) return layout;
+  recordCreateWarning(`renamed duplicate layout id(s) for ${pageId}: ${renamed.join('; ')}`);
+  return { ...layout, sections };
+}
+
+function repairMissingLayoutI18n(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const i18n: Record<string, string> = { ...layout.i18n };
+  const added: string[] = [];
+  // `exact` is text that is already business copy in the module's language (an l4 field title): it is
+  // used verbatim, because humanizeId would only mangle a real sentence.
+  const ensure = (key: string | undefined, fallback: string, kind: 'title' | 'label' | 'empty', exact?: string): void => {
+    if (!key) return;
+    // Ontology titles win even when the seed already wrote humanizeId ('Title' for fieldId title).
+    if (exact) {
+      if (i18n[key] !== exact) {
+        i18n[key] = exact;
+        added.push(key);
+      }
+      return;
+    }
+    if (i18n[key]) return;
+    i18n[key] = fallbackI18nText(key, fallback, kind);
+    added.push(key);
+  };
+
+  for (const section of layout.sections) {
+    ensure(section.titleKey, section.sectionName || section.id, 'title');
+    for (const organism of section.organisms) {
+      ensure(organism.titleKey, organism.purpose || organism.organismName || organism.id, 'title');
+      for (const intent of organism.intentions) {
+        ensure(intent.titleKey, intent.intent || intent.id, 'title');
+        ensure(intent.emptyKey, intent.intent || intent.id, 'empty');
+        for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) {
+          // The l4 title first: it is already in the module's language. humanizeId is the last resort,
+          // and it is what put 'Name' and 'Address' in a Portuguese catalogue.
+          ensure(field.labelKey, field.field || field.id, 'label', prepared.fieldTitles[field.field]);
+        }
+        for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) ensure(action.labelKey, action.action || action.id, 'label');
+      }
+    }
+  }
+
+  // Mutation feedback keys. buildActions declares `action.<cmd>.success/error` for EVERY command, but
+  // nothing ever put them in the catalog — the backfill above only walks layout vocabulary. So every
+  // module with a command was born with a dangling reference, and a render that indexed the catalog with
+  // one of them failed TS7053 (102045 projectLifecycleWorkspace: 3 errors that survived because the file
+  // was not stale and never got recompiled). Closing it at the producer kills the whole class.
+  added.push(...addMutationFeedbackI18n(prepared.commands, i18n));
+
+  return added.length > 0 ? { ...layout, i18n } : layout;
+}
+
+/**
+ * Add the `action.<cmd>.success/error` entries every command's `feedback` block references.
+ *
+ * buildActions declares those keys for EVERY command, but nothing ever wrote them into the catalog: the
+ * layout backfill only walks section/organism/intent/field vocabulary. So every module with a command was
+ * born with a dangling reference, and a render that indexed the catalog with one of them failed TS7053
+ * (102045 projectLifecycleWorkspace: 3 errors that survived because the file was not stale and therefore
+ * was never recompiled). Closing it at the producer removes the whole class.
+ * Returns the keys it added (empty when the catalog already had them).
+ */
+export function addMutationFeedbackI18n(commands: Record<string, unknown>[], i18n: Record<string, string>): string[] {
+  const added: string[] = [];
+  for (const command of commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName || readString(command.kind) === 'query') continue;
+    const title = readString(command.purpose) || humanizeId(commandName);
+    for (const [key, text] of [[`action.${commandName}.success`, `${title}: OK`], [`action.${commandName}.error`, `${title}: falhou`]] as const) {
+      if (i18n[key]) continue;
+      i18n[key] = text;
+      added.push(key);
+    }
+  }
+  return added;
+}
+
+function fallbackI18nText(key: string, fallback: string, kind: 'title' | 'label' | 'empty'): string {
+  if (kind === 'empty') return 'Nenhum registro encontrado';
+  const source = fallback || key.replace(/\.(title|label|empty)$/i, '');
+  const lastSegment = source.split('.').filter(Boolean).pop() || source;
+  return humanizeId(lastSegment);
+}
+
+function fallbackLayoutTitleKey(id: string): string {
+  const safeId = id.replace(/[^a-zA-Z0-9]+/g, '.').replace(/^\.+|\.+$/g, '') || 'layout';
+  return `${safeId}.title`;
+}
+
+export function validatePageLayout(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): void {
+  if (layout.pageId !== prepared.page.pageId) throw new Error(`layout pageId ${layout.pageId} does not match ${prepared.page.pageId}`);
+  const ids = new Set<string>();
+  const i18nKeys = new Set(Object.keys(layout.i18n));
+  const actions = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
+  // Coverage unit is the page ACTION (v1: operationId == commandName; v2: bffCall id). Using the command
+  // names covers both — and for a composed v2 bffCall (uses N>1) one command legitimately represents all
+  // its operations, so we must not demand each underlying operationId appear in the layout.
+  const expectedActions = new Set(actions);
+  const seenActions = new Set<string>();
+  const fields = allowedLayoutFields(prepared);
+
+  registerId(ids, layout.layoutId, 'layout.layoutId');
+  for (const section of layout.sections) {
+    registerId(ids, section.id, `section:${section.sectionName}`);
+    assertI18nKey(i18nKeys, section.titleKey, `${section.id}.titleKey`);
+    if (section.organisms.length === 0) throw new Error(`${section.id} must have organisms`);
+    for (const organism of section.organisms) {
+      registerId(ids, organism.id, `organism:${organism.organismName}`);
+      assertI18nKey(i18nKeys, organism.titleKey, `${organism.id}.titleKey`);
+      for (const action of organism.userActions) {
+        if (!actions.has(action)) throw new Error(`${organism.id}.userActions references unknown action ${action}`);
+        seenActions.add(action);
+      }
+      for (const entity of organism.requiredEntities) {
+        if (entity && !prepared.page.entityIds.includes(entity) && !prepared.operations.some(operation => operationEntities(operation).includes(entity))) {
+          throw new Error(`${organism.id}.requiredEntities references unknown entity ${entity}`);
+        }
+      }
+      if (organism.intentions.length === 0) throw new Error(`${organism.id} must have intentions`);
+      for (const intent of organism.intentions) validateIntent(ids, i18nKeys, actions, fields, intent);
+    }
+  }
+  for (const action of expectedActions) {
+    if (!seenActions.has(action)) throw new Error(`layout does not represent operation ${action}`);
+  }
+}
+
+function validateIntent(ids: Set<string>, i18nKeys: Set<string>, actions: Set<string>, fields: Set<string>, intent: CfeLayoutIntent): void {
+  registerId(ids, intent.id, `intent:${intent.id}`);
+  if (intent.titleKey) assertI18nKey(i18nKeys, intent.titleKey, `${intent.id}.titleKey`);
+  if (intent.emptyKey) assertI18nKey(i18nKeys, intent.emptyKey, `${intent.id}.emptyKey`);
+  for (const action of [intent.action, intent.submitAction].filter(Boolean) as string[]) assertAction(actions, action, intent.id);
+  // Element ids only need to be unique within their own list. The same underlying field or
+  // action legitimately reuses its stable id across lists and intents (e.g. a field shown both
+  // as a form field and a list column, or a total surfaced by more than one operation on the
+  // page). Those references collapse to a single shared state downstream (addLayoutSupplementalStates
+  // dedupes by stateKey), so a page-global id set produced false "duplicate layout id" failures.
+  validateLayoutFieldGroup(intent.fields, 'field', i18nKeys, fields);
+  validateLayoutFieldGroup(intent.columns, 'column', i18nKeys, fields);
+  validateLayoutFieldGroup(intent.filters, 'filter', i18nKeys, fields);
+  validateLayoutActionGroup(intent.toolbar, 'toolbar', i18nKeys, actions);
+  validateLayoutActionGroup(intent.rowActions, 'rowAction', i18nKeys, actions);
+  validateLayoutActionGroup(intent.actions, 'action', i18nKeys, actions);
+}
+
+function validateLayoutFieldGroup(group: CfeLayoutField[], kind: string, i18nKeys: Set<string>, fields: Set<string>): void {
+  const groupIds = new Set<string>();
+  for (const field of group) {
+    registerId(groupIds, field.id, `${kind}:${field.id}`);
+    assertI18nKey(i18nKeys, field.labelKey, `${field.id}.labelKey`);
+    if (!fields.has(field.field)) throw new Error(`${field.id}.field references unknown field ${field.field}`);
+  }
+}
+
+function validateLayoutActionGroup(group: CfeLayoutAction[], kind: string, i18nKeys: Set<string>, actions: Set<string>): void {
+  const groupIds = new Set<string>();
+  for (const action of group) {
+    registerId(groupIds, action.id, `${kind}:${action.id}`);
+    assertI18nKey(i18nKeys, action.labelKey, `${action.id}.labelKey`);
+    assertAction(actions, action.action, action.id);
+  }
+}
+
+function assertAction(actions: Set<string>, action: string, path: string): void {
+  if (!actions.has(action)) throw new Error(`${path} references unknown action ${action}`);
+}
+
+function assertI18nKey(i18nKeys: Set<string>, key: string, path: string): void {
+  if (!i18nKeys.has(key)) throw new Error(`${path} references missing i18n key ${key}`);
+}
+
+function registerId(ids: Set<string>, id: string, path: string): void {
+  if (ids.has(id)) throw new Error(`duplicate layout id ${id} at ${path}`);
+  ids.add(id);
+}
+
+function allowedLayoutFields(prepared: CfePreparedPage): Set<string> {
+  const allowed = new Set<string>();
+  for (const operation of prepared.operations) {
+    for (const ref of [...fieldRefs(operation.reads), ...fieldRefs(operation.writes)]) {
+      allowed.add(ref);
+      allowed.add(ref.split('.')[1] || ref);
+    }
+  }
+  for (const command of prepared.commands) {
+    const commandName = readString(command.commandName);
+    for (const field of [...commandFields(command.input), ...commandFields(command.output)]) {
+      allowed.add(field);
+      if (commandName) {
+        allowed.add(`${commandName}.${field}`);
+        allowed.add(`${commandName}.input.${field}`);
+        allowed.add(`${commandName}.output.${field}`);
+      }
+    }
+  }
+  for (const ref of collectBusinessContextRefs(prepared.operations)) {
+    allowed.add(ref.contextKey);
+    allowed.add(ref.originRef);
+    allowed.add(ref.targetRef);
+  }
+  for (const entityId of unique([...prepared.page.entityIds, ...prepared.operations.flatMap(operationEntities)])) {
+    for (const fieldId of prepared.entityFields[entityId] || []) {
+      if (!fieldId) continue;
+      allowed.add(fieldId);
+      allowed.add(`${entityId}.${fieldId}`);
+    }
+  }
+  return allowed;
+}
+
+function uniqueEnumFields(fields: { name: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }[]): { name: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }[] {
+  const seen = new Set<string>();
+  const out: { name: string; enum?: string[]; enumLabels?: CfeEnumLabel[] }[] = [];
+  for (const field of fields) {
+    if (!field.enum?.length || seen.has(field.name)) continue;
+    seen.add(field.name);
+    out.push({
+      name: field.name,
+      enum: field.enum,
+      ...(field.enumLabels?.length ? { enumLabels: field.enumLabels } : {}),
+    });
+  }
+  return out;
+}
+
+function commandFields(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => isRecord(item) ? readString(item.name) : '').filter(Boolean);
+}
+
+function recordTechnicalIdLookupGaps(page: CfePagePlan, commands: Record<string, unknown>[]): void {
+  const lookupFields = new Set(commands
+    .filter(command => readString(command.kind) === 'query')
+    .flatMap(command => commandFieldRecords(command.output).map(field => field.name)));
+  for (const command of commands) {
+    if (readString(command.kind) === 'query') continue;
+    for (const field of commandFieldRecords(command.input)) {
+      if (field.presentation !== 'form' || !/Id$/i.test(field.name) || lookupFields.has(field.name)) continue;
+      recordCreateWarning(`L4 lookup gap for ${page.pageId}.${readString(command.commandName)}.${field.name}: no query output can populate a contextual selector`);
+    }
+  }
+}
+
+export function deterministicLayoutFromBase(prepared: CfePreparedPage): CfePageLayoutDefinition {
+  // F4: when the l4 v2 workspace declares bffCalls, the layout is bffCall-keyed (organisms reference
+  // bffIds) — the SAME gate as prepared.commands, so the seed and shared.actions never diverge. Do NOT
+  // tie this to contractCopies (an F3/materialize concern): if the l4 contracts aren't available the
+  // commands are still bffCall-based, and a legacy per-operation seed here would reference operationIds
+  // that are absent from shared.actions (deterministic "missing shared action" failure, no LLM).
+  if (prepared.workspace && prepared.workspace.bffCalls.length > 0) {
+    return deterministicWorkspaceLayout(prepared, prepared.workspace);
+  }
+  const i18n: Record<string, string> = {};
+  const sectionId = layoutTaxonomyId('section', prepared.page.pageId, 'main');
+  const sectionTitleKey = `${sectionId}.title`;
+  i18n[sectionTitleKey] = prepared.page.pageName;
+  const contextOrganism = deterministicBusinessContextOrganism(prepared, i18n);
+  const operationOffset = contextOrganism ? 1 : 0;
+  const organisms = [
+    ...(contextOrganism ? [contextOrganism] : []),
+    ...prepared.operations.map((operation, index) => deterministicOrganism(prepared, operation, index + operationOffset, i18n)),
+  ];
+  return {
+    pageId: prepared.page.pageId,
+    layoutId: `page.${prepared.page.pageId}`,
+    sections: [{
+      id: sectionId,
+      type: 'section',
+      sectionName: prepared.page.pageName,
+      titleKey: sectionTitleKey,
+      mode: prepared.operations.some(op => op.kind !== 'query' && op.kind !== 'view') ? 'edit' : 'view',
+      order: 10,
+      organisms,
+    }],
+    i18n,
+    dataBindings: prepared.commands.map(command => ({
+      id: `binding.${prepared.page.pageId}.${readString(command.commandName)}`,
+      source: `bff.${readString(command.commandName)}`,
+      command: readString(command.commandName),
+      description: readString(command.purpose),
+    })),
+  };
+}
+
+function deterministicBusinessContextOrganism(prepared: CfePreparedPage, i18n: Record<string, string>): CfeLayoutOrganism | null {
+  const refs = collectBusinessContextRefs(prepared.operations);
+  if (refs.length === 0) return null;
+  const organismId = layoutTaxonomyId('organism', prepared.page.pageId, 'businessContext');
+  const organismTitleKey = `${organismId}.title`;
+  const intentId = layoutTaxonomyId('intent', prepared.page.pageId, 'businessContext.summary');
+  const intentTitleKey = `${intentId}.title`;
+  i18n[organismTitleKey] = 'Contexto de negocio';
+  i18n[intentTitleKey] = 'Contexto de negocio';
+  return {
+    id: organismId,
+    type: 'contextSummary',
+    organismName: 'BusinessContext',
+    titleKey: organismTitleKey,
+    purpose: 'Mostrar o contexto de empresa/unidade usado pelas operacoes desta pagina.',
+    userActions: [],
+    requiredEntities: [],
+    readsFields: refs.map(ref => ref.targetRef),
+    writesFields: [],
+    rulesApplied: [],
+    order: 10,
+    intentions: [{
+      id: intentId,
+      intent: 'summary',
+      order: 10,
+      titleKey: intentTitleKey,
+      source: 'businessContext',
+      fields: refs.map((ref, index) => deterministicBusinessContextField(prepared.page.pageId, intentId, ref, index, i18n)),
+      columns: [],
+      filters: [],
+      toolbar: [],
+      rowActions: [],
+      actions: [],
+    }],
+  };
+}
+
+function deterministicBusinessContextField(pageId: string, intentId: string, ref: CfeBusinessContextRef, index: number, i18n: Record<string, string>): CfeLayoutField {
+  const id = `${intentId}.field.${ref.contextKey}`;
+  const labelKey = `${id}.label`;
+  i18n[labelKey] = ref.contextKey === 'activeUnitId' ? 'Unidade ativa' : 'Empresa ativa';
+  return { id, field: ref.contextKey, labelKey, order: (index + 1) * 10, source: ref.originRef, stateKey: businessContextStateKey(pageId, ref.contextKey) };
+}
+
+function deterministicOrganism(prepared: CfePreparedPage, operation: CfeOperationDef, index: number, i18n: Record<string, string>): CfeLayoutOrganism {
+  const command = prepared.commands.find(item => item.commandName === operation.operationId) || {};
+  const isQuery = command.kind === 'query';
+  const organismId = layoutTaxonomyId('organism', prepared.page.pageId, operation.operationId);
+  const organismTitleKey = `${organismId}.title`;
+  i18n[organismTitleKey] = operation.title || humanizeId(operation.operationId);
+  const intentId = layoutTaxonomyId('intent', prepared.page.pageId, `${operation.operationId}.${isQuery ? 'list' : 'form'}`);
+  const intentTitleKey = `${intentId}.title`;
+  const emptyKey = `${intentId}.empty`;
+  i18n[intentTitleKey] = operation.title || humanizeId(operation.operationId);
+  i18n[emptyKey] = 'Nenhum registro encontrado';
+  // Only userInput fields are form controls. Route and selection values are browser context and
+  // remain in the contract/action state without being rendered as values the user can type.
+  const fields = commandFieldRecords(command.input)
+    .filter(field => field.presentation === 'form')
+    .map((field, fieldIndex) => deterministicField(`${intentId}.field.${field.name}`, field.name, fieldIndex, i18n, prepared.fieldTitles));
+  const columns = commandFields(command.output).map((field, fieldIndex) => deterministicField(`${intentId}.column.${field}`, field, fieldIndex, i18n, prepared.fieldTitles));
+  const actionKey = `${intentId}.action.${operation.operationId}`;
+  i18n[actionKey] = operation.title || humanizeId(operation.operationId);
+  return {
+    id: organismId,
+    type: isQuery ? 'queryResult' : 'commandForm',
+    organismName: toPascalCase(operation.operationId),
+    titleKey: organismTitleKey,
+    purpose: operation.title || humanizeId(operation.operationId),
+    userActions: [operation.operationId],
+    requiredEntities: operationEntities(operation),
+    readsFields: fieldRefs(operation.reads),
+    writesFields: fieldRefs(operation.writes),
+    rulesApplied: operation.rulesApplied,
+    order: (index + 1) * 10,
+    intentions: [{
+      id: intentId,
+      intent: isQuery ? 'queryList' : 'commandForm',
+      order: 10,
+      titleKey: intentTitleKey,
+      source: `bff.${operation.operationId}`,
+      binding: `binding.${prepared.page.pageId}.${operation.operationId}`,
+      submitAction: isQuery ? undefined : operation.operationId,
+      action: isQuery ? operation.operationId : undefined,
+      emptyKey,
+      fields: isQuery ? [] : fields,
+      columns: isQuery ? columns : [],
+      filters: isQuery ? fields : [],
+      toolbar: [],
+      rowActions: isQuery ? [{ id: `${intentId}.rowAction.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }] : [],
+      actions: isQuery ? [] : [{ id: `${intentId}.action.${operation.operationId}`, action: operation.operationId, labelKey: actionKey, order: 10 }],
+    }],
+  };
+}
+
+function deterministicField(id: string, field: string, index: number, i18n: Record<string, string>, fieldTitles: Record<string, string> = {}): CfeLayoutField {
+  const labelKey = `${id}.label`;
+  i18n[labelKey] = fieldTitles[field] || humanizeId(field);
+  return { id, field, labelKey, order: (index + 1) * 10 };
+}
+
+// F4: the deterministic seed layout for an l4 v2 workspace. One layout section per workspace section;
+// organisms come from the section's roles (not one per query). filterControl folds into its surface's
+// filters; contextualAction/batchAction become command forms; content roles (F6) become content organisms.
+function deterministicWorkspaceLayout(prepared: CfePreparedPage, workspace: CfeJourneyWorkspace): CfePageLayoutDefinition {
+  const i18n: Record<string, string> = {};
+  const pageId = prepared.page.pageId;
+  const commandByBff = new Map(prepared.commands.map(command => [readString(command.commandName), command]));
+  // Prefer the declared sections/organisms; if the workspace has bffCalls but no sections, synthesize a
+  // single section with one organism per bffCall (query -> surface, command -> form) so the seed stays
+  // bffCall-keyed and covers every command (never falls back to operationId refs).
+  const workspaceSections: CfeWorkspaceSection[] = workspace.sections.length > 0
+    ? workspace.sections
+    : [{ sectionId: 'main', intent: workspace.purpose || prepared.page.pageName, organisms: workspace.bffCalls.map(call => ({ role: call.kind === 'command' ? 'contextualAction' : 'primarySurface', ...(call.kind === 'command' ? { action: call.bffId } : { dataSource: call.bffId }) })) }];
+  const sections: CfeLayoutSection[] = [];
+  workspaceSections.forEach((section, sectionIndex) => {
+    const sectionId = layoutTaxonomyId('section', pageId, toSafeShortName(section.sectionId) || 'main');
+    const sectionTitleKey = `${sectionId}.title`;
+    i18n[sectionTitleKey] = section.intent || prepared.page.pageName;
+    const organisms: CfeLayoutOrganism[] = [];
+    let order = 0;
+    let hasMutation = false;
+    for (const organism of section.organisms) {
+      if (organism.role === 'filterControl') continue; // folds into the surface it is attached to
+      order += 10;
+      const built = buildWorkspaceOrganism(pageId, organism, commandByBff, order, i18n, prepared.fieldTitles);
+      if (!built) continue;
+      if (built.type === 'commandForm') hasMutation = true;
+      organisms.push(built);
+    }
+    if (organisms.length > 0) {
+      sections.push({ id: sectionId, type: 'section', sectionName: prepared.page.pageName, titleKey: sectionTitleKey, mode: hasMutation ? 'edit' : 'view', order: (sectionIndex + 1) * 10, organisms });
+    }
+  });
+  if (sections.length === 0) {
+    const fallbackId = layoutTaxonomyId('section', pageId, 'main');
+    i18n[`${fallbackId}.title`] = prepared.page.pageName;
+    sections.push({ id: fallbackId, type: 'section', sectionName: prepared.page.pageName, titleKey: `${fallbackId}.title`, mode: 'view', order: 10, organisms: [] });
+  }
+  return {
+    pageId,
+    layoutId: `page.${pageId}`,
+    sections,
+    i18n,
+    dataBindings: prepared.commands.map(command => ({
+      id: `binding.${pageId}.${readString(command.commandName)}`,
+      source: `bff.${readString(command.commandName)}`,
+      command: readString(command.commandName),
+      description: readString(command.purpose),
+    })),
+  };
+}
+
+function buildWorkspaceOrganism(pageId: string, organism: CfeWorkspaceOrganism, commandByBff: Map<string, Record<string, unknown>>, order: number, i18n: Record<string, string>, fieldTitles: Record<string, string>): CfeLayoutOrganism | null {
+  // Content roles (F6) carry no bffCall, except showcase which is fed by a query dataSource.
+  if (isContentOrganismRole(organism.role)) {
+    if (organism.role === 'showcase' && organism.dataSource && commandByBff.has(organism.dataSource)) {
+      return buildQueryOrganism(pageId, organism.dataSource, 'showcase', order, commandByBff, i18n, fieldTitles);
+    }
+    return buildContentOrganism(pageId, organism.role, order, i18n);
+  }
+  const bffId = organism.dataSource || organism.action || '';
+  const command = bffId ? commandByBff.get(bffId) : undefined;
+  if (!command) return null;
+  if (readString(command.kind) === 'query') {
+    const mode = organism.usage === 'summary' ? 'summary' : organism.role === 'detailPanel' ? 'detail' : 'list';
+    return buildQueryOrganism(pageId, bffId, mode, order, commandByBff, i18n, fieldTitles);
+  }
+  return buildCommandOrganism(pageId, bffId, order, commandByBff, i18n, fieldTitles);
+}
+
+function buildQueryOrganism(pageId: string, bffId: string, mode: 'list' | 'detail' | 'showcase' | 'summary', order: number, commandByBff: Map<string, Record<string, unknown>>, i18n: Record<string, string>, fieldTitles: Record<string, string> = {}): CfeLayoutOrganism {
+  const command = commandByBff.get(bffId) || {};
+  const title = readString(command.purpose) || humanizeId(bffId);
+  const organismId = layoutTaxonomyId('organism', pageId, bffId);
+  const organismTitleKey = `${organismId}.title`;
+  i18n[organismTitleKey] = title;
+  const intentId = layoutTaxonomyId('intent', pageId, `${bffId}.${mode}`);
+  const intentTitleKey = `${intentId}.title`;
+  const emptyKey = `${intentId}.empty`;
+  i18n[intentTitleKey] = title;
+  i18n[emptyKey] = mode === 'summary' ? '0' : 'Nenhum registro encontrado';
+  const columns = commandFields(command.output).map((field, index) => deterministicField(`${intentId}.column.${field}`, field, index, i18n, fieldTitles));
+  const filters = commandFieldRecords(command.input).filter(field => field.presentation === 'form').map((field, index) => deterministicField(`${intentId}.filter.${field.name}`, field.name, index, i18n, fieldTitles));
+  const intent = mode === 'detail' ? 'detail' : mode === 'showcase' ? 'showcase' : mode === 'summary' ? 'summary' : 'queryList';
+  return {
+    id: organismId,
+    type: mode === 'showcase' ? 'showcase' : 'queryResult',
+    organismName: toPascalCase(bffId),
+    titleKey: organismTitleKey,
+    purpose: title,
+    userActions: [bffId],
+    requiredEntities: [],
+    readsFields: [],
+    writesFields: [],
+    rulesApplied: Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [],
+    order,
+    intentions: [{
+      id: intentId,
+      intent,
+      order: 10,
+      titleKey: intentTitleKey,
+      source: `bff.${bffId}`,
+      binding: `binding.${pageId}.${bffId}`,
+      action: bffId,
+      emptyKey,
+      displayHint: mode === 'detail' ? 'master-detail' : undefined,
+      fields: mode === 'detail' ? columns : [],
+      columns: mode === 'detail' ? [] : columns,
+      filters: mode === 'detail' ? [] : filters,
+      toolbar: [],
+      rowActions: [],
+      actions: [],
+    }],
+  };
+}
+
+function buildCommandOrganism(pageId: string, bffId: string, order: number, commandByBff: Map<string, Record<string, unknown>>, i18n: Record<string, string>, fieldTitles: Record<string, string> = {}): CfeLayoutOrganism {
+  const command = commandByBff.get(bffId) || {};
+  const title = readString(command.purpose) || humanizeId(bffId);
+  const organismId = layoutTaxonomyId('organism', pageId, bffId);
+  const organismTitleKey = `${organismId}.title`;
+  i18n[organismTitleKey] = title;
+  const intentId = layoutTaxonomyId('intent', pageId, `${bffId}.form`);
+  const intentTitleKey = `${intentId}.title`;
+  const actionKey = `${intentId}.action.${bffId}`;
+  i18n[intentTitleKey] = title;
+  i18n[actionKey] = title;
+  const fields = commandFieldRecords(command.input).filter(field => field.presentation === 'form').map((field, index) => deterministicField(`${intentId}.field.${field.name}`, field.name, index, i18n, fieldTitles));
+  return {
+    id: organismId,
+    type: 'commandForm',
+    organismName: toPascalCase(bffId),
+    titleKey: organismTitleKey,
+    purpose: title,
+    userActions: [bffId],
+    requiredEntities: [],
+    readsFields: [],
+    writesFields: [],
+    rulesApplied: Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [],
+    order,
+    intentions: [{
+      id: intentId,
+      intent: 'commandForm',
+      order: 10,
+      titleKey: intentTitleKey,
+      source: `bff.${bffId}`,
+      binding: `binding.${pageId}.${bffId}`,
+      submitAction: bffId,
+      fields,
+      columns: [],
+      filters: [],
+      toolbar: [],
+      rowActions: [],
+      actions: [{ id: `${intentId}.action.${bffId}`, action: bffId, labelKey: actionKey, order: 10 }],
+    }],
+  };
+}
+
+// F6: content organism (no bffCall) for landing roles hero/banner/richText/imageSet/ctaLink.
+function buildContentOrganism(pageId: string, role: string, order: number, i18n: Record<string, string>): CfeLayoutOrganism {
+  const organismId = layoutTaxonomyId('organism', pageId, `${role}${order}`);
+  const organismTitleKey = `${organismId}.title`;
+  i18n[organismTitleKey] = humanizeId(role);
+  const intentId = layoutTaxonomyId('intent', pageId, `${role}${order}.content`);
+  const intentTitleKey = `${intentId}.title`;
+  i18n[intentTitleKey] = humanizeId(role);
+  if (role === 'ctaLink') i18n[`${intentId}.label`] = 'Ver mais';
+  return {
+    id: organismId,
+    type: 'content',
+    organismName: toPascalCase(role),
+    titleKey: organismTitleKey,
+    purpose: humanizeId(role),
+    userActions: [],
+    requiredEntities: [],
+    readsFields: [],
+    writesFields: [],
+    rulesApplied: [],
+    order,
+    intentions: [{
+      id: intentId,
+      intent: role,
+      order: 10,
+      titleKey: intentTitleKey,
+      displayHint: role,
+      fields: [],
+      columns: [],
+      filters: [],
+      toolbar: [],
+      rowActions: [],
+      actions: [],
+    }],
+  };
+}
+
+function commandsForUiScenary(prepared: CfePreparedPage): CfeUiScenaryCommand[] {
+  return prepared.commands.map(command => ({
+    commandName: readString(command.commandName),
+    kind: readString(command.kind) === 'query' ? 'query' : 'command',
+    accessKind: readString(command.accessKind),
+    selection: readString(command.selection),
+    outputShape: readString(command.outputShape),
+    input: commandFieldRecords(command.input).map(field => ({
+      name: field.name,
+      required: field.required === true,
+      presentation: field.presentation || '',
+      source: field.source || '',
+    })),
+  })).filter(command => command.commandName);
+}
+
+function sharedDefinition(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): Record<string, unknown> {
+  const businessContextRefs = collectBusinessContextRefs(prepared.operations);
+  const scenaryCommands = commandsForUiScenary(prepared);
+  const scenaries = deriveUiScenaries(prepared.page.pageId, scenaryCommands);
+  const destructiveIds = destructiveCommandIds(scenaryCommands);
+  const states = sharedStates(prepared, layout, scenaries);
+  // State names share the class namespace with action method/handler names; dedupe BEFORE
+  // sharedActions so the derived setter names follow the renamed state (see cfeMemberNames.ts —
+  // real case: projectDetail updateWorkTask.status vs operation updateWorkTaskStatus).
+  const reserved = commandMemberNames(prepared.commands);
+  reserved.add('setUiScenary');
+  reserved.add('handleUiScenaryChange');
+  reserved.add('applyUrlScenary');
+  reserved.add('syncScenaryQuery');
+  dedupeSharedStateNames(states, reserved);
+  const actions = sharedActions(prepared, states);
+  const initialLoads = prepared.commands
+    .filter(command => readString(command.kind) === 'query')
+    // Required userInput/selection is empty at boot (102049 Lima: searchProducts {} -> 400). Required
+    // routeParam is filled by syncRouteParams in connectedCallback BEFORE initialLoads run, so a
+    // getById with only a route id MUST auto-load when the param is present (idle-guard if absent).
+    .filter(command => queryQualifiesForInitialLoad(commandFieldRecords(command.input)))
+    .map(command => ({ actionId: readString(command.commandName), stateKey: queryDataStateKey(prepared.page.pageId, readString(command.commandName)) }));
+  validateSharedLayoutRefs(prepared, layout, states, actions, initialLoads);
+  return {
+    pageId: prepared.page.pageId,
+    pageName: prepared.page.pageName,
+    moduleName: prepared.page.moduleName,
+    baseClassName: `${toPascalCase(prepared.page.moduleName)}${toPascalCase(prepared.page.pageId)}Base`,
+    routePattern: pageRoutePattern(prepared.page, prepared.operations),
+    sourceKind: prepared.page.sourceKind,
+    ownerIds: prepared.page.ownerIds,
+    operationIds: prepared.page.operationIds,
+    origin: prepared.page.origin,
+    // F3 (v2): ONE generated contract .ts per workspace holds every bffCall's Input/Output + `<bffId>Route`
+    // const. The shared imports/re-exports from that single file and calls execBff with the imported route
+    // const — never a typed route string. Legacy: a single per-page contract .ts built by the LLM skill.
+    contractRef: prepared.contractCopies.length > 0
+      ? {
+          tsPath: prepared.contractCopies[0].tsRef,
+          contracts: prepared.commands.map(command => ({ commandName: readString(command.commandName), routeConst: `${readString(command.commandName)}Route` })).filter(entry => entry.commandName),
+        }
+      : {
+          defPath: toDisplayRef(contractFileInfo(prepared.project, prepared.page)),
+          tsPath: contractTsPath(prepared.project, prepared.page),
+        },
+    layoutRef: {
+      defPath: toDisplayRef(pageFileInfo(prepared.project, prepared.page)),
+      layoutId: layout.layoutId,
+    },
+    states,
+    actions,
+    // Scene values + preconditions. Format documented in UI_SCENARY_DEFS_CONTRACT.
+    scenaries,
+    destructiveCommandIds: destructiveIds,
+    initialLoads,
+    // Workspace command map (kind/selection/per-input source). Emitted once here so page11 defs stay
+    // prose: the gates read it from shared, with a page11 sibling `bindings` fallback for old modules.
+    dataBindings: layout.dataBindings,
+    businessContextRefs,
+    navigationRefs: prepared.navigationRefs,
+    i18nMeta: prepared.i18nMeta,
+    i18n: layout.i18n,
+    automation: {
+      statePrefix: `ui.${prepared.page.pageId}`,
+      stateKeys: states.map(state => readString(state.stateKey)).filter(Boolean),
+      actionIds: actions.map(action => readString(action.actionId)).filter(Boolean),
+    },
+  };
+}
+
+function sharedStates(prepared: CfePreparedPage, layout?: CfePageLayoutDefinition, scenaries: { value: string; kind: string; commandName?: string; preconditions: string[] }[] = []): Record<string, unknown>[] {
+  const states = new Map<string, Record<string, unknown>>();
+  addState(states, {
+    stateKey: `ui.${prepared.page.pageId}.status`,
+    name: 'status',
+    kind: 'pageStatus',
+    defaultValue: '',
+  });
+  addState(states, {
+    stateKey: `ui.${prepared.page.pageId}.scenary`,
+    name: 'uiScenary',
+    kind: 'uiScenary',
+    valueSet: (scenaries.length ? scenaries : [{ value: 'base' }]).map(scene => scene.value),
+    defaultValue: 'base',
+  });
+
+  // The wave that owns the failures of the entities that still live outside MDM. Named, not boolean, so
+  // the day it lands the marks are found by one grep — and a marked case that PASSES reports the mark as
+  // stale (the runner does that), which is how the wave gets proved in production.
+  const MDM_REBUILD = 'mdm-rebuild';
+  for (const command of prepared.commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    const knownIssue = touchesExternalIdentity(prepared, commandName) ? MDM_REBUILD : '';
+    const kind = readString(command.kind) === 'query' ? 'query' : 'command';
+    addState(states, {
+      stateKey: actionStatusStateKey(prepared.page.pageId, commandName),
+      name: `${commandName}State`,
+      kind: 'actionStatus',
+      actionRef: commandName,
+      valueSet: ['idle', 'loading', 'success', 'error'],
+      defaultValue: 'idle',
+    });
+
+    for (const field of commandFieldRecords(command.input)) {
+      addState(states, {
+        stateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
+        name: inputStateName(commandName, field.name),
+        kind: 'input',
+        source: field.source,
+        presentation: field.presentation,
+        contractRef: { commandName, direction: 'input', field: field.name },
+        ...(field.enum?.length ? { valueSet: field.enum } : {}),
+        defaultValue: defaultValueForField(field),
+      });
+    }
+
+    if (kind === 'query') {
+      const outputShape = normalizeOutputShape(command.outputShape);
+      const queryDefaults = frontendQueryStateDefaults(outputShape);
+      addState(states, {
+        stateKey: queryDataStateKey(prepared.page.pageId, commandName),
+        name: queryStateName(commandName),
+        kind: 'queryResult',
+        contractRef: { commandName, direction: 'output' },
+        outputShape,
+        collection: queryDefaults.collection,
+        defaultValue: queryDefaults.defaultValue,
+      });
+    } else {
+      addState(states, {
+        stateKey: commandOutputStateKey(prepared.page.pageId, commandName),
+        name: `${commandName}Output`,
+        kind: 'commandOutput',
+        contractRef: { commandName, direction: 'output' },
+        defaultValue: null,
+      });
+      addState(states, {
+        stateKey: actionErrorStateKey(prepared.page.pageId, commandName),
+        name: `${commandName}Error`,
+        kind: 'actionError',
+        actionRef: commandName,
+        defaultValue: '',
+      });
+    }
+  }
+
+  for (const ref of collectBusinessContextRefs(prepared.operations)) {
+    addState(states, {
+      stateKey: businessContextStateKey(prepared.page.pageId, ref.contextKey),
+      name: ref.contextKey,
+      kind: 'businessContext',
+      source: ref.originRef,
+      targetRef: ref.targetRef,
+      required: ref.required,
+      selector: ref.contextKey === 'activeUnitId' ? 'unit' : 'company',
+      defaultValue: '',
+    });
+  }
+
+  if (layout) addLayoutSupplementalStates(prepared, layout, states);
+  return Array.from(states.values());
+}
+
+function sharedActions(prepared: CfePreparedPage, states: Record<string, unknown>[]): Record<string, unknown>[] {
+  const actions: Record<string, unknown>[] = [];
+  const stateKeys = new Set(states.map(state => readString(state.stateKey)).filter(Boolean));
+  const queryActionIds = prepared.commands
+    .filter(command => readString(command.kind) === 'query')
+    .map(command => readString(command.commandName))
+    .filter(Boolean);
+  // The wave that owns the failures of the entities that still live outside MDM. Named, not boolean, so
+  // the day it lands the marks are found by one grep — and a marked case that PASSES reports the mark as
+  // stale (the runner does that), which is how the wave gets proved in production.
+  const MDM_REBUILD = 'mdm-rebuild';
+  for (const command of prepared.commands) {
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    const knownIssue = touchesExternalIdentity(prepared, commandName) ? MDM_REBUILD : '';
+    const kind = readString(command.kind) === 'query' ? 'query' : 'command';
+    const commandOutputState = commandOutputStateKey(prepared.page.pageId, commandName);
+    const refreshActionIds = kind === 'command' ? queryActionIds.filter(actionId => actionId !== commandName) : [];
+    actions.push({
+      actionId: commandName,
+      kind,
+      commandRef: commandName,
+      routeKey: readString(command.routeKey) || `${prepared.page.moduleName}.${prepared.page.pageId}.${commandName}`,
+      purpose: readString(command.purpose),
+      methodName: kind === 'query' ? `load${toPascalCase(commandName)}` : commandName,
+      handlerName: `handle${toPascalCase(commandName)}Click`,
+      inputStateKeys: commandFieldRecords(command.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      routeParamInputStateKeys: commandFieldRecords(command.input)
+        .filter(field => field.presentation === 'route')
+        .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      selectedEntityInputStateKeys: commandFieldRecords(command.input)
+        .filter(field => field.presentation === 'selection')
+        .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      outputStateKeys: kind === 'query' ? [queryDataStateKey(prepared.page.pageId, commandName)] : (stateKeys.has(commandOutputState) ? [commandOutputState] : []),
+      statusStateKey: actionStatusStateKey(prepared.page.pageId, commandName),
+      ...(kind === 'command' ? {
+        errorStateKey: actionErrorStateKey(prepared.page.pageId, commandName),
+        feedback: {
+          successMessageKey: `action.${commandName}.success`,
+          errorMessageKey: `action.${commandName}.error`,
+          dismissible: true,
+        },
+        clearInputStateKeys: commandFieldRecords(command.input)
+          .filter(field => field.presentation === 'form' || field.presentation === 'selection')
+          .map(field => inputStateKey(prepared.page.pageId, commandName, field.name)),
+      } : {}),
+      ...(refreshActionIds.length > 0 ? { refreshActionIds } : {}),
+    });
+  }
+
+  const prefillBySelectorStateKey = buildManagePrefills(prepared, states);
+  for (const state of states.filter(item => item.kind === 'input')) {
+    const name = readString(state.name);
+    if (!name) continue;
+    const prefill = prefillBySelectorStateKey.get(readString(state.stateKey));
+    actions.push({
+      actionId: `set.${name}`,
+      kind: 'stateSetter',
+      stateKey: state.stateKey,
+      methodName: `set${toPascalCase(name)}`,
+      handlerName: `handle${toPascalCase(name)}Change`,
+      ...(prefill ? { prefill } : {}),
+    });
+  }
+
+  return actions;
+}
+
+// Item 1 (prefill): when a command has a selector input (route param or selected entity) whose id
+// also appears in a query result on the same page, selecting a row should pre-populate the command's
+// form inputs from the matching item. Emit a declarative `prefill` on the selector's stateSetter so
+// genCfeSharedTs can materialize the lookup deterministically (input <-> browse-column match by name).
+function buildManagePrefills(prepared: CfePreparedPage, states: Record<string, unknown>[]): Map<string, Record<string, unknown>> {
+  const prefills = new Map<string, Record<string, unknown>>();
+  const stateByKey = new Map(states.map(state => [readString(state.stateKey), state]));
+  const queryCommands = prepared.commands.filter(command => readString(command.kind) === 'query');
+  if (queryCommands.length === 0) return prefills;
+
+  for (const command of prepared.commands) {
+    if (readString(command.kind) === 'query') continue;
+    const commandName = readString(command.commandName);
+    if (!commandName) continue;
+    const fields = commandFieldRecords(command.input);
+    const selectorFields = fields.filter(field => field.presentation === 'route' || field.presentation === 'selection');
+    const formFields = fields.filter(field => field.presentation === 'form');
+    if (selectorFields.length === 0 || formFields.length === 0) continue;
+
+    for (const selector of selectorFields) {
+      let best: { queryName: string; matched: { name: string }[] } | undefined;
+      for (const query of queryCommands) {
+        const queryName = readString(query.commandName);
+        if (!queryName) continue;
+        const outputFields = new Set(commandFields(query.output));
+        if (!outputFields.has(selector.name)) continue; // query must expose the id to match rows by
+        const matched = formFields.filter(field => outputFields.has(field.name));
+        if (matched.length > (best?.matched.length ?? 0)) best = { queryName, matched };
+      }
+      if (!best || best.matched.length === 0) continue;
+
+      const dataStateKey = queryDataStateKey(prepared.page.pageId, best.queryName);
+      const dataState = stateByKey.get(dataStateKey);
+      prefills.set(inputStateKey(prepared.page.pageId, commandName, selector.name), {
+        command: commandName,
+        sourceStateKey: dataStateKey,
+        sourceOutputShape: readString(dataState?.outputShape) || 'array',
+        matchField: selector.name,
+        fields: best.matched.map(field => ({
+          itemField: field.name,
+          targetStateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
+        })),
+      });
+    }
+  }
+
+  return prefills;
+}
+
+function addLayoutSupplementalStates(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, states: Map<string, Record<string, unknown>>): void {
+  const prefix = `ui.${prepared.page.pageId}.`;
+  const added: string[] = [];
+  for (const ref of collectLayoutStateRefs(layout)) {
+    if (states.has(ref.stateKey)) continue;
+    if (!ref.stateKey.startsWith(prefix)) throw new Error(`${ref.path} references state outside page namespace ${ref.stateKey}`);
+    const state = layoutSupplementalState(prepared, ref.stateKey);
+    addState(states, state);
+    added.push(ref.stateKey);
+  }
+  if (added.length > 0) {
+    recordCreateWarning(`added shared supplemental state(s) for ${prepared.page.pageId}: ${added.join('; ')}`);
+  }
+}
+
+function layoutSupplementalState(prepared: CfePreparedPage, stateKey: string): Record<string, unknown> {
+  const name = stateNameFromKey(prepared.page.pageId, stateKey);
+  if (stateKey.includes('.input.')) {
+    return { stateKey, name, kind: 'input', defaultValue: '' };
+  }
+  if (stateKey.includes('.data.')) {
+    return { stateKey, name, kind: 'layoutData', collection: true, defaultValue: [] };
+  }
+  if (stateKey.includes('.output.')) {
+    return { stateKey, name, kind: 'commandOutput', defaultValue: null };
+  }
+  throw new Error(`unbound layout state ${stateKey}: layout-only state must bind to a contract input, command output or query result`);
+}
+
+function validateSharedLayoutRefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition, states: Record<string, unknown>[], actions: Record<string, unknown>[], initialLoads: Record<string, unknown>[]): void {
+  const stateKeys = new Set(states.map(state => readString(state.stateKey)).filter(Boolean));
+  const actionIds = new Set(actions.map(action => readString(action.actionId)).filter(Boolean));
+  const commandNames = new Set(prepared.commands.map(command => readString(command.commandName)).filter(Boolean));
+
+  for (const action of actions) {
+    const actionId = readString(action.actionId);
+    const commandRef = readString(action.commandRef);
+    if (commandRef && !commandNames.has(commandRef)) throw new Error(`shared action ${actionId} references unknown contract command ${commandRef}`);
+    for (const stateKey of [...readStringArray(action.inputStateKeys), ...readStringArray(action.outputStateKeys), readString(action.statusStateKey), readString(action.errorStateKey), readString(action.stateKey), ...readStringArray(action.clearInputStateKeys)].filter(Boolean)) {
+      if (!stateKeys.has(stateKey)) throw new Error(`shared action ${actionId} references missing state ${stateKey}`);
+    }
+    for (const refreshActionId of readStringArray(action.refreshActionIds)) {
+      if (!actionIds.has(refreshActionId)) throw new Error(`shared action ${actionId} refreshes missing action ${refreshActionId}`);
+    }
+    if (isRecord(action.prefill)) {
+      const prefill = action.prefill;
+      const sourceStateKey = readString(prefill.sourceStateKey);
+      if (!stateKeys.has(sourceStateKey)) throw new Error(`shared action ${actionId} prefill references missing source state ${sourceStateKey}`);
+      if (Array.isArray(prefill.fields)) {
+        for (const field of prefill.fields) {
+          const targetStateKey = isRecord(field) ? readString(field.targetStateKey) : '';
+          if (!stateKeys.has(targetStateKey)) throw new Error(`shared action ${actionId} prefill references missing target state ${targetStateKey}`);
+        }
+      }
+    }
+  }
+
+  for (const load of initialLoads) {
+    const actionId = readString(load.actionId);
+    const stateKey = readString(load.stateKey);
+    if (actionId && !actionIds.has(actionId)) throw new Error(`initialLoad references missing action ${actionId}`);
+    if (stateKey && !stateKeys.has(stateKey)) throw new Error(`initialLoad references missing state ${stateKey}`);
+  }
+
+  for (const ref of collectLayoutStateRefs(layout)) {
+    if (!stateKeys.has(ref.stateKey)) throw new Error(`${ref.path} references missing shared state ${ref.stateKey}`);
+  }
+  for (const ref of collectLayoutActionRefs(layout)) {
+    if (!actionIds.has(ref.action)) throw new Error(`${ref.path} references missing shared action ${ref.action}`);
+  }
+}
+
+function enrichLayoutWithStateRefs(prepared: CfePreparedPage, layout: CfePageLayoutDefinition): CfePageLayoutDefinition {
+  const cloned = JSON.parse(JSON.stringify(layout)) as CfePageLayoutDefinition;
+  cloned.dataBindings = cloned.dataBindings.map(binding => {
+    const commandName = binding.command || commandFromBindingSource(binding.source);
+    const command = commandByName(prepared, commandName);
+    return commandName && command ? {
+      ...binding,
+      kind: readString(command.kind) === 'query' ? 'query' : 'command',
+      stateKey: readString(command.kind) === 'query' ? queryDataStateKey(prepared.page.pageId, commandName) : commandOutputStateKey(prepared.page.pageId, commandName),
+      inputStateKeys: commandInputStateKeys(prepared, commandName),
+      // B3: the l4 `source` of every input travels to the render. It decides whether an input may be a
+      // form control at all — `selection` is fed by picking a row, `pageInput`/`actorSession` come from
+      // context, `derived` is chained read-only — and it is the anchor of the source-aware id check
+      // (an id whose source is not a user decision must never be bound to an editable control).
+      inputs: commandFieldRecords(command.input).map(field => ({
+        name: field.name,
+        stateKey: inputStateKey(prepared.page.pageId, commandName, field.name),
+        source: field.source || 'userInput',
+        ...(field.sourceRef ? { sourceRef: field.sourceRef } : {}),
+        required: field.required === true,
+        ...(field.presentation ? { presentation: field.presentation } : {}),
+      })),
+      ...(readString(command.selection) ? { selection: readString(command.selection) } : {}),
+      ...(isDestructiveCommandName(commandName) ? { destructive: true } : {}),
+    } : binding;
+  });
+
+  for (const section of cloned.sections) {
+    for (const organism of section.organisms) {
+      for (const intent of organism.intentions) {
+        const commandName = intentCommandName(intent, organism.userActions);
+        const isQuery = isQueryCommand(prepared, commandName);
+        if (commandName && isQuery && intentUsesQueryResult(intent)) intent.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+        if (commandName) {
+          for (const field of [...intent.fields, ...intent.filters]) {
+            const inputField = resolveCommandFieldName(prepared, commandName, field.field, 'input');
+            const outputField = resolveCommandFieldName(prepared, commandName, field.field, 'output');
+            if (inputField) {
+              field.field = inputField;
+              field.stateKey = inputStateKey(prepared.page.pageId, commandName, inputField);
+            } else if (isQuery && outputField) {
+              field.field = outputField;
+              field.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+            }
+          }
+          for (const field of intent.columns) {
+            const outputField = resolveCommandFieldName(prepared, commandName, field.field, 'output');
+            const inputField = resolveCommandFieldName(prepared, commandName, field.field, 'input');
+            if (isQuery && outputField) {
+              field.field = outputField;
+              field.stateKey = queryDataStateKey(prepared.page.pageId, commandName);
+            } else if (inputField) {
+              field.field = inputField;
+              field.stateKey = inputStateKey(prepared.page.pageId, commandName, inputField);
+            }
+          }
+        }
+        for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) action.actionKey = action.action;
+      }
+    }
+  }
+  return cloned;
+}
+
+function collectLayoutStateRefs(layout: CfePageLayoutDefinition): { stateKey: string; path: string }[] {
+  const refs: { stateKey: string; path: string }[] = [];
+  const add = (stateKey: string | undefined, path: string): void => {
+    if (stateKey) refs.push({ stateKey, path });
+  };
+
+  for (const binding of layout.dataBindings) {
+    add(binding.stateKey, `dataBinding:${binding.id}.stateKey`);
+    for (const stateKey of binding.inputStateKeys || []) add(stateKey, `dataBinding:${binding.id}.inputStateKeys`);
+  }
+  for (const section of layout.sections) {
+    for (const organism of section.organisms) {
+      for (const intent of organism.intentions) {
+        add(intent.stateKey, `${intent.id}.stateKey`);
+        for (const field of [...intent.fields, ...intent.columns, ...intent.filters]) add(field.stateKey, `${field.id}.stateKey`);
+      }
+    }
+  }
+  return refs;
+}
+
+function collectLayoutActionRefs(layout: CfePageLayoutDefinition): { action: string; path: string }[] {
+  const refs: { action: string; path: string }[] = [];
+  const add = (action: string | undefined, path: string): void => {
+    if (action) refs.push({ action, path });
+  };
+
+  for (const section of layout.sections) {
+    for (const organism of section.organisms) {
+      for (const action of organism.userActions) add(action, `${organism.id}.userActions`);
+      for (const intent of organism.intentions) {
+        add(intent.action, `${intent.id}.action`);
+        add(intent.submitAction, `${intent.id}.submitAction`);
+        for (const action of [...intent.toolbar, ...intent.rowActions, ...intent.actions]) add(action.action, `${action.id}.action`);
+      }
+    }
+  }
+  return refs;
+}
+
+function layoutSectionSummary(sections: CfeLayoutSection[]): Record<string, unknown>[] {
+  return sections.map(section => ({
+    id: section.id,
+    type: section.type,
+    sectionName: section.sectionName,
+    titleKey: section.titleKey,
+    mode: section.mode,
+    order: section.order,
+    organisms: section.organisms.map(organism => ({
+      id: organism.id,
+      type: organism.type,
+      organismName: organism.organismName,
+      titleKey: organism.titleKey,
+      purpose: organism.purpose,
+      userActions: organism.userActions,
+      requiredEntities: organism.requiredEntities,
+      readsFields: organism.readsFields,
+      writesFields: organism.writesFields,
+      rulesApplied: organism.rulesApplied,
+      order: organism.order,
+      intentionRefs: organism.intentions.map(intent => ({
+        id: intent.id,
+        intent: intent.intent,
+        stateKey: intent.stateKey,
+        action: intent.action,
+        submitAction: intent.submitAction,
+        order: intent.order,
+      })),
+    })),
+  }));
+}
+
+function addState(states: Map<string, Record<string, unknown>>, state: Record<string, unknown>): void {
+  const stateKey = readString(state.stateKey);
+  if (stateKey && !states.has(stateKey)) states.set(stateKey, state);
+}
+
+function collectBusinessContextRefs(operations: CfeOperationDef[]): CfeBusinessContextRef[] {
+  const refs: CfeBusinessContextRef[] = [];
+  for (const operation of operations) {
+    const resolutions = operationContextResolutions(operation.data);
+    for (const input of l4OperationInputs(operation.data)) {
+      if (input.source !== 'businessContext') continue;
+      const resolution = resolutions.find(item => item.inputId === input.inputId || item.targetRef === `input.${input.inputId}` || item.targetRef === input.fieldRef);
+      const originRef = resolution?.originRef || defaultBusinessContextOriginRef(input.inputId, input.fieldRef);
+      refs.push({
+        operationId: operation.operationId,
+        inputId: input.inputId,
+        contextKey: businessContextKey(originRef),
+        originRef,
+        targetRef: input.fieldRef,
+        required: input.required,
+        description: input.description,
+      });
+    }
+
+    for (const resolution of resolutions) {
+      if (resolution.source !== 'businessContext') continue;
+      const originRef = resolution.originRef || defaultBusinessContextOriginRef(resolution.inputId || '', resolution.targetRef);
+      refs.push({
+        operationId: operation.operationId,
+        inputId: resolution.inputId,
+        contextKey: businessContextKey(originRef),
+        originRef,
+        targetRef: resolution.targetRef,
+        required: true,
+        description: resolution.description,
+      });
+    }
+  }
+  return uniqueBusinessContextRefs(refs);
+}
+
+function operationContextResolutions(data: Record<string, unknown>): { inputId?: string; targetRef: string; source: string; originRef: string; description: string }[] {
+  const value = data.contextResolution;
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map(item => ({
+    inputId: readString(item.inputId) || undefined,
+    targetRef: readString(item.targetRef),
+    source: readString(item.source),
+    originRef: readString(item.originRef),
+    description: readString(item.description),
+  })).filter(item => item.targetRef && item.source);
+}
+
+function uniqueBusinessContextRefs(refs: CfeBusinessContextRef[]): CfeBusinessContextRef[] {
+  const seen = new Set<string>();
+  const uniqueRefs: CfeBusinessContextRef[] = [];
+  for (const ref of refs) {
+    const key = `${ref.contextKey}:${ref.originRef}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueRefs.push(ref);
+  }
+  return uniqueRefs;
+}
+
+function businessContextKey(originRef: string): string {
+  const local = originRef.split('.').filter(Boolean).pop() || originRef;
+  if (local === 'activeUnitId') return 'activeUnitId';
+  return 'activeCompanyId';
+}
+
+function defaultBusinessContextOriginRef(inputId: string, fieldRef: string): string {
+  const text = `${inputId} ${fieldRef}`.toLowerCase();
+  return text.includes('unit') || text.includes('unidade') ? 'businessContext.activeUnitId' : 'businessContext.activeCompanyId';
+}
+
+function commandFieldRecords(value: unknown): { name: string; required?: boolean; source?: string; sourceRef?: string; presentation?: string; type?: string; l4Type?: string; enum?: string[]; enumLabels?: CfeEnumLabel[]; fieldRef?: string; format?: string; pattern?: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => isRecord(item) ? {
+    name: readString(item.name),
+    required: item.required === true,
+    source: readString(item.source),
+    // sourceRef is WHERE the value comes from, and without it `source` is an unusable label: `selection`
+    // names the query the picker reads, `derived` names `<bffId>.<field>`, `actorDirectory` names the role
+    //. It was dropped here, so the page could not render any of them.
+    sourceRef: readString(item.sourceRef),
+    presentation: readString(item.presentation) || 'form',
+    // type (TS) / l4Type (raw declared) / enum / format / pattern carry the resolved shape of the field;
+    // the page-test generator needs them to emit a valid literal instead of `"teste"` on HH:mm.
+    type: readString(item.type),
+    l4Type: readString(item.l4Type),
+    ...(readString(item.fieldRef) ? { fieldRef: readString(item.fieldRef) } : {}),
+    ...(readString(item.format) ? { format: readString(item.format) } : {}),
+    ...(readString(item.pattern) ? { pattern: readString(item.pattern) } : {}),
+    ...(Array.isArray(item.enum) ? { enum: item.enum.map(String).filter(Boolean) } : {}),
+    ...(Array.isArray(item.enumLabels) ? { enumLabels: readEnumLabels(item.enumLabels) } : {}),
+  } : { name: '' }).filter(item => item.name);
+}
+
+function commandInputStateKeys(prepared: CfePreparedPage, commandName: string): string[] {
+  const command = prepared.commands.find(item => readString(item.commandName) === commandName);
+  return commandFieldRecords(command?.input).map(field => inputStateKey(prepared.page.pageId, commandName, field.name));
+}
+
+function commandByName(prepared: CfePreparedPage, commandName: string): Record<string, unknown> | undefined {
+  return prepared.commands.find(item => readString(item.commandName) === commandName);
+}
+
+function resolveCommandFieldName(prepared: CfePreparedPage, commandName: string, fieldName: string, direction: 'input' | 'output'): string | undefined {
+  const command = commandByName(prepared, commandName);
+  const fields = commandFieldRecords(command?.[direction]);
+  const exact = fields.find(field => field.name === fieldName);
+  if (exact) return exact.name;
+  const tail = fieldName.split('.').filter(Boolean).pop() || fieldName;
+  return fields.find(field => field.name === tail)?.name;
+}
+
+function intentCommandName(intent: CfeLayoutIntent, userActions: string[]): string {
+  return intent.submitAction || intent.action || commandFromBindingSource(intent.source) || userActions[0] || '';
+}
+
+function commandFromBindingSource(source?: string): string {
+  const value = source || '';
+  const bff = value.match(/^bff\.([A-Za-z0-9_-]+)$/);
+  if (bff) return bff[1];
+  const scoped = value.match(/^([A-Za-z0-9_-]+)\.(input|output)$/);
+  return scoped ? scoped[1] : '';
+}
+
+function isQueryCommand(prepared: CfePreparedPage, commandName: string): boolean {
+  const command = prepared.commands.find(item => readString(item.commandName) === commandName);
+  return readString(command?.kind) === 'query';
+}
+
+function intentUsesQueryResult(intent: CfeLayoutIntent): boolean {
+  return intent.source === undefined || intent.source.endsWith('.output') || intent.source.startsWith('bff.') || intent.columns.length > 0;
+}
+
+function defaultValueForField(field: { required?: boolean }): string {
+  return field.required ? '' : '';
+}
+
+function inputStateKey(pageId: string, commandName: string, fieldName: string): string { return `ui.${pageId}.input.${commandName}.${fieldName}`; }
+function queryDataStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.data.${commandName}`; }
+function commandOutputStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.output.${commandName}`; }
+function actionStatusStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.action.${commandName}.status`; }
+function actionErrorStateKey(pageId: string, commandName: string): string { return `ui.${pageId}.action.${commandName}.error`; }
+function businessContextStateKey(pageId: string, contextKey: string): string { return `ui.${pageId}.businessContext.${contextKey}`; }
+function inputStateName(commandName: string, fieldName: string): string { return `${commandName}${toPascalCase(fieldName)}`; }
+function queryStateName(commandName: string): string { return `${commandName}Data`; }
+function layoutFieldStateKey(pageId: string, field: CfeLayoutField): string { return `ui.${pageId}.layout.${toSafeShortName(field.id || field.field)}`; }
+function stateNameFromKey(pageId: string, stateKey: string): string {
+  const local = stateKey.replace(`ui.${pageId}.`, '');
+  return toPascalCase(local) || 'layoutState';
+}
+function contractTsPath(project: number, page: CfePagePlan): string { return `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`; }
+
+// Page grouping. When the L4 journey map declares workspaces, pages are derived per workspace
+// (the L4 v2 model): this can split one workflow across actors and group entityManagement CRUD
+// into a single page. Without a journey (or for owners not covered by any workspace), it falls
+// back to the legacy workflow/operation grouping.
+function buildPagePlans(
+  workflows: Map<string, CfeWorkflowDef>, operations: Map<string, CfeOperationDef>, moduleFallback: string,
+  journeys: CfeJourneyMap[] = [],
+  pendingWorkspaces: { modules: Set<string>; ids: Map<string, Set<string>> } = { modules: new Set(), ids: new Map() },
+): CfePagePlan[] {
+  const pendingWorkflows = Array.from(workflows.values()).filter(owner => owner.todoStatus === 'toCreate');
+  const pendingOperations = Array.from(operations.values()).filter(owner => owner.todoStatus === 'toCreate');
+  // A module whose todo owns workspaces plans BY PAGE; the others keep planning by pending owner.
+  const pageDriven = journeys.filter(journey => pendingWorkspaces.modules.has(journey.moduleName));
+  const ownerDriven = journeys.filter(journey => !pendingWorkspaces.modules.has(journey.moduleName));
+  const workspaces = ownerDriven.flatMap(journey => journey.workspaces);
+  if (workspaces.length === 0 && !pageDriven.length) return buildLegacyPagePlans(pendingWorkflows, pendingOperations, moduleFallback);
+  // The todo owns the page: pendency is the workspace's, and its operations come along whatever their
+  // own status is — in this dialect an operation has no status of its own (it belongs to the backend).
+  const byPage: CfePagePlan[] = pageDriven.flatMap(journey => journey.workspaces
+      .filter(ws => pendingWorkspaces.ids.get(journey.moduleName)?.has(ws.workspaceId))
+      .map(ws => {
+        const wsOps = ws.operationIds.map(id => operations.get(id)).filter((op): op is CfeOperationDef => !!op);
+        const wsWf = ws.workflowId ? workflows.get(ws.workflowId) : undefined;
+        return {
+          pageId: toSafeShortName(ws.workspaceId),
+          pageName: ws.title || humanizeId(ws.workspaceId),
+          moduleName: journey.moduleName || wsWf?.moduleName || wsOps[0]?.moduleName || moduleFallback,
+          sourceKind: ws.kind === 'workflow' ? 'workflow' as const : 'operation' as const,
+          // What this run will mark done: the page and every wire it writes.
+          ownerIds: unique([`workspace:${ws.workspaceId}`, ...ws.bffCalls.map(call => `contract:${call.route}`).filter(key => key !== 'contract:')]),
+          actorIds: unique([ws.actor, ...(wsWf ? wsWf.actors : []), ...wsOps.map(op => op.actor)]),
+          entityIds: unique([ws.entity, ...(wsWf ? wsWf.entities : []), ...wsOps.flatMap(operationEntities)]),
+          operationIds: unique(wsOps.map(op => op.operationId)),
+          rulesApplied: unique([...(wsWf ? wsWf.rulesApplied : []), ...wsOps.flatMap(op => op.rulesApplied)]),
+          capabilities: unique([...(wsWf ? wsWf.capabilities.map(capability => readString(capability.capabilityId)) : []), ...wsOps.map(op => readString(op.capability?.capabilityId))]),
+          origin: workspaceOrigin(ws, wsWf, wsOps),
+        };
+      }));
+  if (workspaces.length === 0) {
+    return [...byPage, ...buildLegacyPagePlans(pendingWorkflows, pendingOperations, moduleFallback)]
+      .sort((a, b) => `${a.moduleName}:${a.pageId}`.localeCompare(`${b.moduleName}:${b.pageId}`));
+  }
+
+  const pendingOpsById = new Map(pendingOperations.map(op => [op.operationId, op]));
+  const pendingWfById = new Map(pendingWorkflows.map(wf => [wf.workflowId, wf]));
+  const coveredOps = new Set<string>();
+  const coveredWfs = new Set<string>();
+  const pages: CfePagePlan[] = [];
+
+  for (const ws of workspaces) {
+    const wsOps = ws.operationIds.map(id => pendingOpsById.get(id)).filter((op): op is CfeOperationDef => !!op);
+    const wsWf = ws.workflowId ? pendingWfById.get(ws.workflowId) : undefined;
+    if (wsOps.length === 0 && !wsWf) continue; // nothing pending in this workspace
+    wsOps.forEach(op => coveredOps.add(op.operationId));
+    if (wsWf) coveredWfs.add(wsWf.workflowId);
+    pages.push({
+      pageId: toSafeShortName(ws.workspaceId),
+      pageName: ws.title || humanizeId(ws.workspaceId),
+      moduleName: wsWf?.moduleName || wsOps[0]?.moduleName || moduleFallback,
+      sourceKind: ws.kind === 'workflow' ? 'workflow' : 'operation',
+      ownerIds: unique([...(wsWf ? [`workflow:${wsWf.workflowId}`] : []), ...wsOps.map(op => `operation:${op.operationId}`)]),
+      actorIds: unique([ws.actor, ...(wsWf ? wsWf.actors : []), ...wsOps.map(op => op.actor)]),
+      entityIds: unique([ws.entity, ...(wsWf ? wsWf.entities : []), ...wsOps.flatMap(operationEntities)]),
+      operationIds: unique(wsOps.map(op => op.operationId)),
+      rulesApplied: unique([...(wsWf ? wsWf.rulesApplied : []), ...wsOps.flatMap(op => op.rulesApplied)]),
+      capabilities: unique([...(wsWf ? wsWf.capabilities.map(capability => readString(capability.capabilityId)) : []), ...wsOps.map(op => readString(op.capability?.capabilityId))]),
+      origin: workspaceOrigin(ws, wsWf, wsOps),
+    });
+  }
+
+  // Pending owners not covered by any workspace keep the legacy grouping so nothing is dropped.
+  const leftoverWorkflows = pendingWorkflows.filter(wf => !coveredWfs.has(wf.workflowId));
+  const leftoverOperations = pendingOperations.filter(op => !coveredOps.has(op.operationId));
+  pages.push(...buildLegacyPagePlans(leftoverWorkflows, leftoverOperations, moduleFallback));
+  pages.push(...byPage);
+  return pages.sort((a, b) => `${a.moduleName}:${a.pageId}`.localeCompare(`${b.moduleName}:${b.pageId}`));
+}
+
+function workspaceOrigin(ws: CfeJourneyWorkspace, workflow: CfeWorkflowDef | undefined, operations: CfeOperationDef[]): Record<string, unknown> {
+  const owners: Record<string, unknown>[] = [];
+  if (workflow) owners.push({ kind: 'workflow', id: workflow.workflowId, defPath: toDisplayRef(workflow.fileInfo) });
+  for (const operation of operations) owners.push({ kind: 'operation', id: operation.operationId, defPath: toDisplayRef(operation.fileInfo) });
+  return { source: 'l4-journey', workspaceId: ws.workspaceId, workspaceKind: ws.kind, workflowId: ws.workflowId, actor: ws.actor, entity: ws.entity, owners, microUserFlow: buildMicroUserFlow(workflow, operations) };
+}
+
+// Intent-level micro user flow recorded in the page origin (traceability) and fed to the layout
+// prompt. Derived from l4 story.steps each generation; never a page11-specific persisted layout.
+function buildMicroUserFlow(workflow: CfeWorkflowDef | undefined, operations: CfeOperationDef[]): Record<string, unknown> {
+  return {
+    source: 'l4/story.steps',
+    workflowSteps: workflow ? workflow.storySteps : [],
+    operations: operations.map(operation => ({ operationId: operation.operationId, commandName: operation.commandName || operation.operationId, steps: operation.storySteps })),
+  };
+}
+
+function buildLegacyPagePlans(pendingWorkflows: CfeWorkflowDef[], pendingOperations: CfeOperationDef[], moduleFallback: string): CfePagePlan[] {
+  const pendingOpsById = new Map(pendingOperations.map(op => [op.operationId, op]));
+  const operationIdsUsedByWorkflow = new Set<string>();
+  const pages: CfePagePlan[] = [];
+
+  for (const workflow of pendingWorkflows) {
+    for (const operationId of workflow.operationIds) operationIdsUsedByWorkflow.add(operationId);
+    const linkedOperations = workflow.operationIds.map(id => pendingOpsById.get(id)).filter(Boolean) as CfeOperationDef[];
+    pages.push({
+      pageId: toSafeShortName(workflow.pageId || workflow.workflowId),
+      pageName: workflow.title || humanizeId(workflow.workflowId),
+      moduleName: workflow.moduleName || moduleFallback,
+      sourceKind: 'workflow',
+      ownerIds: unique([`workflow:${workflow.workflowId}`, ...linkedOperations.map(op => `operation:${op.operationId}`)]),
+      actorIds: unique([...workflow.actors, ...linkedOperations.map(op => op.actor)]),
+      entityIds: unique([...workflow.entities, ...linkedOperations.flatMap(operationEntities)]),
+      operationIds: unique([...workflow.operationIds, ...linkedOperations.map(op => op.operationId)]),
+      rulesApplied: unique([...workflow.rulesApplied, ...linkedOperations.flatMap(op => op.rulesApplied)]),
+      capabilities: unique([...workflow.capabilities.map(c => readString(c.capabilityId)), ...linkedOperations.map(op => readString(op.capability?.capabilityId))]),
+      origin: pageOrigin('workflow', workflow, linkedOperations),
+    });
+  }
+
+  for (const operation of pendingOperations) {
+    if (operationIdsUsedByWorkflow.has(operation.operationId)) continue;
+    pages.push({
+      pageId: toSafeShortName(operation.pageId || operation.operationId),
+      pageName: operation.title || humanizeId(operation.operationId),
+      moduleName: operation.moduleName || moduleFallback,
+      sourceKind: 'operation',
+      ownerIds: [`operation:${operation.operationId}`],
+      actorIds: unique([operation.actor]),
+      entityIds: operationEntities(operation),
+      operationIds: [operation.operationId],
+      rulesApplied: operation.rulesApplied,
+      capabilities: unique([readString(operation.capability?.capabilityId)]),
+      origin: pageOrigin('operation', operation, []),
+    });
+  }
+
+  return pages.sort((a, b) => `${a.moduleName}:${a.pageId}`.localeCompare(`${b.moduleName}:${b.pageId}`));
+}
+
+function pageOrigin(sourceKind: CfePagePlan['sourceKind'], owner: CfeWorkflowDef | CfeOperationDef, linkedOperations: CfeOperationDef[]): Record<string, unknown> {
+  const owners: Record<string, unknown>[] = [];
+  if (sourceKind === 'workflow' && 'workflowId' in owner) {
+    owners.push({ kind: 'workflow', id: owner.workflowId, defPath: toDisplayRef(owner.fileInfo) });
+  }
+  if (sourceKind === 'operation' && 'operationId' in owner) {
+    owners.push({ kind: 'operation', id: owner.operationId, defPath: toDisplayRef(owner.fileInfo) });
+  }
+  for (const operation of linkedOperations) {
+    owners.push({ kind: 'operation', id: operation.operationId, defPath: toDisplayRef(operation.fileInfo) });
+  }
+  const workflow = sourceKind === 'workflow' && 'workflowId' in owner ? owner : undefined;
+  const flowOperations = sourceKind === 'operation' && 'operationId' in owner ? [owner, ...linkedOperations] : linkedOperations;
+  return {
+    source: 'l4',
+    sourceKind,
+    owners,
+    microUserFlow: buildMicroUserFlow(workflow, flowOperations),
+  };
+}
+
+// Option 3: canonical output structure declared by l4 (e5 `outputShape`). Reader mirrors the l4/backend
+// shape; when present it is AUTHORITATIVE — both masters copy it, neither re-infers, so the FE contract
+// and the backend usecase agree by construction (no order dependency, l4 stays the source of truth).
+interface CfeCanonicalOutputField { name: string; type: string; required: boolean; fieldRef?: string; item?: { fields: CfeCanonicalOutputField[] }; }
+interface CfeCanonicalOutputShape { kind: 'object' | 'list' | 'paginated'; fields: CfeCanonicalOutputField[]; }
+
+function readCanonicalOutputField(value: unknown): CfeCanonicalOutputField | null {
+  if (!isRecord(value)) return null;
+  const name = readString(value.name);
+  const type = readString(value.type);
+  if (!name || !type) return null;
+  const field: CfeCanonicalOutputField = { name, type, required: value.required === true };
+  const fieldRef = readString(value.fieldRef);
+  if (fieldRef) field.fieldRef = fieldRef;
+  if (isRecord(value.item) && Array.isArray(value.item.fields)) {
+    const fields = value.item.fields.map(readCanonicalOutputField).filter((f): f is CfeCanonicalOutputField => f !== null);
+    if (fields.length) field.item = { fields };
+  }
+  return field;
+}
+
+function readCanonicalOutputShape(operation: CfeOperationDef): CfeCanonicalOutputShape | null {
+  const raw = isRecord(operation.data) ? operation.data.outputShape : undefined;
+  if (!isRecord(raw)) return null;
+  const kind = readString(raw.kind);
+  if (kind !== 'object' && kind !== 'list' && kind !== 'paginated') return null;
+  const fields = Array.isArray(raw.fields) ? raw.fields.map(readCanonicalOutputField).filter((f): f is CfeCanonicalOutputField => f !== null) : [];
+  if (fields.length === 0) return null;
+  return { kind, fields };
+}
+
+function commandFromOperation(operation: CfeOperationDef, entities: Map<string, CfeEntityDef>): Record<string, unknown> {
+  const primaryEntity = operation.entity || firstEntity(operationEntities(operation));
+  const entity = entities.get(primaryEntity);
+  const kind = operation.kind === 'query' || operation.kind === 'view' ? 'query' : 'command';
+  const commandName = operation.commandName || operation.operationId;
+  const accessPattern = isRecord(operation.data) && isRecord(operation.data.accessPattern) ? operation.data.accessPattern : {};
+  const selection = readString(accessPattern.selection);
+  const accessKind = readString(accessPattern.kind);
+  // Prefer the l4 canonical outputShape (Option 3); fall back to the legacy l4-field-list inference.
+  const canonical = readCanonicalOutputShape(operation);
+  const outputShape = canonical
+    ? (canonical.kind === 'list' ? 'array' : canonical.kind === 'paginated' ? 'paginated' : 'object')
+    : frontendOutputShapeForOperation({ ...operation.data, kind: operation.kind });
+  const output = canonical
+    ? canonical.fields.map(field => ({ name: field.name, type: field.type, required: field.required }))
+    : (kind === 'query' ? queryOutput(operation, entity, entities) : commandOutput(operation, entity, entities));
+  return {
+    commandName,
+    ...(operation.bffName ? { bffName: operation.bffName } : {}),
+    ...(operation.bffName ? { routeKey: operation.bffName } : {}),
+    purpose: operation.title || humanizeId(operation.operationId),
+    kind,
+    outputShape,
+    // Full structured l4 shape (top-level + one level of item fields) — the contract generator builds
+    // the Output interface (incl. nested item interfaces) from this so it matches l4/backend exactly.
+    ...(canonical ? { canonicalOutputShape: canonical } : {}),
+    input: kind === 'query' ? queryInput(operation, entity, entities) : commandInput(operation, entity, entities),
+    output,
+    ...(selection ? { selection } : {}),
+    ...(accessKind ? { accessKind } : {}),
+    origin: {
+      source: 'l4/operations',
+      ownerId: `operation:${operation.operationId}`,
+      operationId: operation.operationId,
+      defPath: toDisplayRef(operation.fileInfo),
+      ...(operation.bffName ? { bffName: operation.bffName } : {}),
+    },
+  };
+}
+
+function pageDefinition(page: CfePagePlan, operations: CfeOperationDef[], workspacePurpose = ''): Record<string, unknown> {
+  return {
+    pageId: page.pageId,
+    pageName: page.pageName,
+    baseClassName: `${toPascalCase(page.moduleName)}${toPascalCase(page.pageId)}Base`,
+    actor: page.actorIds[0] || 'user',
+    // The l4 workspace purpose says what the page is FOR — it is the only prose the render gets about
+    // intent now that the defs carries no layout. Falls back to the old placeholder only when l4 has none.
+    purpose: readString(workspacePurpose) || `Executar ${page.pageName}.`,
+    capabilities: page.capabilities,
+    flowRefs: {
+      experienceFlows: page.sourceKind === 'workflow' ? page.ownerIds.filter(id => id.startsWith('workflow:')).map(id => id.slice('workflow:'.length)) : [],
+      entityLifecycles: [],
+      taskWorkflows: page.sourceKind === 'workflow' ? page.ownerIds.filter(id => id.startsWith('workflow:')).map(id => id.slice('workflow:'.length)) : [],
+      automations: [],
+    },
+    pluginRefs: [],
+    mdmRefs: [],
+    origin: page.origin,
+    pageInputs: collectBusinessContextRefs(operations),
+    navigationRefs: [],
+    sections: [{
+      sectionName: page.pageName,
+      mode: operations.some(op => op.kind !== 'query' && op.kind !== 'view') ? 'edit' : 'view',
+      organisms: operations.map(op => ({
+        organismName: toPascalCase(op.operationId),
+        purpose: op.title || humanizeId(op.operationId),
+        userActions: [op.operationId],
+        requiredEntities: operationEntities(op),
+        readsFields: fieldRefs(op.reads),
+        writesFields: fieldRefs(op.writes),
+        rulesApplied: op.rulesApplied,
+      })),
+    }],
+  };
+}
+
+function contractPipeline(project: number, page: CfePagePlan): unknown[] {
+  return [{ id: `${page.pageId}__l2_contract`, type: 'l2_contract', outputPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`, defPath: `_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.defs.ts`, dependsFiles: [], dependsOn: [], skills: ['_102020_/l2/agentMaterializeL2/skills/genCfeContractTs.ts'], agent: 'agentCfeMaterializeGen' }];
+}
+
+function sharedPipeline(prepared: CfePreparedPage): unknown[] {
+  const { project, page, commands, contractCopies } = prepared;
+  // F3 (v2): shared imports the per-bffCall contract copies (already on disk, deterministic) — no
+  // dependsOn a contract materialize item. Legacy: the single per-page contract .ts built by the skill.
+  const isV2 = contractCopies.length > 0;
+  const contractFiles = isV2 ? contractCopies.map(copy => copy.tsRef) : [`_${project}_/l2/${page.moduleName}/web/contracts/${page.pageId}.ts`];
+  return [{
+    id: `${page.pageId}__l2_shared`,
+    type: 'l2_shared',
+    outputPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
+    defPath: `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.defs.ts`,
+    dependsFiles: [...contractFiles, '_102029_.d.ts'],
+    dependsOn: isV2 ? [] : [`${page.pageId}__l2_contract`],
+    skills: ['_102020_/l2/agentMaterializeL2/skills/genCfeSharedTs.ts'],
+    rulesApplied: unique(commands.flatMap(command => Array.isArray(command.rulesApplied) ? command.rulesApplied.map(String) : [])),
+    agent: 'agentCfeMaterializeGen',
+  }];
+}
+
+/**
+ * Split plan of a page, from trace/frontend-page-split/<genome>/<page>.json (paginaDividida.md §5).
+ *
+ * The MARKER is the source and this defs is its mirror: `pagePipeline` runs from scratch on every create
+ * run, so a split written only into the defs would be wiped by the next @@changeFrontend. Reading it here
+ * is what makes "reprocessar a página já encontra a definição" true — only while the recipe still splits.
+ * A residual marker from a previous recipe must not revive N organisms after `splitByOrganism` is off:
+ * that page is 1 item, `.ts` named like the `.defs.ts`. The trace file is left in place (`/rebuild all`
+ * already wipes the module folder).
+ */
+export async function ensureRecipeSplitPlan(
+  prepared: CfePreparedPage,
+  genome: string,
+  layout: CfePageLayoutDefinition,
+  recipe: Pick<PageSlotRecipe, 'splitByOrganism'> = pageSlotRecipe(prepared.presentation?.categoryRef || '', genome),
+): Promise<{ n: number; organism: string; bindings: string[] }[]> {
+  if (!recipe.splitByOrganism) return [];
+  const existing = readPageSplitOrganisms(prepared.project, prepared.page, genome);
+  const workspace = prepared.workspace;
+  if (!workspace || workspace.sections.length === 0) return existing;
+  const sections: SplitPlanSection[] = workspace.sections.map(section => ({
+    sectionId: section.sectionId,
+    organisms: section.organisms.map(organism => ({
+      role: organism.role,
+      dataSource: organism.dataSource,
+      action: organism.action,
+      attachTo: organism.attachTo,
+    })),
+  }));
+  const bindings = unique(layout.dataBindings.map(binding => readString(binding.command)).filter(Boolean));
+  const plan = buildOrganismSplitPlan(prepared.page.pageId, genome, sections, bindings, 'contentLanding');
+  if (!plan) return existing;
+  const fileInfo = cfePipelineTraceFileInfo(prepared.page.moduleName, prepared.page.pageId, `frontend-page-split/${genome}`, prepared.project);
+  const body = `${JSON.stringify(plan, null, 2)}\n`;
+  await saveStorContent(fileInfo, body);
+  const stored = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as { content?: string } | undefined;
+  if (stored) stored.content = body;
+  return plan.organisms;
+}
+
+function readPageSplitOrganisms(project: number, page: CfePagePlan, genome: string): { n: number; organism: string; bindings: string[] }[] {
+  const fileInfo: FileInfo = cfePipelineTraceFileInfo(page.moduleName, page.pageId, `frontend-page-split/${genome}`, project);
+  const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)] as { status?: string; content?: string } | undefined;
+  if (!file || file.status === 'deleted' || !file.content) return [];
+  try {
+    const plan = JSON.parse(file.content) as unknown;
+    if (!isRecord(plan) || !Array.isArray(plan.organisms)) return [];
+    return plan.organisms.filter(isRecord)
+      .map(item => ({
+        n: Number(item.n),
+        organism: readString(item.organism),
+        bindings: Array.isArray(item.bindings) ? item.bindings.map(String) : [],
+      }))
+      .filter(item => Number.isInteger(item.n) && item.organism);
+  } catch {
+    recordCreateWarning(`${page.pageId}/${genome}: split plan is not valid JSON, ignored`);
+    return [];
+  }
+}
+
+export function pagePipeline(project: number, page: CfePagePlan, visualStyle: unknown, genome = 'page11', experienceSkill?: string, splitOrganisms?: { n: number; organism: string; bindings: string[] }[]): unknown[] {
+  const idSuffix = genome === 'page11' ? '' : `__${genome}`;
+  const base = `_${project}_/l2/${page.moduleName}/web/desktop/${genome}`;
+  // A split page materializes as N organisms + the page that imports their render functions. The organisms
+  // depend only on the shared, so they run in parallel; the page depends on all of them.
+  // `[]` is an explicit "this run does not split" (recipe off, or a residual marker we must ignore).
+  // Omit the arg to re-read the marker — that is the reprocess path, and only makes sense while split is on.
+  const organisms = (splitOrganisms ?? readPageSplitOrganisms(project, page, genome)).map(item => ({
+    id: `${page.pageId}${idSuffix}__O${item.n}`,
+    type: 'l2_page_organism',
+    organism: item.organism,
+    bindings: item.bindings,
+    outputPath: `${base}/${page.pageId}_O${item.n}.ts`,
+    defPath: `${base}/${page.pageId}.defs.ts`,
+    dependsFiles: [
+      `_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`,
+      `_${project}_/l2/designSystem.ts`,
+    ],
+    dependsOn: [`${page.pageId}__l2_shared`],
+    skills: experienceSkill ? [pageRenderSkillPath(genome), experienceSkill] : [pageRenderSkillPath(genome)],
+    visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
+    agent: 'agentCfeMaterializeGen',
+  }));
+
+  return [...organisms, {
+    id: `${page.pageId}${idSuffix}__l2_page`,
+    type: 'l2_page',
+    outputPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.ts`,
+    defPath: `_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.defs.ts`,
+    // Context diet (flow.json materializationContextPolicy): the *.defs.ts of shared/contracts are
+    // generator inputs, not render inputs — they no longer travel to the page LLM. The shared base
+    // class reaches the page as its compiled .d.ts (self-describing via JSDoc), and since 27/ago the
+    // page DECLARES that artifact (web/shared/<page>Dts.txt) instead of the .ts being swapped
+    // implicitly at prompt-assembly time — the context that travels is the context declared. The raw
+    // shared .ts stays the FALLBACK when the artifact is absent/stale (a shared that never compiled
+    // must not block the run), and the item trace then says `context=raw-ts (reason)`. The shared
+    // .d.ts RE-EXPORTS every contract DTO type (Input/Output/OutputItem), so the page imports all DTO
+    // types from shared and never needs the contract in its context — the raw contract .ts was
+    // dropped here (item 4, 16/07). Field names come from this page's layout defs; the contract still
+    // exists on disk and is compiled via the shared dependency (page -> shared -> contract).
+    // designSystem.ts is summarized to token names by the context builder. Missing files are
+    // tolerated by the materializer (readers skip null content).
+    dependsFiles: [
+      sharedDtsArtifactRef(`_${project}_/l2/${page.moduleName}/web/shared/${page.pageId}.ts`)!,
+      `_${project}_/l2/designSystem.ts`,
+    ],
+    dependsOn: [`${page.pageId}__l2_shared`, ...organisms.map(item => item.id)],
+    // Render skill first (HOW to write the Lit file), then the experience skill (WHICH experience to
+    // build). Management page11 is bespoke (no experience skill); contentLanding page11 attaches one.
+    skills: experienceSkill ? [pageRenderSkillPath(genome), experienceSkill] : [pageRenderSkillPath(genome)],
+    visualStyle: typeof visualStyle === 'string' ? { description: visualStyle } : (isRecord(visualStyle) ? visualStyle : {}),
+    agent: 'agentCfeMaterializeGen',
+  }];
+}
+
+// Render skill per genome: page11 keeps the plain-operational baseline; page21 (goal-first) uses
+// the richer patterns (master-detail, contextual transition buttons, card board).
+function pageRenderSkillPath(genome: string): string {
+  const skillName = genome === 'page11' ? 'genCfePage11RenderTs' : 'genCfePage21RenderTs';
+  return `_102020_/l2/agentMaterializeL2/skills/${skillName}.ts`;
+}
+
+async function saveFrontendDefs(
+  fileInfo: FileInfo,
+  exportName: string,
+  definition: unknown,
+  pipeline: unknown[],
+  extras: { name: string; value: unknown }[] = [],
+): Promise<void> {
+  const header = `/// <mls fileReference="${toDisplayRef(fileInfo)}" enhancement="_blank"/>\n\n`;
+  const contractComment = isRecord(definition) && Array.isArray(definition.scenaries)
+    ? `/**\n * ${UI_SCENARY_DEFS_CONTRACT.replace(/\n/g, '\n * ')}\n */\n`
+    : '';
+  await saveStorContent(fileInfo, `${header}${contractComment}${renderFrontendDefsBody(exportName, definition, pipeline, extras)}`);
+}
+
+export function renderFrontendDefsBody(
+  exportName: string,
+  definition: unknown,
+  pipeline: unknown[],
+  extras: { name: string; value: unknown }[] = [],
+): string {
+  const extraBlock = extras.map(item => `export const ${item.name} = ${tsConstLiteral(item.value, true)};\n\n`).join('');
+  return `export const ${exportName} = ${tsConstLiteral(definition)};\n\n${extraBlock}export const pipeline = ${JSON.stringify(pipeline, null, 2)} as const;\n`;
+}
+
+function tsConstLiteral(value: unknown, asConst = false): string {
+  if (typeof value === 'string') return `\`${escapeTemplateLiteral(value)}\``;
+  return `${JSON.stringify(value, null, 2)}${asConst ? ' as const' : ''}`;
+}
+
+function escapeTemplateLiteral(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+}
+
+async function updateL5FrontendSignature(project: number, pages: CfePagePlan[] = []): Promise<void> {
+  const fileInfo: FileInfo = { project, level: 5, folder: '', shortName: 'project', extension: '.json' };
+  const existing = await readJsonFile(fileInfo);
+  const cfg = isRecord(existing) ? existing : {};
+  const masters = isRecord(cfg.masters) ? cfg.masters : (cfg.masters = {});
+  masters.frontend = { masterProject: 102020, agentFolder: 'agentMaterializeL2', runtimeProject: 102033 };
+  cfg.layouts = buildLayoutsConfig(project, pages, isRecord(cfg.layouts) ? cfg.layouts : {});
+  await saveStorContent(fileInfo, `${JSON.stringify(cfg, null, 2)}\n`);
+}
+
+async function saveFrontendWorkspaceConfig(context: CfeCreateContext, pages: CfePagePlan[], omitPageIds: string[] = []): Promise<string> {
+  const project = context.project;
+  if (!project) return 'l5/config.json skipped: project unavailable';
+  const l5 = await readProjectJson(project);
+  const frontendSignature = isRecord(l5.masters) && isRecord(l5.masters.frontend) ? l5.masters.frontend : {};
+  const runtimeId = readId(frontendSignature.runtimeProject) || '102033';
+  const config = await readWorkspaceConfig(project);
+  const customize = isRecord(l5.customize) ? l5.customize : {};
+
+  config.defaultProjectId = readId(config.defaultProjectId) || String(project);
+  config.shellTemplates = isRecord(customize.shellTemplates)
+    ? customize.shellTemplates
+    : (isRecord(config.shellTemplates) ? config.shellTemplates : { spa: `./_${runtimeId}_/l2/shared/spa/index.html`, pwa: `./_${runtimeId}_/l2/shared/pwa/index.html` });
+  delete config.publication;
+  config.clientShell = isRecord(customize.clientShell)
+    ? customize.clientShell
+    : (isRecord(config.clientShell) ? config.clientShell : {
+      mode: 'spa',
+      activeProfile: 'production',
+      regions: {
+        aside: {
+          activeProfile: 'defaultAura',
+          profiles: {
+            defaultAura: {
+              renderer: { entrypoint: `/_${runtimeId}_/l2/shared/layout/aura-aside.js`, source: `../mls-${runtimeId}/l2/shared/layout/aura-aside.ts`, tag: 'collab-aura-aside' },
+              widthPx: 280,
+            },
+          },
+        },
+      },
+    });
+
+  const projects = ensureRecordProperty(config, 'projects');
+  const client = ensureProjectConfig(projects, String(project), { root: '.', type: 'client', runtime: projectRuntimeMetadata(l5, String(project)) });
+  projects[runtimeId] = { root: `../mls-${runtimeId}`, type: 'master frontend' };
+  delete projects['102027'];
+  delete projects['102036'];
+  projects['102029'] = isRecord(projects['102029']) ? projects['102029'] : { root: '../mls-102029', type: 'lib' };
+  addWorkspaceDependencies(projects, l5, String(project));
+
+  const labels = isRecord(customize.navigationLabels) ? customize.navigationLabels : {};
+  const clientModules = Array.isArray(client.modules) ? client.modules.filter(isRecord) : [];
+  client.modules = clientModules;
+  const omit = new Set(omitPageIds.filter(Boolean));
+  const pagesByModule = new Map<string, CfePagePlan[]>();
+  for (const page of pages) {
+    if (!pagesByModule.has(page.moduleName)) pagesByModule.set(page.moduleName, []);
+    pagesByModule.get(page.moduleName)!.push(page);
+  }
+
+  for (const [moduleName, modulePages] of pagesByModule) {
+    const doneModulePages = modulePages.filter(page => !omit.has(page.pageId));
+    let mod = clientModules.find(item => readString(item.moduleId) === moduleName);
+    if (!mod) { mod = { moduleId: moduleName, basePath: `/${moduleName}`, shellMode: 'spa' }; clientModules.push(mod); }
+    mod.basePath = readString(mod.basePath) || `/${moduleName}`;
+    mod.shellMode = readString(mod.shellMode) || 'spa';
+    // The runtime shell (102033/102034) reads the module's languages from HERE: it is the source of the
+    // Ctrl+Alt+L rotation, of mls.sites.setLanguage's valid set, and of the languages[0] fallback — so the
+    // DEFAULT locale must stay first. Region is preserved ('pt-br', 'en-au'); the shell normalizes and
+    // falls back to the 2-letter prefix on its own. Rewritten on every rebuild so l4 stays authoritative.
+    const runtimeLocales = context.moduleI18n[moduleName]?.runtimeLocales ?? [];
+    if (runtimeLocales.length > 0) mod.languages = runtimeLocales;
+    const labelRecord = Object.fromEntries(Object.entries(labels).map(([key, value]) => [key, readString(value)]));
+    mod.navigation = navigationFromE8Menu({
+      moduleName,
+      menu: context.menuByModule?.[moduleName] || [],
+      pages: doneModulePages.map(page => ({ pageId: page.pageId, label: page.pageName, actors: page.actorIds })),
+      labels: labelRecord,
+    });
+    const existingFrontend = isRecord(mod.frontend) ? mod.frontend : {};
+    const pageTests = frontendPageTestPaths(project, context, doneModulePages);
+    mod.frontend = {
+      ...existingFrontend,
+      layer: 'l2',
+      pages: mergeByKey(asRecords(existingFrontend.pages), doneModulePages.flatMap(page => frontendConfigPages(project, context, page, labels)), 'pageId')
+        .filter(item => !configPageIdOmitted(readString(item.pageId), omit)),
+      ...(pageTests.length > 0 ? { pageTests } : {}),
+    };
+  }
+
+  await saveWorkspaceConfig(project, config);
+  emitMlsDepJsonIfHostDisk(project, config, l5);
+  const pageCount = pages.filter(page => !omit.has(page.pageId)).reduce((sum, page) => sum + frontendConfigPages(project, context, page, labels).length, 0);
+  return `l5/config.json frontend merged (${pageCount} page route(s), ${pagesByModule.size} module(s))`;
+}
+
+// Item 2a: project-relative resolver paths (compiled .js, _<id>_/... form used by
+// resolveProjectModuleImportUrl) of the generated page11 test files that exist on disk.
+function frontendPageTestPaths(project: number, context: CfeCreateContext, pages: CfePagePlan[]): string[] {
+  const paths: string[] = [];
+  for (const page of pages) {
+    const genome = pageTestsGenome(project, context, page);
+    if (!genome) continue;
+    paths.push(`_${project}_/l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.test.js`);
+  }
+  return paths;
+}
+
+function pageTestsGenome(project: number, context: CfeCreateContext, page: CfePagePlan): string | null {
+  const planned = plannedGenomes(context, page);
+  const candidates = [...planned];
+  for (let index = 0; index < MAX_UX_VARIANTS; index++) {
+    const genome = pageGenome(index);
+    if (!candidates.includes(genome)) candidates.push(genome);
+  }
+  for (const genome of candidates) {
+    const fileInfo: FileInfo = { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.test.ts' };
+    const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+    if (file && file.status !== 'deleted') return genome;
+  }
+  return null;
+}
+
+function plannedGenomes(context: CfeCreateContext, page: CfePagePlan): string[] {
+  const categoryRef = readString(workspaceForPage(context, page)?.categoryRef);
+  return pageSlotRecipes(categoryRef, context.uxVariants || 'default').map(slot => slot.genome);
+}
+
+function pageHasStorFile(project: number, page: CfePagePlan, genome: string, extension: '.ts' | '.defs.ts'): boolean {
+  const info = extension === '.defs.ts' ? pageFileInfo(project, page, genome) : pageTsFileInfo(project, page, genome);
+  const file = mls.stor.files[mls.stor.getKeyToFile(info)];
+  return !!file && file.status !== 'deleted';
+}
+
+function discoveredPageGenomes(project: number, page: CfePagePlan): string[] {
+  const genomes: string[] = [];
+  for (let index = 0; index < MAX_UX_VARIANTS; index++) {
+    const genome = pageGenome(index);
+    if (pageHasStorFile(project, page, genome, '.defs.ts') || pageHasStorFile(project, page, genome, '.ts')) genomes.push(genome);
+  }
+  return genomes;
+}
+
+function frontendConfigPages(project: number, context: CfeCreateContext, page: CfePagePlan, labels: Record<string, unknown>): Record<string, unknown>[] {
+  const operations = page.operationIds.map(id => context.operations.get(id)).filter((item): item is CfeOperationDef => !!item);
+  const title = readString(labels[page.pageId]) || page.pageName;
+  const primaryRoute = pageRoutePattern(page, operations);
+  const baseRoute = `/${page.moduleName}/${page.pageId}`;
+  const routeParams = primaryRoute.startsWith(baseRoute) ? primaryRoute.slice(baseRoute.length) : '';
+  const genomes = discoveredPageGenomes(project, page).filter(genome => plannedGenomes(context, page).includes(genome));
+  const primary = primaryGenomeOf(genomes.length > 0 ? genomes : plannedGenomes(context, page));
+  const records: Record<string, unknown>[] = [{
+    pageId: page.pageId,
+    route: primaryRoute,
+    source: `l2/${page.moduleName}/web/desktop/${primary}/${page.pageId}.ts`,
+    definition: `l2/${page.moduleName}/web/desktop/${primary}/${page.pageId}.defs.ts`,
+    componentTag: frontendComponentTag(project, page, primary),
+    title,
+  }];
+  for (const genome of genomes) {
+    if (genome === primary) continue;
+    if (!pageHasStorFile(project, page, genome, '.ts') || !pageHasStorFile(project, page, genome, '.defs.ts')) continue;
+    records.push({
+      pageId: `${page.pageId}-${genome}`,
+      route: `/${page.moduleName}/${page.pageId}-${genome}${routeParams}`,
+      source: `l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.ts`,
+      definition: `l2/${page.moduleName}/web/desktop/${genome}/${page.pageId}.defs.ts`,
+      componentTag: frontendComponentTag(project, page, genome),
+      title: `${title} - ${genome.toUpperCase()}`,
+    });
+  }
+  return records;
+}
+
+function configPageIdOmitted(pageId: string, omit: Set<string>): boolean {
+  if (!pageId) return false;
+  if (omit.has(pageId)) return true;
+  for (const id of omit) {
+    if (id && pageId.startsWith(`${id}-`)) return true;
+  }
+  return false;
+}
+
+function mergeByKey(existing: Record<string, unknown>[], next: Record<string, unknown>[], key: string): Record<string, unknown>[] {
+  const map = new Map<string, Record<string, unknown>>();
+  for (const item of existing) {
+    const id = readString(item[key]);
+    if (id) map.set(id, item);
+  }
+  for (const item of next) {
+    const id = readString(item[key]);
+    if (id) map.set(id, item);
+  }
+  return [...map.values()];
+}
+
+function asRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function ensureRecordProperty(target: Record<string, unknown>, key: string): Record<string, unknown> {
+  if (!isRecord(target[key])) target[key] = {};
+  return target[key] as Record<string, unknown>;
+}
+
+function ensureProjectConfig(projects: Record<string, unknown>, id: string, patch: Record<string, unknown>): Record<string, unknown> {
+  const existing = isRecord(projects[id]) ? projects[id] as Record<string, unknown> : {};
+  projects[id] = { ...existing, ...patch };
+  return projects[id] as Record<string, unknown>;
+}
+
+function addWorkspaceDependencies(projects: Record<string, unknown>, l5: Record<string, unknown>, clientId: string): void {
+  const deps = Array.isArray(l5.dependencies) ? l5.dependencies.filter(isRecord) : [];
+  for (const dep of deps) {
+    const id = readId(dep.projectId);
+    if (!/^\d+$/.test(id) || id === clientId) continue;
+    if (!isRecord(projects[id])) projects[id] = { root: `../mls-${id}`, type: 'lib' };
+  }
+}
+
+function projectRuntimeMetadata(l5: Record<string, unknown>, clientId: string): Record<string, unknown> {
+  return {
+    projectId: readId(l5.projectId) || clientId,
+    domain: l5.domain,
+    port: l5.port,
+    databaseName: l5.databaseName,
+    environment: l5.environment,
+    studioEnabled: l5.studioEnabled,
+  };
+}
+
+function readId(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return readString(value);
+}
+
+async function readProjectJson(project: number): Promise<Record<string, unknown>> {
+  const json = await readJsonFile({ project, level: 5, folder: '', shortName: 'project', extension: '.json' });
+  if (!isRecord(json)) throw new Error('l5/project.json not found or invalid; cannot compose l5/config.json');
+  return json;
+}
+
+async function readWorkspaceConfig(project: number): Promise<Record<string, unknown>> {
+  const json = await readJsonFile({ project, level: 5, folder: '', shortName: 'config', extension: '.json' });
+  return isRecord(json) ? json : {};
+}
+
+async function saveWorkspaceConfig(project: number, config: Record<string, unknown>): Promise<void> {
+  await saveStorContent({ project, level: 5, folder: '', shortName: 'config', extension: '.json' }, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+// Record which UX variants exist, so collab.codes / the runtime can show and cycle them. Project-level
+// and MERGE-only: keep every existing layout entry (never shrink) and add newly generated indices that
+// are missing. A layout index N is "generated" when any page has a materialized web/desktop/page{N}1 .ts.
+// Existing names/props are preserved; index 1 defaults to "Default", others to "Ux N".
+function buildLayoutsConfig(project: number, pages: CfePagePlan[], previous: Record<string, unknown>): Record<string, unknown> {
+  const layouts: Record<string, unknown> = {};
+  const layoutName = (index: number, prev: Record<string, unknown>): string => readString(prev.name) || (index === 1 ? 'Default' : `Ux ${index}`);
+
+  // Keep everything already declared at project level.
+  for (const key of Object.keys(previous)) {
+    const prev = isRecord(previous[key]) ? previous[key] : {};
+    layouts[key] = { ...prev, name: layoutName(Number(key), prev) };
+  }
+
+  // Add newly generated indices that are not present yet.
+  const generated = new Set<number>();
+  for (const page of pages) {
+    for (let variantIndex = 0; variantIndex < MAX_UX_VARIANTS; variantIndex++) {
+      const file = mls.stor.files[mls.stor.getKeyToFile(pageTsFileInfo(project, page, pageGenome(variantIndex)))];
+      if (file && file.status !== 'deleted') generated.add(variantIndex + 1);
+    }
+  }
+  if (generated.size === 0 && Object.keys(layouts).length === 0) generated.add(1);
+  for (const index of generated) {
+    const key = String(index);
+    if (!layouts[key]) layouts[key] = { name: layoutName(index, {}) };
+  }
+
+  // Stable numeric-ascending order.
+  const ordered: Record<string, unknown> = {};
+  for (const key of Object.keys(layouts).sort((left, right) => Number(left) - Number(right))) ordered[key] = layouts[key];
+  return ordered;
+}
+
+// Update generation status only in l5/{module}/todoFrontend.defs.ts. The l4 owner defs are
+// read-only for this agent (mirrors l5/{module}/todoBackend.defs.ts).
+async function updateOwnerStatuses(context: CfeCreateContext, ownerIds: string[], status: OwnerStatus, runModule: string): Promise<string[]> {
+  return setTodoFrontendStatuses(context.project, new Set(ownerIds), status, runModule);
+}
+
+interface CfeTodoOwner { ownerType: CfeTodoOwnerType; ownerId: string; status: string; moduleName: string; workspaceId: string; }
+
+/**
+ * The generator names the units of frontend work in its own vocabulary. ns/ns3 tracked the l4 owners
+ * (`operation`/`workflow`) with `status`; ns4 tracks what this agent actually produces — the page
+ * (`workspace`) and the wire (`contract`, keyed by the bffCall route) — with `statusFrontend`.
+ * Both are read; the run reconciles against the owner types the file actually declares.
+ */
+type CfeTodoOwnerType = 'operation' | 'workflow' | 'workspace' | 'contract';
+const TODO_OWNER_TYPES: readonly CfeTodoOwnerType[] = ['operation', 'workflow', 'workspace', 'contract'];
+const TODO_STATUS_FIELDS = ['status', 'statusFrontend'] as const;
+
+function todoOwnerType(raw: string): CfeTodoOwnerType | '' {
+  return TODO_OWNER_TYPES.includes(raw as CfeTodoOwnerType) ? raw as CfeTodoOwnerType : '';
+}
+/** The field the file actually uses, so a write-back lands where the read came from. */
+function todoStatusField(raw: Record<string, unknown>): typeof TODO_STATUS_FIELDS[number] {
+  return TODO_STATUS_FIELDS.find(field => typeof raw[field] === 'string') || 'status';
+}
+interface CfeTodoState {
+  files: number;
+  moduleNames: string[];
+  ownersByModule: Map<string, Map<string, CfeTodoOwner>>;
+  ownersByKey: Map<string, CfeTodoOwner>;
+  warnings: string[];
+  errors: string[];
+}
+
+function cfeOwnerHasKnownModule(moduleName: string): boolean {
+  return Boolean(moduleName) && moduleName !== 'unknown';
+}
+
+function lookupCfeTodoOwner(state: CfeTodoState, moduleName: string, key: string): CfeTodoOwner | undefined {
+  if (cfeOwnerHasKnownModule(moduleName)) return state.ownersByModule.get(moduleName)?.get(key);
+  return state.ownersByKey.get(key);
+}
+
+function allCfeTodoOwners(state: CfeTodoState): CfeTodoOwner[] {
+  const out: CfeTodoOwner[] = [];
+  for (const byKey of state.ownersByModule.values()) out.push(...byKey.values());
+  return out;
+}
+
+/** A CF run writes only the todoFrontend of the module it is running. */
+export function todoFrontendFileMatchesRunModule(fileFolder: string, parsedModuleName: string, runModule: string): boolean {
+  if (!runModule) return false;
+  return parsedModuleName === runModule || fileFolder === runModule;
+}
+
+function isOwnerStatus(status: string): boolean {
+  return status === 'toCreate' || status === 'toUpdate' || status === 'toRemove' || status === 'inProgress' || status === 'done';
+}
+
+// validModules = the modules present in l4 this run. A todoFrontend for a module with NO l4 (an orphan
+// left behind by a module rename/removal, e.g. l5/petShop after petShop -> petShopReservaRetirada) is
+// skipped, not fatal — otherwise its stale owners would read as "absent from l4" and block every rebuild.
+// Empty validModules disables the filter (preserves behavior when the l4 scan found no module).
+async function readFrontendTodoState(project: number, validModules: Set<string>): Promise<CfeTodoState> {
+  const ownersByModule = new Map<string, Map<string, CfeTodoOwner>>();
+  const ownersByKey = new Map<string, CfeTodoOwner>();
+  const moduleNames = new Set<string>();
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  let files = 0;
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
+    const parsed = parseDefsSource(String(await file.getContent()));
+    if (!parsed) {
+      const moduleName = String(file.folder || '');
+      if (validModules.size > 0 && !validModules.has(moduleName)) {
+        warnings.push(`ignored unparsable todoFrontend for module '${moduleName}' (no l4 present); stale stor index or module removed by hand`);
+        continue;
+      }
+      errors.push(`invalid todoFrontend defs at l5/${moduleName}/todoFrontend.defs.ts`);
+      continue;
+    }
+    const data = parsed.data;
+    const moduleName = readString(data.moduleName) || String(file.folder || '');
+    if (validModules.size > 0 && moduleName && !validModules.has(moduleName)) {
+      warnings.push(`ignored orphan todoFrontend for module '${moduleName}' (no l4 present); stale l5 leftover from a module rename/removal`);
+      continue;
+    }
+    files++;
+    const layer = readString(data.layer);
+    if (layer && layer !== 'frontend') warnings.push(`todoFrontend ${String(file.folder || '')} has layer=${layer}; treating as frontend by filename`);
+    if (moduleName) moduleNames.add(moduleName);
+    if (!ownersByModule.has(moduleName)) ownersByModule.set(moduleName, new Map());
+    const moduleOwners = ownersByModule.get(moduleName)!;
+    const owners = Array.isArray(data.owners) ? data.owners.filter(isRecord) : [];
+    for (const raw of owners) {
+      const ownerType = todoOwnerType(readString(raw.ownerType));
+      const ownerId = readString(raw.ownerId);
+      const status = readString(raw[todoStatusField(raw)]);
+      if (!ownerType || !ownerId) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')} has invalid owner entry`); continue; }
+      if (!isOwnerStatus(status)) { errors.push(`todoFrontend ${moduleName || String(file.folder || '')}/${ownerType}:${ownerId} has invalid status "${status}"`); continue; }
+      const key = `${ownerType}:${ownerId}`;
+      if (moduleOwners.has(key)) {
+        warnings.push(`duplicate todoFrontend owner ${key}; first entry kept`);
+        continue;
+      }
+      const value: CfeTodoOwner = { ownerType, ownerId, status, moduleName, workspaceId: readString(raw.workspaceId) };
+      moduleOwners.set(key, value);
+      if (!ownersByKey.has(key)) ownersByKey.set(key, value);
+    }
+  }
+  return { files, moduleNames: Array.from(moduleNames).sort(), ownersByModule, ownersByKey, warnings, errors };
+}
+
+async function setTodoFrontendStatuses(project: number, wanted: Set<string>, status: OwnerStatus, runModule: string): Promise<string[]> {
+  const updated: string[] = [];
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 5 || file.status === 'deleted') continue;
+    if (file.extension !== '.defs.ts' || String(file.shortName || '') !== 'todoFrontend') continue;
+    const content = String(await file.getContent());
+    const parsed = parseDefsSource(content);
+    if (!parsed) continue;
+    const fileFolder = String(file.folder || '');
+    const parsedModuleName = readString(parsed.data.moduleName) || fileFolder;
+    if (!todoFrontendFileMatchesRunModule(fileFolder, parsedModuleName, runModule)) continue;
+    const owners = Array.isArray(parsed.data.owners) ? parsed.data.owners.filter(isRecord) : [];
+    let changed = false;
+    for (const owner of owners) {
+      const key = `${readString(owner.ownerType)}:${readString(owner.ownerId)}`;
+      if (!wanted.has(key)) continue;
+      owner[todoStatusField(owner)] = status;
+      updated.push(key);
+      changed = true;
+    }
+    if (changed) {
+      const fileInfo: FileInfo = { project: file.project, level: 5, folder: fileFolder, shortName: 'todoFrontend', extension: '.defs.ts' };
+      await saveTodoDefs(fileInfo, content, parsed.exportName, parsed.data);
+    }
+  }
+  return updated;
+}
+
+async function saveCreateReport(project: number, pages: CfePagePlan[], ownersDone: string[], skippedPages: string[], incompletePages: CfeIncompletePage[] = []): Promise<void> {
+  for (const moduleName of unique([...pages, ...incompletePages.map(item => item.page)].map(page => page.moduleName))) {
+    const fileInfo: FileInfo = cfePipelineTraceFileInfo(moduleName, 'frontend-create-report', '', project);
+    await saveStorContent(fileInfo, `${JSON.stringify({
+      savedAt: new Date().toISOString(),
+      pagesDone: pages.filter(p => p.moduleName === moduleName).map(p => p.pageId),
+      ownersDone,
+      skippedPages,
+      // A page whose materialization verdict is still blocking is NOT done. It stays here, with the
+      // reason, instead of being counted in pagesDone — run01 of 102047 listed all three pages as done
+      // while three of their nine artifacts did not compile.
+      incompletePages: incompletePages.filter(item => item.page.moduleName === moduleName).map(item => ({ pageId: item.page.pageId, reason: item.reason })),
+    }, null, 2)}\n`);
+  }
+}
+
+async function savePageCreateMarker(prepared: CfePreparedPage, status: 'inProgress' | 'done'): Promise<void> {
+  const fileInfo = pageCreateMarkerFileInfo(prepared.project, prepared.page);
+  await saveStorContent(fileInfo, `${JSON.stringify({
+    savedAt: new Date().toISOString(),
+    status,
+    pageId: prepared.page.pageId,
+    moduleName: prepared.page.moduleName,
+    agent: 'agentMaterializeL2',
+  }, null, 2)}\n`);
+}
+
+async function savePageRegisterMarker(project: number, page: CfePagePlan, status: 'done'): Promise<void> {
+  const fileInfo = pageRegisterMarkerFileInfo(project, page);
+  await saveStorContent(fileInfo, `${JSON.stringify({
+    savedAt: new Date().toISOString(),
+    status,
+    pageId: page.pageId,
+    moduleName: page.moduleName,
+    agent: 'agentCfeRegisterFrontend',
+  }, null, 2)}\n`);
+}
+
+async function hasGeneratedDefs(project: number, page: CfePagePlan): Promise<boolean> {
+  const shared = mls.stor.files[mls.stor.getKeyToFile(sharedFileInfo(project, page))];
+  const sharedOk = !!shared && shared.status !== 'deleted';
+  const pageDefsOk = discoveredPageGenomes(project, page).some(genome => pageHasStorFile(project, page, genome, '.defs.ts'));
+  const defsExist = sharedOk && pageDefsOk;
+  // Contract exists either as the legacy per-page .defs.ts (v1), the generated per-workspace
+  // `<pageId>.ts` (F3 v2), or the earlier per-bffCall `<pageId>.<bffId>.ts` files (back-compat).
+  if (!defsExist || !hasPageContractArtifact(project, page)) return false;
+  const marker = await readJsonFile(pageCreateMarkerFileInfo(project, page));
+  return isRecord(marker) && marker.status === 'done';
+}
+
+function hasPageContractArtifact(project: number, page: CfePagePlan): boolean {
+  const legacy = mls.stor.files[mls.stor.getKeyToFile(contractFileInfo(project, page))];
+  if (legacy && legacy.status !== 'deleted') return true;
+  const contractsFolder = `${page.moduleName}/web/contracts`;
+  return (Object.values(mls.stor.files) as any[]).some(file => {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') return false;
+    if (String(file.folder || '') !== contractsFolder || file.extension !== '.ts') return false;
+    const shortName = String(file.shortName || '');
+    return shortName === page.pageId || shortName.startsWith(`${page.pageId}.`);
+  });
+}
+
+function hasMaterializedPageTs(project: number, page: CfePagePlan): boolean {
+  return discoveredPageGenomes(project, page).some(genome => pageHasStorFile(project, page, genome, '.ts'));
+}
+
+async function hasRegisteredFrontend(project: number, page: CfePagePlan): Promise<boolean> {
+  const marker = await readJsonFile(pageRegisterMarkerFileInfo(project, page));
+  return isRecord(marker) && marker.status === 'done';
+}
+
+// Preview .html per genome used to be written here for the Studio iframe. Studio preview no longer
+// needs it, so leftover page html is soft-deleted on register (and on /rebuild defs cleanup).
+async function deleteLeftoverPageHtml(project: number, modules: string[]): Promise<void> {
+  const moduleSet = [...new Set(modules.filter(Boolean))];
+  if (moduleSet.length === 0) return;
+  for (const file of Object.values(mls.stor.files) as any[]) {
+    if (!file || file.project !== project || file.level !== 2 || file.status === 'deleted') continue;
+    if (file.extension !== '.html') continue;
+    const folder = String(file.folder || '');
+    if (!moduleSet.some(module => folder.startsWith(`${module}/web/`))) continue;
+    if (!/\/web\/(?:desktop|mobile)\/page\d+$/.test(folder)) continue;
+    await deleteFile(file);
+  }
+}
+
+function frontendComponentTag(project: number, page: CfePagePlan, genome = 'page11'): string {
+  return convertFileToTag({ project, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId });
+}
+
+// page[ux][ui] genome. UX variants vary the UX digit and keep UI=1. Discovery still walks three
+// folders; how many are GENERATED is the category recipe (one by default, three with variants:all).
+const MAX_UX_VARIANTS = 3;
+function pageGenome(variantIndex: number): string { return `page${variantIndex + 1}1`; }
+
+function selectedTemplateId(prepared: CfePreparedPage, genome: string): string | undefined {
+  return prepared.variantPlan.find(item => item.genome === genome)?.templateId;
+}
+
+function contractFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/contracts`, shortName: page.pageId, extension: '.defs.ts' }; }
+function sharedFileInfo(project: number, page: CfePagePlan): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/shared`, shortName: page.pageId, extension: '.defs.ts' }; }
+function pageFileInfo(project: number, page: CfePagePlan, genome = 'page11'): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.defs.ts' }; }
+function pageTsFileInfo(project: number, page: CfePagePlan, genome = 'page11'): FileInfo { return { project, level: 2, folder: `${page.moduleName}/web/desktop/${genome}`, shortName: page.pageId, extension: '.ts' }; }
+function pageCreateMarkerFileInfo(project: number, page: CfePagePlan): FileInfo {
+  return cfePipelineTraceFileInfo(page.moduleName, page.pageId, 'frontend-create-pages', project);
+}
+function pageRegisterMarkerFileInfo(project: number, page: CfePagePlan): FileInfo {
+  return cfePipelineTraceFileInfo(page.moduleName, page.pageId, 'frontend-register-pages', project);
+}
+
+function operationFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string, folderModule = ''): CfeOperationDef | null {
+  const operationId = readString(data.operationId);
+  if (!operationId) return null;
+  return { operationId, commandName: readString(data.commandName) || operationId, pageId: readString(data.pageId), bffName: readString(data.bffName), title: readString(data.title) || humanizeId(operationId), actor: readString(data.actor) || readStringArray(data.actors)[0] || '', entity: normalizeEntityRef(readString(data.entity)), kind: readString(data.kind), reads: readStringArray(data.reads), writes: readStringArray(data.writes), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capability: isRecord(data.capability) ? data.capability : undefined, moduleName: '', folderModule, fileInfo, exportName, data };
+}
+
+function syntheticOperation(page: CfePagePlan, operationId: string, project: number): CfeOperationDef {
+  const entity = page.entityIds[0] || '';
+  const kind = inferOperationKind(operationId);
+  return {
+    operationId,
+    commandName: operationId,
+    pageId: page.pageId,
+    bffName: '',
+    title: humanizeId(operationId),
+    actor: page.actorIds[0] || 'user',
+    entity,
+    kind,
+    reads: entity ? [entity] : [],
+    writes: kind === 'query' || kind === 'view' ? [] : (entity ? [entity] : []),
+    rulesApplied: page.rulesApplied,
+    storySteps: [],
+    todoStatus: 'synthetic',
+    inlineStatusFrontend: '',
+    capability: page.capabilities[0] ? { capabilityId: page.capabilities[0] } : undefined,
+    moduleName: page.moduleName,
+    folderModule: page.moduleName,
+    fileInfo: { project, level: 4, folder: `${page.moduleName}/operations`, shortName: operationId, extension: '.defs.ts' },
+    exportName: `synthetic${toPascalCase(operationId)}`,
+    data: {},
+  };
+}
+
+function inferOperationKind(operationId: string): string {
+  const id = operationId.toLowerCase();
+  if (/^(list|view|get|show|browse|search|generate|report|ai)/.test(id) || id.includes('dashboard') || id.includes('summary') || id.includes('report')) return 'query';
+  if (/^(create|add|record|open|register|start)/.test(id)) return 'create';
+  if (/^(delete|remove|cancel|archive|void)/.test(id)) return 'delete';
+  return 'update';
+}
+
+function workflowFromData(data: Record<string, unknown>, fileInfo: FileInfo, exportName: string, folderModule = ''): CfeWorkflowDef | null {
+  const workflowId = readString(data.workflowId);
+  if (!workflowId) return null;
+  return { workflowId, pageId: readString(data.pageId) || workflowId, title: readString(data.title) || humanizeId(workflowId), actors: readStringArray(data.actors), operationIds: readStringArray(data.operationIds), entities: normalizeEntityRefs(readStringArray(data.entities)), rulesApplied: readStringArray(data.rulesApplied), storySteps: readStorySteps(data), todoStatus: '', inlineStatusFrontend: readString(data.statusFrontend), capabilities: Array.isArray(data.capabilities) ? data.capabilities.filter(isRecord) : [], moduleName: '', folderModule, fileInfo, exportName, data };
+}
+
+// A workspace, from either a standalone l4 v2 defs (raw = the whole file's default export) or a legacy
+// journeys-nested entry. bffCalls[]/sections[] are parsed when present (v2), [] otherwise.
+function workspaceFromData(raw: Record<string, unknown>): CfeJourneyWorkspace | null {
+  const workspaceId = readString(raw.workspaceId);
+  if (!workspaceId) return null;
+  const actors = readStringArray(raw.actors);
+  const actor = readString(raw.actor) || actors[0] || '';
+  const bffCalls = parseWorkspaceBffCalls(raw);
+  return {
+    workspaceId,
+    title: readString(raw.title),
+    actor,
+    actors: unique([...(actor ? [actor] : []), ...actors]),
+    kind: readString(raw.kind),
+    entity: normalizeEntityRef(readString(raw.entity)),
+    workflowId: readString(raw.workflowId) || undefined,
+    // v2 derives coverage from bffCalls[].uses; legacy carries operationIds directly.
+    operationIds: unique([...readStringArray(raw.operationIds), ...bffCalls.flatMap(call => call.uses)]),
+    purpose: readString(raw.purpose),
+    // T5 contract (improveNewSolution): the UX CATEGORY the l4 classifier assigned to this workspace.
+    // It resolves the experience skill of the page21/page31 slots and travels into the page defs in
+    // place of the free-text visualStyle.
+    categoryRef: readString(isRecord(raw.presentation) ? raw.presentation.categoryRef : ''),
+    experienceRef: readString(isRecord(raw.presentation) ? raw.presentation.experienceRef : ''),
+    bffCalls,
+    sections: parseWorkspaceSections(raw),
+  };
+}
+
+function journeyFromData(data: Record<string, unknown>, folderModule: string): CfeJourneyMap | null {
+  const moduleName = readString(data.moduleName) || folderModule;
+  if (!moduleName) return null;
+  const workspaces = (Array.isArray(data.workspaces) ? data.workspaces.filter(isRecord) : [])
+    .map(workspaceFromData)
+    .filter((ws): ws is CfeJourneyWorkspace => ws !== null);
+  return { moduleName, workspaces, navigationEdges: readRecordArray(data.navigationEdges), landings: landingsFromData(data) };
+}
+
+function landingsFromData(data: Record<string, unknown>): CfeLanding[] {
+  return (Array.isArray(data.landings) ? data.landings.filter(isRecord) : [])
+    .map(raw => ({ actorId: readString(raw.actorId), workspaceId: readString(raw.workspaceId), reason: readString(raw.reason) }))
+    .filter(landing => landing.actorId && landing.workspaceId);
+}
+
+/** ns4 access matrix: `profiles[]` is the actor list, and `kind` (internal/external) the role scope. */
+function profilesFromData(data: Record<string, unknown>): CfeActorDef[] {
+  return (Array.isArray(data.profiles) ? data.profiles.filter(isRecord) : [])
+    .map(raw => ({ actorId: readString(raw.profileId), title: readString(raw.title) || humanizeId(readString(raw.profileId)), description: readString(raw.description), roleScope: readString(raw.kind) }))
+    .filter(actor => actor.actorId);
+}
+
+/** A ns4 workflow: the lifecycle of one entity, with states and transitions and no operations. */
+function isEntityLifecycle(data: Record<string, unknown>): boolean {
+  return !!readString(data.entityRef) && Array.isArray(data.states) && Array.isArray(data.transitions);
+}
+
+function actorsFromData(data: Record<string, unknown>): CfeActorDef[] {
+  return (Array.isArray(data.actors) ? data.actors.filter(isRecord) : [])
+    .map(raw => ({ actorId: readString(raw.actorId), title: readString(raw.title) || humanizeId(readString(raw.actorId)), description: readString(raw.description), roleScope: readString(raw.roleScope) }))
+    .filter(actor => actor.actorId);
+}
+
+function readRecordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function entityFromData(data: Record<string, unknown>, fallbackId: string): CfeEntityDef | null {
+  const entityId = readString(data.entityId) || fallbackId;
+  if (!entityId) return null;
+  const fields = Array.isArray(data.fields) ? data.fields.filter(isRecord).map(field => {
+    const labels = readEnumLabels(field.enumLabels);
+    const format = fieldConstraintValue(field, 'format');
+    const pattern = fieldConstraintValue(field, 'pattern');
+    return {
+      fieldId: readString(field.fieldId), title: readString(field.title), type: readString(field.type),
+      required: field.required === true, description: readString(field.description), enum: fieldEnumValues(field),
+      ...(labels.length ? { enumLabels: labels } : {}),
+      ...(format ? { format } : {}),
+      ...(pattern ? { pattern } : {}),
+    };
+  }).filter(field => field.fieldId) : [];
+  const storage = isRecord(data.storage) ? data.storage : {};
+  const lifecycleLabels = readEnumLabels(data.lifecycleLabels);
+  return {
+    entityId, title: readString(data.title) || humanizeId(entityId), fields,
+    rulesApplied: readStringArray(data.rulesApplied), statusEnum: readStringArray(data.statusEnum),
+    lifecycleStates: readStringArray(data.lifecycleStates),
+    ...(lifecycleLabels.length ? { lifecycleLabels } : {}),
+    storageTarget: readString(storage.target),
+  };
+}
+
+/**
+ * The literal values of an enumerated field. ns/ns3 wrote `field.enum`; ns4 states it as a
+ * constraint (`{kind:'enum', value:'["a","b"]'}`), and losing it lets a generated form or test
+ * emit a value the domain never allows.
+ */
+function fieldEnumValues(field: Record<string, unknown>): string[] {
+  const declared = readStringArray(field.enum);
+  if (declared.length) return declared;
+  const constraint = (Array.isArray(field.constraints) ? field.constraints.filter(isRecord) : [])
+    .find(item => readString(item.kind) === 'enum');
+  if (!constraint) return [];
+  const value = readString(constraint.value);
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.map(readString).filter(Boolean);
+  } catch { /* not JSON: fall through to the separated forms */ }
+  return value.split(/[|,]/).map(item => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+}
+
+function fieldConstraintValue(field: Record<string, unknown>, kind: string): string {
+  const constraint = (Array.isArray(field.constraints) ? field.constraints.filter(isRecord) : [])
+    .find(item => readString(item.kind) === kind);
+  return constraint ? readString(constraint.value) : '';
+}
+
+function queryInput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
+  const l4Input = operationInputFields(operation, entities);
+  if (l4Input) return l4Input;
+  if (!entity) return [];
+  const explicit = explicitEntityFieldNames(operation.reads, entity.entityId);
+  const fields = entity.fields.filter(field => explicit.size > 0 ? explicit.has(field.fieldId) && isLikelyQueryFilterField(field.fieldId) : isLikelyQueryFilterField(field.fieldId));
+  return fields.slice(0, 6).map(field => contractFieldFromEntityField(entity, field, { required: false }));
+}
+function queryOutput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
+  const l4Output = operationOutputFields(operation, entity, entities);
+  if (l4Output) return l4Output;
+  if (!entity) return [];
+  const explicit = explicitEntityFieldNames(operation.reads, entity.entityId);
+  const fields = explicit.size > 0 ? entity.fields.filter(field => explicit.has(field.fieldId)) : entity.fields.slice(0, 8);
+  return fields.slice(0, 12).map(field => contractFieldFromEntityField(entity, field, { includeRequired: false }));
+}
+function commandInput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
+  const l4Input = operationInputFields(operation, entities);
+  if (l4Input) return l4Input;
+  if (!entity) return [];
+  const explicitFields = explicitEntityFieldNames(operation.writes, entity.entityId);
+  const hasExplicit = explicitFields.size > 0;
+  const isCreate = operation.kind === 'create';
+  return entity.fields.filter(field => !isSystemField(field.fieldId)).filter(field => !hasExplicit || explicitFields.has(field.fieldId)).filter(field => !isCreate || !isLikelyIdField(field.fieldId)).slice(0, 10).map(field => contractFieldFromEntityField(entity, field, { required: field.required === true && !isLikelyIdField(field.fieldId) }));
+}
+function commandOutput(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): unknown[] {
+  const l4Output = operationOutputFields(operation, entity, entities);
+  if (l4Output) return l4Output;
+  if (!entity) return [];
+  const idField = entity.fields.find(field => isLikelyIdField(field.fieldId)) || entity.fields[0];
+  return idField ? [contractFieldFromEntityField(entity, idField, { includeRequired: false })] : [];
+}
+
+function operationInputFields(operation: CfeOperationDef, entities: Map<string, CfeEntityDef>): Record<string, unknown>[] | null {
+  if (!hasL4OperationInputs(operation.data)) return null;
+  return l4OperationInputs(operation.data)
+    .filter(isUserFacingOperationInput)
+    .map(input => contractFieldFromOperationInput(operation, input, entities));
+}
+
+function operationOutputFields(operation: CfeOperationDef, entity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>): Record<string, unknown>[] | null {
+  if (!hasL4OperationOutputRefs(operation.data)) return null;
+  return uniqueContractFields(l4OperationOutputRefs(operation.data).flatMap(ref => contractFieldsFromOutputRef(operation, entity, entities, ref)));
+}
+
+function contractFieldFromOperationInput(operation: CfeOperationDef, input: CfeL4OperationInput, entities: Map<string, CfeEntityDef>): Record<string, unknown> {
+  const resolved = resolveFieldRef(input.fieldRef, operation.entity, entities);
+  const out: Record<string, unknown> = resolved.entity && resolved.field
+    ? contractFieldFromEntityField(resolved.entity, resolved.field, { required: input.required })
+    : { name: input.inputId, type: frontendTypeForUnresolvedRef(input.fieldRef, entities), required: input.required };
+  out.name = input.inputId;
+  out.required = input.required;
+  out.source = input.source;
+  out.presentation = frontendInputPresentation(input) || 'context';
+  if (input.description) out.description = input.description;
+  if (isMultiSelectionKeyInput(operation, input)) out.type = `${typeof out.type === 'string' && out.type ? out.type : 'string'}[]`;
+  return out;
+}
+
+// accessPattern.selection 'multiple' + input bound to the accessPattern keyField = a LIST of that
+// field (petShop setProductHighlights: productIds is Product.productId under multiple selection —
+// a scalar here drifts from the backend usecase, which receives an array; l4 judge trace 027).
+function isMultiSelectionKeyInput(operation: CfeOperationDef, input: CfeL4OperationInput): boolean {
+  const data = isRecord(operation.data) ? operation.data : {};
+  const accessPattern = isRecord(data.accessPattern) ? data.accessPattern : {};
+  return readString(accessPattern.selection) === 'multiple' && readString(accessPattern.keyField) === input.fieldRef;
+}
+
+function pageRoutePattern(page: CfePagePlan, operations: CfeOperationDef[]): string {
+  const routeParams = unique(operations.flatMap(operation => l4OperationInputs(operation.data)
+    .filter(input => frontendInputPresentation(input) === 'route')
+    .map(input => input.inputId)));
+  const base = `/${page.moduleName}/${page.pageId}`;
+  return routeParams.reduce((route, inputId) => `${route}/:${inputId}?`, base);
+}
+
+function contractFieldsFromOutputRef(operation: CfeOperationDef, fallbackEntity: CfeEntityDef | undefined, entities: Map<string, CfeEntityDef>, ref: string): Record<string, unknown>[] {
+  const entityRef = normalizeEntityRef(ref);
+  const entityFromWholeRef = entities.get(entityRef);
+  if (!ref.includes('.') && entityFromWholeRef) {
+    return entityFromWholeRef.fields.slice(0, 12).map(field => contractFieldFromEntityField(entityFromWholeRef, field, { includeRequired: false }));
+  }
+
+  const resolved = resolveFieldRef(ref, fallbackEntity?.entityId || operation.entity, entities);
+  if (resolved.entity && resolved.field) return [contractFieldFromEntityField(resolved.entity, resolved.field, { includeRequired: false })];
+  const name = ref.includes('.') ? ref.split('.').pop() || ref : ref;
+  return name ? [{ name, type: 'string', required: false }] : [];
+}
+
+function resolveFieldRef(ref: string, fallbackEntityId: string, entities: Map<string, CfeEntityDef>): { entity?: CfeEntityDef; field?: CfeFieldDef } {
+  const [rawEntity, rawField] = ref.includes('.') ? ref.split('.') : [fallbackEntityId, ref];
+  const entity = entities.get(normalizeEntityRef(rawEntity || fallbackEntityId));
+  if (!entity) return {};
+  const field = entity.fields.find(candidate => candidate.fieldId === rawField);
+  return { entity, field };
+}
+
+function frontendTypeForUnresolvedRef(ref: string, entities: Map<string, CfeEntityDef>): string {
+  return entities.has(normalizeEntityRef(ref)) ? 'json' : 'string';
+}
+
+function uniqueContractFields(fields: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>();
+  const uniqueFields: Record<string, unknown>[] = [];
+  for (const field of fields) {
+    const name = readString(field.name);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    uniqueFields.push(field);
+  }
+  return uniqueFields;
+}
+
+function contractFieldFromEntityField(entity: CfeEntityDef, field: CfeFieldDef, options: { required?: boolean; includeRequired?: boolean } = {}): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    name: field.fieldId,
+    type: toFrontendType(field.type),
+  };
+  if (options.includeRequired !== false) out.required = options.required ?? (field.required === true);
+  const enumValues = field.enum?.length ? field.enum : (field.fieldId === 'status' ? entity.statusEnum : []);
+  if (enumValues.length > 0) out.enum = enumValues;
+  const labels = fieldEnumLabels(field, entity);
+  if (labels.length) out.enumLabels = labels;
+  if (field.description) out.description = field.description;
+  return out;
+}
+
+function fieldEnumLabels(field: CfeFieldDef | undefined, entity: CfeEntityDef | undefined): CfeEnumLabel[] {
+  if (field?.enumLabels?.length) return field.enumLabels;
+  if (field && /status$/i.test(field.fieldId) && entity?.lifecycleLabels?.length) return entity.lifecycleLabels;
+  return [];
+}
+
+function explicitEntityFieldNames(values: string[], entityId: string): Set<string> {
+  return new Set(fieldRefs(values).filter(ref => ref.startsWith(`${entityId}.`)).map(ref => ref.split('.')[1]).filter(Boolean));
+}
+
+function isLikelyQueryFilterField(fieldId: string): boolean {
+  const id = fieldId.toLowerCase();
+  return ['status', 'name', 'title', 'type', 'category'].some(token => id.includes(token)) || id.endsWith('id') || id.endsWith('at') || id.includes('date');
+}
+
+function operationEntities(operation: CfeOperationDef): string[] { return unique([operation.entity, ...normalizeEntityRefs(operation.reads), ...normalizeEntityRefs(operation.writes)]); }
+function firstEntity(values: string[]): string { return values.find(Boolean) || ''; }
+function fieldRefs(values: string[]): string[] { return values.filter(value => value.includes('.')).map(value => { const [entity, field] = value.split('.'); return `${normalizeEntityRef(entity)}.${field}`; }); }
+function inferModule(entityIds: string[], entityToModule: Map<string, string>, fallbackModule: string): string { return entityIds.map(id => entityToModule.get(id)).find(Boolean) || fallbackModule; }
+function normalizeEntityRefs(values: string[]): string[] { return unique(values.map(normalizeEntityRef).filter(Boolean)); }
+function normalizeEntityRef(value: string): string { return value.split('.')[0].trim(); }
+
+async function readJsonFile(fileInfo: FileInfo): Promise<unknown> {
+  try {
+    const file = mls.stor.files[mls.stor.getKeyToFile(fileInfo)];
+    return file ? JSON.parse(String(await file.getContent())) : null;
+  } catch { return null; }
+}
+
+async function saveStorContent(fileInfo: FileInfo, source: string): Promise<void> {
+  const key = mls.stor.getKeyToFile(fileInfo);
+  let storFile = mls.stor.files[key];
+  if (!storFile) storFile = await createStorFile({ ...fileInfo, source }, false, false, false);
+  if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';
+  storFile.updatedAt = new Date().toISOString();
+  await mls.stor.localStor.setContent(storFile, { contentType: 'string', content: source });
+}
+
+/**
+ * Write a todo file back. The file belongs to the generator that emitted it — ns4 ships it with an
+ * `import type` and a `satisfies`, and re-serializing would drop both (and `updatedAt` would then be
+ * an excess property the generated project no longer compiles). So the value is replaced in place
+ * whenever the original can be recovered, and only the legacy shape is rewritten wholesale.
+ */
+export async function saveTodoDefs(fileInfo: FileInfo, content: string, exportName: string, data: Record<string, unknown>): Promise<void> {
+  const replaced = replaceDefsValue(content, data);
+  if (replaced) { await saveStorContent(fileInfo, replaced); return; }
+  data.updatedAt = new Date().toISOString();
+  await saveConstDefault(fileInfo, exportName, data);
+}
+
+async function saveConstDefault(fileInfo: FileInfo, exportName: string, data: unknown): Promise<void> {
+  const header = `/// <mls fileReference="${toDisplayRef(fileInfo)}" enhancement="_blank"/>\n\n`;
+  await saveStorContent(fileInfo, `${header}export const ${exportName} = ${JSON.stringify(data, null, 2)} as const;\n\nexport default ${exportName};\n`);
+}
+
+function ensureModule(modules: Map<string, CfeModuleInfo>, moduleName: string): CfeModuleInfo { const existing = modules.get(moduleName); if (existing) return existing; const created = { moduleName, entityIds: new Set<string>(), i18nLocales: [], i18nDefaultLocale: '', i18nLocalesRaw: [], i18nDefaultLocaleRaw: '', i18nUnresolvedDeclaration: '' }; modules.set(moduleName, created); return created; }
+function toDisplayRef(fileInfo: FileInfo): string { const folder = fileInfo.folder ? `${fileInfo.folder}/` : ''; return `_${fileInfo.project}_/l${fileInfo.level}/${folder}${fileInfo.shortName}${fileInfo.extension}`; }
+function toFrontendType(type: string): string { const normalized = type.toLowerCase(); if (['number', 'integer', 'decimal', 'money', 'float'].includes(normalized)) return 'number'; if (['boolean', 'bool'].includes(normalized)) return 'boolean'; if (['date', 'datetime', 'time'].includes(normalized)) return 'date'; return 'string'; }
+function isSystemField(fieldId: string): boolean { return ['createdat', 'updatedat'].includes(fieldId.toLowerCase()); }
+function isLikelyIdField(fieldId: string): boolean { return fieldId.toLowerCase().endsWith('id'); }
+function readString(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
+function readStringArray(value: unknown): string[] { return Array.isArray(value) ? value.map(readString).filter(Boolean) : []; }
+function readStorySteps(data: Record<string, unknown>): string[] { return isRecord(data.story) ? readStringArray(data.story.steps) : []; }
+function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
+function unique(values: string[]): string[] { return Array.from(new Set(values.filter(Boolean))); }
+function toSafeShortName(value: string): string { return value.trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'page'; }
+function toPascalCase(value: string): string { return value.split(/[^a-zA-Z0-9]+|(?=[A-Z])/).filter(Boolean).map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('') || 'Organism'; }
+function humanizeId(id: string): string { const spaced = id.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim(); return spaced ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : id; }

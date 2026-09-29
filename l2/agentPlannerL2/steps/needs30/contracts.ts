@@ -181,14 +181,22 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
     for (const journeyId of journeysOfPage.get(page.id) || []) {
       const journey = journeyById.get(journeyId);
       if (!journey) continue;
+      const journeySources: string[] = [];
       for (const step of journey.steps) {
         const from = journeyFrom(step.stepId, journey, sources);
-        if (READ_STEP_KINDS.has(step.kind) && step.entity) addRead(step.entity, from);
+        if (READ_STEP_KINDS.has(step.kind) && step.entity) {
+          addRead(step.entity, from);
+          journeySources.push(from);
+        }
         if (step.kind !== 'act' || !step.entity) continue;
         addRead(step.entity, from);
+        journeySources.push(from);
         const operation = isP2NeedsOperation(step.effect || '') ? step.effect as P2NeedsOperation : '';
         if (!operation) continue;
         addWrite(step.entity, operation, operation === 'transition' ? (step.transitionRef || '') : '', from);
+      }
+      for (const relational of collectJourneyRelationalReads(journey, page, journeySources, sources, entityById, grants, actors)) {
+        for (const from of relational.from) addRead(relational.entity, from);
       }
     }
 
@@ -272,8 +280,10 @@ function pushRead(
   if (!entityId) return;
   const entity = entityById.get(entityId);
   const family = entity ? p2EntityFamily(entity) : 'tdm';
-  const scope = p2WidestScope(scopeModes(actors, entityId, grants));
+  const eligibleGrants = grants.filter(grant => actors.includes(grant.actorRef) && grant.entityRefs.includes(entityId));
+  const scope = p2WidestScope(eligibleGrants.map(grant => grant.dataScope.mode));
   if (!scope) return;
+  const provenance = [...from.split('\n'), ...eligibleGrants.map(grant => `grant:${grant.grantId}`)];
   const derived = derivedFieldNames(entityId, sources);
   const current = reads.get(entityId);
   if (!current) {
@@ -282,13 +292,125 @@ function pushRead(
       family,
       scope,
       derived,
-      from: mergeFrom([from]),
+      from: mergeFrom(provenance),
     });
     return;
   }
   current.scope = p2WidestScope([current.scope, scope]) || current.scope;
-  current.from = mergeFrom([...current.from, from]);
+  current.from = mergeFrom([...current.from, ...provenance]);
   current.derived = mergeNames([...current.derived, ...derived]);
+}
+
+interface P2RelationalRead { entity: string; from: string[]; }
+
+interface P2RelationshipEdge {
+  left: string;
+  right: string;
+  reference: string;
+  prose: string;
+}
+
+function collectJourneyRelationalReads(
+  journey: P2JourneyView,
+  page: MenuStampedPageNode,
+  journeySources: readonly string[],
+  sources: P2L4Sources,
+  entityById: Map<string, P2OntologyEntityView>,
+  grants: readonly P2GrantView[],
+  actors: readonly string[],
+): P2RelationalRead[] {
+  const edges = relationshipEdges(sources);
+  const context = semanticTerms([
+    journey.title,
+    journey.goal || '',
+    ...page.organisms.map(organism => organism.text),
+  ].join(' '));
+  const queue = journey.steps
+    .filter(step => step.entity && (READ_STEP_KINDS.has(step.kind) || step.kind === 'act'))
+    .map(step => ({ entity: step.entity, depth: 0, path: [] as string[] }));
+  const visited = new Set<string>();
+  const out = new Map<string, P2RelationalRead>();
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || visited.has(current.entity)) continue;
+    visited.add(current.entity);
+    for (const edge of edges) {
+      const next = edge.left === current.entity ? edge.right : edge.right === current.entity ? edge.left : '';
+      if (!next || next === current.entity || !entityById.has(next)) continue;
+      const candidate = sources.ontologyEntities.find(item => text(record(item).entityId) === next);
+      if (!hasSemanticRelation(context, edge.prose, candidate)) continue;
+      const nextPath = [...current.path, edge.reference];
+      const access = grants.some(grant => actors.includes(grant.actorRef) && grant.entityRefs.includes(next));
+      if (!access) continue;
+      const sourceRefs = mergeFrom([
+        ...journeySources,
+        ...nextPath.map(reference => `relationship:${reference}`),
+      ]);
+      const existing = out.get(next);
+      if (existing) existing.from = mergeFrom([...existing.from, ...sourceRefs]);
+      else out.set(next, { entity: next, from: sourceRefs });
+      if (!visited.has(next)) queue.push({ entity: next, depth: current.depth + 1, path: nextPath });
+    }
+  }
+  return [...out.values()];
+}
+
+function relationshipEdges(sources: P2L4Sources): P2RelationshipEdge[] {
+  const edges = new Map<string, P2RelationshipEdge>();
+  for (const raw of sources.ontologyEntities) {
+    const entity = record(raw);
+    const left = text(entity.entityId);
+    if (!left) continue;
+    const relationships = record(entity.relationships);
+    for (const relationship of Object.values(relationships)) {
+      const item = record(relationship);
+      const right = text(item.to);
+      const relationshipId = text(item.relationshipId);
+      if (!right || !relationshipId) continue;
+      const reference = `${left}/${relationshipId}`;
+      edges.set(reference, {
+        left,
+        right,
+        reference,
+        prose: [text(item.title), text(item.description)].filter(Boolean).join(' '),
+      });
+    }
+  }
+  return [...edges.values()];
+}
+
+function hasSemanticRelation(
+  context: ReadonlySet<string>,
+  relationshipProse: string,
+  candidate: unknown,
+): boolean {
+  if (context.size === 0) return false;
+  const entity = record(candidate);
+  const relationshipOverlap = semanticOverlap(context, semanticTerms(relationshipProse));
+  const entityOverlap = semanticOverlap(context, semanticTerms(text(entity.description)));
+  return relationshipOverlap.length > 0 && new Set([...relationshipOverlap, ...entityOverlap]).size >= 2;
+}
+
+function semanticOverlap(context: ReadonlySet<string>, evidence: ReadonlySet<string>): string[] {
+  const matches = new Set<string>();
+  for (const left of context) {
+    for (const right of evidence) {
+      if (left === right || left.startsWith(right) || right.startsWith(left)) {
+        matches.add(left.length >= right.length ? left : right);
+      }
+    }
+  }
+  return [...matches];
+}
+
+function semanticTerms(value: string): Set<string> {
+  return new Set(normalizeTokens(value).filter(word => word.length >= 5));
+}
+
+function normalizeTokens(value: string): string[] {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').toLocaleLowerCase()
+    .split(/[^a-z0-9]+/u).filter(Boolean);
 }
 
 function pushWrite(
@@ -366,16 +488,6 @@ function walkDerivedFields(
     }
     if (isRecord(nested)) walkDerivedFields(nested, nextPlatform, path, visit);
   }
-}
-
-function scopeModes(actors: readonly string[], entityId: string, grants: readonly P2GrantView[]): string[] {
-  const modes: string[] = [];
-  for (const grant of grants) {
-    if (!actors.includes(grant.actorRef)) continue;
-    if (!grant.entityRefs.includes(entityId)) continue;
-    if (grant.dataScope.mode) modes.push(grant.dataScope.mode);
-  }
-  return modes;
 }
 
 function crudReachedBy(

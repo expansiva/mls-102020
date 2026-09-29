@@ -4,7 +4,7 @@
 //
 // Unlike agentChooseMolecules's chParseEntry, the argument here is never optional-prefix-plus-prose:
 // the WHOLE mention is one JSON object, `{"catalogProject": 102040, "target": "..."}`, so a plain
-// JSON.parse is the right tool (same choice agentChangeFrontend's `only-materialize` command already
+// JSON.parse is the right tool (same choice agentMaterializeL2's `only-materialize` command already
 // made for its own single-object argument) — no brace-matching by hand, no
 // mls.common.safeParseArgs (which is for a looser JS-object-literal shape this mention never uses).
 //

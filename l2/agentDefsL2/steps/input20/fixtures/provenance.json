@@ -1,11 +1,12 @@
 {
-  "current": {
-    "commit": "a2f929ed8778c9d8240ac445d6206d401434fdc9",
+  "v1_2": {
+    "derivedFromCommit": "a2f929ed8778c9d8240ac445d6206d401434fdc9",
+    "schemaRevision": "d2_33-v1.2",
     "sha256": {
       "menu.json": "47ec89accdfb0e6120404c7c7b78483e1a41d7d425d2bcf8d72da1e478527cd0",
       "needs.json": "e1c768f8b695a114240d0d8d3bf427f8f4bc2f011fb22402ee9d6a6a06e51634",
-      "backend.json": "398c64ca16fb4fe6e74fd34523dfb238de43d7c8c39668bb31dee3fdc94bab34",
-      "effort.json": "e5866e32f95e1c5f89d8b8cd5fd4d6906db27bbf9bd5d0d009245cd0bfdb5531",
+      "backend.json": "e84b98948786bcdde12464c1df0fb1ef98f5a2238340f16db5a90f06fc7f179e",
+      "effort.json": "238e2cc33fc9476b931056a87246b8a3672bf2218f6220312f477af5c25a6234",
       "access.defs.ts": "fcc99e2dcc6182d9ae46297976c451f819cf2779574c6fbf722ea3b2db86415a"
     }
   },

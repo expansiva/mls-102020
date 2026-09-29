@@ -5,7 +5,7 @@
 // Entry: '@@agentChooseMolecules2 {"catalogProject": N, "target": "<page .defs.ts reference>"}'. Unlike
 // agentChooseMolecules (the probe), there is no free prose and no classifier call: the whole argument
 // is one JSON object and both the catalog and the target file are explicit, so the root bootstraps
-// DETERMINISTICALLY (skipRootLLM, same gesture agentChangeFrontend's 'only-materialize' command uses)
+// DETERMINISTICALLY (skipRootLLM, same gesture agentMaterializeL2's 'only-materialize' command uses)
 // straight into c1-groups — no c0-classify.
 //
 // THE TREE IS STILL PLANTED IN TWO PHASES, same reason as the probe (agentImproveMolecule2's router
@@ -200,7 +200,7 @@ function agentStepPayload(args: StepPayloadArgs): mls.msg.AIAgentStep {
 }
 
 /** Bootstrap-only: there is no parentStep object yet, so parentStepId is the task's own root (1) —
- * same convention agentChangeFrontend's deterministic bootstrap uses. */
+ * same convention agentMaterializeL2's deterministic bootstrap uses. */
 function bootstrapAddStepIntent(context: mls.msg.ExecutionContext, step: mls.msg.AIAgentStep): mls.msg.AgentIntentAddStep {
   return { type: 'add-step', messageId: '', threadId: context.message.threadId, taskId: '', parentStepId: 1, step };
 }

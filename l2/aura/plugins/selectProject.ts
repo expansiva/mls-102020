@@ -152,8 +152,7 @@ export class PluginSelectProject extends StateLitElement {
 
     render() {
         if (!this.selectedOrg) return this._renderNeedsOrg();
-        // Locked: the All and Custom scenarios are switching paths, so they are unreachable —
-        // this also keeps pluginCreateProjectAura from ever being imported in the client app.
+        // Locked: the All and Custom scenarios are switching paths, so they are unreachable.
         if (this.locked) return this._renderSelected();
         if (this._isAll) return this._renderAll();
         if (this._isCustom) return this._renderCustom();
@@ -471,15 +470,7 @@ export class PluginSelectProject extends StateLitElement {
         `;
     }
 
-    private _createProjectImported = false;
-    private _ensureCreateProjectPlugin() {
-        if (this._createProjectImported) return;
-        this._createProjectImported = true;
-        import('/_102020_/l2/plugins/pluginCreateProjectAura.js').catch(() => { this._createProjectImported = false; });
-    }
-
     private _renderCustom() {
-        this._ensureCreateProjectPlugin();
         const max = (this.selectedOrg?.projects.length ?? 0) + 1;
         return html`
             <div class="flex flex-col gap-3">
@@ -492,7 +483,6 @@ export class PluginSelectProject extends StateLitElement {
                     .max=${max}
                     @nav-change=${(e: CustomEvent) => this._dispatchSelect(e.detail.value)}
                 ></aura--plugins--nav-header-102020>
-                <plugins--plugin-create-project-aura-102020></plugins--plugin-create-project-aura-102020>
             </div>
         `;
     }

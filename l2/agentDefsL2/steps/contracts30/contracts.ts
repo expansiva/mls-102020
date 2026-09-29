@@ -359,13 +359,22 @@ function operationInputTree(
     if (!catalog.has(field.path)) issues.push({ code: 'D2_CONTRACT_OPERATION_PATH_FORBIDDEN', source: 'input.json', pageId, route, path: field.path, message: 'd2_23 actor input is absent from the fields disclosed to this operation' });
   }
   const required = new Set(actorFields.filter(field => field.required).map(field => field.path));
-  return setRequired(filterTree(visible, writable), required);
+  const declared = new Map(actorFields.map(field => [field.path, field.required]));
+  return applyOperationRequired(filterTree(visible, writable), required, declared);
+}
+
+function applyOperationRequired(fields: D2ContractField[], required: Set<string>, declared: Map<string, boolean>): D2ContractField[] {
+  return fields.map(field => ({
+    ...field,
+    required: declared.has(field.path) ? declared.get(field.path)! : required.has(field.path) || field.required,
+    children: applyOperationRequired(field.children, required, declared),
+  }));
 }
 
 function setRequired(fields: D2ContractField[], required: Set<string>): D2ContractField[] {
   return fields.map(field => ({
     ...field,
-    required: [...required].some(path => path === field.path || path.startsWith(`${field.path}.`)),
+    required: required.has(field.path),
     children: setRequired(field.children, required),
   }));
 }

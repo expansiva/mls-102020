@@ -99,6 +99,60 @@ void test('renamed record fixture emits operation DTOs, optional filters, server
     && error.issues.some(issue => issue.code === 'D2_CONTRACT_OPERATION_PATH_FORBIDDEN' && issue.path === 'Record.details.privateFlag'));
 });
 
+void test('optional object ancestors keep required descendants conditional in the rendered DTO', () => {
+  const sources = genericOperationSources();
+  const record = sources.entities.Record as unknown as Record<string, unknown>;
+  const fields = rec(rec(record.record).fields);
+  const details = rec(fields.details);
+  details.required = false;
+  rec(details.fields).telephoneConfirmation = { type: 'object', fields: { confirmedAt: { type: 'timestamp', required: true } } };
+  fields.entries = { type: 'array', collection: true, fields: { code: { type: 'string', required: true } } };
+  fields.mandatory = { type: 'object', required: true, fields: { value: { type: 'string', required: true } } };
+  const page = sources.pages[0];
+  const createEndpoint = page.endpoints.find(endpoint => endpoint.usecaseRef === 'createRecord')!;
+  const binding = page.operationBindings.find(item => item.route === createEndpoint.route)!;
+  binding.inputFields.push(
+    { path: 'Record.details.telephoneConfirmation.confirmedAt', origin: 'actor', required: true },
+    { path: 'Record.entries.code', origin: 'actor', required: true },
+    { path: 'Record.mandatory.value', origin: 'actor', required: true },
+  );
+
+  const call = buildD2ContractsCatalog(sources)[0].calls.find(item => item.callName === 'createRecord')!;
+  const byPath = new Map(flatten(call.input).map(field => [field.path, field]));
+  assert.equal(byPath.get('Record.details')?.required, false);
+  assert.equal(byPath.get('Record.details.telephoneConfirmation')?.required, false);
+  assert.equal(byPath.get('Record.details.telephoneConfirmation.confirmedAt')?.required, true);
+  assert.equal(byPath.get('Record.entries')?.required, false);
+  assert.equal(byPath.get('Record.entries.code')?.required, true);
+  assert.equal(byPath.get('Record.mandatory')?.required, true);
+
+  const rendered = renderD2PageContract({ pageId: 'records', calls: [call] });
+  assert.match(rendered, /"details"\?: \{[\s\S]*"telephoneConfirmation"\?: \{[\s\S]*"confirmedAt": string/);
+  assert.match(rendered, /"entries"\?: Array<\{[\s\S]*"code": string/);
+  assert.match(rendered, /"mandatory": \{[\s\S]*"value": string/);
+
+  const folder = mkdtempSync(path.join(tmpdir(), 'd2-conditional-contract-'));
+  try {
+    writeFileSync(path.join(folder, 'records.defs.ts'), rendered);
+    writeFileSync(path.join(folder, 'consumer.ts'), [
+      "import type { CreateRecordInput } from './records.defs.js';",
+      "const omitted: CreateRecordInput = { ownerId: 'owner', mandatory: { value: 'y' } };",
+      "const complete: CreateRecordInput = { ownerId: 'owner', details: { publicName: 'name', telephoneConfirmation: { confirmedAt: 'now' } }, entries: [{ code: 'x' }], mandatory: { value: 'y' } };",
+      'void omitted; void complete;',
+    ].join('\n'));
+    const tsc = path.resolve(HERE, '../../../../..', 'node_modules', '.bin', 'tsc');
+    const valid = spawnSync(tsc, ['--noEmit', '--strict', '--skipLibCheck', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', 'consumer.ts', 'records.defs.ts'], { cwd: folder, encoding: 'utf8' });
+    assert.equal(valid.status, 0, `${valid.stdout}\n${valid.stderr}`);
+    writeFileSync(path.join(folder, 'consumer.ts'), [
+      "import type { CreateRecordInput } from './records.defs.js';",
+      "const invalid: CreateRecordInput = { ownerId: 'owner', details: { publicName: 'name', telephoneConfirmation: {} }, mandatory: { value: 'y' } };",
+      'void invalid;',
+    ].join('\n'));
+    const invalid = spawnSync(tsc, ['--noEmit', '--strict', '--skipLibCheck', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', 'consumer.ts', 'records.defs.ts'], { cwd: folder, encoding: 'utf8' });
+    assert.notEqual(invalid.status, 0, 'an included optional parent still enforces its required child');
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+});
+
 void test('canonical index controls distinct relation keys to the same target and target grants', () => {
   const sources = renamedFixtureSources();
   sources.pages = sources.pages.filter(page => page.pageId === 'team_records');

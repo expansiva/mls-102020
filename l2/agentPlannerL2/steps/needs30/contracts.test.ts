@@ -28,6 +28,7 @@ import { validateP2Needs } from '/_102020_/l2/agentPlannerL2/steps/needs30/gate.
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
+const AGENDA_FIXTURE = path.resolve(HERE, '../../../../../mls-102047/l4/agendaClinica');
 const WORKFLOWS = path.join(HERE, '../menu20/fixtures/workflows.defs.ts');
 const MENU_PATH = path.join(HERE, 'fixtures/menu.json');
 const AT = new Date(Date.UTC(2026, 8, 21, 12, 0, 0));
@@ -61,6 +62,13 @@ function readDefs(root: string, rel: string): unknown {
   return extractDefsJson(readFileSync(path.join(root, rel), 'utf8'));
 }
 
+function renameIds<T>(value: T, ids: Readonly<Record<string, string>>): T {
+  if (typeof value === 'string') return (ids[value] || value) as T;
+  if (Array.isArray(value)) return value.map(item => renameIds(item, ids)) as T;
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [ids[key] || key, renameIds(item, ids)])) as T;
+}
+
 function loadSources(): P2L4Sources {
   const journeyDir = path.join(L4_FIXTURE, 'journeys');
   const ontologyDir = path.join(L4_FIXTURE, 'ontology');
@@ -82,6 +90,31 @@ function loadSources(): P2L4Sources {
     ontologyIndex: readDefs(L4_FIXTURE, 'ontology/index.defs.ts'),
     ontologyEntities,
   });
+}
+
+function loadAgendaSources(): { sources: P2L4Sources; grants: ReturnType<typeof parseP2Grants> } {
+  const journeyDir = path.join(AGENDA_FIXTURE, 'journeys');
+  const ontologyDir = path.join(AGENDA_FIXTURE, 'ontology');
+  const journeys = readdirSync(journeyDir)
+    .filter(name => name.endsWith('.defs.ts') && name !== 'index.defs.ts')
+    .sort()
+    .map(name => readDefs(AGENDA_FIXTURE, `journeys/${name}`));
+  const ontologyEntities = readdirSync(ontologyDir)
+    .filter(name => name.endsWith('.defs.ts') && name !== 'index.defs.ts')
+    .sort()
+    .map(name => readDefs(AGENDA_FIXTURE, `ontology/${name}`));
+  const moduleArtifact = readDefs(AGENDA_FIXTURE, 'module.defs.ts') as { userLanguage?: string; moduleName?: string };
+  const access = readDefs(AGENDA_FIXTURE, 'access.defs.ts');
+  const sources = parseP2L4Sources({
+    moduleName: moduleArtifact.moduleName,
+    userLanguage: moduleArtifact.userLanguage,
+    journeyIndex: readDefs(AGENDA_FIXTURE, 'journeys/index.defs.ts'),
+    journeys,
+    access,
+    ontologyIndex: readDefs(AGENDA_FIXTURE, 'ontology/index.defs.ts'),
+    ontologyEntities,
+  });
+  return { sources, grants: parseP2Grants(access) };
 }
 
 function loadMenu(): P2MenuFile {
@@ -137,7 +170,7 @@ void test('mensalidadesAcademia pages: payments, plans, home, cancel transition'
 
   const payments = pageOf(file.pages, 'mensalidades_pagamentos');
   assert.deepEqual(payments.actors, ['recepcao']);
-  assert.deepEqual(payments.reads.map(item => item.entity), ['Mensalidade', 'Pagamento']);
+  assert.deepEqual(payments.reads.map(item => item.entity), ['Matricula', 'Mensalidade', 'Pagamento']);
   assert.equal(payments.reads.find(item => item.entity === 'Mensalidade')?.scope, 'organization');
   assert.ok(payments.reads.find(item => item.entity === 'Mensalidade')?.from.includes(
     'journey:registrarPagamentoMensalidade/localizarMensalidade',
@@ -178,8 +211,9 @@ void test('mensalidadesAcademia pages: payments, plans, home, cancel transition'
   assert.equal(recepcaoCadastros?.dataScope.mode, 'organization');
   assert.equal(grants.length, 5);
 
-  const gate = validateP2Needs(file, menu, sources);
+  const gate = validateP2Needs(file, menu, sources, grants);
   assert.equal(gate.ok, true, gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+
 });
 
 void test('needs message is English, one line per page, current thread round', () => {
@@ -194,7 +228,7 @@ void test('needs message is English, one line per page, current thread round', (
   assert.deepEqual(message.artifacts, ['pool/l1/web/needs.json']);
   assert.equal(message.round, 1);
   assert.equal(message.body.split('\n').length, file.pages.length);
-  assert.match(message.body, /mensalidades_pagamentos: 2 reads \/ 1 writes/);
+  assert.match(message.body, /mensalidades_pagamentos: 3 reads \/ 1 writes/);
   assert.match(message.body, /inicio_recepcao: \d+ reads \/ 0 writes/);
   assert.equal(message.body.includes('lê'), false);
 });
@@ -231,7 +265,8 @@ void test('inbox home reads the human-stage entity when entityRef is set, and no
   const inboxPage = pageOf(withRef.pages, 'inicio_recepcao');
   assert.deepEqual(inboxPage.writes, []);
   assert.deepEqual(inboxPage.reads.map(item => item.entity), ['Mensalidade']);
-  assert.deepEqual(inboxPage.reads[0].from, ['organism:inbox']);
+  assert.ok(inboxPage.reads[0].from.includes('organism:inbox'));
+  assert.ok(inboxPage.reads[0].from.includes('grant:recepcaoGerenciarCadastrosEcobrancas'));
 
   const withoutRef = buildP2NeedsFile({
     menu: homeOnlyInbox,
@@ -243,4 +278,91 @@ void test('inbox home reads the human-stage entity when entityRef is set, and no
   const empty = pageOf(withoutRef.pages, 'inicio_recepcao');
   assert.deepEqual(empty.reads, []);
   assert.deepEqual(empty.writes, []);
+});
+
+void test('agenda derives only used, authorized relational reads with source and grant references', () => {
+  const { sources, grants } = loadAgendaSources();
+  const menu = structuredClone(loadMenu());
+  const page = menu.tree.find(node => node.kind === 'page');
+  assert.ok(page && page.kind === 'page');
+  menu.tree = [
+    { ...structuredClone(page), id: 'daily_schedule', label: 'Daily schedule', organisms: [{ kind: 'list', text: 'Review the patient and appointment assigned for the day.' }] },
+    { ...structuredClone(page), id: 'phone_confirmation', label: 'Phone confirmation', organisms: [{ kind: 'detail', text: 'Confirm the selected patient appointment by telephone.' }] },
+  ];
+  menu.authorities = {
+    'actor:profissional': ['daily_schedule'],
+    'actor:recepcionista': ['phone_confirmation'],
+  };
+  menu.meta.journeys = {
+    consultarAgendaDiaria: ['daily_schedule'],
+    confirmarConsultaPorTelefone: ['phone_confirmation'],
+  };
+  menu.meta.processes = {};
+  const file = buildP2NeedsFile({ menu, sources, grants, processes: [], now: AT });
+  const daily = pageOf(file.pages, 'daily_schedule');
+  const confirmation = pageOf(file.pages, 'phone_confirmation');
+
+  const patient = daily.reads.find(item => item.entity === 'Paciente');
+  assert.ok(patient, 'the professional agenda includes its related patient');
+  assert.equal(patient.scope, 'related');
+  assert.ok(patient.from.includes('journey:consultarAgendaDiaria/inspecionarAgendaDiaria'));
+  assert.ok(patient.from.includes('relationship:Consulta/consultaPaciente'));
+  assert.ok(patient.from.includes('grant:profissionalPacientesDaAgenda'));
+  assert.equal(daily.reads.some(item => item.entity === 'ContatoPaciente'), false, 'a granted but unneeded contact is not read');
+
+  const contact = confirmation.reads.find(item => item.entity === 'ContatoPaciente');
+  assert.ok(contact, 'phone confirmation includes its related contact');
+  assert.equal(contact.scope, 'organization');
+  assert.ok(contact.from.includes('journey:confirmarConsultaPorTelefone/inspecionarConsulta'));
+  assert.ok(contact.from.includes('relationship:ContatoPaciente/pacienteHasContact'));
+  assert.ok(contact.from.includes('grant:recepcionistaGestaoAgenda'));
+
+  const gate = validateP2Needs(file, menu, sources, grants);
+  assert.equal(gate.ok, true, gate.issues.map(issue => `${issue.code}: ${issue.message}`).join('\n'));
+
+  const ids: Record<string, string> = {
+    Consulta: 'RecordA', Paciente: 'RecordB', ContatoPaciente: 'RecordC', Profissional: 'RecordD', Recepcionista: 'RecordE',
+    consultaPaciente: 'linkA', consultaProfissional: 'linkB', pacienteHasContact: 'linkC',
+    consultarAgendaDiaria: 'journeyA', confirmarConsultaPorTelefone: 'journeyB',
+    localizarConsultasDoDia: 'stepA', inspecionarAgendaDiaria: 'stepB', localizarConsulta: 'stepC',
+    inspecionarConsulta: 'stepD', registrarConfirmacaoTelefonica: 'stepE',
+    recepcionistaGestaoAgenda: 'grantA', profissionalAgendaPropria: 'grantB', profissionalPacientesDaAgenda: 'grantC',
+    daily_schedule: 'pageA', phone_confirmation: 'pageB',
+  };
+  const renamedSources = renameIds(structuredClone(sources), ids);
+  renamedSources.entities.reverse();
+  renamedSources.journeys.reverse();
+  renamedSources.ontologyEntities.reverse();
+  const renamedGrants = renameIds(structuredClone(grants), ids).reverse();
+  const renamedMenu = renameIds(structuredClone(menu), ids);
+  renamedMenu.authorities = Object.fromEntries(Object.entries(menu.authorities).reverse().map(([key, pages]) => [
+    `actor:${ids[key.slice('actor:'.length)] || key.slice('actor:'.length)}`,
+    [...pages].reverse().map(pageId => ids[pageId] || pageId),
+  ]));
+  renamedMenu.meta.journeys = Object.fromEntries(Object.entries(menu.meta.journeys).reverse().map(([journeyId, pageIds]) => [
+    ids[journeyId] || journeyId,
+    pageIds.map(pageId => ids[pageId] || pageId),
+  ]));
+  const renamedFile = buildP2NeedsFile({ menu: renamedMenu, sources: renamedSources, grants: renamedGrants, processes: [], now: AT });
+  assert.deepEqual(renamedFile.pages.map(item => item.pageId), ['pageA', 'pageB']);
+  const readShape = (needsPage: P2NeedsPage, reverse = false) => needsPage.reads.map(read => {
+    const originalEntity = reverse ? Object.keys(ids).find(key => ids[key] === read.entity) || read.entity : read.entity;
+    return `${originalEntity}:${read.family}:${read.scope}`;
+  }).sort();
+  assert.deepEqual(readShape(pageOf(renamedFile.pages, 'pageA'), true), readShape(daily));
+  assert.deepEqual(readShape(pageOf(renamedFile.pages, 'pageB'), true), readShape(confirmation));
+});
+
+void test('agenda does not derive a related entity when the actor has no grant for it', () => {
+  const { sources, grants } = loadAgendaSources();
+  const menu = structuredClone(loadMenu());
+  const page = menu.tree.find(node => node.kind === 'page');
+  assert.ok(page && page.kind === 'page');
+  menu.tree = [{ ...structuredClone(page), id: 'phone_confirmation', label: 'Phone confirmation', organisms: [{ kind: 'detail', text: 'Confirm the selected patient appointment by telephone.' }] }];
+  menu.authorities = { 'actor:recepcionista': ['phone_confirmation'] };
+  menu.meta.journeys = { confirmarConsultaPorTelefone: ['phone_confirmation'] };
+  menu.meta.processes = {};
+  const withoutContactGrant = grants.filter(grant => !grant.entityRefs.includes('ContatoPaciente'));
+  const file = buildP2NeedsFile({ menu, sources, grants: withoutContactGrant, processes: [], now: AT });
+  assert.equal(pageOf(file.pages, 'phone_confirmation').reads.some(item => item.entity === 'ContatoPaciente'), false);
 });

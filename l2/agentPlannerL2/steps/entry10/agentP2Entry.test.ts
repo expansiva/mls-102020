@@ -8,12 +8,15 @@ import { fileURLToPath } from 'node:url';
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgent } from '/_102020_/l2/agentPlannerL2/agentPlannerL2.js';
-import { P2_MENU_FLOW_STEP_IDS, P2_WEB_DIR_EMPTY_LEFT, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
+import { P2_MENU_FLOW_STEP_IDS, P2_WEB_DIR_PRESERVED, p2PipelineFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import { P2_STEP_HOOKS } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import { beforeP2EntryPromptStep } from '/_102020_/l2/agentPlannerL2/steps/entry10/agentP2Entry.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FIXTURE = JSON.parse(readFileSync(path.join(HERE, 'fixtures/pool-l2-mensalidadesAcademia.json'), 'utf8')) as Record<string, unknown>;
+const FIXTURE = {
+  ...JSON.parse(readFileSync(path.join(HERE, 'fixtures/pool-l2-mensalidadesAcademia.json'), 'utf8')) as Record<string, unknown>,
+  mode: 'estimate',
+};
 
 const PROJECT = 102047;
 const MODULE = 'mensalidadesAcademia';
@@ -80,7 +83,7 @@ const L4_COMPLETE = JSON.stringify({
 function seedReady(host: Host): void {
   seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
   seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(FIXTURE, null, 2)}\n`);
-  seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 2);
+  seed(host, `${MODULE}/pool/l2`, 'pipeline', '{}\n');
 }
 
 function agentMeta(): IAgentMeta {
@@ -151,7 +154,7 @@ void test('hand invocation and L4 step write the same pipeline.json', async () =
   const writtenHand = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { thread: string; round: number; messageFile: string; status: string; webDir: string };
 
   delete host.files[keyOf(p2PipelineFile(MODULE))];
-  seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 2);
+  seed(host, `${MODULE}/pool/l2`, 'pipeline', '{}\n');
 
   const l4Step: mls.msg.AIAgentStep = {
     type: 'agent',
@@ -175,11 +178,11 @@ void test('hand invocation and L4 step write the same pipeline.json', async () =
   assert.equal(writtenL4.thread, 'mensalidadesAcademia-20260918103000');
   assert.equal(writtenHand.status, 'inProgress');
   assert.equal(writtenL4.status, 'inProgress');
-  assert.equal(writtenHand.webDir, P2_WEB_DIR_EMPTY_LEFT);
-  assert.equal(writtenL4.webDir, P2_WEB_DIR_EMPTY_LEFT);
+  assert.equal(writtenHand.webDir, P2_WEB_DIR_PRESERVED);
+  assert.equal(writtenL4.webDir, P2_WEB_DIR_PRESERVED);
 });
 
-void test('entry10 leaves empty web/ folders as a recorded pipeline line', async () => {
+void test('entry10 preserves existing web files and records the pipeline', async () => {
   const host = installHost();
   seedReady(host);
   seed(host, `${MODULE}/web/contracts`, 'stale', 'old\n', 2);
@@ -199,22 +202,22 @@ void test('entry10 leaves empty web/ folders as a recorded pipeline line', async
   };
   await beforeP2EntryPromptStep(agentMeta(), ctx, ctx.task!.iaCompressed!.nextSteps[0] as mls.msg.AIAgentStep, step, 1);
   const pipeline = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { webDir: string; status: string };
-  assert.equal(pipeline.webDir, P2_WEB_DIR_EMPTY_LEFT);
+  assert.equal(pipeline.webDir, P2_WEB_DIR_PRESERVED);
   assert.equal(pipeline.status, 'inProgress');
-  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'stale', extension: '.json' })].status, 'deleted');
-  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/shared`, shortName: 'stale', extension: '.json' })].status, 'deleted');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'stale', extension: '.json' })].content, 'old\n');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/shared`, shortName: 'stale', extension: '.json' })].content, 'old\n');
 });
 
-void test('hand /candidate writes the l2 pipeline in the override and leaves canonical scratch', async () => {
+void test('hand /candidate writes pipeline and drafts under the candidate pool only', async () => {
   const host = installHost();
   const candidate = `${MODULE}/tobe/plan`;
   seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
-  seed(host, `${MODULE}/pipeline`, 'pipeline', '"canonical-l2"\n', 2);
-  seed(host, `${MODULE}/pipeline`, 'menu20-draft', '"canonical-draft"\n', 2);
+  seed(host, `${MODULE}/pool/l2`, 'pipeline', '"canonical-pool"\n');
+  seed(host, `${MODULE}/pool/l2`, 'menu20-draft', '"canonical-draft"\n');
   seed(host, `${candidate}/pipeline`, 'pipeline', L4_COMPLETE);
   seed(host, `${candidate}/pool/l2`, SHORT, `${JSON.stringify(FIXTURE, null, 2)}\n`);
-  seed(host, `${candidate}/pipeline`, 'pipeline', '{}\n', 2);
-  seed(host, `${candidate}/pipeline`, 'menu20-draft', '"candidate-draft"\n', 2);
+  seed(host, `${candidate}/pool/l2`, 'pipeline', '{}\n');
+  seed(host, `${candidate}/pool/l2`, 'menu20-draft', '"candidate-draft"\n');
   const agent = createAgent();
   const ctx = contextWith(`@@agentPlannerL2 ${MODULE} /candidate`);
   const hand = await agent.beforePromptImplicit!(agentMeta(), ctx, `@@agentPlannerL2 ${MODULE} /candidate`);
@@ -224,8 +227,8 @@ void test('hand /candidate writes the l2 pipeline in the override and leaves can
   assert.match(String(entryStep.prompt), /"candidate":"mensalidadesAcademia\/tobe\/plan"/);
   await beforeP2EntryPromptStep(agentMeta(), ctx, ctx.task!.iaCompressed!.nextSteps[0] as mls.msg.AIAgentStep, entryStep, 1);
   const written = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content) as { steps: { entry10: { artifactPaths: string[] } } };
-  assert.deepEqual(written.steps.entry10.artifactPaths, [`l2/${candidate}/pipeline/pipeline.json`]);
-  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content, '"canonical-l2"\n');
-  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'changed');
-  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${candidate}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'deleted');
+  assert.deepEqual(written.steps.entry10.artifactPaths, [`l4/${candidate}/pool/l2/pipeline.json`]);
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'pipeline', extension: '.json' })].content, '"canonical-pool"\n');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'menu20-draft', extension: '.json' })].status, 'changed');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: `${candidate}/pool/l2`, shortName: 'menu20-draft', extension: '.json' })].status, 'changed');
 });

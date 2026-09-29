@@ -23,7 +23,7 @@ import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solut
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
-const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.json');
+const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.v1.2.json');
 const RECEIVED_PATH = path.join(HERE, 'fixtures/pool-l2-backend-mensalidadesAcademia.json');
 const L4_PATH = path.join(HERE, '../entry10/fixtures/pool-l2-mensalidadesAcademia.json');
 const PROJECT = 102047;
@@ -109,7 +109,7 @@ function seedReady(host: Host): void {
   seed(host, {
     folder: `${MODULE}/pool/l2`,
     shortName: L1_SHORT,
-    content: `${readFileSync(RECEIVED_PATH, 'utf8')}\n`,
+    content: `${JSON.stringify({ ...JSON.parse(readFileSync(RECEIVED_PATH, 'utf8')) as Record<string, unknown>, mode: 'estimate' }, null, 2)}\n`,
   });
   seed(host, {
     folder: `${MODULE}/pool/l2/web`,
@@ -133,8 +133,8 @@ function seedReady(host: Host): void {
     content: '',
   });
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'pipeline',
     content: `${JSON.stringify({
       schemaVersion: '2026-09-18-p2-pipeline-v2',
@@ -195,7 +195,7 @@ void test('createAgent registers effort40 on the dispatch table', () => {
   assert.equal(P2_STEP_HOOKS.effort40?.beforePromptStep, beforeP2EffortPromptStep);
 });
 
-void test('execute writes effort.json, one l2→l4 message, delivered trace, and does not delete the pool', async () => {
+void test('execute writes effort.json and response, traces processed+delivered, then deletes its input', async () => {
   const host = installHost();
   seedReady(host);
   const result = await executeP2Effort(MODULE, AT);
@@ -216,13 +216,14 @@ void test('execute writes effort.json, one l2→l4 message, delivered trace, and
   assert.deepEqual(message.artifacts, ['pool/l2/web/effort.json']);
 
   const trace = await readPoolTraceAt(p2PipelineFile(MODULE));
-  assert.equal(trace.length, 1);
-  assert.equal(trace[0].outcome, 'delivered');
-  assert.equal(trace[0].to, 'l4');
-  assert.deepEqual(host.deleted, []);
-  assert.ok(host.files[keyOf({
+  assert.deepEqual(trace.map(line => [line.file, line.outcome, line.to]), [
+    [DISPLAY, 'processed', 'l2'],
+    [`l4/${MODULE}/pool/l4/${poolStamp(AT)}_mensalidadesAcademia-20260918103000_1.json`, 'delivered', 'l4'],
+  ]);
+  assert.deepEqual(host.deleted, [`${MODULE}/pool/l2/${L1_SHORT}`]);
+  assert.equal(host.files[keyOf({
     project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: L1_SHORT, extension: '.json',
-  })].content.includes('"from": "l1"'));
+  })].status, 'deleted');
 });
 
 void test('beforePromptStep approves effort40 and closes the pipeline', async () => {
@@ -257,16 +258,16 @@ void test('candidate effort attributes declared rules and warns on orphans', asy
   seedReady(host);
   const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8'));
   const pipeline = JSON.parse(host.files[keyOf({
-    project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json',
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'pipeline', extension: '.json',
   })].content) as { messageFile: string };
   pipeline.messageFile = `l4/${CANDIDATE}/pool/l2/${L1_SHORT}.json`;
   seed(host, {
-    folder: `${CANDIDATE}/pipeline`,
+    folder: `${CANDIDATE}/pool/l2`,
     shortName: 'pipeline',
-    level: 2,
+    level: 4,
     content: `${JSON.stringify(pipeline, null, 2)}\n`,
   });
-  seed(host, { folder: `${CANDIDATE}/pool/l2`, shortName: L1_SHORT, content: `${readFileSync(RECEIVED_PATH, 'utf8')}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2`, shortName: L1_SHORT, content: `${JSON.stringify({ ...JSON.parse(readFileSync(RECEIVED_PATH, 'utf8')) as Record<string, unknown>, mode: 'estimate' }, null, 2)}\n` });
   seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'menu', content: `${readFileSync(MENU_PATH, 'utf8')}\n` });
   seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'backend', content: `${readFileSync(BACKEND_PATH, 'utf8')}\n` });
   seed(host, {
@@ -336,16 +337,16 @@ void test('beforePromptStep in candidate appends unattributed warnings and does 
   const host = installHost();
   seedReady(host);
   const pipelineSeed = JSON.parse(host.files[keyOf({
-    project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json',
+    project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'pipeline', extension: '.json',
   })].content) as { messageFile: string };
   pipelineSeed.messageFile = `l4/${CANDIDATE}/pool/l2/${L1_SHORT}.json`;
   seed(host, {
-    folder: `${CANDIDATE}/pipeline`,
+    folder: `${CANDIDATE}/pool/l2`,
     shortName: 'pipeline',
-    level: 2,
+    level: 4,
     content: `${JSON.stringify(pipelineSeed, null, 2)}\n`,
   });
-  seed(host, { folder: `${CANDIDATE}/pool/l2`, shortName: L1_SHORT, content: `${readFileSync(RECEIVED_PATH, 'utf8')}\n` });
+  seed(host, { folder: `${CANDIDATE}/pool/l2`, shortName: L1_SHORT, content: `${JSON.stringify({ ...JSON.parse(readFileSync(RECEIVED_PATH, 'utf8')) as Record<string, unknown>, mode: 'estimate' }, null, 2)}\n` });
   seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'menu', content: `${readFileSync(MENU_PATH, 'utf8')}\n` });
   seed(host, { folder: `${CANDIDATE}/pool/l2/web`, shortName: 'backend', content: `${readFileSync(BACKEND_PATH, 'utf8')}\n` });
   seed(host, {

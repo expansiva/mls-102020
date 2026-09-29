@@ -11,23 +11,25 @@ import {
 } from '/_102035_/l2/solution/fs.js';
 import {
   readPoolMessage,
-  tracePoolAt,
   writePoolMessage,
   type PoolMessage,
 } from '/_102035_/l2/solution/pool.js';
 import {
+  findP2Response,
   P2_MENU_DEVICE,
   isP2CandidateRoot,
   markP2Complete,
   markP2Step,
   p2BackendFile,
   p2CanonicalMenuFile,
+  p2DraftFile,
   p2EffortFile,
   p2L4DiffFile,
   p2MenuFile,
   p2NeedsFile,
   p2PipelineFile,
   readP2Pipeline,
+  traceAndConsumeP2Input,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
@@ -60,36 +62,70 @@ export interface P2DeliverEffortResult {
   messagePath: string;
 }
 
+interface P2EffortCheckpoint {
+  thread: string;
+  round: number;
+  inputFile: string;
+  effort: P2EffortFile;
+}
+
 export async function executeP2Effort(moduleName: string, now: Date): Promise<P2DeliverEffortResult> {
   const pipeline = await requirePipeline(moduleName);
-  const device = pipeline.device || P2_MENU_DEVICE;
-  const menu = await readJson<P2MenuFile>(p2MenuFile(moduleName, device));
-  if (!menu) throw new Error(`pool/l2/${device}/menu.json is missing; the menu flow must run first.`);
-  const rawBackend = await readJson<unknown>(p2BackendFile(moduleName, device));
-  if (rawBackend === null) throw new Error(`pool/l2/${device}/backend.json is missing; the l1 plan must run first.`);
-  const backend = parseP2BackendFile(rawBackend);
-  const candidate = await loadCandidateEffort(moduleName, device);
-  const effort = buildP2EffortFile({ menu, backend, now, candidate });
-  const gate = validateP2Effort(effort, menu, { screenStatusFromAction: !candidate });
-  if (!gate.ok) throw new Error(formatP2EffortGate(gate.issues));
-
   const receivedFile = receivedPoolFile(moduleName, pipeline.messageFile);
   const received = await readPoolMessage(receivedFile);
-  const message = buildP2EffortMessage({ file: effort, received });
-  const effortInfo = p2EffortFile(moduleName, effort.device);
-  const effortPath = await writeJson(effortInfo, effort);
-  const messageInfo = await writePoolMessage(moduleName, message, now);
+  if (received.mode !== 'estimate') throw new Error('effort40 only processes estimate messages; input remains pending.');
+  const existing = await findP2Response(moduleName, received, 'effort.json');
+  const checkpointInfo = p2DraftFile(moduleName, 'effort40');
+  const checkpoint = await readJson<P2EffortCheckpoint>(checkpointInfo);
+  const matchingCheckpoint = checkpoint?.thread === received.thread
+    && checkpoint.round === received.round
+    && checkpoint.inputFile === displayPath(receivedFile)
+    ? checkpoint
+    : null;
+  let effort: P2EffortFile;
+  let message: PoolMessage;
+  let messageInfo: ReturnType<typeof p2EffortFile>;
+  let effortPath: string;
+  if (existing) {
+    const device = pipeline.device || P2_MENU_DEVICE;
+    const effortInfo = p2EffortFile(moduleName, device);
+    const persisted = await readJson<P2EffortFile>(effortInfo);
+    if (!persisted) throw new Error('pool/l2 effort.json is missing for the existing response; input remains pending.');
+    effort = persisted;
+    message = existing.message;
+    messageInfo = existing.file;
+    effortPath = displayPath(effortInfo);
+  } else if (matchingCheckpoint) {
+    effort = matchingCheckpoint.effort;
+    message = buildP2EffortMessage({ file: effort, received });
+    const effortInfo = p2EffortFile(moduleName, effort.device);
+    effortPath = await writeJson(effortInfo, effort);
+    messageInfo = await writePoolMessage(moduleName, message, now);
+  } else {
+    const device = pipeline.device || P2_MENU_DEVICE;
+    const menu = await readJson<P2MenuFile>(p2MenuFile(moduleName, device));
+    if (!menu) throw new Error(`pool/l2/${device}/menu.json is missing; the menu flow must run first.`);
+    const rawBackend = await readJson<unknown>(p2BackendFile(moduleName, device));
+    if (rawBackend === null) throw new Error(`pool/l2/${device}/backend.json is missing; the l1 plan must run first.`);
+    const backend = parseP2BackendFile(rawBackend);
+    const candidate = await loadCandidateEffort(moduleName, device);
+    effort = buildP2EffortFile({ menu, backend, now, candidate });
+    const gate = validateP2Effort(effort, menu, { screenStatusFromAction: !candidate });
+    if (!gate.ok) throw new Error(formatP2EffortGate(gate.issues));
+    message = buildP2EffortMessage({ file: effort, received });
+    await writeJson(checkpointInfo, {
+      thread: received.thread,
+      round: received.round,
+      inputFile: displayPath(receivedFile),
+      effort,
+    } satisfies P2EffortCheckpoint);
+    const effortInfo = p2EffortFile(moduleName, effort.device);
+    effortPath = await writeJson(effortInfo, effort);
+    messageInfo = await writePoolMessage(moduleName, message, now);
+  }
   const messagePath = displayPath(messageInfo);
-  await tracePoolAt(p2PipelineFile(moduleName), {
-    at: now.toISOString(),
-    file: messagePath,
-    from: message.from,
-    to: message.to,
-    thread: message.thread,
-    round: message.round,
-    mode: message.mode,
-    outcome: 'delivered',
-  });
+  await writeApproved(moduleName, [effortPath, messagePath], effort.unattributed);
+  await traceAndConsumeP2Input(moduleName, receivedFile, received, messageInfo, message, now);
   return { effort, effortPath, message, messagePath };
 }
 
@@ -107,7 +143,6 @@ export async function beforeP2EffortPromptStep(
     if (!moduleName) throw new Error('effort40 needs a moduleName.');
     const mutationParent = findOpenParent(context, parentStep);
     const delivered = await executeP2Effort(moduleName, new Date());
-    await writeApproved(moduleName, [delivered.effortPath, delivered.messagePath], delivered.effort.unattributed);
     return [
       doneAnchor(context, mutationParent, moduleName, [delivered.effortPath, delivered.messagePath]),
       updateStatus(

@@ -1,6 +1,6 @@
 /// <mls fileReference="_102047_/l4/mensalidadesAcademia/journeys/gerarMensalidadesDoMes.defs.ts" enhancement="_blank"/>
 
-import type { Ns5JourneyArtifact } from '/_102035_/l2/solution/types.js';
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
 
 export const gerarMensalidadesDoMesJourney = {
   "schemaVersion": "2026-09-10-ns5-journey-v1",
@@ -31,7 +31,7 @@ export const gerarMensalidadesDoMesJourney = {
     }
   },
   "businessHash": "sha256:c32e4d42a0c3164e2dd1e930e0a70f9022e25cb98841bcc48857264dec1da46b"
-} as const satisfies Ns5JourneyArtifact;
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
 
 export type GerarMensalidadesDoMesJourneyType = typeof gerarMensalidadesDoMesJourney;
 

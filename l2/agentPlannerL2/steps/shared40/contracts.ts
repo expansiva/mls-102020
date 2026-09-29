@@ -389,7 +389,7 @@ export function deriveP2SharedBase(input: {
 
 /**
  * Mechanical starting cut from the contracts (CF `saveBaseSharedDefs` rules, local copy —
- * the planner graph must not import agentChangeFrontend). The model may change judgment.
+ * the planner graph must not import agentMaterializeL2). The model may change judgment.
  */
 export function suggestP2SharedJudgment(
   workspace: P2Workspace,

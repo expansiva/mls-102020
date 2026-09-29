@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseNs4ClassicDefsSource } from '/_102035_/l2/agentNewSolution/helpers/ns4ClassicDefs.js';
+import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2ContractsCatalog, type D2ContractCall, type D2ContractField, type D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import { renderD2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/render.js';
@@ -14,12 +14,12 @@ import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/cont
 import { D2_SHARED_KEYS, buildD2SharedPipeline, captureD2SelectedSnapshot, missingD2SnapshotPreconditions, suggestedD2SharedJudgment, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { assertD2RenderedShared, gateD2Shared, parseD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
 import { parseD2RenderedShared, renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
-import { parseDefs } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
+import { parseDefs } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 void test('pinned fixture without d2_23 operation bindings reports the missing binding', () => {
-  const input = path.resolve(HERE, '..', 'input20', 'fixtures', 'current');
+  const input = path.resolve(HERE, '..', 'input20', 'fixtures', 'v1_2');
   const head = path.resolve(HERE, '..', 'contracts30', 'fixtures', 'head', 'l4');
   const backend = json(path.join(input, 'backend.json')); const needs = json(path.join(input, 'needs.json'));
   const entities: Record<string, Ns5OntologyAnyEntity> = {};
@@ -273,6 +273,29 @@ void test('shared accepts structural reads, preserves all actor bindings and omi
   assert.equal(state.title, 'Display name'); assert.deepEqual(state.enumOptions, name.enumOptions);
   assert.deepEqual(definition.actions.find(action => action.actionId === 'createRecord')!.operationBindings!.map(item => item.actorRef), ['one', 'two']);
   assert.deepEqual(definition.initialLoads.map(item => item.actionId), ['listRecord']);
+});
+
+void test('shared keeps a required leaf conditional under absent nested optional objects', () => {
+  const page = selected('conditional');
+  const leaf: D2ContractField = { ...field(true), path: 'Record.envelope.confirmation.confirmedAt', name: 'confirmedAt', derived: false };
+  const confirmation: D2ContractField = { ...leaf, path: 'Record.envelope.confirmation', name: 'confirmation', scalar: 'object', tsType: 'object', required: false, children: [leaf] };
+  const envelope: D2ContractField = { ...confirmation, path: 'Record.envelope', name: 'envelope', children: [confirmation] };
+  const create = call('createRecord', 'CreateRecord', 'create', [envelope]);
+  const contract: D2PageContract = { pageId: page.pageId, calls: [create] };
+  const definition = gated(page, contract, suggestedD2SharedJudgment(page, contract));
+  const state = definition.states.find(item => item.dtoPath === 'envelope.confirmation.confirmedAt')!;
+  assert.equal(state.defaultValue, null);
+  assert.equal(state.required, false, 'the input is required only when its optional parent is present');
+  assert.equal(definition.states.some(item => item.dtoPath === 'envelope' || item.dtoPath === 'envelope.confirmation'), false);
+  const actionBinding = definition.dataBindings.find(item => item.actionId === 'createRecord')!;
+  assert.deepEqual(actionBinding.inputStateKeys, [state.stateKey]);
+
+  const source = renderD2Shared(definition, buildD2SharedPipeline('fixture', page.pageId));
+  const materialized = parseDefs(source).data as typeof definition;
+  assert.equal(materialized.states.find(item => item.dtoPath === state.dtoPath)?.required, false);
+  assert.deepEqual(materialized.dataBindings.find(item => item.actionId === 'createRecord')?.inputStateKeys, [state.stateKey]);
+  const dto = renderD2PageContract(contract);
+  assert.match(dto, /"envelope"\?: \{[\s\S]*"confirmation"\?: \{[\s\S]*"confirmedAt": string/);
 });
 
 void test('materialized fixture executes nested requests, selection snapshots, busy, refresh and error preservation through runtime', async () => {

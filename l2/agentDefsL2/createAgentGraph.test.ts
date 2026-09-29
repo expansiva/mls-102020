@@ -47,6 +47,6 @@ void test('createAgent export graph has one public root and only private workers
 void test('no hook imports room messaging, frontend UI or another generator agent', () => {
   const source = tsFiles(ROOT).map(file => readFileSync(file, 'utf8')).join('\n');
   assert.doesNotMatch(source, /collabMessagesHelper|msgAddOrUpdateThreadBot|\bwindow\b|\bdocument\b|\bindexedDB\b/);
-  assert.doesNotMatch(source, /agentChangeFrontend|_102021_\/l2\/agentChangeBackend/);
+  assert.doesNotMatch(source, /agentMaterializeL2|_102021_\/l2\/agentChangeBackend/);
   assert.doesNotMatch(source, /\/rebuild all|l5\//);
 });

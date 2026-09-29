@@ -51,7 +51,7 @@ export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage
       if (!inputOrigin && !selected && !snapshot && call.operation !== 'list') throw new Error(`D2_SHARED_INPUT_ORIGIN_MISSING: ${call.route} ${field.path}`);
       const source = selected || snapshot ? 'selectedEntity' : field.path.endsWith('$page') ? 'routeParam' : inputOrigin === 'server' ? 'session' : 'userInput';
       const editable = source === 'userInput' && !selected && !snapshot;
-      const required = boundInput?.required ?? field.required;
+      const required = (boundInput?.required ?? field.required) && !hasOptionalObjectAncestor(call.input, field.path);
       const memberName = `state${pascal(call.callName)}${memberPath(dtoPath)}`;
       states.push({ stateKey, memberName, name: field.name, kind: 'input', defaultValue: null, ...(field.title ? { title: field.title } : {}), ...(field.description ? { description: field.description } : {}), ...(field.enumOptions ? { enumOptions: structuredClone(field.enumOptions) } : {}), ...(field.enumValues.length ? { valueSet: [...field.enumValues] } : {}), actionRef: call.callName, contractRef: `${call.callPascal}Input.${dtoPath}`, ontologyRef: field.path, dtoPath, source, presentation: snapshot || inputOrigin === 'server' ? 'hidden' : source === 'routeParam' ? 'route' : selected ? 'selection' : 'form', editable, required });
       if (editable) actions.push({ actionId: `set:${call.callName}:${dtoPath}`, methodName: `set${pascal(call.callName)}${memberPath(dtoPath)}`, kind: 'stateSetter', inputStateKeys: [], outputStateKeys: [stateKey], statusStateKey: '', errorStateKey: '', refreshActionIds: [], stateKey });
@@ -130,6 +130,10 @@ export function d2SharedPreconditionStateKeysByAction(page: D2SelectedPage, cont
 
 export function flatten(fields: D2ContractField[]): D2ContractField[] { return fields.flatMap(field => [field, ...flatten(field.children)]); }
 export function inputLeaves(fields: D2ContractField[]): D2ContractField[] { return fields.flatMap(field => field.children.length && !field.collection ? inputLeaves(field.children) : [field]); }
+function hasOptionalObjectAncestor(fields: D2ContractField[], path: string): boolean {
+  return fields.some(field => (field.scalar === 'object' && !field.collection && !field.required && path.startsWith(`${field.path}.`))
+    || hasOptionalObjectAncestor(field.children, path));
+}
 export function inputStateKey(pageId: string, call: D2ContractCall, field: D2ContractField): string { return `ui.${pageId}.${call.callName}.input.${dtoPathOf(call.entityId, field.path)}`; }
 export function captureD2SelectedSnapshot(binding: D2SharedSnapshotPrecondition, selectedIdentity: unknown, result: unknown, active?: { selectedIdentity: unknown; value: unknown }): unknown {
   if (selectedIdentity === null || selectedIdentity === undefined) return null;

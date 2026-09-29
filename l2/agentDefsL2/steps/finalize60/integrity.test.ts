@@ -4,8 +4,8 @@ import { buildD2PagePipeline } from '/_102020_/l2/agentDefsL2/steps/pages50/cont
 import { renderD2Page, assertD2RenderedPage } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { renderD2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/render.js';
 import { assertD2Header } from '/_102020_/l2/agentDefsL2/helpers/d2Header.js';
-import { expandContextRef, parseDefs, resolveProjectRelativeRef } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeCore.js';
-import { cfeContextReceiptPath, cfeMaterializationFresh } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeReceipt.js';
+import { expandContextRef, parseDefs, resolveProjectRelativeRef } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
+import { cfeContextReceiptPath, cfeMaterializationFresh } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeReceipt.js';
 
 const project = 817263;
 
@@ -23,8 +23,8 @@ test('productive context reader and receipt writer prove missing refs, selective
   const prior = (globalThis as unknown as { mls: unknown }).mls;
   const host = installHost();
   try {
-    const { buildGenContext, persistConsumedContext } = await import('/_102020_/l2/agentChangeFrontend/steps/materialize/agentCfeMaterializeGen.js');
-    const { planSpecFrontendWithReceipts } = await import('/_102020_/l2/agentChangeFrontend/agentSpecFrontend.js');
+    const { buildGenContext, persistConsumedContext } = await import('/_102020_/l2/agentMaterializeL2/steps/materialize/agentCfeMaterializeGen.js');
+    const { planSpecFrontendWithReceipts } = await import('/_102020_/l2/agentMaterializeL2/agentMaterializeL2.js');
     const units = ['renamedA', 'renamedB'].flatMap(pageId => (['desktop', 'mobile'] as const).map(device => ({ pageId, device, defPath: `_${project}_/l2/renamed/web/${device}/page11/${pageId}.defs.ts` })));
     for (const unit of units) {
       const source = pageSource('renamed', unit.pageId, unit.device);

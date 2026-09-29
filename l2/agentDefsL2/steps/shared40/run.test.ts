@@ -7,7 +7,21 @@ import { d2InputFile } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
 import { D2_CONTRACTS_VERSION, sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
 import { d2ContractFile, d2ContractsManifestFile } from '/_102020_/l2/agentDefsL2/steps/contracts30/io.js';
 import { d2SharedFile, d2SharedManifestFile, d2SharedResultFile, readD2SharedManifest, readD2SharedResult } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
-import { finalizeD2SharedBarrier, persistD2SharedUnit } from '/_102020_/l2/agentDefsL2/steps/shared40/run.js';
+import { finalizeD2SharedBarrier, persistD2SharedUnit as persistUnit } from '/_102020_/l2/agentDefsL2/steps/shared40/run.js';
+
+const compileFixture = async () => {};
+const persistD2SharedUnit = (identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, source: string, attempt: number, receipt: Parameters<typeof persistUnit>[5], verify?: () => Promise<void>) => persistUnit(identity, snapshot, pageId, source, attempt, receipt, verify, compileFixture);
+
+void test('shared compilation finding keeps source but never approves result or manifest', async () => {
+  const host = await installHost();
+  await assert.rejects(() => persistUnit(IDENTITY, host.snapshot, PAGE, sharedSource(), 1, RECEIPT, undefined, async (_identity, sources) => {
+    assert.equal(sources[0].kind, 'shared');
+    throw new Error(`D2_TYPESCRIPT_COMPILE_FAILED: ${sources[0].path}: TS2304 MissingType`);
+  }), /D2_TYPESCRIPT_COMPILE_FAILED.*TS2304/u);
+  assert.equal(await readD2SharedResult(IDENTITY, PAGE), null);
+  assert.equal(await readD2SharedManifest(IDENTITY), null);
+  assert.equal(host.files[keyOf(d2SharedFile(IDENTITY, PAGE))].content, sharedSource());
+});
 
 const IDENTITY: D2RunIdentity = { project: 102047, module: 'fixture' };
 const PAGE = 'records';

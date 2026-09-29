@@ -1,6 +1,6 @@
 /// <mls fileReference="_102047_/l4/mensalidadesAcademia/journeys/cancelarPropriaMatricula.defs.ts" enhancement="_blank"/>
 
-import type { Ns5JourneyArtifact } from '/_102035_/l2/solution/types.js';
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
 
 export const cancelarPropriaMatriculaJourney = {
   "schemaVersion": "2026-09-10-ns5-journey-v1",
@@ -46,7 +46,7 @@ export const cancelarPropriaMatriculaJourney = {
     }
   },
   "businessHash": "sha256:2cce1d7cc5e606a96894f84fc40cc1d0a6b73fb2f419b1b7e9c342ee666c813e"
-} as const satisfies Ns5JourneyArtifact;
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
 
 export type CancelarPropriaMatriculaJourneyType = typeof cancelarPropriaMatriculaJourney;
 

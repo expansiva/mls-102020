@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/effort40/contracts.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -10,6 +11,7 @@ import type { P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contra
 import type { P2NeedsFile, P2NeedsRead } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import {
   P2_EFFORT_SCHEMA_VERSION,
+  P2_BACKEND_SCHEMA_VERSION,
   P2_EFFORT_STATUSES,
   buildP2EffortFile,
   buildP2EffortMessage,
@@ -27,7 +29,7 @@ import { validateP2Effort } from '/_102020_/l2/agentPlannerL2/steps/effort40/gat
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
 const ACTIONS_PATH = path.join(HERE, 'fixtures/menu-actions.json');
-const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.json');
+const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.v1.2.json');
 const AT = new Date(Date.UTC(2026, 8, 21, 12, 0, 0));
 
 void test('menu action maps onto the l1/CB status vocabulary', () => {
@@ -45,6 +47,10 @@ void test('mensalidadesAcademia fixture joins every menu page with backend statu
   assert.equal(file.schemaVersion, P2_EFFORT_SCHEMA_VERSION);
   assert.equal(file.moduleName, 'mensalidadesAcademia');
   assert.equal(file.device, 'web');
+  assert.equal(file.meta.sourceVersion, P2_BACKEND_SCHEMA_VERSION);
+  assert.equal(file.meta.sourceBackend, 'pool/l2/web/backend.json');
+  assert.deepEqual(file.testSupport, backend.testSupport);
+  assert.notEqual(file.testSupport, backend.testSupport);
   assert.deepEqual(file.screens.map(screen => screen.pageId), [
     'minha_matricula',
     'inicio_recepcao',
@@ -73,7 +79,7 @@ void test('mensalidadesAcademia fixture joins every menu page with backend statu
 void test('the four menu actions become the four effort statuses, including meta.removed', () => {
   const menu = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as P2MenuFile;
   const backend: P2BackendFile = {
-    schemaVersion: '2026-09-21-p1-backend-v1',
+    schemaVersion: P2_BACKEND_SCHEMA_VERSION,
     moduleName: 'mensalidadesAcademia',
     device: 'web',
     endpoints: [
@@ -88,6 +94,7 @@ void test('the four menu actions become the four effort statuses, including meta
     ],
     tables: [{ tableId: 'x', entity: 'X', status: 'toCreate' }],
     removed: [{ kind: 'endpoint', id: 'mod.removed_page.qryList', status: 'toRemove' }],
+    testSupport: [],
   };
   const file = buildP2EffortFile({ menu, backend, now: AT });
   assert.deepEqual(
@@ -126,15 +133,72 @@ function needsFile(pages: { pageId: string; entities: string[] }[]): P2NeedsFile
 
 function emptyBackend(): P2BackendFile {
   return {
-    schemaVersion: '2026-09-21-p1-backend-v1',
+    schemaVersion: P2_BACKEND_SCHEMA_VERSION,
     moduleName: 'mensalidadesAcademia',
     device: 'web',
     endpoints: [],
     usecases: [],
     tables: [],
     removed: [],
+    testSupport: [],
   };
 }
+
+void test('backend v1.2 requires testSupport and validates the published item shape', () => {
+  const source = JSON.parse(readFileSync(BACKEND_PATH, 'utf8')) as Record<string, unknown>;
+  const parsed = parseP2BackendFile(source);
+  assert.equal(parsed.schemaVersion, P2_BACKEND_SCHEMA_VERSION);
+  assert.equal(parsed.testSupport.length, 1);
+  assert.deepEqual(parsed.testSupport[0], {
+    id: 'support:matricula',
+    actorRefs: ['actor:aluno', ''],
+    entityRefs: ['Matricula'],
+    sourceRefs: ['l1/agendaClinica/layer_3_domain/entities/matricula.defs.ts'],
+    status: 'toCreate',
+    owner: 'L1',
+    executorRef: '',
+    cleanupRef: '',
+    gap: 'Verified test executor and cleanup are pending.',
+  });
+  assert.deepEqual(parseP2BackendFile({ ...source, testSupport: [] }).testSupport, []);
+
+  const missing = Object.fromEntries(Object.entries(source).filter(([key]) => key !== 'testSupport'));
+  assert.throws(() => parseP2BackendFile(missing), /testSupport must be an array/);
+  assert.throws(() => parseP2BackendFile({ ...source, testSupport: {} }), /testSupport must be an array/);
+  assert.throws(() => parseP2BackendFile({ ...source, testSupport: [null] }), /testSupport\[0\] must be an object/);
+  assert.throws(() => parseP2BackendFile({ ...source, schemaVersion: '2026-09-21-p1-backend-v1' }), /schemaVersion/);
+  assert.throws(() => parseP2BackendFile({ ...source, schemaVersion: undefined }), /schemaVersion/);
+  assert.throws(() => parseP2BackendFile({
+    ...source,
+    testSupport: [{ ...parsed.testSupport[0], actorRefs: 'actor:aluno' }],
+  }), /actorRefs must be an array of strings/);
+  assert.throws(() => parseP2BackendFile({
+    ...source,
+    testSupport: [{ ...parsed.testSupport[0], owner: 'runtime-team' }],
+  }), /owner must be L1\|runtime/);
+  assert.throws(() => parseP2BackendFile({
+    ...source,
+    testSupport: [{ ...parsed.testSupport[0], status: 'inProgress' }],
+  }), /status must be toCreate\|toUpdate\|toRemove\|done/);
+});
+
+void test('changing only testSupport changes effort content hash, not effort totals', () => {
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+  const backend = parseP2BackendFile(JSON.parse(readFileSync(BACKEND_PATH, 'utf8')));
+  const original = buildP2EffortFile({ menu, backend, now: AT });
+  const changed = buildP2EffortFile({
+    menu,
+    backend: {
+      ...backend,
+      testSupport: backend.testSupport.map(item => ({ ...item, gap: 'A different explicit gap.' })),
+    },
+    now: AT,
+  });
+  const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  assert.notEqual(hash(original), hash(changed));
+  assert.deepEqual(changed.totals, original.totals);
+  assert.deepEqual({ ...changed, testSupport: [] }, { ...original, testSupport: [] });
+});
 
 function candidateOf(opts: {
   menu: P2MenuFile;

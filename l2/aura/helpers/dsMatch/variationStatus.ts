@@ -14,7 +14,7 @@
 // The variation aggregates by worst stage: generation > materialize > stale > fresh.
 
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
-import { getContentByMlsPath } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 import { dsIndexNameMap } from '/_102020_/l2/aura/helpers/dsMatch/buildDesignSystemTs.js';
 import { pageDsCheckByDefs, layoutHasRules } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
 import { buildMoleculeCatalog } from '/_102020_/l2/aura/helpers/dsMatch/buildMoleculeCatalog.js';

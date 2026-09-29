@@ -10,11 +10,12 @@ import { readD2SharedManifest } from '/_102020_/l2/agentDefsL2/steps/shared40/io
 import { readD2PagesManifest } from '/_102020_/l2/agentDefsL2/steps/pages50/io.js';
 import { D2_SHARED_VERSION } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { D2_PAGES_VERSION } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
-import { D2_FINALIZE_VERSION, type D2FinalizeReport, type D2FinalizeResult, type D2OwnedArtifact, type D2OwnershipReceipt } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
+import { D2_FINALIZE_VERSION, type D2CompileProof, type D2FinalizeReport, type D2FinalizeResult, type D2OwnedArtifact, type D2OwnershipReceipt } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
 import { d2FinalizeReportFile, d2InfoForPath, deleteD2Owned, readD2Ownership, writeD2FinalizeReport, writeD2Ownership } from '/_102020_/l2/agentDefsL2/steps/finalize60/io.js';
 import { gateD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
+import { compileD2FinalSources } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
 
-export interface D2FinalizePort { read?: (info: Ns5FileInfo) => Promise<string>; remove?: (info: Ns5FileInfo) => Promise<void>; beforeDeleteCheck?: (path: string) => Promise<void>; }
+export interface D2FinalizePort { read?: (info: Ns5FileInfo) => Promise<string>; remove?: (info: Ns5FileInfo) => Promise<void>; beforeDeleteCheck?: (path: string) => Promise<void>; compile?: typeof compileD2FinalSources; }
 export interface D2PendingRemoval { path: string; info: Ns5FileInfo; }
 
 export async function finalizeD2(identity: D2RunIdentity, port: D2FinalizePort = {}): Promise<D2FinalizeResult> {
@@ -72,6 +73,12 @@ export async function finalizeD2(identity: D2RunIdentity, port: D2FinalizePort =
     }
   }
   try { if (!pending.length) gateD2FinalSources(snapshot, sources); } catch (error) { pending.push(error instanceof Error ? error.message : String(error)); }
+  let compilation: D2CompileProof[] = [];
+  if (!pending.length) {
+    compilation = await (port.compile || compileD2FinalSources)(identity, sources, new Map(owned.map(item => [item.path, item.sha256])));
+    for (const item of compilation) if (item.status === 'failed') pending.push(`TypeScript compilation failed: ${item.path}: ${item.diagnostics.join('; ')}`);
+    if (compilation.length !== sources.length) pending.push('Studio compiler did not prove every emitted source');
+  }
 
   const removals: D2PendingRemoval[] = [];
   const materializationPendingRemove: string[] = [];
@@ -91,7 +98,7 @@ export async function finalizeD2(identity: D2RunIdentity, port: D2FinalizePort =
   if (!pending.length) pending.push(...await revalidateD2RemovalSet(
     removals, prior, read, () => assertStillCurrent(identity, snapshot.snapshotHash, bundle), port.beforeDeleteCheck,
   ));
-  const baseReport = { schemaVersion: D2_FINALIZE_VERSION, ...identity, snapshotHash: snapshot.snapshotHash, ready: writeIds, preserved: preserveIds, removed: [] as string[], pending: [...new Set(pending)].sort(), materializationPendingRemove: [...new Set(materializationPendingRemove)].sort(), artifactPaths: owned.map(item => item.path).sort() };
+  const baseReport = { schemaVersion: D2_FINALIZE_VERSION, ...identity, snapshotHash: snapshot.snapshotHash, ready: writeIds, preserved: preserveIds, removed: [] as string[], pending: [...new Set(pending)].sort(), materializationPendingRemove: [...new Set(materializationPendingRemove)].sort(), artifactPaths: owned.map(item => item.path).sort(), compilation };
   if (pending.length) {
     const report: D2FinalizeReport = { ...baseReport, status: 'blocked' };
     const wrote = await writeD2FinalizeReport(identity, report);

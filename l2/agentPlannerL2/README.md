@@ -10,7 +10,7 @@ code against what is already a screen in l2 (today nothing is, so every node is
 When `pool/l2` has the L1 `backend.json`, `effort40` joins screens and backend
 statuses into `l4/<mod>/pool/l2/web/effort.json` and one `l2→l4` message.
 One reasoning call (menu). Lives in `mls-102020` next
-to `agentChangeFrontend`. Unique name `agentPlannerL2`.
+to `agentMaterializeL2`. Unique name `agentPlannerL2`.
 
 `workspaces20`, `contracts30`, `shared40` and `requests50` stay on disk, out of
 `flow.json`. The pool is not deleted. Nothing is written to `l2/<mod>/web/`.

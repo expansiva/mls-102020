@@ -34,7 +34,7 @@ export const pipeline = [
       "commentOpenTicket__l2_shared"
     ],
     "skills": [
-      "_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts",
+      "_102020_/l2/agentMaterializeL2/skills/genCfePage21RenderTs.ts",
       "_102020_/l4/collabux/templates/processWizard/page21.md"
     ],
     "visualStyle": {},
@@ -98,7 +98,7 @@ void test('equips pipeline[0] with the chosen molecule and its group usage contr
     '_102047_/l2/designSystem.ts',
   ]);
   assert.deepEqual(entry.skills.slice(0, 2), [
-    '_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts',
+    '_102020_/l2/agentMaterializeL2/skills/genCfePage21RenderTs.ts',
     '_102020_/l4/collabux/templates/processWizard/page21.md',
   ]);
   // Nothing this agent adds to a pipeline array may carry a leading slash — materialize drops those.
@@ -135,7 +135,7 @@ void test('a rerun that CHANGED its mind prunes the previous molecule instead of
   assert.ok(entry.dependsFiles.includes('_102040_/l2/molecules/groupviewtable/ml-data-table.ts'));
   // And the generator's own entries are still there — pruning is by shape, never by position.
   assert.ok(entry.dependsFiles.includes('_102047_/l2/designSystem.ts'));
-  assert.ok(entry.skills.includes('_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts'));
+  assert.ok(entry.skills.includes('_102020_/l2/agentMaterializeL2/skills/genCfePage21RenderTs.ts'));
 });
 
 void test('choosing nothing CLEARS what a previous run had equipped', () => {
@@ -148,7 +148,7 @@ void test('choosing nothing CLEARS what a previous run had equipped', () => {
     '_102047_/l2/designSystem.ts',
   ]);
   assert.deepEqual(entry.skills, [
-    '_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts',
+    '_102020_/l2/agentMaterializeL2/skills/genCfePage21RenderTs.ts',
     '_102020_/l4/collabux/templates/processWizard/page21.md',
   ]);
 });
@@ -165,6 +165,6 @@ void test('the pruning predicates recognize this agent\'s entries and nothing el
   assert.equal(isCm2MoleculeDependsFile('_102047_/l2/designSystem.ts'), false);
   assert.equal(isCm2MoleculeDependsFile('_102047_/l2/controleChamados/web/shared/commentOpenTicket.ts'), false);
   assert.equal(isCm2UsageSkill(USAGE), true);
-  assert.equal(isCm2UsageSkill('_102020_/l2/agentChangeFrontend/skills/genCfePage21RenderTs.ts'), false);
+  assert.equal(isCm2UsageSkill('_102020_/l2/agentMaterializeL2/skills/genCfePage21RenderTs.ts'), false);
   assert.equal(isCm2UsageSkill('_102020_/l4/collabux/templates/processWizard/page21.md'), false);
 });

@@ -13,7 +13,7 @@
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { pageRef } from '/_102020_/l2/aura/helpers/dsMatch/derivePaths.js';
 import { mkCompleted, mkFail, saveFile } from '/_102020_/l2/aura/agentImplementGenome/planning.js';
-import { getContentByMlsPath } from '/_102020_/l2/agentChangeFrontend/helpers/cfeMaterializeStudio.js';
+import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 import type { EditOperation2 } from '/_102020_/l2/aura/agentManagePage2/patchCore.js';
 import {
   parseUserChanges, upsertUserChanges, nextChangeId, supersedeDeterministic, validateConsolidated,

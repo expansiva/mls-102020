@@ -263,6 +263,10 @@ function installHost(): Host {
     stor: {
       files: host.files,
       getKeyToFile: keyOf,
+      addOrUpdateFile: async (info: { project: number; level: number; folder: string; shortName: string; extension: string }) => {
+        const existing = host.files[keyOf(info)];
+        return existing || seed(host, { ...info, content: '' });
+      },
       localStor: {
         setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
         listFolder: () => [],
@@ -320,29 +324,29 @@ function seedPipeline(host: Host): void {
     updatedAt: '2026-09-18T10:50:00.000Z',
   };
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'pipeline',
     extension: '.json',
     content: `${JSON.stringify(pipeline, null, 2)}\n`,
   });
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'workspaces20-draft',
     extension: '.json',
     content: `${JSON.stringify(loadWorkspaces(), null, 2)}\n`,
   });
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'contracts30-draft',
     extension: '.json',
     content: `${JSON.stringify(loadContracts(), null, 2)}\n`,
   });
   seed(host, {
-    level: 2,
-    folder: `${MODULE}/pipeline`,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
     shortName: 'shared40-draft',
     extension: '.json',
     content: '{}\n',

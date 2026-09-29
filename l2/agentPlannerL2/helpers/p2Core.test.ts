@@ -7,15 +7,14 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { moduleFolder, setModuleRoot } from '/_102035_/l2/solution/fs.js';
-import { normalizePoolMessage } from '/_102035_/l2/solution/pool.js';
+import { normalizePoolMessage, type PoolMessage } from '/_102035_/l2/solution/pool.js';
 import {
   P2_DEFAULT_CANDIDATE_REL,
   P2_EFFORT_FLOW_STEP_IDS,
   P2_FLOW_STEP_IDS,
   P2_MENU_FLOW_STEP_IDS,
   P2_STEP_DEPENDS_ON,
-  P2_WEB_DIR_EMPTY_LEFT,
-  P2_WEB_DIR_REMOVED,
+  P2_WEB_DIR_PRESERVED,
   buildP2PlannedSteps,
   executeP2Entry,
   isP2EffortMessage,
@@ -37,9 +36,11 @@ import {
   p2MenuFile,
   p2NeedsFile,
   p2PipelineFile,
+  p2DraftFile,
   P2_MENU_DEVICE,
   plannedP2StepIds,
   readReadyL2Manifest,
+  traceAndConsumeP2Input,
   resolveCandidateFolder,
   type P2PipelineState,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
@@ -68,7 +69,7 @@ type Stored = {
   getContent: () => Promise<string>;
 };
 
-type Host = { files: Record<string, Stored>; deleted: string[] };
+type Host = { files: Record<string, Stored>; deleted: string[]; written: string[] };
 
 function keyOf(info: { project: number | string; level: number | string; folder: string; shortName: string; extension: string }): string {
   return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`;
@@ -86,15 +87,26 @@ function seed(host: Host, folder: string, shortName: string, content = '', level
 }
 
 function installHost(): Host {
-  const host: Host = { files: {}, deleted: [] };
+  const host: Host = { files: {}, deleted: [], written: [] };
   (globalThis as unknown as Record<string, unknown>).mls = {
     actualProject: PROJECT,
     events: { addEventListener() {}, removeEventListener() {}, dispatch() {} },
     stor: {
       files: host.files,
       getKeyToFile: keyOf,
+      addOrUpdateFile: async (info: { project: number; level: number; folder: string; shortName: string; extension: string }) => host.files[keyOf(info)] || seed(
+        host,
+        info.folder,
+        info.shortName,
+        '',
+        info.level,
+        info.extension,
+      ),
       localStor: {
-        setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
+        setContent: async (file: Stored, value: { content: string }) => {
+          host.written.push(keyOf(file));
+          file.content = value.content;
+        },
         listFolder: () => [],
         deleteFile: (file: Stored) => {
           host.deleted.push(`${file.folder}/${file.shortName}`);
@@ -120,8 +132,9 @@ const L4_COMPLETE = JSON.stringify({
 
 function seedReady(host: Host, message: unknown = FIXTURE, extraShort?: string): void {
   seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
-  seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(message, null, 2)}\n`);
-  if (extraShort) seed(host, `${MODULE}/pool/l2`, extraShort, `${JSON.stringify(message, null, 2)}\n`);
+  const estimate = { ...(message as Record<string, unknown>), mode: 'estimate' };
+  seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(estimate, null, 2)}\n`);
+  if (extraShort) seed(host, `${MODULE}/pool/l2`, extraShort, `${JSON.stringify(estimate, null, 2)}\n`);
   seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 2);
 }
 
@@ -314,14 +327,92 @@ void test('identical pool/l2 messages are one request and sourceMessages lists b
   assert.deepEqual(written.pipeline.sourceMessages, loaded.sourceMessages);
 });
 
-void test('two different pool/l2 requests refuse with a clear message', async () => {
+void test('identical pool/l2 messages select source files deterministically', async () => {
+  const host = installHost();
+  seedReady(host, FIXTURE, '20260918120000_mensalidadesAcademia-20260918103000_1');
+  const reverse = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in reverse, false);
+  if ('refusal' in reverse) return;
+  assert.deepEqual(reverse.sourceMessages, [
+    `${SHORT}.json`,
+    '20260918120000_mensalidadesAcademia-20260918103000_1.json',
+  ]);
+});
+
+void test('same conversation with divergent artifacts is disputed and remains pending', async () => {
   const host = installHost();
   seedReady(host);
   const other = { ...FIXTURE, mode: 'estimate', artifacts: ['module.defs.ts'] };
-  seed(host, `${MODULE}/pool/l2`, '20260918120000_mensalidadesAcademia-20260918103000_1', `${JSON.stringify(other, null, 2)}\n`);
+  const otherFile = seed(host, `${MODULE}/pool/l2`, '20260918120000_mensalidadesAcademia-20260918103000_1', `${JSON.stringify(other, null, 2)}\n`);
   const loaded = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
-  assert.equal('refusal' in loaded && loaded.refusal, p2DifferentRequestsRefusal(2));
-  assert.match(String('refusal' in loaded ? loaded.refusal : ''), /pool\/l2 has 2 different requests; resolve with the l4 supervisor/);
+  assert.equal('refusal' in loaded, true);
+  assert.match(String('refusal' in loaded ? loaded.refusal : ''), /divergent copies/);
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: SHORT, extension: '.json' })].status, 'changed');
+  assert.notEqual(otherFile.status, 'deleted');
+  assert.deepEqual(host.deleted, []);
+  assert.deepEqual(host.deleted, []);
+  const pool = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).pool as Array<{ outcome: string }>;
+  assert.deepEqual(pool.map(line => line.outcome), ['disputed', 'disputed']);
+});
+
+void test('same selected request with divergent body is disputed and remains pending', async () => {
+  const host = installHost();
+  seedReady(host);
+  const divergent = { ...FIXTURE, mode: 'estimate', body: 'different payload' };
+  const otherFile = seed(host, `${MODULE}/pool/l2`, '20260918120000_mensalidadesAcademia-20260918103000_1', `${JSON.stringify(divergent, null, 2)}\n`);
+  const loaded = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in loaded, true);
+  assert.match(String('refusal' in loaded ? loaded.refusal : ''), /divergent copies/);
+  assert.notEqual(otherFile.status, 'deleted');
+  assert.deepEqual(host.deleted, []);
+  const pool = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).pool as Array<{ file: string; outcome: string }>;
+  assert.deepEqual(pool.map(line => line.outcome), ['disputed', 'disputed']);
+});
+
+void test('request partitions keep exact thread and round identity', async () => {
+  const host = installHost();
+  seedReady(host);
+  seed(host, `${MODULE}/pool/l2`, '20260918120000_mensalidadesAcademia-20260919103000_1', `${JSON.stringify({
+    ...FIXTURE,
+    mode: 'estimate',
+    thread: 'mensalidadesAcademia-20260919103000',
+  }, null, 2)}\n`);
+  const anotherThread = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in anotherThread && anotherThread.refusal, p2DifferentRequestsRefusal(2));
+
+  const nextRound = installHost();
+  seedReady(nextRound);
+  seed(nextRound, `${MODULE}/pool/l2`, '20260918120000_mensalidadesAcademia-20260918103000_2', `${JSON.stringify({
+    ...FIXTURE,
+    mode: 'estimate',
+    round: 2,
+  }, null, 2)}\n`);
+  const anotherRound = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in anotherRound && anotherRound.refusal, p2DifferentRequestsRefusal(2));
+});
+
+void test('entry consumes estimate only from a mixed pool and refuses an implement-only pool without writes', async () => {
+  const host = installHost();
+  seedReady(host, FIXTURE);
+  const implement = { ...FIXTURE, mode: 'implement' };
+  const implementShort = '20260918120000_mensalidadesAcademia-20260918103000_1';
+  seed(host, `${MODULE}/pool/l2`, implementShort, `${JSON.stringify(implement, null, 2)}\n`);
+
+  const loaded = await loadP2Entry({ kind: 'hand', moduleName: MODULE });
+  assert.equal('refusal' in loaded, false);
+  if ('refusal' in loaded) return;
+  assert.equal(loaded.message.mode, 'estimate');
+  assert.deepEqual(loaded.sourceMessages, [`${SHORT}.json`]);
+
+  const implementOnly = installHost();
+  seed(implementOnly, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
+  seed(implementOnly, `${MODULE}/pool/l2`, implementShort, `${JSON.stringify(implement, null, 2)}\n`);
+  const before = hostSnapshot(implementOnly);
+  const refused = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
+  assert.equal('refusal' in refused, true);
+  assert.equal('refusal' in refused && refused.refusal, `nothing pending for ${MODULE} in pool/l2`);
+  assert.deepEqual(hostSnapshot(implementOnly), before);
+  assert.deepEqual(implementOnly.deleted, []);
 });
 
 void test('menu.json is not a pool message and does not count as pending', async () => {
@@ -370,7 +461,7 @@ void test('p2CanonicalMenuFile stays on the literal module name when /candidate 
   assert.deepEqual(p2CanonicalMenuFile(MODULE).folder, p2MenuFile(MODULE).folder);
 });
 
-void test('p2CanonicalMenuFile is never passed to writeJson', () => {
+void test('p2CanonicalMenuFile is never passed to writeJson and entry no longer clears product scratch', () => {
   const sources = [
     readFileSync(path.join(HERE, 'p2Core.ts'), 'utf8'),
     readFileSync(path.join(HERE, '../steps/menu20/agentP2Menu.ts'), 'utf8'),
@@ -379,10 +470,10 @@ void test('p2CanonicalMenuFile is never passed to writeJson', () => {
   for (const source of sources) {
     assert.equal(/writeJson\s*\(\s*p2CanonicalMenuFile/.test(source), false);
   }
-  const wipe = readFileSync(path.join(HERE, 'p2Core.ts'), 'utf8');
-  const listFn = wipe.match(/function listP2ScratchFiles[\s\S]*?\nasync function clearP2Scratch/);
-  assert.ok(listFn);
-  assert.equal(listFn[0].includes('p2CanonicalMenuFile'), false);
+  const core = readFileSync(path.join(HERE, 'p2Core.ts'), 'utf8');
+  assert.equal(core.includes('clearP2Scratch'), false);
+  assert.equal(core.includes('deleteFile('), false);
+  assert.equal(core.includes('removeDir('), false);
 });
 
 void test('p2NeedsFile is pool/l1/<device>/needs.json', () => {
@@ -419,20 +510,24 @@ void test('readReadyL2Manifest returns null while the built manifesto does not e
   assert.equal(readReadyL2Manifest(MODULE, P2_MENU_DEVICE), null);
 });
 
-void test('re-execution wipes l2 pipeline drafts and web, keeps pool messages, rewrites pipeline.json', async () => {
+void test('re-execution preserves the materialized l1/l2 tree and writes only the pool pipeline', async () => {
   const host = installHost();
   seedReady(host);
   seed(host, `${MODULE}/web/contracts`, 'matriculas', 'old contract\n', 2);
   seed(host, `${MODULE}/pipeline`, 'workspaces20-draft', '{}\n', 2);
   const poolKey = keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: SHORT, extension: '.json' });
   const beforePool = host.files[poolKey].content;
+  const before = hostSnapshot(host);
   const first = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
   assert.equal('refusal' in first, false);
   if ('refusal' in first) return;
   const webKey = keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'matriculas', extension: '.json' });
-  assert.equal(host.files[webKey].status, 'deleted');
+  assert.equal(host.files[webKey].status, 'changed');
   const draftKey = keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'workspaces20-draft', extension: '.json' });
-  assert.equal(host.files[draftKey].status, 'deleted');
+  assert.equal(host.files[draftKey].status, 'changed');
+  assert.deepEqual(host.deleted, []);
+  assert.ok(host.written.length > 0);
+  assert.ok(host.written.every(key => key.startsWith(`${PROJECT}_4_${MODULE}/pool/l2/`)));
   assert.equal(host.files[poolKey].content, beforePool);
   assert.equal(host.files[poolKey].status, 'changed');
 
@@ -445,11 +540,12 @@ void test('re-execution wipes l2 pipeline drafts and web, keeps pool messages, r
   assert.deepEqual(pipeline.sourceMessages, [`${SHORT}.json`]);
   assert.equal(pipeline.steps.entry10.status, 'approved');
   assert.equal(pipeline.status, 'inProgress');
-  assert.equal(pipeline.webDir, P2_WEB_DIR_EMPTY_LEFT);
+  assert.equal(pipeline.webDir, P2_WEB_DIR_PRESERVED);
   assert.equal(host.files[poolKey].content, beforePool);
+  assert.deepEqual(changedOutside(diffTrees(before, hostSnapshot(host)), [`l4/${MODULE}/pool/l2`]), []);
 });
 
-void test('entry10 records webDir empty-left when host cannot remove directories', async () => {
+void test('entry10 preserves web files and does not call deleteFile or removeDir', async () => {
   const host = installHost();
   seedReady(host);
   seed(host, `${MODULE}/web/contracts`, 'stale', '', 2);
@@ -458,16 +554,17 @@ void test('entry10 records webDir empty-left when host cannot remove directories
   const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
   assert.equal('refusal' in written, false);
   if ('refusal' in written) return;
-  assert.equal(written.pipeline.webDir, P2_WEB_DIR_EMPTY_LEFT);
+  assert.equal(written.pipeline.webDir, P2_WEB_DIR_PRESERVED);
   assert.equal(written.pipeline.status, 'inProgress');
   const contractsKey = keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'stale', extension: '.json' });
   const sharedKey = keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/shared`, shortName: 'stale', extension: '.json' });
-  assert.equal(host.files[contractsKey].status, 'deleted');
-  assert.equal(host.files[sharedKey].status, 'deleted');
-  assert.equal(JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).webDir, P2_WEB_DIR_EMPTY_LEFT);
+  assert.equal(host.files[contractsKey].status, 'changed');
+  assert.equal(host.files[sharedKey].status, 'changed');
+  assert.deepEqual(host.deleted, []);
+  assert.equal(JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).webDir, P2_WEB_DIR_PRESERVED);
 });
 
-void test('entry10 sets webDir removed when the host exposes removeDir', async () => {
+void test('entry10 does not call host removeDir even when exposed', async () => {
   const host = installHost();
   const removed: string[] = [];
   (mls.stor.localStor as unknown as { removeDir: (project: number, level: number, folder: string) => void }).removeDir = (project, level, folder) => {
@@ -478,8 +575,9 @@ void test('entry10 sets webDir removed when the host exposes removeDir', async (
   const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
   assert.equal('refusal' in written, false);
   if ('refusal' in written) return;
-  assert.equal(written.pipeline.webDir, P2_WEB_DIR_REMOVED);
-  assert.deepEqual(removed, [`${PROJECT}:2:${MODULE}/web`]);
+  assert.equal(written.pipeline.webDir, P2_WEB_DIR_PRESERVED);
+  assert.deepEqual(removed, []);
+  assert.deepEqual(host.deleted, []);
 });
 
 function samplePipeline(extra: Partial<P2PipelineState> = {}): P2PipelineState {
@@ -495,11 +593,70 @@ function samplePipeline(extra: Partial<P2PipelineState> = {}): P2PipelineState {
     round: 1,
     messageFile: DISPLAY,
     sourceMessages: [`${SHORT}.json`],
-    webDir: P2_WEB_DIR_EMPTY_LEFT,
+    webDir: P2_WEB_DIR_PRESERVED,
     updatedAt: AT.toISOString(),
     ...extra,
   };
 }
+
+void test('pool input is traced processed and delivered before delete, idempotently', async () => {
+  const host = installHost();
+  const input: PoolMessage = {
+    from: 'l4', to: 'l2', thread: 'mensalidadesAcademia-20260918103000', round: 1,
+    mode: 'estimate', subject: 'estimate', artifacts: ['module.defs.ts'], body: '',
+  };
+  const response: PoolMessage = {
+    from: 'l2', to: 'l4', thread: input.thread, round: input.round,
+    mode: input.mode, subject: 'needs ready', artifacts: ['needs.json'], body: '',
+  };
+  const inputFile = seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(input)}\n`, 4);
+  const responseFile = seed(host, `${MODULE}/pool/l4`, '20260918113000_mensalidadesAcademia-20260918103000_1', `${JSON.stringify(response)}\n`, 4);
+  seed(host, `${MODULE}/pool/l2`, 'pipeline', `${JSON.stringify(samplePipeline({ pool: [] }))}\n`, 4);
+
+  await traceAndConsumeP2Input(MODULE, inputFile, input, responseFile, response, AT);
+  await traceAndConsumeP2Input(MODULE, inputFile, input, responseFile, response, AT);
+
+  assert.equal(inputFile.status, 'deleted');
+  assert.equal(responseFile.status, 'changed');
+  assert.deepEqual(host.deleted, [`${MODULE}/pool/l2/${SHORT}`]);
+  const pool = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).pool as Array<{ file: string; outcome: string }>;
+  assert.deepEqual(pool.map(line => [line.file, line.outcome]), [
+    [`l4/${MODULE}/pool/l2/${SHORT}.json`, 'processed'],
+    [`l4/${MODULE}/pool/l4/20260918113000_mensalidadesAcademia-20260918103000_1.json`, 'delivered'],
+  ]);
+});
+
+void test('identical selected copies are each traced and deleted idempotently', async () => {
+  const host = installHost();
+  const input: PoolMessage = {
+    from: 'l4', to: 'l2', thread: 'mensalidadesAcademia-20260918103000', round: 1,
+    mode: 'estimate', subject: 'estimate', artifacts: ['module.defs.ts'], body: '',
+  };
+  const response: PoolMessage = {
+    from: 'l2', to: 'l4', thread: input.thread, round: input.round,
+    mode: input.mode, subject: 'estimate ready', artifacts: ['needs.json'], body: '',
+  };
+  const secondShort = '20260918120000_mensalidadesAcademia-20260918103000_1';
+  const inputFile = seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(input)}\n`, 4);
+  const duplicateFile = seed(host, `${MODULE}/pool/l2`, secondShort, `${JSON.stringify(input)}\n`, 4);
+  const responseFile = seed(host, `${MODULE}/pool/l4`, '20260918113000_mensalidadesAcademia-20260918103000_1', `${JSON.stringify(response)}\n`, 4);
+  seed(host, `${MODULE}/pool/l2`, 'pipeline', `${JSON.stringify(samplePipeline({
+    sourceMessages: [`${SHORT}.json`, `${secondShort}.json`], pool: [],
+  }))}\n`, 4);
+
+  await traceAndConsumeP2Input(MODULE, inputFile, input, responseFile, response, AT);
+  await traceAndConsumeP2Input(MODULE, inputFile, input, responseFile, response, AT);
+
+  assert.equal(inputFile.status, 'deleted');
+  assert.equal(duplicateFile.status, 'deleted');
+  assert.deepEqual(host.deleted, [`${MODULE}/pool/l2/${SHORT}`, `${MODULE}/pool/l2/${secondShort}`]);
+  const pool = JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).pool as Array<{ file: string; outcome: string }>;
+  assert.deepEqual(pool.map(line => [line.file, line.outcome]), [
+    [`l4/${MODULE}/pool/l2/${SHORT}.json`, 'processed'],
+    [`l4/${MODULE}/pool/l2/${secondShort}.json`, 'processed'],
+    [`l4/${MODULE}/pool/l4/20260918113000_mensalidadesAcademia-20260918103000_1.json`, 'delivered'],
+  ]);
+});
 
 void test('markP2Complete sets complete only when every flow.json step is approved', () => {
   const now = '2026-09-19T12:00:00.000Z';
@@ -570,13 +727,13 @@ const MENU_FIXTURE = readFileSync(path.join(HERE, '../steps/needs30/fixtures/men
 
 function seedEffort(host: Host, opts?: { pipeline?: boolean; menu?: boolean; draft?: boolean }): void {
   seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
-  seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify(FIXTURE, null, 2)}\n`);
-  seed(host, `${MODULE}/pool/l2`, L1_SHORT, `${JSON.stringify(L1_FIXTURE, null, 2)}\n`);
+  seed(host, `${MODULE}/pool/l2`, SHORT, `${JSON.stringify({ ...FIXTURE, mode: 'estimate' }, null, 2)}\n`);
+  seed(host, `${MODULE}/pool/l2`, L1_SHORT, `${JSON.stringify({ ...L1_FIXTURE, mode: 'estimate' }, null, 2)}\n`);
   if (opts?.menu !== false) {
     seed(host, `${MODULE}/pool/l2/web`, 'menu', `${MENU_FIXTURE}\n`);
   }
   if (opts?.pipeline !== false) {
-    seed(host, `${MODULE}/pipeline`, 'pipeline', `${JSON.stringify({
+    seed(host, `${MODULE}/pool/l2`, 'pipeline', `${JSON.stringify({
       schemaVersion: '2026-09-18-p2-pipeline-v2',
       flowId: 'agentPlannerL2',
       moduleName: MODULE,
@@ -590,15 +747,15 @@ function seedEffort(host: Host, opts?: { pipeline?: boolean; menu?: boolean; dra
       round: 1,
       messageFile: DISPLAY,
       sourceMessages: [`${SHORT}.json`],
-      webDir: P2_WEB_DIR_EMPTY_LEFT,
+      webDir: P2_WEB_DIR_PRESERVED,
       device: 'web',
       updatedAt: AT.toISOString(),
-    }, null, 2)}\n`, 2);
+    }, null, 2)}\n`, 4);
   } else {
-    seed(host, `${MODULE}/pipeline`, 'pipeline', '{}\n', 2);
+    seed(host, `${MODULE}/pool/l2`, 'pipeline', '{}\n', 4);
   }
   if (opts?.draft) {
-    seed(host, `${MODULE}/pipeline`, 'workspaces20-draft', '{}\n', 2);
+    seed(host, `${MODULE}/pool/l2`, 'workspaces20-draft', '{}\n', 4);
   }
 }
 
@@ -629,9 +786,9 @@ void test('effort entry does not wipe pipeline scratch and keeps menu20/needs30'
   const host = installHost();
   seedEffort(host, { draft: true });
   const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE }, AT);
-  assert.equal('refusal' in written, false);
+  assert.equal('refusal' in written, false, 'refused: ' + ('refusal' in written ? written.refusal : ''));
   if ('refusal' in written) return;
-  const draftKey = keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'workspaces20-draft', extension: '.json' });
+  const draftKey = keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2`, shortName: 'workspaces20-draft', extension: '.json' });
   assert.equal(host.files[draftKey].status, 'changed');
   assert.equal(written.pipeline.steps.menu20?.status, 'approved');
   assert.equal(written.pipeline.steps.needs30?.status, 'approved');
@@ -674,8 +831,8 @@ function hostSnapshot(host: Host) {
 
 function seedCandidate(host: Host): void {
   seed(host, `${CANDIDATE}/pipeline`, 'pipeline', L4_COMPLETE);
-  seed(host, `${CANDIDATE}/pool/l2`, SHORT, `${JSON.stringify(FIXTURE, null, 2)}\n`);
-  seed(host, `${CANDIDATE}/pipeline`, 'pipeline', '{}\n', 2);
+  seed(host, `${CANDIDATE}/pool/l2`, SHORT, `${JSON.stringify({ ...FIXTURE, mode: 'estimate' }, null, 2)}\n`);
+  seed(host, `${CANDIDATE}/pool/l2`, 'pipeline', '{}\n', 4);
 }
 
 void test('without /candidate moduleFolder is the canonical name and the pipeline lands there', async () => {
@@ -685,13 +842,20 @@ void test('without /candidate moduleFolder is the canonical name and the pipelin
   assert.equal('refusal' in result, false);
   if ('refusal' in result) return;
   assert.equal(moduleFolder(MODULE), MODULE);
-  assert.deepEqual(p2PipelineFile(MODULE).folder, `${MODULE}/pipeline`);
-  assert.equal(p2PipelineFile(MODULE).level, 2);
+  assert.deepEqual(p2PipelineFile(MODULE).folder, `${MODULE}/pool/l2`);
+  assert.equal(p2PipelineFile(MODULE).level, 4);
+  assert.deepEqual(p2DraftFile(MODULE, 'menu20'), {
+    project: PROJECT,
+    level: 4,
+    folder: `${MODULE}/pool/l2`,
+    shortName: 'menu20-draft',
+    extension: '.json',
+  });
   assert.ok(host.files[keyOf(p2PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL2"'));
-  assert.deepEqual(result.pipeline.steps.entry10?.artifactPaths, [`l2/${MODULE}/pipeline/pipeline.json`]);
+  assert.deepEqual(result.pipeline.steps.entry10?.artifactPaths, [`l4/${MODULE}/pool/l2/pipeline.json`]);
 });
 
-void test('with /candidate pipeline and scratch wipe stay in the override; canonical l2/l4/l1 are untouched', async () => {
+void test('with /candidate pipeline stays in the override; canonical and product trees are untouched', async () => {
   const host = installHost();
   seed(host, `${MODULE}/pipeline`, 'pipeline', L4_COMPLETE);
   seed(host, MODULE, 'module', CANONICAL_MARKER, 4, '.defs.ts');
@@ -709,9 +873,9 @@ void test('with /candidate pipeline and scratch wipe stay in the override; canon
   assert.equal('refusal' in result, false);
   if ('refusal' in result) return;
   assert.equal(moduleFolder(MODULE), CANDIDATE);
-  assert.equal(p2PipelineFile(MODULE).folder, `${CANDIDATE}/pipeline`);
+  assert.equal(p2PipelineFile(MODULE).folder, `${CANDIDATE}/pool/l2`);
   assert.ok(host.files[keyOf(p2PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL2"'));
-  assert.deepEqual(result.pipeline.steps.entry10?.artifactPaths, [`l2/${CANDIDATE}/pipeline/pipeline.json`]);
+  assert.deepEqual(result.pipeline.steps.entry10?.artifactPaths, [`l4/${CANDIDATE}/pool/l2/pipeline.json`]);
 
   assert.equal(host.files[keyOf({ project: PROJECT, level: 4, folder: MODULE, shortName: 'module', extension: '.defs.ts' })].content, CANONICAL_MARKER);
   assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content, '"canonical-l2-pipeline"\n');
@@ -721,8 +885,9 @@ void test('with /candidate pipeline and scratch wipe stay in the override; canon
   assert.equal(host.files[keyOf({ project: PROJECT, level: 1, folder: `${MODULE}/pipeline`, shortName: 'pipeline', extension: '.json' })].content, '"canonical-l1-pipeline"\n');
   assert.equal(host.files[keyOf(p2CanonicalMenuFile(MODULE))].content, '"canonical-menu"\n');
   assert.equal(host.files[keyOf(p2CanonicalMenuFile(MODULE))].status, 'changed');
-  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'deleted');
-  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/web/contracts`, shortName: 'matriculas', extension: '.json' })].status, 'deleted');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/pipeline`, shortName: 'menu20-draft', extension: '.json' })].status, 'changed');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/web/contracts`, shortName: 'matriculas', extension: '.json' })].status, 'changed');
+  assert.deepEqual(host.deleted, []);
 
   const after = hostSnapshot(host);
   const diff = diffTrees(before, after);
@@ -755,11 +920,11 @@ void test('a later task without /candidate does not inherit the previous module 
   assert.equal('refusal' in second, false);
   if ('refusal' in second) return;
   assert.equal(moduleFolder(MODULE), MODULE);
-  assert.equal(p2PipelineFile(MODULE).folder, `${MODULE}/pipeline`);
+  assert.equal(p2PipelineFile(MODULE).folder, `${MODULE}/pool/l2`);
   assert.ok(host.files[keyOf(p2PipelineFile(MODULE))].content.includes('"flowId": "agentPlannerL2"'));
 });
 
-void test('with /candidate removeDir targets the override web folder, not the canonical one', async () => {
+void test('with /candidate entry preserves the candidate web folder and never calls removeDir', async () => {
   const host = installHost();
   const removed: string[] = [];
   (mls.stor.localStor as unknown as { removeDir: (project: number, level: number, folder: string) => void }).removeDir = (_project, _level, folder) => {
@@ -772,8 +937,9 @@ void test('with /candidate removeDir targets the override web folder, not the ca
   const written = await executeP2Entry({ kind: 'hand', moduleName: MODULE, candidate: CANDIDATE }, AT);
   assert.equal('refusal' in written, false);
   if ('refusal' in written) return;
-  assert.equal(written.pipeline.webDir, P2_WEB_DIR_REMOVED);
-  assert.deepEqual(removed, [`${CANDIDATE}/web`]);
+  assert.equal(written.pipeline.webDir, P2_WEB_DIR_PRESERVED);
+  assert.deepEqual(removed, []);
   assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${MODULE}/web/contracts`, shortName: 'stale', extension: '.json' })].status, 'changed');
-  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/web/contracts`, shortName: 'stale', extension: '.json' })].status, 'deleted');
+  assert.equal(host.files[keyOf({ project: PROJECT, level: 2, folder: `${CANDIDATE}/web/contracts`, shortName: 'stale', extension: '.json' })].status, 'changed');
+  assert.deepEqual(host.deleted, []);
 });

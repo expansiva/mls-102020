@@ -35,7 +35,7 @@ messages. The cause was neither the model nor the catalog (every group needed is
 `groupEnterText`, `groupSelectOne`, `groupTriggerAction`, `groupNotifyUser`, `groupSearchContent`). It
 was the source:
 
-- `page11DefinitionProse` (`agentChangeFrontend/helpers/cfeCreateShared.ts`) is a **fixed four-line
+- `page11DefinitionProse` (`agentMaterializeL2/helpers/cfeCreateShared.ts`) is a **fixed four-line
   template** — pageName, actor, purpose, categoryRef — plus one boilerplate paragraph;
 - `defsFormat: 'prose'` is hardcoded for every genome and every category (`cfePageRecipe.ts`, with a
   test asserting it).

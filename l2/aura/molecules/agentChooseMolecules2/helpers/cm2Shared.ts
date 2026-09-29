@@ -15,7 +15,7 @@
 // not the catalog — every group needed (groupEnterText, groupSelectOne, groupTriggerAction,
 // groupNotifyUser) is published — it was the SOURCE:
 //
-//   `page11DefinitionProse` (agentChangeFrontend/helpers/cfeCreateShared.ts) is a fixed four-line
+//   `page11DefinitionProse` (agentMaterializeL2/helpers/cfeCreateShared.ts) is a fixed four-line
 //   template — pageName, actor, purpose, categoryRef — plus one boilerplate paragraph, and
 //   `defsFormat: 'prose'` is hardcoded for EVERY genome and EVERY category (cfePageRecipe.ts, with a
 //   test asserting it). The prose can never name a field, a command or a control, on any page.
@@ -144,7 +144,7 @@ export async function readCm2ContractTypes(shared: Cm2SharedDefinition): Promise
 
 /**
  * `web/contracts/{page}.defs.ts` — the same two-export shape, but its `definition` is an ARRAY of
- * bffCall commands (`{ commandName, input: [{name,type}], output: [...] }`, per agentChangeFrontend
+ * bffCall commands (`{ commandName, input: [{name,type}], output: [...] }`, per agentMaterializeL2
  * /spec.md "1. Contract"), not an object.
  */
 export function parseContractTypesFromDefsSource(source: string): Record<string, Cm2ContractCommand> | null {
