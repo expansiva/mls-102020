@@ -8,15 +8,37 @@ import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
 import { D2_SHARED_VERSION } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { d2SharedFile, d2SharedManifestFile } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
 import { d2PageFile, d2PagesManifestFile, d2PagesResultFile, readD2PagesManifest, readD2PagesResult } from '/_102020_/l2/agentDefsL2/steps/pages50/io.js';
-import { finalizeD2PagesBarrier, findReusableD2PagesUnits, persistD2PagesUnit } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { finalizeD2PagesBarrier, findReusableD2PagesUnits, persistD2PagesUnit as persistUnit } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { buildD2MoleculeReceipt, resolveD2MoleculeSelection, type D2MoleculePreparedContext, type D2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { buildD2PagePipeline } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
+
+const compileFixture = async () => {};
+function persistD2PagesUnit(...args: Parameters<typeof persistUnit>): ReturnType<typeof persistUnit> {
+  const [identity, snapshot, pageId, sources, itemIds, attempt, receipt, expectedSharedHash, verifySources] = args;
+  return persistUnit(identity, snapshot, pageId, sources, itemIds, attempt, receipt, expectedSharedHash, verifySources, compileFixture);
+}
 
 const IDENTITY: D2RunIdentity = { project: 102047, module: 'fixture' };
 const PAGES = ['alpha', 'beta'];
 type Info = { project: number; level: number; folder: string; shortName: string; extension: string };
 type Stored = Info & { status: string; content: string; getContent: () => Promise<string> };
+
+void test('desktop and mobile compile before approval; one failed page keeps sibling approved', async () => {
+  const host = await installHost();
+  const molecular = await molecularFixture(); const receipt = await pageReceipt(molecular, 'direct-test-context');
+  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, receipt);
+  const sibling = await readD2PagesResult(IDENTITY, 'alpha');
+  const kinds: string[] = [];
+  await assert.rejects(() => persistUnit(IDENTITY, host.snapshot, 'beta', sources('beta'), ['beta__desktop__page11', 'beta__mobile__page11'], 1, receipt, undefined, undefined, async (_identity, files) => {
+    kinds.push(...files.map(file => file.kind));
+    throw new Error(`D2_TYPESCRIPT_COMPILE_FAILED: ${files[1].path}: TS2304 MissingType`);
+  }), /D2_TYPESCRIPT_COMPILE_FAILED.*TS2304/u);
+  assert.deepEqual(kinds, ['desktopPage', 'mobilePage']);
+  assert.equal(await readD2PagesResult(IDENTITY, 'beta'), null);
+  assert.deepEqual(await readD2PagesResult(IDENTITY, 'alpha'), sibling);
+  assert.equal(await readD2PagesManifest(IDENTITY), null);
+});
 
 void test('one failed page leaves its approved sibling untouched and barrier waits for both device defs', async () => {
   const host = await installHost();

@@ -51,13 +51,17 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     return intents;
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
-    if (parsed.attempt < 2) {
-      const repair: Args = { ...parsed, attempt: 2, feedback: diagnostic, previous: unwrapD2SharedToolPayload(step.interaction?.payload?.[0]) };
+    const repair = parsed.attempt < 2 ? sharedRepairArgs(parsed, diagnostic, unwrapD2SharedToolPayload(step.interaction?.payload?.[0])) : null;
+    if (repair) {
       return [addD2Step(context, parentStep.stepId, { type: 'agent', stepId: 0, interaction: null, stepTitle: `Repair shared ${parsed.pageId}`, status: 'waiting_human_input', nextSteps: [], agentName: D2_SHARED_PAGE_AGENT_NAME, prompt: JSON.stringify(repair), rags: [], planning: { planId: `shared40-repair-${parsed.pageId}-a2`, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' } } as mls.msg.AIAgentStep), updateD2Status(context, parentStep, step, hookSequential, 'completed', `shared40 ${parsed.pageId} scheduled its only repair: ${diagnostic}`)];
     }
     await markD2StepFailed(identity, 'shared40', `D2_SHARED_REPAIR_LIMIT ${parsed.pageId}: ${diagnostic}`);
     return [updateD2Status(context, parentStep, step, hookSequential, 'failed', `D2_SHARED_REPAIR_LIMIT ${parsed.pageId}: ${diagnostic}`)];
   }
+}
+
+export function sharedRepairArgs(args: Args, diagnostic: string, previous: unknown): Args | null {
+  return args.attempt < 2 ? { ...args, attempt: 2, feedback: diagnostic, previous } : null;
 }
 
 export function buildD2SharedHumanPrompt(

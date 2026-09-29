@@ -16,6 +16,7 @@ import {
   writeD2ContractsManifest,
 } from '/_102020_/l2/agentDefsL2/steps/contracts30/io.js';
 import { assertD2RenderedContract, renderD2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/render.js';
+import { assertD2CompiledSources } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
 
 export const D2_CONTRACTS_VERSION = '2026-09-21-agent-defs-l2-contracts-v1' as const;
 
@@ -95,6 +96,7 @@ export async function generateD2Contracts(
   snapshot: D2InputSnapshot,
   artifacts: D2InputArtifacts,
   verifySources: () => Promise<void> = async () => undefined,
+  compile: typeof assertD2CompiledSources = assertD2CompiledSources,
 ): Promise<D2ContractsRunResult> {
   assertIdentity(identity, snapshot);
   assertD2BundleMatchesSnapshot(snapshot, artifacts);
@@ -104,6 +106,7 @@ export async function generateD2Contracts(
 
   const priorManifest = await readD2ContractsManifest(identity);
   if (priorManifest?.status === 'approved' && priorManifest.snapshotHash === snapshot.snapshotHash && await barrierValid(identity, prepared, priorManifest.units)) {
+    for (const unit of prepared) await compile(identity, [{ pageId: unit.draft.pageId, kind: 'contract', path: unit.draft.artifactPath, source: unit.draft.source }]);
     await verifySources();
     return { manifest: priorManifest, written: 0, reused: prepared.length };
   }
@@ -118,6 +121,7 @@ export async function generateD2Contracts(
   for (const unit of prepared) {
     const existing = await readD2ContractResult(identity, unit.draft.pageId);
     if (existing && resultMatchesDraft(existing, unit.draft) && await sourceMatches(identity, unit.draft.pageId, unit.draft.sourceHash)) {
+      await compile(identity, [{ pageId: unit.draft.pageId, kind: 'contract', path: unit.draft.artifactPath, source: unit.draft.source }]);
       results.push(existing); reused += 1; continue;
     }
     await writeD2ContractDraft(identity, unit.draft);
@@ -128,6 +132,7 @@ export async function generateD2Contracts(
     }
     const persisted = await readD2ContractSource(identity, unit.draft.pageId);
     if (await sha256Text(persisted) !== unit.draft.sourceHash) throw new Error(`D2_CONTRACT_WRITE_HASH_MISMATCH: ${unit.draft.artifactPath}`);
+    await compile(identity, [{ pageId: unit.draft.pageId, kind: 'contract', path: unit.draft.artifactPath, source: persisted }]);
     await assertCurrentSnapshot(identity, snapshot.snapshotHash);
     const result = approvedResult(unit.draft);
     await writeD2ContractResult(identity, result);

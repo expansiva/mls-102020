@@ -17,6 +17,7 @@ import { d2TemplatePort } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryC
 import type { D2PageTemplateSelection, D2PageCoverageItem } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { assertD2RenderedPage, renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 import { d2PageDisplayPath, readD2PageSource, readD2PagesResult, writeD2PageSource, writeD2PagesManifest, writeD2PagesResult } from '/_102020_/l2/agentDefsL2/steps/pages50/io.js';
+import { assertD2CompiledSources } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
 
 export interface D2PagesUnitResult extends D2RunIdentity, D2PagesContextReceipt { schemaVersion: typeof D2_PAGES_VERSION; pageId: string; status: 'approved'; snapshotHash: string; sharedHash: string; contextHash: string; catalogHash: string; skillHashes: Record<string, string>; categoryRef: string; categoryReason: string; categoryEvidenceRefs: string[]; organismIds: string[]; moleculeReasons: Record<D2PageDevice, string>; moleculeReceipt: D2MoleculeReceipt; sourceHashes: Record<D2PageDevice, string>; artifactPaths: Record<D2PageDevice, string>; pipelineItemIds: Record<D2PageDevice, string>; attempts: number; }
 export interface D2PagesManifest extends D2RunIdentity { schemaVersion: typeof D2_PAGES_VERSION; status: 'approved'; snapshotHash: string; units: D2PagesUnitResult[]; }
@@ -34,7 +35,7 @@ export async function getD2PagesContext(identity: D2RunIdentity, snapshot: D2Inp
 
 export interface D2MoleculeRuntime { port: D2MoleculeCatalogPort; prepared: D2MoleculePreparedContext; }
 
-export async function approveD2PagesUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, judgment: D2PagesJudgment, molecular: D2MoleculeRuntime, pageSkills: D2PageSkillsContext, attempt: number, verifySources: () => Promise<void> = async () => undefined, expectedPreflightHash = molecular.prepared.receipt.contextHash): Promise<D2PagesUnitResult> {
+export async function approveD2PagesUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, judgment: D2PagesJudgment, molecular: D2MoleculeRuntime, pageSkills: D2PageSkillsContext, attempt: number, verifySources: () => Promise<void> = async () => undefined, expectedPreflightHash = molecular.prepared.receipt.contextHash, compile: typeof assertD2CompiledSources = assertD2CompiledSources): Promise<D2PagesUnitResult> {
   if (molecular.prepared.receipt.contextHash !== expectedPreflightHash) throw new Error(`D2_MOLECULE_CONTEXT_CHANGED: ${pageId}`);
   const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
   const { page, shared } = await getD2PagesContext(identity, snapshot, pageId);
@@ -65,12 +66,12 @@ export async function approveD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
     const currentSelection = await resolveD2MoleculeSelection(molecular.port, current.inventory, moleculeReceipt.selectedGroupIds, current.candidates);
     if ((await buildD2MoleculeReceipt(current.inventory, current.candidates, currentSelection)).contextHash !== moleculeReceipt.contextHash) throw new Error(`D2_MOLECULE_CONTEXT_CHANGED: ${pageId}`);
   };
-  return persistD2PagesUnit(identity, snapshot, pageId, sources, rendered.map(item => item.pipeline[0].id) as [string, string], attempt, { contextHash: await pageContextHash(pageSkills, templateSelection), catalogHash: pageSkills.catalogHash, skillHashes, categoryRef: judgment.category.categoryRef, categoryReason: judgment.category.reason, categoryEvidenceRefs: judgment.category.evidenceRefs, organismIds, moleculeReasons, moleculeReceipt, templateSelection, coverage: { desktop: rendered[0].coverage, mobile: rendered[1].coverage } }, dependency.sourceHash, async () => { await verifyContext(); if ((await pageTemplate(shared, judgment.category.categoryRef)).digest !== templateSelection.digest) throw new Error('D2_PAGES_TEMPLATE_CHANGED'); });
+  return persistD2PagesUnit(identity, snapshot, pageId, sources, rendered.map(item => item.pipeline[0].id) as [string, string], attempt, { contextHash: await pageContextHash(pageSkills, templateSelection), catalogHash: pageSkills.catalogHash, skillHashes, categoryRef: judgment.category.categoryRef, categoryReason: judgment.category.reason, categoryEvidenceRefs: judgment.category.evidenceRefs, organismIds, moleculeReasons, moleculeReceipt, templateSelection, coverage: { desktop: rendered[0].coverage, mobile: rendered[1].coverage } }, dependency.sourceHash, async () => { await verifyContext(); if ((await pageTemplate(shared, judgment.category.categoryRef)).digest !== templateSelection.digest) throw new Error('D2_PAGES_TEMPLATE_CHANGED'); }, compile);
 }
 
 export interface D2PagesContextReceipt { contextHash: string; catalogHash: string; skillHashes: Record<string, string>; categoryRef: string; categoryReason: string; categoryEvidenceRefs: string[]; organismIds: string[]; moleculeReasons: Record<D2PageDevice, string>; moleculeReceipt: D2MoleculeReceipt; templateSelection: D2PageTemplateSelection; coverage: Record<D2PageDevice, D2PageCoverageItem[]>; }
 
-export async function persistD2PagesUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, sources: Record<D2PageDevice, string>, itemIds: [string, string], attempt: number, receipt: D2PagesContextReceipt, expectedSharedHash?: string, verifySources: () => Promise<void> = async () => undefined): Promise<D2PagesUnitResult> {
+export async function persistD2PagesUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, sources: Record<D2PageDevice, string>, itemIds: [string, string], attempt: number, receipt: D2PagesContextReceipt, expectedSharedHash?: string, verifySources: () => Promise<void> = async () => undefined, compile: typeof assertD2CompiledSources = assertD2CompiledSources): Promise<D2PagesUnitResult> {
   const dependency = await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
   if (expectedSharedHash && dependency.sourceHash !== expectedSharedHash) throw new Error(`D2_PAGES_SHARED_CHANGED: ${pageId}`);
   const prior = await readD2PagesResult(identity, pageId);
@@ -78,6 +79,7 @@ export async function persistD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
     for (const device of ['desktop', 'mobile'] as const) {
       if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== prior.sourceHashes[device]) throw new Error(`D2_PAGES_APPROVED_SOURCE_CHANGED: ${pageId}/${device}`);
     }
+    await compile(identity, (['desktop', 'mobile'] as const).map(device => ({ pageId, kind: device === 'desktop' ? 'desktopPage' : 'mobilePage', path: d2PageDisplayPath(identity, pageId, device), source: sources[device] })));
     return prior;
   }
   const sourceHashes = { desktop: await sha256Text(sources.desktop), mobile: await sha256Text(sources.mobile) };
@@ -86,6 +88,7 @@ export async function persistD2PagesUnit(identity: D2RunIdentity, snapshot: D2In
     if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== sourceHashes[device]) await writeD2PageSource(identity, pageId, device, sources[device]);
     if (await sha256Text(await readD2PageSource(identity, pageId, device)) !== sourceHashes[device]) throw new Error(`D2_PAGES_WRITE_HASH_MISMATCH: ${pageId}/${device}`);
   }
+  await compile(identity, (['desktop', 'mobile'] as const).map(device => ({ pageId, kind: device === 'desktop' ? 'desktopPage' : 'mobilePage', path: d2PageDisplayPath(identity, pageId, device), source: sources[device] })));
   await assertD2PagesDependencies(identity, snapshot, pageId, verifySources);
   const result: D2PagesUnitResult = { schemaVersion: D2_PAGES_VERSION, ...identity, pageId, status: 'approved', snapshotHash: snapshot.snapshotHash, sharedHash: dependency.sourceHash, ...receipt, sourceHashes, artifactPaths: { desktop: d2PageDisplayPath(identity, pageId, 'desktop'), mobile: d2PageDisplayPath(identity, pageId, 'mobile') }, pipelineItemIds: { desktop: itemIds[0], mobile: itemIds[1] }, attempts: attempt };
   await writeD2PagesResult(identity, result); return result;

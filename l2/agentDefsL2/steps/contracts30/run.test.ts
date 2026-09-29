@@ -24,7 +24,12 @@ import {
   readD2ContractResult,
   readD2ContractsManifest,
 } from '/_102020_/l2/agentDefsL2/steps/contracts30/io.js';
-import { assertD2ContractUnit, d2ContractsSources, generateD2Contracts } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
+import { assertD2ContractUnit, d2ContractsSources, generateD2Contracts as generateContracts } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
+
+const compileFixture = async () => {};
+function generateD2Contracts(identity: D2RunIdentity, snapshot: D2InputSnapshot, artifacts: D2InputArtifacts, verifySources?: () => Promise<void>): ReturnType<typeof generateContracts> {
+  return generateContracts(identity, snapshot, artifacts, verifySources, compileFixture);
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HEAD = path.join(HERE, 'fixtures', 'head');
@@ -34,6 +39,19 @@ const IDENTITY: D2RunIdentity = { project: 102047, module: 'agendaClinica' };
 
 type Info = { project: number; level: number; folder: string; shortName: string; extension: string };
 type Stored = Info & { status: string; versionRef: string; content: string; getValueInfo: () => Promise<{ content: string }>; getContent: () => Promise<string> };
+
+void test('compiler finding stops deterministic contract approval after source write', async () => {
+  const fixture = runFixture(true);
+  installHost(fixture.snapshot);
+  const pageId = [...fixture.snapshot.selection.writePageIds].sort()[0];
+  await assert.rejects(() => generateContracts(IDENTITY, fixture.snapshot, fixture.artifacts, undefined, async (_identity, sources) => {
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0].kind, 'contract');
+    throw new Error(`D2_TYPESCRIPT_COMPILE_FAILED: ${sources[0].path}: TS2304 MissingType`);
+  }), /D2_TYPESCRIPT_COMPILE_FAILED.*TS2304/u);
+  assert.equal(await readD2ContractResult(IDENTITY, pageId), null);
+  assert.equal((await readD2ContractsManifest(IDENTITY))?.status, 'building');
+});
 
 void test('v1.2 target persists exact 5-page/19-route barrier, compiles and reruns byte-identically with zero model calls', async () => {
   const fixture = runFixture(true);

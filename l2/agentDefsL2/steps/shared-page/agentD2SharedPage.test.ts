@@ -5,7 +5,16 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import type { D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { afterPromptStep, buildD2SharedHumanPrompt, unwrapD2SharedToolPayload } from '/_102020_/l2/agentDefsL2/steps/shared-page/agentD2SharedPage.js';
+import { afterPromptStep, buildD2SharedHumanPrompt, sharedRepairArgs, unwrapD2SharedToolPayload } from '/_102020_/l2/agentDefsL2/steps/shared-page/agentD2SharedPage.js';
+
+void test('TypeScript diagnostic enters the one shared repair and attempt 2 is terminal', () => {
+  const args = { project: 817263, module: 'renamed', pageId: 'items', attempt: 1 };
+  const diagnostic = 'D2_TYPESCRIPT_COMPILE_FAILED: l2/renamed/web/shared/items.defs.ts: TS2304 MissingType';
+  const repair = sharedRepairArgs(args, diagnostic, { previous: true });
+  assert.equal(repair?.feedback, diagnostic);
+  assert.equal(repair?.attempt, 2);
+  assert.equal(sharedRepairArgs({ ...args, attempt: 2 }, diagnostic, {}), null);
+});
 
 void test('deterministic host schedules the sole repair for a truncated payload', async () => {
   (globalThis as unknown as { mls: unknown }).mls = { actualProject: 102047 };
