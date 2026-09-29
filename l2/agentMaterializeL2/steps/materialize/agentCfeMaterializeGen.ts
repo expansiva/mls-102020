@@ -38,7 +38,6 @@ import {
   type PipelineItem,
 } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 import {
-  compileAndGetErrors,
   compileMlsPathAndGetErrors,
   consumeMaterializeStudioMessages,
   extractToolCallArgs,
@@ -92,6 +91,15 @@ export function createAgent(): IAgentAsync {
     beforePromptStep,
     afterPromptStep,
   };
+}
+
+async function compileOutputAndTest(outputPath: string, testPath: string | null): Promise<{ errors: string[] } | { unavailable: string }> {
+  const outputErrors = await compileMlsPathAndGetErrors(outputPath);
+  if (outputErrors === null) return { unavailable: `Studio compiler unavailable or produced no proof for ${outputPath}` };
+  if (!testPath) return { errors: outputErrors };
+  const testErrors = await compileMlsPathAndGetErrors(testPath);
+  if (testErrors === null) return { unavailable: `Studio compiler unavailable or produced no proof for ${testPath}` };
+  return { errors: [...outputErrors, ...testErrors] };
 }
 
 async function beforePromptStep(
@@ -199,10 +207,12 @@ async function materializeSharedDeterministic(
     // The model stays alive on purpose: it is what the shared resolves against for the rest of the
     // phase, and it is bounded (one per contract).
     try { await getCompiledDtsByMlsPath(contractTsPath); } catch { /* best-effort */ }
-    const compileErrors = [
-      ...(await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName) ?? []),
-      ...(typecheckPath ? (await compileMlsPathAndGetErrors(typecheckPath) ?? []) : []),
-    ];
+    const compileResult = await compileOutputAndTest(pipelineItem.outputPath, typecheckPath);
+    if ('unavailable' in compileResult) {
+      await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'studio-compiler-unavailable', compileResult.unavailable, pipelineItem.outputPath);
+      return [mkFailureStatus(context, parentStep, step, hookSequential, attempt >= 2, compileResult.unavailable)];
+    }
+    const compileErrors = compileResult.errors;
     if (compileErrors.length > 0) {
       // The scaffold is deterministic, so a compile error here is a defs/contract mismatch it could not
       // see. Hand the item to the LLM instead of failing: the file on disk is overwritten by its output.
@@ -302,9 +312,12 @@ async function afterPromptStep(
     // it must see what the verify will see. Without the deps loaded it accepts a file the verify then
     // rejects, and the round is spent discovering that.
     await preloadItemTypecheckDeps(pipelineItem.type, pipelineItem.outputPath, defsContent);
+    const compileResult = await compileOutputAndTest(pipelineItem.outputPath, typecheckPath);
+    if ('unavailable' in compileResult) {
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(compileResult.unavailable))];
+    }
     let compileErrors = [
-      ...(await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName) ?? []),
-      ...(typecheckPath ? (await compileMlsPathAndGetErrors(typecheckPath) ?? []) : []),
+      ...compileResult.errors,
       // bugpage21: catch the compiles-cleanly template defect in the TIGHTEST loop — right after this
       // worker saved its own .ts — instead of waiting for the phase verify round.
       ...(pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism' ? [...collectPageTemplateHygieneIssues(sharedGuard.code), ...collectChartEventIssues(sharedGuard.code)] : []),
@@ -312,10 +325,11 @@ async function afterPromptStep(
     if (compileErrors.length > 0 && sharedGuard.injected) {
       const reverted = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.original);
       if (reverted) {
-        compileErrors = [
-          ...(await compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName) ?? []),
-          ...(typecheckPath ? (await compileMlsPathAndGetErrors(typecheckPath) ?? []) : []),
-        ];
+        const revertedResult = await compileOutputAndTest(pipelineItem.outputPath, typecheckPath);
+        if ('unavailable' in revertedResult) {
+          return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(revertedResult.unavailable))];
+        }
+        compileErrors = revertedResult.errors;
       }
     }
     const studioDiagnostics = consumeMaterializeStudioMessages();
@@ -571,10 +585,11 @@ export async function computeRepairHint(pipelineItem: PipelineItem, planId: stri
   // loaded; the phase verify is the boundary that gives them back.
   const ownDefs = pipelineItem.defPath ? await getContentByMlsPath(pipelineItem.defPath) : null;
   await preloadItemTypecheckDeps(pipelineItem.type, outputPath, ownDefs);
-  const errors = [...(await compileMlsPathAndGetErrors(outputPath) ?? [])];
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
-  if (testContent && testContent.trim()) errors.push(...(await compileMlsPathAndGetErrors(testPath) ?? []));
+  const compileResult = await compileOutputAndTest(outputPath, testContent?.trim() ? testPath : null);
+  if ('unavailable' in compileResult) throw new Error(compileResult.unavailable);
+  const errors = [...compileResult.errors];
   // bugpage21: the phase verify also rejects TEMPLATE-HYGIENE defects (an invented module-level helper
   // rendered by name, which paints the function source on screen). Those are NOT compiler errors, and a
   // repair slot carries only {planId, defPath, attempt} — so recompute them from disk HERE too, or the

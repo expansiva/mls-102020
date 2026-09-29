@@ -281,67 +281,36 @@ test('compileAndGetErrors returns null when Monaco compile is absent, [] when pr
   assert.deepEqual(clean, []);
 });
 
-test('storDiskPath calls diskPath as a method (host class, private field)', async () => {
+test('compiler diagnostics include dependency errors and missing proof never becomes clean', async () => {
   const studio = await loadModule();
-  class HostStor {
-    readonly #base = '/data/mls-base';
-    diskPath(info: { project: number; shortName: string }): string {
-      return `${this.#base}/mls-${info.project}/${info.shortName}.ts`;
-    }
-  }
-  const info = { project: 102047, level: 2, folder: 'mod/web/shared', shortName: 'catalog', extension: '.ts' };
-  g.mls = { stor: new HostStor() };
-  assert.equal(studio.storDiskPath(info), '/data/mls-base/mls-102047/catalog.ts');
-  g.mls = { stor: {} };
-  assert.equal(studio.storDiskPath(info), null);
-});
+  installStub();
+  const key = `${PROJECT}:2:${FOLDER}:itemA:.ts`;
+  let diskPathCalls = 0;
+  g.mls.stor.diskPath = () => { diskPathCalls += 1; throw new Error('host disk must not be consulted'); };
+  g.mls.l2.typescript.compile = async (model: any) => {
+    model.compilerResults.errors = [{ code: 2307, messageText: "Cannot find module '/_102046_/l2/buildFlowFsm/web/contracts/projectCatalogue.js'." }];
+    return false;
+  };
+  const dependencyErrors = await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA');
+  assert.equal(dependencyErrors?.length, 1);
+  assert.match(dependencyErrors![0], /TS2307/u);
+  assert.match(dependencyErrors![0], /Cannot find module/u);
+  assert.equal(diskPathCalls, 0, 'host disk capability cannot influence the Studio result');
 
-test('renamed Node compiler rejects infrastructure failures but preserves real file diagnostics', async () => {
-  const studio = await loadModule();
-  for (const [output, exitCode, expected] of [
-    ['', 0, ''],
-    ["error TS5058: The specified path does not exist", 1, null],
-    ['mls-102045/l2/ledger/web/shared/records.ts(42,3): error TS2551: Property misspelled does not exist.', 2, 'diagnostic'],
-  ] as const) {
-    const got = await studio.runProjectFrontendTsc('/fixture', () => ({
-      stdout: { on: (_event, callback) => callback(output) },
-      on: (event, callback) => { if (event === 'close') callback(exitCode); },
-    }));
-    assert.equal(got, expected === 'diagnostic' ? output : expected);
-  }
-});
+  g.mls.l2.typescript.compile = async () => undefined;
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null, 'missing compile result is unavailable');
 
-test('compileModuleViaProjectTsc uses injected runner and does not sniff the host', async () => {
-  const studio = await loadModule();
+  g.mls.l2.typescript.compile = async (model: any) => { delete model.compilerResults; return true; };
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null, 'missing diagnostics are unavailable');
+
+  g.mls.l2.typescript.compile = async () => { throw new Error('Studio compile crashed'); };
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null, 'compiler exceptions are unavailable');
+
+  delete g.mls.editor.models[g.mls.editor.getKeyModel(PROJECT, 'itemA', FOLDER, 2)];
+  g.mls.stor.files[key].getOrCreateModel = async () => null;
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null, 'missing model is unavailable');
+  assert.equal(diskPathCalls, 0);
+
   const src = await import('node:fs').then(fs => fs.readFileSync(new URL('./cfeMaterializeStudio.ts', import.meta.url), 'utf8'));
-  assert.match(src, /const childProcessSpec = 'node:child_process'/);
-  assert.match(src, /await import\(childProcessSpec\)/);
-  assert.match(src, /tsconfig\.frontend\.json/);
-  assert.doesNotMatch(src, /typeof Deno/);
-  assert.doesNotMatch(src, /"Deno" in globalThis/);
-  assert.doesNotMatch(src, /user-agent/i);
-
-  const info = { project: 102047, level: 2, folder: 'controleEstoque4/web/desktop/page31', shortName: 'stockMovementCatalogue', extension: '.ts' };
-  class HostStor {
-    diskPath() { return '/Volumes/x/collab/mls-base/mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts'; }
-  }
-  g.mls = { stor: new HostStor() };
-  const tscOut = "mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts(42,729): error TS2367: This comparison appears to be unintentional because the types '\"idle\" | \"success\" | \"error\"' and '\"loading\"' have no overlap.\nmls-102051/l5/runtimeConfig.ts(1,1): error TS2322: Type '\"x\"' is not assignable to type 'RuntimeConfig'.";
-  const ran = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => tscOut);
-  assert.equal(ran.trace.path, 'project-tsc');
-  assert.equal(ran.trace.rawDiagnostics, 2);
-  assert.equal(ran.trace.afterFilter, 1);
-  assert.equal(ran.errors.length, 1);
-  assert.match(ran.errors[0], /stockMovementCatalogue\.ts: TS2367/);
-
-  const missingSpawn = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => null);
-  assert.equal(missingSpawn.trace.path, 'unavailable');
-  assert.equal(missingSpawn.trace.reason, 'no-child-process');
-  assert.deepEqual(missingSpawn.errors, []);
-
-  g.mls = { stor: {} };
-  const missingDisk = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => tscOut);
-  assert.equal(missingDisk.trace.path, 'unavailable');
-  assert.equal(missingDisk.trace.reason, 'no-diskPath');
-  assert.deepEqual(missingDisk.errors, []);
+  assert.doesNotMatch(src, /node:child_process|compileModuleViaProjectTsc|storDiskPath|runProjectFrontendTsc/u);
 });

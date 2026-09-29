@@ -49,16 +49,12 @@ import {
   mlsL2ModuleName,
   pageDefinitionForChecks,
   parseDefs,
-  sharedTsRefOfDtsArtifact,
   testPathForOutputPath,
   validateGeneratedPageQuality,
   type PipelineItem,
 } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 import {
   compileMlsPathAndGetErrors,
-  compileModuleViaProjectTsc,
-  monacoCompileAvailable,
-  parseMlsPath,
   releaseBorrowedModelScope,
   persistSharedDtsArtifactIfStale,
   preloadTypecheckDeps,
@@ -221,24 +217,8 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     ? (args.skipped ?? []).filter(item => mlsL2ModuleName(item.defPath) === moduleName || mlsL2ModuleName(item.outputPath || '') === moduleName)
     : (args.skipped ?? []);
   const checkedItems: BrokenItem[] = [];
-  let projectErrors: string[] | undefined;
-  if (!monacoCompileAvailable()) {
-    let targetProject = mls.actualProject || 0;
-    const files: Array<{ folder: string; shortName: string }> = [];
-    for (const item of scopedItems) {
-      const source = await getContentByMlsPath(item.defPath);
-      const pipelineItem = source ? pipelineItemForStep(source, item.itemId) : null;
-      const parsed = pipelineItem ? parseMlsPath(pipelineItem.outputPath) : null;
-      if (parsed) {
-        targetProject = parsed.project;
-        files.push({ folder: parsed.folder, shortName: parsed.shortName });
-      }
-    }
-    const compiled = await compileModuleViaProjectTsc(targetProject, moduleName, files);
-    if (compiled.trace.path === 'project-tsc') projectErrors = compiled.errors;
-  }
   for (const item of scopedItems) {
-    const checked = await verifyItem(item, projectErrors);
+    const checked = await verifyItem(item);
     checkedItems.push(checked);
   }
   const blocked = checkedItems.filter(checked => checked.blocking.length > 0);
@@ -275,7 +255,8 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
   const bucketsNote = describeVerifyBuckets({ blocked: blocked.length, repaired: repaired.length, declared: declaredTraces.length });
   const blockingView = checkedItems.map(item => ({ outputPath: item.outputPath, errors: item.blocking }));
   const systemic = isSystemicPageFailure(args.attempt, blockingView) || isSystemicSharedFailure(args.attempt, blockingView);
-  const final = toRepair.length === 0 || args.attempt > MATERIALIZE_REPAIR_ROUNDS || systemic;
+  const compilerUnavailable = checkedItems.filter(item => item.typecheck === 'unavailable');
+  const final = compilerUnavailable.length > 0 || toRepair.length === 0 || args.attempt > MATERIALIZE_REPAIR_ROUNDS || systemic;
   // Refresh even on terminal/systemic/clean exits: the prior repair's errors are not this verdict.
   await persistAuditableFindings(moduleName, args.attempt, checkedItems);
   // ALWAYS write the stable verdict file (overwrites each round) so "was this phase resolved?" has one
@@ -286,6 +267,14 @@ async function runVerifyItems(context: mls.msg.ExecutionContext, parentStep: mls
     { declared: declaredTraces, repaired },
     final,
   );
+
+  if (compilerUnavailable.length > 0) {
+    const affected = compilerUnavailable.map(item => item.outputPath || item.item.defPath).join(', ');
+    return [createUpdateStatusIntent(
+      context, parentStep, step, hookSequential, 'failed',
+      `MATERIALIZE-COMPILER-UNAVAILABLE: Studio did not produce compiler proof for ${affected}. No repair rounds were started; restore the Studio compiler and re-run. ${summaryRef ? `verdict: ${summaryRef}` : ''}`,
+    )];
+  }
 
   if (toRepair.length === 0) {
     // Warnings never block, but they MUST land in frontend-materialize-findings — that is the
@@ -589,12 +578,7 @@ function withFindings(item: GenStepArgs, outputPath: string | null, typecheck: B
   return { item, outputPath, blocking, repairable, declared, warnings, errors: [...blocking, ...repairable, ...declared], typecheck };
 }
 
-export function projectCompileErrorsForItem(errors: string[], refs: Array<string | null>): string[] {
-  const selected = new Set(refs.filter((ref): ref is string => !!ref).map(ref => ref.replace(/^\/+/u, '')));
-  return errors.filter(error => selected.has(compileErrorRef(error)));
-}
-
-async function verifyItem(item: GenStepArgs, projectErrors?: string[]): Promise<BrokenItem> {
+async function verifyItem(item: GenStepArgs): Promise<BrokenItem> {
   const defsContent = await getContentByMlsPath(item.defPath);
   const pipelineItem = defsContent ? pipelineItemForStep(defsContent, item.itemId) : null;
   if (!pipelineItem) return withFindings(item, null, 'not-applicable', { blocking: [`pipeline not found in defs: ${item.defPath}`] });
@@ -617,16 +601,14 @@ async function verifyItem(item: GenStepArgs, projectErrors?: string[]): Promise<
     await preloadTypecheckDeps([contractTsPathOf(defsContent)]);
   }
 
-  const outputCompileErrors = projectErrors === undefined ? await compileMlsPathAndGetErrors(outputPath) : projectCompileErrorsForItem(projectErrors, [outputPath]);
-  const blocking = [...(outputCompileErrors ?? ['materialization compile unavailable: output was not verified'])];
+  const outputCompileErrors = await compileMlsPathAndGetErrors(outputPath);
+  const blocking = outputCompileErrors === null
+    ? [`Studio compiler unavailable: output was not verified: ${outputPath}`]
+    : [...outputCompileErrors];
   const repairable: string[] = [];
   repairable.push(...await collectMissingLocalStylesheetIssues(content, outputPath, getContentByMlsPath));
   const declared: string[] = [];
   const warnings: string[] = [];
-  if (projectErrors !== undefined) {
-    const dependencyRefs = (pipelineItem.dependsFiles ?? []).map(ref => sharedTsRefOfDtsArtifact(ref) ?? ref);
-    blocking.push(...projectCompileErrorsForItem(projectErrors, dependencyRefs));
-  }
   if (pipelineItem.type === 'l2_shared' && defsContent) {
     repairable.push(...collectMutationEnvelopeErrorIssues(parseDefs(defsContent).data, content));
     repairable.push(...collectUndefinedStateNotificationIssues(content));
@@ -640,8 +622,13 @@ async function verifyItem(item: GenStepArgs, projectErrors?: string[]): Promise<
   const testPath = testPathForOutputPath(outputPath);
   const testContent = await getContentByMlsPath(testPath);
   const typecheckErrors = testContent && testContent.trim()
-    ? projectErrors === undefined ? await compileMlsPathAndGetErrors(testPath) : projectCompileErrorsForItem(projectErrors, [testPath])
+    ? await compileMlsPathAndGetErrors(testPath)
     : [];
+  if (typecheckErrors === null) {
+    return withFindings(item, outputPath, 'unavailable', {
+      blocking: [...blocking, `Studio compiler unavailable: companion was not verified: ${testPath}`],
+    });
+  }
   // The companion .test.ts imports the shipped .ts, so this compile can name EITHER file. The shipped
   // one is already compiled on its own above, but usage inside the test surfaces errors a lone compile
   // misses — those still block, because the file that does not compile is the one that ships. An error
@@ -651,7 +638,6 @@ async function verifyItem(item: GenStepArgs, projectErrors?: string[]): Promise<
     if (compileErrorRef(error) === outputPath.replace(/^\/+/u, '')) blocking.push(error);
     else declared.push(error);
   }
-  if (typecheckErrors === null) blocking.push('materialization typecheck unavailable: companion was not verified');
   if (declared.length) blocking.push(...declared);
   if (pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism') {
     // run02/102047: a page born WITHOUT the skeleton i18n block passed every gate and @@addLanguage then
