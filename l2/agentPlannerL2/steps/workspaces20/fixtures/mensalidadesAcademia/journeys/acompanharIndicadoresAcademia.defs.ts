@@ -1,6 +1,6 @@
 /// <mls fileReference="_102047_/l4/mensalidadesAcademia/journeys/acompanharIndicadoresAcademia.defs.ts" enhancement="_blank"/>
 
-import type { Ns5JourneyArtifact } from '/_102035_/l2/solution/types.js';
+import type { Ns5JourneyArtifact, Ns5Readonly } from '/_102035_/l2/solution/types.js';
 
 export const acompanharIndicadoresAcademiaJourney = {
   "schemaVersion": "2026-09-10-ns5-journey-v1",
@@ -30,7 +30,7 @@ export const acompanharIndicadoresAcademiaJourney = {
     }
   },
   "businessHash": "sha256:e3016ac537483927333e7a5716882622b3258345db01e6057a40b9b7b16f121e"
-} as const satisfies Ns5JourneyArtifact;
+} as const satisfies Ns5Readonly<Ns5JourneyArtifact>;
 
 export type AcompanharIndicadoresAcademiaJourneyType = typeof acompanharIndicadoresAcademiaJourney;
 

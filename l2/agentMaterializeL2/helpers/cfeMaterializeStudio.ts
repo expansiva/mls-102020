@@ -7,6 +7,14 @@ import {
   type CompileModuleTrace,
 } from '/_102020_/l2/agentMaterializeL2/helpers/cfeProjectTsc.js';
 import { createStorFile } from '/_102027_/l2/libStor.js';
+import {
+  compileStudioFile, enterStudioCompile, getStudioModel as getGeneratedModel, leaveStudioCompile,
+  releaseBorrowedModels, studioCompileAvailable,
+} from '/_102035_/l2/solution/studioCompile.js';
+
+// p4_20: the model registry, the borrow scope and the Studio compile live in the neutral lib, shared with
+// the NS5 (`mls-102035/l2/solution/studioCompile.ts`). The names the M2 steps import stay here.
+export { borrowedModelScopeSize, releaseBorrowedModelScope } from '/_102035_/l2/solution/studioCompile.js';
 
 declare const mls: any;
 
@@ -138,74 +146,6 @@ export async function loadModuleByBuild(path: string): Promise<any> {
   }
 }
 
-interface BorrowedModel { project: number; shortName: string; folder: string; level: number; }
-
-let activeCompiles = 0;
-const pendingRelease: BorrowedModel[] = [];
-
-/**
- * Models the VERIFY/PRELOAD path created, keyed by the editor key so borrowing the same file twice is
- * queued once.
- *
- * `saveGeneratedTs` releases the model it created in its own `finally`, but `compileAndGetErrors` and
- * `getCompiledDtsByMlsPath` also reach `getOrCreateModel`, and those creations were never released: a
- * run of a 34-workspace module verifies 34 shared + 102 pages + 34 tests and preloads a contract per
- * item, so Monaco reported "potential listener LEAK detected, having 200 listeners already" and the
- * console stopped being usable for diagnosis.
- *
- * Released at a PHASE boundary rather than per item, on purpose: the 102029 runtime contracts a page
- * preloads for its context are the same for every page of the phase, and disposing them per item would
- * trade the leak for one full recompile each. The queue still honours `activeCompiles` — a model
- * disposed mid-compile of a file that imports it is a FALSE error that burns repair budget.
- */
-const borrowedByScope = new Map<string, BorrowedModel>();
-
-/**
- * Release the Monaco models THIS step created, once no compile is in flight.
- *
- * Without any release the registry only grows — every materialized file leaves a model behind and Monaco
- * hits "potential listener LEAK detected, having 200 listeners already", after which the console is
- * useless for diagnosis. A module generates dozens of files (a page11 per workspace + contracts + tests).
- *
- * Safe because nothing in this agent needs a model to outlive its compile: `mls.editor.models` is read in
- * exactly two places, both inside getGeneratedModel and both "return it if it already exists" guards. The
- * materialization step is an independent process (it also runs from the CLI, `pnpm materializeL2`), so it
- * can never assume a warm registry — whoever needs a model loads it. `deleteModels` only disposes the
- * model and drops the registry entry; it never touches `mls.stor`, so the generated file stays intact.
- *
- * Deferred until `activeCompiles === 0` because the phase fans out in `parallel_dynamic`: file A can be
- * an import of B, and disposing A mid-compile of B yields a FALSE compile error that burns repair budget.
- */
-function releaseBorrowedModels(borrowed: BorrowedModel[]): void {
-  pendingRelease.push(...borrowed);
-  // Whoever releases a borrow owns it: keep the scope from queuing the same model a second time.
-  for (const model of borrowed) {
-    try { borrowedByScope.delete(mls.editor.getKeyModel(model.project, model.shortName, model.folder, model.level)); } catch { /* best effort */ }
-  }
-  if (activeCompiles > 0) return;
-  for (const model of pendingRelease.splice(0, pendingRelease.length)) {
-    // Signature is (project, shortName, folder, releaseMonacoModel, level) — the boolean comes BEFORE
-    // the level. `true` disposes the underlying monaco model, which is what holds the listeners.
-    try { mls.editor.deleteModels(model.project, model.shortName, model.folder, true, model.level); } catch { /* best effort */ }
-  }
-}
-
-/**
- * Queue every model the verify/preload path borrowed since the last call. Returns how many were queued,
- * for the caller's trace — the actual dispose still waits for `activeCompiles === 0`.
- */
-export function releaseBorrowedModelScope(): number {
-  const borrowed = [...borrowedByScope.values()];
-  if (borrowed.length) releaseBorrowedModels(borrowed);
-  borrowedByScope.clear();
-  return borrowed.length;
-}
-
-/** How many borrowed models are waiting for the next scope release (telemetry/tests). */
-export function borrowedModelScopeSize(): number {
-  return borrowedByScope.size;
-}
-
 /**
  * ONE hidden, persistent model+editor reused by every `formatGeneratedTsInStudio` call of the
  * session (cf_format_monaco_dispose, 28/ago).
@@ -214,7 +154,7 @@ export function borrowedModelScopeSize(): number {
  * fires the TS worker's async validation, which answers AFTER the dispose and rejects without a
  * catch — run01/102047 flooded the console with one
  * `Uncaught (in promise) Error: Could not find source file: 'inmemory://model/N'` per generated
- * file (same family as the Monaco listener leak `releaseBorrowedModels` documents above). With a
+ * file (same family as the Monaco listener leak `releaseBorrowedModels` documents in `studioCompile.ts`). With a
  * singleton there is no create/dispose per file, so there is no orphan worker response at all.
  *
  * The URI is stable and self-describing so anything the worker ever logs about this model is
@@ -296,7 +236,7 @@ export async function saveGeneratedTs(
   // ours" and nothing would ever be released. A model already in the registry belongs to the Studio (the
   // file is open in a tab) and must never be disposed.
   const ownsModel = !mls.editor.models[mls.editor.getKeyModel(project, shortName, folder, level)];
-  activeCompiles++;
+  enterStudioCompile();
   try {
     const fileInfo = { project, level, folder, shortName, extension };
     const key = mls.stor.getKeyToFile(fileInfo);
@@ -317,7 +257,7 @@ export async function saveGeneratedTs(
   } finally {
     // The content is durable in stor; the model was only a working copy for the compile. Queue it even on
     // failure — a thrown compile leaks exactly the same listeners.
-    activeCompiles--;
+    leaveStudioCompile();
     if (ownsModel) releaseBorrowedModels([{ project, shortName, folder, level }]);
   }
 }
@@ -384,10 +324,7 @@ export async function persistSharedDtsArtifactIfStale(sharedTsPath: string): Pro
  * clean compile.
  */
 export function monacoCompileAvailable(): boolean {
-  const compile = (mls as { l2?: { typescript?: { compile?: unknown } } }).l2?.typescript?.compile;
-  return typeof compile === 'function'
-    && typeof mls.editor?.getKeyModel === 'function'
-    && mls.editor?.models != null;
+  return studioCompileAvailable();
 }
 
 // Call it as a METHOD, never detached. `diskPath` is host-only (it does not exist in mls.d.ts nor
@@ -472,12 +409,8 @@ export async function compileAndGetErrors(
 ): Promise<string[] | null> {
   if (!monacoCompileAvailable()) return null;
   try {
-    const modelTs = await getGeneratedModel(project, level, folder, shortName, extension);
-    if (!modelTs?.model) return [];
-    if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
-    await mls.l2.typescript.compile(modelTs);
-    const errors: unknown[] = modelTs.compilerResults?.errors ?? [];
-    return errors.map(formatCompilerDiagnostic);
+    const compiled = await compileStudioFile({ project, level, folder, shortName, extension });
+    return compiled ? compiled.errors : [];
   } catch (error) {
     recordStudioMessage('error', 'compileAndGetErrors failed', error);
     return [`compileAndGetErrors failed: ${formatUnknownError(error)}`];
@@ -631,96 +564,14 @@ function recordStudioMessage(level: 'warn' | 'error', message: string, error?: u
   else console.warn(line);
 }
 
-function formatCompilerDiagnostic(error: unknown): string {
-  if (typeof error === 'string') return error;
-  if (!isRecord(error)) return formatUnknownError(error);
-
-  const code = typeof error.code === 'number' ? `TS${error.code}` : '';
-  const file = isRecord(error.file) && typeof error.file.fileName === 'string' ? error.file.fileName : '';
-  const position = diagnosticPosition(error);
-  const message = flattenMessageText(error.messageText ?? error.message ?? error);
-  return [file ? `${file}${position}` : '', code, message].filter(Boolean).join(' - ');
-}
-
-function diagnosticPosition(error: Record<string, any>): string {
-  const file = error.file;
-  if (!isRecord(file) || typeof error.start !== 'number' || typeof file.getLineAndCharacterOfPosition !== 'function') return '';
-  try {
-    const pos = file.getLineAndCharacterOfPosition(error.start);
-    if (!pos || typeof pos.line !== 'number' || typeof pos.character !== 'number') return '';
-    return `:${pos.line + 1}:${pos.character + 1}`;
-  } catch {
-    return '';
-  }
-}
-
-function flattenMessageText(value: unknown): string {
-  if (typeof value === 'string') return value;
-  if (isRecord(value)) {
-    const head = flattenMessageText(value.messageText ?? '');
-    const next = Array.isArray(value.next) ? value.next.map(flattenMessageText).filter(Boolean) : [];
-    return [head, ...next].filter(Boolean).join(' ');
-  }
-  return formatUnknownError(value);
-}
-
 function formatUnknownError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
   try { return JSON.stringify(error); } catch { return String(error); }
 }
 
-async function getGeneratedModel(
-  project: number,
-  level: number,
-  folder: string,
-  shortName: string,
-  extension: string,
-): Promise<any | null> {
-  const editorKey = mls.editor.getKeyModel(project, shortName, folder, level);
-  const slot = getModelSlot(extension);
-  let modelBase = mls.editor.models[editorKey];
-  if (modelBase?.[slot]?.model) {
-    // Resident model (open tab, leftover from a previous compile): Monaco compiles against MEMORY,
-    // so a hook that only wrote stor would leave this buffer stale. Sync from stor here — the
-    // compile owns its inputs (same idea as CB addModels). Hooks must not touch mls.editor.
-    const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
-    const file = (mls.stor.files as Record<string, any>)[key];
-    if (file && file.status !== 'deleted') await syncModelFromStor(modelBase[slot], file);
-    return modelBase[slot];
-  }
-  // OWNERSHIP, decided BEFORE getOrCreateModel can create anything — the same rule saveGeneratedTs
-  // applies: no registry entry at all means the Studio does not have this file open, so a model created
-  // below is ours to release. An entry that already exists belongs to a tab and is never disposed.
-  const owned = !modelBase;
-
-  const key = mls.stor.getKeyToFile({ project, level, folder, shortName, extension });
-  const file = (mls.stor.files as Record<string, any>)[key];
-  if (!file || file.status === 'deleted') return null;
-
-  const model = await file.getOrCreateModel?.();
-  modelBase = mls.editor.models[editorKey];
-  if (owned && modelBase) borrowedByScope.set(editorKey, { project, shortName, folder, level });
-  return modelBase?.[slot] ?? model ?? null;
-}
-
-async function syncModelFromStor(entry: any, file: { getContent?: () => Promise<unknown> }): Promise<void> {
-  const textModel = entry?.model && typeof entry.model.getValue === 'function' ? entry.model
-    : typeof entry?.getValue === 'function' ? entry
-    : null;
-  if (!textModel?.getValue || !textModel.setValue) return;
-  try {
-    const content = await file.getContent?.();
-    if (typeof content === 'string' && textModel.getValue() !== content) textModel.setValue(content);
-  } catch { /* best effort: compile still runs against whatever is already in the model */ }
-}
-
 function isGeneratedTsExtension(extension: string): boolean {
   return extension === '.ts' || extension === '.test.ts';
-}
-
-function getModelSlot(extension: string): 'ts' | 'test' {
-  return extension === '.test.ts' ? 'test' : 'ts';
 }
 
 function parseMaybeJson(raw: unknown): unknown {
