@@ -161,9 +161,7 @@ async function materializeSharedDeterministic(
   attempt: number,
 ): Promise<mls.msg.AgentIntent[] | null> {
   try {
-    const contractTsPath = isRecord(definitionData) && isRecord(definitionData.contractRef) && typeof definitionData.contractRef.tsPath === 'string'
-      ? definitionData.contractRef.tsPath
-      : '';
+    const contractTsPath = contractDefsPath(definitionData, pipelineItem.outputPath);
     const contractSource = contractTsPath ? await getContentByMlsPath(contractTsPath) : null;
     if (!contractSource) return null;
 
@@ -283,6 +281,9 @@ async function afterPromptStep(
     const sharedGuard = pipelineItem.type === 'l2_shared'
       ? await applySharedScenaryGuard(pipelineItem, parsedDefs?.data, formatted)
       : { code: formatted, injected: false, original: formatted };
+    if ('reason' in sharedGuard && sharedGuard.reason) {
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `shared scenary prefill unresolved for ${pipelineItem.outputPath}: ${sharedGuard.reason}`)];
+    }
     const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.code);
     if (!saved) {
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
@@ -387,9 +388,7 @@ function createPromptReadyIntent(
 }
 
 async function sharedTemplateForLlm(pipelineItem: PipelineItem, definitionData: unknown): Promise<{ code: string; mode: 'scaffold' | 'scenary-block' } | undefined> {
-  const contractTsPath = isRecord(definitionData) && isRecord(definitionData.contractRef) && typeof definitionData.contractRef.tsPath === 'string'
-    ? definitionData.contractRef.tsPath
-    : '';
+  const contractTsPath = contractDefsPath(definitionData, pipelineItem.outputPath);
   const contractSource = contractTsPath ? await getContentByMlsPath(contractTsPath) : null;
   if (!contractSource) return undefined;
   const previousSource = await getContentByMlsPath(pipelineItem.outputPath);
@@ -402,13 +401,19 @@ async function applySharedScenaryGuard(
   pipelineItem: PipelineItem,
   definitionData: unknown,
   code: string,
-): Promise<{ code: string; injected: boolean; original: string }> {
-  const contractTsPath = isRecord(definitionData) && isRecord(definitionData.contractRef) && typeof definitionData.contractRef.tsPath === 'string'
-    ? definitionData.contractRef.tsPath
-    : '';
+): Promise<{ code: string; injected: boolean; original: string; reason?: string }> {
+  const contractTsPath = contractDefsPath(definitionData, pipelineItem.outputPath);
   const contractSource = contractTsPath ? (await getContentByMlsPath(contractTsPath)) ?? '' : '';
   const guarded = ensureSharedScenaryMembers(code, pipelineItem.outputPath, definitionData, contractSource);
-  return { code: guarded.code, injected: guarded.injected, original: code };
+  const hasScenary = isRecord(definitionData) && Array.isArray(definitionData.states)
+    && definitionData.states.some(state => isRecord(state) && state.kind === 'uiScenary');
+  return { code: guarded.code, injected: guarded.injected, original: code, reason: hasScenary ? guarded.reason : undefined };
+}
+
+function contractDefsPath(definitionData: unknown, outputPath: string): string {
+  if (!isRecord(definitionData) || !isRecord(definitionData.contractRef) || typeof definitionData.contractRef.defPath !== 'string') return '';
+  const project = parseMlsPath(outputPath)?.project || 0;
+  return resolveProjectRelativeRef(definitionData.contractRef.defPath, project);
 }
 
 // Rebuild the repair hint from disk for a fan-out repair slot: missing/empty artifact -> missing

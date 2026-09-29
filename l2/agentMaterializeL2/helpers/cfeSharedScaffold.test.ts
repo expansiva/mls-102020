@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import ts from 'typescript';
 import { catalogueLocales, ensureSharedScenaryMembers, generateSharedScaffold, migrateI18nKeyOffPageId, migratePreviousI18nKeys, parseContractInterfaces, parsePreviousI18n, renderUiScenaryMembers, sharedLlmFallbackTemplate } from '/_102020_/l2/agentMaterializeL2/helpers/cfeSharedScaffold.js';
 import { collectMutationEnvelopeErrorIssues } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
 
@@ -338,7 +339,7 @@ test('generateSharedScaffold emits uiScenary, URL guard, command success returns
   assert.match(code, /if \(!allowed\.includes\(value\)\) \{/);
   assert.match(code, /console\.warn\('setUiScenary: unknown value \\'' \+ value \+ '\\''\);/);
   // URL / setter without the id degrades to base; with the id the requested scene stands.
-  assert.match(code, /if \(value === 'detail' && \(!this\.listThingsThingId\)\) next = 'base';/);
+  assert.match(code, /if \(value === 'detail' && \(\(this\.listThingsThingId == null \|\| String\(this\.listThingsThingId\) === ''\)\)\) next = 'base';/);
   assert.match(code, /const rawThingId: string = params\.get\('thingId'\) \|\| '';/);
   assert.match(code, /const requested: string = params\.get\('scenary'\) \|\| 'base';/);
   assert.match(code, /window\.history\.replaceState\(/);
@@ -364,9 +365,9 @@ test('generateSharedScaffold guards+casts an enumerated URL scenary target; a fr
   (scenaries[1].preconditions as string[]).push('ui.things.input.createThing.kind');
   const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', defs, CONTRACT).code!;
   // enumerated target: guard against the declared valueSet, then cast to the member's own type
-  assert.match(code, /if \(!this\.createThingKind\) \{\n\s*if \(\['alpha', 'beta'\]\.includes\(rawKind\)\) \{\n\s*this\.createThingKind = rawKind as unknown as typeof this\.createThingKind;\n\s*setState\('ui\.things\.input\.createThing\.kind', rawKind\);\n\s*\}\n\s*\}/);
+  assert.match(code, /if \(this\.createThingKind == null \|\| String\(this\.createThingKind\) === ''\) \{\n\s*if \(\['alpha', 'beta'\]\.includes\(rawKind\)\) \{\n\s*this\.createThingKind = rawKind as typeof this\.createThingKind;\n\s*setState\('ui\.things\.input\.createThing\.kind', rawKind\);\n\s*\}\n\s*\}/);
   // free-string target (thingId, no valueSet) is unchanged: plain assignment, no guard/cast
-  assert.match(code, /if \(!this\.listThingsThingId\) \{\n\s*this\.listThingsThingId = rawThingId;\n\s*setState\('ui\.things\.input\.listThings\.thingId', rawThingId\);\n\s*\}/);
+  assert.match(code, /if \(this\.listThingsThingId == null \|\| String\(this\.listThingsThingId\) === ''\) \{\n\s*this\.listThingsThingId = rawThingId;\n\s*setState\('ui\.things\.input\.listThings\.thingId', rawThingId\);\n\s*\}/);
 });
 
 // p4_16 rodada 3 (28/09, controleEstoque/movimentacoes): the enum guard from rodada 2 is one case
@@ -396,9 +397,9 @@ test('generateSharedScaffold prefills a URL scenary target by contract field typ
   // number: Number.isFinite guard, value cast through unknown (real member type declared elsewhere)
   assert.match(code, /const listThingsPageNum = Number\(rawPage\);\n\s*if \(Number\.isFinite\(listThingsPageNum\)\) \{\n\s*this\.listThingsPage = listThingsPageNum as unknown as typeof this\.listThingsPage;\n\s*setState\('ui\.things\.input\.listThings\.page', listThingsPageNum\);\n\s*\}/);
   // boolean: only the two literal strings are accepted
-  assert.match(code, /if \(rawActive === 'true' \|\| rawActive === 'false'\) \{\n\s*this\.listThingsActive = rawActive as unknown as typeof this\.listThingsActive;\n\s*setState\('ui\.things\.input\.listThings\.active', rawActive\);\n\s*\}/);
+  assert.match(code, /if \(rawActive === 'true' \|\| rawActive === 'false'\) \{\n\s*const listThingsActiveValue: boolean = rawActive === 'true';\n\s*this\.listThingsActive = listThingsActiveValue as unknown as typeof this\.listThingsActive;\n\s*setState\('ui\.things\.input\.listThings\.active', listThingsActiveValue\);\n\s*\}/);
   // string: unchanged, direct assignment
-  assert.match(code, /if \(!this\.listThingsNameFilter\) \{\n\s*this\.listThingsNameFilter = rawNameFilter;\n\s*setState\('ui\.things\.input\.listThings\.nameFilter', rawNameFilter\);\n\s*\}/);
+  assert.match(code, /if \(this\.listThingsNameFilter == null \|\| String\(this\.listThingsNameFilter\) === ''\) \{\n\s*this\.listThingsNameFilter = rawNameFilter;\n\s*setState\('ui\.things\.input\.listThings\.nameFilter', rawNameFilter\);\n\s*\}/);
   // array/opaque: no prefill block at all for that field (no safe string->value parse to guess)
   assert.ok(!code.includes('rawTags'), 'array/opaque contract fields get no URL prefill');
   assert.ok(!/params\.get\('tags'\)/.test(code));
@@ -443,7 +444,7 @@ test('generateSharedScaffold uses memberName for the class member, never the rep
   assert.match(code, /code: this\.listThingsCode,|if \(this\.listThingsCode\) \{\s*\n\s*params\.code = this\.listThingsCode;/);
   assert.match(code, /if \(this\.createThingCode\) \{\s*\n\s*params\.code = this\.createThingCode;/);
   // the scenary guard also uses both distinct members
-  assert.match(code, /if \(value === 'detail' && \(!this\.listThingsCode \|\| !this\.createThingCode\)\) next = 'base';/);
+  assert.match(code, /if \(value === 'detail' && \(\(this\.listThingsCode == null \|\| String\(this\.listThingsCode\) === ''\) \|\| \(this\.createThingCode == null \|\| String\(this\.createThingCode\) === ''\)\)\) next = 'base';/);
   assert.ok(!/this\.code\b/.test(code), 'the repeated field name must never surface as a class member');
   // A state without memberName keeps using name (existing states in definitionWithScenary, e.g. uiScenary).
   assert.match(code, /@property\(\) uiScenary: 'base' \| 'detail' \| 'createThing' = 'base';/);
@@ -543,8 +544,9 @@ test('T1: opaque contract types do not bail the scaffold', () => {
   );
   const parsed = parseContractInterfaces(contract).get('ListThingsOutput')!;
   assert.deepEqual(parsed.fields.filter(field => field.type === 'opaque').map(field => field.name), [
-    'imageReferences', 'maybeName', 'named',
+    'imageReferences', 'named',
   ]);
+  assert.deepEqual(parsed.fields.find(field => field.name === 'maybeName'), { name: 'maybeName', type: 'string', optional: false, nullable: true });
   const result = generateSharedScaffold(SHARED_PATH, definition(), contract);
   assert.equal(result.reason, undefined, result.reason);
   const code = result.code!;
@@ -571,6 +573,138 @@ export class DemoThingsBase {
   assert.match(result.code, /handleUiScenaryChange\(event: Event\): void/);
   assert.match(result.code, /private applyUrlScenary\(\): void/);
   assert.match(result.code, /private syncScenaryQuery\(value: string\): void/);
+});
+
+test('nested quoted contract path resolves the exact leaf and preserves array/default shape', () => {
+  const contract = `${CONTRACT}
+export interface AllocatePacketInput {
+  "meta"?: {
+    // A brace in a comment must not close the interface: }
+    "numbers"?: { "amount": number; "enabled": boolean; "mode": "fast" | "safe"; };
+    "other": { "amount": string; }[];
+  };
+}
+export interface PacketOutput {
+  "rows": { "amount": number; }[];
+  "count": number;
+}`;
+  const parsed = parseContractInterfaces(contract);
+  assert.deepEqual(parsed.get('AllocatePacketInput')!.fields.find(field => field.name === 'meta.numbers.amount'), {
+    name: 'meta.numbers.amount', path: ['meta', 'numbers', 'amount'], type: 'number', optional: true,
+  });
+  assert.deepEqual(parsed.get('AllocatePacketInput')!.fields.find(field => field.name === 'meta.other')?.type, 'array');
+  assert.deepEqual(parsed.get('PacketOutput')!.fields.filter(field => !field.path).map(field => field.name), ['rows', 'count']);
+});
+
+test('nested URL prefill converts and validates values; reinjection is idempotent', () => {
+  const defs = definitionWithScenary();
+  defs.contractRef = { defPath: 'l2/demo/web/contracts/packet.defs.ts', calls: [
+    { actionId: 'allocatePacket', routeConst: 'allocatePacketRoute', inputType: 'AllocatePacketInput', outputType: 'AllocatePacketOutput' },
+  ] };
+  (defs.states as Record<string, unknown>[]).push(
+    { stateKey: 'ui.packet.amount', name: 'amount', memberName: 'amountValue', kind: 'input', contractRef: 'AllocatePacketInput.meta.numbers.amount', dtoPath: 'meta.numbers.amount', defaultValue: null },
+    { stateKey: 'ui.packet.enabled', name: 'enabled', memberName: 'enabledValue', kind: 'input', contractRef: 'AllocatePacketInput.meta.numbers.enabled', dtoPath: 'meta.numbers.enabled', defaultValue: null },
+    { stateKey: 'ui.packet.mode', name: 'mode', memberName: 'modeValue', kind: 'input', contractRef: 'AllocatePacketInput.meta.numbers.mode', dtoPath: 'meta.numbers.mode', defaultValue: null },
+  );
+  ((defs.scenaries as Record<string, unknown>[])[1].preconditions as string[]).push('ui.packet.amount', 'ui.packet.enabled', 'ui.packet.mode');
+  const contract = `${CONTRACT.replace('export interface CreateThingOutput {}', 'export interface CreateThingOutput { [key: string]: unknown; }')}\nexport interface AllocatePacketInput { "meta": { "numbers": { "amount": number; "enabled": boolean; "mode": "fast" | "safe"; }; }; }`;
+  const template = sharedLlmFallbackTemplate(SHARED_PATH, defs, contract);
+  assert.ok('mode' in template);
+  assert.equal(template.mode, 'scenary-block');
+  const source = `export class Fixture { amountValue: number | null = null; enabledValue: boolean | null = null; modeValue: string | null = null; listThingsThingId = 'existing'; uiScenary = 'base'; setUiScenary(value: string) { this.uiScenary = value; } }`;
+  const injected = ensureSharedScenaryMembers(source, SHARED_PATH, defs, contract);
+  assert.equal(injected.injected, true, injected.reason);
+  const again = ensureSharedScenaryMembers(injected.code, SHARED_PATH, defs, contract);
+  assert.equal(again.injected, false);
+  assert.equal(again.code, injected.code);
+  const method = /private applyUrlScenary\(\): void \{[\s\S]*?\n  \}/.exec(injected.code)?.[0];
+  assert.ok(method);
+  const js = ts.transpileModule(`class Fixture { amountValue: number | null = null; enabledValue: boolean | null = null; modeValue: string | null = null; listThingsThingId = 'existing'; uiScenary = 'base'; setUiScenary(value: string) { this.uiScenary = value; } ${method} run() { this.applyUrlScenary(); } }`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const run = (search: string, existing?: { amount?: number; enabled?: boolean }) => {
+    const writes = new Map<string, unknown>();
+    const Fixture = new Function('window', 'setState', `${js}; return Fixture;`)({ location: { search } }, (key: string, value: unknown) => writes.set(key, value)) as new () => { amountValue: number | null; enabledValue: boolean | null; modeValue: string | null; run(): void };
+    const instance = new Fixture();
+    if (existing?.amount !== undefined) instance.amountValue = existing.amount;
+    if (existing?.enabled !== undefined) instance.enabledValue = existing.enabled;
+    instance.run();
+    return { instance, writes };
+  };
+  const good = run('?amount=0.75&enabled=false&mode=safe');
+  assert.equal(good.instance.amountValue, 0.75);
+  assert.equal(good.instance.enabledValue, false);
+  assert.equal(good.instance.modeValue, 'safe');
+  assert.equal(good.writes.get('ui.packet.amount'), 0.75);
+  assert.equal(good.writes.get('ui.packet.enabled'), false);
+  assert.equal(run('?amount=0&enabled=true&mode=fast').writes.get('ui.packet.amount'), 0);
+  assert.equal(run('?amount=0&enabled=true&mode=fast').writes.get('ui.packet.enabled'), true);
+  for (const value of ['', 'NaN', 'Infinity', '-Infinity', '1e999']) {
+    assert.equal(run(`?amount=${value}`).writes.has('ui.packet.amount'), false, value);
+  }
+  assert.equal(run('?enabled=maybe&mode=slow').writes.has('ui.packet.enabled'), false);
+  assert.equal(run('?enabled=maybe&mode=slow').writes.has('ui.packet.mode'), false);
+  const retained = run('?amount=9&enabled=true', { amount: 0, enabled: false });
+  assert.equal(retained.instance.amountValue, 0);
+  assert.equal(retained.instance.enabledValue, false);
+  assert.equal(retained.writes.has('ui.packet.amount'), false);
+  assert.equal(retained.writes.has('ui.packet.enabled'), false);
+  for (const ref of ['OtherInput.meta.numbers.amount', 'AllocatePacketInput.meta.numbers.missing']) {
+    const invalid = structuredClone(defs);
+    const invalidState = (invalid.states as Record<string, unknown>[]).find(state => state.stateKey === 'ui.packet.amount')!;
+    invalidState.contractRef = ref;
+    invalidState.dtoPath = ref.split('.').slice(1).join('.');
+    const result = ensureSharedScenaryMembers(source, SHARED_PATH, invalid, contract);
+    assert.equal(result.injected, false);
+    assert.match(result.reason || '', /ui\.packet\.amount.*(contractRef\.calls|missing)/);
+  }
+  const divergent = structuredClone(defs);
+  (divergent.states as Record<string, unknown>[]).find(state => state.stateKey === 'ui.packet.amount')!.dtoPath = 'meta.other.amount';
+  assert.match(ensureSharedScenaryMembers(source, SHARED_PATH, divergent, contract).reason || '', /dtoPath differs/);
+});
+
+test('saved p4_16 defs generate and reinject a numeric quantity prefill without TS2322', () => {
+  const savedRoot = new URL('../../../../../todo/gerarApp/l4/certificacao/runs/p4_16/final_state/l2/web/', import.meta.url);
+  const sharedDefsSource = readFileSync(new URL('shared/movimentacoes.defs.ts', savedRoot), 'utf8');
+  const contractSource = readFileSync(new URL('contracts/movimentacoes.defs.ts', savedRoot), 'utf8');
+  const savedSharedSource = readFileSync(new URL('shared/movimentacoes.ts', savedRoot), 'utf8');
+  const marker = 'export const definition = ';
+  const start = sharedDefsSource.indexOf(marker);
+  const end = sharedDefsSource.indexOf('\n} as const;', start);
+  assert.ok(start >= 0 && end > start, 'saved shared definition is present');
+  const defs = JSON.parse(sharedDefsSource.slice(start + marker.length, end + 2)) as Record<string, unknown>;
+  const outputPath = '_102047_/l2/controleEstoque/web/shared/movimentacoes.ts';
+  const template = sharedLlmFallbackTemplate(outputPath, defs, contractSource, savedSharedSource);
+  assert.ok('mode' in template, 'productive LLM template must have the saved contract');
+  assert.equal(template.mode, 'scenary-block');
+  const generated = renderUiScenaryMembers(outputPath, defs, contractSource, savedSharedSource);
+  assert.ok(generated.code, generated.reason);
+  assert.ok(template.code.includes(generated.code));
+  const injected = ensureSharedScenaryMembers(savedSharedSource, outputPath, defs, contractSource);
+  assert.equal(injected.injected, true, injected.reason);
+  assert.ok(injected.code.includes(generated.code));
+  assert.equal(ensureSharedScenaryMembers(injected.code, outputPath, defs, contractSource).injected, false);
+  assert.match(generated.code, /const stateCreateStockMovementDetailsQuantityNum = Number\(rawQuantity\);/);
+  assert.match(generated.code, /this\.stateCreateStockMovementDetailsQuantity = stateCreateStockMovementDetailsQuantityNum as unknown as typeof this\.stateCreateStockMovementDetailsQuantity;/);
+  assert.match(generated.code, /setState\('ui\.movimentacoes\.createStockMovement\.input\.details\.quantity', stateCreateStockMovementDetailsQuantityNum\);/);
+  assert.doesNotMatch(generated.code, /stateCreateStockMovementDetailsQuantity = rawQuantity/);
+  const method = /private applyUrlScenary\(\): void \{[\s\S]*?\n  \}/.exec(generated.code)?.[0];
+  assert.ok(method);
+  const fixtureSource = `declare function setState(key: string, value: unknown): void; class Fixture { [key: string]: any; stateCreateStockMovementDetailsQuantity: number | null = null; setUiScenary(_value: string): void {} ${method} run(): void { this.applyUrlScenary(); } }`;
+  const virtualFile = '/p4_16_prefill_fixture.ts';
+  const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2022, strict: true, noEmit: true, skipLibCheck: true };
+  const host = ts.createCompilerHost(options);
+  const readSource = host.getSourceFile.bind(host);
+  host.getSourceFile = (file, languageVersion, onError, shouldCreateNewSourceFile) => file === virtualFile
+    ? ts.createSourceFile(file, fixtureSource, languageVersion, true)
+    : readSource(file, languageVersion, onError, shouldCreateNewSourceFile);
+  const diagnostics = ts.getPreEmitDiagnostics(ts.createProgram([virtualFile], options, host)).filter(item => item.file?.fileName === virtualFile);
+  assert.deepEqual(diagnostics.map(item => `${item.code}: ${ts.flattenDiagnosticMessageText(item.messageText, ' ')}`), []);
+  const js = ts.transpileModule(fixtureSource, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const writes = new Map<string, unknown>();
+  const Fixture = new Function('window', 'setState', `${js}; return Fixture;`)({ location: { search: '?quantity=2.5&scenary=createStockMovement' } }, (key: string, value: unknown) => writes.set(key, value)) as new () => { stateCreateStockMovementDetailsQuantity: number | null; run(): void };
+  const instance = new Fixture();
+  instance.run();
+  assert.equal(instance.stateCreateStockMovementDetailsQuantity, 2.5);
+  assert.equal(writes.get('ui.movimentacoes.createStockMovement.input.details.quantity'), 2.5);
 });
 
 test('T1/T2: every l2_shared write and LLM fallback uses ensureSharedScenaryMembers / sharedLlmFallbackTemplate', () => {
