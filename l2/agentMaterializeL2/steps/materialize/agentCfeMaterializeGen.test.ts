@@ -15,8 +15,25 @@ const MODEL_TYPES = ['code', 'design'] as const;
 test('page worker carries the mechanical reference from prompt preparation into normalization before saving', () => {
   const source = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
   assert.match(source, /pendingMechanicalReferences\.set\(genContext\.pipelineItem\.outputPath, \{ skeleton, sharedTemplate: sharedTemplate\?\.code \}/u);
-  assert.match(source, /normalizeGeneratedCode\(pipelineItem, parsedDefs\?\.data, output\.code, mechanical\?\.skeleton, currentSharedReference\?\.code \?\? mechanical\?\.sharedTemplate\)/u);
+  assert.match(source, /const skeleton = mechanical\?\.skeleton \?\? .*pageSkeletonFor\(pipelineItem, parsedDefs\?\.items \?\? \[\], parsedDefs\?\.data\)/su);
+  assert.match(source, /normalizeGeneratedCode\(pipelineItem, parsedDefs\?\.data, output\.code, skeleton, currentSharedReference\?\.code \?\? mechanical\?\.sharedTemplate\)/u);
   assert.match(source, /pendingMechanicalReferences\.delete\(pipelineItem\.outputPath\)/u);
+});
+
+test('all materializer outputs pass one MLS import normalizer before save/compile', () => {
+  const source = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
+  assert.match(source, /normalizeMlsImports\(guarded\.code, \{ outputPath: pipelineItem\.outputPath, \.\.\.importContext \}\)/u);
+  assert.match(source, /saveGeneratedTs\(parsed\.project, parsed\.level, parsed\.folder, parsed\.shortName, normalized\.code\)/u);
+  assert.match(source, /normalizeMlsImports\(sharedGuard\.code, \{ outputPath: pipelineItem\.outputPath, \.\.\.importContext \}\)/u);
+  assert.match(source, /saveGeneratedTs\(parsed\.project, parsed\.level, parsed\.folder, parsed\.shortName, formatted\)/u);
+  assert.match(source, /normalizeMlsImports\(rawTypecheckTest, \{ outputPath: testPathForOutputPath\(pipelineItem\.outputPath\), \.\.\.importContext \}\)/u);
+  assert.match(source, /normalizeMlsImports\(source, \{ outputPath: testPath, \.\.\.importContext \}\)/u);
+  assert.match(source, /pipelineItem\.type === 'l2_page' \|\| pipelineItem\.type === 'l2_page_organism'/u);
+  const skill = readFileSync(path.join(MLS_BASE, 'mls-102020/l2/agentMaterializeL2/skills/genCfeSharedTs.ts'), 'utf8');
+  assert.match(skill, /contractRef\.defPath/u);
+  assert.match(skill, /contractRef\.calls\[\]/u);
+  assert.match(skill, /end in \.js/u);
+  assert.doesNotMatch(skill, /contractRef\.tsPath|contractRef\.contracts/u);
 });
 
 test('renamed page public reference includes full shared source even when skeleton omits an encoded state', async () => {
@@ -48,6 +65,7 @@ test('page11 monitor cases come only from the current page bindings and contract
   const sharedFromP4 = JSON.parse(savedShared.slice(start + marker.length, end + 2));
   const contractFromP4 = readFileSync(path.join(savedRoot, 'contracts/movimentacoes.defs.ts'), 'utf8');
   const savedOutput = buildMaterializePageTestsFile({
+    testPath: '_817263_/l2/controleEstoque/web/desktop/page11/movimentacoes.test.ts',
     project: 817263, moduleName: 'controleEstoque', pageId: 'movimentacoes', variant: 'page11',
     definition: 'current page prose', shared: sharedFromP4, contract: contractFromP4,
   });
@@ -87,10 +105,12 @@ export interface CreatePacketInput { label: string; }
 export interface CreatePacketOutput { id: string; }
 `;
   const input = {
+    testPath: '_817263_/l2/inventory/web/mobile/page11/packetDesk.test.ts',
     project: 817263, moduleName: 'inventory', pageId: 'packetDesk', variant: 'page11',
     definition: 'page prose', shared, contract,
   };
   const generated = buildMaterializePageTestsFile(input)!;
+  assert.match(generated, /^\/\/\/ <mls fileReference="_817263_\/l2\/inventory\/web\/mobile\/page11\/packetDesk\.test\.ts"/u);
   const parsed = JSON.parse(generated.match(/export const pageTests = ([\s\S]*?) as const;/u)![1]);
   assert.equal(parsed.moduleName, 'inventory');
   assert.equal(parsed.page, 'packetDesk');
@@ -120,8 +140,8 @@ export interface CreatePacketOutput { id: string; }
   const partial = buildMaterializePageTestsFile({ ...input, shared: divergent })!;
   assert.doesNotMatch(partial, /createPacket\.ok/u);
   assert.match(partial, /untested: createPacket\.oracle — dataBinding differs/u);
-  const otherVariant = buildMaterializePageTestsFile({ ...input, variant: 'page21' })!;
-  assert.match(otherVariant, /web\/desktop\/page21\/packetDesk\.test\.ts/u);
+  const otherVariant = buildMaterializePageTestsFile({ ...input, variant: 'page21', testPath: '_817263_/l2/inventory/web/mobile/page21/packetDesk.test.ts' })!;
+  assert.match(otherVariant, /web\/mobile\/page21\/packetDesk\.test\.ts/u);
   const genSource = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
   assert.match(genSource, /if \(genome !== 'page11'\) return null/u);
   assert.match(genSource, /contract: contractSource/u);

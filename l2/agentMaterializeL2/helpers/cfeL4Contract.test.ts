@@ -28,6 +28,7 @@ import {
   isL4LookupGap,
   normalizeGeneratedCode,
 } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
+import { normalizeMlsImports } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMlsImports.js';
 
 test('frontendOutputShapeForOperation follows L4 accessPattern pagination', () => {
   assert.equal(frontendOutputShapeForOperation({ kind: 'query', accessPattern: { kind: 'list', pagination: 'required' } }), 'paginated');
@@ -100,7 +101,7 @@ test('generated typecheck tests import via the project alias, not relative paths
   }, [{ commandName: 'listMenuItems', kind: 'query', input: [{ name: 'status' }], output: [{ name: 'name' }] }]) || '';
   const shared = buildMaterializeTypecheckTest({
     id: 'menuManagement__l2_shared', type: 'l2_shared', outputPath: '_102051_/l2/cafeFlow/web/shared/menuManagement.ts',
-  }, { moduleName: 'cafeFlow', pageId: 'menuManagement', contractRef: { tsPath: '_102051_/l2/cafeFlow/web/contracts/menuManagement.ts' },
+  }, { moduleName: 'cafeFlow', pageId: 'menuManagement', contractRef: { defPath: 'l2/cafeFlow/web/contracts/menuManagement.defs.ts' },
     states: [{ name: 'listMenuItemsData', stateKey: 'ui.menuManagement.data.listMenuItems', kind: 'queryResult', contractRef: { commandName: 'listMenuItems', direction: 'output' } }], actions: [] }) || '';
   for (const src of [contract, shared]) {
     for (const line of src.split('\n').filter(l => l.startsWith('import'))) {
@@ -117,7 +118,7 @@ test('shared enum input assertion includes the empty sentinel the property is in
   }, {
     moduleName: 'todo',
     pageId: 'taskCatalogue',
-    contractRef: { tsPath: '_102047_/l2/todo/web/contracts/taskCatalogue.ts' },
+    contractRef: { defPath: 'l2/todo/web/contracts/taskCatalogue.defs.ts' },
     states: [{
       name: 'cmdDecideNextTaskStatusStatus',
       kind: 'input',
@@ -129,6 +130,24 @@ test('shared enum input assertion includes the empty sentinel the property is in
   }) || '';
   assert.match(shared, /Assignable<typeof page\.cmdDecideNextTaskStatusStatus, "pending" \| "inProgress" \| "completed" \| "cancelled" \| CmdDecideNextTaskStatusInput\["status"\] \| ''>/);
   assert.doesNotMatch(shared, /Assignable<typeof page\.cmdDecideNextTaskStatusStatus, string>/);
+});
+
+test('shared typecheck uses canonical memberName and keeps distinct assertions for repeated names', () => {
+  const shared = buildMaterializeTypecheckTest({
+    id: 'inventory__l2_shared', type: 'l2_shared', outputPath: '_102050_/l2/inventory/web/shared/items.ts',
+  }, {
+    moduleName: 'inventory', pageId: 'items',
+    states: [
+      { stateKey: 'ui.items.create.input.id', name: 'id', memberName: 'stateCreateId', defaultValue: null },
+      { stateKey: 'ui.items.list.input.id', name: 'id', memberName: 'stateListId', defaultValue: null },
+      { stateKey: 'ui.items.other.input.id', name: 'id', memberName: 'stateListId', defaultValue: null },
+    ],
+    actions: [],
+  }) || '';
+  assert.match(shared, /type _State_stateCreateId = Assert<Assignable<typeof page\.stateCreateId, unknown>>;/);
+  assert.match(shared, /type _State_stateListId = Assert<Assignable<typeof page\.stateListId, unknown>>;/);
+  assert.match(shared, /type _State_stateListId_2 = Assert<Assignable<typeof page\.stateListId, unknown>>;/);
+  assert.doesNotMatch(shared, /typeof page\.id/);
 });
 
 // ---- L4 v2: workspace bffCalls -> page commands ----
@@ -266,9 +285,18 @@ test('buildWorkspaceContractSource emits empty interfaces for a command with no 
   assert.match(source, /export interface ActOutput \{\}/);
 });
 
-test('materialization fixes deterministic page seams without changing generated render logic', () => {
-  const page = normalizeGeneratedCode({ id: 'report__l2_page', type: 'l2_page', outputPath: '_102048_/l2/buildFlowFsm/web/desktop/page11/report.ts' }, { baseClassName: 'BuildFlowFsmReportBase' }, "import { WrongBase } from '/_102048_/l2/buildFlowFsm/web/shared/report.ts';\nexport class ReportPage extends WrongBase {}");
+test('materialization resolves page imports exactly without changing generated symbols or render logic', () => {
+  const outputPath = '_102048_/l2/buildFlowFsm/web/desktop/page11/report.ts';
+  const normalizedPage = normalizeGeneratedCode({ id: 'report__l2_page', type: 'l2_page', outputPath }, { baseClassName: 'BuildFlowFsmReportBase' }, "import { BuildFlowFsmReportBase } from '/_102048_/l2/buildFlowFsm/web/shared/report.ts';\nexport class ReportPage extends BuildFlowFsmReportBase {}");
+  const pageResult = normalizeMlsImports(normalizedPage, {
+    outputPath,
+    knownFiles: ['_102048_/l2/buildFlowFsm/web/shared/report.ts'],
+    declaredPackages: [],
+  });
+  assert.deepEqual(pageResult.issues, []);
+  const page = pageResult.code;
   assert.match(page, /import \{ BuildFlowFsmReportBase \} from '\/_102048_\/l2\/buildFlowFsm\/web\/shared\/report\.js';/);
+  assert.match(page, /export class ReportPage extends BuildFlowFsmReportBase/);
 
   const shared = normalizeGeneratedCode({ id: 'report__l2_shared', type: 'l2_shared', outputPath: '_102048_/l2/buildFlowFsm/web/shared/report.ts' }, { baseClassName: 'BuildFlowFsmReportBase' }, 'export class WrongBase extends CollabLitElement {}');
   assert.match(shared, /export class BuildFlowFsmReportBase extends CollabLitElement/);

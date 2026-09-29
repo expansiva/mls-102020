@@ -1237,7 +1237,8 @@ export async function savePageTestsFile(prepared: CfePreparedPage, runId?: strin
   if (cases.length === 0) return;
   const genome = prepared.variantPlan[0]?.genome || PAGE_TESTS_VARIANT;
   const fileInfo: FileInfo = { project: prepared.project, level: 2, folder: `${prepared.page.moduleName}/web/desktop/${genome}`, shortName: prepared.page.pageId, extension: '.test.ts' };
-  await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases, genome, cases.untested));
+  const testPath = `_${fileInfo.project}_/l${fileInfo.level}/${fileInfo.folder}/${fileInfo.shortName}${fileInfo.extension}`;
+  await saveStorContent(fileInfo, renderPageTestsFile(prepared, cases, testPath, genome, cases.untested));
 }
 
 /**
@@ -1426,6 +1427,7 @@ export function buildPageTestCases(prepared: PageTestSource, moduleProduced?: Ma
  * the same structural parser as the scaffold. Missing or unrepresentable inputs stay named gaps.
  */
 export function buildMaterializePageTestsFile(input: {
+  testPath: string;
   project: number;
   moduleName: string;
   pageId: string;
@@ -1571,7 +1573,7 @@ export function buildMaterializePageTestsFile(input: {
   // to the monitor. Keep the named gap in the caller's degradation trace instead.
   if (cases.length === 0) return null;
   const envelope = { project: input.project, page: prepared.page, workspace: prepared.workspace };
-  return renderPageTestsFile(envelope, cases, input.variant, allUntested);
+  return renderPageTestsFile(envelope, cases, input.testPath, input.variant, allUntested);
 }
 
 /**
@@ -1941,10 +1943,11 @@ function entityHasWeekdayField(entityId: string, entityFields: Record<string, st
 function renderPageTestsFile(
   prepared: PageTestEnvelope,
   cases: PageTestCase[],
+  testPath: string,
   genome = PAGE_TESTS_VARIANT,
   untested?: { id: string; reason: string }[],
 ): string {
-  const header = `/// <mls fileReference="_${prepared.project}_/l2/${prepared.page.moduleName}/web/desktop/${genome}/${prepared.page.pageId}.test.ts" enhancement="_blank"/>`;
+  const header = `/// <mls fileReference="${testPath}" enhancement="_blank"/>`;
   // The workspace's actor rides in the envelope so the tests runner can execute the page's cases AS a
   // seeded identity for that actor. Without it every actor-scoped route is unrunnable headless: the
   // usecase reads the id from the session (a field worker sees the tasks assigned to THEM) and fails

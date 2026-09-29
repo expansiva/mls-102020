@@ -55,7 +55,7 @@ test('conservative: anything the scanner cannot classify comes back unchanged', 
   assert.equal(insertGeneratedTsLineBreaks(unbalanced), unbalanced);
 });
 
-test('wiring: both runtimes format BEFORE the textual gates and before the write', () => {
+test('wiring: Studio resolves MLS imports, then formats the exact bytes saved and compiled', () => {
   const cli = readFileSync(new URL('../nodejsMaterializeL2.ts', import.meta.url), 'utf8');
   // The formatted string is the `code` the hygiene gates read and writeGeneratedArtifacts persists.
   assert.match(cli, /formatGeneratedTsCli\(applyHeader\(p\.item\.outputPath, r\.code\)\)/u);
@@ -64,10 +64,11 @@ test('wiring: both runtimes format BEFORE the textual gates and before the write
     'CLI must format before the hygiene gates read `code`',
   );
   const gen = readFileSync(new URL('../steps/materialize/agentCfeMaterializeGen.ts', import.meta.url), 'utf8');
-  assert.match(gen, /formatGeneratedTsInStudio\(applyHeader\(pipelineItem\.outputPath, normalizeGeneratedCode\(/u);
+  assert.match(gen, /normalizeMlsImports\(sharedGuard\.code, \{ outputPath: pipelineItem\.outputPath, \.\.\.importContext \}\)/u);
+  assert.match(gen, /const formatted = await formatGeneratedTsInStudio\(normalized\.code\)/u);
   assert.ok(
-    gen.indexOf('formatGeneratedTsInStudio(applyHeader(') < gen.indexOf('saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.code)'),
-    'Studio must format before saving',
+    gen.indexOf('formatGeneratedTsInStudio(normalized.code)') < gen.indexOf('saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, formatted)'),
+    'Studio must format resolved imports before saving the same bytes later compiled',
   );
   // Both surfaces share the SAME pure line-break stage, so they cannot drift on what gets split.
   const studio = readFileSync(new URL('./cfeMaterializeStudio.ts', import.meta.url), 'utf8');

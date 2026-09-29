@@ -171,9 +171,10 @@ void test('a shared verifies with its contract preloaded, not only a page', () =
   assert.match(gen, /getCompiledDtsByMlsPath\(contractTsPath\)[\s\S]{0,260}compileOutputAndTest/);
 });
 
-void test('contractTsPathOf reads the contract the defs declares, and never throws', () => {
-  const defs = (body: string) => `export const x = ${body} as const;\n\nexport const pipeline = [] as const;\n`;
-  assert.equal(contractTsPathOf(defs(JSON.stringify({ data: { contractRef: { tsPath: '_102046_/l2/m/web/contracts/p.ts' } } }))), '_102046_/l2/m/web/contracts/p.ts');
+void test('contractTsPathOf reads the real declared defs file for preload, and never invents a parallel .ts', () => {
+  const defs = (body: string) => `/// <mls fileReference="_102046_/l2/m/web/shared/p.defs.ts" enhancement="_blank"/>\nexport const x = ${body} as const;\n\nexport const pipeline = [] as const;\n`;
+  const declared = { data: { contractRef: { defPath: 'l2/m/web/contracts/p.defs.ts' } } };
+  assert.equal(contractTsPathOf(defs(JSON.stringify(declared))), '_102046_/l2/m/web/contracts/p.defs.ts');
   assert.equal(contractTsPathOf(defs(JSON.stringify({ data: { componentName: 'x' } }))), '');
   assert.equal(contractTsPathOf('not a defs file at all'), '');
   assert.equal(contractTsPathOf(null), '');

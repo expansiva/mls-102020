@@ -2,6 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { buildMaterializePageTestsFile, readMaterializeItemFindings } from '/_102020_/l2/agentMaterializeL2/helpers/cfeCreateShared.js';
+import { normalizeMlsImports } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMlsImports.js';
 import {
   applyHeader,
   bindingCommandsOf,
@@ -47,6 +48,7 @@ import {
   releaseBorrowedModelScope,
   preloadItemTypecheckDeps,
   sharedDefsPathForPageOutput,
+  mlsImportContextForOutput,
   getContentByMlsPath,
   parseMlsPath,
   saveArtifactTextByMlsPath,
@@ -119,6 +121,7 @@ async function saveMaterializePageTests(pipelineItem: PipelineItem, definitionDa
   const contractSource = contractPath ? await getContentByMlsPath(contractPath) : null;
   const moduleName = parsed.folder.split('/')[0] || '';
   const source = buildMaterializePageTestsFile({
+    testPath,
     project: parsed.project,
     moduleName,
     pageId: parsed.shortName,
@@ -137,7 +140,10 @@ async function saveMaterializePageTests(pipelineItem: PipelineItem, definitionDa
   if (source.includes('// untested:')) {
     await recordCfeDegradation(moduleName, 'page-tests-inconclusive', 'Some page bindings lacked a justified route/oracle and were emitted as named inconclusive gaps.', testPath);
   }
-  if (!await persistGeneratedPageTestsFileByMlsPath(testPath, source)) throw new Error(`CFE_PAGE_TEST_WRITE_FAILED_OR_NOT_OWNED: ${testPath}`);
+  const importContext = await mlsImportContextForOutput(testPath);
+  const normalized = normalizeMlsImports(source, { outputPath: testPath, ...importContext });
+  if (normalized.issues.length) throw new Error(`CFE_MLS_IMPORTS_INVALID: ${normalized.issues.join('; ')}`);
+  if (!await persistGeneratedPageTestsFileByMlsPath(testPath, normalized.code)) throw new Error(`CFE_PAGE_TEST_WRITE_FAILED_OR_NOT_OWNED: ${testPath}`);
   return testPath;
 }
 
@@ -232,10 +238,22 @@ async function materializeSharedDeterministic(
     if (!parsed) return null;
     consumeMaterializeStudioMessages();
     const guarded = ensureSharedScenaryMembers(scaffold.code, pipelineItem.outputPath, definitionData, contractSource);
-    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, guarded.code);
+    const importContext = await mlsImportContextForOutput(pipelineItem.outputPath);
+    const normalized = normalizeMlsImports(guarded.code, { outputPath: pipelineItem.outputPath, ...importContext });
+    if (normalized.issues.length) {
+      await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'mls-import-unresolved', normalized.issues.join('; '), pipelineItem.outputPath);
+      return null;
+    }
+    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, normalized.code);
     if (!saved) return null;
 
-    const typecheckTest = buildMaterializeTypecheckTest(pipelineItem, definitionData);
+    const rawTypecheckTest = buildMaterializeTypecheckTest(pipelineItem, definitionData);
+    const normalizedTypecheck = rawTypecheckTest ? normalizeMlsImports(rawTypecheckTest, { outputPath: testPathForOutputPath(pipelineItem.outputPath), ...importContext }) : null;
+    if (normalizedTypecheck?.issues.length) {
+      await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'mls-import-unresolved', normalizedTypecheck.issues.join('; '), testPathForOutputPath(pipelineItem.outputPath));
+      return null;
+    }
+    const typecheckTest = normalizedTypecheck?.code ?? null;
     const typecheckPath = typecheckTest ? testPathForOutputPath(pipelineItem.outputPath) : null;
     if (typecheckPath && typecheckTest && !await saveGeneratedTsByMlsPath(typecheckPath, typecheckTest)) return null;
 
@@ -269,7 +287,8 @@ async function materializeSharedDeterministic(
     // `activeCompiles` still decides.
     releaseBorrowedModelScope();
     const studioDiagnostics = consumeMaterializeStudioMessages();
-    const trace = `deterministic scaffold: ${scaffold.code.length}b, no LLM call${typecheckPath ? ' + typecheck test' : ''}`;
+    const importTrace = normalized.changes.length ? `; normalized imports: ${normalized.changes.map(change => `${change.from} → ${change.to}`).join(', ')}` : '';
+    const trace = `deterministic scaffold: ${scaffold.code.length}b, no LLM call${typecheckPath ? ' + typecheck test' : ''}${importTrace}`;
     return [mkStatus(context, parentStep, step, hookSequential, 'completed', studioDiagnostics.length ? `${trace}. ${formatStudioDiagnostics(studioDiagnostics)}` : trace, 'input_output')];
   } catch (error) {
     await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'scaffold-exception-bail', formatError('materializeSharedDeterministic', error), pipelineItem.outputPath);
@@ -325,21 +344,39 @@ async function afterPromptStep(
     // written — the safe order the format×gates contract requires (cf_format_codigo_gerado).
     const mechanical = pendingMechanicalReferences.get(pipelineItem.outputPath);
     // Hooks may execute in separate workers: process-local prompt caches are not provenance.
+    const skeleton = mechanical?.skeleton ?? (pipelineItem.type === 'l2_page'
+      ? await pageSkeletonFor(pipelineItem, parsedDefs?.items ?? [], parsedDefs?.data)
+      : undefined);
     const currentSharedReference = pipelineItem.type === 'l2_page' ? await pageSharedPublicReference(pipelineItem) : undefined;
-    const formatted = await formatGeneratedTsInStudio(applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code, mechanical?.skeleton, currentSharedReference?.code ?? mechanical?.sharedTemplate)));
+    const generated = applyHeader(pipelineItem.outputPath, normalizeGeneratedCode(pipelineItem, parsedDefs?.data, output.code, skeleton, currentSharedReference?.code ?? mechanical?.sharedTemplate));
     const sharedGuard = pipelineItem.type === 'l2_shared'
-      ? await applySharedScenaryGuard(pipelineItem, parsedDefs?.data, formatted)
-      : { code: formatted, injected: false, original: formatted };
+      ? await applySharedScenaryGuard(pipelineItem, parsedDefs?.data, generated)
+      : { code: generated, injected: false, original: generated };
     if ('reason' in sharedGuard && sharedGuard.reason) {
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `shared scenary prefill unresolved for ${pipelineItem.outputPath}: ${sharedGuard.reason}`)];
     }
-    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.code);
+    const importContext = await mlsImportContextForOutput(pipelineItem.outputPath);
+    const normalized = normalizeMlsImports(sharedGuard.code, { outputPath: pipelineItem.outputPath, ...importContext });
+    if (normalized.issues.length) {
+      const detail = `CFE_MLS_IMPORTS_INVALID: ${normalized.issues.join('; ')}`;
+      await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'mls-import-unresolved', detail, pipelineItem.outputPath);
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, detail)];
+    }
+    const formatted = await formatGeneratedTsInStudio(normalized.code);
+    const saved = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, formatted);
     if (!saved) {
       return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, withStudioDiagnostics(`saveGeneratedTs failed for ${pipelineItem.outputPath}`))];
     }
 
     const pageTestPath = await saveMaterializePageTests(pipelineItem, parsedDefs?.data ?? null);
-    const typecheckTest = buildMaterializeTypecheckTest(pipelineItem, parsedDefs ? parsedDefs.data : null);
+    const rawTypecheckTest = buildMaterializeTypecheckTest(pipelineItem, parsedDefs ? parsedDefs.data : null);
+    const normalizedTypecheck = rawTypecheckTest ? normalizeMlsImports(rawTypecheckTest, { outputPath: testPathForOutputPath(pipelineItem.outputPath), ...importContext }) : null;
+    if (normalizedTypecheck?.issues.length) {
+      const detail = `CFE_MLS_IMPORTS_INVALID: ${normalizedTypecheck.issues.join('; ')}`;
+      await recordCfeDegradation(moduleOfMlsPath(pipelineItem.outputPath), 'mls-import-unresolved', detail, testPathForOutputPath(pipelineItem.outputPath));
+      return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, detail)];
+    }
+    const typecheckTest = normalizedTypecheck?.code ?? null;
     const typecheckPath = typecheckTest ? testPathForOutputPath(pipelineItem.outputPath) : pageTestPath;
     if (typecheckPath && typecheckTest) {
       const testSaved = await saveGeneratedTsByMlsPath(typecheckPath, typecheckTest);
@@ -360,10 +397,13 @@ async function afterPromptStep(
       ...compileResult.errors,
       // bugpage21: catch the compiles-cleanly template defect in the TIGHTEST loop — right after this
       // worker saved its own .ts — instead of waiting for the phase verify round.
-      ...(pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism' ? [...collectPageTemplateHygieneIssues(sharedGuard.code), ...collectChartEventIssues(sharedGuard.code)] : []),
+      ...(pipelineItem.type === 'l2_page' || pipelineItem.type === 'l2_page_organism' ? [...collectPageTemplateHygieneIssues(formatted), ...collectChartEventIssues(formatted)] : []),
     ];
     if (compileErrors.length > 0 && sharedGuard.injected) {
-      const reverted = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, sharedGuard.original);
+      const revertedSource = normalizeMlsImports(sharedGuard.original, { outputPath: pipelineItem.outputPath, ...importContext });
+      if (revertedSource.issues.length) return [mkFailureStatus(context, parentStep, step, hookSequential, repairRun, `CFE_MLS_IMPORTS_INVALID: ${revertedSource.issues.join('; ')}`)];
+      const revertedCode = await formatGeneratedTsInStudio(revertedSource.code);
+      const reverted = await saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, revertedCode);
       if (reverted) {
         const revertedResult = await compileOutputAndTest(pipelineItem.outputPath, typecheckPath);
         if ('unavailable' in revertedResult) {
@@ -390,6 +430,7 @@ async function afterPromptStep(
 
     const completedNotes = [
       ...(contextNote ? [contextNote] : []),
+      ...(normalized.changes.length ? [`normalized MLS imports: ${normalized.changes.map(change => `${change.from} → ${change.to}`).join(', ')}`] : []),
       ...(studioDiagnostics.length ? [formatStudioDiagnostics(studioDiagnostics)] : []),
     ];
     return [mkStatus(context, parentStep, step, hookSequential, 'completed', completedNotes.length ? completedNotes.join('. ') : undefined, 'input_output')];

@@ -35,10 +35,10 @@ function definition(): Record<string, unknown> {
     baseClassName: 'DemoThingsBase',
     routePattern: '/demo/things/:thingId?',
     contractRef: {
-      tsPath: '_102045_/l2/demo/web/contracts/things.ts',
-      contracts: [
-        { commandName: 'listThings', routeConst: 'listThingsRoute' },
-        { commandName: 'createThing', routeConst: 'createThingRoute' },
+      defPath: '_102045_/l2/demo/web/contracts/things.defs.ts',
+      calls: [
+        { actionId: 'listThings', routeConst: 'listThingsRoute' },
+        { actionId: 'createThing', routeConst: 'createThingRoute' },
       ],
     },
     i18n: { 'intent.things.title': "All 'things'" },
@@ -118,6 +118,18 @@ test('generateSharedScaffold renders the full base class', () => {
   assert.match(code, /\n}\n$/);
   assert.match(code, /readErrorMessage\(response\.error/);
   assert.deepEqual(collectMutationEnvelopeErrorIssues(definition(), code), []);
+});
+
+test('required nullable route input has an explicit missing guard and typed DTO assignment', () => {
+  const defs = definition();
+  const states = defs.states as Record<string, unknown>[];
+  states.find(state => state.stateKey === 'ui.things.input.createThing.name')!.defaultValue = null;
+  const create = (defs.actions as Record<string, unknown>[]).find(action => action.actionId === 'createThing')!;
+  create.routeParamInputStateKeys = ['ui.things.input.createThing.name'];
+  const code = generateSharedScaffold('_102045_/l2/demo/web/shared/things.ts', defs, CONTRACT).code!;
+  assert.match(code, /if \(this\.createThingName === null \|\| this\.createThingName === undefined \|\| this\.createThingName === ''\) \{/);
+  assert.match(code, /name: this\.createThingName as CreateThingInput\['name'\],/);
+  assert.doesNotMatch(code, /if \(!this\.createThingName\)/);
 });
 
 // Decision 27/ago: the l4 title (defs `purpose`) rides into the member JSDoc — ONE short line per
@@ -779,10 +791,10 @@ function definitionWithInputEnums(): Record<string, unknown> {
     },
   );
   defs.contractRef = {
-    tsPath: '_900001_/l2/demo/web/contracts/things.ts',
-    contracts: [
-      { commandName: 'listThings', routeConst: 'listThingsRoute' },
-      { commandName: 'createThing', routeConst: 'createThingRoute' },
+    defPath: '_900001_/l2/demo/web/contracts/things.defs.ts',
+    calls: [
+      { actionId: 'listThings', routeConst: 'listThingsRoute' },
+      { actionId: 'createThing', routeConst: 'createThingRoute' },
     ],
   };
   return defs;

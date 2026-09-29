@@ -12,7 +12,7 @@ Definition is the shared .defs.ts object:
 - pageId, pageName, moduleName, sourceKind, ownerIds, operationIds
 - baseClassName: precomputed deterministic ModulePascalPagePascalBase class name
 - routePattern: registered page route, with optional :param? segments when the page accepts route params
-- contractRef: points to contract .defs.ts and contract .ts
+- contractRef: defPath points to contract .defs.ts; calls contains current route imports
 - layoutRef: points to page11 .defs.ts
 - states[]: the complete shared/global state inventory
 - actions[]: all BFF actions and all stateSetter actions used by render
@@ -23,16 +23,16 @@ Definition is the shared .defs.ts object:
 - i18n: the only place where UI text values live
 - automation
 
-Context Files include the contract .ts and the 102029 runtime context expanded from _102029_.d.ts.
+Context Files include the contract definitions and the 102029 runtime context expanded from _102029_.d.ts.
 
 ## Mandatory source of truth
 
 Use Definition.states[] as the only list of reactive properties.
 Use Definition.actions[] as the only list of methods/handlers.
 Use Definition.i18n as the only message catalog.
-Use contract .ts only for actual exported interface names.
+Use contract definitions only for actual exported interface names.
 
-Never create state, action, handler, message key or contract type that is not backed by Definition or contract .ts.
+Never create state, action, handler, message key or contract type that is not backed by Definition or the contract definitions.
 Never copy bffCommands into this file.
 Never read i18n from page11; page11 only references i18n keys.
 
@@ -46,26 +46,26 @@ Generate:
   - execBff and type BffClientOptions from /_102029_/l2/bffClient.js
   - setState, getState, subscribe, unsubscribe or initState only from /_102029_/l2/collabState.js when used
   - runBlockingUiAction only from /_102029_/l2/interactionRuntime.js when BFF click handlers are generated
-  - Contract source of truth. There is ONE contract file for the whole page at Definition.contractRef.tsPath
-    (= .../web/contracts/{pageName}.js). In l4 v2 it holds every bffCall's Input/Output interfaces AND a
-    route const per bffCall; Definition.contractRef.contracts[] lists them as { commandName, routeConst }
+  - Contract source of truth. There is ONE contract reference for the whole page at Definition.contractRef.defPath
+    (= .../web/contracts/{pageName}.defs.js). In l4 v2 it holds every bffCall's Input/Output interfaces AND a
+    route const per bffCall; Definition.contractRef.calls[] lists them as { actionId, routeConst }
     (e.g. { commandName: 'catalogList', routeConst: 'catalogListRoute' }). All imports come from that single file.
   - contract types this class USES to type @property fields and action IO: emit ONE
-    "import type { ...used types... } from '<contractRef.tsPath .js>';".
+    "import type { ...used types... } from '<contractRef.defPath converted to .defs.js>';".
     This import is MANDATORY and SEPARATE from the re-export below. A re-export ("export type { X } from
     '...'") does NOT create a local binding, so any contract type referenced inside this file (e.g.
     "@property() data!: FooOutput") MUST also appear in this import — otherwise it is a "cannot find
-    name" compile error. Use only interfaces/types that exist in the contract .ts context.
-  - route consts (v2, when contractRef.contracts[] is present): also emit ONE VALUE import of every
+    name" compile error. Use only interfaces/types that exist in the contract definitions.
+  - route consts (v2, when contractRef.calls[] is present): also emit ONE VALUE import of every
     entry.routeConst from the same contract file, e.g.
-    "import { catalogListRoute, productDetailRoute } from '/_{project}_/l2/{moduleName}/web/contracts/{pageName}.js';".
+    "import { catalogListRoute, productDetailRoute } from '/_{project}_/l2/{moduleName}/web/contracts/{pageName}.defs.js';".
     Every execBff call MUST pass the imported route const for that action as its first argument — NEVER a
-    typed route string. (Legacy pages without contracts[] keep using the action's routeKey string.)
+    typed route string. When calls[] is absent, use the action's declared routeKey string.
 - Immediately after the imports, ALSO add a SEPARATE re-export statement listing EVERY interface/type
-  exported by the contract .ts (all Input, Output and Output row-item DTOs — not only the ones this
+  exported by the contract definitions (all Input, Output and Output row-item DTOs — not only the ones this
   class references directly), so page renders import every DTO type from the shared module and never
   depend on the contract file:
-  export type { TypeA, TypeB } from '<contractRef.tsPath .js>';
+  export type { TypeA, TypeB } from '<contractRef.defPath converted to .defs.js>';
   BOTH statements must be present and are NOT interchangeable: the "import type" (local bindings, only
   the used types) AND the "export type ... from" (re-export, all types). Never merge them into a single
   re-export — that would drop the local bindings and break compilation.
@@ -110,7 +110,7 @@ const response = await execBff<OutputType>(routeKey, params, options);
 BffClientOptions has only mode, timeoutMs and signal. Do not put routeKey inside options.
 When using mode, only use 'silent' or 'blocking'. Use 'silent' for query actions and 'blocking' for command actions.
 Never use mode values such as 'query', 'command' or 'standard'.
-The route is always the first argument to execBff: when Definition.contractRef.contracts[] is present
+The route is always the first argument to execBff: when Definition.contractRef.calls[] is present
 (l4 v2), pass the imported route const for that action (entry.routeConst, e.g. catalogListRoute) —
 never a typed string; otherwise (legacy) pass the action's routeKey string.
 The params object is always the second argument, even when it is {}.
@@ -118,11 +118,18 @@ The return value is an envelope: { ok, data, error }. Never assign the response 
 getState is not generic. Use casts after the call when needed, e.g. getState(key) as SomeType.
 subscribe returns void and unsubscribe requires the same state keys plus component. Do not push subscribe() results into an array of unsubscribe callbacks.
 
+## Module imports
+
+Every MLS source import (value, type, side effect, re-export, or literal dynamic import) must use its
+absolute /_<project>_/... alias and end in .js; a .defs.ts source becomes .defs.js. Resolve only
+refs present in current definitions/context and never guess a target by basename. External package
+specifiers must be declared by this output's effective enhancement import map.
+
 ## State generation
 
 For every item in states[]:
 - Declare one @property() class field.
-- Property name is state.name when present; otherwise derive a safe camelCase name from stateKey.
+- Property name is state.memberName when present, then state.name; otherwise derive a safe camelCase name from stateKey.
 - Initial value comes from state.defaultValue.
 - actionStatus states use type "idle" | "loading" | "success" | "error" when valueSet matches.
 - queryResult states use the matching contract output type when available.
@@ -180,6 +187,13 @@ For every action in actions[]:
 - Generate handlerName exactly as action.handlerName when present.
 - Set statusStateKey to "loading" before execBff, then "success" or "error".
 - Build params from action.inputStateKeys by reading mapped properties.
+- A required contract field may come from a nullable state. Before assigning it to a non-nullable
+  Input field, check the local value directly (value === null || value === undefined ||
+  (typeof value === 'string' && value.trim() === '')) and return with actionable status/feedback
+  when missing. A boolean-returning helper such as clean(value) does not narrow the variable for
+  TypeScript. After the check, use the narrowed local value or an assertion to that exact contract
+  field type (for example field: value as CommandInput['field']), never an unguarded cast.
+  Do not use if (!value) for required values: numeric 0 and boolean false are valid.
 - state.presentation === "form" is the only editable input. "selection" comes from the current
   selected entity/context and "route" comes from the URL; never render either as a typed field.
 - Before an action call, parse Definition.routePattern against window.location.pathname and put each
@@ -191,7 +205,7 @@ For every action in actions[]:
 - action.selectedEntityInputStateKeys are contextual selection values. Include their mapped state
   values in params when present, but never generate an editable form control for them.
 - Call execBff with action.routeKey when present; otherwise use "{moduleName}.{pageId}.{commandRef}". The route key is the first argument, not an option field.
-- Use contract input/output interfaces only if they exist in contract .ts context.
+- Use contract input/output interfaces only if they exist in the contract definitions.
 - Write response data into action.outputStateKeys by mapping each stateKey to a declared property and calling setState.
 - If the response is not ok, preserve/set the error status and expose/log the response error; do not set success.
 - ERROR DISPLAY CONTRACT (the screen text): when response.ok === false, the error state MUST be

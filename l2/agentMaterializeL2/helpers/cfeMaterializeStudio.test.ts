@@ -198,13 +198,13 @@ test('a model the Studio already had (file open in a tab) is never released', as
 // Both call the same function now, so what is pinned here is WHICH dependencies that function loads.
 const SHARED_DEFS = `_${PROJECT}_/l2/buildFlowFsm/web/shared/projectCatalogue.defs.ts`;
 const SHARED_TS = `_${PROJECT}_/l2/buildFlowFsm/web/shared/projectCatalogue.ts`;
-const CONTRACT_TS = `_${PROJECT}_/l2/buildFlowFsm/web/contracts/projectCatalogue.ts`;
+const CONTRACT_DEFS = `_${PROJECT}_/l2/buildFlowFsm/web/contracts/projectCatalogue.defs.ts`;
 const PAGE_TS = `_${PROJECT}_/l2/buildFlowFsm/web/desktop/page31/projectCatalogue.ts`;
 
 const sharedDefsSource = [
-  '/// <mls fileReference="x" enhancement="_blank"/>',
+  `/// <mls fileReference="${SHARED_DEFS}" enhancement="_blank"/>`,
   'export const projectCatalogueShared = {',
-  `  "contractRef": { "tsPath": "${CONTRACT_TS}" }`,
+  `  "contractRef": { "defPath": "l2/buildFlowFsm/web/contracts/projectCatalogue.defs.ts" }`,
   '} as const;',
 ].join('\n');
 
@@ -212,28 +212,28 @@ test('a page preloads its shared runtime AND the contract that shared imports', 
   const stub = installPathStub({
     [SHARED_DEFS]: sharedDefsSource,
     [SHARED_TS]: 'export class Base {}',
-    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [CONTRACT_DEFS]: 'export interface QryListProjectOutput { clientId: string }',
     [PAGE_TS]: 'export class Page extends Base {}',
   });
   const studio = await loadModule();
   studio.releaseBorrowedModelScope();
 
   await studio.preloadItemTypecheckDeps('l2_page', PAGE_TS, null);
-  assert.deepEqual(stub.loaded.sort(), [CONTRACT_TS, SHARED_TS].sort(),
+  assert.deepEqual(stub.loaded.sort(), [CONTRACT_DEFS, SHARED_TS].sort(),
     'without the contract loaded the page import resolves to any and the cross-file error disappears');
 });
 
 test('a shared preloads the contract named in its own defs', async () => {
   const stub = installPathStub({
     [SHARED_DEFS]: sharedDefsSource,
-    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [CONTRACT_DEFS]: 'export interface QryListProjectOutput { clientId: string }',
     [SHARED_TS]: 'export class Base {}',
   });
   const studio = await loadModule();
   studio.releaseBorrowedModelScope();
 
   await studio.preloadItemTypecheckDeps('l2_shared', SHARED_TS, sharedDefsSource);
-  assert.deepEqual(stub.loaded, [CONTRACT_TS]);
+  assert.deepEqual(stub.loaded, [CONTRACT_DEFS]);
 });
 
 test('a split-page organism preloads the same two models as its page', async () => {
@@ -241,22 +241,22 @@ test('a split-page organism preloads the same two models as its page', async () 
   const stub = installPathStub({
     [SHARED_DEFS]: sharedDefsSource,
     [SHARED_TS]: 'export class Base {}',
-    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [CONTRACT_DEFS]: 'export interface QryListProjectOutput { clientId: string }',
     [organismTs]: 'export function renderList(host: Base) { return null; }',
   });
   const studio = await loadModule();
   studio.releaseBorrowedModelScope();
 
   await studio.preloadItemTypecheckDeps('l2_page_organism', organismTs, null);
-  assert.deepEqual(stub.loaded.sort(), [CONTRACT_TS, SHARED_TS].sort());
+  assert.deepEqual(stub.loaded.sort(), [CONTRACT_DEFS, SHARED_TS].sort());
 });
 
 test('an item type with no cross-file dependency loads nothing', async () => {
-  const stub = installPathStub({ [CONTRACT_TS]: 'export interface X {}' });
+  const stub = installPathStub({ [CONTRACT_DEFS]: 'export interface X {}' });
   const studio = await loadModule();
   studio.releaseBorrowedModelScope();
 
-  await studio.preloadItemTypecheckDeps('l2_contract', CONTRACT_TS, null);
+  await studio.preloadItemTypecheckDeps('l2_contract', CONTRACT_DEFS, null);
   assert.deepEqual(stub.loaded, []);
 });
 
@@ -342,4 +342,35 @@ test('resume removes only a stale generated pageTests companion', async () => {
   file.content = `/// <mls fileReference="${mlsPath}" enhancement="_blank"/>\nexport const pageTests = { manual: true };\n`;
   assert.equal(await studio.deleteGeneratedPageTestsFileByMlsPath(mlsPath), false, 'manual companion is preserved');
   assert.equal(file.status, 'changed');
+});
+
+test('Studio index owns a generated mobile companion across writes, including the old desktop header', async () => {
+  const studio = await loadModule();
+  const mlsPath = `_${PROJECT}_/l2/buildFlowFsm/web/mobile/page11/itemA.test.ts`;
+  const desktopPath = mlsPath.replace('/web/mobile/', '/web/desktop/');
+  const info = { project: PROJECT, level: 2, folder: 'buildFlowFsm/web/mobile/page11', shortName: 'itemA', extension: '.test.ts' };
+  const key = `${PROJECT}:2:${info.folder}:itemA:.test.ts`;
+  const source = (headerPath: string, version: number) => `/// <mls fileReference="${headerPath}" enhancement="_blank"/>\n// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\nexport const pageTests = { version: ${version} };\n`;
+  const file: any = { ...info, status: 'changed', content: source(desktopPath, 1), getContent: async () => file.content };
+  let modelValue = file.content;
+  const model = { model: { getValue: () => modelValue, setValue: (value: string) => { modelValue = value; } }, compilerResults: { errors: [] } };
+  g.mls = {
+    stor: {
+      files: { [key]: file },
+      getKeyToFile: (value: any) => `${value.project}:${value.level}:${value.folder}:${value.shortName}:${value.extension}`,
+      convertFileReferenceToFile: (value: string) => value === mlsPath ? info : null,
+      localStor: { setContent: async (_file: any, value: any) => { file.content = value.content; } },
+    },
+    editor: { models: { [key.slice(0, -'.test.ts'.length)]: { test: model } }, getKeyModel: () => key.slice(0, -'.test.ts'.length), forceModelUpdate: () => undefined },
+    l2: { typescript: { compileAndPostProcess: async () => true } },
+  };
+  const second = source(mlsPath, 2);
+  assert.equal(await studio.persistGeneratedPageTestsFileByMlsPath(mlsPath, second), true);
+  assert.equal(file.content, second);
+  const third = source(mlsPath, 3);
+  assert.equal(await studio.persistGeneratedPageTestsFileByMlsPath(mlsPath, third), true);
+  assert.equal(file.content, third);
+  file.content = `/// <mls fileReference="${mlsPath}" enhancement="_blank"/>\nexport const pageTests = { manual: true };\n`;
+  assert.equal(await studio.persistGeneratedPageTestsFileByMlsPath(mlsPath, source(mlsPath, 4)), false);
+  assert.match(file.content, /manual: true/u);
 });

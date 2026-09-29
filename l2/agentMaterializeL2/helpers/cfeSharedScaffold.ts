@@ -428,21 +428,14 @@ function buildModel(outputPath: string, data: unknown, contractSource: string, p
   const baseClassName = stringOf(data.baseClassName) || bail('missing baseClassName');
   const routePattern = stringOf(data.routePattern) || bail('missing routePattern');
   const contractRef = isRecord(data.contractRef) ? data.contractRef : bail('missing contractRef');
-  const contractTsPath = stringOf(contractRef.defPath) || stringOf(contractRef.tsPath) || bail('missing contractRef.defPath');
-  // Operation-sourced workspaces list route consts under contractRef.contracts; workflow-sourced
-  // contracts export no route consts, so execBff receives the action routeKey as a string literal.
+  const contractTsPath = stringOf(contractRef.defPath) || bail('missing contractRef.defPath');
+  // Current defs use calls; absent calls means route strings come from the action definitions.
   const contracts = Array.isArray(contractRef.calls)
     ? contractRef.calls.filter(isRecord).map(c => ({
       commandName: stringOf(c.actionId) || bail('contractRef.calls entry missing actionId'),
       routeConst: stringOf(c.routeConst) || bail('contractRef.calls entry missing routeConst'),
       inputType: stringOf(c.inputType) || undefined,
-    }))
-    : Array.isArray(contractRef.contracts)
-    ? contractRef.contracts.filter(isRecord).map(c => ({
-      commandName: stringOf(c.commandName) || bail('contractRef.contracts entry missing commandName'),
-      routeConst: stringOf(c.routeConst) || bail('contractRef.contracts entry missing routeConst'),
-    }))
-    : [];
+    })) : [];
 
   const i18nRaw = isRecord(data.i18n) ? data.i18n : bail('missing i18n');
   const i18n: Record<string, string> = {};
@@ -1237,7 +1230,7 @@ function renderRequiredGuards(model: ScaffoldModel, action: DefsAction, statusSt
     seen.add(key);
     const state = model.stateByKey.get(key);
     if (!state || !state.contractRef?.field || !requiredFields.has(state.contractRef.field)) continue;
-    lines.push(`${indent}if (!this.${state.name}) {`);
+    lines.push(`${indent}if (this.${state.name} === null || this.${state.name} === undefined || this.${state.name} === '') {`);
     lines.push(`${indent}  this.${statusState.name} = 'idle';`);
     lines.push(`${indent}  setState('${statusState.stateKey}', 'idle');`);
     lines.push(`${indent}  this.requestUpdate();`);
@@ -1257,7 +1250,7 @@ function renderParams(model: ScaffoldModel, action: DefsAction, input: ContractI
     const state = stateByField.get(field.name);
     if (!state) bail(`action ${action.actionId} has no input state for required contract field ${field.name}`);
     if (field.type === 'string') {
-      requiredLines.push(`${indent}  ${field.name}: this.${state.name},`);
+      requiredLines.push(`${indent}  ${field.name}: this.${state.name} as ${input.name}['${field.name}'],`);
     } else if (field.type === 'stringUnion') {
       if (inputEnumValues(state)) {
         // Empty is legitimate state, not a contract value. `!` keeps `const params: Input`

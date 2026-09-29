@@ -4,11 +4,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { validateGeneratedPageQuality, materializeVerdictAllClear } from './cfeMaterializeCore.js';
-import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, mlsL2ModuleName, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp, buildContextSection, requireDeclaredDependency, resolveProjectRelativeRef } from './cfeMaterializeCore.js';
+import { collectPageTemplateHygieneIssues, collectMissingImageRenderIssues, trimSharedI18nForPageContext, orderItems, parseDefs, pageDefinitionForChecks, bindingCommandsOf, buildHumanPrompt, trimDefinitionForPrompt, normalizeGeneratedCode, normalizeGeneratedI18n, isMaxTokensFailure, isTimeoutFailure, isSplitWorthyFailure, collectChartEventIssues, collectPageExperienceIssues, orderModuleCompile, collectContractFieldIssues, collectPageCatalogueIssues, collectMissingI18nBlockIssues, collectPageCustomElementTagIssues, collectPageScenaryIssues, collectSharedScenaryIssues, expectedPageCustomElementTag, collectEnumTextInputIssues, collectEnumCellLabelIssues, collectIdColumnIssues, collectMutationEnvelopeErrorIssues, collectMutationFeedbackIssues, collectSelectionControlIssues, collectCommandDisabledIssues, collectMissingInitialLoadIssues, dependencyProbeRefs, firstErrorSignature, isSharedDtsArtifactRef, isSharedRuntimeTsRef, itemsShareErrorSignature, materializePlanIdFromPipelineId, compileBlockedPlanIdsFromVerdict, mlsL2ModuleName, firstCompileBlockedDep, isOrganismPipelineId, sharedDtsArtifactRef, sharedTsRefOfDtsArtifact, buildCompileRepairHint, checkSharedDtsProvenance, sharedSourceHash, stampSharedDtsArtifact, stripSharedDtsStamp, buildContextSection, requireDeclaredDependency, resolveProjectRelativeRef } from './cfeMaterializeCore.js';
 import {
   FE2_PAGE21_HANDWRITTEN_CATALOGUE, FE2_SKELETON_CATALOGUE, FE2_PHANTOM_LOCALE_CATALOGUE,
 } from '../steps/materialize/fixtures/fe2PetShopCatalogueFixture.js';
 import { RUN01_TASK_CATALOGUE_DTS, RUN01_TASK_CATALOGUE_SHARED } from '../steps/materialize/fixtures/run01TaskCatalogueDtsFixture.js';
+import { normalizeMlsImports } from './cfeMlsImports.js';
 
 test('renamed prose page restores encoded padding only from its mechanical reference and recovers action feedback binding', () => {
   const status = 'stateSaveRecordStatusX00007300007400006100007400006500003a00006900006e000070000075000074';
@@ -61,19 +62,20 @@ private renderFeedback(){const failure=this.saveError;if(failure){return html\`<
   assert.ok(validateGeneratedPageQuality({}, classic, code).some(issue => issue.includes('does not render textual mutation feedback')));
 });
 
-test('renamed page imports retain or recover the output project identity for local dependency refs', () => {
+test('renamed page imports resolve only exact indexed MLS refs and retain project identity', () => {
   const outputPath = '_102045_/l2/ledger/web/mobile/page11/records.ts';
-  const code = "import { RecordsShared } from '/l2/ledger/web/shared/records.js'; import type { CreateRecordInput } from '../../../contracts/records.defs.js';";
-  for (const prefix of ['', '/', '_102045_/', '/_102045_/']) {
-    const item = { id: 'records', type: 'l2_page', outputPath, dependsFiles: [`${prefix}l2/ledger/web/shared/recordsDts.txt`, `${prefix}l2/ledger/web/contracts/records.defs.ts`] };
-    const fixed = normalizeGeneratedCode(item, 'prose', code);
-    assert.ok(fixed.includes("'/_102045_/l2/ledger/web/shared/records.js'"));
-    assert.ok(fixed.includes("'/_102045_/l2/ledger/web/contracts/records.defs.js'"));
-    assert.ok(!fixed.includes("'/l2/"));
-    assert.equal(normalizeGeneratedCode(item, 'prose', fixed), fixed);
-  }
-  const explicitOtherProject = { id: 'records', type: 'l2_page', outputPath, dependsFiles: ['_102046_/l2/ledger/web/shared/records.ts'] };
-  assert.ok(normalizeGeneratedCode(explicitOtherProject, 'prose', code).includes("'/_102046_/l2/ledger/web/shared/records.js'"));
+  const code = "import { RecordsShared } from '/l2/ledger/web/shared/records.js'; import type { CreateRecordInput } from '../../contracts/records.defs.ts';";
+  const context = { outputPath, knownFiles: ['_102045_/l2/ledger/web/shared/records.ts', '_102045_/l2/ledger/web/contracts/records.defs.ts'], declaredPackages: [] };
+  const result = normalizeMlsImports(code, context);
+  assert.deepEqual(result.issues, []);
+  assert.ok(result.code.includes("'/_102045_/l2/ledger/web/shared/records.js'"));
+  assert.ok(result.code.includes("'/_102045_/l2/ledger/web/contracts/records.defs.js'"));
+  assert.equal(normalizeMlsImports(result.code, context).code, result.code);
+  const explicitOtherProject = normalizeMlsImports("import '/_102046_/l2/ledger/web/shared/records.ts';", {
+    ...context, knownFiles: [...context.knownFiles, '_102046_/l2/ledger/web/shared/records.ts'],
+  });
+  assert.equal(explicitOtherProject.code, "import '/_102046_/l2/ledger/web/shared/records.js';");
+  assert.deepEqual(explicitOtherProject.issues, []);
 });
 
 test('renamed three mutations share a generic transport with a proven nullable envelope alias', () => {
@@ -143,16 +145,22 @@ test('renamed guarded mutation follows its compact generic transport helper, nev
   assert.equal(collectMutationEnvelopeErrorIssues(defs, source.replace('this.transport(route,input)', 'this.unrelated()')).length, 1);
 });
 
-test('renamed page mechanical identities converge without guessing relative import depth', () => {
+test('renamed page mechanical identities converge only after exact MLS import resolution', () => {
   const item = { id: 'ledger', type: 'l2_page', outputPath: '_102045_/l2/sample/web/mobile/page11/ledger.ts', dependsFiles: ['_102045_/l2/sample/web/shared/ledgerDts.txt', '_102045_/l2/sample/web/contracts/ledger.defs.ts'] };
-  const code = `import { LedgerBase } from '../../../shared/ledger.js';
-import type { ListRecordOutput } from '../../../contracts/ledger.defs.js';
+  const code = `import { LedgerBase } from '../../shared/ledger.js';
+import type { ListRecordOutput } from '../../contracts/ledger.defs.js';
 /// **collab_i18n_start
 const pageMessage_en = { 'short.key': 'Keep this text' };
 /// **collab_i18n_end
 @customElement(TAG)
 export default class Ledger extends LedgerBase { protected get msg() { return pageMessage_en; } render() { return this.msg['short.key']; } }`;
-  const fixed = normalizeGeneratedCode(item, 'prose', code);
+  const normalized = normalizeMlsImports(normalizeGeneratedCode(item, 'prose', code), {
+    outputPath: item.outputPath,
+    knownFiles: ['_102045_/l2/sample/web/shared/ledger.ts', '_102045_/l2/sample/web/contracts/ledger.defs.ts'],
+    declaredPackages: [],
+  });
+  assert.deepEqual(normalized.issues, []);
+  const fixed = normalized.code;
   assert.match(fixed, /from '\/_102045_\/l2\/sample\/web\/shared\/ledger.js'/u);
   assert.match(fixed, /from '\/_102045_\/l2\/sample\/web\/contracts\/ledger.defs.js'/u);
   assert.match(fixed, /\/\/\/ \*\*collab_i18n_start\*\*/u);
@@ -538,11 +546,13 @@ test('buildHumanPrompt puts page11 prose verbatim, not as a JSON string', () => 
   assert.match(objectHuman, /```json/);
 });
 
-test('normalizeGeneratedCode still rewrites .ts shared imports when definition is prose', () => {
+test('normalizeGeneratedCode leaves module refs to the exact MLS resolver', () => {
   const item = { id: 'pd', type: 'l2_page', outputPath: '_1_/l2/m/web/desktop/page11/pd.ts' };
   const code = "import { FooBase } from '/_1_/l2/m/web/shared/pd.ts';\nexport class P extends FooBase {}";
   const out = normalizeGeneratedCode(item, 'prose only', code);
-  assert.match(out, /web\/shared\/pd\.js/);
+  assert.equal(out, code);
+  const resolved = normalizeMlsImports(out, { outputPath: item.outputPath, knownFiles: ['_1_/l2/m/web/shared/pd.ts'], declaredPackages: [] });
+  assert.equal(resolved.code, "import { FooBase } from '/_1_/l2/m/web/shared/pd.js';\nexport class P extends FooBase {}");
 });
 
 test('isMaxTokensFailure recognises the collab-llm marker, and nothing else', () => {
@@ -844,6 +854,93 @@ void test('página com collab_i18n_* manual continua caindo no check ANTIGO (nã
   // O check novo também a acusa (não há pageMessage_*), mas o antigo é quem nomeia o remédio certo.
   const old = collectPageCatalogueIssues(FE2_PAGE21_HANDWRITTEN_CATALOGUE);
   assert.ok(old.some(issue => issue.startsWith('catalogue rebuilt by hand')), JSON.stringify(old));
+});
+
+void test('normaliza o contrato i18n do skeleton sem perder keys ou apagar a fila de tradução', () => {
+  const skeleton = `/// **collab_i18n_start**
+const pageMessage_en = { title: 'Title' };
+type PageMessageType = typeof pageMessage_en;
+const pageMessage_pt: PageMessageType = { // collab_untranslated
+  title: 'Title',
+};
+const pageMessages: { [key: string]: PageMessageType } = { en: pageMessage_en, pt: pageMessage_pt };
+/// **collab_i18n_end**`;
+  const generated = `/// **collab_i18n_start**
+const pageMessage_en = {
+  title: 'Title',
+  saved: 'Saved',
+} as const;
+type PageMessage = typeof pageMessage_en;
+const pageMessage_pt: PageMessage = {
+  title: 'Title',
+  saved: 'Saved',
+};
+const pageMessages: Record<string, PageMessage> = { en: pageMessage_en, pt: pageMessage_pt };
+/// **collab_i18n_end**
+class Page { private get msg(): PageMessage { return pageMessages.pt; } }`;
+  const normalized = normalizeGeneratedI18n(generated, skeleton);
+  assert.match(normalized, /type PageMessageType = typeof pageMessage_en/);
+  assert.match(normalized, /pageMessage_pt: PageMessageType = \{ \/\/ collab_untranslated/);
+  assert.match(normalized, /saved: 'Saved'/);
+  assert.doesNotMatch(normalized, /as const|\bPageMessage\b/);
+  assert.deepEqual(collectMissingI18nBlockIssues(normalized, 'page'), []);
+  assert.deepEqual(collectPageCatalogueIssues(normalized), []);
+  assert.equal(normalizeGeneratedI18n(normalized, skeleton), normalized);
+  const copied = `/// **collab_i18n_start**
+const pageMessage_en = {
+  title: 'Title',
+  saved: 'Saved',
+  empty: 'Nothing here',
+};
+type PageMessageType = typeof pageMessage_en;
+const pageMessage_pt: PageMessageType = {
+  title: 'Title',
+  saved: 'Saved',
+  empty: 'Nothing here',
+};
+/// **collab_i18n_end**`;
+  assert.match(normalizeGeneratedI18n(copied, skeleton.replace(' // collab_untranslated', '')), /pageMessage_pt: PageMessageType = \{ \/\/ collab_untranslated/);
+  const translated = copied.replace("title: 'Title',\n  saved: 'Saved',\n  empty: 'Nothing here',\n};\n/// **collab_i18n_end**", "title: 'Título',\n  saved: 'Salvo',\n  empty: 'Nada aqui',\n};\n/// **collab_i18n_end**");
+  assert.doesNotMatch(normalizeGeneratedI18n(translated, skeleton.replace(' // collab_untranslated', '')), /collab_untranslated/);
+});
+
+void test('feedback estrutural aceita alias local e helper de envelope, mas rejeita menção sem render', () => {
+  const page = { pageId: 'ledger' };
+  const shared = {
+    schemaVersion: 'agent-defs-l2-shared-v4',
+    states: [
+      { stateKey: 'command.status', memberName: 'stateSubmitStatus' },
+      { stateKey: 'command.error', memberName: 'stateSubmitError' },
+    ],
+    actions: [{ kind: 'command', actionId: 'submit', statusStateKey: 'command.status', errorStateKey: 'command.error' }],
+  };
+  const alias = `class Page {
+    private renderFeedback() {
+      const success = this.stateSubmitStatus === 'success';
+      const error = this.stateSubmitStatus === 'error';
+      return html\`<section>
+        \${success ? html\`<p role="status">Saved.</p>\` : nothing}
+        \${error ? html\`<p role="alert">\${this.stateSubmitError?.message}</p>\` : nothing}
+      </section>\`;
+    }
+  }`;
+  const helper = `class Page {
+    private errorMessage(error: { message: string } | null) { return error ? html\`<p role="alert">\${error.message}</p>\` : nothing; }
+    private renderForm() {
+      return html\`<section>
+        \${this.stateSubmitStatus === 'success' ? html\`<p role="status">Saved.</p>\` : nothing}
+        \${this.errorMessage(this.stateSubmitError)}
+      </section>\`;
+    }
+  }`;
+  assert.deepEqual(validateGeneratedPageQuality(page, shared, alias), []);
+  assert.deepEqual(validateGeneratedPageQuality(page, shared, helper), []);
+  const consoleOnly = alias.replace('Saved.</p>', '${console.log("Saved")}</p>');
+  assert.ok(validateGeneratedPageQuality(page, shared, consoleOnly).length > 0);
+  const wrongError = helper.replace('error.message', 'String(error)');
+  assert.ok(validateGeneratedPageQuality(page, shared, wrongError).length > 0);
+  const wrongAction = helper.replace('this.errorMessage(this.stateSubmitError)', 'this.errorMessage(this.stateOtherError)');
+  assert.ok(validateGeneratedPageQuality(page, shared, wrongAction).length > 0);
 });
 
 // ── família B do run fe2: campo lido do registro SELECIONADO ─────────────────

@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.ts" enhancement="_blank"/>
 
-import { parseDefs, checkSharedDtsProvenance, contractTsPathOf, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stampSharedDtsArtifact, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
+import { parseDefs, checkSharedDtsProvenance, contractTsPathOf, headerEnhancementForOutputPath, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stampSharedDtsArtifact, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
+import { declaredEnhancementPackages } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMlsImports.js';
 import { sessionScope } from '/_102020_/l2/agentMaterializeL2/helpers/cfeSessionScope.js';
 import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
 import {
@@ -123,6 +124,31 @@ export async function getContentByMlsPath(mlsPath: string): Promise<string | nul
   } catch {
     return null;
   }
+}
+
+/** Current indexed source refs and package map declared by the output's effective enhancement. */
+export async function mlsImportContextForOutput(outputPath: string): Promise<{ knownFiles: string[]; declaredPackages: string[] }> {
+  const knownFiles: string[] = [];
+  try {
+    for (const file of Object.values(mls.stor.files as Record<string, any>)) {
+      if (!file || file.status === 'deleted') continue;
+      const project = Number(file.project);
+      const level = Number(file.level);
+      const shortName = typeof file.shortName === 'string' ? file.shortName : '';
+      const extension = typeof file.extension === 'string' ? file.extension : '';
+      const folder = typeof file.folder === 'string' ? file.folder.replace(/^\/+|\/+$/gu, '') : '';
+      if (!Number.isSafeInteger(project) || project <= 0 || !Number.isSafeInteger(level) || level <= 0 || !shortName || !/^\.(?:defs\.)?(?:ts|tsx|mts|cts|js)$/u.test(extension)) continue;
+      knownFiles.push(`_${project}_/l${level}/${folder ? `${folder}/` : ''}${shortName}${extension}`);
+    }
+  } catch (error) {
+    recordStudioMessage('error', 'mlsImportContextForOutput index read failed', error);
+  }
+
+  const enhancement = headerEnhancementForOutputPath(outputPath);
+  if (!enhancement || enhancement === '_blank') return { knownFiles, declaredPackages: [] };
+  const source = await getContentByMlsPath(`${enhancement}.ts`);
+  if (!source) return { knownFiles, declaredPackages: [] };
+  return { knownFiles, declaredPackages: declaredEnhancementPackages(source) };
 }
 
 export async function loadModuleByBuild(path: string): Promise<any> {
@@ -265,6 +291,14 @@ export async function saveGeneratedTsByMlsPath(mlsPath: string, content: string)
 }
 
 /** Remove only a pageTests artifact previously emitted by this materializer. */
+function isOwnedGeneratedPageTests(mlsPath: string, content: string | null): boolean {
+  if (!content || !content.includes('// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner') || !content.includes('export const pageTests =')) return false;
+  if (content.startsWith(`/// <mls fileReference="${mlsPath}"`)) return true;
+  // Older page11 companions used a desktop header even when stored under another device.
+  const legacyPath = mlsPath.replace(/\/web\/[^/]+\//u, '/web/desktop/');
+  return legacyPath !== mlsPath && content.startsWith(`/// <mls fileReference="${legacyPath}"`);
+}
+
 export async function deleteGeneratedPageTestsFileByMlsPath(mlsPath: string): Promise<boolean> {
   try {
     const parsed = parseMlsPath(mlsPath);
@@ -273,7 +307,7 @@ export async function deleteGeneratedPageTestsFileByMlsPath(mlsPath: string): Pr
     const file = (mls.stor.files as Record<string, any>)[key];
     if (!file || file.status === 'deleted') return true;
     const content = await getContentByMlsPath(mlsPath);
-    if (!content?.startsWith(`/// <mls fileReference="${mlsPath}"`) || !content.includes('// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner') || !content.includes('export const pageTests =')) return false;
+    if (!isOwnedGeneratedPageTests(mlsPath, content)) return false;
     await deleteFile(file);
     return true;
   } catch (error) {
@@ -286,7 +320,7 @@ export async function deleteGeneratedPageTestsFileByMlsPath(mlsPath: string): Pr
 export async function persistGeneratedPageTestsFileByMlsPath(mlsPath: string, content: string | null): Promise<boolean> {
   if (content === null) return deleteGeneratedPageTestsFileByMlsPath(mlsPath);
   const previous = await getContentByMlsPath(mlsPath);
-  if (previous !== null && (!previous.startsWith(`/// <mls fileReference="${mlsPath}"`) || !previous.includes('// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner') || !previous.includes('export const pageTests ='))) return false;
+  if (previous !== null && !isOwnedGeneratedPageTests(mlsPath, previous)) return false;
   if (previous === content) return true;
   return saveGeneratedTsByMlsPath(mlsPath, content);
 }
@@ -398,7 +432,7 @@ export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<strin
 export async function getCompiledDtsByMlsPath(mlsPath: string): Promise<string | null> {
   try {
     const parsed = parseMlsPath(mlsPath);
-    if (!parsed || parsed.extension !== '.ts') return null;
+    if (!parsed || (parsed.extension !== '.ts' && parsed.extension !== '.defs.ts')) return null;
     const modelTs = await getGeneratedModel(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
     if (!modelTs?.model) return null;
     if (!modelTs.compilerResults?.prodDTS) {
