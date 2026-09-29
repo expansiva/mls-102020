@@ -13,7 +13,9 @@ import { createModel } from '/_102027_/l2/libModel.js';
 import { getConfigProject } from '/_102027_/l2/libProjectConfig.js';
 import { routeForSource, sourceOfPageFile } from '/_102020_/l2/aura/helpers/pageRoutes.js';
 import { compileAndApplyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
-import { findPageElement, resolveEditTarget, targetForFile, type IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { compileAfterEdit, findPageElement, persistLocalEdit, resolveEditTarget, targetForFile, type IStudioEditTarget } from '/_102020_/l2/aura/studio/studioEditTarget.js';
+import { t as tStudio, tr } from '/_102020_/l2/aura/studio/studioMessages.js';
+import { resolveStructuralAnchor, scanTemplateTree } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { currentEditHost } from '/_102033_/l2/cbe/studioEditSlot.js';
 
 import '/_102020_/l2/aura/widgets/auraSelectKnob.js';
@@ -414,12 +416,26 @@ export class ServiceGenome102020 extends ServiceBase {
         const tsModel = this._actualPage;
         const source = tsModel.model.getValue();
 
+        // WHERE to write, before deciding WHAT to write. A refusal here is the point of this step:
+        // the occurrence index the knob used to send counts elements on SCREEN, and the replacer
+        // counts them in the TEXT — orders that have nothing to do with each other.
+        const where = this._swapTargetOffset(source);
+        if (!where.ok) {
+            this._moleculeError = where.reason;
+            console.warn(`[serviceGenome] molecule swap refused: ${where.reason}`
+                + ` — ${this._oldSelectedTag} -> ${newTag}, mode ${this._moleculeReplaceMode}`);
+            // @ts-ignore
+            this.requestUpdate();
+            return;
+        }
+
         const result = replaceComponentTag(
             this._oldSelectedTag,
             newTag,
             source,
             selector,
-            this._moleculeReplaceMode
+            this._moleculeReplaceMode,
+            where.offset,
         );
 
         if (!result.success) {
@@ -434,17 +450,39 @@ export class ServiceGenome102020 extends ServiceBase {
             return;
         }
 
+        const newSource = result.newSource || source;
+
         tsModel.model.pushEditOperations(
             [],
-            [{ range: tsModel.model.getFullModelRange(), text: result.newSource || source }],
+            [{ range: tsModel.model.getFullModelRange(), text: newSource }],
             () => null,
         );
 
         this._oldSelectedTag = newTag;
-        setState('preview.pendingReselect', newTag);
+        // ONLY THE L3 PREVIEW READS THIS: it reselects by tag after re-rendering. The in-place
+        // editor restores its own selection by POSITION when the live update announces the remount,
+        // so writing the key for that channel left a value nobody would ever read — addressed by
+        // TAG, which is the kind of address that put the swap in the wrong button to begin with.
+        if (!this._studioSelection) setState('preview.pendingReselect', newTag);
         mls.editor.forceModelUpdate(tsModel.model)
 
-        if (pageStorFile) await this._applyToRunningPage(targetForFile(pageStorFile, tsModel));
+        if (!pageStorFile) {
+            // No stor file, no local copy and no compile: the swap lives in the Monaco model alone
+            // and dies with the tab. Nothing else on this path would say so.
+            console.debug(`[serviceGenome] molecule swap stayed in the model: the selection resolved no stor file — ${newTag}`);
+            return;
+        }
+
+        const target = targetForFile(pageStorFile, tsModel);
+
+        // THE LOCAL COPY IS WHAT A RELOAD READS, and it goes in here rather than in
+        // `_applyToRunningPage`: that method is about the page already MOUNTED, and it gives up early
+        // whenever the studio host is not armed — which left the swap in the model and nowhere else,
+        // so F5 brought the old molecule back. Same order the class picker has used since
+        // 2026-09-01, ahead of libModel's 400ms debounce (see `persistLocalEdit`).
+        await persistLocalEdit(target, newSource);
+
+        await this._applyToRunningPage(target);
 
     }
 
@@ -463,16 +501,38 @@ export class ServiceGenome102020 extends ServiceBase {
      * the edited source, so the second arrival answers "already applied" instead of throwing the page
      * node away and building it again.
      *
-     * Silent with no host ON PURPOSE: in the L3 preview route there is no running app to update, and
-     * the preview re-renders on its own.
+     * NO HOST is not an error: in the L3 preview route there is no running app to update, and the
+     * preview re-renders on its own. It is not a free pass either — the COMPILE runs on every exit
+     * here, because the service worker cache is what a reload is served from, and for a long time
+     * this method was the only place the swap was ever compiled. The persistence moved out to the
+     * caller for the same reason: neither of them may depend on the host being armed.
      */
     private async _applyToRunningPage(edited: IStudioEditTarget): Promise<void> {
         const host = currentEditHost()?.host;
-        if (!host) return;
+        if (!host) {
+            // Legitimate — the L3 preview route has no running app, so this is not the knob's error
+            // line. The COMPILE still has to happen: it is what puts the new build in the service
+            // worker cache, and a reload is served from there.
+            await compileAfterEdit(edited);
+            console.debug('[serviceGenome] no edit host: the swap was compiled but not applied to a running page');
+            return;
+        }
 
         const pageEl = findPageElement(host);
         const resolved = await resolveEditTarget(host);
-        if (!pageEl || !resolved.ok) return;
+        if (!pageEl || !resolved.ok) {
+            // Here there IS an app and the swap still cannot reach it — the silence this method
+            // exists to eliminate. Compile so a reload picks it up, and say why on the same line the
+            // replacer's refusals use.
+            await compileAfterEdit(edited);
+            // `resolved.ok` means we are here for the missing page element; the resolver's own reason
+            // is more specific than anything this method could word.
+            const reason = resolved.ok ? tStudio('swap.noPageElement') : tr(resolved.reason);
+            this._moleculeError = tStudio('swap.notReached', { reason });
+            // @ts-ignore
+            this.requestUpdate();
+            return;
+        }
 
         const live = await compileAndApplyLiveUpdate({
             edited,
@@ -594,6 +654,59 @@ export class ServiceGenome102020 extends ServiceBase {
      * range it falls back to the first occurrence. Swapping "all" is the honest answer there, and it
      * is already an option in the panel.
      */
+    /**
+     * WHERE in the source the swap writes — an exact offset, or the reason there is none.
+     *
+     * THE DEFECT THIS REPLACES (28/09/2026, 102047/consultas): the in-place editor published the
+     * element's position among its peers ON SCREEN, and `replaceComponentTag` read it as a position
+     * among the occurrences IN THE TEXT. The source order follows the order the render helpers are
+     * DECLARED; the screen order follows the order they are COMPOSED. On that page `render()` is
+     * declared last and paints first, so screen 0 was text 5 — selecting the header button rewrote
+     * the first button of `renderActions`, inside a table, off screen, in silence.
+     *
+     * The structural anchor answers the question the index only pretended to: it addresses the
+     * element itself. When it cannot, the swap REFUSES. Writing somewhere is not better than
+     * writing nowhere when the somewhere is wrong, and a silent wrong write is the hardest kind to
+     * notice — it took a page whose two orders are almost reversed to expose this one.
+     *
+     * TWO ROUTES KEEP THE INDEX. `all` does not target anything, and the L3 preview has a real DOM
+     * path and no anchor to offer; both fall through with no offset and behave exactly as before.
+     */
+    private _swapTargetOffset(source: string): { ok: true; offset?: number } | { ok: false; reason: string } {
+        const studio = this._studioSelection;
+        if (!studio || this._moleculeReplaceMode === 'all') return { ok: true };
+
+        const path = studio.anchorPath;
+        if (!path || path.length === 0) {
+            // The picker usually knows WHY (the markup lives in a molecule's own file, the page has
+            // no target file…). Saying "I do not know where it is" over an answer we were handed
+            // sends the user looking in the wrong place.
+            return {
+                ok: false,
+                reason: studio.refusal
+                    ? tStudio('swap.noAnchorBecause', { reason: studio.refusal })
+                    : tStudio('swap.noAnchor'),
+            };
+        }
+
+        const resolved = resolveStructuralAnchor(scanTemplateTree(source), path);
+        if (!resolved.ok) {
+            return { ok: false, reason: tStudio('swap.anchorNotFound', { reason: tr(resolved.reason) }) };
+        }
+
+        // The anchor resolved, but to something else: the file changed under the selection. Saying
+        // which tag is there beats rewriting it.
+        const expected = this._oldSelectedTag.toLowerCase();
+        if (resolved.element.tag !== expected) {
+            return {
+                ok: false,
+                reason: tStudio('swap.anchorTagMismatch', { found: resolved.element.tag, expected }),
+            };
+        }
+
+        return { ok: true, offset: resolved.element.openStart };
+    }
+
     private _selectorForSwap(): string | undefined {
         const studio = this._studioSelection;
         if (!studio) return getState('previewL3.selectedElement');

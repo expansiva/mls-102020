@@ -233,3 +233,108 @@ test('a swap that fails says what the replacer said', () => {
   assert.match(changed, /result\.error \|\| 'Could not replace the molecule in the source\.'/u);
   assert.match(changed, /console\.warn/u);
 });
+
+// ── The swap had to survive an F5 (2026-09-28) ──────────────────────────────
+//
+// THE DEFECT, ONCE: the knob wrote the Monaco model and left everything else to
+// `_applyToRunningPage`, which returns early — twice, and in silence — whenever the studio host is
+// not armed. With no host the local copy was never written and the file was never recompiled, so the
+// service worker kept serving the previous build: the source showed the new molecule, the app did
+// not, and neither did a reload. The class picker had been doing it right since 2026-09-01; only
+// this knob diverged, and nothing said so.
+
+const STUDIO = fileURLToPath(new URL('../studio/', import.meta.url));
+const MESSAGES = readFileSync(`${STUDIO}studioMessages.ts`, 'utf8');
+
+test('the swap reaches the local store without waiting for the debounce', () => {
+  const changed = methodOf(GENOME, 'private async _onMoleculesChanged');
+  assert.match(changed, /await persistLocalEdit\(target, newSource\)/u);
+  // ORDER IS THE POINT, not the call: the local copy is what a reload reads, so it must not sit
+  // behind the live update — that is the path that gives up when the host is not armed.
+  assert.ok(
+    changed.indexOf('persistLocalEdit(') < changed.indexOf('await this._applyToRunningPage('),
+    'persist first, apply to the running page second',
+  );
+});
+
+test('the swap is compiled on every exit, armed host or not', () => {
+  const applied = methodOf(GENOME, 'private async _applyToRunningPage');
+  // The service worker cache is what serves the page module: with no compile a reload gets the
+  // previous build, which is exactly how the swap looked like it had done nothing.
+  assert.equal(
+    (applied.match(/await compileAfterEdit\(edited\)/gu) ?? []).length,
+    2,
+    'both early exits compile',
+  );
+  // The third path compiles inside the pair — one swap is never compiled twice.
+  assert.match(applied, /compileAndApplyLiveUpdate\(/u);
+  assert.equal(applied.includes('if (!host) return;'), false, 'the mute exit is gone');
+  assert.equal(applied.includes('if (!pageEl || !resolved.ok) return;'), false, 'and so is the second');
+});
+
+test('no exit of the swap is mute', () => {
+  const applied = methodOf(GENOME, 'private async _applyToRunningPage');
+  // A swap that quietly does nothing is indistinguishable from one that worked. `console.debug` for
+  // the preview route, where there is no app to update and nothing is wrong; the knob's own error
+  // line for the case where there IS an app and the swap still cannot reach it.
+  assert.match(applied, /console\.debug\(/u);
+  assert.match(applied, /this\._moleculeError = tStudio\('swap\.notReached'/u);
+});
+
+test('every id the swap speaks exists in the studio catalog', () => {
+  // `t()` returns the id itself when it is missing, so a typo reaches the screen as
+  // `swap.notReched` instead of failing — the one silent failure a guard can still catch here.
+  const ids = [...GENOME.matchAll(/tStudio\('([^']+)'/gu)].map((m) => m[1]);
+  assert.ok(ids.length >= 2, 'the swap speaks through the catalog');
+  for (const id of ids) {
+    assert.ok(MESSAGES.includes(`'${id}':`), `${id} is in studioMessages`);
+  }
+});
+
+// ── WHERE the swap writes (2026-09-28) ──────────────────────────────────────
+//
+// THE DEFECT, ONCE: the knob sent `occurrence` — the element's position among its peers ON SCREEN —
+// and the replacer read it as a position among the occurrences IN THE TEXT. On 102047/consultas the
+// header button is the first on screen and the SIXTH in the text, so selecting it rewrote the first
+// button of `renderActions`, inside a table, off screen, with nothing said.
+
+test('the swap resolves WHERE before deciding WHAT, and refuses when it cannot', () => {
+  const resolver = methodOf(GENOME, 'private _swapTargetOffset');
+  // The structural anchor is the only thing that addresses an element; the index never did.
+  assert.match(resolver, /resolveStructuralAnchor\(scanTemplateTree\(source\), path\)/u);
+  // No anchor is a REFUSAL, not a fallback to the first occurrence — that fallback is the defect.
+  assert.match(resolver, /if \(!path \|\| path\.length === 0\) \{[\s\S]*?ok: false/u);
+  assert.match(resolver, /tStudio\('swap\.noAnchor'\)/u);
+  // And an anchor that lands on another tag means the file moved under the selection.
+  assert.match(resolver, /resolved\.element\.tag !== expected/u);
+});
+
+test('the two routes that have no anchor keep the old targeting', () => {
+  const resolver = methodOf(GENOME, 'private _swapTargetOffset');
+  // `all` targets nothing, and the L3 preview has a DOM path instead of an anchor. Both pass through
+  // with no offset, so `replaceComponentTag` behaves exactly as it did.
+  assert.match(resolver, /if \(!studio \|\| this\._moleculeReplaceMode === 'all'\) return \{ ok: true \}/u);
+});
+
+test('the refusal happens BEFORE the source is rewritten', () => {
+  const changed = methodOf(GENOME, 'private async _onMoleculesChanged');
+  const where = changed.indexOf('this._swapTargetOffset(source)');
+  const replace = changed.indexOf('replaceComponentTag(');
+  assert.ok(where >= 0 && where < replace, 'target first, replace second');
+  // And the offset is what reaches the replacer — not a selector standing in for one.
+  assert.match(changed, /this\._moleculeReplaceMode,\s*\r?\n\s*where\.offset,/u);
+});
+
+test('a swap the picker already refused repeats THAT reason', () => {
+  const resolver = methodOf(GENOME, 'private _swapTargetOffset');
+  // The picker usually knows why there is no anchor. Answering "I do not know where it is" over an
+  // answer we were handed sends the user looking in the wrong place.
+  assert.match(resolver, /studio\.refusal/u);
+  assert.match(resolver, /tStudio\('swap\.noAnchorBecause', \{ reason: studio\.refusal \}\)/u);
+});
+
+test('the reselect key is written only on the route that reads it', () => {
+  const changed = methodOf(GENOME, 'private async _onMoleculesChanged');
+  // The L3 preview reselects by tag; the in-place editor restores its own selection by position.
+  assert.match(changed, /if \(!this\._studioSelection\) setState\('preview\.pendingReselect', newTag\)/u);
+});

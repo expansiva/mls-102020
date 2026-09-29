@@ -29,6 +29,12 @@ const SELECTION = {
   // WHICH of the buttons on screen it is: a tag alone is enough to SHOW a selection and not enough to
   // act on one, and the genome's molecule knob rewrites exactly one occurrence.
   occurrence: 2,
+  // And WHERE it is in the source — the screen position above cannot answer that, because the render
+  // helpers are declared in one order and composed in another. Plain data, like everything here.
+  anchorPath: [
+    { tag: 'main', index: 0, count: 1 },
+    { tag: 'button', index: 1, count: 3, literal: 'rounded-md p-3 text-sm' },
+  ],
 };
 
 test('the state starts with an empty projection, not with undefined', () => {

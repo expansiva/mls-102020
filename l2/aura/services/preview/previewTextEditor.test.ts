@@ -147,3 +147,106 @@ test('a tag written inside TypeScript is not markup and is not swapped', () => {
   assert.equal(result.success, true, result.error);
   assert.match(result.newSource!, new RegExp(`const NOTE = 'render <${OLD}> here';`, 'u'), 'the string is intact');
 });
+
+// ── The swap was writing in the wrong element (2026-09-28) ─────────────────
+//
+// THE DEFECT, ONCE: the in-place editor published the element's position among its peers ON SCREEN
+// and this function read it as a position among the occurrences IN THE TEXT. The source order
+// follows the order the render helpers are DECLARED; the screen order follows the order they are
+// COMPOSED. On 102047/consultas `render()` is declared LAST and paints FIRST, so selecting the
+// header button (screen 0) rewrote the first button of `renderActions` (text 0) — inside a table,
+// off screen, and in silence.
+//
+// The fixture keeps the real shape of that page: helpers declared first, `render()` last, six
+// occurrences of one tag across four methods, one of them inside a `.map()`.
+const SWAP_TAG = 'grouptriggeraction--ml-button-standard';
+const CONSULTAS_SHAPE = [
+  'class Consultas extends PageBase {',
+  '  private renderActions(row: ConsultaRow): TemplateResult {',
+  '    return html`<div class="detail-actions">'
+    + `<${SWAP_TAG} data-variant="danger"><Label>\${m.registerNoShow}</Label></${SWAP_TAG}>`
+    + `<${SWAP_TAG} data-variant="ghost"><Label>\${m.confirm}</Label></${SWAP_TAG}>`
+    + '</div>`;',
+  '  }',
+  '  private renderDetail(): TemplateResult {',
+  '    return html`<section class="detail-panel">${this.renderActions(row)}'
+    + `<${SWAP_TAG} data-variant="secondary"><Label>\${m.editConsultation}</Label></${SWAP_TAG}>`
+    + '</section>`;',
+  '  }',
+  '  private renderForm(update: boolean): TemplateResult {',
+  '    return html`<form class="consulta-form">'
+    + `<${SWAP_TAG} type="submit"><Label>\${m.save}</Label></${SWAP_TAG}>`
+    + `<${SWAP_TAG} data-variant="ghost"><Label>\${m.cancel}</Label></${SWAP_TAG}>`
+    + '</form>`;',
+  '  }',
+  '  render(): TemplateResult {',
+  '    return html`<main class="consultas-page"><header class="page-header">'
+    + `<${SWAP_TAG} @action=\${() => this.enterCreateConsultaScenario()}><Label>\${m.schedule}</Label></${SWAP_TAG}>`
+    + '</header>${this.renderScenes()}</main>`;',
+  '  }',
+  '}',
+].join('\n');
+
+/** Offset of the Nth `<tag` in the text, 0-based — the shape the exact target speaks. */
+function openStartOf(source: string, tag: string, nth: number): number {
+  let at = -1;
+  for (let i = 0; i <= nth; i += 1) at = source.indexOf(`<${tag}`, at + 1);
+  return at;
+}
+
+test('the fixture has the real mismatch: the button that paints first is the LAST in the text', () => {
+  const occurrences = CONSULTAS_SHAPE.split(`<${SWAP_TAG}`).length - 1;
+  assert.equal(occurrences, 6, 'six opening tags across four methods');
+  // The header one is the last in the text and the first on screen — that is the whole defect.
+  const header = openStartOf(CONSULTAS_SHAPE, SWAP_TAG, 5);
+  assert.ok(CONSULTAS_SHAPE.slice(header, header + 400).includes('enterCreateConsultaScenario'), 'text 5 is the header button');
+});
+
+test('an exact offset rewrites THAT element, and screen order never enters the decision', () => {
+  const header = openStartOf(CONSULTAS_SHAPE, SWAP_TAG, 5);
+  // The screen position of the header button is 0 — which is what the knob used to send.
+  const result = replaceComponentTag(SWAP_TAG, 'groupselectone--ml-select-native', CONSULTAS_SHAPE, SWAP_TAG, 'selected', header);
+  assert.equal(result.success, true, result.error);
+  const after = result.newSource ?? '';
+  // The header button changed...
+  assert.match(after, /groupselectone--ml-select-native @action/u);
+  // ...and `renderActions`, which the occurrence index used to hit, did not.
+  const actions = after.slice(after.indexOf('renderActions'), after.indexOf('renderDetail'));
+  assert.equal(actions.includes('groupselectone--ml-select-native'), false, 'the table buttons are untouched');
+  assert.equal((after.match(/groupselectone--ml-select-native/gu) ?? []).length, 2, 'open and close of ONE element');
+});
+
+test('without the exact offset it still picks by index — the preview route is unchanged', () => {
+  const result = replaceComponentTag(SWAP_TAG, 'groupselectone--ml-select-native', CONSULTAS_SHAPE, SWAP_TAG, 'selected');
+  assert.equal(result.success, true, result.error);
+  // This is the OLD behaviour, kept on purpose for the L3 preview: index 0 of the TEXT.
+  const after = result.newSource ?? '';
+  const actions = after.slice(after.indexOf('renderActions'), after.indexOf('renderDetail'));
+  assert.equal(actions.includes('groupselectone--ml-select-native'), true, 'still the first in the text');
+});
+
+test('an offset that names no element is refused, not rounded to the first one', () => {
+  const result = replaceComponentTag(SWAP_TAG, 'groupselectone--ml-select-native', CONSULTAS_SHAPE, SWAP_TAG, 'selected', 7);
+  assert.equal(result.success, false);
+  assert.match(result.error ?? '', /offset 7/u);
+});
+
+test('the opening and the closing rewritten are always the same element', () => {
+  // A self-closed occurrence FIRST: it has no `</tag>`, so the closing list used to be one shorter
+  // than the opening one, and index N meant a different element on each side.
+  const source = [
+    'class X {',
+    '  render() {',
+    `    return html\`<div><${SWAP_TAG} data-icon="x" /><${SWAP_TAG}><Label>a</Label></${SWAP_TAG}></div>\`;`,
+    '  }',
+    '}',
+  ].join('\n');
+  const second = openStartOf(source, SWAP_TAG, 1);
+  const result = replaceComponentTag(SWAP_TAG, 'groupselectone--ml-select-native', source, SWAP_TAG, 'selected', second);
+  assert.equal(result.success, true, result.error);
+  const after = result.newSource ?? '';
+  // The self-closed one keeps its name...
+  assert.match(after, new RegExp(`<${SWAP_TAG} data-icon="x" />`, 'u'));
+  // ...and the pair that changed opens and closes with the same new name.
+  assert.match(after, /<groupselectone--ml-select-native><Label>a<\/Label><\/groupselectone--ml-select-native>/u);
+});

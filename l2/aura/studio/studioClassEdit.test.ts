@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   ANIMATION_GROUPS,
+  pickRestored,
+  type IRestorePosition,
   CASCADE_MAX_CHILDREN,
   MISSING_IN_SOURCE,
   NO_OPTIONS,
@@ -2796,3 +2798,79 @@ test('a quoted value that MIXES text and code stays markup', () => {
   assert.deepEqual(found, { kind: 'literal', value: 'Total: ${n}' });
 });
 
+
+// ── Which element the selection goes back to after a remount (2026-09-28) ──
+//
+// THE DEFECT, ONCE: dropping the last step's tag was the whole rule, and it is far too loose.
+// `index` counts among siblings WITH THE SAME TAG, so a `<div>` and a molecule that are each the
+// first of their kind are both "index 0". On 102047/consultas the header holds `<div>` then the
+// button, the `<div>` comes first in document order, and a molecule swap re-selected the `<div>`.
+
+/** The real header of 102047/consultas, as positions. */
+const HEADER = {
+  main: { path: [{ tag: 'main', index: 0, count: 1 }], siblingIndex: 0 },
+  header: {
+    path: [{ tag: 'main', index: 0, count: 1 }, { tag: 'header', index: 0, count: 1 }],
+    siblingIndex: 0,
+  },
+  div: {
+    path: [
+      { tag: 'main', index: 0, count: 1 },
+      { tag: 'header', index: 0, count: 1 },
+      { tag: 'div', index: 0, count: 1 },
+    ],
+    siblingIndex: 0,
+  },
+  button: (tag: string): IRestorePosition => ({
+    path: [
+      { tag: 'main', index: 0, count: 1 },
+      { tag: 'header', index: 0, count: 1 },
+      { tag, index: 0, count: 1 },
+    ],
+    siblingIndex: 1,
+  }),
+} satisfies Record<string, unknown>;
+
+const OLD_TAG = 'grouptriggeraction--ml-button-standard';
+const NEW_TAG = 'groupselectone--ml-select-native';
+
+test('after a molecule swap the selection goes to the molecule, not to the sibling above it', () => {
+  // Document order: main, header, div, molecule. The `<div>` comes FIRST and matches on everything
+  // except the sibling rank — which is exactly what it is there to settle.
+  const after = [HEADER.main, HEADER.header, HEADER.div, HEADER.button(NEW_TAG)];
+  const at = pickRestored(after, HEADER.button(OLD_TAG));
+  assert.equal(at, 3, 'the molecule, not the div');
+  assert.equal(after[at].path[2].tag, NEW_TAG);
+});
+
+test('when the tag did NOT change, the exact match wins before any of that runs', () => {
+  const after = [HEADER.main, HEADER.header, HEADER.div, HEADER.button(OLD_TAG)];
+  assert.equal(pickRestored(after, HEADER.button(OLD_TAG)), 3);
+});
+
+test('an exact tag match beats a sibling rank that happens to agree', () => {
+  // The element moved one slot but kept its tag: the name is the stronger signal, and the rank alone
+  // would have claimed whatever is now in the old slot.
+  const moved = { ...HEADER.button(OLD_TAG), siblingIndex: 2 };
+  const at = pickRestored([HEADER.div, moved], HEADER.button(OLD_TAG));
+  assert.equal(at, 1, 'found by tag even though the rank moved');
+});
+
+test('nothing at that position answers -1, and the caller clears the selection', () => {
+  assert.equal(pickRestored([HEADER.main, HEADER.header], HEADER.button(OLD_TAG)), -1);
+  assert.equal(pickRestored([], HEADER.button(OLD_TAG)), -1);
+  // An empty path addresses nothing; it must never match the first candidate by accident.
+  assert.equal(pickRestored([HEADER.main], { path: [], siblingIndex: 0 }), -1);
+});
+
+test('an ancestor with another tag is a different position, whatever the ranks say', () => {
+  const elsewhere: IRestorePosition = {
+    path: [
+      { tag: 'main', index: 0, count: 1 },
+      { tag: 'footer', index: 0, count: 1 },
+      { tag: NEW_TAG, index: 0, count: 1 },
+    ],
+    siblingIndex: 1,
+  };
+  assert.equal(pickRestored([elsewhere], HEADER.button(OLD_TAG)), -1);
+});

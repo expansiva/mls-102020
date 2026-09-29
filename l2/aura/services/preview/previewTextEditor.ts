@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/services/preview/previewTextEditor.ts" enhancement="_blank"/>
 
 import { resolveTagToFile } from '/_102020_/l2/utils.js';
-import { scanTemplateElements } from '/_102020_/l2/aura/studio/studioClassEdit.js';
+import { scanTemplateElements, type ITemplateElement } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 
 /**
  * previewTextEditor.ts
@@ -890,6 +890,9 @@ export interface ITagReplaceResult {
  * @param source - Conteúdo completo do arquivo .ts
  * @param selectorPath - Path do elemento selecionado no DOM
  * @param mode - 'selected' troca só o selecionado, 'all' troca todas as ocorrências
+ * @param targetOpenStart - offset exato do `<` do elemento a trocar, quando quem chama já resolveu
+ *   QUAL elemento é (a âncora estrutural do studio). Vence o selectorPath, que é um índice e conta
+ *   na ordem errada. Sem ele, nada muda para quem já chamava.
  * @returns Resultado com o novo source
  */
 export function replaceComponentTag(
@@ -897,7 +900,8 @@ export function replaceComponentTag(
   newTag: string,
   source: string,
   selectorPath?: string,
-  mode: 'selected' | 'all' = 'selected'
+  mode: 'selected' | 'all' = 'selected',
+  targetOpenStart?: number,
 ): ITagReplaceResult {
   if (!oldTag || !newTag) {
     return { success: false, error: 'oldTag and newTag are required' };
@@ -924,51 +928,56 @@ export function replaceComponentTag(
     return { success: false, error: `Tag "${oldTag}" not found in any html\`\` template of this file` };
   }
 
-  // The NAME is what changes — `<oldTag` becomes `<newTag` and `</oldTag>` becomes `</newTag>`, with
-  // every attribute, binding and child left exactly where they are.
-  const openMatches = elements.map((element) => ({ index: element.openStart, length: oldTag.length + 1 }));
-  const closeMatches = elements
-    .map((element) => ({ index: element.end - (oldTag.length + 3), length: oldTag.length + 3 }))
-    .filter((close) => source.slice(close.index, close.index + close.length) === `</${oldTag}>`);
+  const totalOccurrences = elements.length;
 
-  const totalOccurrences = openMatches.length;
-  const start = 0;
-
-  // Determina quais ocorrências trocar
-  let targetOpen: typeof openMatches;
-  let targetClose: typeof closeMatches;
+  // WHICH ELEMENTS the swap rewrites — elements, not two parallel lists of offsets.
+  //
+  // The opening and the closing used to be picked from two separate arrays with the SAME index,
+  // and the closing one was FILTERED (only the occurrences whose `</tag>` is literally there). One
+  // self-closed or unclosed occurrence earlier in the file shifted them apart, and index N then
+  // meant a different element on each side: the opening of one rewritten together with the closing
+  // of another. Keeping the element itself makes the pair impossible to mismatch.
+  let targets: ITemplateElement[];
 
   if (mode === 'all') {
-    targetOpen = openMatches;
-    targetClose = closeMatches;
+    targets = elements;
+  } else if (typeof targetOpenStart === 'number') {
+    // AN EXACT POSITION, from a caller that resolved the element itself — the studio's structural
+    // anchor. An occurrence index cannot do this job: it counts elements on SCREEN while this
+    // function counts them in the TEXT, and the two orders are unrelated (the render helpers are
+    // declared in one order and composed in another). On 102047/consultas that mismatch put the
+    // swap of the header button inside the table's `renderActions`.
+    const exact = elements.find((element) => element.openStart === targetOpenStart);
+    if (!exact) {
+      return { success: false, error: `No <${oldTag}> element starts at offset ${targetOpenStart}` };
+    }
+    targets = [exact];
   } else {
-    // mode === 'selected' — usa o selectorPath para identificar qual
+    // The L3 preview route: it has a real DOM path and no anchor, and this is what it always used.
     const occurrenceIndex = getOccurrenceFromPath(oldTag, selectorPath);
-    targetOpen = (occurrenceIndex >= 0 && occurrenceIndex < openMatches.length)
-      ? [openMatches[occurrenceIndex]]
-      : [openMatches[0]];
-    targetClose = (occurrenceIndex >= 0 && occurrenceIndex < closeMatches.length)
-      ? [closeMatches[occurrenceIndex]]
-      : [closeMatches[0]];
+    const inRange = occurrenceIndex >= 0 && occurrenceIndex < elements.length;
+    targets = [elements[inRange ? occurrenceIndex : 0]];
   }
 
-  // Coleta substituições com posições absolutas no source
+  // The NAME is what changes — `<oldTag` becomes `<newTag` and `</oldTag>` becomes `</newTag>`, with
+  // every attribute, binding and child left exactly where they are.
   const replacements: { srcStart: number; srcEnd: number; replacement: string }[] = [];
 
-  for (const open of targetOpen) {
+  for (const element of targets) {
     replacements.push({
-      srcStart: start + open.index,
-      srcEnd: start + open.index + open.length,
+      srcStart: element.openStart,
+      srcEnd: element.openStart + oldTag.length + 1,
       replacement: `<${newTag}`,
     });
-  }
-
-  for (const close of targetClose) {
-    replacements.push({
-      srcStart: start + close.index,
-      srcEnd: start + close.index + close.length,
-      replacement: `</${newTag}>`,
-    });
+    // A self-closed or unclosed element has no `</tag>` to rewrite, and that is not a failure.
+    const closeStart = element.end - (oldTag.length + 3);
+    if (source.slice(closeStart, element.end) === `</${oldTag}>`) {
+      replacements.push({
+        srcStart: closeStart,
+        srcEnd: element.end,
+        replacement: `</${newTag}>`,
+      });
+    }
   }
 
   if (replacements.length === 0) {
@@ -984,7 +993,7 @@ export function replaceComponentTag(
   }
 
   // Verifica se ainda restam ocorrências da oldTag no template após a substituição
-  const remainingOldTags = totalOccurrences - targetOpen.length;
+  const remainingOldTags = totalOccurrences - targets.length;
   const oldTagStillExists = remainingOldTags > 0;
 
   // Gerencia imports

@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/auraState.ts" enhancement="_blank" />
 
 import { getState, setState, initState } from '/_102029_/l2/collabState.js';
+import type { IDomPathStep } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 
 export interface IAuraPage {
     project: number;
@@ -32,6 +33,19 @@ export interface IAuraEditSelection {
      * -1 when the editor could not tell.
      */
     occurrence: number;
+    /**
+     * WHERE the element is in the SOURCE, as the structural anchor addresses it.
+     *
+     * `occurrence` above is a position on SCREEN, and a consumer that writes needs a position in
+     * the FILE — the two are not the same order. The source order follows the order the render
+     * helpers are DECLARED; the screen order follows the order they are COMPOSED. On a real page
+     * (102047/consultas) the button that paints first is the LAST of six in the text, so the
+     * screen index addressed a button inside the table.
+     *
+     * `null` when the anchor has no position to give (it located a class LITERAL by counting, not
+     * an element) — and then a consumer that writes has to refuse rather than guess.
+     */
+    anchorPath: IDomPathStep[] | null;
 }
 
 /**
