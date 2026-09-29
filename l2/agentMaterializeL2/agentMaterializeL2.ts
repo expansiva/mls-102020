@@ -2,10 +2,7 @@
 
 import { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { createAgentStepPayload, createUpdateStatusIntent } from '/_102020_/l2/agentMaterializeL2/helpers/cfeCreateShared.js';
-import { getContentByMlsPath, getFileModified, type GenStepArgs } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
-import { isStale, parseDefs } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
-import { isCfeMaterializeVerifyFolder, isCfePipelineTraceLevel } from '/_102020_/l2/agentMaterializeL2/helpers/cfePipelineTrace.js';
-import { cfeMaterializationFresh } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeReceipt.js';
+import { type GenStepArgs } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 
 /**
  * Batch materialization of the level-2 `.defs.ts` of the CURRENT project, in two ordered waves.
@@ -37,7 +34,8 @@ export const IGNORED_LAST_SEGMENTS: readonly string[] = ['contracts'];
 export const MAX_PARALLEL = 10;
 
 export const SKIP_UP_TO_DATE = 'up to date';
-export const SKIP_MAX_VS_MAX = 'MAX vs MAX (ambos com edicao nao salva)';
+export const SKIP_TS_EDITED = '.ts com edicao local e .defs.ts sem alteracao';
+export const SKIP_NO_DATE = 'mesmo estado e sem data para comparar';
 
 export type SpecCommand =
   | { kind: 'scan'; scope: string }
@@ -165,12 +163,52 @@ export function selectDefsFiles(project: number, scope = ''): SpecDefsFile[] {
   return selected.sort((a, b) => a.folder.localeCompare(b.folder) || a.shortName.localeCompare(b.shortName));
 }
 
+export interface SpecPairFile { status: string; updatedAt?: string; }
+export type SpecPairDecision = { queue: true } | { queue: false; reason: string };
+
+/** Statuses that mean the file carries a local edit not yet in the repository. */
+const LOCAL_EDIT_STATUSES: readonly string[] = ['new', 'changed', 'renamed'];
+
+function hasLocalEdit(file: SpecPairFile): boolean {
+  return LOCAL_EDIT_STATUSES.includes(file.status);
+}
+
+/** The pair as mls.stor.files holds it — the only source of existence, status and date. */
+function storPairFile(project: number, folder: string, shortName: string, extension: string): SpecPairFile | null {
+  try {
+    const key = mls.stor.getKeyToFile({ project, level: 2, folder, shortName, extension });
+    const file = (mls.stor.files as Record<string, any>)[key];
+    if (!file || file.status === 'deleted') return null;
+    return { status: String(file.status || ''), updatedAt: typeof file.updatedAt === 'string' ? file.updatedAt : undefined };
+  } catch {
+    return null;
+  }
+}
+
 /**
- * The time rule, per file: the pair is the `.ts` of the SAME folder, shortName and project.
- * `getFileModified` + `isStale` are reused as they are — the comparison is not rewritten here.
+ * The selection rule, `.defs.ts` against its `.ts` and nothing else (no receipt, no verify summary):
+ * - no `.ts`: materialize;
+ * - `.defs.ts` edited locally and `.ts` not: materialize;
+ * - `.ts` edited locally and `.defs.ts` not: skip — the `.ts` is newer than its defs;
+ * - both in the same state (both edited, or neither): the most recent `updatedAt` decides.
+ */
+export function pairDecision(defs: SpecPairFile, ts: SpecPairFile | null): SpecPairDecision {
+  if (!ts) return { queue: true };
+  const defsEdited = hasLocalEdit(defs);
+  const tsEdited = hasLocalEdit(ts);
+  if (defsEdited && !tsEdited) return { queue: true };
+  if (!defsEdited && tsEdited) return { queue: false, reason: SKIP_TS_EDITED };
+  const defsMs = Date.parse(defs.updatedAt ?? '');
+  const tsMs = Date.parse(ts.updatedAt ?? '');
+  if (Number.isNaN(defsMs) || Number.isNaN(tsMs)) return { queue: false, reason: SKIP_NO_DATE };
+  return defsMs > tsMs ? { queue: true } : { queue: false, reason: SKIP_UP_TO_DATE };
+}
+
+/**
+ * Applies pairDecision per file: the pair is the `.ts` of the SAME folder, shortName and project.
  *
  * `ignoreFreshness` is what `{"target":...}` buys: it materializes regardless, which is the escape
- * hatch for the MAX vs MAX limit below.
+ * hatch when the dates cannot decide.
  */
 export function planWaves(project: number, files: SpecDefsFile[], ignoreFreshness = false): SpecWavePlan[] {
   const byWave = new Map<SpecWave, SpecWavePlan>();
@@ -185,17 +223,11 @@ export function planWaves(project: number, files: SpecDefsFile[], ignoreFreshnes
       plan.queued.push({ defPath, folder: file.folder });
       continue;
     }
-    const defsMs = getFileModified(project, 2, file.folder, file.shortName, '.defs.ts');
-    const tsMs = getFileModified(project, 2, file.folder, file.shortName, '.ts');
-    if (isStale(defsMs, tsMs)) {
-      plan.queued.push({ defPath, folder: file.folder });
-      continue;
-    }
-    // Known limit, reported and NOT fixed here (cfeMaterializeCore.ts:1176): with both files
-    // dirty, getFileModified answers MAX_SAFE_INTEGER for both and the comparison reads "fresh"
-    // forever. Making it visible is the whole point — silently skipping is the damage.
-    const bothDirty = defsMs === Number.MAX_SAFE_INTEGER && tsMs === Number.MAX_SAFE_INTEGER;
-    plan.skipped.push({ defPath, reason: bothDirty ? SKIP_MAX_VS_MAX : SKIP_UP_TO_DATE });
+    const defs = storPairFile(project, file.folder, file.shortName, '.defs.ts');
+    const ts = storPairFile(project, file.folder, file.shortName, '.ts');
+    const decision = defs ? pairDecision(defs, ts) : { queue: true as const };
+    if (decision.queue) plan.queued.push({ defPath, folder: file.folder });
+    else plan.skipped.push({ defPath, reason: decision.reason });
   }
 
   return WAVE_ORDER.map(wave => byWave.get(wave)!);
@@ -214,15 +246,15 @@ export function buildReport(plans: SpecWavePlan[]): string {
     for (const item of plan.skipped) lines.push(`- pulado (${item.reason}): ${item.defPath}`);
   }
 
-  if (plans.some(plan => plan.skipped.some(item => item.reason === SKIP_MAX_VS_MAX))) {
-    lines.push('', 'Um arquivo em MAX vs MAX tem o .defs.ts e o .ts editados e nao salvos — a data nao arbitra.');
-    lines.push('Para materializar assim mesmo: @@specFrontend {"target":"<caminho do .defs.ts>"}');
+  if (plans.some(plan => plan.skipped.some(item => item.reason === SKIP_NO_DATE))) {
+    lines.push('', 'Sem data para comparar: o .defs.ts e o .ts estao no mesmo estado e falta updatedAt em um deles.');
+    lines.push('Para materializar assim mesmo: @@agentMaterializeL2 {"target":"<caminho do .defs.ts>"}');
   }
   if (totalQueued === 0) lines.push('', 'Nada a materializar.');
   return lines.join('\n');
 }
 
-/** Selection + time rule + report. Throws only when there is no current project. */
+/** Selection + pair rule (.defs.ts vs .ts) + report. Throws only when there is no current project. */
 export function planSpecFrontend(prompt: string): SpecPlanResult {
   const project = resolveProject();
   const command = parseSpecCommand(prompt);
@@ -258,43 +290,6 @@ export function planSpecFrontend(prompt: string): SpecPlanResult {
 /** First segment of the l2 folder — what agentCfeMaterializePhase calls the module. */
 export function moduleOf(folder: string): string {
   return String(folder || '').split('/').filter(Boolean)[0] ?? '';
-}
-
-/** Receipt validation runs on the production scan, including units whose TS is newer. */
-export async function planSpecFrontendWithReceipts(prompt: string): Promise<SpecPlanResult> {
-  const result = planSpecFrontend(prompt);
-  if (result.error || parseSpecCommand(prompt).kind === 'target') return result;
-  const failedOutputs = new Set<string>();
-  for (const file of Object.values(mls.stor.files) as any[]) {
-    if (!file || file.project !== resolveProject() || !isCfePipelineTraceLevel(file.level) || file.status === 'deleted'
-      || file.extension !== '.json' || !isCfeMaterializeVerifyFolder(String(file.folder || '')) || !String(file.shortName || '').endsWith('-summary')) continue;
-    try {
-      const verdict = JSON.parse(String(await file.getContent()));
-      if (verdict.allClear !== false) continue;
-      // Final declared findings are accepted evidence, not unfinished repairs.
-      // Reopening them would make a successful run permanently non-idempotent.
-      for (const entry of (verdict.broken ?? [])) {
-        const hasErrors = Number(entry.errorCount) > 0 || (Array.isArray(entry.errors) && entry.errors.length > 0);
-        if (typeof entry.outputPath === 'string' && entry.severity !== 'warning' && entry.severity !== 'warnings'
-          && (hasErrors || entry.severity === 'blocked')) failedOutputs.add(entry.outputPath);
-      }
-    } catch { /* Receipt validation remains authoritative when a summary cannot be read. */ }
-  }
-  for (const plan of result.plans) {
-    const priorQueued = new Set(plan.queued.map(item => item.defPath));
-    const entries = [...plan.queued.map(item => ({ defPath: item.defPath, reason: SKIP_UP_TO_DATE })), ...plan.skipped];
-    plan.queued = []; plan.skipped = [];
-    for (const entry of entries) {
-      const parsed = parseDefs(await getContentByMlsPath(entry.defPath) ?? '');
-      const verifyFailed = parsed.items.some(item => failedOutputs.has(item.outputPath));
-      const fresh = verifyFailed ? false : await cfeMaterializationFresh(entry.defPath, resolveProject(), getContentByMlsPath);
-      if (fresh === false || (fresh === null && priorQueued.has(entry.defPath))) {
-        const info = mls.stor.convertFileReferenceToFile(entry.defPath);
-        plan.queued.push({ defPath: entry.defPath, folder: String(info?.folder ?? '') });
-      } else plan.skipped.push({ defPath: entry.defPath, reason: fresh === true ? SKIP_UP_TO_DATE : entry.reason });
-    }
-  }
-  return { ...result, report: buildReport(result.plans) };
 }
 
 function safeId(value: string): string {
@@ -371,7 +366,7 @@ function createReportStep(report: string): mls.msg.AIPayload {
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {
   const raw = userPrompt || context.message.content || '';
-  const result = await planSpecFrontendWithReceipts(raw);
+  const result = planSpecFrontend(raw);
 
   const addMessageAI: mls.msg.AgentIntentAddMessageAI = {
     type: 'add-message-ai',
