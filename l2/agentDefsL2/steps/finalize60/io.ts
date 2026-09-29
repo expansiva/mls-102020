@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/finalize60/io.ts" enhancement="_blank"/>
 
-import { diskFileInfo, readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { indexedFile, readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import type { D2FinalizeReport, D2OwnershipReceipt } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
 
@@ -16,4 +16,9 @@ export function d2InfoForPath(identity: D2RunIdentity, path: string): Ns5FileInf
   if (!match || match[1] !== identity.module) throw new Error(`D2_FINALIZE_PATH_OUTSIDE_MODULE: ${path}`);
   return { project: identity.project, level: 2, folder: `${identity.module}/${match[2]}`, shortName: match[3], extension: match[4] };
 }
-export async function deleteD2Owned(info: Ns5FileInfo): Promise<void> { const { deleteFile } = await import('/_102027_/l2/libStor.js'); await deleteFile(diskFileInfo(info)); }
+export async function deleteD2Owned(info: Ns5FileInfo): Promise<void> {
+  const file = indexedFile(info);
+  if (!file) throw new Error(`D2_FINALIZE_INDEX_ENTRY_MISSING: ${info.folder}/${info.shortName}${info.extension}`);
+  const { deleteFile } = await import('/_102027_/l2/libStor.js');
+  await deleteFile(file);
+}
