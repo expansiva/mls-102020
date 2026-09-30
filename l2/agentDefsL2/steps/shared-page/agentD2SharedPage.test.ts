@@ -72,6 +72,9 @@ void test('repair prompt replaces natural labels, scenary values and actionIds w
   assert.deepEqual((prompt.repair as { previous: unknown }).previous, previous);
   assert.match(String(prompt.preconditionRule), /only copy exact stateKey strings/);
   assert.match(String(prompt.preconditionRule), /Never use labels, scenary values, or actionIds/);
+  const pageWithHash = { ...page, operationBindings: [{ actorRef: 'operator', sourceHashes: ['internal-receipt-hash'] }] } as unknown as D2SelectedPage;
+  const promptWithoutHash = buildD2SharedHumanPrompt(pageWithHash, [], contract, null);
+  assert.doesNotMatch(promptWithoutHash, /internal-receipt-hash|sourceHashes/);
 
   const systemPrompt = readFileSync(fileURLToPath(new URL('../shared40/prompt.md', import.meta.url)), 'utf8');
   assert.match(systemPrompt, /preconditionStateKeysByAction\[actionId\]/);

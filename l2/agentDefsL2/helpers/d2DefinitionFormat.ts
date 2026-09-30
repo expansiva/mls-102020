@@ -18,6 +18,13 @@ export interface D2DefinitionState {
   typeRef?: D2DefinitionReference;
   uiType?: 'string' | 'number' | 'boolean' | 'object' | 'string[]';
   initialValue?: string | number | boolean | null;
+  required?: boolean;
+  values?: Array<string | number | boolean | null>;
+  selection?: { sourceActionRef: string; resultStateRef: string; identityRef: D2DefinitionReference };
+  snapshot?: { sourceActionRef: string; resultStateRef: string; selectedIdentityStateRef: string; identityRef: D2DefinitionReference; valueRef: D2DefinitionReference; capture: 'onSelection'; missing: 'blockCommandPreserveEdit' };
+  source?: 'userInput' | 'selectedEntity' | 'routeParam' | 'session';
+  presentation?: 'form' | 'selection' | 'route' | 'hidden';
+  editable?: boolean;
 }
 
 export interface D2DefinitionAction {
@@ -27,13 +34,20 @@ export interface D2DefinitionAction {
   resultStateRef?: string;
   statusStateRef?: string;
   errorStateRef?: string;
+  refreshActionRefs?: string[];
+  authorityRefs?: D2DefinitionReference[];
+  confirmation?: { title: string; description: string };
+  initialLoad?: boolean;
+  transitions?: Array<{ actorRef: string; id: string; from: string[]; to: string; by: string[]; payload: string[] }>;
 }
 
 export interface D2DefinitionContent {
   id: string;
+  intent: string;
   actionRef?: string;
   visibleWhen?: D2DefinitionReference[];
   stateRefs?: string[];
+  inactiveBehavior?: 'hiddenInertOutOfFocus';
 }
 
 export interface D2DefinitionScenario {
@@ -86,6 +100,7 @@ export interface D2SharedDefinitionDocument {
   actions: D2DefinitionAction[];
   contents: D2DefinitionContent[];
   scenarios: D2DefinitionScenario[];
+  authorityRefs: D2DefinitionReference[];
 }
 
 export interface D2Page11DefinitionDocument {
@@ -138,11 +153,11 @@ export function parseD2Definition(value: unknown, symbols: readonly D2Resolvable
   if (!root) throw new Error('D2_DEFINITION_OBJECT_REQUIRED');
   if (root.schemaVersion !== D2_DEFINITION_VERSION) throw new Error('D2_DEFINITION_SCHEMA_VERSION');
   if (root.artifactType !== 'shared' && root.artifactType !== 'page11') throw new Error('D2_DEFINITION_ARTIFACT_TYPE');
-  if (!isId(root.pageId)) throw new Error('D2_DEFINITION_PAGE_ID');
+  if (!isPageId(root.pageId)) throw new Error('D2_DEFINITION_PAGE_ID');
   if (typeof root.intent !== 'string' || !root.intent.trim()) throw new Error('D2_DEFINITION_INTENT');
   rejectExecutionKeys(root);
   assertKeys(root, root.artifactType === 'shared'
-    ? ['schemaVersion', 'artifactType', 'pageId', 'intent', 'references', 'contractRef', 'states', 'actions', 'contents', 'scenarios']
+    ? ['schemaVersion', 'artifactType', 'pageId', 'intent', 'references', 'contractRef', 'states', 'actions', 'contents', 'scenarios', 'authorityRefs']
     : ['schemaVersion', 'artifactType', 'pageId', 'device', 'intent', 'sharedRef', 'references', 'presentation', 'organisms', 'moleculeRecommendations']);
 
   const document = root.artifactType === 'shared'
@@ -162,7 +177,7 @@ export function resolveD2DefinitionReference(
   symbols: readonly D2ResolvableSymbol[],
 ): D2ResolvableSymbol {
   const matches = symbols.filter(symbol => symbol.fileRef === reference.fileRef
-    && (reference.fragment === undefined || symbol.fragment === reference.fragment));
+    && (reference.fragment === undefined ? symbol.fragment === undefined : symbol.fragment === reference.fragment));
   if (!matches.length) throw new Error(`D2_DEFINITION_REFERENCE_MISSING: ${reference.fileRef}${reference.fragment ? `#${reference.fragment}` : ''}`);
   if (matches.length !== 1) throw new Error(`D2_DEFINITION_REFERENCE_AMBIGUOUS: ${reference.fileRef}${reference.fragment ? `#${reference.fragment}` : ''}`);
   return matches[0];
@@ -183,6 +198,7 @@ function parseShared(root: Record<string, unknown>): D2SharedDefinitionDocument 
     actions: parseActions(root.actions),
     contents: parseContents(root.contents),
     scenarios: parseScenarios(root.scenarios),
+    authorityRefs: references(root.authorityRefs),
   };
   validateSharedLinks(document);
   return document;
@@ -270,7 +286,7 @@ function parsePresentation(value: Record<string, unknown>): D2DefinitionPresenta
 function parseStates(value: unknown): D2DefinitionState[] {
   const result = records(value, 'D2_DEFINITION_STATES');
   const states = result.map(item => {
-    assertKeys(item, ['id', 'purpose', 'origin', 'typeRef', 'uiType', 'initialValue']);
+    assertKeys(item, ['id', 'purpose', 'origin', 'typeRef', 'uiType', 'initialValue', 'required', 'values', 'selection', 'snapshot', 'source', 'presentation', 'editable']);
     return {
     id: requiredId(item, 'id', 'D2_DEFINITION_STATE_ID'),
     purpose: requiredText(item, 'purpose', 'D2_DEFINITION_STATE_PURPOSE'),
@@ -278,6 +294,13 @@ function parseStates(value: unknown): D2DefinitionState[] {
     ...(item.typeRef === undefined ? {} : { typeRef: reference(item.typeRef) }),
     ...(item.uiType === undefined ? {} : { uiType: uiType(item.uiType) }),
     ...(item.initialValue === undefined ? {} : { initialValue: scalarValue(item.initialValue, 'D2_DEFINITION_STATE_INITIAL_VALUE') }),
+    ...(item.required === undefined ? {} : { required: booleanValue(item.required, 'D2_DEFINITION_STATE_REQUIRED') }),
+    ...(item.values === undefined ? {} : { values: scalarValues(item.values, 'D2_DEFINITION_STATE_VALUES') }),
+    ...(item.selection === undefined ? {} : { selection: parseSelection(item.selection) }),
+    ...(item.snapshot === undefined ? {} : { snapshot: parseSnapshot(item.snapshot) }),
+    ...(item.source === undefined ? {} : { source: stateSource(item.source) }),
+    ...(item.presentation === undefined ? {} : { presentation: presentation(item.presentation) }),
+    ...(item.editable === undefined ? {} : { editable: booleanValue(item.editable, 'D2_DEFINITION_STATE_EDITABLE') }),
     };
   });
   uniqueIds(states, 'D2_DEFINITION_STATE_ID_DUPLICATE');
@@ -287,7 +310,7 @@ function parseStates(value: unknown): D2DefinitionState[] {
 function parseActions(value: unknown): D2DefinitionAction[] {
   const result = records(value, 'D2_DEFINITION_ACTIONS');
   const actions = result.map(item => {
-    assertKeys(item, ['id', 'callRef', 'inputs', 'resultStateRef', 'statusStateRef', 'errorStateRef']);
+    assertKeys(item, ['id', 'callRef', 'inputs', 'resultStateRef', 'statusStateRef', 'errorStateRef', 'refreshActionRefs', 'authorityRefs', 'transitions', 'confirmation', 'initialLoad']);
     return {
     id: requiredId(item, 'id', 'D2_DEFINITION_ACTION_ID'),
     callRef: reference(item.callRef),
@@ -298,6 +321,11 @@ function parseActions(value: unknown): D2DefinitionAction[] {
     ...(item.resultStateRef === undefined ? {} : { resultStateRef: idValue(item.resultStateRef, 'D2_DEFINITION_ACTION_STATE_REF') }),
     ...(item.statusStateRef === undefined ? {} : { statusStateRef: idValue(item.statusStateRef, 'D2_DEFINITION_ACTION_STATE_REF') }),
     ...(item.errorStateRef === undefined ? {} : { errorStateRef: idValue(item.errorStateRef, 'D2_DEFINITION_ACTION_STATE_REF') }),
+    ...(item.refreshActionRefs === undefined ? {} : { refreshActionRefs: ids(item.refreshActionRefs, 'D2_DEFINITION_ACTION_REFRESH_REFS') }),
+    ...(item.authorityRefs === undefined ? {} : { authorityRefs: references(item.authorityRefs) }),
+    ...(item.confirmation === undefined ? {} : { confirmation: parseConfirmation(item.confirmation) }),
+    ...(item.initialLoad === undefined ? {} : { initialLoad: booleanValue(item.initialLoad, 'D2_DEFINITION_ACTION_INITIAL_LOAD') }),
+    ...(item.transitions === undefined ? {} : { transitions: records(item.transitions, 'D2_DEFINITION_ACTION_TRANSITIONS').map(parseActorTransition) }),
     };
   });
   uniqueIds(actions, 'D2_DEFINITION_ACTION_ID_DUPLICATE');
@@ -307,12 +335,14 @@ function parseActions(value: unknown): D2DefinitionAction[] {
 function parseContents(value: unknown): D2DefinitionContent[] {
   const result = records(value, 'D2_DEFINITION_CONTENTS');
   const contents = result.map(item => {
-    assertKeys(item, ['id', 'actionRef', 'visibleWhen', 'stateRefs']);
+    assertKeys(item, ['id', 'intent', 'actionRef', 'visibleWhen', 'stateRefs', 'inactiveBehavior']);
     return {
     id: requiredId(item, 'id', 'D2_DEFINITION_CONTENT_ID'),
+    intent: requiredText(item, 'intent', 'D2_DEFINITION_CONTENT_INTENT'),
     ...(item.actionRef === undefined ? {} : { actionRef: idValue(item.actionRef, 'D2_DEFINITION_CONTENT_ACTION_REF') }),
     ...(item.visibleWhen === undefined ? {} : { visibleWhen: references(item.visibleWhen) }),
     ...(item.stateRefs === undefined ? {} : { stateRefs: ids(item.stateRefs, 'D2_DEFINITION_CONTENT_STATE_REFS') }),
+    ...(item.inactiveBehavior === undefined ? {} : { inactiveBehavior: inactiveBehavior(item.inactiveBehavior) }),
     };
   });
   uniqueIds(contents, 'D2_DEFINITION_CONTENT_ID_DUPLICATE');
@@ -393,6 +423,11 @@ function validateSharedLinks(document: D2SharedDefinitionDocument): void {
       action.resultStateRef, action.statusStateRef, action.errorStateRef,
     ].filter((item): item is string => !!item);
     for (const stateRef of stateRefs) if (!stateIds.has(stateRef)) throw new Error(`D2_DEFINITION_STATE_REF_MISSING: ${stateRef}`);
+    for (const actionRef of action.refreshActionRefs ?? []) if (!actionIds.has(actionRef)) throw new Error(`D2_DEFINITION_ACTION_REF_MISSING: ${actionRef}`);
+  }
+  for (const state of document.states) {
+    if (state.selection && (!actionIds.has(state.selection.sourceActionRef) || !stateIds.has(state.selection.resultStateRef))) throw new Error(`D2_DEFINITION_SELECTION_REF_MISSING: ${state.id}`);
+    if (state.snapshot && (!actionIds.has(state.snapshot.sourceActionRef) || !stateIds.has(state.snapshot.resultStateRef) || !stateIds.has(state.snapshot.selectedIdentityStateRef))) throw new Error(`D2_DEFINITION_SNAPSHOT_REF_MISSING: ${state.id}`);
   }
   for (const content of document.contents) {
     if (content.actionRef && !actionIds.has(content.actionRef)) throw new Error(`D2_DEFINITION_ACTION_REF_MISSING: ${content.actionRef}`);
@@ -453,6 +488,78 @@ function scalarValue(value: unknown, code: string): string | number | boolean | 
   throw new Error(code);
 }
 
+function scalarValues(value: unknown, code: string): Array<string | number | boolean | null> {
+  if (!Array.isArray(value)) throw new Error(code);
+  return value.map(item => scalarValue(item, code));
+}
+
+function booleanValue(value: unknown, code: string): boolean {
+  if (typeof value !== 'boolean') throw new Error(code);
+  return value;
+}
+
+function parseActorTransition(value: Record<string, unknown>): NonNullable<D2DefinitionAction['transitions']>[number] {
+  assertKeys(value, ['actorRef', 'id', 'from', 'to', 'by', 'payload']);
+  return {
+    actorRef: requiredId(value, 'actorRef', 'D2_DEFINITION_TRANSITION_ACTOR'),
+    id: requiredText(value, 'id', 'D2_DEFINITION_TRANSITION_ID'),
+    from: nonEmptyStrings(value.from, 'D2_DEFINITION_TRANSITION_FROM'),
+    to: requiredText(value, 'to', 'D2_DEFINITION_TRANSITION_TO'),
+    by: nonEmptyStrings(value.by, 'D2_DEFINITION_TRANSITION_BY'),
+    payload: ids(value.payload, 'D2_DEFINITION_TRANSITION_PAYLOAD'),
+  };
+}
+
+function parseConfirmation(value: unknown): NonNullable<D2DefinitionAction['confirmation']> {
+  const item = record(value);
+  if (!item) throw new Error('D2_DEFINITION_CONFIRMATION');
+  assertKeys(item, ['title', 'description']);
+  return { title: requiredText(item, 'title', 'D2_DEFINITION_CONFIRMATION_TITLE'), description: requiredText(item, 'description', 'D2_DEFINITION_CONFIRMATION_DESCRIPTION') };
+}
+
+function nonEmptyStrings(value: unknown, code: string): string[] {
+  if (!Array.isArray(value) || !value.length || value.some(item => typeof item !== 'string' || !item.trim())) throw new Error(code);
+  return value as string[];
+}
+
+function inactiveBehavior(value: unknown): 'hiddenInertOutOfFocus' {
+  if (value !== 'hiddenInertOutOfFocus') throw new Error('D2_DEFINITION_CONTENT_INACTIVE_BEHAVIOR');
+  return value;
+}
+
+function parseSelection(value: unknown): NonNullable<D2DefinitionState['selection']> {
+  const item = record(value);
+  if (!item) throw new Error('D2_DEFINITION_SELECTION');
+  assertKeys(item, ['sourceActionRef', 'resultStateRef', 'identityRef']);
+  return { sourceActionRef: idValue(item.sourceActionRef, 'D2_DEFINITION_SELECTION_ACTION_REF'), resultStateRef: idValue(item.resultStateRef, 'D2_DEFINITION_SELECTION_STATE_REF'), identityRef: reference(item.identityRef) };
+}
+
+function parseSnapshot(value: unknown): NonNullable<D2DefinitionState['snapshot']> {
+  const item = record(value);
+  if (!item) throw new Error('D2_DEFINITION_SNAPSHOT');
+  assertKeys(item, ['sourceActionRef', 'resultStateRef', 'selectedIdentityStateRef', 'identityRef', 'valueRef', 'capture', 'missing']);
+  if (item.capture !== 'onSelection' || item.missing !== 'blockCommandPreserveEdit') throw new Error('D2_DEFINITION_SNAPSHOT_POLICY');
+  return {
+    sourceActionRef: idValue(item.sourceActionRef, 'D2_DEFINITION_SNAPSHOT_ACTION_REF'),
+    resultStateRef: idValue(item.resultStateRef, 'D2_DEFINITION_SNAPSHOT_STATE_REF'),
+    selectedIdentityStateRef: idValue(item.selectedIdentityStateRef, 'D2_DEFINITION_SNAPSHOT_IDENTITY_STATE_REF'),
+    identityRef: reference(item.identityRef),
+    valueRef: reference(item.valueRef),
+    capture: 'onSelection',
+    missing: 'blockCommandPreserveEdit',
+  };
+}
+
+function stateSource(value: unknown): NonNullable<D2DefinitionState['source']> {
+  if (value === 'userInput' || value === 'selectedEntity' || value === 'routeParam' || value === 'session') return value;
+  throw new Error('D2_DEFINITION_STATE_SOURCE');
+}
+
+function presentation(value: unknown): NonNullable<D2DefinitionState['presentation']> {
+  if (value === 'form' || value === 'selection' || value === 'route' || value === 'hidden') return value;
+  throw new Error('D2_DEFINITION_STATE_PRESENTATION');
+}
+
 function assertKeys(item: Record<string, unknown>, allowed: string[]): void {
   const known = new Set(allowed);
   const unknown = Object.keys(item).find(key => !known.has(key));
@@ -488,4 +595,8 @@ function record(value: unknown): Record<string, unknown> | null {
 
 function isId(value: unknown): value is string {
   return typeof value === 'string' && /^[a-z][A-Za-z0-9_]*$/.test(value);
+}
+
+function isPageId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z][A-Za-z0-9_-]*$/.test(value);
 }

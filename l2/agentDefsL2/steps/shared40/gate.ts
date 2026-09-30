@@ -4,6 +4,8 @@ import type { D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { D2_SHARED_JUDGMENT_VERSION, D2_SHARED_KEYS, D2_SHARED_RUNTIME_CONTEXT, D2_SHARED_SKILL, buildD2SharedDefinition, inputLeaves, inputStateKey, isObviouslyDestructive, type D2SharedDefinition, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { parseD2RenderedShared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
+import { buildD2SharedDefinitionDocument, validateD2SharedDefinitionAgainstContract } from '/_102020_/l2/agentDefsL2/steps/shared40/definition.js';
+import type { D2SharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
 
 export function parseD2SharedJudgment(value: unknown): D2SharedJudgment {
   const root = record(value);
@@ -100,6 +102,18 @@ export function gateD2Shared(moduleName: string, page: D2SelectedPage, contract:
   }
   if (errors.length) throw new Error(errors.join('\n'));
   return definition;
+}
+
+/** Pure gate for the public shared-definition format. Not wired into run.ts until d2_42. */
+export function gateD2SharedDefinitionDocument(
+  moduleName: string,
+  page: D2SelectedPage,
+  contract: D2PageContract,
+  judgment: D2SharedJudgment,
+): D2SharedDefinitionDocument {
+  const { document } = buildD2SharedDefinitionDocument(moduleName, page, contract, judgment);
+  validateD2SharedDefinitionAgainstContract(document, page, contract, judgment);
+  return document;
 }
 
 export function assertD2RenderedShared(source: string): void {

@@ -70,8 +70,9 @@ export function buildD2SharedHumanPrompt(
   contract: D2PageContract,
   repair: { feedback: string; previous: unknown } | null,
 ): string {
+  const operationBindings = (page.operationBindings ?? []).map(({ sourceHashes: _sourceHashes, ...binding }) => binding);
   return JSON.stringify({
-    page: { pageId: page.pageId, pageName: page.label, ancestors: page.ancestors, journeys, organisms: page.organisms, reads: page.reads, writes: page.writes, operationBindings: page.operationBindings ?? [] },
+    page: { pageId: page.pageId, pageName: page.label, ancestors: page.ancestors, journeys, organisms: page.organisms, reads: page.reads, writes: page.writes, operationBindings },
     contract,
     mechanicalStartingCut: suggestedD2SharedJudgment(page, contract),
     preconditionStateKeysByAction: d2SharedPreconditionStateKeysByAction(page, contract),

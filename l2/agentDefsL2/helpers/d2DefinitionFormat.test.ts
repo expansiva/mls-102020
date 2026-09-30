@@ -11,6 +11,7 @@ import {
 } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
 
 const SYMBOLS: D2ResolvableSymbol[] = [
+  { fileRef: 'l2/sample/web/contracts/records.defs.ts' },
   { fileRef: 'l2/sample/web/contracts/records.defs.ts', fragment: 'listRecordRoute' },
   { fileRef: 'l2/sample/web/shared/records.defs.ts', fragment: 'definition', contentIds: ['recordList'] },
   { fileRef: 'l2/sample/rules.defs.ts', fragment: 'canViewRecords' },
@@ -21,7 +22,7 @@ void test('shared definition has one serializable identity and semantic refs res
   const model = parseD2Definition(JSON.parse(JSON.stringify(document)), SYMBOLS);
   assert.deepEqual(model.document, document);
   assert.deepEqual(model.resolvedReferences.map(item => item.declaration.fragment).sort(), [
-    'canViewRecords', 'listRecordRoute', 'listRecordRoute', 'listRecordRoute',
+    'canViewRecords', 'listRecordRoute', 'listRecordRoute', undefined,
   ]);
   assert.equal('pipeline' in model.document, false);
 });
@@ -50,9 +51,10 @@ void test('refs with no declaration or more than one declaration are rejected', 
 
   const ambiguous = sharedDocument();
   ambiguous.references[0].fragment = undefined;
+  ambiguous.references[0].fileRef = 'l2/sample/web/contracts/records.defs.ts';
   assert.throws(() => parseD2Definition(ambiguous, [
     ...SYMBOLS,
-    { fileRef: 'l2/sample/rules.defs.ts', fragment: 'anotherRule' },
+    { fileRef: 'l2/sample/web/contracts/records.defs.ts' },
   ]), /D2_DEFINITION_REFERENCE_AMBIGUOUS/);
 });
 
@@ -120,12 +122,13 @@ function sharedDocument(): Extract<D2DefinitionDocument, { artifactType: 'shared
     artifactType: 'shared',
     pageId: 'records',
     intent: 'Review records and their current state.',
-    contractRef: { purpose: 'typed routes and DTOs', fileRef: 'l2/sample/web/contracts/records.defs.ts', fragment: 'listRecordRoute' },
+    contractRef: { purpose: 'typed routes and DTOs', fileRef: 'l2/sample/web/contracts/records.defs.ts' },
     references: [{ purpose: 'view rule', fileRef: 'l2/sample/rules.defs.ts', fragment: 'canViewRecords' }],
     states: [{ id: 'records', purpose: 'loaded records', typeRef: { purpose: 'DTO', fileRef: 'l2/sample/web/contracts/records.defs.ts', fragment: 'listRecordRoute' } }],
     actions: [{ id: 'list', callRef: { purpose: 'load records', fileRef: 'l2/sample/web/contracts/records.defs.ts', fragment: 'listRecordRoute' }, inputs: [], resultStateRef: 'records' }],
-    contents: [{ id: 'recordList', stateRefs: ['records'] }],
+    contents: [{ id: 'recordList', intent: 'Review the list.', stateRefs: ['records'], inactiveBehavior: 'hiddenInertOutOfFocus' }],
     scenarios: [{ id: 'base', contentRefs: ['recordList'], preconditions: [] }],
+    authorityRefs: [{ purpose: 'view rule', fileRef: 'l2/sample/rules.defs.ts', fragment: 'canViewRecords' }],
   };
 }
 

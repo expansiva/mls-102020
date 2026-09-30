@@ -116,7 +116,7 @@ export function suggestedD2SharedJudgment(page: D2SelectedPage, contract: D2Page
   return {
     schemaVersion: D2_SHARED_JUDGMENT_VERSION, pageId: page.pageId,
     scenaries: [{ value: 'base', kind: 'base', actionId: base?.callName || '', preconditions: [] }, ...commands.filter(call => !isObviouslyDestructive(call.callName)).map(call => ({ value: call.callName, kind: 'command' as const, actionId: call.callName, preconditions: selectedKeys(page.pageId, call) }))],
-    initialLoadActionIds: queries.filter(call => inputLeaves(call.input).every(field => !field.required || page.operationBindings?.find(binding => binding.route === call.route)?.inputFields.find(input => input.path === field.path)?.origin === 'server')).map(call => call.callName),
+    initialLoadActionIds: queries.filter(call => inputLeaves(call.input ?? []).every(field => !field.required || page.operationBindings?.find(binding => binding.route === call.route)?.inputFields?.find(input => input.path === field.path)?.origin === 'server')).map(call => call.callName),
     actionBehaviors: contract.calls.map(call => ({ actionId: call.callName, refreshActionIds: call.operation === 'list' || call.operation === 'get' ? [] : queries.map(query => query.callName), destructive: isObviouslyDestructive(call.callName), ...(isObviouslyDestructive(call.callName) ? { confirmation: { title: 'Confirm action', description: 'Confirm this destructive action before continuing.' } } : {}) })),
   };
 }

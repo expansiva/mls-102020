@@ -18,8 +18,16 @@ exact `stateKey` strings from `preconditionStateKeysByAction[actionId]` in the h
 empty. Never put a human label, scenary value (such as `base`), or `actionId` in `preconditions`.
 On repair, replace every rejected precondition using that same allowlist; do not paraphrase it.
 
-Names, paths, contract references, states, actions, bindings and pipeline items are emitted by
+Names, paths, contract references, states, actions and bindings are emitted by
 code. Input sources are also deterministic: existing-record identities are selections and are not
 editable; ordinary payload fields are user input. No session or route source is invented. If a
 future trusted input explicitly declares one, it remains hidden/non-editable and still requires a
 resolvable value before initial loading.
+
+Submit only the logical judgment requested by the tool. The producer turns it into the public
+`sharedDefinitionV1` document: references point to contract symbols, states/actions are semantic,
+and shared content is declared once. Do not invent DTO fields, origins, authority refs, defaults,
+class names, setter names, method names, output-field maps, source hashes, or pipeline metadata.
+Keep required selection preconditions. A write-version token is a hidden snapshot captured from the
+selected record and blocks the write when unavailable; it is never a user-editable value or retry
+signal. Inactive content stays mounted but hidden, inert, and outside the focus order.
