@@ -1,18 +1,9 @@
 # agentDefsL2
 
-Deterministic entry and declared flow for producing L2 definition sources from an approved L4 plan.
+Recreated on 2026-09-30 for page11 v2. The public artifact renders page intent, sections, organisms and molecule choices. Field paths and write bindings stay in `pipeline/agentDefsL2/page11Needs/<pageId><Device>.json`.
 
-Invocation: `@@agentDefsL2 <lowerCamel>` or `/help`. An existing task may add an `agent` step with
-JSON args `{ "project": 102047, "module": "agendaClinica" }`. Both forms plant the same six-step
-plan; only the message entry creates an `add-message-ai` intent.
+Run `@@agentDefsL2 <module> /pages`, or invoke the step with `{ "project": N, "module": "<module>", "scope": "pages" }`. The four stages are `entry10 → input20 → pages50 → finalize60`. Input20 reads the canonical L4/planner snapshot; pages50 researches molecules and generates one desktop/mobile page11 pair and two internal needs drafts per selected page; finalize60 requires Studio compilation and records page ownership. Identical units reuse the complete receipt without an LLM call or write.
 
-Current delivery implements `entry10`, deterministic `input20`, deterministic `contracts30`,
-per-page LLM `shared40` and per-page LLM `pages50`, each LLM unit with one bounded repair.
-The input phase freezes coherent L4/planner inputs with content hashes, exact page destinations and
-structured review findings. The contracts phase gates and reconciles one typed contract per selected
-create/update page and publishes a hash-verified barrier. The shared phase emits behavior defs and
-pipeline items without materializing runtime `.ts`; pages50 emits paired desktop/mobile prose defs
-with deterministic pipeline items and compact molecule skills. `finalize60` remains unavailable.
-No publication, room message or L5 mutation exists here.
+Only `/pages` exists now. Shared behavior and typed contracts will be redesigned after validating page11. The old `contracts30` remains frozen solely because L1 regeneration tests still import it; this flow does not execute it or read its artifacts. Existing shared and contract files in a module are left untouched.
 
-State belongs only to `l2/<module>/pipeline/agentDefsL2/`.
+`steps/contracts30/` is frozen solely for the L1 regeneration test. Its remaining compatibility dependencies are `helpers/d2Core.ts`, `helpers/d2Intents.ts`, `helpers/d2Header.ts`, `steps/input20/{gate,io,contracts}.ts` and `steps/finalize60/{compile,io,contracts}.ts`. The input20 gate and IO only re-export shared snapshot code from `l2/helpers/defsInput/`.

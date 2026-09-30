@@ -261,3 +261,40 @@ test('a file with no readable model is never deduped — no key, so the mode alw
   assert.equal(reloadCount, before + 2, 'both must reach the mode');
   setLiveUpdateMode('off');
 });
+
+// ── The remount announces itself (2026-09-28) ──────────────────────────────
+//
+// `remountAll` calls `replaceWith` on the page element, so every node inside it dies — including
+// whatever the in-place editor had selected, which had no way to learn it was gone. Three callers
+// reach this file and only one is the editor, so the news cannot travel in a return value.
+
+test('a successful apply that swapped code tells whoever is listening', async () => {
+  const { applyLiveUpdate, onLiveUpdateApplied, setLiveUpdateMode } = await load();
+  let heard = 0;
+  const stop = onLiveUpdateApplied(() => { heard += 1; });
+  setLiveUpdateMode('reload');
+  await applyLiveUpdate({ edited: { page: '_1_x' } as never, page: { page: '_1_x' } as never, pageTag: 'x-y-1' });
+  assert.equal(heard, 1, 'the rebuilt page was announced');
+
+  // `off` replaces nothing, so there is nothing to announce — a listener that fired there would make
+  // the editor re-select on every keystroke of an edit that never touched the DOM.
+  setLiveUpdateMode('off');
+  await applyLiveUpdate({ edited: { page: '_1_x' } as never, page: { page: '_1_x' } as never, pageTag: 'x-y-1' });
+  assert.equal(heard, 1, 'a mode that applies no code stays quiet');
+
+  stop();
+  setLiveUpdateMode('reload');
+  await applyLiveUpdate({ edited: { page: '_1_x' } as never, page: { page: '_1_x' } as never, pageTag: 'x-y-1' });
+  assert.equal(heard, 1, 'unsubscribed means unsubscribed');
+  setLiveUpdateMode('off');
+});
+
+test('a listener that throws does not turn a good live update into a failed one', async () => {
+  const { applyLiveUpdate, onLiveUpdateApplied, setLiveUpdateMode } = await load();
+  const stop = onLiveUpdateApplied(() => { throw new Error('a subscriber with a bug'); });
+  setLiveUpdateMode('reload');
+  const result = await applyLiveUpdate({ edited: { page: '_1_x' } as never, page: { page: '_1_x' } as never, pageTag: 'x-y-1' });
+  assert.equal(result.ok, true, 'the update stands on its own');
+  stop();
+  setLiveUpdateMode('off');
+});

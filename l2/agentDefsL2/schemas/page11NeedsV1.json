@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collab.codes/schemas/agentDefsL2/page11NeedsV1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["organisms"],
+  "properties": {
+    "organisms": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reads", "edits", "selects", "submits"],
+        "properties": {
+          "reads": { "type": "array", "items": { "type": "string" } },
+          "edits": { "type": "array", "items": { "type": "string" } },
+          "selects": { "type": "string" },
+          "submits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["intentId", "write"],
+              "properties": { "intentId": { "type": "string" }, "write": { "type": "string" } }
+            }
+          }
+        }
+      }
+    }
+  }
+}

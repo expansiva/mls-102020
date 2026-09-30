@@ -1,0 +1,247 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "reembolsoDespesas",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "despesas_colaborador",
+      "kind": "hub",
+      "label": "Minhas despesas",
+      "context": "Colaborador",
+      "text": "Suas despesas são abertas com seu cadastro de colaborador já selecionado.",
+      "children": [
+        {
+          "id": "minhas_despesas",
+          "kind": "page",
+          "label": "Minhas despesas",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Resumo das suas despesas de reembolso por status."
+            },
+            {
+              "kind": "highlights",
+              "text": "Despesas que merecem atenção, incluindo as rejeitadas e as aguardando aprovação."
+            },
+            {
+              "kind": "alerts",
+              "text": "Prazos e avisos sobre suas despesas de reembolso."
+            },
+            {
+              "kind": "inbox",
+              "text": "Despesas que aguardam seu cadastro, correção ou reenvio."
+            },
+            {
+              "kind": "list",
+              "text": "Lista das suas despesas de reembolso, com filtros por status e período."
+            },
+            {
+              "kind": "detail",
+              "text": "Detalhes da despesa, incluindo status, motivo da rejeição, decisão do gestor e pagamento."
+            },
+            {
+              "kind": "form",
+              "text": "Cadastre uma nova despesa ou corrija os dados de uma despesa rejeitada."
+            },
+            {
+              "kind": "actions",
+              "text": "Registrar despesa, enviar para aprovação, corrigir despesa rejeitada e reenviar para aprovação."
+            },
+            {
+              "kind": "timeline",
+              "text": "Histórico da despesa, com cadastro, envio, decisões, rejeições, reenvios e registro de pagamento."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "despesas_equipe",
+      "kind": "hub",
+      "label": "Despesas da equipe",
+      "context": "Colaborador",
+      "text": "Escolha um colaborador da sua equipe para consultar e avaliar as despesas dele.",
+      "children": [
+        {
+          "id": "avaliar_despesas_equipe",
+          "kind": "page",
+          "label": "Avaliar despesas da equipe",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Resumo das despesas da equipe por status de avaliação."
+            },
+            {
+              "kind": "highlights",
+              "text": "Despesas pendentes e despesas reenviadas que precisam de nova avaliação."
+            },
+            {
+              "kind": "alerts",
+              "text": "Avisos sobre despesas da equipe aguardando avaliação."
+            },
+            {
+              "kind": "inbox",
+              "text": "Despesas encaminhadas ou reenviadas que aguardam sua decisão."
+            },
+            {
+              "kind": "list",
+              "text": "Lista de despesas do colaborador selecionado, com foco nas pendentes de avaliação."
+            },
+            {
+              "kind": "detail",
+              "text": "Detalhes da despesa, documentos e histórico das avaliações anteriores."
+            },
+            {
+              "kind": "actions",
+              "text": "Aprovar ou rejeitar a despesa e informar o motivo da rejeição."
+            },
+            {
+              "kind": "timeline",
+              "text": "Histórico da despesa, com envio para aprovação, decisões, rejeições e reenvios."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "pagamentos_despesas",
+      "kind": "hub",
+      "label": "Pagamentos de despesas",
+      "context": "Colaborador",
+      "text": "Escolha um colaborador para localizar as despesas aprovadas e registrar o pagamento.",
+      "children": [
+        {
+          "id": "registrar_pagamentos_despesas",
+          "kind": "page",
+          "label": "Registrar pagamentos",
+          "organisms": [
+            {
+              "kind": "summary",
+              "text": "Resumo das despesas aprovadas aguardando registro de pagamento."
+            },
+            {
+              "kind": "highlights",
+              "text": "Despesas aprovadas que ainda não têm data de pagamento."
+            },
+            {
+              "kind": "alerts",
+              "text": "Avisos sobre despesas aprovadas pendentes de pagamento."
+            },
+            {
+              "kind": "inbox",
+              "text": "Despesas aprovadas que aguardam o registro da data de pagamento."
+            },
+            {
+              "kind": "list",
+              "text": "Lista de despesas aprovadas do colaborador selecionado."
+            },
+            {
+              "kind": "detail",
+              "text": "Dados da despesa aprovados necessários para registrar o pagamento, incluindo status e data de pagamento."
+            },
+            {
+              "kind": "form",
+              "text": "Informe a data de pagamento da despesa aprovada."
+            },
+            {
+              "kind": "actions",
+              "text": "Registrar a data de pagamento da despesa aprovada."
+            },
+            {
+              "kind": "timeline",
+              "text": "Histórico da despesa, com aprovação e registro da data de pagamento."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "cadastro_gestor_equipe",
+      "kind": "hub",
+      "label": "Meu cadastro de gestor",
+      "context": "GestorEquipe",
+      "text": "Seu cadastro de gestor de equipe é aberto com seu próprio registro já selecionado.",
+      "children": [
+        {
+          "id": "meu_cadastro_gestor",
+          "kind": "page",
+          "label": "Meu cadastro de gestor",
+          "organisms": [
+            {
+              "kind": "detail",
+              "text": "Dados do seu cadastro de gestor de equipe."
+            },
+            {
+              "kind": "form",
+              "text": "Atualize os dados do seu cadastro de gestor de equipe."
+            },
+            {
+              "kind": "actions",
+              "text": "Editar seu cadastro de gestor de equipe."
+            },
+            {
+              "kind": "timeline",
+              "text": "Histórico das alterações realizadas no seu cadastro de gestor de equipe."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:colaborador": [
+      "despesas_colaborador"
+    ],
+    "actor:gestorEquipe": [
+      "despesas_equipe",
+      "cadastro_gestor_equipe"
+    ],
+    "actor:financeiro": [
+      "pagamentos_despesas"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "registrarEenviarDespesa": [
+        "minhas_despesas"
+      ],
+      "consultarPropriasDespesas": [
+        "minhas_despesas"
+      ],
+      "corrigirEreenviarDespesa": [
+        "minhas_despesas"
+      ],
+      "avaliarDespesaDaEquipe": [
+        "avaliar_despesas_equipe"
+      ],
+      "registrarPagamentoDeDespesa": [
+        "registrar_pagamentos_despesas"
+      ]
+    },
+    "processes": {
+      "submeterEAvaliarDespesa": [
+        "minhas_despesas",
+        "avaliar_despesas_equipe"
+      ],
+      "reavaliarDespesaReenviada": [
+        "minhas_despesas",
+        "avaliar_despesas_equipe"
+      ],
+      "registrarPagamentoDespesaAprovada": [
+        "minhas_despesas",
+        "avaliar_despesas_equipe",
+        "registrar_pagamentos_despesas"
+      ]
+    },
+    "removed": []
+  }
+}

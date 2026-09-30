@@ -237,6 +237,14 @@ const message_pt = {
   'live.remounted': 'remontado ao vivo ({count} instância(s), {tags} implementação(ões) trocada(s)) — rolagem, diálogo aberto e texto não enviado se perdem',
   'live.alreadyApplied': 'já aplicado — a página no ar já é esta versão',
 
+  // ── The molecule swap, when the source is right but the running page is out of reach ──────
+  'swap.notReached': 'a troca está no fonte e aparece ao recarregar, mas não chegou à página no ar: {reason}',
+  'swap.noPageElement': 'nenhum elemento de página encontrado no app',
+  'swap.noAnchor': 'não sei onde este elemento está no fonte, então não troco nada — trocar pelo lugar errado é pior',
+  'swap.noAnchorBecause': 'não dá para trocar este elemento: {reason}',
+  'swap.anchorNotFound': 'não encontrei este elemento no fonte da página: {reason}',
+  'swap.anchorTagMismatch': 'a posição no fonte tem <{found}>, e o selecionado é <{expected}> — o fonte mudou desde a seleção?',
+
   // ── Panel chrome ──────────────────────────────────────────────────────────
   'panel.fileTitle': 'arquivo que recebe a edição',
   'panel.noFile': 'nenhum arquivo resolvido',
@@ -852,6 +860,13 @@ const message_en: typeof message_pt = {
   'live.noElementDefine': 'the edited file registers no element (it is a shared base) — reload to see it',
   'live.remounted': 'remounted live ({count} instance(s), {tags} implementation(s) swapped) — scroll, open dialog and unsent text are lost',
   'live.alreadyApplied': 'already applied — the running page is already this version',
+
+  'swap.notReached': 'the swap is in the source and shows on reload, but did not reach the running page: {reason}',
+  'swap.noPageElement': 'no page element found in the app',
+  'swap.noAnchor': 'I do not know where this element is in the source, so I change nothing — swapping the wrong one is worse',
+  'swap.noAnchorBecause': 'this element cannot be swapped: {reason}',
+  'swap.anchorNotFound': 'I could not find this element in the page source: {reason}',
+  'swap.anchorTagMismatch': 'the position in the source holds <{found}>, and the selection is <{expected}> — did the source change since?',
 
   'panel.fileTitle': 'file that receives the edit',
   'panel.noFile': 'no file resolved',

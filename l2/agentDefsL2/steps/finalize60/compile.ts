@@ -8,9 +8,10 @@ import {
 import { readSourceText } from '/_102035_/l2/solution/fs.js';
 import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import type { D2CompileProof } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
-import type { D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
 import { d2InfoForPath } from '/_102020_/l2/agentDefsL2/steps/finalize60/io.js';
 
+// 2026-09-30: frozen contracts30 still imports this compiler until L1 drops the legacy generator.
+export interface D2FinalSource { pageId: string; kind: 'contract' | 'shared' | 'desktopPage' | 'mobilePage'; path: string; source: string }
 const ORDER: Record<D2FinalSource['kind'], number> = { contract: 0, shared: 1, desktopPage: 2, mobilePage: 2 };
 
 export interface D2CompilerModel {

@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2Header.ts" enhancement="_blank"/>
 
+// 2026-09-30: retained only by frozen contracts30 rendering.
+
 export function d2Header(reference: string, project?: number): string {
   const ref = reference.replace(/^\//u, '');
   if (!/^(?:_[0-9]+_\/)?l2\/[A-Za-z0-9_/-]+\.defs\.ts$/u.test(ref)) throw new Error(`D2_HEADER_REFERENCE_INVALID: ${reference}`);

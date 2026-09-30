@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeReceipt.ts" enhancement="_blank"/>
 
 import { expandContextRef, parseDefs, resolveProjectRelativeRef, type PipelineItem } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
-import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
+import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 
 export const CFE_CONTEXT_RECEIPT_VERSION = '2026-09-26-cfe-context-v1' as const;
 export interface CfeContextSource { reference: string; sha256: string; }

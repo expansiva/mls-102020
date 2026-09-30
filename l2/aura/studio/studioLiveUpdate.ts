@@ -210,12 +210,42 @@ async function applyLiveUpdateNow(ctx: ILiveUpdateContext): Promise<ILiveUpdateR
     // Only a mode that really swapped code, and only on success: a refusal must stay retryable, and
     // `off` must never leave a mark saying the page is built from something it never received.
     if (appliesCode && source && result.ok) lastApplied = { file: key, source };
+    if (appliesCode && result.ok) announceApplied();
     return result;
   } catch (err) {
     return { ok: false, message: t('live.failed', { mode: name, error: (err as Error).message }) };
   }
 }
 
+/** Everyone waiting to hear that the page was rebuilt under them. */
+const appliedListeners = new Set<() => void>();
+
+/**
+ * Be told when a live update REPLACED the running page, and unsubscribe by calling what is returned.
+ *
+ * ANNOUNCES, IT DOES NOT COMMAND. `remountAll` calls `replaceWith` on the page element, so every node
+ * inside it dies — including whatever the in-place editor had selected, which then had no way to
+ * learn it was gone. Three different callers reach this file (the editor, the genome's molecule knob
+ * and the watcher) and only one of them is the editor, so a return value could never carry the news:
+ * it has to be published here, once, for all three.
+ *
+ * A listener that throws is contained: a subscriber with a bug must not turn a successful live
+ * update into a failed one.
+ */
+export function onLiveUpdateApplied(listener: () => void): () => void {
+  appliedListeners.add(listener);
+  return () => appliedListeners.delete(listener);
+}
+
+function announceApplied(): void {
+  for (const listener of appliedListeners) {
+    try {
+      listener();
+    } catch (err) {
+      console.warn('[studioLiveUpdate] a listener of the remount failed:', err);
+    }
+  }
+}
 /**
  * Compile the edited file, then put it in the running page — the whole gesture, once.
  *

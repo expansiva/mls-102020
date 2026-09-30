@@ -1,190 +1,105 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/finalize60/run.ts" enhancement="_blank"/>
 
-import { displayPath, readSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
-import { markD2Complete, readD2Pipeline, type D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
-import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
-import type { D2InputSnapshot } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { D2_CONTRACTS_VERSION, assertD2BundleMatchesSnapshot, sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
-import { readD2ContractsManifest } from '/_102020_/l2/agentDefsL2/steps/contracts30/io.js';
-import { readD2SharedManifest } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
-import { readD2PagesManifest } from '/_102020_/l2/agentDefsL2/steps/pages50/io.js';
-import { D2_SHARED_VERSION } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
-import { D2_PAGES_VERSION } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
-import { D2_FINALIZE_VERSION, type D2CompileProof, type D2FinalizeReport, type D2FinalizeResult, type D2OwnedArtifact, type D2OwnershipReceipt } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
-import { d2FinalizeReportFile, d2InfoForPath, deleteD2Owned, readD2Ownership, writeD2FinalizeReport, writeD2Ownership } from '/_102020_/l2/agentDefsL2/steps/finalize60/io.js';
-import { gateD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
-import { compileD2FinalSources } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
+import { displayPath, indexedFile, readJson, readSourceText, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
+import { markD2Complete, markD2FinalizeBlocked, readD2Pipeline, type D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { readD2PagesReceipt, sourceInfo } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { compileD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
+import type { D2CompileProof } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
 
-export interface D2FinalizePort { read?: (info: Ns5FileInfo) => Promise<string>; remove?: (info: Ns5FileInfo) => Promise<void>; beforeDeleteCheck?: (path: string) => Promise<void>; compile?: typeof compileD2FinalSources; }
-export interface D2PendingRemoval { path: string; info: Ns5FileInfo; }
+export const D2_PAGES_FINALIZE_VERSION = '2026-09-30-agent-defs-l2-pages-finalize-v1' as const;
 
-export async function finalizeD2(identity: D2RunIdentity, port: D2FinalizePort = {}): Promise<D2FinalizeResult> {
-  const read = port.read || readSourceText;
-  const remove = port.remove || deleteD2Owned;
-  const snapshot = await readD2Input(identity);
+export interface D2PagesOwnership {
+  schemaVersion: typeof D2_PAGES_FINALIZE_VERSION;
+  project: number;
+  module: string;
+  artifacts: Array<{ pageId: string; device: 'desktop' | 'mobile'; path: string; sha256: string }>;
+}
+export interface D2PagesFinalizeReport {
+  schemaVersion: typeof D2_PAGES_FINALIZE_VERSION;
+  project: number;
+  module: string;
+  snapshotHash: string;
+  status: 'complete' | 'blocked';
+  pages: string[];
+  artifactPaths: string[];
+  compilation: D2CompileProof[];
+  pending: string[];
+}
+export interface D2PagesFinalizePort {
+  readInput?: typeof readD2Input;
+  readBundle?: typeof readD2InputBundle;
+  assertStable?: typeof assertD2InputSourcesStable;
+  readPipeline?: typeof readD2Pipeline;
+  reusable?: typeof reusableD2Page;
+  readReceipt?: typeof readD2PagesReceipt;
+  readSource?: typeof readSourceText;
+  readJson?: typeof readJson;
+  writeJson?: typeof writeJson;
+  markComplete?: typeof markD2Complete;
+  markBlocked?: typeof markD2FinalizeBlocked;
+  compile?: typeof compileD2FinalSources;
+  indexed?: (info: Ns5FileInfo) => boolean;
+}
+
+function file(identity: D2RunIdentity, shortName: string): Ns5FileInfo {
+  return { project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentDefsL2/finalize60`, shortName, extension: '.json' };
+}
+async function writeChanged<T>(info: Ns5FileInfo, value: T, port: D2PagesFinalizePort): Promise<boolean> {
+  if (JSON.stringify(await (port.readJson || readJson)<T>(info)) === JSON.stringify(value)) return false;
+  await (port.writeJson || writeJson)(info, value);
+  return true;
+}
+
+export async function finalizeD2Pages(identity: D2RunIdentity, port: D2PagesFinalizePort = {}): Promise<{ report: D2PagesFinalizeReport; writes: number }> {
+  const snapshot = await (port.readInput || readD2Input)(identity);
   if (!snapshot) throw new Error('D2_FINALIZE_INPUT_MISSING');
-  const bundle = await readD2InputBundle(identity);
-  assertD2BundleMatchesSnapshot(snapshot, bundle.artifacts);
-  await assertD2InputSourcesStable(bundle);
-  const [contracts, shared, pages, priorOwnership, pipeline] = await Promise.all([
-    readD2ContractsManifest(identity), readD2SharedManifest(identity), readD2PagesManifest(identity), readD2Ownership(identity), readD2Pipeline(identity),
-  ]);
+  const bundle = await (port.readBundle || readD2InputBundle)(identity);
+  await (port.assertStable || assertD2InputSourcesStable)(bundle);
+  const pipeline = await (port.readPipeline || readD2Pipeline)(identity);
   const pending: string[] = [];
-  const writeIds = [...snapshot.selection.writePageIds].sort();
-  const preserveIds = [...snapshot.selection.preservePageIds].sort();
-  const activeIds = [...writeIds, ...preserveIds].sort();
-  const expectedWrite = writeIds.join('\0');
-  if (!pipeline) pending.push('agentDefsL2 pipeline is missing or illegible');
-  else for (const stepId of ['entry10', 'input20', 'contracts30', 'shared40', 'pages50'] as const) {
-    if (pipeline.steps[stepId]?.status !== 'approved') pending.push(`pipeline step is not approved: ${stepId}`);
-  }
-  const allowed = new Set(['toCreate', 'toUpdate', 'done']);
-  if (snapshot.selection.pages.some(page => !allowed.has(page.status)) || snapshot.selection.remove.some(page => page.status !== 'toRemove')) pending.push('input selection contains an invalid status');
-  const idsByWriteStatus = snapshot.selection.pages.filter(page => page.status === 'toCreate' || page.status === 'toUpdate').map(page => page.pageId).sort();
-  const idsByDoneStatus = snapshot.selection.pages.filter(page => page.status === 'done').map(page => page.pageId).sort();
-  const allSelectionIds = [...snapshot.selection.pages.map(page => page.pageId), ...snapshot.selection.remove.map(page => page.pageId)];
-  if (idsByWriteStatus.join('\0') !== writeIds.join('\0') || idsByDoneStatus.join('\0') !== preserveIds.join('\0') || new Set(allSelectionIds).size !== allSelectionIds.length) pending.push('effort status and selection sets are inconsistent');
-  const countProblems = validateD2SelectionCounts(snapshot);
-  if (countProblems.length) pending.push(`input selection counts are inconsistent: ${countProblems.join('; ')}`);
-  if (!contracts || contracts.schemaVersion !== D2_CONTRACTS_VERSION || contracts.status !== 'approved' || contracts.snapshotHash !== snapshot.snapshotHash || contracts.units.some(unit => unit.status !== 'approved' || unit.schemaVersion !== D2_CONTRACTS_VERSION) || contracts.units.map(unit => unit.pageId).sort().join('\0') !== expectedWrite) pending.push('contracts30 barrier does not match the exact write set');
-  if (!shared || shared.schemaVersion !== D2_SHARED_VERSION || shared.status !== 'approved' || shared.snapshotHash !== snapshot.snapshotHash || shared.units.some(unit => unit.status !== 'approved' || unit.schemaVersion !== D2_SHARED_VERSION) || shared.units.map(unit => unit.pageId).sort().join('\0') !== expectedWrite) pending.push('shared40 barrier does not match the exact write set');
-  if (!pages || pages.schemaVersion !== D2_PAGES_VERSION || pages.status !== 'approved' || pages.snapshotHash !== snapshot.snapshotHash || pages.units.some(unit => unit.status !== 'approved' || unit.schemaVersion !== D2_PAGES_VERSION) || pages.units.map(unit => unit.pageId).sort().join('\0') !== expectedWrite) pending.push('pages50 barrier does not match the exact write set');
-
-  const prior = new Map((priorOwnership?.artifacts || []).map(item => [item.path, item]));
+  if (!pipeline || pipeline.steps.entry10?.status !== 'approved' || pipeline.steps.input20?.status !== 'approved'
+    || pipeline.steps.pages50?.status !== 'approved' || pipeline.steps.pages50.snapshotHash !== snapshot.snapshotHash) pending.push('D2_FINALIZE_PIPELINE_INCOMPLETE');
+  const pageIds = [...snapshot.selection.writePageIds].sort();
   const sources: D2FinalSource[] = [];
-  const owned: D2OwnedArtifact[] = [];
-  for (const page of snapshot.selection.pages.filter(item => activeIds.includes(item.pageId)).sort((a, b) => a.pageId.localeCompare(b.pageId))) {
-    for (const destination of page.destinations) {
-      const info = d2InfoForPath(identity, destination.path);
-      let source = '';
-      try { source = await read(info); } catch { /* diagnosed below */ }
-      if (!source) { pending.push(`${page.status} file missing: ${destination.path}`); continue; }
+  const artifacts: D2PagesOwnership['artifacts'] = [];
+  for (const pageId of pageIds) {
+    if (!await (port.reusable || reusableD2Page)(identity, pageId)) { pending.push(`D2_FINALIZE_PAGE_STALE: ${pageId}`); continue; }
+    const receipt = await (port.readReceipt || readD2PagesReceipt)(identity, pageId);
+    if (!receipt) { pending.push(`D2_FINALIZE_RECEIPT_MISSING: ${pageId}`); continue; }
+    for (const device of ['desktop', 'mobile'] as const) {
+      const info = sourceInfo(identity, pageId, device);
+      const path = displayPath(info);
+      if (!(port.indexed ? port.indexed(info) : Boolean(indexedFile(info)))) { pending.push(`D2_FINALIZE_INDEX_ENTRY_MISSING: ${path}`); continue; }
+      const source = await (port.readSource || readSourceText)(info);
       const hash = await sha256Text(source);
-      if (page.status === 'done') {
-        const receipt = prior.get(destination.path);
-        if (!receipt) pending.push(`done file has no agentDefsL2 ownership receipt: ${destination.path}`);
-        else if (receipt.sha256 !== hash) pending.push(`done file changed after approval: ${destination.path}`);
-      } else {
-        const manifestHash = hashFromManifests(destination.kind, destination.path, page.pageId, contracts, shared, pages);
-        if (!manifestHash || manifestHash !== hash) pending.push(`approved hash mismatch: ${destination.path}`);
-      }
-      sources.push({ pageId: page.pageId, kind: destination.kind, path: destination.path, source });
-      owned.push({ pageId: page.pageId, kind: destination.kind, path: destination.path, sha256: hash });
+      if (hash !== receipt.sourceHashes[device]) { pending.push(`D2_FINALIZE_SOURCE_CHANGED: ${path}`); continue; }
+      sources.push({ pageId, kind: device === 'desktop' ? 'desktopPage' : 'mobilePage', path, source });
+      artifacts.push({ pageId, device, path, sha256: hash });
     }
   }
-  try { if (!pending.length) gateD2FinalSources(snapshot, sources); } catch (error) { pending.push(error instanceof Error ? error.message : String(error)); }
+  await (port.assertStable || assertD2InputSourcesStable)(bundle);
   let compilation: D2CompileProof[] = [];
   if (!pending.length) {
-    compilation = await (port.compile || compileD2FinalSources)(identity, sources, new Map(owned.map(item => [item.path, item.sha256])));
-    for (const item of compilation) if (item.status === 'failed') pending.push(`TypeScript compilation failed: ${item.path}: ${item.diagnostics.join('; ')}`);
-    if (compilation.length !== sources.length) pending.push('Studio compiler did not prove every emitted source');
+    compilation = await (port.compile || compileD2FinalSources)(identity, sources, new Map(artifacts.map(item => [item.path, item.sha256])));
+    if (compilation.length !== sources.length || sources.some(source => compilation.filter(proof => proof.path === source.path && proof.sha256 === artifacts.find(item => item.path === source.path)?.sha256 && proof.status === 'passed').length !== 1)) {
+      pending.push('D2_FINALIZE_STUDIO_COMPILE_INCOMPLETE');
+    }
+    for (const proof of compilation.filter(item => item.status !== 'passed')) pending.push(`D2_FINALIZE_COMPILE_FAILED: ${proof.path}: ${proof.diagnostics.join('; ')}`);
   }
-
-  const removals: D2PendingRemoval[] = [];
-  const materializationPendingRemove: string[] = [];
-  for (const page of [...snapshot.selection.remove].sort((a, b) => a.pageId.localeCompare(b.pageId))) {
-    if (!exactDestinations(identity.module, page.pageId, page.destinations)) { pending.push(`remove destination set is invalid: ${page.pageId}`); continue; }
-    for (const destination of page.destinations) {
-    if (destination.kind !== 'contract') materializationPendingRemove.push(destination.path.replace(/\.defs\.ts$/, '.ts'));
-    const receipt = prior.get(destination.path);
-    if (!receipt || receipt.pageId !== page.pageId || receipt.kind !== destination.kind) { pending.push(`remove refused without matching ownership receipt: ${destination.path}`); continue; }
-    let live = ''; try { live = await read(d2InfoForPath(identity, destination.path)); } catch { /* already absent */ }
-    if (!live) continue;
-    if (receipt.removed) { pending.push(`previously removed file reappeared without ownership: ${destination.path}`); continue; }
-    if (await sha256Text(live) !== receipt.sha256) { pending.push(`remove refused after local edit: ${destination.path}`); continue; }
-    removals.push({ path: destination.path, info: d2InfoForPath(identity, destination.path) });
-  } }
-  await assertStillCurrent(identity, snapshot.snapshotHash, bundle);
-  if (!pending.length) pending.push(...await revalidateD2RemovalSet(
-    removals, prior, read, () => assertStillCurrent(identity, snapshot.snapshotHash, bundle), port.beforeDeleteCheck,
-  ));
-  const baseReport = { schemaVersion: D2_FINALIZE_VERSION, ...identity, snapshotHash: snapshot.snapshotHash, ready: writeIds, preserved: preserveIds, removed: [] as string[], pending: [...new Set(pending)].sort(), materializationPendingRemove: [...new Set(materializationPendingRemove)].sort(), artifactPaths: owned.map(item => item.path).sort(), compilation };
+  if ((await (port.readInput || readD2Input)(identity))?.snapshotHash !== snapshot.snapshotHash) throw new Error('D2_FINALIZE_STALE_RUN');
+  const report: D2PagesFinalizeReport = { schemaVersion: D2_PAGES_FINALIZE_VERSION, ...identity, snapshotHash: snapshot.snapshotHash,
+    status: pending.length ? 'blocked' : 'complete', pages: pageIds, artifactPaths: artifacts.map(item => item.path).sort(), compilation, pending };
   if (pending.length) {
-    const report: D2FinalizeReport = { ...baseReport, status: 'blocked' };
-    const wrote = await writeD2FinalizeReport(identity, report);
-    return { report, writes: wrote ? 1 : 0, deletes: 0 };
+    const writes = Number(await writeChanged(file(identity, 'report'), report, port));
+    await (port.markBlocked || markD2FinalizeBlocked)(identity, pending.join('; '), snapshot.snapshotHash);
+    return { report, writes };
   }
-  for (const item of removals) {
-    const conflict = await revalidateD2RemovalSet([item], prior, read, () => assertStillCurrent(identity, snapshot.snapshotHash, bundle));
-    if (conflict.length) throw new Error(conflict.join('; '));
-    await remove(item.info);
-  }
-  const tombstones = snapshot.selection.remove.flatMap(page => page.destinations.map(destination => {
-    const item = prior.get(destination.path)!;
-    return { ...item, removed: true as const };
-  }));
-  const receipt: D2OwnershipReceipt = { schemaVersion: D2_FINALIZE_VERSION, ...identity, artifacts: [...owned, ...tombstones].sort((a, b) => a.path.localeCompare(b.path)) };
-  let writes = (await writeD2Ownership(identity, receipt)) ? 1 : 0;
-  const report: D2FinalizeReport = { ...baseReport, status: 'complete', removed: snapshot.selection.remove.flatMap(page => page.destinations.map(item => item.path)).sort(), pending: [] };
-  if (await writeD2FinalizeReport(identity, report)) writes += 1;
-  await assertStillCurrent(identity, snapshot.snapshotHash, bundle);
-  await markD2Complete(identity, [...report.artifactPaths, displayPath(d2FinalizeReportFile(identity))], snapshot.snapshotHash);
-  return { report, writes, deletes: removals.length };
-}
-
-export function validateD2SelectionCounts(snapshot: D2InputSnapshot): string[] {
-  const problems: string[] = [];
-  const routes = new Set<string>();
-  const usecases = new Map<string, string>();
-  const usecaseRefs = new Set<string>();
-  for (const page of snapshot.selection.pages) {
-    const pageUsecases = new Set<string>();
-    for (const usecase of page.usecases) {
-      const usecaseId = fieldId(usecase.usecaseId);
-      if (!usecaseId) { problems.push(`usecaseId missing in ${page.pageId}`); continue; }
-      if (pageUsecases.has(usecaseId)) problems.push(`usecaseId duplicated in ${page.pageId}: ${usecaseId}`);
-      pageUsecases.add(usecaseId);
-      const encoded = JSON.stringify(usecase);
-      const prior = usecases.get(usecaseId);
-      if (prior !== undefined && prior !== encoded) problems.push(`usecaseId has conflicting definitions: ${usecaseId}`);
-      else usecases.set(usecaseId, encoded);
-    }
-    for (const endpoint of page.endpoints) {
-      const route = fieldId(endpoint.route);
-      const usecaseRef = fieldId(endpoint.usecaseRef);
-      if (!route) problems.push(`endpoint route missing in ${page.pageId}`);
-      else if (routes.has(route)) problems.push(`endpoint route duplicated: ${route}`);
-      else routes.add(route);
-      if (!usecaseRef) problems.push(`endpoint usecaseRef missing in ${page.pageId}${route ? ` (${route})` : ''}`);
-      else usecaseRefs.add(usecaseRef);
-    }
-  }
-  for (const usecaseRef of usecaseRefs) if (!usecases.has(usecaseRef)) problems.push(`endpoint references missing usecaseId: ${usecaseRef}`);
-  const counts = snapshot.selection.counts;
-  if (counts.pages !== snapshot.selection.pages.length) problems.push(`pages=${counts.pages}, expected ${snapshot.selection.pages.length}`);
-  if (counts.destinations !== snapshot.selection.pages.length * 4) problems.push(`destinations=${counts.destinations}, expected ${snapshot.selection.pages.length * 4}`);
-  if (counts.materializationItems !== snapshot.selection.pages.length * 3) problems.push(`materializationItems=${counts.materializationItems}, expected ${snapshot.selection.pages.length * 3}`);
-  if (counts.endpoints !== routes.size) problems.push(`endpoints=${counts.endpoints}, expected ${routes.size} unique routes`);
-  if (counts.usecases !== usecases.size) problems.push(`usecases=${counts.usecases}, expected ${usecases.size} unique usecaseIds`);
-  return [...new Set(problems)].sort();
-}
-
-function fieldId(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
-
-function hashFromManifests(kind: D2FinalSource['kind'], path: string, pageId: string, contracts: Awaited<ReturnType<typeof readD2ContractsManifest>>, shared: Awaited<ReturnType<typeof readD2SharedManifest>>, pages: Awaited<ReturnType<typeof readD2PagesManifest>>): string {
-  if (kind === 'contract') { const unit = contracts?.units.find(value => value.pageId === pageId); return unit?.artifactPath === path ? unit.sourceHash : ''; }
-  if (kind === 'shared') { const unit = shared?.units.find(value => value.pageId === pageId); return unit?.artifactPath === path && unit.pipelineItemId === `${pageId}__l2_shared` ? unit.sourceHash : ''; }
-  const device = kind === 'desktopPage' ? 'desktop' : 'mobile'; const unit = pages?.units.find(value => value.pageId === pageId);
-  return unit?.artifactPaths[device] === path && unit.pipelineItemIds[device] === `${pageId}__${device}__page11` ? unit.sourceHashes[device] : '';
-}
-async function assertStillCurrent(identity: D2RunIdentity, hash: string, bundle: Awaited<ReturnType<typeof readD2InputBundle>>): Promise<void> { if ((await readD2Input(identity))?.snapshotHash !== hash) throw new Error('D2_FINALIZE_STALE_RUN'); await assertD2InputSourcesStable(bundle); }
-function exactDestinations(moduleName: string, pageId: string, values: D2InputSnapshot['selection']['remove'][number]['destinations']): boolean { const base = `l2/${moduleName}/web`; const expected = [`contract\0${base}/contracts/${pageId}.defs.ts`, `shared\0${base}/shared/${pageId}.defs.ts`, `desktopPage\0${base}/desktop/page11/${pageId}.defs.ts`, `mobilePage\0${base}/mobile/page11/${pageId}.defs.ts`].sort(); return values.map(item => `${item.kind}\0${item.path}`).sort().join('\n') === expected.join('\n'); }
-
-export async function revalidateD2RemovalSet(
-  removals: D2PendingRemoval[],
-  ownership: Map<string, D2OwnedArtifact>,
-  read: (info: Ns5FileInfo) => Promise<string>,
-  verifyCurrent: () => Promise<void>,
-  beforeCheck?: (path: string) => Promise<void>,
-): Promise<string[]> {
-  const problems: string[] = [];
-  for (const item of removals) {
-    await beforeCheck?.(item.path);
-    await verifyCurrent();
-    let live = ''; try { live = await read(item.info); } catch { /* conflict below */ }
-    await verifyCurrent();
-    const receipt = ownership.get(item.path);
-    if (!live || !receipt || receipt.removed || await sha256Text(live) !== receipt.sha256) problems.push(`remove target changed after scan: ${item.path}`);
-  }
-  return problems;
+  const ownership: D2PagesOwnership = { schemaVersion: D2_PAGES_FINALIZE_VERSION, ...identity, artifacts: artifacts.sort((a, b) => a.path.localeCompare(b.path)) };
+  let writes = Number(await writeChanged(file(identity, 'ownership'), ownership, port));
+  if (await writeChanged(file(identity, 'report'), report, port)) writes += 1;
+  await (port.markComplete || markD2Complete)(identity, [...report.artifactPaths, displayPath(file(identity, 'report'))], snapshot.snapshotHash);
+  return { report, writes };
 }

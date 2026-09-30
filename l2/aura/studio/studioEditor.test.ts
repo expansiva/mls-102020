@@ -568,3 +568,87 @@ test('the panel never picks a key for an ambiguous text', () => {
     assert.equal(codeLines(PANEL).some((line) => line.includes(forbidden)), false, forbidden);
   }
 });
+
+test('the selection carries WHERE the element is, not only how many like it are on screen', () => {
+  // A consumer that WRITES needs a position in the file. `occurrence` is a position on screen, and
+  // the two orders are unrelated — that is how the molecule swap rewrote the wrong button.
+  assert.match(EDITOR, /anchorPath: anchorPathOf\(state\?\.anchor \?\? null\)/u);
+  // An `occurrence` anchor locates a class LITERAL by counting; it cannot name an element, so it
+  // publishes nothing rather than something that looks like a position.
+  assert.match(EDITOR, /if \(!anchor \|\| anchor\.kind === 'occurrence'\) return null;/u);
+  // Copied: the projection keeps every value it is handed, and this anchor is still live here.
+  assert.match(EDITOR, /return \[\.\.\.anchor\.path\];/u);
+});
+
+test('the selection is published again once the panel has something to say', () => {
+  // THE RACE (2026-09-28): `selectElement` publishes synchronously and then kicks off the panel
+  // resolution without waiting, so the first projection is always built from a `classPanel` that
+  // belongs to the PREVIOUS element — `editable` false, `refusal` empty, `anchorPath` null, every
+  // time. Harmless while the fields were only displayed; the molecule swap ACTS on them, and refused
+  // an element the panel had located perfectly.
+  const code = codeLines(EDITOR);
+  assert.equal(
+    code.filter((line) => line.includes('this.publishSelection(el)')).length,
+    2,
+    'at selection time, and again when the panel state lands',
+  );
+  // The second one is inside the guard that says the state belongs to the CURRENT selection.
+  const show = EDITOR.slice(EDITOR.indexOf('const show = (): void =>'));
+  const guard = show.indexOf('if (this.selectedEl !== el) return;');
+  const publish = show.indexOf('this.publishSelection(el);');
+  assert.ok(guard >= 0 && guard < publish, 'published only for the element still selected');
+});
+
+// ── The selection survives the page being rebuilt (2026-09-28) ─────────────
+//
+// A live update REMOUNTS: `replaceWith` on the page element, so the selected node dies with
+// everything inside it. After a molecule swap the new molecule was on screen and nothing was
+// selected — the user had to hunt for it again.
+
+test('the editor hears about the remount, and stops hearing when it disarms', () => {
+  // Three callers reach the live update (this editor, the genome's knob, the watcher) and only one
+  // is the editor, so a return value could never carry the news — it is announced, once, for all.
+  assert.match(EDITOR, /onLiveUpdateApplied\(this\.onRemounted\)/u);
+  assert.match(EDITOR, /this\.stopListeningToRemount\?\.\(\);/u);
+});
+
+test('the decision of WHICH element lives in the pure core, not here', () => {
+  // Regra de negócio no núcleo: o editor só mede o DOM e pergunta. E foi bom que perguntasse — a
+  // primeira regra (ignorar a tag do último passo) reselecionava o irmão de cima, e consertar isso
+  // com um teste de verdade só foi possível porque a decisão é importável.
+  assert.match(EDITOR, /pickRestored\(/u);
+  assert.match(EDITOR, /const at = pickRestored\(elements\.map\(\(candidate\) => this\.positionOf\(candidate\)\), target\)/u);
+});
+
+test('the same walker measures both sides, and the rank comes with it', () => {
+  // Candidates are measured with `domPathOf` — the function that produced the path being looked for
+  // — so the two agree by construction instead of by two walkers written to match.
+  const finder = EDITOR.slice(EDITOR.indexOf('private positionOf('));
+  assert.match(finder.slice(0, 400), /path: this\.domPathOf\(el\)/u);
+  // The rank among ALL siblings is what tells a plain wrapper from a molecule that are both "index 0".
+  assert.match(finder.slice(0, 400), /Array\.from\(parent\.children\)\.indexOf\(el\)/u);
+  // Our own chrome never counts as a candidate.
+  const finderStart = EDITOR.indexOf('private elementAtPath(');
+  assert.match(EDITOR.slice(finderStart, finderStart + 600), /CONTROL_CLASS/u);
+});
+
+test('an element that is gone clears the selection instead of leaving an outline', () => {
+  const restore = EDITOR.slice(EDITOR.indexOf('private restoreSelection('));
+  assert.match(restore.slice(0, 900), /requestAnimationFrame/u, 'the rebuilt page renders on its own schedule');
+  assert.match(restore.slice(0, 900), /this\.publishSelection\(null\)/u);
+});
+
+test('the restore can only land where a click could have landed', () => {
+  // `selectElement` states its precondition: the element arrives already collapsed by ownership.
+  // Hover and click both pass through `resolveSelectableElement`; the restore was a THIRD way in and
+  // skipped it, so it could hand over markup inside the molecule that had just been swapped in — and
+  // the panel refused the selection as "it comes from a molecule", naming that molecule's project.
+  const finderStart = EDITOR.indexOf('private elementAtPath(');
+  const finder = EDITOR.slice(finderStart, finderStart + 1400);
+  assert.match(finder, /this\.resolveSelectableElement\(candidate\) === candidate/u);
+  // Filtering, not collapsing afterwards: an internal node must not count as a sibling either.
+  assert.ok(
+    finder.indexOf('resolveSelectableElement') < finder.indexOf('pickRestored'),
+    'the candidate list is cleaned before anything is ranked',
+  );
+});

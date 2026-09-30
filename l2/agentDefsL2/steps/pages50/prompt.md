@@ -3,35 +3,27 @@
 <!-- reasoningEffort: high -->
 <!-- x-tool-strict: true -->
 
-Classify and describe exactly one page in two presentations: desktop and mobile. Call `submitD2Pages` once.
-Provide pageIntent in userLanguage: the authorized actor's purpose and scope. The emitted page11 is a textual definition; structured coverage is derived from approved shared.coverage. Code fills each organism's contentRef and capabilityRefs from shared.coverage by organismId. For each capability, cite output fields only using the exact structured reference `${outputTypeRef}.${path}` from that organism's `outputFieldsByCapability[capability]`; cite only what supports the description, and never guess or combine fields across capabilities. Never turn a state setter, hidden snapshot, route or session value into an editable visual field.
-Mobile is its own composition for narrow fluid viewports: preview 390px, validate 360/430px, accessible touch targets, readable sequential panels or cards where appropriate, without horizontal overflow or a squeezed desktop table. Do not freeze a grid or choose one layout for every page.
-The selected category Markdown and any explicit style/layout preference guide materialization. Shared, DTOs, grants and rule references prevail over suggestions for totals, tab saves or filters.
+Define one page in desktop and mobile. Call submitD2Pages once. Return the exact schema:
+desktop and mobile each contain definition and needs; categoryReason explains the shared category.
+In each definition, template contains category only. Code derives experience from the catalog.
+Intent, section purposes and organism text describe what the page shows and why, in userLanguage.
+Give every organism its own intents array, even if empty. Use submit or navigate only.
+For a submit, to is empty. For navigate, to is an accessible page id from the menu.
 
-Return exactly one description object for every supplied organism, using its organismId and kind unchanged.
-Its prose explains that organism's objective, information, actions, relevant loading/empty/error states
-and accessible interaction in userLanguage. Assign it to one existing shared scenary through contentRef
-and cite only real shared capabilities in capabilityRefs. Static content may have no capability; every
-other organism needs at least one. Preserve the same organism capabilities/contentRef on both devices.
-Mobile may discuss touch, reading priority and constrained space, but it must not remove capabilities.
+The needs draft is internal: every organism has reads, edits, selects and submits. Field paths
+must exist in ontology and be disclosed by the actor's grants. selects is a target organism id
+or empty. Every submit intent has a matching intentId and an Entity.operation write declared in
+the page needs. Cover every page write with a submit or a navigate to an accessible page that
+declares the same write. Do not invent writes, fields, routes or permissions.
 
-Do not emit HTML, CSS, coordinates, columns, grids, wireframes, fixed sections, component tags or a
-mandatory molecule variant. Do not invent statistics, methods, data, routes, permissions or APIs. The
-approved shared object is the closed capability vocabulary. Do not create contentRef values: several
-organisms may share one scenary, and a shared scenary does not require an artificial organism.
+Molecule recommendations are by organism and role. Preferred and optional alternative must
+be exact tags from one of that organism's selected group indexes. Do not copy a catalog into
+the definition. Leave organisms without compatible molecules out of molecules.
+The research IDs organism1, organism2 and so on refer to menu organisms in source order;
+map each one to the semantic id you assign to that organism in both definitions.
 
-Choose one categoryRef from the compact pageCategoryCatalog for the whole page. Explain the choice and
-cite real shared capability identifiers in evidenceRefs. Use bespoke only when no published category fits,
-with a specific reason; category guidance never grants an operation or prescribes layout.
+Page11 is for rendering. Do not include fields, rules, states, functions, pipeline, hashes,
+capability refs, shared refs, HTML, CSS, fixed grids or implementation classes. Describe mobile
+as fluid narrow content around 390px, also usable at 360px and 430px.
 
-Inside each organism, moleculeRecommendations contains exact tags listed in moleculeCandidates.
-Put moleculeReason once on each presentation object; it is not a field of an organism description.
-Use the scenario text and that organism's declared data/actions as evidence. When the listed groups contain
-a compatible display/query, data-entry/input, or trigger/command candidate, recommend at least one for that
-organism. Never invent a tag or attach a group when capabilityRefs do not support it. Recommendations remain
-consultative, may differ by device and do not mandate a component. Empty recommendations are valid only for
-static content or when no listed group matches the organism capabilities; moleculeReason must say which, and
-must never claim that the catalog is empty when moleculeCandidates.groups is non-empty.
-
-Names, paths, ids, pipeline items, dependencies and skill references are emitted by code. Return only
-the schema fields. On repair, correct the whole two-device unit using the diagnostic and prior answer.
+If repairing, replace the whole desktop/mobile pair and the internal drafts using the diagnostic.

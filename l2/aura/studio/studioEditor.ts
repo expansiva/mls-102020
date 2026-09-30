@@ -36,6 +36,7 @@ import {
   findAllI18nMatches,
   findTextOriginByKey,
   findTextOriginByOccurrence,
+  type ISourceSpan,
   pickLocale,
   pickSiblingLocales,
   readSharedKeyMap,
@@ -91,6 +92,8 @@ import {
   selectableChain,
   splitUtilities,
   type IDomPathStep,
+  pickRestored,
+  type IRestorePosition,
   type IOwnerChain,
   type IOwnerTree,
   type ITemplateElement,
@@ -98,7 +101,7 @@ import {
   type IUtilityToken,
 } from '/_102020_/l2/aura/studio/studioClassEdit.js';
 import { builtCssClassNames, isStudioTailwindLive } from '/_102033_/l2/cbe/studioTailwind.js';
-import { compileAndApplyLiveUpdate } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
+import { compileAndApplyLiveUpdate, onLiveUpdateApplied } from '/_102020_/l2/aura/studio/studioLiveUpdate.js';
 import {
   CONTEXT_CHARS,
   MOVE_NO_TARGET,
@@ -151,6 +154,9 @@ const DRAG_THRESHOLD_PX = 4;
 /** Elements the editor itself puts on the page — never selectable, never counted. */
 const CONTROL_CLASS = 'se-control';
 
+/** How many frames to wait for the rebuilt page to render before giving the selection up. */
+const RESELECT_ATTEMPTS = 5;
+
 /**
  * Attributes that hold TEXT THE USER READS (TASK-102020-attribute-text).
  *
@@ -179,6 +185,21 @@ type ClassAnchor =
    * any other, because by then the element has a literal.
    */
   | { kind: 'insert'; path: IDomPathStep[] };
+
+/**
+ * The anchor as a POSITION for whoever acts on the selection from outside, or nothing.
+ *
+ * `structural` and `insert` both address an ELEMENT of the template. `occurrence` addresses a class
+ * LITERAL by counting, which is a different question and cannot name an element — a consumer that
+ * writes gets a path or gets null, never a count dressed up as a position.
+ *
+ * Copied, not passed through: the projection keeps every value it is handed, and the anchor here is
+ * still the live one this editor will use for its own next write.
+ */
+function anchorPathOf(anchor: ClassAnchor | null): IDomPathStep[] | null {
+  if (!anchor || anchor.kind === 'occurrence') return null;
+  return [...anchor.path];
+}
 
 /**
  * One undoable edit.
@@ -382,6 +403,18 @@ export class StudioEditor {
   private mode: StudioEditMode = 'off';
   private overlayEl: HTMLDivElement | null = null;
   private selectedEl: HTMLElement | null = null;
+
+  /**
+   * WHERE the selected element is, kept so the selection can survive the page being rebuilt.
+   *
+   * A live update REMOUNTS: `replaceWith` on the page element, so the selected node dies with
+   * everything else inside it. The node itself can never be found again — it no longer exists —
+   * but the position can, and the position is what the user still means.
+   */
+  private selectedPath: IRestorePosition | null = null;
+
+  /** Unsubscribes this editor from the remount announcement. */
+  private stopListeningToRemount: (() => void) | null = null;
   private lastHoveredEl: HTMLElement | null = null;
   private target: IStudioEditTarget | null = null;
   /** Why the page's file could not be resolved — the panel says this instead of guessing. */
@@ -666,6 +699,9 @@ export class StudioEditor {
     // must never see the editor's undo. Capture also means this runs before anything deeper, which
     // is the only way to be sure of that.
     window.addEventListener('keydown', this.onEditorKey, true);
+    // The page can be rebuilt under us by an edit that is not ours (the genome's molecule knob,
+    // the watcher). This is the only way to hear about it.
+    this.stopListeningToRemount = onLiveUpdateApplied(this.onRemounted);
   }
 
   private removeListeners(): void {
@@ -683,6 +719,8 @@ export class StudioEditor {
     window.removeEventListener('resize', this.onScrollResize);
     window.removeEventListener('mouseup', this.onHostPointerUp, true);
     window.removeEventListener('keydown', this.onEditorKey, true);
+    this.stopListeningToRemount?.();
+    this.stopListeningToRemount = null;
   }
 
   /**
@@ -1003,6 +1041,8 @@ export class StudioEditor {
     // same element, so without this the hover outline would not come back over the element just
     // clicked.
     this.lastHoveredEl = null;
+    // Captured with the same function that will look for it again after a remount.
+    this.selectedPath = this.positionOf(el);
     this.drawSelection();
     this.publishSelection(el);
 
@@ -1010,6 +1050,81 @@ export class StudioEditor {
     // refusal, are on screen BEFORE a chip is clicked. Async (it may have to open organism models);
     // the caller does not wait for it.
     void this.showClassPanel(el);
+  }
+
+  /**
+   * The page was rebuilt under us: put the selection back where it was, or let it go.
+   *
+   * An arrow property because it is handed to `onLiveUpdateApplied` as a callback and has to keep
+   * its `this`. Nothing selected, or a node that survived (a mode that did not replace the page):
+   * there is nothing to restore, and re-selecting would fight the user for no reason.
+   */
+  private readonly onRemounted = (): void => {
+    const path = this.selectedPath;
+    if (!path || !this.selectedEl || this.selectedEl.isConnected) return;
+    this.restoreSelection(path, 0);
+  };
+
+  /**
+   * Selects whatever is now at `path`.
+   *
+   * RETRIED ACROSS FRAMES: the remount replaces the page element and Lit fills the new one on its
+   * own schedule, so the first look can land on a shell that is still empty. A bounded retry is the
+   * honest way to wait for a render nobody here owns.
+   */
+  private restoreSelection(target: IRestorePosition, attempt: number): void {
+    const found = this.elementAtPath(target);
+    if (found) {
+      this.selectElement(found);
+      return;
+    }
+    if (attempt < RESELECT_ATTEMPTS) {
+      requestAnimationFrame(() => this.restoreSelection(target, attempt + 1));
+      return;
+    }
+    // Gone for real — removed, or moved somewhere this path no longer describes. An outline over
+    // nothing is worse than no selection at all.
+    this.selectedEl = null;
+    this.selectedPath = null;
+    this.lastHoveredEl = null;
+    this.hideClassPanel();
+    this.clearOverlay();
+    this.publishSelection(null);
+  }
+
+  /**
+   * The element that occupies `path` now, or nothing.
+   *
+   * Every candidate is measured with `domPathOf` — the SAME function that produced the path being
+   * looked for — so the two sides agree by construction instead of by two walkers written to match.
+   * It is linear in the page and runs once per remount; a descending walker would have to mirror the
+   * live-slot re-routing of `ownerChain`, which is exactly the code this avoids duplicating.
+   */
+  private elementAtPath(target: IRestorePosition): HTMLElement | null {
+    const host = this.host;
+    if (!host || !target.path.length) return null;
+    const elements = Array.from(host.querySelectorAll<HTMLElement>('*'))
+      .filter((candidate) => !candidate.closest(`.${CONTROL_CLASS}`))
+      // ONLY WHAT A CLICK COULD HAVE PRODUCED. `selectElement` states its precondition: the element
+      // arrives already collapsed by ownership. Hover and click both go through
+      // `resolveSelectableElement`; this was a third way in and it skipped that, so a candidate could
+      // be markup INSIDE the molecule that had just been swapped in. The panel then refused the
+      // selection as "it comes from a molecule", naming that molecule's project — and only
+      // sometimes, because it depended on whether the new molecule had rendered its internals by the
+      // frame this ran. Filtering instead of collapsing afterwards also keeps the sibling ranks
+      // clean: an internal node must not be counted as somebody the user could have pointed at.
+      .filter((candidate) => this.resolveSelectableElement(candidate) === candidate);
+    const at = pickRestored(elements.map((candidate) => this.positionOf(candidate)), target);
+    return at >= 0 ? elements[at] : null;
+  }
+
+  /** Where an element is, in the shape the restore compares. */
+  private positionOf(el: HTMLElement): IRestorePosition {
+    const parent = el.parentElement;
+    return {
+      path: this.domPathOf(el),
+      siblingIndex: parent ? Array.from(parent.children).indexOf(el) : -1,
+    };
   }
 
   /**
@@ -1376,7 +1491,9 @@ export class StudioEditor {
       ? findTextOriginByKey(i18nKey, src, documentLang)
       // Messages come from `src`, but the ORDER of the matches comes from the page template — on
       // generated pages those are two different files.
-      : findTextOriginByOccurrence(oldText, src, occurrenceIndex, documentLang, pageSource));
+      : findTextOriginByOccurrence(
+        oldText, src, occurrenceIndex, documentLang, pageSource, this.selectedElementSpan(src),
+      ));
 
     // The text can live in THREE places, and the order is what makes the right one win:
     //  1. the page file — the current generator gives it its own catalog with short keys, part of them
@@ -1704,6 +1821,14 @@ export class StudioEditor {
       if (this.selectedEl !== el) return;
       this.classPanel = state;
       this.renderClassPanel();
+      // AND PUBLISHED AGAIN, because only now is there anything to publish. `selectElement` calls
+      // `publishSelection` synchronously and kicks this off without waiting, so that first
+      // projection is always built from a `classPanel` that belongs to the PREVIOUS element (or to
+      // none): `editable` false, `refusal` empty and `anchorPath` null, for every selection. It went
+      // unnoticed while the fields were only displayed; the molecule swap is the first consumer
+      // that ACTS on them, and it read "I do not know where this element is" for an element the
+      // panel had located perfectly.
+      this.publishSelection(el);
     };
 
     // FIRST, because everything below is judged against this page's own file: without it there is no
@@ -1769,6 +1894,24 @@ export class StudioEditor {
       }));
     }
     return texts;
+  }
+
+  /**
+   * The span of the SELECTED element inside `src`, when the anchor resolves there.
+   *
+   * It is what lets a static text be found INSIDE the element that was clicked instead of by
+   * counting occurrences across the file — the mistake the molecule swap paid for twice: the order
+   * of the text in the source is not the order of the elements on screen.
+   *
+   * `undefined` for a file the anchor does not resolve against (an organism, the shared base) and
+   * for an `occurrence` anchor, which addresses a class literal and cannot name an element. The
+   * lookup then behaves exactly as it did before this existed.
+   */
+  private selectedElementSpan(src: string): ISourceSpan | undefined {
+    const anchor = this.classPanel?.anchor;
+    if (!anchor || anchor.kind === 'occurrence') return undefined;
+    const resolved = resolveStructuralAnchor(scanTemplateTree(src), anchor.path);
+    return resolved.ok ? { start: resolved.element.openStart, end: resolved.element.end } : undefined;
   }
 
   /** The element of the page's source the selection IS, when its position resolved it. */
@@ -2248,6 +2391,7 @@ export class StudioEditor {
       editable: Boolean(state && !state.refusal && file && state.anchor !== null),
       refusal: state?.refusal ? tr(state.refusal) : undefined,
       occurrence: this.countTagInDom(el),
+      anchorPath: anchorPathOf(state?.anchor ?? null),
     };
     setEditSelection(selection);
     this.publishHistory();

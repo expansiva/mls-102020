@@ -412,7 +412,13 @@ function unescapeString(str: string): string {
  * Looks for static text inside the html`...` template of render().
  * Static text is anything between HTML tags that is NOT inside ${...}.
  */
-function findInTemplate(text: string, source: string): IStaticOrigin | null {
+/** The span of the element that was clicked, when the caller could resolve it. */
+export interface ISourceSpan {
+  start: number;
+  end: number;
+}
+
+function findInTemplate(text: string, source: string, within?: ISourceSpan): IStaticOrigin | null {
   // EVERY html`` block, not just the first one after `render() {`. The generator splits a page across
   // render()/renderXxx() methods (9 templates in the file this was tested against), and organism
   // files have no `render()` at all — they export plain functions. Anchoring on the first template
@@ -424,10 +430,15 @@ function findInTemplate(text: string, source: string): IStaticOrigin | null {
     for (const part of staticParts) {
       const idx = part.text.indexOf(text);
       if (idx === -1) continue;
+      const startOffset = part.absoluteOffset + idx;
+      // WITHIN THE ELEMENT THAT WAS CLICKED, when the caller knows which one that is. Picking by
+      // counting occurrences is what the molecule swap paid for twice: the order of the text in
+      // the file is not the order of the elements on screen.
+      if (within && (startOffset < within.start || startOffset >= within.end)) continue;
       return {
         type: 'static',
-        startOffset: part.absoluteOffset + idx,
-        endOffset: part.absoluteOffset + idx + text.length,
+        startOffset,
+        endOffset: startOffset + text.length,
         originalText: text,
       };
     }
@@ -903,11 +914,32 @@ export function findTextOriginByOccurrence(
   occurrenceIndex: number,
   lang?: string,
   templateSource?: string,
+  within?: ISourceSpan,
 ): TextOrigin {
   const trimmed = text.trim();
   if (!trimmed) return { type: 'dynamic', reason: 'Empty text' };
 
   const matches = findAllI18nMatches(trimmed, source, lang);
+
+  // A KEY NOTHING INTERPOLATES CANNOT BE THE ORIGIN of text that IS on the screen.
+  //
+  // Measured on 29/09/2026: of the 22 generated files that carry a catalog in the 102047 and the
+  // 102050, 21 never read it — `messages()` appears zero times and every string is ALSO written as
+  // a literal in the markup. Matching by value then found the key, the edit went to the catalog,
+  // and the screen kept the literal. The live update did its job on code that renders the same text
+  // as before, so the whole thing reported success: "i18n \"pageDescription\" — remontado ao vivo".
+  //
+  // Only when NO candidate is in the template: one live key means the catalog is real and wins.
+  if (matches.length > 0) {
+    const map = buildTemplateMap(templateSource ?? source);
+    const anyLive = matches.some((match) => map.some((expr) => expr.i18nKey === match.key));
+    if (!anyLive) {
+      const literal = findInTemplate(trimmed, source, within);
+      if (literal) return literal;
+      // No literal either: the key may reach the screen through something this scan cannot see, and
+      // the old answer is still the best one available.
+    }
+  }
 
   if (matches.length > 1 && occurrenceIndex >= 0) {
     const templateMap = buildTemplateMap(templateSource ?? source);

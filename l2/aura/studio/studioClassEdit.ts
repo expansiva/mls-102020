@@ -2523,6 +2523,45 @@ export interface IDomPathStep {
   i18nKeys?: readonly string[];
 }
 
+/** Where an element is: its path, plus its rank among ALL the children of its DOM parent. */
+export interface IRestorePosition {
+  path: IDomPathStep[];
+  /** `indexOf` among `parentElement.children` — every sibling, not only those with the same tag. */
+  siblingIndex: number;
+}
+
+/** The ancestors are the same, step for step. The last step is judged separately. */
+function sameAncestors(left: IDomPathStep[], right: IDomPathStep[]): boolean {
+  if (left.length !== right.length || left.length === 0) return false;
+  return left.every((step, at) => step.index === right[at].index
+    && (at === left.length - 1 || step.tag === right[at].tag));
+}
+
+/**
+ * WHICH candidate is the element that was selected before the page was rebuilt, or -1.
+ *
+ * EXACT FIRST. A path including every tag identifies the element outright, and that covers every
+ * edit except the one that changes a tag.
+ *
+ * THEN THE TAG OF THE LAST STEP IS DROPPED, for the molecule swap — where the tag is precisely what
+ * changed and the element is still the one the user was pointing at. On its own that rule is far too
+ * loose, and it shipped that way once: `index` counts among siblings WITH THE SAME TAG, so a `<div>`
+ * and a molecule that are both the first of their kind are both "index 0". On the real page
+ * (102047/consultas) the header holds `<div>` then the button, and the swap re-selected the `<div>`.
+ *
+ * `siblingIndex` is what tells them apart: the rank among ALL the children of the parent, where the
+ * `<div>` is 0 and the button is 1. A swap does not move siblings, so it survives the rebuild.
+ */
+export function pickRestored(candidates: readonly IRestorePosition[], target: IRestorePosition): number {
+  if (!target.path.length) return -1;
+  const last = target.path.length - 1;
+  const exact = candidates.findIndex((candidate) => sameAncestors(candidate.path, target.path)
+    && candidate.path[last].tag === target.path[last].tag);
+  if (exact >= 0) return exact;
+  return candidates.findIndex((candidate) => sameAncestors(candidate.path, target.path)
+    && candidate.siblingIndex === target.siblingIndex);
+}
+
 export type StructuralAnchor =
   | {
     ok: true;

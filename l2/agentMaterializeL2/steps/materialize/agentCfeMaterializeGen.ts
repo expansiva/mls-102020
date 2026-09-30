@@ -63,7 +63,7 @@ import { buildPageSkeleton, markMissingOrganisms, organismFileRef, type PageOrga
 import { buildSplitPlan, type SplitPlanSection } from '/_102020_/l2/agentMaterializeL2/helpers/cfePageSplitPlan.js';
 import { cfePipelineTraceMlsPath, recordCfeDegradation } from '/_102020_/l2/agentMaterializeL2/helpers/cfePipelineTrace.js';
 import { buildCfeContextReceipt, cfeContextReceiptPath, cfeContextSourcesCurrent, readCfeContextSources, readCfeUsedApis, type CfeContextReceipt } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeReceipt.js';
-import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
+import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 
 const pendingContextReceipts = new Map<string, CfeContextReceipt>();
 const pendingMechanicalReferences = new Map<string, { skeleton?: string; sharedTemplate?: string }>();

@@ -631,3 +631,85 @@ test('every locale that declares the key is reachable from an attribute value', 
   assert.deepEqual(readDeclaredLocales(ATTR_PAGE), ['en', 'pt']);
   assert.deepEqual(origin.languages.map((l) => l.lang), ['en', 'pt']);
 });
+
+// ── A catalog nobody reads (2026-09-29) ────────────────────────────────────
+//
+// THE DEFECT, ONCE: the key won by matching the VALUE, without asking whether anything interpolates
+// it. On 102047/pacientes the page carries a full catalog, never calls `messages()`, and writes every
+// string ALSO as a literal in the markup. The edit went to the catalog, the template kept the
+// literal, and the live update then did its job on code that renders the same text as before — so the
+// whole thing reported success. Measured 29/09/2026: 21 of the 22 generated files that carry a
+// catalog in the 102047 and the 102050 never read it.
+
+/** The real shape of 102047/pacientes: catalog present, catalog unused, literals in the markup. */
+const DEAD_CATALOG = [
+  '/// **collab_i18n_start**',
+  'const pageMessage_pt = {',
+  "pageTitle: 'Pacientes',",
+  "pageDescription: 'Consulta e cadastro de pacientes da clinica.',",
+  "identificationUnavailable: 'Identificacao indisponivel.',",
+  '};',
+  '/// **collab_i18n_end**',
+  'const pageMessages: Record<string, PageMessageType> = { pt: pageMessage_pt };',
+  '',
+  'class Pacientes extends PacientesShared {',
+  '  private renderIdentification(): TemplateResult {',
+  '    return html`<p class="pacientes-muted">Identificacao indisponivel.</p>`;',
+  '  }',
+  '  render(): TemplateResult {',
+  '    return html`<main><header><h1>Pacientes</h1>',
+  '<p>Consulta e cadastro de pacientes da clinica.</p></header>',
+  '<section><p class="empty">Identificacao indisponivel.</p></section></main>`;',
+  '  }',
+  '}',
+].join('\n');
+
+/** The negative control: the SAME page, reading the catalog the way it is supposed to. */
+const LIVE_CATALOG = DEAD_CATALOG
+  .replace('<p>Consulta e cadastro de pacientes da clinica.</p>', '<p>${m.pageDescription}</p>');
+
+test('a key nothing interpolates loses to the literal that is on the screen', () => {
+  const origin = findTextOriginByOccurrence(
+    'Consulta e cadastro de pacientes da clinica.', DEAD_CATALOG, 0, 'pt', DEAD_CATALOG,
+  );
+  assert.equal(origin.type, 'static', 'the markup is where the text really is');
+  if (origin.type !== 'static') return;
+  // And the offset is the one in the TEMPLATE, not the one in the catalog.
+  assert.ok(origin.startOffset > DEAD_CATALOG.indexOf('render()'), 'inside render(), not in the catalog');
+});
+
+// Without this the test above cannot tell the fix from "always write to the literal".
+test('a catalog that IS read keeps winning', () => {
+  const origin = findTextOriginByOccurrence(
+    'Consulta e cadastro de pacientes da clinica.', LIVE_CATALOG, 0, 'pt', LIVE_CATALOG,
+  );
+  assert.equal(origin.type, 'i18n', 'one live key means the catalog is real');
+  if (origin.type !== 'i18n') return;
+  assert.equal(origin.key, 'pageDescription');
+});
+
+test('the literal is found inside the element that was clicked, not by counting', () => {
+  // The same sentence twice in the markup: once in a helper, once in render(). Counting would always
+  // answer the first; the span of the clicked element answers the right one.
+  const second = DEAD_CATALOG.indexOf('<p class="empty">');
+  const origin = findTextOriginByOccurrence(
+    'Identificacao indisponivel.', DEAD_CATALOG, 0, 'pt', DEAD_CATALOG,
+    { start: second, end: second + 60 },
+  );
+  assert.equal(origin.type, 'static');
+  if (origin.type !== 'static') return;
+  assert.ok(origin.startOffset > second, 'the occurrence inside the span, not the first in the file');
+});
+
+test('with no span it still answers, the way it always did', () => {
+  // The L3 preview and anything else without an anchor must not start refusing.
+  const origin = findTextOriginByOccurrence('Identificacao indisponivel.', DEAD_CATALOG, 0, 'pt', DEAD_CATALOG);
+  assert.equal(origin.type, 'static');
+});
+
+test('a key with no literal anywhere still answers the key', () => {
+  // The scan cannot see every way a key reaches the screen; when there is no literal to prefer, the
+  // old answer is the best one available and must not become a refusal.
+  const origin = findTextOriginByOccurrence('Pacientes', DEAD_CATALOG, 0, 'pt', DEAD_CATALOG);
+  assert.ok(origin.type === 'static' || origin.type === 'i18n', 'never dynamic for a text that is there');
+});

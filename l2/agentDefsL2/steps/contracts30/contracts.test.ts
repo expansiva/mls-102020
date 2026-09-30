@@ -206,6 +206,9 @@ void test('write preconditions are metadata-driven and remain separate from writ
   const transition = pages.find(page => page.pageId === 'team_records')!.calls.find(call => call.callName === 'closeRecord')!;
   assert.deepEqual(flatten(transition.input).filter(field => field.writePrecondition).map(field => field.path), ['Record.revision']);
   assert.ok(flatten(transition.input).some(field => field.path === 'Record.details.eventNote'));
+  const renderedUpdate = renderD2PageContract({ pageId: 'staff_registration', calls: [update] });
+  assert.match(renderedUpdate, /"revision": number;/);
+  assert.doesNotMatch(renderedUpdate, /privateFlag/);
 });
 
 void test('missing or invalid payload, unsupported types, invalid grants and changed routes are identified', () => {
@@ -256,6 +259,7 @@ void test('rendered defs are safe, static pages are empty and a .defs.js consume
   const source = renderD2PageContract(contract);
   assertD2RenderedContract(source, contract);
   assert.doesNotMatch(source, /\bany\b|\bunknown\b|items:|pageSize:|total:/);
+  assert.equal(source.includes('pipeline'), false);
   assert.equal(renderD2PageContract({ pageId: 'static', calls: [] }), 'export {};\n');
 
   const folder = mkdtempSync(path.join(tmpdir(), 'd2-contract-'));
