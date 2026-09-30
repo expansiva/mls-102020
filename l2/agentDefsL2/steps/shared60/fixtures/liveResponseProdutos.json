@@ -1,0 +1,145 @@
+{
+ "states": [
+  {
+   "id": "produtos",
+   "source": "load.produtos",
+   "description": "Produtos carregados para consulta de saldos, alertas e listagem."
+  },
+  {
+   "id": "detalheProduto",
+   "source": "seleção por produtoId em produtos",
+   "description": "Produto selecionado para detalhamento e movimentações."
+  },
+  {
+   "id": "filtrosListaProdutos",
+   "source": "parâmetros de entrada search e page",
+   "description": "Critérios persistidos de busca e paginação da lista de produtos."
+  },
+  {
+   "id": "produtoFormulario",
+   "source": "edições de formularioProduto",
+   "description": "Dados do produto em cadastro."
+  }
+ ],
+ "functions": [
+  {
+   "id": "carregarProdutos",
+   "description": "Carrega os produtos da página.",
+   "calls": "load",
+   "sets": "produtos"
+  },
+  {
+   "id": "selecionarProduto",
+   "description": "Seleciona o produto para consulta detalhada.",
+   "sets": "detalheProduto"
+  },
+  {
+   "id": "filtrarListaProdutos",
+   "description": "Atualiza a lista conforme busca e página.",
+   "updates": [
+    "filtrosListaProdutos"
+   ]
+  },
+  {
+   "id": "cadastrarProduto",
+   "description": "Cadastra o produto informado.",
+   "calls": "cadastrarProduto",
+   "updates": [
+    "produtos",
+    "detalheProduto"
+   ]
+  },
+  {
+   "id": "abrirMovimentacoes",
+   "description": "Abre as movimentações do produto selecionado.",
+   "navigate": "movimentacoes",
+   "carries": {
+    "produtoId": "detalheProduto.id"
+   }
+  }
+ ],
+ "journeys": [
+  {
+   "step": "acompanharSaldos/consultarSaldos",
+   "organisms": [
+    "saldoAtual",
+    "alertasSaldoBaixo"
+   ],
+   "functions": [
+    "carregarProdutos"
+   ]
+  },
+  {
+   "step": "acompanharSaldos/localizarProdutos",
+   "organisms": [
+    "listaProdutos",
+    "detalheProduto"
+   ],
+   "functions": [
+    "filtrarListaProdutos",
+    "selecionarProduto"
+   ]
+  },
+  {
+   "step": "cadastrarProduto/informarProduto",
+   "organisms": [
+    "formularioProduto",
+    "acoesCadastro"
+   ],
+   "functions": [
+    "cadastrarProduto"
+   ]
+  },
+  {
+   "step": "registrarMovimentacaoEstoque/consultarSaldo",
+   "organisms": [
+    "saldoAtual",
+    "detalheProduto"
+   ],
+   "functions": [
+    "carregarProdutos"
+   ],
+   "continuesIn": "movimentacoes"
+  },
+  {
+   "step": "registrarMovimentacaoEstoque/localizarProduto",
+   "organisms": [
+    "listaProdutos",
+    "detalheProduto"
+   ],
+   "functions": [
+    "filtrarListaProdutos",
+    "selecionarProduto"
+   ],
+   "continuesIn": "movimentacoes"
+  },
+  {
+   "step": "registrarMovimentacaoEstoque/registrarMovimentacao",
+   "organisms": [
+    "detalheProduto"
+   ],
+   "functions": [
+    "abrirMovimentacoes"
+   ],
+   "continuesIn": "movimentacoes"
+  },
+  {
+   "step": "tratarAvisoSaldoBaixo/consultarProdutoAvisado",
+   "organisms": [
+    "alertasSaldoBaixo",
+    "detalheProduto"
+   ],
+   "functions": [
+    "selecionarProduto"
+   ]
+  }
+ ],
+ "commandReturns": [
+  {
+   "requestId": "cadastrarProduto",
+   "returns": [
+    "produto"
+   ]
+  }
+ ]
+}

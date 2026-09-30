@@ -6,9 +6,11 @@ The code already decided entry parameters, requests, rules, access and bound for
 Add only states, functions, journey rows, command return keys, descriptions, and a form
 organism when a submit is marked ambiguous.
 
-A state remembers something the page shows or edits. Its source is an existing request,
-another state, a selection or a request input. A function calls an existing request, sets
-an existing state, or navigates to a page the same actor can open. Use only the journey
+A state remembers something the page shows or edits. Its source is one token from
+validSources, the id of another state, or the id of a function whose sets is this state.
+Never prose, and never more than one token. A function sets exactly one state id. When it
+affects several states, list those ids in updates. A function calls an existing request or
+navigates to a page the same actor can open. Use only the journey
 steps the code lists. Each step names organisms from the page or a continuesIn page. Do not
 invent steps, requests, rules or actors.
 

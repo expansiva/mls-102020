@@ -1,0 +1,85 @@
+{
+ "states": [
+  {
+   "id": "produtoId",
+   "source": "entry.params.produtoId",
+   "description": "Identificador do produto usado para filtrar o histórico de movimentações."
+  },
+  {
+   "id": "page",
+   "source": "entry.params.page",
+   "description": "Página atual do histórico de movimentações."
+  },
+  {
+   "id": "movimentacoes",
+   "source": "load.movimentacoes",
+   "description": "Movimentações de estoque exibidas no histórico."
+  },
+  {
+   "id": "produtos",
+   "source": "load.produtos",
+   "description": "Produtos disponíveis para consulta e registro da movimentação."
+  },
+  {
+   "id": "movimentacaoEstoque",
+   "source": "registrarMovimentacao.movimentacaoEstoque",
+   "description": "Movimentação de estoque retornada após o registro."
+  }
+ ],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega as movimentações e os produtos da página.",
+   "calls": "load",
+   "sets": "movimentacoes, produtos"
+  },
+  {
+   "id": "registrarMovimentacao",
+   "description": "Registra a movimentação de estoque informada.",
+   "calls": "registrarMovimentacao",
+   "sets": "movimentacaoEstoque",
+   "updates": [
+    "movimentacoes",
+    "produtos"
+   ]
+  }
+ ],
+ "journeys": [
+  {
+   "step": "registrarMovimentacaoEstoque/consultarSaldo",
+   "organisms": [
+    "formularioMovimentacao"
+   ],
+   "functions": [
+    "load"
+   ]
+  },
+  {
+   "step": "registrarMovimentacaoEstoque/localizarProduto",
+   "organisms": [
+    "formularioMovimentacao"
+   ],
+   "functions": [
+    "load"
+   ]
+  },
+  {
+   "step": "registrarMovimentacaoEstoque/registrarMovimentacao",
+   "organisms": [
+    "formularioMovimentacao",
+    "acoesRegistro"
+   ],
+   "functions": [
+    "registrarMovimentacao"
+   ]
+  }
+ ],
+ "commandReturns": [
+  {
+   "requestId": "registrarMovimentacao",
+   "returns": [
+    "movimentacaoEstoque"
+   ]
+  }
+ ]
+}

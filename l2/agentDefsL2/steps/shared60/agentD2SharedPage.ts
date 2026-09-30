@@ -167,8 +167,8 @@ function next(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep
 
 const row = (required: string[], properties: Record<string, unknown>) => ({ type: 'object', additionalProperties: false, required, properties });
 const sharedSchema = row(['states', 'functions', 'journeys', 'commandReturns'], {
-  states: { type: 'array', items: row(['id', 'source', 'description'], { id: { type: 'string' }, source: { type: 'string' }, description: { type: 'string' } }) },
-  functions: { type: 'array', items: row(['id', 'description'], { id: { type: 'string' }, description: { type: 'string' }, calls: { type: 'string' }, sets: { type: 'string' }, updates: { type: 'array', items: { type: 'string' } }, navigate: { type: 'string' }, carries: { type: 'object', additionalProperties: { type: 'string' } } }) },
+  states: { type: 'array', items: row(['id', 'source', 'description'], { id: { type: 'string' }, source: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$' }, description: { type: 'string' } }) },
+  functions: { type: 'array', items: row(['id', 'description'], { id: { type: 'string' }, description: { type: 'string' }, calls: { type: 'string' }, sets: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*$' }, updates: { type: 'array', items: { type: 'string' } }, navigate: { type: 'string' }, carries: { type: 'object', additionalProperties: { type: 'string' } } }) },
   journeys: { type: 'array', items: row(['step', 'organisms', 'functions'], { step: { type: 'string' }, organisms: { type: 'array', items: { type: 'string' } }, functions: { type: 'array', items: { type: 'string' } }, continuesIn: { type: 'string' } }) },
   commandReturns: { type: 'array', items: row(['requestId', 'returns'], { requestId: { type: 'string' }, returns: { type: 'array', items: { type: 'string' } } }) },
   formChoices: { type: 'array', items: row(['submit', 'organism'], { submit: { type: 'string' }, organism: { type: 'string' } }) },

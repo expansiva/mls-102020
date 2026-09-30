@@ -13,7 +13,7 @@ import { gateD2SharedV2, parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helper
 import { beforePromptStep, reusableD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
 import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
 import {
-  approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, sharedUnitInputHash,
+  approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, d2SharedValidSources, sharedUnitInputHash,
   type D2SharedContext, type D2SharedLlmResponse, type D2SharedWriter,
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 
@@ -331,8 +331,44 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   const ready = intents[0] as mls.msg.AgentIntentPromptReady;
   assert.equal(ready.type, 'prompt_ready');
   assert.equal(ready.tools?.[0]?.function.name, 'submitD2Shared');
+  const parameters = JSON.stringify(ready.tools?.[0]?.function.parameters ?? {});
+  assert.equal(parameters.includes('"sets":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*$"}'), true);
+  assert.equal(parameters.includes('"source":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*(\\\\.[A-Za-z][A-Za-z0-9]*)*$"}'), true);
   assert.equal(built.humanPrompt.includes(data.page11.desktop.organisms[Object.keys(data.page11.desktop.organisms)[0]].text), false);
-  assert.equal(built.chars, 6865);
+  assert.equal(built.chars <= 160_000, true);
+  assert.equal(built.chars, 7352);
+});
+
+void test('live answers accept entry params and refuse prose or a multi-id sets', () => {
+  const pack = loadPack('controleEstoque');
+  const moduleName = (JSON.parse(readFileSync(join(fixtureRoot, 'controleEstoque/menu.json'), 'utf8')) as { moduleName: string }).moduleName;
+  const moves = contextFrom(pack, 'movimentacoes', moduleName);
+  const products = contextFrom(pack, 'produtos', moduleName);
+  const liveMoves = JSON.parse(readFileSync(join(here, 'fixtures/liveResponseMovimentacoes.json'), 'utf8')) as D2SharedLlmResponse;
+  const liveProducts = JSON.parse(readFileSync(join(here, 'fixtures/liveResponseProdutos.json'), 'utf8')) as D2SharedLlmResponse;
+  const gateOf = (data: D2SharedContext, raw: D2SharedLlmResponse) => {
+    const definition = applyD2SharedLlm(data, raw);
+    const need = data.input.needsPages.find(item => item.pageId === data.input.pageId)!;
+    return gateD2SharedV2(definition, { page11: data.page11.desktop, draft: data.drafts.desktop, needs: need, menu: data.input.menu, derived: data.derived });
+  };
+  const productIssues = gateOf(products, liveProducts);
+  assert.ok(productIssues.some(item => item.code === 'D2_SHARED_V2_STATE_SOURCE' && item.message.includes('validSources')));
+  const moveIssues = gateOf(moves, liveMoves);
+  assert.deepEqual([...new Set(moveIssues.map(item => item.code))], ['D2_SHARED_V2_FUNCTION_SET']);
+  assert.equal(moveIssues.every(item => item.message.includes('validSources') && item.message.includes('movimentacoes, produtos')), true);
+  const fixed: D2SharedLlmResponse = { ...liveMoves, functions: liveMoves.functions.map(item => item.sets === 'movimentacoes, produtos'
+    ? { ...item, sets: undefined, updates: ['movimentacoes', 'produtos'] }
+    : item) };
+  assert.deepEqual(gateOf(moves, fixed), []);
+  const human = JSON.parse(buildD2SharedPrompt(products).humanPrompt) as { validSources: string[] };
+  assert.deepEqual(human.validSources, d2SharedValidSources(products.derived));
+  assert.equal(human.validSources.some(item => item.startsWith('entry.params.')), true);
+  assert.equal(human.validSources.some(item => item.endsWith('.input')), true);
+  assert.equal(human.validSources.some(item => item.includes(' ')), false);
+  const missing = answer(moves);
+  missing.states = [...missing.states, { id: 'ghost', source: 'entry.params.missingParam', description: 'absent parameter' }];
+  const missingIssues = gateOf(moves, missing);
+  assert.equal(missingIssues.some(item => item.code === 'D2_SHARED_V2_STATE_SOURCE' && item.message.includes('entry.params.missingParam')), true);
 });
 
 void test('agent sources do not name the fixture module', () => {

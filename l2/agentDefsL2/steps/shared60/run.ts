@@ -63,6 +63,16 @@ export interface D2SharedContext {
   prompt: string;
 }
 
+export function d2SharedValidSources(derived: D2DerivedPageRequests): string[] {
+  const tokens: string[] = [];
+  for (const request of derived.requests) {
+    for (const key of request.returns) tokens.push(`${request.id}.${key}`);
+    if (request.kind === 'cmd') tokens.push(`${request.id}.input`);
+  }
+  for (const name of Object.keys(derived.entry.params)) tokens.push(`entry.params.${name}`);
+  return tokens;
+}
+
 export function d2SharedJourneySteps(needs: D2PageRequestsNeedPage, menu: D2PageRequestsMenu): string[] {
   const linked = new Set(Object.entries(menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(needs.pageId)).map(([id]) => id));
   const steps = (needs.reads ?? []).flatMap(read => read.from.filter(item => item.startsWith('journey:')).map(item => item.slice('journey:'.length)));
@@ -92,6 +102,7 @@ export function buildD2SharedPrompt(context: D2SharedContext, repair?: { diagnos
     requests: context.derived.requests.map(request => ({ id: request.id, kind: request.kind, trigger: request.trigger, writes: request.writes, returns: request.returns, organisms: request.organisms })),
     rules: context.derived.rules,
     access: { actors: context.derived.access.actors, grants: context.derived.access.grants },
+    validSources: d2SharedValidSources(context.derived),
     journeySteps: d2SharedJourneySteps(need, context.input.menu),
     page11: { desktop: pageOf('desktop'), mobile: pageOf('mobile') },
     readsAndEdits: { desktop: draftOf('desktop'), mobile: draftOf('mobile') },

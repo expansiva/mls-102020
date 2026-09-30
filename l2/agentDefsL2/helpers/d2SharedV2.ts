@@ -178,12 +178,12 @@ export function gateD2SharedV2(
     }
   }
   for (const [id, state] of Object.entries(definition.states)) {
-    if (!validStateSource(id, state.source, definition)) issues.push({ code: 'D2_SHARED_V2_STATE_SOURCE', path: `states.${id}`, message: `State ${id} has no valid source.` });
+    if (!validStateSource(id, state.source, definition)) issues.push({ code: 'D2_SHARED_V2_STATE_SOURCE', path: `states.${id}`, message: `State ${id} source ${JSON.stringify(state.source)} is not in validSources, is not another state id, and is not the id of a function whose sets is this state.` });
   }
   const pageActors = new Set(context.needs.actors);
   for (const [id, fn] of Object.entries(definition.functions)) {
     if (fn.calls && !definition.requests[fn.calls]) issues.push({ code: 'D2_SHARED_V2_FUNCTION_CALL', path: `functions.${id}`, message: `Function ${id} calls unknown request ${fn.calls}.` });
-    if (fn.sets && !definition.states[fn.sets]) issues.push({ code: 'D2_SHARED_V2_FUNCTION_SET', path: `functions.${id}`, message: `Function ${id} sets unknown state ${fn.sets}.` });
+    if (fn.sets && !definition.states[fn.sets]) issues.push({ code: 'D2_SHARED_V2_FUNCTION_SET', path: `functions.${id}`, message: `Function ${id} sets ${JSON.stringify(fn.sets)}, which is not one state id. Put one state id in sets, or list several states in updates. See validSources.` });
     for (const target of fn.updates ?? []) {
       if (!definition.states[target]) issues.push({ code: 'D2_SHARED_V2_FUNCTION_UPDATE', path: `functions.${id}.updates`, message: `Function ${id} updates unknown state ${target}.` });
     }
@@ -221,6 +221,11 @@ function organismBound(organismId: string, draft: D2Page11Needs, definition: D2S
 
   function stateBindsOrganism(stateId: string, source: string): boolean {
     if (selectTarget && Object.values(definition.functions).some(item => item.sets === stateId)) return true;
+    const paramName = entryParamName(source);
+    if (paramName !== null) {
+      const effect = definition.entry.params[paramName]?.effect ?? '';
+      return effect === `select:${organismId}` || effect === `filter:${organismId}`;
+    }
     const dot = source.indexOf('.');
     if (dot > 0) {
       const requestId = source.slice(0, dot);
@@ -235,7 +240,17 @@ function organismBound(organismId: string, draft: D2Page11Needs, definition: D2S
   }
 }
 
+function entryParamName(source: string): string | null {
+  const prefix = 'entry.params.';
+  if (!source.startsWith(prefix)) return null;
+  const name = source.slice(prefix.length);
+  if (!name || name.includes('.')) return null;
+  return name;
+}
+
 function validStateSource(stateId: string, source: string, definition: D2SharedV2Definition): boolean {
+  const paramName = entryParamName(source);
+  if (paramName !== null) return Object.prototype.hasOwnProperty.call(definition.entry.params, paramName);
   const dot = source.indexOf('.');
   if (dot > 0) {
     const requestId = source.slice(0, dot);
