@@ -13,6 +13,11 @@ import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 interface Args { project: number; module: string; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
+const GROUPS_SYSTEM_PROMPT = `<!-- modelType: reasoning -->
+<!-- reasoningEffort: high -->
+<!-- x-tool-strict: true -->
+
+Select relevant molecular groups by purpose for every organism. Return exact catalog group IDs.`;
 function parseArgs(raw: string): Args {
   let value: unknown; try { value = JSON.parse(raw); } catch { throw new Error('D2_PAGES_ARGS_INVALID'); }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('D2_PAGES_ARGS_INVALID');
@@ -99,17 +104,24 @@ export async function reusableD2Page(identity: { project: number; module: string
   } catch { return false; }
 }
 
-export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
+export interface D2PagesPromptPort {
+  reusable(identity: { project: number; module: string }, pageId: string): Promise<boolean>;
+  context(args: Args): Promise<D2PagesContext>;
+}
+const promptPort: D2PagesPromptPort = { reusable: reusableD2Page, context: contextFor };
+
+export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, argsOrPort?: string | D2PagesPromptPort): Promise<mls.msg.AgentIntent[]> {
   try {
+    const port = typeof argsOrPort === 'object' ? argsOrPort : promptPort;
     const args = parseArgs(step.prompt || '');
-    if (args.stage === 'groups' && await reusableD2Page(args, args.pageId)) {
+    if (args.stage === 'groups' && await port.reusable(args, args.pageId)) {
       return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `Page11 ${args.pageId} reused without an LLM call or write.`)];
     }
-    const data = await contextFor(args);
+    const data = await port.context(args);
     const isGroups = args.stage === 'groups';
     const decision = isGroups ? null : buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
     const humanPrompt = isGroups ? `${moleculeGroupPrompt(data.inventory, organismSources(data.page))}${args.diagnostic ? `\nRepair: ${JSON.stringify({ diagnostic: args.diagnostic, previous: args.previous })}` : ''}` : decision!.prompt;
-    const systemPrompt = isGroups ? 'Select relevant molecular groups by purpose for every organism. Return exact catalog group IDs.' : `${data.prompt}\n${data.skill}`;
+    const systemPrompt = isGroups ? GROUPS_SYSTEM_PROMPT : `${data.prompt}\n${data.skill}`;
     if (systemPrompt.length + humanPrompt.length > 160_000) throw new Error(`D2_PAGE11_PROMPT_LIMIT: ${systemPrompt.length + humanPrompt.length}`);
     const name = isGroups ? 'submitD2MoleculeGroups' : 'submitD2Pages';
     const parameters = isGroups ? groupSchema : await readPageSchema();
@@ -131,7 +143,7 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
       const result = parseD2MoleculeGroupJudgment(response, organismSources(data.page).map(item => item.id), data.inventory);
       const selectedGroups = result.selected;
       await readD2MoleculeShortlist(d2MoleculeCatalogPort, data.inventory, selectedGroups);
-      const repairPromptChars = args.diagnostic ? 'Select relevant molecular groups by purpose for every organism. Return exact catalog group IDs.'.length + moleculeGroupPrompt(data.inventory, organismSources(data.page)).length + JSON.stringify({ diagnostic: args.diagnostic, previous: args.previous }).length + '\nRepair: '.length : 0;
+      const repairPromptChars = args.diagnostic ? GROUPS_SYSTEM_PROMPT.length + moleculeGroupPrompt(data.inventory, organismSources(data.page)).length + JSON.stringify({ diagnostic: args.diagnostic, previous: args.previous }).length + '\nRepair: '.length : 0;
       return [next(context, parentStep, { ...args, stage: 'decision', selectedGroups, groupAssessments: result.assessments, diagnostic: undefined, previous: undefined, repairPromptChars }),
         updateD2Status(context, parentStep, step, hookSequential, 'completed', `Molecule shortlist ready for ${args.pageId}.`)];
     }

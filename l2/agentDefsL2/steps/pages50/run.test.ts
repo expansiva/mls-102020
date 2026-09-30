@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import { reusableD2Page, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { beforePromptStep, reusableD2Page, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, pageUnitInputHash, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
@@ -40,6 +40,34 @@ function product(): D2PagesResponse {
   const draft = { organisms: Object.fromEntries(Object.keys(organisms).map(id => [id, { reads: [], edits: [], selects: '', submits: id === 'acoesCadastro' ? [{ intentId: 'cadastrarProduto', write: 'Produto.create' }] : [] }])) };
   return { desktop: { definition, needs: draft }, mobile: { definition: structuredClone(definition), needs: structuredClone(draft) }, categoryReason: 'Inventory operations.' };
 }
+
+void test('groups beforePrompt declares the reasoning model and preserves its strict tool contract', async () => {
+  const data = context('controleEstoque', 'produtos');
+  const port = { reusable: async () => false, context: async () => data };
+  const step = {
+    type: 'agent', stepId: 2, interaction: null, stepTitle: 'groups', status: 'waiting_human_input', nextSteps: [],
+    agentName: 'agentDefsL2PagesPage', prompt: JSON.stringify({ project: 102047, module: 'controleEstoque', pageId: 'produtos', stage: 'groups', attempt: 1 }), rags: [],
+    planning: { planId: 'pages50-produtos-groups-1', dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },
+  } as mls.msg.AIAgentStep;
+  const parent = { ...step, stepId: 1, nextSteps: [step] } as mls.msg.AIAgentStep;
+  const execution = { message: { orderAt: 'message-1', threadId: 'thread-1' }, task: { PK: 'task-1' }, isTest: true } as mls.msg.ExecutionContext;
+  const agent = { agentName: 'agentDefsL2PagesPage' } as Parameters<typeof beforePromptStep>[0];
+  const intents = await beforePromptStep(agent, execution, parent, step, 1, port);
+  assert.equal(intents.length, 1);
+  const ready = intents[0] as mls.msg.AgentIntentPromptReady;
+  assert.equal(ready.type, 'prompt_ready');
+  const systemPrompt = ready.systemPrompt ?? '';
+  assert.equal(systemPrompt.startsWith('<!-- modelType: reasoning -->'), true);
+  assert.match(systemPrompt, /<!-- reasoningEffort: high -->/u);
+  assert.match(systemPrompt, /<!-- x-tool-strict: true -->/u);
+  assert.match(systemPrompt, /Select relevant molecular groups by purpose for every organism\. Return exact catalog group IDs\./u);
+  assert.equal(ready.tools?.[0]?.function.name, 'submitD2MoleculeGroups');
+  assert.equal((ready.toolChoice as { function?: { name?: string } })?.function?.name, 'submitD2MoleculeGroups');
+  const schema = ready.tools?.[0]?.function.parameters as { additionalProperties?: boolean; required?: string[]; properties?: { organisms?: { items?: { required?: string[] } } } };
+  assert.equal(schema.additionalProperties, false);
+  assert.deepEqual(schema.required, ['organisms']);
+  assert.deepEqual(schema.properties?.organisms?.items?.required, ['organismId', 'groups']);
+});
 
 void test('controleEstoque/produtos simulated LLM response writes only page11 v2, drafts and receipt', async () => {
   const writes = new Map<string, unknown>();
