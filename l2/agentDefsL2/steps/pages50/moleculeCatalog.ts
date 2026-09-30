@@ -26,7 +26,9 @@ function skill(text: string): string { const marker = 'export const skill = `'; 
 export const d2MoleculeCatalogPort: D2MoleculeCatalogPort = {
   async discover(project) {
     if (typeof mls === 'undefined') throw new Error('D2_MOLECULE_STUDIO_UNAVAILABLE');
-    await mls.stor.loadProjectdependenciesInfoIfNeed(project);
+    if (typeof mls.stor.loadProjectdependenciesInfoIfNeed === 'function') {
+      await mls.stor.loadProjectdependenciesInfoIfNeed(project);
+    }
     const declared = mls.l5.getProjectDetails(project)?.prj_dependencies;
     const directDependencies = Array.isArray(declared) ? declared.filter(id => id !== project) : (mls.l5.getProjectDependencies(project, false) || []).filter(id => id !== project);
     const candidates = [project, ...directDependencies].filter(id => indexedFile({ project: id, level: 2, folder: 'molecules', shortName: 'skill', extension: '.ts' }));
