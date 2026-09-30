@@ -1,0 +1,194 @@
+{
+  "schemaVersion": "2026-09-17-ns5-ontology-v3.1",
+  "moduleName": "controleEstoque",
+  "entityId": "Produto",
+  "title": "Produto",
+  "description": "Produto acompanhado pelo estoque, com quantidade m\u00ednima definida para sinalizar saldo abaixo do m\u00ednimo.",
+  "displayField": "details.identification.name",
+  "relationships": {
+    "movimentacoesEstoque": {
+      "relationshipId": "movimentacaoEstoqueProduto",
+      "to": "MovimentacaoEstoque",
+      "via": "MovimentacaoEstoque.produtoId",
+      "cardinality": "1:N",
+      "title": "Movimenta\u00e7\u00f5es de estoque",
+      "description": "Movimenta\u00e7\u00f5es de entrada ou sa\u00edda registradas para este produto.",
+      "mode": "fk",
+      "direction": "to",
+      "required": true,
+      "role": "produto movimentado"
+    }
+  },
+  "capabilities": {
+    "read.byId": "Consulta um produto pelo identificador mestre; l\u00ea o registro pelo id no \u00edndice e documento; usado pelo estoquista ao abrir um produto localizado ou referenciado por uma movimenta\u00e7\u00e3o.",
+    "locate.byName": "Localiza produtos pelo nome; pesquisa o texto informado entre os produtos ativos no \u00edndice mestre; usado pelo estoquista para cadastrar movimenta\u00e7\u00f5es e acompanhar saldos.",
+    "register.createOrAttach": "Cadastra ou associa um produto ao controle de estoque; localiza o registro mestre e cria ou anexa a fun\u00e7\u00e3o do m\u00f3dulo, gravando a quantidade m\u00ednima; usado pelo estoquista no cadastro de produto.",
+    "edit.platformFields": "Altera os dados de cat\u00e1logo usados pelo estoque, como nome e unidade de medida; atualiza os campos da plataforma no registro mestre; usado pelo estoquista na manuten\u00e7\u00e3o do produto.",
+    "edit.moduleNamespace": "Altera a quantidade m\u00ednima do produto; atualiza somente o espa\u00e7o controleEstoque do registro mestre; usado pelo estoquista para ajustar o acompanhamento do saldo.",
+    "inactivate": "Inativa ou reativa um produto sem remov\u00ea-lo do cadastro mestre; altera a situa\u00e7\u00e3o do registro; usado pelo estoquista quando o produto deixa ou volta a ser controlado.",
+    "statusHistory.read": "Mostra as mudan\u00e7as de situa\u00e7\u00e3o do produto; consulta o hist\u00f3rico de status do registro mestre; usado pelo estoquista ao verificar a disponibilidade do cadastro.",
+    "audit": "Mostra quem alterou dados do produto e quando; consulta a auditoria do registro mestre; usado pelo estoquista para conferir a manuten\u00e7\u00e3o do cadastro."
+  },
+  "rules": [
+    "rule-foreign-namespace-refused",
+    "rule-document-shape-validated",
+    "rule-identity-never-in-namespace",
+    "quantidadeMinimaValida",
+    "saldoAtualProduto",
+    "avisoSaldoMinimoProduto"
+  ],
+  "kind": "role",
+  "subtype": "Product",
+  "roleTag": "controleEstoque.Produto",
+  "source": "/_102034_/l4/ontology/mdm.defs.ts",
+  "record": {
+    "fields": {
+      "id": {
+        "type": "uuid",
+        "required": true,
+        "indexed": true,
+        "derived": true,
+        "description": "mdmId; stable through promotion and merge."
+      },
+      "version": {
+        "type": "integer",
+        "required": true,
+        "derived": true,
+        "writePrecondition": true,
+        "description": "Bumped by the engine on every write; optimistic concurrency."
+      },
+      "details": {
+        "type": "object",
+        "required": true,
+        "description": "Documento mestre do produto acompanhado pelo controle de estoque.",
+        "fields": {
+          "identification": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "subtype": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  {
+                    "value": "Product",
+                    "title": "Produto",
+                    "description": "Item de cat\u00e1logo ou estoque."
+                  }
+                ],
+                "description": "Identifica este cadastro mestre como um produto.",
+                "title": "Tipo de cadastro",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              },
+              "name": {
+                "type": "string",
+                "required": true,
+                "indexed": true,
+                "maxLength": 0,
+                "description": "Nome usado pelo estoquista para localizar e reconhecer o produto controlado.",
+                "title": "Nome do produto",
+                "min": 0,
+                "max": 0
+              },
+              "status": {
+                "type": "enum",
+                "required": true,
+                "indexed": true,
+                "derived": true,
+                "values": [
+                  {
+                    "value": "Active",
+                    "title": "Ativo",
+                    "description": "Cadastro dispon\u00edvel para uso."
+                  },
+                  {
+                    "value": "Inactive",
+                    "title": "Inativo",
+                    "description": "Cadastro fora de uso."
+                  },
+                  {
+                    "value": "Merged",
+                    "title": "Mesclado",
+                    "description": "Cadastro unido a outro registro mestre."
+                  },
+                  {
+                    "value": "Blocked",
+                    "title": "Bloqueado",
+                    "description": "Cadastro bloqueado pela plataforma."
+                  }
+                ],
+                "title": "Situa\u00e7\u00e3o do cadastro",
+                "description": "Situa\u00e7\u00e3o do produto no cadastro mestre, usada para indicar se ele est\u00e1 ativo para o controle de estoque.",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              }
+            },
+            "description": "Dados de identifica\u00e7\u00e3o do produto no cadastro mestre."
+          },
+          "base": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {},
+            "description": "Dados b\u00e1sicos comuns do registro mestre; nenhum campo desta camada \u00e9 necess\u00e1rio neste controle."
+          },
+          "product": {
+            "type": "object",
+            "owner": "platform",
+            "fields": {
+              "unitOfMeasure": {
+                "type": "string",
+                "description": "Unidade em que o estoquista registra entradas, sa\u00eddas, saldo e quantidade m\u00ednima do produto.",
+                "title": "Unidade de medida",
+                "required": true,
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              }
+            },
+            "description": "Dados de cat\u00e1logo do produto utilizados para interpretar as quantidades movimentadas."
+          },
+          "general": {
+            "type": "object",
+            "owner": "organization",
+            "open": true,
+            "description": "Dados promovidos pela organiza\u00e7\u00e3o, somente para leitura neste m\u00f3dulo."
+          },
+          "controleEstoque": {
+            "type": "object",
+            "owner": "module",
+            "fields": {
+              "quantidadeMinima": {
+                "type": "number",
+                "required": true,
+                "of": "Address",
+                "title": "Quantidade m\u00ednima",
+                "description": "Quantidade m\u00ednima em estoque a partir da qual o produto deve ser acompanhado por aviso.",
+                "maxLength": 0,
+                "min": 0,
+                "max": 0
+              },
+              "saldoAtual": {
+                "type": "number",
+                "derived": true,
+                "title": "Saldo atual",
+                "description": "Quantidade dispon\u00edvel do produto, calculada pelas entradas menos as sa\u00eddas registradas para este produto."
+              },
+              "saldoAbaixoDoMinimo": {
+                "type": "boolean",
+                "derived": true,
+                "title": "Saldo abaixo do m\u00ednimo",
+                "description": "Indica que o saldo atual do produto est\u00e1 menor que a quantidade m\u00ednima definida para seu acompanhamento."
+              }
+            },
+            "description": "Dados pr\u00f3prios deste m\u00f3dulo para acompanhar o n\u00edvel m\u00ednimo do produto."
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,949 @@
+{
+  "schemaVersion": "2026-09-21-agent-defs-l2-input-v1",
+  "project": 102047,
+  "module": "controleEstoque",
+  "device": "web",
+  "releaseIdentity": null,
+  "sources": [
+    {
+      "path": "l4/controleEstoque/access.defs.ts",
+      "sha256": "sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+      "bytes": 1569,
+      "schemaVersion": "2026-09-12-ns5-access-v3"
+    },
+    {
+      "path": "l4/controleEstoque/integration.defs.ts",
+      "sha256": "sha256:f3469edbff7f215e8754547ff7de3115969940ef5150583761291729c41a05bc",
+      "bytes": 929,
+      "schemaVersion": "2026-09-12-ns5-integration-v2"
+    },
+    {
+      "path": "l4/controleEstoque/journeys/acompanharSaldos.defs.ts",
+      "sha256": "sha256:19459dca314773b9044527cb607878a1f5a5c7ee03100e7b7c16009e19d11d76",
+      "bytes": 1658,
+      "schemaVersion": "2026-09-10-ns5-journey-v1"
+    },
+    {
+      "path": "l4/controleEstoque/journeys/cadastrarProduto.defs.ts",
+      "sha256": "sha256:6dd712167a88c6dc85fce3f42d0bddb2d76a7694b5306bc7f9389db46840c256",
+      "bytes": 1374,
+      "schemaVersion": "2026-09-10-ns5-journey-v1"
+    },
+    {
+      "path": "l4/controleEstoque/journeys/index.defs.ts",
+      "sha256": "sha256:fa358306013e4666937a59f350c49d6544edba286eacaeeb50adcce4bf1557cc",
+      "bytes": 1098,
+      "schemaVersion": "2026-09-10-ns5-journey-v1"
+    },
+    {
+      "path": "l4/controleEstoque/journeys/registrarMovimentacaoEstoque.defs.ts",
+      "sha256": "sha256:3469ee6c982e7b22585ec8631b4a9fbd3aecb51ac64984af4e99db37afc50fac",
+      "bytes": 2052,
+      "schemaVersion": "2026-09-10-ns5-journey-v1"
+    },
+    {
+      "path": "l4/controleEstoque/journeys/tratarAvisoSaldoBaixo.defs.ts",
+      "sha256": "sha256:bb8ea0f724696e0ddc16424f05775b55835fe62c3f9c9fbc5b6e2b317a6f339d",
+      "bytes": 1451,
+      "schemaVersion": "2026-09-10-ns5-journey-v1"
+    },
+    {
+      "path": "l4/controleEstoque/module.defs.ts",
+      "sha256": "sha256:e4d1fec16b491c41b724e8c811609e6c6b2c1dcc409063ec80a4c3eb107afd7c",
+      "bytes": 821,
+      "schemaVersion": "2026-09-10-ns5-module-v2"
+    },
+    {
+      "path": "l4/controleEstoque/ontology/index.defs.ts",
+      "sha256": "sha256:6588118ef1063f31f16e56481c37caa9e6b2223448780c2952c8f4fb86447e8c",
+      "bytes": 1385,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1"
+    },
+    {
+      "path": "l4/controleEstoque/ontology/MovimentacaoEstoque.defs.ts",
+      "sha256": "sha256:27dee69852129a16a21ec26a9099a741b1b3f205a70fe2ddc28655120b495549",
+      "bytes": 5173,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1"
+    },
+    {
+      "path": "l4/controleEstoque/ontology/Produto.defs.ts",
+      "sha256": "sha256:d72afd5390e92f408c41b59ea09ffb17fab91daeebc56e170dd4ad41deae2557",
+      "bytes": 8691,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1"
+    },
+    {
+      "path": "l4/controleEstoque/pool/l1/web/needs.json",
+      "sha256": "sha256:fa98142acd6dacea9058c4ce83e20f939e60a30d5dd56078ca0ff7d6f95d6431",
+      "bytes": 4184,
+      "schemaVersion": "2026-09-21-p2-needs-v1"
+    },
+    {
+      "path": "l4/controleEstoque/pool/l2/web/backend.json",
+      "sha256": "sha256:f99479013eea69c1c93187532b54784d89039f81439d79c88744fad2549ea7ed",
+      "bytes": 7580,
+      "schemaVersion": "2026-09-21-p1-backend-v1.2"
+    },
+    {
+      "path": "l4/controleEstoque/pool/l2/web/effort.json",
+      "sha256": "sha256:75424db16b273868c80e91181bf6d29942bd0d382eac9cc8baa66c0f5111581a",
+      "bytes": 6907,
+      "schemaVersion": "2026-09-21-p2-effort-v1.2"
+    },
+    {
+      "path": "l4/controleEstoque/pool/l2/web/menu.json",
+      "sha256": "sha256:d355bbdac2fe3304e917c0b33c54187cc5a825ae5e9253317cb3805ccadea7ea",
+      "bytes": 1953,
+      "schemaVersion": "2026-09-20-p2-menu-v2.2"
+    },
+    {
+      "path": "l4/controleEstoque/rules.defs.ts",
+      "sha256": "sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87",
+      "bytes": 1355,
+      "schemaVersion": "2026-09-16-ns5-rules-v2"
+    },
+    {
+      "path": "l4/controleEstoque/workflows.defs.ts",
+      "sha256": "sha256:f834d4e873c80ddcd6e0426724debeae233a520672b87459079fe1555e019b41",
+      "bytes": 858,
+      "schemaVersion": "2026-09-17-ns5-workflows-v3"
+    }
+  ],
+  "l4": {
+    "module": {
+      "path": "l4/controleEstoque/module.defs.ts",
+      "sha256": "sha256:e4d1fec16b491c41b724e8c811609e6c6b2c1dcc409063ec80a4c3eb107afd7c",
+      "bytes": 821,
+      "schemaVersion": "2026-09-10-ns5-module-v2"
+    },
+    "journeyIndex": {
+      "path": "l4/controleEstoque/journeys/index.defs.ts",
+      "sha256": "sha256:fa358306013e4666937a59f350c49d6544edba286eacaeeb50adcce4bf1557cc",
+      "bytes": 1098,
+      "schemaVersion": "2026-09-10-ns5-journey-v1"
+    },
+    "journeys": [
+      {
+        "journeyId": "cadastrarProduto",
+        "source": {
+          "path": "l4/controleEstoque/journeys/cadastrarProduto.defs.ts",
+          "sha256": "sha256:6dd712167a88c6dc85fce3f42d0bddb2d76a7694b5306bc7f9389db46840c256",
+          "bytes": 1374,
+          "schemaVersion": "2026-09-10-ns5-journey-v1"
+        }
+      },
+      {
+        "journeyId": "registrarMovimentacaoEstoque",
+        "source": {
+          "path": "l4/controleEstoque/journeys/registrarMovimentacaoEstoque.defs.ts",
+          "sha256": "sha256:3469ee6c982e7b22585ec8631b4a9fbd3aecb51ac64984af4e99db37afc50fac",
+          "bytes": 2052,
+          "schemaVersion": "2026-09-10-ns5-journey-v1"
+        }
+      },
+      {
+        "journeyId": "acompanharSaldos",
+        "source": {
+          "path": "l4/controleEstoque/journeys/acompanharSaldos.defs.ts",
+          "sha256": "sha256:19459dca314773b9044527cb607878a1f5a5c7ee03100e7b7c16009e19d11d76",
+          "bytes": 1658,
+          "schemaVersion": "2026-09-10-ns5-journey-v1"
+        }
+      },
+      {
+        "journeyId": "tratarAvisoSaldoBaixo",
+        "source": {
+          "path": "l4/controleEstoque/journeys/tratarAvisoSaldoBaixo.defs.ts",
+          "sha256": "sha256:bb8ea0f724696e0ddc16424f05775b55835fe62c3f9c9fbc5b6e2b317a6f339d",
+          "bytes": 1451,
+          "schemaVersion": "2026-09-10-ns5-journey-v1"
+        }
+      }
+    ],
+    "ontologyIndex": {
+      "path": "l4/controleEstoque/ontology/index.defs.ts",
+      "sha256": "sha256:6588118ef1063f31f16e56481c37caa9e6b2223448780c2952c8f4fb86447e8c",
+      "bytes": 1385,
+      "schemaVersion": "2026-09-17-ns5-ontology-v3.1"
+    },
+    "entities": [
+      {
+        "entityId": "Produto",
+        "source": {
+          "path": "l4/controleEstoque/ontology/Produto.defs.ts",
+          "sha256": "sha256:d72afd5390e92f408c41b59ea09ffb17fab91daeebc56e170dd4ad41deae2557",
+          "bytes": 8691,
+          "schemaVersion": "2026-09-17-ns5-ontology-v3.1"
+        }
+      },
+      {
+        "entityId": "MovimentacaoEstoque",
+        "source": {
+          "path": "l4/controleEstoque/ontology/MovimentacaoEstoque.defs.ts",
+          "sha256": "sha256:27dee69852129a16a21ec26a9099a741b1b3f205a70fe2ddc28655120b495549",
+          "bytes": 5173,
+          "schemaVersion": "2026-09-17-ns5-ontology-v3.1"
+        }
+      }
+    ],
+    "rules": {
+      "path": "l4/controleEstoque/rules.defs.ts",
+      "sha256": "sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87",
+      "bytes": 1355,
+      "schemaVersion": "2026-09-16-ns5-rules-v2"
+    },
+    "workflows": {
+      "path": "l4/controleEstoque/workflows.defs.ts",
+      "sha256": "sha256:f834d4e873c80ddcd6e0426724debeae233a520672b87459079fe1555e019b41",
+      "bytes": 858,
+      "schemaVersion": "2026-09-17-ns5-workflows-v3"
+    },
+    "access": {
+      "path": "l4/controleEstoque/access.defs.ts",
+      "sha256": "sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+      "bytes": 1569,
+      "schemaVersion": "2026-09-12-ns5-access-v3"
+    },
+    "integration": {
+      "path": "l4/controleEstoque/integration.defs.ts",
+      "sha256": "sha256:f3469edbff7f215e8754547ff7de3115969940ef5150583761291729c41a05bc",
+      "bytes": 929,
+      "schemaVersion": "2026-09-12-ns5-integration-v2"
+    }
+  },
+  "selection": {
+    "pages": [
+      {
+        "pageId": "movimentacoes",
+        "status": "toCreate",
+        "label": "Movimentações",
+        "actors": [
+          "estoquista"
+        ],
+        "authorityRefs": [
+          "actor:estoquista"
+        ],
+        "ancestors": [],
+        "journeyRefs": [
+          "registrarMovimentacaoEstoque"
+        ],
+        "organisms": [
+          {
+            "kind": "list",
+            "text": "Acompanho as entradas e saídas já registradas."
+          },
+          {
+            "kind": "form",
+            "text": "Registro uma entrada ou saída de unidades de um produto."
+          },
+          {
+            "kind": "actions",
+            "text": "Registro a movimentação e atualizo o saldo."
+          }
+        ],
+        "reads": [
+          {
+            "entity": "MovimentacaoEstoque",
+            "family": "tdm",
+            "scope": "organization",
+            "derived": [],
+            "from": [
+              "grant:gerenciarEstoque",
+              "journey:registrarMovimentacaoEstoque/consultarSaldo",
+              "journey:registrarMovimentacaoEstoque/localizarProduto",
+              "journey:registrarMovimentacaoEstoque/registrarMovimentacao",
+              "relationship:MovimentacaoEstoque/movimentacaoEstoqueProduto",
+              "relationship:Produto/movimentacaoEstoqueProduto"
+            ]
+          },
+          {
+            "entity": "Produto",
+            "family": "mdm",
+            "scope": "organization",
+            "derived": [
+              "details.controleEstoque.saldoAbaixoDoMinimo",
+              "details.controleEstoque.saldoAtual"
+            ],
+            "from": [
+              "grant:gerenciarEstoque",
+              "journey:registrarMovimentacaoEstoque/consultarSaldo",
+              "journey:registrarMovimentacaoEstoque/localizarProduto",
+              "journey:registrarMovimentacaoEstoque/registrarMovimentacao",
+              "relationship:MovimentacaoEstoque/movimentacaoEstoqueProduto",
+              "relationship:Produto/movimentacaoEstoqueProduto"
+            ]
+          }
+        ],
+        "writes": [
+          {
+            "entity": "MovimentacaoEstoque",
+            "operation": "create",
+            "transitionRef": "",
+            "from": [
+              "journey:registrarMovimentacaoEstoque/registrarMovimentacao"
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "route": "controleEstoque.movimentacoes.cmdCreateMovimentacaoEstoque",
+            "page": "movimentacoes",
+            "kind": "cmd",
+            "usecaseRef": "createMovimentacaoEstoque",
+            "status": "toCreate",
+            "tableRefs": [
+              "movimentacaoEstoque"
+            ],
+            "noTable": "ok"
+          },
+          {
+            "route": "controleEstoque.movimentacoes.qryListMovimentacaoEstoque",
+            "page": "movimentacoes",
+            "kind": "qry",
+            "usecaseRef": "listMovimentacaoEstoque",
+            "status": "toCreate",
+            "tableRefs": [
+              "movimentacaoEstoque"
+            ],
+            "noTable": "ok"
+          },
+          {
+            "route": "controleEstoque.movimentacoes.qryListProduto",
+            "page": "movimentacoes",
+            "kind": "qry",
+            "usecaseRef": "listProduto",
+            "status": "toCreate",
+            "tableRefs": [],
+            "noTable": "mdm"
+          }
+        ],
+        "usecases": [
+          {
+            "usecaseId": "createMovimentacaoEstoque",
+            "entity": "MovimentacaoEstoque",
+            "operation": "create",
+            "ports": [
+              "MovimentacaoEstoque"
+            ],
+            "status": "toCreate",
+            "existing": "",
+            "reason": "no l1 usecase for MovimentacaoEstoque.create",
+            "tableRefs": [
+              "movimentacaoEstoque"
+            ],
+            "noTable": "ok"
+          },
+          {
+            "usecaseId": "listMovimentacaoEstoque",
+            "entity": "MovimentacaoEstoque",
+            "operation": "list",
+            "ports": [
+              "MovimentacaoEstoque"
+            ],
+            "status": "toCreate",
+            "existing": "",
+            "reason": "no l1 usecase for MovimentacaoEstoque.list",
+            "tableRefs": [
+              "movimentacaoEstoque"
+            ],
+            "noTable": "ok"
+          },
+          {
+            "usecaseId": "listProduto",
+            "entity": "Produto",
+            "operation": "list",
+            "ports": [],
+            "status": "toCreate",
+            "existing": "",
+            "reason": "no l1 usecase for Produto.list",
+            "tableRefs": [],
+            "noTable": "mdm"
+          }
+        ],
+        "operationBindings": [
+          {
+            "pageId": "movimentacoes",
+            "route": "controleEstoque.movimentacoes.cmdCreateMovimentacaoEstoque",
+            "entityId": "MovimentacaoEstoque",
+            "operation": "create",
+            "actorRef": "estoquista",
+            "grantRefs": [
+              "gerenciarEstoque"
+            ],
+            "authorities": [
+              "estoquista"
+            ],
+            "inputFields": [
+              {
+                "path": "MovimentacaoEstoque.produtoId",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "MovimentacaoEstoque.movimentadoEm",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "MovimentacaoEstoque.details",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "MovimentacaoEstoque.details.tipo",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "MovimentacaoEstoque.details.quantidade",
+                "origin": "actor",
+                "required": true
+              }
+            ],
+            "ruleRefs": [
+              {
+                "ruleId": "movimentacaoEstoqueImutavel",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.movimentacaoEstoqueImutavel",
+                "description": "Uma movimentação de estoque não pode ser alterada depois de registrada."
+              },
+              {
+                "ruleId": "quantidadeMovimentadaPositiva",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.quantidadeMovimentadaPositiva",
+                "description": "A quantidade registrada em uma movimentação de estoque deve ser um número inteiro positivo."
+              },
+              {
+                "ruleId": "registroMovimentacaoAtualizaSaldo",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.registroMovimentacaoAtualizaSaldo",
+                "description": "O registro de uma entrada ou saída deve atualizar o saldo atual do produto correspondente conforme o tipo e a quantidade movimentada."
+              }
+            ],
+            "sourceHashes": [
+              "l4/controleEstoque/ontology/MovimentacaoEstoque.defs.ts#sha256:27dee69852129a16a21ec26a9099a741b1b3f205a70fe2ddc28655120b495549",
+              "l4/controleEstoque/access.defs.ts#sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+              "l4/controleEstoque/rules.defs.ts#sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87"
+            ]
+          },
+          {
+            "pageId": "movimentacoes",
+            "route": "controleEstoque.movimentacoes.qryListMovimentacaoEstoque",
+            "entityId": "MovimentacaoEstoque",
+            "operation": "list",
+            "actorRef": "estoquista",
+            "grantRefs": [
+              "gerenciarEstoque"
+            ],
+            "authorities": [
+              "estoquista"
+            ],
+            "inputFields": [],
+            "ruleRefs": [],
+            "sourceHashes": [
+              "l4/controleEstoque/ontology/MovimentacaoEstoque.defs.ts#sha256:27dee69852129a16a21ec26a9099a741b1b3f205a70fe2ddc28655120b495549",
+              "l4/controleEstoque/access.defs.ts#sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+              "l4/controleEstoque/rules.defs.ts#sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87"
+            ]
+          },
+          {
+            "pageId": "movimentacoes",
+            "route": "controleEstoque.movimentacoes.qryListProduto",
+            "entityId": "Produto",
+            "operation": "list",
+            "actorRef": "estoquista",
+            "grantRefs": [
+              "gerenciarEstoque"
+            ],
+            "authorities": [
+              "estoquista"
+            ],
+            "inputFields": [],
+            "ruleRefs": [],
+            "sourceHashes": [
+              "l4/controleEstoque/ontology/Produto.defs.ts#sha256:d72afd5390e92f408c41b59ea09ffb17fab91daeebc56e170dd4ad41deae2557",
+              "l4/controleEstoque/access.defs.ts#sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+              "l4/controleEstoque/rules.defs.ts#sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87"
+            ]
+          }
+        ],
+        "destinations": [
+          {
+            "kind": "contract",
+            "path": "l2/controleEstoque/web/contracts/movimentacoes.defs.ts",
+            "artifactId": "102047:controleEstoque:web:movimentacoes:contract"
+          },
+          {
+            "kind": "shared",
+            "path": "l2/controleEstoque/web/shared/movimentacoes.defs.ts",
+            "artifactId": "102047:controleEstoque:web:movimentacoes:shared",
+            "materializationId": "102047:controleEstoque:web:movimentacoes:shared:materialization"
+          },
+          {
+            "kind": "desktopPage",
+            "path": "l2/controleEstoque/web/desktop/page11/movimentacoes.defs.ts",
+            "artifactId": "102047:controleEstoque:web:movimentacoes:desktop:page11",
+            "materializationId": "102047:controleEstoque:web:movimentacoes:desktop:page11:materialization"
+          },
+          {
+            "kind": "mobilePage",
+            "path": "l2/controleEstoque/web/mobile/page11/movimentacoes.defs.ts",
+            "artifactId": "102047:controleEstoque:web:movimentacoes:mobile:page11",
+            "materializationId": "102047:controleEstoque:web:movimentacoes:mobile:page11:materialization"
+          }
+        ]
+      },
+      {
+        "pageId": "produtos",
+        "status": "toCreate",
+        "label": "Produtos",
+        "actors": [
+          "estoquista"
+        ],
+        "authorityRefs": [
+          "actor:estoquista"
+        ],
+        "ancestors": [],
+        "journeyRefs": [
+          "acompanharSaldos",
+          "cadastrarProduto",
+          "registrarMovimentacaoEstoque",
+          "tratarAvisoSaldoBaixo"
+        ],
+        "organisms": [
+          {
+            "kind": "summary",
+            "text": "Vejo o saldo atual de cada produto do estoque."
+          },
+          {
+            "kind": "highlights",
+            "text": "Identifico os produtos com saldo abaixo da quantidade mínima."
+          },
+          {
+            "kind": "list",
+            "text": "Localizo os produtos cadastrados no estoque."
+          },
+          {
+            "kind": "detail",
+            "text": "Consulto o produto, o saldo atual e a quantidade mínima."
+          },
+          {
+            "kind": "form",
+            "text": "Informo o produto e a quantidade mínima para acompanhamento do estoque."
+          },
+          {
+            "kind": "actions",
+            "text": "Cadastro o produto."
+          }
+        ],
+        "reads": [
+          {
+            "entity": "MovimentacaoEstoque",
+            "family": "tdm",
+            "scope": "organization",
+            "derived": [],
+            "from": [
+              "grant:gerenciarEstoque",
+              "journey:acompanharSaldos/consultarSaldos",
+              "journey:acompanharSaldos/localizarProdutos",
+              "journey:cadastrarProduto/informarProduto",
+              "journey:registrarMovimentacaoEstoque/consultarSaldo",
+              "journey:registrarMovimentacaoEstoque/localizarProduto",
+              "journey:registrarMovimentacaoEstoque/registrarMovimentacao",
+              "journey:tratarAvisoSaldoBaixo/consultarProdutoAvisado",
+              "relationship:MovimentacaoEstoque/movimentacaoEstoqueProduto",
+              "relationship:Produto/movimentacaoEstoqueProduto"
+            ]
+          },
+          {
+            "entity": "Produto",
+            "family": "mdm",
+            "scope": "organization",
+            "derived": [
+              "details.controleEstoque.saldoAbaixoDoMinimo",
+              "details.controleEstoque.saldoAtual"
+            ],
+            "from": [
+              "grant:gerenciarEstoque",
+              "journey:acompanharSaldos/consultarSaldos",
+              "journey:acompanharSaldos/localizarProdutos",
+              "journey:cadastrarProduto/informarProduto",
+              "journey:registrarMovimentacaoEstoque/consultarSaldo",
+              "journey:registrarMovimentacaoEstoque/localizarProduto",
+              "journey:registrarMovimentacaoEstoque/registrarMovimentacao",
+              "journey:tratarAvisoSaldoBaixo/consultarProdutoAvisado",
+              "relationship:MovimentacaoEstoque/movimentacaoEstoqueProduto",
+              "relationship:Produto/movimentacaoEstoqueProduto"
+            ]
+          }
+        ],
+        "writes": [
+          {
+            "entity": "MovimentacaoEstoque",
+            "operation": "create",
+            "transitionRef": "",
+            "from": [
+              "journey:registrarMovimentacaoEstoque/registrarMovimentacao"
+            ]
+          },
+          {
+            "entity": "Produto",
+            "operation": "create",
+            "transitionRef": "",
+            "from": [
+              "journey:cadastrarProduto/informarProduto"
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "route": "controleEstoque.produtos.cmdCreateMovimentacaoEstoque",
+            "page": "produtos",
+            "kind": "cmd",
+            "usecaseRef": "createMovimentacaoEstoque",
+            "status": "toCreate",
+            "tableRefs": [
+              "movimentacaoEstoque"
+            ],
+            "noTable": "ok"
+          },
+          {
+            "route": "controleEstoque.produtos.cmdCreateProduto",
+            "page": "produtos",
+            "kind": "cmd",
+            "usecaseRef": "createProduto",
+            "status": "toCreate",
+            "tableRefs": [],
+            "noTable": "mdm"
+          },
+          {
+            "route": "controleEstoque.produtos.qryListMovimentacaoEstoque",
+            "page": "produtos",
+            "kind": "qry",
+            "usecaseRef": "listMovimentacaoEstoque",
+            "status": "toCreate",
+            "tableRefs": [
+              "movimentacaoEstoque"
+            ],
+            "noTable": "ok"
+          },
+          {
+            "route": "controleEstoque.produtos.qryListProduto",
+            "page": "produtos",
+            "kind": "qry",
+            "usecaseRef": "listProduto",
+            "status": "toCreate",
+            "tableRefs": [],
+            "noTable": "mdm"
+          }
+        ],
+        "usecases": [
+          {
+            "usecaseId": "createMovimentacaoEstoque",
+            "entity": "MovimentacaoEstoque",
+            "operation": "create",
+            "ports": [
+              "MovimentacaoEstoque"
+            ],
+            "status": "toCreate",
+            "existing": "",
+            "reason": "no l1 usecase for MovimentacaoEstoque.create",
+            "tableRefs": [
+              "movimentacaoEstoque"
+            ],
+            "noTable": "ok"
+          },
+          {
+            "usecaseId": "createProduto",
+            "entity": "Produto",
+            "operation": "create",
+            "ports": [],
+            "status": "toCreate",
+            "existing": "",
+            "reason": "no l1 usecase for Produto.create",
+            "tableRefs": [],
+            "noTable": "mdm"
+          },
+          {
+            "usecaseId": "listMovimentacaoEstoque",
+            "entity": "MovimentacaoEstoque",
+            "operation": "list",
+            "ports": [
+              "MovimentacaoEstoque"
+            ],
+            "status": "toCreate",
+            "existing": "",
+            "reason": "no l1 usecase for MovimentacaoEstoque.list",
+            "tableRefs": [
+              "movimentacaoEstoque"
+            ],
+            "noTable": "ok"
+          },
+          {
+            "usecaseId": "listProduto",
+            "entity": "Produto",
+            "operation": "list",
+            "ports": [],
+            "status": "toCreate",
+            "existing": "",
+            "reason": "no l1 usecase for Produto.list",
+            "tableRefs": [],
+            "noTable": "mdm"
+          }
+        ],
+        "operationBindings": [
+          {
+            "pageId": "produtos",
+            "route": "controleEstoque.produtos.cmdCreateMovimentacaoEstoque",
+            "entityId": "MovimentacaoEstoque",
+            "operation": "create",
+            "actorRef": "estoquista",
+            "grantRefs": [
+              "gerenciarEstoque"
+            ],
+            "authorities": [
+              "estoquista"
+            ],
+            "inputFields": [
+              {
+                "path": "MovimentacaoEstoque.produtoId",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "MovimentacaoEstoque.movimentadoEm",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "MovimentacaoEstoque.details",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "MovimentacaoEstoque.details.tipo",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "MovimentacaoEstoque.details.quantidade",
+                "origin": "actor",
+                "required": true
+              }
+            ],
+            "ruleRefs": [
+              {
+                "ruleId": "movimentacaoEstoqueImutavel",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.movimentacaoEstoqueImutavel",
+                "description": "Uma movimentação de estoque não pode ser alterada depois de registrada."
+              },
+              {
+                "ruleId": "quantidadeMovimentadaPositiva",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.quantidadeMovimentadaPositiva",
+                "description": "A quantidade registrada em uma movimentação de estoque deve ser um número inteiro positivo."
+              },
+              {
+                "ruleId": "registroMovimentacaoAtualizaSaldo",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.registroMovimentacaoAtualizaSaldo",
+                "description": "O registro de uma entrada ou saída deve atualizar o saldo atual do produto correspondente conforme o tipo e a quantidade movimentada."
+              }
+            ],
+            "sourceHashes": [
+              "l4/controleEstoque/ontology/MovimentacaoEstoque.defs.ts#sha256:27dee69852129a16a21ec26a9099a741b1b3f205a70fe2ddc28655120b495549",
+              "l4/controleEstoque/access.defs.ts#sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+              "l4/controleEstoque/rules.defs.ts#sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87"
+            ]
+          },
+          {
+            "pageId": "produtos",
+            "route": "controleEstoque.produtos.cmdCreateProduto",
+            "entityId": "Produto",
+            "operation": "create",
+            "actorRef": "estoquista",
+            "grantRefs": [
+              "gerenciarEstoque"
+            ],
+            "authorities": [
+              "estoquista"
+            ],
+            "inputFields": [
+              {
+                "path": "Produto.details",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "Produto.details.identification",
+                "origin": "actor",
+                "required": false
+              },
+              {
+                "path": "Produto.details.identification.name",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "Produto.details.product",
+                "origin": "actor",
+                "required": false
+              },
+              {
+                "path": "Produto.details.product.unitOfMeasure",
+                "origin": "actor",
+                "required": true
+              },
+              {
+                "path": "Produto.details.controleEstoque",
+                "origin": "actor",
+                "required": false
+              },
+              {
+                "path": "Produto.details.controleEstoque.quantidadeMinima",
+                "origin": "actor",
+                "required": true
+              }
+            ],
+            "ruleRefs": [
+              {
+                "ruleId": "rule-foreign-namespace-refused",
+                "file": "l4/controleEstoque/ontology/Produto.defs.ts",
+                "symbol": "rules[rule-foreign-namespace-refused]",
+                "description": ""
+              },
+              {
+                "ruleId": "rule-document-shape-validated",
+                "file": "l4/controleEstoque/ontology/Produto.defs.ts",
+                "symbol": "rules[rule-document-shape-validated]",
+                "description": ""
+              },
+              {
+                "ruleId": "rule-identity-never-in-namespace",
+                "file": "l4/controleEstoque/ontology/Produto.defs.ts",
+                "symbol": "rules[rule-identity-never-in-namespace]",
+                "description": ""
+              },
+              {
+                "ruleId": "quantidadeMinimaValida",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.quantidadeMinimaValida",
+                "description": "A quantidade mínima definida para um produto deve ser maior ou igual a zero."
+              },
+              {
+                "ruleId": "saldoAtualProduto",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.saldoAtualProduto",
+                "description": "O saldo atual de cada produto é calculado pela soma das quantidades das entradas menos a soma das quantidades das saídas registradas para esse produto."
+              },
+              {
+                "ruleId": "avisoSaldoMinimoProduto",
+                "file": "l4/controleEstoque/rules.defs.ts",
+                "symbol": "rules.avisoSaldoMinimoProduto",
+                "description": "Um produto deve ser sinalizado com aviso de saldo baixo quando seu saldo atual for menor que sua quantidade mínima definida."
+              }
+            ],
+            "sourceHashes": [
+              "l4/controleEstoque/ontology/Produto.defs.ts#sha256:d72afd5390e92f408c41b59ea09ffb17fab91daeebc56e170dd4ad41deae2557",
+              "l4/controleEstoque/access.defs.ts#sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+              "l4/controleEstoque/rules.defs.ts#sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87"
+            ]
+          },
+          {
+            "pageId": "produtos",
+            "route": "controleEstoque.produtos.qryListMovimentacaoEstoque",
+            "entityId": "MovimentacaoEstoque",
+            "operation": "list",
+            "actorRef": "estoquista",
+            "grantRefs": [
+              "gerenciarEstoque"
+            ],
+            "authorities": [
+              "estoquista"
+            ],
+            "inputFields": [],
+            "ruleRefs": [],
+            "sourceHashes": [
+              "l4/controleEstoque/ontology/MovimentacaoEstoque.defs.ts#sha256:27dee69852129a16a21ec26a9099a741b1b3f205a70fe2ddc28655120b495549",
+              "l4/controleEstoque/access.defs.ts#sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+              "l4/controleEstoque/rules.defs.ts#sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87"
+            ]
+          },
+          {
+            "pageId": "produtos",
+            "route": "controleEstoque.produtos.qryListProduto",
+            "entityId": "Produto",
+            "operation": "list",
+            "actorRef": "estoquista",
+            "grantRefs": [
+              "gerenciarEstoque"
+            ],
+            "authorities": [
+              "estoquista"
+            ],
+            "inputFields": [],
+            "ruleRefs": [],
+            "sourceHashes": [
+              "l4/controleEstoque/ontology/Produto.defs.ts#sha256:d72afd5390e92f408c41b59ea09ffb17fab91daeebc56e170dd4ad41deae2557",
+              "l4/controleEstoque/access.defs.ts#sha256:47f0109c8317ed94d3abc15736b8b022a094d4394a33a9f3a4d43a36262835da",
+              "l4/controleEstoque/rules.defs.ts#sha256:1b7872806ecc60b0b44e4a348bda6f0b300720354f64b30b35d0be28033f7a87"
+            ]
+          }
+        ],
+        "destinations": [
+          {
+            "kind": "contract",
+            "path": "l2/controleEstoque/web/contracts/produtos.defs.ts",
+            "artifactId": "102047:controleEstoque:web:produtos:contract"
+          },
+          {
+            "kind": "shared",
+            "path": "l2/controleEstoque/web/shared/produtos.defs.ts",
+            "artifactId": "102047:controleEstoque:web:produtos:shared",
+            "materializationId": "102047:controleEstoque:web:produtos:shared:materialization"
+          },
+          {
+            "kind": "desktopPage",
+            "path": "l2/controleEstoque/web/desktop/page11/produtos.defs.ts",
+            "artifactId": "102047:controleEstoque:web:produtos:desktop:page11",
+            "materializationId": "102047:controleEstoque:web:produtos:desktop:page11:materialization"
+          },
+          {
+            "kind": "mobilePage",
+            "path": "l2/controleEstoque/web/mobile/page11/produtos.defs.ts",
+            "artifactId": "102047:controleEstoque:web:produtos:mobile:page11",
+            "materializationId": "102047:controleEstoque:web:produtos:mobile:page11:materialization"
+          }
+        ]
+      }
+    ],
+    "writePageIds": [
+      "movimentacoes",
+      "produtos"
+    ],
+    "preservePageIds": [],
+    "remove": [],
+    "counts": {
+      "pages": 2,
+      "endpoints": 7,
+      "usecases": 4,
+      "destinations": 8,
+      "materializationItems": 6
+    }
+  },
+  "normalizations": [
+    {
+      "code": "menu-action-ignored",
+      "detail": "effort.screens is the only selection authority"
+    }
+  ],
+  "problems": [
+    {
+      "severity": "info",
+      "code": "NO_COMMON_RELEASE_IDENTITY",
+      "file": "input20",
+      "message": "Sources have content hashes and structural consistency checks, but no shared release identity exists across all planners."
+    }
+  ],
+  "snapshotHash": "sha256:7683c4a6bb31614607945bd1d0cdcd00963fedca2b9bdb0abaea33711f1a9a14"
+}

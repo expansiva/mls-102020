@@ -1,0 +1,55 @@
+{
+  "organisms": {
+    "historicoMovimentacoes": {
+      "reads": [
+        "MovimentacaoEstoque.id",
+        "MovimentacaoEstoque.produtoId",
+        "MovimentacaoEstoque.movimentadoEm",
+        "MovimentacaoEstoque.details.tipo",
+        "MovimentacaoEstoque.details.quantidade",
+        "Produto.id",
+        "Produto.details.identification.name",
+        "Produto.details.product.unitOfMeasure"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "formularioMovimentacao": {
+      "reads": [
+        "Produto.id",
+        "Produto.details.identification.name",
+        "Produto.details.identification.status",
+        "Produto.details.product.unitOfMeasure",
+        "Produto.details.controleEstoque.quantidadeMinima",
+        "Produto.details.controleEstoque.saldoAtual",
+        "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [
+        "MovimentacaoEstoque.produtoId",
+        "MovimentacaoEstoque.movimentadoEm",
+        "MovimentacaoEstoque.details.tipo",
+        "MovimentacaoEstoque.details.quantidade"
+      ],
+      "selects": "",
+      "submits": []
+    },
+    "acoesRegistro": {
+      "reads": [
+        "MovimentacaoEstoque.produtoId",
+        "MovimentacaoEstoque.details.tipo",
+        "MovimentacaoEstoque.details.quantidade",
+        "Produto.details.identification.name",
+        "Produto.details.controleEstoque.saldoAtual"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "registrarMovimentacao",
+          "write": "MovimentacaoEstoque.create"
+        }
+      ]
+    }
+  }
+}

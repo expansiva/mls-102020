@@ -3,7 +3,7 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readJson, readSourceText } from '/_102035_/l2/solution/fs.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
-import { D2_PAGES_PAGE_AGENT_NAME, markD2StepApproved, moduleTokenOk } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { D2_PAGES_PAGE_AGENT_NAME, d2PagesNextStep, markD2StepApproved, moduleTokenOk, type D2Scope } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { buildD2MoleculeInventory, moleculeGroupPrompt, readD2MoleculeShortlist } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
@@ -12,7 +12,7 @@ import { loadD2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages5
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
-interface Args { project: number; module: string; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
+interface Args { project: number; module: string; scope?: D2Scope; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
 const GROUPS_SYSTEM_PROMPT = `<!-- modelType: reasoning -->
 <!-- reasoningEffort: high -->
 <!-- x-tool-strict: true -->
@@ -23,6 +23,7 @@ function parseArgs(raw: string): Args {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('D2_PAGES_ARGS_INVALID');
   const args = value as Args;
   if (!Number.isSafeInteger(args.project) || args.project <= 0 || !moduleTokenOk(args.module) || !/^[a-z][A-Za-z0-9_]*$/u.test(args.pageId) || ![1, 2].includes(args.attempt) || !['groups', 'decision'].includes(args.stage)) throw new Error('D2_PAGES_ARGS_INVALID');
+  if (args.scope !== undefined && args.scope !== 'all' && args.scope !== 'pages') throw new Error('D2_PAGES_ARGS_INVALID');
   if (args.stage === 'decision' && !args.selectedGroups) throw new Error('D2_PAGES_GROUPS_MISSING');
   return args;
 }
@@ -155,7 +156,7 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     for (const pageId of ids) if (!await reusableD2Page(data.identity, pageId)) { allReady = false; break; }
     if (allReady) {
       await markD2StepApproved(data.identity, 'pages50', ids.map(pageId => `l2/${data.identity.module}/pipeline/agentDefsL2/pages50/${pageId}.json`), data.snapshot.snapshotHash);
-      return [addD2Step(context, parentStep.stepId, d2Result('Pages ready', JSON.stringify({ ...data.identity, completedStep: 'pages50', nextStep: 'finalize60', pages: ids.length }), 'pages50-done')),
+      return [addD2Step(context, parentStep.stepId, d2Result('Pages ready', JSON.stringify({ ...data.identity, completedStep: 'pages50', nextStep: d2PagesNextStep(args.scope === 'all' ? 'all' : 'pages'), pages: ids.length }), 'pages50-done')),
         updateD2Status(context, parentStep, step, hookSequential, 'completed', `Page11 ${args.pageId} approved; all ${ids.length} pages ready.`)];
     }
     return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `Page11 ${args.pageId} approved: ${receipt.sourceHashes.desktop}, ${receipt.sourceHashes.mobile}.`)];
