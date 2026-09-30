@@ -115,7 +115,7 @@ export function gateD2ContractV2(
   definition: D2ContractV2Definition,
   derived: D2DerivedPageRequests,
   shared: D2SharedV2Definition,
-  entities: Record<string, Ns5OntologyAnyEntity> = {},
+  entities: Record<string, Ns5OntologyAnyEntity>,
 ): D2ContractV2Issue[] {
   const issues: D2ContractV2Issue[] = [];
   for (const id of Object.keys(shared.requests)) {

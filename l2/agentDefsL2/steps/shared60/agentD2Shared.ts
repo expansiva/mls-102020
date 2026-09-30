@@ -2,7 +2,7 @@
 
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readD2Input } from '/_102020_/l2/helpers/defsInput/io.js';
-import { D2_SHARED_AGENT_NAME, D2_SHARED_PAGE_AGENT_NAME, parseD2StepInvocation } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { D2_SHARED_AGENT_NAME, D2_SHARED_PAGE_AGENT_NAME, markD2StepApproved, parseD2StepInvocation, readD2Pipeline } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { reusableD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
 
@@ -29,7 +29,8 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
     for (const pageId of ids) if (await reusableD2Shared(parsed, pageId)) reusable.add(pageId);
     const pending = ids.filter(pageId => !reusable.has(pageId));
     if (!pending.length) {
-      return [addD2Step(context, parentStep.stepId, d2Result('Shared ready', JSON.stringify({ project: parsed.project, module: parsed.module, completedStep: 'shared60', pages: ids.length }), 'shared60-done')),
+      if (await readD2Pipeline(parsed)) await markD2StepApproved(parsed, 'shared60', ids.map(pageId => `l2/${parsed.module}/pipeline/agentDefsL2/shared60/${pageId}.json`), snapshot.snapshotHash);
+      return [addD2Step(context, parentStep.stepId, d2Result('Shared ready', JSON.stringify({ project: parsed.project, module: parsed.module, completedStep: 'shared60', nextStep: 'contracts70', pages: ids.length }), 'shared60-done')),
         updateD2Status(context, parentStep, step, hookSequential, 'completed', `shared60 reused ${ids.length} shared unit(s).`)];
     }
     const workers = sharedWorkerSteps(parsed, pending).map(worker => addD2Step(context, parentStep.stepId, worker));

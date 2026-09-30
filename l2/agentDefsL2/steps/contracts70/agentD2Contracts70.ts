@@ -1,11 +1,10 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/contracts70/agentD2Contracts70.ts" enhancement="_blank"/>
 
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { parseD2StepInvocation } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { readD2Input } from '/_102020_/l2/helpers/defsInput/io.js';
+import { D2_CONTRACTS70_AGENT_NAME, markD2StepApproved, parseD2StepInvocation, readD2Pipeline } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { executeD2Contracts70, productionContractsPort, type D2Contracts70Port } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
-
-export const D2_CONTRACTS70_AGENT_NAME = 'agentD2Contracts70' as const;
 
 export function createAgent(): IAgentAsync {
   return {
@@ -18,8 +17,15 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
   try {
     const port = typeof argsOrPort === 'object' ? argsOrPort : await productionContractsPort(parsedIdentity(argsOrPort || step.prompt || ''));
     const result = await executeD2Contracts70(port);
+    if (typeof argsOrPort !== 'object') {
+      const identity = parsedIdentity(step.prompt || '');
+      const snapshot = await readD2Input(identity);
+      if (!snapshot) throw new Error('D2_CONTRACTS_INPUT_MISSING');
+      const pipeline = await readD2Pipeline(identity);
+      if (pipeline) await markD2StepApproved(identity, 'contracts70', [...result.wrote, ...result.reused].map(pageId => `l2/${identity.module}/web/contracts/${pageId}.defs.ts`), snapshot.snapshotHash);
+    }
     return [
-      addD2Step(context, parentStep.stepId, d2Result('Contracts ready', JSON.stringify({ completedStep: 'contracts70', wrote: result.wrote, reused: result.reused }), 'contracts70-done')),
+      addD2Step(context, parentStep.stepId, d2Result('Contracts ready', JSON.stringify({ completedStep: 'contracts70', nextStep: 'finalize80', wrote: result.wrote, reused: result.reused }), 'contracts70-done')),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `contracts70 wrote ${result.wrote.length} and reused ${result.reused.length}.`),
     ];
   } catch (error) {

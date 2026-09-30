@@ -1,21 +1,23 @@
-/// <mls fileReference="_102020_/l2/agentDefsL2/steps/finalize60/run.ts" enhancement="_blank"/>
+/// <mls fileReference="_102020_/l2/agentDefsL2/steps/finalize80/run.ts" enhancement="_blank"/>
 
 import { displayPath, indexedFile, readJson, readSourceText, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
-import { markD2Complete, markD2FinalizeBlocked, readD2Pipeline, type D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { markD2Complete, markD2FinalizeBlocked, readD2Pipeline, type D2RunIdentity, type D2Scope } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import { readD2PagesReceipt, sourceInfo } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { draftFile, readD2SharedReceipt, sharedInfo, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { contractInfo, contractReceiptInfo, type D2Contracts70Receipt } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
 import { compileD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
 import type { D2CompileProof } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
 
-export const D2_PAGES_FINALIZE_VERSION = '2026-09-30-agent-defs-l2-pages-finalize-v1' as const;
+export const D2_PAGES_FINALIZE_VERSION = '2026-09-30-agent-defs-l2-finalize-v2' as const;
 
 export interface D2PagesOwnership {
   schemaVersion: typeof D2_PAGES_FINALIZE_VERSION;
   project: number;
   module: string;
-  artifacts: Array<{ pageId: string; device: 'desktop' | 'mobile'; path: string; sha256: string }>;
+  artifacts: Array<{ pageId: string; kind: D2FinalSource['kind']; path: string; sha256: string }>;
 }
 export interface D2PagesFinalizeReport {
   schemaVersion: typeof D2_PAGES_FINALIZE_VERSION;
@@ -37,6 +39,9 @@ export interface D2PagesFinalizePort {
   readReceipt?: typeof readD2PagesReceipt;
   readSource?: typeof readSourceText;
   readJson?: typeof readJson;
+  readSharedReceipt?: (identity: D2RunIdentity, pageId: string) => Promise<D2SharedReceipt | null>;
+  readContractReceipt?: (identity: D2RunIdentity, pageId: string) => Promise<D2Contracts70Receipt | null>;
+  readDraftText?: (identity: D2RunIdentity, pageId: string, device: 'desktop' | 'mobile') => Promise<string>;
   writeJson?: typeof writeJson;
   markComplete?: typeof markD2Complete;
   markBlocked?: typeof markD2FinalizeBlocked;
@@ -45,7 +50,7 @@ export interface D2PagesFinalizePort {
 }
 
 function file(identity: D2RunIdentity, shortName: string): Ns5FileInfo {
-  return { project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentDefsL2/finalize60`, shortName, extension: '.json' };
+  return { project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentDefsL2/finalize80`, shortName, extension: '.json' };
 }
 async function writeChanged<T>(info: Ns5FileInfo, value: T, port: D2PagesFinalizePort): Promise<boolean> {
   if (JSON.stringify(await (port.readJson || readJson)<T>(info)) === JSON.stringify(value)) return false;
@@ -53,15 +58,18 @@ async function writeChanged<T>(info: Ns5FileInfo, value: T, port: D2PagesFinaliz
   return true;
 }
 
-export async function finalizeD2Pages(identity: D2RunIdentity, port: D2PagesFinalizePort = {}): Promise<{ report: D2PagesFinalizeReport; writes: number }> {
+export async function finalizeD2Pages(identity: D2RunIdentity & { scope?: D2Scope }, port: D2PagesFinalizePort = {}): Promise<{ report: D2PagesFinalizeReport; writes: number }> {
   const snapshot = await (port.readInput || readD2Input)(identity);
   if (!snapshot) throw new Error('D2_FINALIZE_INPUT_MISSING');
   const bundle = await (port.readBundle || readD2InputBundle)(identity);
   await (port.assertStable || assertD2InputSourcesStable)(bundle);
   const pipeline = await (port.readPipeline || readD2Pipeline)(identity);
+  const scope: D2Scope = identity.scope === 'all' ? 'all' : 'pages';
   const pending: string[] = [];
   if (!pipeline || pipeline.steps.entry10?.status !== 'approved' || pipeline.steps.input20?.status !== 'approved'
-    || pipeline.steps.pages50?.status !== 'approved' || pipeline.steps.pages50.snapshotHash !== snapshot.snapshotHash) pending.push('D2_FINALIZE_PIPELINE_INCOMPLETE');
+    || pipeline.steps.pages50?.status !== 'approved' || pipeline.steps.pages50.snapshotHash !== snapshot.snapshotHash
+    || (scope === 'all' && (pipeline.steps.shared60?.status !== 'approved' || pipeline.steps.shared60.snapshotHash !== snapshot.snapshotHash
+      || pipeline.steps.contracts70?.status !== 'approved' || pipeline.steps.contracts70.snapshotHash !== snapshot.snapshotHash))) pending.push('D2_FINALIZE_PIPELINE_INCOMPLETE');
   const pageIds = [...snapshot.selection.writePageIds].sort();
   const sources: D2FinalSource[] = [];
   const artifacts: D2PagesOwnership['artifacts'] = [];
@@ -77,7 +85,39 @@ export async function finalizeD2Pages(identity: D2RunIdentity, port: D2PagesFina
       const hash = await sha256Text(source);
       if (hash !== receipt.sourceHashes[device]) { pending.push(`D2_FINALIZE_SOURCE_CHANGED: ${path}`); continue; }
       sources.push({ pageId, kind: device === 'desktop' ? 'desktopPage' : 'mobilePage', path, source });
-      artifacts.push({ pageId, device, path, sha256: hash });
+      artifacts.push({ pageId, kind: device === 'desktop' ? 'desktopPage' : 'mobilePage', path, sha256: hash });
+    }
+    if (scope !== 'all') continue;
+    const sharedReceipt = await (port.readSharedReceipt || readD2SharedReceipt)(identity, pageId);
+    const contractReceipt = await (port.readContractReceipt || ((id, page) => readJson<D2Contracts70Receipt>(contractReceiptInfo(id, page))))(identity, pageId);
+    const sharedPath = displayPath(sharedInfo(identity, pageId));
+    let sharedStale = !sharedReceipt?.page11Hashes || !sharedReceipt.draftHashes;
+    if (!sharedStale) {
+      for (const device of ['desktop', 'mobile'] as const) {
+        const page11Hash = await sha256Text(await (port.readSource || readSourceText)(sourceInfo(identity, pageId, device)));
+        const draftValue = port.readDraftText ? undefined : await (port.readJson || readJson)(draftFile(identity, pageId, device));
+        const draftRaw = port.readDraftText ? await port.readDraftText(identity, pageId, device) : draftValue == null ? '' : JSON.stringify(draftValue);
+        if (!port.readDraftText && draftValue == null) sharedStale = true;
+        else if (sharedReceipt!.page11Hashes[device] !== page11Hash || sharedReceipt!.draftHashes[device] !== await sha256Text(draftRaw)) sharedStale = true;
+      }
+    }
+    if (sharedStale) pending.push(`D2_FINALIZE_SHARED_STALE: ${sharedPath}`);
+    const contractPath = displayPath(contractInfo(identity, pageId));
+    const sharedNow = await sha256Text(await (port.readSource || readSourceText)(sharedInfo(identity, pageId)));
+    if (!contractReceipt?.sharedHash || contractReceipt.sharedHash !== sharedNow) pending.push(`D2_FINALIZE_CONTRACT_STALE: ${contractPath}`);
+    const extras: Array<{ kind: 'shared' | 'contract'; info: Ns5FileInfo; sourceHash?: string; skip: boolean }> = [
+      { kind: 'shared', info: sharedInfo(identity, pageId), sourceHash: sharedReceipt?.sourceHash, skip: sharedStale },
+      { kind: 'contract', info: contractInfo(identity, pageId), sourceHash: contractReceipt?.sourceHash, skip: !contractReceipt?.sharedHash || contractReceipt.sharedHash !== sharedNow },
+    ];
+    for (const extra of extras) {
+      if (extra.skip) continue;
+      const path = displayPath(extra.info);
+      if (!(port.indexed ? port.indexed(extra.info) : Boolean(indexedFile(extra.info)))) { pending.push(`D2_FINALIZE_INDEX_ENTRY_MISSING: ${path}`); continue; }
+      const source = await (port.readSource || readSourceText)(extra.info);
+      const hash = await sha256Text(source);
+      if (!extra.sourceHash || hash !== extra.sourceHash) { pending.push(`D2_FINALIZE_DRIFT: ${path}`); continue; }
+      sources.push({ pageId, kind: extra.kind, path, source });
+      artifacts.push({ pageId, kind: extra.kind, path, sha256: hash });
     }
   }
   await (port.assertStable || assertD2InputSourcesStable)(bundle);

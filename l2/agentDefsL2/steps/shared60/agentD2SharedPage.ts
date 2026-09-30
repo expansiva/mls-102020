@@ -3,8 +3,8 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readJson, readSourceText } from '/_102035_/l2/solution/fs.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
-import { D2_SHARED_PAGE_AGENT_NAME, moduleTokenOk } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
-import { addD2Step, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
+import { D2_SHARED_PAGE_AGENT_NAME, markD2StepApproved, moduleTokenOk, readD2Pipeline } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { parseD2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import type { D2PageRequestsCategory, D2PageRequestsInput, D2PageRequestsSibling } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
@@ -142,6 +142,15 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     const data = await contextFor(args);
     const built = buildD2SharedPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
     await approveD2SharedUnit(data, response as D2SharedLlmResponse, built.chars, args.diagnostic ? built.chars : args.repairPromptChars ?? 0);
+    const snapshot = await readD2Input(data.identity);
+    const ids = [...(snapshot?.selection.writePageIds ?? [])].sort();
+    let allReady = Boolean(snapshot);
+    for (const pageId of ids) if (!await reusableD2Shared(data.identity, pageId)) { allReady = false; break; }
+    if (allReady && snapshot) {
+      if (await readD2Pipeline(data.identity)) await markD2StepApproved(data.identity, 'shared60', ids.map(pageId => `l2/${data.identity.module}/pipeline/agentDefsL2/shared60/${pageId}.json`), snapshot.snapshotHash);
+      return [addD2Step(context, parentStep.stepId, d2Result('Shared ready', JSON.stringify({ ...data.identity, completedStep: 'shared60', nextStep: 'contracts70', pages: ids.length }), 'shared60-done')),
+        updateD2Status(context, parentStep, step, hookSequential, 'completed', `Shared ${args.pageId} approved; all ${ids.length} pages ready.`)];
+    }
     return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `Shared ${args.pageId} approved.`)];
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
