@@ -7,7 +7,7 @@ import type { D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2Sh
 
 export interface D2ContractV2Issue { code: string; path: string; message: string }
 
-export interface D2ContractV2Projection { name: string; entityId: string; requestId: string; body: string }
+export interface D2ContractV2Projection { name: string; entityId: string; requestIds: string[]; body: string }
 export interface D2ContractV2Route {
   route: string;
   kind: 'qry' | 'cmd';
@@ -26,22 +26,21 @@ export interface D2ContractV2Definition {
 
 export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2SharedV2Definition, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2Definition {
   const projections: D2ContractV2Projection[] = [];
-  const seen = new Map<string, string>();
   for (const row of derived.projections) {
     const body = renderFields(entities[row.entityId], row, 1);
-    const signature = body;
-    const existing = [...seen.entries()].find(([, sig]) => sig === signature);
-    const name = existing ? existing[0] : `${row.entityId}${pascal(row.requestId)}`;
-    if (!existing) { seen.set(name, signature); projections.push({ name, entityId: row.entityId, requestId: row.requestId, body }); }
-    else projections.push({ name, entityId: row.entityId, requestId: row.requestId, body });
+    const existing = projections.find(item => item.body === body);
+    if (existing) {
+      if (!existing.requestIds.includes(row.requestId)) existing.requestIds.push(row.requestId);
+    } else {
+      projections.push({ name: `${row.entityId}${pascal(row.requestId)}`, entityId: row.entityId, requestIds: [row.requestId], body });
+    }
   }
-  const uniqueProjections = projections.filter((item, index) => projections.findIndex(other => other.name === item.name) === index);
   const routes: D2ContractV2Route[] = derived.requests.map(request => {
     const sharedReq = shared.requests[request.id];
     const returns = sharedReq?.returns ?? request.returns;
     const outputParts = returns.map(name => {
       const entityId = request.returnEntities[name];
-      const proj = projections.find(item => item.requestId === request.id && item.entityId === entityId)
+      const proj = projections.find(item => item.requestIds.includes(request.id) && item.entityId === entityId)
         ?? projections.find(item => item.entityId === entityId);
       const many = request.kind === 'qry' && request.id === 'load' ? '[]' : '';
       return `${name}: ${proj?.name ?? 'never'}${many}`;
@@ -63,7 +62,7 @@ export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2Shar
       access: derived.access,
     };
   });
-  return { module: derived.module, pageId: derived.pageId, projections: uniqueProjections, routes };
+  return { module: derived.module, pageId: derived.pageId, projections, routes };
 }
 
 export function renderD2ContractV2(location: Omit<D2Page11Location, 'device'>, definition: D2ContractV2Definition): string {
@@ -91,7 +90,7 @@ export function parseD2ContractV2(source: string): D2ContractV2Definition {
   const contractsName = `${pascal(pageId)}Contracts`;
   while ((match = iface.exec(source))) {
     if (match[1] === contractsName) continue;
-    projections.push({ name: match[1], entityId: '', requestId: '', body: match[2].replace(/^\n/u, '').replace(/\n$/u, '') });
+    projections.push({ name: match[1], entityId: '', requestIds: [], body: match[2].replace(/^\n/u, '').replace(/\n$/u, '') });
   }
   const routes: D2ContractV2Route[] = [];
   const blocks = source.split(/  '([^']+)': \{/u).slice(1);
@@ -112,42 +111,66 @@ export function parseD2ContractV2(source: string): D2ContractV2Definition {
   return { module: moduleName, pageId, projections, routes };
 }
 
-export function gateD2ContractV2(definition: D2ContractV2Definition, derived: D2DerivedPageRequests, shared: D2SharedV2Definition): D2ContractV2Issue[] {
+export function gateD2ContractV2(
+  definition: D2ContractV2Definition,
+  derived: D2DerivedPageRequests,
+  shared: D2SharedV2Definition,
+  entities: Record<string, Ns5OntologyAnyEntity> = {},
+): D2ContractV2Issue[] {
   const issues: D2ContractV2Issue[] = [];
   for (const id of Object.keys(shared.requests)) {
     if (!definition.routes.some(route => route.route.endsWith(`.${id}`))) issues.push({ code: 'D2_CONTRACT_V2_REQUEST_TYPE', path: id, message: `Shared request ${id} has no contract type.` });
   }
-  const allowed = new Map(derived.projections.map(item => [`${item.requestId}:${item.entityId}`, new Set(item.paths)]));
+  const covered = new Set<string>();
   for (const proj of definition.projections) {
-    const key = derived.projections.find(item => `${item.entityId}${pascal(item.requestId)}` === proj.name || item.entityId === proj.name.replace(new RegExp(`${pascal(item.requestId)}$`,'u'), ''));
-    if (!key) continue;
-    const allow = allowed.get(`${key.requestId}:${key.entityId}`);
-    if (!allow) continue;
-    const mentioned = fieldNames(proj.body);
-    for (const name of mentioned) {
-      if (name === 'id' || name === 'details' || name === 'version') continue;
-      const hit = [...allow].some(path => path === name || path.startsWith(`${name}.`) || path.endsWith(`.${name}`));
-      if (!hit) {
-        const nested = [...allow].some(path => path.split('.').includes(name));
-        if (!nested) issues.push({ code: 'D2_CONTRACT_V2_FIELD_OUTSIDE', path: proj.name, message: `Field ${name} is outside the projection.` });
+    const rows = derived.projections.filter(row => row.entityId === proj.entityId && proj.requestIds.includes(row.requestId));
+    if (!rows.length) {
+      issues.push({ code: 'D2_CONTRACT_V2_PROJECTION_UNKNOWN', path: proj.name, message: `Projection ${proj.name} matches no derived row.` });
+    } else {
+      const leaves = leavesOf(proj.body);
+      const rendered = new Set(leaves.map(item => item.path));
+      const derivedSet = derivedPaths(entities[proj.entityId]);
+      for (const leaf of leaves) {
+        if (leaf.path !== 'id' && leaf.path !== 'version' && derivedSet.has(leaf.path) && !leaf.readonly) {
+          issues.push({ code: 'D2_CONTRACT_V2_DERIVED', path: `${proj.name}.${leaf.path}`, message: `Derived path ${leaf.path} must be readonly.` });
+        }
+      }
+      for (const row of rows) {
+        covered.add(`${row.requestId}:${row.entityId}`);
+        const expected = new Set(row.paths);
+        if (!sameSet(rendered, expected)) {
+          issues.push({ code: 'D2_CONTRACT_V2_FIELD_OUTSIDE', path: proj.name, message: `Projection ${proj.name} fields are not the derived path set for ${row.requestId}.` });
+        }
+        const hasVersion = rendered.has('version');
+        if (hasVersion !== row.includeVersion) {
+          issues.push({ code: 'D2_CONTRACT_V2_VERSION', path: proj.name, message: hasVersion ? 'version is present without update or transition.' : 'version is required for update or transition.' });
+        }
       }
     }
   }
   for (const row of derived.projections) {
-    if (!row.includeVersion) {
-      const proj = definition.projections.find(item => item.requestId === row.requestId && item.entityId === row.entityId) ?? definition.projections.find(item => item.name.startsWith(row.entityId));
-      if (proj?.body.includes('version:') && !row.includeVersion && !proj.body.includes('readonly version')) {
-        /* version only when includeVersion — check presence */
-      }
-      if (proj?.body.split('\n').some(line => /^\s*version:/u.test(line) || /^\s*readonly version:/u.test(line)) && !row.includeVersion) {
-        issues.push({ code: 'D2_CONTRACT_V2_VERSION', path: proj.name, message: 'version is present without update or transition.' });
-      }
+    if (!covered.has(`${row.requestId}:${row.entityId}`)) {
+      issues.push({ code: 'D2_CONTRACT_V2_PROJECTION_UNKNOWN', path: `${row.requestId}:${row.entityId}`, message: `Derived projection ${row.requestId}:${row.entityId} has no contract projection.` });
     }
   }
-  for (const row of derived.projections) {
-    for (const path of row.paths) {
-      const derivedMark = false;
-      void derivedMark;
+  for (const route of definition.routes) {
+    if (route.kind === 'cmd' && route.writes) {
+    const requestId = route.route.split('.').slice(2).join('.');
+    const request = derived.requests.find(item => item.id === requestId);
+    const entityId = route.writes.split('.')[0] ?? '';
+    const operation = route.writes.split('.')[1] ?? '';
+    const derivedSet = derivedPaths(entities[entityId]);
+    const actual = leavesOf(route.input).map(item => item.path);
+    for (const path of actual) {
+      if (path !== 'id' && path !== 'version' && derivedSet.has(path)) issues.push({ code: 'D2_CONTRACT_V2_DERIVED', path: route.route, message: `Derived path ${path} is in the command input.` });
+    }
+    const expected = (request?.inputPaths ?? [])
+      .filter(path => path.startsWith(`${entityId}.`))
+      .map(path => path.slice(entityId.length + 1))
+      .filter(path => operation !== 'create' || (path !== 'id' && path !== 'version'));
+    if (!request || !sameSet(new Set(actual), new Set(expected))) {
+      issues.push({ code: 'D2_CONTRACT_V2_INPUT', path: route.route, message: `Command input leaves are not the request input paths.` });
+    }
     }
   }
   const renderedGate = renderD2ContractV2({ project: 1, module: definition.module, pageId: definition.pageId }, definition);
@@ -155,6 +178,46 @@ export function gateD2ContractV2(definition: D2ContractV2Definition, derived: D2
     issues.push({ code: 'D2_CONTRACT_V2_LITERAL', path: 'source', message: 'Contract must use literal types only.' });
   }
   return issues;
+}
+
+function sameSet(left: Set<string>, right: Set<string>): boolean {
+  if (left.size !== right.size) return false;
+  for (const item of left) if (!right.has(item)) return false;
+  return true;
+}
+
+function leavesOf(source: string): Array<{ path: string; readonly: boolean }> {
+  const out: Array<{ path: string; readonly: boolean }> = [];
+  const stack: string[] = [];
+  let i = 0;
+  while (i < source.length) {
+    while (i < source.length && /[\s{};,]/.test(source[i])) {
+      if (source[i] === '}') stack.pop();
+      i += 1;
+    }
+    if (i >= source.length) break;
+    const readonly = source.startsWith('readonly ', i);
+    if (readonly) i += 'readonly '.length;
+    const name = /^[A-Za-z][A-Za-z0-9]*/u.exec(source.slice(i))?.[0];
+    if (!name) { i += 1; continue; }
+    i += name.length;
+    while (source[i] === ' ' || source[i] === '?') i += 1;
+    if (source[i] !== ':') continue;
+    i += 1;
+    while (source[i] === ' ') i += 1;
+    if (source[i] === '{') { stack.push(name); i += 1; continue; }
+    out.push({ path: [...stack, name].join('.'), readonly });
+    let quote = '';
+    while (i < source.length) {
+      const ch = source[i];
+      if (quote) { if (ch === quote) quote = ''; i += 1; continue; }
+      if (ch === '\'' || ch === '"') { quote = ch; i += 1; continue; }
+      if (ch === ';') { i += 1; break; }
+      if (ch === '}') break;
+      i += 1;
+    }
+  }
+  return out;
 }
 
 function renderFields(entity: Ns5OntologyAnyEntity | undefined, row: D2DerivedProjection, depth: number): string {
@@ -272,4 +335,3 @@ function renderQueryInput(params: string[]): string {
 
 function pascal(value: string): string { return value ? value[0].toUpperCase() + value.slice(1) : value; }
 function splitLits(value: string): string[] { return value.split(',').map(item => item.trim().replace(/^'|'$/ug, '')).filter(Boolean); }
-function fieldNames(body: string): string[] { return [...body.matchAll(/([A-Za-z][A-Za-z0-9]*)\??:/g)].map(item => item[1]); }

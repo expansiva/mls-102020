@@ -298,7 +298,7 @@ void test('shared and contract roundtrip plus gates and contractsAst measurement
   assert.equal(rendered.includes('Pick<') || rendered.includes('Partial<'), false);
   const parsed = parseD2ContractV2(rendered);
   assert.deepEqual(parsed.routes.map(item => ({ route: item.route, input: item.input, output: item.output })), contract.routes.map(item => ({ route: item.route, input: item.input, output: item.output })));
-  assert.deepEqual(gateD2ContractV2(contract, derived, built), []);
+  assert.deepEqual(gateD2ContractV2(contract, derived, built, pack.entities), []);
   const routes = new Map(contract.routes.map(item => [item.route.split('.').slice(2).join('.'), item]));
   assert.equal(routes.get('load')?.output, '{ produtos: ProdutoLoad[]; pageListaProdutos: number; pageSizeListaProdutos: number; hasMoreListaProdutos: boolean }');
   assert.equal(routes.get('cadastrarProduto')?.input, '{ details: { identification: { name: string }; product: { unitOfMeasure: string }; controleEstoque: { quantidadeMinima: number } } }');
