@@ -2,6 +2,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import ts from 'typescript';
 import { syRenderIndexDefs, syRenderIndexHtml, SyRenderDefsInput } from '/_102020_/l2/aura/molecules/agentSyncMoleculeCatalog/helpers/syRenderDefs.js';
 
 // Shaped after the real groupEnterNumber seed (the brief §4, mls-102040-temp/l2/molecules/groupenternumber).
@@ -49,19 +50,19 @@ void test('molecule entries: layout present renders in the same order as the lay
   const text = syRenderIndexDefs(INPUT);
   assert.match(
     text,
-    /\{ tag: 'groupenternumber--ml-floating-number-input', layout: \{ labelPlacement: 'floating', numberInput: 'input' \}, defs: '\/_102040_\/l2\/molecules\/groupenternumber\/ml-floating-number-input\.defs' \},/,
+    /\{ tag: 'groupenternumber--ml-floating-number-input', layout: \{ labelPlacement: 'floating', numberInput: 'input' \}, defs: '\/_102040_\/l2\/molecules\/groupenternumber\/ml-floating-number-input\.defs', module: '\/_102040_\/l2\/molecules\/groupenternumber\/ml-floating-number-input\.js' \},/,
   );
 });
 
 void test('a molecule with no varying axis omits the layout key entirely', () => {
   const noLayoutInput: SyRenderDefsInput = { ...INPUT, molecules: [{ ...INPUT.molecules[1], layout: undefined }] };
   const text = syRenderIndexDefs(noLayoutInput);
-  assert.match(text, /\{ tag: 'groupenternumber--ml-number-input', defs: '\/_102040_\/l2\/molecules\/groupenternumber\/ml-number-input\.defs' \},/);
+  assert.match(text, /\{ tag: 'groupenternumber--ml-number-input', defs: '\/_102040_\/l2\/molecules\/groupenternumber\/ml-number-input\.defs', module: '\/_102040_\/l2\/molecules\/groupenternumber\/ml-number-input\.js' \},/);
 });
 
 void test('a molecule with no .defs.ts renders defs: null with the out-of-contract comment, no layout key', () => {
   const text = syRenderIndexDefs(INPUT);
-  assert.match(text, /\{ tag: 'groupenternumber--ml-table-multi-select', defs: null \/\* ⚠ no \.defs\.ts — outside the contract \*\/ \},/);
+  assert.match(text, /\{ tag: 'groupenternumber--ml-table-multi-select', defs: null \/\* ⚠ no \.defs\.ts — outside the contract \*\/, module: '\/_102040_\/l2\/molecules\/groupenternumber\/ml-table-multi-select\.js' \},/);
 });
 
 void test('scenarios render as full prefixed tags', () => {
@@ -113,4 +114,34 @@ void test('index.html is one line, no trailing newline, group folder + project i
   const html = syRenderIndexHtml('groupenternumber', 102040);
   assert.equal(html, '<molecules--groupenternumber--index-102040></molecules--groupenternumber--index-102040>');
   assert.ok(!html.includes('\n'));
+});
+
+void test('every entry carries a module derived from folder + tag, including the defs: null one', () => {
+  const text = syRenderIndexDefs(INPUT);
+  for (const short of ['ml-floating-number-input', 'ml-number-input', 'ml-table-multi-select']) {
+    assert.ok(text.includes(`tag: 'groupenternumber--${short}'`));
+    assert.ok(text.includes(`module: '/_102040_/l2/molecules/groupenternumber/${short}.js' },`));
+  }
+});
+
+void test('step 4 (import every rendered molecule) appears exactly once', () => {
+  const text = syRenderIndexDefs(INPUT);
+  assert.equal(text.split('4. Every molecule you render needs its side-effect import').length - 1, 1);
+});
+
+void test('one Import: line per molecule, with the right path, including the defs-less one', () => {
+  const text = syRenderIndexDefs(INPUT);
+  const lines = text.split('\n').filter(l => l.startsWith('  Import: '));
+  assert.equal(lines.length, 3);
+  assert.equal(lines[2], "  Import: \\`import '/_102040_/l2/molecules/groupenternumber/ml-table-multi-select.js';\\`");
+});
+
+void test('the evaluated skill shows plain backticks on the Import: lines', () => {
+  const text = syRenderIndexDefs(INPUT);
+  const js = ts.transpileModule(text, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const m: { exports: { skill?: string } } = { exports: {} };
+  new Function('module', 'exports', js)(m, m.exports);
+  const lines = (m.exports.skill ?? '').split('\n').filter(l => l.startsWith('  Import: '));
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0], "  Import: `import '/_102040_/l2/molecules/groupenternumber/ml-floating-number-input.js';`");
 });

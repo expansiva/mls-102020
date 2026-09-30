@@ -15,6 +15,11 @@ molecule list). Design record: this file + `flow.json` + the per-step `CHANGELOG
 
 Level 3 is referenced by level 2 (`usageContract`) and never read or written here.
 
+Each entry of `index.defs.ts`'s `molecules` carries a `module` (the molecule's own `.js`, derived from the
+group folder and the tag, so it exists even when `defs` is null), and the `skill` tells the consumer to put
+that side-effect import at the top of the page. Pages used to render the tag without importing the module,
+and the molecule stayed an inert unknown element (measured in the 102047 materialize runs, 25-27/09).
+
 ## Why the default path costs nothing
 
 Every value this agent writes is 100% derivable from files already in the project:

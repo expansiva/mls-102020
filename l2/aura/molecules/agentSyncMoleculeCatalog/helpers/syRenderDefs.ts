@@ -53,7 +53,7 @@ export function syRenderIndexDefs(input: SyRenderDefsInput): string {
   lines.push('// Structured list, for deterministic consumers (gates, lints).');
   lines.push('// layout = the layoutConfig axes that VARY among this group\'s siblings.');
   lines.push('export const molecules = [');
-  for (const molecule of input.molecules) lines.push(`    ${renderMoleculeEntry(molecule)}`);
+  for (const molecule of input.molecules) lines.push(`    ${renderMoleculeEntry(input, molecule)}`);
   lines.push('];');
   lines.push('');
   lines.push('// The "Quick reference" table (scenario -> recommended). EDITORIAL: written, not derived —');
@@ -69,14 +69,24 @@ export function syRenderIndexDefs(input: SyRenderDefsInput): string {
   return lines.join('\n');
 }
 
-function renderMoleculeEntry(molecule: SyMoleculeEntry): string {
+function renderMoleculeEntry(input: SyRenderDefsInput, molecule: SyMoleculeEntry): string {
   const parts = [`tag: '${escapeSingleQuoted(molecule.tag)}'`];
   const axes = molecule.layout ? Object.entries(molecule.layout) : [];
   if (axes.length) {
     parts.push(`layout: { ${axes.map(([axis, value]) => `${axis}: '${escapeSingleQuoted(value)}'`).join(', ')} }`);
   }
   parts.push(molecule.defsRef ? `defs: '${escapeSingleQuoted(molecule.defsRef)}'` : 'defs: null /* ⚠ no .defs.ts — outside the contract */');
+  parts.push(`module: '${escapeSingleQuoted(moduleOf(input, molecule.tag))}'`);
   return `{ ${parts.join(', ')} },`;
+}
+
+/**
+ * The molecule's own module, derived from folder + the part of the tag after `--` — never from `defs`,
+ * which is null for a molecule without a .defs.ts (its module still exists). A page must import it (side
+ * effect) for the tag to be a defined element.
+ */
+function moduleOf(input: SyRenderDefsInput, tag: string): string {
+  return `/_${input.project}_/l2/molecules/${input.groupFolder}/${shortTagOf(tag)}.js`;
 }
 
 function renderScenarioEntry(scenario: SyScenario): string {
@@ -96,6 +106,8 @@ function renderSkillMarkdown(input: SyRenderDefsInput): string {
   parts.push('2. Break the tie by the layout axes and by each molecule\'s full description.');
   parts.push('3. Before writing markup, read the group usage contract (usageContract).');
   parts.push('   Copy the tag EXACTLY as it appears here.');
+  parts.push('4. Every molecule you render needs its side-effect import at the top of the page file, exactly as listed');
+  parts.push('   under each molecule below. Without it the tag is an unknown element and renders nothing.');
   parts.push('');
   parts.push('## Scenarios (quick reference)');
   parts.push('');
@@ -111,11 +123,12 @@ function renderSkillMarkdown(input: SyRenderDefsInput): string {
   for (const molecule of input.molecules) {
     if (!molecule.defsRef || !molecule.objective) {
       parts.push(`- **${molecule.tag}** — ⚠ outside the contract: no .defs.ts (objective unavailable; read the molecule file before using it).`);
-      continue;
+    } else {
+      const axes = molecule.layout ? Object.entries(molecule.layout) : [];
+      const layoutSegment = axes.length ? ` · ${axes.map(([axis, value]) => `${axis}: ${value}`).join(', ')}` : '';
+      parts.push(`- **${molecule.tag}**${layoutSegment} — ${molecule.objective}`);
     }
-    const axes = molecule.layout ? Object.entries(molecule.layout) : [];
-    const layoutSegment = axes.length ? ` · ${axes.map(([axis, value]) => `${axis}: ${value}`).join(', ')}` : '';
-    parts.push(`- **${molecule.tag}**${layoutSegment} — ${molecule.objective}`);
+    parts.push(`  Import: \`import '${moduleOf(input, molecule.tag)}';\``);
   }
   return `${parts.join('\n')}\n`;
 }
