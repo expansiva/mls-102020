@@ -56,7 +56,7 @@ export function buildD2SharedDefinitionDocument(
     if (new Set(bindingSignatures).size > 1) throw new Error(`D2_SHARED_OPERATION_BINDING_AMBIGUOUS: ${call.route}`);
     const userInputFields = inputLeaves(call.input);
     const inputs: D2DefinitionAction['inputs'] = [];
-    for (const field of userInputFields) {
+    for (const field of sharedInputFields(call, userInputFields, byRoute.get(call.route) ?? [])) {
       const dtoPath = dtoPathOf(call.entityId, field.path);
       const stateId = stateIdOf(call.callName, dtoPath);
       const matchingBindings = opBindings.flatMap(binding => binding.inputFields.filter(item => item.path === field.path));
@@ -269,7 +269,8 @@ export function validateD2SharedDefinitionAgainstContract(
   for (const action of document.actions) {
     const call = calls.get(action.id);
     if (!call || action.callRef.fragment !== call.routeName) throw new Error(`D2_SHARED_ACTION_UNKNOWN: ${action.id}`);
-    const expected = inputLeaves(call.input).map(field => `${call.callPascal}Input.${dtoPathOf(call.entityId, field.path)}`).sort();
+    const expected = sharedInputFields(call, inputLeaves(call.input), operationBindings.filter(binding => binding.route === call.route))
+      .map(field => `${call.callPascal}Input.${dtoPathOf(call.entityId, field.path)}`).sort();
     const actual = action.inputs.map(input => input.parameterRef.fragment || '').sort();
     if (expected.join('\0') !== actual.join('\0')) throw new Error(`D2_SHARED_ACTION_INPUT_COVERAGE: ${action.id}`);
     const binding = (page.operationBindings ?? []).find(item => item.route === call.route);
@@ -362,7 +363,10 @@ function validateSharedJudgment(page: D2SelectedPage, contract: D2PageContract, 
     if (new Set(signatures).size > 1) throw new Error(`D2_SHARED_OPERATION_BINDING_AMBIGUOUS: ${call.route}`);
     const permitted = new Set(matches.flatMap(binding => binding.inputFields.map(field => field.path)));
     for (const field of inputLeaves(call.input)) {
-      if (matches.length && !permitted.has(field.path) && !field.writePrecondition && !field.path.endsWith('$page')) throw new Error(`D2_SHARED_FIELD_NOT_AUTHORIZED: ${call.callName}/${field.path}`);
+      if (matches.length && call.operation !== 'list' && call.operation !== 'get'
+        && !permitted.has(field.path) && !field.writePrecondition && !field.path.endsWith('$page')) {
+        throw new Error(`D2_SHARED_FIELD_NOT_AUTHORIZED: ${call.callName}/${field.path}`);
+      }
     }
   }
   if (!judgment.scenaries.some(item => item.kind === 'base' && item.value === 'base')) throw new Error('D2_SHARED_BASE_SCENARY_MISSING');
@@ -402,6 +406,12 @@ function validateSharedJudgment(page: D2SelectedPage, contract: D2PageContract, 
 
 function isSelectedIdentity(call: D2ContractCall, field: D2ContractField): boolean {
   return field.derived && field.name === 'id' && (call.operation === 'get' || call.operation === 'update' || call.operation === 'transition');
+}
+function sharedInputFields(call: D2ContractCall, fields: D2ContractField[], bindings: D2OperationBinding[]): D2ContractField[] {
+  if (call.operation !== 'list' && call.operation !== 'get') return fields;
+  const permitted = new Set(bindings.flatMap(binding => binding.inputFields.map(field => field.path)));
+  return fields.filter(field => permitted.has(field.path) || field.path.endsWith('$page')
+    || (call.operation === 'get' && isSelectedIdentity(call, field)));
 }
 function fieldWritePrecondition(call: D2ContractCall, path: string): boolean {
   return flatten(call.input).some(field => field.writePrecondition && dtoPathOf(call.entityId, field.path) === path);

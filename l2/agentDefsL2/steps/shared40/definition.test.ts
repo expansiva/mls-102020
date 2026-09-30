@@ -56,6 +56,31 @@ void test('gate rejects invented refs, denied fields, and removed selection prec
   assert.throws(() => gateD2SharedDefinitionDocument('inventory', page, contract, removed), /D2_SHARED_PRECONDITION_REMOVED/);
 });
 
+void test('typed list identity without display authority is omitted while its action and result stay available', () => {
+  const { page, contract, judgment } = fixture();
+  const list = contract.calls.find(call => call.callName === 'listRecord')!;
+  assert.equal(list.output.some(field => field.path === 'Record.id'), true, 'the typed query result contains the identity');
+  const typedButDeniedId = field('Record.id', 'id', 'string', false);
+  list.input = [typedButDeniedId];
+  page.operationBindings = [
+    ...page.operationBindings!,
+    {
+      pageId: page.pageId, route: list.route, entityId: list.entityId, operation: list.operation,
+      actorRef: 'operator', grantRefs: [], authorities: ['operator'], inputFields: [], ruleRefs: [], sourceHashes: [],
+    },
+  ];
+
+  const document = gateD2SharedDefinitionDocument('inventory', page, contract, judgment);
+  const listAction = document.actions.find(action => action.id === list.callName)!;
+  assert.equal(listAction.callRef.fragment, list.routeName);
+  assert.equal(listAction.inputs.length, 0, 'the denied DTO field is not exposed as a query input');
+  assert.equal(document.states.some(state => state.id === 'listRecord.id'), false);
+  assert.equal(document.actions.some(action => action.id === 'set:listRecord:id'), false);
+  assert.equal(document.states.some(state => state.id === 'stateListRecordResult'), true);
+  assert.equal(document.actions.some(action => action.id === 'updateRecord'), true);
+  assert.equal(document.states.some(state => state.id === 'stateUpdateRecordId'), true);
+});
+
 void test('contract driven field metadata preserves false, zero, enum values, and per-operation required', () => {
   const { page, contract, judgment } = fixture();
   const quantity = field('Record.details.quantity', 'quantity', 'number', false);
