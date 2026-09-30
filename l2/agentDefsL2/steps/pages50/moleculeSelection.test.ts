@@ -14,6 +14,7 @@ import {
   type D2MoleculeNeedJudgment,
 } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeSelection.js';
 import type { D2MoleculeCatalogPort, D2MoleculeInventory, D2MoleculeRead } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
+import { assertD2PagesDecisionPromptLimit, D2_PAGES_DECISION_PROMPT_MAX_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages-page/agentD2PagesPage.js';
 
 const NEEDS: D2MoleculeNeed[] = [
   { needId: 'desktop:orders', device: 'desktop', organismId: 'orders', intent: 'Review records', inputRefs: ['Orders.status'], outputRefs: [], interaction: 'filter and inspect', accessibility: ['keyboard'], template: 'table' },
@@ -32,7 +33,7 @@ void test('shortlists by semantic judgment, excludes irrelevant groups, and supp
   ]);
   const context = buildD2MoleculeShortlistContext(shortlist);
   assert.match(context, /Usage contract for/u);
-  assert.match(context, /groupIrrelevant/u);
+  assert.doesNotMatch(context, /groupIrrelevant/u);
   assert.deepEqual(fixture.calls.sort(), ['groupTable', 'groupSearch', 'usageTable', 'usageSearch'].sort());
   const desktop = roleJudgment('desktop:orders', 'groupTable', 'grouptable--ml-record-table', 'grouptable--ml-record-cards');
   desktop.roles.push({ role: 'filter records', groupId: 'groupSearch', preferred: { tag: 'groupsearch--ml-filter', reason: 'The published control supports the filter interaction.' }, discardedCandidates: [] });
@@ -104,6 +105,63 @@ void test('large inventory stays in semantic consultation while the output conta
   assert.match(buildD2MoleculeResearchQuery(inventory, [NEEDS[0]]), /group119/u);
   assert.deepEqual(result.roles, []);
   assert.equal(result.receipt.needs[0].groups.length, 120);
+});
+
+void test('large multi-group sources produce bounded candidate evidence and complete receipt decisions', async () => {
+  const fixture = makeFixture();
+  const catalogs = Array.from({ length: 3 }, (_, groupIndex) => {
+    const name = `groupRecords${groupIndex}`;
+    const tags = Array.from({ length: 32 }, (_, index) => `${name.toLowerCase()}--ml-variant-${index}`);
+    const catalog = group(name, tags, `usageRecords${groupIndex}`);
+    catalog.skill = `# ${name}\n${tags.map(tag => `- **${tag}** — Published description for ${tag}.`).join('\n')}\n## Examples\n${'unrelated example '.repeat(7000)}`;
+    return catalog;
+  });
+  fixture.groups.push(...catalogs);
+  fixture.port.readUsageContract = async reference => ({ contract: {
+    reference, via: 'stor', skill: `## Properties\n| Property | Description |\n| value | Supplies the current value |\n## Events\n| Event | Description |\n| change | Reports a user change |\n## Examples\n${'example markup '.repeat(7000)}`,
+  }, error: '' });
+  const inventory = inventoryFor(fixture.groups);
+  const assessments = NEEDS.map(need => ({ needId: need.needId, groups: inventory.groups.map(item => ({
+    groupId: item.groupId, relevant: item.groupId.startsWith('groupRecords'), reason: item.groupId.startsWith('groupRecords') ? 'Published purpose serves the review.' : 'This group does not serve the review.',
+  })) }));
+  const shortlist = await buildD2MoleculeShortlist(fixture.port, inventory, NEEDS, assessments);
+  const context = buildD2MoleculeShortlistContext(shortlist);
+  const parsed = JSON.parse(context).moleculeResearch;
+  assert.equal(parsed.groups.length, 3, 'each shared group source is sent once for both device needs');
+  assert.ok(parsed.groups.every((item: { candidateTags: string[]; candidateEvidence: unknown[] }) => item.candidateTags.length === 32 && item.candidateEvidence.length === 32));
+  assert.ok(context.length < 96_000, 'decision context has a hard ceiling despite large source text');
+  assert.doesNotThrow(() => assertD2PagesDecisionPromptLimit(context));
+  assert.throws(() => assertD2PagesDecisionPromptLimit('x'.repeat(D2_PAGES_DECISION_PROMPT_MAX_CHARS + 1)), /D2_PAGES_DECISION_PROMPT_LIMIT/u);
+  assert.doesNotMatch(context, /unrelated example|example markup/u);
+  assert.match(context, /Reports a user change/u, 'pertinent usage API is present');
+  assert.ok(shortlist.sources.filter(item => item.role === 'group-index').length === 3);
+  assert.ok(shortlist.sources.filter(item => item.role === 'usage-contract').length === 3);
+
+  const judgments = NEEDS.map(need => ({ needId: need.needId, roles: catalogs.map((catalog, groupIndex) => {
+    const tags = catalog.molecules.map(item => item.tag);
+    return {
+      role: `display records ${groupIndex}`, groupId: catalog.group,
+      preferred: { tag: tags[0], reason: 'Supports the requested record review.' },
+      alternative: { tag: tags[1], reason: 'Provides a useful compact variation.' },
+      discardedCandidates: tags.slice(2).map(tag => ({ tag, reason: `${tag} adds behavior this review does not need.` })),
+    };
+  }) }));
+  const result = await resolveD2MoleculeResearch(shortlist, judgments);
+  assert.equal(result.receipt.needs[0].candidateDiscards.length, 90);
+  assert.equal(result.receipt.needs[1].candidateDiscards.length, 90);
+  assert.equal(result.roles.length, 6);
+  assert.ok(result.roles.every(role => Boolean(role.alternative)));
+  assert.doesNotMatch(JSON.stringify(result.roles), /variant-31/u, 'public recommendations contain no discarded catalog variants');
+  await assert.doesNotReject(() => assertD2MoleculeResearchReceiptIntegrity(result.receipt));
+  judgments[0].roles[0].discardedCandidates.pop();
+  await assert.rejects(() => resolveD2MoleculeResearch(shortlist, judgments), /D2_MOLECULE_DISCARD_REASON_MISSING/u);
+
+  shortlist.needs[0].compared[0].groupSkill = `# Missing candidate evidence\n${'large unrelated text '.repeat(200)}`;
+  shortlist.needs[1].compared[0].groupSkill = shortlist.needs[0].compared[0].groupSkill;
+  assert.throws(() => buildD2MoleculeShortlistContext(shortlist), /D2_MOLECULE_CANDIDATE_EVIDENCE_MISSING/u);
+  shortlist.needs[1].compared[0].groupSkill = `${catalogs[0].molecules.map(item => `- **${item.tag}** — ${'extended evidence '.repeat(80)}`).join('\n')}`;
+  shortlist.needs[0].compared[0].groupSkill = shortlist.needs[1].compared[0].groupSkill;
+  assert.throws(() => buildD2MoleculeShortlistContext(shortlist), /D2_MOLECULE_GROUP_EVIDENCE_LIMIT/u);
 });
 
 function groupJudgment(needId: string, relevant: string[]) {

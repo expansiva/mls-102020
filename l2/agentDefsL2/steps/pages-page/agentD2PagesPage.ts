@@ -14,6 +14,7 @@ import { deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenari
 import { buildD2MoleculeResearchQuery, buildD2MoleculeShortlist, buildD2MoleculeShortlistContext, resolveD2MoleculeResearch, d2MoleculeInventoryHash, type D2MoleculeGroupJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeSelection.js';
 
 interface Args { project: number; module: string; pageId: string; attempt: number; moleculeContextHash: string; stage: 'groups' | 'pages'; researchJudgments?: Array<{ needId: string; groups: D2MoleculeGroupJudgment[] }>; feedback?: string; previous?: unknown; }
+export const D2_PAGES_DECISION_PROMPT_MAX_CHARS = 160_000;
 export function createAgent(): IAgentAsync { return { agentName: D2_PAGES_PAGE_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2/steps/pages-page', agentDescription: 'Describe desktop and mobile presentations for one page with one bounded repair', visibility: 'private', beforePromptStep, afterPromptStep }; }
 
 export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -50,8 +51,14 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
       : JSON.stringify({ ...pageInput, moleculeShortlist: JSON.parse(moleculeContext), groupAssessments: parsed.researchJudgments }, null, 2);
     const toolName = isGroups ? 'submitD2MoleculeGroups' : 'submitD2Pages';
     const tool: mls.msg.LLMTool = { type: 'function', function: { name: toolName, description: isGroups ? 'Assess every catalog group for every semantic page need.' : 'Submit page intent, presentations and researched molecule roles.', parameters: isGroups ? groupSchema : schema } };
-    return [{ type: 'prompt_ready', args: rawArgs, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: isGroups ? groupPrompt : prompt, humanPrompt: isGroups ? humanPrompt : `${humanPrompt}\n\n${JSON.stringify({ templateGuidance })}`, tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } }];
+    const boundedPrompt = isGroups ? humanPrompt : `${humanPrompt}\n\n${JSON.stringify({ templateGuidance })}`;
+    if (!isGroups) assertD2PagesDecisionPromptLimit(boundedPrompt);
+    return [{ type: 'prompt_ready', args: rawArgs, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: isGroups ? groupPrompt : prompt, humanPrompt: boundedPrompt, tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } }];
   } catch (error) { const diagnostic = error instanceof Error ? error.message : String(error); if (identity) await markD2StepFailed(identity, 'pages50', diagnostic); return [updateD2Status(context, parentStep, step, hookSequential, 'failed', diagnostic)]; }
+}
+
+export function assertD2PagesDecisionPromptLimit(prompt: string): void {
+  if (prompt.length > D2_PAGES_DECISION_PROMPT_MAX_CHARS) throw new Error(`D2_PAGES_DECISION_PROMPT_LIMIT: ${prompt.length} > ${D2_PAGES_DECISION_PROMPT_MAX_CHARS}`);
 }
 
 export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {

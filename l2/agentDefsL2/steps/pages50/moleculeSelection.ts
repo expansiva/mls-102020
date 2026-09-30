@@ -106,6 +106,9 @@ export interface D2MoleculeResearchReceipt {
 
 export interface D2MoleculeResearchResult { roles: D2MoleculePublishedRole[]; receipt: D2MoleculeResearchReceipt; }
 
+export const D2_MOLECULE_DECISION_CONTEXT_MAX_CHARS = 96_000;
+const D2_MOLECULE_GROUP_EVIDENCE_MAX_CHARS = 16_000;
+
 /** First pass: expose published purposes and page needs so semantic selection can shortlist groups. */
 export function buildD2MoleculeResearchQuery(inventory: D2MoleculeInventory, needs: D2MoleculeNeed[]): string {
   return JSON.stringify({
@@ -280,13 +283,42 @@ export async function assertD2MoleculeResearchReceiptIntegrity(receipt: D2Molecu
 }
 
 export function buildD2MoleculeShortlistContext(shortlist: D2MoleculeShortlist): string {
-  return JSON.stringify({ moleculeResearch: shortlist.needs.map(item => ({
-    need: item.need,
-    relevantGroups: item.compared.map(({ groupId, purpose, indexReference, usageContractReference, candidateTags, scenarios, groupSkill, usageSkill }) => ({
-      groupId, purpose, indexReference, usageContractReference, candidateTags, scenarios, groupSkill, usageSkill,
-    })),
-    discardedGroups: item.groups.filter(group => !group.relevant).map(group => ({ groupId: group.groupId, reason: group.reason })),
-  })) }, null, 2);
+  const groups = new Map<string, D2MoleculeGroupComparison>();
+  for (const item of shortlist.needs) for (const group of item.compared) groups.set(group.groupId, group);
+  const context = JSON.stringify({ moleculeResearch: {
+    needs: shortlist.needs.map(item => ({ need: item.need, relevantGroupIds: item.compared.map(group => group.groupId) })),
+    groups: [...groups.values()].map(group => compactD2GroupEvidence(group)),
+    decisionRule: 'For each role and its group, choose one preferred tag and at most one alternative. Give a short, specific reason for every remaining candidateTags entry in discardedCandidates; the tags must partition candidateTags exactly. Keep discarded candidates out of the public definition.',
+  } });
+  if (context.length > D2_MOLECULE_DECISION_CONTEXT_MAX_CHARS) throw new D2MoleculeContextError('D2_MOLECULE_DECISION_CONTEXT_LIMIT', `${context.length} > ${D2_MOLECULE_DECISION_CONTEXT_MAX_CHARS}`);
+  return context;
+}
+
+function compactD2GroupEvidence(group: D2MoleculeGroupComparison) {
+  const lines = group.groupSkill.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+  const candidateEvidence = group.candidateTags.map(tag => {
+    const excerpt = lines.find(line => line.startsWith(`- **${tag}**`) || line.startsWith(`- \`${tag}\``) || line.startsWith(`- ${tag} `));
+    if (!excerpt && group.groupSkill.length > 2_000) throw new D2MoleculeContextError('D2_MOLECULE_CANDIDATE_EVIDENCE_MISSING', `${group.groupId}/${tag}`);
+    return { tag, excerpt: excerpt || group.groupSkill.trim() };
+  });
+  const usageApi = compactD2UsageApi(group.usageSkill);
+  const evidence = {
+    groupId: group.groupId, purpose: group.purpose,
+    indexReference: group.indexReference, usageContractReference: group.usageContractReference,
+    candidateTags: group.candidateTags, scenarios: group.scenarios, candidateEvidence, usageApi,
+  };
+  const size = JSON.stringify(evidence).length;
+  if (size > D2_MOLECULE_GROUP_EVIDENCE_MAX_CHARS) throw new D2MoleculeContextError('D2_MOLECULE_GROUP_EVIDENCE_LIMIT', `${group.groupId}: ${size} > ${D2_MOLECULE_GROUP_EVIDENCE_MAX_CHARS}`);
+  return evidence;
+}
+
+function compactD2UsageApi(source: string): string {
+  const sections = source.split(/(?=^## )/mu);
+  const semantic = sections.filter(section => {
+    const heading = section.match(/^## ([^\n]+)/u)?.[1] || '';
+    return heading && !/examples?|customiz|design tokens?|styling|visual|theme/iu.test(heading);
+  });
+  return (semantic.length ? semantic.join('\n') : source).trim();
 }
 
 async function readCatalog(port: D2MoleculeCatalogPort, reference: string, groupId: string, cache: Map<string, Promise<ChGroupCatalog>>): Promise<ChGroupCatalog> {

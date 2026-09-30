@@ -27,7 +27,11 @@ with a specific reason; category guidance never grants an operation or prescribe
 The earlier research pass already assessed every catalog group. For each supplied needId in
 moleculeShortlist, return moleculeResearch with semantic roles and choices based on the actually read
 group index and usage contract. Each role has a preferred exact tag, a specific reason, at most one
-useful alternative and reasons for discarded candidates. No role or tag may be inferred from a legacy
+useful alternative and a short, specific reason for every other tag in that group's candidateTags.
+The preferred, optional alternative and discardedCandidates must partition candidateTags exactly:
+name each discarded tag once, including variants that look similar. Keep these comparison reasons in
+the research response/receipt; only preferred and the optional alternative reach page11. Do not
+copy the catalog or all discarded variants into the page descriptions. No role or tag may be inferred from a legacy
 recommendation. With no shortlisted group, return no roles and an honest noMatchReason. Recommendations
 are consultative and may differ by device. Do not repeat group assessments in this final response.
 

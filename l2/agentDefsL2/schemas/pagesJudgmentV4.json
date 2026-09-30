@@ -62,7 +62,7 @@
                 "preferred": { "$ref": "#/$defs/option" },
                 "alternative": { "$ref": "#/$defs/option" },
                 "discardedCandidates": {
-                  "type": "array", "items": { "$ref": "#/$defs/option" }
+                  "type": "array", "description": "Every candidateTags entry for this role's group except preferred and optional alternative, each with a concise specific reason. These comparisons stay in the receipt, not the public page definition.", "items": { "$ref": "#/$defs/option" }
                 }
               }
             }
