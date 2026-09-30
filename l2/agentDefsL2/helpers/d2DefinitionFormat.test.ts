@@ -116,6 +116,21 @@ void test('page11 parser validates organism and molecule reference shapes and li
   assert.throws(() => parseD2Definition(page11Document(), sharedWithoutContentCatalog), /D2_DEFINITION_SHARED_CONTENT_CATALOG_MISSING/);
 });
 
+void test('molecule organismRef accepts a dotted organism ID but still must resolve', () => {
+  const dotted = page11Document();
+  dotted.organisms[0].id = 'organism.summary.1';
+  dotted.moleculeRecommendations[0].organismRef = 'organism.summary.1';
+  const parsed = parseD2Definition(dotted, SYMBOLS).document;
+  assert.equal(parsed.artifactType, 'page11');
+  if (parsed.artifactType !== 'page11') throw new Error('expected page11');
+  assert.equal(parsed.moleculeRecommendations[0].organismRef, 'organism.summary.1');
+
+  dotted.moleculeRecommendations[0].organismRef = 'organism.summary.2';
+  assert.throws(() => parseD2Definition(dotted, SYMBOLS), /D2_DEFINITION_ORGANISM_REF_MISSING: organism\.summary\.2/u);
+  dotted.moleculeRecommendations[0].organismRef = '   ';
+  assert.throws(() => parseD2Definition(dotted, SYMBOLS), /D2_DEFINITION_MOLECULE_ORGANISM_REF/u);
+});
+
 function sharedDocument(): Extract<D2DefinitionDocument, { artifactType: 'shared' }> {
   return {
     schemaVersion: D2_DEFINITION_VERSION,

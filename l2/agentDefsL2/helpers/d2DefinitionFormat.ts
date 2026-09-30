@@ -398,7 +398,7 @@ function parseMoleculeRecommendations(value: unknown): D2MoleculeRecommendation[
   const recommendations = result.map(item => {
     assertKeys(item, ['organismRef', 'role', 'preferred', 'alternative']);
     return {
-    organismRef: requiredId(item, 'organismRef', 'D2_DEFINITION_MOLECULE_ORGANISM_REF'),
+    organismRef: requiredText(item, 'organismRef', 'D2_DEFINITION_MOLECULE_ORGANISM_REF'),
     role: requiredText(item, 'role', 'D2_DEFINITION_MOLECULE_ROLE'),
     preferred: parseChoice(item.preferred),
     ...(item.alternative === undefined ? {} : { alternative: parseChoice(item.alternative) }),
