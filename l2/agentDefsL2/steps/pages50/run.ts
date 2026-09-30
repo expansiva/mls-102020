@@ -11,7 +11,7 @@ import type { D2MoleculeInventory, D2MoleculeGroup } from '/_102020_/l2/agentDef
 import { gateD2MoleculeRoles, moleculeDecisionContext } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeSelection.js';
 import type { D2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages50/templateContext.js';
 
-export const D2_PAGES_VERSION = '2026-09-30-agent-defs-l2-pages-v2' as const;
+export const D2_PAGES_VERSION = '2026-09-30-agent-defs-l2-pages-v2.1' as const;
 export const D2_PAGE11_NEEDS_VERSION = '2026-09-30-agent-defs-l2-page11-needs-v1' as const;
 export const D2_PAGES_PROMPT_LIMIT_CHARS = 160_000;
 

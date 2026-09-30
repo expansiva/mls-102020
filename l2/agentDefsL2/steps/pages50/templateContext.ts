@@ -2,7 +2,7 @@
 
 import { readSourceText } from '/_102035_/l2/solution/fs.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
-import { deriveD2Page11Experience, type D2Page11Category } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { deriveD2Page11CategoryReference, deriveD2Page11Experience, type D2Page11Category } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 
 export interface D2PageTemplateContext {
   categories: D2Page11Category[];
@@ -26,9 +26,9 @@ export async function loadD2PageTemplateContext(): Promise<D2PageTemplateContext
     categories, catalog, catalogHash: await sha256Text(catalog), templatePaths,
     async select(category) {
       const experience = deriveD2Page11Experience(category, categories);
-      if (experience === 'none') return { experience, reason: 'No published page11 or page21 experience applies.', reference: null, content: '', hash: await sha256Text('none') };
+      if (category === 'bespoke') return { experience, reason: 'No published page11 or page21 experience applies.', reference: null, content: '', hash: await sha256Text('none') };
       const key = categories.find(item => item.categoryId === category)?.experiences?.page11 ? 'page11' : 'page21';
-      const reference = `_102020_/l4/collabux/templates/${category}/${key}.md`;
+      const reference = deriveD2Page11CategoryReference(category, categories);
       let content: string;
       try { content = await readSourceText({ project: 102020, level: 4, folder: `collabux/templates/${category}`, shortName: key, extension: '.md' }); }
       catch { throw new Error(`D2_PAGE11_TEMPLATE_MISSING: ${reference}`); }

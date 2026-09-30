@@ -4,10 +4,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
-import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { parseD2Page11Definition, renderD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { buildD2Page11WithExperience } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { beforePromptStep, reusableD2Page, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, pageUnitInputHash, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2PagesContext['template']['categories'] }).categories;
@@ -81,9 +82,29 @@ void test('controleEstoque/produtos simulated LLM response writes only page11 v2
   const source = writes.get('controleEstoque/web/desktop/page11/produtos.defs.ts');
   assert.equal(typeof source, 'string');
   const definition = parseD2Page11Definition(source as string).definition;
+  assert.equal(definition.template.category, '_102020_/l4/collabux/templates/inventoryControl/page21.md');
   assert.equal(definition.template.experience, 'splitViewOperations');
   assert.deepEqual(Object.keys(definition), ['template', 'intent', 'sections', 'organisms', 'molecules']);
   assert.equal(writes.has('controleEstoque/pipeline/agentDefsL2/page11Needs/produtosDesktop.json'), true);
+});
+
+void test('writer replaces the complete existing page11 source without merging old keys', async () => {
+  const data = context('controleEstoque', 'produtos');
+  const oldSource = 'export const definition = { forbiddenSentinel: true } as const;';
+  const writes = new Map<string, string>([
+    ['desktop', oldSource], ['mobile', oldSource],
+  ]);
+  const writer: D2PagesWriter = {
+    writeSource: async (info, source) => { writes.set(info.folder.includes('/desktop/') ? 'desktop' : 'mobile', source); },
+    writeJson: async () => undefined,
+  };
+  await approveD2PagesUnit(data, product(), 1400, 0, writer);
+  for (const device of ['desktop', 'mobile'] as const) {
+    const source = writes.get(device);
+    const expected = renderD2Page11Definition({ ...data.identity, pageId: 'produtos', device }, buildD2Page11WithExperience(product()[device].definition, categories));
+    assert.equal(source, expected);
+    assert.equal(source!.includes('forbiddenSentinel'), false);
+  }
 });
 
 void test('run gate refuses missing write, unknown field and unknown molecule without writing', async () => {
@@ -199,6 +220,9 @@ void test('a complete receipt reuses one page with zero writes; draft, context a
   assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), true);
   assert.equal(reads, 2);
   assert.equal(writes.size, 5);
+  const previousVersion = { ...receipt, schemaVersion: '2026-09-30-agent-defs-l2-pages-v2' as typeof D2_PAGES_VERSION };
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, { ...port, readReceipt: async () => previousVersion }), false);
+  assert.equal(reads, 2);
   const draftKey = 'controleEstoque/pipeline/agentDefsL2/page11Needs/produtosDesktop.json';
   const originalDraft = writes.get(draftKey);
   writes.set(draftKey, { organisms: {} });

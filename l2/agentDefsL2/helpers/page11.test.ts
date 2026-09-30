@@ -6,7 +6,7 @@ import test from 'node:test';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2Page11Definition, d2Page11Path, parseD2Page11Definition, renderD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, d2Page11NeedsPath, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { buildD2Page11WithExperience, deriveD2Page11Experience, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { buildD2Page11WithExperience, deriveD2Page11CategoryReference, deriveD2Page11Experience, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`./fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2Page11GateSources['categories'] }).categories;
@@ -19,7 +19,7 @@ const expenseNeeds = fixture<{ pages: D2Page11NeedPage[] }>('reembolsoDespesas',
 
 function product(): D2Page11Definition {
   return buildD2Page11Definition({
-    template: { category: 'inventoryControl', experience: 'splitViewOperations' },
+    template: { category: '_102020_/l4/collabux/templates/inventoryControl/page21.md', experience: 'splitViewOperations' },
     intent: 'Ler "saldo", crase `x` e ${literal} sem executar texto.',
     sections: [
       { id: 'situacao', priority: 'primary', purpose: 'Saldos e avisos.', organisms: ['resumo', 'alertas'] },
@@ -80,7 +80,13 @@ void test('experience is derived from category, with bespoke and absent experien
   assert.equal(deriveD2Page11Experience('bespoke', categories), 'none');
   assert.equal(deriveD2Page11Experience('empty', [{ categoryId: 'empty' }]), 'none');
   const tool = { ...product(), template: { category: 'inventoryControl' } };
-  assert.equal(buildD2Page11WithExperience(tool, categories).template.experience, 'splitViewOperations');
+  assert.deepEqual(buildD2Page11WithExperience(tool, categories).template, {
+    category: '_102020_/l4/collabux/templates/inventoryControl/page21.md', experience: 'splitViewOperations',
+  });
+  assert.equal(deriveD2Page11CategoryReference('bespoke', categories), 'bespoke');
+  assert.deepEqual(buildD2Page11WithExperience({ ...tool, template: { category: 'bespoke' } }, categories).template, { category: 'bespoke', experience: 'none' });
+  assert.throws(() => deriveD2Page11CategoryReference('empty', [{ categoryId: 'empty' }]), /D2_PAGE11_CATEGORY_UNPUBLISHED/u);
+  assert.throws(() => buildD2Page11WithExperience({ ...tool, template: { category: 'notReal' } }, categories), /D2_PAGE11_CATEGORY_UNKNOWN/u);
   assert.throws(() => buildD2Page11WithExperience(product(), categories), /D2_PAGE11_TOOL_CATEGORY_ONLY/u);
 });
 
@@ -95,7 +101,7 @@ void test('HEAD a4de463 expenses hub/process fixture has nine real organisms and
     { id: 'corrigirDespesa', kind: 'submit', to: '' },
     { id: 'reenviarDespesa', kind: 'submit', to: '' },
   ];
-  const definition = buildD2Page11Definition({ template: { category: 'financialTransactions', experience: 'ledgerTable' }, intent: 'Minhas despesas e o processo de aprovação.', sections: [{ id: 'principal', priority: 'main', purpose: 'Acompanhar o processo.', organisms: ids }], organisms, molecules: {} });
+  const definition = buildD2Page11Definition({ template: { category: '_102020_/l4/collabux/templates/financialTransactions/page21.md', experience: 'ledgerTable' }, intent: 'Minhas despesas e o processo de aprovação.', sections: [{ id: 'principal', priority: 'main', purpose: 'Acompanhar o processo.', organisms: ids }], organisms, molecules: {} });
   const units: D2Page11Needs['organisms'] = Object.fromEntries(ids.map(id => [id, { reads: [], edits: [], selects: '', submits: [] }]));
   units.actions.submits = [
     { intentId: 'registrarDespesa', write: 'Despesa.create' },
@@ -145,6 +151,10 @@ void test('ontology, grants, category, experience, molecules and forbidden field
   assert.ok(issues(product(), denied, deniedSource).includes('D2_PAGE11_FIELD_GRANT'));
   const unknownCategory = clone(product()); unknownCategory.template.category = 'notReal';
   assert.ok(issues(unknownCategory).includes('D2_PAGE11_CATEGORY_UNKNOWN'));
+  const oldShortCategory = clone(product()); oldShortCategory.template.category = 'inventoryControl';
+  assert.ok(issues(oldShortCategory).includes('D2_PAGE11_CATEGORY_UNKNOWN'));
+  const inventedReference = clone(product()); inventedReference.template.category = '_102020_/l4/collabux/templates/inventoryControl/page11.md';
+  assert.ok(issues(inventedReference).includes('D2_PAGE11_CATEGORY_UNKNOWN'));
   const wrongExperience = clone(product()); wrongExperience.template.experience = 'alertFirstReplenishment';
   assert.ok(issues(wrongExperience).includes('D2_PAGE11_EXPERIENCE_DERIVATION'));
   const missingTemplate = clone(sources()); missingTemplate.templatePaths = new Set();

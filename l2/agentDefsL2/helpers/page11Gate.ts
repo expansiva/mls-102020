@@ -32,6 +32,15 @@ export function deriveD2Page11Experience(category: string, categories: readonly 
   return entry.experiences?.page11 ?? entry.experiences?.page21 ?? 'none';
 }
 
+export function deriveD2Page11CategoryReference(category: string, categories: readonly D2Page11Category[]): string {
+  if (category === 'bespoke') return 'bespoke';
+  const entry = categories.find(item => item.categoryId === category);
+  if (!entry) throw new Error(`D2_PAGE11_CATEGORY_UNKNOWN: ${category}`);
+  const key = entry.experiences?.page11 ? 'page11' : entry.experiences?.page21 ? 'page21' : null;
+  if (!key) throw new Error(`D2_PAGE11_CATEGORY_UNPUBLISHED: ${category}`);
+  return `_102020_/l4/collabux/templates/${category}/${key}.md`;
+}
+
 export function buildD2Page11WithExperience(value: unknown, categories: readonly D2Page11Category[]): D2Page11Definition {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('D2_PAGE11_TOOL_OBJECT');
   const root = value as Record<string, unknown>;
@@ -39,7 +48,7 @@ export function buildD2Page11WithExperience(value: unknown, categories: readonly
   if (!template || typeof template !== 'object' || Array.isArray(template)) throw new Error('D2_PAGE11_TOOL_TEMPLATE');
   const templateRow = template as Record<string, unknown>;
   if (Object.keys(templateRow).join('\0') !== 'category' || typeof templateRow.category !== 'string') throw new Error('D2_PAGE11_TOOL_CATEGORY_ONLY');
-  return buildD2Page11Definition({ ...root, template: { category: templateRow.category, experience: deriveD2Page11Experience(templateRow.category, categories) } });
+  return buildD2Page11Definition({ ...root, template: { category: deriveD2Page11CategoryReference(templateRow.category, categories), experience: deriveD2Page11Experience(templateRow.category, categories) } });
 }
 
 export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Page11GateSources): D2Page11Issue[] {
@@ -70,14 +79,16 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
   for (const id of Object.keys(draft.organisms)) if (!definition.organisms[id]) add('D2_PAGE11_NEEDS_EXTRA', `page11Needs.organisms.${id}`, `Draft contains unknown organism ${id}.`);
   for (const id of ids) if (!draft.organisms[id]) add('D2_PAGE11_NEEDS_MISSING', `page11Needs.organisms.${id}`, `Draft is missing organism ${id}.`);
   const category = definition.template.category;
-  if (category !== 'bespoke' && !sources.categories.some(item => item.categoryId === category)) {
-    add('D2_PAGE11_CATEGORY_UNKNOWN', 'template.category', `Category ${category} is absent from categoryList.json.`);
+  const entry = sources.categories.find(item => (item.experiences?.page11 || item.experiences?.page21)
+    && deriveD2Page11CategoryReference(item.categoryId, sources.categories) === category);
+  if (category !== 'bespoke' && !entry) {
+    add('D2_PAGE11_CATEGORY_UNKNOWN', 'template.category', `Category reference ${category} is absent from categoryList.json.`);
   } else {
-    const expected = deriveD2Page11Experience(category, sources.categories);
+    const expected = deriveD2Page11Experience(entry?.categoryId ?? 'bespoke', sources.categories);
     if (definition.template.experience !== expected) add('D2_PAGE11_EXPERIENCE_DERIVATION', 'template.experience', `Experience must be ${expected} for category ${category}.`);
     if (expected !== 'none') {
-      const key = sources.categories.find(item => item.categoryId === category)?.experiences?.page11 ? 'page11' : 'page21';
-      const path = `templates/${category}/${key}.md`;
+      const key = entry?.experiences?.page11 ? 'page11' : 'page21';
+      const path = `templates/${entry!.categoryId}/${key}.md`;
       if (!sources.templatePaths.has(path)) add('D2_PAGE11_TEMPLATE_MISSING', 'template', `Selected template ${path} is absent.`);
     }
   }
