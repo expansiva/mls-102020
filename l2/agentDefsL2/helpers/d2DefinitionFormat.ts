@@ -369,7 +369,7 @@ function parseOrganisms(value: unknown): D2DefinitionOrganism[] {
   const organisms = result.map(item => {
     assertKeys(item, ['id', 'kind', 'description', 'contentRef', 'capabilityRefs', 'journeyRefs', 'fieldRefs']);
     return {
-    id: requiredId(item, 'id', 'D2_DEFINITION_ORGANISM_ID'),
+    id: requiredText(item, 'id', 'D2_DEFINITION_ORGANISM_ID'),
     kind: requiredText(item, 'kind', 'D2_DEFINITION_ORGANISM_KIND'),
     description: requiredText(item, 'description', 'D2_DEFINITION_ORGANISM_DESCRIPTION'),
     contentRef: requiredId(item, 'contentRef', 'D2_DEFINITION_ORGANISM_CONTENT_REF'),
