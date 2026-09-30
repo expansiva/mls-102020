@@ -34,7 +34,7 @@ export function moleculeDecisionContext(selected: Record<string, string[]>, grou
   const used = new Set(Object.values(selected).flat());
   return JSON.stringify({ organisms: selected, groups: groups.filter(group => used.has(group.groupId)).map(group => ({
     groupId: group.groupId, purpose: group.purpose, tags: group.tags, scenarios: group.scenarios,
-    index: group.indexText, usage: group.usageText,
+    usage: group.usageText,
   })) });
 }
 

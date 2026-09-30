@@ -6,6 +6,7 @@ import test from 'node:test';
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { beforePromptStep, reusableD2Page, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, pageUnitInputHash, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
@@ -232,4 +233,25 @@ void test('four real reembolsoDespesas pages include the nine minhas_despesas or
   }
   assert.ok(maximum > 0);
   console.log(`reembolsoDespesas fixture maximum decision prompt: ${maximum} chars`);
+});
+
+void test('controleEstoque/produtos molecular context omits repeated indexes with margin below the prompt ceiling', () => {
+  const data = context('controleEstoque', 'produtos');
+  const groupIds = ['groupNotifyUser', 'groupSearchContent', 'groupShowProgress', 'groupViewCard',
+    'groupViewData', 'groupViewTable', 'groupEnterText', 'groupTriggerAction'];
+  data.groups = groupIds.map((groupId, index): D2MoleculeGroup => ({
+    groupId, purpose: `Published purpose ${index}`, indexReference: `/${groupId}/index`, usageReference: `/${groupId}/usage`,
+    tags: [`${groupId.toLowerCase()}--fixture`], scenarios: [{ scenario: `Scenario ${index}`, recommended: [`${groupId.toLowerCase()}--fixture`] }],
+    indexSource: `index source ${index}`, indexText: 'repeated-index-content'.repeat(500),
+    usageSource: `usage source ${index}`, usageText: 'usage-contract-content'.repeat(350),
+  }));
+  data.selectedGroups = Object.fromEntries(data.page.organisms.map((_, index) => [`organism${index + 1}`, groupIds]));
+  const prompt = buildD2PagesDecisionPrompt(data);
+  const payload = JSON.parse(prompt.prompt) as { moleculeResearch: { groups: Array<Record<string, unknown>> } };
+  assert.equal(payload.moleculeResearch.groups.length, groupIds.length);
+  assert.equal(payload.moleculeResearch.groups.every(group => !Object.hasOwn(group, 'index')), true);
+  assert.ok(prompt.chars < 160_000);
+  const duplicatedIndexChars = prompt.chars + data.groups.reduce((total, group) => total + group.indexText.length, 0);
+  assert.ok(duplicatedIndexChars > 160_000);
+  assert.ok(160_000 - prompt.chars > 50_000);
 });
