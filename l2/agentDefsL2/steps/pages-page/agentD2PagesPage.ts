@@ -6,15 +6,16 @@ import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/he
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
 import { buildD2MoleculeInventory } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
-import { buildD2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
-import { d2PageSkillPort, d2TemplatePort } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryCatalog.js';
+import { buildD2PageSkillsContext, D2_PAGE_CATEGORY_CATALOG } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
+import { d2PageSkillPort } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryCatalog.js';
 import { parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
 import { approveD2PagesUnit, buildD2PageMoleculeNeeds, finalizeD2PagesBarrier, getD2PagesContext } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
-import { deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
+import { deriveD2PageOrganisms } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { buildD2MoleculeResearchQuery, buildD2MoleculeShortlist, buildD2MoleculeShortlistContext, resolveD2MoleculeResearch, d2MoleculeInventoryHash, type D2MoleculeGroupJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeSelection.js';
+import { buildD2PagesDecisionPrompt } from '/_102020_/l2/agentDefsL2/steps/pages-page/decisionContext.js';
+export { assertD2PagesDecisionPromptLimit, D2_PAGES_DECISION_PROMPT_MAX_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages-page/decisionContext.js';
 
 interface Args { project: number; module: string; pageId: string; attempt: number; moleculeContextHash: string; stage: 'groups' | 'pages'; researchJudgments?: Array<{ needId: string; groups: D2MoleculeGroupJudgment[] }>; feedback?: string; previous?: unknown; }
-export const D2_PAGES_DECISION_PROMPT_MAX_CHARS = 160_000;
 export function createAgent(): IAgentAsync { return { agentName: D2_PAGES_PAGE_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2/steps/pages-page', agentDescription: 'Describe desktop and mobile presentations for one page with one bounded repair', visibility: 'private', beforePromptStep, afterPromptStep }; }
 
 export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args?: string): Promise<mls.msg.AgentIntent[]> {
@@ -39,26 +40,25 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
       ? await buildD2MoleculeShortlist(d2MoleculeCatalogPort, inventory, needs, parsed.researchJudgments || [])
       : null;
     const journeys = page.journeyRefs.map(id => bundle.artifacts.journeys[id]).filter(Boolean);
-    const templateCatalog = await d2TemplatePort.discover();
-    const templateGuidance = { targetPage: 'page11', orientationPage: 'page21', sources: templateCatalog, precedence: 'Shared, DTOs, L4 rules and grants prevail. The selected Markdown reference and hash will be derived from the chosen category; no implicit style preference.' };
-    const pageInput = { page: { pageId: page.pageId, label: page.label, userLanguage: text(record(bundle.artifacts.menu).userLanguage) || 'en', actors: page.actors, ancestors: page.ancestors, authorityRefs: page.authorityRefs, journeys, relevantRules: relevantRules(bundle.artifacts.rules, [...page.authorityRefs, ...page.journeyRefs, page.pageId]), operations: page.operationBindings || [], organisms: deriveD2PageOrganisms(page), reads: page.reads, writes: page.writes }, shared, sceneSurface: { state: resolveD2PageScenarioState(shared), scenaries: resolveD2PageScenarioSurfaces(shared) }, pageCategoryCatalog: JSON.parse(pageSkills.context), repair: parsed.feedback ? { feedback: parsed.feedback, previous: parsed.previous } : null };
+    const userLanguage = text(record(bundle.artifacts.menu).userLanguage) || 'en';
+    const organisms = deriveD2PageOrganisms(page);
+    const rules = relevantRules(bundle.artifacts.rules, [...page.authorityRefs, ...page.journeyRefs, page.pageId]);
     const isGroups = parsed.stage === 'groups';
     const moleculeContext = isGroups
       ? buildD2MoleculeResearchQuery(inventory, needs)
       : buildD2MoleculeShortlistContext(shortlist!);
     const humanPrompt = isGroups
-      ? JSON.stringify({ page: pageInput.page, moleculeResearchQuery: JSON.parse(moleculeContext) }, null, 2)
-      : JSON.stringify({ ...pageInput, moleculeShortlist: JSON.parse(moleculeContext), groupAssessments: parsed.researchJudgments }, null, 2);
+      ? JSON.stringify({ page: { pageId: page.pageId, label: page.label, userLanguage, actors: page.actors, ancestors: page.ancestors, authorityRefs: page.authorityRefs, journeys, relevantRules: rules, operations: page.operationBindings || [], organisms, reads: page.reads, writes: page.writes }, moleculeResearchQuery: JSON.parse(moleculeContext) }, null, 2)
+      : buildD2PagesDecisionPrompt({
+        page, shared, definition, userLanguage, organisms, relevantRules: rules,
+        journeys: page.journeyRefs.map(journeyId => ({ journeyId, sourceRef: snapshot.l4?.journeys.find(item => item.journeyId === journeyId)?.source.path || '', value: bundle.artifacts.journeys[journeyId] })),
+        categoryCatalog: JSON.parse(pageSkills.context), categoryCatalogRef: D2_PAGE_CATEGORY_CATALOG,
+        moleculeShortlist: JSON.parse(moleculeContext), repair: parsed.feedback ? { feedback: parsed.feedback, previous: parsed.previous } : null,
+      }).prompt;
     const toolName = isGroups ? 'submitD2MoleculeGroups' : 'submitD2Pages';
     const tool: mls.msg.LLMTool = { type: 'function', function: { name: toolName, description: isGroups ? 'Assess every catalog group for every semantic page need.' : 'Submit page intent, presentations and researched molecule roles.', parameters: isGroups ? groupSchema : schema } };
-    const boundedPrompt = isGroups ? humanPrompt : `${humanPrompt}\n\n${JSON.stringify({ templateGuidance })}`;
-    if (!isGroups) assertD2PagesDecisionPromptLimit(boundedPrompt);
-    return [{ type: 'prompt_ready', args: rawArgs, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: isGroups ? groupPrompt : prompt, humanPrompt: boundedPrompt, tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } }];
+    return [{ type: 'prompt_ready', args: rawArgs, messageId: context.message.orderAt, threadId: context.message.threadId, taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: isGroups ? groupPrompt : prompt, humanPrompt, tools: [tool], toolChoice: { type: 'function', function: { name: tool.function.name } } }];
   } catch (error) { const diagnostic = error instanceof Error ? error.message : String(error); if (identity) await markD2StepFailed(identity, 'pages50', diagnostic); return [updateD2Status(context, parentStep, step, hookSequential, 'failed', diagnostic)]; }
-}
-
-export function assertD2PagesDecisionPromptLimit(prompt: string): void {
-  if (prompt.length > D2_PAGES_DECISION_PROMPT_MAX_CHARS) throw new Error(`D2_PAGES_DECISION_PROMPT_LIMIT: ${prompt.length} > ${D2_PAGES_DECISION_PROMPT_MAX_CHARS}`);
 }
 
 export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
