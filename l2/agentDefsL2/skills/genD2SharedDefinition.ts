@@ -18,5 +18,9 @@ Command return keys are entities the page already reads. A form choice is an exi
 organism of that write's entity, and each form serves at most one submit.
 
 Keep identifiers stable across identical inputs. Fixed English ids already chosen by the code
-stay as given. Other ids follow the module language. Do not repeat organism prose. Do not
+stay as given: load, filter<List>, loadMore<List> and each command function already exist.
+Reuse them and only complete description, sets and updates. Another function that calls the
+same request is a duplicate. A function that sets a list state and has no calls does not
+replace filter<List>. carries values are <state>.<field> with an existing state, never the
+state id alone. Other ids follow the module language. Do not repeat organism prose. Do not
 prescribe layout, HTML, CSS or components. Do not add a rule that was not supplied.`;

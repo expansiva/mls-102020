@@ -64,6 +64,49 @@ void test('finalize compiles page11 only, preserves existing shared/contracts an
   assert.equal(completed, 2);
 });
 
+void test('missing shared and contract files are named pending, not a raw read error', async () => {
+  const identity = { project: 102047, module: 'sampleModule', scope: 'all' as const };
+  const snapshot = { project: identity.project, module: identity.module, snapshotHash: 'sha256:input', selection: { writePageIds: ['leftPage'] } } as D2InputSnapshot;
+  const pipeline = { project: identity.project, module: identity.module, steps: {
+    entry10: { status: 'approved' }, input20: { status: 'approved' },
+    pages50: { status: 'approved', snapshotHash: snapshot.snapshotHash },
+    shared60: { status: 'approved', snapshotHash: snapshot.snapshotHash },
+    contracts70: { status: 'approved', snapshotHash: snapshot.snapshotHash },
+  } } as D2PipelineState;
+  const desktop = 'export const desktop = "left" as const;\n';
+  const mobile = 'export const mobile = "left" as const;\n';
+  const sources = new Map<string, string>([
+    ['l2/sampleModule/web/desktop/page11/leftPage.defs.ts', desktop],
+    ['l2/sampleModule/web/mobile/page11/leftPage.defs.ts', mobile],
+  ]);
+  const receipt = { project: identity.project, module: identity.module, pageId: 'leftPage', sourceHashes: { desktop: await sha256Text(desktop), mobile: await sha256Text(mobile) } } as D2PagesReceipt;
+  const report = await finalizeD2Pages(identity, {
+    readInput: async () => snapshot,
+    readBundle: async () => ({ artifacts: {} as never, files: [] }),
+    assertStable: async () => undefined,
+    readPipeline: async () => pipeline,
+    reusable: async () => true,
+    readReceipt: async () => receipt,
+    indexed: () => true,
+    readSource: async info => {
+      const path = displayPath(info);
+      if (path.includes('/shared/') || path.includes('/contracts/')) throw new Error(`[agentNewSolution5] file not found: ${path}`);
+      return sources.get(path) || '';
+    },
+    readJson: async () => null,
+    readDraftText: async () => '',
+    readSharedReceipt: async () => ({ page11Hashes: { desktop: await sha256Text(desktop), mobile: await sha256Text(mobile) }, draftHashes: { desktop: await sha256Text(''), mobile: await sha256Text('') } }) as never,
+    readContractReceipt: async () => null,
+    writeJson: async () => '',
+    compile: async () => [],
+    markBlocked: async () => undefined,
+  });
+  const pending = report.report.pending.join('; ');
+  assert.match(pending, /D2_FINALIZE_SHARED_MISSING: l2\/sampleModule\/web\/shared\/leftPage\.defs\.ts/u);
+  assert.match(pending, /D2_FINALIZE_CONTRACT_MISSING: l2\/sampleModule\/web\/contracts\/leftPage\.defs\.ts/u);
+  assert.equal(pending.includes('file not found'), false);
+});
+
 void test('full finalize compiles four artifacts per page and names a hand-edited contract as drift', async () => {
   const identity = { project: 102047, module: 'sampleModule', scope: 'all' as const };
   const snapshot = { project: identity.project, module: identity.module, snapshotHash: 'sha256:input', selection: { writePageIds: ['leftPage', 'rightPage'] } } as D2InputSnapshot;

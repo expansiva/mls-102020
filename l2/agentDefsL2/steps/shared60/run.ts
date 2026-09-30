@@ -103,6 +103,7 @@ export function buildD2SharedPrompt(context: D2SharedContext, repair?: { diagnos
     rules: context.derived.rules,
     access: { actors: context.derived.access.actors, grants: context.derived.access.grants },
     validSources: d2SharedValidSources(context.derived),
+    fixedFunctions: Object.entries(sharedFromDerived(context.derived).functions).map(([id, fn]) => ({ id, ...(fn.calls ? { calls: fn.calls } : {}) })),
     journeySteps: d2SharedJourneySteps(need, context.input.menu),
     page11: { desktop: pageOf('desktop'), mobile: pageOf('mobile') },
     readsAndEdits: { desktop: draftOf('desktop'), mobile: draftOf('mobile') },

@@ -9,7 +9,7 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { parseD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import type { D2PageRequestsInput } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
-import { gateD2SharedV2, parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { gateD2SharedV2, parseD2SharedV2, sharedFromDerived, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { beforePromptStep, reusableD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
 import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
 import {
@@ -102,6 +102,10 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const carried = Object.entries(data.derived.entry.params).find(([, param]) => param.effect.startsWith('select:'));
   const functions: D2SharedLlmResponse['functions'] = [
     { id: 'load', description: 'Load the page.' },
+    ...data.derived.requests.flatMap(request => request.lists.flatMap(list => [
+      { id: list.filter, description: 'Filter the loaded list.' },
+      { id: list.loadMore, description: 'Load another page of the list.' },
+    ])),
     ...(selectTargets.length ? [{ id: 'chooseRow', sets: 'selected', description: 'Choose a row.' }] : []),
     ...(command ? [{ id: command.id, ...(returnKey ? { updates: ['rows'] } : {}), description: 'Submit the form.' }] : []),
     ...(navigate ? [{ id: navigate.id, navigate: navigate.to, ...(carried ? { carries: { [carried[0]]: 'selected.id' } } : {}), description: 'Open the related page.' }] : []),
@@ -316,6 +320,10 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(best.moduleName, moduleName);
   const data = contextFrom(pack, best.pageId, moduleName);
   const built = buildD2SharedPrompt(data);
+  const fixedIds = Object.keys(sharedFromDerived(data.derived).functions);
+  const human = JSON.parse(built.humanPrompt) as { fixedFunctions: Array<{ id: string; calls?: string }> };
+  assert.deepEqual(human.fixedFunctions.map(item => item.id), fixedIds);
+  for (const id of fixedIds) assert.equal(built.humanPrompt.includes(`"id":"${id}"`), true);
   assert.equal(built.chars <= 160_000, true);
   assert.ok(built.chars > 0);
   assert.equal(built.systemPrompt.startsWith('<!-- modelType: reasoning -->'), true);
@@ -336,7 +344,7 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(parameters.includes('"source":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*(\\\\.[A-Za-z][A-Za-z0-9]*)*$"}'), true);
   assert.equal(built.humanPrompt.includes(data.page11.desktop.organisms[Object.keys(data.page11.desktop.organisms)[0]].text), false);
   assert.equal(built.chars <= 160_000, true);
-  assert.equal(built.chars, 7352);
+  assert.equal(built.chars, 8224);
 });
 
 void test('live answers accept entry params and refuse prose or a multi-id sets', () => {
@@ -369,6 +377,36 @@ void test('live answers accept entry params and refuse prose or a multi-id sets'
   missing.states = [...missing.states, { id: 'ghost', source: 'entry.params.missingParam', description: 'absent parameter' }];
   const missingIssues = gateOf(moves, missing);
   assert.equal(missingIssues.some(item => item.code === 'D2_SHARED_V2_STATE_SOURCE' && item.message.includes('entry.params.missingParam')), true);
+});
+
+void test('live shared with duplicated fixed ids and a bare carry is refused, and the reused form passes', () => {
+  const pack = loadPack('controleEstoque');
+  const moduleName = (JSON.parse(readFileSync(join(fixtureRoot, 'controleEstoque/menu.json'), 'utf8')) as { moduleName: string }).moduleName;
+  const products = contextFrom(pack, 'produtos', moduleName);
+  const source = readFileSync(join(here, '../../../../../../todo/gerarApp/l2/certificacao/runs/live2_artifacts/produtos.defs.ts'), 'utf8');
+  const definition = parseD2SharedV2(source).definition;
+  const asResponse = (functions: D2SharedV2Definition['functions']): D2SharedLlmResponse => ({
+    states: Object.entries(definition.states).map(([id, row]) => ({ id, source: row.source, description: row.description })),
+    functions: Object.entries(functions).map(([id, row]) => ({ id, description: row.description, calls: row.calls, sets: row.sets, updates: row.updates, navigate: row.navigate, carries: row.carries })),
+    journeys: definition.journeys,
+    commandReturns: Object.entries(definition.requests).filter(([, row]) => row.kind === 'cmd').map(([requestId, row]) => ({ requestId, returns: row.returns })),
+  });
+  const need = products.input.needsPages.find(item => item.pageId === 'produtos')!;
+  const gateOf = (raw: D2SharedLlmResponse) => gateD2SharedV2(applyD2SharedLlm(products, raw), {
+    page11: products.page11.desktop, draft: products.drafts.desktop, needs: need, menu: products.input.menu, derived: products.derived,
+  });
+  const refused = gateOf(asResponse(definition.functions));
+  assert.equal(refused.some(item => item.code === 'D2_SHARED_V2_FUNCTION_DUPLICATE'), true);
+  assert.equal(refused.some(item => item.code === 'D2_SHARED_V2_DESCRIPTION_EMPTY'), true);
+  assert.equal(refused.some(item => item.code === 'D2_SHARED_V2_CARRIES_PATH'), true);
+  const fixedFunctions: D2SharedV2Definition['functions'] = {};
+  for (const [id, row] of Object.entries(definition.functions)) {
+    if (id === 'carregarProdutos') continue;
+    fixedFunctions[id] = id === 'abrirMovimentacoes' && row.carries
+      ? { ...row, carries: Object.fromEntries(Object.entries(row.carries).map(([key, value]) => [key, value.includes('.') ? value : `${value}.id`])) }
+      : { ...row, description: row.description.trim() ? row.description : `Use ${id}.` };
+  }
+  assert.deepEqual(gateOf(asResponse(fixedFunctions)), []);
 });
 
 void test('agent sources do not name the fixture module', () => {

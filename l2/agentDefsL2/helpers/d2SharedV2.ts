@@ -189,6 +189,25 @@ export function gateD2SharedV2(
     }
     if (fn.navigate && !canNavigate(context.menu, fn.navigate, pageActors)) issues.push({ code: 'D2_SHARED_V2_FUNCTION_NAVIGATE', path: `functions.${id}`, message: `Function ${id} navigates to a page the page actors cannot access.` });
   }
+  const fixed = sharedFromDerived(context.derived).functions;
+  const fixedCalls = new Set(Object.values(fixed).map(item => item.calls).filter((calls): calls is string => Boolean(calls)));
+  for (const [id, fn] of Object.entries(definition.functions)) {
+    if (fixed[id]) {
+      if (!fn.description.trim()) issues.push({ code: 'D2_SHARED_V2_DESCRIPTION_EMPTY', path: `functions.${id}`, message: `Fixed function ${id} already exists and needs a description. Reuse it instead of adding another function.` });
+    } else if (fn.calls && fixedCalls.has(fn.calls)) {
+      issues.push({ code: 'D2_SHARED_V2_FUNCTION_DUPLICATE', path: `functions.${id}`, message: `Function ${id} calls ${fn.calls}, which a fixed function already calls. Reuse that function and complete its description, sets and updates.` });
+    } else if (!fn.calls && fn.sets && sourcesList(definition.states[fn.sets]?.source, context.derived)) {
+      issues.push({ code: 'D2_SHARED_V2_FUNCTION_DUPLICATE', path: `functions.${id}`, message: `Function ${id} sets a list state and has no calls, so it does not replace filter<List>. Reuse the fixed filter function.` });
+    }
+    for (const [key, value] of Object.entries(fn.carries ?? {})) {
+      const dot = value.indexOf('.');
+      const stateId = dot > 0 ? value.slice(0, dot) : '';
+      const field = dot > 0 ? value.slice(dot + 1) : '';
+      if (!stateId || !field || field.includes('.') || !definition.states[stateId]) {
+        issues.push({ code: 'D2_SHARED_V2_CARRIES_PATH', path: `functions.${id}.carries.${key}`, message: `Carry ${key} must be <state>.<field> for an existing state, not ${JSON.stringify(value)}.` });
+      }
+    }
+  }
   const readEntities = new Set(context.needs.reads.map(item => item.entity[0].toLowerCase() + item.entity.slice(1)));
   for (const [id, request] of Object.entries(definition.requests)) {
     if (request.kind !== 'cmd') continue;
@@ -238,6 +257,12 @@ function organismBound(organismId: string, draft: D2Page11Needs, definition: D2S
     }
     return bound.has(source);
   }
+}
+
+function sourcesList(source: string | undefined, derived: D2DerivedPageRequests): boolean {
+  if (!source) return false;
+  const load = derived.requests.find(item => item.id === 'load');
+  return Boolean(load?.returns.some(key => source === `load.${key}` || source === key));
 }
 
 function entryParamName(source: string): string | null {

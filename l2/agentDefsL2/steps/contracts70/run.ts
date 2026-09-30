@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/contracts70/run.ts" enhancement="_blank"/>
 
-import { readJson, readSourceText, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { fileExists, readJson, readSourceText, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
@@ -205,7 +205,7 @@ export async function productionContractsPort(identity: D2RunIdentity): Promise<
     pageIds: async () => ids,
     load: pageId => loadD2ContractsPage(identity, pageId),
     readExisting: async pageId => ({
-      source: await readSourceText(contractInfo(identity, pageId)) || null,
+      source: fileExists(contractInfo(identity, pageId)) ? await readSourceText(contractInfo(identity, pageId)) || null : null,
       receipt: await readJson<D2Contracts70Receipt>(contractReceiptInfo(identity, pageId)),
     }),
     writer: productionWriter,

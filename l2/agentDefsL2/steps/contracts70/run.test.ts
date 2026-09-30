@@ -18,7 +18,7 @@ import {
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 import { beforePromptStep } from '/_102020_/l2/agentDefsL2/steps/contracts70/agentD2Contracts70.js';
 import {
-  approveD2Contracts70, builtDefinition, contractSourceFor, executeD2Contracts70, renderEmptyD2Contract,
+  approveD2Contracts70, builtDefinition, contractSourceFor, executeD2Contracts70, productionContractsPort, renderEmptyD2Contract,
   type D2Contracts70Existing, type D2Contracts70Page, type D2Contracts70Writer,
 } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
 
@@ -107,6 +107,10 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const carried = Object.entries(data.derived.entry.params).find(([, param]) => param.effect.startsWith('select:'));
   const functions: D2SharedLlmResponse['functions'] = [
     { id: 'load', description: 'Load the page.' },
+    ...data.derived.requests.flatMap(request => request.lists.flatMap(list => [
+      { id: list.filter, description: 'Filter the loaded list.' },
+      { id: list.loadMore, description: 'Load another page of the list.' },
+    ])),
     ...(selectTargets.length ? [{ id: 'chooseRow', sets: 'selected', description: 'Choose a row.' }] : []),
     ...(command ? [{ id: command.id, ...(returnKey ? { updates: ['rows'] } : {}), description: 'Submit the form.' }] : []),
     ...(navigate ? [{ id: navigate.id, navigate: navigate.to, ...(carried ? { carries: { [carried[0]]: 'selected.id' } } : {}), description: 'Open the related page.' }] : []),
@@ -360,6 +364,78 @@ void test('the contracts step completes without a prompt', async () => {
   assert.equal(intents.some(item => item.type === 'prompt_ready'), false);
   assert.equal(intents.some(item => item.type === 'update-status'), true);
   assert.equal(typeof sink.writes.get(`${moduleName}/web/contracts/${page.pageId}.defs.ts`), 'string');
+});
+
+void test('production port treats a missing contract file as absent and writes it on the first run', async () => {
+  const pack = loadPack('controleEstoque');
+  const moduleName = (JSON.parse(readFileSync(join(fixtureRoot, 'controleEstoque/menu.json'), 'utf8')) as { moduleName: string }).moduleName;
+  const root = join(fixtureRoot, 'controleEstoque');
+  const identity = { project: 102047, module: moduleName };
+  const pages = await Promise.all(['produtos', 'movimentacoes'].map(async pageId => approvedPage(contextFrom(pack, pageId, moduleName))));
+  const files = new Map<string, string>();
+  const put = (project: number, level: number, folder: string, shortName: string, extension: string, content: string) => {
+    files.set(`${project}:${level}:${folder}:${shortName}${extension}`, content);
+  };
+  const defs = (value: unknown) => `export const definition = ${JSON.stringify(value)} as const;\n`;
+  put(102047, 2, `${moduleName}/pipeline/agentDefsL2`, 'input', '.json', readFileSync(join(root, 'input.json'), 'utf8'));
+  put(102047, 4, moduleName, 'module', '.defs.ts', defs({ schemaVersion: 'test' }));
+  put(102047, 4, `${moduleName}/journeys`, 'index', '.defs.ts', defs({ journeys: [] }));
+  put(102047, 4, `${moduleName}/ontology`, 'index', '.defs.ts', defs({ entities: [{ entityId: 'Produto' }, { entityId: 'MovimentacaoEstoque' }] }));
+  for (const name of ['Produto', 'MovimentacaoEstoque']) {
+    put(102047, 4, `${moduleName}/ontology`, name, '.defs.ts', defs(JSON.parse(readFileSync(join(root, 'ontology', `${name}.json`), 'utf8'))));
+  }
+  put(102047, 4, moduleName, 'rules', '.defs.ts', defs(JSON.parse(readFileSync(join(root, 'rules.json'), 'utf8'))));
+  put(102047, 4, moduleName, 'workflows', '.defs.ts', defs({ schemaVersion: 'test' }));
+  put(102047, 4, moduleName, 'access', '.defs.ts', defs(JSON.parse(readFileSync(join(root, 'access.json'), 'utf8'))));
+  put(102047, 4, moduleName, 'integration', '.defs.ts', defs({ schemaVersion: 'test' }));
+  put(102047, 4, `${moduleName}/pool/l2/web`, 'menu', '.json', readFileSync(join(root, 'menu.json'), 'utf8'));
+  put(102047, 4, `${moduleName}/pool/l1/web`, 'needs', '.json', readFileSync(join(root, 'needs.json'), 'utf8'));
+  put(102047, 4, `${moduleName}/pool/l2/web`, 'backend', '.json', '{}\n');
+  put(102047, 4, `${moduleName}/pool/l2/web`, 'effort', '.json', '{}\n');
+  put(102020, 4, 'collabux/templates', 'categoryList', '.json', readFileSync(new URL('../../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8'));
+  for (const page of pages) {
+    for (const device of ['desktop', 'mobile'] as const) {
+      put(102047, 2, `${moduleName}/web/${device}/page11`, page.pageId, '.defs.ts', readFileSync(join(root, 'page11', device, `${page.pageId}.defs.ts`), 'utf8'));
+      const draftName = `${page.pageId}${device === 'desktop' ? 'Desktop' : 'Mobile'}`;
+      put(102047, 2, `${moduleName}/pipeline/agentDefsL2/page11Needs`, draftName, '.json', readFileSync(join(root, 'page11Needs', `${draftName}.json`), 'utf8'));
+    }
+    put(102047, 2, `${moduleName}/web/shared`, page.pageId, '.defs.ts', page.sharedSource);
+    put(102047, 2, `${moduleName}/pipeline/agentDefsL2/shared60`, page.pageId, '.json', `${JSON.stringify(page.sharedReceipt)}\n`);
+  }
+  const previous = (globalThis as unknown as { mls?: unknown }).mls;
+  const storFiles: Record<string, { status: string; content: string; getValueInfo: () => Promise<{ content: string }>; getContent: () => Promise<string> }> = {};
+  const keyOf = (info: { project: number; level: number; folder: string; shortName: string; extension: string }) => `${info.project}:${info.level}:${info.folder}:${info.shortName}${info.extension}`;
+  const makeFile = (content: string) => {
+    const file = { status: 'nochange', content, getValueInfo: async () => ({ content: file.content }), getContent: async () => file.content };
+    return file;
+  };
+  for (const [key, content] of files) storFiles[key] = makeFile(content);
+  (globalThis as unknown as { mls: unknown }).mls = {
+    actualProject: 102047,
+    stor: {
+      files: storFiles,
+      getKeyToFile: keyOf,
+      addOrUpdateFile: async (info: { project: number; level: number; folder: string; shortName: string; extension: string }) => {
+        const key = keyOf(info);
+        const file = storFiles[key] ?? makeFile('');
+        storFiles[key] = file;
+        return file;
+      },
+      localStor: { setContent: async (file: { content: string }, value: { content: string }) => { file.content = value.content; } },
+    },
+  };
+  try {
+    const port = await productionContractsPort(identity);
+    const before = await port.readExisting('produtos');
+    assert.equal(before.source, null);
+    const result = await executeD2Contracts70(port);
+    assert.equal(result.wrote.includes('produtos'), true);
+    const after = await port.readExisting('produtos');
+    assert.equal(typeof after.source, 'string');
+    assert.equal((after.source ?? '').includes('export '), true);
+  } finally {
+    (globalThis as unknown as { mls?: unknown }).mls = previous;
+  }
 });
 
 void test('hard-code guard keeps fixture names out of the contracts step', () => {

@@ -34,6 +34,16 @@
    "sets": "movimentacoes, produtos"
   },
   {
+   "id": "filterHistoricoMovimentacoes",
+   "description": "Filtra o histórico de movimentações já carregado.",
+   "calls": "load"
+  },
+  {
+   "id": "loadMoreHistoricoMovimentacoes",
+   "description": "Carrega mais uma página do histórico de movimentações.",
+   "calls": "load"
+  },
+  {
    "id": "registrarMovimentacao",
    "description": "Registra a movimentação de estoque informada.",
    "calls": "registrarMovimentacao",
