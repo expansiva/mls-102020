@@ -1,0 +1,72 @@
+{
+  "organisms": {
+    "saldoAtual": {
+      "reads": [
+        "Produto.id",
+        "Produto.details.identification.name",
+        "Produto.details.product.unitOfMeasure",
+        "Produto.details.controleEstoque.saldoAtual"
+      ],
+      "edits": [],
+      "selects": "detalheProduto",
+      "submits": []
+    },
+    "alertasSaldoBaixo": {
+      "reads": [
+        "Produto.id",
+        "Produto.details.identification.name",
+        "Produto.details.controleEstoque.saldoAtual",
+        "Produto.details.controleEstoque.quantidadeMinima",
+        "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [],
+      "selects": "detalheProduto",
+      "submits": []
+    },
+    "listaProdutos": {
+      "reads": [
+        "Produto.id",
+        "Produto.details.identification.name",
+        "Produto.details.identification.status"
+      ],
+      "edits": [],
+      "selects": "detalheProduto",
+      "submits": []
+    },
+    "detalheProduto": {
+      "reads": [
+        "Produto.id",
+        "Produto.details.identification.name",
+        "Produto.details.identification.status",
+        "Produto.details.product.unitOfMeasure",
+        "Produto.details.controleEstoque.quantidadeMinima",
+        "Produto.details.controleEstoque.saldoAtual",
+        "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "formularioProduto": {
+      "reads": [],
+      "edits": [
+        "Produto.details.identification.name",
+        "Produto.details.product.unitOfMeasure",
+        "Produto.details.controleEstoque.quantidadeMinima"
+      ],
+      "selects": "",
+      "submits": []
+    },
+    "acoesCadastro": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "cadastrarProduto",
+          "write": "Produto.create"
+        }
+      ]
+    }
+  }
+}

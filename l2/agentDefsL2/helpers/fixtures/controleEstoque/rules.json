@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "2026-09-16-ns5-rules-v2",
+  "moduleName": "controleEstoque",
+  "rules": {
+    "quantidadeMinimaValida": "A quantidade m\u00ednima definida para um produto deve ser maior ou igual a zero.",
+    "saldoAtualProduto": "O saldo atual de cada produto \u00e9 calculado pela soma das quantidades das entradas menos a soma das quantidades das sa\u00eddas registradas para esse produto.",
+    "avisoSaldoMinimoProduto": "Um produto deve ser sinalizado com aviso de saldo baixo quando seu saldo atual for menor que sua quantidade m\u00ednima definida.",
+    "movimentacaoEstoqueImutavel": "Uma movimenta\u00e7\u00e3o de estoque n\u00e3o pode ser alterada depois de registrada.",
+    "quantidadeMovimentadaPositiva": "A quantidade registrada em uma movimenta\u00e7\u00e3o de estoque deve ser um n\u00famero inteiro positivo.",
+    "registroMovimentacaoAtualizaSaldo": "O registro de uma entrada ou sa\u00edda deve atualizar o saldo atual do produto correspondente conforme o tipo e a quantidade movimentada."
+  }
+}
