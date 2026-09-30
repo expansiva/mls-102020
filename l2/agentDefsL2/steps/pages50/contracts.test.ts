@@ -14,8 +14,17 @@ import { D2_SHARED_VERSION, type D2SharedDefinition } from '/_102020_/l2/agentDe
 import { D2_PAGES_JUDGMENT_VERSION, buildD2PagePipeline, deriveD2PageOrganisms, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { buildD2PageSkillsContext, d2PageUnitContextHash, type D2PageSkillPort, type D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 import { gateD2Pages as productionGate, normalizeD2PageCoverage, parseD2PagesJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/gate.js';
-import { assertD2RenderedPage, parseD2RenderedPage, renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
-import { unwrapD2PagesToolPayload } from '/_102020_/l2/agentDefsL2/steps/pages-page/agentD2PagesPage.js';
+import { parseD2MoleculeGroupJudgments, unwrapD2PagesToolPayload } from '/_102020_/l2/agentDefsL2/steps/pages-page/agentD2PagesPage.js';
+
+test('group research has its own strict phase and cannot accept legacy recommendations as roles', () => {
+  const args = { schemaVersion: '2026-09-29-d2-molecule-groups-v1', pageId: 'records', moleculeResearch: [{ needId: 'records/desktop/table', groups: [] }] };
+  const payload = { type: 'flexible', result: { toolName: 'submitD2MoleculeGroups', arguments: JSON.stringify(args) } };
+  assert.deepEqual(parseD2MoleculeGroupJudgments(unwrapD2PagesToolPayload(payload, 'submitD2MoleculeGroups'), 'records'), args.moleculeResearch);
+  assert.throws(() => unwrapD2PagesToolPayload(payload), /TOOL_MISMATCH/);
+  assert.throws(() => parseD2MoleculeGroupJudgments({ ...args, recommendedMolecules: [] }, 'records'), /GROUP_JUDGMENT_SCHEMA/);
+  assert.throws(() => parseD2MoleculeGroupJudgments({ ...args, moleculeResearch: [{ ...args.moleculeResearch[0], roles: [] }] }, 'records'), /GROUP_JUDGMENT_SCHEMA/);
+  assert.throws(() => parseD2MoleculeGroupJudgments({ ...args, moleculeResearch: [] }, 'records'), /GROUP_JUDGMENT_SCHEMA/);
+});
 import { pageTemplate } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -30,8 +39,8 @@ void test('v1.2 five-page fixture emits 10 defs/items and five shared refs with 
   assert.equal(new Set(emitted.map(item => item.pipeline[0].id)).size, 10);
   assert.equal(new Set(emitted.map(item => item.pipeline[0].dependsOn[0])).size, 5);
   assert.ok(emitted.every(item => item.pipeline[0].type === 'l2_page' && !('agent' in item.pipeline[0])));
-  assert.ok(emitted.every(item => item.pipeline[0].dependsFiles.join('\0') === `l2/fixture/web/shared/${item.pipeline[0].id.split('__')[0]}.ts\0l2/designSystem.ts\0l2/fixture/web/contracts/${item.pipeline[0].id.split('__')[0]}.defs.ts\0_102029_.d.ts\0_102020_/l2/molecules/ml-scenary.ts`));
-  assert.ok(emitted.every(item => item.pipeline[0].outputPath === item.pipeline[0].defPath.replace('.defs.ts', '.ts')));
+  assert.ok(emitted.every(item => item.pipeline[0].dependsFiles[0].endsWith('.defs.ts')));
+  assert.ok(emitted.every(item => item.pipeline[0].outputPath === ''));
   assert.ok(emitted.every(item => !item.pipeline[0].id.includes('_O') && item.pipeline[0].defPath.includes('/page11/')));
   for (const pageId of pages) {
     const pair = emitted.filter(item => item.pipeline[0].id.startsWith(`${pageId}__`));
@@ -39,17 +48,6 @@ void test('v1.2 five-page fixture emits 10 defs/items and five shared refs with 
     assert.ok(pair.every(item => item.pipeline[0].skills.length === 2));
     assert.equal(new Set(pair.map(item => item.pipeline[0].categoryRef)).size, 1);
   }
-});
-
-void test('page pipeline keeps project design system ordered and rejects legacy or malformed context', () => {
-  const page = emit('records')[0]; const item = page.pipeline[0];
-  assert.deepEqual(item.dependsFiles, ['l2/fixture/web/shared/records.ts', 'l2/designSystem.ts', 'l2/fixture/web/contracts/records.defs.ts', '_102029_.d.ts', '_102020_/l2/molecules/ml-scenary.ts']);
-  assert.equal(Object.hasOwn(item, 'agent'), false);
-  const source = renderD2Page(page);
-  assert.doesNotThrow(() => assertD2RenderedPage(source));
-  const legacy = source.replace(/,\n\s*"l2\/designSystem\.ts"/u, '');
-  assert.throws(() => assertD2RenderedPage(legacy), /D2_PAGES_PIPELINE_CONTEXT/);
-  assert.throws(() => assertD2RenderedPage(renderD2Page({ ...page, pipeline: [{ ...item, dependsFiles: [...item.dependsFiles].reverse() }] })), /D2_PAGES_PIPELINE_CONTEXT/);
 });
 
 void test('historical seven-page fixture remains a 14-def regression', () => {
@@ -71,8 +69,8 @@ void test('closed gate rejects HTML/layout, invented method/group, missing devic
   assert.throws(() => gated(page, shared, { ...good, presentations: good.presentations.slice(0, 1) }), /D2_PAGES_DEVICE_MISSING/);
   const mutateDescription = (device: 'desktop' | 'mobile', patch: Partial<D2PageDescription>) => ({ ...good, presentations: good.presentations.map(item => item.device === device ? { ...item, descriptions: item.descriptions.map((description, index) => index ? description : { ...description, ...patch }) } : item) });
   assert.throws(() => gated(page, shared, mutateDescription('desktop', { description: '<section>two-column grid</section>' })), /D2_PAGES_LAYOUT_PRESCRIPTION/);
-  assert.throws(() => productionGate('fixture', page, shared, mutateDescription('desktop', { capabilityRefs: ['inventMethod'] }), GROUPS, PAGE_SKILLS, CANDIDATES, template(good.category.categoryRef), new Map()), /D2_PAGES_CAPABILITY_UNKNOWN/);
-  assert.throws(() => gated(page, shared, mutateDescription('desktop', { moleculeRecommendations: [{ groupId: 'groupMissing', candidates: ['missing'], reason: 'Useful.' }] })), /D2_PAGES_GROUP_UNKNOWN/);
+  assert.throws(() => productionGate('fixture', page, shared, mutateDescription('desktop', { capabilityRefs: ['inventMethod'] }), PAGE_SKILLS, template(good.category.categoryRef), []), /D2_PAGES_CAPABILITY_UNKNOWN/);
+  assert.throws(() => parseD2PagesJudgment(mutateDescription('desktop', { moleculeRecommendations: [] } as never)), /D2_PAGES_DESCRIPTION_SCHEMA_UNKNOWN_KEY/);
   assert.throws(() => gated(page, { ...shared, dataBindings: [] }, mutateDescription('desktop', { description: 'Show a statistics dashboard total.' })), /D2_PAGES_DATA_CLAIM_UNSUPPORTED/);
   assert.throws(() => parseD2PagesJudgment({ ...good, layout: {} }), /D2_PAGES_SCHEMA_UNKNOWN_KEY/);
   assert.throws(() => parseD2PagesJudgment({ schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId: 'records', pageIntent: 'Review records.', presentations: [{ device: 'desktop' }] }), /D2_PAGES_SCHEMA_TRUNCATED/);
@@ -96,11 +94,11 @@ void test('renamed coverage is restored by organism identity while unknown and d
   assert.deepEqual(gated(page, shared, validValue)[0].descriptions.map(item => item.contentRef), ['recordsSurface', 'recordsSurface']);
   assert.ok(!shared.scenaries.some(item => item.value === 'recordsSurface'), 'coverage contentRef is independent of scenario values');
   const unknown = structuredClone(value); unknown.presentations[0].descriptions[0].organismId = 'unknown.organism';
-  assert.throws(() => productionGate('fixture', page, shared, normalizeD2PageCoverage(unknown, shared), GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_ORGANISM_UNKNOWN/);
+  assert.throws(() => productionGate('fixture', page, shared, normalizeD2PageCoverage(unknown, shared), PAGE_SKILLS, template(value.category.categoryRef), []), /D2_PAGES_ORGANISM_UNKNOWN/);
   const duplicateCoverage = { ...shared, coverage: [...shared.coverage, structuredClone(shared.coverage[0])] };
   assert.throws(() => normalizeD2PageCoverage(parseD2PagesJudgment(value), duplicateCoverage), /D2_PAGES_SHARED_COVERAGE_ID_INVALID/);
   const duplicateDescription = structuredClone(value); duplicateDescription.presentations[0].descriptions[1].organismId = 'record.second';
-  assert.throws(() => productionGate('fixture', page, shared, normalizeD2PageCoverage(duplicateDescription, shared), GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_ORGANISM_DUPLICATE/);
+  assert.throws(() => productionGate('fixture', page, shared, normalizeD2PageCoverage(duplicateDescription, shared), PAGE_SKILLS, template(value.category.categoryRef), []), /D2_PAGES_ORGANISM_DUPLICATE/);
 });
 
 void test('output citations are limited to the selected capability output surface', () => {
@@ -109,11 +107,11 @@ void test('output citations are limited to the selected capability output surfac
   shared.coverage = [{ organismId: 'organism.list.1', sourceIndex: 0, kind: 'list', contentRef: 'base', content: 'records', scenarioRefs: ['base'], capabilityRefs: ['listRecords'], outputFieldsByCapability: { listRecords: [{ actionId: 'listRecords', outputTypeRef: 'ListRecordsOutput', path: 'Record.id' }] }, source: {} }];
   const value = judgment(page.pageId, ['listRecords'], 'bespoke', page);
   for (const presentation of value.presentations) { presentation.descriptions[0].capabilityRefs = ['listRecords']; presentation.descriptions[0].outputFieldRefs = ['ListRecordsOutput.Record.id']; }
-  assert.doesNotThrow(() => productionGate('fixture', page, shared, value, GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()));
+  assert.doesNotThrow(() => productionGate('fixture', page, shared, value, PAGE_SKILLS, template(value.category.categoryRef), []));
   const unsupported = structuredClone(value); unsupported.presentations[0].descriptions[0].outputFieldRefs = ['ListRecordsOutput.Record.phone'];
-  assert.throws(() => productionGate('fixture', page, shared, unsupported, GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_OUTPUT_FIELD_OUTSIDE_CAPABILITY/);
+  assert.throws(() => productionGate('fixture', page, shared, unsupported, PAGE_SKILLS, template(value.category.categoryRef), []), /D2_PAGES_OUTPUT_FIELD_OUTSIDE_CAPABILITY/);
   const absent = structuredClone(value); absent.presentations[1].descriptions[0].outputFieldRefs = [];
-  assert.throws(() => productionGate('fixture', page, shared, absent, GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_OUTPUT_FIELD_EVIDENCE_MISSING/);
+  assert.throws(() => productionGate('fixture', page, shared, absent, PAGE_SKILLS, template(value.category.categoryRef), []), /D2_PAGES_OUTPUT_FIELD_EVIDENCE_MISSING/);
 });
 
 void test('canonical catalog resolves 33 category skills plus bespoke and reads both mandatory skills', async () => {
@@ -125,7 +123,7 @@ void test('canonical catalog resolves 33 category skills plus bespoke and reads 
   } });
   assert.equal(context.categories.filter(item => item.categoryRef !== 'bespoke').length, 33);
   assert.equal(new Set(context.categories.map(item => item.skillReference)).size, 34);
-  assert.ok(reads.includes('_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts'));
+  assert.ok(reads.includes('_102020_/l2/agentDefsL2/skills/genD2Page11Definition.ts'));
   assert.ok(reads.includes('_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md'));
   await assert.rejects(() => buildD2PageSkillsContext({ readText: async reference => reference.endsWith('/calendarScheduling.md') ? null : readFileSync(catalogFile, 'utf8') }), /D2_PAGE_SKILL_MISSING.*calendarScheduling/);
   const duplicate = JSON.parse(readFileSync(catalogFile, 'utf8')) as { categories: Array<{ categoryId: string }> }; duplicate.categories[1].categoryId = duplicate.categories[0].categoryId;
@@ -140,7 +138,7 @@ void test('real builder hashes selected inputs and ignores a skill from another 
   assert.equal(await d2PageUnitContextHash(same, 'calendarScheduling'), selected);
 
   const catalogRef = '_102020_/l4/collabux/templates/categoryList.json';
-  const technicalRef = '_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts';
+  const technicalRef = '_102020_/l2/agentDefsL2/skills/genD2Page11Definition.ts';
   const selectedRef = '_102020_/l2/agentDefsL2/skills/pageCategories/calendarScheduling.md';
   const otherRef = '_102020_/l2/agentDefsL2/skills/pageCategories/productCatalog.md';
   const read = async (reference: string) => (await realPageSkillPort(root).readText(reference))!;
@@ -211,8 +209,8 @@ void test('repeated kinds and static content get stable ids while nominal organi
   assert.throws(() => gated(page, shared, patch(base.slice(1))), /D2_PAGES_ORGANISM_MISSING/);
   assert.throws(() => gated(page, shared, patch([...base, base[0]])), /D2_PAGES_ORGANISM_DUPLICATE/);
   assert.throws(() => gated(page, shared, patch(base.map((item, index) => index ? item : { ...item, organismId: 'invented' }))), /D2_PAGES_ORGANISM_UNKNOWN/);
-  assert.throws(() => productionGate('fixture', page, shared, patch(base.map((item, index) => index ? item : { ...item, contentRef: '' })), GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_CONTENT_REF_MISSING/);
-  assert.throws(() => productionGate('fixture', page, shared, patch(base.map((item, index) => index ? item : { ...item, contentRef: 'invented' })), GROUPS, PAGE_SKILLS, CANDIDATES, template(value.category.categoryRef), new Map()), /D2_PAGES_CONTENT_REF_UNKNOWN/);
+  assert.throws(() => productionGate('fixture', page, shared, patch(base.map((item, index) => index ? item : { ...item, contentRef: '' })), PAGE_SKILLS, template(value.category.categoryRef), []), /D2_PAGES_CONTENT_REF_MISSING/);
+  assert.throws(() => productionGate('fixture', page, shared, patch(base.map((item, index) => index ? item : { ...item, contentRef: 'invented' })), PAGE_SKILLS, template(value.category.categoryRef), []), /D2_PAGES_CONTENT_REF_UNKNOWN/);
   assert.throws(() => gated(page, { ...shared, states: shared.states.filter(item => item.kind !== 'viewState') }, value), /D2_PAGES_SCENARIO_STATE_INCOMPATIBLE/);
 });
 
@@ -229,35 +227,14 @@ void test('a static page accepts a base scene without actions or data bindings',
   assert.deepEqual(resolveD2PageScenarioSurfaces(shared), [{ contentRef: 'base', actionId: '', kind: 'base', inputStateKeys: [], statusStateKey: '', errorStateKey: '' }]);
 });
 
-void test('molecule recommendations are organism-scoped, useful and capability-compatible', () => {
-  const page = selected('records', [{ kind: 'list' }, { kind: 'form' }, { kind: 'actions' }]);
-  const shared = twoSceneShared('records');
-  const value = judgment(page.pageId, ['listConsulta'], 'entityRecordManagement', page);
-  for (const presentation of value.presentations) presentation.descriptions = presentation.descriptions.map((item, index) => ({
-    ...item,
-    contentRef: index ? 'registrarAtendimento' : 'base',
-    capabilityRefs: index ? ['registrarAtendimento'] : ['listConsulta'], outputFieldRefs: [],
-    moleculeRecommendations: index === 0 ? [{ groupId: 'groupViewData', candidates: ['groupviewdata--ml-table'], reason: 'Shows the declared query result.' }]
-      : index === 1 ? [{ groupId: 'groupEnterDate', candidates: ['groupenterdate--ml-date-picker'], reason: 'Edits command input.' }]
-      : [{ groupId: 'groupTriggerAction', candidates: ['grouptriggeraction--ml-button'], reason: 'Runs the declared command.' }],
-  }));
-  const groups = new Map([
-    ['groupViewData', ['view-index', 'view-usage']], ['groupEnterDate', ['date-index', 'date-usage']], ['groupTriggerAction', ['action-index', 'action-usage']],
-  ]);
-  const candidates = new Map([
-    ['groupViewData', new Set(['groupviewdata--ml-table'])], ['groupEnterDate', new Set(['groupenterdate--ml-date-picker'])], ['groupTriggerAction', new Set(['grouptriggeraction--ml-button'])],
-  ]);
-  const rendered = gateD2Pages('fixture', page, shared, value, groups, PAGE_SKILLS, candidates);
-  assert.ok(rendered.every(item => item.pipeline[0].skills.includes('action-usage')));
-  for (const [index, groupId] of ['groupViewData', 'groupEnterDate', 'groupTriggerAction'].entries()) {
-    const missing = structuredClone(value);
-    missing.presentations[0].descriptions[index].moleculeRecommendations = [];
-    assert.throws(() => gateD2Pages('fixture', page, shared, missing, groups, PAGE_SKILLS, candidates), new RegExp(`D2_PAGES_MOLECULE_RECOMMENDATION_MISSING: [^\\n]*compatible=[^\\n]*${groupId}`));
-  }
-  const wrong = structuredClone(value); wrong.presentations[0].descriptions[0].moleculeRecommendations[0].candidates = ['groupenterdate--ml-date-picker'];
-  assert.throws(() => gateD2Pages('fixture', page, shared, wrong, groups, PAGE_SKILLS, candidates), /D2_PAGES_MOLECULE_CANDIDATE_UNKNOWN/);
-  const incompatible = structuredClone(value); incompatible.presentations[0].descriptions[2].capabilityRefs = ['listConsulta'];
-  assert.throws(() => gateD2Pages('fixture', page, shared, incompatible, groups, PAGE_SKILLS, candidates), /D2_PAGES_MOLECULE_CAPABILITY_MISMATCH|D2_PAGES_ORGANISM_PARITY/);
+void test('researched molecule roles remain scoped to the submitted organism and device', () => {
+  const page = selected('records'); const shared = sharedFor('records', ['listRecord']); const value = judgment('records', ['listRecord']);
+  gated(page, shared, value);
+  const role = { needId: 'records/desktop/organism.list.1', device: 'desktop', organismId: value.presentations[0].descriptions[0].organismId, role: 'query result', groupId: 'readable', preferred: { tag: 'readable--ml-card', reason: 'Read the approved query result.', indexReference: '_817264_/l2/molecules/readable/index.defs.ts', usageContractReference: '_817264_/l2/molecules/readable/usage.ts' } };
+  const pair = productionGate('fixture', page, shared, value, PAGE_SKILLS, template(value.category.categoryRef), [role]);
+  assert.equal(pair[0].coverage[0].moleculeRecommendations.length, 1);
+  assert.equal(pair[1].coverage[0].moleculeRecommendations.length, 0);
+  assert.throws(() => productionGate('fixture', page, shared, value, PAGE_SKILLS, template(value.category.categoryRef), [{ ...role, organismId: 'missing' }]), /ROLE_ORGANISM_UNKNOWN/);
 });
 
 void test('shared scene surface exposes only the declared initial, input and feedback contract', () => {
@@ -275,25 +252,13 @@ void test('shared scene surface exposes only the declared initial, input and fee
   assert.throws(() => resolveD2PageScenarioSurfaces(incompatible), /D2_PAGES_SCENARIO_FEEDBACK_MISSING/);
 });
 
-void test('minimal consumer and TypeScript accept quotes, backticks and multilingual prose with exactly two exports', () => {
-  const rendered = emit('records').map(item => ({ ...item, descriptions: item.descriptions.map((description, index) => index ? description : { ...description, description: 'Ação "rápida" com `atalho` e revisión.' }) }));
-  const folder = mkdtempSync(path.join(tmpdir(), 'd2-pages-'));
-  try {
-    rendered.forEach((item, index) => { const source = renderD2Page(item); assertD2RenderedPage(source); assert.equal(parseD2RenderedPage(source).pipeline.length, 1); writeFileSync(path.join(folder, `page${index}.defs.ts`), source); });
-    writeFileSync(path.join(folder, 'consumer.ts'), "import { definition, pipeline } from './page0.defs.js';\nconst organismId: string = pipeline[0].coverage[0].organismId; const contentRef: string = pipeline[0].coverage[0].contentRef; const prose: string = definition; void prose; const id: string = pipeline[0].id; void organismId; void contentRef; void id;\n");
-    const tsc = path.resolve(HERE, '../../../../..', 'node_modules', '.bin', 'tsc');
-    const result = spawnSync(tsc, ['--noEmit', '--strict', '--skipLibCheck', '--module', 'NodeNext', '--moduleResolution', 'NodeNext', 'consumer.ts', 'page0.defs.ts', 'page1.defs.ts'], { cwd: folder, encoding: 'utf8' });
-    assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
-  } finally { rmSync(folder, { recursive: true, force: true }); }
-});
-
 void test('page worker has one bounded repair and no live model call outside orchestration', () => {
   const source = readFileSync(path.join(HERE, '../pages-page/agentD2PagesPage.ts'), 'utf8');
   const prompt = readFileSync(path.join(HERE, 'prompt.md'), 'utf8');
   assert.match(source, /parsed\.attempt < 2/);
   assert.match(source, /D2_PAGES_REPAIR_LIMIT/);
   assert.doesNotMatch(source, /getBestModel|callLLM|agentCfeMaterializeGen/);
-  assert.match(prompt, /must never claim that the catalog is empty when moleculeCandidates\.groups is non-empty/u);
+  assert.match(prompt, /earlier research pass already assessed every catalog group/u);
   assert.doesNotMatch(prompt, /every shared scenary must contain at least one organism/u);
 });
 
@@ -323,7 +288,7 @@ function emit(pageId: string) { return gated(selected(pageId), sharedFor(pageId,
 // Older isolated fixtures specify their approved coverage explicitly at the gate boundary.
 function gateD2Pages(moduleName: string, page: D2SelectedPage, shared: D2SharedDefinition, value: D2PagesJudgment, groups: Map<string, string[]>, skills: D2PageSkillsContext, candidates: Map<string, Set<string>>) {
   shared.coverage ??= value.presentations[0].descriptions.map((item, sourceIndex) => ({ organismId: item.organismId, sourceIndex, kind: item.kind, contentRef: item.contentRef, content: item.description, scenarioRefs: [item.contentRef], capabilityRefs: [...item.capabilityRefs], outputFieldsByCapability: Object.fromEntries(item.capabilityRefs.map(capability => [capability, []])), source: page.organisms[sourceIndex] }));
-  return productionGate(moduleName, page, shared, value, groups, skills, candidates, template(value.category.categoryRef), new Map([...groups.keys()].map(groupId => [groupId, { indexReference: groups.get(groupId)![0], indexVia: 'fixture', indexSha256: `sha256:${'1'.repeat(64)}`, usageContractReference: groups.get(groupId)![1], usageContractVia: 'fixture', usageContractSha256: `sha256:${'2'.repeat(64)}` }])));
+  return productionGate(moduleName, page, shared, value, skills, template(value.category.categoryRef), []);
 }
 function template(categoryRef: string) { return { categoryRef, targetPage: 'page11' as const, experiencePage: null, experienceId: null, styleId: null, layoutId: null, reason: 'Fixture guidance.', requirementsMet: [], digest: `sha256:${'3'.repeat(64)}`, sources: [] }; }
 
@@ -335,11 +300,7 @@ void test('productive template adapter yields exact pipeline receipt and selecte
   assert.equal(Object.hasOwn(selectedTemplate, 'context'), false);
   assert.equal(selectedTemplate.experienceId, 'recordCollection');
   assert.ok(selectedTemplate.sources.every(source => /^sha256:[a-f0-9]{64}$/u.test(source.sha256)));
-  const page = emit('records')[0]; page.templateSelection = selectedTemplate; page.pipeline = [buildD2PagePipeline('fixture', 'records', 'desktop', categoryRef, ['skill', ...selectedTemplate.sources.map(source => source.reference)], selectedTemplate, page.coverage)];
-  assert.doesNotThrow(() => assertD2RenderedPage(renderD2Page(page)));
-  const prose = parseD2RenderedPage(renderD2Page(page)).definition;
-  for (const source of selectedTemplate.sources) assert.equal(prose.split(`${source.reference} ${source.sha256}`).length - 1, 1);
-  assert.doesNotMatch(prose, /sha256:sha256:/u);
+  assert.ok(selectedTemplate.sources.some(source => source.reference === mdRef));
   contents.set(mdRef, 'Changed accessible guidance.');
   assert.notEqual((await pageTemplate(sharedFor('renamedCatalog', ['loadRecords']), categoryRef, port)).digest, selectedTemplate.digest);
 });
@@ -355,24 +316,20 @@ void test('renamed page keeps derived content and rejects omitted or cross-organ
   assert.throws(() => gateD2Pages('genericWorkspace', page, shared, missingContent, GROUPS, PAGE_SKILLS, CANDIDATES), /D2_PAGES_CONTENT_REF_UNKNOWN/);
   const pair = gateD2Pages('genericWorkspace', page, shared, value, GROUPS, PAGE_SKILLS, CANDIDATES);
   pair[0].descriptions[0].description = 'Literal `code`, ${untrusted}, "quote", \\ and as const; remain text.';
-  const source = renderD2Page(pair[0]);
-  const parsed = parseD2RenderedPage(source);
-  assert.match(parsed.definition, /\$\{untrusted\}/u);
-  assert.equal(parsed.pipeline[0].coverage.length, 2);
-  assert.deepEqual(parsed.pipeline[0].coverage.map(item => item.contentRef), ['base', 'base']);
-  assert.match(parseD2RenderedPage(renderD2Page(pair[1])).definition, /390px.*360px.*430px/u);
+  assert.ok(pair[0].descriptions[0].description.includes('${untrusted}'));
+  assert.deepEqual(pair[0].coverage.map(item => item.contentRef), ['base', 'base']);
 });
 function capabilities(pageId: string): string[] { return pageId.includes('profissional') && pageId.startsWith('consultas') ? ['listConsulta', 'registrarAtendimento'] : pageId.includes('recepcionista') && pageId.startsWith('consultas') ? ['listConsulta', 'confirmarConsulta'] : [`load${pascal(pageId)}`]; }
 function judgment(pageId: string, refs: string[], categoryRef = 'calendarScheduling', page = selected(pageId)): D2PagesJudgment {
   const organisms = deriveD2PageOrganisms(page); const describe = (device: 'Desktop' | 'Mobile') => organisms.map((organism, index) => ({
     organismId: organism.organismId, kind: organism.kind,
     description: `${business(pageId)} ${device} ${organism.intent || organism.kind} supports ${refs.join(',')}, keyboard use, loading, empty and error states.`,
-    contentRef: 'base', capabilityRefs: organism.staticContent ? [] : refs, outputFieldRefs: [], moleculeRecommendations: [],
+    contentRef: 'base', capabilityRefs: organism.staticContent ? [] : refs, outputFieldRefs: [],
   }));
   return { schemaVersion: D2_PAGES_JUDGMENT_VERSION, pageId, pageIntent: business(pageId), category: { categoryRef, reason: `The ${categoryRef} intent matches the declared capability.`, evidenceRefs: [refs[0]] }, presentations: [
-    { device: 'desktop', descriptions: describe('Desktop'), moleculeReason: 'No useful molecule correspondence is required by this fixture.' },
-    { device: 'mobile', descriptions: describe('Mobile'), moleculeReason: 'No useful molecule correspondence is required by this fixture.' },
-  ] };
+    { device: 'desktop', descriptions: describe('Desktop') },
+    { device: 'mobile', descriptions: describe('Mobile') },
+  ], moleculeResearch: [] };
 }
 function gated(page: D2SelectedPage, shared: D2SharedDefinition, value: D2PagesJudgment) {
   shared.coverage ??= value.presentations[0].descriptions.map((item, sourceIndex) => ({ organismId: item.organismId, sourceIndex, kind: item.kind, contentRef: item.contentRef, content: item.description, scenarioRefs: [item.contentRef], capabilityRefs: [...item.capabilityRefs], outputFieldsByCapability: Object.fromEntries(item.capabilityRefs.map(capability => [capability, []])), source: page.organisms[sourceIndex] }));

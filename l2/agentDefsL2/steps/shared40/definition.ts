@@ -11,7 +11,7 @@ import {
 } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
 import type { D2ContractCall, D2ContractField, D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2OperationBinding, D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { flatten, inputLeaves, isObviouslyDestructive, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { buildD2SharedDefinition, D2_SHARED_JUDGMENT_VERSION, flatten, inputLeaves, isObviouslyDestructive, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 
 export const D2_SHARED_DEFINITION_KEYS = ['schemaVersion', 'artifactType', 'pageId', 'intent', 'references', 'contractRef', 'states', 'actions', 'contents', 'scenarios', 'authorityRefs'] as const;
 export const D2_SHARED_DEFINITION_SKILL = '_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.ts' as const;
@@ -29,6 +29,7 @@ export function buildD2SharedDefinitionDocument(
 ): D2SharedDefinitionBuild {
   validateSharedJudgment(page, contract, judgment);
   const contractFile = `l2/${moduleName}/web/contracts/${page.pageId}.defs.ts`;
+  const sharedFile = `l2/${moduleName}/web/shared/${page.pageId}.defs.ts`;
   const bindings = page.operationBindings ?? [];
   const byRoute = new Map<string, D2OperationBinding[]>(contract.calls.map(call => [call.route, bindings.filter(binding => binding.route === call.route)]));
   const stateByPath = new Map<string, D2DefinitionState>();
@@ -37,7 +38,7 @@ export function buildD2SharedDefinitionDocument(
 
   for (const call of contract.calls) {
     symbols.push({ fileRef: contractFile, fragment: `${call.callPascal}Input` }, { fileRef: contractFile, fragment: `${call.callPascal}Output` });
-    symbols.push({ fileRef: contractFile, fragment: call.callPascal });
+    symbols.push({ fileRef: contractFile, fragment: call.routeName });
     for (const field of inputLeaves(call.input)) symbols.push({ fileRef: contractFile, fragment: `${call.callPascal}Input.${dtoPathOf(call.entityId, field.path)}` });
     for (const field of inputLeaves(call.output)) if (field.path.startsWith(`${call.entityId}.`)) symbols.push({ fileRef: contractFile, fragment: `${call.callPascal}Output.${dtoPathOf(call.entityId, field.path)}` });
   }
@@ -141,7 +142,7 @@ export function buildD2SharedDefinitionDocument(
     const transitions = opBindings.flatMap(binding => binding.transition ? [{ actorRef: binding.actorRef, id: binding.transition.transitionId, from: binding.transition.from, to: binding.transition.to, by: binding.transition.by, payload: binding.transition.payload }] : []);
     actions.push({
       id: call.callName,
-      callRef: reference(`${call.operation} operation`, contractFile, call.callPascal),
+      callRef: reference(`${call.operation} operation`, contractFile, call.routeName),
       inputs,
       resultStateRef,
       statusStateRef,
@@ -174,7 +175,7 @@ export function buildD2SharedDefinitionDocument(
   const contents = [...contentMap].map(([id, content]) => ({
     id,
     intent: content.intent,
-    visibleWhen: content.refs.map(value => reference(`visible in scenario ${value}`, contractFile, `scenario.${safeId(value, 'scenario')}`)),
+    visibleWhen: content.refs.map(value => reference(`visible in scenario ${value}`, sharedFile, `scenarios.${safeId(value, 'scenario')}`)),
     inactiveBehavior: 'hiddenInertOutOfFocus' as const,
   }));
   const scenarios = judgment.scenaries.map(scene => {
@@ -198,7 +199,7 @@ export function buildD2SharedDefinitionDocument(
     if (!authorityKeys.has(key)) { authorityKeys.add(key); authorityRefs.push(authority); }
     if (!symbols.some(symbol => symbol.fileRef === authority.fileRef && symbol.fragment === authority.fragment)) symbols.push({ fileRef: authority.fileRef, fragment: authority.fragment });
   }
-  for (const scene of judgment.scenaries) symbols.push({ fileRef: contractFile, fragment: `scenario.${safeId(scene.value, 'scenario')}` });
+  for (const scene of judgment.scenaries) symbols.push({ fileRef: sharedFile, fragment: `scenarios.${safeId(scene.value, 'scenario')}` });
 
   const intent = organisms.map(item => item.intent).filter((value, index, all) => all.indexOf(value) === index).join(' ')
     || `${page.label} shared interaction behavior.`;
@@ -226,6 +227,33 @@ export function parseD2SharedDefinitionDocument(value: unknown, symbols: readonl
   return parsed.document;
 }
 
+/** Derive validation-only coverage from the current contract and public semantic references. */
+export function deriveD2SharedValidationModel(moduleName: string, page: D2SelectedPage, contract: D2PageContract, document: D2SharedDefinitionDocument) {
+  const judgment: D2SharedJudgment = {
+    schemaVersion: D2_SHARED_JUDGMENT_VERSION, pageId: page.pageId,
+    scenaries: document.scenarios.map((scene, index) => ({
+      value: scene.id, kind: index === 0 ? 'base' : 'command', actionId: scene.actionRef || '',
+      preconditions: scene.preconditions.map(ref => {
+        const call = contract.calls.find(item => `${item.callPascal}Input` === ref.fragment?.split('.')[0]);
+        if (!call || !ref.fragment?.includes('.')) throw new Error(`D2_SHARED_PRECONDITION_UNKNOWN: ${ref.fragment}`);
+        return `ui.${page.pageId}.${call.callName}.input.${ref.fragment.slice(ref.fragment.indexOf('.') + 1)}`;
+      }),
+    })),
+    initialLoadActionIds: document.actions.filter(action => action.initialLoad).map(action => action.id),
+    actionBehaviors: document.actions.map(action => ({ actionId: action.id, refreshActionIds: action.refreshActionRefs || [], destructive: !!action.confirmation, ...(action.confirmation ? { confirmation: action.confirmation } : {}) })),
+  };
+  validateD2SharedDefinitionAgainstContract(document, page, contract, judgment);
+  const model = buildD2SharedDefinition(moduleName, page, contract, judgment);
+  for (const coverage of model.coverage) {
+    const content = document.contents.find(item => item.id === safeId(coverage.contentRef, 'content'));
+    if (!content) throw new Error(`D2_SHARED_CONTENT_REF_MISSING: ${coverage.organismId}`);
+    coverage.contentRef = content.id;
+    coverage.content = content.intent;
+    if (coverage.capabilityRefs.some(ref => !document.actions.some(action => action.id === ref))) throw new Error(`D2_SHARED_COVERAGE_CAPABILITY_UNKNOWN: ${coverage.organismId}`);
+  }
+  return model;
+}
+
 export function validateD2SharedDefinitionAgainstContract(
   document: D2SharedDefinitionDocument,
   page: D2SelectedPage,
@@ -240,7 +268,7 @@ export function validateD2SharedDefinitionAgainstContract(
   const scenarios = new Map(document.scenarios.map(item => [item.id, item]));
   for (const action of document.actions) {
     const call = calls.get(action.id);
-    if (!call || action.callRef.fragment !== call.callPascal) throw new Error(`D2_SHARED_ACTION_UNKNOWN: ${action.id}`);
+    if (!call || action.callRef.fragment !== call.routeName) throw new Error(`D2_SHARED_ACTION_UNKNOWN: ${action.id}`);
     const expected = inputLeaves(call.input).map(field => `${call.callPascal}Input.${dtoPathOf(call.entityId, field.path)}`).sort();
     const actual = action.inputs.map(input => input.parameterRef.fragment || '').sort();
     if (expected.join('\0') !== actual.join('\0')) throw new Error(`D2_SHARED_ACTION_INPUT_COVERAGE: ${action.id}`);

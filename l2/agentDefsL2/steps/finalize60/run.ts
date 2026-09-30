@@ -14,8 +14,15 @@ import { D2_FINALIZE_VERSION, type D2CompileProof, type D2FinalizeReport, type D
 import { d2FinalizeReportFile, d2InfoForPath, deleteD2Owned, readD2Ownership, writeD2FinalizeReport, writeD2Ownership } from '/_102020_/l2/agentDefsL2/steps/finalize60/io.js';
 import { gateD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/gate.js';
 import { compileD2FinalSources } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
+import { d2PageReferencesCurrent, verifyD2MoleculeResearch } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
+import type { D2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
+import { parseD2RenderedSharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
+import { readD2SharedMaterializationContext } from '/_102020_/l2/agentDefsL2/steps/shared40/context.js';
+import { buildD2SharedPipeline, d2PageSemanticRefs } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { d2SharedContextPort } from '/_102020_/l2/agentDefsL2/steps/shared40/contextCatalog.js';
 
-export interface D2FinalizePort { read?: (info: Ns5FileInfo) => Promise<string>; remove?: (info: Ns5FileInfo) => Promise<void>; beforeDeleteCheck?: (path: string) => Promise<void>; compile?: typeof compileD2FinalSources; }
+export interface D2FinalizePort { read?: (info: Ns5FileInfo) => Promise<string>; remove?: (info: Ns5FileInfo) => Promise<void>; beforeDeleteCheck?: (path: string) => Promise<void>; compile?: typeof compileD2FinalSources; molecular?: D2MoleculeCatalogPort; }
 export interface D2PendingRemoval { path: string; info: Ns5FileInfo; }
 
 export async function finalizeD2(identity: D2RunIdentity, port: D2FinalizePort = {}): Promise<D2FinalizeResult> {
@@ -72,12 +79,25 @@ export async function finalizeD2(identity: D2RunIdentity, port: D2FinalizePort =
       owned.push({ pageId: page.pageId, kind: destination.kind, path: destination.path, sha256: hash });
     }
   }
-  try { if (!pending.length) gateD2FinalSources(snapshot, sources); } catch (error) { pending.push(error instanceof Error ? error.message : String(error)); }
+  try { if (!pending.length) gateD2FinalSources(snapshot, sources, [...(shared?.units.flatMap(unit => unit.symbols) || []), ...(pages?.units.flatMap(unit => [...unit.symbols.desktop, ...unit.symbols.mobile]) || [])]); } catch (error) { pending.push(error instanceof Error ? error.message : String(error)); }
+  if (!pending.length) try {
+    for (const unit of shared!.units) {
+      const context = await readD2SharedMaterializationContext(buildD2SharedPipeline(identity.module, unit.pageId, d2PageSemanticRefs(snapshot, unit.pageId)), d2SharedContextPort);
+      if (context.contextHash !== unit.contextHash) throw new Error(`D2_FINALIZE_SHARED_CONTEXT_CHANGED: ${unit.pageId}`);
+    }
+    for (const unit of pages!.units) {
+      if (!await d2PageReferencesCurrent(unit)) throw new Error(`D2_FINALIZE_PAGE_CONTEXT_CHANGED: ${unit.pageId}`);
+      const page = snapshot.selection.pages.find(page => page.pageId === unit.pageId)!;
+      const sharedUnit = shared!.units.find(shared => shared.pageId === unit.pageId)!;
+      const definition = parseD2RenderedSharedDefinitionDocument(sources.find(file => file.pageId === unit.pageId && file.kind === 'shared')!.source, sharedUnit.symbols);
+      await verifyD2MoleculeResearch(port.molecular || d2MoleculeCatalogPort, unit.pageId, page, definition, unit.moleculeResearchReceipt);
+    }
+  } catch (error) { pending.push(error instanceof Error ? error.message : String(error)); }
   let compilation: D2CompileProof[] = [];
   if (!pending.length) {
     compilation = await (port.compile || compileD2FinalSources)(identity, sources, new Map(owned.map(item => [item.path, item.sha256])));
     for (const item of compilation) if (item.status === 'failed') pending.push(`TypeScript compilation failed: ${item.path}: ${item.diagnostics.join('; ')}`);
-    if (compilation.length !== sources.length) pending.push('Studio compiler did not prove every emitted source');
+    if (compilation.length !== sources.length || sources.some(source => compilation.filter(proof => proof.path === source.path && proof.sha256 === owned.find(item => item.path === source.path)?.sha256 && proof.status === 'passed').length !== 1)) pending.push('Studio compiler did not prove every emitted source');
   }
 
   const removals: D2PendingRemoval[] = [];
@@ -163,9 +183,9 @@ function fieldId(value: unknown): string { return typeof value === 'string' ? va
 
 function hashFromManifests(kind: D2FinalSource['kind'], path: string, pageId: string, contracts: Awaited<ReturnType<typeof readD2ContractsManifest>>, shared: Awaited<ReturnType<typeof readD2SharedManifest>>, pages: Awaited<ReturnType<typeof readD2PagesManifest>>): string {
   if (kind === 'contract') { const unit = contracts?.units.find(value => value.pageId === pageId); return unit?.artifactPath === path ? unit.sourceHash : ''; }
-  if (kind === 'shared') { const unit = shared?.units.find(value => value.pageId === pageId); return unit?.artifactPath === path && unit.pipelineItemId === `${pageId}__l2_shared` ? unit.sourceHash : ''; }
+  if (kind === 'shared') { const unit = shared?.units.find(value => value.pageId === pageId); return unit?.artifactPath === path && unit.unitId === `${pageId}__shared` ? unit.sourceHash : ''; }
   const device = kind === 'desktopPage' ? 'desktop' : 'mobile'; const unit = pages?.units.find(value => value.pageId === pageId);
-  return unit?.artifactPaths[device] === path && unit.pipelineItemIds[device] === `${pageId}__${device}__page11` ? unit.sourceHashes[device] : '';
+  return unit?.artifactPaths[device] === path && unit.unitIds[device] === `${pageId}__${device}__page11` ? unit.sourceHashes[device] : '';
 }
 async function assertStillCurrent(identity: D2RunIdentity, hash: string, bundle: Awaited<ReturnType<typeof readD2InputBundle>>): Promise<void> { if ((await readD2Input(identity))?.snapshotHash !== hash) throw new Error('D2_FINALIZE_STALE_RUN'); await assertD2InputSourcesStable(bundle); }
 function exactDestinations(moduleName: string, pageId: string, values: D2InputSnapshot['selection']['remove'][number]['destinations']): boolean { const base = `l2/${moduleName}/web`; const expected = [`contract\0${base}/contracts/${pageId}.defs.ts`, `shared\0${base}/shared/${pageId}.defs.ts`, `desktopPage\0${base}/desktop/page11/${pageId}.defs.ts`, `mobilePage\0${base}/mobile/page11/${pageId}.defs.ts`].sort(); return values.map(item => `${item.kind}\0${item.path}`).sort().join('\n') === expected.join('\n'); }

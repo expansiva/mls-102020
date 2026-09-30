@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { D2DefinitionDocument } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
 import type { D2ContractCall, D2ContractField, D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
+import { renderD2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/render.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { buildD2SharedDefinitionDocument, parseD2SharedDefinitionDocument, validateD2SharedDefinitionAgainstContract } from '/_102020_/l2/agentDefsL2/steps/shared40/definition.js';
 import { gateD2SharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
@@ -31,6 +32,11 @@ void test('public shared document deduplicates contents and keeps only semantic 
   assert.equal(snapshot.snapshot?.capture, 'onSelection');
   assert.equal(snapshot.snapshot?.missing, 'blockCommandPreserveEdit');
   assert.ok(document.actions.find(action => action.id === 'updateRecord')?.authorityRefs?.some(ref => ref.purpose === 'grant manageRecords'));
+  const contractSource = renderD2PageContract(contract);
+  for (const action of document.actions) {
+    if (!action.callRef) continue;
+    assert.ok(contractSource.includes(`export const ${action.callRef.fragment} =`), `callRef must resolve a real contract export: ${action.id}`);
+  }
 });
 
 void test('gate rejects invented refs, denied fields, and removed selection preconditions', () => {

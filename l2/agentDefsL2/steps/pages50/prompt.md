@@ -24,14 +24,12 @@ Choose one categoryRef from the compact pageCategoryCatalog for the whole page. 
 cite real shared capability identifiers in evidenceRefs. Use bespoke only when no published category fits,
 with a specific reason; category guidance never grants an operation or prescribes layout.
 
-Inside each organism, moleculeRecommendations contains exact tags listed in moleculeCandidates.
-Put moleculeReason once on each presentation object; it is not a field of an organism description.
-Use the scenario text and that organism's declared data/actions as evidence. When the listed groups contain
-a compatible display/query, data-entry/input, or trigger/command candidate, recommend at least one for that
-organism. Never invent a tag or attach a group when capabilityRefs do not support it. Recommendations remain
-consultative, may differ by device and do not mandate a component. Empty recommendations are valid only for
-static content or when no listed group matches the organism capabilities; moleculeReason must say which, and
-must never claim that the catalog is empty when moleculeCandidates.groups is non-empty.
+The earlier research pass already assessed every catalog group. For each supplied needId in
+moleculeShortlist, return moleculeResearch with semantic roles and choices based on the actually read
+group index and usage contract. Each role has a preferred exact tag, a specific reason, at most one
+useful alternative and reasons for discarded candidates. No role or tag may be inferred from a legacy
+recommendation. With no shortlisted group, return no roles and an honest noMatchReason. Recommendations
+are consultative and may differ by device. Do not repeat group assessments in this final response.
 
-Names, paths, ids, pipeline items, dependencies and skill references are emitted by code. Return only
+Names, paths, semantic references and receipt metadata are derived by code. Return only
 the schema fields. On repair, correct the whole two-device unit using the diagnostic and prior answer.

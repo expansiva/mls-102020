@@ -70,7 +70,7 @@ void test('selection reads only chosen date groups, preserves literal tags/contr
   assert.equal(selected.metrics.reads.length, 5);
   assert.equal(fixture.calls.join(','), 'level1,groupEnterDate,usageDate,groupEnterDatetime,usageDatetime');
   assert.equal(selected.metrics.selectedBytes, Buffer.byteLength(selected.context));
-  assert.equal(selected.metrics.selectedBytes, 17_738);
+  assert.equal(selected.metrics.selectedBytes, 18_354);
   assert.equal(selected.metrics.totalBytes, selected.metrics.inventoryBytes + selected.metrics.selectedBytes);
   assert.doesNotMatch(selected.context, /emailAddress|phoneNumber|contactApi/u);
 });

@@ -3,7 +3,6 @@
 import type { D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { D2_SHARED_JUDGMENT_VERSION, D2_SHARED_KEYS, D2_SHARED_RUNTIME_CONTEXT, D2_SHARED_SKILL, buildD2SharedDefinition, inputLeaves, inputStateKey, isObviouslyDestructive, type D2SharedDefinition, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
-import { parseD2RenderedShared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
 import { buildD2SharedDefinitionDocument, validateD2SharedDefinitionAgainstContract } from '/_102020_/l2/agentDefsL2/steps/shared40/definition.js';
 import type { D2SharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
 
@@ -116,27 +115,6 @@ export function gateD2SharedDefinitionDocument(
   return document;
 }
 
-export function assertD2RenderedShared(source: string): void {
-  const exports = [...source.matchAll(/export const\s+([A-Za-z0-9_]+)/gu)].map(match => match[1]);
-  if (exports.join(',') !== 'definition,pipeline') fail('D2_SHARED_RENDER_EXPORTS');
-  const { definition, pipeline } = parseD2RenderedShared(source);
-  if (pipeline.length !== 1) fail('D2_SHARED_PIPELINE_COUNT');
-  const renderedDefinition = record(definition);
-  const renderedContract = record(renderedDefinition.contractRef);
-  const moduleName = typeof renderedDefinition.moduleName === 'string' ? renderedDefinition.moduleName : '';
-  const pageId = typeof renderedDefinition.pageId === 'string' ? renderedDefinition.pageId : '';
-  const contractPath = typeof renderedContract.defPath === 'string' ? renderedContract.defPath : '';
-  if (!moduleName || !pageId || contractPath !== `l2/${moduleName}/web/contracts/${pageId}.defs.ts`) fail('D2_SHARED_DEFINITION_SHAPE');
-  const item = record(pipeline[0]);
-  const header = /^\/\/\/ <mls fileReference="(?:_[0-9]+_\/)?(l2\/[^"\n]+)" enhancement="_blank"\/>\n/u.exec(source);
-  if (!header || header[1] !== item.defPath || source.slice(header[0].length).split('\n').some(line => /^\s*\/\/\/\s*<mls\b/u.test(line))) fail('D2_HEADER_INVALID');
-  const keys = Object.keys(item);
-  if (keys.some(key => !['id', 'type', 'defPath', 'outputPath', 'dependsFiles', 'dependsOn', 'skills'].includes(key)) || keys.length !== 7) fail('D2_SHARED_PIPELINE_SHAPE');
-  if (item.type !== 'l2_shared' || item.id !== `${pageId}__l2_shared` || item.defPath !== `l2/${moduleName}/web/shared/${pageId}.defs.ts` || item.outputPath !== `l2/${moduleName}/web/shared/${pageId}.ts`) fail('D2_SHARED_PIPELINE_ID');
-  if (!Array.isArray(item.dependsOn) || item.dependsOn.length || !Array.isArray(item.dependsFiles) || item.dependsFiles.slice(0, 2).join('\0') !== `${contractPath}\0${D2_SHARED_RUNTIME_CONTEXT}` || item.dependsFiles.slice(2).some(ref => typeof ref !== 'string' || !/^(?:_[0-9]+_\/)?l4\/[A-Za-z0-9_/-]+\.(?:defs\.ts|json|ts|md)$/u.test(ref))) fail('D2_SHARED_PIPELINE_CONTEXT');
-  if (!Array.isArray(item.skills) || item.skills.join('\0') !== D2_SHARED_SKILL) fail('D2_SHARED_PIPELINE_SKILL');
-  if (/layoutRef|\bsections\b|\blayout\b/.test(source.slice(header[0].length))) fail('D2_SHARED_LAYOUT_FORBIDDEN');
-}
 function fail(message: string): never { throw new Error(message); }
 function assertUnique(values: string[], code: string, errors: string[]): void { const seen = new Set<string>(); for (const value of values) { if (seen.has(value)) errors.push(`${code}: ${value}`); seen.add(value); } }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }

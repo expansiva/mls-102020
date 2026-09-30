@@ -5,15 +5,17 @@ import { d2ContractsSources, sha256Text } from '/_102020_/l2/agentDefsL2/steps/c
 import { readApprovedD2ContractsManifest, readD2ContractSource } from '/_102020_/l2/agentDefsL2/steps/contracts30/io.js';
 import type { D2InputArtifacts, D2InputSnapshot, D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { readD2Input } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
-import { D2_SHARED_VERSION, buildD2SharedPipeline, d2PageSemanticRefs, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { D2_SHARED_VERSION, buildD2SharedDefinition, buildD2SharedPipeline, d2PageSemanticRefs, type D2SharedDefinition, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { readD2SharedMaterializationContext } from '/_102020_/l2/agentDefsL2/steps/shared40/context.js';
 import { d2SharedContextPort } from '/_102020_/l2/agentDefsL2/steps/shared40/contextCatalog.js';
-import { assertD2RenderedShared, gateD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
-import { renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
+import { gateD2SharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
+import { buildD2SharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/definition.js';
+import { renderD2SharedDefinitionDocument, parseD2RenderedSharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
+import type { D2ResolvableSymbol } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
 import { d2SharedDisplayPath, readD2SharedResult, readD2SharedSource, writeD2SharedManifest, writeD2SharedResult, writeD2SharedSource } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
 import { assertD2CompiledSources } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
 
-export interface D2SharedUnitResult extends D2RunIdentity { schemaVersion: typeof D2_SHARED_VERSION; pageId: string; status: 'approved'; snapshotHash: string; contractHash: string; contextHash: string; skillHash: string; sourceHash: string; artifactPath: string; pipelineItemId: string; attempts: number; }
+export interface D2SharedUnitResult extends D2RunIdentity { schemaVersion: typeof D2_SHARED_VERSION; pageId: string; status: 'approved'; snapshotHash: string; contractHash: string; contextHash: string; skillHash: string; contextSourceHashes: Record<string, string>; sourceHash: string; artifactPath: string; unitId: string; symbols: D2ResolvableSymbol[]; attempts: number; }
 export interface D2SharedManifest extends D2RunIdentity { schemaVersion: typeof D2_SHARED_VERSION; status: 'approved'; snapshotHash: string; units: D2SharedUnitResult[]; }
 
 export function getD2SharedContext(identity: D2RunIdentity, snapshot: D2InputSnapshot, artifacts: D2InputArtifacts, pageId: string): { page: D2SelectedPage; contract: ReturnType<typeof buildD2ContractsCatalog>[number] } {
@@ -27,22 +29,28 @@ export function getD2SharedContext(identity: D2RunIdentity, snapshot: D2InputSna
 export async function approveD2SharedUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, artifacts: D2InputArtifacts, pageId: string, judgment: D2SharedJudgment, attempt: number, verifySources: () => Promise<void> = async () => undefined, compile: typeof assertD2CompiledSources = assertD2CompiledSources): Promise<D2SharedUnitResult> {
   await assertD2SharedDependencies(identity, snapshot, pageId, verifySources);
   const { page, contract } = getD2SharedContext(identity, snapshot, artifacts, pageId);
-  const definition = gateD2Shared(identity.module, page, contract, judgment);
-  const pipeline = buildD2SharedPipeline(identity.module, pageId, d2PageSemanticRefs(snapshot, pageId));
-  const source = renderD2Shared(definition, pipeline, identity.project);
-  assertD2RenderedShared(source);
-  const context = await readD2SharedMaterializationContext(pipeline, d2SharedContextPort);
-  return persistD2SharedUnit(identity, snapshot, pageId, source, attempt, { contextHash: context.contextHash, skillHash: context.skillHash }, verifySources, compile);
+  const semanticRefs = d2PageSemanticRefs(snapshot, pageId);
+  const internalUnit = buildD2SharedPipeline(identity.module, pageId, semanticRefs);
+  const { document: definition, symbols: declaredSymbols } = buildD2SharedDefinitionDocument(identity.module, page, contract, judgment);
+  gateD2SharedDefinitionDocument(identity.module, page, contract, judgment);
+  definition.references = semanticRefs.map(fileRef => ({ purpose: 'page journey, rule, authority or ontology source', fileRef }));
+  const symbols: D2ResolvableSymbol[] = [...declaredSymbols, ...semanticRefs.map(fileRef => ({ fileRef }))];
+  const source = renderD2SharedDefinitionDocument(definition, identity.project);
+  parseD2RenderedSharedDefinitionDocument(source, symbols);
+  const context = await readD2SharedMaterializationContext(internalUnit, d2SharedContextPort);
+  return persistD2SharedUnit(identity, snapshot, pageId, source, attempt, { contextHash: context.contextHash, skillHash: context.skillHash, sourceHashes: context.sourceHashes, symbols }, verifySources, compile);
 }
 
-export interface D2SharedContextReceipt { contextHash: string; skillHash: string; }
+export interface D2SharedContextReceipt { contextHash: string; skillHash: string; sourceHashes: Record<string, string>; symbols: D2ResolvableSymbol[]; }
 
 export async function persistD2SharedUnit(identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, source: string, attempt: number, receipt: D2SharedContextReceipt, verifySources: () => Promise<void> = async () => undefined, compile: typeof assertD2CompiledSources = assertD2CompiledSources): Promise<D2SharedUnitResult> {
   const contractUnit = await assertD2SharedDependencies(identity, snapshot, pageId, verifySources);
   const prior = await readD2SharedResult(identity, pageId);
-  if (prior?.schemaVersion === D2_SHARED_VERSION && prior.status === 'approved' && prior.snapshotHash === snapshot.snapshotHash && prior.contextHash === receipt.contextHash && prior.skillHash === receipt.skillHash && prior.sourceHash === await sha256Text(source)) {
+  parseD2RenderedSharedDefinitionDocument(source, receipt.symbols);
+  if (prior?.schemaVersion === D2_SHARED_VERSION && prior.status === 'approved' && prior.snapshotHash === snapshot.snapshotHash && prior.contractHash === contractUnit.sourceHash && prior.contextHash === receipt.contextHash && prior.skillHash === receipt.skillHash && JSON.stringify(prior.contextSourceHashes) === JSON.stringify(receipt.sourceHashes) && prior.sourceHash === await sha256Text(source)) {
     if (await sha256Text(await readD2SharedSource(identity, pageId)) !== prior.sourceHash) throw new Error(`D2_SHARED_APPROVED_SOURCE_CHANGED: ${pageId}`);
     await compile(identity, [{ pageId, kind: 'shared', path: d2SharedDisplayPath(identity, pageId), source }]);
+    await assertD2SharedDependencies(identity, snapshot, pageId, verifySources);
     return prior;
   }
   const sourceHash = await sha256Text(source);
@@ -51,7 +59,7 @@ export async function persistD2SharedUnit(identity: D2RunIdentity, snapshot: D2I
   if (await sha256Text(await readD2SharedSource(identity, pageId)) !== sourceHash) throw new Error(`D2_SHARED_WRITE_HASH_MISMATCH: ${pageId}`);
   await compile(identity, [{ pageId, kind: 'shared', path: d2SharedDisplayPath(identity, pageId), source }]);
   await assertD2SharedDependencies(identity, snapshot, pageId, verifySources);
-  const result: D2SharedUnitResult = { schemaVersion: D2_SHARED_VERSION, ...identity, pageId, status: 'approved', snapshotHash: snapshot.snapshotHash, contractHash: contractUnit.sourceHash, ...receipt, sourceHash, artifactPath: d2SharedDisplayPath(identity, pageId), pipelineItemId: buildD2SharedPipeline(identity.module, pageId).id, attempts: attempt };
+  const result: D2SharedUnitResult = { schemaVersion: D2_SHARED_VERSION, ...identity, pageId, status: 'approved', snapshotHash: snapshot.snapshotHash, contractHash: contractUnit.sourceHash, contextHash: receipt.contextHash, skillHash: receipt.skillHash, contextSourceHashes: receipt.sourceHashes, sourceHash, artifactPath: d2SharedDisplayPath(identity, pageId), unitId: `${pageId}__shared`, symbols: receipt.symbols, attempts: attempt };
   await writeD2SharedResult(identity, result);
   return result;
 }
@@ -65,9 +73,9 @@ export async function finalizeD2SharedBarrier(identity: D2RunIdentity, snapshot:
   for (const pageId of pageIds) {
     const contractUnit = await assertD2SharedDependencies(identity, snapshot, pageId, verifySources);
     const unit = await readD2SharedResult(identity, pageId);
-    const pipeline = buildD2SharedPipeline(identity.module, pageId, d2PageSemanticRefs(snapshot, pageId));
-    const context = await readD2SharedMaterializationContext(pipeline, d2SharedContextPort);
-    if (!unit || unit.schemaVersion !== D2_SHARED_VERSION || unit.snapshotHash !== snapshot.snapshotHash || unit.status !== 'approved' || unit.contextHash !== context.contextHash || unit.skillHash !== context.skillHash) return null;
+    const internalUnit = buildD2SharedPipeline(identity.module, pageId, d2PageSemanticRefs(snapshot, pageId));
+    const context = await readD2SharedMaterializationContext(internalUnit, d2SharedContextPort);
+    if (!unit || unit.schemaVersion !== D2_SHARED_VERSION || unit.snapshotHash !== snapshot.snapshotHash || unit.status !== 'approved' || unit.contextHash !== context.contextHash || unit.skillHash !== context.skillHash || JSON.stringify(unit.contextSourceHashes) !== JSON.stringify(context.sourceHashes)) return null;
     if (unit.contractHash !== contractUnit.sourceHash) return null;
     if (await sha256Text(await readD2SharedSource(identity, pageId)) !== unit.sourceHash) return null;
     units.push(unit);

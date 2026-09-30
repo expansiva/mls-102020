@@ -2,10 +2,11 @@
 
 import type { D2ContractCall, D2ContractField, D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import type { D2InputSnapshot, D2OperationBinding, D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
+import { D2_DEFINITION_VERSION } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
 
-export const D2_SHARED_VERSION = '2026-09-26-agent-defs-l2-shared-v4' as const;
+export const D2_SHARED_VERSION = D2_DEFINITION_VERSION;
 export const D2_SHARED_JUDGMENT_VERSION = '2026-09-21-agent-defs-l2-shared-judgment-v1' as const;
-export const D2_SHARED_SKILL = '_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts' as const;
+export const D2_SHARED_SKILL = '_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.ts' as const;
 export const D2_SHARED_RUNTIME_CONTEXT = '_102029_.d.ts' as const;
 export const D2_SHARED_KEYS = ['schemaVersion', 'moduleName', 'pageId', 'pageName', 'baseClassName', 'routePattern', 'contractRef', 'states', 'actions', 'scenaries', 'initialLoads', 'dataBindings', 'coverage'] as const;
 
@@ -95,7 +96,7 @@ export function buildD2SharedDefinition(moduleName: string, page: D2SelectedPage
 }
 
 export function buildD2SharedPipeline(moduleName: string, pageId: string, semanticRefs: string[] = []): D2SharedPipelineItem {
-  return { id: `${pageId}__l2_shared`, type: 'l2_shared', defPath: `l2/${moduleName}/web/shared/${pageId}.defs.ts`, outputPath: `l2/${moduleName}/web/shared/${pageId}.ts`, dependsFiles: [`l2/${moduleName}/web/contracts/${pageId}.defs.ts`, D2_SHARED_RUNTIME_CONTEXT, ...new Set(semanticRefs)], dependsOn: [], skills: [D2_SHARED_SKILL] };
+  return { id: `${pageId}__l2_shared`, type: 'l2_shared', defPath: `l2/${moduleName}/web/shared/${pageId}.defs.ts`, outputPath: '', dependsFiles: [`l2/${moduleName}/web/contracts/${pageId}.defs.ts`, ...new Set(semanticRefs)], dependsOn: [], skills: [D2_SHARED_SKILL] };
 }
 
 export function d2PageSemanticRefs(snapshot: D2InputSnapshot, pageId: string): string[] {

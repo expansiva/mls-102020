@@ -2,33 +2,41 @@
 
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import type { D2SharedDefinition } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
-import { D2_PAGES_JUDGMENT_VERSION, buildD2PagePipeline, deriveD2PageOrganisms, knownD2PageCapabilities, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PageDevice, type D2PagesJudgment, type D2RenderedPage, type D2PageTemplateSelection, type D2MoleculeRecommendationProvenance } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
+import { D2_PAGES_JUDGMENT_VERSION, buildD2PagePipeline, deriveD2PageOrganisms, knownD2PageCapabilities, resolveD2PageScenarioState, resolveD2PageScenarioSurfaces, type D2PageDescription, type D2PageDevice, type D2PagesJudgment, type D2RenderedPage, type D2PageTemplateSelection } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import type { D2PageSkillsContext } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
+import type { D2MoleculePublishedRole } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeSelection.js';
 import { D2_PAGE_TECHNICAL_SKILL, resolveD2PageCategory } from '/_102020_/l2/agentDefsL2/steps/pages50/categoryContext.js';
 
 export function parseD2PagesJudgment(value: unknown): D2PagesJudgment {
   const root = record(value);
-  exactKeys(root, ['schemaVersion', 'pageId', 'pageIntent', 'category', 'presentations'], 'D2_PAGES_SCHEMA');
+  exactKeys(root, ['schemaVersion', 'pageId', 'pageIntent', 'category', 'presentations', 'moleculeResearch'], 'D2_PAGES_SCHEMA');
   if (typeof root.pageIntent !== 'string' || !root.pageIntent.trim()) fail('D2_PAGES_INTENT_MISSING');
   if (root.schemaVersion !== D2_PAGES_JUDGMENT_VERSION) fail('D2_PAGES_SCHEMA_VERSION');
-  if (typeof root.pageId !== 'string' || !Array.isArray(root.presentations)) fail('D2_PAGES_SCHEMA_TRUNCATED');
+  if (typeof root.pageId !== 'string' || !Array.isArray(root.presentations) || !Array.isArray(root.moleculeResearch)) fail('D2_PAGES_SCHEMA_TRUNCATED');
   const category = record(root.category);
   exactKeys(category, ['categoryRef', 'reason', 'evidenceRefs'], 'D2_PAGES_CATEGORY_SCHEMA');
   if (typeof category.categoryRef !== 'string' || typeof category.reason !== 'string' || !Array.isArray(category.evidenceRefs)) fail('D2_PAGES_SCHEMA_TRUNCATED');
   for (const raw of root.presentations) {
     const presentation = record(raw);
-    exactKeys(presentation, ['device', 'descriptions', 'moleculeReason'], 'D2_PAGES_PRESENTATION_SCHEMA');
-    if (typeof presentation.device !== 'string' || !Array.isArray(presentation.descriptions) || typeof presentation.moleculeReason !== 'string') fail('D2_PAGES_SCHEMA_TRUNCATED');
+    exactKeys(presentation, ['device', 'descriptions'], 'D2_PAGES_PRESENTATION_SCHEMA');
+    if (typeof presentation.device !== 'string' || !Array.isArray(presentation.descriptions)) fail('D2_PAGES_SCHEMA_TRUNCATED');
     for (const rawDescription of presentation.descriptions) {
       const description = record(rawDescription);
-      exactKeys(description, ['organismId', 'kind', 'description', 'contentRef', 'capabilityRefs', 'outputFieldRefs', 'moleculeRecommendations'], 'D2_PAGES_DESCRIPTION_SCHEMA');
-      if (typeof description.organismId !== 'string' || typeof description.kind !== 'string' || typeof description.description !== 'string' || (description.contentRef !== undefined && typeof description.contentRef !== 'string') || (description.capabilityRefs !== undefined && !Array.isArray(description.capabilityRefs)) || !Array.isArray(description.outputFieldRefs) || description.outputFieldRefs.some(ref => typeof ref !== 'string' || !ref.trim()) || !Array.isArray(description.moleculeRecommendations)) fail('D2_PAGES_SCHEMA_TRUNCATED');
-      for (const rawRecommendation of description.moleculeRecommendations) {
-        const recommendation = record(rawRecommendation);
-        exactKeys(recommendation, ['groupId', 'candidates', 'reason'], 'D2_PAGES_MOLECULE_SCHEMA');
-        if (typeof recommendation.groupId !== 'string' || !Array.isArray(recommendation.candidates) || typeof recommendation.reason !== 'string') fail('D2_PAGES_SCHEMA_TRUNCATED');
-      }
+      exactKeys(description, ['organismId', 'kind', 'description', 'contentRef', 'capabilityRefs', 'outputFieldRefs'], 'D2_PAGES_DESCRIPTION_SCHEMA');
+      if (typeof description.organismId !== 'string' || typeof description.kind !== 'string' || typeof description.description !== 'string' || (description.contentRef !== undefined && typeof description.contentRef !== 'string') || (description.capabilityRefs !== undefined && !Array.isArray(description.capabilityRefs)) || !Array.isArray(description.outputFieldRefs) || description.outputFieldRefs.some(ref => typeof ref !== 'string' || !ref.trim())) fail('D2_PAGES_SCHEMA_TRUNCATED');
     }
+  }
+  for (const rawNeed of root.moleculeResearch) {
+    const need = record(rawNeed);
+    exactKeys(need, ['needId', 'roles', 'noMatchReason'], 'D2_PAGES_MOLECULE_SCHEMA');
+    if (typeof need.needId !== 'string' || !Array.isArray(need.roles)) fail('D2_PAGES_SCHEMA_TRUNCATED');
+    for (const rawRole of need.roles) {
+      const role = record(rawRole); exactKeys(role, ['role', 'groupId', 'preferred', 'alternative', 'discardedCandidates'], 'D2_PAGES_MOLECULE_ROLE_SCHEMA');
+      const preferred = record(role.preferred); const alternative = role.alternative === undefined ? undefined : record(role.alternative);
+      if (typeof role.role !== 'string' || typeof role.groupId !== 'string' || typeof preferred.tag !== 'string' || typeof preferred.reason !== 'string' || (alternative && (typeof alternative.tag !== 'string' || typeof alternative.reason !== 'string')) || !Array.isArray(role.discardedCandidates)) fail('D2_PAGES_SCHEMA_TRUNCATED');
+      for (const rawDiscard of role.discardedCandidates) { const discard = record(rawDiscard); exactKeys(discard, ['tag', 'reason'], 'D2_PAGES_MOLECULE_DISCARD_SCHEMA'); if (typeof discard.tag !== 'string' || typeof discard.reason !== 'string') fail('D2_PAGES_SCHEMA_TRUNCATED'); }
+    }
+    if (need.noMatchReason !== undefined && typeof need.noMatchReason !== 'string') fail('D2_PAGES_SCHEMA_TRUNCATED');
   }
   return root as unknown as D2PagesJudgment;
 }
@@ -58,11 +66,9 @@ export function gateD2Pages(
   page: D2SelectedPage,
   shared: D2SharedDefinition,
   judgment: D2PagesJudgment,
-  groupSkills: ReadonlyMap<string, string[]>,
   categoryContext: D2PageSkillsContext,
-  groupCandidates: ReadonlyMap<string, ReadonlySet<string>>,
   templateSelection: D2PageTemplateSelection,
-  provenance: ReadonlyMap<string, Omit<D2MoleculeRecommendationProvenance, 'groupId' | 'candidates' | 'reason'>>,
+  moleculeRoles: readonly D2MoleculePublishedRole[],
 ): D2RenderedPage[] {
   const errors: string[] = [];
   if (judgment.pageId !== page.pageId) errors.push(`D2_PAGES_PAGE_CHANGED: ${judgment.pageId}`);
@@ -91,7 +97,6 @@ export function gateD2Pages(
     const prefix = `${page.pageId}/${presentation.device}`;
     const seen = new Set<string>();
     if (!presentation.descriptions.length) errors.push(`D2_PAGES_DESCRIPTIONS_EMPTY: ${prefix}`);
-    if (!presentation.moleculeReason.trim()) errors.push(`D2_PAGES_MOLECULE_REASON_MISSING: ${presentation.device}`);
     for (const description of presentation.descriptions) {
       const at = `${prefix}/${description.organismId}`; const expected = expectedById.get(description.organismId);
       if (seen.has(description.organismId)) errors.push(`D2_PAGES_ORGANISM_DUPLICATE: ${at}`); seen.add(description.organismId);
@@ -116,22 +121,6 @@ export function gateD2Pages(
         const outputRefs = new Set(description.capabilityRefs.flatMap(capability => (coverage.outputFieldsByCapability[capability] ?? []).map(field => `${field.outputTypeRef}.${field.path}`)));
         for (const ref of description.outputFieldRefs) if (!outputRefs.has(ref)) errors.push(`D2_PAGES_OUTPUT_FIELD_OUTSIDE_CAPABILITY: ${at} -> ${ref}`);
       }
-      const recommendationGroups = new Set<string>();
-      for (const recommendation of description.moleculeRecommendations) {
-        if (recommendationGroups.has(recommendation.groupId)) errors.push(`D2_PAGES_MOLECULE_GROUP_DUPLICATE: ${at} -> ${recommendation.groupId}`); recommendationGroups.add(recommendation.groupId);
-        if (!groupSkills.has(recommendation.groupId)) errors.push(`D2_PAGES_GROUP_UNKNOWN: ${at} -> ${recommendation.groupId}`);
-        if (!recommendation.reason.trim()) errors.push(`D2_PAGES_MOLECULE_REASON_MISSING: ${at} -> ${recommendation.groupId}`);
-        const available = groupCandidates.get(recommendation.groupId);
-        for (const candidate of recommendation.candidates) if (!available?.has(candidate)) errors.push(`D2_PAGES_MOLECULE_CANDIDATE_UNKNOWN: ${at} -> ${candidate}`);
-        if (new Set(recommendation.candidates).size !== recommendation.candidates.length) errors.push(`D2_PAGES_MOLECULE_CANDIDATE_DUPLICATE: ${at} -> ${recommendation.groupId}`);
-        if (!moleculeCompatible(recommendation.groupId, description.capabilityRefs, shared)) errors.push(`D2_PAGES_MOLECULE_CAPABILITY_MISMATCH: ${at} -> ${recommendation.groupId}`);
-      }
-      const requiredGroups = [...groupCandidates.entries()]
-        .filter(([groupId, candidates]) => candidates.size > 0 && requiredMoleculeCompatible(groupId, description.capabilityRefs, shared))
-        .map(([groupId]) => groupId);
-      if (requiredGroups.length && !requiredGroups.some(groupId => recommendationGroups.has(groupId))) {
-        errors.push(`D2_PAGES_MOLECULE_RECOMMENDATION_MISSING: ${at} compatible=${requiredGroups.join(',')}`);
-      }
       const prose = description.description;
       if (/<\/?[a-z][^>]*>|```(?:html|css)|\b(?:display|grid-template|position)\s*:|\b(?:two|three|2|3)[ -]column\b/iu.test(prose)) errors.push(`D2_PAGES_LAYOUT_PRESCRIPTION: ${at} evidence=${evidence(prose)}`);
       if (!shared.dataBindings.length && /\b(?:dashboard|statistics?|metrics?|aggregate|totals?)\b/iu.test(prose)) errors.push(`D2_PAGES_DATA_CLAIM_UNSUPPORTED: ${at} evidence=${evidence(prose)}`);
@@ -149,36 +138,17 @@ export function gateD2Pages(
   if (errors.length) throw new Error(errors.join('\n'));
   return (['desktop', 'mobile'] as const).map(device => {
     const presentation = byDevice.get(device)!;
-    const groups = presentation.descriptions.flatMap(item => item.moleculeRecommendations.map(recommendation => recommendation.groupId));
-    const skills = [D2_PAGE_TECHNICAL_SKILL, category!.skillReference, ...templateSelection.sources.map(source => source.reference), ...groups.flatMap(group => groupSkills.get(group) || [])];
+    const roles = moleculeRoles.filter(role => role.device === device);
+    for (const role of roles) if (!expectedById.has(role.organismId)) throw new Error(`D2_PAGES_MOLECULE_ROLE_ORGANISM_UNKNOWN: ${role.organismId}`);
+    const skills = [D2_PAGE_TECHNICAL_SKILL, category!.skillReference, ...templateSelection.sources.map(source => source.reference), ...roles.flatMap(role => [role.preferred.indexReference, role.preferred.usageContractReference, ...(role.alternative ? [role.alternative.indexReference, role.alternative.usageContractReference] : [])])];
     const descriptions = organisms.map(organism => { const submitted = presentation.descriptions.find(item => item.organismId === organism.organismId)!; return { ...submitted, organismId: organism.organismId, kind: organism.kind, description: submitted.description.trim() } as D2PageDescription; });
     const coverage = descriptions.map(description => {
       const source = shared.coverage.find(item => item.organismId === description.organismId)!;
-      return { organismId: source.organismId, sourceIndex: source.sourceIndex, kind: source.kind, contentRef: source.contentRef, scenarioRefs: [...source.scenarioRefs], capabilityRefs: [...source.capabilityRefs], outputFieldsByCapability: structuredClone(source.outputFieldsByCapability), moleculeRecommendations: description.moleculeRecommendations.map(recommendation => {
-        const origin = provenance.get(recommendation.groupId);
-        if (!origin) throw new Error(`D2_PAGES_MOLECULE_PROVENANCE_MISSING: ${recommendation.groupId}`);
-        return { ...recommendation, ...origin };
-      }) };
+      return { organismId: source.organismId, sourceIndex: source.sourceIndex, kind: source.kind, contentRef: source.contentRef, scenarioRefs: [...source.scenarioRefs], capabilityRefs: [...source.capabilityRefs], outputFieldsByCapability: structuredClone(source.outputFieldsByCapability), moleculeRecommendations: roles.filter(role => role.organismId === description.organismId) };
     });
-    return { device, pageId: page.pageId, pageLabel: page.label, pageIntent: judgment.pageIntent, actors: page.actors, authorityRefs: page.authorityRefs, operationBindings: page.operationBindings, descriptions, coverage, templateSelection, pipeline: [buildD2PagePipeline(moduleName, page.pageId, device, category!.categoryRef, skills, templateSelection, coverage)] };
+    const semanticRefs: string[] = [];
+    return { device, pageId: page.pageId, pageLabel: page.label, pageIntent: judgment.pageIntent, actors: page.actors, authorityRefs: page.authorityRefs, operationBindings: page.operationBindings, descriptions, coverage, templateSelection, semanticRefs, pipeline: [buildD2PagePipeline(moduleName, page.pageId, device, category!.categoryRef, skills, templateSelection, coverage, semanticRefs)] };
   });
-}
-
-function moleculeCompatible(groupId: string, refs: string[], shared: D2SharedDefinition): boolean {
-  return knownMoleculeCompatibility(groupId, refs, shared) ?? refs.length > 0;
-}
-
-function requiredMoleculeCompatible(groupId: string, refs: string[], shared: D2SharedDefinition): boolean {
-  return knownMoleculeCompatibility(groupId, refs, shared) === true;
-}
-
-function knownMoleculeCompatibility(groupId: string, refs: string[], shared: D2SharedDefinition): boolean | null {
-  const actions = shared.actions.filter(item => refs.includes(item.actionId)); const states = shared.states.filter(item => refs.includes(item.stateKey));
-  if (/^groupView/u.test(groupId)) return actions.some(item => item.kind === 'query') || states.some(item => item.kind === 'queryResult');
-  if (/^groupEnter/u.test(groupId)) return actions.some(item => item.kind === 'stateSetter' || item.kind === 'command') || states.some(item => item.kind === 'input');
-  if (groupId === 'groupTriggerAction') return actions.some(item => item.kind === 'command');
-  if (groupId === 'groupNotifyUser') return actions.some(item => !!item.statusStateKey || !!item.errorStateKey) || states.some(item => item.kind === 'actionStatus' || item.kind === 'actionError');
-  return null;
 }
 
 function setKey(values: string[]): string { return [...new Set(values)].sort().join('\0'); }

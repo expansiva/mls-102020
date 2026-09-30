@@ -12,9 +12,7 @@ import { buildD2ContractsCatalog, type D2ContractCall, type D2ContractField, typ
 import { renderD2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/render.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
 import { D2_SHARED_KEYS, buildD2SharedPipeline, captureD2SelectedSnapshot, missingD2SnapshotPreconditions, suggestedD2SharedJudgment, type D2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
-import { assertD2RenderedShared, gateD2Shared, parseD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
-import { parseD2RenderedShared, renderD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
-import { parseDefs } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
+import { gateD2Shared, parseD2SharedJudgment } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,39 +31,6 @@ void test('pinned fixture without d2_23 operation bindings reports the missing b
     () => buildD2ContractsCatalog({ module: 'agendaClinica', entities, access: defs(path.join(input, 'access.defs.ts')), pages }),
     /D2_CONTRACT_OPERATION_BINDING_MISSING/,
   );
-});
-
-void test('five selected pages emit one exact shared definition and one l2_shared item each', () => {
-  const emitted = Array.from({ length: 5 }, (_, index) => {
-    const page = selected(`catalog${index}`); const contract = pageContract(page.pageId);
-    const judgment = suggestedD2SharedJudgment(page, contract);
-    const definition = gated(page, contract, judgment);
-    const pipeline = buildD2SharedPipeline('fixture', page.pageId);
-    const source = renderD2Shared(definition, pipeline); assertD2RenderedShared(source);
-    assert.deepEqual(Object.keys(definition), [...D2_SHARED_KEYS]);
-    assert.equal(pipeline.type, 'l2_shared');
-    assert.deepEqual(pipeline.dependsFiles, [`l2/fixture/web/contracts/${page.pageId}.defs.ts`, '_102029_.d.ts']);
-    assert.deepEqual(pipeline.skills, ['_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts']);
-    assert.equal(parseD2RenderedShared(source).pipeline.length, 1);
-    assert.equal(Object.hasOwn(pipeline, 'agent'), false);
-    assert.match(source, /\.defs\.ts/); assert.doesNotMatch(source, /layoutRef|sections/);
-    return { definition, pipeline };
-  });
-  assert.equal(new Set(emitted.map(item => item.definition.pageId)).size, 5);
-  assert.equal(new Set(emitted.map(item => item.pipeline.id)).size, 5);
-  for (const item of emitted) { const consumer = { desktop: item.definition, mobile: item.definition }; assert.strictEqual(consumer.desktop, consumer.mobile); }
-});
-
-void test('shared parser rejects legacy, empty, multiple, missing skill and orphan id pipelines', () => {
-  const page = selected('catalog'); const contract = pageContract(page.pageId);
-  const definition = gated(page, contract, suggestedD2SharedJudgment(page, contract));
-  const item = buildD2SharedPipeline('fixture', page.pageId);
-  const source = renderD2Shared(definition, item);
-  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), JSON.stringify(item, null, 2))), /D2_SHARED_CONSUMER_SHAPE/);
-  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), '[]')), /D2_SHARED_PIPELINE_COUNT/);
-  assert.throws(() => assertD2RenderedShared(source.replace(JSON.stringify([item], null, 2), JSON.stringify([item, item], null, 2))), /D2_SHARED_PIPELINE_COUNT/);
-  assert.throws(() => assertD2RenderedShared(renderD2Shared(definition, { ...item, skills: [] })), /D2_SHARED_PIPELINE_SKILL/);
-  assert.throws(() => assertD2RenderedShared(renderD2Shared(definition, { ...item, id: 'orphan__l2_shared' })), /D2_SHARED_PIPELINE_ID/);
 });
 
 void test('actions, contracts, states and bindings close and input sources are non-editable for selection', () => {
@@ -216,14 +181,12 @@ void test('skill-compatible shared fixture exposes page behavior and keeps selec
   assert.doesNotMatch(source, /setSelectedItemId|customElement|\brender\s*\(/);
 });
 
-void test('productive reader retains coverage, labels and public API across renamed fixtures', () => {
+void test('internal validation coverage retains stable organism identities across renamed fixtures', () => {
   for (const pageId of ['catalog', 'inventory']) {
     const page = selected(pageId); page.organisms = [{ kind: 'list', text: 'Show authorised rows' }, { kind: 'list', text: 'Show related rows' }];
     const contract = pageContract(pageId);
     const definition = gated(page, contract, suggestedD2SharedJudgment(page, contract));
-    const parsed = parseDefs(renderD2Shared(definition, buildD2SharedPipeline('fixture', pageId)));
-    assert.equal(parsed.items[0].type, 'l2_shared');
-    assert.deepEqual((parsed.data as typeof definition).coverage.map(item => [item.organismId, item.contentRef]), [['organism.list.1', 'content.list'], ['organism.list.2', 'content.list']]);
+    assert.deepEqual(definition.coverage.map(item => [item.organismId, item.contentRef]), [['organism.list.1', 'content.list'], ['organism.list.2', 'content.list']]);
     assert.ok(definition.coverage.every(item => Object.hasOwn(item.outputFieldsByCapability, 'listRecord')));
     assert.equal(definition.actions.find(action => action.actionId === 'set:scenario')?.methodName, 'setScenario');
   }
@@ -290,10 +253,6 @@ void test('shared keeps a required leaf conditional under absent nested optional
   const actionBinding = definition.dataBindings.find(item => item.actionId === 'createRecord')!;
   assert.deepEqual(actionBinding.inputStateKeys, [state.stateKey]);
 
-  const source = renderD2Shared(definition, buildD2SharedPipeline('fixture', page.pageId));
-  const materialized = parseDefs(source).data as typeof definition;
-  assert.equal(materialized.states.find(item => item.dtoPath === state.dtoPath)?.required, false);
-  assert.deepEqual(materialized.dataBindings.find(item => item.actionId === 'createRecord')?.inputStateKeys, [state.stateKey]);
   const dto = renderD2PageContract(contract);
   assert.match(dto, /"envelope"\?: \{[\s\S]*"confirmation"\?: \{[\s\S]*"confirmedAt": string/);
 });

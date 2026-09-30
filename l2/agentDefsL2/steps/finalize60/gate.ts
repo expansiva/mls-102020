@@ -1,11 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/finalize60/gate.ts" enhancement="_blank"/>
 
 import type { D2InputSnapshot } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { assertD2RenderedShared } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
-import { parseD2RenderedShared } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
-import { assertD2RenderedPage, parseD2RenderedPage } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
-import type { D2PagePipelineItem } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
-import { d2PageSemanticRefs, type D2SharedPipelineItem } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
+import { parseD2RenderedSharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
+import { parseD2Page11DefinitionSource } from '/_102020_/l2/agentDefsL2/steps/pages50/page11Definition.js';
+import type { D2ResolvableSymbol } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
 import { assertD2Header } from '/_102020_/l2/agentDefsL2/helpers/d2Header.js';
 
 export interface D2FinalSource { pageId: string; kind: 'contract' | 'shared' | 'desktopPage' | 'mobilePage'; path: string; source: string; }
@@ -17,7 +15,7 @@ export function changedOutsideD2Scope(before: Record<string, string>, after: Rec
     .sort();
 }
 
-export function gateD2FinalSources(snapshot: D2InputSnapshot, sources: D2FinalSource[]): void {
+export function gateD2FinalSources(snapshot: D2InputSnapshot, sources: D2FinalSource[], symbols: readonly D2ResolvableSymbol[] = []): void {
   const active = [...snapshot.selection.writePageIds, ...snapshot.selection.preservePageIds].sort();
   if (new Set(active).size !== active.length) throw new Error('D2_FINALIZE_PAGE_ID_DUPLICATE');
   const selected = snapshot.selection.pages.filter(page => active.includes(page.pageId));
@@ -36,7 +34,20 @@ export function gateD2FinalSources(snapshot: D2InputSnapshot, sources: D2FinalSo
   const expected = selected.flatMap(page => page.destinations.map(item => item.path)).sort();
   const actual = sources.map(item => item.path).sort();
   if (new Set(actual).size !== actual.length || actual.join('\0') !== expected.join('\0')) throw new Error('D2_FINALIZE_OUTPUT_SET_MISMATCH');
-  const items: Array<D2SharedPipelineItem | D2PagePipelineItem> = [];
+  const localSymbols: D2ResolvableSymbol[] = sources.map(file => ({ fileRef: file.path }));
+  for (const file of sources.filter(file => file.kind === 'contract')) {
+    for (const match of file.source.matchAll(/export (?:const|interface|type) ([A-Za-z0-9_]+)/gu)) localSymbols.push({ fileRef: file.path, fragment: match[1] });
+  }
+  const mergedSymbols = () => [...new Map([...symbols, ...localSymbols].map(symbol => [`${symbol.fileRef}\0${symbol.fragment || ''}`, symbol])).values()];
+  const sharedDefinitions = new Map<string, ReturnType<typeof parseD2RenderedSharedDefinitionDocument>>();
+  // The graph has only semantic edges: page -> shared -> contract and declared source refs.
+  for (const file of sources.filter(file => file.kind === 'shared')) {
+    const definition = parseD2RenderedSharedDefinitionDocument(file.source, mergedSymbols());
+    if (definition.pageId !== file.pageId || definition.contractRef.fileRef !== `l2/${snapshot.module}/web/contracts/${file.pageId}.defs.ts`) throw new Error(`D2_FINALIZE_SHARED_REF_INVALID: ${file.pageId}`);
+    sharedDefinitions.set(file.pageId, definition);
+    localSymbols.push({ fileRef: file.path, contentIds: definition.contents.map(item => item.id) });
+    for (const family of ['states', 'actions', 'contents', 'scenarios'] as const) for (const item of definition[family]) localSymbols.push({ fileRef: file.path, fragment: `${family}.${item.id}` });
+  }
   for (const file of sources) {
     if (!file.source) throw new Error(`D2_FINALIZE_FILE_MISSING: ${file.path}`);
     const body = assertD2Header(file.source, file.path, snapshot.project);
@@ -44,49 +55,9 @@ export function gateD2FinalSources(snapshot: D2InputSnapshot, sources: D2FinalSo
       if (/\bany\b|\bunknown\b/.test(body)) throw new Error(`D2_FINALIZE_CONTRACT_INVALID: ${file.path}`);
       continue;
     }
-    if (file.kind === 'shared') {
-      assertD2RenderedShared(file.source);
-      items.push(...parseD2RenderedShared(file.source).pipeline);
-    } else {
-      assertD2RenderedPage(file.source);
-      items.push(...parseD2RenderedPage(file.source).pipeline as D2PagePipelineItem[]);
-    }
+    if (file.kind === 'shared') continue;
+    const definition = parseD2Page11DefinitionSource(file.source, mergedSymbols());
+    const device = file.kind === 'desktopPage' ? 'desktop' : 'mobile';
+    if (definition.pageId !== file.pageId || definition.device !== device || definition.sharedRef.fileRef !== `l2/${snapshot.module}/web/shared/${file.pageId}.defs.ts` || !sharedDefinitions.has(file.pageId)) throw new Error(`D2_FINALIZE_PAGE_REF_INVALID: ${file.pageId}/${device}`);
   }
-  assertGraph(snapshot.module, active, items, snapshot);
 }
-
-function assertGraph(moduleName: string, pageIds: string[], items: Array<D2SharedPipelineItem | D2PagePipelineItem>, snapshot: D2InputSnapshot): void {
-  const ids = items.map(item => item.id);
-  if (new Set(ids).size !== ids.length || ids.length !== pageIds.length * 3) throw new Error('D2_FINALIZE_PIPELINE_ID_SET_INVALID');
-  const known = new Set(ids);
-  for (const pageId of pageIds) {
-    const shared = items.find(item => item.id === `${pageId}__l2_shared`);
-    if (!shared || shared.type !== 'l2_shared' || shared.defPath !== `l2/${moduleName}/web/shared/${pageId}.defs.ts`
-      || shared.dependsFiles.join('\0') !== [`l2/${moduleName}/web/contracts/${pageId}.defs.ts`, '_102029_.d.ts', ...d2PageSemanticRefs(snapshot, pageId)].join('\0') || shared.dependsOn.length
-      || shared.skills.join('\0') !== '_102020_/l2/agentDefsL2/skills/genD2SharedTs.ts') throw new Error(`D2_FINALIZE_SHARED_REF_INVALID: ${pageId}`);
-    for (const device of ['desktop', 'mobile'] as const) {
-      const item = items.find(candidate => candidate.id === `${pageId}__${device}__page11`) as D2PagePipelineItem | undefined;
-      if (!item || item.type !== 'l2_page' || item.defPath !== `l2/${moduleName}/web/${device}/page11/${pageId}.defs.ts`
-        || item.dependsOn.join('\0') !== shared.id || item.dependsFiles.join('\0') !== [`l2/${moduleName}/web/shared/${pageId}.ts`, 'l2/designSystem.ts', `l2/${moduleName}/web/contracts/${pageId}.defs.ts`, '_102029_.d.ts', '_102020_/l2/molecules/ml-scenary.ts', ...d2PageSemanticRefs(snapshot, pageId)].join('\0')
-        || !canonicalPageSkills(item.categoryRef, item.skills, item.templateSelection.sources.map(source => source.reference))) throw new Error(`D2_FINALIZE_PAGE_REF_INVALID: ${pageId}/${device}`);
-    }
-  }
-  const visiting = new Set<string>(); const visited = new Set<string>();
-  const visit = (id: string): void => { if (visiting.has(id)) throw new Error(`D2_FINALIZE_PIPELINE_CYCLE: ${id}`); if (visited.has(id)) return; visiting.add(id); const item = items.find(value => value.id === id)!; for (const dep of item.dependsOn) { if (!known.has(dep)) throw new Error(`D2_FINALIZE_PIPELINE_REF_UNKNOWN: ${id} -> ${dep}`); visit(dep); } visiting.delete(id); visited.add(id); };
-  for (const id of ids) visit(id);
-}
-
-function canonicalPageSkills(categoryRef: string, skills: string[], templateRefs: string[]): boolean {
-  if (templateRefs.some(ref => !/^_[0-9]+_\/l4\/(?:collabux\/templates\/|templates\/)[A-Za-z0-9_/-]+\.(?:md|json)$/u.test(ref) || !skills.includes(ref))) return false;
-  skills = skills.filter(ref => !templateRefs.includes(ref));
-  if (!/^[a-z][A-Za-z0-9]*$/.test(categoryRef) || skills.length < 2 || (skills.length - 2) % 2 !== 0 || new Set(skills).size !== skills.length) return false;
-  if (skills[0] !== '_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts') return false;
-  if (skills[1] !== `_102020_/l2/agentDefsL2/skills/pageCategories/${categoryRef}.md`) return false;
-  for (let index = 2; index < skills.length; index += 2) {
-    if (!/^_[0-9]+_\/l2\/molecules\/[a-z0-9_-]+\/index\.defs\.ts$/.test(skills[index])) return false;
-    if (!/^_102020_\/l2\/aura\/molecules\/skills\/[A-Za-z0-9_-]+\/usage\.ts$/.test(skills[index + 1])) return false;
-  }
-  return true;
-}
-
-function parseExport(source: string, name: string): unknown { const match = new RegExp(`export const ${name} = ([\\s\\S]*?) as const;`).exec(source); if (!match) throw new Error(`D2_FINALIZE_EXPORT_MISSING: ${name}`); try { return JSON.parse(match[1]); } catch { throw new Error(`D2_FINALIZE_EXPORT_INVALID: ${name}`); } }

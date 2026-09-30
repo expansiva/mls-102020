@@ -2,7 +2,7 @@
 
 import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
 
-export const D2_PAGE_TECHNICAL_SKILL = '_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts';
+export const D2_PAGE_TECHNICAL_SKILL = '_102020_/l2/agentDefsL2/skills/genD2Page11Definition.ts';
 export const D2_PAGE_CATEGORY_SKILL_FOLDER = '_102020_/l2/agentDefsL2/skills/pageCategories';
 export const D2_PAGE_CATEGORY_CATALOG = '_102020_/l4/collabux/templates/categoryList.json';
 

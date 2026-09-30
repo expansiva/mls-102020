@@ -1,211 +1,95 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/pages50/run.test.ts" enhancement="_blank"/>
-import assert from 'node:assert/strict';
 import test from 'node:test';
-import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
-import { D2_INPUT_VERSION, type D2InputSnapshot } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { d2InputFile } from '/_102020_/l2/agentDefsL2/steps/input20/io.js';
+import assert from 'node:assert/strict';
+import { integratedHost } from '/_102020_/l2/agentDefsL2/steps/finalize60/fixtures/integrated.js';
+import { findReusableD2PagesUnits } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { sha256Text } from '/_102020_/l2/agentDefsL2/steps/contracts30/run.js';
-import { D2_SHARED_VERSION } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
-import { d2SharedFile, d2SharedManifestFile } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
-import { d2PageFile, d2PagesManifestFile, d2PagesResultFile, readD2PagesManifest, readD2PagesResult } from '/_102020_/l2/agentDefsL2/steps/pages50/io.js';
-import { finalizeD2PagesBarrier, findReusableD2PagesUnits, persistD2PagesUnit as persistUnit } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
-import { buildD2MoleculeReceipt, resolveD2MoleculeSelection, type D2MoleculePreparedContext, type D2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { buildD2PagePipeline } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
-import { renderD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/render.js';
 
-const compileFixture = async () => {};
-function persistD2PagesUnit(...args: Parameters<typeof persistUnit>): ReturnType<typeof persistUnit> {
-  const [identity, snapshot, pageId, sources, itemIds, attempt, receipt, expectedSharedHash, verifySources] = args;
-  return persistUnit(identity, snapshot, pageId, sources, itemIds, attempt, receipt, expectedSharedHash, verifySources, compileFixture);
-}
-
-const IDENTITY: D2RunIdentity = { project: 102047, module: 'fixture' };
-const PAGES = ['alpha', 'beta'];
-type Info = { project: number; level: number; folder: string; shortName: string; extension: string };
-type Stored = Info & { status: string; content: string; getContent: () => Promise<string> };
-
-void test('desktop and mobile compile before approval; one failed page keeps sibling approved', async () => {
-  const host = await installHost();
-  const molecular = await molecularFixture(); const receipt = await pageReceipt(molecular, 'direct-test-context');
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, receipt);
-  const sibling = await readD2PagesResult(IDENTITY, 'alpha');
-  const kinds: string[] = [];
-  await assert.rejects(() => persistUnit(IDENTITY, host.snapshot, 'beta', sources('beta'), ['beta__desktop__page11', 'beta__mobile__page11'], 1, receipt, undefined, undefined, async (_identity, files) => {
-    kinds.push(...files.map(file => file.kind));
-    throw new Error(`D2_TYPESCRIPT_COMPILE_FAILED: ${files[1].path}: TS2304 MissingType`);
-  }), /D2_TYPESCRIPT_COMPILE_FAILED.*TS2304/u);
-  assert.deepEqual(kinds, ['desktopPage', 'mobilePage']);
-  assert.equal(await readD2PagesResult(IDENTITY, 'beta'), null);
-  assert.deepEqual(await readD2PagesResult(IDENTITY, 'alpha'), sibling);
-  assert.equal(await readD2PagesManifest(IDENTITY), null);
+test('one failed compiler or writer preserves approved sibling and resumes the complete pair', async () => {
+  const host = await integratedHost();
+  await host.approve('catalog');
+  const sibling = [...host.content].filter(([ref]) => ref.includes('catalog'));
+  await assert.rejects(() => host.approve('policies', 1, async () => { throw new Error('TS2304 MissingType'); }), /TS2304/);
+  assert.equal(host.content.get(host.prefix + '/pages50/results/policies.json'), '');
+  assert.equal(await host.finishPages(), null);
+  assert.deepEqual([...host.content].filter(([ref]) => ref.includes('catalog')), sibling);
+  host.failWrite = 'l2/libraryReview/web/mobile/page11/policies.defs.ts';
+  host.put(host.failWrite, '');
+  await assert.rejects(() => host.approve('policies', 2), /simulated write failure/);
+  host.failWrite = '';
+  await host.approve('policies', 2);
+  assert.equal((await host.finishPages())?.units.length, 2);
+  assert.deepEqual([...host.content].filter(([ref]) => ref.includes('catalog')), sibling);
 });
 
-void test('one failed page leaves its approved sibling untouched and barrier waits for both device defs', async () => {
-  const host = await installHost();
-  const molecular = await molecularFixture(); const receipt = await pageReceipt(molecular, 'direct-test-context');
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, receipt);
-  const alphaDesktop = keyOf(d2PageFile(IDENTITY, 'alpha', 'desktop')); const alphaMobile = keyOf(d2PageFile(IDENTITY, 'alpha', 'mobile'));
-  const alphaWrites = host.writes.filter(key => key === alphaDesktop || key === alphaMobile).length;
-  assert.equal(await finalizeD2PagesBarrier(IDENTITY, host.snapshot, async () => undefined, undefined, molecular), null);
-
-  host.failKey = keyOf(d2PageFile(IDENTITY, 'beta', 'mobile'));
-  await assert.rejects(() => persistD2PagesUnit(IDENTITY, host.snapshot, 'beta', sources('beta'), ['beta__desktop__page11', 'beta__mobile__page11'], 1, receipt), /simulated write failure/);
-  assert.equal(host.writes.filter(key => key === alphaDesktop || key === alphaMobile).length, alphaWrites);
-  assert.equal(await readD2PagesManifest(IDENTITY), null);
-
-  host.failKey = '';
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'beta', sources('beta'), ['beta__desktop__page11', 'beta__mobile__page11'], 2, receipt);
-  const alphaShared = host.files[keyOf(d2SharedFile(IDENTITY, 'alpha'))]; const originalShared = alphaShared.content;
-  alphaShared.content = 'tampered shared';
-  await assert.rejects(() => finalizeD2PagesBarrier(IDENTITY, host.snapshot, async () => undefined, undefined, molecular), /D2_PAGES_SHARED_HASH_MISMATCH/);
-  assert.equal(await readD2PagesManifest(IDENTITY), null);
-  alphaShared.content = originalShared;
-  const manifest = await finalizeD2PagesBarrier(IDENTITY, host.snapshot, async () => undefined, undefined, molecular);
-  assert.equal(manifest?.units.length, 2);
-  assert.equal(manifest?.units.flatMap(unit => Object.values(unit.artifactPaths)).length, 4);
-  assert.equal(host.writes.filter(key => key === alphaDesktop || key === alphaMobile).length, alphaWrites);
+test('current format and sources reuse byte-identically; corrupt page and old receipt do not', async () => {
+  const host = await integratedHost();
+  for (const id of host.snapshot.selection.writePageIds) await host.approve(id);
+  await host.finishPages();
+  const before = [...host.content]; const writes = host.writes.length;
+  for (const id of host.snapshot.selection.writePageIds) await host.approve(id, 2);
+  await host.finishPages();
+  assert.deepEqual([...host.content], before);
+  assert.equal(host.writes.length, writes);
+  host.put('l2/libraryReview/web/mobile/page11/catalog.defs.ts', 'invalid');
+  const reusable = () => findReusableD2PagesUnits(host.identity, host.snapshot, undefined, host.skills, { port: host.molecular });
+  assert.deepEqual((await reusable()).map(unit => unit.pageId), ['policies']);
+  const ref = host.prefix + '/pages50/results/policies.json';
+  host.put(ref, JSON.stringify({ ...JSON.parse(host.content.get(ref)!), schemaVersion: 'old' }));
+  assert.deepEqual(await reusable(), []);
 });
 
-void test('partial resume reuses four valid pages and redispatches missing or corrupted units', async () => {
-  const pages = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'];
-  const host = await installHost(pages);
-  const molecular = await molecularFixture(); const receipt = await pageReceipt(molecular, 'direct-test-context');
-  for (const pageId of pages.slice(0, 4)) {
-    await persistD2PagesUnit(IDENTITY, host.snapshot, pageId, sources(pageId), [`${pageId}__desktop__page11`, `${pageId}__mobile__page11`], 1, receipt);
-  }
-
-  const reusable = await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, undefined, molecular);
-  assert.deepEqual(reusable.map(unit => unit.pageId), ['alpha', 'beta', 'delta', 'gamma']);
-  assert.deepEqual(pages.filter(pageId => !reusable.some(unit => unit.pageId === pageId)), ['epsilon']);
-  host.files[keyOf(d2PageFile(IDENTITY, 'beta', 'mobile'))].content = 'corrupted mobile artifact';
-  const afterCorruption = await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, undefined, molecular);
-  assert.deepEqual(afterCorruption.map(unit => unit.pageId), ['alpha', 'delta', 'gamma']);
-  assert.deepEqual(pages.filter(pageId => !afterCorruption.some(unit => unit.pageId === pageId)), ['beta', 'epsilon']);
-  assert.equal(await finalizeD2PagesBarrier(IDENTITY, host.snapshot, async () => undefined, undefined, molecular), null);
+test('whole shared change invalidates both devices while unrelated page remains untouched', async () => {
+  const host = await integratedHost();
+  for (const id of host.snapshot.selection.writePageIds) await host.approve(id);
+  const sibling = [...host.content].filter(([ref]) => ref.includes('policies'));
+  const ref = 'l2/libraryReview/web/shared/catalog.defs.ts';
+  const changed = host.content.get(ref)!.replace('Read the published catalog guidance.', 'Read revised catalog guidance.');
+  host.put(ref, changed);
+  const manifestRef = host.prefix + '/shared.json';
+  const manifest = JSON.parse(host.content.get(manifestRef)!);
+  manifest.units.find((unit: {pageId: string}) => unit.pageId === 'catalog').sourceHash = await sha256Text(changed);
+  host.put(manifestRef, JSON.stringify(manifest));
+  const reusable = await findReusableD2PagesUnits(host.identity, host.snapshot, undefined, host.skills, { port: host.molecular });
+  assert.deepEqual(reusable.map(unit => unit.pageId), ['policies']);
+  assert.deepEqual([...host.content].filter(([ref]) => ref.includes('policies')), sibling);
 });
 
-void test('changing shared A invalidates both devices of A while page B stays reusable without writes', async () => {
-  const host = await installHost(['alpha', 'beta']);
-  const molecular = await molecularFixture(); const receipt = await pageReceipt(molecular, 'direct-test-context');
-  for (const pageId of ['alpha', 'beta']) {
-    await persistD2PagesUnit(IDENTITY, host.snapshot, pageId, sources(pageId), [`${pageId}__desktop__page11`, `${pageId}__mobile__page11`], 1, receipt);
-  }
-  const betaResultKey = keyOf(d2PagesResultFile(IDENTITY, 'beta'));
-  const betaDesktopKey = keyOf(d2PageFile(IDENTITY, 'beta', 'desktop'));
-  const betaMobileKey = keyOf(d2PageFile(IDENTITY, 'beta', 'mobile'));
-  const betaBefore = [host.files[betaResultKey].content, host.files[betaDesktopKey].content, host.files[betaMobileKey].content];
-  const writesBefore = host.writes.length;
-
-  const alphaShared = host.files[keyOf(d2SharedFile(IDENTITY, 'alpha'))];
-  alphaShared.content = `${alphaShared.content}// shared A v2\n`;
-  const sharedManifest = JSON.parse(host.files[keyOf(d2SharedManifestFile(IDENTITY))].content) as { units: Array<{ pageId: string; sourceHash: string }> };
-  sharedManifest.units.find(unit => unit.pageId === 'alpha')!.sourceHash = await sha256Text(alphaShared.content);
-  host.files[keyOf(d2SharedManifestFile(IDENTITY))].content = JSON.stringify(sharedManifest);
-
-  const reusable = await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, undefined, molecular);
-  assert.deepEqual(reusable.map(unit => unit.pageId), ['beta'], 'only A is dispatched, and its worker regenerates desktop plus mobile');
-  assert.equal(host.writes.length, writesBefore, 'reuse discovery performs no page writes or model work');
-  assert.deepEqual([host.files[betaResultKey].content, host.files[betaDesktopKey].content, host.files[betaMobileKey].content], betaBefore, 'B receipt and both artifacts remain byte-identical');
+test('reference content and catalog discovery hashes invalidate reuse without mtime comparisons', async () => {
+  const host = await integratedHost(['catalog']);
+  await host.approve('catalog');
+  const reusable = () => findReusableD2PagesUnits(host.identity, host.snapshot, undefined, host.skills, { port: host.molecular });
+  assert.equal((await reusable()).length, 1);
+  host.state.usage = 'Unselected usage changed';
+  assert.equal((await reusable()).length, 1);
+  host.state.present = true;
+  assert.equal((await reusable()).length, 0);
+  host.state.present = false;
+  const ref = 'l2/designSystem.ts'; const original = host.content.get(ref)!;
+  host.put(ref, original + '\n// changed');
+  assert.equal((await reusable()).length, 0);
+  await host.approve('catalog', 2);
+  assert.equal((await reusable()).length, 1, 'same product bytes must refresh changed reference hashes in the receipt');
+  host.put(ref, original);
+  assert.equal((await reusable()).length, 0);
+  await host.approve('catalog', 2);
+  assert.equal((await reusable()).length, 1);
+  host.content.delete(ref);
+  assert.equal((await reusable()).length, 0);
 });
 
-void test('unchanged context is a byte no-op while discovery or skill context drift invalidates reuse', async () => {
-  const host = await installHost(['alpha']); const molecular = await molecularFixture(); const receipt = (hash: string) => pageReceipt(molecular, hash);
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, await receipt('context-a'));
-  const desktop = keyOf(d2PageFile(IDENTITY, 'alpha', 'desktop')); const mobile = keyOf(d2PageFile(IDENTITY, 'alpha', 'mobile'));
-  const artifactWrites = () => host.writes.filter(item => item === desktop || item === mobile).length;
-  const before = artifactWrites();
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, await receipt('context-a'));
-  assert.equal(artifactWrites(), before);
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', molecular)).length, 1);
-
-  const unrelatedResolvedDependency = await changedMolecular(molecular, prepared => { prepared.inventory.resolvedDeps = [102040, 102099]; });
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', unrelatedResolvedDependency)).length, 0, 'the persisted discovery preimage detects resolved dependency drift');
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-b', molecular)).length, 0);
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, await receipt('context-b'));
-  assert.equal(artifactWrites(), before, 'context regeneration preserves identical artifact bytes');
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-b', molecular)).length, 1);
+test('reference and snapshot changes during approval never approve a stale page', async () => {
+  const host = await integratedHost(['catalog']);
+  await assert.rejects(() => host.approve('catalog', 1, async () => {
+    host.put(host.prefix + '/input.json', JSON.stringify({ ...host.snapshot, snapshotHash: 'changed' }));
+  }), /STALE_RUN/);
+  assert.equal(host.content.get(host.prefix + '/pages50/results/catalog.json'), '');
 });
 
-void test('an unselected usage contract does not invalidate a valid no-match unit', async () => {
-  const host = await installHost(['alpha']); const molecular = await molecularFixture();
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, await pageReceipt(molecular, 'context-a'));
-  molecular.state.usageSkill = 'Changed but never selected.';
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', molecular)).length, 1);
+test('no-op approval also revalidates the snapshot after compilation', async () => {
+  const host = await integratedHost(['catalog']);
+  await host.approve('catalog');
+  await assert.rejects(() => host.approve('catalog', 2, async () => {
+    host.put(host.prefix + '/input.json', JSON.stringify({ ...host.snapshot, snapshotHash: 'changed' }));
+  }), /STALE_RUN/);
 });
-
-void test('an older receipt never approves the current page dependency contract', async () => {
-  const host = await installHost(['alpha']);
-  const molecular = await molecularFixture();
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, await pageReceipt(molecular, 'direct-test-context'));
-  const resultKey = keyOf(d2PagesResultFile(IDENTITY, 'alpha'));
-  const old = JSON.parse(host.files[resultKey].content) as Record<string, unknown>;
-  old.schemaVersion = '2026-09-23-agent-defs-l2-pages-v3';
-  host.files[resultKey].content = JSON.stringify(old);
-  const before = host.writes.length;
-  const changed = { desktop: `${sources('alpha').desktop}// v4\n`, mobile: `${sources('alpha').mobile}// v4\n` };
-  const approved = await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', changed, ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, await pageReceipt(molecular, 'direct-test-context'));
-  assert.equal(approved.schemaVersion, '2026-09-26-agent-defs-l2-pages-v7');
-  assert.ok(host.writes.length > before, 'old receipt triggers a new persistence pass');
-});
-
-void test('dependency, candidate index and selected usage drift each invalidate molecular reuse', async () => {
-  const host = await installHost(['alpha']); const molecular = await molecularFixture();
-  const receipt = await pageReceipt(molecular, 'context-a', ['groupFixture']);
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, receipt);
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', molecular)).length, 1);
-
-  const dependency = await changedMolecular(molecular, prepared => { prepared.inventory.directDeps = [102040, 102099]; });
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', dependency)).length, 0);
-
-  const candidate = await changedMolecular(molecular, prepared => { prepared.candidates.reads[0].sha256 = `sha256:${'9'.repeat(64)}`; });
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', candidate)).length, 0);
-
-  molecular.state.usageSkill = 'Changed selected usage contract.';
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', molecular)).length, 0);
-  molecular.state.usageSkill = 'Use the fixture molecule.';
-  const artifactKeys = new Set([keyOf(d2PageFile(IDENTITY, 'alpha', 'desktop')), keyOf(d2PageFile(IDENTITY, 'alpha', 'mobile'))]);
-  const artifactWrites = host.writes.filter(key => artifactKeys.has(key)).length;
-  const changedReceipt = await pageReceipt(candidate, 'context-a', ['groupFixture']);
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 2, changedReceipt);
-  assert.equal(host.writes.filter(key => artifactKeys.has(key)).length, artifactWrites, 'context regeneration preserves identical artifact mtimes');
-  assert.equal((await readD2PagesResult(IDENTITY, 'alpha'))?.moleculeReceipt.contextHash, changedReceipt.moleculeReceipt.contextHash);
-});
-
-void test('a catalog appearing after an approved honest absence invalidates reuse', async () => {
-  const host = await installHost(['alpha']); const available = await molecularFixture();
-  const absent = await changedMolecular(available, prepared => {
-    prepared.inventory.catalogProject = null; prepared.inventory.selectedBy = null; prepared.inventory.candidates = []; prepared.inventory.groups = []; prepared.inventory.metrics.reads = [];
-    prepared.candidates = { groups: [], context: '{}', catalogs: [], reads: [] };
-  });
-  await persistD2PagesUnit(IDENTITY, host.snapshot, 'alpha', sources('alpha'), ['alpha__desktop__page11', 'alpha__mobile__page11'], 1, await pageReceipt(absent, 'context-a'));
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', absent)).length, 1);
-  assert.equal((await findReusableD2PagesUnits(IDENTITY, host.snapshot, async () => undefined, 'context-a', available)).length, 0);
-});
-
-async function installHost(pages = PAGES) {
-  const files: Record<string, Stored> = {}; const writes: string[] = []; const state = { failKey: '' };
-  const snapshot: D2InputSnapshot = { ...IDENTITY, schemaVersion: D2_INPUT_VERSION, device: 'web', snapshotHash: `sha256:${'a'.repeat(64)}`, releaseIdentity: null, sources: [], l4: {} as D2InputSnapshot['l4'], selection: { pages: [], writePageIds: pages, preservePageIds: [], remove: [], counts: { pages: pages.length, endpoints: 0, usecases: 0, destinations: pages.length * 2, materializationItems: pages.length * 2 } }, normalizations: [], problems: [] };
-  const seed = (info: Info, content = '') => { const file: Stored = { ...info, status: 'changed', content, getContent: async () => file.content }; files[keyOf(info)] = file; return file; };
-  seed(d2InputFile(IDENTITY), JSON.stringify(snapshot));
-  const units = [];
-  for (const pageId of pages) { const source = `export const definition = {"pageId":"${pageId}"} as const;\nexport const pipeline = [] as const;\n`; const sourceHash = await sha256Text(source); seed(d2SharedFile(IDENTITY, pageId), source); units.push({ schemaVersion: D2_SHARED_VERSION, ...IDENTITY, pageId, status: 'approved', snapshotHash: snapshot.snapshotHash, contractHash: 'fixture', contextHash: 'fixture-context', skillHash: 'fixture-skill', sourceHash, artifactPath: `l2/fixture/web/shared/${pageId}.defs.ts`, pipelineItemId: `${pageId}__l2_shared`, attempts: 1 }); for (const device of ['desktop', 'mobile'] as const) seed(d2PageFile(IDENTITY, pageId, device)); seed(d2PagesResultFile(IDENTITY, pageId)); }
-  seed(d2SharedManifestFile(IDENTITY), JSON.stringify({ schemaVersion: D2_SHARED_VERSION, ...IDENTITY, status: 'approved', snapshotHash: snapshot.snapshotHash, units })); seed(d2PagesManifestFile(IDENTITY));
-  (globalThis as unknown as { mls: unknown }).mls = { actualProject: IDENTITY.project, stor: { files, getKeyToFile: keyOf, localStor: { setContent: async (file: Stored, value: { content: string }) => { const key = keyOf(file); if (key === state.failKey) throw new Error('simulated write failure'); file.content = value.content; writes.push(key); } } } };
-  return { snapshot, files, writes, get failKey() { return state.failKey; }, set failKey(value: string) { state.failKey = value; } };
-}
-function sources(pageId: string) {
-  const templateSelection = { categoryRef: 'calendarScheduling', targetPage: 'page11' as const, experiencePage: null, experienceId: null, styleId: null, layoutId: null, reason: 'Fixture published guidance.', requirementsMet: [], digest: `sha256:${'1'.repeat(64)}`, sources: [] };
-  return Object.fromEntries((['desktop', 'mobile'] as const).map(device => [device, renderD2Page({ device, pageId, pageLabel: pageId, pageIntent: `Read ${pageId} ${device}.`, actors: [], authorityRefs: [], operationBindings: [], descriptions: [], templateSelection, coverage: [], pipeline: [buildD2PagePipeline('fixture', pageId, device, 'calendarScheduling', ['_102020_/l2/agentDefsL2/skills/genD2PageRenderTs.ts'], templateSelection, [])] }, IDENTITY.project)])) as Record<'desktop' | 'mobile', string>;
-}
-async function molecularFixture() {
-  const catalog = { reference: '/_102040_/l2/molecules/groupfixture/index.defs', via: 'stor' as const, group: 'groupFixture', usageContract: '/_102020_/l2/aura/molecules/skills/groupFixture/usage', molecules: [{ tag: 'groupfixture--ml-card', defs: '/_102040_/l2/molecules/groupfixture/ml-card.defs' }], scenarios: [{ scenario: 'show', recommended: ['groupfixture--ml-card'] }], skill: 'Fixture group.' };
-  const inventory = { consumerProject: 102047, catalogProject: 102040, selectedBy: 'dependency', directDeps: [102040], resolvedDeps: [102040], candidates: [102040], reason: null, groups: [{ groupId: 'groupFixture', purpose: 'Fixture.', moleculeCount: 1, indexReference: catalog.reference }], context: '{}', metrics: { inventoryBytes: 2, totalBytes: 2, reads: [{ role: 'inventory' as const, reference: '/_102040_/l2/molecules/skill', via: 'stor' as const, sha256: `sha256:${'1'.repeat(64)}` }] } };
-  const candidates = { groups: [{ groupId: 'groupFixture', scenarios: [{ scenario: 'show', candidates: ['groupfixture--ml-card'] }] }], context: '{}', catalogs: [catalog], reads: [{ role: 'group-index' as const, reference: catalog.reference, via: 'stor' as const, sha256: `sha256:${'2'.repeat(64)}` }] };
-  const state = { usageSkill: 'Use the fixture molecule.' };
-  const port: D2MoleculeCatalogPort = { discover: async () => ({ activeProject: 102047, directDeps: [102040], resolvedDeps: [102040], candidates: [102040], project: 102040, selectedBy: 'dependency', error: '', warnings: [] }), readLevel1: async () => ({ level1: null, error: 'unused' }), readGroup: async () => ({ catalog, error: '' }), readUsageContract: async reference => ({ contract: { reference, via: 'stor', skill: state.usageSkill }, error: '' }) };
-  const prepared: D2MoleculePreparedContext = { inventory, candidates, receipt: await buildD2MoleculeReceipt(inventory, candidates) };
-  return { port, prepared, state };
-}
-async function pageReceipt(molecular: Awaited<ReturnType<typeof molecularFixture>>, contextHash: string, groups: string[] = []) { const selection = await resolveD2MoleculeSelection(molecular.port, molecular.prepared.inventory, groups, molecular.prepared.candidates); return { contextHash, catalogHash: 'catalog', skillHashes: { technical: contextHash }, categoryRef: 'calendarScheduling', categoryReason: 'Scheduling capability.', categoryEvidenceRefs: ['list'], organismIds: ['organism.list.1'], moleculeReasons: { desktop: 'none', mobile: 'none' }, moleculeReceipt: await buildD2MoleculeReceipt(molecular.prepared.inventory, molecular.prepared.candidates, selection) }; }
-async function changedMolecular(source: Awaited<ReturnType<typeof molecularFixture>>, mutate: (prepared: D2MoleculePreparedContext) => void) { const prepared = structuredClone(source.prepared); mutate(prepared); prepared.receipt = await buildD2MoleculeReceipt(prepared.inventory, prepared.candidates); return { port: source.port, prepared, state: source.state }; }
-function keyOf(info: Info): string { return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`; }

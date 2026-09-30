@@ -8,6 +8,8 @@ import { D2_CONTRACTS_VERSION, sha256Text } from '/_102020_/l2/agentDefsL2/steps
 import { d2ContractFile, d2ContractsManifestFile } from '/_102020_/l2/agentDefsL2/steps/contracts30/io.js';
 import { d2SharedFile, d2SharedManifestFile, d2SharedResultFile, readD2SharedManifest, readD2SharedResult } from '/_102020_/l2/agentDefsL2/steps/shared40/io.js';
 import { finalizeD2SharedBarrier, persistD2SharedUnit as persistUnit } from '/_102020_/l2/agentDefsL2/steps/shared40/run.js';
+import { D2_DEFINITION_VERSION } from '/_102020_/l2/agentDefsL2/helpers/d2DefinitionFormat.js';
+import { renderD2SharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
 
 const compileFixture = async () => {};
 const persistD2SharedUnit = (identity: D2RunIdentity, snapshot: D2InputSnapshot, pageId: string, source: string, attempt: number, receipt: Parameters<typeof persistUnit>[5], verify?: () => Promise<void>) => persistUnit(identity, snapshot, pageId, source, attempt, receipt, verify, compileFixture);
@@ -25,7 +27,7 @@ void test('shared compilation finding keeps source but never approves result or 
 
 const IDENTITY: D2RunIdentity = { project: 102047, module: 'fixture' };
 const PAGE = 'records';
-const RECEIPT = { contextHash: 'fixture-context', skillHash: 'fixture-skill' };
+const RECEIPT = { contextHash: 'fixture-context', skillHash: 'fixture-skill', sourceHashes: {}, symbols: [{ fileRef: 'l2/fixture/web/contracts/records.defs.ts' }] };
 type Info = { project: number; level: number; folder: string; shortName: string; extension: string };
 type Stored = Info & { status: string; versionRef: string; content: string; getValueInfo: () => Promise<{ content: string }>; getContent: () => Promise<string> };
 
@@ -57,8 +59,8 @@ void test('snapshot switched after shared write cannot produce an approved resul
 
 void test('identical receipt is a no-op while changed context or legacy receipt invalidates reuse', async () => {
   const host = await installHost(); const source = sharedSource();
-  const receiptA = { contextHash: 'context-a', skillHash: 'skill-a' };
-  const receiptB = { contextHash: 'context-b', skillHash: 'skill-b' };
+  const receiptA = { ...RECEIPT, contextHash: 'context-a', skillHash: 'skill-a' };
+  const receiptB = { ...RECEIPT, contextHash: 'context-b', skillHash: 'skill-b' };
   await persistD2SharedUnit(IDENTITY, host.snapshot, PAGE, source, 1, receiptA);
   host.writes.length = 0;
   const reused = await persistD2SharedUnit(IDENTITY, host.snapshot, PAGE, source, 2, receiptA);
@@ -85,5 +87,5 @@ async function installHost() {
   (globalThis as unknown as { mls: unknown }).mls = { actualProject: IDENTITY.project, stor: { files, getKeyToFile: keyOf, localStor: { setContent: async (file: Stored, value: { content: string }) => { writes.push(keyOf(file)); file.content = value.content; } } } };
   return { files, snapshot, contractSource, seed, writes };
 }
-function sharedSource(): string { return 'export const definition = {"schemaVersion":"test"} as const;\nexport const pipeline = {"type":"l2_shared"} as const;\n'; }
+function sharedSource(): string { return renderD2SharedDefinitionDocument({ schemaVersion: D2_DEFINITION_VERSION, artifactType: 'shared', pageId: PAGE, intent: 'Read records.', references: [], contractRef: { purpose: 'record contract', fileRef: 'l2/fixture/web/contracts/records.defs.ts' }, states: [], actions: [], contents: [], scenarios: [], authorityRefs: [] }, IDENTITY.project); }
 function keyOf(info: Info): string { return `${info.project}_${info.level}_${info.folder}/${info.shortName}${info.extension}`; }

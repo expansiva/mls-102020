@@ -109,6 +109,7 @@ export interface D2MoleculeResearchResult { roles: D2MoleculePublishedRole[]; re
 /** First pass: expose published purposes and page needs so semantic selection can shortlist groups. */
 export function buildD2MoleculeResearchQuery(inventory: D2MoleculeInventory, needs: D2MoleculeNeed[]): string {
   return JSON.stringify({
+    discovery: { consumerProject: inventory.consumerProject, catalogProject: inventory.catalogProject, selectedBy: inventory.selectedBy, directDeps: inventory.directDeps, resolvedDeps: inventory.resolvedDeps, candidates: inventory.candidates },
     catalog: inventory.catalogProject === null ? { state: 'absent', reason: inventory.reason } : {
       state: inventory.groups.length ? 'available' : 'valid-without-groups',
       groups: inventory.groups.map(({ groupId, purpose }) => ({ groupId, purpose })),
@@ -122,6 +123,10 @@ export function buildD2MoleculeResearchQuery(inventory: D2MoleculeInventory, nee
       'No match is valid when justified. An absent catalog is distinct from a valid catalog without a match.',
     ],
   });
+}
+
+export function d2MoleculeInventoryHash(inventory: D2MoleculeInventory): Promise<string> {
+  return sha256Text(JSON.stringify(inventory));
 }
 
 /** Second pass: read only shortlisted index/scenario/usage sources, deduplicating reads for this round. */
