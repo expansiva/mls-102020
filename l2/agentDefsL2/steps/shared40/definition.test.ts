@@ -6,9 +6,10 @@ import type { D2DefinitionDocument } from '/_102020_/l2/agentDefsL2/helpers/d2De
 import type { D2ContractCall, D2ContractField, D2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/contracts.js';
 import { renderD2PageContract } from '/_102020_/l2/agentDefsL2/steps/contracts30/render.js';
 import type { D2SelectedPage } from '/_102020_/l2/agentDefsL2/steps/input20/contracts.js';
-import { buildD2SharedDefinitionDocument, parseD2SharedDefinitionDocument, validateD2SharedDefinitionAgainstContract } from '/_102020_/l2/agentDefsL2/steps/shared40/definition.js';
+import { buildD2SharedDefinitionDocument, deriveD2SharedValidationModel, parseD2SharedDefinitionDocument, validateD2SharedDefinitionAgainstContract } from '/_102020_/l2/agentDefsL2/steps/shared40/definition.js';
 import { gateD2SharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/gate.js';
 import { parseD2RenderedSharedDefinitionDocument, renderD2SharedDefinitionDocument } from '/_102020_/l2/agentDefsL2/steps/shared40/render.js';
+import { resolveD2PageScenarioSurfaces } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 
 void test('public shared document deduplicates contents and keeps only semantic contract refs', () => {
   const { page, contract, judgment } = fixture();
@@ -54,6 +55,33 @@ void test('gate rejects invented refs, denied fields, and removed selection prec
   const removed = structuredClone(judgment);
   removed.scenaries.find(scene => scene.value === 'update')!.preconditions = [];
   assert.throws(() => gateD2SharedDefinitionDocument('inventory', page, contract, removed), /D2_SHARED_PRECONDITION_REMOVED/);
+});
+
+void test('rehydrated scenario kinds follow identity and contract operation, independent of order', () => {
+  const { page, contract, judgment } = fixture();
+  const document = gateD2SharedDefinitionDocument('inventory', page, contract, judgment);
+  document.scenarios.splice(1, 0, { ...structuredClone(document.scenarios[0]), id: 'consultarSaldo' });
+  document.scenarios = [document.scenarios[2], document.scenarios[1], document.scenarios[0]];
+
+  const shared = deriveD2SharedValidationModel('inventory', page, contract, document);
+  assert.deepEqual(shared.scenaries.map(scene => [scene.value, scene.kind]), [
+    ['update', 'command'], ['consultarSaldo', 'detail'], ['base', 'base'],
+  ]);
+  assert.deepEqual(resolveD2PageScenarioSurfaces(shared).map(scene => scene.kind), ['command', 'detail', 'base']);
+
+  const mutantBase = structuredClone(document);
+  mutantBase.scenarios[2].actionRef = 'updateRecord';
+  assert.throws(() => deriveD2SharedValidationModel('inventory', page, contract, mutantBase), /D2_SHARED_BASE_SCENARY_COMMAND_INCOMPATIBLE/);
+  const mutantJudgment = structuredClone(judgment);
+  mutantJudgment.scenaries[0].actionId = 'updateRecord';
+  assert.throws(() => gateD2SharedDefinitionDocument('inventory', page, contract, mutantJudgment), /D2_SHARED_BASE_SCENARY_COMMAND_INCOMPATIBLE/);
+
+  const actionless = structuredClone(document);
+  delete actionless.scenarios[1].actionRef;
+  assert.throws(() => deriveD2SharedValidationModel('inventory', page, contract, actionless), /D2_SHARED_SCENARY_ACTION_UNKNOWN/);
+
+  const unauthorizedPage = { ...page, operationBindings: [] };
+  assert.throws(() => deriveD2SharedValidationModel('inventory', unauthorizedPage, contract, document), /D2_SHARED_OPERATION_BINDING_MISSING/);
 });
 
 void test('typed list identity without display authority is omitted while its action and result stay available', () => {

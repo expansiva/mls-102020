@@ -231,14 +231,21 @@ export function parseD2SharedDefinitionDocument(value: unknown, symbols: readonl
 export function deriveD2SharedValidationModel(moduleName: string, page: D2SelectedPage, contract: D2PageContract, document: D2SharedDefinitionDocument) {
   const judgment: D2SharedJudgment = {
     schemaVersion: D2_SHARED_JUDGMENT_VERSION, pageId: page.pageId,
-    scenaries: document.scenarios.map((scene, index) => ({
-      value: scene.id, kind: index === 0 ? 'base' : 'command', actionId: scene.actionRef || '',
-      preconditions: scene.preconditions.map(ref => {
-        const call = contract.calls.find(item => `${item.callPascal}Input` === ref.fragment?.split('.')[0]);
-        if (!call || !ref.fragment?.includes('.')) throw new Error(`D2_SHARED_PRECONDITION_UNKNOWN: ${ref.fragment}`);
-        return `ui.${page.pageId}.${call.callName}.input.${ref.fragment.slice(ref.fragment.indexOf('.') + 1)}`;
-      }),
-    })),
+    scenaries: document.scenarios.map(scene => {
+      const call = contract.calls.find(item => item.callName === scene.actionRef);
+      const isQuery = call?.operation === 'list' || call?.operation === 'get';
+      if (scene.id === 'base' && call && !isQuery) throw new Error(`D2_SHARED_BASE_SCENARY_COMMAND_INCOMPATIBLE: ${scene.actionRef}`);
+      return {
+        value: scene.id,
+        kind: scene.id === 'base' ? 'base' : isQuery ? 'detail' : 'command',
+        actionId: scene.actionRef || '',
+        preconditions: scene.preconditions.map(ref => {
+          const inputCall = contract.calls.find(item => `${item.callPascal}Input` === ref.fragment?.split('.')[0]);
+          if (!inputCall || !ref.fragment?.includes('.')) throw new Error(`D2_SHARED_PRECONDITION_UNKNOWN: ${ref.fragment}`);
+          return `ui.${page.pageId}.${inputCall.callName}.input.${ref.fragment.slice(ref.fragment.indexOf('.') + 1)}`;
+        }),
+      };
+    }),
     initialLoadActionIds: document.actions.filter(action => action.initialLoad).map(action => action.id),
     actionBehaviors: document.actions.map(action => ({ actionId: action.id, refreshActionIds: action.refreshActionRefs || [], destructive: !!action.confirmation, ...(action.confirmation ? { confirmation: action.confirmation } : {}) })),
   };
@@ -375,6 +382,7 @@ function validateSharedJudgment(page: D2SelectedPage, contract: D2PageContract, 
     if (!scene.value || sceneIds.has(scene.value)) throw new Error(`D2_SHARED_SCENARY_DUPLICATE: ${scene.value}`);
     sceneIds.add(scene.value);
     const call = calls.get(scene.actionId);
+    if (scene.value === 'base' && call && call.operation !== 'list' && call.operation !== 'get') throw new Error(`D2_SHARED_BASE_SCENARY_COMMAND_INCOMPATIBLE: ${scene.actionId}`);
     if (!call && !(scene.kind === 'base' && !scene.actionId && !scene.preconditions.length && !contract.calls.length)) throw new Error(`D2_SHARED_SCENARY_ACTION_UNKNOWN: ${scene.actionId}`);
     for (const key of scene.preconditions) if (!call || !userInputByStateKey(page.pageId, call, key)) throw new Error(`D2_SHARED_PRECONDITION_UNKNOWN: ${key}`);
     const binding = call && bindings.find(item => item.route === call.route);
