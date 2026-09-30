@@ -9,7 +9,7 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { parseD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import type { D2PageRequestsInput } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
-import { gateD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { gateD2SharedV2, parseD2SharedV2, sharedFromDerived, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { beforePromptStep, reusableD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
 import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
 import {
@@ -320,6 +320,10 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(best.moduleName, moduleName);
   const data = contextFrom(pack, best.pageId, moduleName);
   const built = buildD2SharedPrompt(data);
+  const fixedIds = Object.keys(sharedFromDerived(data.derived).functions);
+  const human = JSON.parse(built.humanPrompt) as { fixedFunctions: Array<{ id: string; calls?: string }> };
+  assert.deepEqual(human.fixedFunctions.map(item => item.id), fixedIds);
+  for (const id of fixedIds) assert.equal(built.humanPrompt.includes(`"id":"${id}"`), true);
   assert.equal(built.chars <= 160_000, true);
   assert.ok(built.chars > 0);
   assert.equal(built.systemPrompt.startsWith('<!-- modelType: reasoning -->'), true);
@@ -340,7 +344,7 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(parameters.includes('"source":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*(\\\\.[A-Za-z][A-Za-z0-9]*)*$"}'), true);
   assert.equal(built.humanPrompt.includes(data.page11.desktop.organisms[Object.keys(data.page11.desktop.organisms)[0]].text), false);
   assert.equal(built.chars <= 160_000, true);
-  assert.equal(built.chars, 8033);
+  assert.equal(built.chars, 8224);
 });
 
 void test('live answers accept entry params and refuse prose or a multi-id sets', () => {
