@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2Core.ts" enhancement="_blank"/>
 
+// 2026-09-30: compatibility state for frozen contracts30; the new public agent does not import this flow.
+
 import { readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 
 export const D2_AGENT_NAME = 'agentDefsL2' as const;

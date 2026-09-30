@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "reembolsoDespesas",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "minhas_despesas",
+      "actors": [
+        "colaborador"
+      ],
+      "reads": [
+        {
+          "entity": "Despesa",
+          "family": "tdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "journey:consultarPropriasDespesas/inspecionarDespesa",
+            "journey:consultarPropriasDespesas/localizarPropriasDespesas",
+            "journey:corrigirEreenviarDespesa/corrigirDespesa",
+            "journey:corrigirEreenviarDespesa/inspecionarMotivoRejeicao",
+            "journey:corrigirEreenviarDespesa/localizarDespesaRejeitada",
+            "journey:corrigirEreenviarDespesa/reenviarDespesa",
+            "journey:registrarEenviarDespesa/registrarDespesa"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Despesa",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:registrarEenviarDespesa/registrarDespesa"
+          ]
+        },
+        {
+          "entity": "Despesa",
+          "operation": "transition",
+          "transitionRef": "reenviarParaAprovacao",
+          "from": [
+            "journey:corrigirEreenviarDespesa/reenviarDespesa"
+          ]
+        },
+        {
+          "entity": "Despesa",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:corrigirEreenviarDespesa/corrigirDespesa"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "avaliar_despesas_equipe",
+      "actors": [
+        "gestorEquipe"
+      ],
+      "reads": [
+        {
+          "entity": "Despesa",
+          "family": "tdm",
+          "scope": "related",
+          "derived": [],
+          "from": [
+            "journey:avaliarDespesaDaEquipe/inspecionarDespesaPendente",
+            "journey:avaliarDespesaDaEquipe/localizarDespesaPendente",
+            "journey:avaliarDespesaDaEquipe/registrarDecisaoDaDespesa"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Despesa",
+          "operation": "transition",
+          "transitionRef": "registrarDecisaoDaDespesa",
+          "from": [
+            "journey:avaliarDespesaDaEquipe/registrarDecisaoDaDespesa"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "registrar_pagamentos_despesas",
+      "actors": [
+        "financeiro"
+      ],
+      "reads": [
+        {
+          "entity": "Despesa",
+          "family": "tdm",
+          "scope": "related",
+          "derived": [],
+          "from": [
+            "journey:registrarPagamentoDeDespesa/inspecionarDespesaAprovada",
+            "journey:registrarPagamentoDeDespesa/localizarDespesaAprovada",
+            "journey:registrarPagamentoDeDespesa/registrarPagamento"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Despesa",
+          "operation": "transition",
+          "transitionRef": "registrarPagamento",
+          "from": [
+            "journey:registrarPagamentoDeDespesa/registrarPagamento"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "meu_cadastro_gestor",
+      "actors": [
+        "gestorEquipe"
+      ],
+      "reads": [
+        {
+          "entity": "GestorEquipe",
+          "family": "mdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "organism:form"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "GestorEquipe",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        },
+        {
+          "entity": "GestorEquipe",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "organism:form"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-09-21T18:01:35.499Z"
+  }
+}

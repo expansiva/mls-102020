@@ -1,8 +1,8 @@
 # Changelog
 
-- 2026-09-21: enabled `input20` with a private deterministic worker and versioned input/report contracts.
-- 2026-09-21: implemented the pure `contracts30` typed catalog and renderer without enabling live writes.
-- 2026-09-21: enabled deterministic `contracts30` with per-page reconciliation and an approved hash barrier.
+## 2026-09-30 — page11 v2 foundation
 
-- 2026-09-21 — Declared the complete six-step flow, deterministic message/task-step entry, owned
-  pipeline, versioned schemas and explicit unavailable-step diagnostics for d2_01.
+- Recreated `agentDefsL2` with a public page11 renderer/parser and an internal needs draft.
+- Added deterministic category experience selection and pure gates for menu, sections, actions, ontology/grants, templates, molecules and prompt size.
+- Removed the previous generation flow. Preserved the frozen contracts30 compatibility chain for L1.
+- Promoted input snapshot code and hashing to `l2/helpers/`; M2 now uses the shared hash helper.

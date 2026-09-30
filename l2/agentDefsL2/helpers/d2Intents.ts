@@ -1,5 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2Intents.ts" enhancement="_blank"/>
 
+// 2026-09-30: retained for the new status entry and frozen contracts30 registration.
+
 export function addD2Step(
   context: mls.msg.ExecutionContext,
   parentStepId: number,

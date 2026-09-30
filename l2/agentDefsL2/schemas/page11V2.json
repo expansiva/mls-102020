@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://collab.codes/schemas/agentDefsL2/page11V2.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["template", "intent", "sections", "organisms", "molecules"],
+  "properties": {
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category"],
+      "properties": { "category": { "type": "string" } }
+    },
+    "intent": { "type": "string" },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "priority", "purpose", "organisms"],
+        "properties": {
+          "id": { "type": "string" },
+          "priority": { "type": "string", "enum": ["primary", "main", "secondary"] },
+          "purpose": { "type": "string" },
+          "organisms": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "organisms": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "text", "intents"],
+        "properties": {
+          "kind": { "type": "string" },
+          "text": { "type": "string" },
+          "intents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "kind", "to"],
+              "properties": {
+                "id": { "type": "string" },
+                "kind": { "type": "string", "enum": ["submit", "navigate"] },
+                "to": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "molecules": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role", "preferred", "alternative"],
+          "properties": {
+            "role": { "type": "string" },
+            "preferred": { "type": "string" },
+            "alternative": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}
