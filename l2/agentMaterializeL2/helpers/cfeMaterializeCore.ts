@@ -1,10 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.ts" enhancement="_blank"/>
 
-// Pure materialization core for agentMaterializeL2 (.defs.ts -> .ts). It has no fs, no mls.* and
+// Pure materialization core for agentMaterializeL2. It has no fs, no mls.* and
 // no DOM dependency so the Node runner and the Studio agent can reuse parser, ordering, staleness
 // and prompt assembly rules.
 
-import { SHARED_SCENARY_MEMBERS, parseSharedI18nCatalogue } from '/_102020_/l2/agentMaterializeL2/helpers/cfeSharedScaffold.js';
+import { SHARED_SCENARY_MEMBERS, parsePreviousI18n, parseSharedI18nCatalogue } from '/_102020_/l2/agentMaterializeL2/helpers/cfeSharedScaffold.js';
+import { I18N_UNTRANSLATED_MARKER } from '/_102020_/l2/agentMaterializeL2/helpers/cfePageSkeleton.js';
 export { CONTRACTS_102029, expandContextRef } from '/_102020_/l2/runtime102029Context.js';
 import { CONTRACTS_102029, expandContextRef } from '/_102020_/l2/runtime102029Context.js';
 
@@ -118,7 +119,7 @@ export function countPage11Items(items: { outputPath: string | null }[]): number
 }
 
 /**
- * The contract .ts a shared/page defs declares, or '' when it names none. The contract model is
+ * The contract .defs.ts a shared/page defs declares, or '' when it names none. The contract model is
  * disposed as soon as the contract phase compiled it, so whoever compiles a file that imports it has
  * to load it back first — otherwise the import resolves to nothing and yields a false TS2792.
  */
@@ -127,7 +128,9 @@ export function contractTsPathOf(defsContent: string | null): string {
   try {
     const data = parseDefs(defsContent).data as Record<string, unknown>;
     const ref = data && typeof data.contractRef === 'object' && data.contractRef ? data.contractRef as Record<string, unknown> : null;
-    return ref && typeof ref.tsPath === 'string' ? ref.tsPath : '';
+    const project = Number(/^\/\/\/ <mls fileReference="_(\d+)_\//u.exec(defsContent)?.[1] || 0);
+    const defPath = ref && typeof ref.defPath === 'string' ? resolveProjectRelativeRef(ref.defPath, project) : '';
+    return defPath.endsWith('.defs.ts') ? defPath : '';
   } catch {
     return '';   // malformed defs: no contract dep to preload
   }
@@ -957,6 +960,8 @@ function rendersStructuralMutationFeedback(action: Record<string, unknown>, stat
   const status = member(action.statusStateKey);
   const error = member(action.errorStateKey);
   if (!status || !error) return false;
+  const hasText = (template: string): boolean => /\bthis\.msg\s*(?:\(\s*['"][^'"]+['"]\s*\)|\[\s*['"][^'"]+['"]\s*\]|\.[A-Za-z_$][\w$]*)/u.test(template)
+    || /<[^>]+>[^<${}\s][^<${}]*<\//u.test(template);
   for (const method of code.matchAll(/^[ \t]*(?:(?:public|private|protected|override|async)\s+)*([A-Za-z_$][\w$]*)\s*(?:<[^>{}]+>)?\s*\([^)]*\)\s*(?::\s*[^{]+)?\{/gmu)) {
     const body = sliceGeneratedMethodBody(code, method[1]);
     if (!body) continue;
@@ -967,10 +972,25 @@ function rendersStructuralMutationFeedback(action: Record<string, unknown>, stat
     };
     const statusRef = references(status);
     const errorRef = references(error);
+    const aliases = (condition: string): string => {
+      const names = [...body.matchAll(new RegExp(`\\bconst\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*(?:${condition})\\s*;`, 'gu'))].map(match => `${escapeForRegExp(match[1])}\\b`);
+      return `(?:${condition}${names.length ? `|${names.join('|')}` : ''})`;
+    };
+    const successCondition = aliases(`${statusRef}\\s*===\\s*['"]success['"]`);
+    const errorCondition = aliases(`${statusRef}\\s*===\\s*['"]error['"]`);
     const branch = (condition: string): string => new RegExp(`(?:${condition}\\s*\\?|if\\s*\\(\\s*${condition}\\s*\\)\\s*\\{\\s*return)\\s*html\x60([^\x60]*)\x60`, 'u').exec(body)?.[1] || '';
-    const successBranch = branch(`${statusRef}\\s*===\\s*['"]success['"]`);
-    const errorBranch = branch(`(?:${errorRef}|${statusRef}\\s*===\\s*['"]error['"])`);
-    if (/\bthis\.msg\s*(?:\(\s*['"][^'"]+['"]\s*\)|\[\s*['"][^'"]+['"]\s*\]|\.[A-Za-z_$][\w$]*)/u.test(successBranch) && new RegExp(`${errorRef}\\s*\\??\\.message\\b`, 'u').test(errorBranch)) return true;
+    const successBranch = branch(successCondition);
+    const errorBranch = branch(`(?:${errorRef}|${errorCondition})`);
+    const errorText = new RegExp(`${errorRef}\\s*\\??\\.message\\b`, 'u').test(errorBranch);
+    if (hasText(successBranch) && errorText) return true;
+    // A page may render the envelope through a small helper. Only accept a helper call whose
+    // argument is this command's error state and whose returned template reads that argument.message.
+    const helperCall = new RegExp(`\\bthis\\.([A-Za-z_$][\\w$]*)\\(\\s*this\\.${escapeForRegExp(error)}\\s*\\)`, 'u').exec(body);
+    if (!hasText(successBranch) || !helperCall) continue;
+    const helper = new RegExp(`\\b${escapeForRegExp(helperCall[1])}\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*(?::[^)]*)?\\)`, 'u').exec(code);
+    const helperBody = helper && sliceGeneratedMethodBody(code, helperCall[1]);
+    if (helper && helperBody && new RegExp(`\\b${escapeForRegExp(helper[1])}\\s*\\??\\.message\\b`, 'u').test(helperBody)
+      && /return\s+[^;]*html\x60/u.test(helperBody)) return true;
   }
   return false;
 }
@@ -2497,6 +2517,7 @@ export function normalizeGeneratedCode(item: PipelineItem, data: unknown, code: 
     return code.replace(/export\s+class\s+[A-Za-z_$][A-Za-z0-9_$]*\s+extends\s+CollabLitElement\b/, `export class ${baseClassName} extends CollabLitElement`);
   }
   if (item.type !== 'l2_page') return code;
+  if (mechanicalReference) code = normalizeGeneratedI18n(code, mechanicalReference);
   if (mechanicalReference || sharedTemplate) {
     const names = [...new Set([mechanicalReference, sharedTemplate].filter(Boolean).join('\n').match(/\b[A-Za-z_$][\w$]*X[0-9a-f]{24,}\b/gu) ?? [])];
     code = normalizeEncodedPublicNames(names, code);
@@ -2506,20 +2527,65 @@ export function normalizeGeneratedCode(item: PipelineItem, data: unknown, code: 
   // the skeleton / shared defs, so a missing baseClassName here is not a skip of the .js rewrite.
   const baseClassName = isRecord(data) && typeof data.baseClassName === 'string' ? data.baseClassName : '';
   const expectedTag = expectedPageCustomElementTag(item.outputPath);
-  const project = Number(/^\/?_(\d+)_\//u.exec(item.outputPath)?.[1] || 0);
-  const refs = (item.dependsFiles ?? []).map(ref => resolveProjectRelativeRef(ref, project))
-    .flatMap(ref => [ref, sharedTsRefOfDtsArtifact(ref)].filter((value): value is string => !!value));
   return code
     .replace(/^([ \t]*\/\/\/\s*\*\*collab_i18n_(?:start|end))(?:\*\*)?\s*$/gmu, '$1**')
     .replace(/@customElement\s*\(\s*(?:['"][^'"]*['"]|[A-Za-z_$][\w$]*)\s*\)/gu, match => expectedTag ? `@customElement('${expectedTag}')` : match)
-    .replace(/(from\s+['"])([^'"]+)(['"])/gu, (match, start, specifier, end) => {
-      if (!/\/(?:shared|contracts)\//u.test(specifier)) return match;
-      const basename = specifier.split('/').pop().replace(/\.(?:ts|js)$/u, '');
-      const matches = [...new Set(refs.filter(ref => ref.split('/').pop()?.replace(/\.(?:ts|js)$/u, '') === basename && /\/(?:shared|contracts)\//u.test(ref)).map(ref => `/${ref.replace(/^\/+/, '').replace(/\.(?:ts|js)$/u, '.js')}`))];
-      return matches.length === 1 ? `${start}${matches[0]}${end}` : match;
-    })
-    .replace(/(from\s+['"][^'"]+\/web\/shared\/[^'"]+)\.ts(['"])/g, '$1.js$2')
     .replace(/(import\s*\{\s*)[A-Za-z_$][A-Za-z0-9_$]*(\s*\}\s*from\s*['"][^'"]+\/web\/shared\/[^'"]+\.js['"])/g, (_match, start, end) => baseClassName ? `${start}${baseClassName}${end}` : _match);
+}
+
+/** Preserve the skeleton's catalogue contract and its translation queue marker across LLM repairs. */
+export function normalizeGeneratedI18n(code: string, skeleton: string): string {
+  const start = '/// **collab_i18n_start**';
+  const end = '/// **collab_i18n_end**';
+  if (!code.includes(start) || !code.includes(end) || !skeleton.includes(start) || !skeleton.includes(end)) return code;
+  const canonical = /\btype\s+([A-Za-z_$][\w$]*)\s*=\s*typeof\s+([A-Za-z_$][\w$]*)\s*;/u.exec(skeleton.slice(skeleton.indexOf(start), skeleton.indexOf(end)));
+  if (!canonical) return code;
+  const [, typeName, defaultConst] = canonical;
+  const generated = new RegExp(`\\btype\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*typeof\\s+${escapeForRegExp(defaultConst)}\\s*;`, 'u').exec(code);
+  if (generated && generated[1] !== typeName && !new RegExp(`\\btype\\s+${escapeForRegExp(typeName)}\\b`, 'u').test(code)) {
+    const oldName = escapeForRegExp(generated[1]);
+    code = code.replace(new RegExp(`\\btype\\s+${oldName}\\s*=`, 'u'), `type ${typeName} =`)
+      .replace(new RegExp(`(:\\s*|<\\s*|,\\s*)${oldName}\\b`, 'gu'), (_match, prefix: string) => `${prefix}${typeName}`);
+  }
+  // Only catalogue declarations are eligible; a readonly value elsewhere may be intentional.
+  const prefix = defaultConst.slice(0, defaultConst.lastIndexOf('_'));
+  const constName = new RegExp(`^([ \\t]*(?:const|let)\\s+${escapeForRegExp(prefix)}_[A-Za-z0-9_$]+[^=]*=\\s*\\{[\\s\\S]*?^[ \\t]*\\})\\s+as const\\s*;`, 'gmu');
+  code = code.replace(constName, '$1;');
+  const skeletonBlock = skeleton.slice(skeleton.indexOf(start), skeleton.indexOf(end));
+  const catalogues = parsePreviousI18n(code, prefix);
+  // parsePreviousI18n reads the quoted keys emitted by the skeleton. LLM output also uses bare
+  // identifier keys, so collect those without evaluating arbitrary generated TypeScript.
+  for (const match of code.slice(code.indexOf(start), code.indexOf(end)).matchAll(new RegExp(`\\bconst\\s+${escapeForRegExp(prefix)}_([A-Za-z0-9_]+)\\s*(?::[^=]+)?=\\s*\\{([\\s\\S]*?)\\n\\};`, 'gu'))) {
+    const locale = match[1].replace(/_/gu, '-').toLowerCase();
+    if (catalogues.has(locale)) continue;
+    const entries: Record<string, string> = {};
+    for (const pair of match[2].matchAll(/(?:^|[,\n])\s*(?:([A-Za-z_$][\w$]*)|['"]([^'"]+)['"])\s*:\s*(['"])((?:\\.|(?!\3)[^\\])*)\3/gmu)) {
+      entries[pair[1] || pair[2]] = pair[4];
+    }
+    if (Object.keys(entries).length > 0) catalogues.set(locale, entries);
+  }
+  const defaultLocale = defaultConst.slice(prefix.length + 1).replace(/_/gu, '-').toLowerCase();
+  const defaultEntries = catalogues.get(defaultLocale);
+  for (const match of skeletonBlock.matchAll(new RegExp(`^([ \\t]*(?:const|let)\\s+(${escapeForRegExp(prefix)}_[A-Za-z0-9_$]+)[^\\n]*\\{)[^\\n]*\\b${I18N_UNTRANSLATED_MARKER}\\b`, 'gmu'))) {
+    const name = match[2];
+    const declaration = new RegExp(`^([ \\t]*(?:const|let)\\s+${escapeForRegExp(name)}[^\\n]*\\{)([^\\n]*)$`, 'mu');
+    code = code.replace(declaration, (line, head: string, tail: string) => tail.includes(I18N_UNTRANSLATED_MARKER)
+      ? line : `${head}${tail} // ${I18N_UNTRANSLATED_MARKER}`);
+  }
+  // A whole non-default catalogue copied byte-for-byte is not a completed translation. Mark it for
+  // @@addLanguage even if a previous LLM round had already stripped the skeleton marker.
+  if (defaultEntries && Object.keys(defaultEntries).length >= 3 && new Set(Object.values(defaultEntries)).size >= 2) {
+    for (const [locale, entries] of catalogues) {
+      if (locale === defaultLocale) continue;
+      const keys = Object.keys(defaultEntries);
+      if (Object.keys(entries).length !== keys.length || !keys.every(key => entries[key] === defaultEntries[key])) continue;
+      const name = `${prefix}_${locale.replace(/-/gu, '_')}`;
+      const declaration = new RegExp(`^([ \\t]*(?:const|let)\\s+${escapeForRegExp(name)}[^\\n]*\\{)([^\\n]*)$`, 'mu');
+      code = code.replace(declaration, (line, head: string, tail: string) => tail.includes(I18N_UNTRANSLATED_MARKER)
+        ? line : `${head}${tail} // ${I18N_UNTRANSLATED_MARKER}`);
+    }
+  }
+  return code;
 }
 
 export function testPathForOutputPath(outputPath: string): string {
@@ -2642,13 +2708,23 @@ function buildSharedTypecheckTest(outputPath: string, data: unknown): string | n
   const stateAssertions: string[] = [];
   const actionAssertions: string[] = [];
   const contractImports = new Map<string, Set<string>>();
+  const assertionNames = new Set<string>();
+  const uniqueAssertionName = (rawName: string, fallback: string): string => {
+    const base = assertName(rawName, fallback);
+    let name = base;
+    for (let suffix = 2; assertionNames.has(name); suffix++) name = `${base}_${suffix}`;
+    assertionNames.add(name);
+    return name;
+  };
 
   const states = Array.isArray(data.states) ? data.states.filter(isRecord) : [];
   for (const state of states) {
-    const propertyName = typeof state.name === 'string' && state.name ? state.name : camelCaseFromKey(String(state.stateKey ?? ''));
+    const propertyName = typeof state.memberName === 'string' && state.memberName
+      ? state.memberName
+      : typeof state.name === 'string' && state.name ? state.name : camelCaseFromKey(String(state.stateKey ?? ''));
     if (!propertyName) continue;
     const expectedType = stateAssertionType(state, sharedStateContractType(outputPath, data, state, contractImports));
-    stateAssertions.push(`type ${assertName(`State_${propertyName}`, propertyName)} = Assert<Assignable<typeof page${propertyAccess(propertyName)}, ${expectedType}>>;`);
+    stateAssertions.push(`type ${uniqueAssertionName(`State_${propertyName}`, propertyName)} = Assert<Assignable<typeof page${propertyAccess(propertyName)}, ${expectedType}>>;`);
   }
 
   const actions = Array.isArray(data.actions) ? data.actions.filter(isRecord) : [];
@@ -2660,10 +2736,10 @@ function buildSharedTypecheckTest(outputPath: string, data: unknown): string | n
     // function shape; accessing a missing/renamed method still fails to compile (TS2339), which is
     // the check worth keeping. Property/state types remain fully asserted above (contract-governed).
     if (typeof action.methodName === 'string' && action.methodName) {
-      actionAssertions.push(`type ${assertName(`Action_${action.methodName}`, action.methodName)} = Assert<Assignable<typeof page${propertyAccess(action.methodName)}, (...args: any[]) => unknown>>;`);
+      actionAssertions.push(`type ${uniqueAssertionName(`Action_${action.methodName}`, action.methodName)} = Assert<Assignable<typeof page${propertyAccess(action.methodName)}, (...args: any[]) => unknown>>;`);
     }
     if (typeof action.handlerName === 'string' && action.handlerName) {
-      actionAssertions.push(`type ${assertName(`Handler_${action.handlerName}`, action.handlerName)} = Assert<Assignable<typeof page${propertyAccess(action.handlerName)}, (...args: any[]) => unknown>>;`);
+      actionAssertions.push(`type ${uniqueAssertionName(`Handler_${action.handlerName}`, action.handlerName)} = Assert<Assignable<typeof page${propertyAccess(action.handlerName)}, (...args: any[]) => unknown>>;`);
     }
   }
 
@@ -2808,8 +2884,8 @@ function commandOutputShape(command: Record<string, unknown>): 'array' | 'pagina
 
 function sharedContractTsPath(outputPath: string, data: Record<string, unknown>): string | null {
   const ref = isRecord(data.contractRef) ? data.contractRef : null;
-  if (ref && typeof ref.tsPath === 'string' && ref.tsPath) return ref.tsPath;
-  if (outputPath.includes('/web/shared/')) return outputPath.replace('/web/shared/', '/web/contracts/');
+  const project = Number(/^\/?_(\d+)_\//u.exec(outputPath)?.[1] || 0);
+  if (ref && typeof ref.defPath === 'string' && ref.defPath.endsWith('.defs.ts')) return resolveProjectRelativeRef(ref.defPath, project);
   return null;
 }
 

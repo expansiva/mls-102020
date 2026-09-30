@@ -198,13 +198,13 @@ test('a model the Studio already had (file open in a tab) is never released', as
 // Both call the same function now, so what is pinned here is WHICH dependencies that function loads.
 const SHARED_DEFS = `_${PROJECT}_/l2/buildFlowFsm/web/shared/projectCatalogue.defs.ts`;
 const SHARED_TS = `_${PROJECT}_/l2/buildFlowFsm/web/shared/projectCatalogue.ts`;
-const CONTRACT_TS = `_${PROJECT}_/l2/buildFlowFsm/web/contracts/projectCatalogue.ts`;
+const CONTRACT_DEFS = `_${PROJECT}_/l2/buildFlowFsm/web/contracts/projectCatalogue.defs.ts`;
 const PAGE_TS = `_${PROJECT}_/l2/buildFlowFsm/web/desktop/page31/projectCatalogue.ts`;
 
 const sharedDefsSource = [
-  '/// <mls fileReference="x" enhancement="_blank"/>',
+  `/// <mls fileReference="${SHARED_DEFS}" enhancement="_blank"/>`,
   'export const projectCatalogueShared = {',
-  `  "contractRef": { "tsPath": "${CONTRACT_TS}" }`,
+  `  "contractRef": { "defPath": "l2/buildFlowFsm/web/contracts/projectCatalogue.defs.ts" }`,
   '} as const;',
 ].join('\n');
 
@@ -212,28 +212,28 @@ test('a page preloads its shared runtime AND the contract that shared imports', 
   const stub = installPathStub({
     [SHARED_DEFS]: sharedDefsSource,
     [SHARED_TS]: 'export class Base {}',
-    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [CONTRACT_DEFS]: 'export interface QryListProjectOutput { clientId: string }',
     [PAGE_TS]: 'export class Page extends Base {}',
   });
   const studio = await loadModule();
   studio.releaseBorrowedModelScope();
 
   await studio.preloadItemTypecheckDeps('l2_page', PAGE_TS, null);
-  assert.deepEqual(stub.loaded.sort(), [CONTRACT_TS, SHARED_TS].sort(),
+  assert.deepEqual(stub.loaded.sort(), [CONTRACT_DEFS, SHARED_TS].sort(),
     'without the contract loaded the page import resolves to any and the cross-file error disappears');
 });
 
 test('a shared preloads the contract named in its own defs', async () => {
   const stub = installPathStub({
     [SHARED_DEFS]: sharedDefsSource,
-    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [CONTRACT_DEFS]: 'export interface QryListProjectOutput { clientId: string }',
     [SHARED_TS]: 'export class Base {}',
   });
   const studio = await loadModule();
   studio.releaseBorrowedModelScope();
 
   await studio.preloadItemTypecheckDeps('l2_shared', SHARED_TS, sharedDefsSource);
-  assert.deepEqual(stub.loaded, [CONTRACT_TS]);
+  assert.deepEqual(stub.loaded, [CONTRACT_DEFS]);
 });
 
 test('a split-page organism preloads the same two models as its page', async () => {
@@ -241,22 +241,22 @@ test('a split-page organism preloads the same two models as its page', async () 
   const stub = installPathStub({
     [SHARED_DEFS]: sharedDefsSource,
     [SHARED_TS]: 'export class Base {}',
-    [CONTRACT_TS]: 'export interface QryListProjectOutput { clientId: string }',
+    [CONTRACT_DEFS]: 'export interface QryListProjectOutput { clientId: string }',
     [organismTs]: 'export function renderList(host: Base) { return null; }',
   });
   const studio = await loadModule();
   studio.releaseBorrowedModelScope();
 
   await studio.preloadItemTypecheckDeps('l2_page_organism', organismTs, null);
-  assert.deepEqual(stub.loaded.sort(), [CONTRACT_TS, SHARED_TS].sort());
+  assert.deepEqual(stub.loaded.sort(), [CONTRACT_DEFS, SHARED_TS].sort());
 });
 
 test('an item type with no cross-file dependency loads nothing', async () => {
-  const stub = installPathStub({ [CONTRACT_TS]: 'export interface X {}' });
+  const stub = installPathStub({ [CONTRACT_DEFS]: 'export interface X {}' });
   const studio = await loadModule();
   studio.releaseBorrowedModelScope();
 
-  await studio.preloadItemTypecheckDeps('l2_contract', CONTRACT_TS, null);
+  await studio.preloadItemTypecheckDeps('l2_contract', CONTRACT_DEFS, null);
   assert.deepEqual(stub.loaded, []);
 });
 
@@ -281,67 +281,96 @@ test('compileAndGetErrors returns null when Monaco compile is absent, [] when pr
   assert.deepEqual(clean, []);
 });
 
-test('storDiskPath calls diskPath as a method (host class, private field)', async () => {
+test('compiler diagnostics include dependency errors and missing proof never becomes clean', async () => {
   const studio = await loadModule();
-  class HostStor {
-    readonly #base = '/data/mls-base';
-    diskPath(info: { project: number; shortName: string }): string {
-      return `${this.#base}/mls-${info.project}/${info.shortName}.ts`;
-    }
-  }
-  const info = { project: 102047, level: 2, folder: 'mod/web/shared', shortName: 'catalog', extension: '.ts' };
-  g.mls = { stor: new HostStor() };
-  assert.equal(studio.storDiskPath(info), '/data/mls-base/mls-102047/catalog.ts');
-  g.mls = { stor: {} };
-  assert.equal(studio.storDiskPath(info), null);
-});
+  installStub();
+  const key = `${PROJECT}:2:${FOLDER}:itemA:.ts`;
+  let diskPathCalls = 0;
+  g.mls.stor.diskPath = () => { diskPathCalls += 1; throw new Error('host disk must not be consulted'); };
+  g.mls.l2.typescript.compile = async (model: any) => {
+    model.compilerResults.errors = [{ code: 2307, messageText: "Cannot find module '/_102046_/l2/buildFlowFsm/web/contracts/projectCatalogue.js'." }];
+    return false;
+  };
+  const dependencyErrors = await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA');
+  assert.equal(dependencyErrors?.length, 1);
+  assert.match(dependencyErrors![0], /TS2307/u);
+  assert.match(dependencyErrors![0], /Cannot find module/u);
+  assert.equal(diskPathCalls, 0, 'host disk capability cannot influence the Studio result');
 
-test('renamed Node compiler rejects infrastructure failures but preserves real file diagnostics', async () => {
-  const studio = await loadModule();
-  for (const [output, exitCode, expected] of [
-    ['', 0, ''],
-    ["error TS5058: The specified path does not exist", 1, null],
-    ['mls-102045/l2/ledger/web/shared/records.ts(42,3): error TS2551: Property misspelled does not exist.', 2, 'diagnostic'],
-  ] as const) {
-    const got = await studio.runProjectFrontendTsc('/fixture', () => ({
-      stdout: { on: (_event, callback) => callback(output) },
-      on: (event, callback) => { if (event === 'close') callback(exitCode); },
-    }));
-    assert.equal(got, expected === 'diagnostic' ? output : expected);
-  }
-});
+  g.mls.l2.typescript.compile = async () => undefined;
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null, 'missing compile result is unavailable');
 
-test('compileModuleViaProjectTsc uses injected runner and does not sniff the host', async () => {
-  const studio = await loadModule();
+  g.mls.l2.typescript.compile = async (model: any) => { delete model.compilerResults; return true; };
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null, 'missing diagnostics are unavailable');
+
+  g.mls.l2.typescript.compile = async () => { throw new Error('Studio compile crashed'); };
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null, 'compiler exceptions are unavailable');
+
+  delete g.mls.editor.models[g.mls.editor.getKeyModel(PROJECT, 'itemA', FOLDER, 2)];
+  g.mls.stor.files[key].getOrCreateModel = async () => null;
+  assert.equal(await studio.compileAndGetErrors(PROJECT, 2, FOLDER, 'itemA'), null, 'missing model is unavailable');
+  assert.equal(diskPathCalls, 0);
+
   const src = await import('node:fs').then(fs => fs.readFileSync(new URL('./cfeMaterializeStudio.ts', import.meta.url), 'utf8'));
-  assert.match(src, /const childProcessSpec = 'node:child_process'/);
-  assert.match(src, /await import\(childProcessSpec\)/);
-  assert.match(src, /tsconfig\.frontend\.json/);
-  assert.doesNotMatch(src, /typeof Deno/);
-  assert.doesNotMatch(src, /"Deno" in globalThis/);
-  assert.doesNotMatch(src, /user-agent/i);
+  assert.doesNotMatch(src, /node:child_process|compileModuleViaProjectTsc|storDiskPath|runProjectFrontendTsc/u);
+});
 
-  const info = { project: 102047, level: 2, folder: 'controleEstoque4/web/desktop/page31', shortName: 'stockMovementCatalogue', extension: '.ts' };
-  class HostStor {
-    diskPath() { return '/Volumes/x/collab/mls-base/mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts'; }
-  }
-  g.mls = { stor: new HostStor() };
-  const tscOut = "mls-102047/l2/controleEstoque4/web/desktop/page31/stockMovementCatalogue.ts(42,729): error TS2367: This comparison appears to be unintentional because the types '\"idle\" | \"success\" | \"error\"' and '\"loading\"' have no overlap.\nmls-102051/l5/runtimeConfig.ts(1,1): error TS2322: Type '\"x\"' is not assignable to type 'RuntimeConfig'.";
-  const ran = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => tscOut);
-  assert.equal(ran.trace.path, 'project-tsc');
-  assert.equal(ran.trace.rawDiagnostics, 2);
-  assert.equal(ran.trace.afterFilter, 1);
-  assert.equal(ran.errors.length, 1);
-  assert.match(ran.errors[0], /stockMovementCatalogue\.ts: TS2367/);
+test('resume removes only a stale generated pageTests companion', async () => {
+  const studio = await loadModule();
+  const mlsPath = `_${PROJECT}_/l2/${FOLDER}/itemA.test.ts`;
+  const info = { project: PROJECT, level: 2, folder: FOLDER, shortName: 'itemA', extension: '.test.ts' };
+  const key = `${PROJECT}:2:${FOLDER}:itemA:.test.ts`;
+  const file: any = {
+    ...info,
+    status: 'changed',
+    content: `/// <mls fileReference="${mlsPath}" enhancement="_blank"/>\n// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\nexport const pageTests = {};\n`,
+    getContent: async () => file.content,
+  };
+  g.mls = {
+    stor: {
+      files: { [key]: file },
+      getKeyToFile: (value: any) => `${value.project}:${value.level}:${value.folder}:${value.shortName}:${value.extension}`,
+      convertFileReferenceToFile: () => info,
+      localStor: { setContent: async () => undefined },
+    },
+    editor: { models: {}, getKeyModel: () => 'unused' },
+  };
+  assert.equal(await studio.deleteGeneratedPageTestsFileByMlsPath(mlsPath), true);
+  assert.equal(file.status, 'deleted');
 
-  const missingSpawn = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => null);
-  assert.equal(missingSpawn.trace.path, 'unavailable');
-  assert.equal(missingSpawn.trace.reason, 'no-child-process');
-  assert.deepEqual(missingSpawn.errors, []);
+  file.status = 'changed';
+  file.content = `/// <mls fileReference="${mlsPath}" enhancement="_blank"/>\nexport const pageTests = { manual: true };\n`;
+  assert.equal(await studio.deleteGeneratedPageTestsFileByMlsPath(mlsPath), false, 'manual companion is preserved');
+  assert.equal(file.status, 'changed');
+});
 
-  g.mls = { stor: {} };
-  const missingDisk = await studio.compileModuleViaProjectTsc(102047, 'controleEstoque4', [{ folder: info.folder, shortName: info.shortName }], async () => tscOut);
-  assert.equal(missingDisk.trace.path, 'unavailable');
-  assert.equal(missingDisk.trace.reason, 'no-diskPath');
-  assert.deepEqual(missingDisk.errors, []);
+test('Studio index owns a generated mobile companion across writes, including the old desktop header', async () => {
+  const studio = await loadModule();
+  const mlsPath = `_${PROJECT}_/l2/buildFlowFsm/web/mobile/page11/itemA.test.ts`;
+  const desktopPath = mlsPath.replace('/web/mobile/', '/web/desktop/');
+  const info = { project: PROJECT, level: 2, folder: 'buildFlowFsm/web/mobile/page11', shortName: 'itemA', extension: '.test.ts' };
+  const key = `${PROJECT}:2:${info.folder}:itemA:.test.ts`;
+  const source = (headerPath: string, version: number) => `/// <mls fileReference="${headerPath}" enhancement="_blank"/>\n// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner (wherever\nexport const pageTests = { version: ${version} };\n`;
+  const file: any = { ...info, status: 'changed', content: source(desktopPath, 1), getContent: async () => file.content };
+  let modelValue = file.content;
+  const model = { model: { getValue: () => modelValue, setValue: (value: string) => { modelValue = value; } }, compilerResults: { errors: [] } };
+  g.mls = {
+    stor: {
+      files: { [key]: file },
+      getKeyToFile: (value: any) => `${value.project}:${value.level}:${value.folder}:${value.shortName}:${value.extension}`,
+      convertFileReferenceToFile: (value: string) => value === mlsPath ? info : null,
+      localStor: { setContent: async (_file: any, value: any) => { file.content = value.content; } },
+    },
+    editor: { models: { [key.slice(0, -'.test.ts'.length)]: { test: model } }, getKeyModel: () => key.slice(0, -'.test.ts'.length), forceModelUpdate: () => undefined },
+    l2: { typescript: { compileAndPostProcess: async () => true } },
+  };
+  const second = source(mlsPath, 2);
+  assert.equal(await studio.persistGeneratedPageTestsFileByMlsPath(mlsPath, second), true);
+  assert.equal(file.content, second);
+  const third = source(mlsPath, 3);
+  assert.equal(await studio.persistGeneratedPageTestsFileByMlsPath(mlsPath, third), true);
+  assert.equal(file.content, third);
+  file.content = `/// <mls fileReference="${mlsPath}" enhancement="_blank"/>\nexport const pageTests = { manual: true };\n`;
+  assert.equal(await studio.persistGeneratedPageTestsFileByMlsPath(mlsPath, source(mlsPath, 4)), false);
+  assert.match(file.content, /manual: true/u);
 });

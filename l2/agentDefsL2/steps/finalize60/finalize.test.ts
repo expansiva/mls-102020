@@ -18,6 +18,7 @@ import { D2_CONTRACTS_VERSION } from '/_102020_/l2/agentDefsL2/steps/contracts30
 import { D2_SHARED_VERSION } from '/_102020_/l2/agentDefsL2/steps/shared40/contracts.js';
 import { D2_PAGES_VERSION } from '/_102020_/l2/agentDefsL2/steps/pages50/contracts.js';
 import { d2Header } from '/_102020_/l2/agentDefsL2/helpers/d2Header.js';
+import { deleteD2Owned } from '/_102020_/l2/agentDefsL2/steps/finalize60/io.js';
 
 const moduleName = 'agendaClinica';
 const ids = ['agenda', 'cadastro', 'dashboard', 'prontuario', 'recepcao'];
@@ -30,6 +31,41 @@ const snapshot = {
     pages: ids.map(id => page(id)),
   },
 } as unknown as D2InputSnapshot;
+
+test('owned delete passes the indexed Studio entry by identity', async () => {
+  const previous = (globalThis as unknown as { mls?: unknown }).mls;
+  const file = { project: 102047, level: 2, folder: 'controleEstoque/web/contracts', shortName: 'items', extension: '.defs.ts', status: 'changed' };
+  const info = { ...file };
+  let deleted: unknown;
+  (globalThis as unknown as { mls: unknown }).mls = {
+    stor: {
+      files: { indexed: file },
+      getKeyToFile: () => 'indexed',
+      localStor: { listFolder: () => [info], deleteFile: async (entry: unknown) => { deleted = entry; } },
+    },
+  };
+  try {
+    await deleteD2Owned(info);
+    assert.equal(deleted, file);
+  } finally { (globalThis as unknown as { mls?: unknown }).mls = previous; }
+});
+
+test('owned delete refuses host-only files even when the host can list them', async () => {
+  const previous = (globalThis as unknown as { mls?: unknown }).mls;
+  const info = { project: 102047, level: 2, folder: 'controleEstoque/web/contracts', shortName: 'hostOnly', extension: '.defs.ts' };
+  let deleted = 0;
+  (globalThis as unknown as { mls: unknown }).mls = {
+    stor: {
+      files: {},
+      getKeyToFile: () => 'missing',
+      localStor: { listFolder: () => [{ ...info }], deleteFile: async () => { deleted += 1; } },
+    },
+  };
+  try {
+    await assert.rejects(() => deleteD2Owned(info), new RegExp(`D2_FINALIZE_INDEX_ENTRY_MISSING: ${info.folder}/${info.shortName}\\.defs\\.ts`));
+    assert.equal(deleted, 0);
+  } finally { (globalThis as unknown as { mls?: unknown }).mls = previous; }
+});
 
 test('finalize compilation fails closed when the Studio compiler is unavailable', async () => {
   const previous = (globalThis as unknown as { mls?: unknown }).mls;
@@ -155,6 +191,42 @@ test('failed compilation blocks removal, ownership and complete while keeping th
     assert.equal(deletes, 4);
     assert.notEqual(host.get('l2/renamed/pipeline/agentDefsL2/finalize60/ownership.json'), beforeOwnership);
     assert.equal(JSON.parse(host.get('l2/renamed/pipeline/agentDefsL2/pipeline.json')!).status, 'complete');
+  } finally { (globalThis as unknown as { mls?: unknown }).mls = prior; }
+});
+
+test('a vanished index entry rejects finalize without completion and retry counts successful deletes', async () => {
+  const prior = (globalThis as unknown as { mls?: unknown }).mls;
+  const host = await finalizeHost();
+  try {
+    const identity = { project: 817263, module: 'renamed' };
+    const ownershipPath = 'l2/renamed/pipeline/agentDefsL2/finalize60/ownership.json';
+    const reportPath = 'l2/renamed/pipeline/agentDefsL2/finalize60/report.json';
+    const pipelinePath = 'l2/renamed/pipeline/agentDefsL2/pipeline.json';
+    const beforeOwnership = host.get(ownershipPath);
+    const beforeReport = host.get(reportPath);
+    let actualDeletes = 0;
+    let vanishedOnce = false;
+    const mls = (globalThis as unknown as { mls: { stor: { localStor: Record<string, unknown> } } }).mls;
+    mls.stor.localStor.deleteFile = async (file: { status: string }) => { actualDeletes += 1; file.status = 'deleted'; };
+    const compile = async (_identity: typeof identity, emitted: D2FinalSource[], hashes: Map<string, string>) =>
+      emitted.map(file => ({ path: file.path, sha256: hashes.get(file.path)!, status: 'passed' as const, diagnostics: [] }));
+    const remove = async (info: Parameters<typeof deleteD2Owned>[0]) => {
+      if (!vanishedOnce) { host.removeIndex(info); vanishedOnce = true; }
+      await deleteD2Owned(info);
+    };
+
+    await assert.rejects(() => finalizeD2(identity, { remove, compile }), /D2_FINALIZE_INDEX_ENTRY_MISSING/u);
+    assert.equal(actualDeletes, 0);
+    assert.equal(host.get(ownershipPath), beforeOwnership);
+    assert.equal(host.get(reportPath), beforeReport);
+    assert.equal(JSON.parse(host.get(pipelinePath)!).status, 'inProgress');
+
+    host.restoreIndex('l2/renamed/web/contracts/old.defs.ts');
+    const resumed = await finalizeD2(identity, { remove, compile });
+    assert.equal(resumed.report.status, 'complete', resumed.report.pending.join('; '));
+    assert.equal(resumed.deletes, 4);
+    assert.equal(actualDeletes, 4);
+    assert.equal(JSON.parse(host.get(pipelinePath)!).status, 'complete');
   } finally { (globalThis as unknown as { mls?: unknown }).mls = prior; }
 });
 
@@ -370,7 +442,16 @@ async function finalizeHost() {
   put('l2/renamed/pipeline/agentDefsL2/pages.json', JSON.stringify({ schemaVersion: D2_PAGES_VERSION, status: 'approved', snapshotHash, units: [{ pageId: 'items', status: 'approved', schemaVersion: D2_PAGES_VERSION, artifactPaths: { desktop: emitted[2].path, mobile: emitted[3].path }, sourceHashes: { desktop: hashes.get(emitted[2].path), mobile: hashes.get(emitted[3].path) }, pipelineItemIds: { desktop: 'items__desktop__page11', mobile: 'items__mobile__page11' } }] }));
   put('l2/renamed/pipeline/agentDefsL2/finalize60/ownership.json', JSON.stringify({ schemaVersion: D2_FINALIZE_VERSION, project, module: 'renamed', artifacts: oldArtifacts }));
   put('l2/renamed/pipeline/agentDefsL2/finalize60/report.json', '{}');
-  return { get: (path: string) => content.get(path) };
+  const infoForPath = (path: string) => {
+    const match = /^l(\d+)\/(.+)\/([^/]+?)(\.defs\.ts|\.json)$/u.exec(path);
+    assert.ok(match, path);
+    return { project, level: Number(match[1]), folder: match[2], shortName: match[3], extension: match[4] };
+  };
+  return {
+    get: (path: string) => content.get(path),
+    removeIndex: (info: { project: number; level: number; folder: string; shortName: string; extension: string }) => { delete files[key(info)]; },
+    restoreIndex: (path: string) => { const info = infoForPath(path); files[key(info)] = { ...info, status: 'changed', versionRef: '1', getValueInfo: async () => ({ content: content.get(path) }), getContent: async () => content.get(path) }; },
+  };
 }
 
 function filesForRenamed(): D2FinalSource[] { return files('items', true, 'renamed'); }

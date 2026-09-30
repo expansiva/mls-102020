@@ -1,14 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.ts" enhancement="_blank"/>
 
-import { parseDefs, checkSharedDtsProvenance, contractTsPathOf, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stampSharedDtsArtifact, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
+import { parseDefs, checkSharedDtsProvenance, contractTsPathOf, headerEnhancementForOutputPath, insertGeneratedTsLineBreaks, sharedDtsArtifactRef, stampSharedDtsArtifact, stripAllWhitespace, type PipelineItem } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeCore.js';
+import { declaredEnhancementPackages } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMlsImports.js';
 import { sessionScope } from '/_102020_/l2/agentMaterializeL2/helpers/cfeSessionScope.js';
+import { createStorFile, deleteFile } from '/_102027_/l2/libStor.js';
 import {
-  flattenTscErrorsAsRefs, mlsBaseFromDiskPath, traceProjectTscResult,
-  type CompileModuleTrace,
-} from '/_102020_/l2/agentMaterializeL2/helpers/cfeProjectTsc.js';
-import { createStorFile } from '/_102027_/l2/libStor.js';
-import {
-  compileStudioFile, enterStudioCompile, getStudioModel as getGeneratedModel, leaveStudioCompile,
+  enterStudioCompile, formatCompilerDiagnostic, getStudioModel as getGeneratedModel, leaveStudioCompile,
   releaseBorrowedModels, studioCompileAvailable,
 } from '/_102035_/l2/solution/studioCompile.js';
 
@@ -127,6 +124,31 @@ export async function getContentByMlsPath(mlsPath: string): Promise<string | nul
   } catch {
     return null;
   }
+}
+
+/** Current indexed source refs and package map declared by the output's effective enhancement. */
+export async function mlsImportContextForOutput(outputPath: string): Promise<{ knownFiles: string[]; declaredPackages: string[] }> {
+  const knownFiles: string[] = [];
+  try {
+    for (const file of Object.values(mls.stor.files as Record<string, any>)) {
+      if (!file || file.status === 'deleted') continue;
+      const project = Number(file.project);
+      const level = Number(file.level);
+      const shortName = typeof file.shortName === 'string' ? file.shortName : '';
+      const extension = typeof file.extension === 'string' ? file.extension : '';
+      const folder = typeof file.folder === 'string' ? file.folder.replace(/^\/+|\/+$/gu, '') : '';
+      if (!Number.isSafeInteger(project) || project <= 0 || !Number.isSafeInteger(level) || level <= 0 || !shortName || !/^\.(?:defs\.)?(?:ts|tsx|mts|cts|js)$/u.test(extension)) continue;
+      knownFiles.push(`_${project}_/l${level}/${folder ? `${folder}/` : ''}${shortName}${extension}`);
+    }
+  } catch (error) {
+    recordStudioMessage('error', 'mlsImportContextForOutput index read failed', error);
+  }
+
+  const enhancement = headerEnhancementForOutputPath(outputPath);
+  if (!enhancement || enhancement === '_blank') return { knownFiles, declaredPackages: [] };
+  const source = await getContentByMlsPath(`${enhancement}.ts`);
+  if (!source) return { knownFiles, declaredPackages: [] };
+  return { knownFiles, declaredPackages: declaredEnhancementPackages(source) };
 }
 
 export async function loadModuleByBuild(path: string): Promise<any> {
@@ -268,6 +290,41 @@ export async function saveGeneratedTsByMlsPath(mlsPath: string, content: string)
   return saveGeneratedTs(parsed.project, parsed.level, parsed.folder, parsed.shortName, content, parsed.extension);
 }
 
+/** Remove only a pageTests artifact previously emitted by this materializer. */
+function isOwnedGeneratedPageTests(mlsPath: string, content: string | null): boolean {
+  if (!content || !content.includes('// GENERATED — declarative BFF test cases run server-side by the monitor Tests runner') || !content.includes('export const pageTests =')) return false;
+  if (content.startsWith(`/// <mls fileReference="${mlsPath}"`)) return true;
+  // Older page11 companions used a desktop header even when stored under another device.
+  const legacyPath = mlsPath.replace(/\/web\/[^/]+\//u, '/web/desktop/');
+  return legacyPath !== mlsPath && content.startsWith(`/// <mls fileReference="${legacyPath}"`);
+}
+
+export async function deleteGeneratedPageTestsFileByMlsPath(mlsPath: string): Promise<boolean> {
+  try {
+    const parsed = parseMlsPath(mlsPath);
+    if (!parsed || parsed.extension !== '.test.ts') return false;
+    const key = mls.stor.getKeyToFile(parsed);
+    const file = (mls.stor.files as Record<string, any>)[key];
+    if (!file || file.status === 'deleted') return true;
+    const content = await getContentByMlsPath(mlsPath);
+    if (!isOwnedGeneratedPageTests(mlsPath, content)) return false;
+    await deleteFile(file);
+    return true;
+  } catch (error) {
+    recordStudioMessage('error', 'deleteGeneratedPageTestsFileByMlsPath failed', error);
+    return false;
+  }
+}
+
+/** Save a generated monitor suite or remove its stale generated predecessor; never overwrite user data. */
+export async function persistGeneratedPageTestsFileByMlsPath(mlsPath: string, content: string | null): Promise<boolean> {
+  if (content === null) return deleteGeneratedPageTestsFileByMlsPath(mlsPath);
+  const previous = await getContentByMlsPath(mlsPath);
+  if (previous !== null && !isOwnedGeneratedPageTests(mlsPath, previous)) return false;
+  if (previous === content) return true;
+  return saveGeneratedTsByMlsPath(mlsPath, content);
+}
+
 // Plain text artifact writer (no editor model, no compile) — used to persist the shared compiled
 // .d.ts to web/shared/<page>Dts.txt so the CLI runtime can read the same context from disk.
 export async function saveArtifactTextByMlsPath(mlsPath: string, content: string): Promise<boolean> {
@@ -327,78 +384,6 @@ export function monacoCompileAvailable(): boolean {
   return studioCompileAvailable();
 }
 
-// Call it as a METHOD, never detached. `diskPath` is host-only (it does not exist in mls.d.ts nor
-// in the cfe) and on the CLI host it is a CLASS method that reads a private field.
-// `const fn = mls.stor.diskPath; fn(info)` throws `Cannot read properties of undefined (reading
-// '#mlsBase')`, the catch swallows it, and the project-tsc gate reports `no-diskPath`.
-export function storDiskPath(info: { project: number; level: number; folder: string; shortName: string; extension: string }): string | null {
-  const stor = mls.stor as unknown as { diskPath?: (file: typeof info) => string };
-  if (typeof stor.diskPath !== 'function') return null;
-  try { return stor.diskPath(info); } catch { return null; }
-}
-
-type ProjectTscSpawn = (cmd: string, args: string[], opts: Record<string, unknown>) => {
-  stdout?: { on: (ev: string, fn: (chunk: unknown) => void) => void };
-  stderr?: { on: (ev: string, fn: (chunk: unknown) => void) => void };
-  on: (ev: string, fn: (arg?: unknown) => void) => void;
-};
-
-export async function runProjectFrontendTsc(cwd: string, spawnFn?: ProjectTscSpawn): Promise<string | null> {
-  try {
-    const spawn = spawnFn ?? await loadChildProcessSpawn();
-    if (typeof spawn !== 'function') return null;
-    return await new Promise(resolve => {
-      const child = spawn('npx', ['tsc', '-p', 'tsconfig.frontend.json', '--noEmit', '--pretty', 'false'], { cwd });
-      let out = '';
-      child.stdout?.on('data', chunk => { out += String(chunk); });
-      child.stderr?.on('data', chunk => { out += String(chunk); });
-      child.on('error', () => resolve(null));
-      child.on('close', code => resolve(code === 0 || /\(\d+,\d+\): error TS\d+:/u.test(out) ? out : null));
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function loadChildProcessSpawn(): Promise<ProjectTscSpawn | null> {
-  const childProcessSpec = 'node:child_process';
-  const loaded = await import(childProcessSpec) as { spawn?: ProjectTscSpawn };
-  return typeof loaded.spawn === 'function' ? loaded.spawn : null;
-}
-
-export async function compileModuleViaProjectTsc(
-  project: number,
-  moduleName: string,
-  files: Array<{ folder: string; shortName: string }>,
-  runTsc?: (cwd: string) => Promise<string | null>,
-): Promise<{ errors: string[]; trace: CompileModuleTrace }> {
-  const sample = files[0];
-  if (!sample) {
-    return {
-      errors: [],
-      trace: { path: 'unavailable', reason: 'no-files', rawDiagnostics: 0, afterFilter: 0, files: 0 },
-    };
-  }
-  const abs = storDiskPath({ project, level: 2, folder: sample.folder, shortName: sample.shortName, extension: '.ts' });
-  if (!abs) {
-    return {
-      errors: [],
-      trace: { path: 'unavailable', reason: 'no-diskPath', rawDiagnostics: 0, afterFilter: 0, files: files.length },
-    };
-  }
-  const cwd = mlsBaseFromDiskPath(abs);
-  if (!cwd) {
-    return {
-      errors: [],
-      trace: { path: 'unavailable', reason: 'no-diskPath', rawDiagnostics: 0, afterFilter: 0, files: files.length },
-    };
-  }
-  const output = runTsc ? await runTsc(cwd) : await runProjectFrontendTsc(cwd);
-  const { grouped, trace } = traceProjectTscResult(output, moduleName, project, files.length, 'no-child-process');
-  if (!grouped) return { errors: [], trace };
-  return { errors: flattenTscErrorsAsRefs(project, grouped), trace };
-}
-
 /** `null` = no compile capability. `[]` = compiled and clean. */
 export async function compileAndGetErrors(
   project: number,
@@ -408,18 +393,36 @@ export async function compileAndGetErrors(
   extension = '.ts',
 ): Promise<string[] | null> {
   if (!monacoCompileAvailable()) return null;
+  enterStudioCompile();
   try {
-    const compiled = await compileStudioFile({ project, level, folder, shortName, extension });
-    return compiled ? compiled.errors : [];
+    const file = { project, level, folder, shortName, extension };
+    const modelTs = await getGeneratedModel(project, level, folder, shortName, extension);
+    if (!modelTs?.model) return null;
+    const compiler = mls.l2.typescript.compile;
+    if (typeof compiler !== 'function') return null;
+    if (modelTs.compilerResults) modelTs.compilerResults.modelNeedCompile = true;
+    const result: unknown = await compiler(modelTs);
+    if (typeof result !== 'boolean') return null;
+    const after = await getGeneratedModel(project, level, folder, shortName, extension);
+    const diagnostics = after?.compilerResults?.errors;
+    if (!after?.model || !Array.isArray(diagnostics)) return null;
+    const errors = diagnostics.map(formatCompilerDiagnostic);
+    if (!result && errors.length === 0) {
+      recordStudioMessage('error', 'Studio compiler failed without diagnostics', file);
+      return null;
+    }
+    return errors;
   } catch (error) {
     recordStudioMessage('error', 'compileAndGetErrors failed', error);
-    return [`compileAndGetErrors failed: ${formatUnknownError(error)}`];
+    return null;
+  } finally {
+    leaveStudioCompile();
   }
 }
 
 export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<string[] | null> {
   const parsed = parseMlsPath(mlsPath);
-  if (!parsed || !isGeneratedTsExtension(parsed.extension)) return [];
+  if (!parsed || !isGeneratedTsExtension(parsed.extension)) return null;
   return compileAndGetErrors(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
 }
 
@@ -429,7 +432,7 @@ export async function compileMlsPathAndGetErrors(mlsPath: string): Promise<strin
 export async function getCompiledDtsByMlsPath(mlsPath: string): Promise<string | null> {
   try {
     const parsed = parseMlsPath(mlsPath);
-    if (!parsed || parsed.extension !== '.ts') return null;
+    if (!parsed || (parsed.extension !== '.ts' && parsed.extension !== '.defs.ts')) return null;
     const modelTs = await getGeneratedModel(parsed.project, parsed.level, parsed.folder, parsed.shortName, parsed.extension);
     if (!modelTs?.model) return null;
     if (!modelTs.compilerResults?.prodDTS) {

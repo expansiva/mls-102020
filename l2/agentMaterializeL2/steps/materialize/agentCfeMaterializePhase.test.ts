@@ -168,12 +168,13 @@ void test('a shared verifies with its contract preloaded, not only a page', () =
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
   assert.match(src, /pipelineItem\.type === 'l2_shared'[\s\S]{0,200}preloadTypecheckDeps\(\[contractTsPathOf\(defsContent\)\]\)/);
   const gen = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
-  assert.match(gen, /getCompiledDtsByMlsPath\(contractTsPath\)[\s\S]{0,200}compileAndGetErrors/);
+  assert.match(gen, /getCompiledDtsByMlsPath\(contractTsPath\)[\s\S]{0,260}compileOutputAndTest/);
 });
 
-void test('contractTsPathOf reads the contract the defs declares, and never throws', () => {
-  const defs = (body: string) => `export const x = ${body} as const;\n\nexport const pipeline = [] as const;\n`;
-  assert.equal(contractTsPathOf(defs(JSON.stringify({ data: { contractRef: { tsPath: '_102046_/l2/m/web/contracts/p.ts' } } }))), '_102046_/l2/m/web/contracts/p.ts');
+void test('contractTsPathOf reads the real declared defs file for preload, and never invents a parallel .ts', () => {
+  const defs = (body: string) => `/// <mls fileReference="_102046_/l2/m/web/shared/p.defs.ts" enhancement="_blank"/>\nexport const x = ${body} as const;\n\nexport const pipeline = [] as const;\n`;
+  const declared = { data: { contractRef: { defPath: 'l2/m/web/contracts/p.defs.ts' } } };
+  assert.equal(contractTsPathOf(defs(JSON.stringify(declared))), '_102046_/l2/m/web/contracts/p.defs.ts');
   assert.equal(contractTsPathOf(defs(JSON.stringify({ data: { componentName: 'x' } }))), '');
   assert.equal(contractTsPathOf('not a defs file at all'), '');
   assert.equal(contractTsPathOf(null), '');
@@ -284,7 +285,7 @@ void test('a blocked shared skips only the pages that depend on it', () => {
 void test('the phase stays in_progress until fanout+verify+repair finish', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
   assert.match(src, /createUpdateStatusIntent\(context, parentStep, step, hookSequential, 'in_progress', trace\)/);
-  assert.match(src, /const final = toRepair\.length === 0 \|\| args\.attempt > MATERIALIZE_REPAIR_ROUNDS \|\| systemic/);
+  assert.match(src, /const final = compilerUnavailable\.length > 0 \|\| toRepair\.length === 0 \|\| args\.attempt > MATERIALIZE_REPAIR_ROUNDS \|\| systemic/);
   assert.match(src, /saveMaterializeVerifySummary\(\s*moduleName, args\.planId, args\.attempt, passed, blocked\.map\(item => toBrokenTrace\(item, 'blocked'\)\),\s*\{ declared: declaredTraces, repaired \},\s*final/s);
 });
 
@@ -431,18 +432,15 @@ test('every verify publishes current findings before summary and next repair rou
   assert.doesNotMatch(source, /if \(!findings\.length\) continue/u);
 });
 
-void test('renamed headless verify routes real Node diagnostics to output and shared dependencies only', async () => {
-  const { projectCompileErrorsForItem } = await loadPhase();
-  const shared = '_102045_/l2/ledger/web/shared/records.ts';
-  const page = '_102045_/l2/ledger/web/mobile/page11/records.ts';
-  const errors = [`${shared}: TS2551: Property misspelled does not exist`, `${page}: TS2307: Cannot find module`, '_102045_/l2/ledger/web/desktop/page11/other.ts: TS2322: unrelated'];
-  assert.deepEqual(projectCompileErrorsForItem(errors, [page]), [errors[1]]);
-  assert.deepEqual(projectCompileErrorsForItem(errors, [shared, page]), errors.slice(0, 2));
-  assert.deepEqual(projectCompileErrorsForItem([], [page]), []);
+void test('Studio-only verify blocks missing compile proof without starting LLM repair rounds', () => {
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
-  assert.match(src, /if \(!monacoCompileAvailable\(\)\)/u);
-  assert.match(src, /compiled\.trace\.path === 'project-tsc'/u);
-  assert.match(src, /sharedTsRefOfDtsArtifact\(ref\)/u);
+  assert.doesNotMatch(src, /compileModuleViaProjectTsc|monacoCompileAvailable|projectErrors/u);
+  assert.match(src, /outputCompileErrors === null[\s\S]{0,140}Studio compiler unavailable/u);
+  assert.match(src, /if \(compilerUnavailable\.length > 0\) \{[\s\S]{0,520}No repair rounds were started/u);
+  assert.match(src, /const final = compilerUnavailable\.length > 0/u);
+  const gen = readFileSync(path.join(HERE, 'agentCfeMaterializeGen.ts'), 'utf8');
+  assert.doesNotMatch(gen, /compile(?:AndGetErrors|MlsPathAndGetErrors)\([^;]+\)\s*\?\?\s*\[\]/u);
+  assert.match(gen, /if \('unavailable' in compileResult\)/u);
 });
 
 function splitVerifyAttempt(intents: mls.msg.AgentIntent[]): number | null {
@@ -496,7 +494,7 @@ void test('T3.3: split re-verify carries attempt and the verdict is final past t
   assert.equal(next, origin + 1);
   assert.ok(next! > MATERIALIZE_REPAIR_ROUNDS);
   const src = readFileSync(path.join(HERE, 'agentCfeMaterializePhase.ts'), 'utf8');
-  assert.match(src, /const final = toRepair\.length === 0 \|\| args\.attempt > MATERIALIZE_REPAIR_ROUNDS \|\| systemic/);
+  assert.match(src, /const final = compilerUnavailable\.length > 0 \|\| toRepair\.length === 0 \|\| args\.attempt > MATERIALIZE_REPAIR_ROUNDS \|\| systemic/);
 });
 
 void test('T3.4: no re-verify path hardcodes attempt: 1', () => {
