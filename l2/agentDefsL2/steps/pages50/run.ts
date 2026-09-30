@@ -27,6 +27,7 @@ export interface D2PagesReceipt {
   module: string;
   pageId: string;
   inputHash: string;
+  unitInputHash: string;
   template: { category: string; experience: string; reason: string; reference: string | null; hash: string; catalogHash: string };
   designSystemHash: string;
   moleculeInventoryHash: string;
@@ -70,8 +71,49 @@ function menuOrigins(page: D2SelectedPage, definition?: D2Page11Definition): D2P
   });
 }
 function owned(identity: D2RunIdentity, pageId: string): Ns5FileInfo { return { project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentDefsL2/pages50`, shortName: pageId, extension: '.json' }; }
-function sourceInfo(identity: D2RunIdentity, pageId: string, device: D2Page11Device): Ns5FileInfo { return { project: identity.project, level: 2, folder: `${identity.module}/web/${device}/page11`, shortName: pageId, extension: '.defs.ts' }; }
-function needsInfo(identity: D2RunIdentity, pageId: string, device: D2Page11Device): Ns5FileInfo { return { project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentDefsL2/page11Needs`, shortName: `${pageId}${device === 'desktop' ? 'Desktop' : 'Mobile'}`, extension: '.json' }; }
+export function sourceInfo(identity: D2RunIdentity, pageId: string, device: D2Page11Device): Ns5FileInfo { return { project: identity.project, level: 2, folder: `${identity.module}/web/${device}/page11`, shortName: pageId, extension: '.defs.ts' }; }
+export function needsInfo(identity: D2RunIdentity, pageId: string, device: D2Page11Device): Ns5FileInfo { return { project: identity.project, level: 2, folder: `${identity.module}/pipeline/agentDefsL2/page11Needs`, shortName: `${pageId}${device === 'desktop' ? 'Desktop' : 'Mobile'}`, extension: '.json' }; }
+
+/** A page fingerprint avoids invalidating its receipt when another page changes. */
+export async function pageUnitInputHash(context: D2PagesContext): Promise<string> {
+  const { page, artifacts } = context;
+  const needsPage = (record(artifacts.needs).pages as unknown[] | undefined)?.find(item => text(record(item).pageId) === page.pageId) ?? null;
+  const contextText = JSON.stringify({ page, needsPage });
+  const entities = Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => contextText.includes(id)));
+  const journeys = Object.fromEntries(page.journeyRefs.map(id => [id, artifacts.journeys[id]]));
+  const entityIds = new Set(Object.keys(entities));
+  for (const row of [...page.reads, ...page.writes, ...((record(needsPage).reads as unknown[] | undefined) ?? []), ...((record(needsPage).writes as unknown[] | undefined) ?? [])]) {
+    const entity = text(record(row).entity);
+    if (entity) entityIds.add(entity);
+  }
+  for (const binding of page.operationBindings ?? []) entityIds.add(binding.entityId);
+  const actors = new Set(page.actors);
+  const grants = ((record(artifacts.access).grants as unknown[] | undefined) ?? [])
+    .filter(raw => actors.has(text(record(raw).actorRef)) && ((record(raw).entityRefs as unknown[] | undefined) ?? []).some(id => entityIds.has(text(id))))
+    .map(raw => {
+      const grant = record(raw);
+      const disclosure = record(grant.disclosure);
+      return canonicalValue({ ...grant,
+        entityRefs: [...((grant.entityRefs as string[] | undefined) ?? [])].sort(),
+        disclosure: { ...disclosure,
+          ...(Array.isArray(disclosure.allowedFields) ? { allowedFields: [...disclosure.allowedFields].sort() } : {}),
+          ...(Array.isArray(disclosure.deniedFields) ? { deniedFields: [...disclosure.deniedFields].sort() } : {}),
+        },
+      });
+    })
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return sha256Text(JSON.stringify(canonicalValue({ page, needsPage, entities, journeys,
+    userLanguage: text(record(artifacts.menu).userLanguage) || 'en', grants })));
+}
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value && typeof value === 'object') {
+    const source = value as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(source).sort().map(key => [key, canonicalValue(source[key])]));
+  }
+  return value;
+}
 
 export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { diagnostic: string; previous: unknown }): { prompt: string; chars: number } {
   const { page, artifacts } = context;
@@ -129,6 +171,7 @@ export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesRe
   const receipt: D2PagesReceipt = {
     schemaVersion: D2_PAGES_VERSION, needsVersion: D2_PAGE11_NEEDS_VERSION, ...context.identity, pageId: context.page.pageId,
     inputHash: context.snapshot.snapshotHash,
+    unitInputHash: await pageUnitInputHash(context),
     template: { category, experience: selectedTemplate.experience, reason: `${raw.categoryReason} ${selectedTemplate.reason}`, reference: selectedTemplate.reference, hash: selectedTemplate.hash, catalogHash: await sha256Text(context.template.catalog) },
     designSystemHash: await sha256Text(context.designSystem),
     moleculeInventoryHash: context.inventory.sourceHash, moleculeHashes: context.moleculeHashes, moleculeGroupAssessments: context.groupAssessments,

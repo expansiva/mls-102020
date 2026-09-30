@@ -3,13 +3,14 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readJson, readSourceText } from '/_102035_/l2/solution/fs.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
-import { D2_PAGES_PAGE_AGENT_NAME, moduleTokenOk } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
-import { addD2Step, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
+import { D2_PAGES_PAGE_AGENT_NAME, markD2StepApproved, moduleTokenOk } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
+import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
 import { buildD2MoleculeInventory, moleculeGroupPrompt, readD2MoleculeShortlist } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
 import { parseD2MoleculeGroupJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeSelection.js';
 import { loadD2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages50/templateContext.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, type D2PagesContext, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 interface Args { project: number; module: string; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
 function parseArgs(raw: string): Args {
@@ -33,7 +34,7 @@ function toolPayload(value: unknown, name: string): unknown {
 
 export function createAgent(): IAgentAsync { return { agentName: D2_PAGES_PAGE_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2/steps/pages50', agentDescription: 'Research and define one desktop/mobile page11 v2 pair', visibility: 'private', beforePromptStep, afterPromptStep }; }
 
-async function contextFor(args: Args): Promise<D2PagesContext> {
+export async function contextFor(args: Args): Promise<D2PagesContext> {
   const identity = { project: args.project, module: args.module };
   const snapshot = await readD2Input(identity);
   if (!snapshot) throw new Error('D2_PAGES_INPUT_MISSING');
@@ -53,9 +54,57 @@ async function contextFor(args: Args): Promise<D2PagesContext> {
     groups: shortlist.groups, moleculeHashes: shortlist.hashes, skill, prompt, designSystem };
 }
 
+export interface D2PagesReusePort {
+  readReceipt(identity: { project: number; module: string }, pageId: string): Promise<D2PagesReceipt | null>;
+  context(identity: { project: number; module: string }, pageId: string, selectedGroups: Record<string, string[]>): Promise<D2PagesContext>;
+  readSource(info: ReturnType<typeof sourceInfo>): Promise<string>;
+  readNeeds(info: ReturnType<typeof needsInfo>): Promise<unknown>;
+}
+const reusePort: D2PagesReusePort = {
+  readReceipt: readD2PagesReceipt,
+  context: (identity, pageId, selectedGroups) => contextFor({ ...identity, pageId, stage: 'groups', attempt: 1, selectedGroups }),
+  readSource: readSourceText,
+  readNeeds: info => readJson<unknown>(info),
+};
+
+/** Full receipt and disk check before scheduling either LLM stage. */
+export async function reusableD2Page(identity: { project: number; module: string }, pageId: string, port: D2PagesReusePort = reusePort): Promise<boolean> {
+  const receipt = await port.readReceipt(identity, pageId);
+  if (!receipt || receipt.schemaVersion !== D2_PAGES_VERSION || receipt.needsVersion !== D2_PAGE11_NEEDS_VERSION
+    || receipt.project !== identity.project || receipt.module !== identity.module || receipt.pageId !== pageId
+    || !receipt.unitInputHash || !receipt.moleculeGroupAssessments) return false;
+  const selectedGroups: Record<string, string[]> = {};
+  for (const item of receipt.moleculeGroupAssessments) {
+    if (!/^organism[1-9][0-9]*$/.test(item.organismId) || selectedGroups[item.organismId]) return false;
+    selectedGroups[item.organismId] = item.groups.filter(group => group.relevant).map(group => group.groupId);
+  }
+  try {
+    const context = await port.context(identity, pageId, selectedGroups);
+    if (await pageUnitInputHash(context) !== receipt.unitInputHash) return false;
+    const template = await context.template.select(receipt.template.category);
+    if (template.experience !== receipt.template.experience || template.reference !== receipt.template.reference || template.hash !== receipt.template.hash) return false;
+    if (await sha256Text(context.template.catalog) !== receipt.template.catalogHash
+      || await sha256Text(context.designSystem) !== receipt.designSystemHash
+      || context.inventory.sourceHash !== receipt.moleculeInventoryHash
+      || JSON.stringify(context.moleculeHashes) !== JSON.stringify(receipt.moleculeHashes)
+      || await sha256Text(context.skill) !== receipt.skillHash
+      || await sha256Text(context.prompt) !== receipt.promptHash) return false;
+    for (const device of ['desktop', 'mobile'] as const) {
+      const source = await port.readSource(sourceInfo(identity, pageId, device));
+      const needs = await port.readNeeds(needsInfo(identity, pageId, device));
+      if (!needs || await sha256Text(source) !== receipt.sourceHashes[device]
+        || await sha256Text(JSON.stringify(needs)) !== receipt.needsHashes[device]) return false;
+    }
+    return true;
+  } catch { return false; }
+}
+
 export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   try {
     const args = parseArgs(step.prompt || '');
+    if (args.stage === 'groups' && await reusableD2Page(args, args.pageId)) {
+      return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `Page11 ${args.pageId} reused without an LLM call or write.`)];
+    }
     const data = await contextFor(args);
     const isGroups = args.stage === 'groups';
     const decision = isGroups ? null : buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
@@ -89,6 +138,14 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     const decision = buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
     const promptChars = data.prompt.length + 1 + data.skill.length + decision.chars;
     const receipt = await approveD2PagesUnit(data, response as D2PagesResponse, promptChars, args.diagnostic ? promptChars : args.repairPromptChars ?? 0);
+    const ids = [...data.snapshot.selection.writePageIds].sort();
+    let allReady = true;
+    for (const pageId of ids) if (!await reusableD2Page(data.identity, pageId)) { allReady = false; break; }
+    if (allReady) {
+      await markD2StepApproved(data.identity, 'pages50', ids.map(pageId => `l2/${data.identity.module}/pipeline/agentDefsL2/pages50/${pageId}.json`), data.snapshot.snapshotHash);
+      return [addD2Step(context, parentStep.stepId, d2Result('Pages ready', JSON.stringify({ ...data.identity, completedStep: 'pages50', nextStep: 'finalize60', pages: ids.length }), 'pages50-done')),
+        updateD2Status(context, parentStep, step, hookSequential, 'completed', `Page11 ${args.pageId} approved; all ${ids.length} pages ready.`)];
+    }
     return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `Page11 ${args.pageId} approved: ${receipt.sourceHashes.desktop}, ${receipt.sourceHashes.mobile}.`)];
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);

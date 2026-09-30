@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { reusableD2Page, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, pageUnitInputHash, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2PagesContext['template']['categories'] }).categories;
@@ -99,6 +100,87 @@ void test('receipt hashes change with template catalog and design system while i
   assert.equal(afterDesign.inputHash, base.inputHash);
   assert.notEqual(afterDesign.designSystemHash, base.designSystemHash);
   assert.equal(afterDesign.template.catalogHash, base.template.catalogHash);
+});
+
+void test('page unit input hash ignores another menu page but tracks its own menu, ontology and needs', async () => {
+  const data = context('controleEstoque', 'produtos');
+  const base = await pageUnitInputHash(data);
+  const unrelated = context('controleEstoque', 'produtos');
+  (unrelated.artifacts.menu as { tree: Array<{ label?: string }> }).tree.push({ label: 'Another page' });
+  assert.equal(await pageUnitInputHash(unrelated), base);
+  const ownMenu = context('controleEstoque', 'produtos');
+  ownMenu.page.label = 'Products, revised';
+  assert.notEqual(await pageUnitInputHash(ownMenu), base);
+  const ownNeeds = context('controleEstoque', 'produtos');
+  (ownNeeds.artifacts.needs as { pages: Array<{ pageId: string; reads: string[] }> }).pages.find(page => page.pageId === 'produtos')!.reads.push('Produto.status');
+  assert.notEqual(await pageUnitInputHash(ownNeeds), base);
+  const ontology = context('controleEstoque', 'produtos');
+  ontology.artifacts.entities.Produto = { description: 'Changed product semantics' };
+  assert.notEqual(await pageUnitInputHash(ontology), base);
+});
+
+void test('language invalidates all pages; applicable grants are isolated by actor and entity', async () => {
+  const mine = context('reembolsoDespesas', 'minhas_despesas');
+  const team = context('reembolsoDespesas', 'avaliar_despesas_equipe');
+  const grants = [
+    { grantId: 'mine', actorRef: 'colaborador', entityRefs: ['Despesa'], disclosure: { mode: 'fieldsOnly', allowedFields: ['Despesa.id'] } },
+    { grantId: 'team', actorRef: 'gestorEquipe', entityRefs: ['Despesa'], disclosure: { mode: 'fullRecord' } },
+    { grantId: 'otherEntity', actorRef: 'gestorEquipe', entityRefs: ['GestorEquipe'], disclosure: { mode: 'fullRecord' } },
+  ];
+  mine.artifacts.access = { grants };
+  team.artifacts.access = { grants };
+  const mineLanguage = (mine.artifacts.menu as { userLanguage?: string }).userLanguage;
+  const teamLanguage = (team.artifacts.menu as { userLanguage?: string }).userLanguage;
+  const mineBase = await pageUnitInputHash(mine);
+  const teamBase = await pageUnitInputHash(team);
+  (mine.artifacts.menu as { userLanguage?: string }).userLanguage = 'es';
+  (team.artifacts.menu as { userLanguage?: string }).userLanguage = 'es';
+  assert.notEqual(await pageUnitInputHash(mine), mineBase);
+  assert.notEqual(await pageUnitInputHash(team), teamBase);
+  (mine.artifacts.menu as { userLanguage?: string }).userLanguage = mineLanguage;
+  (team.artifacts.menu as { userLanguage?: string }).userLanguage = teamLanguage;
+  assert.equal(await pageUnitInputHash(mine), mineBase);
+  assert.equal(await pageUnitInputHash(team), teamBase);
+  const mineGrants = (mine.artifacts.access as { grants: typeof grants }).grants;
+  mineGrants[0].disclosure.allowedFields!.push('Despesa.details.amount');
+  assert.notEqual(await pageUnitInputHash(mine), mineBase);
+  assert.equal(await pageUnitInputHash(team), teamBase);
+  mineGrants[0].disclosure.allowedFields!.pop();
+  mineGrants[2].disclosure.mode = 'fieldsOnly';
+  assert.equal(await pageUnitInputHash(mine), mineBase);
+  assert.equal(await pageUnitInputHash(team), teamBase);
+  mineGrants.reverse();
+  assert.equal(await pageUnitInputHash(mine), mineBase);
+});
+
+void test('a complete receipt reuses one page with zero writes; draft, context and source drift invalidate it', async () => {
+  const data = context('controleEstoque', 'produtos');
+  data.groupAssessments = data.page.organisms.map((_, index) => ({ organismId: `organism${index + 1}`, groups: [] }));
+  const writes = new Map<string, unknown>();
+  const key = (info: { folder: string; shortName: string; extension: string }) => `${info.folder}/${info.shortName}${info.extension}`;
+  const writer: D2PagesWriter = { writeSource: async (info, source) => { writes.set(key(info), source); }, writeJson: async (info, value) => { writes.set(key(info), value); } };
+  const receipt = await approveD2PagesUnit(data, product(), 1400, 0, writer);
+  let reads = 0;
+  const port: D2PagesReusePort = {
+    readReceipt: async () => receipt,
+    context: async () => data,
+    readSource: async info => { reads += 1; return writes.get(key(info)) as string; },
+    readNeeds: async info => writes.get(key(info)),
+  };
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), true);
+  assert.equal(reads, 2);
+  assert.equal(writes.size, 5);
+  const draftKey = 'controleEstoque/pipeline/agentDefsL2/page11Needs/produtosDesktop.json';
+  const originalDraft = writes.get(draftKey);
+  writes.set(draftKey, { organisms: {} });
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), false);
+  writes.set(draftKey, originalDraft);
+  data.page.label = 'Changed label';
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), false);
+  data.page.label = 'produtos';
+  const sourceKey = 'controleEstoque/web/desktop/page11/produtos.defs.ts';
+  writes.set(sourceKey, `${writes.get(sourceKey)}\n// local edit`);
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), false);
 });
 
 void test('four real reembolsoDespesas pages include the nine minhas_despesas organisms below the prompt ceiling', () => {

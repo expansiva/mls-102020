@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2Core.ts" enhancement="_blank"/>
 
-// 2026-09-30: compatibility state for frozen contracts30; the new public agent does not import this flow.
+// The public flow generates page11 only. Legacy contracts30 imports the identity and state helpers.
 
 import { readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 
@@ -14,34 +14,29 @@ export const D2_PAGES_AGENT_NAME = 'agentD2Pages' as const;
 export const D2_PAGES_PAGE_AGENT_NAME = 'agentD2PagesPage' as const;
 export const D2_FINALIZE_AGENT_NAME = 'agentD2Finalize' as const;
 export const D2_FLOW_ID = 'agentDefsL2' as const;
-export const D2_FLOW_VERSION = '2026-09-21-agent-defs-l2-flow-v3' as const;
-export const D2_PIPELINE_VERSION = '2026-09-21-agent-defs-l2-pipeline-v1' as const;
+export const D2_FLOW_VERSION = '2026-09-30-agent-defs-l2-pages-flow-v1' as const;
+export const D2_PIPELINE_VERSION = '2026-09-30-agent-defs-l2-pages-pipeline-v1' as const;
 
 export const D2_FLOW_STEP_IDS = [
   'entry10',
   'input20',
-  'contracts30',
-  'shared40',
   'pages50',
   'finalize60',
 ] as const;
 
 export type D2StepId = typeof D2_FLOW_STEP_IDS[number];
+type D2RecordedStepId = D2StepId | 'contracts30' | 'shared40';
 
 export const D2_STEP_DEPENDS_ON: Record<D2StepId, readonly string[]> = {
   entry10: [],
   input20: ['entry10-done'],
-  contracts30: ['input20-done'],
-  shared40: ['contracts30-done'],
-  pages50: ['shared40-done'],
+  pages50: ['input20-done'],
   finalize60: ['pages50-done'],
 };
 
 export const D2_STEP_TITLES: Record<D2StepId, string> = {
   entry10: 'Start L2 definitions',
   input20: 'Validate inputs',
-  contracts30: 'Create typed contracts',
-  shared40: 'Define shared behavior',
   pages50: 'Describe desktop and mobile pages',
   finalize60: 'Validate definitions',
 };
@@ -65,19 +60,19 @@ export interface D2PipelineState {
   project: number;
   module: string;
   status: 'inProgress' | 'awaitingStep' | 'failed' | 'complete';
-  awaitingStep?: D2StepId;
-  steps: Partial<Record<D2StepId, D2PipelineStepState>>;
+  awaitingStep?: D2RecordedStepId;
+  steps: Partial<Record<D2RecordedStepId, D2PipelineStepState>>;
   createdAt: string;
   updatedAt: string;
 }
 
 export type D2MessageInvocation =
   | { kind: 'help' }
-  | ({ kind: 'run' } & D2RunIdentity)
+  | ({ kind: 'run'; scope: 'pages' } & D2RunIdentity)
   | { kind: 'refusal'; diagnostic: string };
 
 export type D2StepInvocation =
-  | ({ kind: 'run' } & D2RunIdentity)
+  | ({ kind: 'run'; scope: 'pages' } & D2RunIdentity)
   | { kind: 'refusal'; diagnostic: string };
 
 const AGENT_PREFIXES = [
@@ -102,10 +97,13 @@ export function parseD2MessageInvocation(value: string, project = currentD2Proje
   if (tokens.some(token => token.toLowerCase() === '/candidate')) {
     return { kind: 'refusal', diagnostic: '/candidate is not supported by agentDefsL2.' };
   }
-  const flag = tokens.find(token => token.startsWith('/'));
+  const flag = tokens.find(token => token.startsWith('/') && token.toLowerCase() !== '/pages');
   if (flag) return { kind: 'refusal', diagnostic: `Unknown flag: ${flag}.` };
-  if (tokens.length !== 1) {
-    return { kind: 'refusal', diagnostic: 'Pass exactly one explicit module: @@agentDefsL2 <lowerCamel>.' };
+  if (!tokens.some(token => token.toLowerCase() === '/pages')) {
+    return { kind: 'refusal', diagnostic: 'Only /pages is available at this stage.' };
+  }
+  if (tokens.length !== 2 || tokens[1].toLowerCase() !== '/pages') {
+    return { kind: 'refusal', diagnostic: 'Usage: @@agentDefsL2 <lowerCamel> /pages.' };
   }
   if (!Number.isSafeInteger(project) || project <= 0) {
     return { kind: 'refusal', diagnostic: 'The current project is unavailable.' };
@@ -114,7 +112,7 @@ export function parseD2MessageInvocation(value: string, project = currentD2Proje
   if (!moduleTokenOk(module)) {
     return { kind: 'refusal', diagnostic: 'Module name must be lowerCamel and must not contain a path.' };
   }
-  return { kind: 'run', project, module };
+  return { kind: 'run', project, module, scope: 'pages' };
 }
 
 export function parseD2StepInvocation(value: string, currentProject = currentD2Project()): D2StepInvocation {
@@ -128,11 +126,12 @@ export function parseD2StepInvocation(value: string, currentProject = currentD2P
     return { kind: 'refusal', diagnostic: 'agentDefsL2 step args must be an object.' };
   }
   const raw = parsed as Record<string, unknown>;
-  const allowed = new Set(['project', 'module']);
+  const allowed = new Set(['project', 'module', 'scope']);
   const unknown = Object.keys(raw).find(key => !allowed.has(key));
   if (unknown) return { kind: 'refusal', diagnostic: `Unknown step arg: ${unknown}.` };
   const project = typeof raw.project === 'number' ? raw.project : Number.NaN;
   const module = typeof raw.module === 'string' ? raw.module.trim() : '';
+  if (raw.scope !== 'pages') return { kind: 'refusal', diagnostic: 'Only /pages is available at this stage.' };
   if (!Number.isSafeInteger(project) || project <= 0) {
     return { kind: 'refusal', diagnostic: 'agentDefsL2 step args require a positive integer project.' };
   }
@@ -142,7 +141,7 @@ export function parseD2StepInvocation(value: string, currentProject = currentD2P
   if (!moduleTokenOk(module)) {
     return { kind: 'refusal', diagnostic: 'Step module must be lowerCamel and must not contain a path.' };
   }
-  return { kind: 'run', project, module };
+  return { kind: 'run', project, module, scope: 'pages' };
 }
 
 export function isD2StepId(value: string): value is D2StepId {
@@ -165,12 +164,10 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity): ml
     nextSteps: [],
     agentName: stepId === 'entry10' ? D2_ENTRY_AGENT_NAME
       : stepId === 'input20' ? D2_INPUT_AGENT_NAME
-        : stepId === 'contracts30' ? D2_CONTRACTS_AGENT_NAME
-          : stepId === 'shared40' ? D2_SHARED_AGENT_NAME
-            : stepId === 'pages50' ? D2_PAGES_AGENT_NAME
+      : stepId === 'pages50' ? D2_PAGES_AGENT_NAME
               : stepId === 'finalize60' ? D2_FINALIZE_AGENT_NAME
               : D2_AGENT_NAME,
-    prompt: JSON.stringify(identity),
+    prompt: JSON.stringify({ ...identity, scope: 'pages' }),
     rags: [],
     planning: {
       planId: stepId,
@@ -217,7 +214,9 @@ export async function initializeD2Pipeline(identity: D2RunIdentity, now = new Da
   const existing = await readD2Pipeline(identity);
   if (existing) {
     if (existing.schemaVersion !== D2_PIPELINE_VERSION || existing.flowId !== D2_FLOW_ID || existing.project !== identity.project || existing.module !== identity.module) {
-      throw new Error('Existing agentDefsL2 pipeline has a different identity. Nothing was overwritten.');
+      const replacement = createD2Pipeline(identity, now);
+      await writeJson(d2PipelineFile(identity), replacement);
+      return replacement;
     }
     return existing;
   }
@@ -241,7 +240,7 @@ export async function markD2Unavailable(identity: D2RunIdentity, stepId: D2StepI
 
 export async function markD2StepApproved(
   identity: D2RunIdentity,
-  stepId: D2StepId,
+  stepId: D2RecordedStepId,
   artifactPaths: string[],
   snapshotHash?: string,
 ): Promise<void> {
@@ -263,7 +262,7 @@ export async function markD2StepApproved(
   } satisfies D2PipelineState);
 }
 
-export async function markD2StepFailed(identity: D2RunIdentity, stepId: D2StepId, diagnostic: string): Promise<void> {
+export async function markD2StepFailed(identity: D2RunIdentity, stepId: D2RecordedStepId, diagnostic: string): Promise<void> {
   const pipeline = await readD2Pipeline(identity);
   if (!pipeline || pipeline.status === 'complete' || pipeline.steps[stepId]?.status === 'approved') return;
   const updatedAt = new Date().toISOString();
@@ -308,7 +307,7 @@ export async function markD2FinalizeBlocked(identity: D2RunIdentity, diagnostic:
 }
 
 export const D2_HELP = [
-  'Usage: @@agentDefsL2 <lowerCamel>',
+  'Usage: @@agentDefsL2 <lowerCamel> /pages',
   'The module is explicit and the project comes from the current context.',
-  'Available now: entry10, input20, contracts30, shared40, pages50 and finalize60.',
+  'Only /pages is available at this stage: entry10, input20, pages50 and finalize60.',
 ].join('\n');
