@@ -29,8 +29,7 @@ export const d2MoleculeCatalogPort: D2MoleculeCatalogPort = {
     if (typeof mls.stor.loadProjectdependenciesInfoIfNeed === 'function') {
       await mls.stor.loadProjectdependenciesInfoIfNeed(project);
     }
-    const declared = mls.l5.getProjectDetails(project)?.prj_dependencies;
-    const directDependencies = Array.isArray(declared) ? declared.filter(id => id !== project) : (mls.l5.getProjectDependencies(project, false) || []).filter(id => id !== project);
+    const directDependencies = (mls.l5.getProjectDependencies(project, false) || []).filter(id => id !== project);
     const candidates = [project, ...directDependencies].filter(id => indexedFile({ project: id, level: 2, folder: 'molecules', shortName: 'skill', extension: '.ts' }));
     if (candidates.length > 1) throw new Error(`D2_MOLECULE_CATALOG_AMBIGUOUS: ${candidates.join(', ')}`);
     if (!candidates.length) return { catalogProject: null, selectedBy: null, directDependencies, groups: [], source: '' };
