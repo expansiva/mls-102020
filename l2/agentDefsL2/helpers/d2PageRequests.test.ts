@@ -10,7 +10,8 @@ import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { deriveD2PageRequests, type D2PageRequestsInput } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import { buildD2SharedV2, gateD2SharedV2, parseD2SharedV2, renderD2SharedV2, sharedFromDerived } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
-import { buildD2ContractV2, gateD2ContractV2, parseD2ContractV2, renderD2ContractV2 } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
+import { buildD2ContractV2, gateD2ContractV2 } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
+import { parseD2ContractV2, renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { readContractAst, symbolFields } from '/_102021_/l2/agentDefsL1/steps/usecases50/contractsAst.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -255,6 +256,36 @@ void test('synthetic fixture covers version, unbound submit and grant refusal', 
   assert.deepEqual(hubLoad?.lists.map(item => item.params.includes('search')), [true, false]);
   for (const entityId of Object.values(hubLoad?.returnEntities ?? {})) assert.ok(base.entities[entityId]);
   assert.equal(new Set(Object.values(hubLoad?.returnEntities ?? {})).size, 2);
+  const columnEntityId = other;
+  const columnEntities = structuredClone(base.entities);
+  const columnEntity = columnEntities[columnEntityId] as { capabilities?: Record<string, string>; record?: { fields?: Record<string, { type?: string; indexed?: boolean }> } };
+  columnEntity.capabilities = { ...(columnEntity.capabilities ?? {}), 'locate.byColumn': 'column' };
+  columnEntity.record = columnEntity.record ?? { fields: {} };
+  columnEntity.record.fields = { ...(columnEntity.record.fields ?? {}), sku: { type: 'string', indexed: true } };
+  const columnDerived = structuredClone(hub);
+  const columnLoad = columnDerived.requests.find(item => item.id === 'load');
+  if (!columnLoad) throw new Error('hub load missing');
+  const columnList = columnLoad.lists.find(item => item.organismId === 'otherRows');
+  if (!columnList) throw new Error('column list missing');
+  columnList.params = [...columnList.params.filter(item => item !== 'page' && item !== 'pageSize'), 'sku', 'page', 'pageSize'];
+  columnLoad.params = [...new Set([...columnLoad.params, 'sku'])];
+  const detailId = `load${columnEntityId}`;
+  columnDerived.requests.push({
+    id: detailId, kind: 'qry', trigger: detailId, returns: ['picked'], returnEntities: { picked: columnEntityId },
+    inputPaths: [`${columnEntityId}.id`], organisms: ['widgetDetail'], params: ['id'], lists: [],
+  });
+  const columnContract = buildD2ContractV2(columnDerived, sharedFromDerived(columnDerived), columnEntities);
+  const columnRoutes = new Map(columnContract.routes.map(item => [item.route.split('.').slice(2).join('.'), item]));
+  const columnMeta = columnRoutes.get('load')?.meta;
+  assert.equal(Object.keys(columnMeta?.lists ?? {}).length, 2);
+  for (const row of Object.values(columnMeta?.lists ?? {})) assert.ok(row.key in columnLoad.returnEntities);
+  assert.deepEqual(columnMeta?.lists.otherRows && { key: columnMeta.lists.otherRows.key, page: columnMeta.lists.otherRows.page }, { key: Object.entries(columnLoad.returnEntities).find(([, id]) => id === columnEntityId)?.[0], page: 'pageOtherRows' });
+  assert.deepEqual(columnMeta?.params.sku, { filters: columnMeta?.lists.otherRows?.key, field: 'sku' });
+  assert.deepEqual(columnRoutes.get(detailId)?.meta, {
+    output: { picked: { entity: columnEntityId, many: false } },
+    lists: {},
+    params: { id: { filters: 'picked', field: 'id' } },
+  });
 
   const english = deriveD2PageRequests({ ...base, menu: { ...base.menu, userLanguage: 'en' } });
   const home = deriveD2PageRequests(base);
@@ -303,6 +334,16 @@ void test('shared and contract roundtrip plus gates and contractsAst measurement
   assert.equal(routes.get('load')?.output, '{ produtos: ProdutoLoad[]; pageListaProdutos: number; pageSizeListaProdutos: number; hasMoreListaProdutos: boolean }');
   assert.equal(routes.get('cadastrarProduto')?.input, '{ details: { identification: { name: string }; product: { unitOfMeasure: string }; controleEstoque: { quantidadeMinima: number } } }');
   assert.equal(routes.get('cadastrarProduto')?.output, '{ produto: ProdutoCadastrarProduto }');
+  assert.deepEqual(routes.get('load')?.meta, {
+    output: { produtos: { entity: 'Produto', many: true } },
+    lists: { listaProdutos: { key: 'produtos', page: 'pageListaProdutos', pageSize: 'pageSizeListaProdutos', hasMore: 'hasMoreListaProdutos' } },
+    params: {
+      search: { filters: 'produtos', field: 'details.identification.name' },
+      page: { pages: 'listaProdutos' },
+      pageSize: { pages: 'listaProdutos' },
+    },
+  });
+  assert.deepEqual(routes.get('cadastrarProduto')?.meta.output, { produto: { entity: 'Produto', many: false } });
   for (const proj of contract.projections) {
     assert.ok(pack.entities[proj.entityId], proj.name);
     assert.equal(proj.name.startsWith(proj.entityId), true);
@@ -313,10 +354,25 @@ void test('shared and contract roundtrip plus gates and contractsAst measurement
   assert.equal(moveRoutes.get('load')?.output, '{ movimentacoes: MovimentacaoEstoqueLoad[]; produtos: ProdutoLoad[]; pageHistoricoMovimentacoes: number; pageSizeHistoricoMovimentacoes: number; hasMoreHistoricoMovimentacoes: boolean }');
   assert.equal(moveRoutes.get('registrarMovimentacao')?.input, '{ produtoId: string; movimentadoEm: string; details: { tipo: \'entrada\' | \'saida\'; quantidade: number } }');
   assert.equal(moveRoutes.get('registrarMovimentacao')?.output, '{ movimentacaoEstoque: MovimentacaoEstoqueLoad }');
+  assert.deepEqual(moveRoutes.get('load')?.meta, {
+    output: {
+      movimentacoes: { entity: 'MovimentacaoEstoque', many: true },
+      produtos: { entity: 'Produto', many: true },
+    },
+    lists: { historicoMovimentacoes: { key: 'movimentacoes', page: 'pageHistoricoMovimentacoes', pageSize: 'pageSizeHistoricoMovimentacoes', hasMore: 'hasMoreHistoricoMovimentacoes' } },
+    params: {
+      produtoId: { filters: 'movimentacoes', field: 'produtoId' },
+      page: { pages: 'historicoMovimentacoes' },
+      pageSize: { pages: 'historicoMovimentacoes' },
+    },
+  });
   for (const proj of moveContract.projections) assert.ok(pack.entities[proj.entityId], proj.name);
   const ast = readContractAst(rendered, 'contracts.defs.ts');
   const names = ast.symbols.map(item => item.name);
   assert.ok(names.includes(`${pageId[0].toUpperCase()}${pageId.slice(1)}Contracts`) || names.length >= 1);
+  assert.deepEqual(ast.unparsed, []);
+  assert.deepEqual(parsed.routes.map(item => item.meta), contract.routes.map(item => item.meta));
+  assert.deepEqual(parsed.projections.map(item => item.entityId), contract.projections.map(item => item.entityId));
   const measurement = {
     bindings: ast.bindings.length,
     symbols: ast.symbols.map(item => item.name),

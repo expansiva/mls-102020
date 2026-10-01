@@ -5,7 +5,8 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
-import { buildD2ContractV2, gateD2ContractV2, renderD2ContractV2, type D2ContractV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
+import { buildD2ContractV2, gateD2ContractV2, type D2ContractV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
+import { renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2DerivedPageRequests, D2PageRequestsCategory, D2PageRequestsInput, D2PageRequestsSibling } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import { parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { parseD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
@@ -14,7 +15,7 @@ import {
   buildD2SharedContext, draftFile, page11File, readD2SharedReceipt, sharedInfo, D2_SHARED_VERSION, type D2SharedReceipt,
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 
-export const D2_CONTRACTS70_VERSION = '2026-09-30-agent-defs-l2-contracts-v2' as const;
+export const D2_CONTRACTS70_VERSION = '2026-10-01-agent-defs-l2-contracts-v2.1' as const;
 
 export interface D2Contracts70Receipt {
   schemaVersion: typeof D2_CONTRACTS70_VERSION;
