@@ -1,0 +1,2 @@
+- 01/10/2026: criado (m3_02); itens 1, 2, 3 e 5 do spec.md §5.
+- 01/10/2026: m3_03 — só o fake do port de falha ganha `readRun`.
