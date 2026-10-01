@@ -1,28 +1,16 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2ContractV2.ts" enhancement="_blank"/>
 
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
-import type { D2Page11Location } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import type { D2DerivedPageRequests, D2DerivedProjection } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
+import { renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import type {
+  D2ContractV2Definition, D2ContractV2Meta, D2ContractV2MetaParam, D2ContractV2Projection, D2ContractV2Route,
+} from '/_102020_/l2/helpers/contractV2/types.js';
+import type { D2DerivedPageRequests, D2DerivedProjection, D2DerivedRequest } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import type { D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 
-export interface D2ContractV2Issue { code: string; path: string; message: string }
+export type { D2ContractV2Definition, D2ContractV2Projection, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
 
-export interface D2ContractV2Projection { name: string; entityId: string; requestIds: string[]; body: string }
-export interface D2ContractV2Route {
-  route: string;
-  kind: 'qry' | 'cmd';
-  writes?: string;
-  input: string;
-  output: string;
-  rules: string[];
-  access: { actors: string[]; grants: string[]; scope: string };
-}
-export interface D2ContractV2Definition {
-  module: string;
-  pageId: string;
-  projections: D2ContractV2Projection[];
-  routes: D2ContractV2Route[];
-}
+export interface D2ContractV2Issue { code: string; path: string; message: string }
 
 export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2SharedV2Definition, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2Definition {
   const projections: D2ContractV2Projection[] = [];
@@ -58,57 +46,12 @@ export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2Shar
       ...(request.writes ? { writes: request.writes } : {}),
       input,
       output: `{ ${outputParts.join('; ')} }`,
+      meta: contractMeta(derived.pageId, request, entities),
       rules: derived.rules[request.id] ?? [],
       access: derived.access,
     };
   });
   return { module: derived.module, pageId: derived.pageId, projections, routes };
-}
-
-export function renderD2ContractV2(location: Omit<D2Page11Location, 'device'>, definition: D2ContractV2Definition): string {
-  const header = `/// <mls fileReference="_${location.project}_/l2/${location.module}/web/contracts/${location.pageId}.defs.ts" enhancement="_blank"/>\n\n`;
-  const interfaces = definition.projections.map(item => `export interface ${item.name} {\n${item.body}\n}\n`).join('\n');
-  const pageName = pascal(definition.pageId);
-  const routes = definition.routes.map(route => {
-    const writes = route.writes ? `\n    writes: '${route.writes}';` : '';
-    const rules = `[${route.rules.map(item => `'${item}'`).join(', ')}]`;
-    const actors = `[${route.access.actors.map(item => `'${item}'`).join(', ')}]`;
-    const grants = `[${route.access.grants.map(item => `'${item}'`).join(', ')}]`;
-    return `  '${route.route}': {\n    kind: '${route.kind}';${writes}\n    input: ${route.input};\n    output: ${route.output};\n    rules: ${rules};\n    access: { actors: ${actors}; grants: ${grants}; scope: '${route.access.scope}' };\n  };`;
-  }).join('\n');
-  return `${header}${interfaces}\nexport interface ${pageName}Contracts {\n${routes}\n}\n`;
-}
-
-export function parseD2ContractV2(source: string): D2ContractV2Definition {
-  const loc = /^\/\/\/ <mls fileReference="_(\d+)_\/l2\/([a-z][A-Za-z0-9]*)\/web\/contracts\/([a-z][A-Za-z0-9_]*)\.defs\.ts" enhancement="_blank"\/>\n\n/u.exec(source);
-  if (!loc) throw new Error('D2_CONTRACT_V2_SOURCE_SHAPE');
-  const moduleName = loc[2];
-  const pageId = loc[3];
-  const projections: D2ContractV2Projection[] = [];
-  const iface = /export interface ([A-Z][A-Za-z0-9]*) \{([\s\S]*?)\n\}\n/ug;
-  let match: RegExpExecArray | null;
-  const contractsName = `${pascal(pageId)}Contracts`;
-  while ((match = iface.exec(source))) {
-    if (match[1] === contractsName) continue;
-    projections.push({ name: match[1], entityId: '', requestIds: [], body: match[2].replace(/^\n/u, '').replace(/\n$/u, '') });
-  }
-  const routes: D2ContractV2Route[] = [];
-  const blocks = source.split(/  '([^']+)': \{/u).slice(1);
-  for (let i = 0; i < blocks.length; i += 2) {
-    const route = blocks[i];
-    const body = blocks[i + 1] ?? '';
-    const kind = /kind: '(qry|cmd)'/u.exec(body)?.[1] as 'qry' | 'cmd' | undefined;
-    if (!kind) continue;
-    const writes = /writes: '([^']+)'/u.exec(body)?.[1];
-    const input = /input: ([\s\S]*?);\n    output:/u.exec(body)?.[1]?.trim() ?? '{}';
-    const output = /output: ([\s\S]*?);\n    rules:/u.exec(body)?.[1]?.trim() ?? '{}';
-    const rules = splitLits(/rules: \[([^\n]*)\]/u.exec(body)?.[1] ?? '');
-    const actors = splitLits(/actors: \[([^\n]*)\]/u.exec(body)?.[1] ?? '');
-    const grants = splitLits(/grants: \[([^\n]*)\]/u.exec(body)?.[1] ?? '');
-    const scope = /scope: '([^']+)'/u.exec(body)?.[1] ?? 'organization';
-    routes.push({ route, kind, ...(writes ? { writes } : {}), input, output, rules, access: { actors, grants, scope } });
-  }
-  return { module: moduleName, pageId, projections, routes };
 }
 
 export function gateD2ContractV2(
@@ -173,11 +116,138 @@ export function gateD2ContractV2(
     }
     }
   }
+  for (const route of definition.routes) {
+    const requestId = route.route.split('.').slice(2).join('.');
+    const request = derived.requests.find(item => item.id === requestId);
+    if (!request) continue;
+    const expected = contractMeta(definition.pageId, request, entities);
+    if (!sameJson(route.meta.output, expected.output)) {
+      issues.push({ code: 'D2_CONTRACT_V2_META_OUTPUT', path: route.route, message: 'Entity output keys are missing from meta or disagree with returnEntities.' });
+    }
+    if (!sameJson(route.meta.lists, expected.lists)) {
+      issues.push({ code: 'D2_CONTRACT_V2_META_LIST', path: route.route, message: 'A derived list is missing from meta or points at the wrong output key.' });
+    }
+    if (request.kind === 'qry' && !sameJson(route.meta.params, expected.params)) {
+      issues.push({ code: 'D2_CONTRACT_V2_META_PARAM', path: route.route, message: 'A query param is missing from meta or filters the wrong field.' });
+    }
+    if (danglingMetaRef(route, request, entities)) {
+      issues.push({ code: 'D2_CONTRACT_V2_META_REF', path: route.route, message: 'meta names an output key, list, or entity that does not exist.' });
+    }
+  }
   const renderedGate = renderD2ContractV2({ project: 1, module: definition.module, pageId: definition.pageId }, definition);
   if (renderedGate.includes('Pick<') || renderedGate.includes('Partial<')) {
     issues.push({ code: 'D2_CONTRACT_V2_LITERAL', path: 'source', message: 'Contract must use literal types only.' });
   }
   return issues;
+}
+
+function contractMeta(pageId: string, request: D2DerivedRequest, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2Meta {
+  const output: D2ContractV2Meta['output'] = {};
+  for (const [key, entityId] of Object.entries(request.returnEntities)) {
+    output[key] = { entity: entityId, many: request.kind === 'qry' && request.id === 'load' };
+  }
+  const lists: D2ContractV2Meta['lists'] = {};
+  for (const list of request.lists) {
+    const stem = pascal(list.organismId);
+    lists[list.organismId] = {
+      key: listOutputKey(pageId, request, list, entities),
+      page: `page${stem}`,
+      pageSize: `pageSize${stem}`,
+      hasMore: `hasMore${stem}`,
+    };
+  }
+  const params: D2ContractV2Meta['params'] = {};
+  if (request.kind === 'qry') {
+    for (const name of request.params) params[name] = paramMeta(pageId, request, name, entities);
+  }
+  return { output, lists, params };
+}
+
+function listOutputKey(
+  pageId: string,
+  request: D2DerivedRequest,
+  list: D2DerivedRequest['lists'][number],
+  entities: Record<string, Ns5OntologyAnyEntity>,
+): string {
+  const returns = Object.entries(request.returnEntities);
+  if (returns.some(([key]) => key === list.organismId)) return list.organismId;
+  const filters = list.params.filter(name => name !== 'page' && name !== 'pageSize');
+  const matched = returns.filter(([, entityId]) => filters.length > 0 && filters.every(name => Boolean(filterField(entities[entityId], entityId, name))));
+  if (matched.length === 1) return matched[0][0];
+  if (returns.some(([key]) => key === pageId)) return pageId;
+  if (returns.length === 1) return returns[0][0];
+  return matched[0]?.[0] ?? '';
+}
+
+function paramMeta(pageId: string, request: D2DerivedRequest, name: string, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2MetaParam {
+  if (name === 'page' || name === 'pageSize') {
+    const list = request.lists.find(item => item.params.includes(name));
+    return { pages: list?.organismId ?? '' };
+  }
+  const list = request.lists.find(item => item.params.includes(name));
+  const key = list ? listOutputKey(pageId, request, list, entities) : Object.keys(request.returnEntities)[0] ?? '';
+  const entityId = request.returnEntities[key] ?? '';
+  const field = name === 'id' && request.id !== 'load' ? 'id' : filterField(entities[entityId], entityId, name);
+  return { filters: key, field };
+}
+
+function filterField(entity: Ns5OntologyAnyEntity | undefined, entityId: string, param: string): string {
+  const view = entity as {
+    displayField?: string;
+    capabilities?: Record<string, string>;
+    relationships?: Record<string, { via?: string }>;
+    record?: { fields?: Record<string, Field> };
+  } | undefined;
+  const caps = new Set(Object.keys(view?.capabilities ?? {}));
+  if (param === 'search' && caps.has('locate.byName')) return stripEntity(view?.displayField ?? '', entityId);
+  if (caps.has('listByForeignKey')) {
+    for (const rel of Object.values(view?.relationships ?? {})) {
+      const via = stripEntity(rel.via ?? '', entityId);
+      if (via === param || via.endsWith(`.${param}`)) return via;
+    }
+  }
+  if (caps.has('locate.byColumn')) {
+    const indexed = indexedPaths(view?.record?.fields);
+    const found = indexed.find(path => path === param || path.endsWith(`.${param}`));
+    if (found) return found;
+  }
+  return '';
+}
+
+function indexedPaths(fields: Record<string, Field> | undefined, prefix = ''): string[] {
+  const out: string[] = [];
+  for (const [key, field] of Object.entries(fields ?? {})) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (field.indexed && !field.fields) out.push(path);
+    if (field.fields) out.push(...indexedPaths(field.fields, path));
+  }
+  return out;
+}
+
+function stripEntity(path: string, entityId: string): string {
+  const prefix = `${entityId}.`;
+  return path.startsWith(prefix) ? path.slice(prefix.length) : path;
+}
+
+function danglingMetaRef(route: D2ContractV2Route, request: D2DerivedRequest, entities: Record<string, Ns5OntologyAnyEntity>): boolean {
+  for (const [key, row] of Object.entries(route.meta.output)) {
+    if (!(key in request.returnEntities) || !entities[row.entity]) return true;
+  }
+  for (const [id, row] of Object.entries(route.meta.lists)) {
+    if (!request.lists.some(list => list.organismId === id)) return true;
+    if (!(row.key in route.meta.output)) return true;
+    const stem = pascal(id);
+    if (row.page !== `page${stem}` || row.pageSize !== `pageSize${stem}` || row.hasMore !== `hasMore${stem}`) return true;
+  }
+  for (const row of Object.values(route.meta.params)) {
+    if ('filters' in row && !(row.filters in route.meta.output)) return true;
+    if ('pages' in row && !(row.pages in route.meta.lists)) return true;
+  }
+  return false;
+}
+
+function sameJson(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function sameSet(left: Set<string>, right: Set<string>): boolean {
@@ -280,6 +350,7 @@ function tsType(entity: Ns5OntologyAnyEntity | undefined, path: string): string 
 interface Field {
   type?: string;
   derived?: boolean;
+  indexed?: boolean;
   values?: Array<{ value: string }>;
   fields?: Record<string, Field>;
 }
@@ -334,4 +405,3 @@ function renderQueryInput(params: string[]): string {
 }
 
 function pascal(value: string): string { return value ? value[0].toUpperCase() + value.slice(1) : value; }
-function splitLits(value: string): string[] { return value.split(',').map(item => item.trim().replace(/^'|'$/ug, '')).filter(Boolean); }

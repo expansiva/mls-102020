@@ -229,6 +229,35 @@ void test('the contract gate refuses an edited definition for each closed check'
   const inputCodes = codes(input);
   assert.equal(inputCodes.includes('D2_CONTRACT_V2_INPUT'), true);
   assert.equal(inputCodes.includes('D2_CONTRACT_V2_DERIVED'), false);
+
+  const missingOutput = structuredClone(base);
+  const loadRoute = missingOutput.routes.find(item => item.kind === 'qry');
+  if (!loadRoute) throw new Error('load route missing');
+  const outputKey = Object.keys(loadRoute.meta.output)[0];
+  delete loadRoute.meta.output[outputKey];
+  assert.equal(codes(missingOutput).includes('D2_CONTRACT_V2_META_OUTPUT'), true);
+
+  const missingList = structuredClone(base);
+  const listed = missingList.routes.find(item => Object.keys(item.meta.lists).length);
+  if (!listed) throw new Error('list route missing');
+  delete listed.meta.lists[Object.keys(listed.meta.lists)[0]];
+  assert.equal(codes(missingList).includes('D2_CONTRACT_V2_META_LIST'), true);
+
+  const missingParam = structuredClone(base);
+  const queried = missingParam.routes.find(item => item.kind === 'qry');
+  if (!queried) throw new Error('query route missing');
+  delete queried.meta.params[Object.keys(queried.meta.params)[0]];
+  assert.equal(codes(missingParam).includes('D2_CONTRACT_V2_META_PARAM'), true);
+
+  const dangling = structuredClone(base);
+  const referred = dangling.routes.find(item => item.kind === 'qry');
+  if (!referred) throw new Error('query route missing');
+  const paramName = Object.keys(referred.meta.params).find(name => 'filters' in referred.meta.params[name]);
+  if (!paramName) throw new Error('filter param missing');
+  const filter = referred.meta.params[paramName];
+  if (!('filters' in filter)) throw new Error('filter param missing');
+  filter.filters = 'missingKey';
+  assert.equal(codes(dangling).includes('D2_CONTRACT_V2_META_REF'), true);
 });
 
 void test('a changed shared rewrites only that page', async () => {
