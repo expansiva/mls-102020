@@ -13,9 +13,11 @@ import { gateD2SharedV2, parseD2SharedV2, sharedFromDerived, type D2SharedV2Defi
 import { beforePromptStep, reusableD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
 import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
 import {
-  approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, d2SharedValidSources, sharedUnitInputHash,
-  type D2SharedContext, type D2SharedLlmResponse, type D2SharedWriter,
+  approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, d2SharedRefusal, d2SharedRefusedMessage, d2SharedValidSources,
+  settleD2Shared, sharedUnitInputHash,
+  type D2SharedContext, type D2SharedLlmResponse, type D2SharedRefusal, type D2SharedWriter,
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { sharedWorkerSteps } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = join(here, '../../helpers/fixtures');
@@ -319,7 +321,7 @@ void test('same inputs reuse without an LLM and a sibling change keeps the other
   assert.equal(await sharedUnitInputHash(products), hash);
   assert.notEqual(await sharedUnitInputHash(sibling), await sharedUnitInputHash(moves));
   const data = products;
-  const port = { reusable: async () => true, context: async () => data };
+  const port = { reusable: async () => true, context: async () => data, settle: () => ({ pageIds: async () => ['produtos', 'movimentacoes'], reusable: async () => false, refusal: async () => null }) };
   const step = {
     type: 'agent', stepId: 2, interaction: null, stepTitle: 'shared', status: 'waiting_human_input', nextSteps: [],
     agentName: 'agentD2SharedPage', prompt: JSON.stringify({ project: 102047, module: moduleName, pageId: 'produtos', attempt: 1 }), rags: [],
@@ -366,7 +368,7 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(built.systemPrompt.startsWith('<!-- modelType: reasoning -->'), true);
   assert.match(built.systemPrompt, /<!-- reasoningEffort: high -->/u);
   assert.match(built.systemPrompt, /<!-- x-tool-strict: true -->/u);
-  const port = { reusable: async () => false, context: async () => data };
+  const port = { reusable: async () => false, context: async () => data, settle: () => ({ pageIds: async () => [], reusable: async () => true, refusal: async () => null }) };
   const step = {
     type: 'agent', stepId: 2, interaction: null, stepTitle: 'shared', status: 'waiting_human_input', nextSteps: [],
     agentName: 'agentD2SharedPage', prompt: JSON.stringify({ project: 102047, module: moduleName, pageId: best.pageId, attempt: 1 }), rags: [],
@@ -580,6 +582,48 @@ void test('a selection without calls takes the entity of the select targets; an 
   const noCarry = structuredClone(definition);
   delete noCarry.functions[navigateId].carries;
   assert.equal(gate(noCarry, twoTargets).some(item => item.code.startsWith('D2_SHARED_V2_CARRIES')), false);
+});
+
+void test('d2_64: a refused page does not stop its siblings; the stage fails once, then only it is redone', async () => {
+  const identity = { project: 102047, module: 'mod' };
+  const pages = ['pageA', 'pageB', 'pageC'];
+  const accepted = new Set<string>();
+  const refusals = new Map<string, D2SharedRefusal>();
+  const port = { pageIds: async () => pages, reusable: async (pageId: string) => accepted.has(pageId), refusal: async (pageId: string) => refusals.get(pageId) ?? null };
+
+  // Task one: B is refused while A and C are still in flight; the stage waits for them.
+  refusals.set('pageB', d2SharedRefusal(identity, 'pageB', 'task1', 'D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_FUNCTION_DUPLICATE: dup'));
+  assert.deepEqual(await settleD2Shared('task1', port), { state: 'pending', pending: ['pageA', 'pageC'] });
+  accepted.add('pageA');
+  accepted.add('pageC');
+  const once = await settleD2Shared('task1', port);
+  assert.equal(once.state, 'refused');
+  const message = d2SharedRefusedMessage(once.state === 'refused' ? once.refusals : []);
+  assert.match(message, /^D2_SHARED_PAGES_REFUSED: pageB: D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_FUNCTION_DUPLICATE/u);
+  assert.equal(/pageA|pageC/u.test(message), false);
+
+  // A refusal is never a receipt.
+  assert.equal(await reusableD2Shared(identity, 'pageB', {
+    readReceipt: async () => refusals.get('pageB') as never, context: async () => { throw new Error('not reached'); }, readShared: async () => '',
+  }), false);
+
+  // Task two: only B is dispatched (0 LLM for A and C); its old refusal does not end the stage early.
+  const pending = pages.filter(pageId => !accepted.has(pageId));
+  assert.deepEqual(sharedWorkerSteps(identity, pending).map(step => JSON.parse(step.prompt as string).pageId), ['pageB']);
+  assert.deepEqual(await settleD2Shared('task2', port), { state: 'pending', pending: ['pageB'] });
+  accepted.add('pageB');
+  assert.deepEqual(await settleD2Shared('task2', port), { state: 'ready', pageIds: pages });
+
+  // Two refusals with different codes: one message cites both.
+  accepted.clear();
+  accepted.add('pageA');
+  refusals.set('pageB', d2SharedRefusal(identity, 'pageB', 'task3', 'D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_RULE_COMMAND: rules'));
+  refusals.set('pageC', d2SharedRefusal(identity, 'pageC', 'task3', 'D2_REQUESTS_SUBMIT_UNBOUND: no form'));
+  const both = await settleD2Shared('task3', port);
+  assert.equal(both.state, 'refused');
+  const bothMessage = d2SharedRefusedMessage(both.state === 'refused' ? both.refusals : []);
+  assert.match(bothMessage, /pageB: D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_RULE_COMMAND/u);
+  assert.match(bothMessage, /pageC: D2_REQUESTS_SUBMIT_UNBOUND/u);
 });
 
 void test('agent sources do not name the fixture module', () => {
