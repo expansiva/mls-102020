@@ -111,6 +111,7 @@
     "processes": {
       "lembrarGeracaoMensalidades": ["inicio_gerencia"]
     },
+    "records": { "Plano": ["planos"] },
     "removed": []
   }
 }

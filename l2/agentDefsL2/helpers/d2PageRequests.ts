@@ -83,7 +83,8 @@ export interface D2DerivedRequest {
   inputPaths: string[];
   organisms: string[];
   params: string[];
-  lists: Array<{ filter: string; loadMore: string; organismId: string; params: string[] }>;
+  /** key = load output key of the list; load<Key> serves filter<List> and loadMore<List>. */
+  lists: Array<{ filter: string; loadMore: string; organismId: string; key: string; params: string[] }>;
 }
 export interface D2DerivedProjection {
   requestId: string;
@@ -98,7 +99,10 @@ export interface D2DerivedPageRequests {
   forms: Record<string, D2DerivedForm>;
   entry: { params: Record<string, D2DerivedParam> };
   projections: D2DerivedProjection[];
+  /** Rule candidates per request: every rule of the entities the request touches. */
   rules: Record<string, string[]>;
+  /** Rules of each touched entity; a command keeps at least one rule of the entity it writes. */
+  entityRules: Record<string, string[]>;
   access: { actors: string[]; grants: string[]; scope: string };
   issues: D2PageRequestsIssue[];
 }
@@ -162,6 +166,7 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
 
   for (const list of listUnits) {
     const entityId = primaryEntity(list.reads);
+    if (!entityId) continue;
     const caps = capabilities(input.entities[entityId]);
     const hasLocate = caps.has('locate.byName') || caps.has('locate.byColumn') || caps.has('listByForeignKey');
     if (!hasLocate && !paginatedCategory) continue;
@@ -174,7 +179,25 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
     }
     if (hasLocate || paginatedCategory) { params.push('page', 'pageSize'); }
     load.params = unique([...load.params, ...params]);
-    load.lists.push({ filter: `filter${pascal(list.id)}`, loadMore: `loadMore${pascal(list.id)}`, organismId: list.id, params });
+    const key = collectionKey(entityId, input.pageId, listUnits, input.siblings);
+    if (returnEntities[key] !== entityId) add('D2_REQUESTS_LIST_KEY', `organisms.${list.id}`, `List ${list.id} has no load output key for ${entityId}.`);
+    load.lists.push({ filter: `filter${pascal(list.id)}`, loadMore: `loadMore${pascal(list.id)}`, organismId: list.id, key, params });
+  }
+
+  const listRequests: D2DerivedRequest[] = [];
+  for (const list of load.lists) {
+    const id = `load${pascal(list.key)}`;
+    const existing = listRequests.find(item => item.id === id);
+    if (existing) {
+      existing.lists.push(list);
+      existing.params = unique([...existing.params, ...list.params]);
+      existing.organisms = unique([...existing.organisms, list.organismId]);
+      continue;
+    }
+    listRequests.push({
+      id, kind: 'qry', trigger: id, returns: [list.key], returnEntities: { [list.key]: returnEntities[list.key] }, inputPaths: [],
+      organisms: [list.organismId], params: [...list.params], lists: [list],
+    });
   }
 
   const originEntities = new Set(loadEntities);
@@ -192,19 +215,26 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
     });
   }
 
-  const requests = [load, ...detailRequests, ...commands].filter(item => item.returns.length || item.kind === 'cmd');
+  const requests = [load, ...listRequests, ...detailRequests, ...commands].filter(item => item.returns.length || item.kind === 'cmd');
+  const seen = new Set<string>();
+  for (const request of requests) {
+    if (seen.has(request.id)) add('D2_REQUESTS_ID_COLLISION', `requests.${request.id}`, `Two requests derive the same id ${request.id}.`);
+    seen.add(request.id);
+  }
   const projections = project(requests, organisms, pageNeeds, input.entities);
+  const rulesOf = (entityId: string): string[] => ((input.entities[entityId] as { rules?: string[] } | undefined)?.rules ?? []).filter(id => id in input.rules.rules);
   const rules: Record<string, string[]> = {};
   for (const request of requests) {
-    const entityIds = entitiesOf(request, projections, organisms);
-    rules[request.id] = unique(entityIds.flatMap(id => (input.entities[id] as { rules?: string[] } | undefined)?.rules ?? []).filter(id => id in input.rules.rules));
+    rules[request.id] = unique(entitiesOf(request, projections, organisms).flatMap(rulesOf));
   }
   const touched = unique(projections.map(item => item.entityId));
+  const entityRules: Record<string, string[]> = {};
+  for (const entityId of touched) entityRules[entityId] = rulesOf(entityId);
   const grants = input.access.grants.filter(grant => actors.includes(grant.actorRef) && grant.entityRefs.some(id => touched.includes(id)));
   const entry = { params: entryParams(input, organisms, forms, load, listUnits) };
   const scope = grants[0]?.dataScope?.mode || (pageNeeds?.reads[0]?.scope ?? 'organization');
   return {
-    module: input.module, pageId: input.pageId, requests, forms, entry, projections, rules,
+    module: input.module, pageId: input.pageId, requests, forms, entry, projections, rules, entityRules,
     access: { actors, grants: unique(grants.map(item => item.grantId)), scope },
     issues,
   };
@@ -298,10 +328,15 @@ function commandRequests(
 
 function project(requests: D2DerivedRequest[], organisms: OrganismUnit[], pageNeeds: D2PageRequestsNeedPage | undefined, entities: Record<string, Ns5OntologyAnyEntity>): D2DerivedProjection[] {
   const writes = pageNeeds?.writes ?? [];
+  const loadOrganisms = requests.find(item => item.id === 'load')?.organisms ?? [];
   const out: D2DerivedProjection[] = [];
   for (const request of requests) {
-    const served = organisms.filter(item => request.organisms.includes(item.id));
-    const paths = unique(served.flatMap(item => request.kind === 'cmd' ? item.edits : item.reads));
+    // load<Key> returns the same item shape as load, so the next page appends to the same state.
+    const listRequest = request.id !== 'load' && request.lists.length > 0;
+    const listEntities = new Set(Object.values(request.returnEntities));
+    const served = organisms.filter(item => (listRequest ? loadOrganisms : request.organisms).includes(item.id));
+    const paths = unique(served.flatMap(item => request.kind === 'cmd' ? item.edits : item.reads))
+      .filter(path => !listRequest || listEntities.has(path.split('.')[0]));
     const entityIds = unique([
       ...Object.values(request.returnEntities),
       ...(request.writes ? [request.writes.split('.')[0]] : []),

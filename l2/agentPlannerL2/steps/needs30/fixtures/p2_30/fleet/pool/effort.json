@@ -1,0 +1,575 @@
+{
+  "schemaVersion": "2026-09-21-p2-effort-v1.1",
+  "moduleName": "manutencaoFrota",
+  "device": "web",
+  "totals": {
+    "screens": {
+      "toCreate": 8,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "endpoints": {
+      "toCreate": 37,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "usecases": {
+      "toCreate": 19,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "tables": {
+      "toCreate": 4,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    }
+  },
+  "screens": [
+    {
+      "pageId": "motorista_inicio",
+      "label": "Início",
+      "actors": [
+        "motorista"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "manutencaoFrota.motorista_inicio.qryListVehicle"
+      ]
+    },
+    {
+      "pageId": "meus_veiculos",
+      "label": "Meus veículos",
+      "actors": [
+        "motorista"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "manutencaoFrota.meus_veiculos.cmdCreateFueling",
+        "manutencaoFrota.meus_veiculos.qryListFueling",
+        "manutencaoFrota.meus_veiculos.qryListVehicle"
+      ]
+    },
+    {
+      "pageId": "meus_abastecimentos",
+      "label": "Meus abastecimentos",
+      "actors": [
+        "motorista"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "manutencaoFrota.meus_abastecimentos.cmdCreateFueling",
+        "manutencaoFrota.meus_abastecimentos.qryListFueling",
+        "manutencaoFrota.meus_abastecimentos.qryListVehicle"
+      ]
+    },
+    {
+      "pageId": "gestor_inicio",
+      "label": "Início",
+      "actors": [
+        "gestor"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "manutencaoFrota.gestor_inicio.qryListMaintenanceOrder",
+        "manutencaoFrota.gestor_inicio.qryListMaintenancePlan",
+        "manutencaoFrota.gestor_inicio.qryListVehicle"
+      ]
+    },
+    {
+      "pageId": "veiculos_frota",
+      "label": "Veículos da frota",
+      "actors": [
+        "gestor"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "manutencaoFrota.veiculos_frota.cmdCreateMaintenanceOrder",
+        "manutencaoFrota.veiculos_frota.cmdCreateMaintenancePlan",
+        "manutencaoFrota.veiculos_frota.qryListMaintenanceOrder",
+        "manutencaoFrota.veiculos_frota.qryListMaintenancePlan",
+        "manutencaoFrota.veiculos_frota.qryListVehicle"
+      ]
+    },
+    {
+      "pageId": "planos_preventivos",
+      "label": "Planos preventivos",
+      "actors": [
+        "gestor"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "manutencaoFrota.planos_preventivos.cmdCreateMaintenanceOrder",
+        "manutencaoFrota.planos_preventivos.cmdCreateMaintenancePlan",
+        "manutencaoFrota.planos_preventivos.qryListMaintenanceOrder",
+        "manutencaoFrota.planos_preventivos.qryListMaintenancePlan",
+        "manutencaoFrota.planos_preventivos.qryListVehicle"
+      ]
+    },
+    {
+      "pageId": "ordens_manutencao",
+      "label": "Ordens de manutenção",
+      "actors": [
+        "gestor"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "manutencaoFrota.ordens_manutencao.cmdCreateMaintenanceOrder",
+        "manutencaoFrota.ordens_manutencao.cmdUpdateMaintenanceOrder",
+        "manutencaoFrota.ordens_manutencao.qryListMaintenanceOrder",
+        "manutencaoFrota.ordens_manutencao.qryListMaintenancePlan",
+        "manutencaoFrota.ordens_manutencao.qryListVehicle"
+      ]
+    },
+    {
+      "pageId": "cadastros_operacionais",
+      "label": "Cadastros operacionais",
+      "actors": [
+        "gestor"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "manutencaoFrota.cadastros_operacionais.cmdCreateDriver",
+        "manutencaoFrota.cadastros_operacionais.cmdCreateVehicle",
+        "manutencaoFrota.cadastros_operacionais.cmdCreateVehicleAssignment",
+        "manutencaoFrota.cadastros_operacionais.cmdCreateWorkshop",
+        "manutencaoFrota.cadastros_operacionais.cmdUpdateDriver",
+        "manutencaoFrota.cadastros_operacionais.cmdUpdateVehicle",
+        "manutencaoFrota.cadastros_operacionais.cmdUpdateVehicleAssignment",
+        "manutencaoFrota.cadastros_operacionais.cmdUpdateWorkshop",
+        "manutencaoFrota.cadastros_operacionais.qryListDriver",
+        "manutencaoFrota.cadastros_operacionais.qryListVehicle",
+        "manutencaoFrota.cadastros_operacionais.qryListVehicleAssignment",
+        "manutencaoFrota.cadastros_operacionais.qryListWorkshop"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.cmdCreateDriver",
+      "page": "cadastros_operacionais",
+      "kind": "cmd",
+      "usecaseRef": "createDriver",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.cmdCreateVehicle",
+      "page": "cadastros_operacionais",
+      "kind": "cmd",
+      "usecaseRef": "createVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.cmdCreateVehicleAssignment",
+      "page": "cadastros_operacionais",
+      "kind": "cmd",
+      "usecaseRef": "createVehicleAssignment",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.cmdCreateWorkshop",
+      "page": "cadastros_operacionais",
+      "kind": "cmd",
+      "usecaseRef": "createWorkshop",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.cmdUpdateDriver",
+      "page": "cadastros_operacionais",
+      "kind": "cmd",
+      "usecaseRef": "updateDriver",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.cmdUpdateVehicle",
+      "page": "cadastros_operacionais",
+      "kind": "cmd",
+      "usecaseRef": "updateVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.cmdUpdateVehicleAssignment",
+      "page": "cadastros_operacionais",
+      "kind": "cmd",
+      "usecaseRef": "updateVehicleAssignment",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.cmdUpdateWorkshop",
+      "page": "cadastros_operacionais",
+      "kind": "cmd",
+      "usecaseRef": "updateWorkshop",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.qryListDriver",
+      "page": "cadastros_operacionais",
+      "kind": "qry",
+      "usecaseRef": "listDriver",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.qryListVehicle",
+      "page": "cadastros_operacionais",
+      "kind": "qry",
+      "usecaseRef": "listVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.qryListVehicleAssignment",
+      "page": "cadastros_operacionais",
+      "kind": "qry",
+      "usecaseRef": "listVehicleAssignment",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.cadastros_operacionais.qryListWorkshop",
+      "page": "cadastros_operacionais",
+      "kind": "qry",
+      "usecaseRef": "listWorkshop",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.gestor_inicio.qryListMaintenanceOrder",
+      "page": "gestor_inicio",
+      "kind": "qry",
+      "usecaseRef": "listMaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.gestor_inicio.qryListMaintenancePlan",
+      "page": "gestor_inicio",
+      "kind": "qry",
+      "usecaseRef": "listMaintenancePlan",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.gestor_inicio.qryListVehicle",
+      "page": "gestor_inicio",
+      "kind": "qry",
+      "usecaseRef": "listVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.meus_abastecimentos.cmdCreateFueling",
+      "page": "meus_abastecimentos",
+      "kind": "cmd",
+      "usecaseRef": "createFueling",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.meus_abastecimentos.qryListFueling",
+      "page": "meus_abastecimentos",
+      "kind": "qry",
+      "usecaseRef": "listFueling",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.meus_abastecimentos.qryListVehicle",
+      "page": "meus_abastecimentos",
+      "kind": "qry",
+      "usecaseRef": "listVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.meus_veiculos.cmdCreateFueling",
+      "page": "meus_veiculos",
+      "kind": "cmd",
+      "usecaseRef": "createFueling",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.meus_veiculos.qryListFueling",
+      "page": "meus_veiculos",
+      "kind": "qry",
+      "usecaseRef": "listFueling",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.meus_veiculos.qryListVehicle",
+      "page": "meus_veiculos",
+      "kind": "qry",
+      "usecaseRef": "listVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.motorista_inicio.qryListVehicle",
+      "page": "motorista_inicio",
+      "kind": "qry",
+      "usecaseRef": "listVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.ordens_manutencao.cmdCreateMaintenanceOrder",
+      "page": "ordens_manutencao",
+      "kind": "cmd",
+      "usecaseRef": "createMaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.ordens_manutencao.cmdUpdateMaintenanceOrder",
+      "page": "ordens_manutencao",
+      "kind": "cmd",
+      "usecaseRef": "updateMaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.ordens_manutencao.qryListMaintenanceOrder",
+      "page": "ordens_manutencao",
+      "kind": "qry",
+      "usecaseRef": "listMaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.ordens_manutencao.qryListMaintenancePlan",
+      "page": "ordens_manutencao",
+      "kind": "qry",
+      "usecaseRef": "listMaintenancePlan",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.ordens_manutencao.qryListVehicle",
+      "page": "ordens_manutencao",
+      "kind": "qry",
+      "usecaseRef": "listVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.planos_preventivos.cmdCreateMaintenanceOrder",
+      "page": "planos_preventivos",
+      "kind": "cmd",
+      "usecaseRef": "createMaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.planos_preventivos.cmdCreateMaintenancePlan",
+      "page": "planos_preventivos",
+      "kind": "cmd",
+      "usecaseRef": "createMaintenancePlan",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.planos_preventivos.qryListMaintenanceOrder",
+      "page": "planos_preventivos",
+      "kind": "qry",
+      "usecaseRef": "listMaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.planos_preventivos.qryListMaintenancePlan",
+      "page": "planos_preventivos",
+      "kind": "qry",
+      "usecaseRef": "listMaintenancePlan",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.planos_preventivos.qryListVehicle",
+      "page": "planos_preventivos",
+      "kind": "qry",
+      "usecaseRef": "listVehicle",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.veiculos_frota.cmdCreateMaintenanceOrder",
+      "page": "veiculos_frota",
+      "kind": "cmd",
+      "usecaseRef": "createMaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.veiculos_frota.cmdCreateMaintenancePlan",
+      "page": "veiculos_frota",
+      "kind": "cmd",
+      "usecaseRef": "createMaintenancePlan",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.veiculos_frota.qryListMaintenanceOrder",
+      "page": "veiculos_frota",
+      "kind": "qry",
+      "usecaseRef": "listMaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.veiculos_frota.qryListMaintenancePlan",
+      "page": "veiculos_frota",
+      "kind": "qry",
+      "usecaseRef": "listMaintenancePlan",
+      "status": "toCreate"
+    },
+    {
+      "route": "manutencaoFrota.veiculos_frota.qryListVehicle",
+      "page": "veiculos_frota",
+      "kind": "qry",
+      "usecaseRef": "listVehicle",
+      "status": "toCreate"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "createDriver",
+      "entity": "Driver",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createFueling",
+      "entity": "Fueling",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createMaintenanceOrder",
+      "entity": "MaintenanceOrder",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createMaintenancePlan",
+      "entity": "MaintenancePlan",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createVehicle",
+      "entity": "Vehicle",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createVehicleAssignment",
+      "entity": "VehicleAssignment",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createWorkshop",
+      "entity": "Workshop",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listDriver",
+      "entity": "Driver",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listFueling",
+      "entity": "Fueling",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listMaintenanceOrder",
+      "entity": "MaintenanceOrder",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listMaintenancePlan",
+      "entity": "MaintenancePlan",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listVehicle",
+      "entity": "Vehicle",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listVehicleAssignment",
+      "entity": "VehicleAssignment",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listWorkshop",
+      "entity": "Workshop",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "updateDriver",
+      "entity": "Driver",
+      "operation": "update",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "updateMaintenanceOrder",
+      "entity": "MaintenanceOrder",
+      "operation": "update",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "updateVehicle",
+      "entity": "Vehicle",
+      "operation": "update",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "updateVehicleAssignment",
+      "entity": "VehicleAssignment",
+      "operation": "update",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "updateWorkshop",
+      "entity": "Workshop",
+      "operation": "update",
+      "status": "toCreate",
+      "existing": ""
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "fueling",
+      "entity": "Fueling",
+      "status": "toCreate"
+    },
+    {
+      "tableId": "maintenanceOrder",
+      "entity": "MaintenanceOrder",
+      "status": "toCreate"
+    },
+    {
+      "tableId": "maintenancePlan",
+      "entity": "MaintenancePlan",
+      "status": "toCreate"
+    },
+    {
+      "tableId": "vehicleAssignment",
+      "entity": "VehicleAssignment",
+      "status": "toCreate"
+    }
+  ],
+  "removed": [],
+  "unattributed": [],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "sourceBackend": "pool/l2/web/backend.json",
+    "generatedAt": "2026-09-21T17:53:14.204Z"
+  }
+}

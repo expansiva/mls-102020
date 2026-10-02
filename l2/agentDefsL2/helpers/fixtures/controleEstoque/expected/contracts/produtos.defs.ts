@@ -42,6 +42,14 @@ export interface ProdutosContracts {
     rules: ['quantidadeMinimaValida', 'saldoAtualProduto', 'avisoSaldoMinimoProduto'];
     access: { actors: ['estoquista']; grants: ['gerenciarEstoque']; scope: 'organization' };
   };
+  'controleEstoque.produtos.loadProdutos': {
+    kind: 'qry';
+    input: { search?: string; page?: number; pageSize?: number };
+    output: { produtos: ProdutoLoad[]; pageListaProdutos: number; pageSizeListaProdutos: number; hasMoreListaProdutos: boolean };
+    meta: { output: { produtos: { entity: 'Produto'; many: true } }; lists: { listaProdutos: { key: 'produtos'; page: 'pageListaProdutos'; pageSize: 'pageSizeListaProdutos'; hasMore: 'hasMoreListaProdutos' } }; params: { search: { filters: 'produtos'; field: 'details.identification.name' }; page: { pages: 'listaProdutos' }; pageSize: { pages: 'listaProdutos' } } };
+    rules: ['quantidadeMinimaValida', 'saldoAtualProduto', 'avisoSaldoMinimoProduto'];
+    access: { actors: ['estoquista']; grants: ['gerenciarEstoque']; scope: 'organization' };
+  };
   'controleEstoque.produtos.cadastrarProduto': {
     kind: 'cmd';
     writes: 'Produto.create';

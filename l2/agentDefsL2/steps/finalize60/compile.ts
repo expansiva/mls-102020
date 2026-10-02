@@ -10,7 +10,7 @@ import type { D2RunIdentity } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import type { D2CompileProof } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
 import { d2InfoForPath } from '/_102020_/l2/agentDefsL2/steps/finalize60/io.js';
 
-// 2026-09-30: frozen contracts30 still imports this compiler until L1 drops the legacy generator.
+// 2026-10-02: compiler used by finalize80 and by the frozen contracts30.
 export interface D2FinalSource { pageId: string; kind: 'contract' | 'shared' | 'desktopPage' | 'mobilePage'; path: string; source: string }
 const ORDER: Record<D2FinalSource['kind'], number> = { contract: 0, shared: 1, desktopPage: 2, mobilePage: 2 };
 

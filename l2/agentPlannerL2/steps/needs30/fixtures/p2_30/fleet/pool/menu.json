@@ -1,0 +1,263 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "manutencaoFrota",
+  "userLanguage": "pt-BR",
+  "device": "web",
+  "tree": [
+    {
+      "id": "motorista_inicio",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Resumo dos seus veículos atribuídos e abastecimentos recentes."
+        },
+        {
+          "kind": "highlights",
+          "text": "Destaques dos veículos, incluindo preventivas por quilometragem vencidas."
+        },
+        {
+          "kind": "alerts",
+          "text": "Alertas de preventiva por quilometragem dos seus veículos atribuídos."
+        },
+        {
+          "kind": "inbox",
+          "text": "Pendências que exigem seu registro de abastecimento."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "minha_frota",
+      "kind": "hub",
+      "label": "Minha frota",
+      "context": "Driver",
+      "text": "Seu perfil de motorista já está selecionado. Escolha um veículo atribuído ou consulte seus abastecimentos.",
+      "children": [
+        {
+          "id": "meus_veiculos",
+          "kind": "page",
+          "label": "Meus veículos",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Veículos atribuídos a você."
+            },
+            {
+              "kind": "detail",
+              "text": "Dados operacionais do veículo atribuído."
+            },
+            {
+              "kind": "highlights",
+              "text": "Situação operacional e indicação de preventiva por quilometragem vencida."
+            }
+          ],
+          "action": "new"
+        },
+        {
+          "id": "meus_abastecimentos",
+          "kind": "page",
+          "label": "Meus abastecimentos",
+          "organisms": [
+            {
+              "kind": "list",
+              "text": "Seus abastecimentos registrados, organizados por data."
+            },
+            {
+              "kind": "detail",
+              "text": "Dados do abastecimento selecionado."
+            },
+            {
+              "kind": "form",
+              "text": "Registre a data e os dados do abastecimento de um veículo atribuído."
+            },
+            {
+              "kind": "actions",
+              "text": "Registrar abastecimento para um veículo atribuído."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "gestor_inicio",
+      "kind": "page",
+      "label": "Início",
+      "organisms": [
+        {
+          "kind": "summary",
+          "text": "Resumo das ordens, planos preventivos e veículos da frota."
+        },
+        {
+          "kind": "highlights",
+          "text": "Manutenções concluídas, preventivas próximas e preventivas vencidas."
+        },
+        {
+          "kind": "alerts",
+          "text": "Preventivas vencidas e próximas manutenções por data ou quilometragem."
+        },
+        {
+          "kind": "inbox",
+          "text": "Ordens e cadastros da frota que precisam de acompanhamento."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "veiculos_frota",
+      "kind": "page",
+      "label": "Veículos da frota",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Veículos cadastrados na frota."
+        },
+        {
+          "kind": "detail",
+          "text": "Dados operacionais do veículo, seus planos e ordens de manutenção."
+        },
+        {
+          "kind": "highlights",
+          "text": "Situação do veículo, incluindo preventiva por quilometragem vencida."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre ou altere os dados operacionais de um veículo."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastrar ou atualizar veículo; criar plano preventivo; abrir ordem de manutenção por defeito."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "planos_preventivos",
+      "kind": "page",
+      "label": "Planos preventivos",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Planos preventivos da frota e sua situação."
+        },
+        {
+          "kind": "detail",
+          "text": "Periodicidade do plano, próxima quilometragem, próxima data e indicação de preventiva vencida."
+        },
+        {
+          "kind": "alerts",
+          "text": "Planos com preventiva vencida por quilometragem."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre ou atualize a periodicidade de um plano preventivo."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastrar ou atualizar plano preventivo; abrir ordem de manutenção preventiva."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "ordens_manutencao",
+      "kind": "page",
+      "label": "Ordens de manutenção",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Ordens de manutenção da frota."
+        },
+        {
+          "kind": "detail",
+          "text": "Defeito, veículo, serviço e situação da ordem de manutenção."
+        },
+        {
+          "kind": "highlights",
+          "text": "Indicação de manutenção concluída."
+        },
+        {
+          "kind": "form",
+          "text": "Registre os dados finais do serviço executado na ordem."
+        },
+        {
+          "kind": "timeline",
+          "text": "Histórico das alterações e conclusões registradas na ordem de manutenção."
+        },
+        {
+          "kind": "actions",
+          "text": "Abrir ordem de manutenção por defeito ou preventiva; atualizar os dados da ordem."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "cadastros_operacionais",
+      "kind": "page",
+      "label": "Cadastros operacionais",
+      "organisms": [
+        {
+          "kind": "list",
+          "text": "Motoristas, oficinas e atribuições de veículos cadastrados."
+        },
+        {
+          "kind": "detail",
+          "text": "Dados do motorista, oficina ou atribuição de veículo selecionada."
+        },
+        {
+          "kind": "form",
+          "text": "Cadastre ou atualize motoristas, oficinas e atribuições de veículos."
+        },
+        {
+          "kind": "actions",
+          "text": "Cadastrar, atualizar ou remover motoristas, oficinas e atribuições de veículos."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:motorista": [
+      "motorista_inicio",
+      "minha_frota"
+    ],
+    "actor:gestor": [
+      "gestor_inicio",
+      "veiculos_frota",
+      "planos_preventivos",
+      "ordens_manutencao",
+      "cadastros_operacionais"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "registrarAbastecimento": [
+        "meus_veiculos",
+        "meus_abastecimentos"
+      ],
+      "consultarVeiculosAtribuidos": [
+        "meus_veiculos"
+      ],
+      "cadastrarPlanoPreventivo": [
+        "veiculos_frota",
+        "planos_preventivos"
+      ],
+      "abrirOrdemPorDefeito": [
+        "veiculos_frota",
+        "ordens_manutencao"
+      ],
+      "tratarAlertaPreventivaVencida": [
+        "planos_preventivos",
+        "ordens_manutencao"
+      ],
+      "atualizarOrdemManutencao": [
+        "ordens_manutencao"
+      ]
+    },
+    "processes": {},
+    "removed": []
+  }
+}

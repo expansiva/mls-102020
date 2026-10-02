@@ -129,7 +129,7 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
     const built = buildD2SharedPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
     return [{ type: 'prompt_ready', args: step.prompt || '', messageId: context.message.orderAt, threadId: context.message.threadId,
       taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: built.systemPrompt, humanPrompt: built.humanPrompt,
-      tools: [{ type: 'function', function: { name: 'submitD2Shared', description: 'Define states, functions, journeys and command returns for one shared page', parameters: sharedSchema } }],
+      tools: [{ type: 'function', function: { name: 'submitD2Shared', description: 'Define states, functions, journeys, command returns and request rules for one shared page', parameters: sharedSchema } }],
       toolChoice: { type: 'function', function: { name: 'submitD2Shared' } } }];
   } catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
 }
@@ -166,10 +166,11 @@ function next(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep
 }
 
 const row = (required: string[], properties: Record<string, unknown>) => ({ type: 'object', additionalProperties: false, required, properties });
-const sharedSchema = row(['states', 'functions', 'journeys', 'commandReturns'], {
+const sharedSchema = row(['states', 'functions', 'journeys', 'commandReturns', 'requestRules'], {
   states: { type: 'array', items: row(['id', 'source', 'description'], { id: { type: 'string' }, source: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$' }, description: { type: 'string' } }) },
   functions: { type: 'array', items: row(['id', 'description'], { id: { type: 'string' }, description: { type: 'string' }, calls: { type: 'string' }, sets: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*$' }, updates: { type: 'array', items: { type: 'string' } }, navigate: { type: 'string' }, carries: { type: 'object', additionalProperties: { type: 'string' } } }) },
   journeys: { type: 'array', items: row(['step', 'organisms', 'functions'], { step: { type: 'string' }, organisms: { type: 'array', items: { type: 'string' } }, functions: { type: 'array', items: { type: 'string' } }, continuesIn: { type: 'string' } }) },
   commandReturns: { type: 'array', items: row(['requestId', 'returns'], { requestId: { type: 'string' }, returns: { type: 'array', items: { type: 'string' } } }) },
+  requestRules: { type: 'array', items: row(['requestId', 'rules'], { requestId: { type: 'string' }, rules: { type: 'array', items: { type: 'string' } } }) },
   formChoices: { type: 'array', items: row(['submit', 'organism'], { submit: { type: 'string' }, organism: { type: 'string' } }) },
 });

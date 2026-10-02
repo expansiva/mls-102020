@@ -63,6 +63,7 @@
     },
     "processes": {
       "lembrarGeracaoMensalidades": ["painel", "mensalidades_mes"]
-    }
+    },
+    "records": {}
   }
 }

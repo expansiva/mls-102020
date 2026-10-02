@@ -442,12 +442,26 @@ function semanticPageScopeFindings(state: GateState, pages: D2SelectedPage[]): v
       .map(item => text(item.entity)).filter(Boolean));
     const suspectEntities = [...crudWrites].filter(entity => organizationReads.has(entity) && !ownReads.has(entity));
     if (!suspectEntities.length) continue;
+    // A write that only a form without a journey justifies is the menu over-reaching: stop before any D2 LLM.
+    const formOnly = suspectEntities.filter(entity => {
+      const froms = rows(page.writes).filter(item => text(item.entity) === entity).flatMap(item => strings(item.from));
+      return froms.length > 0 && froms.every(from => from === 'organism:form');
+    });
+    for (const entity of formOnly) {
+      error(
+        state,
+        'PAGE_OWN_SCOPE_WITH_OTHER_ENTITY_CRUD',
+        'pool/l1/web/needs.json',
+        `page reads own identity ${[...ownReads].join(', ')} but writes organization-scoped ${entity} only from organism:form, without a journey; menu20 meta.records must not list ${entity} for this page`,
+        page.pageId,
+      );
+    }
     const usecases = new Map(page.usecases.map(usecase => [text(usecase.usecaseId), usecase]));
     for (const endpoint of page.endpoints) {
       const usecase = usecases.get(text(endpoint.usecaseRef));
       const entity = text(usecase?.entity);
       const operation = text(usecase?.operation);
-      if (!suspectEntities.includes(entity) || (operation !== 'create' && operation !== 'update')) continue;
+      if (!suspectEntities.includes(entity) || formOnly.includes(entity) || (operation !== 'create' && operation !== 'update')) continue;
       review(
         state,
         'PAGE_OWN_SCOPE_WITH_OTHER_ENTITY_CRUD',

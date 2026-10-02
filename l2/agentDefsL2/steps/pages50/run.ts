@@ -13,7 +13,7 @@ import type { D2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages
 
 export const D2_PAGES_VERSION = '2026-09-30-agent-defs-l2-pages-v2.1' as const;
 export const D2_PAGE11_NEEDS_VERSION = '2026-09-30-agent-defs-l2-page11-needs-v1' as const;
-export const D2_PAGES_PROMPT_LIMIT_CHARS = 160_000;
+export const D2_PAGES_PROMPT_LIMIT_CHARS = 640_000;
 
 export interface D2PagesResponse {
   desktop: { definition: unknown; needs: unknown };
@@ -29,7 +29,6 @@ export interface D2PagesReceipt {
   inputHash: string;
   unitInputHash: string;
   template: { category: string; experience: string; reason: string; reference: string | null; hash: string; catalogHash: string };
-  designSystemHash: string;
   moleculeInventoryHash: string;
   moleculeHashes: Record<string, string>;
   moleculeGroupAssessments?: D2PagesContext['groupAssessments'];
@@ -55,7 +54,6 @@ export interface D2PagesContext {
   moleculeHashes: Record<string, string>;
   skill: string;
   prompt: string;
-  designSystem: string;
 }
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
@@ -122,10 +120,16 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
       ancestors: page.ancestors, organisms: menuOrigins(page), reads: page.reads, writes: page.writes,
       journeys: Object.fromEntries(page.journeyRefs.map(id => [id, artifacts.journeys[id]])),
       userLanguage: text(record(artifacts.menu).userLanguage) || 'en' },
-    menu: artifacts.menu, needs: artifacts.needs,
+    menu: artifacts.menu,
+    // Other pages only matter for the writes a navigate may cover; this page keeps its full needs.
+    needs: { pages: ((record(artifacts.needs).pages as unknown[] | undefined) ?? []).map(raw => {
+      const row = record(raw);
+      return text(row.pageId) === page.pageId ? row : { pageId: row.pageId, writes: row.writes };
+    }) },
     ontology: Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))),
-    access: artifacts.access, categories: context.template.categories,
-    designSystem: context.designSystem,
+    // Disclosure is checked against the page actors' grants only.
+    access: { grants: ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => page.actors.includes(text(record(raw).actorRef))) },
+    categories: context.template.categories,
     moleculeResearch: JSON.parse(moleculeDecisionContext(context.selectedGroups, context.groups)),
     repair: repair ?? null,
   };
@@ -173,7 +177,6 @@ export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesRe
     inputHash: context.snapshot.snapshotHash,
     unitInputHash: await pageUnitInputHash(context),
     template: { category, experience: selectedTemplate.experience, reason: `${raw.categoryReason} ${selectedTemplate.reason}`, reference: selectedTemplate.reference, hash: selectedTemplate.hash, catalogHash: await sha256Text(context.template.catalog) },
-    designSystemHash: await sha256Text(context.designSystem),
     moleculeInventoryHash: context.inventory.sourceHash, moleculeHashes: context.moleculeHashes, moleculeGroupAssessments: context.groupAssessments,
     skillHash: await sha256Text(context.skill), promptHash: await sha256Text(context.prompt), promptChars, repairPromptChars,
     sourceHashes: { desktop: await sha256Text(sourcesText.desktop), mobile: await sha256Text(sourcesText.mobile) },

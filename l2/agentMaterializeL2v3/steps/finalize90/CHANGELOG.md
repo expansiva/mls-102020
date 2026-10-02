@@ -1,0 +1,2 @@
+- 01/10/2026: criado (m3_02); cobre só os contracts.
+- 01/10/2026: m3_03 — conta `written`, `unchanged` e `reused` (reason e counts); ajuste vindo do defeito da A-Studio da m3_02 / D-011.

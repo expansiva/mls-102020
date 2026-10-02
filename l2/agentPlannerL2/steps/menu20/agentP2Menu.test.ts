@@ -179,6 +179,8 @@ function draftFromGeneratedMenu(raw: unknown): MenuV2 {
     meta: {
       journeys: (meta.journeys || {}) as Record<string, string[]>,
       processes: (meta.processes || {}) as Record<string, string[]>,
+      // Menus generated before p2_30 have no meta.records.
+      records: (meta.records || {}) as Record<string, string[]>,
     },
   };
 }
@@ -521,9 +523,14 @@ void test('normalizeMenuV2 accepts the tool array form of authorities and journe
       processes: [
         { processId: 'lembrarGeracaoMensalidades', pages: ['painel', 'mensalidades_mes'] },
       ],
+      records: [],
     },
   });
   assert.deepEqual(arrayForm, objectForm);
+  const draft = loadDraft() as { meta: Record<string, unknown> };
+  const recordsArray = normalizeMenuV2({ ...draft, meta: { ...draft.meta, records: [{ entityId: 'Plano', pages: ['planos'] }] } });
+  assert.deepEqual(recordsArray.meta.records, { Plano: ['planos'] });
+  assert.throws(() => normalizeMenuV2({ ...draft, meta: { ...draft.meta, records: [{ entityId: 'plano', pages: ['planos'] }] } }), /l4 entity id/u);
 });
 
 void test('menuCandidates from the mensalidadesAcademia l4 fixture is byte-for-byte the golden file', () => {

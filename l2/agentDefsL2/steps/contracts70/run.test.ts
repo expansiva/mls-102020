@@ -103,16 +103,19 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const uniqueSteps = [...new Set(steps)];
   const firstOrganism = Object.keys(page.organisms)[0];
   const returnKey = load?.returns[0] ?? '';
+  const extraKeys = load?.returns.slice(1) ?? [];
+  const camel = (value: string) => value[0].toLowerCase() + value.slice(1);
+  const commandReturns = command ? [...new Set([...command.returns, ...Object.values(load?.returnEntities ?? {}).map(camel)])] : [];
   const selectTargets = [...new Set(Object.values(data.drafts.desktop.organisms).map(row => row.selects).filter(Boolean))];
   const carried = Object.entries(data.derived.entry.params).find(([, param]) => param.effect.startsWith('select:'));
   const functions: D2SharedLlmResponse['functions'] = [
     { id: 'load', description: 'Load the page.' },
     ...data.derived.requests.flatMap(request => request.lists.flatMap(list => [
-      { id: list.filter, description: 'Filter the loaded list.' },
-      { id: list.loadMore, description: 'Load another page of the list.' },
+      { id: list.filter, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Filter the loaded list.' },
+      { id: list.loadMore, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Load another page of the list.' },
     ])),
     ...(selectTargets.length ? [{ id: 'chooseRow', sets: 'selected', description: 'Choose a row.' }] : []),
-    ...(command ? [{ id: command.id, ...(returnKey ? { updates: ['rows'] } : {}), description: 'Submit the form.' }] : []),
+    ...(command ? [{ id: command.id, ...(returnKey ? { updates: ['rows', ...extraKeys.map(key => `${key}Rows`)] } : {}), description: 'Submit the form.' }] : []),
     ...(navigate ? [{ id: navigate.id, navigate: navigate.to, ...(carried ? { carries: { [carried[0]]: 'selected.id' } } : {}), description: 'Open the related page.' }] : []),
   ];
   return {
@@ -120,13 +123,15 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
       ...(returnKey ? [
         { id: 'rows', source: `load.${returnKey}`, description: 'Rows loaded for the page.' },
         { id: 'narrowed', source: 'rows', description: 'Rows narrowed from the loaded rows.' },
+        ...extraKeys.map(key => ({ id: `${key}Rows`, source: `load.${key}`, description: 'Other rows loaded for the page.' })),
       ] : []),
       ...(selectTargets.length ? [{ id: 'selected', source: 'chooseRow', description: 'Row chosen on the page.' }] : []),
       ...(command ? [{ id: 'draft', source: `${command.id}.input`, description: 'Values captured by the form.' }] : []),
     ],
     functions,
     journeys: uniqueSteps.map(step => ({ step, organisms: [firstOrganism], functions: ['load'] })),
-    commandReturns: command ? [{ requestId: command.id, returns: command.returns }] : [],
+    commandReturns: command ? [{ requestId: command.id, returns: commandReturns }] : [],
+    requestRules: Object.entries(data.derived.rules).map(([requestId, rules]) => ({ requestId, rules })),
     formChoices: (() => {
       const taken = new Set<string>();
       return Object.values(data.derived.forms).filter(item => item.ambiguous).map(item => {
@@ -258,6 +263,10 @@ void test('the contract gate refuses an edited definition for each closed check'
   if (!('filters' in filter)) throw new Error('filter param missing');
   filter.filters = 'missingKey';
   assert.equal(codes(dangling).includes('D2_CONTRACT_V2_META_REF'), true);
+
+  const ruled = structuredClone(base);
+  ruled.routes[0].rules = [...ruled.routes[0].rules, 'notChosen'];
+  assert.equal(codes(ruled).includes('D2_CONTRACT_V2_RULES'), true);
 });
 
 void test('a changed shared rewrites only that page', async () => {

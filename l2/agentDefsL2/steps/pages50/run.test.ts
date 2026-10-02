@@ -26,7 +26,7 @@ function context(module: string, pageId: string): D2PagesContext {
     template: { categories, catalog: JSON.stringify({ categories }), catalogHash: 'sha256:catalog', templatePaths: new Set(['templates/inventoryControl/page21.md', 'templates/financialTransactions/page21.md']),
       select: async category => ({ experience: category === 'inventoryControl' ? 'splitViewOperations' : 'ledgerTable', reason: 'Derived from page21.', reference: `_102020_/l4/collabux/templates/${category}/page21.md`, content: 'orientation', hash: 'sha256:template' }) },
     inventory: { catalogProject: null, selectedBy: null, directDependencies: [], groups: [], sourceHash: 'sha256:inventory' },
-    selectedGroups: Object.fromEntries(found.organisms.map((_, index) => [`organism${index + 1}`, []])), groups: [], moleculeHashes: {}, skill: 'skill', prompt: 'prompt', designSystem: 'tokens' };
+    selectedGroups: Object.fromEntries(found.organisms.map((_, index) => [`organism${index + 1}`, []])), groups: [], moleculeHashes: {}, skill: 'skill', prompt: 'prompt' };
 }
 function product(): D2PagesResponse {
   const organisms = {
@@ -143,13 +143,8 @@ void test('receipt hashes change with template catalog and design system while i
   const afterCatalog = await approveD2PagesUnit(catalogChanged, product(), 1400, 0, writer);
   assert.equal(afterCatalog.inputHash, base.inputHash);
   assert.notEqual(afterCatalog.template.catalogHash, base.template.catalogHash);
-  assert.equal(afterCatalog.designSystemHash, base.designSystemHash);
-  const designChanged = context('controleEstoque', 'produtos');
-  designChanged.designSystem = 'tokens with a new palette';
-  const afterDesign = await approveD2PagesUnit(designChanged, product(), 1400, 0, writer);
-  assert.equal(afterDesign.inputHash, base.inputHash);
-  assert.notEqual(afterDesign.designSystemHash, base.designSystemHash);
-  assert.equal(afterDesign.template.catalogHash, base.template.catalogHash);
+  // Page11 records no design-system value, so the design system is neither prompt nor receipt input.
+  assert.equal('designSystemHash' in afterCatalog, false);
 });
 
 void test('page unit input hash ignores another menu page but tracks its own menu, ontology and needs', async () => {
@@ -250,8 +245,15 @@ void test('four real reembolsoDespesas pages include the nine minhas_despesas or
     const journeyIds = ['avaliarDespesaDaEquipe', 'consultarPropriasDespesas', 'corrigirEreenviarDespesa', 'registrarEenviarDespesa', 'registrarPagamentoDeDespesa'];
     data.artifacts.journeys = Object.fromEntries(journeyIds.map(id => [id, parseNs4ClassicDefsSource(liveFixture(`l4/reembolsoDespesas/journeys/${id}.defs.ts`))]));
     data.page.journeyRefs = journeyIds;
-    data.designSystem = liveFixture('l2/designSystem.ts');
     const prompt = buildD2PagesDecisionPrompt(data);
+    const payload = JSON.parse(prompt.prompt) as { designSystem?: unknown; needs: { pages: Array<Record<string, unknown>> }; access: { grants: Array<{ actorRef: string }> } };
+    assert.equal('designSystem' in payload, false);
+    for (const row of payload.needs.pages) {
+      if (row.pageId === page.pageId) assert.deepEqual(row, needs.pages.find(item => item.pageId === page.pageId));
+      else assert.deepEqual(Object.keys(row).sort(), ['pageId', 'writes']);
+    }
+    assert.equal(payload.needs.pages.length, needs.pages.length);
+    assert.equal(payload.access.grants.every(grant => data.page.actors.includes(grant.actorRef)), true);
     assert.ok(prompt.chars < 160_000);
     maximum = Math.max(maximum, prompt.chars);
   }
