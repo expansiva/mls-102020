@@ -73,6 +73,8 @@ export type MenuStampedNode = MenuStampedHubNode | MenuStampedPageNode | MenuSta
 export interface MenuV2Meta {
   journeys: Record<string, string[]>;
   processes: Record<string, string[]>;
+  /** Kept record (entityId from recordsKept) → pages that maintain it. Read by needs30. */
+  records: Record<string, string[]>;
 }
 
 export interface MenuFileMeta extends MenuV2Meta {
@@ -395,13 +397,14 @@ export function normalizeMenuV2(value: unknown): MenuV2 {
   const root = asRecord(value, '$');
   exactKeys(root, ['tree', 'authorities', 'meta'], '$');
   const meta = asRecord(root.meta, '$.meta');
-  exactKeys(meta, ['journeys', 'processes'], '$.meta');
+  exactKeys(meta, ['journeys', 'processes', 'records'], '$.meta');
   return {
     tree: list(root.tree, '$.tree').map((item, index) => normalizeNode(item, `$.tree[${index}]`)),
     authorities: normalizeAuthorities(root.authorities, '$.authorities'),
     meta: {
       journeys: normalizeIdPagesMap(meta.journeys, '$.meta.journeys', 'journeyId'),
       processes: normalizeIdPagesMap(meta.processes, '$.meta.processes', 'processId'),
+      records: normalizeIdPagesMap(meta.records, '$.meta.records', 'entityId'),
     },
   };
 }
@@ -424,6 +427,7 @@ export function buildP2MenuFile(input: {
     meta: {
       journeys: input.draft.meta.journeys,
       processes: input.draft.meta.processes,
+      records: input.draft.meta.records,
       removed: [],
     },
   };
@@ -544,13 +548,14 @@ function normalizeAuthorities(value: unknown, path: string): Record<string, stri
   return out;
 }
 
-function normalizeIdPagesMap(value: unknown, path: string, idKey: 'journeyId' | 'processId'): Record<string, string[]> {
+function normalizeIdPagesMap(value: unknown, path: string, idKey: 'journeyId' | 'processId' | 'entityId'): Record<string, string[]> {
+  const idOf = idKey === 'entityId' ? entityIdRequired : memberIdRequired;
   if (Array.isArray(value)) {
     const out: Record<string, string[]> = {};
     value.forEach((item, index) => {
       const row = asRecord(item, `${path}[${index}]`);
       exactKeys(row, [idKey, 'pages'], `${path}[${index}]`);
-      const id = memberIdRequired(row[idKey], `${path}[${index}].${idKey}`);
+      const id = idOf(row[idKey], `${path}[${index}].${idKey}`);
       if (out[id]) throw new Error(`${path}[${index}]: duplicate ${idKey} ${id}.`);
       out[id] = stringIdList(row.pages, `${path}[${index}].pages`, nodeId);
     });
@@ -559,7 +564,7 @@ function normalizeIdPagesMap(value: unknown, path: string, idKey: 'journeyId' | 
   const source = asRecord(value, path);
   const out: Record<string, string[]> = {};
   for (const [key, pages] of Object.entries(source)) {
-    const id = memberIdRequired(key, `${path}.${key}`);
+    const id = idOf(key, `${path}.${key}`);
     out[id] = stringIdList(pages, `${path}.${id}`, nodeId);
   }
   return out;

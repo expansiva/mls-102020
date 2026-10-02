@@ -4,6 +4,7 @@ import type { P2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20
 import {
   actorAuthorityKey,
   collectBeyondJourneys,
+  collectRecordsKept,
   isMechanicalEffectTask,
   isMenuNodeKind,
   isMenuOrganismKind,
@@ -194,6 +195,34 @@ export function validateP2Menu(draft: MenuV2, input: P2MenuGateInput): P2MenuGat
   for (const actor of sources.actors) {
     pagesByActor.set(actor.actorId, pagesVisibleToActor(draft, byId, actor.actorId));
   }
+
+  // meta.records: which pages maintain each kept record (read by needs30).
+  const kept = new Set(collectRecordsKept(sources, grants).map(row => row.entityRef));
+  const actorsOfPage = (pageId: string): string[] => [...pagesByActor.entries()]
+    .filter(([, pages]) => pages.some(page => page.id === pageId)).map(([actorRef]) => actorRef);
+  Object.entries(draft.meta.records).forEach(([entityId, pages]) => {
+    if (!kept.has(entityId)) {
+      error(issues, 'P2_MENU_RECORD_UNKNOWN', `${entityId} is not in recordsKept. Key meta.records only by an entity of recordsKept.`, `$.meta.records.${entityId}`);
+    }
+    pages.forEach((pageId, pagePosition) => {
+      const path = `$.meta.records.${entityId}[${pagePosition}]`;
+      const found = byId.get(pageId);
+      if (!found) {
+        error(issues, 'P2_MENU_RECORD_PAGE_UNKNOWN', `Unknown page ${pageId}. List only pages of the tree.`, path);
+      } else if (found.node.kind !== 'page') {
+        error(issues, 'P2_MENU_RECORD_NOT_PAGE', `${pageId} is not a page.`, path);
+      } else if (!actorsOfPage(pageId).some(actorRef => grants.some(grant => grant.actorRef === actorRef && grant.entityRefs.includes(entityId)))) {
+        error(issues, 'P2_MENU_RECORD_GRANT', `No actor of page ${pageId} has a grant that reaches ${entityId}. Keep ${entityId} only on pages of an actor whose grant reaches it.`, path);
+      }
+    });
+  });
+  const journeyPages = new Set(Object.values(draft.meta.journeys).flat());
+  const recordPages = new Set(Object.values(draft.meta.records).flat());
+  walkTree(draft.tree, '$.tree', (node, path) => {
+    if (node.kind !== 'page' || !node.id || journeyPages.has(node.id) || recordPages.has(node.id)) return;
+    if (!node.organisms.some(organism => organism.kind === 'form')) return;
+    error(issues, 'P2_MENU_RECORD_FORM_PAGE', `Page ${node.id} has a form and no journey, so it maintains a record: list it in meta.records under the entity it keeps.`, path);
+  });
   const beyond = collectBeyondJourneys(sources, grants, processes);
   for (const row of beyond) {
     const visible = pagesByActor.get(row.actorRef) || [];

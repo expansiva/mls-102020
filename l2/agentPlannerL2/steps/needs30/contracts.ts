@@ -155,6 +155,8 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
   const actorsOfPage = pageActors(menu, pages);
   const journeysOfPage = invertIdPages(menu.meta.journeys);
   const processesOfPage = invertIdPages(menu.meta.processes);
+  if (!menu.meta.records) throw new Error('menu.json has no meta.records; run menu20 again so each form page names the record it keeps.');
+  const recordsOfPage = invertIdPages(menu.meta.records);
   const journeyById = new Map(sources.journeys.map(journey => [journey.journeyId, journey]));
   const entityById = new Map(sources.entities.map(entity => [entity.entityId, entity]));
   const beyond = collectBeyondJourneys(sources, grants, processes);
@@ -217,11 +219,13 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
       }
     }
 
+    // A form page without a journey keeps only the records menu20 assigned to it.
     if (hasOrganism(page, 'form') && (journeysOfPage.get(page.id) || []).length === 0) {
-      for (const entity of crudReachedBy(actors, grants, sources)) {
-        addRead(entity.entityId, 'organism:form');
-        addWrite(entity.entityId, 'create', '', 'organism:form');
-        addWrite(entity.entityId, 'update', '', 'organism:form');
+      for (const entityId of recordsOfPage.get(page.id) || []) {
+        if (!entityById.has(entityId)) continue;
+        addRead(entityId, 'organism:form');
+        addWrite(entityId, 'create', '', 'organism:form');
+        addWrite(entityId, 'update', '', 'organism:form');
       }
     }
 
@@ -488,24 +492,6 @@ function walkDerivedFields(
     }
     if (isRecord(nested)) walkDerivedFields(nested, nextPlatform, path, visit);
   }
-}
-
-function crudReachedBy(
-  actors: readonly string[],
-  grants: readonly P2GrantView[],
-  sources: P2L4Sources,
-): P2OntologyEntityView[] {
-  const crud = new Set(
-    sources.entities.filter(entity => entity.writer === 'crud' && entity.entityId).map(entity => entity.entityId),
-  );
-  const reached = new Set<string>();
-  for (const grant of grants) {
-    if (!actors.includes(grant.actorRef)) continue;
-    for (const entityRef of grant.entityRefs) {
-      if (crud.has(entityRef)) reached.add(entityRef);
-    }
-  }
-  return sources.entities.filter(entity => reached.has(entity.entityId));
 }
 
 function ddmGrantedTo(

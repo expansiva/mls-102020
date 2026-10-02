@@ -27,6 +27,7 @@ Tool arguments:
 - `authorities`: array of `{ actorRef, nodes }` — node ids each actor sees, **in order** (first = that actor's entry). Granting a hub grants its children.
 - `meta.journeys`: array of `{ journeyId, pages }` — every l4 journey, pages where it happens (empty pages = a visible hole)
 - `meta.processes`: array of `{ processId, pages }` — every l4 process, pages where the person sees its cause or effect (empty pages = a visible hole)
+- `meta.records`: array of `{ entityId, pages }` — for each record of `recordsKept` that a page maintains outside journeys, the pages that maintain it. Every page with a `form` and no journey appears under the entity it keeps; a page lists only records an actor of that page has a grant for. A grant that only consults a record does not make the page maintain it. Empty array when no page maintains a record outside journeys
 
 Do not emit `schemaVersion`, `moduleName`, `userLanguage`, `device` or `action`. Code fills those.
 
