@@ -1,0 +1,505 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "masterDataManagement"
+    },
+    "intent": "A recepcionista localiza o profissional que realizará o atendimento e confere nome, situação e ocupação para organizar a agenda da clínica.",
+    "sections": [
+     {
+      "id": "localizarProfissionais",
+      "priority": "primary",
+      "purpose": "Reúne a busca e a lista para a recepcionista encontrar quem atenderá a consulta.",
+      "organisms": [
+       "listaProfissionais"
+      ]
+     },
+     {
+      "id": "consultarProfissional",
+      "priority": "main",
+      "purpose": "Mostra os dados do profissional selecionado e a ocupação para a recepcionista seguir com a agenda.",
+      "organisms": [
+       "detalheProfissional"
+      ]
+     }
+    ],
+    "organisms": {
+     "listaProfissionais": {
+      "kind": "list",
+      "text": "Lista os profissionais da clínica para a recepcionista localizar e selecionar quem atenderá a consulta.",
+      "intents": []
+     },
+     "detalheProfissional": {
+      "kind": "detail",
+      "text": "Mostra nome, situação cadastral e ocupação do profissional selecionado para a recepcionista organizar a agenda.",
+      "intents": [
+       {
+        "id": "irParaConsultas",
+        "kind": "navigate",
+        "to": "consultas_recepcao"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "listaProfissionais": [
+      {
+       "role": "search",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "records",
+       "preferred": "groupviewtable--ml-data-table",
+       "alternative": "groupviewtable--ml-data-table-minimal"
+      }
+     ],
+     "detalheProfissional": [
+      {
+       "role": "profile",
+       "preferred": "groupviewcard--ml-profile-card",
+       "alternative": "groupviewcard--ml-vertical-card"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "listaProfissionais": {
+      "reads": [
+       "Profissional.id",
+       "Profissional.details.identification",
+       "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "detalheProfissional",
+      "submits": []
+     },
+     "detalheProfissional": {
+      "reads": [
+       "Profissional.id",
+       "Profissional.details.identification",
+       "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "masterDataManagement"
+    },
+    "intent": "A recepcionista busca o profissional em uma coluna estreita, confere a ocupação de quem foi selecionado e segue para marcar a consulta.",
+    "sections": [
+     {
+      "id": "localizarProfissionais",
+      "priority": "primary",
+      "purpose": "Em conteúdo fluido e estreito, cerca de 390px, prioriza busca e lista para localizar o profissional, permanecendo usável em 360px e 430px.",
+      "organisms": [
+       "listaProfissionais"
+      ]
+     },
+     {
+      "id": "consultarProfissional",
+      "priority": "secondary",
+      "purpose": "Empilha abaixo da lista, na mesma faixa estreita, os dados e a ocupação do profissional escolhido para seguir à agenda.",
+      "organisms": [
+       "detalheProfissional"
+      ]
+     }
+    ],
+    "organisms": {
+     "listaProfissionais": {
+      "kind": "list",
+      "text": "Lista os profissionais da clínica para a recepcionista localizar e selecionar quem atenderá a consulta.",
+      "intents": []
+     },
+     "detalheProfissional": {
+      "kind": "detail",
+      "text": "Mostra nome, situação cadastral e ocupação do profissional selecionado para a recepcionista organizar a agenda.",
+      "intents": [
+       {
+        "id": "irParaConsultas",
+        "kind": "navigate",
+        "to": "consultas_recepcao"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "listaProfissionais": [
+      {
+       "role": "search",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "records",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "detalheProfissional": [
+      {
+       "role": "profile",
+       "preferred": "groupviewcard--ml-profile-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "listaProfissionais": {
+      "reads": [
+       "Profissional.id",
+       "Profissional.details.identification",
+       "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "detalheProfissional",
+      "submits": []
+     },
+     "detalheProfissional": {
+      "reads": [
+       "Profissional.id",
+       "Profissional.details.identification",
+       "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "categoryReason": "A categoria masterDataManagement descreve o cadastro mestre de profissionais consultado em lista e detalhe pela recepcionista, sem manutenção do registro nesta página."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Localizing and selecting a professional does not require a true/false input."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "The list task does not request a date-only value."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "No date-range filtering or entry is specified."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Selecting the consultation professional does not explicitly require entering a date or time."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "No exact start/end appointment interval is requested in this list."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "No monetary value is involved in finding a professional."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "No numeric value needs to be entered."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "No numeric range is specified for the professional search."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Free-form data entry is not the stated interaction; the task is locating and choosing a listed professional."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "No time-only value is requested."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "No recurring or bounded time range is requested."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Expanding content sections is not needed to locate and choose a professional."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "The task is to locate professionals, not geographic addresses or map positions."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Switching among same-context sections is not specified."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Choosing an attending professional is not described as a multistep flow."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "No action result or status notification is specified."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "No audio or video content is part of the task."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "The user must choose a professional, not rate one."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "No camera-based code or document capture is requested."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": true,
+     "reason": "A text search with suggestions supports locating a professional in the available list."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "No file selection or upload is involved."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "The consultation requires selecting who will attend it, which implies one professional rather than multiple choices."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "It directly supports selecting exactly one professional to attend the consultation."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "No long-running operation or process progress is described."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "The required interaction is selection itself; no separate command is stated."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Professional records can be presented as independent visual units to support identification before selection."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "No quantitative data visualization is needed to find a professional."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "The organism is a list of professionals, so an adaptive collection view is appropriate for presenting the available records."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Professionals are not described as a parent-child hierarchy."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "No highlighted KPI or metric is required."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "A table can display the professional list in structured rows and support comparing fields before a single selection."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Consulting a professional's details and occupation does not require a true/false input."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "No date-only value is requested in the detail consultation."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "No date-range input is specified."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "The text asks to consult details for agenda organization, but does not explicitly require entering a date or time."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "No start and end appointment timestamps are explicitly requested."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "No financial information needs to be entered."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "No numeric input is part of viewing the professional detail."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "No bounded numeric filter or range is stated."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "No text entry is requested in this detail view."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "No time-only input is explicitly required."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "No availability or shift interval input is explicitly requested."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": true,
+     "reason": "Professional and occupation information may be organized in collapsible detail sections, letting the user consult more or less information while organizing the agenda."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "No geographic location is requested."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": true,
+     "reason": "Tabs or equivalent section navigation can separate professional data, occupation, and agenda-related information within the same detail context."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Consulting details is not described as a sequential multistep process."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "No result, warning, or status change requiring notification is specified."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "No media playback is involved."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "No rating or scoring of the professional is requested."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "No code, barcode, or document scanning is needed."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "This is a detail organism for an already identified professional, not a content-search interaction."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "No upload action is requested."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "No multiple-option choice is specified in the detail consultation."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "The organism focuses on viewing an already selected professional's data, not making a new mutually exclusive choice."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "No operation with measurable or indeterminate progress is described."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "No explicit command or action is named beyond consulting information."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "A card is suitable for presenting the selected professional as an independent detail unit with identity, occupation, and related information."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "No graphical data analysis is requested."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "This is a single professional detail, whereas this group is for displaying a collection of records."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "The professional and occupation are not stated as hierarchical data."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "No highlighted indicator or KPI is specified."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Structured agenda-related records or occupation fields can be consulted in tabular format within the professional detail."
+    }
+   ]
+  }
+ ]
+}

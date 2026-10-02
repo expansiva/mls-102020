@@ -157,7 +157,7 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
   const actorsOfPage = pageActors(menu, pages);
   const journeysOfPage = invertIdPages(menu.meta.journeys);
   const processesOfPage = invertIdPages(menu.meta.processes);
-  if (!menu.meta.records) throw new Error('menu.json has no meta.records; run menu20 again so each form page names the record it keeps.');
+  if (!menu.meta.records) throw new Error('P2_NEEDS_MENU_RECORDS_MISSING: menu.json has no meta.records; run menu20 again so each form page names the record it keeps.');
   const recordsOfPage = invertIdPages(menu.meta.records);
   const journeyById = new Map(sources.journeys.map(journey => [journey.journeyId, journey]));
   const entityById = new Map(sources.entities.map(entity => [entity.entityId, entity]));

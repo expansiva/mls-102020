@@ -1,0 +1,1020 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "customerManagement"
+    },
+    "intent": "Mostra o cadastro de pacientes da clínica para a recepcionista localizar quem será atendido, conferir identificação e telefone e registrar um novo paciente antes de organizar ou confirmar consultas.",
+    "sections": [
+     {
+      "id": "patientDirectory",
+      "priority": "primary",
+      "purpose": "Apresenta os pacientes já cadastrados para a recepcionista encontrar a pessoa certa por nome, documento ou contato.",
+      "organisms": [
+       "patientList"
+      ]
+     },
+     {
+      "id": "patientRecord",
+      "priority": "main",
+      "purpose": "Exibe a identificação e os canais de contato do paciente selecionado para conferência e confirmação telefônica.",
+      "organisms": [
+       "patientDetail"
+      ]
+     },
+     {
+      "id": "patientRegistration",
+      "priority": "secondary",
+      "purpose": "Reúne o formulário de novo paciente e as ações para gravar o cadastro ou seguir para as consultas.",
+      "organisms": [
+       "patientForm",
+       "patientActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "patientList": {
+      "kind": "list",
+      "text": "Lista os pacientes cadastrados com nome, documento e situação para a recepcionista localizar quem precisa de agendamento ou confirmação.",
+      "intents": []
+     },
+     "patientDetail": {
+      "kind": "detail",
+      "text": "Apresenta os dados de identificação do paciente selecionado e os telefones vinculados, para a recepcionista conferir o cadastro e ligar na confirmação.",
+      "intents": []
+     },
+     "patientForm": {
+      "kind": "form",
+      "text": "Coleta nome, documento, país e consentimento de privacidade para cadastrar um novo paciente na clínica.",
+      "intents": []
+     },
+     "patientActions": {
+      "kind": "actions",
+      "text": "Oferece cadastrar o novo paciente e seguir para as consultas, onde a recepcionista agenda ou registra a confirmação telefônica.",
+      "intents": [
+       {
+        "id": "submitPatientCreate",
+        "kind": "submit"
+       },
+       {
+        "id": "openConsultas",
+        "kind": "navigate",
+        "to": "consultas_recepcao"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "patientList": [
+      {
+       "role": "search",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "records",
+       "preferred": "groupviewtable--ml-data-table",
+       "alternative": "groupviewtable--ml-advanced-data-table"
+      },
+      {
+       "role": "pagination",
+       "preferred": "grouptriggeraction--ml-pagination-control",
+       "alternative": "grouptriggeraction--ml-button-standard"
+      }
+     ],
+     "patientDetail": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-profile-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "patientForm": [
+      {
+       "role": "name",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "document",
+       "preferred": "groupentertext--ml-cpf-input",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "documentType",
+       "preferred": "groupselectone--ml-select",
+       "alternative": "groupselectone--ml-select-dropdown"
+      },
+      {
+       "role": "feedback",
+       "preferred": "groupnotifyuser--ml-contextual-feedback",
+       "alternative": "groupnotifyuser--ml-toast-notification"
+      }
+     ],
+     "patientActions": [
+      {
+       "role": "commands",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "patientList": {
+      "reads": [
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.identification.status",
+       "Paciente.details.base.contacts"
+      ],
+      "edits": [],
+      "selects": "patientDetail",
+      "submits": []
+     },
+     "patientDetail": {
+      "reads": [
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.identification.countryCode",
+       "Paciente.details.base.contacts",
+       "Paciente.details.person.privacyConsent",
+       "ContatoPaciente.id",
+       "ContatoPaciente.details.identification.name",
+       "ContatoPaciente.details.identification.status",
+       "ContatoPaciente.details.contactChannel.contactType",
+       "ContatoPaciente.details.contactChannel.value",
+       "ContatoPaciente.details.contactChannel.isVerified"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "patientForm": {
+      "reads": [
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.identification.countryCode",
+       "Paciente.details.person.privacyConsent"
+      ],
+      "edits": [
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.identification.countryCode",
+       "Paciente.details.person.privacyConsent"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "patientActions": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "submitPatientCreate",
+        "write": "Paciente.create"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "customerManagement"
+    },
+    "intent": "Em uma coluna estreita em torno de 390px, também usável em 360px e 430px, permite à recepcionista buscar um paciente, ver o telefone para confirmação e cadastrar um novo registro sem sair do fluxo de recepção.",
+    "sections": [
+     {
+      "id": "patientDirectory",
+      "priority": "primary",
+      "purpose": "Empilha uma lista pesquisável e fluida dos pacientes para localizar a pessoa em uma tela estreita de telefone.",
+      "organisms": [
+       "patientList"
+      ]
+     },
+     {
+      "id": "patientRecord",
+      "priority": "main",
+      "purpose": "Mostra o contato do paciente selecionado e as ações para cadastrar ou ir às consultas, em sequência vertical fácil de alcançar.",
+      "organisms": [
+       "patientDetail",
+       "patientActions"
+      ]
+     },
+     {
+      "id": "patientRegistration",
+      "priority": "secondary",
+      "purpose": "Oferece o formulário fluido de identificação e consentimento para cadastrar um novo paciente abaixo da ficha.",
+      "organisms": [
+       "patientForm"
+      ]
+     }
+    ],
+    "organisms": {
+     "patientList": {
+      "kind": "list",
+      "text": "Lista compacta dos pacientes cadastrados com nome, documento e situação para a recepcionista localizar quem precisa de agendamento ou confirmação.",
+      "intents": []
+     },
+     "patientDetail": {
+      "kind": "detail",
+      "text": "Mostra identificação e telefone do paciente selecionado para a recepcionista conferir o cadastro e ligar na confirmação a partir do aparelho.",
+      "intents": []
+     },
+     "patientForm": {
+      "kind": "form",
+      "text": "Coleta nome, documento, país e consentimento de privacidade em campos empilhados para cadastrar um novo paciente.",
+      "intents": []
+     },
+     "patientActions": {
+      "kind": "actions",
+      "text": "Oferece cadastrar o novo paciente e seguir para as consultas, onde a recepcionista agenda ou registra a confirmação telefônica.",
+      "intents": [
+       {
+        "id": "submitPatientCreate",
+        "kind": "submit"
+       },
+       {
+        "id": "openConsultas",
+        "kind": "navigate",
+        "to": "consultas_recepcao"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "patientList": [
+      {
+       "role": "search",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-history"
+      },
+      {
+       "role": "records",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "patientDetail": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-profile-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "patientForm": [
+      {
+       "role": "name",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "document",
+       "preferred": "groupentertext--ml-cpf-input",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "documentType",
+       "preferred": "groupselectone--ml-select",
+       "alternative": "groupselectone--ml-radio-group"
+      },
+      {
+       "role": "feedback",
+       "preferred": "groupnotifyuser--ml-contextual-feedback",
+       "alternative": "groupnotifyuser--ml-toast-notification"
+      }
+     ],
+     "patientActions": [
+      {
+       "role": "commands",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "patientList": {
+      "reads": [
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.identification.status",
+       "Paciente.details.base.contacts"
+      ],
+      "edits": [],
+      "selects": "patientDetail",
+      "submits": []
+     },
+     "patientDetail": {
+      "reads": [
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.identification.countryCode",
+       "Paciente.details.base.contacts",
+       "Paciente.details.person.privacyConsent",
+       "ContatoPaciente.id",
+       "ContatoPaciente.details.identification.name",
+       "ContatoPaciente.details.identification.status",
+       "ContatoPaciente.details.contactChannel.contactType",
+       "ContatoPaciente.details.contactChannel.value",
+       "ContatoPaciente.details.contactChannel.isVerified"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "patientForm": {
+      "reads": [
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.identification.countryCode",
+       "Paciente.details.person.privacyConsent"
+      ],
+      "edits": [
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.identification.countryCode",
+       "Paciente.details.person.privacyConsent"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "patientActions": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "submitPatientCreate",
+        "write": "Paciente.create"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A página é um diretório de pacientes com busca, ficha de identificação e contato, e cadastro de novo paciente. Isso corresponde a customerManagement, gestão de clientes e contatos, e não à grade de agenda."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A lista de pacientes não requer uma decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Localizar ou confirmar consultas não exige informar somente uma data neste organismo."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de filtrar pacientes por intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "O organismo não coleta data e hora de consulta; apenas localiza pacientes para a operação."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não foi descrita reserva ou filtro por intervalo exato de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Não há valores monetários envolvidos na localização de pacientes."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não foi informado nenhum dado numérico a ser preenchido."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há filtro ou entrada de faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A busca textual de registros é coberta especificamente pelo grupo de busca de conteúdo."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Nenhum horário isolado precisa ser informado."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há configuração de faixa de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Expandir detalhes não é uma necessidade declarada para a listagem."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há coleta ou visualização de localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "O requisito não prevê alternância entre seções."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Localizar pacientes não é um fluxo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "Pode informar o resultado de confirmar ou organizar uma consulta associada ao paciente localizado."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação ou pontuação de pacientes."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A localização de pacientes não menciona captura por câmera, QR ou código de barras."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": true,
+     "reason": "Permite encontrar pacientes cadastrados por busca textual, com sugestões quando aplicável."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Nenhum arquivo precisa ser selecionado para upload."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de selecionar múltiplos pacientes."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "A seleção de um paciente pode ocorrer diretamente no item listado; não há uma lista de opções mutuamente exclusivas a preencher."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não foi descrita operação longa que demande indicador de progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite acionar a confirmação ou a organização da consulta para o paciente encontrado."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O requisito é uma lista de registros, sem necessidade de apresentar cada paciente como cartão independente."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos a representar graficamente."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Exibe a coleção de pacientes encontrados de forma adaptável, com os dados necessários para localizá-los."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Pacientes não constituem uma estrutura hierárquica neste caso."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador destacado solicitado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Permite apresentar pacientes cadastrados em linhas e campos estruturados, facilitando sua localização."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A consulta de dados não exige decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar neste detalhe somente de consulta."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há filtro por período solicitado."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou hora a preencher."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Dados de identificação e contato não incluem valores monetários."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "O organismo é de consulta, não de entrada numérica."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica para informar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Os dados são consultados, não inseridos ou editados neste organismo."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Nenhum horário isolado é informado."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi indicada necessidade de ocultar ou expandir partes do detalhe."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "O requisito trata de identificação e canais de contato, sem endereço geográfico ou mapa."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há alternância de seções requerida."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Consultar dados não é um processo em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento ou resultado de ação que precise ser comunicado."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Nenhuma mídia precisa ser reproduzida."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a ser avaliado."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura de código ou documento por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Este é o detalhe de um paciente já selecionado, não a tela de localização."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há upload de arquivos."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há opções múltiplas a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há decisão entre opções mutuamente exclusivas."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não foi descrita operação com duração a indicar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O requisito limita-se a consultar dados, sem comando a executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Organiza os dados de identificação e os canais de contato do paciente em uma unidade visual de detalhe."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Dados cadastrais e de contato não requerem gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não se trata de uma coleção de registros, mas do detalhe de um único paciente."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há relações pai-filho a exibir."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Nenhum KPI ou indicador destacado foi solicitado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Uma tabela é destinada a dados estruturados em coleção; aqui há um único detalhe de paciente."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "O cadastro descrito não inclui uma decisão de verdadeiro ou falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": true,
+     "reason": "Permite informar a data de nascimento do paciente como parte da identificação."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Dados de identificação e contato não exigem intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "A identificação pode exigir data de nascimento, mas não horário."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora no cadastro."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O cadastro não inclui informações financeiras."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Telefone e documentos devem ser tratados como texto para preservar máscara e zeros; nenhum campo numérico é explicitado."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a cadastrar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": true,
+     "reason": "Permite preencher nome, documento, e-mail, telefone e outros dados textuais de identificação e contato."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Nenhum horário isolado faz parte dos dados pedidos."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há faixa de horários no cadastro."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi solicitada apresentação expansível de conteúdo."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": true,
+     "reason": "Pode coletar o endereço do paciente com busca e autocomplete, quando esse dado de contato for cadastrado."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "O formulário não requer navegação entre seções."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não foi definido um cadastro em múltiplas etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "Comunica sucesso, erro ou validações após o envio do cadastro de paciente."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir no cadastro."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação ou classificação solicitada."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não foi solicitada captura de documento ou código por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O objetivo é cadastrar um novo paciente, não pesquisar conteúdo."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Nenhum anexo ou documento para upload foi solicitado."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há conjunto de múltiplas opções a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "Permite escolher um único valor em dados cadastrais de escolha exclusiva, como sexo ou tipo de contato, quando aplicável."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "O envio do cadastro não foi caracterizado como operação longa."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite submeter o formulário e efetivar o cadastro do novo paciente."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O organismo prioriza entrada de dados, não a exibição de um item como cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos para gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção de registros para apresentar."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "O cadastro não envolve estrutura hierárquica."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há métrica destacada no formulário."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "O formulário não requer exibição tabular de coleção."
+    }
+   ]
+  },
+  {
+   "organismId": "organism4",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "As ações descritas não exigem escolha booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar para disponibilizar as ações."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há entrada de data ou horário."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Não há valores financeiros envolvidos."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico a preencher."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Este organismo apresenta comandos, não entrada textual."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Nenhum horário isolado é solicitado."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Nenhuma faixa de horários é solicitada."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há conteúdo que precise ser expandido ou recolhido."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "As ações não envolvem localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de alternar entre seções."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "As ações não compõem um fluxo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "O organismo apenas disponibiliza ações; o retorno de cada fluxo pertence aos organismos correspondentes."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação de item."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura por câmera ou leitura de código."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "A consulta de contato é uma ação de acesso, não uma busca especificada neste organismo."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivos para selecionar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há múltiplas opções a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha exclusiva entre opções de dados."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Nenhuma operação longa foi descrita."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Disponibiliza os comandos para cadastrar pacientes e abrir a consulta de seus dados de contato."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não é necessário apresentar conteúdo como cartão para executar os comandos."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados gráficos."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção de dados a exibir neste organismo de ações."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura hierárquica."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há dados tabulares a exibir."
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,985 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "calendarScheduling"
+    },
+    "intent": "Mostrar ao profissional as consultas da própria agenda do dia, permitir conferir o paciente da consulta selecionada e registrar o atendimento realizado com anotação.",
+    "sections": [
+     {
+      "id": "agendaDoDia",
+      "priority": "primary",
+      "purpose": "Priorizar a leitura da agenda do dia para o profissional reconhecer horários, pacientes e situação das próprias consultas.",
+      "organisms": [
+       "consultasDoDia"
+      ]
+     },
+     {
+      "id": "consultaEmFoco",
+      "priority": "main",
+      "purpose": "Depois da lista, concentrar a consulta selecionada e o registro da anotação para concluir o atendimento com segurança.",
+      "organisms": [
+       "detalheConsulta",
+       "registroAtendimento"
+      ]
+     },
+     {
+      "id": "comandosDaAgenda",
+      "priority": "secondary",
+      "purpose": "Disponibilizar o contexto de ações da agenda diária depois da conferência dos dados da consulta própria.",
+      "organisms": [
+       "acoesAgenda"
+      ]
+     }
+    ],
+    "organisms": {
+     "consultasDoDia": {
+      "kind": "list",
+      "text": "Lista as consultas previstas para hoje na agenda do profissional, com horário, situação e paciente, para localizar o atendimento a consultar ou concluir.",
+      "intents": []
+     },
+     "detalheConsulta": {
+      "kind": "detail",
+      "text": "Apresenta os dados da consulta selecionada e a identificação do paciente vinculado, para o profissional conferir o atendimento antes de registrá-lo.",
+      "intents": []
+     },
+     "registroAtendimento": {
+      "kind": "form",
+      "text": "Permite informar a anotação do atendimento e concluir a consulta selecionada como atendida.",
+      "intents": [
+       {
+        "id": "registrarAtendimento",
+        "kind": "submit"
+       }
+      ]
+     },
+     "acoesAgenda": {
+      "kind": "actions",
+      "text": "Reúne o contexto de consultar a agenda do dia e registrar o atendimento de uma consulta própria, sem repetir a gravação já feita no formulário.",
+      "intents": []
+     }
+    },
+    "molecules": {
+     "consultasDoDia": [
+      {
+       "role": "viewSchedule",
+       "preferred": "groupviewdata--ml-calendar-view",
+       "alternative": "groupviewdata--ml-timeline-view"
+      },
+      {
+       "role": "locateItem",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      }
+     ],
+     "detalheConsulta": [
+      {
+       "role": "showSummary",
+       "preferred": "groupviewcard--ml-vertical-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "registroAtendimento": [
+      {
+       "role": "enterNote",
+       "preferred": "groupentertext--ml-multiline-text",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "confirmSubmit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      },
+      {
+       "role": "notifyResult",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      }
+     ],
+     "acoesAgenda": [
+      {
+       "role": "runActions",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "consultasDoDia": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status"
+      ],
+      "edits": [],
+      "selects": "detalheConsulta",
+      "submits": []
+     },
+     "detalheConsulta": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Consulta.details.attendanceNote",
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "registroAtendimento": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.status",
+       "Consulta.details.attendanceNote"
+      ],
+      "edits": [
+       "Consulta.details.attendanceNote"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "registrarAtendimento",
+        "write": "Consulta.registrarAtendimento"
+       }
+      ]
+     },
+     "acoesAgenda": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.status"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "calendarScheduling"
+    },
+    "intent": "Em conteúdo estreito e fluido em torno de 390px, também usável em 360px e 430px, o profissional localiza as consultas do dia, confere o paciente e registra o atendimento com anotação.",
+    "sections": [
+     {
+      "id": "agendaDoDia",
+      "priority": "primary",
+      "purpose": "Começar pela agenda do dia em conteúdo fluido em torno de 390px, ainda usável em 360px e 430px, para localizar a consulta própria pelo horário e pelo paciente.",
+      "organisms": [
+       "consultasDoDia"
+      ]
+     },
+     {
+      "id": "consultaSelecionada",
+      "priority": "main",
+      "purpose": "Em seguida, mostrar os detalhes da consulta e do paciente em leitura empilhada, adequada à largura estreita.",
+      "organisms": [
+       "detalheConsulta"
+      ]
+     },
+     {
+      "id": "conclusaoDoAtendimento",
+      "priority": "secondary",
+      "purpose": "Ao final do conteúdo estreito, oferecer a anotação e o contexto de ações para concluir o atendimento sem layout rígido.",
+      "organisms": [
+       "registroAtendimento",
+       "acoesAgenda"
+      ]
+     }
+    ],
+    "organisms": {
+     "consultasDoDia": {
+      "kind": "list",
+      "text": "Empilha as consultas do dia do profissional, com horário, situação e paciente, para localizar um atendimento na largura estreita.",
+      "intents": []
+     },
+     "detalheConsulta": {
+      "kind": "detail",
+      "text": "Mostra os dados da consulta selecionada e a identificação do paciente, para conferência antes de concluir o atendimento.",
+      "intents": []
+     },
+     "registroAtendimento": {
+      "kind": "form",
+      "text": "Recebe a anotação do atendimento e conclui a consulta selecionada como atendida, no fluxo estreito após a conferência.",
+      "intents": [
+       {
+        "id": "registrarAtendimento",
+        "kind": "submit"
+       }
+      ]
+     },
+     "acoesAgenda": {
+      "kind": "actions",
+      "text": "Oferece o contexto de consultar a agenda e registrar o atendimento da consulta própria depois da leitura, sem repetir a gravação do formulário.",
+      "intents": []
+     }
+    },
+    "molecules": {
+     "consultasDoDia": [
+      {
+       "role": "viewSchedule",
+       "preferred": "groupviewdata--ml-timeline-view",
+       "alternative": "groupviewdata--ml-vertical-record-list"
+      },
+      {
+       "role": "locateItem",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      }
+     ],
+     "detalheConsulta": [
+      {
+       "role": "showSummary",
+       "preferred": "groupviewcard--ml-vertical-card",
+       "alternative": "groupviewcard--ml-profile-card"
+      }
+     ],
+     "registroAtendimento": [
+      {
+       "role": "enterNote",
+       "preferred": "groupentertext--ml-multiline-text",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "confirmSubmit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      },
+      {
+       "role": "notifyResult",
+       "preferred": "groupnotifyuser--ml-contextual-feedback",
+       "alternative": "groupnotifyuser--ml-toast-notification"
+      }
+     ],
+     "acoesAgenda": [
+      {
+       "role": "runActions",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "consultasDoDia": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status"
+      ],
+      "edits": [],
+      "selects": "detalheConsulta",
+      "submits": []
+     },
+     "detalheConsulta": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Consulta.details.attendanceNote",
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "registroAtendimento": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.status",
+       "Consulta.details.attendanceNote"
+      ],
+      "edits": [
+       "Consulta.details.attendanceNote"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "registrarAtendimento",
+        "write": "Consulta.registrarAtendimento"
+       }
+      ]
+     },
+     "acoesAgenda": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.status"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "categoryReason": "A categoria calendarScheduling descreve a agenda de compromissos do profissional: consultas próprias com data e horário, inspeção do item selecionado e conclusão do atendimento no próprio dia. A superfície não é fila genérica nem cadastro avulso, e sim a agenda diária com a transição registrarAtendimento."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A consulta da agenda não exige decisão verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "O dia já está definido como hoje; não foi solicitado escolher uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há filtro ou período de datas a informar."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Os horários das consultas são exibidos, não preenchidos pelo usuário."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de início e fim a cadastrar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A consulta da agenda não demanda valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há quantidade ou medida numérica a informar."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica para consulta da agenda."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não foi solicitado cadastrar texto; a agenda será consultada."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "O horário é dado da consulta, não uma entrada do usuário."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há janela de horários a configurar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de expandir seções da agenda."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há endereço ou posição geográfica a informar ou visualizar."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "A tarefa não descreve troca entre seções no mesmo contexto."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Consultar e localizar uma consulta não é um fluxo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Nenhum resultado de operação ou alteração de status precisa ser comunicado."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo na agenda."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a avaliar ou pontuar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura por câmera de código ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": true,
+     "reason": "Permite localizar uma consulta específica na agenda diária por texto, como nome do paciente."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "A consulta da agenda não envolve anexar arquivos."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "A tarefa requer localizar uma consulta, não selecionar múltiplas opções."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "Permite escolher exatamente uma consulta dentre as consultas previstas exibidas."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "A consulta da agenda não é uma operação com progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "A seleção da consulta pode ocorrer diretamente na lista; não foi descrito comando separado."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "A necessidade principal é consultar uma coleção de consultas, não destacar um item isolado em cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "A agenda não requer representação gráfica de dados."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Exibe a coleção de consultas previstas do dia em um layout adequado para localizar uma delas."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "As consultas da agenda não formam estrutura pai-filho."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador resumido solicitado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Permite apresentar consultas diárias com campos estruturados, como horário, paciente e status."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A visualização dos detalhes não pede decisão verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Datas da consulta ou do paciente são apenas dados a exibir, não entradas."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas a definir."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Data e horário da consulta são informações de detalhe, não campos de edição."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de atendimento a registrar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Não há valor financeiro a informar."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há número ou medida a preencher."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a definir."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A tarefa é visualizar dados, não registrar texto."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "O horário é um detalhe exibido da consulta."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horas a informar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": true,
+     "reason": "Permite organizar e revelar sob demanda blocos de detalhes da consulta e dados vinculados do paciente."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não foi solicitado visualizar ou informar localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": true,
+     "reason": "Permite alternar entre seções de detalhe, por exemplo dados da consulta e dados do paciente."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A visualização de detalhes não é um processo em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Nenhum evento ou resultado de ação precisa ser notificado."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há consulta ou paciente a avaliar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há necessidade de escanear código ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "A consulta já foi selecionada; não há busca de conteúdo nesta etapa."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "A visualização não inclui envio de arquivos."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há opções múltiplas a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha exclusiva a realizar ao ver os detalhes."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não existe operação com progresso a indicar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "A tarefa descreve apenas consulta de informações, sem comando a executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Apresenta a consulta selecionada e os dados vinculados do paciente como unidades visuais de detalhe."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Os detalhes não pedem gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não se trata de uma coleção de registros; é o detalhe de uma consulta selecionada."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Os dados de consulta e paciente não exigem navegação hierárquica."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há métrica destacada solicitada."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há coleção tabular a apresentar; os dados são de detalhe."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A conclusão e a anotação não foram especificadas como decisão binária."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a preencher na conclusão solicitada."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas a registrar."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não foi solicitado informar data e hora manualmente."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de atendimento a preencher."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O registro do atendimento não envolve valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há medida ou quantidade numérica solicitada."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há intervalo numérico a informar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": true,
+     "reason": "Permite registrar a conclusão da consulta e a anotação livre do atendimento."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário isolado a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há faixa de horários a preencher."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O formulário não requer seções expansíveis conforme a tarefa."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização geográfica a registrar."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não foram descritas áreas distintas a alternar no formulário."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "O registro solicitado não foi definido como fluxo de múltiplas etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "Informa o sucesso ou eventual falha ao salvar a conclusão e a anotação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir durante o registro."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação numérica ou qualitativa solicitada."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há código ou documento a capturar."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "A consulta já está atendida; não há conteúdo a localizar."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não foi solicitado anexar arquivo à anotação."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há conjunto de opções múltiplas a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "A conclusão não foi definida como escolha única entre opções predefinidas."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Salvar o formulário não demanda indicador de progresso descrito."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Fornece o comando para salvar ou concluir o registro do atendimento."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O objetivo é entrada e envio de dados, não apresentação em cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados para visualização gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção de dados a exibir."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura hierárquica a navegar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há métrica a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há dados tabulares a consultar ou editar."
+    }
+   ]
+  },
+  {
+   "organismId": "organism4",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "As ações não requerem decisão verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "A agenda é diária e não há solicitação de informar data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas para definir."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e horário a preencher."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora a informar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "As ações não envolvem valores monetários."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico a inserir."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica para configurar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "O organismo reúne comandos, não pede texto livre."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há janela de horários a cadastrar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi indicada necessidade de expandir conteúdo."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Nenhuma das ações depende de localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções internas explicitadas para alternância."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "As duas opções são ações, não etapas de um mesmo wizard."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "O organismo apenas inicia ações; não descreve retorno de operação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há áudio ou vídeo."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item para avaliação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Nenhuma ação requer captura de código ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O objetivo é acionar agenda ou registro, não buscar conteúdo textual."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Nenhuma ação solicita upload de arquivo."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção múltipla de opções."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "As opções devem ser executadas como comandos, não mantidas como uma escolha de valor."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação de duração indeterminada a acompanhar neste menu de ações."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Disponibiliza comandos para consultar a agenda diária e iniciar o registro de atendimento de consulta própria."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Pode apresentar cada ação disponível como unidade clicável e independente."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "As ações não requerem gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção de registros de dados a exibir; há comandos de navegação/execução."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "As ações não possuem relações pai-filho."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador ou métrica a exibir."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há dados estruturados para exibição tabular."
+    }
+   ]
+  }
+ ]
+}

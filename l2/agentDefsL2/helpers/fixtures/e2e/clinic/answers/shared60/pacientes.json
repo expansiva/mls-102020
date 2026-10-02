@@ -1,0 +1,172 @@
+{
+ "states": [
+  {
+   "id": "pacientes",
+   "source": "load.pacientes",
+   "description": "Lista paginada de pacientes."
+  },
+  {
+   "id": "termoBusca",
+   "source": "entry.params.search",
+   "description": "Termo de busca de pacientes."
+  },
+  {
+   "id": "paginaPacientes",
+   "source": "entry.params.page",
+   "description": "Página solicitada da lista de pacientes."
+  },
+  {
+   "id": "pacienteSelecionado",
+   "source": "entry.params.pacienteId",
+   "description": "Paciente selecionado pelo identificador."
+  },
+  {
+   "id": "documentoPreenchido",
+   "source": "entry.params.docId",
+   "description": "Documento para preenchimento inicial do cadastro."
+  },
+  {
+   "id": "dadosPaciente",
+   "source": "submitPatientCreate.input",
+   "description": "Dados informados para cadastro do paciente."
+  },
+  {
+   "id": "pacienteDetalhe",
+   "source": "loadPaciente.paciente",
+   "description": "Dados detalhados do paciente selecionado."
+  },
+  {
+   "id": "pacienteCriado",
+   "source": "submitPatientCreate.paciente",
+   "description": "Paciente criado."
+  }
+ ],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega a primeira página de pacientes.",
+   "calls": "load",
+   "sets": "pacientes"
+  },
+  {
+   "id": "filterPatientList",
+   "description": "Recarrega a lista de pacientes conforme busca e página.",
+   "calls": "loadPacientes",
+   "sets": "pacientes"
+  },
+  {
+   "id": "loadMorePatientList",
+   "description": "Acrescenta a próxima página de pacientes.",
+   "calls": "loadPacientes",
+   "sets": "pacientes"
+  },
+  {
+   "id": "submitPatientCreate",
+   "description": "Cadastra o paciente informado.",
+   "calls": "submitPatientCreate",
+   "sets": "pacienteCriado",
+   "updates": [
+    "pacientes"
+   ]
+  },
+  {
+   "id": "loadPaciente",
+   "description": "Carrega os dados detalhados do paciente selecionado.",
+   "calls": "loadPaciente",
+   "sets": "pacienteDetalhe"
+  },
+  {
+   "id": "openConsultas",
+   "description": "Abre as consultas do paciente selecionado.",
+   "navigate": "consultas_recepcao",
+   "carries": {
+    "pacienteId": "pacienteSelecionado.id"
+   }
+  }
+ ],
+ "journeys": [
+  {
+   "step": "agendarConsulta/localizarPaciente",
+   "organisms": [
+    "patientList",
+    "patientActions"
+   ],
+   "functions": [
+    "openConsultas"
+   ]
+  },
+  {
+   "step": "agendarConsulta/localizarProfissional",
+   "organisms": [],
+   "functions": [],
+   "continuesIn": "consultas_recepcao"
+  },
+  {
+   "step": "agendarConsulta/registrarAgendamento",
+   "organisms": [],
+   "functions": [],
+   "continuesIn": "consultas_recepcao"
+  },
+  {
+   "step": "agendarConsulta/verificarHorarioDisponivel",
+   "organisms": [],
+   "functions": [],
+   "continuesIn": "consultas_recepcao"
+  },
+  {
+   "step": "cadastrarPaciente/informarDadosPaciente",
+   "organisms": [
+    "patientForm",
+    "patientActions"
+   ],
+   "functions": [
+    "submitPatientCreate"
+   ]
+  },
+  {
+   "step": "confirmarConsulta/consultarContatoPaciente",
+   "organisms": [],
+   "functions": [],
+   "continuesIn": "consultas_recepcao"
+  },
+  {
+   "step": "confirmarConsulta/localizarConsultaParaConfirmacao",
+   "organisms": [],
+   "functions": [],
+   "continuesIn": "consultas_recepcao"
+  },
+  {
+   "step": "confirmarConsulta/registrarConfirmacao",
+   "organisms": [],
+   "functions": [],
+   "continuesIn": "consultas_recepcao"
+  }
+ ],
+ "commandReturns": [
+  {
+   "requestId": "submitPatientCreate",
+   "returns": [
+    "paciente"
+   ]
+  }
+ ],
+ "requestRules": [
+  {
+   "requestId": "load",
+   "rules": []
+  },
+  {
+   "requestId": "loadPacientes",
+   "rules": []
+  },
+  {
+   "requestId": "loadPaciente",
+   "rules": []
+  },
+  {
+   "requestId": "submitPatientCreate",
+   "rules": []
+  }
+ ],
+ "formChoices": []
+}

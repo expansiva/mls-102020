@@ -1,0 +1,140 @@
+{
+ "states": [
+  {
+   "id": "agendaProfissional",
+   "source": "load.agendaProfissional",
+   "description": "Consultas da agenda profissional do dia."
+  },
+  {
+   "id": "pacientes",
+   "source": "load.pacientes",
+   "description": "Pacientes vinculados às consultas carregadas."
+  },
+  {
+   "id": "consultaSelecionada",
+   "source": "entry.params.consultaId",
+   "description": "Consulta selecionada na agenda."
+  },
+  {
+   "id": "pacienteId",
+   "source": "entry.params.pacienteId",
+   "description": "Identificador do paciente usado no filtro da agenda."
+  },
+  {
+   "id": "page",
+   "source": "entry.params.page",
+   "description": "Página atual da agenda."
+  },
+  {
+   "id": "atendimentoEmEdicao",
+   "source": "registrarAtendimento.input",
+   "description": "Anotação de atendimento em edição para a consulta selecionada."
+  }
+ ],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega a agenda profissional e os pacientes vinculados.",
+   "calls": "load",
+   "sets": "agendaProfissional",
+   "updates": [
+    "pacientes"
+   ]
+  },
+  {
+   "id": "filterConsultasDoDia",
+   "description": "Recarrega a primeira página das consultas do dia conforme os filtros.",
+   "calls": "loadAgendaProfissional",
+   "sets": "agendaProfissional"
+  },
+  {
+   "id": "loadMoreConsultasDoDia",
+   "description": "Acrescenta a próxima página de consultas do dia.",
+   "calls": "loadAgendaProfissional",
+   "sets": "agendaProfissional"
+  },
+  {
+   "id": "registrarAtendimento",
+   "description": "Registra o atendimento da consulta selecionada.",
+   "calls": "registrarAtendimento",
+   "sets": "consultaSelecionada",
+   "updates": [
+    "agendaProfissional"
+   ]
+  }
+ ],
+ "journeys": [
+  {
+   "step": "consultarAgendaDiaria/consultarDetalhesConsulta",
+   "organisms": [
+    "consultasDoDia",
+    "detalheConsulta"
+   ],
+   "functions": [
+    "load"
+   ]
+  },
+  {
+   "step": "consultarAgendaDiaria/localizarAgendaDoDia",
+   "organisms": [
+    "consultasDoDia"
+   ],
+   "functions": [
+    "filterConsultasDoDia",
+    "loadMoreConsultasDoDia"
+   ]
+  },
+  {
+   "step": "registrarConsultaAtendida/localizarConsultaDaAgenda",
+   "organisms": [
+    "consultasDoDia"
+   ],
+   "functions": [
+    "filterConsultasDoDia"
+   ]
+  },
+  {
+   "step": "registrarConsultaAtendida/registrarAtendimento",
+   "organisms": [
+    "registroAtendimento"
+   ],
+   "functions": [
+    "registrarAtendimento"
+   ]
+  },
+  {
+   "step": "registrarConsultaAtendida/revisarConsultaSelecionada",
+   "organisms": [
+    "detalheConsulta",
+    "acoesAgenda"
+   ],
+   "functions": []
+  }
+ ],
+ "commandReturns": [
+  {
+   "requestId": "registrarAtendimento",
+   "returns": [
+    "consulta"
+   ]
+  }
+ ],
+ "requestRules": [
+  {
+   "requestId": "load",
+   "rules": []
+  },
+  {
+   "requestId": "loadAgendaProfissional",
+   "rules": []
+  },
+  {
+   "requestId": "registrarAtendimento",
+   "rules": [
+    "transicoesConsultaValidas",
+    "atendimentoExigeAnotacao"
+   ]
+  }
+ ],
+ "formChoices": []
+}
