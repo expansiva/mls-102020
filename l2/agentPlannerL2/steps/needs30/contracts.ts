@@ -17,6 +17,7 @@ import {
   type P2ProcessView,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { journeyStepOf } from '/_102020_/l2/agentPlannerL2/steps/requests50/contracts.js';
+import { transitionAllowedFor, transitionGroups } from '/_102020_/l2/agentPlannerL2/helpers/p2Transitions.js';
 import {
   isDdmEntity,
   type P2JourneyView,
@@ -151,6 +152,7 @@ export function buildP2NeedsMessage(input: {
 
 export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
   const { menu, sources, grants, processes } = input;
+  const issues: string[] = [];
   const pages = stampedPages(menu.tree);
   const actorsOfPage = pageActors(menu, pages);
   const journeysOfPage = invertIdPages(menu.meta.journeys);
@@ -184,8 +186,11 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
       const journey = journeyById.get(journeyId);
       if (!journey) continue;
       const journeySources: string[] = [];
-      for (const step of journey.steps) {
+      for (const [stepIndex, step] of journey.steps.entries()) {
         const from = journeyFrom(step.stepId, journey, sources);
+        if (step.kind === 'decide' && step.entity) {
+          for (const transitionRef of decideTransitions(journey, stepIndex, sources, issues)) addWrite(step.entity, 'transition', transitionRef, from);
+        }
         if (READ_STEP_KINDS.has(step.kind) && step.entity) {
           addRead(step.entity, from);
           journeySources.push(from);
@@ -195,7 +200,11 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
         journeySources.push(from);
         const operation = isP2NeedsOperation(step.effect || '') ? step.effect as P2NeedsOperation : '';
         if (!operation) continue;
-        addWrite(step.entity, operation, operation === 'transition' ? (step.transitionRef || '') : '', from);
+        if (operation === 'transition' && !step.transitionRef) {
+          issues.push(`P2_NEEDS_TRANSITION_WITHOUT_REF: journey ${journey.journeyId} step ${step.stepId} writes ${step.entity}.transition without a transitionRef.`);
+          continue;
+        }
+        addWrite(step.entity, operation, operation === 'transition' ? step.transitionRef! : '', from);
       }
       for (const relational of collectJourneyRelationalReads(journey, page, journeySources, sources, entityById, grants, actors)) {
         for (const from of relational.from) addRead(relational.entity, from);
@@ -231,7 +240,33 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
 
     out.push(finishPage(page.id, actors, [...reads.values()], [...writes.values()]));
   }
+  if (issues.length) throw new Error([...new Set(issues)].join(' | '));
   return out;
+}
+
+/**
+ * The transitions a decide step offers that no act of the journey already writes. The group is the
+ * origin-state group of the act that follows the decision; without one, the branching group the
+ * journey actor may fire. Only transitions the lifecycle lets that actor fire become writes.
+ */
+function decideTransitions(journey: P2JourneyView, stepIndex: number, sources: P2L4Sources, issues: string[]): string[] {
+  const step = journey.steps[stepIndex];
+  const groups = transitionGroups(step.entity, sources);
+  const written = new Set(journey.steps.filter(item => item.kind === 'act' && item.entity === step.entity && item.transitionRef).map(item => item.transitionRef!));
+  const next = journey.steps.slice(stepIndex + 1).find(item => item.kind === 'act' && item.entity === step.entity && item.transitionRef);
+  const candidates = next
+    ? groups.filter(group => group.some(item => item.transitionId === next.transitionRef))
+    : groups.filter(group => group.length >= 2 && group.every(item => transitionAllowedFor(item, journey.actorRef)));
+  const where = `journey ${journey.journeyId} step ${step.stepId} (${step.entity})`;
+  if (!candidates.length) {
+    issues.push(`P2_NEEDS_DECIDE_GROUP_EMPTY: ${where} has no transition group to decide between.`);
+    return [];
+  }
+  if (candidates.length > 1) {
+    issues.push(`P2_NEEDS_DECIDE_GROUP_AMBIGUOUS: ${where} matches the groups ${candidates.map(group => `[${group.map(item => item.transitionId).join(', ')}]`).join(' and ')}.`);
+    return [];
+  }
+  return candidates[0].filter(item => !written.has(item.transitionId) && transitionAllowedFor(item, journey.actorRef)).map(item => item.transitionId);
 }
 
 function homeReads(

@@ -1,0 +1,219 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "ordenServicio",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "mis_ordenes",
+      "actors": [
+        "cliente"
+      ],
+      "reads": [
+        {
+          "entity": "OrdenServicio",
+          "family": "tdm",
+          "scope": "own",
+          "derived": [
+            "details.availableForPickup"
+          ],
+          "from": [
+            "grant:clienteConsultaYdecidePresupuesto",
+            "journey:aprobarPresupuesto/confirmarAprobacion",
+            "journey:aprobarPresupuesto/revisarPresupuestoRecibido",
+            "journey:consultarMisOrdenes/consultarDetalleDeOrden",
+            "journey:consultarMisOrdenes/localizarMisOrdenes",
+            "journey:rechazarPresupuesto/confirmarRechazo",
+            "journey:rechazarPresupuesto/revisarPresupuestoParaRechazo"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "OrdenServicio",
+          "operation": "transition",
+          "transitionRef": "aprobarPresupuesto",
+          "from": [
+            "journey:aprobarPresupuesto/confirmarAprobacion"
+          ]
+        },
+        {
+          "entity": "OrdenServicio",
+          "operation": "transition",
+          "transitionRef": "rechazarPresupuesto",
+          "from": [
+            "journey:rechazarPresupuesto/confirmarRechazo"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "ordenes_servicio_recepcionista",
+      "actors": [
+        "recepcionista"
+      ],
+      "reads": [
+        {
+          "entity": "Aparato",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:recepcionGestionaOrdenes",
+            "journey:abrirOrdenServicio/registrarRecepcion",
+            "journey:entregarAparatoYfinalizar/finalizarEntrega",
+            "journey:entregarAparatoYfinalizar/localizarOrdenLista",
+            "journey:entregarAparatoYfinalizar/verificarOrdenParaEntrega",
+            "relationship:Aparato/serviceOrderDevice",
+            "relationship:OrdenServicio/serviceOrderDevice"
+          ]
+        },
+        {
+          "entity": "Cliente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:recepcionGestionaOrdenes",
+            "journey:abrirOrdenServicio/registrarRecepcion",
+            "journey:entregarAparatoYfinalizar/finalizarEntrega",
+            "journey:entregarAparatoYfinalizar/localizarOrdenLista",
+            "journey:entregarAparatoYfinalizar/verificarOrdenParaEntrega",
+            "relationship:Cliente/serviceOrderCustomer",
+            "relationship:OrdenServicio/serviceOrderCustomer"
+          ]
+        },
+        {
+          "entity": "OrdenServicio",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.availableForPickup"
+          ],
+          "from": [
+            "grant:recepcionGestionaOrdenes",
+            "journey:abrirOrdenServicio/registrarRecepcion",
+            "journey:entregarAparatoYfinalizar/finalizarEntrega",
+            "journey:entregarAparatoYfinalizar/localizarOrdenLista",
+            "journey:entregarAparatoYfinalizar/verificarOrdenParaEntrega",
+            "relationship:Aparato/serviceOrderDevice",
+            "relationship:Cliente/serviceOrderCustomer",
+            "relationship:OrdenServicio/serviceOrderCustomer",
+            "relationship:OrdenServicio/serviceOrderDevice"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "OrdenServicio",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:abrirOrdenServicio/registrarRecepcion"
+          ]
+        },
+        {
+          "entity": "OrdenServicio",
+          "operation": "transition",
+          "transitionRef": "entregarYfinalizar",
+          "from": [
+            "journey:entregarAparatoYfinalizar/finalizarEntrega"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "ordenes_servicio_tecnico",
+      "actors": [
+        "tecnico"
+      ],
+      "reads": [
+        {
+          "entity": "Aparato",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:tecnicoGestionaReparaciones",
+            "journey:prepararPresupuesto/emitirPresupuesto",
+            "journey:prepararPresupuesto/localizarOrdenPendiente",
+            "journey:prepararPresupuesto/registrarAnalisis",
+            "journey:repararYmarcarLista/localizarOrdenAprobada",
+            "journey:repararYmarcarLista/registrarReparacionTerminada",
+            "journey:repararYmarcarLista/revisarDiagnosticoAprobado",
+            "relationship:Aparato/serviceOrderDevice",
+            "relationship:OrdenServicio/serviceOrderDevice"
+          ]
+        },
+        {
+          "entity": "Cliente",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:tecnicoGestionaReparaciones",
+            "journey:prepararPresupuesto/emitirPresupuesto",
+            "journey:prepararPresupuesto/localizarOrdenPendiente",
+            "journey:prepararPresupuesto/registrarAnalisis",
+            "journey:repararYmarcarLista/localizarOrdenAprobada",
+            "journey:repararYmarcarLista/registrarReparacionTerminada",
+            "journey:repararYmarcarLista/revisarDiagnosticoAprobado",
+            "relationship:Cliente/serviceOrderCustomer",
+            "relationship:OrdenServicio/serviceOrderCustomer"
+          ]
+        },
+        {
+          "entity": "OrdenServicio",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.availableForPickup"
+          ],
+          "from": [
+            "grant:tecnicoGestionaReparaciones",
+            "journey:prepararPresupuesto/emitirPresupuesto",
+            "journey:prepararPresupuesto/localizarOrdenPendiente",
+            "journey:prepararPresupuesto/registrarAnalisis",
+            "journey:repararYmarcarLista/localizarOrdenAprobada",
+            "journey:repararYmarcarLista/registrarReparacionTerminada",
+            "journey:repararYmarcarLista/revisarDiagnosticoAprobado",
+            "relationship:Aparato/serviceOrderDevice",
+            "relationship:Cliente/serviceOrderCustomer",
+            "relationship:OrdenServicio/serviceOrderCustomer",
+            "relationship:OrdenServicio/serviceOrderDevice"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "OrdenServicio",
+          "operation": "transition",
+          "transitionRef": "emitirPresupuesto",
+          "from": [
+            "journey:prepararPresupuesto/emitirPresupuesto"
+          ]
+        },
+        {
+          "entity": "OrdenServicio",
+          "operation": "transition",
+          "transitionRef": "marcarLista",
+          "from": [
+            "journey:repararYmarcarLista/registrarReparacionTerminada"
+          ]
+        },
+        {
+          "entity": "OrdenServicio",
+          "operation": "update",
+          "transitionRef": "",
+          "from": [
+            "journey:prepararPresupuesto/registrarAnalisis"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-10-02T16:16:56.994Z"
+  }
+}

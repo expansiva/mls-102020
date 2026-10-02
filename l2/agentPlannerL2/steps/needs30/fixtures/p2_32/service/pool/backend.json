@@ -1,0 +1,535 @@
+{
+  "schemaVersion": "2026-09-21-p1-backend-v1.2",
+  "moduleName": "ordenServicio",
+  "device": "web",
+  "sourceNeeds": "pool/l1/web/needs.json",
+  "inventoryPresent": false,
+  "endpoints": [
+    {
+      "route": "ordenServicio.mis_ordenes.cmdAprobarPresupuesto",
+      "page": "mis_ordenes",
+      "kind": "cmd",
+      "usecaseRef": "aprobarPresupuesto",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.mis_ordenes.cmdRechazarPresupuesto",
+      "page": "mis_ordenes",
+      "kind": "cmd",
+      "usecaseRef": "rechazarPresupuesto",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.mis_ordenes.qryListOrdenServicio",
+      "page": "mis_ordenes",
+      "kind": "qry",
+      "usecaseRef": "listOrdenServicio",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_recepcionista.cmdCreateOrdenServicio",
+      "page": "ordenes_servicio_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "createOrdenServicio",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_recepcionista.cmdEntregarYfinalizar",
+      "page": "ordenes_servicio_recepcionista",
+      "kind": "cmd",
+      "usecaseRef": "entregarYfinalizar",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_recepcionista.qryListAparato",
+      "page": "ordenes_servicio_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listAparato",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_recepcionista.qryListCliente",
+      "page": "ordenes_servicio_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listCliente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_recepcionista.qryListOrdenServicio",
+      "page": "ordenes_servicio_recepcionista",
+      "kind": "qry",
+      "usecaseRef": "listOrdenServicio",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_tecnico.cmdEmitirPresupuesto",
+      "page": "ordenes_servicio_tecnico",
+      "kind": "cmd",
+      "usecaseRef": "emitirPresupuesto",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_tecnico.cmdMarcarLista",
+      "page": "ordenes_servicio_tecnico",
+      "kind": "cmd",
+      "usecaseRef": "marcarLista",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_tecnico.cmdUpdateOrdenServicio",
+      "page": "ordenes_servicio_tecnico",
+      "kind": "cmd",
+      "usecaseRef": "updateOrdenServicio",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_tecnico.qryListAparato",
+      "page": "ordenes_servicio_tecnico",
+      "kind": "qry",
+      "usecaseRef": "listAparato",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_tecnico.qryListCliente",
+      "page": "ordenes_servicio_tecnico",
+      "kind": "qry",
+      "usecaseRef": "listCliente",
+      "status": "toCreate",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "route": "ordenServicio.ordenes_servicio_tecnico.qryListOrdenServicio",
+      "page": "ordenes_servicio_tecnico",
+      "kind": "qry",
+      "usecaseRef": "listOrdenServicio",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "aprobarPresupuesto",
+      "entity": "OrdenServicio",
+      "operation": "transition",
+      "ports": [
+        "OrdenServicio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrdenServicio.transition",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "createOrdenServicio",
+      "entity": "OrdenServicio",
+      "operation": "create",
+      "ports": [
+        "OrdenServicio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrdenServicio.create",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "emitirPresupuesto",
+      "entity": "OrdenServicio",
+      "operation": "transition",
+      "ports": [
+        "OrdenServicio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrdenServicio.transition",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "entregarYfinalizar",
+      "entity": "OrdenServicio",
+      "operation": "transition",
+      "ports": [
+        "OrdenServicio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrdenServicio.transition",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "listAparato",
+      "entity": "Aparato",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Aparato.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listCliente",
+      "entity": "Cliente",
+      "operation": "list",
+      "ports": [],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for Cliente.list",
+      "tableRefs": [],
+      "noTable": "mdm"
+    },
+    {
+      "usecaseId": "listOrdenServicio",
+      "entity": "OrdenServicio",
+      "operation": "list",
+      "ports": [
+        "OrdenServicio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrdenServicio.list",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "marcarLista",
+      "entity": "OrdenServicio",
+      "operation": "transition",
+      "ports": [
+        "OrdenServicio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrdenServicio.transition",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "rechazarPresupuesto",
+      "entity": "OrdenServicio",
+      "operation": "transition",
+      "ports": [
+        "OrdenServicio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrdenServicio.transition",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    },
+    {
+      "usecaseId": "updateOrdenServicio",
+      "entity": "OrdenServicio",
+      "operation": "update",
+      "ports": [
+        "OrdenServicio"
+      ],
+      "status": "toCreate",
+      "existing": "",
+      "reason": "no l1 usecase for OrdenServicio.update",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "ports": [
+    {
+      "portId": "OrdenServicioRepository",
+      "entity": "OrdenServicio",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "ordenServicio",
+      "entity": "OrdenServicio",
+      "status": "toCreate",
+      "tableRefs": [
+        "ordenServicio"
+      ],
+      "noTable": "ok"
+    }
+  ],
+  "removed": [],
+  "changes": [],
+  "testSupport": [
+    {
+      "id": "data:OrdenServicio",
+      "actorRefs": [
+        "cliente",
+        "recepcionista",
+        "tecnico"
+      ],
+      "entityRefs": [
+        "Aparato",
+        "Cliente",
+        "OrdenServicio"
+      ],
+      "sourceRefs": [
+        "grant:clienteConsultaYdecidePresupuesto",
+        "grant:recepcionGestionaOrdenes",
+        "grant:tecnicoGestionaReparaciones",
+        "journey:abrirOrdenServicio/registrarRecepcion",
+        "journey:aprobarPresupuesto/confirmarAprobacion",
+        "journey:aprobarPresupuesto/revisarPresupuestoRecibido",
+        "journey:consultarMisOrdenes/consultarDetalleDeOrden",
+        "journey:consultarMisOrdenes/localizarMisOrdenes",
+        "journey:entregarAparatoYfinalizar/finalizarEntrega",
+        "journey:entregarAparatoYfinalizar/localizarOrdenLista",
+        "journey:entregarAparatoYfinalizar/verificarOrdenParaEntrega",
+        "journey:prepararPresupuesto/emitirPresupuesto",
+        "journey:prepararPresupuesto/localizarOrdenPendiente",
+        "journey:prepararPresupuesto/registrarAnalisis",
+        "journey:rechazarPresupuesto/confirmarRechazo",
+        "journey:rechazarPresupuesto/revisarPresupuestoParaRechazo",
+        "journey:repararYmarcarLista/localizarOrdenAprobada",
+        "journey:repararYmarcarLista/registrarReparacionTerminada",
+        "journey:repararYmarcarLista/revisarDiagnosticoAprobado",
+        "ontology:OrdenServicio/lifecycleStates/approved",
+        "ontology:OrdenServicio/lifecycleStates/budgetSent",
+        "ontology:OrdenServicio/lifecycleStates/readyForPickup",
+        "ontology:OrdenServicio/lifecycleStates/underAnalysis",
+        "relationship:Aparato/serviceOrderDevice",
+        "relationship:Cliente/serviceOrderCustomer",
+        "relationship:OrdenServicio/serviceOrderCustomer",
+        "relationship:OrdenServicio/serviceOrderDevice"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes ordenServicio rows by execution id"
+    },
+    {
+      "id": "identity:cliente",
+      "actorRefs": [
+        "cliente"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/cliente",
+        "grant:clienteConsultaYdecidePresupuesto",
+        "journey:aprobarPresupuesto/confirmarAprobacion",
+        "journey:aprobarPresupuesto/revisarPresupuestoRecibido",
+        "journey:consultarMisOrdenes/consultarDetalleDeOrden",
+        "journey:consultarMisOrdenes/localizarMisOrdenes",
+        "journey:rechazarPresupuesto/confirmarRechazo",
+        "journey:rechazarPresupuesto/revisarPresupuestoParaRechazo"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor cliente declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "identity:recepcionista",
+      "actorRefs": [
+        "recepcionista"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/recepcionista",
+        "grant:recepcionGestionaOrdenes",
+        "journey:abrirOrdenServicio/registrarRecepcion",
+        "journey:entregarAparatoYfinalizar/finalizarEntrega",
+        "journey:entregarAparatoYfinalizar/localizarOrdenLista",
+        "journey:entregarAparatoYfinalizar/verificarOrdenParaEntrega",
+        "relationship:Aparato/serviceOrderDevice",
+        "relationship:Cliente/serviceOrderCustomer",
+        "relationship:OrdenServicio/serviceOrderCustomer",
+        "relationship:OrdenServicio/serviceOrderDevice"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor recepcionista declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "identity:tecnico",
+      "actorRefs": [
+        "tecnico"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/tecnico",
+        "grant:tecnicoGestionaReparaciones",
+        "journey:prepararPresupuesto/emitirPresupuesto",
+        "journey:prepararPresupuesto/localizarOrdenPendiente",
+        "journey:prepararPresupuesto/registrarAnalisis",
+        "journey:repararYmarcarLista/localizarOrdenAprobada",
+        "journey:repararYmarcarLista/registrarReparacionTerminada",
+        "journey:repararYmarcarLista/revisarDiagnosticoAprobado",
+        "relationship:Aparato/serviceOrderDevice",
+        "relationship:Cliente/serviceOrderCustomer",
+        "relationship:OrdenServicio/serviceOrderCustomer",
+        "relationship:OrdenServicio/serviceOrderDevice"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor tecnico declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "mdm:Aparato",
+      "actorRefs": [
+        "recepcionista",
+        "tecnico"
+      ],
+      "entityRefs": [
+        "Aparato"
+      ],
+      "sourceRefs": [
+        "grant:recepcionGestionaOrdenes",
+        "grant:tecnicoGestionaReparaciones",
+        "journey:abrirOrdenServicio/registrarRecepcion",
+        "journey:entregarAparatoYfinalizar/finalizarEntrega",
+        "journey:entregarAparatoYfinalizar/localizarOrdenLista",
+        "journey:entregarAparatoYfinalizar/verificarOrdenParaEntrega",
+        "journey:prepararPresupuesto/emitirPresupuesto",
+        "journey:prepararPresupuesto/localizarOrdenPendiente",
+        "journey:prepararPresupuesto/registrarAnalisis",
+        "journey:repararYmarcarLista/localizarOrdenAprobada",
+        "journey:repararYmarcarLista/registrarReparacionTerminada",
+        "journey:repararYmarcarLista/revisarDiagnosticoAprobado",
+        "ontology:OrdenServicio/relationships",
+        "relationship:Aparato/serviceOrderDevice",
+        "relationship:OrdenServicio/serviceOrderDevice"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes Aparato records by execution id"
+    },
+    {
+      "id": "mdm:Cliente",
+      "actorRefs": [
+        "recepcionista",
+        "tecnico"
+      ],
+      "entityRefs": [
+        "Cliente"
+      ],
+      "sourceRefs": [
+        "grant:recepcionGestionaOrdenes",
+        "grant:tecnicoGestionaReparaciones",
+        "journey:abrirOrdenServicio/registrarRecepcion",
+        "journey:entregarAparatoYfinalizar/finalizarEntrega",
+        "journey:entregarAparatoYfinalizar/localizarOrdenLista",
+        "journey:entregarAparatoYfinalizar/verificarOrdenParaEntrega",
+        "journey:prepararPresupuesto/emitirPresupuesto",
+        "journey:prepararPresupuesto/localizarOrdenPendiente",
+        "journey:prepararPresupuesto/registrarAnalisis",
+        "journey:repararYmarcarLista/localizarOrdenAprobada",
+        "journey:repararYmarcarLista/registrarReparacionTerminada",
+        "journey:repararYmarcarLista/revisarDiagnosticoAprobado",
+        "ontology:OrdenServicio/relationships",
+        "relationship:Cliente/serviceOrderCustomer",
+        "relationship:OrdenServicio/serviceOrderCustomer"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes Cliente records by execution id"
+    }
+  ],
+  "meta": {
+    "pages": {
+      "mis_ordenes": [
+        "ordenServicio.mis_ordenes.cmdAprobarPresupuesto",
+        "ordenServicio.mis_ordenes.cmdRechazarPresupuesto",
+        "ordenServicio.mis_ordenes.qryListOrdenServicio"
+      ],
+      "ordenes_servicio_recepcionista": [
+        "ordenServicio.ordenes_servicio_recepcionista.cmdCreateOrdenServicio",
+        "ordenServicio.ordenes_servicio_recepcionista.cmdEntregarYfinalizar",
+        "ordenServicio.ordenes_servicio_recepcionista.qryListAparato",
+        "ordenServicio.ordenes_servicio_recepcionista.qryListCliente",
+        "ordenServicio.ordenes_servicio_recepcionista.qryListOrdenServicio"
+      ],
+      "ordenes_servicio_tecnico": [
+        "ordenServicio.ordenes_servicio_tecnico.cmdEmitirPresupuesto",
+        "ordenServicio.ordenes_servicio_tecnico.cmdMarcarLista",
+        "ordenServicio.ordenes_servicio_tecnico.cmdUpdateOrdenServicio",
+        "ordenServicio.ordenes_servicio_tecnico.qryListAparato",
+        "ordenServicio.ordenes_servicio_tecnico.qryListCliente",
+        "ordenServicio.ordenes_servicio_tecnico.qryListOrdenServicio"
+      ]
+    },
+    "generatedAt": "2026-10-02T16:16:57.612Z",
+    "llmCalled": false,
+    "unmappedChanges": []
+  }
+}
