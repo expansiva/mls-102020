@@ -11,6 +11,7 @@ import { parseD2MoleculeGroupJudgment } from '/_102020_/l2/agentDefsL2/steps/pag
 import { loadD2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages50/templateContext.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { d2LlmModelOf, d2LlmResponseInfo, recordD2LlmResponse, recordD2LlmVerdict, type D2LlmResponseRecord } from '/_102020_/l2/helpers/llmResponses.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, type D2PageChoiceEnums, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse, D2_PAGES_PROMPT_LIMIT_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
@@ -139,20 +140,26 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
   const args = parseArgs(step.prompt || '');
   const name = args.stage === 'groups' ? 'submitD2MoleculeGroups' : 'submitD2Pages';
   let response: unknown;
+  let recorded: { info: ReturnType<typeof d2LlmResponseInfo>; record: D2LlmResponseRecord } | undefined;
   try {
-    response = toolPayload(step.interaction?.payload?.[0], name);
     const data = await contextFor(args);
+    // The raw answer is kept before anything reads it (d2_69); each stage and repair is its own attempt.
+    const attempt = `${args.stage}-${args.attempt}`;
+    const info = d2LlmResponseInfo(args.project, `${args.module}/pipeline/agentDefsL2/pages50/responses`, args.pageId, attempt);
+    const promptChars = args.stage === 'groups' ? 0 : data.prompt.length + 1 + data.skill.length + buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined).chars;
+    recorded = { info, record: await recordD2LlmResponse(info, { attempt, model: d2LlmModelOf(step), promptChars, receivedAt: new Date().toISOString(), raw: step.interaction?.payload?.[0] ?? null }) };
+    response = toolPayload(step.interaction?.payload?.[0], name);
     if (args.stage === 'groups') {
       const result = parseD2MoleculeGroupJudgment(response, organismSources(data.page).map(item => item.id), data.inventory);
       const selectedGroups = result.selected;
       await readD2MoleculeShortlist(d2MoleculeCatalogPort, data.inventory, selectedGroups);
+      await recordD2LlmVerdict(recorded.info, recorded.record, 'accepted');
       const repairPromptChars = args.diagnostic ? GROUPS_SYSTEM_PROMPT.length + moleculeGroupPrompt(data.inventory, organismSources(data.page)).length + JSON.stringify({ diagnostic: args.diagnostic, previous: args.previous }).length + '\nRepair: '.length : 0;
       return [next(context, parentStep, { ...args, stage: 'decision', selectedGroups, groupAssessments: result.assessments, diagnostic: undefined, previous: undefined, repairPromptChars }),
         updateD2Status(context, parentStep, step, hookSequential, 'completed', `Molecule shortlist ready for ${args.pageId}.`)];
     }
-    const decision = buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
-    const promptChars = data.prompt.length + 1 + data.skill.length + decision.chars;
     const receipt = await approveD2PagesUnit(data, response as D2PagesResponse, promptChars, args.diagnostic ? promptChars : args.repairPromptChars ?? 0);
+    await recordD2LlmVerdict(recorded.info, recorded.record, 'accepted');
     const ids = [...data.snapshot.selection.writePageIds].sort();
     let allReady = true;
     for (const pageId of ids) if (!await reusableD2Page(data.identity, pageId)) { allReady = false; break; }
@@ -164,6 +171,11 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `Page11 ${args.pageId} approved: ${receipt.sourceHashes.desktop}, ${receipt.sourceHashes.mobile}.`)];
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
+    if (diagnostic.startsWith('D2_LLM_RESPONSE_RECORD_FAILED')) return [updateD2Status(context, parentStep, step, hookSequential, 'failed', diagnostic)];
+    if (recorded) {
+      try { await recordD2LlmVerdict(recorded.info, recorded.record, diagnostic); }
+      catch (recordError) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', recordError instanceof Error ? recordError.message : String(recordError))]; }
+    }
     if (args.attempt === 1) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `One repair scheduled for ${args.pageId}: ${diagnostic}`)];
     return [updateD2Status(context, parentStep, step, hookSequential, 'failed', `D2_PAGES_REPAIR_LIMIT: ${diagnostic}`)];

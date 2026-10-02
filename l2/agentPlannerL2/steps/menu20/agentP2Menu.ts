@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.ts" enhancement="_blank"/>
 
 import type { IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
+import { d2LlmModelOf, d2LlmResponseInfo, recordD2LlmResponse, recordD2LlmVerdict } from '/_102020_/l2/helpers/llmResponses.js';
 import {
   accessFile,
   readDefsJson,
@@ -225,9 +226,16 @@ export async function afterP2MenuPromptStep(
     const parsed = resolveArgs(context, step.prompt);
     moduleName = parsed.moduleName;
     const mutationParent = findMutableParent(context, parentStep);
+    // The raw answer is kept before anything reads it (d2_69); planning writes only in the pool.
+    const draftInfo = p2DraftFile(moduleName, 'menu20');
+    const attempt = `${parsed.repairAttempt + 1}${parsed.transportAttempt ? `t${parsed.transportAttempt}` : ''}`;
+    const responseInfo = d2LlmResponseInfo(draftInfo.project, `${draftInfo.folder}/responses/menu20`, 'menu', attempt, 4);
+    const responseRecord = await recordD2LlmResponse(responseInfo, { attempt, model: d2LlmModelOf(step), promptChars: 0, receivedAt: new Date().toISOString(), raw: step.interaction?.payload?.[0] ?? null });
+    const verdict = (value: string) => recordD2LlmVerdict(responseInfo, responseRecord, value);
     const payload = unwrapP2ArtifactPayload(step.interaction?.payload?.[0]);
     if (!isRecord(payload)) {
       const failure = readPromptFailure(step, 'menu20 returned no usable menu artifact.');
+      await verdict(failure);
       if (parsed.transportAttempt < MAX_TRANSPORT_RETRIES) {
         return [
           addStep(context, mutationParent, createP2RetryStep('menu20', moduleName, 'transport', parsed.transportAttempt + 1)),
@@ -249,6 +257,7 @@ export async function afterP2MenuPromptStep(
       draft = normalizeMenuV2(payload);
     } catch (error) {
       const feedback = errorMessage(error);
+      await verdict(feedback);
       if (parsed.repairAttempt < MAX_REPAIRS) {
         return [
           addStep(context, mutationParent, createP2RetryStep('menu20', moduleName, 'repair', parsed.repairAttempt + 1, { gateFeedback: feedback })),
@@ -266,6 +275,7 @@ export async function afterP2MenuPromptStep(
     const gate = validateP2Menu(draft, menuSources);
     if (!gate.ok) {
       const feedback = formatP2MenuGate(gate.issues);
+      await verdict(feedback);
       if (parsed.repairAttempt < MAX_REPAIRS) {
         return [
           addStep(context, mutationParent, createP2RetryStep('menu20', moduleName, 'repair', parsed.repairAttempt + 1, { gateFeedback: feedback })),
@@ -281,6 +291,7 @@ export async function afterP2MenuPromptStep(
       throw new Error(feedback);
     }
 
+    await verdict('accepted');
     const artifact = buildP2MenuFile({
       moduleName,
       userLanguage: menuSources.sources.userLanguage,

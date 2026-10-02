@@ -3,6 +3,7 @@
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readJson, readSourceText, writeJson } from '/_102035_/l2/solution/fs.js';
 import { d2SharedNavigablePages } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { d2LlmModelOf, d2LlmResponseInfo, recordD2LlmResponse, recordD2LlmVerdict, type D2LlmResponseRecord } from '/_102020_/l2/helpers/llmResponses.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
 import { D2_SHARED_PAGE_AGENT_NAME, markD2StepApproved, moduleTokenOk, readD2Pipeline } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
@@ -151,13 +152,23 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
 export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   const args = parseArgs(step.prompt || '');
   let response: unknown;
+  let recorded: { info: ReturnType<typeof d2LlmResponseInfo>; record: D2LlmResponseRecord } | undefined;
   try {
-    response = toolPayload(step.interaction?.payload?.[0], 'submitD2Shared');
     const data = await contextFor(args);
     const built = buildD2SharedPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
+    // The raw answer is kept before anything reads it (d2_69).
+    const info = d2LlmResponseInfo(args.project, `${args.module}/pipeline/agentDefsL2/shared60/responses`, args.pageId, String(args.attempt));
+    recorded = { info, record: await recordD2LlmResponse(info, { attempt: String(args.attempt), model: d2LlmModelOf(step), promptChars: built.chars, receivedAt: new Date().toISOString(), raw: step.interaction?.payload?.[0] ?? null }) };
+    response = toolPayload(step.interaction?.payload?.[0], 'submitD2Shared');
     await approveD2SharedUnit(data, response as D2SharedLlmResponse, built.chars, args.diagnostic ? built.chars : args.repairPromptChars ?? 0);
+    await recordD2LlmVerdict(recorded.info, recorded.record, 'accepted');
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
+    if (diagnostic.startsWith('D2_LLM_RESPONSE_RECORD_FAILED')) return [updateD2Status(context, parentStep, step, hookSequential, 'failed', diagnostic)];
+    if (recorded) {
+      try { await recordD2LlmVerdict(recorded.info, recorded.record, diagnostic); }
+      catch (recordError) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', recordError instanceof Error ? recordError.message : String(recordError))]; }
+    }
     if (args.attempt === 1) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `One repair scheduled for ${args.pageId}: ${diagnostic}`)];
     return refuse(context, parentStep, step, hookSequential, args, `D2_SHARED_REPAIR_LIMIT: ${diagnostic}`);
