@@ -111,8 +111,8 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const functions: D2SharedLlmResponse['functions'] = [
     { id: 'load', description: 'Load the page.' },
     ...data.derived.requests.flatMap(request => request.lists.flatMap(list => [
-      { id: list.filter, description: 'Filter the loaded list.' },
-      { id: list.loadMore, description: 'Load another page of the list.' },
+      { id: list.filter, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Filter the loaded list.' },
+      { id: list.loadMore, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Load another page of the list.' },
     ])),
     ...(selectTargets.length ? [{ id: 'chooseRow', sets: 'selected', description: 'Choose a row.' }] : []),
     ...(command ? [{ id: command.id, ...(returnKey ? { updates: ['rows', ...extraKeys.map(key => `${key}Rows`)] } : {}), description: 'Submit the form.' }] : []),

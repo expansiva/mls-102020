@@ -4,7 +4,8 @@ validSources, another state id, or the id of a function whose sets is this state
 sets is one state id; list several affected states in updates. load, filter<List>,
 loadMore<List> and the command functions already exist: reuse those ids and only complete
 description, sets and updates. Do not add another function that calls the same request. A list
-filter without calls does not replace filter<List>. Every state a command sets or updates holds
+filter without calls does not replace filter<List>. filter<List> and loadMore<List> set the
+state sourced from load.<key> of their list. Every state a command sets or updates holds
 an entity that the command returns: add that entity's key to its returns. A command also returns,
 and updates a state of, each read entity whose derived fields come from the entity it writes. carries exist only on
 a navigate function, as <state>.<field> of a selected item; a navigate function has no sets or

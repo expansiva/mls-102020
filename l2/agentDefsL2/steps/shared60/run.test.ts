@@ -106,8 +106,8 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const functions: D2SharedLlmResponse['functions'] = [
     { id: 'load', description: 'Load the page.' },
     ...data.derived.requests.flatMap(request => request.lists.flatMap(list => [
-      { id: list.filter, description: 'Filter the loaded list.' },
-      { id: list.loadMore, description: 'Load another page of the list.' },
+      { id: list.filter, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Filter the loaded list.' },
+      { id: list.loadMore, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Load another page of the list.' },
     ])),
     ...(selectTargets.length ? [{ id: 'chooseRow', sets: 'selected', description: 'Choose a row.' }] : []),
     ...(command ? [{ id: command.id, ...(returnKey ? { updates: ['rows', ...extraKeys.map(key => `${key}Rows`)] } : {}), description: 'Submit the form.' }] : []),
@@ -349,7 +349,7 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(parameters.includes('"source":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*(\\\\.[A-Za-z][A-Za-z0-9]*)*$"}'), true);
   assert.equal(built.humanPrompt.includes(data.page11.desktop.organisms[Object.keys(data.page11.desktop.organisms)[0]].text), false);
   assert.equal(built.chars <= 160_000, true);
-  assert.equal(built.chars, 10608);
+  assert.equal(built.chars, 10759);
   const ruled = JSON.parse(built.humanPrompt) as { ruleCandidates: Record<string, string[]>; ruleTexts: Record<string, string> };
   assert.deepEqual(ruled.ruleCandidates, data.derived.rules);
   for (const id of Object.values(data.derived.rules).flat()) assert.equal(ruled.ruleTexts[id], data.input.rules.rules[id]);
@@ -372,12 +372,12 @@ void test('live answers accept entry params and refuse prose or a multi-id sets'
   const productIssues = gateOf(products, liveProducts);
   assert.ok(productIssues.some(item => item.code === 'D2_SHARED_V2_STATE_SOURCE' && item.message.includes('validSources')));
   const moveIssues = gateOf(moves, liveMoves);
-  assert.deepEqual([...new Set(moveIssues.map(item => item.code))].sort(), ['D2_SHARED_V2_FUNCTION_SET', 'D2_SHARED_V2_RETURNS_DERIVED', 'D2_SHARED_V2_UPDATES_RETURNS']);
+  assert.deepEqual([...new Set(moveIssues.map(item => item.code))].sort(), ['D2_SHARED_V2_FUNCTION_SET', 'D2_SHARED_V2_LIST_STATE', 'D2_SHARED_V2_RETURNS_DERIVED', 'D2_SHARED_V2_UPDATES_RETURNS']);
   const setIssues = moveIssues.filter(item => item.code === 'D2_SHARED_V2_FUNCTION_SET');
   assert.equal(setIssues.every(item => item.message.includes('validSources') && item.message.includes('movimentacoes, produtos')), true);
   const fixed: D2SharedLlmResponse = { ...liveMoves, functions: liveMoves.functions.map(item => item.sets === 'movimentacoes, produtos'
     ? { ...item, sets: undefined, updates: ['movimentacoes', 'produtos'] }
-    : item), commandReturns: liveMoves.commandReturns.map(row => ({ ...row, returns: [...row.returns, 'produto'] })) };
+    : item.calls === 'load' && item.id !== 'load' ? { ...item, sets: 'movimentacoes' } : item), commandReturns: liveMoves.commandReturns.map(row => ({ ...row, returns: [...row.returns, 'produto'] })) };
   assert.deepEqual(gateOf(moves, fixed), []);
   const human = JSON.parse(buildD2SharedPrompt(products).humanPrompt) as { validSources: string[] };
   assert.deepEqual(human.validSources, d2SharedValidSources(products.derived));
@@ -418,7 +418,8 @@ void test('live shared with duplicated fixed ids and a bare carry is refused, an
     if (id === 'carregarProdutos') continue;
     fixedFunctions[id] = id === 'abrirMovimentacoes' && row.carries
       ? { description: row.description, navigate: row.navigate, carries: Object.fromEntries(Object.entries(row.carries).map(([key, value]) => [key, value.includes('.') ? value : `${value}.id`])) }
-      : { ...row, description: row.description.trim() ? row.description : `Use ${id}.`, ...(row.updates ? { updates: row.updates.filter(item => item !== 'produtosFiltrados') } : {}) };
+      : { ...row, description: row.description.trim() ? row.description : `Use ${id}.`, ...(row.updates ? { updates: row.updates.filter(item => item !== 'produtosFiltrados') } : {}),
+        ...(id === 'filterListaProdutos' || id === 'loadMoreListaProdutos' ? { sets: 'produtos' } : {}) };
   }
   assert.deepEqual(gateOf(asResponse(fixedFunctions)), []);
 });
@@ -490,6 +491,17 @@ void test('live 3 shared: command returns, carries, navigation and rules are ref
   assert.deepEqual(productsShared.functions.abrirMovimentacoes, { description: liveProducts.functions.abrirMovimentacoes.description, navigate: 'movimentacoes', carries: { produtoId: 'produtoSelecionado.id' } });
   assert.equal(productsShared.states.produtoSelecionado.source, 'entry.params.produtoId');
   assert.equal(productsShared.entry.params.produtoId.effect.startsWith('select:'), true);
+  // Live 5: filter/loadMore wrote a second list state fed by load<Key>, splitting the list load opened.
+  const live5 = asResponse(read('live5Produtos.defs.ts'));
+  assert.deepEqual(codes(products, live5), ['D2_SHARED_V2_LIST_STATE']);
+  assert.equal(gateOf(products, live5).filter(item => item.code === 'D2_SHARED_V2_LIST_STATE').length, 3);
+  const live5Fixed: D2SharedLlmResponse = {
+    ...live5,
+    states: live5.states.filter(row => row.id !== 'listaProdutos'),
+    functions: live5.functions.map(row => row.calls === 'loadProdutos' ? { ...row, sets: 'produtos' } : row.updates ? { ...row, updates: row.updates.filter(item => item !== 'listaProdutos') } : row),
+  };
+  assert.deepEqual(gateOf(products, live5Fixed), []);
+  assert.equal(buildD2SharedPrompt(products).humanPrompt.includes('"loadProdutos.produtos"'), false);
   const carry = (carries: Record<string, string>) => codes(products, { ...productsFixed, functions: productsFixed.functions.map(row => row.navigate ? { ...row, carries } : row) });
   assert.deepEqual(carry({ produtoId: 'listaProdutos.id' }), ['D2_SHARED_V2_CARRIES_TYPE']);
   assert.deepEqual(carry({ produtoId: 'filtroBuscaProdutos.id' }), ['D2_SHARED_V2_CARRIES_TYPE']);

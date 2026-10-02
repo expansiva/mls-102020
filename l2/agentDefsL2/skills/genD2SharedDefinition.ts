@@ -22,7 +22,8 @@ at most one submit.
 
 load returns the first page of each list. filter<List> reloads its list from the first page and
 loadMore<List> appends the next page; both call load<Key>, which returns only that list and its
-paging keys. Their params come from declared states, such as a state whose source is a filter
+paging keys. Both set the same state that load sets for that list; no state takes load<Key> as
+source. Their params come from declared states, such as a state whose source is a filter
 entry param, never from carries. A state whose source is a select entry param holds the
 selected item, resolved by that id in the loaded list. carries exist only on a navigate
 function and read a field of a selected item; an id carry is named <entity>Id. A navigate

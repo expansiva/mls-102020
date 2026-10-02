@@ -178,7 +178,22 @@ export function gateD2SharedV2(
       }
     }
   }
+  const listRequests = context.derived.requests.filter(item => item.id !== 'load' && item.lists.length > 0);
+  for (const request of listRequests) {
+    for (const list of request.lists) {
+      for (const fnId of [list.filter, list.loadMore]) {
+        const target = definition.functions[fnId]?.sets;
+        if (!target || rootSource(target, definition) !== `load.${list.key}`) {
+          issues.push({ code: 'D2_SHARED_V2_LIST_STATE', path: `functions.${fnId}`, message: `${fnId} must set the state whose source is load.${list.key}: ${request.id} replaces or appends to the list that load opened, never a second state.` });
+        }
+      }
+    }
+  }
   for (const [id, state] of Object.entries(definition.states)) {
+    if (listRequests.some(request => state.source.startsWith(`${request.id}.`))) {
+      issues.push({ code: 'D2_SHARED_V2_LIST_STATE', path: `states.${id}`, message: `State ${id} has ${state.source} as source. A list request only feeds the state sourced from load; drop ${id}.` });
+      continue;
+    }
     if (definition.functions[state.source]?.navigate) {
       issues.push({ code: 'D2_SHARED_V2_STATE_NAVIGATE', path: `states.${id}`, message: `State ${id} has navigation ${state.source} as source. A navigation leaves the page and feeds no state; drop the state or source it from validSources.` });
       continue;
@@ -311,6 +326,18 @@ function stateType(stateId: string, definition: D2SharedV2Definition, context: S
 }
 
 function camel(value: string): string { return value ? value[0].toLowerCase() + value.slice(1) : value; }
+
+function rootSource(stateId: string, definition: D2SharedV2Definition): string {
+  const seen = new Set<string>();
+  let current = stateId;
+  while (definition.states[current] && !seen.has(current)) {
+    seen.add(current);
+    const source = definition.states[current].source;
+    if (!definition.states[source]) return source;
+    current = source;
+  }
+  return '';
+}
 
 function organismBound(organismId: string, draft: D2Page11Needs, definition: D2SharedV2Definition, derived: D2DerivedPageRequests): boolean {
   const unit = draft.organisms[organismId];

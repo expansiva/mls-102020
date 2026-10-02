@@ -67,6 +67,8 @@ export interface D2SharedContext {
 export function d2SharedValidSources(derived: D2DerivedPageRequests): string[] {
   const tokens: string[] = [];
   for (const request of derived.requests) {
+    // load<Key> feeds the list state sourced from load, so its returns are not a state source.
+    if (request.id !== 'load' && request.lists.length > 0) continue;
     for (const key of request.returns) tokens.push(`${request.id}.${key}`);
     if (request.kind === 'cmd') tokens.push(`${request.id}.input`);
   }
