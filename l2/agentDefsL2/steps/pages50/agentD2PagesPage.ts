@@ -48,16 +48,15 @@ export async function contextFor(args: Args): Promise<D2PagesContext> {
   await assertD2InputSourcesStable(bundle);
   const page = snapshot.selection.pages.find(item => item.pageId === args.pageId);
   if (!page || !snapshot.selection.writePageIds.includes(args.pageId)) throw new Error(`D2_PAGES_PAGE_NOT_SELECTED: ${args.pageId}`);
-  const [template, inventory, skill, prompt, designSystem] = await Promise.all([
+  const [template, inventory, skill, prompt] = await Promise.all([
     loadD2PageTemplateContext(), buildD2MoleculeInventory(d2MoleculeCatalogPort, args.project),
     readSourceText({ project: 102020, level: 2, folder: 'agentDefsL2/skills', shortName: 'genD2Page11Definition', extension: '.ts' }),
     readSourceText({ project: 102020, level: 2, folder: 'agentDefsL2/steps/pages50', shortName: 'prompt', extension: '.md' }),
-    readSourceText({ project: args.project, level: 2, folder: '', shortName: 'designSystem', extension: '.ts' }),
   ]);
   const selectedGroups = args.selectedGroups ?? {};
   const shortlist = await readD2MoleculeShortlist(d2MoleculeCatalogPort, inventory, selectedGroups);
   return { identity, snapshot, artifacts: bundle.artifacts, page, template, inventory, selectedGroups, groupAssessments: args.groupAssessments,
-    groups: shortlist.groups, moleculeHashes: shortlist.hashes, skill, prompt, designSystem };
+    groups: shortlist.groups, moleculeHashes: shortlist.hashes, skill, prompt };
 }
 
 export interface D2PagesReusePort {
@@ -90,7 +89,6 @@ export async function reusableD2Page(identity: { project: number; module: string
     const template = await context.template.select(receipt.template.category);
     if (template.experience !== receipt.template.experience || template.reference !== receipt.template.reference || template.hash !== receipt.template.hash) return false;
     if (await sha256Text(context.template.catalog) !== receipt.template.catalogHash
-      || await sha256Text(context.designSystem) !== receipt.designSystemHash
       || context.inventory.sourceHash !== receipt.moleculeInventoryHash
       || JSON.stringify(context.moleculeHashes) !== JSON.stringify(receipt.moleculeHashes)
       || await sha256Text(context.skill) !== receipt.skillHash
