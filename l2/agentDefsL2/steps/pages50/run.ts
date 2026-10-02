@@ -114,6 +114,26 @@ function canonicalValue(value: unknown): unknown {
   return value;
 }
 
+/** Lists the code already knows for the page decision; each becomes an enum of the tool schema (d2_67). */
+export interface D2PageChoiceEnums { writeKeys: string[]; categories: string[]; kinds: string[]; targets: string[]; tags: string[] }
+export function d2PageChoiceEnums(context: D2PagesContext): D2PageChoiceEnums {
+  const pageIds: string[] = [];
+  const walk = (nodes: unknown[]): void => { for (const raw of nodes) {
+    const node = record(raw);
+    if (text(node.kind) === 'page' && text(node.id)) pageIds.push(text(node.id));
+    walk(Array.isArray(node.children) ? node.children : []);
+  } };
+  walk(Array.isArray(record(context.artifacts.menu).tree) ? record(context.artifacts.menu).tree as unknown[] : []);
+  return {
+    writeKeys: d2PageWriteKeys(context.page),
+    categories: [...context.template.categories.filter(item => item.experiences?.page11 || item.experiences?.page21).map(item => item.categoryId), 'bespoke'],
+    kinds: [...new Set(context.page.organisms.map(raw => text(record(raw).kind)).filter(Boolean))],
+    // A submit has no target: '' is the value for it.
+    targets: ['', ...new Set(pageIds)],
+    tags: [...new Set(context.groups.flatMap(group => group.tags))],
+  };
+}
+
 /** The exact write keys of the page; a submit writes one of them (schema enum and prompt list). */
 export function d2PageWriteKeys(page: D2SelectedPage): string[] {
   return [...new Set((page.writes as unknown[]).map(raw => {

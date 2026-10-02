@@ -10,7 +10,8 @@ import { parseD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/a
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import type { D2PageRequestsInput } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import { gateD2SharedV2, parseD2SharedV2, sharedFromDerived, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
-import { beforePromptStep, reusableD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
+import { beforePromptStep, reusableD2Shared, sharedSchemaFor } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
+import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
 import {
   approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, d2SharedRefusal, d2SharedRefusedMessage, d2SharedValidSources,
@@ -667,6 +668,26 @@ void test('d2_65: snake_case pages give camelCase keys and the prompt names enti
   }
   const lists = contextFrom(pack, 'consultas_recepcao', moduleName).derived.requests.find(item => item.id === 'load')?.lists ?? [];
   assert.ok(lists.some(list => list.key === 'consultasRecepcao'), JSON.stringify(lists));
+});
+
+void test('d2_67: request ids, targets, steps, organisms, return keys and rules are enums of the shared schema', () => {
+  const pack = loadPack('controleEstoque');
+  const moduleName = (JSON.parse(readFileSync(join(fixtureRoot, 'controleEstoque/menu.json'), 'utf8')) as { moduleName: string }).moduleName;
+  const data = contextFrom(pack, 'produtos', moduleName);
+  const schema = sharedSchemaFor(data) as { properties: Record<string, { items: { properties: Record<string, { enum?: string[]; items?: { enum?: string[] } }> } }> };
+  const fields = (name: string) => schema.properties[name].items.properties;
+  assert.deepEqual(fields('functions').calls.enum, data.derived.requests.map(item => item.id));
+  assert.ok(fields('functions').navigate.enum?.includes('movimentacoes'));
+  assert.deepEqual(fields('journeys').organisms.items?.enum, Object.keys(data.page11.desktop.organisms));
+  assert.deepEqual(fields('commandReturns').requestId.enum, data.derived.requests.filter(item => item.kind === 'cmd').map(item => item.id));
+  assert.deepEqual(fields('requestRules').rules.items?.enum, [...new Set(Object.values(data.derived.rules).flat())]);
+  // No ambiguous form: the form choice stays free and unused.
+  assert.equal(fields('formChoices').submit.enum, undefined);
+  // The enums add no lint finding: the only one is the carries map of the base schema.
+  assert.deepEqual(lintToolSchema(JSON.stringify(schema)), ['/properties/functions/items/properties/carries: additionalProperties must be false']);
+  // An answer inside the enums still passes the gate.
+  const need = data.input.needsPages.find(item => item.pageId === data.input.pageId)!;
+  assert.deepEqual(gateD2SharedV2(applyD2SharedLlm(data, answer(data)), { page11: data.page11.desktop, draft: data.drafts.desktop, needs: need, menu: data.input.menu, derived: data.derived }), []);
 });
 
 void test('agent sources do not name the fixture module', () => {

@@ -438,6 +438,14 @@ function validStateSource(stateId: string, source: string, definition: D2SharedV
   return definition.functions[source]?.sets === stateId;
 }
 
+/** Menu pages the page actors can open: the navigate targets a shared function may name. */
+export function d2SharedNavigablePages(menu: D2PageRequestsMenu, actors: readonly string[]): string[] {
+  const ids: string[] = [];
+  const walk = (nodes: D2PageRequestsMenu['tree']): void => { for (const node of nodes) { if (node.kind === 'page') ids.push(node.id); walk(node.children ?? []); } };
+  walk(menu.tree);
+  return ids.filter(pageId => canNavigate(menu, pageId, new Set(actors)));
+}
+
 function canNavigate(menu: D2PageRequestsMenu, pageId: string, pageActors: Set<string>): boolean {
   const path = menuPath(menu.tree, pageId, []);
   if (!path) return false;

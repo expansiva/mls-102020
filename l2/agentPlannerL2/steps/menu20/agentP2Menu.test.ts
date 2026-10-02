@@ -27,6 +27,7 @@ import {
   P2_MENU_SCHEMA_VERSION,
   buildP2MenuFile,
   buildP2MenuTool,
+  withP2MenuEnums,
   collectRecordsKept,
   menuActionCounts,
   menuCandidates,
@@ -555,6 +556,17 @@ void test('gate rejects empty hub, duplicate id, unknown actor, unknown organism
   const unusedGate = validateP2Menu(unused, loaded);
   assert.equal(unusedGate.ok, true);
   assert.ok(unusedGate.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_JOURNEY_UNMAPPED'));
+});
+
+void test('d2_67: menu ids the code knows are enums of the tool schema, still provider-clean', () => {
+  const loaded = loadSources();
+  const limited = withP2MenuEnums(loadSchema(), loaded.sources, loaded.grants, loaded.processes) as { $defs: Record<string, { properties: Record<string, { enum?: string[] }> }> };
+  assert.deepEqual(limited.$defs.authority.properties.actorRef.enum, loaded.sources.actors.map(actor => actor.actorId));
+  assert.deepEqual(limited.$defs.journeyPages.properties.journeyId.enum, loaded.sources.journeys.map(journey => journey.journeyId));
+  assert.deepEqual(limited.$defs.hubNode.properties.context.enum, loaded.sources.entities.map(entity => entity.entityId));
+  assert.deepEqual(limited.$defs.recordPages.properties.entityId.enum, collectRecordsKept(loaded.sources, loaded.grants).map(row => row.entityRef));
+  assert.equal(lintToolSchema(JSON.stringify(buildP2MenuTool(limited).function.parameters)), null);
+  assert.equal('enum' in (loadSchema() as typeof limited).$defs.authority.properties.actorRef, false);
 });
 
 void test('menu20 tool schema is provider-clean and has no optional single-value fields', () => {

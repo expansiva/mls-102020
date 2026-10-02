@@ -36,6 +36,7 @@ import {
 import {
   buildP2MenuFile,
   buildP2MenuTool,
+  withP2MenuEnums,
   menuActionCounts,
   menuCandidates,
   normalizeMenuV2,
@@ -186,7 +187,7 @@ export async function beforeP2MenuPromptStep(
         : Promise.resolve(null),
     ]);
     if (!schema) throw new Error('menu.schema.json is missing.');
-    const tool = buildP2MenuTool(schema);
+    const tool = buildP2MenuTool(withP2MenuEnums(schema, menuSources.sources, menuSources.grants, menuSources.processes));
     const humanPrompt = buildP2MenuHumanPrompt({
       menuSources,
       gateFeedback: parsed.gateFeedback,

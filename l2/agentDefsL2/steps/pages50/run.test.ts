@@ -8,11 +8,12 @@ import { parseD2Page11Definition, renderD2Page11Definition } from '/_102020_/l2/
 import { buildD2Page11WithExperience, d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
-import { beforePromptStep, reusableD2Page, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { beforePromptStep, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { d2NormalizeWriteKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { gateD2Page11 } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageWriteKeys, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, d2PageWriteKeys, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2PagesContext['template']['categories'] }).categories;
@@ -281,6 +282,26 @@ void test('d2_66: a transition is matched by its id; the schema limits write to 
     { pageId: 'minhas_despesas', actor: 'colaborador', menu, needsPages: blankNeeds, entities: {}, access: { grants: [] }, categories, templatePaths: new Set(), moleculeTags: new Set() } as Parameters<typeof gateD2Page11>[2]);
   assert.equal(issues.some(item => item.code === 'D2_PAGE11_TRANSITION_WITHOUT_REF'), true, JSON.stringify(issues.map(item => item.code)));
   assert.equal(issues.filter(item => item.code !== 'D2_PAGE11_TRANSITION_WITHOUT_REF').some(item => item.message.includes('Despesa.transition')), false);
+});
+
+void test('d2_67: category, organism kind, navigate target and molecule tags are enums of the page schema', () => {
+  const data = context('controleEstoque', 'produtos');
+  data.groups = [{ groupId: 'groupViewTable', purpose: 'p', indexReference: '/i', usageReference: '/u', tags: ['groupviewtable--a', 'groupviewtable--b'], scenarios: [], indexSource: '', indexText: '', usageSource: '', usageText: '' }];
+  const enums = d2PageChoiceEnums(data);
+  assert.ok(enums.categories.includes('inventoryControl') && enums.categories.includes('bespoke'));
+  assert.deepEqual(enums.kinds.slice().sort(), [...new Set(data.page.organisms.map(item => (item as { kind: string }).kind))].sort());
+  assert.equal(enums.targets[0], '');
+  assert.ok(enums.targets.includes('movimentacoes'));
+  assert.deepEqual(enums.tags, ['groupviewtable--a', 'groupviewtable--b']);
+  const page = JSON.parse(readFileSync(new URL('../../schemas/page11V2.json', import.meta.url), 'utf8')) as Record<string, unknown>;
+  const limited = withPageEnums(page, enums) as { properties: { template: { properties: { category: { enum: string[] } } }; organisms: { additionalProperties: { properties: { kind: { enum: string[] }; intents: { items: { properties: { to: { enum: string[] } } } } } } }; molecules: { additionalProperties: { items: { properties: { preferred: { enum: string[] }; alternative: { enum: string[] } } } } } } };
+  assert.deepEqual(limited.properties.template.properties.category.enum, enums.categories);
+  assert.deepEqual(limited.properties.organisms.additionalProperties.properties.kind.enum, enums.kinds);
+  assert.deepEqual(limited.properties.organisms.additionalProperties.properties.intents.items.properties.to.enum, enums.targets);
+  assert.deepEqual(limited.properties.molecules.additionalProperties.items.properties.alternative.enum, ['', ...enums.tags]);
+  // The enums add no lint finding to the base schema (whose map fields the lint already reports).
+  const strip = ({ $schema: _dialect, $id: _id, ...shape }: Record<string, unknown>) => shape;
+  assert.deepEqual(lintToolSchema(JSON.stringify(strip(limited as Record<string, unknown>))), lintToolSchema(JSON.stringify(strip(page))));
 });
 
 void test('d2_65: the same write in a form and in actions is refused with the place of the submit', () => {

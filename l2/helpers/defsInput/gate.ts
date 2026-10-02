@@ -106,7 +106,7 @@ export async function buildD2InputSnapshot(
   const effortTables = indexedRows(state, rows(effort.tables), 'tableId', 'pool/l2/web/effort.json');
 
   validatePageSets(state, menuScan.pages, needRows, effortScreens);
-  validateNeeds(state, needRows, entityIds, journeyIds);
+  validateNeeds(state, needRows, entityIds, journeyIds, journeyRefsByPage);
   validateBackend(state, identity, menuScan.pages, entityIds, backendEndpoints, backendUsecases);
   validateEffort(state, effort, effortScreens, effortEndpoints, effortUsecases, effortTables, backendEndpoints, backendUsecases);
 
@@ -167,7 +167,7 @@ export async function buildD2InputSnapshot(
   }
   pages.sort((left, right) => left.pageId.localeCompare(right.pageId));
   validateDestinationCollisions(state, pages, remove);
-  semanticAccessFindings(state, access, entityIds, pages);
+  semanticAccessFindings(state, access, entityIds, artifacts.entities);
   semanticPageScopeFindings(state, pages);
   for (const semanticError of semanticErrors) {
     const message = semanticError.message;
@@ -347,8 +347,23 @@ function validatePageSets(state: GateState, pages: Map<string, MenuPage>, needs:
   }
 }
 
-function validateNeeds(state: GateState, needs: Map<string, Record<string, unknown>>, entityIds: string[], journeyIds: string[]): void {
+function validateNeeds(state: GateState, needs: Map<string, Record<string, unknown>>, entityIds: string[], journeyIds: string[], journeyRefsByPage: Map<string, string[]>): void {
   for (const [pageId, page] of needs) {
+    // Refusals the D2 steps would only reach after an LLM call, decided here from the inputs alone (d2_67).
+    for (const write of rows(page.writes)) {
+      if (text(write.operation) === 'transition' && !text(write.transitionRef)) {
+        error(state, 'D2_PAGE11_TRANSITION_WITHOUT_REF_INPUT20', 'pool/l1/web/needs.json', `write ${text(write.entity)}.transition has no transitionRef`, pageId);
+      }
+    }
+    const linked = new Set(journeyRefsByPage.get(pageId) ?? []);
+    for (const read of rows(page.reads)) {
+      for (const source of strings(read.from)) {
+        const step = /^journey:([^/]+)\//.exec(source);
+        if (step && journeyIds.includes(step[1]) && !linked.has(step[1])) {
+          error(state, 'D2_SHARED_V2_JOURNEY_OUTSIDE_INPUT20', 'pool/l1/web/needs.json', `read ${text(read.entity)} comes from journey '${step[1]}', which the menu does not link to this page`, pageId);
+        }
+      }
+    }
     for (const item of [...rows(page.reads), ...rows(page.writes)]) {
       const entity = text(item.entity);
       if (!entityIds.includes(entity)) error(state, 'ENTITY_REF_MISSING', 'pool/l1/web/needs.json', `entity '${entity}' is not in ontology`, pageId);
@@ -403,31 +418,51 @@ function checkTotals(state: GateState, totals: Record<string, unknown>, items: R
   }
 }
 
+/** An own anchor outside entityRefs is valid only when every entityRef reaches it through ontology relationships. */
+const OWN_ANCHOR_MAX_LINKS = 3;
+
+function relationshipPath(entities: Record<string, unknown>, from: string, to: string): string[] | null {
+  const links = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => { links.set(a, (links.get(a) ?? new Set()).add(b)); links.set(b, (links.get(b) ?? new Set()).add(a)); };
+  for (const [entityId, raw] of Object.entries(entities)) {
+    for (const relationship of Object.values(rec(rec(raw).relationships))) {
+      const target = text(rec(relationship).to);
+      if (target && entities[target]) link(entityId, target);
+    }
+  }
+  const queue: string[][] = [[from]];
+  const seen = new Set([from]);
+  while (queue.length) {
+    const path = queue.shift()!;
+    const last = path[path.length - 1];
+    if (last === to) return path;
+    if (path.length > OWN_ANCHOR_MAX_LINKS) continue;
+    for (const next of links.get(last) ?? []) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      queue.push([...path, next]);
+    }
+  }
+  return null;
+}
+
 function semanticAccessFindings(
   state: GateState,
   access: Record<string, unknown>,
   entityIds: string[],
-  pages: D2SelectedPage[],
+  entities: Record<string, unknown>,
 ): void {
   for (const grant of rows(access.grants)) {
     for (const entity of strings(grant.entityRefs)) if (!entityIds.includes(entity)) error(state, 'ENTITY_REF_MISSING', 'l4/access.defs.ts', `grant entity '${entity}' is missing`);
     const scope = rec(grant.dataScope);
     const anchor = text(scope.anchorEntity);
     if (anchor && !entityIds.includes(anchor)) error(state, 'ENTITY_REF_MISSING', 'l4/access.defs.ts', `grant anchor entity '${anchor}' is missing`);
-    if (text(scope.mode) === 'own' && anchor && !strings(grant.entityRefs).includes(anchor)) {
-      const actor = text(grant.actorRef);
-      const granted = new Set(strings(grant.entityRefs));
-      const matches = pages.flatMap(page => {
-        if (actor && !page.actors.includes(actor)) return [];
-        const usecases = new Map(page.usecases.map(usecase => [text(usecase.usecaseId), usecase]));
-        return page.endpoints
-          .filter(endpoint => granted.has(text(usecases.get(text(endpoint.usecaseRef))?.entity)))
-          .map(endpoint => ({ pageId: page.pageId, route: text(endpoint.route) }));
-      });
-      const message = `own grant '${text(grant.grantId)}' anchors '${anchor}' outside entityRefs`;
-      if (matches.length) for (const match of matches) {
-        review(state, 'OWN_ANCHOR_OUTSIDE_GRANT_ENTITIES', 'l4/access.defs.ts', message, match.pageId, match.route);
-      } else review(state, 'OWN_ANCHOR_OUTSIDE_GRANT_ENTITIES', 'l4/access.defs.ts', message);
+    if (text(scope.mode) === 'own' && anchor && entityIds.includes(anchor) && !strings(grant.entityRefs).includes(anchor)) {
+      for (const entity of strings(grant.entityRefs)) {
+        if (!entityIds.includes(entity) || relationshipPath(entities, entity, anchor)) continue;
+        error(state, 'OWN_ANCHOR_UNREACHABLE', 'l4/access.defs.ts',
+          `own grant '${text(grant.grantId)}' anchors '${anchor}', but '${entity}' has no relationship path to it within ${OWN_ANCHOR_MAX_LINKS} links; add the reference ${entity} -> ${anchor} (or through an entity between them) in the ontology`);
+      }
     }
   }
 }

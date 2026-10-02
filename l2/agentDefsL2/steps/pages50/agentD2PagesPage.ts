@@ -12,7 +12,7 @@ import { loadD2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages5
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageWriteKeys, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse, D2_PAGES_PROMPT_LIMIT_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, type D2PageChoiceEnums, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse, D2_PAGES_PROMPT_LIMIT_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 interface Args { project: number; module: string; scope?: D2Scope; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
 const GROUPS_SYSTEM_PROMPT = `<!-- modelType: reasoning -->
@@ -127,7 +127,7 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
     const systemPrompt = isGroups ? GROUPS_SYSTEM_PROMPT : `${data.prompt}\n${data.skill}`;
     if (systemPrompt.length + humanPrompt.length > D2_PAGES_PROMPT_LIMIT_CHARS) throw new Error(`D2_PAGE11_PROMPT_LIMIT: ${systemPrompt.length + humanPrompt.length}`);
     const name = isGroups ? 'submitD2MoleculeGroups' : 'submitD2Pages';
-    const parameters = isGroups ? groupSchema : await readPageSchema(d2PageWriteKeys(data.page));
+    const parameters = isGroups ? groupSchema : await readPageSchema(d2PageChoiceEnums(data));
     return [{ type: 'prompt_ready', args: step.prompt || '', messageId: context.message.orderAt, threadId: context.message.threadId,
       taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt, humanPrompt,
       tools: [{ type: 'function', function: { name, description: isGroups ? 'Select molecule catalog groups for each organism' : 'Define desktop and mobile page11 v2 and internal needs drafts', parameters } }],
@@ -177,14 +177,14 @@ function next(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep
 
 const groupSchema = { type: 'object', additionalProperties: false, required: ['organisms'], properties: { organisms: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['organismId', 'groups'], properties: { organismId: { type: 'string' }, groups: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['groupId', 'relevant', 'reason'], properties: { groupId: { type: 'string' }, relevant: { type: 'boolean' }, reason: { type: 'string' } } } } } } } } };
 /** The page schema with `write` limited to the page's exact write keys (a page without writes keeps the plain field; its gate refuses any submit). */
-export async function readPageSchema(writeKeys: readonly string[] = []): Promise<Record<string, unknown>> {
+export async function readPageSchema(enums: D2PageChoiceEnums = { writeKeys: [], categories: [], kinds: [], targets: [], tags: [] }): Promise<Record<string, unknown>> {
   const [page, needs] = await Promise.all([
     readJson<Record<string, unknown>>({ project: 102020, level: 2, folder: 'agentDefsL2/schemas', shortName: 'page11V2', extension: '.json' }),
     readJson<Record<string, unknown>>({ project: 102020, level: 2, folder: 'agentDefsL2/schemas', shortName: 'page11NeedsV1', extension: '.json' }),
   ]);
   if (!page || !needs) throw new Error('D2_PAGES_SCHEMA_MISSING');
-  const { $schema: _pageDialect, $id: _pageId, ...pageShape } = page;
-  const { $schema: _needsDialect, $id: _needsId, ...needsShape } = withWriteEnum(needs, writeKeys);
+  const { $schema: _pageDialect, $id: _pageId, ...pageShape } = withPageEnums(page, enums);
+  const { $schema: _needsDialect, $id: _needsId, ...needsShape } = withWriteEnum(needs, enums.writeKeys);
   const unit = { type: 'object', additionalProperties: false, required: ['definition', 'needs'], properties: { definition: pageShape, needs: needsShape } };
   return { type: 'object', additionalProperties: false, required: ['desktop', 'mobile', 'categoryReason'], properties: { desktop: unit, mobile: unit, categoryReason: { type: 'string' } } };
 }
@@ -196,4 +196,22 @@ export function withWriteEnum(schema: Record<string, unknown>, writeKeys: readon
   if (!write) throw new Error('D2_PAGES_SCHEMA_WRITE_MISSING');
   write.enum = [...writeKeys];
   return copy as Record<string, unknown>;
+}
+
+/** category, organism kind, navigate target and molecule tags are choices inside lists the code knows. */
+export function withPageEnums(schema: Record<string, unknown>, enums: D2PageChoiceEnums): Record<string, unknown> {
+  const copy = structuredClone(schema) as Record<string, unknown>;
+  const at = (path: string[]): Record<string, unknown> => {
+    let node: unknown = copy;
+    for (const key of path) node = (node as Record<string, unknown> | undefined)?.[key];
+    if (!node || typeof node !== 'object') throw new Error(`D2_PAGES_SCHEMA_FIELD_MISSING: ${path.join('.')}`);
+    return node as Record<string, unknown>;
+  };
+  const limit = (path: string[], values: readonly string[]) => { if (values.length) at(path).enum = [...values]; };
+  limit(['properties', 'template', 'properties', 'category'], enums.categories);
+  limit(['properties', 'organisms', 'additionalProperties', 'properties', 'kind'], enums.kinds);
+  limit(['properties', 'organisms', 'additionalProperties', 'properties', 'intents', 'items', 'properties', 'to'], enums.targets);
+  limit(['properties', 'molecules', 'additionalProperties', 'items', 'properties', 'preferred'], enums.tags);
+  limit(['properties', 'molecules', 'additionalProperties', 'items', 'properties', 'alternative'], enums.tags.length ? ['', ...enums.tags] : []);
+  return copy;
 }

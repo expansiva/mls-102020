@@ -462,6 +462,23 @@ export function parsePreviousMenuTree(value: unknown): MenuNode[] {
   ));
 }
 
+/** Ids the code knows (entities, actors, journeys, processes, kept records) become enums of the menu schema (d2_67). */
+export function withP2MenuEnums(schema: Record<string, unknown>, sources: P2L4Sources, grants: readonly P2GrantView[], processes: readonly P2ProcessView[]): Record<string, unknown> {
+  const copy = structuredClone(schema) as { $defs: Record<string, { properties: Record<string, Record<string, unknown>> }> };
+  const limit = (def: string, field: string, values: readonly string[]) => {
+    const target = copy.$defs[def]?.properties?.[field];
+    if (!target) throw new Error(`menu.schema.json has no $defs.${def}.properties.${field}.`);
+    const list = [...new Set(values.filter(Boolean))];
+    if (list.length) target.enum = list;
+  };
+  limit('hubNode', 'context', sources.entities.map(entity => entity.entityId));
+  limit('authority', 'actorRef', sources.actors.map(actor => actor.actorId));
+  limit('journeyPages', 'journeyId', sources.journeys.map(journey => journey.journeyId));
+  limit('processPages', 'processId', processes.map(process => process.processId));
+  limit('recordPages', 'entityId', collectRecordsKept(sources, grants).map(row => row.entityRef));
+  return copy;
+}
+
 export function buildP2MenuTool(schema: Record<string, unknown>): mls.msg.LLMTool {
   return createP2ArtifactTool(
     'submitP2Menu',
