@@ -1,0 +1,47 @@
+{
+  "organisms": {
+    "professionalDetail": {
+      "reads": [
+        "Profissional.id",
+        "Profissional.version",
+        "Profissional.details.identification",
+        "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "professionalForm": {
+      "reads": [
+        "Profissional.id",
+        "Profissional.version",
+        "Profissional.details.identification",
+        "Profissional.details.person"
+      ],
+      "edits": [
+        "Profissional.details.identification.name",
+        "Profissional.details.identification.docType",
+        "Profissional.details.identification.docId",
+        "Profissional.details.identification.countryCode",
+        "Profissional.details.person.occupation"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "persistProfessionalCreate",
+          "write": "Profissional.create"
+        },
+        {
+          "intentId": "persistProfessionalUpdate",
+          "write": "Profissional.update"
+        }
+      ]
+    },
+    "professionalActions": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

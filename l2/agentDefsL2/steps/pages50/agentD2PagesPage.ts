@@ -10,6 +10,8 @@ import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/mo
 import { parseD2MoleculeGroupJudgment } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeSelection.js';
 import { loadD2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages50/templateContext.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+import { d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse, D2_PAGES_PROMPT_LIMIT_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 interface Args { project: number; module: string; scope?: D2Scope; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
@@ -98,6 +100,8 @@ export async function reusableD2Page(identity: { project: number; module: string
       const needs = await port.readNeeds(needsInfo(identity, pageId, device));
       if (!needs || await sha256Text(source) !== receipt.sourceHashes[device]
         || await sha256Text(JSON.stringify(needs)) !== receipt.needsHashes[device]) return false;
+      // A page11 approved before a gate existed is checked again; refused means redone, not reused.
+      if (d2Page11WriteDuplicates(buildD2Page11Needs(needs)).length) return false;
     }
     return true;
   } catch { return false; }

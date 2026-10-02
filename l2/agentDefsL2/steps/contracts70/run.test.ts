@@ -104,6 +104,10 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const firstOrganism = Object.keys(page.organisms)[0];
   const returnKey = load?.returns[0] ?? '';
   const extraKeys = load?.returns.slice(1) ?? [];
+  // A list key already has its fixed state (same id); other loaded keys get a state of their own.
+  const listKeys = new Set(data.derived.requests.flatMap(request => request.lists.map(list => list.key)));
+  const stateOf = (key: string): string => listKeys.has(key) ? key : key === returnKey ? 'rows' : `${key}Rows`;
+  const rowsId = stateOf(returnKey);
   const camel = (value: string) => value[0].toLowerCase() + value.slice(1);
   const commandReturns = command ? [...new Set([...command.returns, ...Object.values(load?.returnEntities ?? {}).map(camel)])] : [];
   const selectTargets = [...new Set(Object.values(data.drafts.desktop.organisms).map(row => row.selects).filter(Boolean))];
@@ -111,19 +115,19 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const functions: D2SharedLlmResponse['functions'] = [
     { id: 'load', description: 'Load the page.' },
     ...data.derived.requests.flatMap(request => request.lists.flatMap(list => [
-      { id: list.filter, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Filter the loaded list.' },
-      { id: list.loadMore, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Load another page of the list.' },
+      { id: list.filter, sets: stateOf(list.key), description: 'Filter the loaded list.' },
+      { id: list.loadMore, sets: stateOf(list.key), description: 'Load another page of the list.' },
     ])),
     ...(selectTargets.length ? [{ id: 'chooseRow', sets: 'selected', description: 'Choose a row.' }] : []),
-    ...(command ? [{ id: command.id, ...(returnKey ? { updates: ['rows', ...extraKeys.map(key => `${key}Rows`)] } : {}), description: 'Submit the form.' }] : []),
+    ...(command ? [{ id: command.id, ...(returnKey ? { updates: [rowsId, ...extraKeys.map(stateOf)] } : {}), description: 'Submit the form.' }] : []),
     ...(navigate ? [{ id: navigate.id, navigate: navigate.to, ...(carried ? { carries: { [carried[0]]: 'selected.id' } } : {}), description: 'Open the related page.' }] : []),
   ];
   return {
     states: [
       ...(returnKey ? [
-        { id: 'rows', source: `load.${returnKey}`, description: 'Rows loaded for the page.' },
-        { id: 'narrowed', source: 'rows', description: 'Rows narrowed from the loaded rows.' },
-        ...extraKeys.map(key => ({ id: `${key}Rows`, source: `load.${key}`, description: 'Other rows loaded for the page.' })),
+        { id: rowsId, source: `load.${returnKey}`, description: 'Rows loaded for the page.' },
+        { id: 'narrowed', source: rowsId, description: 'Rows narrowed from the loaded rows.' },
+        ...extraKeys.map(key => ({ id: stateOf(key), source: `load.${key}`, description: 'Other rows loaded for the page.' })),
       ] : []),
       ...(selectTargets.length ? [{ id: 'selected', source: 'chooseRow', description: 'Row chosen on the page.' }] : []),
       ...(command ? [{ id: 'draft', source: `${command.id}.input`, description: 'Values captured by the form.' }] : []),

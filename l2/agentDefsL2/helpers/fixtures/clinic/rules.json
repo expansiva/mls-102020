@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "2026-09-16-ns5-rules-v2",
+  "moduleName": "agendaClinica",
+  "rules": {
+    "transicoesConsultaValidas": "Uma consulta só pode ser confirmada quando estiver agendada, e só pode ser marcada como faltante ou atendida quando estiver agendada ou confirmada.",
+    "atendimentoExigeAnotacao": "Uma consulta só pode ser marcada como atendida com uma anotação do atendimento registrada.",
+    "profissionalHorarioUnico": "Não pode haver duas consultas para o mesmo profissional na mesma data e horário."
+  }
+}

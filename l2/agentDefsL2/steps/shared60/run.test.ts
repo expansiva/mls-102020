@@ -101,6 +101,10 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const firstOrganism = Object.keys(page.organisms)[0];
   const returnKey = load?.returns[0] ?? '';
   const extraKeys = load?.returns.slice(1) ?? [];
+  // A list key already has its fixed state (same id); other loaded keys get a state of their own.
+  const listKeys = new Set(data.derived.requests.flatMap(request => request.lists.map(list => list.key)));
+  const stateOf = (key: string): string => listKeys.has(key) ? key : key === returnKey ? 'rows' : `${key}Rows`;
+  const rowsId = stateOf(returnKey);
   const camel = (value: string) => value[0].toLowerCase() + value.slice(1);
   const commandReturns = command ? [...new Set([...command.returns, ...Object.values(load?.returnEntities ?? {}).map(camel)])] : [];
   const selectTargets = [...new Set(Object.values(data.drafts.desktop.organisms).map(row => row.selects).filter(Boolean))];
@@ -108,19 +112,19 @@ function answer(data: D2SharedContext, patch?: Partial<D2SharedLlmResponse>): D2
   const functions: D2SharedLlmResponse['functions'] = [
     { id: 'load', description: 'Load the page.' },
     ...data.derived.requests.flatMap(request => request.lists.flatMap(list => [
-      { id: list.filter, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Filter the loaded list.' },
-      { id: list.loadMore, sets: list.key === returnKey ? 'rows' : `${list.key}Rows`, description: 'Load another page of the list.' },
+      { id: list.filter, sets: stateOf(list.key), description: 'Filter the loaded list.' },
+      { id: list.loadMore, sets: stateOf(list.key), description: 'Load another page of the list.' },
     ])),
     ...(selectTargets.length ? [{ id: 'chooseRow', sets: 'selected', description: 'Choose a row.' }] : []),
-    ...(command ? [{ id: command.id, ...(returnKey ? { updates: ['rows', ...extraKeys.map(key => `${key}Rows`)] } : {}), description: 'Submit the form.' }] : []),
+    ...(command ? [{ id: command.id, ...(returnKey ? { updates: [rowsId, ...extraKeys.map(stateOf)] } : {}), description: 'Submit the form.' }] : []),
     ...(navigate ? [{ id: navigate.id, navigate: navigate.to, ...(carried ? { carries: { [carried[0]]: 'selected.id' } } : {}), description: 'Open the related page.' }] : []),
   ];
   const base: D2SharedLlmResponse = {
     states: [
       ...(returnKey ? [
-        { id: 'rows', source: `load.${returnKey}`, description: 'Rows loaded for the page.' },
-        { id: 'narrowed', source: 'rows', description: 'Rows narrowed from the loaded rows.' },
-        ...extraKeys.map(key => ({ id: `${key}Rows`, source: `load.${key}`, description: 'Other rows loaded for the page.' })),
+        { id: rowsId, source: `load.${returnKey}`, description: 'Rows loaded for the page.' },
+        { id: 'narrowed', source: rowsId, description: 'Rows narrowed from the loaded rows.' },
+        ...extraKeys.map(key => ({ id: stateOf(key), source: `load.${key}`, description: 'Other rows loaded for the page.' })),
       ] : []),
       ...(selectTargets.length ? [{ id: 'selected', source: 'chooseRow', description: 'Row chosen on the page.' }] : []),
       ...(command ? [{ id: 'draft', source: `${command.id}.input`, description: 'Values captured by the form.' }] : []),
@@ -163,13 +167,13 @@ void test('products fixture renders shared v2 and refuses gates 1 to 4 before wr
   const parsed = parseD2SharedV2(source as string);
   assert.equal(parsed.location.pageId, pageId);
   assert.deepEqual(Object.keys(parsed.definition.requests).sort(), data.derived.requests.map(item => item.id).sort());
-  assert.equal(parsed.definition.states.rows.source.startsWith('load.'), true);
-  assert.equal(parsed.definition.states.narrowed.source, 'rows');
+  const rowsId = parsed.definition.states.narrowed.source;
+  assert.equal(parsed.definition.states[rowsId].source.startsWith('load.'), true);
   assert.equal(parsed.definition.states.selected.source, 'chooseRow');
   assert.equal(parsed.definition.functions.chooseRow.sets, 'selected');
   assert.equal(parsed.definition.states.draft.source.endsWith('.input'), true);
   const commandId = data.derived.requests.find(item => item.kind === 'cmd')?.id ?? '';
-  assert.deepEqual(parsed.definition.functions[commandId].updates, ['rows']);
+  assert.deepEqual(parsed.definition.functions[commandId].updates, [rowsId]);
   const need = data.input.needsPages.find(item => item.pageId === pageId)!;
   assert.deepEqual(gateD2SharedV2(parsed.definition, {
     page11: data.page11.desktop, draft: data.drafts.desktop, needs: need, menu: data.input.menu, derived: data.derived,
@@ -193,11 +197,20 @@ void test('products fixture renders shared v2 and refuses gates 1 to 4 before wr
   await refuse({ journeys: [...answer(data).journeys, { step: 'missingJourney/missingStep', organisms: [firstOrganism], functions: ['load'] }] }, /D2_SHARED_V2_JOURNEY_INVENTED/u);
   await refuse({ journeys: [...answer(data).journeys, { step: `${steps[0].split('/')[0]}/missingStep`, organisms: [firstOrganism], functions: ['load'] }] }, /D2_SHARED_V2_JOURNEY_INVENTED/u);
   await refuse({ functions: answer(data).functions.filter(item => item.navigate === undefined) }, /D2_SHARED_V2_FUNCTION_MISSING/u);
-  await refuse({ states: [{ id: 'rows', source: 'missing', description: 'no source' }] }, /D2_SHARED_V2_STATE_SOURCE/u);
-  await refuse({ states: [{ id: 'rows', source: 'qualquerInput', description: 'substring is not a source' }] }, /D2_SHARED_V2_STATE_SOURCE/u);
+  await refuse({ states: [...answer(data).states, { id: 'ghostRows', source: 'missing', description: 'no source' }] }, /D2_SHARED_V2_STATE_SOURCE/u);
+  await refuse({ states: [...answer(data).states, { id: 'ghostRows', source: 'qualquerInput', description: 'substring is not a source' }] }, /D2_SHARED_V2_STATE_SOURCE/u);
+  // The fixed list state cannot be redefined, and no other state repeats its source.
+  await refuse({ states: [...answer(data).states.filter(row => row.id !== rowsId), { id: rowsId, source: 'narrowed', description: 'moved' }] }, /D2_SHARED_STATE_FIXED/u);
+  await refuse({ states: [...answer(data).states, { id: 'secondList', source: `load.${rowsId}`, description: 'again' }] }, /D2_SHARED_V2_STATE_DUPLICATE/u);
   const command = data.derived.requests.find(item => item.kind === 'cmd');
   assert.ok(command);
-  await refuse({ states: [{ id: 'draft', source: `${command.id}.input`, description: 'form only' }] }, /D2_SHARED_V2_ORGANISM_UNBOUND/u);
+  // An organism that reads but no request serves stays unbound.
+  const orphanPage = structuredClone(data.page11.desktop);
+  orphanPage.organisms.orphanReader = { kind: 'detail', text: 'orphan', intents: [] };
+  const orphanDraft = structuredClone(data.drafts.desktop);
+  orphanDraft.organisms.orphanReader = { reads: [`${Object.values(data.derived.requests[0].returnEntities)[0]}.id`], edits: [], selects: '', submits: [] };
+  assert.equal(gateD2SharedV2(parsed.definition, { page11: orphanPage, draft: orphanDraft, needs: need, menu: data.input.menu, derived: data.derived })
+    .some(item => item.code === 'D2_SHARED_V2_ORGANISM_UNBOUND' && item.path === 'organisms.orphanReader'), true);
   await refuse({ states: [] }, /D2_SHARED_V2_FUNCTION_SET/u);
   await refuse({ functions: answer(data).functions.map(item => item.id === command.id ? { ...item, updates: ['missingState'] } : item) }, /D2_SHARED_V2_FUNCTION_UPDATE/u);
   const navigate = answer(data).functions.find(item => item.navigate)?.navigate;
@@ -371,7 +384,7 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(parameters.includes('"source":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*(\\\\.[A-Za-z][A-Za-z0-9]*)*$"}'), true);
   assert.equal(built.humanPrompt.includes(data.page11.desktop.organisms[Object.keys(data.page11.desktop.organisms)[0]].text), false);
   assert.equal(built.chars <= 160_000, true);
-  assert.equal(built.chars, 10974);
+  assert.equal(built.chars, 11738);
   const ruled = JSON.parse(built.humanPrompt) as { ruleCandidates: Record<string, string[]>; ruleTexts: Record<string, string> };
   assert.deepEqual(ruled.ruleCandidates, data.derived.rules);
   for (const id of Object.values(data.derived.rules).flat()) assert.equal(ruled.ruleTexts[id], data.input.rules.rules[id]);
@@ -397,7 +410,7 @@ void test('live answers accept entry params and refuse prose or a multi-id sets'
   const productIssues = gateOf(products, liveProducts);
   assert.ok(productIssues.some(item => item.code === 'D2_SHARED_V2_STATE_SOURCE' && item.message.includes('validSources')));
   const moveIssues = gateOf(moves, liveMoves);
-  assert.deepEqual([...new Set(moveIssues.map(item => item.code))].sort(), ['D2_SHARED_V2_FUNCTION_SET', 'D2_SHARED_V2_LIST_STATE', 'D2_SHARED_V2_RETURNS_DERIVED', 'D2_SHARED_V2_UPDATES_RETURNS']);
+  assert.deepEqual([...new Set(moveIssues.map(item => item.code))].sort(), ['D2_SHARED_V2_FUNCTION_SET', 'D2_SHARED_V2_RETURNS_DERIVED', 'D2_SHARED_V2_UPDATES_RETURNS']);
   const setIssues = moveIssues.filter(item => item.code === 'D2_SHARED_V2_FUNCTION_SET');
   assert.equal(setIssues.every(item => item.message.includes('validSources') && item.message.includes('movimentacoes, produtos')), true);
   const fixed: D2SharedLlmResponse = { ...liveMoves, functions: liveMoves.functions.map(item => item.sets === 'movimentacoes, produtos'
@@ -465,17 +478,28 @@ void test('live 3 shared: command returns, carries, navigation and rules are ref
     page11: data.page11.desktop, draft: data.drafts.desktop, needs: data.input.needsPages.find(item => item.pageId === data.input.pageId)!, menu: data.input.menu, derived: data.derived,
   });
   const codes = (data: D2SharedContext, raw: D2SharedLlmResponse) => [...new Set(gateOf(data, raw).map(item => item.code))].sort();
+  // d2_65: the list state is fixed (id = list key); a live answer that named it otherwise is renamed to it.
+  const onFixedState = (raw: D2SharedLlmResponse, from: string, to: string): D2SharedLlmResponse => {
+    const swap = (id: string | undefined) => id === from ? to : id;
+    return {
+      ...raw,
+      states: raw.states.map(row => ({ ...row, id: swap(row.id)!, source: swap(row.source)! })),
+      functions: raw.functions.map(row => ({ ...row, sets: swap(row.sets), updates: row.updates?.map(id => swap(id)!),
+        ...(row.carries ? { carries: Object.fromEntries(Object.entries(row.carries).map(([key, value]) => [key, value.startsWith(`${from}.`) ? `${to}${value.slice(from.length)}` : value])) } : {}) })),
+    };
+  };
 
   const moves = contextFrom(pack, 'movimentacoes', moduleName);
   const liveMoves = read('live3Movimentacoes.defs.ts');
   const movesRaw = asResponse(liveMoves);
   // The live rules predate the list request; it takes the candidates of its own entity.
   movesRaw.requestRules.push({ requestId: 'loadMovimentacoes', rules: moves.derived.rules.loadMovimentacoes });
-  assert.deepEqual(codes(moves, movesRaw), ['D2_SHARED_V2_CARRIES_OUTSIDE', 'D2_SHARED_V2_CARRIES_TYPE', 'D2_SHARED_V2_RETURNS_DERIVED', 'D2_SHARED_V2_UPDATES_RETURNS']);
+  assert.deepEqual(codes(moves, movesRaw), ['D2_SHARED_V2_CARRIES_OUTSIDE', 'D2_SHARED_V2_CARRIES_TYPE', 'D2_SHARED_V2_DESCRIPTION_EMPTY', 'D2_SHARED_V2_RETURNS_DERIVED', 'D2_SHARED_V2_STATE_DUPLICATE', 'D2_SHARED_V2_UPDATES_RETURNS']);
   assert.equal(gateOf(moves, movesRaw).some(item => item.code === 'D2_SHARED_V2_UPDATES_RETURNS' && item.message.includes('produtos')), true);
+  const movesRenamed = onFixedState(movesRaw, 'historicoMovimentacoes', 'movimentacoes');
   const movesFixed: D2SharedLlmResponse = {
-    ...movesRaw,
-    functions: movesRaw.functions.map(({ carries: _carries, ...row }) => row),
+    ...movesRenamed,
+    functions: movesRenamed.functions.map(({ carries: _carries, ...row }) => row),
     commandReturns: movesRaw.commandReturns.map(row => ({ ...row, returns: [...row.returns, 'produto'] })),
     requestRules: movesRaw.requestRules.map(row => row.requestId === 'load' ? { ...row, rules: ['saldoAtualProduto', 'avisoSaldoMinimoProduto'] } : row),
   };
@@ -506,11 +530,12 @@ void test('live 3 shared: command returns, carries, navigation and rules are ref
   const liveProducts = read('live3Produtos.defs.ts');
   const productsRaw = asResponse(liveProducts);
   productsRaw.requestRules.push({ requestId: 'loadProdutos', rules: products.derived.rules.loadProdutos });
-  assert.deepEqual(codes(products, productsRaw), ['D2_SHARED_V2_NAVIGATE_SETS', 'D2_SHARED_V2_STATE_NAVIGATE']);
+  assert.deepEqual(codes(products, productsRaw), ['D2_SHARED_V2_DESCRIPTION_EMPTY', 'D2_SHARED_V2_NAVIGATE_SETS', 'D2_SHARED_V2_STATE_DUPLICATE', 'D2_SHARED_V2_STATE_NAVIGATE']);
+  const productsRenamed = onFixedState(productsRaw, 'listaProdutos', 'produtos');
   const productsFixed: D2SharedLlmResponse = {
-    ...productsRaw,
-    states: productsRaw.states.filter(row => row.id !== 'movimentacoesProduto'),
-    functions: productsRaw.functions.map(row => row.navigate ? { id: row.id, description: row.description, navigate: row.navigate, carries: row.carries } : row),
+    ...productsRenamed,
+    states: productsRenamed.states.filter(row => row.id !== 'movimentacoesProduto'),
+    functions: productsRenamed.functions.map(row => row.navigate ? { id: row.id, description: row.description, navigate: row.navigate, carries: row.carries } : row),
   };
   assert.deepEqual(gateOf(products, productsFixed), []);
   const productsShared = applyD2SharedLlm(products, productsFixed);
@@ -520,7 +545,8 @@ void test('live 3 shared: command returns, carries, navigation and rules are ref
   // Live 5: filter/loadMore wrote a second list state fed by load<Key>, splitting the list load opened.
   const live5 = asResponse(read('live5Produtos.defs.ts'));
   assert.deepEqual(codes(products, live5), ['D2_SHARED_V2_LIST_STATE']);
-  assert.equal(gateOf(products, live5).filter(item => item.code === 'D2_SHARED_V2_LIST_STATE').length, 3);
+  // filter/loadMore now keep the fixed list state, so only the extra state is refused.
+  assert.equal(gateOf(products, live5).filter(item => item.code === 'D2_SHARED_V2_LIST_STATE').length, 1);
   const live5Fixed: D2SharedLlmResponse = {
     ...live5,
     states: live5.states.filter(row => row.id !== 'listaProdutos'),
@@ -529,7 +555,7 @@ void test('live 3 shared: command returns, carries, navigation and rules are ref
   assert.deepEqual(gateOf(products, live5Fixed), []);
   assert.equal(buildD2SharedPrompt(products).humanPrompt.includes('"loadProdutos.produtos"'), false);
   const carry = (carries: Record<string, string>) => codes(products, { ...productsFixed, functions: productsFixed.functions.map(row => row.navigate ? { ...row, carries } : row) });
-  assert.deepEqual(carry({ produtoId: 'listaProdutos.id' }), ['D2_SHARED_V2_CARRIES_TYPE']);
+  assert.deepEqual(carry({ produtoId: 'produtos.id' }), ['D2_SHARED_V2_CARRIES_TYPE']);
   assert.deepEqual(carry({ produtoId: 'filtroBuscaProdutos.id' }), ['D2_SHARED_V2_CARRIES_TYPE']);
   assert.deepEqual(carry({ outroId: 'produtoSelecionado.id' }), ['D2_SHARED_V2_CARRIES_TYPE']);
   assert.deepEqual(carry({ produtoId: 'produtoSelecionado.campoAusente' }), ['D2_SHARED_V2_CARRIES_TYPE']);
@@ -612,6 +638,34 @@ void test('d2_64: a refused page does not stop its siblings; the stage fails onc
   const bothMessage = d2SharedRefusedMessage(both.state === 'refused' ? both.refusals : []);
   assert.match(bothMessage, /pageB: D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_RULE_COMMAND/u);
   assert.match(bothMessage, /pageC: D2_REQUESTS_SUBMIT_UNBOUND/u);
+});
+
+void test('d2_65: snake_case pages give camelCase keys and the prompt names entity and list of each key', () => {
+  // Renamed copy of a real module whose page ids are snake_case (helpers/fixtures/clinic).
+  const pack = loadPack('clinic');
+  const moduleName = (JSON.parse(readFileSync(join(fixtureRoot, 'clinic/menu.json'), 'utf8')) as { moduleName: string }).moduleName;
+  for (const pageId of ['consultas_recepcao', 'profissionais_recepcao', 'meu_cadastro_profissional']) {
+    const data = contextFrom(pack, pageId, moduleName);
+    for (const request of data.derived.requests) {
+      assert.match(request.id, /^[a-z][A-Za-z0-9]*$/u, request.id);
+      for (const key of request.returns) assert.match(key, /^[a-z][A-Za-z0-9]*$/u, `${pageId} ${key}`);
+    }
+    const human = JSON.parse(buildD2SharedPrompt(data).humanPrompt) as {
+      requests: Array<{ id: string; returns: string[]; returnEntities: Record<string, string>; lists: Array<{ key: string; filter: string; loadMore: string; organismId: string }> }>;
+      validSources: string[]; fixedStates: Array<{ id: string; source: string }>;
+    };
+    for (const request of human.requests) {
+      for (const key of request.returns) assert.ok(request.returnEntities[key], `${pageId} ${request.id}.${key} names its entity`);
+    }
+    assert.equal(human.validSources.some(token => token.includes('_')), false, human.validSources.join(','));
+    const load = human.requests.find(item => item.id === 'load');
+    for (const list of load?.lists ?? []) {
+      assert.ok(load!.returnEntities[list.key], `${pageId} list ${list.key} names its entity`);
+      assert.ok(human.fixedStates.some(state => state.id === list.key && state.source === `load.${list.key}`));
+    }
+  }
+  const lists = contextFrom(pack, 'consultas_recepcao', moduleName).derived.requests.find(item => item.id === 'load')?.lists ?? [];
+  assert.ok(lists.some(list => list.key === 'consultasRecepcao'), JSON.stringify(lists));
 });
 
 void test('agent sources do not name the fixture module', () => {

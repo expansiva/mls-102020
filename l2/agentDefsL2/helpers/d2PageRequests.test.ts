@@ -150,6 +150,34 @@ void test('renamed fixture keeps the same request structure', () => {
   assert.equal(renameDeep(left), right);
 });
 
+void test('d2_65: a snake_case page id gives camelCase keys and request ids; a malformed sibling is a named issue', () => {
+  const pack = loadPack('controleEstoque');
+  const renamePages = (value: unknown): unknown => {
+    if (typeof value === 'string') return value === 'produtos' ? 'meus_produtos' : value === 'movimentacoes' ? 'historico_movimentacoes' : value;
+    if (Array.isArray(value)) return value.map(renamePages);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, renamePages(item)]));
+    return value;
+  };
+  const snake = renamePages(pack) as ReturnType<typeof loadPack>;
+  const derived = deriveD2PageRequests(inputFor(snake, 'meus_produtos', 'mod'));
+  assert.deepEqual(derived.issues, []);
+  const load = derived.requests.find(item => item.id === 'load');
+  assert.deepEqual(load?.returns, ['meusProdutos']);
+  assert.deepEqual(load?.lists.map(item => item.key), ['meusProdutos']);
+  assert.ok(derived.requests.some(item => item.id === 'loadMeusProdutos'));
+  for (const request of derived.requests) assert.match(request.id, /^[a-z][A-Za-z0-9]*$/u);
+  const moves = deriveD2PageRequests(inputFor(snake, 'historico_movimentacoes', 'mod'));
+  assert.deepEqual(moves.requests.find(item => item.id === 'load')?.returns, ['historicoMovimentacoes', 'meusProdutos']);
+  // The original single-word ids keep their shape.
+  assert.deepEqual(deriveD2PageRequests(inputFor(pack, 'produtos', 'mod')).requests.find(item => item.id === 'load')?.returns, ['produtos']);
+
+  const broken = inputFor(pack, 'movimentacoes', 'mod');
+  broken.siblings = broken.siblings.map(item => item.pageId === 'produtos' ? { ...item, desktop: { broken: true } } : item);
+  const reported = deriveD2PageRequests(broken).issues.filter(item => item.code === 'D2_REQUESTS_SIBLING_INVALID');
+  assert.equal(reported.length, 1);
+  assert.equal(reported[0].path, 'siblings.produtos');
+});
+
 function organism(kind: string, intents: Array<{ id: string; kind: 'submit' | 'navigate'; to?: string }> = []) {
   return { kind, text: kind, intents };
 }

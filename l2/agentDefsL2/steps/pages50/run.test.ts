@@ -5,7 +5,9 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import { parseD2Page11Definition, renderD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import { buildD2Page11WithExperience } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { buildD2Page11WithExperience, d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { beforePromptStep, reusableD2Page, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
@@ -229,6 +231,28 @@ void test('a complete receipt reuses one page with zero writes; draft, context a
   const sourceKey = 'controleEstoque/web/desktop/page11/produtos.defs.ts';
   writes.set(sourceKey, `${writes.get(sourceKey)}\n// local edit`);
   assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), false);
+  writes.set(sourceKey, (writes.get(sourceKey) as string).replace('\n// local edit', ''));
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), true);
+
+  // d2_65: a stored page11 with the same write in two organisms is redone, even with a matching receipt.
+  const repeated = structuredClone(originalDraft) as { organisms: Record<string, { submits: Array<{ intentId: string; write: string }> }> };
+  const owner = Object.values(repeated.organisms).find(row => row.submits.length);
+  assert.ok(owner);
+  const other = Object.values(repeated.organisms).find(row => row !== owner);
+  assert.ok(other);
+  other.submits = [...other.submits, { intentId: 'repeatSubmit', write: owner.submits[0].write }];
+  writes.set(draftKey, repeated);
+  const repeatedReceipt = { ...receipt, needsHashes: { ...receipt.needsHashes, desktop: await sha256Text(JSON.stringify(repeated)) } };
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, { ...port, readReceipt: async () => repeatedReceipt }), false);
+});
+
+void test('d2_65: the same write in a form and in actions is refused with the place of the submit', () => {
+  const real = JSON.parse(readFileSync(new URL('../../helpers/fixtures/clinic/page11Needs/agenda_profissionalDesktop.json', import.meta.url), 'utf8'));
+  const issues = d2Page11WriteDuplicates(buildD2Page11Needs(real));
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, 'D2_PAGE11_WRITE_DUPLICATE');
+  assert.match(issues[0].message, /registroAtendimento/u);
+  assert.match(issues[0].message, /the actions organism does not repeat it/u);
 });
 
 void test('four real reembolsoDespesas pages include the nine minhas_despesas organisms below the prompt ceiling', () => {

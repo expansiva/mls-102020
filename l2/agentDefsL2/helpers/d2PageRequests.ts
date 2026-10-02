@@ -124,7 +124,11 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
   const draft = mergeDrafts(buildD2Page11Needs(input.draftDesktop), buildD2Page11Needs(input.draftMobile));
   const organisms = units(desktop, draft);
   const issues: D2PageRequestsIssue[] = [];
-  const add = (code: string, path: string, message: string): void => { issues.push({ code, path, message }); };
+  const add = (code: string, path: string, message: string): void => {
+    // A sibling is read by several derivations; report it once.
+    if (code === 'D2_REQUESTS_SIBLING_INVALID' && issues.some(item => item.code === code && item.path === path)) return;
+    issues.push({ code, path, message });
+  };
 
   const pageNeeds = input.needsPages.find(item => item.pageId === input.pageId);
   const actors = pageNeeds?.actors ?? [];
@@ -155,7 +159,7 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
   const returnEntities: Record<string, string> = {};
   const loadReturns: string[] = [];
   for (const entityId of loadEntities) {
-    const key = collectionKey(entityId, input.pageId, listUnits, input.siblings);
+    const key = collectionKey(entityId, input.pageId, listUnits, input.siblings, add);
     if (!loadReturns.includes(key)) loadReturns.push(key);
     returnEntities[key] = entityId;
   }
@@ -179,9 +183,9 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
     }
     if (hasLocate || paginatedCategory) { params.push('page', 'pageSize'); }
     load.params = unique([...load.params, ...params]);
-    const key = collectionKey(entityId, input.pageId, listUnits, input.siblings);
+    const key = collectionKey(entityId, input.pageId, listUnits, input.siblings, add);
     if (returnEntities[key] !== entityId) add('D2_REQUESTS_LIST_KEY', `organisms.${list.id}`, `List ${list.id} has no load output key for ${entityId}.`);
-    load.lists.push({ filter: `filter${pascal(list.id)}`, loadMore: `loadMore${pascal(list.id)}`, organismId: list.id, key, params });
+    load.lists.push({ filter: `filter${pascal(identifier(list.id))}`, loadMore: `loadMore${pascal(identifier(list.id))}`, organismId: list.id, key, params });
   }
 
   const listRequests: D2DerivedRequest[] = [];
@@ -231,7 +235,7 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
   const entityRules: Record<string, string[]> = {};
   for (const entityId of touched) entityRules[entityId] = rulesOf(entityId);
   const grants = input.access.grants.filter(grant => actors.includes(grant.actorRef) && grant.entityRefs.some(id => touched.includes(id)));
-  const entry = { params: entryParams(input, organisms, forms, load, listUnits) };
+  const entry = { params: entryParams(input, organisms, forms, load, listUnits, add) };
   const scope = grants[0]?.dataScope?.mode || (pageNeeds?.reads[0]?.scope ?? 'organization');
   return {
     module: input.module, pageId: input.pageId, requests, forms, entry, projections, rules, entityRules,
@@ -363,6 +367,7 @@ function entryParams(
   forms: Record<string, D2DerivedForm>,
   load: D2DerivedRequest,
   listUnits: OrganismUnit[],
+  add: (code: string, path: string, message: string) => void,
 ): Record<string, D2DerivedParam> {
   const params: Record<string, D2DerivedParam> = {};
   const pageNeeds = input.needsPages.find(item => item.pageId === input.pageId);
@@ -374,7 +379,10 @@ function entryParams(
     try {
       definition = buildD2Page11Definition(sibling.desktop);
       draft = mergeDrafts(buildD2Page11Needs(sibling.draftDesktop), buildD2Page11Needs(sibling.draftMobile));
-    } catch { continue; }
+    } catch (error) {
+      add('D2_REQUESTS_SIBLING_INVALID', `siblings.${sibling.pageId}`, `Sibling page ${sibling.pageId} has an invalid page11 or draft: ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
     for (const [id, organism] of Object.entries(definition.organisms)) {
       for (const intent of organism.intents) {
         if (intent.kind !== 'navigate' || intent.to !== input.pageId) continue;
@@ -455,21 +463,34 @@ function categoryIdFromTemplate(category: string): string {
   const match = /templates\/([^/]+)\//u.exec(category);
   return match?.[1] ?? (category === 'bespoke' ? 'bespoke' : category);
 }
-function collectionKey(entityId: string, pageId: string, listUnits: OrganismUnit[], siblings: D2PageRequestsSibling[]): string {
+/** Output keys and request ids are identifiers: a page id such as `a_b` becomes `aB` (paths and page ids stay as they are). */
+function collectionKey(
+  entityId: string, pageId: string, listUnits: OrganismUnit[], siblings: D2PageRequestsSibling[],
+  add: (code: string, path: string, message: string) => void,
+): string {
   const local = listUnits.filter(item => primaryEntity(item.reads) === entityId);
   if (local.length) {
     const distinct = unique(listUnits.map(item => primaryEntity(item.reads)).filter(Boolean));
-    return distinct.length === 1 ? pageId : local[0].id;
+    return identifier(distinct.length === 1 ? pageId : local[0].id);
   }
   for (const sibling of siblings) {
+    let definition: D2Page11Definition;
+    let draft: D2Page11Needs;
     try {
-      const definition = buildD2Page11Definition(sibling.desktop);
-      const draft = mergeDrafts(buildD2Page11Needs(sibling.draftDesktop), buildD2Page11Needs(sibling.draftMobile));
-      const lists = Object.entries(definition.organisms).filter(([, organism]) => organism.kind === 'list');
-      if (lists.some(([id]) => primaryEntity(draft.organisms[id]?.reads ?? []) === entityId)) return sibling.pageId;
-    } catch { /* skip malformed sibling */ }
+      definition = buildD2Page11Definition(sibling.desktop);
+      draft = mergeDrafts(buildD2Page11Needs(sibling.draftDesktop), buildD2Page11Needs(sibling.draftMobile));
+    } catch (error) {
+      add('D2_REQUESTS_SIBLING_INVALID', `siblings.${sibling.pageId}`, `Sibling page ${sibling.pageId} has an invalid page11 or draft: ${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
+    const lists = Object.entries(definition.organisms).filter(([, organism]) => organism.kind === 'list');
+    if (lists.some(([id]) => primaryEntity(draft.organisms[id]?.reads ?? []) === entityId)) return identifier(sibling.pageId);
   }
   return camel(entityId);
+}
+function identifier(value: string): string {
+  const parts = value.split(/[^A-Za-z0-9]+/u).filter(Boolean);
+  return parts.map((part, index) => index === 0 ? camel(part) : pascal(part)).join('');
 }
 function primaryEntity(paths: string[]): string { return paths[0]?.split('.')[0] ?? ''; }
 function camel(value: string): string { return value ? value[0].toLowerCase() + value.slice(1) : value; }

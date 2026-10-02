@@ -1,0 +1,24 @@
+{
+  "organisms": {
+    "listaProfissionais": {
+      "reads": [
+        "Profissional.id",
+        "Profissional.details.identification",
+        "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "detalheProfissional",
+      "submits": []
+    },
+    "detalheProfissional": {
+      "reads": [
+        "Profissional.id",
+        "Profissional.details.identification",
+        "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    }
+  }
+}

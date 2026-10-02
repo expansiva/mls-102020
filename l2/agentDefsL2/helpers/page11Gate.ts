@@ -133,6 +133,7 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
       else if (!granted(path, sources.actor, sources.access.grants)) add('D2_PAGE11_FIELD_GRANT', `page11Needs.organisms.${id}`, `Actor ${sources.actor} has no disclosure grant for ${path}.`);
     }
   }
+  issues.push(...d2Page11WriteDuplicates(draft));
   for (const write of pageWrites) if (!coveredWrites.has(write)) add('D2_PAGE11_WRITE_UNCOVERED', 'page11Needs.writes', `Write ${write} needs a submit or accessible navigate target declaring the write.`);
   for (const [id, choices] of Object.entries(definition.molecules)) {
     if (!definition.organisms[id]) add('D2_PAGE11_MOLECULE_ORGANISM', `molecules.${id}`, `Molecule target ${id} is absent.`);
@@ -141,6 +142,23 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
     }
   }
   if (sources.promptTokens !== undefined && (!Number.isSafeInteger(sources.promptTokens) || sources.promptTokens > 160000)) add('D2_PAGE11_PROMPT_LIMIT', 'promptTokens', `Decision prompt uses ${sources.promptTokens} tokens; maximum is 160000.`);
+  return issues;
+}
+
+/** One write, one submit: the form that edits the entity owns it; an actions organism does not repeat it. */
+export function d2Page11WriteDuplicates(draft: D2Page11Needs): D2Page11Issue[] {
+  const byWrite = new Map<string, string[]>();
+  for (const [id, unit] of Object.entries(draft.organisms)) {
+    for (const binding of unit.submits) byWrite.set(binding.write, [...(byWrite.get(binding.write) ?? []), id]);
+  }
+  const issues: D2Page11Issue[] = [];
+  for (const [write, owners] of byWrite) {
+    if (owners.length < 2) continue;
+    const entity = write.split('.')[0];
+    const form = owners.find(id => draft.organisms[id].edits.some(path => path.split('.')[0] === entity));
+    issues.push({ code: 'D2_PAGE11_WRITE_DUPLICATE', path: `page11Needs.organisms.${owners.join(',')}`,
+      message: `Write ${write} has a submit in ${owners.join(' and ')}. Keep one submit, in the organism that edits ${entity}${form ? ` (${form})` : ''}; the actions organism does not repeat it.` });
+  }
   return issues;
 }
 
