@@ -67,6 +67,11 @@ export function gateD2ContractV2(
       issues.push({ code: 'D2_CONTRACT_V2_PROJECTION_UNKNOWN', path: proj.name, message: `Projection ${proj.name} matches no derived row.` });
     } else {
       const leaves = leavesOf(proj.body);
+      const seen = new Set<string>();
+      for (const leaf of leaves) {
+        if (seen.has(leaf.path)) issues.push({ code: 'D2_CONTRACT_V2_FIELD_DUPLICATE', path: `${proj.name}.${leaf.path}`, message: `Projection ${proj.name} declares ${leaf.path} more than once.` });
+        seen.add(leaf.path);
+      }
       const rendered = new Set(leaves.map(item => item.path));
       const derivedSet = derivedPaths(entities[proj.entityId]);
       for (const leaf of leaves) {
@@ -292,7 +297,8 @@ function leavesOf(source: string): Array<{ path: string; readonly: boolean }> {
 function renderFields(entity: Ns5OntologyAnyEntity | undefined, row: D2DerivedProjection, depth: number): string {
   const indent = '  '.repeat(depth);
   const derivedSet = derivedPaths(entity);
-  const tree = treeFromPaths(row.paths.filter(path => path !== 'id' && (row.includeVersion || path !== 'version')));
+  // id and version have one line each above; the field tree never repeats them.
+  const tree = treeFromPaths(row.paths.filter(path => path !== 'id' && path !== 'version'));
   const lines = [`${indent}id: string;`];
   if (row.includeVersion) lines.push(`${indent}readonly version: number;`);
   if (Object.keys(tree).length) lines.push(renderTree(tree, entity, derivedSet, row.entityId, depth));

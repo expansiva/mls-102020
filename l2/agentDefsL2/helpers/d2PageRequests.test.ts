@@ -353,6 +353,15 @@ void test('synthetic fixture covers version, unbound submit and grant refusal', 
   assert.equal(updated.projections.some(item => item.entityId === written && item.includeVersion), true);
   const updateContract = buildD2ContractV2(updated, sharedFromDerived(updated), base.entities);
   assert.match(updateContract.routes.find(item => item.route.endsWith('.sendLeft'))?.input ?? '', /version: number/);
+  // An update projection declares version once (it was rendered twice when the field tree also kept it).
+  const versioned = updateContract.projections.filter(item => /version/u.test(item.body));
+  assert.ok(versioned.length > 0);
+  for (const proj of versioned) assert.equal(proj.body.match(/\bversion:/gu)?.length, 1, proj.body);
+  const updateShared = sharedFromDerived(updated);
+  assert.equal(gateD2ContractV2(updateContract, updated, updateShared, base.entities).some(item => item.code === 'D2_CONTRACT_V2_FIELD_DUPLICATE'), false);
+  const doubled = structuredClone(updateContract);
+  doubled.projections[0].body += '\n  readonly version: number;';
+  assert.equal(gateD2ContractV2(doubled, updated, updateShared, base.entities).some(item => item.code === 'D2_CONTRACT_V2_FIELD_DUPLICATE'), true);
   assert.doesNotMatch(bound.requests.find(item => item.id === 'sendLeft')?.inputPaths.join(' ') ?? '', /\.id\b|\.version\b/);
 });
 
