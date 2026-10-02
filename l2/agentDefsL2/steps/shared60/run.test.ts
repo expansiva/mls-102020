@@ -349,11 +349,14 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(parameters.includes('"source":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*(\\\\.[A-Za-z][A-Za-z0-9]*)*$"}'), true);
   assert.equal(built.humanPrompt.includes(data.page11.desktop.organisms[Object.keys(data.page11.desktop.organisms)[0]].text), false);
   assert.equal(built.chars <= 160_000, true);
-  assert.equal(built.chars, 10759);
+  assert.equal(built.chars, 10907);
   const ruled = JSON.parse(built.humanPrompt) as { ruleCandidates: Record<string, string[]>; ruleTexts: Record<string, string> };
   assert.deepEqual(ruled.ruleCandidates, data.derived.rules);
   for (const id of Object.values(data.derived.rules).flat()) assert.equal(ruled.ruleTexts[id], data.input.rules.rules[id]);
   assert.equal(parameters.includes('"requestRules"'), true);
+  const keyed = JSON.parse(built.humanPrompt) as { commandReturnKeys: string[] };
+  const readKeys = data.input.needsPages.find(item => item.pageId === data.input.pageId)!.reads.map(read => read.entity[0].toLowerCase() + read.entity.slice(1));
+  assert.deepEqual(keyed.commandReturnKeys, [...new Set(readKeys)]);
 });
 
 void test('live answers accept entry params and refuse prose or a multi-id sets', () => {

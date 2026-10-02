@@ -6,7 +6,8 @@ loadMore<List> and the command functions already exist: reuse those ids and only
 description, sets and updates. Do not add another function that calls the same request. A list
 filter without calls does not replace filter<List>. filter<List> and loadMore<List> set the
 state sourced from load.<key> of their list. Every state a command sets or updates holds
-an entity that the command returns: add that entity's key to its returns. A command also returns,
+an entity that the command returns: add that entity's key to its returns. Command returns use
+only keys from commandReturnKeys (one item per entity, never a list key). A command also returns,
 and updates a state of, each read entity whose derived fields come from the entity it writes. carries exist only on
 a navigate function, as <state>.<field> of a selected item; a navigate function has no sets or
 updates and no state takes it as source. For each request, choose from ruleCandidates the rules

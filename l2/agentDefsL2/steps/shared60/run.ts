@@ -107,6 +107,7 @@ export function buildD2SharedPrompt(context: D2SharedContext, repair?: { diagnos
     ruleTexts: Object.fromEntries([...new Set(Object.values(context.derived.rules).flat())].map(id => [id, context.input.rules.rules[id] ?? ''])),
     access: { actors: context.derived.access.actors, grants: context.derived.access.grants },
     validSources: d2SharedValidSources(context.derived),
+    commandReturnKeys: [...new Set(need.reads.map(read => read.entity[0].toLowerCase() + read.entity.slice(1)))],
     fixedFunctions: Object.entries(sharedFromDerived(context.derived).functions).map(([id, fn]) => ({ id, ...(fn.calls ? { calls: fn.calls } : {}) })),
     journeySteps: d2SharedJourneySteps(need, context.input.menu),
     page11: { desktop: pageOf('desktop'), mobile: pageOf('mobile') },
