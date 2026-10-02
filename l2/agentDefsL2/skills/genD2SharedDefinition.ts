@@ -16,7 +16,8 @@ invent steps, requests, rules or actors.
 
 Command return keys are entities the page already reads. Every state a command sets or
 updates must be fed by a returned key of the same entity, so return each entity whose state
-changes. A form choice is an existing form organism of that write's entity, and each form serves
+changes. When the written entity feeds derived fields of another entity the page reads, the
+command returns that entity too and updates a state that holds it. A form choice is an existing form organism of that write's entity, and each form serves
 at most one submit.
 
 load returns the first page of each list. filter<List> reloads its list from the first page and

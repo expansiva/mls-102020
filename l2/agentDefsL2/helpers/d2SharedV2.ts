@@ -203,6 +203,16 @@ export function gateD2SharedV2(
         const entity = stateType(target, definition, context).entity;
         if (!entity || !returned.has(entity)) issues.push({ code: 'D2_SHARED_V2_UPDATES_RETURNS', path: `functions.${id}.updates`, message: `Command ${fn.calls} feeds state ${target}, but its returns have no key of entity ${entity || '(none: the state holds no entity)'}. Add that entity's key to the command returns, or drop the state.` });
       }
+      // A write changes the derived fields of every read entity derived through a relationship with it.
+      const written = request.writes?.split('.')[0] ?? '';
+      const fed = new Set([...(fn.sets ? [fn.sets] : []), ...(fn.updates ?? [])].filter(target => definition.states[target]).map(target => stateType(target, definition, context).entity));
+      for (const read of context.needs.reads) {
+        if (read.entity === written || !read.derived.length || !read.from.some(ref => ref.startsWith(`relationship:${written}/`))) continue;
+        const holders = Object.keys(definition.states).filter(stateId => stateType(stateId, definition, context).entity === read.entity);
+        if (!returned.has(read.entity) || (holders.length && !fed.has(read.entity))) {
+          issues.push({ code: 'D2_SHARED_V2_RETURNS_DERIVED', path: `functions.${id}`, message: `Command ${fn.calls} writes ${written}, which changes the derived fields of ${read.entity} (${read.derived.join(', ')}). Return ${camel(read.entity)} and update a state that holds ${read.entity}.` });
+        }
+      }
     }
   }
   const fixed = sharedFromDerived(context.derived).functions;

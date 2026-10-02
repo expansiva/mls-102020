@@ -349,7 +349,7 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(parameters.includes('"source":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*(\\\\.[A-Za-z][A-Za-z0-9]*)*$"}'), true);
   assert.equal(built.humanPrompt.includes(data.page11.desktop.organisms[Object.keys(data.page11.desktop.organisms)[0]].text), false);
   assert.equal(built.chars <= 160_000, true);
-  assert.equal(built.chars, 10340);
+  assert.equal(built.chars, 10608);
   const ruled = JSON.parse(built.humanPrompt) as { ruleCandidates: Record<string, string[]>; ruleTexts: Record<string, string> };
   assert.deepEqual(ruled.ruleCandidates, data.derived.rules);
   for (const id of Object.values(data.derived.rules).flat()) assert.equal(ruled.ruleTexts[id], data.input.rules.rules[id]);
@@ -372,7 +372,7 @@ void test('live answers accept entry params and refuse prose or a multi-id sets'
   const productIssues = gateOf(products, liveProducts);
   assert.ok(productIssues.some(item => item.code === 'D2_SHARED_V2_STATE_SOURCE' && item.message.includes('validSources')));
   const moveIssues = gateOf(moves, liveMoves);
-  assert.deepEqual([...new Set(moveIssues.map(item => item.code))].sort(), ['D2_SHARED_V2_FUNCTION_SET', 'D2_SHARED_V2_UPDATES_RETURNS']);
+  assert.deepEqual([...new Set(moveIssues.map(item => item.code))].sort(), ['D2_SHARED_V2_FUNCTION_SET', 'D2_SHARED_V2_RETURNS_DERIVED', 'D2_SHARED_V2_UPDATES_RETURNS']);
   const setIssues = moveIssues.filter(item => item.code === 'D2_SHARED_V2_FUNCTION_SET');
   assert.equal(setIssues.every(item => item.message.includes('validSources') && item.message.includes('movimentacoes, produtos')), true);
   const fixed: D2SharedLlmResponse = { ...liveMoves, functions: liveMoves.functions.map(item => item.sets === 'movimentacoes, produtos'
@@ -444,7 +444,7 @@ void test('live 3 shared: command returns, carries, navigation and rules are ref
   const movesRaw = asResponse(liveMoves);
   // The live rules predate the list request; it takes the candidates of its own entity.
   movesRaw.requestRules.push({ requestId: 'loadMovimentacoes', rules: moves.derived.rules.loadMovimentacoes });
-  assert.deepEqual(codes(moves, movesRaw), ['D2_SHARED_V2_CARRIES_OUTSIDE', 'D2_SHARED_V2_CARRIES_TYPE', 'D2_SHARED_V2_UPDATES_RETURNS']);
+  assert.deepEqual(codes(moves, movesRaw), ['D2_SHARED_V2_CARRIES_OUTSIDE', 'D2_SHARED_V2_CARRIES_TYPE', 'D2_SHARED_V2_RETURNS_DERIVED', 'D2_SHARED_V2_UPDATES_RETURNS']);
   assert.equal(gateOf(moves, movesRaw).some(item => item.code === 'D2_SHARED_V2_UPDATES_RETURNS' && item.message.includes('produtos')), true);
   const movesFixed: D2SharedLlmResponse = {
     ...movesRaw,
@@ -453,6 +453,16 @@ void test('live 3 shared: command returns, carries, navigation and rules are ref
     requestRules: movesRaw.requestRules.map(row => row.requestId === 'load' ? { ...row, rules: ['saldoAtualProduto', 'avisoSaldoMinimoProduto'] } : row),
   };
   assert.deepEqual(gateOf(moves, movesFixed), []);
+  // Live 4 repair: produtos dropped from updates instead of returning produto; the saldo shown goes stale.
+  const live4 = asResponse(read('live4Movimentacoes.defs.ts'));
+  assert.deepEqual(codes(moves, live4), ['D2_SHARED_V2_RETURNS_DERIVED']);
+  const live4Fixed: D2SharedLlmResponse = {
+    ...live4,
+    functions: live4.functions.map(row => row.id === 'registrarMovimentacao' ? { ...row, updates: [...(row.updates ?? []), 'produtos'] } : row),
+    commandReturns: live4.commandReturns.map(row => ({ ...row, returns: [...row.returns, 'produto'] })),
+  };
+  assert.deepEqual(gateOf(moves, live4Fixed), []);
+  assert.deepEqual(codes(moves, { ...live4Fixed, functions: live4.functions }), ['D2_SHARED_V2_RETURNS_DERIVED']);
   const movesShared = applyD2SharedLlm(moves, movesFixed);
   assert.equal(movesShared.functions.filterHistoricoMovimentacoes.calls, 'loadMovimentacoes');
   assert.equal(movesShared.functions.loadMoreHistoricoMovimentacoes.calls, 'loadMovimentacoes');
