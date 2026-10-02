@@ -249,8 +249,14 @@ export function gateD2SharedV2(
         continue;
       }
       const type = stateType(stateId, definition, context);
-      const readable = field === 'id' || [...Object.values(context.draft.organisms)].some(row => [...row.reads, ...row.edits].some(path => path === `${type.entity}.${field}` || path.startsWith(`${type.entity}.${field}.`)));
-      if (type.kind !== 'item' || (type.entity && (!readable || (field === 'id' && key !== `${camel(type.entity)}Id`)))) {
+      const readable = field === 'id' || Object.values(context.draft.organisms).some(row => [...row.reads, ...row.edits].some(path => path === `${type.entity}.${field}` || path.startsWith(`${type.entity}.${field}.`)));
+      if (type.kind === 'item' && !type.entity) {
+        const selectParam = Object.entries(definition.entry.params).find(([, param]) => param.effect.startsWith('select:'))?.[0];
+        const fix = selectParam ? `Source ${stateId} from entry.params.${selectParam}.` : `Drop the carry ${key}.`;
+        issues.push({ code: 'D2_SHARED_V2_CARRIES_TYPE', path: `functions.${id}.carries.${key}`, message: `Carry ${key} reads ${value}, but the entity of ${stateId} is unknown: the page selects no single entity. ${fix}` });
+        continue;
+      }
+      if (type.kind !== 'item' || !readable || (field === 'id' && key !== `${camel(type.entity)}Id`)) {
         issues.push({ code: 'D2_SHARED_V2_CARRIES_TYPE', path: `functions.${id}.carries.${key}`, message: `Carry ${key} reads ${value}, but ${stateId} holds ${type.kind === 'item' ? `one ${type.entity}` : `a ${type.kind}`}. Carry a field of a selected item; an id carry is named <entity>Id.` });
       }
     }
@@ -321,7 +327,12 @@ function stateType(stateId: string, definition: D2SharedV2Definition, context: S
   }
   if (definition.states[source]) return stateType(source, definition, context, seen);
   const fn = definition.functions[source];
-  if (fn && !fn.calls) return { kind: 'item', entity: '' };
+  if (fn && !fn.calls && !fn.navigate) {
+    // A selection: the item belongs to the one entity the page's select targets read.
+    const targets = new Set(Object.values(context.draft.organisms).map(row => row.selects).filter(Boolean));
+    const entities = new Set([...targets].map(target => context.draft.organisms[target]?.reads[0]?.split('.')[0] ?? '').filter(Boolean));
+    return { kind: 'item', entity: entities.size === 1 ? [...entities][0] : '' };
+  }
   return { kind: 'unknown', entity: '' };
 }
 

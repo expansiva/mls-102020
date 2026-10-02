@@ -415,7 +415,8 @@ void test('live shared with duplicated fixed ids and a bare carry is refused, an
   assert.equal(refused.some(item => item.code === 'D2_SHARED_V2_DESCRIPTION_EMPTY'), true);
   assert.equal(refused.some(item => item.code === 'D2_SHARED_V2_CARRIES_PATH'), true);
   assert.equal(refused.some(item => item.code === 'D2_SHARED_V2_NAVIGATE_SETS'), true);
-  assert.equal(refused.some(item => item.code === 'D2_SHARED_V2_UPDATES_RETURNS' && item.message.includes('produtosFiltrados')), true);
+  // d2_63: produtosFiltrados <- filtrarListaProdutos (no calls) is now a selection of the one selected entity.
+  assert.equal(refused.some(item => item.code === 'D2_SHARED_V2_UPDATES_RETURNS' && item.message.includes('produtosFiltrados')), false);
   const fixedFunctions: D2SharedV2Definition['functions'] = {};
   for (const [id, row] of Object.entries(definition.functions)) {
     if (id === 'carregarProdutos') continue;
@@ -510,6 +511,43 @@ void test('live 3 shared: command returns, carries, navigation and rules are ref
   assert.deepEqual(carry({ produtoId: 'filtroBuscaProdutos.id' }), ['D2_SHARED_V2_CARRIES_TYPE']);
   assert.deepEqual(carry({ outroId: 'produtoSelecionado.id' }), ['D2_SHARED_V2_CARRIES_TYPE']);
   assert.deepEqual(carry({ produtoId: 'produtoSelecionado.campoAusente' }), ['D2_SHARED_V2_CARRIES_TYPE']);
+});
+
+void test('a selection without calls takes the entity of the select targets; an unknown one refuses its carry', () => {
+  const pack = loadPack('controleEstoque');
+  const moduleName = (JSON.parse(readFileSync(join(fixtureRoot, 'controleEstoque/menu.json'), 'utf8')) as { moduleName: string }).moduleName;
+  const data = contextFrom(pack, 'produtos', moduleName);
+  const need = data.input.needsPages.find(item => item.pageId === data.input.pageId)!;
+  const gate = (definition: D2SharedV2Definition, draft = data.drafts.desktop) => gateD2SharedV2(definition, {
+    page11: data.page11.desktop, draft, needs: need, menu: data.input.menu, derived: data.derived,
+  });
+  const navigateId = Object.values(data.page11.desktop.organisms).flatMap(item => item.intents).find(item => item.kind === 'navigate')!.id;
+  const withKey = (key: string) => answer(data, { functions: answer(data).functions.map(row => row.id === navigateId ? { ...row, carries: { [key]: 'selected.id' } } : row) });
+  const selectedEntity = Object.values(data.drafts.desktop.organisms).map(row => row.selects).filter(Boolean).map(target => data.drafts.desktop.organisms[target].reads[0].split('.')[0])[0];
+  const idKey = `${selectedEntity[0].toLowerCase()}${selectedEntity.slice(1)}Id`;
+  assert.deepEqual(gate(applyD2SharedLlm(data, withKey(idKey))), []);
+  const other = Object.keys(data.input.entities).find(id => id !== selectedEntity)!;
+  const wrong = gate(applyD2SharedLlm(data, withKey(`${other[0].toLowerCase()}${other.slice(1)}Id`)));
+  assert.deepEqual(wrong.map(item => item.code), ['D2_SHARED_V2_CARRIES_TYPE']);
+
+  // Two select targets of different entities: the selection has no single entity.
+  const twoTargets = structuredClone(data.drafts.desktop);
+  twoTargets.organisms.otherPicker = { reads: [`${other}.id`], edits: [], selects: 'otherTarget', submits: [] };
+  twoTargets.organisms.otherTarget = { reads: [`${other}.id`], edits: [], selects: '', submits: [] };
+  const definition = applyD2SharedLlm(data, withKey(idKey));
+  const ambiguous = gate(definition, twoTargets).filter(item => item.code === 'D2_SHARED_V2_CARRIES_TYPE');
+  const selectParam = Object.entries(definition.entry.params).find(([, param]) => param.effect.startsWith('select:'))![0];
+  assert.equal(ambiguous.length, 1);
+  assert.match(ambiguous[0].message, new RegExp(`Source selected from entry\\.params\\.${selectParam}\\.`, 'u'));
+  const noSelect = structuredClone(definition);
+  for (const [name, param] of Object.entries(noSelect.entry.params)) if (param.effect.startsWith('select:')) delete noSelect.entry.params[name];
+  const dropped = gate(noSelect, twoTargets).filter(item => item.code === 'D2_SHARED_V2_CARRIES_TYPE');
+  assert.equal(dropped.length, 1);
+  assert.match(dropped[0].message, new RegExp(`Drop the carry ${idKey}\\.`, 'u'));
+  // Without a carry, a state of unknown entity stays accepted.
+  const noCarry = structuredClone(definition);
+  delete noCarry.functions[navigateId].carries;
+  assert.equal(gate(noCarry, twoTargets).some(item => item.code.startsWith('D2_SHARED_V2_CARRIES')), false);
 });
 
 void test('agent sources do not name the fixture module', () => {
