@@ -28,7 +28,7 @@ import { validateP2Needs } from '/_102020_/l2/agentPlannerL2/steps/needs30/gate.
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
-const AGENDA_FIXTURE = path.resolve(HERE, '../../../../../mls-102047/l4/agendaClinica');
+const AGENDA_FIXTURE = path.join(HERE, 'fixtures/clinic_2509');
 const WORKFLOWS = path.join(HERE, '../menu20/fixtures/workflows.defs.ts');
 const MENU_PATH = path.join(HERE, 'fixtures/menu.json');
 const AT = new Date(Date.UTC(2026, 8, 21, 12, 0, 0));

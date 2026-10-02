@@ -52,7 +52,6 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MLS_BASE = path.resolve(HERE, '../../../../../');
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
-const REAL_ROOT = path.join(MLS_BASE, 'mls-102047/l4/mensalidadesAcademia');
 const WORKSPACES_DRAFT_PATH = path.join(HERE, '../workspaces20/fixtures/workspaces20-draft.json');
 const CONTRACTS_DRAFT_PATH = path.join(HERE, '../contracts30/fixtures/contracts30-draft.json');
 const DRAFT_PATH = path.join(HERE, 'fixtures/shared40-draft.json');
@@ -638,7 +637,7 @@ void test('afterPromptStep approves the accepted draft and writes defs.ts per wo
 });
 
 void test('isolated shared40 on mensalidadesAcademia emits one defs.ts per workspace', () => {
-  const sources = loadSources(existsSync(REAL_ROOT) ? REAL_ROOT : L4_FIXTURE);
+  const sources = loadSources(L4_FIXTURE);
   const workspaces = loadWorkspaces();
   const contracts = loadContracts();
   const draft = normalizeP2SharedPayload(acceptedDraft(sources), MODULE);

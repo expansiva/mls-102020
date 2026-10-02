@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -42,7 +42,6 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MLS_BASE = path.resolve(HERE, '../../../../../');
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
-const REAL_ROOT = path.join(MLS_BASE, 'mls-102047/l4/mensalidadesAcademia');
 const WORKSPACES_DRAFT_PATH = path.join(HERE, '../workspaces20/fixtures/workspaces20-draft.json');
 const DRAFT_PATH = path.join(HERE, 'fixtures/contracts30-draft.json');
 const SCHEMA_PATH = path.join(HERE, '../../schemas/contracts.schema.json');
@@ -567,7 +566,7 @@ void test('afterPromptStep approves the accepted draft and writes defs.ts per wo
 });
 
 void test('isolated contracts30 on mensalidadesAcademia emits one defs.ts per workspace', () => {
-  const sources = loadSources(existsSync(REAL_ROOT) ? REAL_ROOT : L4_FIXTURE);
+  const sources = loadSources(L4_FIXTURE);
   const workspaces = loadWorkspaces();
   const draft = normalizeP2ContractsPayload(loadDraft(), MODULE);
   const gate = validateP2Contracts(draft, workspaces, sources);
