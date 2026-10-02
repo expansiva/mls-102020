@@ -13,9 +13,11 @@ import { gateD2SharedV2, parseD2SharedV2, sharedFromDerived, type D2SharedV2Defi
 import { beforePromptStep, reusableD2Shared } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
 import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
 import {
-  approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, d2SharedValidSources, sharedUnitInputHash,
-  type D2SharedContext, type D2SharedLlmResponse, type D2SharedWriter,
+  approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, d2SharedRefusal, d2SharedRefusedMessage, d2SharedValidSources,
+  settleD2Shared, sharedUnitInputHash,
+  type D2SharedContext, type D2SharedLlmResponse, type D2SharedRefusal, type D2SharedWriter,
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { sharedWorkerSteps } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixtureRoot = join(here, '../../helpers/fixtures');
@@ -252,14 +254,45 @@ void test('renamed and synthetic fixtures keep structure and accept one form cho
   }, { ...original, page11: { desktop: loose, mobile: loose }, drafts: { desktop: looseDraft, mobile: looseDraft }, page11Text: { desktop: 'left', mobile: 'left' }, draftText: { desktop: '{}', mobile: '{}' } });
   assert.equal(Object.values(synthetic.derived.forms).every(item => item.ambiguous), true);
   const chosen = applyD2SharedLlm(synthetic, answer(synthetic));
-  assert.equal(chosen.forms.formLeft.submit, 'sendLeft');
-  assert.equal(chosen.forms.formRight.submit, 'sendRight');
+  assert.equal(chosen.forms.sendLeft.organism, 'formLeft');
+  assert.equal(chosen.forms.sendRight.organism, 'formRight');
   await assert.rejects(async () => applyD2SharedLlm(synthetic, answer(synthetic, { formChoices: [
     { submit: 'sendLeft', organism: 'formLeft' }, { submit: 'sendRight', organism: 'formLeft' },
   ] })), /D2_SHARED_FORM_REUSE/u);
   await assert.rejects(async () => applyD2SharedLlm(synthetic, answer(synthetic, { formChoices: [
     { submit: 'sendLeft', organism: 'banner' }, { submit: 'sendRight', organism: 'formRight' },
   ] })), /D2_SHARED_FORM_ENTITY/u);
+
+  // Own-record page: one form with create and update of the same record, no list.
+  const own = structuredClone(base.desktop as D2Page11Definition);
+  own.sections = [{ id: 'current', priority: 'primary', purpose: 'current', organisms: ['ownDetail'] }, { id: 'edit', priority: 'main', purpose: 'edit', organisms: ['ownForm', 'ownActions'] }];
+  own.organisms = {
+    ownDetail: { kind: 'detail', text: 'own', intents: [] },
+    ownForm: { kind: 'form', text: 'own', intents: [] },
+    ownActions: { kind: 'actions', text: 'own', intents: [{ id: 'createOwn', kind: 'submit' }, { id: 'updateOwn', kind: 'submit' }] },
+  };
+  own.molecules = { ownForm: molecule };
+  const ownDraft: D2Page11Needs = { organisms: {
+    ownDetail: { reads: [`${written}.id`, leftEdit], edits: [], selects: '', submits: [] },
+    ownForm: { reads: [`${written}.id`], edits: [leftEdit], selects: '', submits: [] },
+    ownActions: { reads: [], edits: [], selects: '', submits: [{ intentId: 'createOwn', write: `${written}.create` }, { intentId: 'updateOwn', write: `${written}.update` }] },
+  } };
+  const ownData = buildD2SharedContext({
+    ...base, desktop: own, mobile: own, draftDesktop: ownDraft, draftMobile: ownDraft,
+    siblings: base.siblings.map(item => item.pageId === base.pageId ? { ...item, desktop: own, mobile: own, draftDesktop: ownDraft, draftMobile: ownDraft } : item),
+  }, { ...original, page11: { desktop: own, mobile: own }, drafts: { desktop: ownDraft, mobile: ownDraft }, page11Text: { desktop: 'own', mobile: 'own' }, draftText: { desktop: '{}', mobile: '{}' } });
+  assert.deepEqual(ownData.derived.requests.filter(item => item.kind === 'cmd').map(item => item.id).sort(), ['createOwn', 'updateOwn']);
+  const ownAnswer = answer(ownData);
+  // The live repair shape: the create function also sets the loaded record.
+  ownAnswer.functions = [...ownAnswer.functions.filter(row => row.id !== 'createOwn' && row.id !== 'updateOwn'),
+    { id: 'createOwn', sets: 'rows', description: 'Create the own record.' }, { id: 'updateOwn', updates: ['rows'], description: 'Update the own record.' }];
+  const ownShared = applyD2SharedLlm(ownData, ownAnswer);
+  assert.deepEqual(Object.keys(ownShared.forms).sort(), ['createOwn', 'updateOwn']);
+  assert.equal(ownShared.functions.createOwn.calls, 'createOwn');
+  const ownIssues = gateD2SharedV2(ownShared, {
+    page11: own, draft: ownDraft, needs: ownData.input.needsPages.find(item => item.pageId === ownData.input.pageId)!, menu: ownData.input.menu, derived: ownData.derived,
+  }).map(item => item.code);
+  assert.equal(ownIssues.some(code => code === 'D2_SHARED_V2_FUNCTION_DUPLICATE' || code === 'D2_SHARED_V2_FUNCTION_MISSING' || code === 'D2_SHARED_V2_ORGANISM_UNBOUND'), false, ownIssues.join(','));
 });
 
 void test('same inputs reuse without an LLM and a sibling change keeps the other page', async () => {
@@ -288,7 +321,7 @@ void test('same inputs reuse without an LLM and a sibling change keeps the other
   assert.equal(await sharedUnitInputHash(products), hash);
   assert.notEqual(await sharedUnitInputHash(sibling), await sharedUnitInputHash(moves));
   const data = products;
-  const port = { reusable: async () => true, context: async () => data };
+  const port = { reusable: async () => true, context: async () => data, settle: () => ({ pageIds: async () => ['produtos', 'movimentacoes'], reusable: async () => false, refusal: async () => null }) };
   const step = {
     type: 'agent', stepId: 2, interaction: null, stepTitle: 'shared', status: 'waiting_human_input', nextSteps: [],
     agentName: 'agentD2SharedPage', prompt: JSON.stringify({ project: 102047, module: moduleName, pageId: 'produtos', attempt: 1 }), rags: [],
@@ -305,24 +338,13 @@ void test('same inputs reuse without an LLM and a sibling change keeps the other
 void test('prompt declares the reasoning model and the largest drafted page stays within 160k', async () => {
   const pack = loadPack('controleEstoque');
   const moduleName = (JSON.parse(readFileSync(join(fixtureRoot, 'controleEstoque/menu.json'), 'utf8')) as { moduleName: string }).moduleName;
-  const runtimeRoot = join(here, '../../../../../mls-102047/l2');
-  let best = { bytes: -1, moduleName: '', pageId: '' };
-  for (const moduleDir of readdirSync(runtimeRoot)) {
-    const needsDir = join(runtimeRoot, moduleDir, 'pipeline/agentDefsL2/page11Needs');
-    let names: string[] = [];
-    try { names = readdirSync(needsDir); } catch { continue; }
-    for (const name of names) {
-      if (!name.endsWith('Desktop.json')) continue;
-      const pageId = name.slice(0, -'Desktop.json'.length);
-      const desktop = join(runtimeRoot, moduleDir, 'web/desktop/page11', `${pageId}.defs.ts`);
-      const mobile = join(runtimeRoot, moduleDir, 'web/mobile/page11', `${pageId}.defs.ts`);
-      try {
-        const bytes = statSync(desktop).size + statSync(mobile).size + statSync(join(needsDir, name)).size + statSync(join(needsDir, `${pageId}Mobile.json`)).size;
-        if (bytes > best.bytes) best = { bytes, moduleName: moduleDir, pageId };
-      } catch { /* page without a pair is not a candidate */ }
-    }
+  // The largest drafted page of the frozen fixture pack (the runtime project is regenerated by other fronts).
+  let best = { bytes: -1, pageId: '' };
+  for (const sibling of pack.siblings) {
+    const bytes = sibling.desktopText.length + sibling.mobileText.length + sibling.draftDesktopText.length + sibling.draftMobileText.length;
+    if (bytes > best.bytes) best = { bytes, pageId: sibling.pageId };
   }
-  assert.equal(best.moduleName, moduleName);
+  assert.ok(best.pageId);
   const data = contextFrom(pack, best.pageId, moduleName);
   const built = buildD2SharedPrompt(data);
   const fixedIds = Object.keys(sharedFromDerived(data.derived).functions);
@@ -334,7 +356,7 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(built.systemPrompt.startsWith('<!-- modelType: reasoning -->'), true);
   assert.match(built.systemPrompt, /<!-- reasoningEffort: high -->/u);
   assert.match(built.systemPrompt, /<!-- x-tool-strict: true -->/u);
-  const port = { reusable: async () => false, context: async () => data };
+  const port = { reusable: async () => false, context: async () => data, settle: () => ({ pageIds: async () => [], reusable: async () => true, refusal: async () => null }) };
   const step = {
     type: 'agent', stepId: 2, interaction: null, stepTitle: 'shared', status: 'waiting_human_input', nextSteps: [],
     agentName: 'agentD2SharedPage', prompt: JSON.stringify({ project: 102047, module: moduleName, pageId: best.pageId, attempt: 1 }), rags: [],
@@ -349,7 +371,7 @@ void test('prompt declares the reasoning model and the largest drafted page stay
   assert.equal(parameters.includes('"source":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9]*(\\\\.[A-Za-z][A-Za-z0-9]*)*$"}'), true);
   assert.equal(built.humanPrompt.includes(data.page11.desktop.organisms[Object.keys(data.page11.desktop.organisms)[0]].text), false);
   assert.equal(built.chars <= 160_000, true);
-  assert.equal(built.chars, 10907);
+  assert.equal(built.chars, 10974);
   const ruled = JSON.parse(built.humanPrompt) as { ruleCandidates: Record<string, string[]>; ruleTexts: Record<string, string> };
   assert.deepEqual(ruled.ruleCandidates, data.derived.rules);
   for (const id of Object.values(data.derived.rules).flat()) assert.equal(ruled.ruleTexts[id], data.input.rules.rules[id]);
@@ -548,6 +570,48 @@ void test('a selection without calls takes the entity of the select targets; an 
   const noCarry = structuredClone(definition);
   delete noCarry.functions[navigateId].carries;
   assert.equal(gate(noCarry, twoTargets).some(item => item.code.startsWith('D2_SHARED_V2_CARRIES')), false);
+});
+
+void test('d2_64: a refused page does not stop its siblings; the stage fails once, then only it is redone', async () => {
+  const identity = { project: 102047, module: 'mod' };
+  const pages = ['pageA', 'pageB', 'pageC'];
+  const accepted = new Set<string>();
+  const refusals = new Map<string, D2SharedRefusal>();
+  const port = { pageIds: async () => pages, reusable: async (pageId: string) => accepted.has(pageId), refusal: async (pageId: string) => refusals.get(pageId) ?? null };
+
+  // Task one: B is refused while A and C are still in flight; the stage waits for them.
+  refusals.set('pageB', d2SharedRefusal(identity, 'pageB', 'task1', 'D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_FUNCTION_DUPLICATE: dup'));
+  assert.deepEqual(await settleD2Shared('task1', port), { state: 'pending', pending: ['pageA', 'pageC'] });
+  accepted.add('pageA');
+  accepted.add('pageC');
+  const once = await settleD2Shared('task1', port);
+  assert.equal(once.state, 'refused');
+  const message = d2SharedRefusedMessage(once.state === 'refused' ? once.refusals : []);
+  assert.match(message, /^D2_SHARED_PAGES_REFUSED: pageB: D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_FUNCTION_DUPLICATE/u);
+  assert.equal(/pageA|pageC/u.test(message), false);
+
+  // A refusal is never a receipt.
+  assert.equal(await reusableD2Shared(identity, 'pageB', {
+    readReceipt: async () => refusals.get('pageB') as never, context: async () => { throw new Error('not reached'); }, readShared: async () => '',
+  }), false);
+
+  // Task two: only B is dispatched (0 LLM for A and C); its old refusal does not end the stage early.
+  const pending = pages.filter(pageId => !accepted.has(pageId));
+  assert.deepEqual(sharedWorkerSteps(identity, pending).map(step => JSON.parse(step.prompt as string).pageId), ['pageB']);
+  assert.deepEqual(await settleD2Shared('task2', port), { state: 'pending', pending: ['pageB'] });
+  accepted.add('pageB');
+  assert.deepEqual(await settleD2Shared('task2', port), { state: 'ready', pageIds: pages });
+
+  // Two refusals with different codes: one message cites both.
+  accepted.clear();
+  accepted.add('pageA');
+  refusals.set('pageB', d2SharedRefusal(identity, 'pageB', 'task3', 'D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_RULE_COMMAND: rules'));
+  refusals.set('pageC', d2SharedRefusal(identity, 'pageC', 'task3', 'D2_REQUESTS_SUBMIT_UNBOUND: no form'));
+  const both = await settleD2Shared('task3', port);
+  assert.equal(both.state, 'refused');
+  const bothMessage = d2SharedRefusedMessage(both.state === 'refused' ? both.refusals : []);
+  assert.match(bothMessage, /pageB: D2_SHARED_REPAIR_LIMIT: D2_SHARED_V2_RULE_COMMAND/u);
+  assert.match(bothMessage, /pageC: D2_REQUESTS_SUBMIT_UNBOUND/u);
 });
 
 void test('agent sources do not name the fixture module', () => {

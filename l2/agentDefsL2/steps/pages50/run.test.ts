@@ -238,12 +238,13 @@ void test('four real reembolsoDespesas pages include the nine minhas_despesas or
   for (const page of needs.pages) {
     const data = context('reembolsoDespesas', page.pageId);
     if (page.pageId === 'minhas_despesas') assert.equal(data.page.organisms.length, 9);
-    const liveFixture = (subpath: string): string => readFileSync(new URL(`../../../../../mls-102047/${subpath}`, import.meta.url), 'utf8');
+    // Frozen copy of the runtime l4 module (see helpers/fixtures/reembolsoDespesas/l4/README.md).
+    const frozenL4 = (subpath: string): string => readFileSync(new URL(`../../helpers/fixtures/reembolsoDespesas/${subpath.replace('l4/reembolsoDespesas/', 'l4/')}`, import.meta.url), 'utf8');
     const entityIds = ['Colaborador', 'Despesa', 'GestorEquipe'];
-    data.artifacts.entities = Object.fromEntries(entityIds.map(id => [id, parseNs4ClassicDefsSource(liveFixture(`l4/reembolsoDespesas/ontology/${id}.defs.ts`))]));
-    data.artifacts.access = parseNs4ClassicDefsSource(liveFixture('l4/reembolsoDespesas/access.defs.ts'));
+    data.artifacts.entities = Object.fromEntries(entityIds.map(id => [id, parseNs4ClassicDefsSource(frozenL4(`l4/reembolsoDespesas/ontology/${id}.defs.ts`))]));
+    data.artifacts.access = parseNs4ClassicDefsSource(frozenL4('l4/reembolsoDespesas/access.defs.ts'));
     const journeyIds = ['avaliarDespesaDaEquipe', 'consultarPropriasDespesas', 'corrigirEreenviarDespesa', 'registrarEenviarDespesa', 'registrarPagamentoDeDespesa'];
-    data.artifacts.journeys = Object.fromEntries(journeyIds.map(id => [id, parseNs4ClassicDefsSource(liveFixture(`l4/reembolsoDespesas/journeys/${id}.defs.ts`))]));
+    data.artifacts.journeys = Object.fromEntries(journeyIds.map(id => [id, parseNs4ClassicDefsSource(frozenL4(`l4/reembolsoDespesas/journeys/${id}.defs.ts`))]));
     data.page.journeyRefs = journeyIds;
     const prompt = buildD2PagesDecisionPrompt(data);
     const payload = JSON.parse(prompt.prompt) as { designSystem?: unknown; needs: { pages: Array<Record<string, unknown>> }; access: { grants: Array<{ actorRef: string }> } };

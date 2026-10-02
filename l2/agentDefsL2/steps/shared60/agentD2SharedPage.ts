@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.ts" enhancement="_blank"/>
 
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
-import { readJson, readSourceText } from '/_102035_/l2/solution/fs.js';
+import { readJson, readSourceText, writeJson } from '/_102035_/l2/solution/fs.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
 import { D2_SHARED_PAGE_AGENT_NAME, markD2StepApproved, moduleTokenOk, readD2Pipeline } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
@@ -10,8 +10,9 @@ import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs
 import type { D2PageRequestsCategory, D2PageRequestsInput, D2PageRequestsSibling } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import {
-  approveD2SharedUnit, buildD2SharedContext, buildD2SharedPrompt, draftFile, page11File, readD2SharedReceipt,
-  sharedInfo, sharedUnitInputHash, D2_SHARED_VERSION, type D2SharedContext, type D2SharedLlmResponse, type D2SharedReceipt,
+  approveD2SharedUnit, buildD2SharedContext, buildD2SharedPrompt, d2SharedRefusal, d2SharedRefusedMessage, draftFile, page11File, readD2SharedReceipt,
+  readD2SharedRefusal, receiptInfo, settleD2Shared, sharedInfo, sharedUnitInputHash, D2_SHARED_VERSION,
+  type D2SharedContext, type D2SharedSettlePort, type D2SharedLlmResponse, type D2SharedReceipt,
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 
 interface Args { project: number; module: string; pageId: string; attempt: 1 | 2; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
@@ -115,15 +116,23 @@ export async function reusableD2Shared(identity: { project: number; module: stri
 export interface D2SharedPromptPort {
   reusable(identity: { project: number; module: string }, pageId: string): Promise<boolean>;
   context(args: Args): Promise<D2SharedContext>;
+  settle(identity: { project: number; module: string }): D2SharedSettlePort;
 }
-const promptPort: D2SharedPromptPort = { reusable: reusableD2Shared, context: contextFor };
+function settlePort(identity: { project: number; module: string }): D2SharedSettlePort {
+  return {
+    pageIds: async () => { const snapshot = await readD2Input(identity); return snapshot ? [...snapshot.selection.writePageIds].sort() : null; },
+    reusable: pageId => reusableD2Shared(identity, pageId),
+    refusal: pageId => readD2SharedRefusal(identity, pageId),
+  };
+}
+const promptPort: D2SharedPromptPort = { reusable: reusableD2Shared, context: contextFor, settle: settlePort };
 
 export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, argsOrPort?: string | D2SharedPromptPort): Promise<mls.msg.AgentIntent[]> {
   try {
     const port = typeof argsOrPort === 'object' ? argsOrPort : promptPort;
     const args = parseArgs(step.prompt || '');
     if (await port.reusable(args, args.pageId)) {
-      return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `Shared ${args.pageId} reused without an LLM call or write.`)];
+      return finish(context, parentStep, step, hookSequential, args, `Shared ${args.pageId} reused without an LLM call or write.`, port.settle(args));
     }
     const data = await port.context(args);
     const built = buildD2SharedPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
@@ -131,7 +140,11 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
       taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: built.systemPrompt, humanPrompt: built.humanPrompt,
       tools: [{ type: 'function', function: { name: 'submitD2Shared', description: 'Define states, functions, journeys, command returns and request rules for one shared page', parameters: sharedSchema } }],
       toolChoice: { type: 'function', function: { name: 'submitD2Shared' } } }];
-  } catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
+  } catch (error) {
+    let args: Args;
+    try { args = parseArgs(step.prompt || ''); } catch { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
+    return refuse(context, parentStep, step, hookSequential, args, error instanceof Error ? error.message : String(error));
+  }
 }
 
 export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
@@ -142,22 +155,35 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     const data = await contextFor(args);
     const built = buildD2SharedPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
     await approveD2SharedUnit(data, response as D2SharedLlmResponse, built.chars, args.diagnostic ? built.chars : args.repairPromptChars ?? 0);
-    const snapshot = await readD2Input(data.identity);
-    const ids = [...(snapshot?.selection.writePageIds ?? [])].sort();
-    let allReady = Boolean(snapshot);
-    for (const pageId of ids) if (!await reusableD2Shared(data.identity, pageId)) { allReady = false; break; }
-    if (allReady && snapshot) {
-      if (await readD2Pipeline(data.identity)) await markD2StepApproved(data.identity, 'shared60', ids.map(pageId => `l2/${data.identity.module}/pipeline/agentDefsL2/shared60/${pageId}.json`), snapshot.snapshotHash);
-      return [addD2Step(context, parentStep.stepId, d2Result('Shared ready', JSON.stringify({ ...data.identity, completedStep: 'shared60', nextStep: 'contracts70', pages: ids.length }), 'shared60-done')),
-        updateD2Status(context, parentStep, step, hookSequential, 'completed', `Shared ${args.pageId} approved; all ${ids.length} pages ready.`)];
-    }
-    return [updateD2Status(context, parentStep, step, hookSequential, 'completed', `Shared ${args.pageId} approved.`)];
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
     if (args.attempt === 1) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `One repair scheduled for ${args.pageId}: ${diagnostic}`)];
-    return [updateD2Status(context, parentStep, step, hookSequential, 'failed', `D2_SHARED_REPAIR_LIMIT: ${diagnostic}`)];
+    return refuse(context, parentStep, step, hookSequential, args, `D2_SHARED_REPAIR_LIMIT: ${diagnostic}`);
   }
+  return finish(context, parentStep, step, hookSequential, args, `Shared ${args.pageId} approved.`);
+}
+
+/** A refused page records its diagnostic and does not stop its siblings; the last page to settle closes the stage. */
+async function refuse(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: Args, diagnostic: string): Promise<mls.msg.AgentIntent[]> {
+  const identity = { project: args.project, module: args.module };
+  try { await writeJson(receiptInfo(identity, args.pageId), d2SharedRefusal(identity, args.pageId, context.task?.PK || '', diagnostic)); }
+  catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', `${args.pageId}: ${diagnostic} (refusal not recorded: ${error instanceof Error ? error.message : String(error)})`)]; }
+  return finish(context, parentStep, step, hookSequential, args, `Shared ${args.pageId} refused: ${diagnostic}`);
+}
+
+async function finish(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, args: Args, trace: string, port?: D2SharedSettlePort): Promise<mls.msg.AgentIntent[]> {
+  const identity = { project: args.project, module: args.module };
+  try {
+    const settlement = await settleD2Shared(context.task?.PK || '', port ?? settlePort(identity));
+    if (settlement.state === 'pending') return [updateD2Status(context, parentStep, step, hookSequential, 'completed', trace)];
+    if (settlement.state === 'refused') return [updateD2Status(context, parentStep, step, hookSequential, 'failed', d2SharedRefusedMessage(settlement.refusals))];
+    const snapshot = await readD2Input(identity);
+    const ids = settlement.pageIds;
+    if (snapshot && await readD2Pipeline(identity)) await markD2StepApproved(identity, 'shared60', ids.map(pageId => `l2/${identity.module}/pipeline/agentDefsL2/shared60/${pageId}.json`), snapshot.snapshotHash);
+    return [addD2Step(context, parentStep.stepId, d2Result('Shared ready', JSON.stringify({ ...identity, completedStep: 'shared60', nextStep: 'contracts70', pages: ids.length }), 'shared60-done')),
+      updateD2Status(context, parentStep, step, hookSequential, 'completed', `${trace} All ${ids.length} pages ready.`)];
+  } catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
 }
 
 function next(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, args: Args): mls.msg.AgentIntentAddStep {

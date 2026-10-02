@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/workspaces20/agentP2Workspaces.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -30,9 +30,7 @@ import {
 import { validateP2Workspaces } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/gate.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const MLS_BASE = path.resolve(HERE, '../../../../../');
 const FIXTURE_ROOT = path.join(HERE, 'fixtures/mensalidadesAcademia');
-const REAL_ROOT = path.join(MLS_BASE, 'mls-102047/l4/mensalidadesAcademia');
 const DRAFT_PATH = path.join(HERE, 'fixtures/workspaces20-draft.json');
 const SCHEMA_PATH = path.join(HERE, '../../schemas/workspaces.schema.json');
 const PROJECT = 102047;
@@ -277,27 +275,6 @@ function workspacesStep(): mls.msg.AIAgentStep {
   };
 }
 
-void test('mensalidadesAcademia fixtures are byte-for-byte copies of the l4', () => {
-  assert.equal(existsSync(REAL_ROOT), true, `missing ${REAL_ROOT}`);
-  const walk = (dir: string, rel = ''): string[] => {
-    const out: string[] = [];
-    for (const name of readdirSync(path.join(dir, rel)).sort()) {
-      const child = rel ? `${rel}/${name}` : name;
-      const full = path.join(dir, child);
-      if (full.endsWith('.defs.ts')) out.push(child);
-      else if (!name.includes('.')) out.push(...walk(dir, child));
-    }
-    return out;
-  };
-  const files = walk(FIXTURE_ROOT);
-  assert.ok(files.includes('journeys/matricularAluno.defs.ts'));
-  for (const rel of files) {
-    const fixture = readFileSync(path.join(FIXTURE_ROOT, rel));
-    const real = readFileSync(path.join(REAL_ROOT, rel));
-    assert.equal(Buffer.compare(fixture, real), 0, rel);
-  }
-});
-
 void test('candidates group mensalidadesAcademia journeys by entity, actor and kind', () => {
   const sources = loadSources(FIXTURE_ROOT);
   const candidates = collectP2WorkspaceCandidates(sources);
@@ -454,7 +431,7 @@ void test('afterPromptStep approves the accepted draft and writes the l2 artifac
 });
 
 void test('isolated workspaces20 on mensalidadesAcademia l4 records the candidate cut', () => {
-  const sources = loadSources(existsSync(REAL_ROOT) ? REAL_ROOT : FIXTURE_ROOT);
+  const sources = loadSources(FIXTURE_ROOT);
   const candidates = collectP2WorkspaceCandidates(sources);
   const draft = normalizeP2WorkspacesPayload(loadDraft(), MODULE);
   const gate = validateP2Workspaces(draft, sources);

@@ -355,8 +355,8 @@ function organismBound(organismId: string, draft: D2Page11Needs, definition: D2S
   if (!unit) return false;
   const readEntities = new Set(unit.reads.map(path => path.split('.')[0]));
   const selectTarget = Object.values(draft.organisms).some(row => row.selects === organismId);
-  const form = Object.values(definition.forms).find(item => item.organism === organismId)
-    ?? Object.values(derived.forms).find(item => item.organism === organismId);
+  const formSubmits = new Set([...Object.values(definition.forms), ...Object.values(derived.forms)]
+    .filter(item => item.organism === organismId).map(item => item.submit));
   const bound = new Set<string>();
   let grew = true;
   while (grew) {
@@ -383,7 +383,7 @@ function organismBound(organismId: string, draft: D2Page11Needs, definition: D2S
       const tail = source.slice(dot + 1);
       const request = definition.requests[requestId];
       const derivedRequest = derived.requests.find(item => item.id === requestId);
-      if (request?.kind === 'cmd' && tail === 'input' && form?.submit === requestId) return true;
+      if (request?.kind === 'cmd' && tail === 'input' && formSubmits.has(requestId)) return true;
       const entity = derivedRequest?.returnEntities[tail];
       return Boolean(request && derivedRequest?.organisms.includes(organismId) && request.returns.includes(tail) && entity && readEntities.has(entity));
     }
@@ -391,10 +391,10 @@ function organismBound(organismId: string, draft: D2Page11Needs, definition: D2S
   }
 }
 
+/** A state fed by a filtered or paginated list; only then does filter<List> exist to replace. */
 function sourcesList(source: string | undefined, derived: D2DerivedPageRequests): boolean {
   if (!source) return false;
-  return derived.requests.some(request => (request.id === 'load' || request.lists.length > 0)
-    && request.returns.some(key => source === `${request.id}.${key}` || source === key));
+  return derived.requests.some(request => request.lists.some(list => source === `${request.id}.${list.key}` || source === list.key));
 }
 
 function entryParamName(source: string): string | null {

@@ -127,14 +127,16 @@ export function applyD2SharedLlm(context: D2SharedContext, raw: D2SharedLlmRespo
   const page = context.page11.desktop;
   const draft = mergeDraft(context.drafts.desktop, context.drafts.mobile);
   const forms: D2SharedV2Definition['forms'] = {};
+  // A form may serve several submits, but never two of the same write (two creates in one form).
   const used = new Set<string>();
   for (const form of Object.values(context.derived.forms)) {
     const organismId = form.ambiguous ? choiceFor(response, form.submit, page, draft, form.entity) : form.organism;
-    if (!organismId || used.has(organismId)) throw new Error(`D2_SHARED_FORM_REUSE: ${form.submit}`);
+    const write = context.derived.requests.find(item => item.id === form.submit)?.writes ?? form.submit;
+    if (!organismId || used.has(`${organismId}:${write}`)) throw new Error(`D2_SHARED_FORM_REUSE: ${form.submit}`);
     const organism = page.organisms[organismId];
     if (!organism) throw new Error(`D2_SHARED_FORM_MISSING: ${organismId}`);
-    used.add(organismId);
-    forms[organismId] = { organism: organismId, submit: form.submit };
+    used.add(`${organismId}:${write}`);
+    forms[form.submit] = { organism: organismId, submit: form.submit };
   }
   const requests = { ...base.requests };
   for (const row of response.commandReturns) {
@@ -224,6 +226,56 @@ export function draftFile(identity: D2RunIdentity, pageId: string, device: D2Pag
 
 export async function readD2SharedReceipt(identity: D2RunIdentity, pageId: string): Promise<D2SharedReceipt | null> {
   return readJson<D2SharedReceipt>(receiptInfo(identity, pageId));
+}
+
+/** A refused page is recorded where its receipt lives; it is never reusable. */
+export const D2_SHARED_REFUSAL_VERSION = '2026-10-02-agent-defs-l2-shared-refusal' as const;
+export interface D2SharedRefusal {
+  schemaVersion: typeof D2_SHARED_REFUSAL_VERSION;
+  project: number;
+  module: string;
+  pageId: string;
+  taskId: string;
+  diagnostic: string;
+}
+export function d2SharedRefusal(identity: D2RunIdentity, pageId: string, taskId: string, diagnostic: string): D2SharedRefusal {
+  return { schemaVersion: D2_SHARED_REFUSAL_VERSION, project: identity.project, module: identity.module, pageId, taskId, diagnostic };
+}
+export async function readD2SharedRefusal(identity: D2RunIdentity, pageId: string): Promise<D2SharedRefusal | null> {
+  const row = await readJson<D2SharedRefusal>(receiptInfo(identity, pageId));
+  return row?.schemaVersion === D2_SHARED_REFUSAL_VERSION ? row : null;
+}
+
+export interface D2SharedSettlePort {
+  pageIds(): Promise<string[] | null>;
+  reusable(pageId: string): Promise<boolean>;
+  refusal(pageId: string): Promise<D2SharedRefusal | null>;
+}
+export type D2SharedSettlement =
+  | { state: 'pending'; pending: string[] }
+  | { state: 'ready'; pageIds: string[] }
+  | { state: 'refused'; refusals: D2SharedRefusal[] };
+
+/** The stage ends only when every page of this task is accepted or refused; then it passes or fails once. */
+export async function settleD2Shared(taskId: string, port: D2SharedSettlePort): Promise<D2SharedSettlement> {
+  const ids = await port.pageIds();
+  if (!ids) throw new Error('D2_SHARED_INPUT_MISSING');
+  const refusals: D2SharedRefusal[] = [];
+  const pending: string[] = [];
+  for (const pageId of ids) {
+    if (await port.reusable(pageId)) continue;
+    const refusal = await port.refusal(pageId);
+    // A refusal left by an earlier task is not this run's answer: the page is being redone.
+    if (refusal && refusal.taskId === taskId) refusals.push(refusal);
+    else pending.push(pageId);
+  }
+  if (pending.length) return { state: 'pending', pending };
+  if (refusals.length) return { state: 'refused', refusals };
+  return { state: 'ready', pageIds: ids };
+}
+
+export function d2SharedRefusedMessage(refusals: readonly D2SharedRefusal[]): string {
+  return `D2_SHARED_PAGES_REFUSED: ${refusals.map(row => `${row.pageId}: ${row.diagnostic}`).join(' || ')}`;
 }
 
 function choiceFor(response: D2SharedLlmResponse, submit: string, page: D2Page11Definition, draft: D2Page11Needs, entity: string): string {

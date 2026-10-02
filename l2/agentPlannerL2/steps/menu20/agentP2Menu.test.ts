@@ -1,7 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -65,8 +65,6 @@ const MODULE_L4_ROOTS: Record<string, string> = {
   ordenServicio: path.join(HERE, 'fixtures/ordenServicio'),
   reembolsoDespesas: path.join(HERE, 'fixtures/reembolsoDespesas'),
 };
-const REAL_L4 = path.resolve(HERE, '../../../../../mls-102047/l4');
-const REAL_WORKFLOWS = path.join(REAL_L4, 'mensalidadesAcademia/workflows.defs.ts');
 const DRAFT_PATH = path.join(HERE, 'fixtures/menu20-draft.json');
 const HIRING_DRAFT_PATH = path.join(HERE, 'fixtures/hiringPipeline-draft.json');
 const COMPRAS_DRAFT_PATH = path.join(HERE, 'fixtures/compras-draft.json');
@@ -405,30 +403,6 @@ function menuStep(): mls.msg.AIAgentStep {
     planning: { planId: 'menu20', dependsOn: ['entry10-done'], executionMode: 'sequential', executionHost: 'client' },
   };
 }
-
-void test('l4 fixtures are byte-for-byte copies of the real modules', () => {
-  assert.equal(existsSync(REAL_WORKFLOWS), true, `missing ${REAL_WORKFLOWS}`);
-  assert.equal(Buffer.compare(readFileSync(WORKFLOWS_FIXTURE), readFileSync(REAL_WORKFLOWS)), 0);
-  const full = ['hiringPipeline', 'compras', 'locacaoEquipamentos'] as const;
-  const accessOntology = [
-    'agendaClinica', 'comandaRestaurante', 'controleEstoque', 'financeiro',
-    'inscricaoEvento', 'manutencaoFrota', 'ordenServicio', 'reembolsoDespesas',
-  ] as const;
-  for (const mod of [...full, ...accessOntology]) {
-    const fixtureRoot = path.join(HERE, 'fixtures', mod);
-    const realRoot = path.join(REAL_L4, mod);
-    const walk = (dir: string, rel = ''): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
-      const next = path.join(rel, entry.name);
-      return entry.isDirectory() ? walk(path.join(dir, entry.name), next) : [next];
-    });
-    for (const rel of walk(fixtureRoot)) {
-      const a = path.join(fixtureRoot, rel);
-      const b = path.join(realRoot, rel);
-      assert.equal(existsSync(b), true, `missing ${b}`);
-      assert.equal(Buffer.compare(readFileSync(a), readFileSync(b)), 0, `${mod}/${rel}`);
-    }
-  }
-});
 
 void test('normalizeMenuV2 accepts the mensalidadesAcademia v2 fixture', () => {
   const draft = normalizeMenuV2(loadDraft());

@@ -285,7 +285,8 @@ function bindForms(organisms: OrganismUnit[], add: (code: string, path: string, 
         }
         continue;
       }
-      forms[chosen.id] = { organism: chosen.id, submit: submit.intentId, section: chosen.section, entity, ambiguous: false };
+      // Keyed by submit: one form may serve several submits (create and update of the same record).
+      forms[submit.intentId] = { organism: chosen.id, submit: submit.intentId, section: chosen.section, entity, ambiguous: false };
     }
   }
   return forms;
@@ -300,10 +301,13 @@ function commandRequests(
   const out: D2DerivedRequest[] = [];
   for (const unit of organisms) {
     for (const submit of unit.submits) {
-      const form = Object.values(forms).find(item => item.submit === submit.intentId);
-      if (!form) continue;
+      const form = forms[submit.intentId];
+      if (!form) continue; // bindForms already reported D2_REQUESTS_SUBMIT_UNBOUND
       const formUnit = form.organism ? organisms.find(item => item.id === form.organism) : undefined;
-      if (form.organism && !formUnit) continue;
+      if (form.organism && !formUnit) {
+        add('D2_REQUESTS_FORM_MISSING', `organisms.${unit.id}.submits.${submit.intentId}`, `Submit ${submit.intentId} is bound to form ${form.organism}, which is not an organism of the page.`);
+        continue;
+      }
       const entityId = submit.write.split('.')[0];
       const entity = entities[entityId];
       const caps = capabilities(entity);
