@@ -211,10 +211,22 @@ void test('synthetic fixture covers version, unbound submit and grant refusal', 
     },
   };
   const bound = deriveD2PageRequests({ ...base, desktop: sectioned, mobile: sectioned, draftDesktop: sectionedDraft, draftMobile: sectionedDraft });
-  assert.equal(bound.forms.formLeft?.submit, 'sendLeft');
-  assert.equal(bound.forms.formLeft?.ambiguous, false);
-  assert.equal(bound.forms.formRight?.submit, 'sendRight');
-  assert.equal(bound.forms.formRight?.ambiguous, false);
+  assert.equal(bound.forms.sendLeft?.organism, 'formLeft');
+  assert.equal(bound.forms.sendLeft?.ambiguous, false);
+  assert.equal(bound.forms.sendRight?.organism, 'formRight');
+  assert.equal(bound.forms.sendRight?.ambiguous, false);
+
+  // One form, two submits (create and update of the same record): both commands survive.
+  const twoSubmits = structuredClone(sectioned);
+  twoSubmits.organisms.sendLeft = organism('actions', [{ id: 'sendLeft', kind: 'submit' }, { id: 'reviseLeft', kind: 'submit' }]);
+  const twoDraft = structuredClone(sectionedDraft);
+  twoDraft.organisms.sendLeft.submits = [{ intentId: 'sendLeft', write: `${written}.create` }, { intentId: 'reviseLeft', write: `${written}.update` }];
+  const both = deriveD2PageRequests({ ...base, desktop: twoSubmits, mobile: twoSubmits, draftDesktop: twoDraft, draftMobile: twoDraft });
+  assert.equal(both.forms.sendLeft?.organism, 'formLeft');
+  assert.equal(both.forms.reviseLeft?.organism, 'formLeft');
+  assert.deepEqual(both.requests.filter(item => item.kind === 'cmd').map(item => `${item.id}:${item.writes}`).sort(),
+    [`reviseLeft:${written}.update`, `sendLeft:${written}.create`, `sendRight:${written}.create`]);
+  assert.equal(both.issues.length, 0, JSON.stringify(both.issues));
   assert.equal(bound.issues.some(item => item.code === 'D2_REQUESTS_SUBMIT_UNBOUND'), false);
 
   const loose = structuredClone(sectioned);

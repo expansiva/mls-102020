@@ -127,14 +127,16 @@ export function applyD2SharedLlm(context: D2SharedContext, raw: D2SharedLlmRespo
   const page = context.page11.desktop;
   const draft = mergeDraft(context.drafts.desktop, context.drafts.mobile);
   const forms: D2SharedV2Definition['forms'] = {};
+  // A form may serve several submits, but never two of the same write (two creates in one form).
   const used = new Set<string>();
   for (const form of Object.values(context.derived.forms)) {
     const organismId = form.ambiguous ? choiceFor(response, form.submit, page, draft, form.entity) : form.organism;
-    if (!organismId || used.has(organismId)) throw new Error(`D2_SHARED_FORM_REUSE: ${form.submit}`);
+    const write = context.derived.requests.find(item => item.id === form.submit)?.writes ?? form.submit;
+    if (!organismId || used.has(`${organismId}:${write}`)) throw new Error(`D2_SHARED_FORM_REUSE: ${form.submit}`);
     const organism = page.organisms[organismId];
     if (!organism) throw new Error(`D2_SHARED_FORM_MISSING: ${organismId}`);
-    used.add(organismId);
-    forms[organismId] = { organism: organismId, submit: form.submit };
+    used.add(`${organismId}:${write}`);
+    forms[form.submit] = { organism: organismId, submit: form.submit };
   }
   const requests = { ...base.requests };
   for (const row of response.commandReturns) {
