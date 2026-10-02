@@ -23,21 +23,17 @@ export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2Shar
       projections.push({ name: `${row.entityId}${pascal(row.requestId)}`, entityId: row.entityId, requestIds: [row.requestId], body });
     }
   }
-  const routes: D2ContractV2Route[] = derived.requests.map(request => {
-    const sharedReq = shared.requests[request.id];
-    const returns = sharedReq?.returns ?? request.returns;
-    const outputParts = returns.map(name => {
+  const routes: D2ContractV2Route[] = derived.requests.map(derivedRequest => {
+    const request = effectiveRequest(derivedRequest, shared, entities);
+    const outputParts = request.returns.map(name => {
       const entityId = request.returnEntities[name];
       const proj = projections.find(item => item.requestIds.includes(request.id) && item.entityId === entityId)
         ?? projections.find(item => item.entityId === entityId);
-      const many = request.kind === 'qry' && request.id === 'load' ? '[]' : '';
-      return `${name}: ${proj?.name ?? 'never'}${many}`;
+      return `${name}: ${proj?.name ?? 'never'}${many(request) ? '[]' : ''}`;
     });
-    if (request.id === 'load') {
-      for (const list of request.lists) {
-        const stem = pascal(list.organismId);
-        outputParts.push(`page${stem}: number`, `pageSize${stem}: number`, `hasMore${stem}: boolean`);
-      }
+    for (const list of request.lists) {
+      const stem = pascal(list.organismId);
+      outputParts.push(`page${stem}: number`, `pageSize${stem}: number`, `hasMore${stem}: boolean`);
     }
     const input = request.kind === 'cmd' ? renderInput(entities, request.writes ?? '', request.inputPaths) : renderQueryInput(request.params);
     return {
@@ -46,8 +42,8 @@ export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2Shar
       ...(request.writes ? { writes: request.writes } : {}),
       input,
       output: `{ ${outputParts.join('; ')} }`,
-      meta: contractMeta(derived.pageId, request, entities),
-      rules: derived.rules[request.id] ?? [],
+      meta: contractMeta(request, entities),
+      rules: shared.rules[request.id] ?? [],
       access: derived.access,
     };
   });
@@ -118,9 +114,13 @@ export function gateD2ContractV2(
   }
   for (const route of definition.routes) {
     const requestId = route.route.split('.').slice(2).join('.');
-    const request = derived.requests.find(item => item.id === requestId);
-    if (!request) continue;
-    const expected = contractMeta(definition.pageId, request, entities);
+    const derivedRequest = derived.requests.find(item => item.id === requestId);
+    if (!derivedRequest) continue;
+    const request = effectiveRequest(derivedRequest, shared, entities);
+    if (!sameJson(route.rules, shared.rules[requestId] ?? [])) {
+      issues.push({ code: 'D2_CONTRACT_V2_RULES', path: route.route, message: 'Route rules are not the rules the shared chose for this request.' });
+    }
+    const expected = contractMeta(request, entities);
     if (!sameJson(route.meta.output, expected.output)) {
       issues.push({ code: 'D2_CONTRACT_V2_META_OUTPUT', path: route.route, message: 'Entity output keys are missing from meta or disagree with returnEntities.' });
     }
@@ -141,16 +141,31 @@ export function gateD2ContractV2(
   return issues;
 }
 
-function contractMeta(pageId: string, request: D2DerivedRequest, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2Meta {
+/** Returns come from the shared: a command may return more entities the page reads. */
+function effectiveRequest(request: D2DerivedRequest, shared: D2SharedV2Definition, entities: Record<string, Ns5OntologyAnyEntity>): D2DerivedRequest {
+  const returns = shared.requests[request.id]?.returns ?? request.returns;
+  const returnEntities: Record<string, string> = {};
+  for (const name of returns) {
+    const entityId = request.returnEntities[name] ?? (request.kind === 'cmd' ? Object.keys(entities).find(id => camel(id) === name) : undefined);
+    if (entityId) returnEntities[name] = entityId;
+  }
+  return { ...request, returns, returnEntities };
+}
+
+function many(request: D2DerivedRequest): boolean {
+  return request.kind === 'qry' && (request.id === 'load' || request.lists.length > 0);
+}
+
+function contractMeta(request: D2DerivedRequest, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2Meta {
   const output: D2ContractV2Meta['output'] = {};
   for (const [key, entityId] of Object.entries(request.returnEntities)) {
-    output[key] = { entity: entityId, many: request.kind === 'qry' && request.id === 'load' };
+    output[key] = { entity: entityId, many: many(request) };
   }
   const lists: D2ContractV2Meta['lists'] = {};
   for (const list of request.lists) {
     const stem = pascal(list.organismId);
     lists[list.organismId] = {
-      key: listOutputKey(pageId, request, list, entities),
+      key: list.key,
       page: `page${stem}`,
       pageSize: `pageSize${stem}`,
       hasMore: `hasMore${stem}`,
@@ -158,34 +173,18 @@ function contractMeta(pageId: string, request: D2DerivedRequest, entities: Recor
   }
   const params: D2ContractV2Meta['params'] = {};
   if (request.kind === 'qry') {
-    for (const name of request.params) params[name] = paramMeta(pageId, request, name, entities);
+    for (const name of request.params) params[name] = paramMeta(request, name, entities);
   }
   return { output, lists, params };
 }
 
-function listOutputKey(
-  pageId: string,
-  request: D2DerivedRequest,
-  list: D2DerivedRequest['lists'][number],
-  entities: Record<string, Ns5OntologyAnyEntity>,
-): string {
-  const returns = Object.entries(request.returnEntities);
-  if (returns.some(([key]) => key === list.organismId)) return list.organismId;
-  const filters = list.params.filter(name => name !== 'page' && name !== 'pageSize');
-  const matched = returns.filter(([, entityId]) => filters.length > 0 && filters.every(name => Boolean(filterField(entities[entityId], entityId, name))));
-  if (matched.length === 1) return matched[0][0];
-  if (returns.some(([key]) => key === pageId)) return pageId;
-  if (returns.length === 1) return returns[0][0];
-  return matched[0]?.[0] ?? '';
-}
-
-function paramMeta(pageId: string, request: D2DerivedRequest, name: string, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2MetaParam {
+function paramMeta(request: D2DerivedRequest, name: string, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2MetaParam {
   if (name === 'page' || name === 'pageSize') {
     const list = request.lists.find(item => item.params.includes(name));
     return { pages: list?.organismId ?? '' };
   }
   const list = request.lists.find(item => item.params.includes(name));
-  const key = list ? listOutputKey(pageId, request, list, entities) : Object.keys(request.returnEntities)[0] ?? '';
+  const key = list ? list.key : Object.keys(request.returnEntities)[0] ?? '';
   const entityId = request.returnEntities[key] ?? '';
   const field = name === 'id' && request.id !== 'load' ? 'id' : filterField(entities[entityId], entityId, name);
   return { filters: key, field };
@@ -405,3 +404,4 @@ function renderQueryInput(params: string[]): string {
 }
 
 function pascal(value: string): string { return value ? value[0].toUpperCase() + value.slice(1) : value; }
+function camel(value: string): string { return value ? value[0].toLowerCase() + value.slice(1) : value; }

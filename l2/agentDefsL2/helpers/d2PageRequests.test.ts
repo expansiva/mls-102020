@@ -91,7 +91,10 @@ void test('real fixture derives load, command, form, entry and list commands', (
     'Produto.details.product.unitOfMeasure',
     'Produto.details.controleEstoque.quantidadeMinima',
   ]);
-  assert.equal(a.requests.some(item => item.id.startsWith('load') && item.id !== 'load'), false);
+  const pageLoads = a.requests.filter(item => item.id.startsWith('load') && item.id !== 'load');
+  assert.deepEqual(pageLoads.map(item => item.id), ['loadProdutos']);
+  assert.deepEqual(pageLoads[0]?.returnEntities, { produtos: 'Produto' });
+  assert.deepEqual(pageLoads[0]?.lists.map(item => item.key), ['produtos']);
   assert.equal(loadA?.lists.length, 1);
   assert.equal(loadA?.lists[0]?.filter, 'filterListaProdutos');
   assert.equal(loadA?.lists[0]?.loadMore, 'loadMoreListaProdutos');
@@ -121,6 +124,13 @@ void test('real fixture derives load, command, form, entry and list commands', (
   ]);
   assert.ok(loadB?.params.includes('produtoId'));
   assert.ok(b.entry.params.produtoId);
+  const moreB = b.requests.find(item => item.id === 'loadMovimentacoes');
+  assert.deepEqual(moreB && { returns: moreB.returns, returnEntities: moreB.returnEntities, params: moreB.params, organisms: moreB.organisms },
+    { returns: ['movimentacoes'], returnEntities: { movimentacoes: 'MovimentacaoEstoque' }, params: loadB?.lists[0]?.params, organisms: ['historicoMovimentacoes'] });
+  const pathsOf = (requestId: string) => b.projections.filter(item => item.requestId === requestId && item.entityId === 'MovimentacaoEstoque').map(item => item.paths);
+  assert.deepEqual(pathsOf('loadMovimentacoes'), pathsOf('load'));
+  assert.equal(b.projections.some(item => item.requestId === 'loadMovimentacoes' && item.entityId !== 'MovimentacaoEstoque'), false);
+  assert.deepEqual(b.rules.loadMovimentacoes, b.entityRules.MovimentacaoEstoque);
 });
 
 void test('renamed fixture keeps the same request structure', () => {
@@ -374,7 +384,6 @@ void test('shared and contract roundtrip plus gates and contractsAst measurement
   assert.deepEqual(parsed.routes.map(item => item.meta), contract.routes.map(item => item.meta));
   assert.deepEqual(parsed.projections.map(item => item.entityId), contract.projections.map(item => item.entityId));
   const measurement = {
-    bindings: ast.bindings.length,
     symbols: ast.symbols.map(item => item.name),
     unparsed: ast.unparsed,
     firstFields: symbolFields(ast, ast.symbols[0]?.name ?? ''),

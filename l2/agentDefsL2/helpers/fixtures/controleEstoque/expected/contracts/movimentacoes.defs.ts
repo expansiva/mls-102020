@@ -37,12 +37,20 @@ export interface MovimentacoesContracts {
     rules: ['movimentacaoEstoqueImutavel', 'quantidadeMovimentadaPositiva', 'registroMovimentacaoAtualizaSaldo', 'quantidadeMinimaValida', 'saldoAtualProduto', 'avisoSaldoMinimoProduto'];
     access: { actors: ['estoquista']; grants: ['gerenciarEstoque']; scope: 'organization' };
   };
+  'controleEstoque.movimentacoes.loadMovimentacoes': {
+    kind: 'qry';
+    input: { produtoId?: string; page?: number; pageSize?: number };
+    output: { movimentacoes: MovimentacaoEstoqueLoad[]; pageHistoricoMovimentacoes: number; pageSizeHistoricoMovimentacoes: number; hasMoreHistoricoMovimentacoes: boolean };
+    meta: { output: { movimentacoes: { entity: 'MovimentacaoEstoque'; many: true } }; lists: { historicoMovimentacoes: { key: 'movimentacoes'; page: 'pageHistoricoMovimentacoes'; pageSize: 'pageSizeHistoricoMovimentacoes'; hasMore: 'hasMoreHistoricoMovimentacoes' } }; params: { produtoId: { filters: 'movimentacoes'; field: 'produtoId' }; page: { pages: 'historicoMovimentacoes' }; pageSize: { pages: 'historicoMovimentacoes' } } };
+    rules: ['movimentacaoEstoqueImutavel', 'quantidadeMovimentadaPositiva', 'registroMovimentacaoAtualizaSaldo'];
+    access: { actors: ['estoquista']; grants: ['gerenciarEstoque']; scope: 'organization' };
+  };
   'controleEstoque.movimentacoes.registrarMovimentacao': {
     kind: 'cmd';
     writes: 'MovimentacaoEstoque.create';
     input: { produtoId: string; movimentadoEm: string; details: { tipo: 'entrada' | 'saida'; quantidade: number } };
-    output: { movimentacaoEstoque: MovimentacaoEstoqueLoad };
-    meta: { output: { movimentacaoEstoque: { entity: 'MovimentacaoEstoque'; many: false } }; lists: {}; params: {} };
+    output: { movimentacaoEstoque: MovimentacaoEstoqueLoad; produto: ProdutoLoad };
+    meta: { output: { movimentacaoEstoque: { entity: 'MovimentacaoEstoque'; many: false }; produto: { entity: 'Produto'; many: false } }; lists: {}; params: {} };
     rules: ['movimentacaoEstoqueImutavel', 'quantidadeMovimentadaPositiva', 'registroMovimentacaoAtualizaSaldo'];
     access: { actors: ['estoquista']; grants: ['gerenciarEstoque']; scope: 'organization' };
   };

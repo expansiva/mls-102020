@@ -8,7 +8,7 @@ import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2
 import { deriveD2PageRequests, type D2DerivedPageRequests, type D2PageRequestsInput, type D2PageRequestsMenu, type D2PageRequestsNeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import { gateD2SharedV2, renderD2SharedV2, sharedFromDerived, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 
-export const D2_SHARED_VERSION = '2026-09-30-agent-defs-l2-shared-v2' as const;
+export const D2_SHARED_VERSION = '2026-10-01-agent-defs-l2-shared-v2.1' as const;
 export const D2_SHARED_PROMPT_LIMIT_CHARS = 160_000;
 
 export const D2_SHARED_SYSTEM_PREFIX = `<!-- modelType: reasoning -->
@@ -31,6 +31,7 @@ export interface D2SharedLlmResponse {
   functions: D2SharedFunctionInput[];
   journeys: D2SharedJourneyInput[];
   commandReturns: Array<{ requestId: string; returns: string[] }>;
+  requestRules: Array<{ requestId: string; rules: string[] }>;
   formChoices?: Array<{ submit: string; organism: string }>;
 }
 
@@ -100,7 +101,8 @@ export function buildD2SharedPrompt(context: D2SharedContext, repair?: { diagnos
     entry: context.derived.entry,
     forms: context.derived.forms,
     requests: context.derived.requests.map(request => ({ id: request.id, kind: request.kind, trigger: request.trigger, writes: request.writes, returns: request.returns, organisms: request.organisms })),
-    rules: context.derived.rules,
+    ruleCandidates: context.derived.rules,
+    ruleTexts: Object.fromEntries([...new Set(Object.values(context.derived.rules).flat())].map(id => [id, context.input.rules.rules[id] ?? ''])),
     access: { actors: context.derived.access.actors, grants: context.derived.access.grants },
     validSources: d2SharedValidSources(context.derived),
     fixedFunctions: Object.entries(sharedFromDerived(context.derived).functions).map(([id, fn]) => ({ id, ...(fn.calls ? { calls: fn.calls } : {}) })),
@@ -151,12 +153,17 @@ export function applyD2SharedLlm(context: D2SharedContext, raw: D2SharedLlmRespo
       ...(row.carries ? { carries: row.carries } : {}),
     };
   }
+  const rules: D2SharedV2Definition['rules'] = {};
+  for (const row of response.requestRules) {
+    if (!requests[row.requestId] || rules[row.requestId]) throw new Error(`D2_SHARED_RULES_REQUEST: ${row.requestId}`);
+    rules[row.requestId] = [...new Set(row.rules)];
+  }
   const states: D2SharedV2Definition['states'] = {};
   for (const row of response.states) {
     if (states[row.id]) throw new Error(`D2_SHARED_STATE_ID: ${row.id}`);
     states[row.id] = { source: row.source, description: row.description };
   }
-  return { ...base, forms, requests, states, functions, journeys: response.journeys.map(row => ({
+  return { ...base, forms, requests, states, functions, rules, journeys: response.journeys.map(row => ({
     step: row.step, organisms: row.organisms, functions: row.functions, ...(row.continuesIn ? { continuesIn: row.continuesIn } : {}),
   })) };
 }
@@ -232,6 +239,6 @@ function mergeDraft(left: D2Page11Needs, right: D2Page11Needs): D2Page11Needs {
 }
 
 function normalizeLlm(raw: D2SharedLlmResponse): D2SharedLlmResponse {
-  if (!raw || !Array.isArray(raw.states) || !Array.isArray(raw.functions) || !Array.isArray(raw.journeys) || !Array.isArray(raw.commandReturns)) throw new Error('D2_SHARED_LLM_SHAPE');
+  if (!raw || !Array.isArray(raw.states) || !Array.isArray(raw.functions) || !Array.isArray(raw.journeys) || !Array.isArray(raw.commandReturns) || !Array.isArray(raw.requestRules)) throw new Error('D2_SHARED_LLM_SHAPE');
   return raw;
 }
