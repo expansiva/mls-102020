@@ -13,7 +13,7 @@ import type { D2PageTemplateContext } from '/_102020_/l2/agentDefsL2/steps/pages
 
 export const D2_PAGES_VERSION = '2026-09-30-agent-defs-l2-pages-v2.1' as const;
 export const D2_PAGE11_NEEDS_VERSION = '2026-09-30-agent-defs-l2-page11-needs-v1' as const;
-export const D2_PAGES_PROMPT_LIMIT_CHARS = 160_000;
+export const D2_PAGES_PROMPT_LIMIT_CHARS = 640_000;
 
 export interface D2PagesResponse {
   desktop: { definition: unknown; needs: unknown };

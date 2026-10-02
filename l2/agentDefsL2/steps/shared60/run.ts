@@ -9,7 +9,7 @@ import { deriveD2PageRequests, type D2DerivedPageRequests, type D2PageRequestsIn
 import { gateD2SharedV2, renderD2SharedV2, sharedFromDerived, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 
 export const D2_SHARED_VERSION = '2026-10-01-agent-defs-l2-shared-v2.1' as const;
-export const D2_SHARED_PROMPT_LIMIT_CHARS = 160_000;
+export const D2_SHARED_PROMPT_LIMIT_CHARS = 640_000;
 
 export const D2_SHARED_SYSTEM_PREFIX = `<!-- modelType: reasoning -->
 <!-- reasoningEffort: high -->
