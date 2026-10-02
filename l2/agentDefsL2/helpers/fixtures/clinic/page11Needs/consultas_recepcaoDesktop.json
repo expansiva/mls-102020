@@ -1,0 +1,90 @@
+{
+  "organisms": {
+    "listaConsultas": {
+      "reads": [
+        "Consulta.id",
+        "Consulta.pacienteId",
+        "Consulta.profissionalId",
+        "Consulta.scheduledAt",
+        "Consulta.status",
+        "Paciente.id",
+        "Paciente.details.identification",
+        "Profissional.id",
+        "Profissional.details.identification"
+      ],
+      "edits": [],
+      "selects": "detalheConsulta",
+      "submits": []
+    },
+    "detalheConsulta": {
+      "reads": [
+        "Consulta.id",
+        "Consulta.version",
+        "Consulta.pacienteId",
+        "Consulta.profissionalId",
+        "Consulta.scheduledAt",
+        "Consulta.status",
+        "Paciente.id",
+        "Paciente.details.identification",
+        "Paciente.details.base",
+        "ContatoPaciente.id",
+        "ContatoPaciente.details.identification",
+        "ContatoPaciente.details.contactChannel",
+        "Profissional.id",
+        "Profissional.details.identification",
+        "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "acoesConsulta",
+      "submits": []
+    },
+    "formularioConsulta": {
+      "reads": [
+        "Paciente.id",
+        "Paciente.details.identification",
+        "Profissional.id",
+        "Profissional.details.identification",
+        "Profissional.details.person",
+        "Consulta.id",
+        "Consulta.pacienteId",
+        "Consulta.profissionalId",
+        "Consulta.scheduledAt",
+        "Consulta.status"
+      ],
+      "edits": [
+        "Consulta.pacienteId",
+        "Consulta.profissionalId",
+        "Consulta.scheduledAt"
+      ],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "registrarAgendamento",
+          "write": "Consulta.create"
+        }
+      ]
+    },
+    "acoesConsulta": {
+      "reads": [
+        "Consulta.id",
+        "Consulta.version",
+        "Consulta.pacienteId",
+        "Consulta.profissionalId",
+        "Consulta.scheduledAt",
+        "Consulta.status"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "registrarConfirmacao",
+          "write": "Consulta.confirmarConsulta"
+        },
+        {
+          "intentId": "registrarFalta",
+          "write": "Consulta.registrarFalta"
+        }
+      ]
+    }
+  }
+}

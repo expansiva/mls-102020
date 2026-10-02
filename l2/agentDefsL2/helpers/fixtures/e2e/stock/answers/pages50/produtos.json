@@ -1,0 +1,1373 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "inventoryControl"
+    },
+    "intent": "Ajudar o estoquista a acompanhar o saldo atual de cada produto, reconhecer os itens abaixo da quantidade mínima, localizar e consultar o cadastro e registrar um novo produto com o mínimo de acompanhamento.",
+    "sections": [
+     {
+      "id": "visaoEstoque",
+      "priority": "primary",
+      "purpose": "Dar ao estoquista um panorama dos saldos disponíveis e dos produtos que já exigem reposição por estarem abaixo do mínimo.",
+      "organisms": [
+       "saldosResumo",
+       "alertasSaldoBaixo"
+      ]
+     },
+     {
+      "id": "consultaItens",
+      "priority": "main",
+      "purpose": "Permitir localizar um produto cadastrado e conferir nome, saldo atual e quantidade mínima antes de decidir o próximo passo.",
+      "organisms": [
+       "listaProdutos",
+       "detalheProduto"
+      ]
+     },
+     {
+      "id": "novoProduto",
+      "priority": "secondary",
+      "purpose": "Permitir informar os dados do produto e gravar o cadastro com a quantidade mínima de acompanhamento.",
+      "organisms": [
+       "formularioCadastro",
+       "acoesCadastro"
+      ]
+     }
+    ],
+    "organisms": {
+     "saldosResumo": {
+      "kind": "summary",
+      "text": "Mostra o saldo atual de cada produto do estoque para o estoquista enxergar rapidamente a disponibilidade.",
+      "intents": []
+     },
+     "alertasSaldoBaixo": {
+      "kind": "highlights",
+      "text": "Destaca os produtos com saldo abaixo da quantidade mínima para o estoquista priorizar a reposição.",
+      "intents": []
+     },
+     "listaProdutos": {
+      "kind": "list",
+      "text": "Lista os produtos cadastrados no estoque para o estoquista localizar o item que deseja acompanhar.",
+      "intents": []
+     },
+     "detalheProduto": {
+      "kind": "detail",
+      "text": "Apresenta o produto escolhido, o saldo atual e a quantidade mínima para o estoquista confirmar a situação e, se precisar repor, seguir para registrar uma movimentação.",
+      "intents": [
+       {
+        "id": "abrirMovimentacoes",
+        "kind": "navigate",
+        "to": "movimentacoes"
+       }
+      ]
+     },
+     "formularioCadastro": {
+      "kind": "form",
+      "text": "Recebe o produto, a unidade de medida e a quantidade mínima para iniciar o acompanhamento do estoque.",
+      "intents": []
+     },
+     "acoesCadastro": {
+      "kind": "actions",
+      "text": "Confirma o cadastro do produto no estoque com a quantidade mínima informada.",
+      "intents": [
+       {
+        "id": "cadastrarProduto",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "saldosResumo": [
+      {
+       "role": "display",
+       "preferred": "groupviewtable--ml-data-table",
+       "alternative": "groupviewtable--ml-view-table"
+      }
+     ],
+     "alertasSaldoBaixo": [
+      {
+       "role": "display",
+       "preferred": "groupviewdata--ml-card-grid",
+       "alternative": "groupviewdata--ml-vertical-record-list"
+      }
+     ],
+     "listaProdutos": [
+      {
+       "role": "display",
+       "preferred": "groupviewtable--ml-advanced-data-table",
+       "alternative": "groupviewtable--ml-data-table"
+      }
+     ],
+     "detalheProduto": [
+      {
+       "role": "record",
+       "preferred": "groupviewcard--ml-vertical-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      },
+      {
+       "role": "metric",
+       "preferred": "groupviewmetric--ml-metric-card",
+       "alternative": "groupviewmetric--ml-metric-gauge"
+      }
+     ],
+     "formularioCadastro": [
+      {
+       "role": "quantity",
+       "preferred": "groupenternumber--ml-number-input",
+       "alternative": "groupenternumber--ml-number-stepper"
+      }
+     ],
+     "acoesCadastro": [
+      {
+       "role": "action",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-split-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "saldosResumo": {
+      "reads": [
+       "Produto.details.identification.name",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "alertasSaldoBaixo": {
+      "reads": [
+       "Produto.details.identification.name",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.quantidadeMinima",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [],
+      "selects": "detalheProduto",
+      "submits": []
+     },
+     "listaProdutos": {
+      "reads": [
+       "Produto.id",
+       "Produto.details.identification.name",
+       "Produto.details.identification.status",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.saldoAtual"
+      ],
+      "edits": [],
+      "selects": "detalheProduto",
+      "submits": []
+     },
+     "detalheProduto": {
+      "reads": [
+       "Produto.id",
+       "Produto.details.identification.name",
+       "Produto.details.identification.status",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.quantidadeMinima",
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "formularioCadastro": {
+      "reads": [],
+      "edits": [
+       "Produto.details.identification.name",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.quantidadeMinima"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "acoesCadastro": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "cadastrarProduto",
+        "write": "Produto.create"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "inventoryControl"
+    },
+    "intent": "Ajudar o estoquista, em conteúdo estreito e fluido em torno de 390px e ainda usável em 360px e 430px, a ver primeiro os avisos de saldo baixo, conferir saldos, localizar e consultar produtos e cadastrar um novo item com quantidade mínima.",
+    "sections": [
+     {
+      "id": "visaoEstoque",
+      "priority": "primary",
+      "purpose": "Empilhar em coluna estreita e fluida os avisos de saldo abaixo do mínimo e, em seguida, o panorama de saldos, cabendo em cerca de 390px e permanecendo usável em 360px e 430px.",
+      "organisms": [
+       "alertasSaldoBaixo",
+       "saldosResumo"
+      ]
+     },
+     {
+      "id": "consultaItens",
+      "priority": "main",
+      "purpose": "Seguir na mesma coluna fluida com a lista para localizar o produto e o detalhe com saldo e mínimo, sem grade fixa.",
+      "organisms": [
+       "listaProdutos",
+       "detalheProduto"
+      ]
+     },
+     {
+      "id": "novoProduto",
+      "priority": "secondary",
+      "purpose": "Encerrar a coluna estreita com o formulário e a ação de cadastrar o produto e a quantidade mínima.",
+      "organisms": [
+       "formularioCadastro",
+       "acoesCadastro"
+      ]
+     }
+    ],
+    "organisms": {
+     "saldosResumo": {
+      "kind": "summary",
+      "text": "Mostra o saldo atual de cada produto do estoque para o estoquista enxergar rapidamente a disponibilidade na largura estreita.",
+      "intents": []
+     },
+     "alertasSaldoBaixo": {
+      "kind": "highlights",
+      "text": "Destaca no topo os produtos com saldo abaixo da quantidade mínima para o estoquista priorizar a reposição no telefone.",
+      "intents": []
+     },
+     "listaProdutos": {
+      "kind": "list",
+      "text": "Lista os produtos cadastrados no estoque para o estoquista localizar o item que deseja acompanhar, em leitura vertical contínua.",
+      "intents": []
+     },
+     "detalheProduto": {
+      "kind": "detail",
+      "text": "Apresenta o produto escolhido, o saldo atual e a quantidade mínima para o estoquista confirmar a situação e, se precisar repor, seguir para registrar uma movimentação.",
+      "intents": [
+       {
+        "id": "abrirMovimentacoes",
+        "kind": "navigate",
+        "to": "movimentacoes"
+       }
+      ]
+     },
+     "formularioCadastro": {
+      "kind": "form",
+      "text": "Recebe o produto, a unidade de medida e a quantidade mínima para iniciar o acompanhamento do estoque no fluxo estreito.",
+      "intents": []
+     },
+     "acoesCadastro": {
+      "kind": "actions",
+      "text": "Confirma o cadastro do produto no estoque com a quantidade mínima informada.",
+      "intents": [
+       {
+        "id": "cadastrarProduto",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "saldosResumo": [
+      {
+       "role": "display",
+       "preferred": "groupviewtable--ml-responsive-table",
+       "alternative": "groupviewtable--ml-responsive-data-table"
+      }
+     ],
+     "alertasSaldoBaixo": [
+      {
+       "role": "display",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "listaProdutos": [
+      {
+       "role": "display",
+       "preferred": "groupviewtable--ml-responsive-data-table",
+       "alternative": "groupviewtable--ml-responsive-table"
+      }
+     ],
+     "detalheProduto": [
+      {
+       "role": "record",
+       "preferred": "groupviewcard--ml-view-card-horizontal",
+       "alternative": "groupviewcard--ml-vertical-card"
+      },
+      {
+       "role": "metric",
+       "preferred": "groupviewmetric--ml-metric-big-number",
+       "alternative": "groupviewmetric--ml-metric-card"
+      }
+     ],
+     "formularioCadastro": [
+      {
+       "role": "quantity",
+       "preferred": "groupenternumber--ml-number-stepper",
+       "alternative": "groupenternumber--ml-number-input"
+      }
+     ],
+     "acoesCadastro": [
+      {
+       "role": "action",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "saldosResumo": {
+      "reads": [
+       "Produto.details.identification.name",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "alertasSaldoBaixo": {
+      "reads": [
+       "Produto.details.identification.name",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.quantidadeMinima",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [],
+      "selects": "detalheProduto",
+      "submits": []
+     },
+     "listaProdutos": {
+      "reads": [
+       "Produto.id",
+       "Produto.details.identification.name",
+       "Produto.details.identification.status",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.saldoAtual"
+      ],
+      "edits": [],
+      "selects": "detalheProduto",
+      "submits": []
+     },
+     "detalheProduto": {
+      "reads": [
+       "Produto.id",
+       "Produto.details.identification.name",
+       "Produto.details.identification.status",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.quantidadeMinima",
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "formularioCadastro": {
+      "reads": [],
+      "edits": [
+       "Produto.details.identification.name",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.quantidadeMinima"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "acoesCadastro": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "cadastrarProduto",
+        "write": "Produto.create"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A categoria inventoryControl descreve controle de estoque, saldos, níveis mínimos e alertas, que é o que esta página oferece ao estoquista: ver saldos, destacar itens abaixo do mínimo, localizar e consultar produtos e cadastrar a quantidade mínima. Não é productCatalog porque não há preço nem manutenção comercial de SKU."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A consulta de saldos não pede decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar ou filtrar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e hora envolvidas."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há período com data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Saldo de estoque é quantidade, não valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "A tela consulta saldos, sem informar quantidade."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há filtro por faixa numérica descrito."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há texto a preencher."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi solicitado expandir detalhes."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções para alternar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A consulta não é um processo em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento ou resultado de ação para notificar."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia para reprodução."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a avaliar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A consulta não requer captura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi descrita busca textual."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção de múltiplas opções."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha única a informar."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação com progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O organismo descreve visualização, não um comando."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O objetivo é acompanhar uma coleção de produtos, não destacar um item isolado em cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não foi solicitada visualização gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Permite apresentar a coleção de produtos com seus respectivos saldos em layout adaptável."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Os produtos e saldos não formam uma hierarquia."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "O saldo deve ser visto por produto em coleção, não como um indicador único destacado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Permite listar estruturadamente cada produto e sua coluna de saldo atual."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A identificação não requer decisão booleana do usuário."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar ou filtrar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e hora envolvidas."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há período com data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "As quantidades de estoque não são valores monetários."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "As quantidades mínima e atual são consultadas, não preenchidas aqui."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há filtro por faixa numérica descrito."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há texto a preencher."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi solicitada expansão de conteúdo."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções para alternar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há fluxo sequencial."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "O destaque de itens abaixo do mínimo é conteúdo da tela, não notificação de evento."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi descrita busca textual."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há envio de arquivo."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção múltipla."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha única."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação com progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O organismo apenas identifica itens."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O caso requer examinar vários produtos em condição de alerta."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não foi solicitada representação gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Permite exibir a coleção filtrada de produtos abaixo do mínimo com informações relevantes."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há relação hierárquica entre os itens."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "O objetivo é identificar produtos específicos, não apenas um KPI agregado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Permite comparar produto, saldo atual e quantidade mínima nas linhas em alerta."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Não há decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há período de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Não há valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há quantidade a preencher."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há texto a preencher."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi solicitada expansão de conteúdo."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento a notificar."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há leitura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O texto pede localizar por meio da listagem, sem especificar busca textual."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção múltipla."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha única."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O organismo é de listagem, não de execução de comando."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O requisito é uma listagem de produtos, não cartões de item isolado."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há necessidade de gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Exibe a coleção de produtos cadastrados em um layout apropriado ao contexto."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Os produtos não foram descritos como hierarquia."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador agregado a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Apresenta os produtos cadastrados como registros estruturados em uma listagem."
+    }
+   ]
+  },
+  {
+   "organismId": "organism4",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A consulta não requer decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há período de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Saldo e quantidade mínima são quantidades, não moeda."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Os valores numéricos são apenas consultados."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa a preencher."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há texto a preencher."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi solicitado conteúdo expansível."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento para notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O detalhe pressupõe produto já definido; não descreve busca."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção múltipla."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha a fazer neste detalhe."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação com progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O organismo é somente de consulta."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Organiza o produto e seus dados de estoque como uma unidade visual independente."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não foi solicitada visualização gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "O requisito trata do detalhe de um produto, não de uma coleção."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura hierárquica."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": true,
+     "reason": "Destaca visualmente os valores de saldo atual e quantidade mínima do produto consultado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Uma tabela é voltada a dados estruturados em coleção; aqui há um único produto."
+    }
+   ]
+  },
+  {
+   "organismId": "organism5",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Não há configuração verdadeira/falsa."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há período de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A quantidade mínima não é valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": true,
+     "reason": "Permite informar a quantidade mínima numérica para o acompanhamento do estoque."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "É informado um único limite mínimo, não uma faixa."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "O produto deve ser escolhido entre produtos cadastrados, não descrito como texto livre."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há conteúdo expansível."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "O formulário não descreve etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há resultado de ação descrito para notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há leitura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "A escolha de um produto é atendida diretamente pela seleção única."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "O formulário requer um produto, não vários."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "Permite informar exatamente um produto cadastrado para configurar seu mínimo."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há processo com progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite enviar ou salvar o produto e a quantidade mínima informados."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O objetivo é preenchimento de dados, não exibição de item."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção a exibir."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há hierarquia."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador somente para visualização."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há dados tabulares a apresentar."
+    }
+   ]
+  },
+  {
+   "organismId": "organism6",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A ação não requer decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há período de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Não há valor monetário a informar."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "O organismo descreve o comando de cadastrar, sem quantidade a preencher."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não foram especificados campos textuais do cadastro."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há conteúdo expansível."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há alternância de seções."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há processo em etapas descrito."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há resultado de cadastro descrito neste organismo."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há leitura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não há busca."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção múltipla."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha única descrita."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação longa com progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite acionar o comando para iniciar o cadastro de um produto."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não há item para exibir."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção a apresentar."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há hierarquia."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há dados tabulares a apresentar."
+    }
+   ]
+  }
+ ]
+}

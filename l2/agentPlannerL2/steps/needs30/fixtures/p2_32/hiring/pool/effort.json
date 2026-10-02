@@ -1,0 +1,662 @@
+{
+  "schemaVersion": "2026-09-21-p2-effort-v1.2",
+  "moduleName": "hiringPipeline",
+  "device": "web",
+  "totals": {
+    "screens": {
+      "toCreate": 7,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "endpoints": {
+      "toCreate": 25,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "usecases": {
+      "toCreate": 12,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "tables": {
+      "toCreate": 2,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    }
+  },
+  "screens": [
+    {
+      "pageId": "recruiter_home",
+      "label": "Recruiter home",
+      "actors": [
+        "recruiter"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "hiringPipeline.recruiter_home.qryListJobPosition"
+      ]
+    },
+    {
+      "pageId": "recruiter_applications",
+      "label": "Applications",
+      "actors": [
+        "recruiter"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "hiringPipeline.recruiter_applications.cmdCreateApplication",
+        "hiringPipeline.recruiter_applications.cmdMoveToInterview",
+        "hiringPipeline.recruiter_applications.cmdRejectApplication",
+        "hiringPipeline.recruiter_applications.qryListApplication",
+        "hiringPipeline.recruiter_applications.qryListCandidate",
+        "hiringPipeline.recruiter_applications.qryListHiringManager",
+        "hiringPipeline.recruiter_applications.qryListJobPosition"
+      ]
+    },
+    {
+      "pageId": "recruiter_candidates",
+      "label": "Candidates",
+      "actors": [
+        "recruiter"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "hiringPipeline.recruiter_candidates.cmdCreateCandidate",
+        "hiringPipeline.recruiter_candidates.qryListApplication",
+        "hiringPipeline.recruiter_candidates.qryListCandidate",
+        "hiringPipeline.recruiter_candidates.qryListCandidateContact",
+        "hiringPipeline.recruiter_candidates.qryListJobPosition"
+      ]
+    },
+    {
+      "pageId": "recruiter_positions",
+      "label": "Job positions",
+      "actors": [
+        "recruiter"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "hiringPipeline.recruiter_positions.cmdCreateJobPosition",
+        "hiringPipeline.recruiter_positions.qryListApplication",
+        "hiringPipeline.recruiter_positions.qryListCandidate",
+        "hiringPipeline.recruiter_positions.qryListHiringManager",
+        "hiringPipeline.recruiter_positions.qryListJobPosition"
+      ]
+    },
+    {
+      "pageId": "hiring_manager_home",
+      "label": "Overview",
+      "actors": [
+        "hiringManager"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "hiringPipeline.hiring_manager_home.qryListJobPosition"
+      ]
+    },
+    {
+      "pageId": "hiring_manager_applications",
+      "label": "Hiring decisions",
+      "actors": [
+        "hiringManager"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "hiringPipeline.hiring_manager_applications.cmdMoveToHired",
+        "hiringPipeline.hiring_manager_applications.cmdMoveToOffer",
+        "hiringPipeline.hiring_manager_applications.qryListApplication",
+        "hiringPipeline.hiring_manager_applications.qryListCandidate",
+        "hiringPipeline.hiring_manager_applications.qryListJobPosition"
+      ]
+    },
+    {
+      "pageId": "hiring_manager_positions",
+      "label": "Managed job positions",
+      "actors": [
+        "hiringManager"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "hiringPipeline.hiring_manager_positions.qryListJobPosition"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "route": "hiringPipeline.hiring_manager_applications.cmdMoveToHired",
+      "page": "hiring_manager_applications",
+      "kind": "cmd",
+      "usecaseRef": "moveToHired",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.hiring_manager_applications.cmdMoveToOffer",
+      "page": "hiring_manager_applications",
+      "kind": "cmd",
+      "usecaseRef": "moveToOffer",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.hiring_manager_applications.qryListApplication",
+      "page": "hiring_manager_applications",
+      "kind": "qry",
+      "usecaseRef": "listApplication",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.hiring_manager_applications.qryListCandidate",
+      "page": "hiring_manager_applications",
+      "kind": "qry",
+      "usecaseRef": "listCandidate",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.hiring_manager_applications.qryListJobPosition",
+      "page": "hiring_manager_applications",
+      "kind": "qry",
+      "usecaseRef": "listJobPosition",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.hiring_manager_home.qryListJobPosition",
+      "page": "hiring_manager_home",
+      "kind": "qry",
+      "usecaseRef": "listJobPosition",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.hiring_manager_positions.qryListJobPosition",
+      "page": "hiring_manager_positions",
+      "kind": "qry",
+      "usecaseRef": "listJobPosition",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_applications.cmdCreateApplication",
+      "page": "recruiter_applications",
+      "kind": "cmd",
+      "usecaseRef": "createApplication",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_applications.cmdMoveToInterview",
+      "page": "recruiter_applications",
+      "kind": "cmd",
+      "usecaseRef": "moveToInterview",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_applications.cmdRejectApplication",
+      "page": "recruiter_applications",
+      "kind": "cmd",
+      "usecaseRef": "rejectApplication",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_applications.qryListApplication",
+      "page": "recruiter_applications",
+      "kind": "qry",
+      "usecaseRef": "listApplication",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_applications.qryListCandidate",
+      "page": "recruiter_applications",
+      "kind": "qry",
+      "usecaseRef": "listCandidate",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_applications.qryListHiringManager",
+      "page": "recruiter_applications",
+      "kind": "qry",
+      "usecaseRef": "listHiringManager",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_applications.qryListJobPosition",
+      "page": "recruiter_applications",
+      "kind": "qry",
+      "usecaseRef": "listJobPosition",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_candidates.cmdCreateCandidate",
+      "page": "recruiter_candidates",
+      "kind": "cmd",
+      "usecaseRef": "createCandidate",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_candidates.qryListApplication",
+      "page": "recruiter_candidates",
+      "kind": "qry",
+      "usecaseRef": "listApplication",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_candidates.qryListCandidate",
+      "page": "recruiter_candidates",
+      "kind": "qry",
+      "usecaseRef": "listCandidate",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_candidates.qryListCandidateContact",
+      "page": "recruiter_candidates",
+      "kind": "qry",
+      "usecaseRef": "listCandidateContact",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_candidates.qryListJobPosition",
+      "page": "recruiter_candidates",
+      "kind": "qry",
+      "usecaseRef": "listJobPosition",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_home.qryListJobPosition",
+      "page": "recruiter_home",
+      "kind": "qry",
+      "usecaseRef": "listJobPosition",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_positions.cmdCreateJobPosition",
+      "page": "recruiter_positions",
+      "kind": "cmd",
+      "usecaseRef": "createJobPosition",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_positions.qryListApplication",
+      "page": "recruiter_positions",
+      "kind": "qry",
+      "usecaseRef": "listApplication",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_positions.qryListCandidate",
+      "page": "recruiter_positions",
+      "kind": "qry",
+      "usecaseRef": "listCandidate",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_positions.qryListHiringManager",
+      "page": "recruiter_positions",
+      "kind": "qry",
+      "usecaseRef": "listHiringManager",
+      "status": "toCreate"
+    },
+    {
+      "route": "hiringPipeline.recruiter_positions.qryListJobPosition",
+      "page": "recruiter_positions",
+      "kind": "qry",
+      "usecaseRef": "listJobPosition",
+      "status": "toCreate"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "createApplication",
+      "entity": "Application",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createCandidate",
+      "entity": "Candidate",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createJobPosition",
+      "entity": "JobPosition",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listApplication",
+      "entity": "Application",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listCandidate",
+      "entity": "Candidate",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listCandidateContact",
+      "entity": "CandidateContact",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listHiringManager",
+      "entity": "HiringManager",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listJobPosition",
+      "entity": "JobPosition",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "moveToHired",
+      "entity": "Application",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "moveToInterview",
+      "entity": "Application",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "moveToOffer",
+      "entity": "Application",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "rejectApplication",
+      "entity": "Application",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "application",
+      "entity": "Application",
+      "status": "toCreate"
+    },
+    {
+      "tableId": "jobPosition",
+      "entity": "JobPosition",
+      "status": "toCreate"
+    }
+  ],
+  "removed": [],
+  "testSupport": [
+    {
+      "id": "data:Application",
+      "actorRefs": [
+        "hiringManager",
+        "recruiter"
+      ],
+      "entityRefs": [
+        "Application",
+        "Candidate",
+        "JobPosition"
+      ],
+      "sourceRefs": [
+        "grant:hiringManagerManagedPositions",
+        "grant:recruiterPositionsAndApplications",
+        "journey:advanceApplicationToInterview/inspectCandidateQualifications",
+        "journey:advanceApplicationToInterview/inspectScreeningApplication",
+        "journey:advanceApplicationToInterview/locateScreeningApplication",
+        "journey:advanceApplicationToInterview/moveToInterview",
+        "journey:decideHiringOutcome/inspectOfferedApplication",
+        "journey:decideHiringOutcome/inspectPositionHeadcount",
+        "journey:decideHiringOutcome/locateOfferedApplication",
+        "journey:decideHiringOutcome/moveToHired",
+        "journey:decideOffer/inspectCandidateForOffer",
+        "journey:decideOffer/inspectInterviewApplication",
+        "journey:decideOffer/locateInterviewApplication",
+        "journey:decideOffer/moveToOffer",
+        "journey:openJobPosition/createJobPosition",
+        "journey:recordApplicationRejection/inspectApplicationForRejection",
+        "journey:recordApplicationRejection/inspectPositionForRejection",
+        "journey:recordApplicationRejection/locateApplicationForRejection",
+        "journey:recordApplicationRejection/recordRejection",
+        "journey:registerCandidate/locateCandidate",
+        "journey:registerCandidate/registerCandidateRecord",
+        "journey:startApplicationScreening/createApplication",
+        "journey:startApplicationScreening/inspectCandidateForApplication",
+        "journey:startApplicationScreening/inspectJobPositionRequirements",
+        "journey:startApplicationScreening/locateCandidateForApplication",
+        "journey:startApplicationScreening/locateOpenJobPosition",
+        "ontology:Application/lifecycleStates/interview",
+        "ontology:Application/lifecycleStates/offer",
+        "ontology:Application/lifecycleStates/screening",
+        "relationship:Application/applicationCandidate",
+        "relationship:Application/applicationJobPosition",
+        "relationship:Candidate/applicationCandidate",
+        "relationship:JobPosition/applicationJobPosition"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes application rows by execution id"
+    },
+    {
+      "id": "data:JobPosition",
+      "actorRefs": [
+        "hiringManager",
+        "recruiter"
+      ],
+      "entityRefs": [
+        "HiringManager",
+        "JobPosition"
+      ],
+      "sourceRefs": [
+        "grant:hiringManagerManagedPositions",
+        "grant:recruiterPositionsAndApplications",
+        "journey:advanceApplicationToInterview/inspectCandidateQualifications",
+        "journey:advanceApplicationToInterview/inspectScreeningApplication",
+        "journey:advanceApplicationToInterview/locateScreeningApplication",
+        "journey:advanceApplicationToInterview/moveToInterview",
+        "journey:decideHiringOutcome/inspectOfferedApplication",
+        "journey:decideHiringOutcome/inspectPositionHeadcount",
+        "journey:decideHiringOutcome/locateOfferedApplication",
+        "journey:decideHiringOutcome/moveToHired",
+        "journey:decideOffer/inspectCandidateForOffer",
+        "journey:decideOffer/inspectInterviewApplication",
+        "journey:decideOffer/locateInterviewApplication",
+        "journey:decideOffer/moveToOffer",
+        "journey:openJobPosition/createJobPosition",
+        "journey:recordApplicationRejection/inspectApplicationForRejection",
+        "journey:recordApplicationRejection/inspectPositionForRejection",
+        "journey:recordApplicationRejection/locateApplicationForRejection",
+        "journey:recordApplicationRejection/recordRejection",
+        "journey:registerCandidate/locateCandidate",
+        "journey:registerCandidate/registerCandidateRecord",
+        "journey:startApplicationScreening/createApplication",
+        "journey:startApplicationScreening/inspectCandidateForApplication",
+        "journey:startApplicationScreening/inspectJobPositionRequirements",
+        "journey:startApplicationScreening/locateCandidateForApplication",
+        "journey:startApplicationScreening/locateOpenJobPosition",
+        "organism:highlights",
+        "process:closeFilledPositionProcess",
+        "relationship:Application/applicationJobPosition",
+        "relationship:Candidate/applicationCandidate",
+        "relationship:HiringManager/jobPositionHiringManager",
+        "relationship:JobPosition/applicationJobPosition",
+        "relationship:JobPosition/jobPositionHiringManager"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes jobPosition rows by execution id"
+    },
+    {
+      "id": "identity:hiringManager",
+      "actorRefs": [
+        "hiringManager"
+      ],
+      "entityRefs": [
+        "HiringManager"
+      ],
+      "sourceRefs": [
+        "access:actors/hiringManager",
+        "grant:hiringManagerCandidatesForManagedPositions",
+        "grant:hiringManagerManagedPositions",
+        "journey:decideHiringOutcome/inspectOfferedApplication",
+        "journey:decideHiringOutcome/inspectPositionHeadcount",
+        "journey:decideHiringOutcome/locateOfferedApplication",
+        "journey:decideHiringOutcome/moveToHired",
+        "journey:decideOffer/inspectCandidateForOffer",
+        "journey:decideOffer/inspectInterviewApplication",
+        "journey:decideOffer/locateInterviewApplication",
+        "journey:decideOffer/moveToOffer",
+        "organism:highlights",
+        "process:closeFilledPositionProcess",
+        "relationship:Application/applicationCandidate",
+        "relationship:Application/applicationJobPosition",
+        "relationship:Candidate/applicationCandidate",
+        "relationship:JobPosition/applicationJobPosition"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_TEST_IDENTITY_UNREFERENCED: no verified runtime capability provisions an authenticated test identity for hiringManager bound to HiringManager"
+    },
+    {
+      "id": "identity:recruiter",
+      "actorRefs": [
+        "recruiter"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/recruiter",
+        "grant:recruiterCandidateRegistry",
+        "grant:recruiterPositionsAndApplications",
+        "journey:advanceApplicationToInterview/inspectCandidateQualifications",
+        "journey:advanceApplicationToInterview/inspectScreeningApplication",
+        "journey:advanceApplicationToInterview/locateScreeningApplication",
+        "journey:advanceApplicationToInterview/moveToInterview",
+        "journey:openJobPosition/createJobPosition",
+        "journey:recordApplicationRejection/inspectApplicationForRejection",
+        "journey:recordApplicationRejection/inspectPositionForRejection",
+        "journey:recordApplicationRejection/locateApplicationForRejection",
+        "journey:recordApplicationRejection/recordRejection",
+        "journey:registerCandidate/locateCandidate",
+        "journey:registerCandidate/registerCandidateRecord",
+        "journey:startApplicationScreening/createApplication",
+        "journey:startApplicationScreening/inspectCandidateForApplication",
+        "journey:startApplicationScreening/inspectJobPositionRequirements",
+        "journey:startApplicationScreening/locateCandidateForApplication",
+        "journey:startApplicationScreening/locateOpenJobPosition",
+        "organism:highlights",
+        "process:closeFilledPositionProcess",
+        "relationship:Application/applicationCandidate",
+        "relationship:Application/applicationJobPosition",
+        "relationship:Candidate/applicationCandidate",
+        "relationship:Candidate/candidateHasContact",
+        "relationship:CandidateContact/candidateHasContact",
+        "relationship:HiringManager/jobPositionHiringManager",
+        "relationship:JobPosition/applicationJobPosition",
+        "relationship:JobPosition/jobPositionHiringManager"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor recruiter declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "mdm:Candidate",
+      "actorRefs": [
+        "hiringManager",
+        "recruiter"
+      ],
+      "entityRefs": [
+        "Candidate"
+      ],
+      "sourceRefs": [
+        "grant:hiringManagerCandidatesForManagedPositions",
+        "grant:recruiterCandidateRegistry",
+        "journey:advanceApplicationToInterview/inspectCandidateQualifications",
+        "journey:advanceApplicationToInterview/inspectScreeningApplication",
+        "journey:advanceApplicationToInterview/locateScreeningApplication",
+        "journey:advanceApplicationToInterview/moveToInterview",
+        "journey:decideHiringOutcome/inspectOfferedApplication",
+        "journey:decideHiringOutcome/inspectPositionHeadcount",
+        "journey:decideHiringOutcome/locateOfferedApplication",
+        "journey:decideHiringOutcome/moveToHired",
+        "journey:decideOffer/inspectCandidateForOffer",
+        "journey:decideOffer/inspectInterviewApplication",
+        "journey:decideOffer/locateInterviewApplication",
+        "journey:decideOffer/moveToOffer",
+        "journey:openJobPosition/createJobPosition",
+        "journey:recordApplicationRejection/inspectApplicationForRejection",
+        "journey:recordApplicationRejection/inspectPositionForRejection",
+        "journey:recordApplicationRejection/locateApplicationForRejection",
+        "journey:recordApplicationRejection/recordRejection",
+        "journey:registerCandidate/locateCandidate",
+        "journey:registerCandidate/registerCandidateRecord",
+        "journey:startApplicationScreening/createApplication",
+        "journey:startApplicationScreening/inspectCandidateForApplication",
+        "journey:startApplicationScreening/inspectJobPositionRequirements",
+        "journey:startApplicationScreening/locateCandidateForApplication",
+        "journey:startApplicationScreening/locateOpenJobPosition",
+        "ontology:Application/relationships",
+        "relationship:Application/applicationCandidate",
+        "relationship:Candidate/applicationCandidate",
+        "relationship:Candidate/candidateHasContact",
+        "relationship:CandidateContact/candidateHasContact",
+        "relationship:JobPosition/applicationJobPosition"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes Candidate records by execution id"
+    },
+    {
+      "id": "mdm:CandidateContact",
+      "actorRefs": [
+        "recruiter"
+      ],
+      "entityRefs": [
+        "CandidateContact"
+      ],
+      "sourceRefs": [
+        "grant:recruiterCandidateRegistry",
+        "journey:registerCandidate/locateCandidate",
+        "journey:registerCandidate/registerCandidateRecord",
+        "relationship:Candidate/candidateHasContact",
+        "relationship:CandidateContact/candidateHasContact"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes CandidateContact records by execution id"
+    }
+  ],
+  "unattributed": [],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "sourceBackend": "pool/l2/web/backend.json",
+    "sourceVersion": "2026-09-21-p1-backend-v1.2",
+    "generatedAt": "2026-10-02T16:07:26.897Z"
+  }
+}

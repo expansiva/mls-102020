@@ -1,0 +1,782 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "inventoryControl"
+    },
+    "intent": "O estoquista registra uma entrada ou saída de unidades de um produto para atualizar o saldo e acompanha as movimentações já gravadas, que permanecem inalteráveis depois do registro.",
+    "sections": [
+     {
+      "id": "registroMovimentacao",
+      "priority": "primary",
+      "purpose": "Reúne a captura da movimentação e a confirmação do registro para o estoquista localizar o produto, conferir o saldo e gravar a entrada ou a saída.",
+      "organisms": [
+       "formularioMovimentacao",
+       "confirmarMovimentacao"
+      ]
+     },
+     {
+      "id": "historicoRegistrado",
+      "priority": "main",
+      "purpose": "Apresenta as entradas e saídas já registradas para o estoquista acompanhar o histórico imutável do estoque.",
+      "organisms": [
+       "historicoMovimentacoes"
+      ]
+     }
+    ],
+    "organisms": {
+     "historicoMovimentacoes": {
+      "kind": "list",
+      "text": "Mostra as entradas e saídas já registradas, com produto, tipo, quantidade e data e hora, para o estoquista acompanhar o histórico que não pode ser alterado depois da gravação.",
+      "intents": []
+     },
+     "formularioMovimentacao": {
+      "kind": "form",
+      "text": "Permite localizar o produto, conferir o saldo atual e a quantidade mínima e informar se a movimentação é entrada ou saída e quantas unidades serão movimentadas.",
+      "intents": []
+     },
+     "confirmarMovimentacao": {
+      "kind": "actions",
+      "text": "Grava a movimentação de estoque e atualiza o saldo atual do produto; depois do registro a movimentação permanece inalterável e o novo saldo fica visível.",
+      "intents": [
+       {
+        "id": "registrarMovimentacao",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "historicoMovimentacoes": [
+      {
+       "role": "collection",
+       "preferred": "groupviewtable--ml-data-table",
+       "alternative": "groupviewtable--ml-view-table"
+      }
+     ],
+     "formularioMovimentacao": [
+      {
+       "role": "productLookup",
+       "preferred": "groupselectone--ml-select-one-autocomplete",
+       "alternative": "groupselectone--ml-combobox"
+      },
+      {
+       "role": "movementType",
+       "preferred": "groupselectone--ml-segmented-control",
+       "alternative": "groupselectone--ml-radio-group"
+      },
+      {
+       "role": "quantity",
+       "preferred": "groupenternumber--ml-number-stepper",
+       "alternative": "groupenternumber--ml-number-input"
+      }
+     ],
+     "confirmarMovimentacao": [
+      {
+       "role": "submit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-split-button"
+      },
+      {
+       "role": "feedback",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      },
+      {
+       "role": "updatedBalance",
+       "preferred": "groupviewmetric--ml-metric-card",
+       "alternative": "groupviewmetric--ml-metric-big-number"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "historicoMovimentacoes": {
+      "reads": [
+       "MovimentacaoEstoque.id",
+       "MovimentacaoEstoque.produtoId",
+       "MovimentacaoEstoque.movimentadoEm",
+       "MovimentacaoEstoque.details.tipo",
+       "MovimentacaoEstoque.details.quantidade",
+       "Produto.details.identification.name",
+       "Produto.details.product.unitOfMeasure"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "formularioMovimentacao": {
+      "reads": [
+       "Produto.id",
+       "Produto.details.identification.name",
+       "Produto.details.identification.status",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.quantidadeMinima",
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [
+       "MovimentacaoEstoque.produtoId",
+       "MovimentacaoEstoque.details.tipo",
+       "MovimentacaoEstoque.details.quantidade"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "confirmarMovimentacao": {
+      "reads": [
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo",
+       "MovimentacaoEstoque.details.tipo",
+       "MovimentacaoEstoque.details.quantidade"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "registrarMovimentacao",
+        "write": "MovimentacaoEstoque.create"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "inventoryControl"
+    },
+    "intent": "Em uma faixa estreita e fluida em torno de 390px, também usável em 360px e 430px, o estoquista informa a entrada ou saída, confirma o registro que atualiza o saldo e, em seguida, consulta o histórico de movimentações já gravadas.",
+    "sections": [
+     {
+      "id": "capturaMovimentacao",
+      "priority": "primary",
+      "purpose": "Na faixa estreita, concentra primeiro a localização do produto, a conferência do saldo e o preenchimento do tipo e da quantidade da movimentação.",
+      "organisms": [
+       "formularioMovimentacao"
+      ]
+     },
+     {
+      "id": "confirmacaoRegistro",
+      "priority": "main",
+      "purpose": "Mantém o registro ao alcance imediato após o preenchimento, para gravar a movimentação e mostrar o saldo atualizado sem exigir deslocamento lateral.",
+      "organisms": [
+       "confirmarMovimentacao"
+      ]
+     },
+     {
+      "id": "historicoRegistrado",
+      "priority": "secondary",
+      "purpose": "Empilha abaixo o histórico de entradas e saídas já registradas, para consulta depois do registro na mesma faixa fluida.",
+      "organisms": [
+       "historicoMovimentacoes"
+      ]
+     }
+    ],
+    "organisms": {
+     "historicoMovimentacoes": {
+      "kind": "list",
+      "text": "Lista em sequência as entradas e saídas já registradas, com produto, tipo, quantidade e data e hora, para o estoquista revisar o histórico imutável na faixa estreita.",
+      "intents": []
+     },
+     "formularioMovimentacao": {
+      "kind": "form",
+      "text": "Permite localizar o produto, conferir o saldo atual e a quantidade mínima e informar o tipo de entrada ou saída e a quantidade de unidades a movimentar.",
+      "intents": []
+     },
+     "confirmarMovimentacao": {
+      "kind": "actions",
+      "text": "Grava a movimentação e atualiza o saldo do produto; o estoquista vê a confirmação e o novo saldo logo após o preenchimento, e a movimentação não pode mais ser alterada.",
+      "intents": [
+       {
+        "id": "registrarMovimentacao",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "historicoMovimentacoes": [
+      {
+       "role": "collection",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-timeline-view"
+      }
+     ],
+     "formularioMovimentacao": [
+      {
+       "role": "productLookup",
+       "preferred": "groupselectone--ml-select-one-autocomplete",
+       "alternative": "groupselectone--ml-combobox"
+      },
+      {
+       "role": "movementType",
+       "preferred": "groupselectone--ml-segmented-control",
+       "alternative": "groupselectone--ml-radio-group"
+      },
+      {
+       "role": "quantity",
+       "preferred": "groupenternumber--ml-number-stepper",
+       "alternative": "groupenternumber--ml-number-input"
+      }
+     ],
+     "confirmarMovimentacao": [
+      {
+       "role": "submit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      },
+      {
+       "role": "feedback",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      },
+      {
+       "role": "updatedBalance",
+       "preferred": "groupviewmetric--ml-metric-card",
+       "alternative": "groupviewmetric--ml-compact-metric-sparkline"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "historicoMovimentacoes": {
+      "reads": [
+       "MovimentacaoEstoque.id",
+       "MovimentacaoEstoque.produtoId",
+       "MovimentacaoEstoque.movimentadoEm",
+       "MovimentacaoEstoque.details.tipo",
+       "MovimentacaoEstoque.details.quantidade",
+       "Produto.details.identification.name",
+       "Produto.details.product.unitOfMeasure"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "formularioMovimentacao": {
+      "reads": [
+       "Produto.id",
+       "Produto.details.identification.name",
+       "Produto.details.identification.status",
+       "Produto.details.product.unitOfMeasure",
+       "Produto.details.controleEstoque.quantidadeMinima",
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+      ],
+      "edits": [
+       "MovimentacaoEstoque.produtoId",
+       "MovimentacaoEstoque.details.tipo",
+       "MovimentacaoEstoque.details.quantidade"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "confirmarMovimentacao": {
+      "reads": [
+       "Produto.details.controleEstoque.saldoAtual",
+       "Produto.details.controleEstoque.saldoAbaixoDoMinimo",
+       "MovimentacaoEstoque.details.tipo",
+       "MovimentacaoEstoque.details.quantidade"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "registrarMovimentacao",
+        "write": "MovimentacaoEstoque.create"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A categoria inventoryControl cobre controle de estoque, saldos, níveis mínimos e ajustes manuais; esta página lista movimentações e registra entradas e saídas que atualizam o saldo do produto."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Acompanhamento de movimentações registradas não exige decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há solicitação de informar uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não foi indicado filtro ou cadastro por intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há necessidade de inserir data e hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora a informar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O acompanhamento descrito trata de unidades movimentadas, não valores monetários."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "A lista consulta dados já registrados; não informa quantidades."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há filtro ou entrada de faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há campo textual a preencher."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a informar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi descrita necessidade de expandir detalhes em seções."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Movimentações de estoque não requerem localização geográfica no enunciado."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções internas a alternar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Acompanhar registros não é um processo sequencial em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "O enunciado pede consulta de registros, não comunicação de evento ou resultado."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a avaliar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A consulta de movimentos já registrados não requer captura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi especificada busca textual entre os registros."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo para selecionar ou enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção de múltiplas opções."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha única a ser feita pelo usuário."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não foi descrita operação em andamento a acompanhar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "A função é visualizar movimentos, sem comando explicitamente solicitado."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O requisito é acompanhar uma lista de registros; não pede apresentação individual em cards."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não foi solicitada análise gráfica das movimentações."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Permite exibir a coleção de entradas e saídas já registradas em uma lista adaptativa."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Entradas e saídas não constituem uma estrutura pai-filho."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": true,
+     "reason": "Pode destacar o saldo atual de estoque como indicador para acompanhamento."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Exibe de forma estruturada os registros de entrada e saída, como produto, tipo, quantidade e data."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "O registro não requer decisão de verdadeiro ou falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não foi solicitado informar data da movimentação."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas a preencher."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não foi solicitado informar data e hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora no registro."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O formulário registra unidades, não preço ou valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": true,
+     "reason": "É necessário informar a quantidade de unidades movimentadas."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "O formulário precisa de uma quantidade pontual, não uma faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não foi descrito nenhum dado textual livre a registrar."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a preencher."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a preencher."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O formulário não requer seções expansíveis."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização geográfica a informar."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções de formulário a alternar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "O registro descrito não foi definido como fluxo de múltiplas etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "A finalidade deste organismo é coletar os dados; a comunicação do resultado pertence à execução da ação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação de item."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não foi solicitada identificação do produto por câmera ou código."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi especificada busca textual de produto ou conteúdo."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a anexar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Cada movimentação se refere a um produto, não a várias opções simultâneas."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "Permite escolher um único produto e o único tipo de movimentação, entrada ou saída."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há processamento demorado descrito no preenchimento."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite enviar o formulário para registrar a entrada ou saída."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O organismo é de preenchimento de formulário, não de visualização de item."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos a representar graficamente durante o registro."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "O formulário registra uma movimentação, não exibe uma coleção de registros."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há dados hierárquicos a apresentar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador destacado a apresentar no formulário."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há coleção estruturada a exibir no ato do registro."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A ação não requer entrada booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "A ação não requer informar uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "A ação não requer intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "A ação não requer data ou hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "A ação não requer intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Registrar movimento e atualizar saldo não exige valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "A quantidade é coletada no formulário; esta etapa executa a movimentação."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a informar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A ação não requer texto livre."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "A ação não requer horário."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "A ação não requer intervalo de horário."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há conteúdo detalhado a expandir ou recolher."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "A execução não envolve posição geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções internas a alternar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A execução descrita não é um processo navegável por etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "Informa se a movimentação foi registrada e se o saldo foi atualizado, incluindo falhas."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a avaliar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A ação não requer leitura de QR code, código de barras ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "A etapa não exige localizar conteúdo por texto."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "A ação não requer selecionar arquivos."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há múltiplas opções a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "As escolhas necessárias são feitas no formulário anterior."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não foi indicada uma operação longa que necessite indicador de progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite disparar o comando que registra a movimentação e atualiza o saldo."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "A finalidade é executar e confirmar uma ação, não apresentar item em card."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "A execução não requer visualização gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "A execução não requer exibir coleção de dados."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura hierárquica a visualizar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": true,
+     "reason": "Pode apresentar o saldo resultante atualizado como indicador destacado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "A ação não exige exibição tabular de dados."
+    }
+   ]
+  }
+ ]
+}

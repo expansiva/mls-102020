@@ -1,0 +1,732 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "financialTransactions"
+    },
+    "intent": "O financeiro localiza as despesas aprovadas que ainda aguardam pagamento, confere os dados de cada reembolso e registra a data em que o pagamento foi efetuado.",
+    "sections": [
+     {
+      "id": "filaPagamento",
+      "priority": "primary",
+      "purpose": "Mantém visível a fila de despesas aprovadas com colaborador, categoria, valor e situação para o financeiro escolher qual reembolso liquidar.",
+      "organisms": [
+       "approvedExpensesList"
+      ]
+     },
+     {
+      "id": "conferenciaPagamento",
+      "priority": "main",
+      "purpose": "Reúne os dados da despesa escolhida e o registro da data de pagamento no mesmo contexto, para conferir o reembolso e confirmar a liquidação.",
+      "organisms": [
+       "approvedExpenseDetail",
+       "paymentDateForm"
+      ]
+     }
+    ],
+    "organisms": {
+     "approvedExpensesList": {
+      "kind": "list",
+      "text": "Mostra as despesas aprovadas que aguardam pagamento, com colaborador, categoria, valor e situação, para o financeiro localizar o próximo reembolso a liquidar.",
+      "intents": []
+     },
+     "approvedExpenseDetail": {
+      "kind": "detail",
+      "text": "Apresenta colaborador, data, categoria, valor, descrição e situação da despesa aprovada selecionada, para o financeiro conferir o que será pago.",
+      "intents": []
+     },
+     "paymentDateForm": {
+      "kind": "form",
+      "text": "Permite informar a data em que a despesa aprovada foi paga e confirmar o registro, para marcar o reembolso como pago.",
+      "intents": [
+       {
+        "id": "registrarPagamento",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "approvedExpensesList": [
+      {
+       "role": "collection",
+       "preferred": "groupviewtable--ml-data-table",
+       "alternative": "groupviewtable--ml-advanced-data-table"
+      }
+     ],
+     "approvedExpenseDetail": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-vertical-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "paymentDateForm": [
+      {
+       "role": "date",
+       "preferred": "groupenterdate--ml-date-picker",
+       "alternative": "groupenterdate--ml-date-shortcut-picker"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "approvedExpensesList": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.colaboradorId",
+       "Despesa.status",
+       "Despesa.details.dataDespesa",
+       "Despesa.details.categoria",
+       "Despesa.details.valor"
+      ],
+      "edits": [],
+      "selects": "approvedExpenseDetail",
+      "submits": []
+     },
+     "approvedExpenseDetail": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.colaboradorId",
+       "Despesa.status",
+       "Despesa.details.dataDespesa",
+       "Despesa.details.categoria",
+       "Despesa.details.valor",
+       "Despesa.details.descricao",
+       "Despesa.details.dataPagamento"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "paymentDateForm": {
+      "reads": [
+       "Despesa.details.dataPagamento"
+      ],
+      "edits": [
+       "Despesa.details.dataPagamento"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "registrarPagamento",
+        "write": "Despesa.registrarPagamento"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "financialTransactions"
+    },
+    "intent": "Em uma coluna estreita e contínua, o financeiro percorre as despesas aprovadas que aguardam pagamento, confere os dados da escolhida e informa a data em que o reembolso foi pago.",
+    "sections": [
+     {
+      "id": "filaPagamento",
+      "priority": "primary",
+      "purpose": "No fluxo estreito em torno de 390px, ainda usável em 360px e 430px, a lista vem primeiro para localizar rapidamente a despesa aprovada a pagar.",
+      "organisms": [
+       "approvedExpensesList"
+      ]
+     },
+     {
+      "id": "conferenciaDespesa",
+      "priority": "main",
+      "purpose": "O detalhe da despesa selecionada segue em conteúdo fluido e estreito, para conferir colaborador, valor e descrição antes de registrar o pagamento.",
+      "organisms": [
+       "approvedExpenseDetail"
+      ]
+     },
+     {
+      "id": "registroPagamento",
+      "priority": "secondary",
+      "purpose": "O campo da data de pagamento fecha o fluxo estreito, ao alcance após a conferência, para confirmar a liquidação da despesa aprovada.",
+      "organisms": [
+       "paymentDateForm"
+      ]
+     }
+    ],
+    "organisms": {
+     "approvedExpensesList": {
+      "kind": "list",
+      "text": "Lista em coluna as despesas aprovadas que aguardam pagamento, destacando colaborador, categoria, valor e situação para escolher qual reembolso liquidar.",
+      "intents": []
+     },
+     "approvedExpenseDetail": {
+      "kind": "detail",
+      "text": "Mostra em bloco contínuo os dados da despesa aprovada selecionada — colaborador, data, categoria, valor, descrição e situação — para conferência antes do pagamento.",
+      "intents": []
+     },
+     "paymentDateForm": {
+      "kind": "form",
+      "text": "Oferece a data de pagamento da despesa aprovada no final do fluxo estreito, para o financeiro registrar quando o reembolso foi pago.",
+      "intents": [
+       {
+        "id": "registrarPagamento",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "approvedExpensesList": [
+      {
+       "role": "collection",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "approvedExpenseDetail": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-view-card-horizontal",
+       "alternative": "groupviewcard--ml-vertical-card"
+      }
+     ],
+     "paymentDateForm": [
+      {
+       "role": "date",
+       "preferred": "groupenterdate--ml-compact-calendar",
+       "alternative": "groupenterdate--ml-date-picker"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "approvedExpensesList": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.colaboradorId",
+       "Despesa.status",
+       "Despesa.details.dataDespesa",
+       "Despesa.details.categoria",
+       "Despesa.details.valor"
+      ],
+      "edits": [],
+      "selects": "approvedExpenseDetail",
+      "submits": []
+     },
+     "approvedExpenseDetail": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.colaboradorId",
+       "Despesa.status",
+       "Despesa.details.dataDespesa",
+       "Despesa.details.categoria",
+       "Despesa.details.valor",
+       "Despesa.details.descricao",
+       "Despesa.details.dataPagamento"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "paymentDateForm": {
+      "reads": [
+       "Despesa.details.dataPagamento"
+      ],
+      "edits": [
+       "Despesa.details.dataPagamento"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "registrarPagamento",
+        "write": "Despesa.registrarPagamento"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A página lista despesas aprovadas com valor a pagar e registra a data de liquidação, o que se encaixa em lançamentos financeiros com medida monetária e operação de pagamento, e não em fila genérica nem em fluxo de aprovação."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A consulta da lista não solicita uma decisão verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há solicitação para informar ou filtrar por uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "A lista não requer um intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não é necessário informar data e/ou hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo com data e hora a ser informado."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A tarefa é visualizar despesas, não informar valores monetários."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico a ser informado."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a ser informada."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A descrição não pede o preenchimento de texto."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a informar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi especificada a necessidade de expandir ou recolher conteúdo."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "A consulta não envolve localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções no mesmo contexto para alternar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A consulta não descreve um processo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento ou resultado que exija uma notificação ao usuário."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "A lista não envolve reprodução de áudio ou vídeo."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação de uma despesa."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A consulta não requer captura por câmera ou leitura de código."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi solicitado localizar despesas por busca textual."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "A visualização da lista não requer anexar arquivos."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de selecionar várias despesas."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de escolher uma opção exclusiva."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "A consulta da lista não descreve operação com progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "Nenhum comando a executar foi solicitado."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "A necessidade é consultar uma coleção de despesas, não apresentar uma unidade isolada em cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não foi solicitada representação gráfica das despesas."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Permite exibir a coleção de despesas aprovadas que aguardam pagamento em um layout adaptável."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "As despesas não são descritas como dados com relação hierárquica."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não foi solicitado destacar um indicador agregado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Permite apresentar as despesas pendentes de pagamento como registros estruturados, com campos como despesa, valor, aprovação e situação."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A consulta de dados não pede uma decisão verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar nesta consulta."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas a informar."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não é necessário informar data ou hora."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora a informar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Os dados financeiros são consultados, não preenchidos."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há dado numérico a informar."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a informar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A tela apenas consulta os dados e não solicita texto."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a informar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi indicada necessidade de recolher ou expandir seções dos dados."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "A consulta não envolve informar ou visualizar localização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções de detalhe declaradas para alternância."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A consulta não é um fluxo sequencial."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento ou resultado de ação que exija notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "O detalhe da despesa não envolve mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação da despesa."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A consulta não exige captura ou decodificação por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi solicitada busca textual no detalhe."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "A consulta não requer seleção de arquivo."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há opções múltiplas a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha exclusiva a fazer."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação de duração ou progresso a indicar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "A tarefa declarada é consultar, sem comando a executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Permite apresentar os dados de uma despesa aprovada como uma unidade independente, com título, conteúdo e informações de apoio."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não foi solicitada visualização gráfica dos dados."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "O contexto é o detalhe de uma única despesa, não uma coleção de registros."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura pai-filho a apresentar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "A consulta pede os dados da despesa, não um único indicador em destaque."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não foi descrita uma coleção estruturada que demande tabela."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "O formulário não pede decisão verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": true,
+     "reason": "A data de pagamento é um valor de data sem necessidade declarada de horário."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Deve ser informada uma única data de pagamento, não um intervalo."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de registrar horário junto com a data."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de início e fim com data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O formulário pede a data do pagamento, não um valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há número a informar."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a informar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "O dado solicitado é uma data, não texto livre."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não foi solicitado o horário do pagamento."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a informar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi especificada necessidade de expandir conteúdo."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "O registro da data de pagamento não envolve localização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções para alternar no formulário descrito."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não foi descrito fluxo de múltiplas etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há resultado de ação explicitamente descrito que exija notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "O formulário não envolve reprodução de mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a avaliar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não é necessária captura de código ou documento por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi solicitada busca de conteúdo."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a anexar para informar a data."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há conjunto de opções múltiplas a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "A data é preenchida diretamente, não escolhida entre opções mutuamente exclusivas."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação com progresso a exibir."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O requisito somente declara informar a data; não especifica um comando de salvar ou confirmar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "A necessidade principal é entrada de data, não apresentação de item em cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados a representar graficamente."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção de dados a exibir."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há dados hierárquicos."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há coleção estruturada a apresentar em tabela."
+    }
+   ]
+  }
+ ]
+}

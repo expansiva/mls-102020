@@ -27,6 +27,7 @@ import {
   P2_MENU_SCHEMA_VERSION,
   buildP2MenuFile,
   buildP2MenuTool,
+  withP2MenuEnums,
   collectRecordsKept,
   menuActionCounts,
   menuCandidates,
@@ -274,6 +275,10 @@ function installHost(): Host {
     stor: {
       files: host.files,
       getKeyToFile: keyOf,
+      // New files (the raw LLM answers, d2_69) are created like the browser does.
+      addOrUpdateFile: (info: { project: number; level: number; folder: string; shortName: string; extension: string; source?: string }) => seed(host, {
+        project: info.project, level: info.level, folder: info.folder, shortName: info.shortName, extension: info.extension, content: info.source || '',
+      }),
       localStor: {
         setContent: async (file: Stored, value: { content: string }) => { file.content = value.content; },
         listFolder: () => [],
@@ -557,6 +562,17 @@ void test('gate rejects empty hub, duplicate id, unknown actor, unknown organism
   assert.ok(unusedGate.issues.some(issue => issue.severity === 'warning' && issue.code === 'P2_MENU_JOURNEY_UNMAPPED'));
 });
 
+void test('d2_67: menu ids the code knows are enums of the tool schema, still provider-clean', () => {
+  const loaded = loadSources();
+  const limited = withP2MenuEnums(loadSchema(), loaded.sources, loaded.grants, loaded.processes) as { $defs: Record<string, { properties: Record<string, { enum?: string[] }> }> };
+  assert.deepEqual(limited.$defs.authority.properties.actorRef.enum, loaded.sources.actors.map(actor => actor.actorId));
+  assert.deepEqual(limited.$defs.journeyPages.properties.journeyId.enum, loaded.sources.journeys.map(journey => journey.journeyId));
+  assert.deepEqual(limited.$defs.hubNode.properties.context.enum, loaded.sources.entities.map(entity => entity.entityId));
+  assert.deepEqual(limited.$defs.recordPages.properties.entityId.enum, collectRecordsKept(loaded.sources, loaded.grants).map(row => row.entityRef));
+  assert.equal(lintToolSchema(JSON.stringify(buildP2MenuTool(limited).function.parameters)), null);
+  assert.equal('enum' in (loadSchema() as typeof limited).$defs.authority.properties.actorRef, false);
+});
+
 void test('menu20 tool schema is provider-clean and has no optional single-value fields', () => {
   const schema = loadSchema();
   const tool = buildP2MenuTool(schema);
@@ -625,13 +641,46 @@ void test('afterPromptStep schedules repair when the gate fails', async () => {
   };
   const intents = await afterP2MenuPromptStep(agentMeta(), contextWith(step, bad), step, step, 1);
   const add = intents.find(intent => intent.type === 'add-step') as mls.msg.AgentIntentAddStep | undefined;
-  assert.ok(add, `intents: ${intents.map(intent => intent.type).join(',')}`);
+  assert.ok(add, `intents: ${intents.map(intent => `${intent.type}:${(intent as { traceMsg?: string }).traceMsg ?? ''}`).join(',')}`);
   assert.equal((add.step as mls.msg.AIAgentStep).planning?.planId, 'menu20-repair-1');
   const draft = host.files[keyOf(p2DraftFile(MODULE, 'menu20'))];
   assert.ok(draft, 'gate failure still writes the draft');
   assert.notEqual(draft.content.trim(), '');
   assert.equal(host.files[keyOf(p2MenuFile(MODULE))].content, '');
   assert.equal(JSON.parse(host.files[keyOf(p2PipelineFile(MODULE))].content).status, 'inProgress');
+});
+
+void test('d2_69: each menu20 answer is kept raw before validation; a refused answer and its repair are two attempts', async () => {
+  const host = installHost();
+  seedAgentFiles(host);
+  seedL4(host);
+  seedPipeline(host);
+  seed(host, {
+    folder: `${MODULE}/pool/l2`, shortName: '20260918201156_mensalidadesAcademia-20260918201156_1', extension: '.json',
+    content: readFileSync(path.join(HERE, '../entry10/fixtures/pool-l2-20260918201156.json'), 'utf8'),
+  });
+  const responseKey = (attempt: string) => keyOf({ project: PROJECT, level: 4, folder: `${MODULE}/pool/l2/responses/menu20`, shortName: `menu-${attempt}`, extension: '.json' });
+  // No LLM answer yet: nothing is kept.
+  const asked = menuStep();
+  await beforeP2MenuPromptStep(agentMeta(), contextWith(asked), asked, asked, 1);
+  assert.equal(Object.keys(host.files).some(key => key.includes('/responses/')), false);
+
+  const refused = { type: 'flexible', result: { tree: [{ id: 'only', kind: 'hub', label: 'Only', context: 'Aluno', text: 'picks a student', children: [] }], authorities: { 'actor:recepcao': ['only'] }, meta: { journeys: {}, processes: {}, records: {} } } };
+  const first = menuStep();
+  await afterP2MenuPromptStep(agentMeta(), contextWith(first, refused), first, first, 1);
+  const repair = { ...menuStep(), prompt: JSON.stringify({ planId: 'menu20-repair-1', moduleName: MODULE, repairAttempt: 1, gateFeedback: 'x', thread: 't', file: 'f' }) };
+  const accepted = { type: 'flexible', result: loadDraft() };
+  const second = await afterP2MenuPromptStep(agentMeta(), contextWith(repair, accepted), repair, repair, 1);
+  assert.ok(second.some(intent => intent.type === 'add-step' && (intent as mls.msg.AgentIntentAddStep).step.planning?.planId === 'menu20-done'));
+
+  const one = JSON.parse(host.files[responseKey('1')].content) as { attempt: string; raw: unknown; verdict: string };
+  const two = JSON.parse(host.files[responseKey('2')].content) as { attempt: string; raw: unknown; verdict: string };
+  assert.deepEqual(one.raw, refused);
+  assert.deepEqual(two.raw, accepted);
+  assert.equal(one.attempt, '1');
+  assert.notEqual(one.verdict, 'accepted');
+  assert.ok(one.verdict.length > 0);
+  assert.equal(two.verdict, 'accepted');
 });
 
 void test('afterPromptStep approves the draft, overwrites menu.json and leaves pool messages', async () => {

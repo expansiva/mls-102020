@@ -30,6 +30,8 @@ export interface P2OntologyTransitionView {
   transitionId: string;
   from: string[];
   to: string;
+  /** lifecycle `by`: actors that may fire it; empty when the lifecycle does not say. */
+  by: string[];
 }
 
 export interface P2OntologyEntityView {
@@ -206,6 +208,7 @@ export function parseP2L4Sources(input: {
           transitionId: memberId(text(transition.transitionId)),
           from: list(transition.from).map(value => text(value)).filter(Boolean),
           to: text(transition.to),
+          by: list(transition.by).map(value => text(value)).filter(Boolean),
         };
       }).filter(transition => transition.transitionId),
     };

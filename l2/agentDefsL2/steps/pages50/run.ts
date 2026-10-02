@@ -3,6 +3,7 @@
 import { readJson, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+import { d2NormalizeWriteKey, d2WriteKey, type D2Write } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type { D2InputSnapshot, D2InputArtifacts, D2SelectedPage, D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { buildD2Page11WithExperience, gateD2Page11, gateD2Page11Pair, type D2Page11GateSources, type D2Page11Menu, type D2Page11NeedPage } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { renderD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
@@ -113,11 +114,57 @@ function canonicalValue(value: unknown): unknown {
   return value;
 }
 
+/** Lists the code already knows for the page decision; each becomes an enum of the tool schema (d2_67). */
+export interface D2PageChoiceEnums { writeKeys: string[]; categories: string[]; kinds: string[]; targets: string[]; tags: string[] }
+export function d2PageChoiceEnums(context: D2PagesContext): D2PageChoiceEnums {
+  const pageIds: string[] = [];
+  const walk = (nodes: unknown[]): void => { for (const raw of nodes) {
+    const node = record(raw);
+    if (text(node.kind) === 'page' && text(node.id)) pageIds.push(text(node.id));
+    walk(Array.isArray(node.children) ? node.children : []);
+  } };
+  walk(Array.isArray(record(context.artifacts.menu).tree) ? record(context.artifacts.menu).tree as unknown[] : []);
+  return {
+    writeKeys: d2PageWriteKeys(context.page),
+    categories: [...context.template.categories.filter(item => item.experiences?.page11 || item.experiences?.page21).map(item => item.categoryId), 'bespoke'],
+    kinds: [...new Set(context.page.organisms.map(raw => text(record(raw).kind)).filter(Boolean))],
+    // A submit has no target: '' is the value for it.
+    targets: ['', ...new Set(pageIds)],
+    tags: [...new Set(context.groups.flatMap(group => group.tags))],
+  };
+}
+
+/** The exact write keys of the page; a submit writes one of them (schema enum and prompt list). */
+export function d2PageWriteKeys(page: D2SelectedPage): string[] {
+  return [...new Set((page.writes as unknown[]).map(raw => {
+    const row = record(raw);
+    return d2WriteKey({ entity: text(row.entity), operation: text(row.operation), transitionRef: text(row.transitionRef) });
+  }))];
+}
+
+function pageWrites(page: D2SelectedPage): D2Write[] {
+  return (page.writes as unknown[]).map(raw => { const row = record(raw); return { entity: text(row.entity), operation: text(row.operation), transitionRef: text(row.transitionRef) }; });
+}
+
+/** `Entity.transition` from the answer resolves to the page's only transition of that entity, or is refused naming the keys. */
+function normalizeSubmitWrites(needs: unknown, writes: readonly D2Write[]): unknown {
+  const root = record(needs);
+  const organisms = record(root.organisms);
+  return { ...root, organisms: Object.fromEntries(Object.entries(organisms).map(([id, raw]) => {
+    const unit = record(raw);
+    const submits = Array.isArray(unit.submits) ? unit.submits.map(item => {
+      const submit = record(item);
+      return typeof submit.write === 'string' ? { ...submit, write: d2NormalizeWriteKey(submit.write, writes) } : submit;
+    }) : unit.submits;
+    return [id, { ...unit, submits }];
+  })) };
+}
+
 export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { diagnostic: string; previous: unknown }): { prompt: string; chars: number } {
   const { page, artifacts } = context;
   const payload = {
     page: { pageId: page.pageId, label: page.label, actors: page.actors, authorityRefs: page.authorityRefs,
-      ancestors: page.ancestors, organisms: menuOrigins(page), reads: page.reads, writes: page.writes,
+      ancestors: page.ancestors, organisms: menuOrigins(page), reads: page.reads, writes: page.writes, writeKeys: d2PageWriteKeys(page),
       journeys: Object.fromEntries(page.journeyRefs.map(id => [id, artifacts.journeys[id]])),
       userLanguage: text(record(artifacts.menu).userLanguage) || 'en' },
     menu: artifacts.menu,
@@ -149,7 +196,11 @@ export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesRe
     desktop: buildD2Page11WithExperience(raw.desktop.definition, context.template.categories),
     mobile: buildD2Page11WithExperience(raw.mobile.definition, context.template.categories),
   };
-  const needs: Record<D2Page11Device, D2Page11Needs> = { desktop: buildD2Page11Needs(raw.desktop.needs), mobile: buildD2Page11Needs(raw.mobile.needs) };
+  const writes = pageWrites(context.page);
+  const needs: Record<D2Page11Device, D2Page11Needs> = {
+    desktop: buildD2Page11Needs(normalizeSubmitWrites(raw.desktop.needs, writes)),
+    mobile: buildD2Page11Needs(normalizeSubmitWrites(raw.mobile.needs, writes)),
+  };
   const menu = context.artifacts.menu as D2Page11Menu;
   const needPages = record(context.artifacts.needs).pages as D2Page11NeedPage[];
   if (!Array.isArray(needPages)) throw new Error('D2_PAGE11_SOURCE_NEEDS');

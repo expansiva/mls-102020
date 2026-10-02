@@ -1,6 +1,7 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/contracts30/contracts.ts" enhancement="_blank"/>
 
 import { moduleFile, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { branchingTransitions } from '/_102020_/l2/agentPlannerL2/helpers/p2Transitions.js';
 import {
   isNs5OntologyEntityV3,
   type Ns5OntologyAnyEntity,
@@ -378,33 +379,6 @@ function slotForStep(
     shape,
     transitionRef: shape === 'transition' ? (step.transitionRef || '') : '',
   };
-}
-
-function branchingTransitions(
-  entityId: string,
-  sources: P2L4Sources,
-): P2L4Sources['entities'][number]['transitions'] {
-  const entity = sources.entities.find(item => item.entityId === entityId);
-  const transitions = entity?.transitions || [];
-  const byFrom = new Map<string, typeof transitions>();
-  for (const transition of transitions) {
-    for (const from of transition.from) {
-      const group = byFrom.get(from) || [];
-      group.push(transition);
-      byFrom.set(from, group);
-    }
-  }
-  const out: typeof transitions = [];
-  const seen = new Set<string>();
-  for (const group of byFrom.values()) {
-    if (group.length < 2) continue;
-    for (const transition of group) {
-      if (seen.has(transition.transitionId)) continue;
-      seen.add(transition.transitionId);
-      out.push(transition);
-    }
-  }
-  return out;
 }
 
 function emitInputProperties(call: P2ContractCall, catalog: ReadonlyMap<string, P2EntityField>): string[] {

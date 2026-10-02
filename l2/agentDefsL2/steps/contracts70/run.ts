@@ -15,7 +15,7 @@ import {
   buildD2SharedContext, draftFile, page11File, readD2SharedReceipt, sharedInfo, D2_SHARED_VERSION, type D2SharedReceipt,
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 
-export const D2_CONTRACTS70_VERSION = '2026-10-01-agent-defs-l2-contracts-v2.2' as const;
+export const D2_CONTRACTS70_VERSION = '2026-10-02-agent-defs-l2-contracts-v2.3' as const;
 
 export interface D2Contracts70Receipt {
   schemaVersion: typeof D2_CONTRACTS70_VERSION;

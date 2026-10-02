@@ -1,0 +1,50 @@
+{
+  "organisms": {
+    "ownReceptionistDetail": {
+      "reads": [
+        "Recepcionista.id",
+        "Recepcionista.version",
+        "Recepcionista.details.identification",
+        "Recepcionista.details.person"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+    },
+    "ownReceptionistForm": {
+      "reads": [
+        "Recepcionista.id",
+        "Recepcionista.version",
+        "Recepcionista.details.identification",
+        "Recepcionista.details.person"
+      ],
+      "edits": [
+        "Recepcionista.details.identification.name",
+        "Recepcionista.details.identification.docType",
+        "Recepcionista.details.identification.docId",
+        "Recepcionista.details.identification.countryCode",
+        "Recepcionista.details.person.privacyConsent"
+      ],
+      "selects": "",
+      "submits": []
+    },
+    "ownReceptionistActions": {
+      "reads": [
+        "Recepcionista.id",
+        "Recepcionista.version"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+        {
+          "intentId": "createOwnReceptionist",
+          "write": "Recepcionista.create"
+        },
+        {
+          "intentId": "updateOwnReceptionist",
+          "write": "Recepcionista.update"
+        }
+      ]
+    }
+  }
+}

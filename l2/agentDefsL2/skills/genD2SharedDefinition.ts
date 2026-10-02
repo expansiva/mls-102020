@@ -22,8 +22,8 @@ serve several submits only when their writes differ (create and update of the sa
 
 load returns the first page of each list. filter<List> reloads its list from the first page and
 loadMore<List> appends the next page; both call load<Key>, which returns only that list and its
-paging keys. Both set the same state that load sets for that list; no state takes load<Key> as
-source. Their params come from declared states, such as a state whose source is a filter
+paging keys. The state of each list already exists (fixedStates): its source is load.<key>, both
+functions set it, and you only describe it. No other state takes load.<key> or load<Key> as source. Their params come from declared states, such as a state whose source is a filter
 entry param, never from carries. A state whose source is a select entry param holds the
 selected item, resolved by that id in the loaded list. carries exist only on a navigate
 function and read a field of a selected item; an id carry is named <entity>Id. A navigate

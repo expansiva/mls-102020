@@ -4,6 +4,7 @@ import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 
 export interface D2Page11Category { categoryId: string; experiences?: { page11?: string; page21?: string } }
 export interface D2Page11MenuNode { id: string; kind: string; organisms?: Array<{ kind: string; text: string }>; children?: D2Page11MenuNode[] }
@@ -95,7 +96,13 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
   const currentNeeds = sources.needsPages.find(item => item.pageId === sources.pageId);
   if (!currentNeeds) add('D2_PAGE11_NEEDS_PAGE_MISSING', 'page11Needs', `Page ${sources.pageId} has no needs.json entry.`);
   else if (!currentNeeds.actors.includes(sources.actor)) add('D2_PAGE11_NEEDS_ACTOR', 'page11Needs', `Actor ${sources.actor} is absent from needs.json page ${sources.pageId}.`);
-  const pageWrites = new Set((currentNeeds?.writes ?? []).map(writeKey));
+  const keysOf = (writes: readonly D2Page11Write[], where: string): string[] => writes.flatMap(write => {
+    try { return [d2WriteKey(write)]; } catch (error) {
+      add('D2_PAGE11_TRANSITION_WITHOUT_REF', where, error instanceof Error ? error.message : String(error));
+      return [];
+    }
+  });
+  const pageWrites = new Set(keysOf(currentNeeds?.writes ?? [], 'page11Needs.writes'));
   const coveredWrites = new Set<string>();
   const intentIds = new Set<string>();
   for (const [id, organism] of Object.entries(definition.organisms)) {
@@ -119,7 +126,7 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
         if (!target) add('D2_PAGE11_NAVIGATE_PAGE', `organisms.${id}.intents.${intent.id}`, `Navigate target ${intent.to} is absent from the menu.`);
         else if (!actorsFor(sources.menu, target.path).has(sources.actor)) add('D2_PAGE11_NAVIGATE_ACTOR', `organisms.${id}.intents.${intent.id}`, `Actor ${sources.actor} cannot access target ${intent.to}.`);
         else {
-          const targetWrites = new Set((sources.needsPages.find(item => item.pageId === intent.to)?.writes ?? []).map(writeKey));
+          const targetWrites = new Set(keysOf(sources.needsPages.find(item => item.pageId === intent.to)?.writes ?? [], `needs.${intent.to}.writes`));
           const delegated = [...pageWrites].filter(write => targetWrites.has(write));
           for (const write of delegated) coveredWrites.add(write);
         }
@@ -133,6 +140,7 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
       else if (!granted(path, sources.actor, sources.access.grants)) add('D2_PAGE11_FIELD_GRANT', `page11Needs.organisms.${id}`, `Actor ${sources.actor} has no disclosure grant for ${path}.`);
     }
   }
+  issues.push(...d2Page11WriteDuplicates(draft));
   for (const write of pageWrites) if (!coveredWrites.has(write)) add('D2_PAGE11_WRITE_UNCOVERED', 'page11Needs.writes', `Write ${write} needs a submit or accessible navigate target declaring the write.`);
   for (const [id, choices] of Object.entries(definition.molecules)) {
     if (!definition.organisms[id]) add('D2_PAGE11_MOLECULE_ORGANISM', `molecules.${id}`, `Molecule target ${id} is absent.`);
@@ -141,6 +149,23 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
     }
   }
   if (sources.promptTokens !== undefined && (!Number.isSafeInteger(sources.promptTokens) || sources.promptTokens > 160000)) add('D2_PAGE11_PROMPT_LIMIT', 'promptTokens', `Decision prompt uses ${sources.promptTokens} tokens; maximum is 160000.`);
+  return issues;
+}
+
+/** One write, one submit: the form that edits the entity owns it; an actions organism does not repeat it. */
+export function d2Page11WriteDuplicates(draft: D2Page11Needs): D2Page11Issue[] {
+  const byWrite = new Map<string, string[]>();
+  for (const [id, unit] of Object.entries(draft.organisms)) {
+    for (const binding of unit.submits) byWrite.set(binding.write, [...(byWrite.get(binding.write) ?? []), id]);
+  }
+  const issues: D2Page11Issue[] = [];
+  for (const [write, owners] of byWrite) {
+    if (owners.length < 2) continue;
+    const entity = write.split('.')[0];
+    const form = owners.find(id => draft.organisms[id].edits.some(path => path.split('.')[0] === entity));
+    issues.push({ code: 'D2_PAGE11_WRITE_DUPLICATE', path: `page11Needs.organisms.${owners.join(',')}`,
+      message: `Write ${write} has a submit in ${owners.join(' and ')}. Keep one submit, in the organism that edits ${entity}${form ? ` (${form})` : ''}; the actions organism does not repeat it.` });
+  }
   return issues;
 }
 
@@ -154,7 +179,7 @@ export function gateD2Page11Pair(desktop: unknown, mobile: unknown): D2Page11Iss
   return issues;
 }
 
-function writeKey(write: D2Page11Write): string { return `${write.entity}.${write.operation === 'transition' && write.transitionRef ? write.transitionRef : write.operation}`; }
+
 function findPage(nodes: D2Page11MenuNode[], id: string, ancestors: string[] = []): { node: D2Page11MenuNode; path: string[] } | null {
   for (const node of nodes) {
     const path = [...ancestors, node.id];

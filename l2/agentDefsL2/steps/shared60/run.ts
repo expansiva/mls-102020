@@ -102,13 +102,16 @@ export function buildD2SharedPrompt(context: D2SharedContext, repair?: { diagnos
     pageId: context.input.pageId,
     entry: context.derived.entry,
     forms: context.derived.forms,
-    requests: context.derived.requests.map(request => ({ id: request.id, kind: request.kind, trigger: request.trigger, writes: request.writes, returns: request.returns, organisms: request.organisms })),
+    requests: context.derived.requests.map(request => ({ id: request.id, kind: request.kind, trigger: request.trigger, writes: request.writes, returns: request.returns,
+      returnEntities: request.returnEntities, lists: request.lists.map(list => ({ key: list.key, filter: list.filter, loadMore: list.loadMore, organismId: list.organismId })),
+      organisms: request.organisms })),
     ruleCandidates: context.derived.rules,
     ruleTexts: Object.fromEntries([...new Set(Object.values(context.derived.rules).flat())].map(id => [id, context.input.rules.rules[id] ?? ''])),
     access: { actors: context.derived.access.actors, grants: context.derived.access.grants },
     validSources: d2SharedValidSources(context.derived),
     commandReturnKeys: [...new Set(need.reads.map(read => read.entity[0].toLowerCase() + read.entity.slice(1)))],
-    fixedFunctions: Object.entries(sharedFromDerived(context.derived).functions).map(([id, fn]) => ({ id, ...(fn.calls ? { calls: fn.calls } : {}) })),
+    fixedFunctions: Object.entries(sharedFromDerived(context.derived).functions).map(([id, fn]) => ({ id, ...(fn.calls ? { calls: fn.calls } : {}), ...(fn.sets ? { sets: fn.sets } : {}) })),
+    fixedStates: Object.entries(sharedFromDerived(context.derived).states).map(([id, state]) => ({ id, source: state.source })),
     journeySteps: d2SharedJourneySteps(need, context.input.menu),
     page11: { desktop: pageOf('desktop'), mobile: pageOf('mobile') },
     readsAndEdits: { desktop: draftOf('desktop'), mobile: draftOf('mobile') },
@@ -149,10 +152,12 @@ export function applyD2SharedLlm(context: D2SharedContext, raw: D2SharedLlmRespo
     const current = functions[row.id];
     const calls = current?.calls ?? row.calls;
     const updates = row.updates ?? (calls && requests[calls]?.kind === 'cmd' ? requests[calls].returns : current?.updates);
+    // A fixed list function keeps the fixed list state; other functions take the answer's sets.
+    const sets = base.functions[row.id]?.sets ?? row.sets;
     functions[row.id] = {
       description: row.description,
       ...(calls ? { calls } : {}),
-      ...(row.sets ? { sets: row.sets } : current?.sets ? { sets: current.sets } : {}),
+      ...(sets ? { sets } : {}),
       ...(updates ? { updates } : {}),
       ...(row.navigate ? { navigate: row.navigate } : {}),
       ...(row.carries ? { carries: row.carries } : {}),
@@ -163,10 +168,14 @@ export function applyD2SharedLlm(context: D2SharedContext, raw: D2SharedLlmRespo
     if (!requests[row.requestId] || rules[row.requestId]) throw new Error(`D2_SHARED_RULES_REQUEST: ${row.requestId}`);
     rules[row.requestId] = [...new Set(row.rules)];
   }
-  const states: D2SharedV2Definition['states'] = {};
+  const states: D2SharedV2Definition['states'] = { ...base.states };
+  const answered = new Set<string>();
   for (const row of response.states) {
-    if (states[row.id]) throw new Error(`D2_SHARED_STATE_ID: ${row.id}`);
-    states[row.id] = { source: row.source, description: row.description };
+    if (answered.has(row.id)) throw new Error(`D2_SHARED_STATE_ID: ${row.id}`);
+    answered.add(row.id);
+    const fixed = base.states[row.id];
+    if (fixed && row.source !== fixed.source) throw new Error(`D2_SHARED_STATE_FIXED: ${row.id} is the fixed list state with source ${fixed.source}; keep that source.`);
+    states[row.id] = { source: fixed?.source ?? row.source, description: row.description };
   }
   return { ...base, forms, requests, states, functions, rules, journeys: response.journeys.map(row => ({
     step: row.step, organisms: row.organisms, functions: row.functions, ...(row.continuesIn ? { continuesIn: row.continuesIn } : {}),

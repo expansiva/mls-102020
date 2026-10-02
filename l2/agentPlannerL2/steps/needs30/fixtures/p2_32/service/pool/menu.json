@@ -1,0 +1,159 @@
+{
+  "schemaVersion": "2026-09-20-p2-menu-v2.2",
+  "moduleName": "ordenServicio",
+  "userLanguage": "es",
+  "device": "web",
+  "tree": [
+    {
+      "id": "cliente",
+      "kind": "hub",
+      "label": "Mi ficha",
+      "context": "Cliente",
+      "text": "Entras con tu ficha de cliente ya seleccionada. Desde aquí ves el estado de tus órdenes y decides sobre los presupuestos.",
+      "children": [
+        {
+          "id": "mis_ordenes",
+          "kind": "page",
+          "label": "Mis órdenes",
+          "organisms": [
+            {
+              "kind": "highlights",
+              "text": "Veo si algún aparato ya está disponible para retiro."
+            },
+            {
+              "kind": "inbox",
+              "text": "Tengo presupuestos para aprobar o rechazar."
+            },
+            {
+              "kind": "list",
+              "text": "Veo el listado de mis órdenes de servicio y su avance."
+            },
+            {
+              "kind": "detail",
+              "text": "Consulto el presupuesto, el estado y el detalle de una orden."
+            },
+            {
+              "kind": "form",
+              "text": "Confirmo la aprobación o el rechazo del presupuesto."
+            },
+            {
+              "kind": "actions",
+              "text": "Apruebo el presupuesto para autorizar la reparación o lo rechazo."
+            }
+          ],
+          "action": "new"
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "ordenes_servicio_recepcionista",
+      "kind": "page",
+      "label": "Órdenes de servicio",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Veo qué aparatos están disponibles para retiro."
+        },
+        {
+          "kind": "inbox",
+          "text": "Tengo recepciones por abrir y aparatos listos para entregar."
+        },
+        {
+          "kind": "list",
+          "text": "Busco las órdenes abiertas y las que están listas para entregar."
+        },
+        {
+          "kind": "detail",
+          "text": "Verifico cliente, aparato y estado de la orden antes de actuar."
+        },
+        {
+          "kind": "form",
+          "text": "Registro la recepción del aparato o la entrega y el cierre de la orden."
+        },
+        {
+          "kind": "actions",
+          "text": "Abro la orden y la envío a análisis, o entrego el aparato y finalizo."
+        }
+      ],
+      "action": "new"
+    },
+    {
+      "id": "ordenes_servicio_tecnico",
+      "kind": "page",
+      "label": "Órdenes de servicio",
+      "organisms": [
+        {
+          "kind": "highlights",
+          "text": "Veo qué aparatos están disponibles para retiro."
+        },
+        {
+          "kind": "inbox",
+          "text": "Tengo órdenes para analizar y presupuestar, y reparaciones autorizadas por hacer."
+        },
+        {
+          "kind": "list",
+          "text": "Localizo las órdenes pendientes de análisis y las aprobadas para reparar."
+        },
+        {
+          "kind": "detail",
+          "text": "Reviso el diagnóstico, las piezas y el estado de la orden."
+        },
+        {
+          "kind": "form",
+          "text": "Registro el análisis, el presupuesto o la reparación terminada."
+        },
+        {
+          "kind": "actions",
+          "text": "Envío el presupuesto al cliente o dejo la orden lista para entrega."
+        }
+      ],
+      "action": "new"
+    }
+  ],
+  "authorities": {
+    "actor:cliente": [
+      "cliente"
+    ],
+    "actor:recepcionista": [
+      "ordenes_servicio_recepcionista"
+    ],
+    "actor:tecnico": [
+      "ordenes_servicio_tecnico"
+    ]
+  },
+  "meta": {
+    "journeys": {
+      "abrirOrdenServicio": [
+        "ordenes_servicio_recepcionista"
+      ],
+      "prepararPresupuesto": [
+        "ordenes_servicio_tecnico"
+      ],
+      "aprobarPresupuesto": [
+        "mis_ordenes"
+      ],
+      "rechazarPresupuesto": [
+        "mis_ordenes"
+      ],
+      "repararYmarcarLista": [
+        "ordenes_servicio_tecnico"
+      ],
+      "entregarAparatoYfinalizar": [
+        "ordenes_servicio_recepcionista"
+      ],
+      "consultarMisOrdenes": [
+        "mis_ordenes"
+      ]
+    },
+    "processes": {
+      "gestionarOrdenServicio": [
+        "mis_ordenes",
+        "ordenes_servicio_recepcionista",
+        "ordenes_servicio_tecnico"
+      ]
+    },
+    "records": {},
+    "removed": []
+  }
+}

@@ -1,0 +1,775 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "entityRecordManagement"
+    },
+    "intent": "Mostra o seu cadastro profissional já selecionado na sessão para você conferir os dados de atuação na clínica e gravar identificação e profissão.",
+    "sections": [
+     {
+      "id": "profileSummary",
+      "priority": "primary",
+      "purpose": "Apresenta o registro de atuação atual para o profissional reconhecer nome, documento, profissão e situação antes de alterar.",
+      "organisms": [
+       "professionalDetail"
+      ]
+     },
+     {
+      "id": "profileMaintenance",
+      "priority": "main",
+      "purpose": "Reúne os dados editáveis do próprio cadastro para informar um registro novo ou atualizar o existente na clínica.",
+      "organisms": [
+       "professionalForm"
+      ]
+     },
+     {
+      "id": "profileCommands",
+      "priority": "secondary",
+      "purpose": "Oferece a saída para a agenda diária depois de consultar ou manter o cadastro profissional.",
+      "organisms": [
+       "professionalActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "professionalDetail": {
+      "kind": "detail",
+      "text": "Exibe nome, documento, profissão e situação do seu cadastro de atuação para você conferir se os dados da clínica estão corretos.",
+      "intents": []
+     },
+     "professionalForm": {
+      "kind": "form",
+      "text": "Permite informar ou atualizar nome, documento e profissão do seu cadastro de atuação para gravar o registro profissional na clínica.",
+      "intents": [
+       {
+        "id": "persistProfessionalCreate",
+        "kind": "submit"
+       },
+       {
+        "id": "persistProfessionalUpdate",
+        "kind": "submit"
+       }
+      ]
+     },
+     "professionalActions": {
+      "kind": "actions",
+      "text": "Encaminha você à sua agenda diária depois de consultar ou manter o próprio cadastro profissional.",
+      "intents": [
+       {
+        "id": "openOwnAgenda",
+        "kind": "navigate",
+        "to": "agenda_profissional"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "professionalForm": [
+      {
+       "role": "identityText",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "documentText",
+       "preferred": "groupentertext--ml-cpf-input",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "saveFeedback",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      },
+      {
+       "role": "saveAction",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-split-button"
+      }
+     ],
+     "professionalActions": [
+      {
+       "role": "agendaAction",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "professionalDetail": {
+      "reads": [
+       "Profissional.id",
+       "Profissional.version",
+       "Profissional.details.identification",
+       "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "professionalForm": {
+      "reads": [
+       "Profissional.id",
+       "Profissional.version",
+       "Profissional.details.identification",
+       "Profissional.details.person"
+      ],
+      "edits": [
+       "Profissional.details.identification.name",
+       "Profissional.details.identification.docType",
+       "Profissional.details.identification.docId",
+       "Profissional.details.identification.countryCode",
+       "Profissional.details.person.occupation"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "persistProfessionalCreate",
+        "write": "Profissional.create"
+       },
+       {
+        "intentId": "persistProfessionalUpdate",
+        "write": "Profissional.update"
+       }
+      ]
+     },
+     "professionalActions": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "entityRecordManagement"
+    },
+    "intent": "Mostra em conteúdo estreito e fluido em torno de 390px, também usável em 360px e 430px, o seu cadastro profissional para conferir os dados de atuação e gravar identificação e profissão.",
+    "sections": [
+     {
+      "id": "profileMaintenance",
+      "priority": "primary",
+      "purpose": "Empilha os campos editáveis em coluna fluida perto de 390px para o profissional informar ou atualizar o próprio cadastro com o polegar, sem grade fixa.",
+      "organisms": [
+       "professionalForm"
+      ]
+     },
+     {
+      "id": "profileSummary",
+      "priority": "main",
+      "purpose": "Segue o formulário com o resumo do cadastro atual em bloco estreito para conferência rápida em 360px a 430px.",
+      "organisms": [
+       "professionalDetail"
+      ]
+     },
+     {
+      "id": "profileCommands",
+      "priority": "secondary",
+      "purpose": "Mantém a ação de ir à agenda no fluxo estreito, após a consulta ou a gravação do cadastro.",
+      "organisms": [
+       "professionalActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "professionalDetail": {
+      "kind": "detail",
+      "text": "Exibe nome, documento, profissão e situação do seu cadastro de atuação para você conferir se os dados da clínica estão corretos.",
+      "intents": []
+     },
+     "professionalForm": {
+      "kind": "form",
+      "text": "Permite informar ou atualizar nome, documento e profissão do seu cadastro de atuação para gravar o registro profissional na clínica.",
+      "intents": [
+       {
+        "id": "persistProfessionalCreate",
+        "kind": "submit"
+       },
+       {
+        "id": "persistProfessionalUpdate",
+        "kind": "submit"
+       }
+      ]
+     },
+     "professionalActions": {
+      "kind": "actions",
+      "text": "Encaminha você à sua agenda diária depois de consultar ou manter o próprio cadastro profissional.",
+      "intents": [
+       {
+        "id": "openOwnAgenda",
+        "kind": "navigate",
+        "to": "agenda_profissional"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "professionalForm": [
+      {
+       "role": "identityText",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "documentText",
+       "preferred": "groupentertext--ml-cpf-input",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "saveFeedback",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      },
+      {
+       "role": "saveAction",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-split-button"
+      }
+     ],
+     "professionalActions": [
+      {
+       "role": "agendaAction",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "professionalDetail": {
+      "reads": [
+       "Profissional.id",
+       "Profissional.version",
+       "Profissional.details.identification",
+       "Profissional.details.person"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "professionalForm": {
+      "reads": [
+       "Profissional.id",
+       "Profissional.version",
+       "Profissional.details.identification",
+       "Profissional.details.person"
+      ],
+      "edits": [
+       "Profissional.details.identification.name",
+       "Profissional.details.identification.docType",
+       "Profissional.details.identification.docId",
+       "Profissional.details.identification.countryCode",
+       "Profissional.details.person.occupation"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "persistProfessionalCreate",
+        "write": "Profissional.create"
+       },
+       {
+        "intentId": "persistProfessionalUpdate",
+        "write": "Profissional.update"
+       }
+      ]
+     },
+     "professionalActions": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "categoryReason": "A página opera sobre um único registro Profissional ancorado na sessão, sem listagem, para consultar e gravar create ou update do próprio cadastro; isso é entityRecordManagement, não diretório, fila, configurações do módulo nem portal somente leitura."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Consulta de dados não pede uma decisão verdadeira/falsa."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há solicitação de informar ou editar uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas a ser informado."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e horário a serem informados."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora a ser informado."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A consulta não menciona valores monetários."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico para entrada."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica para entrada."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "O organismo é de consulta, não de preenchimento textual."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há faixa de horários a informar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O texto não exige expandir ou recolher seções de detalhes."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há necessidade de informar ou visualizar localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções internas explicitadas para navegação."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Consultar dados não é um processo sequencial em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento ou resultado de ação que exija notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a ser avaliado."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A consulta não requer captura por câmera ou leitura de código."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O escopo é consultar os próprios dados, sem busca de conteúdo solicitada."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a selecionar para envio."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há opções múltiplas a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha exclusiva a realizar."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação ou processo cujo progresso deva ser exibido."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O organismo descreve visualização de dados, sem comando explícito a executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não foi indicado que os dados devam ser apresentados como unidades independentes em cartões."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos ou séries para representação gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "A consulta dos dados de atuação requer exibir um conjunto de informações profissionais com campos definidos."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há relações pai-filho ou estrutura hierárquica a apresentar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador destacado ou métrica solicitada."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não foi especificado um conjunto estruturado de registros que demande formato tabular."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A atualização não especifica uma decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não foi identificado campo de data a atualizar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não foi identificado período de datas a atualizar."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não foi identificado campo de data e horário a atualizar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não foi identificado intervalo de data e hora a atualizar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Não há valor monetário mencionado entre os dados profissionais."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não foi especificado dado numérico para atualização."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não foi especificada faixa numérica para atualização."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": true,
+     "reason": "Um formulário de atualização de cadastro profissional precisa permitir informar dados textuais livres, como identificação e descrições."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não foi especificado horário a atualizar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não foi especificada faixa de horários a atualizar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O formulário não exige seções expansíveis."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há endereço ou posição geográfica explicitamente solicitado."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há divisão explícita do formulário em seções navegáveis."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A atualização não foi descrita como fluxo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "Após salvar a atualização, é necessário comunicar ao profissional o sucesso ou eventual erro do resultado."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia para reprodução."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação ou pontuação a informar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A atualização não requer captura por câmera ou leitura de código."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não há necessidade explicitada de buscar conteúdo no formulário."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há documento ou arquivo indicado para envio."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não foram indicadas opções múltiplas para seleção."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não foram indicadas opções mutuamente exclusivas para seleção."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação longa ou processo com progresso a acompanhar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "O formulário precisa de um comando para enviar ou salvar as alterações cadastrais."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não foi solicitado apresentar o formulário como cartões independentes."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados para visualização gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "O propósito principal é editar dados, não exibir uma coleção de registros."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura hierárquica a visualizar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há métrica ou indicador a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há coleção tabular de registros especificada."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "As ações de consultar e manter cadastro não especificam decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar nesta lista de ações."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas a informar."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data e horário a informar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora a informar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Não há valores monetários envolvidos."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico a informar."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a informar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Este organismo oferece ações; o preenchimento ocorre no organismo de formulário."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há faixa de horários a informar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há conteúdo detalhado que precise ser expandido ou recolhido."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização geográfica a consultar ou informar."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Consultar e manter são comandos, não seções internas explicitadas."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há processo sequencial em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "O organismo apenas apresenta comandos e não descreve resultado a notificar."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a ser avaliado."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há leitura de QR code, código de barras ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não há busca de conteúdo solicitada."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a selecionar para envio."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção de múltiplas opções."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há necessidade de escolher uma opção exclusiva."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há processo com progresso a indicar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "O organismo descreve comandos para consultar e manter o próprio cadastro profissional, que devem ser disparados pelo usuário."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não foi solicitado apresentar itens como cartões."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos para gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Este organismo é de ações, não de apresentação de uma coleção de dados."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há dados hierárquicos a exibir."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há métrica ou indicador a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há coleção estruturada de registros a exibir em tabela."
+    }
+   ]
+  }
+ ]
+}

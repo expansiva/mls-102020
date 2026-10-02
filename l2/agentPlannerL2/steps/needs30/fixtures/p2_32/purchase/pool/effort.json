@@ -1,0 +1,722 @@
+{
+  "schemaVersion": "2026-09-21-p2-effort-v1.2",
+  "moduleName": "compras",
+  "device": "web",
+  "totals": {
+    "screens": {
+      "toCreate": 4,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "endpoints": {
+      "toCreate": 23,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "usecases": {
+      "toCreate": 14,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    },
+    "tables": {
+      "toCreate": 4,
+      "toUpdate": 0,
+      "toRemove": 0,
+      "done": 0
+    }
+  },
+  "screens": [
+    {
+      "pageId": "pedidos_de_compra_comprador",
+      "label": "Pedidos de compra",
+      "actors": [
+        "comprador"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "compras.pedidos_de_compra_comprador.cmdCreatePurchaseOrder",
+        "compras.pedidos_de_compra_comprador.cmdSendPurchaseOrder",
+        "compras.pedidos_de_compra_comprador.qryListBuyer",
+        "compras.pedidos_de_compra_comprador.qryListProduct",
+        "compras.pedidos_de_compra_comprador.qryListPurchaseOrder",
+        "compras.pedidos_de_compra_comprador.qryListSupplier",
+        "compras.pedidos_de_compra_comprador.qryListSupplierOffering"
+      ]
+    },
+    {
+      "pageId": "fornecedores_e_condicoes",
+      "label": "Fornecedores e condições",
+      "actors": [
+        "comprador"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "compras.fornecedores_e_condicoes.cmdCreateSupplier",
+        "compras.fornecedores_e_condicoes.cmdCreateSupplierOffering",
+        "compras.fornecedores_e_condicoes.qryListBuyer",
+        "compras.fornecedores_e_condicoes.qryListProduct",
+        "compras.fornecedores_e_condicoes.qryListPurchaseOrder",
+        "compras.fornecedores_e_condicoes.qryListSupplier",
+        "compras.fornecedores_e_condicoes.qryListSupplierContact",
+        "compras.fornecedores_e_condicoes.qryListSupplierOffering"
+      ]
+    },
+    {
+      "pageId": "pedidos_de_compra_gerente",
+      "label": "Pedidos de compra",
+      "actors": [
+        "gerenteCompras"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "compras.pedidos_de_compra_gerente.cmdDecidePurchaseOrder",
+        "compras.pedidos_de_compra_gerente.qryListProduct",
+        "compras.pedidos_de_compra_gerente.qryListPurchaseOrder",
+        "compras.pedidos_de_compra_gerente.qryListPurchaseOrderDashboard",
+        "compras.pedidos_de_compra_gerente.qryListSupplier"
+      ]
+    },
+    {
+      "pageId": "recebimentos_de_pedidos",
+      "label": "Recebimentos de pedidos",
+      "actors": [
+        "almoxarife"
+      ],
+      "status": "toCreate",
+      "endpoints": [
+        "compras.recebimentos_de_pedidos.cmdCreateGoodsReceipt",
+        "compras.recebimentos_de_pedidos.qryListGoodsReceipt",
+        "compras.recebimentos_de_pedidos.qryListPurchaseOrder"
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "route": "compras.fornecedores_e_condicoes.cmdCreateSupplier",
+      "page": "fornecedores_e_condicoes",
+      "kind": "cmd",
+      "usecaseRef": "createSupplier",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.fornecedores_e_condicoes.cmdCreateSupplierOffering",
+      "page": "fornecedores_e_condicoes",
+      "kind": "cmd",
+      "usecaseRef": "createSupplierOffering",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.fornecedores_e_condicoes.qryListBuyer",
+      "page": "fornecedores_e_condicoes",
+      "kind": "qry",
+      "usecaseRef": "listBuyer",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.fornecedores_e_condicoes.qryListProduct",
+      "page": "fornecedores_e_condicoes",
+      "kind": "qry",
+      "usecaseRef": "listProduct",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.fornecedores_e_condicoes.qryListPurchaseOrder",
+      "page": "fornecedores_e_condicoes",
+      "kind": "qry",
+      "usecaseRef": "listPurchaseOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.fornecedores_e_condicoes.qryListSupplier",
+      "page": "fornecedores_e_condicoes",
+      "kind": "qry",
+      "usecaseRef": "listSupplier",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.fornecedores_e_condicoes.qryListSupplierContact",
+      "page": "fornecedores_e_condicoes",
+      "kind": "qry",
+      "usecaseRef": "listSupplierContact",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.fornecedores_e_condicoes.qryListSupplierOffering",
+      "page": "fornecedores_e_condicoes",
+      "kind": "qry",
+      "usecaseRef": "listSupplierOffering",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_comprador.cmdCreatePurchaseOrder",
+      "page": "pedidos_de_compra_comprador",
+      "kind": "cmd",
+      "usecaseRef": "createPurchaseOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_comprador.cmdSendPurchaseOrder",
+      "page": "pedidos_de_compra_comprador",
+      "kind": "cmd",
+      "usecaseRef": "sendPurchaseOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_comprador.qryListBuyer",
+      "page": "pedidos_de_compra_comprador",
+      "kind": "qry",
+      "usecaseRef": "listBuyer",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_comprador.qryListProduct",
+      "page": "pedidos_de_compra_comprador",
+      "kind": "qry",
+      "usecaseRef": "listProduct",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_comprador.qryListPurchaseOrder",
+      "page": "pedidos_de_compra_comprador",
+      "kind": "qry",
+      "usecaseRef": "listPurchaseOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_comprador.qryListSupplier",
+      "page": "pedidos_de_compra_comprador",
+      "kind": "qry",
+      "usecaseRef": "listSupplier",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_comprador.qryListSupplierOffering",
+      "page": "pedidos_de_compra_comprador",
+      "kind": "qry",
+      "usecaseRef": "listSupplierOffering",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_gerente.cmdDecidePurchaseOrder",
+      "page": "pedidos_de_compra_gerente",
+      "kind": "cmd",
+      "usecaseRef": "decidePurchaseOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_gerente.qryListProduct",
+      "page": "pedidos_de_compra_gerente",
+      "kind": "qry",
+      "usecaseRef": "listProduct",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_gerente.qryListPurchaseOrder",
+      "page": "pedidos_de_compra_gerente",
+      "kind": "qry",
+      "usecaseRef": "listPurchaseOrder",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_gerente.qryListPurchaseOrderDashboard",
+      "page": "pedidos_de_compra_gerente",
+      "kind": "qry",
+      "usecaseRef": "listPurchaseOrderDashboard",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.pedidos_de_compra_gerente.qryListSupplier",
+      "page": "pedidos_de_compra_gerente",
+      "kind": "qry",
+      "usecaseRef": "listSupplier",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.recebimentos_de_pedidos.cmdCreateGoodsReceipt",
+      "page": "recebimentos_de_pedidos",
+      "kind": "cmd",
+      "usecaseRef": "createGoodsReceipt",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.recebimentos_de_pedidos.qryListGoodsReceipt",
+      "page": "recebimentos_de_pedidos",
+      "kind": "qry",
+      "usecaseRef": "listGoodsReceipt",
+      "status": "toCreate"
+    },
+    {
+      "route": "compras.recebimentos_de_pedidos.qryListPurchaseOrder",
+      "page": "recebimentos_de_pedidos",
+      "kind": "qry",
+      "usecaseRef": "listPurchaseOrder",
+      "status": "toCreate"
+    }
+  ],
+  "usecases": [
+    {
+      "usecaseId": "createGoodsReceipt",
+      "entity": "GoodsReceipt",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createPurchaseOrder",
+      "entity": "PurchaseOrder",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createSupplier",
+      "entity": "Supplier",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "createSupplierOffering",
+      "entity": "SupplierOffering",
+      "operation": "create",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "decidePurchaseOrder",
+      "entity": "PurchaseOrder",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listBuyer",
+      "entity": "Buyer",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listGoodsReceipt",
+      "entity": "GoodsReceipt",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listProduct",
+      "entity": "Product",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listPurchaseOrder",
+      "entity": "PurchaseOrder",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listPurchaseOrderDashboard",
+      "entity": "PurchaseOrderDashboard",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listSupplier",
+      "entity": "Supplier",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listSupplierContact",
+      "entity": "SupplierContact",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "listSupplierOffering",
+      "entity": "SupplierOffering",
+      "operation": "list",
+      "status": "toCreate",
+      "existing": ""
+    },
+    {
+      "usecaseId": "sendPurchaseOrder",
+      "entity": "PurchaseOrder",
+      "operation": "transition",
+      "status": "toCreate",
+      "existing": ""
+    }
+  ],
+  "tables": [
+    {
+      "tableId": "goodsReceipt",
+      "entity": "GoodsReceipt",
+      "status": "toCreate"
+    },
+    {
+      "tableId": "purchaseOrder",
+      "entity": "PurchaseOrder",
+      "status": "toCreate"
+    },
+    {
+      "tableId": "purchaseOrderDashboard",
+      "entity": "PurchaseOrderDashboard",
+      "status": "toCreate"
+    },
+    {
+      "tableId": "supplierOffering",
+      "entity": "SupplierOffering",
+      "status": "toCreate"
+    }
+  ],
+  "removed": [],
+  "testSupport": [
+    {
+      "id": "data:GoodsReceipt",
+      "actorRefs": [
+        "almoxarife"
+      ],
+      "entityRefs": [
+        "GoodsReceipt",
+        "PurchaseOrder"
+      ],
+      "sourceRefs": [
+        "grant:almoxarifeRecebimentos",
+        "journey:registrarRecebimentoPedido/inspecionarItensDoPedido",
+        "journey:registrarRecebimentoPedido/localizarPedidoParaRecebimento",
+        "journey:registrarRecebimentoPedido/registrarRecebimento",
+        "relationship:GoodsReceipt/goodsReceiptPurchaseOrder",
+        "relationship:PurchaseOrder/goodsReceiptPurchaseOrder"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes goodsReceipt rows by execution id"
+    },
+    {
+      "id": "data:PurchaseOrder",
+      "actorRefs": [
+        "almoxarife",
+        "comprador",
+        "gerenteCompras"
+      ],
+      "entityRefs": [
+        "PurchaseOrder",
+        "Supplier"
+      ],
+      "sourceRefs": [
+        "grant:almoxarifeRecebimentos",
+        "grant:compradorPedidosDeCompra",
+        "grant:gerentePedidosDeCompra",
+        "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+        "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+        "journey:acompanharIndicadoresDeCompras/consultarPedidosDeCompra",
+        "journey:acompanharIndicadoresDeCompras/inspecionarIndicadoresDePedidos",
+        "journey:cadastrarFornecedor/cadastrarFornecedor",
+        "journey:cadastrarFornecedor/localizarProduto",
+        "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+        "journey:decidirPedidoAcimaDoLimite/inspecionarPedidoCompra",
+        "journey:decidirPedidoAcimaDoLimite/localizarPedidoPendente",
+        "journey:decidirPedidoAcimaDoLimite/registrarDecisaoDoPedido",
+        "journey:registrarRecebimentoPedido/inspecionarItensDoPedido",
+        "journey:registrarRecebimentoPedido/localizarPedidoParaRecebimento",
+        "journey:registrarRecebimentoPedido/registrarRecebimento",
+        "ontology:PurchaseOrder/lifecycleStates/draft",
+        "ontology:PurchaseOrder/lifecycleStates/sent",
+        "relationship:GoodsReceipt/goodsReceiptPurchaseOrder",
+        "relationship:PurchaseOrder/goodsReceiptPurchaseOrder",
+        "relationship:PurchaseOrder/purchaseOrderSupplier",
+        "relationship:Supplier/purchaseOrderSupplier"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes purchaseOrder rows by execution id"
+    },
+    {
+      "id": "data:PurchaseOrderDashboard",
+      "actorRefs": [
+        "gerenteCompras"
+      ],
+      "entityRefs": [
+        "PurchaseOrderDashboard"
+      ],
+      "sourceRefs": [
+        "grant:gerenteIndicadoresDeCompras",
+        "organism:highlights"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes purchaseOrderDashboard rows by execution id"
+    },
+    {
+      "id": "data:SupplierOffering",
+      "actorRefs": [
+        "comprador"
+      ],
+      "entityRefs": [
+        "Buyer",
+        "Product",
+        "Supplier",
+        "SupplierOffering"
+      ],
+      "sourceRefs": [
+        "grant:compradorCondicoesProprias",
+        "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+        "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+        "journey:cadastrarFornecedor/cadastrarFornecedor",
+        "journey:cadastrarFornecedor/localizarProduto",
+        "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+        "relationship:Buyer/supplierOfferingBuyer",
+        "relationship:Product/supplierOfferingProduct",
+        "relationship:Supplier/supplierOfferingSupplier",
+        "relationship:Supplier/supplierSuppliesProduct",
+        "relationship:SupplierOffering/supplierOfferingBuyer",
+        "relationship:SupplierOffering/supplierOfferingProduct",
+        "relationship:SupplierOffering/supplierOfferingSupplier"
+      ],
+      "status": "toCreate",
+      "owner": "L1",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "FIXTURE_EXECUTOR_UNREFERENCED: no L1 fixture executor creates and removes supplierOffering rows by execution id"
+    },
+    {
+      "id": "identity:almoxarife",
+      "actorRefs": [
+        "almoxarife"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/almoxarife",
+        "grant:almoxarifeRecebimentos",
+        "journey:registrarRecebimentoPedido/inspecionarItensDoPedido",
+        "journey:registrarRecebimentoPedido/localizarPedidoParaRecebimento",
+        "journey:registrarRecebimentoPedido/registrarRecebimento",
+        "relationship:GoodsReceipt/goodsReceiptPurchaseOrder",
+        "relationship:PurchaseOrder/goodsReceiptPurchaseOrder"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor almoxarife declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "identity:comprador",
+      "actorRefs": [
+        "comprador"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/comprador",
+        "grant:compradorCadastrosDeCompra",
+        "grant:compradorCondicoesProprias",
+        "grant:compradorPedidosDeCompra",
+        "grant:compradorPerfilProprio",
+        "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+        "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+        "journey:cadastrarFornecedor/cadastrarFornecedor",
+        "journey:cadastrarFornecedor/localizarProduto",
+        "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+        "relationship:Buyer/supplierOfferingBuyer",
+        "relationship:Product/supplierOfferingProduct",
+        "relationship:Product/supplierSuppliesProduct",
+        "relationship:PurchaseOrder/purchaseOrderSupplier",
+        "relationship:Supplier/purchaseOrderSupplier",
+        "relationship:Supplier/supplierHasContact",
+        "relationship:Supplier/supplierOfferingSupplier",
+        "relationship:Supplier/supplierSuppliesProduct",
+        "relationship:SupplierContact/supplierHasContact",
+        "relationship:SupplierOffering/supplierOfferingBuyer",
+        "relationship:SupplierOffering/supplierOfferingProduct",
+        "relationship:SupplierOffering/supplierOfferingSupplier"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor comprador declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "identity:gerenteCompras",
+      "actorRefs": [
+        "gerenteCompras"
+      ],
+      "entityRefs": [],
+      "sourceRefs": [
+        "access:actors/gerenteCompras",
+        "grant:gerenteIndicadoresDeCompras",
+        "grant:gerentePedidosDeCompra",
+        "journey:acompanharIndicadoresDeCompras/consultarPedidosDeCompra",
+        "journey:acompanharIndicadoresDeCompras/inspecionarIndicadoresDePedidos",
+        "journey:decidirPedidoAcimaDoLimite/inspecionarPedidoCompra",
+        "journey:decidirPedidoAcimaDoLimite/localizarPedidoPendente",
+        "journey:decidirPedidoAcimaDoLimite/registrarDecisaoDoPedido",
+        "organism:highlights",
+        "relationship:Product/supplierSuppliesProduct",
+        "relationship:PurchaseOrder/purchaseOrderSupplier",
+        "relationship:Supplier/purchaseOrderSupplier",
+        "relationship:Supplier/supplierSuppliesProduct"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "PERSON_ENTITY_UNDECLARED: actor gerenteCompras declares no personEntity; the test identity cannot be bound"
+    },
+    {
+      "id": "mdm:Buyer",
+      "actorRefs": [
+        "comprador"
+      ],
+      "entityRefs": [
+        "Buyer"
+      ],
+      "sourceRefs": [
+        "grant:compradorPerfilProprio",
+        "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+        "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+        "journey:cadastrarFornecedor/cadastrarFornecedor",
+        "journey:cadastrarFornecedor/localizarProduto",
+        "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+        "ontology:SupplierOffering/relationships",
+        "relationship:Buyer/supplierOfferingBuyer",
+        "relationship:SupplierOffering/supplierOfferingBuyer"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes Buyer records by execution id"
+    },
+    {
+      "id": "mdm:Product",
+      "actorRefs": [
+        "comprador",
+        "gerenteCompras"
+      ],
+      "entityRefs": [
+        "Product"
+      ],
+      "sourceRefs": [
+        "grant:compradorCadastrosDeCompra",
+        "grant:gerentePedidosDeCompra",
+        "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+        "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+        "journey:acompanharIndicadoresDeCompras/consultarPedidosDeCompra",
+        "journey:acompanharIndicadoresDeCompras/inspecionarIndicadoresDePedidos",
+        "journey:cadastrarFornecedor/cadastrarFornecedor",
+        "journey:cadastrarFornecedor/localizarProduto",
+        "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+        "journey:decidirPedidoAcimaDoLimite/inspecionarPedidoCompra",
+        "journey:decidirPedidoAcimaDoLimite/localizarPedidoPendente",
+        "journey:decidirPedidoAcimaDoLimite/registrarDecisaoDoPedido",
+        "ontology:SupplierOffering/relationships",
+        "relationship:Product/supplierOfferingProduct",
+        "relationship:Product/supplierSuppliesProduct",
+        "relationship:Supplier/purchaseOrderSupplier",
+        "relationship:Supplier/supplierSuppliesProduct",
+        "relationship:SupplierOffering/supplierOfferingProduct"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes Product records by execution id"
+    },
+    {
+      "id": "mdm:Supplier",
+      "actorRefs": [
+        "comprador",
+        "gerenteCompras"
+      ],
+      "entityRefs": [
+        "Supplier"
+      ],
+      "sourceRefs": [
+        "grant:compradorCadastrosDeCompra",
+        "grant:gerentePedidosDeCompra",
+        "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+        "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+        "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+        "journey:acompanharIndicadoresDeCompras/consultarPedidosDeCompra",
+        "journey:acompanharIndicadoresDeCompras/inspecionarIndicadoresDePedidos",
+        "journey:cadastrarFornecedor/cadastrarFornecedor",
+        "journey:cadastrarFornecedor/localizarProduto",
+        "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+        "journey:decidirPedidoAcimaDoLimite/inspecionarPedidoCompra",
+        "journey:decidirPedidoAcimaDoLimite/localizarPedidoPendente",
+        "journey:decidirPedidoAcimaDoLimite/registrarDecisaoDoPedido",
+        "ontology:PurchaseOrder/relationships",
+        "ontology:SupplierOffering/relationships",
+        "relationship:Product/supplierSuppliesProduct",
+        "relationship:PurchaseOrder/purchaseOrderSupplier",
+        "relationship:Supplier/purchaseOrderSupplier",
+        "relationship:Supplier/supplierHasContact",
+        "relationship:Supplier/supplierOfferingSupplier",
+        "relationship:Supplier/supplierSuppliesProduct",
+        "relationship:SupplierContact/supplierHasContact",
+        "relationship:SupplierOffering/supplierOfferingSupplier"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes Supplier records by execution id"
+    },
+    {
+      "id": "mdm:SupplierContact",
+      "actorRefs": [
+        "comprador"
+      ],
+      "entityRefs": [
+        "SupplierContact"
+      ],
+      "sourceRefs": [
+        "grant:compradorCadastrosDeCompra",
+        "journey:cadastrarFornecedor/cadastrarFornecedor",
+        "journey:cadastrarFornecedor/localizarProduto",
+        "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+        "relationship:Supplier/supplierHasContact",
+        "relationship:SupplierContact/supplierHasContact"
+      ],
+      "status": "toCreate",
+      "owner": "runtime",
+      "executorRef": "",
+      "cleanupRef": "",
+      "gap": "RUNTIME_MDM_FIXTURE_UNREFERENCED: no verified runtime capability provisions and removes SupplierContact records by execution id"
+    }
+  ],
+  "unattributed": [],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "sourceBackend": "pool/l2/web/backend.json",
+    "sourceVersion": "2026-09-21-p1-backend-v1.2",
+    "generatedAt": "2026-10-02T16:05:08.817Z"
+  }
+}

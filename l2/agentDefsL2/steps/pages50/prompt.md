@@ -12,8 +12,8 @@ For a submit, to is empty. For navigate, to is an accessible page id from the me
 
 The needs draft is internal: every organism has reads, edits, selects and submits. Field paths
 must exist in ontology and be disclosed by the actor's grants. selects is a target organism id
-or empty. Every submit intent has a matching intentId and an Entity.operation write declared in
-the page needs. Cover every page write with a submit or a navigate to an accessible page that
+or empty. Every submit intent has a matching intentId and its write is one key of
+page.writeKeys (a transition is Entity.<transitionId>). Cover every page write with a submit or a navigate to an accessible page that
 declares the same write. Do not invent writes, fields, routes or permissions.
 
 Molecule recommendations are by organism and role. Preferred and optional alternative must

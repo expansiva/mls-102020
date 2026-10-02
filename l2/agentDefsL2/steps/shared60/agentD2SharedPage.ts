@@ -2,6 +2,8 @@
 
 import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readJson, readSourceText, writeJson } from '/_102035_/l2/solution/fs.js';
+import { d2SharedNavigablePages } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { d2LlmModelOf, d2LlmResponseInfo, recordD2LlmResponse, recordD2LlmVerdict, type D2LlmResponseRecord } from '/_102020_/l2/helpers/llmResponses.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
 import { D2_SHARED_PAGE_AGENT_NAME, markD2StepApproved, moduleTokenOk, readD2Pipeline } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
@@ -10,7 +12,7 @@ import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs
 import type { D2PageRequestsCategory, D2PageRequestsInput, D2PageRequestsSibling } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import {
-  approveD2SharedUnit, buildD2SharedContext, buildD2SharedPrompt, d2SharedRefusal, d2SharedRefusedMessage, draftFile, page11File, readD2SharedReceipt,
+  approveD2SharedUnit, buildD2SharedContext, buildD2SharedPrompt, d2SharedJourneySteps, d2SharedRefusal, d2SharedRefusedMessage, draftFile, page11File, readD2SharedReceipt,
   readD2SharedRefusal, receiptInfo, settleD2Shared, sharedInfo, sharedUnitInputHash, D2_SHARED_VERSION,
   type D2SharedContext, type D2SharedSettlePort, type D2SharedLlmResponse, type D2SharedReceipt,
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
@@ -138,7 +140,7 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
     const built = buildD2SharedPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
     return [{ type: 'prompt_ready', args: step.prompt || '', messageId: context.message.orderAt, threadId: context.message.threadId,
       taskId: context.task?.PK || '', hookSequential, parentStepId: parentStep.stepId, systemPrompt: built.systemPrompt, humanPrompt: built.humanPrompt,
-      tools: [{ type: 'function', function: { name: 'submitD2Shared', description: 'Define states, functions, journeys, command returns and request rules for one shared page', parameters: sharedSchema } }],
+      tools: [{ type: 'function', function: { name: 'submitD2Shared', description: 'Define states, functions, journeys, command returns and request rules for one shared page', parameters: sharedSchemaFor(data) } }],
       toolChoice: { type: 'function', function: { name: 'submitD2Shared' } } }];
   } catch (error) {
     let args: Args;
@@ -150,13 +152,23 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
 export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number): Promise<mls.msg.AgentIntent[]> {
   const args = parseArgs(step.prompt || '');
   let response: unknown;
+  let recorded: { info: ReturnType<typeof d2LlmResponseInfo>; record: D2LlmResponseRecord } | undefined;
   try {
-    response = toolPayload(step.interaction?.payload?.[0], 'submitD2Shared');
     const data = await contextFor(args);
     const built = buildD2SharedPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
+    // The raw answer is kept before anything reads it (d2_69).
+    const info = d2LlmResponseInfo(args.project, `${args.module}/pipeline/agentDefsL2/shared60/responses`, args.pageId, String(args.attempt));
+    recorded = { info, record: await recordD2LlmResponse(info, { attempt: String(args.attempt), model: d2LlmModelOf(step), promptChars: built.chars, receivedAt: new Date().toISOString(), raw: step.interaction?.payload?.[0] ?? null }) };
+    response = toolPayload(step.interaction?.payload?.[0], 'submitD2Shared');
     await approveD2SharedUnit(data, response as D2SharedLlmResponse, built.chars, args.diagnostic ? built.chars : args.repairPromptChars ?? 0);
+    await recordD2LlmVerdict(recorded.info, recorded.record, 'accepted');
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
+    if (diagnostic.startsWith('D2_LLM_RESPONSE_RECORD_FAILED')) return [updateD2Status(context, parentStep, step, hookSequential, 'failed', diagnostic)];
+    if (recorded) {
+      try { await recordD2LlmVerdict(recorded.info, recorded.record, diagnostic); }
+      catch (recordError) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', recordError instanceof Error ? recordError.message : String(recordError))]; }
+    }
     if (args.attempt === 1) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `One repair scheduled for ${args.pageId}: ${diagnostic}`)];
     return refuse(context, parentStep, step, hookSequential, args, `D2_SHARED_REPAIR_LIMIT: ${diagnostic}`);
@@ -189,6 +201,32 @@ async function finish(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIA
 function next(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, args: Args): mls.msg.AgentIntentAddStep {
   return addD2Step(context, parentStep.stepId, { type: 'agent', stepId: 0, interaction: null, stepTitle: `Shared ${args.pageId}`, status: 'waiting_human_input', nextSteps: [], agentName: D2_SHARED_PAGE_AGENT_NAME,
     prompt: JSON.stringify(args), rags: [], planning: { planId: `shared60-${args.pageId}-${args.attempt}`, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' } } as mls.msg.AIAgentStep);
+}
+
+/** Choices inside lists the code knows become enums of the tool schema (d2_67); an empty list keeps the field free and the gate decides. */
+export function sharedSchemaFor(data: D2SharedContext): Record<string, unknown> {
+  const schema = structuredClone(sharedSchema) as { properties: Record<string, { items: { properties: Record<string, Record<string, unknown>> } }> };
+  const limit = (field: Record<string, unknown>, values: readonly string[]) => { if (values.length) field.enum = [...new Set(values)]; };
+  const fields = (name: string) => schema.properties[name].items.properties;
+  const requests = data.derived.requests;
+  const commands = requests.filter(item => item.kind === 'cmd').map(item => item.id);
+  const need = data.input.needsPages.find(item => item.pageId === data.input.pageId);
+  const menuPages: string[] = [];
+  const walk = (nodes: typeof data.input.menu.tree): void => { for (const node of nodes) { if (node.kind === 'page') menuPages.push(node.id); walk(node.children ?? []); } };
+  walk(data.input.menu.tree);
+  limit(fields('functions').calls, requests.map(item => item.id));
+  limit(fields('functions').navigate, d2SharedNavigablePages(data.input.menu, need?.actors ?? []));
+  limit(fields('journeys').step, need ? d2SharedJourneySteps(need, data.input.menu) : []);
+  limit(fields('journeys').organisms.items as Record<string, unknown>, Object.keys(data.page11.desktop.organisms));
+  limit(fields('journeys').continuesIn, menuPages);
+  limit(fields('commandReturns').requestId, commands);
+  limit(fields('commandReturns').returns.items as Record<string, unknown>, [...new Set((need?.reads ?? []).map(read => read.entity[0].toLowerCase() + read.entity.slice(1)))]);
+  limit(fields('requestRules').requestId, requests.map(item => item.id));
+  limit(fields('requestRules').rules.items as Record<string, unknown>, Object.values(data.derived.rules).flat());
+  const ambiguous = Object.values(data.derived.forms).filter(item => item.ambiguous);
+  limit(fields('formChoices').submit, ambiguous.map(item => item.submit));
+  limit(fields('formChoices').organism, ambiguous.length ? Object.entries(data.page11.desktop.organisms).filter(([, organism]) => organism.kind === 'form').map(([id]) => id) : []);
+  return schema;
 }
 
 const row = (required: string[], properties: Record<string, unknown>) => ({ type: 'object', additionalProperties: false, required, properties });

@@ -1,0 +1,277 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "activityNotificationHub"
+    },
+    "intent": "Mostrar ao gestor as despesas da equipe que estão esperando análise, para ele perceber de imediato o que precisa decidir.",
+    "sections": [
+     {
+      "id": "caixaEntrada",
+      "priority": "primary",
+      "purpose": "Reunir na área principal a caixa de entrada das despesas da equipe que ainda aguardam decisão.",
+      "organisms": [
+       "caixaEntradaDespesas"
+      ]
+     }
+    ],
+    "organisms": {
+     "caixaEntradaDespesas": {
+      "kind": "inbox",
+      "text": "Comunica as despesas da equipe que ainda esperam a análise do gestor, para ele saber o que precisa decidir agora e seguir para a análise.",
+      "intents": [
+       {
+        "id": "abrirDespesasDaEquipe",
+        "kind": "navigate",
+        "to": "despesas_da_equipe"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "caixaEntradaDespesas": [
+      {
+       "role": "viewData",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      },
+      {
+       "role": "triggerAction",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "caixaEntradaDespesas": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "activityNotificationHub"
+    },
+    "intent": "Mostrar em coluna fluida e estreita, em torno de 390px e usável em 360px e 430px, as despesas da equipe que esperam análise, para o gestor ver o que precisa decidir.",
+    "sections": [
+     {
+      "id": "caixaEntrada",
+      "priority": "primary",
+      "purpose": "Empilhar em leitura contínua e estreita, fluida em torno de 390px e usável em 360px e 430px, a caixa de entrada das despesas pendentes da equipe.",
+      "organisms": [
+       "caixaEntradaDespesas"
+      ]
+     }
+    ],
+    "organisms": {
+     "caixaEntradaDespesas": {
+      "kind": "inbox",
+      "text": "Comunica em leitura estreita as despesas da equipe que ainda esperam análise, para o gestor identificar o que precisa decidir mesmo em tela estreita e seguir para a análise.",
+      "intents": [
+       {
+        "id": "abrirDespesasDaEquipe",
+        "kind": "navigate",
+        "to": "despesas_da_equipe"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "caixaEntradaDespesas": [
+      {
+       "role": "viewData",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      },
+      {
+       "role": "triggerAction",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "caixaEntradaDespesas": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "categoryReason": "A página Início do gestor é só a caixa de entrada das despesas da equipe que pedem atenção, sem escrita nesta tela; activityNotificationHub descreve esse hub de pendências."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": true,
+     "reason": "A pending expense can require a binary decision such as approve or reject after analysis."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "The inbox describes reviewing pending expenses, not entering a date."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "No date-range entry or date-based filtering is requested."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Reviewing expenses does not require entering a date and time."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "No exact start/end timestamp interval is part of the expense-review task."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Expense amounts need to be displayed for review, but the request does not indicate entering or editing monetary values."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "No numeric value must be entered to see and decide on pending expenses."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "The request does not call for filtering or entering a bounded numeric range."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": true,
+     "reason": "A reviewer may need to enter a comment or justification when making a decision on an expense."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "No time-only input is required for the pending-expense inbox."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "No recurring or bounded time interval is part of reviewing expenses."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": true,
+     "reason": "Expense rows can expose receipt, policy, and submission details progressively while keeping the inbox compact."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "The task does not require providing or viewing geographic location."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "The description specifies one inbox view, without a need to switch among in-context sections."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Analyzing and deciding on expenses is not described as a sequential multi-step flow."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "The interface should confirm or report success/failure after the reviewer decides on an expense."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Playing audio or video is unrelated to viewing and deciding pending expenses."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "The reviewer must make a business decision, not assign a rating or score."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Capturing QR codes, barcodes, or documents by camera is not needed to review the listed expenses."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": true,
+     "reason": "Search helps the reviewer locate a specific team expense within the pending inbox."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "The reviewer is viewing submitted expenses; uploading files is not part of the stated task."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "The request does not state that multiple expenses need to be selected for a bulk operation."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "A reviewer can choose one mutually exclusive outcome, such as approve, reject, or request adjustment, for an expense."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "No long-running operation or process whose progress must be shown is described."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "The reviewer needs explicit commands to submit decisions or open an expense for analysis."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "A card can present an individual pending expense with summary information and decision actions."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "The task is operational review of individual pending expenses, not graphical data analysis."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "The inbox must display a collection of pending team-expense records with relevant details."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Pending expenses are not described as parent-child hierarchical data."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "A highlighted KPI is not necessary to see the pending expenses and decide on them."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "A table is suitable for comparing multiple pending expenses by employee, amount, date, status, and available decision actions."
+    }
+   ]
+  }
+ ]
+}

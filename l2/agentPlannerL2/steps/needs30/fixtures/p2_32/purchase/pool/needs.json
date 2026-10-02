@@ -1,0 +1,403 @@
+{
+  "schemaVersion": "2026-09-21-p2-needs-v1",
+  "moduleName": "compras",
+  "device": "web",
+  "menuSchema": "2026-09-20-p2-menu-v2.2",
+  "pages": [
+    {
+      "pageId": "pedidos_de_compra_comprador",
+      "actors": [
+        "comprador"
+      ],
+      "reads": [
+        {
+          "entity": "Buyer",
+          "family": "mdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:compradorPerfilProprio",
+            "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+            "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+            "relationship:Buyer/supplierOfferingBuyer",
+            "relationship:SupplierOffering/supplierOfferingBuyer"
+          ]
+        },
+        {
+          "entity": "Product",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:compradorCadastrosDeCompra",
+            "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+            "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+            "relationship:Product/supplierOfferingProduct",
+            "relationship:Product/supplierSuppliesProduct",
+            "relationship:Supplier/supplierSuppliesProduct",
+            "relationship:SupplierOffering/supplierOfferingProduct"
+          ]
+        },
+        {
+          "entity": "PurchaseOrder",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.isOpen",
+            "details.isOverdue",
+            "details.orderTotal",
+            "details.receiptSituation",
+            "details.requiresApproval"
+          ],
+          "from": [
+            "grant:compradorPedidosDeCompra",
+            "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+            "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+            "relationship:PurchaseOrder/purchaseOrderSupplier",
+            "relationship:Supplier/purchaseOrderSupplier"
+          ]
+        },
+        {
+          "entity": "Supplier",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:compradorCadastrosDeCompra",
+            "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+            "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+            "relationship:Product/supplierSuppliesProduct",
+            "relationship:PurchaseOrder/purchaseOrderSupplier",
+            "relationship:Supplier/purchaseOrderSupplier",
+            "relationship:Supplier/supplierOfferingSupplier",
+            "relationship:Supplier/supplierSuppliesProduct",
+            "relationship:SupplierOffering/supplierOfferingSupplier"
+          ]
+        },
+        {
+          "entity": "SupplierOffering",
+          "family": "tdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:compradorCondicoesProprias",
+            "journey:abrirEenviarPedidoCompra/abrirPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/consultarCondicoesFornecimento",
+            "journey:abrirEenviarPedidoCompra/enviarPedidoCompra",
+            "journey:abrirEenviarPedidoCompra/localizarFornecedor",
+            "relationship:Buyer/supplierOfferingBuyer",
+            "relationship:Product/supplierOfferingProduct",
+            "relationship:Supplier/supplierOfferingSupplier",
+            "relationship:Supplier/supplierSuppliesProduct",
+            "relationship:SupplierOffering/supplierOfferingBuyer",
+            "relationship:SupplierOffering/supplierOfferingProduct",
+            "relationship:SupplierOffering/supplierOfferingSupplier"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "PurchaseOrder",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:abrirEenviarPedidoCompra/abrirPedidoCompra"
+          ]
+        },
+        {
+          "entity": "PurchaseOrder",
+          "operation": "transition",
+          "transitionRef": "sendPurchaseOrder",
+          "from": [
+            "journey:abrirEenviarPedidoCompra/enviarPedidoCompra"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "fornecedores_e_condicoes",
+      "actors": [
+        "comprador"
+      ],
+      "reads": [
+        {
+          "entity": "Buyer",
+          "family": "mdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:compradorPerfilProprio",
+            "journey:cadastrarFornecedor/cadastrarFornecedor",
+            "journey:cadastrarFornecedor/localizarProduto",
+            "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+            "relationship:Buyer/supplierOfferingBuyer",
+            "relationship:SupplierOffering/supplierOfferingBuyer"
+          ]
+        },
+        {
+          "entity": "Product",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:compradorCadastrosDeCompra",
+            "journey:cadastrarFornecedor/cadastrarFornecedor",
+            "journey:cadastrarFornecedor/localizarProduto",
+            "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+            "relationship:Product/supplierOfferingProduct",
+            "relationship:Product/supplierSuppliesProduct",
+            "relationship:Supplier/supplierSuppliesProduct",
+            "relationship:SupplierOffering/supplierOfferingProduct"
+          ]
+        },
+        {
+          "entity": "PurchaseOrder",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.isOpen",
+            "details.isOverdue",
+            "details.orderTotal",
+            "details.receiptSituation",
+            "details.requiresApproval"
+          ],
+          "from": [
+            "grant:compradorPedidosDeCompra",
+            "journey:cadastrarFornecedor/cadastrarFornecedor",
+            "journey:cadastrarFornecedor/localizarProduto",
+            "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+            "relationship:PurchaseOrder/purchaseOrderSupplier",
+            "relationship:Supplier/purchaseOrderSupplier"
+          ]
+        },
+        {
+          "entity": "Supplier",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:compradorCadastrosDeCompra",
+            "journey:cadastrarFornecedor/cadastrarFornecedor",
+            "journey:cadastrarFornecedor/localizarProduto",
+            "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+            "relationship:Product/supplierSuppliesProduct",
+            "relationship:PurchaseOrder/purchaseOrderSupplier",
+            "relationship:Supplier/purchaseOrderSupplier",
+            "relationship:Supplier/supplierHasContact",
+            "relationship:Supplier/supplierOfferingSupplier",
+            "relationship:Supplier/supplierSuppliesProduct",
+            "relationship:SupplierContact/supplierHasContact",
+            "relationship:SupplierOffering/supplierOfferingSupplier"
+          ]
+        },
+        {
+          "entity": "SupplierContact",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:compradorCadastrosDeCompra",
+            "journey:cadastrarFornecedor/cadastrarFornecedor",
+            "journey:cadastrarFornecedor/localizarProduto",
+            "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+            "relationship:Supplier/supplierHasContact",
+            "relationship:SupplierContact/supplierHasContact"
+          ]
+        },
+        {
+          "entity": "SupplierOffering",
+          "family": "tdm",
+          "scope": "own",
+          "derived": [],
+          "from": [
+            "grant:compradorCondicoesProprias",
+            "journey:cadastrarFornecedor/cadastrarFornecedor",
+            "journey:cadastrarFornecedor/localizarProduto",
+            "journey:cadastrarFornecedor/registrarCondicaoFornecimento",
+            "relationship:Buyer/supplierOfferingBuyer",
+            "relationship:Product/supplierOfferingProduct",
+            "relationship:Supplier/supplierOfferingSupplier",
+            "relationship:SupplierOffering/supplierOfferingBuyer",
+            "relationship:SupplierOffering/supplierOfferingProduct",
+            "relationship:SupplierOffering/supplierOfferingSupplier"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "Supplier",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:cadastrarFornecedor/cadastrarFornecedor"
+          ]
+        },
+        {
+          "entity": "SupplierOffering",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:cadastrarFornecedor/registrarCondicaoFornecimento"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "pedidos_de_compra_gerente",
+      "actors": [
+        "gerenteCompras"
+      ],
+      "reads": [
+        {
+          "entity": "Product",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:gerentePedidosDeCompra",
+            "journey:acompanharIndicadoresDeCompras/consultarPedidosDeCompra",
+            "journey:acompanharIndicadoresDeCompras/inspecionarIndicadoresDePedidos",
+            "journey:decidirPedidoAcimaDoLimite/inspecionarPedidoCompra",
+            "journey:decidirPedidoAcimaDoLimite/localizarPedidoPendente",
+            "journey:decidirPedidoAcimaDoLimite/registrarDecisaoDoPedido",
+            "relationship:Product/supplierSuppliesProduct",
+            "relationship:Supplier/purchaseOrderSupplier",
+            "relationship:Supplier/supplierSuppliesProduct"
+          ]
+        },
+        {
+          "entity": "PurchaseOrder",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.isOpen",
+            "details.isOverdue",
+            "details.orderTotal",
+            "details.receiptSituation",
+            "details.requiresApproval"
+          ],
+          "from": [
+            "grant:gerentePedidosDeCompra",
+            "journey:acompanharIndicadoresDeCompras/consultarPedidosDeCompra",
+            "journey:acompanharIndicadoresDeCompras/inspecionarIndicadoresDePedidos",
+            "journey:decidirPedidoAcimaDoLimite/inspecionarPedidoCompra",
+            "journey:decidirPedidoAcimaDoLimite/localizarPedidoPendente",
+            "journey:decidirPedidoAcimaDoLimite/registrarDecisaoDoPedido",
+            "relationship:PurchaseOrder/purchaseOrderSupplier",
+            "relationship:Supplier/purchaseOrderSupplier"
+          ]
+        },
+        {
+          "entity": "PurchaseOrderDashboard",
+          "family": "ddm",
+          "scope": "organization",
+          "derived": [
+            "details.openPurchaseOrdersCount",
+            "details.overduePurchaseOrdersCount",
+            "details.totalPurchasedAmount",
+            "groupKey",
+            "period"
+          ],
+          "from": [
+            "grant:gerenteIndicadoresDeCompras",
+            "organism:highlights"
+          ]
+        },
+        {
+          "entity": "Supplier",
+          "family": "mdm",
+          "scope": "organization",
+          "derived": [],
+          "from": [
+            "grant:gerentePedidosDeCompra",
+            "journey:acompanharIndicadoresDeCompras/consultarPedidosDeCompra",
+            "journey:acompanharIndicadoresDeCompras/inspecionarIndicadoresDePedidos",
+            "journey:decidirPedidoAcimaDoLimite/inspecionarPedidoCompra",
+            "journey:decidirPedidoAcimaDoLimite/localizarPedidoPendente",
+            "journey:decidirPedidoAcimaDoLimite/registrarDecisaoDoPedido",
+            "relationship:Product/supplierSuppliesProduct",
+            "relationship:PurchaseOrder/purchaseOrderSupplier",
+            "relationship:Supplier/purchaseOrderSupplier",
+            "relationship:Supplier/supplierSuppliesProduct"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "PurchaseOrder",
+          "operation": "transition",
+          "transitionRef": "decidePurchaseOrder",
+          "from": [
+            "journey:decidirPedidoAcimaDoLimite/registrarDecisaoDoPedido"
+          ]
+        }
+      ]
+    },
+    {
+      "pageId": "recebimentos_de_pedidos",
+      "actors": [
+        "almoxarife"
+      ],
+      "reads": [
+        {
+          "entity": "GoodsReceipt",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.receiptCompletion"
+          ],
+          "from": [
+            "grant:almoxarifeRecebimentos",
+            "journey:registrarRecebimentoPedido/inspecionarItensDoPedido",
+            "journey:registrarRecebimentoPedido/localizarPedidoParaRecebimento",
+            "journey:registrarRecebimentoPedido/registrarRecebimento",
+            "relationship:GoodsReceipt/goodsReceiptPurchaseOrder",
+            "relationship:PurchaseOrder/goodsReceiptPurchaseOrder"
+          ]
+        },
+        {
+          "entity": "PurchaseOrder",
+          "family": "tdm",
+          "scope": "organization",
+          "derived": [
+            "details.isOpen",
+            "details.isOverdue",
+            "details.orderTotal",
+            "details.receiptSituation",
+            "details.requiresApproval"
+          ],
+          "from": [
+            "grant:almoxarifeRecebimentos",
+            "journey:registrarRecebimentoPedido/inspecionarItensDoPedido",
+            "journey:registrarRecebimentoPedido/localizarPedidoParaRecebimento",
+            "journey:registrarRecebimentoPedido/registrarRecebimento",
+            "relationship:GoodsReceipt/goodsReceiptPurchaseOrder",
+            "relationship:PurchaseOrder/goodsReceiptPurchaseOrder"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "entity": "GoodsReceipt",
+          "operation": "create",
+          "transitionRef": "",
+          "from": [
+            "journey:registrarRecebimentoPedido/registrarRecebimento"
+          ]
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "sourceMenu": "pool/l2/web/menu.json",
+    "generatedAt": "2026-10-02T16:05:07.622Z"
+  }
+}

@@ -5,10 +5,15 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
 import { parseD2Page11Definition, renderD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import { buildD2Page11WithExperience } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
-import { beforePromptStep, reusableD2Page, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { buildD2Page11WithExperience, d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
+import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { sha256Text } from '/_102020_/l2/helpers/hash.js';
+import { beforePromptStep, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
+import { d2NormalizeWriteKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
+import { gateD2Page11 } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, d2PageWriteKeys, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2PagesContext['template']['categories'] }).categories;
@@ -229,6 +234,83 @@ void test('a complete receipt reuses one page with zero writes; draft, context a
   const sourceKey = 'controleEstoque/web/desktop/page11/produtos.defs.ts';
   writes.set(sourceKey, `${writes.get(sourceKey)}\n// local edit`);
   assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), false);
+  writes.set(sourceKey, (writes.get(sourceKey) as string).replace('\n// local edit', ''));
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, port), true);
+
+  // d2_65: a stored page11 with the same write in two organisms is redone, even with a matching receipt.
+  const repeated = structuredClone(originalDraft) as { organisms: Record<string, { submits: Array<{ intentId: string; write: string }> }> };
+  const owner = Object.values(repeated.organisms).find(row => row.submits.length);
+  assert.ok(owner);
+  const other = Object.values(repeated.organisms).find(row => row !== owner);
+  assert.ok(other);
+  other.submits = [...other.submits, { intentId: 'repeatSubmit', write: owner.submits[0].write }];
+  writes.set(draftKey, repeated);
+  const repeatedReceipt = { ...receipt, needsHashes: { ...receipt.needsHashes, desktop: await sha256Text(JSON.stringify(repeated)) } };
+  assert.equal(await reusableD2Page(data.identity, data.page.pageId, { ...port, readReceipt: async () => repeatedReceipt }), false);
+});
+
+void test('d2_66: a transition is matched by its id; the schema limits write to the page keys', () => {
+  const data = context('reembolsoDespesas', 'minhas_despesas');
+  data.page.writes = [...data.page.writes, { entity: 'Despesa', operation: 'transition', transitionRef: 'enviarParaAprovacao', from: [] }];
+  const keys = d2PageWriteKeys(data.page);
+  assert.deepEqual(keys.filter(key => key.startsWith('Despesa.')).sort(), ['Despesa.create', 'Despesa.enviarParaAprovacao', 'Despesa.reenviarParaAprovacao', 'Despesa.update']);
+  const payload = JSON.parse(buildD2PagesDecisionPrompt(data).prompt) as { page: { writeKeys: string[] } };
+  assert.deepEqual(payload.page.writeKeys, keys);
+  const needsSchema = JSON.parse(readFileSync(new URL('../../schemas/page11NeedsV1.json', import.meta.url), 'utf8')) as Record<string, unknown>;
+  const limited = withWriteEnum(needsSchema, keys) as { properties: { organisms: { additionalProperties: { properties: { submits: { items: { properties: { write: { enum?: string[] } } } } } } } } };
+  assert.deepEqual(limited.properties.organisms.additionalProperties.properties.submits.items.properties.write.enum, keys);
+  assert.equal('enum' in ((needsSchema as typeof limited).properties.organisms.additionalProperties.properties.submits.items.properties.write), false);
+
+  // Entity.transition: resolved with one transition of that entity on the page, refused with the keys when there are two.
+  const writes = data.page.writes as Array<{ entity: string; operation: string; transitionRef?: string }>;
+  const one = writes.filter(write => write.transitionRef !== 'enviarParaAprovacao');
+  assert.equal(d2NormalizeWriteKey('Despesa.transition', one), 'Despesa.reenviarParaAprovacao');
+  assert.throws(() => d2NormalizeWriteKey('Despesa.transition', writes), /D2_PAGE11_TRANSITION_AMBIGUOUS: .*Despesa\.reenviarParaAprovacao, Despesa\.enviarParaAprovacao|D2_PAGE11_TRANSITION_AMBIGUOUS: .*Despesa\.enviarParaAprovacao/u);
+  assert.equal(d2NormalizeWriteKey('Despesa.create', writes), 'Despesa.create');
+
+  // A transition without its id is a named refusal, never Entity.transition.
+  assert.throws(() => d2WriteKey({ entity: 'Despesa', operation: 'transition', transitionRef: '' }), /D2_WRITE_TRANSITION_WITHOUT_REF/u);
+  const blank = context('reembolsoDespesas', 'minhas_despesas');
+  blank.page.writes = blank.page.writes.map(write => (write as { operation: string }).operation === 'transition' ? { ...(write as object), transitionRef: '' } : write);
+  assert.throws(() => d2PageWriteKeys(blank.page), /D2_WRITE_TRANSITION_WITHOUT_REF/u);
+  const menu = fixture<Parameters<typeof gateD2Page11>[2]['menu']>('reembolsoDespesas', 'menu');
+  const needs = fixture<{ pages: Parameters<typeof gateD2Page11>[2]['needsPages'] }>('reembolsoDespesas', 'needs');
+  const blankNeeds = needs.pages.map(page => page.pageId === 'minhas_despesas' ? { ...page, writes: page.writes.map(write => write.operation === 'transition' ? { ...write, transitionRef: '' } : write) } : page);
+  const anyPage = parseD2Page11Definition(readFileSync(new URL('../../helpers/fixtures/controleEstoque/page11/desktop/produtos.defs.ts', import.meta.url), 'utf8')).definition;
+  const anyDraft = JSON.parse(readFileSync(new URL('../../helpers/fixtures/controleEstoque/page11Needs/produtosDesktop.json', import.meta.url), 'utf8'));
+  const issues = gateD2Page11(anyPage, anyDraft,
+    { pageId: 'minhas_despesas', actor: 'colaborador', menu, needsPages: blankNeeds, entities: {}, access: { grants: [] }, categories, templatePaths: new Set(), moleculeTags: new Set() } as Parameters<typeof gateD2Page11>[2]);
+  assert.equal(issues.some(item => item.code === 'D2_PAGE11_TRANSITION_WITHOUT_REF'), true, JSON.stringify(issues.map(item => item.code)));
+  assert.equal(issues.filter(item => item.code !== 'D2_PAGE11_TRANSITION_WITHOUT_REF').some(item => item.message.includes('Despesa.transition')), false);
+});
+
+void test('d2_67: category, organism kind, navigate target and molecule tags are enums of the page schema', () => {
+  const data = context('controleEstoque', 'produtos');
+  data.groups = [{ groupId: 'groupViewTable', purpose: 'p', indexReference: '/i', usageReference: '/u', tags: ['groupviewtable--a', 'groupviewtable--b'], scenarios: [], indexSource: '', indexText: '', usageSource: '', usageText: '' }];
+  const enums = d2PageChoiceEnums(data);
+  assert.ok(enums.categories.includes('inventoryControl') && enums.categories.includes('bespoke'));
+  assert.deepEqual(enums.kinds.slice().sort(), [...new Set(data.page.organisms.map(item => (item as { kind: string }).kind))].sort());
+  assert.equal(enums.targets[0], '');
+  assert.ok(enums.targets.includes('movimentacoes'));
+  assert.deepEqual(enums.tags, ['groupviewtable--a', 'groupviewtable--b']);
+  const page = JSON.parse(readFileSync(new URL('../../schemas/page11V2.json', import.meta.url), 'utf8')) as Record<string, unknown>;
+  const limited = withPageEnums(page, enums) as { properties: { template: { properties: { category: { enum: string[] } } }; organisms: { additionalProperties: { properties: { kind: { enum: string[] }; intents: { items: { properties: { to: { enum: string[] } } } } } } }; molecules: { additionalProperties: { items: { properties: { preferred: { enum: string[] }; alternative: { enum: string[] } } } } } } };
+  assert.deepEqual(limited.properties.template.properties.category.enum, enums.categories);
+  assert.deepEqual(limited.properties.organisms.additionalProperties.properties.kind.enum, enums.kinds);
+  assert.deepEqual(limited.properties.organisms.additionalProperties.properties.intents.items.properties.to.enum, enums.targets);
+  assert.deepEqual(limited.properties.molecules.additionalProperties.items.properties.alternative.enum, ['', ...enums.tags]);
+  // The enums add no lint finding to the base schema (whose map fields the lint already reports).
+  const strip = ({ $schema: _dialect, $id: _id, ...shape }: Record<string, unknown>) => shape;
+  assert.deepEqual(lintToolSchema(JSON.stringify(strip(limited as Record<string, unknown>))), lintToolSchema(JSON.stringify(strip(page))));
+});
+
+void test('d2_65: the same write in a form and in actions is refused with the place of the submit', () => {
+  const real = JSON.parse(readFileSync(new URL('../../helpers/fixtures/clinic/page11Needs/agenda_profissionalDesktop.json', import.meta.url), 'utf8'));
+  const issues = d2Page11WriteDuplicates(buildD2Page11Needs(real));
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].code, 'D2_PAGE11_WRITE_DUPLICATE');
+  assert.match(issues[0].message, /registroAtendimento/u);
+  assert.match(issues[0].message, /the actions organism does not repeat it/u);
 });
 
 void test('four real reembolsoDespesas pages include the nine minhas_despesas organisms below the prompt ceiling', () => {

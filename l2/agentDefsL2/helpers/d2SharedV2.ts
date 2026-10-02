@@ -46,11 +46,14 @@ export function sharedFromDerived(derived: D2DerivedPageRequests, extras?: Parti
   }
   const functions: D2SharedV2Definition['functions'] = { ...(extras?.functions ?? {}) };
   functions.load = functions.load ?? { calls: 'load', description: extras?.functions?.load?.description ?? '' };
+  // The list state is shape: one state per list key, fed by load and replaced or extended by filter/loadMore.
+  const states: D2SharedV2Definition['states'] = {};
   for (const request of derived.requests) {
     if (request.id === 'load') continue;
     for (const list of request.lists) {
-      functions[list.filter] = functions[list.filter] ?? { calls: request.id, description: '' };
-      functions[list.loadMore] = functions[list.loadMore] ?? { calls: request.id, description: '' };
+      states[list.key] = { source: `load.${list.key}`, description: extras?.states?.[list.key]?.description ?? '' };
+      functions[list.filter] = functions[list.filter] ?? { calls: request.id, sets: list.key, description: '' };
+      functions[list.loadMore] = functions[list.loadMore] ?? { calls: request.id, sets: list.key, description: '' };
     }
   }
   for (const request of derived.requests.filter(item => item.kind === 'cmd')) {
@@ -62,7 +65,7 @@ export function sharedFromDerived(derived: D2DerivedPageRequests, extras?: Parti
     entry: derived.entry,
     forms,
     requests,
-    states: extras?.states ?? {},
+    states: { ...(extras?.states ?? {}), ...states },
     functions,
     journeys: extras?.journeys ?? [],
     rules: derived.rules,
@@ -189,7 +192,21 @@ export function gateD2SharedV2(
       }
     }
   }
+  const fixedStates = sharedFromDerived(context.derived).states;
+  for (const [id, fixedState] of Object.entries(fixedStates)) {
+    const state = definition.states[id];
+    if (!state || state.source !== fixedState.source) {
+      issues.push({ code: 'D2_SHARED_V2_STATE_FIXED', path: `states.${id}`, message: `State ${id} is the fixed list state with source ${fixedState.source}; keep its id and source and only write its description.` });
+    } else if (!state.description.trim()) {
+      issues.push({ code: 'D2_SHARED_V2_DESCRIPTION_EMPTY', path: `states.${id}`, message: `Fixed list state ${id} already exists and needs a description.` });
+    }
+  }
   for (const [id, state] of Object.entries(definition.states)) {
+    const repeated = Object.entries(fixedStates).find(([fixedId, fixedState]) => fixedId !== id && fixedState.source === state.source);
+    if (repeated) {
+      issues.push({ code: 'D2_SHARED_V2_STATE_DUPLICATE', path: `states.${id}`, message: `State ${id} repeats the fixed list state ${repeated[0]} (source ${state.source}). Use ${repeated[0]} instead of another state.` });
+      continue;
+    }
     if (listRequests.some(request => state.source.startsWith(`${request.id}.`))) {
       issues.push({ code: 'D2_SHARED_V2_LIST_STATE', path: `states.${id}`, message: `State ${id} has ${state.source} as source. A list request only feeds the state sourced from load; drop ${id}.` });
       continue;
@@ -419,6 +436,14 @@ function validStateSource(stateId: string, source: string, definition: D2SharedV
   }
   if (definition.states[source]) return true;
   return definition.functions[source]?.sets === stateId;
+}
+
+/** Menu pages the page actors can open: the navigate targets a shared function may name. */
+export function d2SharedNavigablePages(menu: D2PageRequestsMenu, actors: readonly string[]): string[] {
+  const ids: string[] = [];
+  const walk = (nodes: D2PageRequestsMenu['tree']): void => { for (const node of nodes) { if (node.kind === 'page') ids.push(node.id); walk(node.children ?? []); } };
+  walk(menu.tree);
+  return ids.filter(pageId => canNavigate(menu, pageId, new Set(actors)));
 }
 
 function canNavigate(menu: D2PageRequestsMenu, pageId: string, pageActors: Set<string>): boolean {

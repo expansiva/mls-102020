@@ -1,0 +1,282 @@
+{
+ "states": [
+  {
+   "id": "consultasRecepcao",
+   "source": "load.consultasRecepcao",
+   "description": "Lista paginada de consultas da recepção."
+  },
+  {
+   "id": "pacientes",
+   "source": "load.pacientes",
+   "description": "Pacientes disponíveis para identificação e agendamento."
+  },
+  {
+   "id": "profissionaisRecepcao",
+   "source": "load.profissionaisRecepcao",
+   "description": "Profissionais disponíveis para a agenda."
+  },
+  {
+   "id": "profissionalSelecionado",
+   "source": "entry.params.profissionalId",
+   "description": "Profissional selecionado pelo identificador de entrada."
+  },
+  {
+   "id": "consultaSelecionada",
+   "source": "entry.params.consultaId",
+   "description": "Consulta selecionada pelo identificador de entrada."
+  },
+  {
+   "id": "pacienteFiltro",
+   "source": "entry.params.pacienteId",
+   "description": "Paciente usado para filtrar a lista de consultas."
+  },
+  {
+   "id": "paginaConsultas",
+   "source": "entry.params.page",
+   "description": "Página solicitada da lista de consultas."
+  },
+  {
+   "id": "consultaDetalhada",
+   "source": "loadConsulta.consulta",
+   "description": "Consulta carregada para consulta detalhada e ações."
+  },
+  {
+   "id": "dadosAgendamento",
+   "source": "registrarAgendamento.input",
+   "description": "Dados informados para registrar o agendamento."
+  },
+  {
+   "id": "consultaAgendada",
+   "source": "registrarAgendamento.consulta",
+   "description": "Consulta criada pelo agendamento."
+  },
+  {
+   "id": "consultaConfirmada",
+   "source": "registrarConfirmacao.consulta",
+   "description": "Consulta atualizada pela confirmação."
+  },
+  {
+   "id": "consultaFaltante",
+   "source": "registrarFalta.consulta",
+   "description": "Consulta atualizada com o registro de falta."
+  }
+ ],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega consultas, pacientes e profissionais da recepção.",
+   "calls": "load",
+   "sets": "consultasRecepcao",
+   "updates": [
+    "pacientes",
+    "profissionaisRecepcao"
+   ]
+  },
+  {
+   "id": "filterListaConsultas",
+   "description": "Recarrega a primeira página de consultas conforme os filtros.",
+   "calls": "loadConsultasRecepcao",
+   "sets": "consultasRecepcao"
+  },
+  {
+   "id": "loadMoreListaConsultas",
+   "description": "Acrescenta a próxima página de consultas à lista.",
+   "calls": "loadConsultasRecepcao",
+   "sets": "consultasRecepcao"
+  },
+  {
+   "id": "registrarAgendamento",
+   "description": "Registra uma nova consulta agendada.",
+   "calls": "registrarAgendamento",
+   "sets": "consultaAgendada",
+   "updates": [
+    "consultasRecepcao",
+    "consultaSelecionada",
+    "consultaDetalhada"
+   ]
+  },
+  {
+   "id": "registrarConfirmacao",
+   "description": "Confirma a consulta selecionada.",
+   "calls": "registrarConfirmacao",
+   "sets": "consultaConfirmada",
+   "updates": [
+    "consultasRecepcao",
+    "consultaSelecionada",
+    "consultaDetalhada"
+   ]
+  },
+  {
+   "id": "registrarFalta",
+   "description": "Registra a falta do paciente na consulta selecionada.",
+   "calls": "registrarFalta",
+   "sets": "consultaFaltante",
+   "updates": [
+    "consultasRecepcao",
+    "consultaSelecionada",
+    "consultaDetalhada"
+   ]
+  },
+  {
+   "id": "carregarConsulta",
+   "description": "Carrega a consulta selecionada para visualização detalhada.",
+   "calls": "loadConsulta",
+   "sets": "consultaDetalhada"
+  }
+ ],
+ "journeys": [
+  {
+   "step": "agendarConsulta/localizarPaciente",
+   "organisms": [
+    "formularioConsulta"
+   ],
+   "functions": [
+    "load"
+   ]
+  },
+  {
+   "step": "agendarConsulta/localizarProfissional",
+   "organisms": [
+    "formularioConsulta"
+   ],
+   "functions": [
+    "load"
+   ]
+  },
+  {
+   "step": "agendarConsulta/verificarHorarioDisponivel",
+   "organisms": [
+    "listaConsultas",
+    "formularioConsulta"
+   ],
+   "functions": [
+    "filterListaConsultas"
+   ]
+  },
+  {
+   "step": "agendarConsulta/registrarAgendamento",
+   "organisms": [
+    "formularioConsulta"
+   ],
+   "functions": [
+    "registrarAgendamento"
+   ]
+  },
+  {
+   "step": "confirmarConsulta/localizarConsultaParaConfirmacao",
+   "organisms": [
+    "listaConsultas",
+    "detalheConsulta"
+   ],
+   "functions": [
+    "carregarConsulta"
+   ]
+  },
+  {
+   "step": "confirmarConsulta/consultarContatoPaciente",
+   "organisms": [
+    "detalheConsulta"
+   ],
+   "functions": [
+    "carregarConsulta"
+   ]
+  },
+  {
+   "step": "confirmarConsulta/registrarConfirmacao",
+   "organisms": [
+    "acoesConsulta"
+   ],
+   "functions": [
+    "registrarConfirmacao"
+   ]
+  },
+  {
+   "step": "registrarFalta/localizarConsultaDoPaciente",
+   "organisms": [
+    "listaConsultas",
+    "detalheConsulta"
+   ],
+   "functions": [
+    "carregarConsulta"
+   ]
+  },
+  {
+   "step": "registrarFalta/conferirConsultaAgendada",
+   "organisms": [
+    "detalheConsulta",
+    "acoesConsulta"
+   ],
+   "functions": [
+    "carregarConsulta"
+   ]
+  },
+  {
+   "step": "registrarFalta/marcarFaltaPaciente",
+   "organisms": [
+    "acoesConsulta"
+   ],
+   "functions": [
+    "registrarFalta"
+   ]
+  }
+ ],
+ "commandReturns": [
+  {
+   "requestId": "registrarAgendamento",
+   "returns": [
+    "consulta"
+   ]
+  },
+  {
+   "requestId": "registrarConfirmacao",
+   "returns": [
+    "consulta"
+   ]
+  },
+  {
+   "requestId": "registrarFalta",
+   "returns": [
+    "consulta"
+   ]
+  }
+ ],
+ "requestRules": [
+  {
+   "requestId": "load",
+   "rules": [
+    "profissionalHorarioUnico"
+   ]
+  },
+  {
+   "requestId": "loadConsultasRecepcao",
+   "rules": [
+    "profissionalHorarioUnico"
+   ]
+  },
+  {
+   "requestId": "loadConsulta",
+   "rules": [
+    "transicoesConsultaValidas"
+   ]
+  },
+  {
+   "requestId": "registrarAgendamento",
+   "rules": [
+    "profissionalHorarioUnico"
+   ]
+  },
+  {
+   "requestId": "registrarConfirmacao",
+   "rules": [
+    "transicoesConsultaValidas"
+   ]
+  },
+  {
+   "requestId": "registrarFalta",
+   "rules": [
+    "transicoesConsultaValidas"
+   ]
+  }
+ ],
+ "formChoices": []
+}

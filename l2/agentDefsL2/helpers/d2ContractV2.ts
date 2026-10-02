@@ -35,7 +35,7 @@ export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2Shar
       const stem = pascal(list.organismId);
       outputParts.push(`page${stem}: number`, `pageSize${stem}: number`, `hasMore${stem}: boolean`);
     }
-    const input = request.kind === 'cmd' ? renderInput(entities, request.writes ?? '', request.inputPaths) : renderQueryInput(request.params);
+    const input = request.kind === 'cmd' ? renderInput(entities, request.writes ?? '', request.operation ?? '', request.inputPaths) : renderQueryInput(request.params);
     return {
       route: `${derived.module}.${derived.pageId}.${request.id}`,
       kind: request.kind,
@@ -67,6 +67,11 @@ export function gateD2ContractV2(
       issues.push({ code: 'D2_CONTRACT_V2_PROJECTION_UNKNOWN', path: proj.name, message: `Projection ${proj.name} matches no derived row.` });
     } else {
       const leaves = leavesOf(proj.body);
+      const seen = new Set<string>();
+      for (const leaf of leaves) {
+        if (seen.has(leaf.path)) issues.push({ code: 'D2_CONTRACT_V2_FIELD_DUPLICATE', path: `${proj.name}.${leaf.path}`, message: `Projection ${proj.name} declares ${leaf.path} more than once.` });
+        seen.add(leaf.path);
+      }
       const rendered = new Set(leaves.map(item => item.path));
       const derivedSet = derivedPaths(entities[proj.entityId]);
       for (const leaf of leaves) {
@@ -97,7 +102,8 @@ export function gateD2ContractV2(
     const requestId = route.route.split('.').slice(2).join('.');
     const request = derived.requests.find(item => item.id === requestId);
     const entityId = route.writes.split('.')[0] ?? '';
-    const operation = route.writes.split('.')[1] ?? '';
+    // The key of a transition is its transitionRef; the operation is the request's.
+    const operation = request?.operation ?? '';
     const derivedSet = derivedPaths(entities[entityId]);
     const actual = leavesOf(route.input).map(item => item.path);
     for (const path of actual) {
@@ -292,7 +298,8 @@ function leavesOf(source: string): Array<{ path: string; readonly: boolean }> {
 function renderFields(entity: Ns5OntologyAnyEntity | undefined, row: D2DerivedProjection, depth: number): string {
   const indent = '  '.repeat(depth);
   const derivedSet = derivedPaths(entity);
-  const tree = treeFromPaths(row.paths.filter(path => path !== 'id' && (row.includeVersion || path !== 'version')));
+  // id and version have one line each above; the field tree never repeats them.
+  const tree = treeFromPaths(row.paths.filter(path => path !== 'id' && path !== 'version'));
   const lines = [`${indent}id: string;`];
   if (row.includeVersion) lines.push(`${indent}readonly version: number;`);
   if (Object.keys(tree).length) lines.push(renderTree(tree, entity, derivedSet, row.entityId, depth));
@@ -374,9 +381,8 @@ function derivedPaths(entity: Ns5OntologyAnyEntity | undefined): Set<string> {
   return out;
 }
 
-function renderInput(entities: Record<string, Ns5OntologyAnyEntity>, writes: string, paths: string[]): string {
+function renderInput(entities: Record<string, Ns5OntologyAnyEntity>, writes: string, operation: string, paths: string[]): string {
   const entityId = writes.split('.')[0] ?? '';
-  const operation = writes.split('.')[1] ?? '';
   const keepIdentity = operation === 'update' || operation === 'transition';
   const prefix = `${entityId}.`;
   const fields = paths

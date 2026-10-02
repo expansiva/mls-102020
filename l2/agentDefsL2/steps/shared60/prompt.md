@@ -4,8 +4,10 @@ validSources, another state id, or the id of a function whose sets is this state
 sets is one state id; list several affected states in updates. load, filter<List>,
 loadMore<List> and the command functions already exist: reuse those ids and only complete
 description, sets and updates. Do not add another function that calls the same request. A list
-filter without calls does not replace filter<List>. filter<List> and loadMore<List> set the
-state sourced from load.<key> of their list. Every state a command sets or updates holds
+filter without calls does not replace filter<List>. The list states in fixedStates already
+exist and filter<List>/loadMore<List> already set them: reuse those ids and only write their
+description. In requests, returnEntities names the entity of each return key and lists names the
+key that each filter<List> and loadMore<List> feeds. Every state a command sets or updates holds
 an entity that the command returns: add that entity's key to its returns. Command returns use
 only keys from commandReturnKeys (one item per entity, never a list key). A command also returns,
 and updates a state of, each read entity whose derived fields come from the entity it writes. carries exist only on

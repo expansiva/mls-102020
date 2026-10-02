@@ -1,0 +1,132 @@
+{
+ "states": [
+  {
+   "id": "historicoMovimentacoes",
+   "source": "load.movimentacoes",
+   "description": "Movimentações registradas do produto filtrado."
+  },
+  {
+   "id": "produtos",
+   "source": "load.produtos",
+   "description": "Produtos disponíveis com saldo e aviso de estoque."
+  },
+  {
+   "id": "produtoId",
+   "source": "entry.params.produtoId",
+   "description": "Identificador do produto usado no filtro do histórico."
+  },
+  {
+   "id": "paginaHistorico",
+   "source": "entry.params.page",
+   "description": "Página solicitada do histórico de movimentações."
+  },
+  {
+   "id": "movimentacaoEmEdicao",
+   "source": "registrarMovimentacao.input",
+   "description": "Dados da movimentação a registrar."
+  },
+  {
+   "id": "movimentacaoRegistrada",
+   "source": "registrarMovimentacao.movimentacaoEstoque",
+   "description": "Movimentação de estoque registrada."
+  }
+ ],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega o histórico inicial de movimentações e os produtos.",
+   "calls": "load",
+   "sets": "historicoMovimentacoes",
+   "updates": [
+    "produtos"
+   ]
+  },
+  {
+   "id": "filterHistoricoMovimentacoes",
+   "description": "Recarrega a primeira página do histórico conforme produto e página.",
+   "calls": "loadMovimentacoes",
+   "sets": "historicoMovimentacoes",
+   "updates": []
+  },
+  {
+   "id": "loadMoreHistoricoMovimentacoes",
+   "description": "Acrescenta a próxima página ao histórico de movimentações.",
+   "calls": "loadMovimentacoes",
+   "sets": "historicoMovimentacoes",
+   "updates": []
+  },
+  {
+   "id": "registrarMovimentacao",
+   "description": "Registra a movimentação e atualiza os saldos do produto.",
+   "calls": "registrarMovimentacao",
+   "sets": "movimentacaoRegistrada",
+   "updates": [
+    "historicoMovimentacoes",
+    "produtos"
+   ]
+  }
+ ],
+ "journeys": [
+  {
+   "step": "registrarMovimentacaoEstoque/consultarSaldo",
+   "organisms": [
+    "formularioMovimentacao",
+    "confirmarMovimentacao"
+   ],
+   "functions": [
+    "load"
+   ]
+  },
+  {
+   "step": "registrarMovimentacaoEstoque/localizarProduto",
+   "organisms": [
+    "formularioMovimentacao",
+    "historicoMovimentacoes"
+   ],
+   "functions": [
+    "filterHistoricoMovimentacoes",
+    "loadMoreHistoricoMovimentacoes"
+   ]
+  },
+  {
+   "step": "registrarMovimentacaoEstoque/registrarMovimentacao",
+   "organisms": [
+    "formularioMovimentacao",
+    "confirmarMovimentacao"
+   ],
+   "functions": [
+    "registrarMovimentacao"
+   ]
+  }
+ ],
+ "commandReturns": [
+  {
+   "requestId": "registrarMovimentacao",
+   "returns": [
+    "movimentacaoEstoque",
+    "produto"
+   ]
+  }
+ ],
+ "requestRules": [
+  {
+   "requestId": "load",
+   "rules": [
+    "saldoAtualProduto",
+    "avisoSaldoMinimoProduto"
+   ]
+  },
+  {
+   "requestId": "loadMovimentacoes",
+   "rules": []
+  },
+  {
+   "requestId": "registrarMovimentacao",
+   "rules": [
+    "quantidadeMovimentadaPositiva",
+    "registroMovimentacaoAtualizaSaldo"
+   ]
+  }
+ ],
+ "formChoices": []
+}
