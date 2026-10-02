@@ -292,6 +292,7 @@ void test('renamed and synthetic fixtures keep structure and accept one form cho
   } };
   const ownData = buildD2SharedContext({
     ...base, desktop: own, mobile: own, draftDesktop: ownDraft, draftMobile: ownDraft,
+    needsPages: base.needsPages.map(page => page.pageId === base.pageId ? { ...page, writes: [...page.writes, { entity: written, operation: 'update' }] } : page),
     siblings: base.siblings.map(item => item.pageId === base.pageId ? { ...item, desktop: own, mobile: own, draftDesktop: ownDraft, draftMobile: ownDraft } : item),
   }, { ...original, page11: { desktop: own, mobile: own }, drafts: { desktop: ownDraft, mobile: ownDraft }, page11Text: { desktop: 'own', mobile: 'own' }, draftText: { desktop: '{}', mobile: '{}' } });
   assert.deepEqual(ownData.derived.requests.filter(item => item.kind === 'cmd').map(item => item.id).sort(), ['createOwn', 'updateOwn']);

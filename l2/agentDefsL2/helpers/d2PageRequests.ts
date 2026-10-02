@@ -4,6 +4,7 @@ import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { d2WriteByKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 
 export interface D2PageRequestsIssue { code: string; path: string; message: string }
 
@@ -76,7 +77,10 @@ export interface D2DerivedRequest {
   id: string;
   kind: 'qry' | 'cmd';
   trigger: string;
+  /** The write key (`Entity.<transitionRef>` for a transition). */
   writes?: string;
+  /** The operation of that write, resolved from the page needs (create, update, transition…). */
+  operation?: string;
   returns: string[];
   /** Collection or singular return key → ontology entityId. Never derived by uncasing the key. */
   returnEntities: Record<string, string>;
@@ -153,7 +157,7 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
   const selectTargets = new Set(organisms.map(item => item.selects).filter(Boolean));
   const listUnits = organisms.filter(item => item.kind === 'list');
   const forms = bindForms(organisms, add);
-  const commands = commandRequests(organisms, forms, input.entities, add);
+  const commands = commandRequests(organisms, forms, input.entities, input.needsPages.find(item => item.pageId === input.pageId)?.writes ?? [], add);
   const loadUnits = organisms.filter(item => !selectTargets.has(item.id));
   const loadEntities = unique(loadUnits.flatMap(item => item.reads.map(path => path.split('.')[0])).filter(Boolean));
   const returnEntities: Record<string, string> = {};
@@ -300,6 +304,7 @@ function commandRequests(
   organisms: OrganismUnit[],
   forms: Record<string, D2DerivedForm>,
   entities: Record<string, Ns5OntologyAnyEntity>,
+  pageWrites: D2PageRequestsNeedWrite[],
   add: (code: string, path: string, message: string) => void,
 ): D2DerivedRequest[] {
   const out: D2DerivedRequest[] = [];
@@ -315,7 +320,13 @@ function commandRequests(
       const entityId = submit.write.split('.')[0];
       const entity = entities[entityId];
       const caps = capabilities(entity);
-      const operation = submit.write.split('.')[1];
+      // The key of a transition is its transitionRef; the operation comes from the page write, never from the key text.
+      const pageWrite = d2WriteByKey(pageWrites, submit.write);
+      if (!pageWrite) {
+        add('D2_REQUESTS_WRITE_UNKNOWN', `organisms.${unit.id}.submits.${submit.intentId}`, `Submit ${submit.intentId} writes ${submit.write}, which is not a write of the page needs.`);
+        continue;
+      }
+      const operation = pageWrite.operation;
       if (operation === 'create' && entity && !caps.has('create') && !caps.has('register.createOrAttach') && ![...caps].some(item => item.endsWith(`.${operation}`) || item === operation)) {
         add('D2_REQUESTS_CAPABILITY_MISSING', `organisms.${unit.id}.submits.${submit.intentId}`, `Write ${submit.write} has no matching ontology capability.`);
       }
@@ -324,7 +335,7 @@ function commandRequests(
       const identity = operation === 'update' || operation === 'transition' ? [`${entityId}.id`, `${entityId}.version`] : [];
       const key = camel(entityId);
       out.push({
-        id: submit.intentId, kind: 'cmd', trigger: submit.intentId, writes: submit.write,
+        id: submit.intentId, kind: 'cmd', trigger: submit.intentId, writes: submit.write, operation,
         returns: [key], returnEntities: { [key]: entityId },
         inputPaths: unique([...edits, ...contextIds, ...identity]),
         organisms: [form.organism, unit.id].filter(Boolean), params: [], lists: [],

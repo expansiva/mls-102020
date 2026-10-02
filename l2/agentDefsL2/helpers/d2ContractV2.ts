@@ -35,7 +35,7 @@ export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2Shar
       const stem = pascal(list.organismId);
       outputParts.push(`page${stem}: number`, `pageSize${stem}: number`, `hasMore${stem}: boolean`);
     }
-    const input = request.kind === 'cmd' ? renderInput(entities, request.writes ?? '', request.inputPaths) : renderQueryInput(request.params);
+    const input = request.kind === 'cmd' ? renderInput(entities, request.writes ?? '', request.operation ?? '', request.inputPaths) : renderQueryInput(request.params);
     return {
       route: `${derived.module}.${derived.pageId}.${request.id}`,
       kind: request.kind,
@@ -102,7 +102,8 @@ export function gateD2ContractV2(
     const requestId = route.route.split('.').slice(2).join('.');
     const request = derived.requests.find(item => item.id === requestId);
     const entityId = route.writes.split('.')[0] ?? '';
-    const operation = route.writes.split('.')[1] ?? '';
+    // The key of a transition is its transitionRef; the operation is the request's.
+    const operation = request?.operation ?? '';
     const derivedSet = derivedPaths(entities[entityId]);
     const actual = leavesOf(route.input).map(item => item.path);
     for (const path of actual) {
@@ -380,9 +381,8 @@ function derivedPaths(entity: Ns5OntologyAnyEntity | undefined): Set<string> {
   return out;
 }
 
-function renderInput(entities: Record<string, Ns5OntologyAnyEntity>, writes: string, paths: string[]): string {
+function renderInput(entities: Record<string, Ns5OntologyAnyEntity>, writes: string, operation: string, paths: string[]): string {
   const entityId = writes.split('.')[0] ?? '';
-  const operation = writes.split('.')[1] ?? '';
   const keepIdentity = operation === 'update' || operation === 'transition';
   const prefix = `${entityId}.`;
   const fields = paths

@@ -249,7 +249,8 @@ void test('synthetic fixture covers version, unbound submit and grant refusal', 
   twoSubmits.organisms.sendLeft = organism('actions', [{ id: 'sendLeft', kind: 'submit' }, { id: 'reviseLeft', kind: 'submit' }]);
   const twoDraft = structuredClone(sectionedDraft);
   twoDraft.organisms.sendLeft.submits = [{ intentId: 'sendLeft', write: `${written}.create` }, { intentId: 'reviseLeft', write: `${written}.update` }];
-  const both = deriveD2PageRequests({ ...base, desktop: twoSubmits, mobile: twoSubmits, draftDesktop: twoDraft, draftMobile: twoDraft });
+  const updateNeeds = base.needsPages.map(page => page.pageId === base.pageId ? { ...page, writes: [...page.writes, { entity: written, operation: 'update' }] } : page);
+  const both = deriveD2PageRequests({ ...base, needsPages: updateNeeds, desktop: twoSubmits, mobile: twoSubmits, draftDesktop: twoDraft, draftMobile: twoDraft });
   assert.equal(both.forms.sendLeft?.organism, 'formLeft');
   assert.equal(both.forms.reviseLeft?.organism, 'formLeft');
   assert.deepEqual(both.requests.filter(item => item.kind === 'cmd').map(item => `${item.id}:${item.writes}`).sort(),
@@ -359,6 +360,26 @@ void test('synthetic fixture covers version, unbound submit and grant refusal', 
   for (const proj of versioned) assert.equal(proj.body.match(/\bversion:/gu)?.length, 1, proj.body);
   const updateShared = sharedFromDerived(updated);
   assert.equal(gateD2ContractV2(updateContract, updated, updateShared, base.entities).some(item => item.code === 'D2_CONTRACT_V2_FIELD_DUPLICATE'), false);
+  // d2_66: a transition submit is keyed by its transitionRef; the command still carries the record identity.
+  const transitioning = structuredClone(sectionedDraft);
+  transitioning.organisms.sendLeft.submits = [{ intentId: 'sendLeft', write: `${written}.archiveRecord` }];
+  const transitionNeeds = structuredClone(base.needsPages);
+  transitionNeeds[0] = { ...transitionNeeds[0], writes: [...transitionNeeds[0].writes, { entity: written, operation: 'transition', transitionRef: 'archiveRecord' }] };
+  const moved = deriveD2PageRequests({ ...base, desktop: sectioned, mobile: sectioned, draftDesktop: transitioning, draftMobile: transitioning, needsPages: transitionNeeds });
+  const moveCmd = moved.requests.find(item => item.id === 'sendLeft');
+  assert.equal(moveCmd?.operation, 'transition');
+  assert.equal(moveCmd?.writes, `${written}.archiveRecord`);
+  assert.ok(moveCmd?.inputPaths.includes(`${written}.id`) && moveCmd.inputPaths.includes(`${written}.version`), JSON.stringify(moveCmd?.inputPaths));
+  const moveContract = buildD2ContractV2(moved, sharedFromDerived(moved), base.entities);
+  const moveInput = moveContract.routes.find(item => item.route.endsWith('.sendLeft'))?.input ?? '';
+  assert.match(moveInput, /\bid: string/u);
+  assert.match(moveInput, /\bversion: number/u);
+  assert.equal(gateD2ContractV2(moveContract, moved, sharedFromDerived(moved), base.entities).some(item => item.code === 'D2_CONTRACT_V2_INPUT'), false);
+  // A submit whose key is not a page write is a named issue.
+  const unknownWrite = structuredClone(transitioning);
+  unknownWrite.organisms.sendLeft.submits = [{ intentId: 'sendLeft', write: `${written}.transition` }];
+  assert.ok(deriveD2PageRequests({ ...base, desktop: sectioned, mobile: sectioned, draftDesktop: unknownWrite, draftMobile: unknownWrite, needsPages: transitionNeeds })
+    .issues.some(item => item.code === 'D2_REQUESTS_WRITE_UNKNOWN'));
   const doubled = structuredClone(updateContract);
   doubled.projections[0].body += '\n  readonly version: number;';
   assert.equal(gateD2ContractV2(doubled, updated, updateShared, base.entities).some(item => item.code === 'D2_CONTRACT_V2_FIELD_DUPLICATE'), true);

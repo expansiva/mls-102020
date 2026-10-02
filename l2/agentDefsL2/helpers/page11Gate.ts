@@ -4,6 +4,7 @@ import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 
 export interface D2Page11Category { categoryId: string; experiences?: { page11?: string; page21?: string } }
 export interface D2Page11MenuNode { id: string; kind: string; organisms?: Array<{ kind: string; text: string }>; children?: D2Page11MenuNode[] }
@@ -95,7 +96,13 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
   const currentNeeds = sources.needsPages.find(item => item.pageId === sources.pageId);
   if (!currentNeeds) add('D2_PAGE11_NEEDS_PAGE_MISSING', 'page11Needs', `Page ${sources.pageId} has no needs.json entry.`);
   else if (!currentNeeds.actors.includes(sources.actor)) add('D2_PAGE11_NEEDS_ACTOR', 'page11Needs', `Actor ${sources.actor} is absent from needs.json page ${sources.pageId}.`);
-  const pageWrites = new Set((currentNeeds?.writes ?? []).map(writeKey));
+  const keysOf = (writes: readonly D2Page11Write[], where: string): string[] => writes.flatMap(write => {
+    try { return [d2WriteKey(write)]; } catch (error) {
+      add('D2_PAGE11_TRANSITION_WITHOUT_REF', where, error instanceof Error ? error.message : String(error));
+      return [];
+    }
+  });
+  const pageWrites = new Set(keysOf(currentNeeds?.writes ?? [], 'page11Needs.writes'));
   const coveredWrites = new Set<string>();
   const intentIds = new Set<string>();
   for (const [id, organism] of Object.entries(definition.organisms)) {
@@ -119,7 +126,7 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
         if (!target) add('D2_PAGE11_NAVIGATE_PAGE', `organisms.${id}.intents.${intent.id}`, `Navigate target ${intent.to} is absent from the menu.`);
         else if (!actorsFor(sources.menu, target.path).has(sources.actor)) add('D2_PAGE11_NAVIGATE_ACTOR', `organisms.${id}.intents.${intent.id}`, `Actor ${sources.actor} cannot access target ${intent.to}.`);
         else {
-          const targetWrites = new Set((sources.needsPages.find(item => item.pageId === intent.to)?.writes ?? []).map(writeKey));
+          const targetWrites = new Set(keysOf(sources.needsPages.find(item => item.pageId === intent.to)?.writes ?? [], `needs.${intent.to}.writes`));
           const delegated = [...pageWrites].filter(write => targetWrites.has(write));
           for (const write of delegated) coveredWrites.add(write);
         }
@@ -172,7 +179,7 @@ export function gateD2Page11Pair(desktop: unknown, mobile: unknown): D2Page11Iss
   return issues;
 }
 
-function writeKey(write: D2Page11Write): string { return `${write.entity}.${write.operation === 'transition' && write.transitionRef ? write.transitionRef : write.operation}`; }
+
 function findPage(nodes: D2Page11MenuNode[], id: string, ancestors: string[] = []): { node: D2Page11MenuNode; path: string[] } | null {
   for (const node of nodes) {
     const path = [...ancestors, node.id];
