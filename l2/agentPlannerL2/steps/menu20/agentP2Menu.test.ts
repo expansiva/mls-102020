@@ -35,16 +35,14 @@ import {
   parseP2Grants,
   parseP2Processes,
   parsePreviousMenuTree,
-  type MenuPageNode,
-  type MenuStampedNode,
   type MenuV2,
-  type P2MenuFile,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { validateP2Menu } from '/_102020_/l2/agentPlannerL2/steps/menu20/gate.js';
 import {
   parseP2L4Sources,
   type P2L4Sources,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
+import type { MenuPageNode, MenuStampedNode, PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
@@ -805,7 +803,7 @@ void test('planner source does not mention previousMenu or diffMenuTrees', () =>
 
 void test('candidate prompt includes the canonical menu as current screens, not previousMenu', () => {
   const loaded = loadSources();
-  const canonical = JSON.parse(readFileSync(path.join(HERE, '../needs30/fixtures/menu.json'), 'utf8')) as P2MenuFile;
+  const canonical = JSON.parse(readFileSync(path.join(HERE, '../needs30/fixtures/menu.json'), 'utf8')) as PoolMenuFile;
   const human = buildP2MenuHumanPrompt({
     menuSources: { sources: loaded.sources, grants: loaded.grants, processes: loaded.processes },
     canonicalMenu: canonical,

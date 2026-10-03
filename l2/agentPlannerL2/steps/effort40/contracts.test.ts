@@ -7,8 +7,6 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import type { P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
-import type { P2NeedsFile, P2NeedsRead } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import {
   P2_EFFORT_SCHEMA_VERSION,
   P2_BACKEND_SCHEMA_VERSION,
@@ -20,11 +18,12 @@ import {
   p2EffortSubject,
   p2EntityRulesMap,
   p2StatusFromMenuAction,
-  type P2BackendFile,
+  type P2BackendView,
   type P2BuildEffortCandidate,
   type P2EffortL4DiffFile,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import { validateP2Effort } from '/_102020_/l2/agentPlannerL2/steps/effort40/gate.js';
+import type { PoolMenuFile, PoolNeedsFile, PoolNeedsRead } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
@@ -41,7 +40,7 @@ void test('menu action maps onto the l1/CB status vocabulary', () => {
 });
 
 void test('mensalidadesAcademia fixture joins every menu page with backend statuses', () => {
-  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
   const backend = parseP2BackendFile(JSON.parse(readFileSync(BACKEND_PATH, 'utf8')));
   const file = buildP2EffortFile({ menu, backend, now: AT });
   assert.equal(file.schemaVersion, P2_EFFORT_SCHEMA_VERSION);
@@ -77,8 +76,8 @@ void test('mensalidadesAcademia fixture joins every menu page with backend statu
 });
 
 void test('the four menu actions become the four effort statuses, including meta.removed', () => {
-  const menu = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as P2MenuFile;
-  const backend: P2BackendFile = {
+  const menu = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as PoolMenuFile;
+  const backend: P2BackendView = {
     schemaVersion: P2_BACKEND_SCHEMA_VERSION,
     moduleName: 'mensalidadesAcademia',
     device: 'web',
@@ -111,11 +110,11 @@ void test('the four menu actions become the four effort statuses, including meta
   assert.equal(gate.ok, true, gate.issues.map(issue => issue.message).join('\n'));
 });
 
-function needsRead(entity: string): P2NeedsRead {
+function needsRead(entity: string): PoolNeedsRead {
   return { entity, family: 'tdm', scope: 'organization', derived: [], from: [] };
 }
 
-function needsFile(pages: { pageId: string; entities: string[] }[]): P2NeedsFile {
+function needsFile(pages: { pageId: string; entities: string[] }[]): PoolNeedsFile {
   return {
     schemaVersion: '2026-09-21-p2-needs-v1',
     moduleName: 'mensalidadesAcademia',
@@ -131,7 +130,7 @@ function needsFile(pages: { pageId: string; entities: string[] }[]): P2NeedsFile
   };
 }
 
-function emptyBackend(): P2BackendFile {
+function emptyBackend(): P2BackendView {
   return {
     schemaVersion: P2_BACKEND_SCHEMA_VERSION,
     moduleName: 'mensalidadesAcademia',
@@ -183,7 +182,7 @@ void test('backend v1.2 requires testSupport and validates the published item sh
 });
 
 void test('changing only testSupport changes effort content hash, not effort totals', () => {
-  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
   const backend = parseP2BackendFile(JSON.parse(readFileSync(BACKEND_PATH, 'utf8')));
   const original = buildP2EffortFile({ menu, backend, now: AT });
   const changed = buildP2EffortFile({
@@ -201,11 +200,11 @@ void test('changing only testSupport changes effort content hash, not effort tot
 });
 
 function candidateOf(opts: {
-  menu: P2MenuFile;
-  needs: P2NeedsFile;
+  menu: PoolMenuFile;
+  needs: PoolNeedsFile;
   items: P2EffortL4DiffFile['items'];
   rules: readonly { entityId: string; rules?: readonly string[] }[];
-  canonicalMenu?: P2MenuFile | null;
+  canonicalMenu?: PoolMenuFile | null;
 }): P2BuildEffortCandidate {
   return {
     canonicalMenu: opts.canonicalMenu === undefined ? opts.menu : opts.canonicalMenu,
@@ -222,7 +221,7 @@ function candidateOf(opts: {
 }
 
 void test('candidate: situacaoMensalidadeDerivada updates pages that read Mensalidade; others stay done', () => {
-  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
   const needs = needsFile([
     { pageId: 'minha_matricula', entities: ['Matricula'] },
     { pageId: 'inicio_recepcao', entities: ['Mensalidade'] },
@@ -266,7 +265,7 @@ void test('candidate: situacaoMensalidadeDerivada updates pages that read Mensal
 });
 
 void test('candidate: orphan rule alunoBloqueadoPorDuasMensalidadesVencidas lands in unattributed', () => {
-  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
   const needs = needsFile([
     { pageId: 'mensalidades_pagamentos', entities: ['Mensalidade', 'Pagamento'] },
     { pageId: 'planos', entities: ['Plano'] },
@@ -300,8 +299,8 @@ void test('candidate: orphan rule alunoBloqueadoPorDuasMensalidadesVencidas land
 });
 
 void test('candidate: new page is toCreate, canonical page missing from candidate is toRemove', () => {
-  const canonical = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as P2MenuFile;
-  const candidateMenu: P2MenuFile = {
+  const canonical = JSON.parse(readFileSync(ACTIONS_PATH, 'utf8')) as PoolMenuFile;
+  const candidateMenu: PoolMenuFile = {
     ...canonical,
     tree: [
       canonical.tree[0],
@@ -360,7 +359,7 @@ void test('parseP2L4DiffFile reads the p4 item shape', () => {
 });
 
 void test('without candidate input, menu action still maps screens (p2_22)', () => {
-  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
   const backend = parseP2BackendFile(JSON.parse(readFileSync(BACKEND_PATH, 'utf8')));
   const file = buildP2EffortFile({ menu, backend, now: AT });
   assert.ok(file.screens.every(screen => screen.status === 'toCreate'));
@@ -368,7 +367,7 @@ void test('without candidate input, menu action still maps screens (p2_22)', () 
 });
 
 void test('effort message is l2→l4 with the effort artifact', () => {
-  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
   const backend = parseP2BackendFile(JSON.parse(readFileSync(BACKEND_PATH, 'utf8')));
   const file = buildP2EffortFile({ menu, backend, now: AT });
   const message = buildP2EffortMessage({

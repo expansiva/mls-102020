@@ -1,11 +1,12 @@
 /// <mls fileReference="_102020_/l2/helpers/defsInput/contracts.ts" enhancement="_blank"/>
 
+import type { PoolPlanStatus } from '/_102035_/l2/solution/poolPlan.js';
+
 export interface D2RunIdentity { project: number; module: string }
 
 export const D2_INPUT_VERSION = '2026-09-21-agent-defs-l2-input-v1' as const;
 export const D2_INPUT_REPORT_VERSION = '2026-09-21-agent-defs-l2-input-report-v1' as const;
 
-export type D2EffortStatus = 'toCreate' | 'toUpdate' | 'toRemove' | 'done';
 export type D2ProblemSeverity = 'error' | 'review' | 'info';
 
 export interface D2InputProblem {
@@ -42,7 +43,7 @@ export interface D2Destination {
 
 export interface D2SelectedPage {
   pageId: string;
-  status: D2EffortStatus;
+  status: PoolPlanStatus;
   label: string;
   actors: string[];
   authorityRefs: string[];

@@ -14,8 +14,8 @@ import {
   beforeP2NeedsPromptStep,
   executeP2Needs,
 } from '/_102020_/l2/agentPlannerL2/steps/needs30/agentP2Needs.js';
-import type { P2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solution/pool.js';
+import type { PoolNeedsFile } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
@@ -195,7 +195,7 @@ void test('execute writes needs.json and response, traces processed+delivered, t
   const host = installHost();
   seedReady(host);
   const result = await executeP2Needs(MODULE, AT);
-  const written = JSON.parse(host.files[keyOf(p2NeedsFile(MODULE))].content) as P2NeedsFile;
+  const written = JSON.parse(host.files[keyOf(p2NeedsFile(MODULE))].content) as PoolNeedsFile;
   assert.equal(written.schemaVersion, '2026-09-21-p2-needs-v1');
   assert.equal(result.needsPath, `l4/${MODULE}/pool/l1/web/needs.json`);
   const payments = written.pages.find(page => page.pageId === 'mensalidades_pagamentos');

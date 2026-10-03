@@ -1,6 +1,5 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/effort40/gate.ts" enhancement="_blank"/>
 
-import type { MenuStampedNode, MenuStampedPageNode, P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import {
   P2_EFFORT_ENDPOINT_KINDS,
   P2_EFFORT_REMOVED_KINDS,
@@ -12,11 +11,16 @@ import {
   isP2EffortRemovedKind,
   isP2EffortStatus,
   isP2TestSupportOwner,
-  type P2TestSupportItem,
   p2StatusFromMenuAction,
-  type P2EffortFile,
-  type P2EffortTotalsBucket,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
+import type {
+  MenuStampedNode,
+  MenuStampedPageNode,
+  PoolEffortFile,
+  PoolEffortTotalsBucket,
+  PoolMenuFile,
+  PoolTestSupportItem,
+} from '/_102035_/l2/solution/poolPlan.js';
 
 export interface P2EffortGateIssue {
   severity: 'error' | 'warning';
@@ -31,8 +35,8 @@ export interface P2EffortGateResult {
 }
 
 export function validateP2Effort(
-  file: P2EffortFile,
-  menu: P2MenuFile,
+  file: PoolEffortFile,
+  menu: PoolMenuFile,
   options?: { screenStatusFromAction?: boolean },
 ): P2EffortGateResult {
   const issues: P2EffortGateIssue[] = [];
@@ -129,7 +133,7 @@ export function validateP2Effort(
   return { ok: issues.every(issue => issue.severity !== 'error'), issues };
 }
 
-function validateTestSupport(issues: P2EffortGateIssue[], item: P2TestSupportItem, index: number): void {
+function validateTestSupport(issues: P2EffortGateIssue[], item: PoolTestSupportItem, index: number): void {
   const path = `$.testSupport[${index}]`;
   if (!item || typeof item !== 'object' || Array.isArray(item)) {
     error(issues, 'P2_EFFORT_TEST_SUPPORT', 'Each testSupport item must be an object.', path);
@@ -163,8 +167,8 @@ export function formatP2EffortGate(issues: readonly P2EffortGateIssue[]): string
 function checkTotals(
   issues: P2EffortGateIssue[],
   name: string,
-  actual: P2EffortTotalsBucket,
-  expected: P2EffortTotalsBucket,
+  actual: PoolEffortTotalsBucket,
+  expected: PoolEffortTotalsBucket,
 ): void {
   for (const status of P2_EFFORT_STATUSES) {
     if (actual[status] !== expected[status]) {

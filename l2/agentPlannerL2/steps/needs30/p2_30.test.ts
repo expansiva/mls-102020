@@ -17,13 +17,13 @@ import {
   parseP2Grants,
   parsePreviousMenuTree,
   type MenuV2,
-  type P2MenuFile,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { validateP2Menu } from '/_102020_/l2/agentPlannerL2/steps/menu20/gate.js';
 import { parseP2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
-import { buildP2NeedsFile, type P2NeedsPage } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
+import { buildP2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import { buildD2InputSnapshot } from '/_102020_/l2/helpers/defsInput/gate.js';
 import type { D2InputArtifacts } from '/_102020_/l2/helpers/defsInput/contracts.js';
+import type { PoolMenuFile, PoolNeedsPage } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, 'fixtures/p2_30');
@@ -47,16 +47,16 @@ function load(dir: string) {
     journeyIndex: defs(dir, 'journeys/index.defs.ts'), journeys: ids(dir, 'journeys').map(name => defs(dir, `journeys/${name}`)),
     access, ontologyIndex: defs(dir, 'ontology/index.defs.ts'), ontologyEntities: ids(dir, 'ontology').map(name => defs(dir, `ontology/${name}`)),
   });
-  return { sources, grants: parseP2Grants(access), menu: json<P2MenuFile>(dir, 'pool/menu.json'), needs: json<{ pages: P2NeedsPage[] }>(dir, 'pool/needs.json') };
+  return { sources, grants: parseP2Grants(access), menu: json<PoolMenuFile>(dir, 'pool/menu.json'), needs: json<{ pages: PoolNeedsPage[] }>(dir, 'pool/needs.json') };
 }
 
-function withRecords(menu: P2MenuFile, records: Record<string, string[]>): P2MenuFile {
+function withRecords(menu: PoolMenuFile, records: Record<string, string[]>): PoolMenuFile {
   return { ...structuredClone(menu), meta: { ...structuredClone(menu.meta), records } };
 }
-function draftOf(menu: P2MenuFile): MenuV2 {
+function draftOf(menu: PoolMenuFile): MenuV2 {
   return { tree: parsePreviousMenuTree(menu), authorities: menu.authorities, meta: { journeys: menu.meta.journeys, processes: menu.meta.processes, records: menu.meta.records } };
 }
-function pageOf(pages: readonly P2NeedsPage[], pageId: string): P2NeedsPage {
+function pageOf(pages: readonly PoolNeedsPage[], pageId: string): PoolNeedsPage {
   const page = pages.find(item => item.pageId === pageId);
   assert.ok(page, pageId);
   return page;
@@ -102,7 +102,7 @@ void test('p2_30: a page that keeps four records stays the same', () => {
   assert.equal(kept.length, 4);
   const menu = withRecords(fleet.menu, Object.fromEntries(kept.map(entity => [entity, ['cadastros_operacionais']])));
   const after = pageOf(buildP2NeedsFile({ menu, sources: fleet.sources, grants: fleet.grants, processes: [], now: AT }).pages, 'cadastros_operacionais');
-  const shape = (page: P2NeedsPage) => ({
+  const shape = (page: PoolNeedsPage) => ({
     writes: page.writes.map(item => `${item.entity}:${item.operation}:${item.from.join(',')}`).sort(),
     reads: page.reads.map(item => item.entity).sort(),
   });

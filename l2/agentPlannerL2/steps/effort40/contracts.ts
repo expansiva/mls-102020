@@ -7,11 +7,28 @@ import {
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
   type MenuAction,
-  type MenuStampedNode,
-  type MenuStampedPageNode,
-  type P2MenuFile,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
-import type { P2NeedsFile, P2NeedsPage } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
+import type {
+  MenuStampedNode,
+  PoolBackendEndpoint,
+  PoolBackendFile,
+  PoolBackendRemoved,
+  PoolBackendTable,
+  PoolBackendUsecase,
+  MenuStampedPageNode,
+  PoolEffortEndpoint,
+  PoolEffortFile,
+  PoolEffortRemoved,
+  PoolEffortScreen,
+  PoolEffortTable,
+  PoolEffortTotalsBucket,
+  PoolEffortUnattributed,
+  PoolEffortUsecase,
+  PoolMenuFile,
+  PoolNeedsFile,
+  PoolNeedsPage,
+  PoolTestSupportItem,
+} from '/_102035_/l2/solution/poolPlan.js';
 
 export const P2_EFFORT_SCHEMA_VERSION = '2026-09-21-p2-effort-v1.2' as const;
 export const P2_L4DIFF_SCHEMA = '2026-09-21-p4-l4diff-v1' as const;
@@ -29,18 +46,6 @@ export type P2EffortStatus = typeof P2_EFFORT_STATUSES[number];
 export const P2_TEST_SUPPORT_OWNERS = ['L1', 'runtime'] as const;
 export type P2TestSupportOwner = typeof P2_TEST_SUPPORT_OWNERS[number];
 
-export interface P2TestSupportItem {
-  id: string;
-  actorRefs: string[];
-  entityRefs: string[];
-  sourceRefs: string[];
-  status: P2EffortStatus;
-  owner: P2TestSupportOwner;
-  executorRef: string;
-  cleanupRef: string;
-  gap: string;
-}
-
 export const P2_EFFORT_ENDPOINT_KINDS = ['qry', 'cmd'] as const;
 export type P2EffortEndpointKind = typeof P2_EFFORT_ENDPOINT_KINDS[number];
 
@@ -53,79 +58,6 @@ const ACTION_TO_STATUS: Record<MenuAction, P2EffortStatus> = {
   remove: 'toRemove',
   keep: 'done',
 };
-
-export interface P2EffortTotalsBucket {
-  toCreate: number;
-  toUpdate: number;
-  toRemove: number;
-  done: number;
-}
-
-export interface P2EffortTotals {
-  screens: P2EffortTotalsBucket;
-  endpoints: P2EffortTotalsBucket;
-  usecases: P2EffortTotalsBucket;
-  tables: P2EffortTotalsBucket;
-}
-
-export interface P2EffortScreen {
-  pageId: string;
-  label: string;
-  actors: string[];
-  status: P2EffortStatus;
-  endpoints: string[];
-}
-
-export interface P2EffortEndpoint {
-  route: string;
-  page: string;
-  kind: P2EffortEndpointKind;
-  usecaseRef: string;
-  status: P2EffortStatus;
-}
-
-export interface P2EffortUsecase {
-  usecaseId: string;
-  entity: string;
-  operation: string;
-  status: P2EffortStatus;
-  existing: string;
-}
-
-export interface P2EffortTable {
-  tableId: string;
-  entity: string;
-  status: P2EffortStatus;
-}
-
-export interface P2EffortRemoved {
-  kind: P2EffortRemovedKind;
-  id: string;
-  status: 'toRemove';
-}
-
-/** l4diff item that did not reach any page. Reader: the person, in this JSON. */
-export interface P2EffortUnattributed {
-  changeId: string;
-  kind: string;
-  op: string;
-  reason: string;
-}
-
-export interface P2EffortFile {
-  schemaVersion: typeof P2_EFFORT_SCHEMA_VERSION;
-  moduleName: string;
-  device: P2MenuDevice;
-  totals: P2EffortTotals;
-  screens: P2EffortScreen[];
-  endpoints: P2EffortEndpoint[];
-  usecases: P2EffortUsecase[];
-  tables: P2EffortTable[];
-  removed: P2EffortRemoved[];
-  testSupport: P2TestSupportItem[];
-  unattributed: P2EffortUnattributed[];
-  meta: { sourceMenu: string; sourceBackend: string; sourceVersion: string; generatedAt: string };
-}
 
 export interface P2EffortL4DiffItem {
   changeId: string;
@@ -144,54 +76,30 @@ export interface P2EffortL4DiffFile {
 }
 
 export interface P2BuildEffortCandidate {
-  canonicalMenu: P2MenuFile | null;
+  canonicalMenu: PoolMenuFile | null;
   l4diff: P2EffortL4DiffFile;
-  needs: P2NeedsFile;
+  needs: PoolNeedsFile;
   entityRules: ReadonlyMap<string, readonly string[]>;
 }
 
-export interface P2BackendEndpoint {
-  route: string;
-  page: string;
-  kind: P2EffortEndpointKind;
-  usecaseRef: string;
-  status: P2EffortStatus;
-}
-
-export interface P2BackendUsecase {
-  usecaseId: string;
-  entity: string;
-  operation: string;
-  status: P2EffortStatus;
-  existing: string;
-}
-
-export interface P2BackendTable {
-  tableId: string;
-  entity: string;
-  status: P2EffortStatus;
-}
-
-export interface P2BackendRemoved {
-  kind: P2EffortRemovedKind;
-  id: string;
-  status: 'toRemove';
-}
-
-export interface P2BackendFile {
-  schemaVersion: typeof P2_BACKEND_SCHEMA_VERSION;
-  moduleName: string;
-  device: P2MenuDevice;
+/**
+ * backend.json as effort40 reads it (`parseP2BackendFile`): only the fields it copies, with `operation` and
+ * `removed[].kind` as its parse accepts them.
+ */
+type P2BackendEndpoint = Pick<PoolBackendEndpoint, 'route' | 'page' | 'kind' | 'usecaseRef' | 'status'>;
+type P2BackendUsecase = Pick<PoolBackendUsecase, 'usecaseId' | 'entity' | 'status' | 'existing'> & { operation: string };
+type P2BackendTable = Pick<PoolBackendTable, 'tableId' | 'entity' | 'status'>;
+type P2BackendRemoved = Pick<PoolBackendRemoved, 'id' | 'status'> & { kind: P2EffortRemovedKind };
+export type P2BackendView = Pick<PoolBackendFile, 'schemaVersion' | 'moduleName' | 'device' | 'testSupport'> & {
   endpoints: P2BackendEndpoint[];
   usecases: P2BackendUsecase[];
   tables: P2BackendTable[];
   removed: P2BackendRemoved[];
-  testSupport: P2TestSupportItem[];
-}
+};
 
 export interface P2BuildEffortInput {
-  menu: P2MenuFile;
-  backend: P2BackendFile;
+  menu: PoolMenuFile;
+  backend: P2BackendView;
   now: Date;
   /** Present only in `/candidate`. Screen status then comes from canonical + l4diff, not menu action. */
   candidate?: P2BuildEffortCandidate;
@@ -217,11 +125,11 @@ export function p2StatusFromMenuAction(action: MenuAction): P2EffortStatus {
   return ACTION_TO_STATUS[action];
 }
 
-export function emptyP2EffortTotalsBucket(): P2EffortTotalsBucket {
+export function emptyP2EffortTotalsBucket(): PoolEffortTotalsBucket {
   return { toCreate: 0, toUpdate: 0, toRemove: 0, done: 0 };
 }
 
-export function countP2EffortStatuses(rows: readonly { status: P2EffortStatus }[]): P2EffortTotalsBucket {
+export function countP2EffortStatuses(rows: readonly { status: P2EffortStatus }[]): PoolEffortTotalsBucket {
   const totals = emptyP2EffortTotalsBucket();
   for (const row of rows) totals[row.status] += 1;
   return totals;
@@ -231,7 +139,7 @@ export function p2EffortSubject(moduleName: string, device: P2MenuDevice = P2_ME
   return `effort of ${moduleName} (${device}) ready`;
 }
 
-export function p2EffortBody(file: P2EffortFile): string {
+export function p2EffortBody(file: PoolEffortFile): string {
   const { screens, endpoints, usecases, tables } = file.totals;
   return [
     `screens ${formatBucket(screens)}`,
@@ -241,11 +149,11 @@ export function p2EffortBody(file: P2EffortFile): string {
   ].join('\n');
 }
 
-function formatBucket(bucket: P2EffortTotalsBucket): string {
+function formatBucket(bucket: PoolEffortTotalsBucket): string {
   return P2_EFFORT_STATUSES.map(status => `${status}:${bucket[status]}`).join(' ');
 }
 
-export function buildP2EffortFile(input: P2BuildEffortInput): P2EffortFile {
+export function buildP2EffortFile(input: P2BuildEffortInput): PoolEffortFile {
   const device = input.menu.device || input.backend.device || P2_MENU_DEVICE;
   const endpoints = input.backend.endpoints.map(copyEndpoint);
   const usecases = input.backend.usecases.map(copyUsecase);
@@ -253,7 +161,7 @@ export function buildP2EffortFile(input: P2BuildEffortInput): P2EffortFile {
   const removed = input.backend.removed.map(copyRemoved);
   const attributed = input.candidate
     ? attributeL4Diff(input.candidate.l4diff.items, input.candidate.needs, input.candidate.entityRules)
-    : { pageIds: new Set<string>(), unattributed: [] as P2EffortUnattributed[] };
+    : { pageIds: new Set<string>(), unattributed: [] as PoolEffortUnattributed[] };
   const screens = input.candidate
     ? collectScreensFromL4Diff(input.menu, endpoints, input.candidate, attributed.pageIds)
     : collectScreens(input.menu, endpoints);
@@ -284,7 +192,7 @@ export function buildP2EffortFile(input: P2BuildEffortInput): P2EffortFile {
 }
 
 export function buildP2EffortMessage(input: {
-  file: P2EffortFile;
+  file: PoolEffortFile;
   received: Pick<PoolMessage, 'thread' | 'round' | 'mode'>;
 }): PoolMessage {
   return {
@@ -299,7 +207,7 @@ export function buildP2EffortMessage(input: {
   };
 }
 
-export function parseP2BackendFile(value: unknown): P2BackendFile {
+export function parseP2BackendFile(value: unknown): P2BackendView {
   if (!isRecord(value)) throw new Error('backend.json must be an object.');
   if (value.schemaVersion !== P2_BACKEND_SCHEMA_VERSION) {
     throw new Error(`backend.json schemaVersion must be ${P2_BACKEND_SCHEMA_VERSION}.`);
@@ -342,11 +250,11 @@ export function p2EntityRulesMap(
 
 export function attributeL4Diff(
   items: readonly P2EffortL4DiffItem[],
-  needs: P2NeedsFile,
+  needs: PoolNeedsFile,
   entityRules: ReadonlyMap<string, readonly string[]>,
-): { pageIds: Set<string>; unattributed: P2EffortUnattributed[] } {
+): { pageIds: Set<string>; unattributed: PoolEffortUnattributed[] } {
   const pageIds = new Set<string>();
-  const unattributed: P2EffortUnattributed[] = [];
+  const unattributed: PoolEffortUnattributed[] = [];
   for (const item of items) {
     const cited = pagesCitingChange(item, needs, entityRules);
     if (cited.length === 0) {
@@ -364,11 +272,11 @@ export function attributeL4Diff(
 }
 
 function collectScreensFromL4Diff(
-  menu: P2MenuFile,
-  endpoints: readonly P2EffortEndpoint[],
+  menu: PoolMenuFile,
+  endpoints: readonly PoolEffortEndpoint[],
   candidate: P2BuildEffortCandidate,
   updatedIds: ReadonlySet<string>,
-): P2EffortScreen[] {
+): PoolEffortScreen[] {
   const pages = stampedPages(menu.tree);
   const canonicalPages = candidate.canonicalMenu ? stampedPages(candidate.canonicalMenu.tree) : [];
   const canonicalIds = new Set(canonicalPages.map(page => page.id));
@@ -378,7 +286,7 @@ function collectScreensFromL4Diff(
     : new Map<string, string[]>();
   const routesByPage = routesByPageId(endpoints);
   const seen = new Set<string>();
-  const screens: P2EffortScreen[] = [];
+  const screens: PoolEffortScreen[] = [];
   for (const page of pages) {
     seen.add(page.id);
     const status: P2EffortStatus = !canonicalIds.has(page.id)
@@ -406,12 +314,12 @@ function collectScreensFromL4Diff(
   return screens;
 }
 
-function collectScreens(menu: P2MenuFile, endpoints: readonly P2EffortEndpoint[]): P2EffortScreen[] {
+function collectScreens(menu: PoolMenuFile, endpoints: readonly PoolEffortEndpoint[]): PoolEffortScreen[] {
   const pages = stampedPages(menu.tree);
   const actorsOfPage = pageActors(menu, pages);
   const routesByPage = routesByPageId(endpoints);
   const seen = new Set<string>();
-  const screens: P2EffortScreen[] = [];
+  const screens: PoolEffortScreen[] = [];
   for (const page of pages) {
     seen.add(page.id);
     screens.push({
@@ -438,7 +346,7 @@ function collectScreens(menu: P2MenuFile, endpoints: readonly P2EffortEndpoint[]
   return screens;
 }
 
-function routesByPageId(endpoints: readonly P2EffortEndpoint[]): Map<string, string[]> {
+function routesByPageId(endpoints: readonly PoolEffortEndpoint[]): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const endpoint of endpoints) {
     const list = out.get(endpoint.page) || [];
@@ -448,7 +356,7 @@ function routesByPageId(endpoints: readonly P2EffortEndpoint[]): Map<string, str
   return out;
 }
 
-function copyEndpoint(item: P2BackendEndpoint): P2EffortEndpoint {
+function copyEndpoint(item: P2BackendEndpoint): PoolEffortEndpoint {
   return {
     route: item.route,
     page: item.page,
@@ -458,7 +366,7 @@ function copyEndpoint(item: P2BackendEndpoint): P2EffortEndpoint {
   };
 }
 
-function copyUsecase(item: P2BackendUsecase): P2EffortUsecase {
+function copyUsecase(item: P2BackendUsecase): PoolEffortUsecase {
   return {
     usecaseId: item.usecaseId,
     entity: item.entity,
@@ -468,7 +376,7 @@ function copyUsecase(item: P2BackendUsecase): P2EffortUsecase {
   };
 }
 
-function copyTable(item: P2BackendTable): P2EffortTable {
+function copyTable(item: P2BackendTable): PoolEffortTable {
   return {
     tableId: item.tableId,
     entity: item.entity,
@@ -476,7 +384,7 @@ function copyTable(item: P2BackendTable): P2EffortTable {
   };
 }
 
-function copyRemoved(item: P2BackendRemoved): P2EffortRemoved {
+function copyRemoved(item: P2BackendRemoved): PoolEffortRemoved {
   return {
     kind: item.kind,
     id: item.id,
@@ -484,7 +392,7 @@ function copyRemoved(item: P2BackendRemoved): P2EffortRemoved {
   };
 }
 
-function copyTestSupport(item: P2TestSupportItem): P2TestSupportItem {
+function copyTestSupport(item: PoolTestSupportItem): PoolTestSupportItem {
   return {
     id: item.id,
     actorRefs: [...item.actorRefs],
@@ -498,7 +406,7 @@ function copyTestSupport(item: P2TestSupportItem): P2TestSupportItem {
   };
 }
 
-function parseTestSupport(value: unknown, index: number): P2TestSupportItem {
+function parseTestSupport(value: unknown, index: number): PoolTestSupportItem {
   const path = `testSupport[${index}]`;
   if (!isRecord(value)) throw new Error(`backend.json ${path} must be an object.`);
   const status = supportString(value.status, `${path}.status`, false);
@@ -594,7 +502,7 @@ function stampedPages(nodes: readonly MenuStampedNode[]): MenuStampedPageNode[] 
   return out;
 }
 
-function pageActors(menu: P2MenuFile, pages: readonly MenuStampedPageNode[]): Map<string, string[]> {
+function pageActors(menu: PoolMenuFile, pages: readonly MenuStampedPageNode[]): Map<string, string[]> {
   const pageIds = new Set(pages.map(page => page.id));
   const out = new Map<string, string[]>();
   for (const page of pages) out.set(page.id, []);
@@ -693,7 +601,7 @@ function requiredDiffText(value: unknown, path: string): string {
 
 function pagesCitingChange(
   item: P2EffortL4DiffItem,
-  needs: P2NeedsFile,
+  needs: PoolNeedsFile,
   entityRules: ReadonlyMap<string, readonly string[]>,
 ): string[] {
   if (item.kind === 'rule') {
@@ -749,15 +657,15 @@ function entitiesDeclaringRule(
   return out;
 }
 
-function pageCitesEntity(page: P2NeedsPage, entityId: string): boolean {
+function pageCitesEntity(page: PoolNeedsPage, entityId: string): boolean {
   return page.reads.some(read => read.entity === entityId) || page.writes.some(write => write.entity === entityId);
 }
 
-function pageCitesAnyEntity(page: P2NeedsPage, entities: ReadonlySet<string>): boolean {
+function pageCitesAnyEntity(page: PoolNeedsPage, entities: ReadonlySet<string>): boolean {
   return page.reads.some(read => entities.has(read.entity)) || page.writes.some(write => entities.has(write.entity));
 }
 
-function pageCitesFrom(page: P2NeedsPage, marker: string): boolean {
+function pageCitesFrom(page: PoolNeedsPage, marker: string): boolean {
   return page.reads.some(read => read.from.includes(marker)) || page.writes.some(write => write.from.includes(marker));
 }
 

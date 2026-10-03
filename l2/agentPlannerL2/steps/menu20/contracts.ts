@@ -11,6 +11,16 @@ import {
   type P2L4Sources,
   type P2WorkspaceCandidate,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
+import type {
+  MenuGroupNode,
+  MenuHubNode,
+  MenuNode,
+  MenuOrganism,
+  MenuPageNode,
+  MenuStampedNode,
+  PoolMenuFile,
+  PoolMenuMeta,
+} from '/_102035_/l2/solution/poolPlan.js';
 
 export const P2_MENU_SCHEMA_VERSION = '2026-09-20-p2-menu-v2.2' as const;
 export const MENU_NODE_KINDS = ['hub', 'page', 'group'] as const;
@@ -28,73 +38,10 @@ const MEMBER_ID = /^[a-z][A-Za-z0-9]*$/;
 const ENTITY_ID = /^[A-Z][A-Za-z0-9]*$/;
 const ACTOR_KEY = /^actor:([a-z][A-Za-z0-9]*)$/;
 
-export interface MenuOrganism {
-  kind: MenuOrganismKind;
-  text: string;
-}
-
-export interface MenuHubNode {
-  id: string;
-  kind: 'hub';
-  label: string;
-  context: string;
-  text: string;
-  children: MenuNode[];
-}
-
-export interface MenuPageNode {
-  id: string;
-  kind: 'page';
-  label: string;
-  organisms: MenuOrganism[];
-}
-
-export interface MenuGroupNode {
-  id: string;
-  kind: 'group';
-  label: string;
-  text: string;
-  children: MenuNode[];
-}
-
-export type MenuNode = MenuHubNode | MenuPageNode | MenuGroupNode;
-
-export type MenuStampedHubNode = Omit<MenuHubNode, 'children'> & {
-  action: MenuAction;
-  children: MenuStampedNode[];
-};
-export type MenuStampedPageNode = MenuPageNode & { action: MenuAction };
-export type MenuStampedGroupNode = Omit<MenuGroupNode, 'children'> & {
-  action: MenuAction;
-  children: MenuStampedNode[];
-};
-export type MenuStampedNode = MenuStampedHubNode | MenuStampedPageNode | MenuStampedGroupNode;
-
-export interface MenuV2Meta {
-  journeys: Record<string, string[]>;
-  processes: Record<string, string[]>;
-  /** Kept record (entityId from recordsKept) → pages that maintain it. Read by needs30. */
-  records: Record<string, string[]>;
-}
-
-export interface MenuFileMeta extends MenuV2Meta {
-  removed: MenuStampedNode[];
-}
-
 export interface MenuV2 {
   tree: MenuNode[];
   authorities: Record<string, string[]>;
-  meta: MenuV2Meta;
-}
-
-export interface P2MenuFile {
-  schemaVersion: typeof P2_MENU_SCHEMA_VERSION;
-  moduleName: string;
-  userLanguage: string;
-  device: P2MenuDevice;
-  tree: MenuStampedNode[];
-  authorities: Record<string, string[]>;
-  meta: MenuFileMeta;
+  meta: PoolMenuMeta;
 }
 
 export interface P2GrantView {
@@ -414,7 +361,7 @@ export function buildP2MenuFile(input: {
   userLanguage: string;
   draft: MenuV2;
   device?: P2MenuDevice;
-}): P2MenuFile {
+}): PoolMenuFile {
   const device = input.device || P2_MENU_DEVICE;
   const ready = readReadyL2Manifest(input.moduleName, device);
   return {
@@ -433,7 +380,7 @@ export function buildP2MenuFile(input: {
   };
 }
 
-export function menuActionCounts(file: P2MenuFile): Record<MenuAction, number> {
+export function menuActionCounts(file: PoolMenuFile): Record<MenuAction, number> {
   const counts: Record<MenuAction, number> = { new: 0, change: 0, keep: 0, remove: 0 };
   const visit = (nodes: readonly MenuStampedNode[]) => {
     for (const node of nodes) {

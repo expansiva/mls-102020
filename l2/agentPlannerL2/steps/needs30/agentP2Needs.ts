@@ -25,20 +25,19 @@ import {
   updateStatus,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import { loadP2MenuSources } from '/_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.js';
-import type { P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/steps/requests50/agentP2Requests.js';
 import {
   buildP2NeedsFile,
   buildP2NeedsMessage,
-  type P2NeedsFile,
 } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import {
   formatP2NeedsGate,
   validateP2Needs,
 } from '/_102020_/l2/agentPlannerL2/steps/needs30/gate.js';
+import type { PoolMenuFile, PoolNeedsFile } from '/_102035_/l2/solution/poolPlan.js';
 
 export interface P2DeliverNeedsResult {
-  needs: P2NeedsFile;
+  needs: PoolNeedsFile;
   needsPath: string;
   message: PoolMessage;
   messagePath: string;
@@ -48,7 +47,7 @@ interface P2NeedsCheckpoint {
   thread: string;
   round: number;
   inputFile: string;
-  needs: P2NeedsFile;
+  needs: PoolNeedsFile;
 }
 
 export async function executeP2Needs(moduleName: string, now: Date): Promise<P2DeliverNeedsResult> {
@@ -64,13 +63,13 @@ export async function executeP2Needs(moduleName: string, now: Date): Promise<P2D
     && checkpoint.inputFile === displayPath(receivedFile)
     ? checkpoint
     : null;
-  let needs: P2NeedsFile;
+  let needs: PoolNeedsFile;
   let message: PoolMessage;
   let messageInfo: ReturnType<typeof p2NeedsFile>;
   let needsPath: string;
   if (existing) {
     const needsInfo = p2NeedsFile(moduleName, pipeline.device || P2_MENU_DEVICE);
-    const persisted = await readJson<P2NeedsFile>(needsInfo);
+    const persisted = await readJson<PoolNeedsFile>(needsInfo);
     if (!persisted) throw new Error('pool/l1 needs.json is missing for the existing response; input remains pending.');
     needs = persisted;
     message = existing.message;
@@ -83,7 +82,7 @@ export async function executeP2Needs(moduleName: string, now: Date): Promise<P2D
     needsPath = await writeJson(needsInfo, needs);
     messageInfo = await writePoolMessage(moduleName, message, now);
   } else {
-    const menu = await readJson<P2MenuFile>(p2MenuFile(moduleName, pipeline.device || P2_MENU_DEVICE));
+    const menu = await readJson<PoolMenuFile>(p2MenuFile(moduleName, pipeline.device || P2_MENU_DEVICE));
     if (!menu) throw new Error(`pool/l2/${pipeline.device || P2_MENU_DEVICE}/menu.json is missing; menu20 must run first.`);
     const menuSources = await loadP2MenuSources(moduleName);
     needs = buildP2NeedsFile({

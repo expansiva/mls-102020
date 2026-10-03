@@ -9,7 +9,6 @@ import { fileURLToPath } from 'node:url';
 import {
   parseP2Grants,
   parseP2Processes,
-  type P2MenuFile,
   type P2ProcessView,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import {
@@ -22,9 +21,9 @@ import {
   p2EntityFamily,
   p2NeedsSubject,
   p2WidestScope,
-  type P2NeedsPage,
 } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import { validateP2Needs } from '/_102020_/l2/agentPlannerL2/steps/needs30/gate.js';
+import type { PoolMenuFile, PoolNeedsPage } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const L4_FIXTURE = path.join(HERE, '../workspaces20/fixtures/mensalidadesAcademia');
@@ -117,8 +116,8 @@ function loadAgendaSources(): { sources: P2L4Sources; grants: ReturnType<typeof 
   return { sources, grants: parseP2Grants(access) };
 }
 
-function loadMenu(): P2MenuFile {
-  return JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+function loadMenu(): PoolMenuFile {
+  return JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
 }
 
 function loadBuilt() {
@@ -130,7 +129,7 @@ function loadBuilt() {
   return { sources, grants, processes, menu, file };
 }
 
-function pageOf(pages: readonly P2NeedsPage[], pageId: string): P2NeedsPage {
+function pageOf(pages: readonly PoolNeedsPage[], pageId: string): PoolNeedsPage {
   const page = pages.find(item => item.pageId === pageId);
   assert.ok(page, `missing page ${pageId}`);
   return page;
@@ -345,7 +344,7 @@ void test('agenda derives only used, authorized relational reads with source and
   ]));
   const renamedFile = buildP2NeedsFile({ menu: renamedMenu, sources: renamedSources, grants: renamedGrants, processes: [], now: AT });
   assert.deepEqual(renamedFile.pages.map(item => item.pageId), ['pageA', 'pageB']);
-  const readShape = (needsPage: P2NeedsPage, reverse = false) => needsPage.reads.map(read => {
+  const readShape = (needsPage: PoolNeedsPage, reverse = false) => needsPage.reads.map(read => {
     const originalEntity = reverse ? Object.keys(ids).find(key => ids[key] === read.entity) || read.entity : read.entity;
     return `${originalEntity}:${read.family}:${read.scope}`;
   }).sort();

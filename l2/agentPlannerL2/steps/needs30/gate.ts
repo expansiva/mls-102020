@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/steps/needs30/gate.ts" enhancement="_blank"/>
 
-import { type P2GrantView, type P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
+import { type P2GrantView } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import type { P2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 import {
   P2_NEEDS_FAMILIES,
@@ -11,8 +11,8 @@ import {
   isP2NeedsFamily,
   isP2NeedsOperation,
   isP2NeedsScope,
-  type P2NeedsFile,
 } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
+import type { PoolMenuFile, PoolNeedsFile } from '/_102035_/l2/solution/poolPlan.js';
 
 export interface P2NeedsGateIssue {
   severity: 'error' | 'warning';
@@ -27,8 +27,8 @@ export interface P2NeedsGateResult {
 }
 
 export function validateP2Needs(
-  file: P2NeedsFile,
-  menu: P2MenuFile,
+  file: PoolNeedsFile,
+  menu: PoolMenuFile,
   sources: P2L4Sources,
   grants: readonly P2GrantView[],
 ): P2NeedsGateResult {
@@ -95,8 +95,8 @@ function validateReadSources(
   from: readonly string[],
   entity: string,
   scope: string,
-  page: P2NeedsFile['pages'][number],
-  menu: P2MenuFile,
+  page: PoolNeedsFile['pages'][number],
+  menu: PoolMenuFile,
   journeysById: ReadonlyMap<string, P2L4Sources['journeys'][number]>,
   relationships: ReadonlyMap<string, NeedsRelationship>,
   grants: readonly P2GrantView[],
@@ -199,9 +199,9 @@ export function formatP2NeedsGate(issues: readonly P2NeedsGateIssue[]): string {
   return issues.map(issue => `${issue.code}: ${issue.message}`).join('\n');
 }
 
-function collectMenuPageIds(menu: P2MenuFile): Set<string> {
+function collectMenuPageIds(menu: PoolMenuFile): Set<string> {
   const out = new Set<string>();
-  const walk = (nodes: P2MenuFile['tree']) => {
+  const walk = (nodes: PoolMenuFile['tree']) => {
     for (const node of nodes) {
       if (node.kind === 'page') out.add(node.id);
       else walk(node.children);

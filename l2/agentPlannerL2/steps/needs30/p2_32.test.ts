@@ -12,10 +12,11 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4ClassicDefs.js';
-import { parseP2Grants, parseP2Processes, type P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
+import { parseP2Grants, parseP2Processes } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { parseP2L4Sources, type P2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
-import { buildP2NeedsFile, type P2NeedsPage } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
+import { buildP2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import { branchingTransitions } from '/_102020_/l2/agentPlannerL2/helpers/p2Transitions.js';
+import type { PoolMenuFile, PoolNeedsPage } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, 'fixtures/p2_32');
@@ -38,12 +39,12 @@ function load(dir: string) {
     journeyIndex: defs(dir, 'journeys/index.defs.ts'), journeys: names(dir, 'journeys').map(name => defs(dir, `journeys/${name}`)),
     access, ontologyIndex: defs(dir, 'ontology/index.defs.ts'), ontologyEntities: names(dir, 'ontology').map(name => defs(dir, `ontology/${name}`)),
   });
-  const menu = json<P2MenuFile>(dir, 'pool/menu.json');
+  const menu = json<PoolMenuFile>(dir, 'pool/menu.json');
   // Menus of these modules predate p2_30; the decide pages do not depend on meta.records.
-  const withRecords: P2MenuFile = { ...menu, meta: { ...menu.meta, records: menu.meta.records ?? {} } };
-  return { sources, grants: parseP2Grants(access), processes: parseP2Processes(defs(dir, 'workflows.defs.ts')), menu: withRecords, before: json<{ pages: P2NeedsPage[] }>(dir, 'pool/needs.json') };
+  const withRecords: PoolMenuFile = { ...menu, meta: { ...menu.meta, records: menu.meta.records ?? {} } };
+  return { sources, grants: parseP2Grants(access), processes: parseP2Processes(defs(dir, 'workflows.defs.ts')), menu: withRecords, before: json<{ pages: PoolNeedsPage[] }>(dir, 'pool/needs.json') };
 }
-const writesOf = (pages: readonly P2NeedsPage[], pageId: string): string[] => {
+const writesOf = (pages: readonly PoolNeedsPage[], pageId: string): string[] => {
   const page = pages.find(item => item.pageId === pageId);
   assert.ok(page, pageId);
   return [...new Set(page.writes.map(item => `${item.entity}.${item.operation}${item.transitionRef ? `:${item.transitionRef}` : ''}`))].sort();
