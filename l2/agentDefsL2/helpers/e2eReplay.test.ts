@@ -229,6 +229,10 @@ void test('d2_68: three modules replay end to end with the state expected after 
   assert.equal(at(first.expense, 'needs30')?.result, 'ok');
   assert.deepEqual(at(first.expense, 'pages50', 'despesas_da_equipe')?.codes, ['D2_PAGE11_WRITE_UNCOVERED']);
   for (const pageId of ['despesas_aprovadas', 'inicio']) assert.equal(at(first.expense, 'pages50', pageId)?.result, 'ok');
+  // expense inicio (hub: no read, no write): the recorded answer was refused for a load the code derived without its
+  // request (d2_70); now the shared has no load, is approved, and the page has no contract route.
+  assert.equal(at(first.expense, 'shared60', 'inicio')?.result, 'ok');
+  assert.deepEqual(at(first.expense, 'contracts70', 'inicio'), { stage: 'contracts70', pageId: 'inicio', result: 'ok', codes: [] });
 });
 
 void test('d2_68: measured defects without a recorded answer are cases too', async () => {

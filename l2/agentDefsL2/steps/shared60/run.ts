@@ -6,7 +6,7 @@ import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js'
 import { buildD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { deriveD2PageRequests, type D2DerivedPageRequests, type D2PageRequestsInput, type D2PageRequestsMenu, type D2PageRequestsNeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
-import { gateD2SharedV2, renderD2SharedV2, sharedFromDerived, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { gateD2SharedV2, renderD2SharedV2, sharedFromDerived, type D2SharedV2Definition, type D2SharedV2Issue } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 
 export const D2_SHARED_VERSION = '2026-10-01-agent-defs-l2-shared-v2.1' as const;
 export const D2_SHARED_PROMPT_LIMIT_CHARS = 640_000;
@@ -85,7 +85,35 @@ export function d2SharedJourneySteps(needs: D2PageRequestsNeedPage, menu: D2Page
 export function buildD2SharedContext(input: D2PageRequestsInput, extra: Omit<D2SharedContext, 'input' | 'derived'>): D2SharedContext {
   const derived = deriveD2PageRequests(input);
   if (derived.issues.length) throw new Error(derived.issues.map(issue => `${issue.code}: ${issue.message}`).join(' | '));
-  return { ...extra, input, derived };
+  const context = { ...extra, input, derived };
+  const shape = d2SharedShapeIssues(context);
+  if (shape.length) throw new Error(`D2_SHARED_SHAPE_SELF_CHECK: ${shape.map(issue => `${issue.code}: ${issue.message}`).join(' | ')}`);
+  return context;
+}
+
+/** Gate codes about shape (what the code derives); the others judge what only the answer can say. */
+export const D2_SHARED_V2_SHAPE_CODES = [
+  'D2_SHARED_V2_FORMAT', 'D2_SHARED_V2_FUNCTION_CALL', 'D2_SHARED_V2_FUNCTION_SET', 'D2_SHARED_V2_FUNCTION_UPDATE',
+  'D2_SHARED_V2_STATE_SOURCE', 'D2_SHARED_V2_STATE_FIXED', 'D2_SHARED_V2_STATE_DUPLICATE', 'D2_SHARED_V2_LIST_STATE',
+  'D2_SHARED_V2_FUNCTION_DUPLICATE', 'D2_SHARED_V2_RULE_REQUEST', 'D2_SHARED_V2_RULE_OUTSIDE', 'D2_SHARED_V2_NAVIGATE_SETS',
+  'D2_SHARED_V2_CARRIES_OUTSIDE', 'D2_SHARED_V2_CARRIES_PATH', 'D2_SHARED_V2_CARRIES_TYPE', 'D2_SHARED_V2_STATE_NAVIGATE',
+] as const;
+
+/**
+ * Self-consistency (d2_70): the derived shared, with only descriptions written, must pass the shared gate on every shape
+ * code. A shape the code creates and its own gate refuses is a test failure and a refusal before any LLM call.
+ */
+export function d2SharedShapeIssues(context: Pick<D2SharedContext, 'derived' | 'page11' | 'drafts' | 'input'>): D2SharedV2Issue[] {
+  const base = sharedFromDerived(context.derived);
+  const described = {
+    ...base,
+    states: Object.fromEntries(Object.entries(base.states).map(([id, state]) => [id, { ...state, description: 'derived' }])),
+    functions: Object.fromEntries(Object.entries(base.functions).map(([id, fn]) => [id, { ...fn, description: 'derived' }])),
+  };
+  const need = context.input.needsPages.find(item => item.pageId === context.input.pageId) ?? { pageId: context.input.pageId, actors: [], reads: [], writes: [] };
+  const shape = new Set<string>(D2_SHARED_V2_SHAPE_CODES);
+  return gateD2SharedV2(described, { page11: context.page11.desktop, draft: context.drafts.desktop, needs: need, menu: context.input.menu, derived: context.derived })
+    .filter(issue => shape.has(issue.code));
 }
 
 export function buildD2SharedPrompt(context: D2SharedContext, repair?: { diagnostic: string; previous: unknown }): { systemPrompt: string; humanPrompt: string; chars: number } {
@@ -151,7 +179,7 @@ export function applyD2SharedLlm(context: D2SharedContext, raw: D2SharedLlmRespo
   for (const row of response.functions) {
     const current = functions[row.id];
     const calls = current?.calls ?? row.calls;
-    const updates = row.updates ?? (calls && requests[calls]?.kind === 'cmd' ? requests[calls].returns : current?.updates);
+    const updates = row.updates ?? current?.updates;
     // A fixed list function keeps the fixed list state; other functions take the answer's sets.
     const sets = base.functions[row.id]?.sets ?? row.sets;
     functions[row.id] = {
