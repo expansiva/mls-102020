@@ -32,7 +32,7 @@ import { sourceInfo as pagesSourceInfo, type D2PagesReceipt } from '/_102020_/l2
 import { displayPath, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
 import { parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
-import { bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import { approveD2BffUnit, bffDesignInfo, bffReceiptInfo, bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, readApprovedD2Bff, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { buildD2BffDesign, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
@@ -601,34 +601,43 @@ void test('d2_75: shared60 runs without a prompt; a refused page does not stop t
   assert.equal(d2SharedSourceFor(out.shared.atendimento), existing.get('atendimento')?.source);
 });
 
-void test('d2_76: the recorded r3 answers pass B without repair; a page refused on purpose leaves the other four whole', async () => {
+/**
+ * The whole stage over recorded answers in place of the LLM (d2_77): bff55 as the worker runs it (attempt 1, then the
+ * recorded repair; an internal assertion has no repair), then shared60, contracts70 and finalize80 with in-memory ports.
+ */
+async function runDiningStage(answers: Record<string, unknown[]>): Promise<{
+  refusals: Map<string, string>; designs: Record<string, D2BffDesign>; shared: Awaited<ReturnType<typeof executeD2Shared>>;
+  contracts: Awaited<ReturnType<typeof executeD2Contracts70>>; report: Awaited<ReturnType<typeof finalizeD2Pages>>['report']; compiled: string[]; blocked: string;
+}> {
   const pack = readPack('dining');
-  const recorded = { atendimento: 'atendimento-2', cardapio: 'cardapio-1', fechamento: 'fechamento-1', inicio: 'inicio-1', mesas: 'mesas-2' } as const;
-  const ids = Object.keys(recorded).sort();
+  const ids = Object.keys(answers).sort();
   const contexts: Record<string, D2BffContext> = {};
   const designs: Record<string, D2BffDesign> = {};
-  const bffRefusals = new Map<string, string>();
-  for (const pageId of ids) {
-    const raw = d2ToolPayload(pack.json<{ raw: unknown }>(`recorded/bff55-r3/${recorded[pageId as keyof typeof recorded]}.json`).raw, 'submitD2Bff', 'D2_BFF') as RawDesign;
-    contexts[pageId] = await diningBffContext(pageId);
-    // atendimento-2 was refused in r3 for "MesaCode" (case of a name): it now passes as it is.
-    if (pageId !== 'cardapio') { designs[pageId] = d2BffApproved(contexts[pageId], raw); continue; }
-    raw.bindings.organisms = [];
-    bffRefusals.set(pageId, refusalOf(() => d2BffApproved(contexts[pageId], raw)));
-  }
-  assert.match(bffRefusals.get('cardapio') ?? '', /^Error: D2_BFF_BINDING_ORGANISM/u);
-  assert.deepEqual(Object.keys(designs).sort(), ['atendimento', 'fechamento', 'inicio', 'mesas']);
-
+  const refusals = new Map<string, string>();
   const identity = { project: 102047, module: pack.moduleName };
-  const replayPages: Record<string, ReplayPage> = Object.fromEntries(ids.map(pageId => [pageId, { page11Text: contexts[pageId].page11Text, drafts: { desktop: JSON.parse(contexts[pageId].draftText.desktop), mobile: JSON.parse(contexts[pageId].draftText.mobile) } }]));
   const files = new Map<string, unknown>();
-  const writer = { writeSource: async (info: Ns5FileInfo, source: string) => { files.set(displayPath(info), source); }, writeJson: async (info: Ns5FileInfo, value: unknown) => { files.set(displayPath(info), value); return displayPath(info); } };
-  const upstreamRefusal = async (pageId: string) => bffRefusals.get(pageId) ?? null;
+  // Written as JSON and read back, as the store does; the later stages read the design from here, never from memory.
+  const writer = { writeSource: async (info: Ns5FileInfo, source: string) => { files.set(displayPath(info), source); }, writeJson: async (info: Ns5FileInfo, value: unknown) => { files.set(displayPath(info), JSON.parse(JSON.stringify(value))); return displayPath(info); } };
+  const stored = { readReceipt: async (_identity: unknown, pageId: string) => (files.get(displayPath(bffReceiptInfo(identity, pageId))) ?? null) as never, readDesign: async (info: Ns5FileInfo) => files.get(displayPath(info)) ?? null };
+  for (const pageId of ids) {
+    contexts[pageId] = await diningBffContext(pageId);
+    let diagnostic = '';
+    for (const [attempt, raw] of answers[pageId].entries()) {
+      try { await approveD2BffUnit(contexts[pageId], d2ToolPayload(raw, 'submitD2Bff', 'D2_BFF'), 0, 0, writer); diagnostic = ''; break; }
+      catch (error) {
+        diagnostic = attempt ? `D2_BFF_REPAIR_LIMIT: ${error instanceof Error ? error.message : String(error)}` : (error instanceof Error ? error.message : String(error));
+        if (diagnostic.startsWith('D2_BFF_ASSERT')) break;
+      }
+    }
+    if (diagnostic) refusals.set(pageId, diagnostic);
+    else designs[pageId] = (await readApprovedD2Bff(identity, pageId, stored))!;
+  }
+  const replayPages: Record<string, ReplayPage> = Object.fromEntries(ids.map(pageId => [pageId, { page11Text: contexts[pageId].page11Text, drafts: { desktop: JSON.parse(contexts[pageId].draftText.desktop), mobile: JSON.parse(contexts[pageId].draftText.mobile) } }]));
+  const upstreamRefusal = async (pageId: string) => refusals.get(pageId) ?? null;
   const shared = await executeD2Shared({
     pageIds: async () => ids, upstreamRefusal, load: async pageId => sharedPageOf(contexts[pageId], designs[pageId], replayPages),
     readExisting: async () => ({ source: null, receipt: null }), writer,
   }, identity);
-  assert.deepEqual(shared, { wrote: ['atendimento', 'fechamento', 'inicio', 'mesas'], reused: [], skipped: ['cardapio'], refused: [] });
   const contracts = await executeD2Contracts70({
     pageIds: async () => ids, upstreamRefusal,
     load: async pageId => ({
@@ -638,9 +647,6 @@ void test('d2_76: the recorded r3 answers pass B without repair; a page refused 
     }),
     readExisting: async () => ({ source: null, receipt: null }), writer,
   }, identity);
-  assert.deepEqual({ ...contracts }, { wrote: ['atendimento', 'fechamento', 'inicio', 'mesas'], reused: [], skipped: ['cardapio'], refused: [] });
-
-  // finalize80 compiles what was generated and fails the pipeline once, listing the refused page.
   const pageReceipt = async (pageId: string) => ({ sourceHashes: { desktop: await sha256Text(contexts[pageId].page11Text.desktop), mobile: await sha256Text(contexts[pageId].page11Text.mobile) } }) as D2PagesReceipt;
   const page11Source = new Map(ids.flatMap(pageId => (['desktop', 'mobile'] as const).map(device => [displayPath(pagesSourceInfo(identity, pageId, device)), contexts[pageId].page11Text[device]] as const)));
   const compiled: string[] = [];
@@ -655,18 +661,58 @@ void test('d2_76: the recorded r3 answers pass B without repair; a page refused 
     readDraftText: async (_identity, pageId, device) => contexts[pageId].draftText[device],
     readSharedReceipt: async (_identity, pageId) => (files.get(displayPath(sharedReceiptInfo(identity, pageId))) ?? null) as D2SharedReceipt | null,
     readContractReceipt: async (_identity, pageId) => (files.get(displayPath(contractReceiptInfo(identity, pageId))) ?? null) as never,
-    readRefusal: async (_identity, pageId) => (bffRefusals.has(pageId) ? { stage: 'bff55', diagnostic: bffRefusals.get(pageId)! } : null),
+    readRefusal: async (_identity, pageId) => (refusals.has(pageId) ? { stage: 'bff55', diagnostic: refusals.get(pageId)! } : null),
     writeJson: async (info, value) => { files.set(displayPath(info), value); return displayPath(info); },
-    compile: async (_identity, sources, hashes) => { compiled.push(...sources.map(item => `${item.pageId}:${item.kind}`)); return sources.map(item => ({ path: item.path, sha256: hashes.get(item.path)!, status: 'passed' as const, diagnostics: [] })); },
-    markComplete: async () => { throw new Error('a refused page must not complete the pipeline'); },
+    compile: async (_identity, sources, hashes) => {
+      compiled.push(...sources.map(item => `${item.pageId}:${item.kind}`));
+      return sources.map(item => ({ path: item.path, sha256: hashes.get(item.path)!, status: item.kind === 'contract' && compileErrors(item.source).length ? 'failed' as const : 'passed' as const, diagnostics: item.kind === 'contract' ? compileErrors(item.source) : [] }));
+    },
+    markComplete: async () => undefined,
     markBlocked: async (_identity, diagnostic) => { blocked = diagnostic; },
   });
-  assert.equal(report.status, 'blocked');
-  assert.deepEqual(report.pending, ['cardapio: bff55: D2_BFF_BINDING_ORGANISM']);
-  assert.equal(blocked, 'cardapio: bff55: D2_BFF_BINDING_ORGANISM');
-  assert.deepEqual(compiled.filter(item => item.endsWith(':shared')).sort(), ['atendimento:shared', 'fechamento:shared', 'inicio:shared', 'mesas:shared']);
-  assert.deepEqual(compiled.filter(item => item.endsWith(':contract')).sort(), ['atendimento:contract', 'fechamento:contract', 'inicio:contract', 'mesas:contract']);
-  assert.equal(compiled.filter(item => item.endsWith('Page')).length, 10);
+  return { refusals, designs, shared, contracts, report, compiled, blocked };
+}
+
+void test('d2_76: the recorded r3 answers pass B without repair; a page refused on purpose leaves the other four whole', async () => {
+  const pack = readPack('dining');
+  const recorded = { atendimento: 'atendimento-2', cardapio: 'cardapio-1', fechamento: 'fechamento-1', inicio: 'inicio-1', mesas: 'mesas-2' } as const;
+  const answers: Record<string, unknown[]> = {};
+  for (const [pageId, name] of Object.entries(recorded)) answers[pageId] = [pack.json<{ raw: unknown }>(`recorded/bff55-r3/${name}.json`).raw];
+  // atendimento-2 was refused in r3 for "MesaCode" (case of a name): it now passes as it is. cardapio is refused on purpose.
+  const cardapio = structuredClone(d2ToolPayload(answers.cardapio[0], 'submitD2Bff', 'D2_BFF')) as RawDesign;
+  cardapio.bindings.organisms = [];
+  answers.cardapio = [cardapio];
+  const run = await runDiningStage(answers);
+  assert.deepEqual([...run.refusals.keys()], ['cardapio']);
+  assert.match(run.refusals.get('cardapio') ?? '', /^D2_BFF_BINDING_ORGANISM/u);
+  assert.deepEqual(run.shared, { wrote: ['atendimento', 'fechamento', 'inicio', 'mesas'], reused: [], skipped: ['cardapio'], refused: [] });
+  assert.deepEqual({ ...run.contracts }, { wrote: ['atendimento', 'fechamento', 'inicio', 'mesas'], reused: [], skipped: ['cardapio'], refused: [] });
+  // finalize80 compiles what was generated and fails the pipeline once, listing the refused page.
+  assert.equal(run.report.status, 'blocked');
+  assert.deepEqual(run.report.pending, ['cardapio: bff55: D2_BFF_BINDING_ORGANISM']);
+  assert.equal(run.blocked, 'cardapio: bff55: D2_BFF_BINDING_ORGANISM');
+  assert.deepEqual(run.compiled.filter(item => item.endsWith(':shared')).sort(), ['atendimento:shared', 'fechamento:shared', 'inicio:shared', 'mesas:shared']);
+  assert.deepEqual(run.compiled.filter(item => item.endsWith(':contract')).sort(), ['atendimento:contract', 'fechamento:contract', 'inicio:contract', 'mesas:contract']);
+  assert.equal(run.compiled.filter(item => item.endsWith('Page')).length, 10);
+});
+
+void test('d2_77: offline replay of r4 — the whole stage with the recorded answers in place of the LLM', async (t) => {
+  const pack = readPack('dining');
+  const answers: Record<string, unknown[]> = {};
+  for (const name of pack.list('recorded/bff55-r4')) {
+    const [pageId, attempt] = name.replace(/\.json$/u, '').split('-');
+    (answers[pageId] = answers[pageId] ?? [])[Number(attempt) - 1] = pack.json<{ raw: unknown }>(`recorded/bff55-r4/${name}`).raw;
+  }
+  const run = await runDiningStage(answers);
+  t.diagnostic(`refused: ${[...run.refusals].map(([pageId, diagnostic]) => `${pageId}: ${diagnostic.slice(0, 400)}`).join(' || ')}`);
+  t.diagnostic(`shared: ${JSON.stringify(run.shared)} contracts: ${JSON.stringify(run.contracts)} pending: ${JSON.stringify(run.report.pending)}`);
+  // atendimento is refused by coverage, naming the fields; the other four reach the contract and compile.
+  assert.deepEqual([...run.refusals.keys()], ['atendimento']);
+  assert.match(run.refusals.get('atendimento') ?? '', /^D2_BFF_REPAIR_LIMIT: D2_BFF_COVERAGE: organisms\.\w+\.reads\.[A-Z]\w*\.[\w.]+: organism \w+ reads /u);
+  assert.deepEqual(run.contracts.wrote, ['cardapio', 'fechamento', 'inicio', 'mesas']);
+  assert.deepEqual(run.report.pending, [`atendimento: bff55: D2_BFF_COVERAGE`]);
+  assert.equal(run.report.compilation.filter(item => item.status !== 'passed').length, 0);
+  assert.equal(run.compiled.filter(item => item.endsWith(':contract')).length, 4);
 });
 
 void test('d2_76: case of names and ids, identical duplicates and the reserved type name are normalized, never refused', async () => {
@@ -691,4 +737,32 @@ void test('d2_76: case of names and ids, identical duplicates and the reserved t
   const different = atendimentoAnswer();
   different.types.push({ ...structuredClone(different.types[0]), fields: different.types[0].fields.slice(0, 2) });
   assert.match(refusalOf(() => buildD2BffDesign(different)), /D2_BFF_FORMAT: types\.MesaDoSalao: declared twice with different fields/u);
+});
+
+void test('d2_77: the approved design is reread as written: normalizing twice changes nothing, write then read is identical, a changed file names the cause', async () => {
+  const bff = (await dining()).out.bff.atendimento;
+  const once = normalizeD2BffDesign(buildD2BffDesign(atendimentoAnswer()), bff.entities, 'AtendimentoContracts');
+  assert.deepEqual(normalizeD2BffDesign(once, bff.entities, 'AtendimentoContracts'), once);
+  const files = new Map<string, unknown>();
+  const writer = { writeJson: async (info: Ns5FileInfo, value: unknown) => { files.set(displayPath(info), JSON.parse(JSON.stringify(value))); return displayPath(info); } };
+  await approveD2BffUnit(bff, atendimentoAnswer(), 0, 0, writer);
+  const port = { readReceipt: async () => files.get(displayPath(bffReceiptInfo(bff.identity, 'atendimento'))) as never, readDesign: async (info: Ns5FileInfo) => files.get(displayPath(info)) ?? null };
+  const read = await readApprovedD2Bff(bff.identity, 'atendimento', port);
+  assert.deepEqual(read, d2BffApproved(bff, atendimentoAnswer()));
+  // The saved design has selections as { query } / { list }: it is not the tool answer and is never parsed again.
+  assert.ok(read!.bindings.selections.some(row => 'query' in row.via));
+  const designPath = displayPath(bffDesignInfo(bff.identity, 'atendimento'));
+  files.set(designPath, { ...(files.get(designPath) as object), types: [] });
+  await assert.rejects(() => readApprovedD2Bff(bff.identity, 'atendimento', port), /D2_BFF_APPROVED_CHANGED: l2\/comandaRestaurante\/pipeline\/agentDefsL2\/bff\/atendimento\.json hashes to sha256:/u);
+  files.delete(designPath);
+  await assert.rejects(() => readApprovedD2Bff(bff.identity, 'atendimento', port), /D2_BFF_APPROVED_MISSING/u);
+  assert.equal(await readApprovedD2Bff(bff.identity, 'atendimento', { ...port, readReceipt: async () => null }), null);
+});
+
+void test('d2_77: the prompt of A carries the coverage the page owes, with the derived fields marked', async () => {
+  const prompt = JSON.parse(buildD2BffPrompt(await diningBffContext('atendimento')).humanPrompt) as { coverage: Array<{ path: string; derived: boolean; organisms: string[] }> };
+  assert.deepEqual(prompt.coverage.find(row => row.path === 'ItemComanda.details.valorTotal'), { path: 'ItemComanda.details.valorTotal', derived: true, organisms: ['detalheComanda'] });
+  assert.equal(prompt.coverage.find(row => row.path === 'Comanda.details.subtotal')?.derived, true);
+  assert.equal(prompt.coverage.find(row => row.path === 'ItemComanda.details.quantidade')?.derived, false);
+  assert.ok(prompt.coverage.length >= 15);
 });

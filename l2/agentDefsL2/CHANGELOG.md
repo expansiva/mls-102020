@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-04 — d2_77 (experiment branch)
+
+- The approved BFF design is reread as written (hash of the receipt), never parsed again; a missing, unreadable or
+  changed file names its cause.
+- The prompt of A states the coverage the page owes, with derived fields marked.
+- Offline replay of r4: the whole stage runs over recorded answers in the suite.
+
 ## 2026-10-04 — d2_76 (experiment branch)
 
 - Format the code can fix is normalized before any check (case of names and ids, identical duplicates, references, the

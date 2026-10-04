@@ -336,6 +336,16 @@ export function d2BffTypeRoot(name: string, design: Pick<D2BffDesign, 'types'>):
 }
 
 /** The journey steps of the page: steps of the journeys the menu links to it, as the needs list them. */
+/**
+ * The coverage A owes (d2_77): every Entity.path an organism reads, from the page drafts, with the derived fields marked
+ * and the organisms that read each one. B.1 refuses by the same list; the prompt states it so the design starts complete.
+ */
+export function d2CoverageObligation(drafts: readonly D2Page11Needs[], entities: Record<string, Ns5OntologyAnyEntity>): Array<{ path: string; derived: boolean; organisms: string[] }> {
+  const rows = new Map<string, Set<string>>();
+  for (const draft of drafts) for (const [id, row] of Object.entries(draft.organisms)) for (const path of row.reads) rows.set(path, (rows.get(path) ?? new Set()).add(id));
+  return [...rows].sort(([a], [b]) => a.localeCompare(b)).map(([path, organisms]) => ({ path, derived: Boolean(fieldAt(entities[entityOf(path)], path)?.derived), organisms: [...organisms].sort() }));
+}
+
 /** The name of the contract interface of a page (`renderD2ContractV2`). */
 export function d2ContractsTypeName(pageId: string): string { return `${pageId[0].toUpperCase()}${pageId.slice(1)}Contracts`; }
 

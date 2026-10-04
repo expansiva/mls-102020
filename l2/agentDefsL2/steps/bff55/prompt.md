@@ -27,7 +27,8 @@ Types and origins:
 - Every value leaf names its origin: field with the one Entity.path it carries; aggregate with every Entity.path the
   value is computed from; context for a value that comes from the URL or a selection and fills no stored field.
 - A cmd input leaf that fills a stored field uses field with that field's Entity.path, never context.
-- Every Entity.path an organism reads is the origin of some output leaf, or is inside an aggregate.
+- coverage lists every Entity.path the organisms read, with derived marking a field the server computes. Each one is
+  the origin of some output leaf, or is inside an aggregate; a derived field is no exception.
 - A literal union uses only values of that L4 enum.
 - Use only fields the page actors can see through their grants.
 

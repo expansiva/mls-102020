@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/shared60/run.ts" enhancement="_blank"/>
 
-import { readJson, readSourceText, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { fileExists, readJson, readSourceText, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
@@ -185,8 +185,7 @@ export async function productionSharedPort(identity: D2RunIdentity): Promise<D2S
       });
     },
     readExisting: async pageId => {
-      let source: string | null = null;
-      try { source = await readSourceText(sharedInfo(identity, pageId)) || null; } catch { source = null; }
+      const source = fileExists(sharedInfo(identity, pageId)) ? await readSourceText(sharedInfo(identity, pageId)) || null : null;
       return { source, receipt: await readD2SharedReceipt(identity, pageId) };
     },
     writer: productionWriter,

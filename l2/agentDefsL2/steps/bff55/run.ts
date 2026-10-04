@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/bff55/run.ts" enhancement="_blank"/>
 
-import { readJson, readSourceText, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { displayPath, readJson, readSourceText, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
@@ -9,7 +9,7 @@ import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import {
-  buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN,
+  buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN,
   type D2BffDesign, type D2Grant, type D2Menu, type D2NeedPage,
 } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import type { D2PageRefusal } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
@@ -100,6 +100,7 @@ function unitInput(context: D2BffContext): Record<string, unknown> {
     writes: pageWrites(context.need),
     submits: [...d2PageSubmits(context)].map(([intent, write]) => ({ intent, write })),
     l4: d2BffL4Slice(context.entities, context.rules, context.need, [context.drafts.desktop, context.drafts.mobile]),
+    coverage: d2CoverageObligation([context.drafts.desktop, context.drafts.mobile], context.entities),
     journeys: context.journeys,
     journeySteps: d2PageJourneySteps(context.need, context.menu),
     menuPages: d2MenuPages(context.menu),
@@ -203,14 +204,22 @@ export async function readD2BffRefusal(identity: D2RunIdentity, pageId: string):
   return value?.schemaVersion === D2_BFF_REFUSAL_VERSION ? value : null;
 }
 
-/** The design on disk, only when its receipt approves those bytes. */
+/**
+ * The design on disk as it was written (d2_77): it was normalized once, before writing, and is never parsed again (the
+ * saved form is the design, not the tool answer). null only when no receipt approves a design; a missing, unreadable or
+ * changed file is an error that names the cause.
+ */
 export async function readApprovedD2Bff(identity: D2RunIdentity, pageId: string, port: { readReceipt: typeof readD2BffReceipt; readDesign: (info: Ns5FileInfo) => Promise<unknown> } = { readReceipt: readD2BffReceipt, readDesign: readJson }): Promise<D2BffDesign | null> {
   const receipt = await port.readReceipt(identity, pageId);
   if (!receipt) return null;
-  try {
-    const design = buildD2BffDesign(await port.readDesign(bffDesignInfo(identity, pageId)));
-    return await sha256Text(JSON.stringify(design)) === receipt.designHash ? design : null;
-  } catch { return null; }
+  const where = displayPath(bffDesignInfo(identity, pageId));
+  let design: unknown;
+  try { design = await port.readDesign(bffDesignInfo(identity, pageId)); }
+  catch (error) { throw new Error(`D2_BFF_APPROVED_UNREADABLE: ${where}: ${error instanceof Error ? error.message : String(error)}`); }
+  if (design === null || design === undefined) throw new Error(`D2_BFF_APPROVED_MISSING: ${where} is absent although its receipt approves a design.`);
+  const hash = await sha256Text(JSON.stringify(design));
+  if (hash !== receipt.designHash) throw new Error(`D2_BFF_APPROVED_CHANGED: ${where} hashes to ${hash}, its receipt approves ${receipt.designHash}.`);
+  return design as D2BffDesign;
 }
 
 export async function loadD2BffContext(identity: D2RunIdentity, pageId: string): Promise<D2BffContext> {

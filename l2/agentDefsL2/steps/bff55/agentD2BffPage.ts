@@ -44,7 +44,11 @@ export async function reusableD2Bff(identity: Identity, pageId: string, port: D2
     const context = await port.context(identity, pageId);
     if (await sha256Text(context.prompt) !== receipt.promptHash || await bffUnitInputHash(context) !== receipt.unitInputHash) return false;
     return await sha256Text(JSON.stringify(await port.readDesign(bffDesignInfo(identity, pageId)))) === receipt.designHash;
-  } catch { return false; }
+  } catch (error) {
+    // Not reusable means the page is designed again; the cause is still said (no silent error).
+    console.warn(`agentDefsL2 bff55: ${pageId} is not reusable: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
 }
 
 export interface D2BffPromptPort {
