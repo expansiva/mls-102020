@@ -160,7 +160,7 @@ function normalizeSubmitWrites(needs: unknown, writes: readonly D2Write[]): unkn
   })) };
 }
 
-export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { diagnostic: string; previous: unknown }): { prompt: string; chars: number } {
+export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { diagnostic: string; previous: unknown }, approved?: D2ApprovedPage11 | null): { prompt: string; chars: number } {
   const { page, artifacts } = context;
   const payload = {
     page: { pageId: page.pageId, label: page.label, actors: page.actors, authorityRefs: page.authorityRefs,
@@ -178,6 +178,9 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
     access: { grants: ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => page.actors.includes(text(record(raw).actorRef))) },
     categories: context.template.categories,
     moleculeResearch: JSON.parse(moleculeDecisionContext(context.selectedGroups, context.groups)),
+    // d2_71: a regeneration starts from the approved page11 and changes only what the reason asks.
+    approved: approved ? { desktop: { definition: approved.definitions.desktop, needs: approved.needs.desktop }, mobile: { definition: approved.definitions.mobile, needs: approved.needs.mobile } } : null,
+    regeneration: approved ? { reason: d2RegenerationReason(context, approved) } : null,
     repair: repair ?? null,
   };
   const prompt = JSON.stringify(payload);
@@ -187,6 +190,65 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
 
 export interface D2PagesWriter { writeSource(info: Ns5FileInfo, source: string): Promise<void>; writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown> }
 const productionWriter: D2PagesWriter = { writeSource: writeSourceText, writeJson };
+/** Every page11 gate the approval runs, for an answer or for an approved page11 under the current inputs. */
+export function d2PageIssues(context: D2PagesContext, definitions: Record<D2Page11Device, D2Page11Definition>, needs: Record<D2Page11Device, D2Page11Needs>, promptChars = 0): Array<{ code: string; path: string; message: string }> {
+  const menu = context.artifacts.menu as D2Page11Menu;
+  const needPages = record(context.artifacts.needs).pages as D2Page11NeedPage[];
+  if (!Array.isArray(needPages)) throw new Error('D2_PAGE11_SOURCE_NEEDS');
+  const sources: D2Page11GateSources = { pageId: context.page.pageId, actor: context.page.actors[0], menu,
+    needsPages: needPages, entities: context.artifacts.entities as Record<string, Ns5OntologyAnyEntity>,
+    access: context.artifacts.access as D2Page11GateSources['access'], categories: context.template.categories,
+    templatePaths: context.template.templatePaths, moleculeTags: new Set(context.groups.flatMap(group => group.tags)),
+    promptTokens: Math.ceil(promptChars / 4) };
+  const origins = menuOrigins(context.page, definitions.desktop);
+  const groupsByOrganism = Object.fromEntries(origins.map(origin => [origin.organismId, context.selectedGroups[`organism${origin.sourceIndex + 1}`] ?? []]));
+  const kindMismatch = Object.keys(definitions.desktop.organisms).filter(id => definitions.mobile.organisms[id]?.kind !== definitions.desktop.organisms[id].kind);
+  return [...gateD2Page11Pair(definitions.desktop, definitions.mobile),
+    ...kindMismatch.map(id => ({ code: 'D2_PAGE11_DEVICE_KIND', path: `organisms.${id}`, message: `Organism ${id} has different kinds across devices.` })),
+    ...(['desktop', 'mobile'] as const).flatMap(device => [
+      ...context.page.actors.flatMap(actor => gateD2Page11(definitions[device], needs[device], { ...sources, actor })),
+      ...gateD2MoleculeRoles(definitions[device].molecules, groupsByOrganism, context.groups).map(message => ({ code: 'D2_MOLECULE_ROLE_UNSELECTED', path: device, message })),
+    ])];
+}
+
+/** The page11 already approved for this page, kept as the base of a regeneration (d2_71). */
+export interface D2ApprovedPage11 { definitions: Record<D2Page11Device, D2Page11Definition>; needs: Record<D2Page11Device, D2Page11Needs> }
+
+/** Molecule tags a page11 chose, with the organisms that use each. */
+export function d2ChosenMolecules(definitions: Record<D2Page11Device, D2Page11Definition>): Map<string, Set<string>> {
+  const chosen = new Map<string, Set<string>>();
+  for (const definition of Object.values(definitions)) {
+    for (const [organismId, choices] of Object.entries(definition.molecules)) {
+      for (const choice of choices) for (const tag of [choice.preferred, choice.alternative]) {
+        if (tag) chosen.set(tag, (chosen.get(tag) ?? new Set()).add(organismId));
+      }
+    }
+  }
+  return chosen;
+}
+
+/**
+ * Why an approved page11 is regenerated: what its current gate refuses, the molecules it chose that left the catalog,
+ * and the writes the page gained or lost. The answer keeps everything else (ids, prose, molecules).
+ */
+export function d2RegenerationReason(context: D2PagesContext, approved: D2ApprovedPage11): string[] {
+  const reasons: string[] = [];
+  const tags = new Set(context.groups.flatMap(group => group.tags));
+  for (const [tag, organisms] of d2ChosenMolecules(approved.definitions)) {
+    if (!tags.has(tag)) reasons.push(`molecule ${tag} is no longer in the catalog; change it only in ${[...organisms].sort().join(', ')}`);
+  }
+  const pageKeys = new Set(d2PageWriteKeys(context.page));
+  const submitted = new Set(Object.values(approved.needs).flatMap(needs => Object.values(needs.organisms).flatMap(unit => unit.submits.map(submit => submit.write))));
+  for (const key of pageKeys) if (!submitted.has(key)) reasons.push(`the page now writes ${key}; add its submit (or navigate) and keep the rest`);
+  for (const key of submitted) if (!pageKeys.has(key)) reasons.push(`the page no longer writes ${key}; remove its submit and keep the rest`);
+  for (const issue of d2PageIssues(context, approved.definitions, approved.needs)) {
+    if (issue.code === 'D2_PAGE11_WRITE_UNCOVERED' || issue.code === 'D2_PAGE11_SUBMIT_WRITE' || issue.code === 'D2_PAGE11_MOLECULE_UNKNOWN') continue;
+    reasons.push(`${issue.code} at ${issue.path}: ${issue.message}`);
+  }
+  if (!reasons.length) reasons.push('the generator or the page inputs changed; keep the approved page11 unless a gate refuses it');
+  return [...new Set(reasons)];
+}
+
 export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesResponse, promptChars: number, repairPromptChars = 0, writer: D2PagesWriter = productionWriter): Promise<D2PagesReceipt> {
   const category = text(record(record(raw.desktop).definition).template && record(record(record(raw.desktop).definition).template).category);
   if (!category || category !== text(record(record(record(raw.mobile).definition).template).category)) throw new Error('D2_PAGE11_DEVICE_CATEGORY');
@@ -201,25 +263,10 @@ export async function approveD2PagesUnit(context: D2PagesContext, raw: D2PagesRe
     desktop: buildD2Page11Needs(normalizeSubmitWrites(raw.desktop.needs, writes)),
     mobile: buildD2Page11Needs(normalizeSubmitWrites(raw.mobile.needs, writes)),
   };
-  const menu = context.artifacts.menu as D2Page11Menu;
-  const needPages = record(context.artifacts.needs).pages as D2Page11NeedPage[];
-  if (!Array.isArray(needPages)) throw new Error('D2_PAGE11_SOURCE_NEEDS');
-  const sources: D2Page11GateSources = { pageId: context.page.pageId, actor: context.page.actors[0], menu,
-    needsPages: needPages, entities: context.artifacts.entities as Record<string, Ns5OntologyAnyEntity>,
-    access: context.artifacts.access as D2Page11GateSources['access'], categories: context.template.categories,
-    templatePaths: context.template.templatePaths, moleculeTags: new Set(context.groups.flatMap(group => group.tags)),
-    promptTokens: Math.ceil(Math.max(promptChars, repairPromptChars) / 4) };
-  const origins = menuOrigins(context.page, definitions.desktop);
-  const groupsByOrganism = Object.fromEntries(origins.map(origin => [origin.organismId, context.selectedGroups[`organism${origin.sourceIndex + 1}`] ?? []]));
   if (!context.page.actors.length) throw new Error('D2_PAGE11_ACTOR_MISSING');
-  const kindMismatch = Object.keys(definitions.desktop.organisms).filter(id => definitions.mobile.organisms[id]?.kind !== definitions.desktop.organisms[id].kind);
-  const issues = [...gateD2Page11Pair(definitions.desktop, definitions.mobile),
-    ...kindMismatch.map(id => ({ code: 'D2_PAGE11_DEVICE_KIND', path: `organisms.${id}`, message: `Organism ${id} has different kinds across devices.` })),
-    ...(['desktop', 'mobile'] as const).flatMap(device => [
-      ...context.page.actors.flatMap(actor => gateD2Page11(definitions[device], needs[device], { ...sources, actor })),
-      ...gateD2MoleculeRoles(definitions[device].molecules, groupsByOrganism, context.groups).map(message => ({ code: 'D2_MOLECULE_ROLE_UNSELECTED', path: device, message })),
-    ])];
+  const issues = d2PageIssues(context, definitions, needs, Math.max(promptChars, repairPromptChars));
   if (issues.length) throw new Error(issues.map(issue => `${issue.code}: ${issue.message}`).join(' | '));
+  const origins = menuOrigins(context.page, definitions.desktop);
   if (origins.some(origin => !origin.organismId)) throw new Error('D2_PAGE11_MENU_ORIGIN_MISSING');
   const sourcesText = Object.fromEntries((['desktop', 'mobile'] as const).map(device => [device, renderD2Page11Definition({ ...context.identity, pageId: context.page.pageId, device }, definitions[device])])) as Record<D2Page11Device, string>;
   const needsText = Object.fromEntries((['desktop', 'mobile'] as const).map(device => [device, JSON.stringify(needs[device])])) as Record<D2Page11Device, string>;

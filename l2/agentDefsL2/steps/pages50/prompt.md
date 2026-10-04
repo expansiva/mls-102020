@@ -26,4 +26,6 @@ Page11 is for rendering. Do not include fields, rules, states, functions, pipeli
 capability refs, shared refs, HTML, CSS, fixed grids or implementation classes. Describe mobile
 as fluid narrow content around 390px, also usable at 360px and 430px.
 
+If approved is given, the page was already approved: return it again and change only what
+regeneration.reason asks; keep section and organism ids, prose and molecules everywhere else.
 If repairing, replace the whole desktop/mobile pair and the internal drafts using the diagnostic.

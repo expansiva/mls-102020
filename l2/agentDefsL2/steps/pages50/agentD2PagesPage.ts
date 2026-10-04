@@ -13,7 +13,8 @@ import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { d2LlmModelOf, d2LlmResponseInfo, recordD2LlmResponse, recordD2LlmVerdict, type D2LlmResponseRecord } from '/_102020_/l2/helpers/llmResponses.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, type D2PageChoiceEnums, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse, D2_PAGES_PROMPT_LIMIT_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2ChosenMolecules, d2PageChoiceEnums, type D2ApprovedPage11, type D2PageChoiceEnums, needsInfo, pageUnitInputHash, readD2PagesReceipt, sourceInfo, D2_PAGES_VERSION, D2_PAGE11_NEEDS_VERSION, type D2PagesContext, type D2PagesReceipt, type D2PagesResponse, D2_PAGES_PROMPT_LIMIT_CHARS } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 interface Args { project: number; module: string; scope?: D2Scope; pageId: string; stage: 'groups' | 'decision'; attempt: 1 | 2; selectedGroups?: Record<string, string[]>; groupAssessments?: D2PagesContext['groupAssessments']; diagnostic?: string; previous?: unknown; repairPromptChars?: number }
 const GROUPS_SYSTEM_PROMPT = `<!-- modelType: reasoning -->
@@ -91,11 +92,11 @@ export async function reusableD2Page(identity: { project: number; module: string
     if (await pageUnitInputHash(context) !== receipt.unitInputHash) return false;
     const template = await context.template.select(receipt.template.category);
     if (template.experience !== receipt.template.experience || template.reference !== receipt.template.reference || template.hash !== receipt.template.hash) return false;
-    if (await sha256Text(context.template.catalog) !== receipt.template.catalogHash
-      || context.inventory.sourceHash !== receipt.moleculeInventoryHash
-      || JSON.stringify(context.moleculeHashes) !== JSON.stringify(receipt.moleculeHashes)
-      || await sha256Text(context.skill) !== receipt.skillHash
+    // d2_71: the catalog counts only through what this page uses (its template above, its molecules below);
+    // index text that does not touch them keeps the page.
+    if (await sha256Text(context.skill) !== receipt.skillHash
       || await sha256Text(context.prompt) !== receipt.promptHash) return false;
+    const definitions = {} as D2ApprovedPage11['definitions'];
     for (const device of ['desktop', 'mobile'] as const) {
       const source = await port.readSource(sourceInfo(identity, pageId, device));
       const needs = await port.readNeeds(needsInfo(identity, pageId, device));
@@ -103,16 +104,45 @@ export async function reusableD2Page(identity: { project: number; module: string
         || await sha256Text(JSON.stringify(needs)) !== receipt.needsHashes[device]) return false;
       // A page11 approved before a gate existed is checked again; refused means redone, not reused.
       if (d2Page11WriteDuplicates(buildD2Page11Needs(needs)).length) return false;
+      definitions[device] = parseD2Page11Definition(source).definition;
     }
+    // Every molecule the page chose must still be in its groups; a removed or renamed one redoes the page.
+    const tags = new Set(context.groups.flatMap(group => group.tags));
+    for (const tag of d2ChosenMolecules(definitions).keys()) if (!tags.has(tag)) return false;
     return true;
   } catch { return false; }
+}
+
+/** The approved page11 on disk (both devices and drafts), or null when there is none or it no longer parses. */
+export async function readApprovedPage11(identity: { project: number; module: string }, pageId: string, port: Pick<D2PagesReusePort, 'readSource' | 'readNeeds'> = reusePort): Promise<D2ApprovedPage11 | null> {
+  try {
+    const definitions = {} as D2ApprovedPage11['definitions'];
+    const needs = {} as D2ApprovedPage11['needs'];
+    for (const device of ['desktop', 'mobile'] as const) {
+      const source = await port.readSource(sourceInfo(identity, pageId, device));
+      const draft = await port.readNeeds(needsInfo(identity, pageId, device));
+      if (!source || !draft) return null;
+      definitions[device] = parseD2Page11Definition(source).definition;
+      needs[device] = buildD2Page11Needs(draft);
+    }
+    return { definitions, needs };
+  } catch { return null; }
+}
+
+/** Groups already judged for an approved page: a regeneration goes straight to the decision with them (d2_71). */
+export async function approvedPageSeed(identity: { project: number; module: string }, pageId: string, port: D2PagesReusePort = reusePort): Promise<{ selectedGroups: Record<string, string[]>; groupAssessments: NonNullable<D2PagesContext['groupAssessments']> } | null> {
+  const receipt = await port.readReceipt(identity, pageId);
+  if (!receipt?.moleculeGroupAssessments?.length || !await readApprovedPage11(identity, pageId, port)) return null;
+  const selectedGroups = Object.fromEntries(receipt.moleculeGroupAssessments.map(item => [item.organismId, item.groups.filter(group => group.relevant).map(group => group.groupId)]));
+  return { selectedGroups, groupAssessments: receipt.moleculeGroupAssessments };
 }
 
 export interface D2PagesPromptPort {
   reusable(identity: { project: number; module: string }, pageId: string): Promise<boolean>;
   context(args: Args): Promise<D2PagesContext>;
+  approved?(identity: { project: number; module: string }, pageId: string): Promise<D2ApprovedPage11 | null>;
 }
-const promptPort: D2PagesPromptPort = { reusable: reusableD2Page, context: contextFor };
+const promptPort: D2PagesPromptPort = { reusable: reusableD2Page, context: contextFor, approved: (identity, pageId) => readApprovedPage11(identity, pageId) };
 
 export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, argsOrPort?: string | D2PagesPromptPort): Promise<mls.msg.AgentIntent[]> {
   try {
@@ -123,7 +153,8 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
     }
     const data = await port.context(args);
     const isGroups = args.stage === 'groups';
-    const decision = isGroups ? null : buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined);
+    const approved = isGroups ? null : await (port.approved ?? (async () => null))(args, args.pageId);
+    const decision = isGroups ? null : buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined, approved);
     const humanPrompt = isGroups ? `${moleculeGroupPrompt(data.inventory, organismSources(data.page))}${args.diagnostic ? `\nRepair: ${JSON.stringify({ diagnostic: args.diagnostic, previous: args.previous })}` : ''}` : decision!.prompt;
     const systemPrompt = isGroups ? GROUPS_SYSTEM_PROMPT : `${data.prompt}\n${data.skill}`;
     if (systemPrompt.length + humanPrompt.length > D2_PAGES_PROMPT_LIMIT_CHARS) throw new Error(`D2_PAGE11_PROMPT_LIMIT: ${systemPrompt.length + humanPrompt.length}`);
@@ -146,7 +177,8 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
     // The raw answer is kept before anything reads it (d2_69); each stage and repair is its own attempt.
     const attempt = `${args.stage}-${args.attempt}`;
     const info = d2LlmResponseInfo(args.project, `${args.module}/pipeline/agentDefsL2/pages50/responses`, args.pageId, attempt);
-    const promptChars = args.stage === 'groups' ? 0 : data.prompt.length + 1 + data.skill.length + buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined).chars;
+    const approved = args.stage === 'groups' ? null : await readApprovedPage11(args, args.pageId);
+    const promptChars = args.stage === 'groups' ? 0 : data.prompt.length + 1 + data.skill.length + buildD2PagesDecisionPrompt(data, args.diagnostic ? { diagnostic: args.diagnostic, previous: args.previous } : undefined, approved).chars;
     recorded = { info, record: await recordD2LlmResponse(info, { attempt, model: d2LlmModelOf(step), promptChars, receivedAt: new Date().toISOString(), raw: step.interaction?.payload?.[0] ?? null }) };
     response = toolPayload(step.interaction?.payload?.[0], name);
     if (args.stage === 'groups') {

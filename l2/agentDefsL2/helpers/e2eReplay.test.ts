@@ -23,7 +23,8 @@ import { buildP2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/cont
 import { deriveD2Page11CategoryReference, deriveD2Page11Experience } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { approveD2PagesUnit, type D2PagesContext, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, type D2PagesContext, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { readApprovedPage11, reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
 import { approveD2SharedUnit, buildD2SharedContext, type D2SharedLlmResponse } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 import { parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
@@ -100,6 +101,20 @@ function groupsOf(answer: D2PagesResponse): { groups: D2MoleculeGroup[]; selecte
   return { groups: [group], selectedGroups: {} };
 }
 
+/** The pages50 context of one recorded page answer, as the worker would build it. */
+function pageContextOf(pack: ReturnType<typeof readPack>, snapshot: D2InputSnapshot, artifacts: D2InputArtifacts, pageId: string): { context: D2PagesContext; answer: D2PagesResponse } | null {
+  const recorded = pack.json<{ answer: D2PagesResponse; groupAssessments?: D2PagesContext['groupAssessments'] }>(`answers/pages50/${pageId}.json`);
+  const page = snapshot.selection.pages.find(item => item.pageId === pageId);
+  if (!page) return null;
+  const { groups } = groupsOf(recorded.answer);
+  const selectedGroups = Object.fromEntries(page.organisms.map((_, index) => [`organism${index + 1}`, ['recorded']]));
+  return { answer: recorded.answer, context: {
+    identity: { project: 102047, module: pack.moduleName }, snapshot, artifacts, page, template: templateContext(),
+    inventory: { catalogProject: null, selectedBy: null, directDependencies: [], groups: [], sourceHash: 'sha256:inventory' },
+    selectedGroups, groupAssessments: recorded.groupAssessments, groups, moleculeHashes: {}, skill: '', prompt: '',
+  } };
+}
+
 async function replay(alias: string): Promise<Outcome[]> {
   const pack = readPack(alias);
   const outcomes: Outcome[] = [];
@@ -142,19 +157,12 @@ async function replay(alias: string): Promise<Outcome[]> {
   const page11: Record<string, { desktop: string; mobile: string; draftDesktop: unknown; draftMobile: unknown }> = {};
   for (const name of pack.list('answers/pages50')) {
     const pageId = name.replace(/\.json$/u, '');
-    const recorded = pack.json<{ answer: D2PagesResponse; groupAssessments?: D2PagesContext['groupAssessments'] }>(`answers/pages50/${name}`);
-    const page = snapshot.selection.pages.find(item => item.pageId === pageId);
-    if (!page) { outcomes.push({ stage: 'pages50', pageId, result: 'refused', codes: ['D2_PAGES_PAGE_NOT_SELECTED'] }); continue; }
-    const { groups } = groupsOf(recorded.answer);
-    const selectedGroups = Object.fromEntries(page.organisms.map((_, index) => [`organism${index + 1}`, ['recorded']]));
-    const context: D2PagesContext = {
-      identity: { project: 102047, module: pack.moduleName }, snapshot, artifacts, page, template: templateContext(),
-      inventory: { catalogProject: null, selectedBy: null, directDependencies: [], groups: [], sourceHash: 'sha256:inventory' },
-      selectedGroups, groupAssessments: recorded.groupAssessments, groups, moleculeHashes: {}, skill: '', prompt: '',
-    };
+    const built = pageContextOf(pack, snapshot, artifacts, pageId);
+    if (!built) { outcomes.push({ stage: 'pages50', pageId, result: 'refused', codes: ['D2_PAGES_PAGE_NOT_SELECTED'] }); continue; }
+    const { context, answer } = built;
     const writes = new Map<string, unknown>();
     try {
-      await approveD2PagesUnit(context, recorded.answer, 0, 0, {
+      await approveD2PagesUnit(context, answer, 0, 0, {
         writeSource: async (info, source) => { writes.set(`${info.folder}/${info.shortName}`, source); },
         writeJson: async (info, value) => { writes.set(`${info.folder}/${info.shortName}`, value); },
       });
@@ -254,4 +262,27 @@ void test('d2_68: measured defects without a recorded answer are cases too', asy
   });
   const mine = needs.pages.find(item => item.pageId === 'minhas_despesas')!;
   assert.throws(() => d2NormalizeWriteKey('Despesa.transition', mine.writes), /D2_PAGE11_TRANSITION_AMBIGUOUS: .*Despesa\.enviarParaAprovacao/u);
+});
+
+void test('d2_71: a real approved page11 survives catalog text changes and regenerates from itself', async () => {
+  const pack = readPack('stock');
+  const artifacts = await artifactsOf(pack, pack.json('pool/needs.json'));
+  const snapshot = await buildD2InputSnapshot({ project: 102047, module: pack.moduleName }, artifacts);
+  const built = pageContextOf(pack, snapshot, artifacts, 'produtos')!;
+  const { context, answer } = built;
+  const writes = new Map<string, unknown>();
+  const key = (info: { folder: string; shortName: string; extension: string }) => `${info.folder}/${info.shortName}${info.extension}`;
+  const receipt = await approveD2PagesUnit(context, answer, 0, 0, {
+    writeSource: async (info, source) => { writes.set(key(info), source); }, writeJson: async (info, value) => { writes.set(key(info), value); },
+  });
+  const port = { readReceipt: async () => receipt, context: async () => context, readSource: async (info: { folder: string; shortName: string; extension: string }) => writes.get(key(info)) as string, readNeeds: async (info: { folder: string; shortName: string; extension: string }) => writes.get(key(info)) };
+  context.inventory = { ...context.inventory, sourceHash: 'sha256:edited-index' };
+  context.moleculeHashes = { '/recorded': 'sha256:edited-text' };
+  assert.equal(await reusableD2Page(context.identity, 'produtos', port), true);
+  const approved = await readApprovedPage11(context.identity, 'produtos', port);
+  const extra = { entity: 'Produto', operation: 'update', transitionRef: '', from: [] };
+  context.page = { ...context.page, writes: [...context.page.writes, extra] };
+  const payload = JSON.parse(buildD2PagesDecisionPrompt(context, undefined, approved).prompt) as { approved: unknown; regeneration: { reason: string[] } };
+  assert.ok(payload.approved);
+  assert.ok(payload.regeneration.reason.some(item => item.startsWith('the page now writes Produto.update')), payload.regeneration.reason.join(' | '));
 });
