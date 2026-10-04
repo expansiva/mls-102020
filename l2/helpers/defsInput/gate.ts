@@ -17,6 +17,7 @@ import type {
   PoolBackendFile,
   PoolBackendUsecase,
   PoolEffortEndpoint,
+  MenuStampedNode,
   PoolEffortFile,
   PoolEffortScreen,
   PoolEffortTable,
@@ -126,7 +127,8 @@ export async function buildD2InputSnapshot(
 
   const previousPages = new Map((previous?.selection.pages || []).map(page => [page.pageId, page]));
   const removeRows = [...effortScreens.values()].filter(row => text(row.status) === 'toRemove');
-  const removedMeta = new Set(strings(rec(menu.meta).removed));
+  // meta.removed holds menu nodes (MenuStampedNode), not ids: a removed hub removes the pages under it (p2_34).
+  const removedMeta = new Set(removedPageIds(rec(menu.meta).removed as MenuStampedNode[] | undefined));
   const remove = removeRows.map(row => {
     const pageId = text(row.pageId);
     const prior = previousPages.get(pageId);
@@ -596,3 +598,15 @@ function rows(value: unknown): Record<string, unknown>[] { return arr(value).map
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
 function strings(value: unknown): string[] { return arr(value).map(text).filter(Boolean); }
 function unique(values: string[]): string[] { return [...new Set(values)].sort(); }
+
+function removedPageIds(nodes: readonly MenuStampedNode[] | undefined): string[] {
+  const ids: string[] = [];
+  const walk = (list: readonly MenuStampedNode[]): void => {
+    for (const node of list) {
+      if (node.kind === 'page') ids.push(text(node.id));
+      else walk(Array.isArray(node.children) ? node.children : []);
+    }
+  };
+  walk(Array.isArray(nodes) ? nodes : []);
+  return ids.filter(Boolean);
+}

@@ -29,10 +29,23 @@ import type {
   PoolNeedsPage,
   PoolTestSupportItem,
 } from '/_102035_/l2/solution/poolPlan.js';
+import {
+  POOL_BACKEND_OPERATIONS,
+  POOL_BACKEND_REMOVED_KINDS,
+  POOL_BACKEND_SCHEMA_VERSION,
+  POOL_EFFORT_REMOVED_KINDS,
+  POOL_EFFORT_SCHEMA_VERSION,
+  POOL_ENDPOINT_KINDS,
+  POOL_PLAN_STATUSES,
+  POOL_TEST_SUPPORT_OWNERS,
+  type PoolBackendOperation,
+  type PoolBackendRemovedKind,
+} from '/_102035_/l2/solution/poolPlan.js';
 
-export const P2_EFFORT_SCHEMA_VERSION = '2026-09-21-p2-effort-v1.2' as const;
+// Lists and versions of the pool come from its one type (p2_34); these names stay for the readers that import them.
+export const P2_EFFORT_SCHEMA_VERSION = POOL_EFFORT_SCHEMA_VERSION;
 export const P2_L4DIFF_SCHEMA = '2026-09-21-p4-l4diff-v1' as const;
-export const P2_BACKEND_SCHEMA_VERSION = '2026-09-21-p1-backend-v1.2' as const;
+export const P2_BACKEND_SCHEMA_VERSION = POOL_BACKEND_SCHEMA_VERSION;
 export const P2_EFFORT_ARTIFACT = 'pool/l2/web/effort.json' as const;
 
 /**
@@ -41,15 +54,15 @@ export const P2_EFFORT_ARTIFACT = 'pool/l2/web/effort.json' as const;
  * `inProgress` is left out on purpose — effort.json is a review snapshot, never a live run.
  * Do not import OwnerStatus from mls-102021.
  */
-export const P2_EFFORT_STATUSES = ['toCreate', 'toUpdate', 'toRemove', 'done'] as const;
+export const P2_EFFORT_STATUSES = POOL_PLAN_STATUSES;
 export type P2EffortStatus = typeof P2_EFFORT_STATUSES[number];
-export const P2_TEST_SUPPORT_OWNERS = ['L1', 'runtime'] as const;
+export const P2_TEST_SUPPORT_OWNERS = POOL_TEST_SUPPORT_OWNERS;
 export type P2TestSupportOwner = typeof P2_TEST_SUPPORT_OWNERS[number];
 
-export const P2_EFFORT_ENDPOINT_KINDS = ['qry', 'cmd'] as const;
+export const P2_EFFORT_ENDPOINT_KINDS = POOL_ENDPOINT_KINDS;
 export type P2EffortEndpointKind = typeof P2_EFFORT_ENDPOINT_KINDS[number];
 
-export const P2_EFFORT_REMOVED_KINDS = ['endpoint', 'usecase', 'table'] as const;
+export const P2_EFFORT_REMOVED_KINDS = POOL_EFFORT_REMOVED_KINDS;
 export type P2EffortRemovedKind = typeof P2_EFFORT_REMOVED_KINDS[number];
 
 const ACTION_TO_STATUS: Record<MenuAction, P2EffortStatus> = {
@@ -87,9 +100,9 @@ export interface P2BuildEffortCandidate {
  * `removed[].kind` as its parse accepts them.
  */
 type P2BackendEndpoint = Pick<PoolBackendEndpoint, 'route' | 'page' | 'kind' | 'usecaseRef' | 'status'>;
-type P2BackendUsecase = Pick<PoolBackendUsecase, 'usecaseId' | 'entity' | 'status' | 'existing'> & { operation: string };
+type P2BackendUsecase = Pick<PoolBackendUsecase, 'usecaseId' | 'entity' | 'status' | 'existing'> & { operation: PoolBackendOperation };
 type P2BackendTable = Pick<PoolBackendTable, 'tableId' | 'entity' | 'status'>;
-type P2BackendRemoved = Pick<PoolBackendRemoved, 'id' | 'status'> & { kind: P2EffortRemovedKind };
+type P2BackendRemoved = Pick<PoolBackendRemoved, 'id' | 'status'> & { kind: PoolBackendRemovedKind };
 export type P2BackendView = Pick<PoolBackendFile, 'schemaVersion' | 'moduleName' | 'device' | 'testSupport'> & {
   endpoints: P2BackendEndpoint[];
   usecases: P2BackendUsecase[];
@@ -158,7 +171,9 @@ export function buildP2EffortFile(input: P2BuildEffortInput): PoolEffortFile {
   const endpoints = input.backend.endpoints.map(copyEndpoint);
   const usecases = input.backend.usecases.map(copyUsecase);
   const tables = input.backend.tables.map(copyTable);
-  const removed = input.backend.removed.map(copyRemoved);
+  // backend.json removes `usecase | port | table` (PoolBackendRemovedKind); effort.json lists `endpoint | usecase | table`
+  // (PoolEffortRemovedKind) and its totals count no removal, so a removed port has no place in effort and is left out.
+  const removed = input.backend.removed.flatMap(item => item.kind === 'port' ? [] : [copyRemoved({ ...item, kind: item.kind })]);
   const attributed = input.candidate
     ? attributeL4Diff(input.candidate.l4diff.items, input.candidate.needs, input.candidate.entityRules)
     : { pageIds: new Set<string>(), unattributed: [] as PoolEffortUnattributed[] };
@@ -384,7 +399,7 @@ function copyTable(item: P2BackendTable): PoolEffortTable {
   };
 }
 
-function copyRemoved(item: P2BackendRemoved): PoolEffortRemoved {
+function copyRemoved(item: P2BackendRemoved & { kind: 'usecase' | 'table' }): PoolEffortRemoved {
   return {
     kind: item.kind,
     id: item.id,
@@ -446,7 +461,7 @@ function parseUsecase(value: unknown, index: number): P2BackendUsecase {
   return {
     usecaseId: requiredText(value.usecaseId, `usecases[${index}].usecaseId`),
     entity: requiredText(value.entity, `usecases[${index}].entity`),
-    operation: requiredText(value.operation, `usecases[${index}].operation`),
+    operation: parseOperation(value.operation, `usecases[${index}].operation`),
     status: parseStatus(value.status, `usecases[${index}].status`),
     existing: text(value.existing),
   };
@@ -464,14 +479,22 @@ function parseTable(value: unknown, index: number): P2BackendTable {
 function parseRemoved(value: unknown, index: number): P2BackendRemoved {
   if (!isRecord(value)) throw new Error(`backend.json removed[${index}] must be an object.`);
   const kind = requiredText(value.kind, `removed[${index}].kind`);
-  if (!isP2EffortRemovedKind(kind)) {
-    throw new Error(`backend.json removed[${index}].kind must be ${P2_EFFORT_REMOVED_KINDS.join('|')}.`);
+  if (!(POOL_BACKEND_REMOVED_KINDS as readonly string[]).includes(kind)) {
+    throw new Error(`P2_EFFORT_BACKEND_REMOVED_KIND: backend.json removed[${index}].kind must be ${POOL_BACKEND_REMOVED_KINDS.join('|')}.`);
   }
   const status = parseStatus(value.status, `removed[${index}].status`);
   if (status !== 'toRemove') {
     throw new Error(`backend.json removed[${index}].status must be toRemove.`);
   }
-  return { kind, id: requiredText(value.id, `removed[${index}].id`), status };
+  return { kind: kind as PoolBackendRemovedKind, id: requiredText(value.id, `removed[${index}].id`), status };
+}
+
+function parseOperation(value: unknown, path: string): PoolBackendOperation {
+  const operation = requiredText(value, path);
+  if (!(POOL_BACKEND_OPERATIONS as readonly string[]).includes(operation)) {
+    throw new Error(`P2_EFFORT_BACKEND_OPERATION: backend.json ${path} must be ${POOL_BACKEND_OPERATIONS.join('|')}, not ${operation}.`);
+  }
+  return operation as PoolBackendOperation;
 }
 
 function parseStatus(value: unknown, path: string): P2EffortStatus {

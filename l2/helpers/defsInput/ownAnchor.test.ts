@@ -84,3 +84,17 @@ void test('d2_67: refusals decidable from the inputs stop at input20, before any
   assert.ok(codes.some(code => code.startsWith('D2_SHARED_V2_JOURNEY_OUTSIDE_INPUT20') && code.includes(outside)), codes.join(' | '));
 });
 
+void test('p2_34: a toRemove page is found among the menu nodes of meta.removed', async () => {
+  const expense = artifactsOf(path.join(NEEDS_FIXTURES, 'p2_32/expense'));
+  const removedNode = { id: 'pagina_antiga', kind: 'page', label: 'Antiga', organisms: [{ kind: 'list', text: 'Antiga.' }], action: 'remove' };
+  const menu = structuredClone(expense.menu) as { meta: Record<string, unknown> };
+  menu.meta.removed = [removedNode];
+  const effort = structuredClone(expense.effort) as { screens: Array<Record<string, unknown>> };
+  effort.screens = [...effort.screens, { pageId: 'pagina_antiga', label: 'Antiga', actors: [], status: 'toRemove', endpoints: [] }];
+  const codes = await errorCodes({ ...expense, menu, effort });
+  assert.equal(codes.some(code => code.startsWith('REMOVED_PAGE_NOT_IN_MENU_META') || code.startsWith('MENU_REMOVED_WITHOUT_EFFORT')), false, codes.join(' | '));
+  // Without the node, the same page is refused by name.
+  menu.meta.removed = [];
+  const missing = await errorCodes({ ...expense, menu, effort });
+  assert.ok(missing.some(code => code.startsWith('REMOVED_PAGE_NOT_IN_MENU_META')), missing.join(' | '));
+});

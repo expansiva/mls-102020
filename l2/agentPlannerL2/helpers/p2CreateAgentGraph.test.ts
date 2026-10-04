@@ -18,6 +18,8 @@ const ALLOWED_102035 = new Set([
   '/_102035_/l2/solution/fs.js',
   '/_102035_/l2/solution/types.js',
   '/_102035_/l2/solution/ontologyPaths.js',
+  // p2_34: the pool's one type (lists and versions of menu/needs/backend/effort); it imports nothing.
+  '/_102035_/l2/solution/poolPlan.js',
 ]);
 
 type Offence = { file: string; reason: string };
