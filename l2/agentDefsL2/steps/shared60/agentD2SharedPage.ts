@@ -139,9 +139,13 @@ function next(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep
     prompt: JSON.stringify(args), rags: [], planning: { planId: `shared60-${args.pageId}-${args.attempt}`, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' } } as mls.msg.AIAgentStep);
 }
 
-/** Closed lists where the code knows the values (d2_67): endpoints, navigation targets, steps, organisms, submits. */
+/**
+ * Closed lists where the code knows the values (d2_67): endpoints, navigation targets, steps, organisms, submits. The
+ * host fills every property, so an optional field carries the neutral '' the code reads as absent (d2_74).
+ */
 export function sharedSchemaFor(data: D2SharedContext): Record<string, unknown> {
   const enumOf = (values: readonly string[]) => (values.length ? { type: 'string', enum: [...new Set(values)] } : { type: 'string' });
+  const optionalEnum = (values: readonly string[]) => ({ type: 'string', enum: ['', ...new Set(values)] });
   const organisms = [...new Set([...Object.keys(data.page11.desktop.organisms), ...Object.keys(data.page11.mobile.organisms)])];
   const pages: string[] = [];
   const walk = (nodes: typeof data.menu.tree): void => { for (const node of nodes) { if (node.kind === 'page') pages.push(node.id); walk(node.children ?? []); } };
@@ -155,13 +159,13 @@ export function sharedSchemaFor(data: D2SharedContext): Record<string, unknown> 
     forms: { type: 'array', items: row(['submit', 'organism'], { submit: enumOf(submits), organism: enumOf(organisms) }) },
     states: { type: 'array', items: row(['id', 'source', 'description'], { id: { type: 'string' }, source: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*(\\.[A-Za-z][A-Za-z0-9]*)*$' }, description: { type: 'string' } }) },
     functions: { type: 'array', items: row(['id', 'description'], {
-      id: { type: 'string' }, description: { type: 'string' }, calls: enumOf(data.design.endpoints.map(endpoint => endpoint.id)),
-      sets: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*$' }, updates: { type: 'array', items: { type: 'string' } },
-      navigate: enumOf(d2SharedNavigablePages(data.menu, data.need.actors)), carries: { type: 'array', items: row(['key', 'from'], { key: { type: 'string' }, from: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*\\.[A-Za-z][A-Za-z0-9]*$' } }) },
+      id: { type: 'string' }, description: { type: 'string' }, calls: optionalEnum(data.design.endpoints.map(endpoint => endpoint.id)),
+      sets: { type: 'string', pattern: '^([A-Za-z][A-Za-z0-9]*)?$' }, updates: { type: 'array', items: { type: 'string' } },
+      navigate: optionalEnum(d2SharedNavigablePages(data.menu, data.need.actors)), carries: { type: 'array', items: row(['key', 'from'], { key: { type: 'string' }, from: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9]*\\.[A-Za-z][A-Za-z0-9]*$' } }) },
     }) },
     journeys: { type: 'array', items: row(['step', 'organisms', 'functions'], {
       step: enumOf(d2SharedJourneySteps(data.need, data.menu)), organisms: { type: 'array', items: enumOf(organisms) },
-      functions: { type: 'array', items: { type: 'string' } }, continuesIn: enumOf(pages),
+      functions: { type: 'array', items: { type: 'string' } }, continuesIn: optionalEnum(pages),
     }) },
   });
 }

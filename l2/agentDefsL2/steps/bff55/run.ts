@@ -115,23 +115,27 @@ export function buildD2BffPrompt(context: D2BffContext, repair?: { diagnostic: s
   return { systemPrompt, humanPrompt, chars };
 }
 
-/** The tool schema: closed lists where the code knows the values (writes, triggers, rules, origin paths). */
+/**
+ * The tool schema says what the parser requires, no more and no less (d2_74). The host fills every property, so an
+ * optional closed list carries the neutral '' (a page without writes gets [''], never a free string).
+ */
 export function bffSchemaFor(context: D2BffContext): Record<string, unknown> {
   const slice = d2BffL4Slice(context.entities, context.rules, context.need, [context.drafts.desktop, context.drafts.mobile]);
   const paths = Object.values(slice.entities).flatMap(entity => ((entity as { fields: Array<{ path: string }> }).fields).map(field => field.path));
   const branches = new Set<string>();
   for (const path of paths) { const parts = path.split('.'); for (let i = 2; i < parts.length; i += 1) branches.add(parts.slice(0, i).join('.')); }
   const enumOf = (values: readonly string[]) => (values.length ? { type: 'string', enum: [...new Set(values)] } : { type: 'string' });
+  const optionalEnum = (values: readonly string[]) => ({ type: 'string', enum: ['', ...new Set(values)] });
   const origin = row(['kind', 'paths'], { kind: { type: 'string', enum: ['field', 'aggregate', 'context'] }, paths: { type: 'array', items: enumOf([...paths, ...branches]) } });
-  const leaf = row(['name', 'type'], { name: { type: 'string' }, type: { type: 'string', pattern: D2_BFF_TYPE_PATTERN }, optional: { type: 'boolean' }, origin });
+  const leaf = row(['name', 'type', 'origin'], { name: { type: 'string' }, type: { type: 'string', pattern: D2_BFF_TYPE_PATTERN }, optional: { type: 'boolean' }, origin });
   const submits = [...d2PageSubmits(context).keys()];
   return row(['types', 'endpoints'], {
-    types: { type: 'array', items: row(['name', 'description', 'fields'], { name: { type: 'string' }, description: { type: 'string' }, fields: { type: 'array', items: leaf } }) },
+    types: { type: 'array', items: row(['name', 'fields'], { name: { type: 'string' }, description: { type: 'string' }, fields: { type: 'array', items: leaf } }) },
     endpoints: { type: 'array', items: row(['id', 'kind', 'when', 'input', 'output', 'rules', 'jsdoc'], {
       id: { type: 'string' },
       kind: { type: 'string', enum: ['qry', 'cmd'] },
       when: enumOf(['onLoad', 'interaction', ...submits]),
-      writes: enumOf(pageWrites(context.need).map(item => item.key)),
+      writes: optionalEnum(pageWrites(context.need).map(item => item.key)),
       input: { type: 'array', items: leaf },
       output: { type: 'array', items: leaf },
       rules: { type: 'array', items: enumOf(Object.keys(slice.rules)) },

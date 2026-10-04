@@ -30,6 +30,7 @@ import { sharedSchemaFor } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2
 import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
 import { bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import type { D2BffDesign, D2Menu, D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { d2ToolPayload } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
 import { contractSourceFor } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
@@ -337,6 +338,48 @@ function compileErrors(source: string): string[] {
   return ts.getPreEmitDiagnostics(ts.createProgram([fileName], options, host)).map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n'));
 }
 
+/** The bff55 context of any dining page, whether or not it has a recorded design. */
+async function diningBffContext(pageId: string): Promise<D2BffContext> {
+  const pack = readPack('dining');
+  const artifacts = await artifactsOf(pack, pack.json('pool/needs.json'));
+  const snapshot = await buildD2InputSnapshot({ project: 102047, module: pack.moduleName }, artifacts);
+  const built = pageContextOf(pack, snapshot, artifacts, pageId)!;
+  const writes = new Map<string, unknown>();
+  await approveD2PagesUnit(built.context, built.answer, 0, 0, { writeSource: async (info, source) => { writes.set(info.shortName + info.folder, source); }, writeJson: async (info, value) => { writes.set(info.shortName + info.folder, value); } });
+  const at = (folder: string, shortName: string) => writes.get(shortName + `${pack.moduleName}/${folder}`);
+  return bffContextOf(pack, artifacts, pack.json('pool/needs.json'), pageId, {
+    page11Text: { desktop: at('web/desktop/page11', pageId) as string, mobile: at('web/mobile/page11', pageId) as string },
+    drafts: { desktop: at('pipeline/agentDefsL2/page11Needs', `${pageId}Desktop`), mobile: at('pipeline/agentDefsL2/page11Needs', `${pageId}Mobile`) },
+  });
+}
+
+void test('d2_74: the schema says what the parser requires; a query write the host filled in is dropped, not refused', async () => {
+  // The answer p4_29 recorded for mesas (refused then with "a query writes nothing"): every property filled by the host.
+  const recorded = readPack('dining').json<{ raw: unknown }>('recorded/bff55/mesas-2.json').raw;
+  const mesas = await diningBffContext('mesas');
+  const design = d2BffApproved(mesas, d2ToolPayload(recorded, 'submitD2Bff', 'D2_BFF'));
+  assert.ok(design.endpoints.filter(item => item.kind === 'qry').length >= 2);
+  assert.ok(design.endpoints.every(item => item.kind === 'cmd' ? item.writes : item.writes === undefined));
+
+  // A command without a write of the plan is still refused.
+  const raw = structuredClone(d2ToolPayload(recorded, 'submitD2Bff', 'D2_BFF')) as { endpoints: Array<{ kind: string; writes?: string }> };
+  raw.endpoints.find(item => item.kind === 'cmd')!.writes = '';
+  assert.throws(() => d2BffApproved(mesas, raw), /D2_BFF_FORMAT: endpoints\.\w+\.writes: a command names its write/u);
+
+  // origin is required on every leaf; on a leaf that names a type it is ignored, whatever its shape.
+  const schema = bffSchemaFor(mesas) as { properties: { endpoints: { items: { properties: { writes: { enum: string[] }; output: { items: { required: string[] } } } } } } };
+  assert.deepEqual(schema.properties.endpoints.items.properties.output.items.required, ['name', 'type', 'origin']);
+  assert.equal(schema.properties.endpoints.items.properties.writes.enum[0], '');
+  const odd = structuredClone(d2ToolPayload(recorded, 'submitD2Bff', 'D2_BFF')) as { endpoints: Array<{ output: Array<{ type: string; origin?: unknown }> }> };
+  for (const endpoint of odd.endpoints) for (const leaf of endpoint.output) if (/^[A-Z]/u.test(leaf.type)) leaf.origin = { kind: 'field', paths: [] };
+  assert.doesNotThrow(() => d2BffApproved(mesas, odd));
+
+  // A page without writes gets the neutral enum [''], never a free string.
+  const inicio = await diningBffContext('inicio');
+  const inicioSchema = bffSchemaFor(inicio) as typeof schema;
+  assert.deepEqual(inicioSchema.properties.endpoints.items.properties.writes.enum, ['']);
+});
+
 void test('d2_73: the hand-written A and C of atendimento and inicio pass B and D; the contract carries the JSDoc and compiles', async () => {
   const { outcomes, out } = await dining();
   assert.ok(outcomes.every(item => item.result === 'ok'), JSON.stringify(outcomes.filter(item => item.result !== 'ok')));
@@ -462,19 +505,10 @@ void test('d2_73: D refuses an unfed organism, a call to a missing endpoint and 
 void test('d2_73: prompts of A and C stay inside the limit, carry the rule texts and the schemas pass the tool lint', async (t) => {
   const { out } = await dining();
   const pack = readPack('dining');
-  const artifacts = await artifactsOf(pack, pack.json('pool/needs.json'));
-  const snapshot = await buildD2InputSnapshot({ project: 102047, module: pack.moduleName }, artifacts);
   const sizes: string[] = [];
   for (const name of pack.list('answers/pages50')) {
     const pageId = name.replace(/\.json$/u, '');
-    const built = pageContextOf(pack, snapshot, artifacts, pageId)!;
-    const writes = new Map<string, unknown>();
-    await approveD2PagesUnit(built.context, built.answer, 0, 0, { writeSource: async (info, source) => { writes.set(info.shortName + info.folder, source); }, writeJson: async (info, value) => { writes.set(info.shortName + info.folder, value); } });
-    const at = (folder: string, shortName: string) => writes.get(shortName + `${pack.moduleName}/${folder}`);
-    const bff = bffContextOf(pack, artifacts, pack.json('pool/needs.json'), pageId, {
-      page11Text: { desktop: at('web/desktop/page11', pageId) as string, mobile: at('web/mobile/page11', pageId) as string },
-      drafts: { desktop: at('pipeline/agentDefsL2/page11Needs', `${pageId}Desktop`), mobile: at('pipeline/agentDefsL2/page11Needs', `${pageId}Mobile`) },
-    });
+    const bff = await diningBffContext(pageId);
     const prompt = buildD2BffPrompt(bff);
     assert.ok(prompt.chars < D2_BFF_PROMPT_LIMIT_CHARS);
     assert.deepEqual(lintToolSchema(JSON.stringify(bffSchemaFor(bff))), null, pageId);

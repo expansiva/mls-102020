@@ -106,7 +106,8 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
       const type = typeof row.type === 'string' ? row.type.trim() : '';
       const ref = parseD2BffType(type) ?? fail(`${path}.${name}.type`, `${JSON.stringify(row.type)} is not string, number, boolean, a named type or a union of literals, with [] for a list`);
       if (ref.base === 'ref' && !names.has(ref.ref)) fail(`${path}.${name}.type`, `named type ${ref.ref} is not declared in types`);
-      const origin = row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, fail);
+      // A leaf that names a type has its origins in that type: whatever origin it carries is ignored (d2_74).
+      const origin = ref.base === 'ref' || row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, fail);
       if (ref.base !== 'ref' && !origin) fail(`${path}.${name}.origin`, 'a value leaf names its origin');
       return { name, type: renderD2BffType(ref), ...(row.optional === true ? { optional: true } : {}), ...(ref.base !== 'ref' && origin ? { origin } : {}) };
     });
@@ -122,9 +123,9 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
     if (row.kind !== 'qry' && row.kind !== 'cmd') fail(`endpoints.${id}.kind`, 'qry or cmd');
     const when = typeof row.when === 'string' ? row.when.trim() : '';
     if (!when) fail(`endpoints.${id}.when`, 'onLoad, interaction or a submit intent id');
-    const writes = typeof row.writes === 'string' ? row.writes.trim() : '';
+    // A query writes nothing: a write the host filled in is dropped, never refused (d2_74). A command keeps it for B.2/B.4.
+    const writes = row.kind === 'cmd' && typeof row.writes === 'string' ? row.writes.trim() : '';
     if (row.kind === 'cmd' && !writes) fail(`endpoints.${id}.writes`, 'a command names its write');
-    if (row.kind === 'qry' && writes) fail(`endpoints.${id}.writes`, 'a query writes nothing');
     const doc = record(row.jsdoc) ?? fail(`endpoints.${id}.jsdoc`, 'not an object');
     const jsdoc = {} as D2BffJsdoc;
     for (const key of ['purpose', 'input', 'processing', 'output'] as const) {
