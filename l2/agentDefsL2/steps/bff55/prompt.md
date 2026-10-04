@@ -23,7 +23,7 @@ Types and origins:
   always a named type.
 - A leaf with a field origin is named with the field's key in the ontology (the last segment of its Entity.path) and
   keeps the field's type; two such leaves of one shape from different entities prefix the one outside the root entity
-  with that entity's name.
+  with that entity's name, in lowerCamel (entity name first, then the field key with a capital).
 - Every value leaf names its origin: field with the one Entity.path it carries; aggregate with every Entity.path the
   value is computed from; context for a value that comes from the URL or a selection and fills no stored field.
 - A cmd input leaf that fills a stored field uses field with that field's Entity.path, never context.

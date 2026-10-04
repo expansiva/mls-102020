@@ -1,9 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2PageSettle.ts" enhancement="_blank"/>
 
 /**
- * A stage that runs one worker per page (bff55, shared60) ends only when every page of this task is accepted or
- * refused; then it passes or fails once. A refused page is recorded where its receipt lives and does not stop its
- * siblings (d2_64).
+ * A stage that runs one worker per page (bff55) ends only when every page of this task is accepted or refused. A refused
+ * page is recorded where its receipt lives and does not stop its siblings (d2_64); since d2_76 the pages that passed go on
+ * to the next stage, and finalize80 fails the pipeline once, listing the refused pages.
  */
 export interface D2PageRefusal {
   schemaVersion: string;
@@ -23,7 +23,7 @@ export interface D2PageSettlePort {
 export type D2PageSettlement =
   | { state: 'pending'; pending: string[] }
   | { state: 'ready'; pageIds: string[] }
-  | { state: 'refused'; refusals: D2PageRefusal[] };
+  | { state: 'refused'; refusals: D2PageRefusal[]; pageIds: string[] };
 
 export async function settleD2Pages(taskId: string, port: D2PageSettlePort, missingCode: string): Promise<D2PageSettlement> {
   const ids = await port.pageIds();
@@ -38,7 +38,7 @@ export async function settleD2Pages(taskId: string, port: D2PageSettlePort, miss
     else pending.push(pageId);
   }
   if (pending.length) return { state: 'pending', pending };
-  if (refusals.length) return { state: 'refused', refusals };
+  if (refusals.length) return { state: 'refused', refusals, pageIds: ids.filter(pageId => !refusals.some(row => row.pageId === pageId)) };
   return { state: 'ready', pageIds: ids };
 }
 

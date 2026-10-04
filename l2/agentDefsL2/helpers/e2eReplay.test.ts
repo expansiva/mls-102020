@@ -25,7 +25,11 @@ import { deriveD2Page11CategoryReference, deriveD2Page11Experience } from '/_102
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, type D2PagesContext, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { readApprovedPage11, reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2SharedPage, d2SharedPageFrom, d2SharedSourceFor, executeD2Shared, type D2SharedPage, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { approveD2SharedPage, d2SharedPageFrom, d2SharedSourceFor, executeD2Shared, receiptInfo as sharedReceiptInfo, sharedInfo, type D2SharedPage, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { contractReceiptInfo, executeD2Contracts70 } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
+import { finalizeD2Pages } from '/_102020_/l2/agentDefsL2/steps/finalize80/run.js';
+import { sourceInfo as pagesSourceInfo, type D2PagesReceipt } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { displayPath, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
 import { parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
@@ -570,6 +574,7 @@ void test('d2_75: shared60 runs without a prompt; a refused page does not stop t
   const existing = new Map<string, { source: string | null; receipt: D2SharedReceipt | null }>();
   const port = {
     pageIds: async () => ['atendimento', 'inicio'],
+    upstreamRefusal: async () => null,
     load: async (pageId: string) => (pageId === 'inicio' ? broken : out.shared[pageId]),
     readExisting: async (pageId: string) => existing.get(pageId) ?? { source: null, receipt: null },
     writer,
@@ -579,18 +584,111 @@ void test('d2_75: shared60 runs without a prompt; a refused page does not stop t
   const execution = { message: { orderAt: 'm', threadId: 't' }, task: { PK: 'task' }, isTest: true } as mls.msg.ExecutionContext;
   const failed = await sharedStep({ agentName: 'agentD2Shared' } as Parameters<typeof sharedStep>[0], execution, { ...step, stepId: 1 } as mls.msg.AIAgentStep, step, 1, port);
   assert.equal(failed.some(item => item.type === 'prompt_ready'), false);
+  // d2_76: the stage completes with the refusal named; the pipeline fails once, in finalize80.
   const status = failed.find(item => item.type === 'update-status') as { status: string; traceMsg: string };
-  assert.equal(status.status, 'failed');
-  assert.match(status.traceMsg, /^D2_SHARED_PAGES_REFUSED: inicio: D2_SHARED_SELF_CHECK: D2_SHARED_V2_ORGANISM_UNFED/u);
+  assert.equal(status.status, 'completed');
+  assert.match(status.traceMsg, /D2_SHARED_PAGES_REFUSED: inicio: D2_SHARED_SELF_CHECK: D2_SHARED_V2_ORGANISM_UNFED/u);
   assert.equal(typeof writes.get('comandaRestaurante/web/shared/atendimento'), 'string');
 
   // Fixed, it passes; a second run over the same inputs writes nothing.
   port.load = async (pageId: string) => out.shared[pageId];
   const first = await executeD2Shared(port);
-  assert.deepEqual(first, { wrote: ['atendimento', 'inicio'], reused: [], refused: [] });
+  assert.deepEqual(first, { wrote: ['atendimento', 'inicio'], reused: [], skipped: [], refused: [] });
   for (const pageId of ['atendimento', 'inicio']) existing.set(pageId, { source: writes.get(`comandaRestaurante/web/shared/${pageId}`) as string, receipt: writes.get(`comandaRestaurante/pipeline/agentDefsL2/shared60/${pageId}.json`) as D2SharedReceipt });
   writes.clear();
-  assert.deepEqual(await executeD2Shared(port), { wrote: [], reused: ['atendimento', 'inicio'], refused: [] });
+  assert.deepEqual(await executeD2Shared(port), { wrote: [], reused: ['atendimento', 'inicio'], skipped: [], refused: [] });
   assert.equal(writes.size, 0);
   assert.equal(d2SharedSourceFor(out.shared.atendimento), existing.get('atendimento')?.source);
+});
+
+void test('d2_76: the recorded r3 answers pass B without repair; a page refused on purpose leaves the other four whole', async () => {
+  const pack = readPack('dining');
+  const recorded = { atendimento: 'atendimento-2', cardapio: 'cardapio-1', fechamento: 'fechamento-1', inicio: 'inicio-1', mesas: 'mesas-2' } as const;
+  const ids = Object.keys(recorded).sort();
+  const contexts: Record<string, D2BffContext> = {};
+  const designs: Record<string, D2BffDesign> = {};
+  const bffRefusals = new Map<string, string>();
+  for (const pageId of ids) {
+    const raw = d2ToolPayload(pack.json<{ raw: unknown }>(`recorded/bff55-r3/${recorded[pageId as keyof typeof recorded]}.json`).raw, 'submitD2Bff', 'D2_BFF') as RawDesign;
+    contexts[pageId] = await diningBffContext(pageId);
+    // atendimento-2 was refused in r3 for "MesaCode" (case of a name): it now passes as it is.
+    if (pageId !== 'cardapio') { designs[pageId] = d2BffApproved(contexts[pageId], raw); continue; }
+    raw.bindings.organisms = [];
+    bffRefusals.set(pageId, refusalOf(() => d2BffApproved(contexts[pageId], raw)));
+  }
+  assert.match(bffRefusals.get('cardapio') ?? '', /^Error: D2_BFF_BINDING_ORGANISM/u);
+  assert.deepEqual(Object.keys(designs).sort(), ['atendimento', 'fechamento', 'inicio', 'mesas']);
+
+  const identity = { project: 102047, module: pack.moduleName };
+  const replayPages: Record<string, ReplayPage> = Object.fromEntries(ids.map(pageId => [pageId, { page11Text: contexts[pageId].page11Text, drafts: { desktop: JSON.parse(contexts[pageId].draftText.desktop), mobile: JSON.parse(contexts[pageId].draftText.mobile) } }]));
+  const files = new Map<string, unknown>();
+  const writer = { writeSource: async (info: Ns5FileInfo, source: string) => { files.set(displayPath(info), source); }, writeJson: async (info: Ns5FileInfo, value: unknown) => { files.set(displayPath(info), value); return displayPath(info); } };
+  const upstreamRefusal = async (pageId: string) => bffRefusals.get(pageId) ?? null;
+  const shared = await executeD2Shared({
+    pageIds: async () => ids, upstreamRefusal, load: async pageId => sharedPageOf(contexts[pageId], designs[pageId], replayPages),
+    readExisting: async () => ({ source: null, receipt: null }), writer,
+  }, identity);
+  assert.deepEqual(shared, { wrote: ['atendimento', 'fechamento', 'inicio', 'mesas'], reused: [], skipped: ['cardapio'], refused: [] });
+  const contracts = await executeD2Contracts70({
+    pageIds: async () => ids, upstreamRefusal,
+    load: async pageId => ({
+      identity, pageId, userLanguage: contexts[pageId].userLanguage, design: designs[pageId], access: d2BffAccess(designs[pageId], contexts[pageId].need, contexts[pageId].grants),
+      entities: contexts[pageId].entities, sharedSource: files.get(displayPath(sharedInfo(identity, pageId))) as string,
+      sharedReceipt: files.get(displayPath(sharedReceiptInfo(identity, pageId))) as D2SharedReceipt,
+    }),
+    readExisting: async () => ({ source: null, receipt: null }), writer,
+  }, identity);
+  assert.deepEqual({ ...contracts }, { wrote: ['atendimento', 'fechamento', 'inicio', 'mesas'], reused: [], skipped: ['cardapio'], refused: [] });
+
+  // finalize80 compiles what was generated and fails the pipeline once, listing the refused page.
+  const pageReceipt = async (pageId: string) => ({ sourceHashes: { desktop: await sha256Text(contexts[pageId].page11Text.desktop), mobile: await sha256Text(contexts[pageId].page11Text.mobile) } }) as D2PagesReceipt;
+  const page11Source = new Map(ids.flatMap(pageId => (['desktop', 'mobile'] as const).map(device => [displayPath(pagesSourceInfo(identity, pageId, device)), contexts[pageId].page11Text[device]] as const)));
+  const compiled: string[] = [];
+  let blocked = '';
+  const { report } = await finalizeD2Pages({ ...identity, scope: 'all' }, {
+    readInput: async () => ({ ...identity, snapshotHash: 'sha256:input', selection: { writePageIds: ids } }) as unknown as D2InputSnapshot,
+    readBundle: async () => ({ artifacts: {} as never, files: [] }), assertStable: async () => undefined,
+    readPipeline: async () => ({ ...identity, steps: Object.fromEntries(['entry10', 'input20', 'pages50', 'bff55', 'shared60', 'contracts70'].map(step => [step, { status: 'approved', snapshotHash: 'sha256:input' }])) }) as never,
+    reusable: async () => true, readReceipt: (_identity, pageId) => pageReceipt(pageId), indexed: () => true,
+    readSource: async info => (page11Source.get(displayPath(info)) ?? files.get(displayPath(info)) ?? '') as string,
+    readJson: async <T>(info: Ns5FileInfo) => (files.get(displayPath(info)) ?? null) as T | null,
+    readDraftText: async (_identity, pageId, device) => contexts[pageId].draftText[device],
+    readSharedReceipt: async (_identity, pageId) => (files.get(displayPath(sharedReceiptInfo(identity, pageId))) ?? null) as D2SharedReceipt | null,
+    readContractReceipt: async (_identity, pageId) => (files.get(displayPath(contractReceiptInfo(identity, pageId))) ?? null) as never,
+    readRefusal: async (_identity, pageId) => (bffRefusals.has(pageId) ? { stage: 'bff55', diagnostic: bffRefusals.get(pageId)! } : null),
+    writeJson: async (info, value) => { files.set(displayPath(info), value); return displayPath(info); },
+    compile: async (_identity, sources, hashes) => { compiled.push(...sources.map(item => `${item.pageId}:${item.kind}`)); return sources.map(item => ({ path: item.path, sha256: hashes.get(item.path)!, status: 'passed' as const, diagnostics: [] })); },
+    markComplete: async () => { throw new Error('a refused page must not complete the pipeline'); },
+    markBlocked: async (_identity, diagnostic) => { blocked = diagnostic; },
+  });
+  assert.equal(report.status, 'blocked');
+  assert.deepEqual(report.pending, ['cardapio: bff55: D2_BFF_BINDING_ORGANISM']);
+  assert.equal(blocked, 'cardapio: bff55: D2_BFF_BINDING_ORGANISM');
+  assert.deepEqual(compiled.filter(item => item.endsWith(':shared')).sort(), ['atendimento:shared', 'fechamento:shared', 'inicio:shared', 'mesas:shared']);
+  assert.deepEqual(compiled.filter(item => item.endsWith(':contract')).sort(), ['atendimento:contract', 'fechamento:contract', 'inicio:contract', 'mesas:contract']);
+  assert.equal(compiled.filter(item => item.endsWith('Page')).length, 10);
+});
+
+void test('d2_76: case of names and ids, identical duplicates and the reserved type name are normalized, never refused', async () => {
+  const bff = (await dining()).out.bff.atendimento;
+  const answer = atendimentoAnswer();
+  // A type declared as 'item do cardapio' is the type its references name in PascalCase.
+  answer.types.find(item => item.name === 'ItemDoCardapio')!.name = 'item do cardapio';
+  answer.types.find(item => item.name === 'ComandaComItens')!.name = 'AtendimentoContracts';
+  for (const endpoint of answer.endpoints) for (const leaf of endpoint.output) if (leaf.type === 'ComandaComItens') leaf.type = 'AtendimentoContracts';
+  const search = answer.endpoints.find(item => item.id === 'buscarItemCardapio')!;
+  search.id = 'BuscarItemCardapio';
+  answer.endpoints.push(structuredClone(search));
+  search.output[0].name = 'Itens';
+  answer.types[0].fields.push(structuredClone(answer.types[0].fields[0]));
+  const design = d2BffApproved(bff, answer);
+  assert.ok(design.types.some(item => item.name === 'ItemDoCardapio'));
+  assert.ok(design.types.some(item => item.name === 'AtendimentoContractsShape'));
+  assert.equal(design.endpoints.filter(item => item.id === 'buscarItemCardapio').length, 1);
+  assert.equal(design.bindings.organisms.find(row => row.organism === 'formularioLancamento')?.reads, 'buscarItemCardapio.itens');
+  // What the strict schema guarantees is an internal assertion, without a repair cycle; content the code cannot derive is refused.
+  assert.match(refusalOf(() => buildD2BffDesign({ types: 'x', endpoints: [] })), /D2_BFF_ASSERT: design: types and endpoints are lists/u);
+  const different = atendimentoAnswer();
+  different.types.push({ ...structuredClone(different.types[0]), fields: different.types[0].fields.slice(0, 2) });
+  assert.match(refusalOf(() => buildD2BffDesign(different)), /D2_BFF_FORMAT: types\.MesaDoSalao: declared twice with different fields/u);
 });

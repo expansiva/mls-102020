@@ -64,8 +64,6 @@ export interface D2BffIssue { code: string; path: string; message: string }
 
 export interface D2BffTypeRef { base: 'string' | 'number' | 'boolean' | 'enum' | 'ref'; values: string[]; ref: string; list: boolean }
 
-const IDENTIFIER = /^[a-z][A-Za-z0-9]*$/u;
-const TYPE_NAME = /^[A-Z][A-Za-z0-9]*$/u;
 const PATH = /^[A-Z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+$/u;
 const TYPE = /^(?:(string|number|boolean)|([A-Z][A-Za-z0-9]*)|('[^'\\]+'(?:\s*\|\s*'[^'\\]+')*))(\[\])?$/u;
 /** The type grammar of a leaf, for the tool schema: a scalar, a named type or a union of literals, `[]` for a list. */
@@ -87,70 +85,130 @@ export function renderD2BffType(ref: D2BffTypeRef): string {
   return ref.base === 'enum' && ref.values.length > 1 ? `Array<${one}>` : `${one}[]`;
 }
 
-/** Tool format of the answer (not a design gate): ids, type grammar, named types that exist, one origin per value leaf. */
+/** Words of a name the answer wrote, whatever its case or separators. */
+const words = (raw: string): string[] => raw.split(/[^A-Za-z0-9]+/u).filter(Boolean);
+/** lowerCamel of a leaf name or endpoint id the answer wrote (d2_76): the case is form, never a refusal. */
+export function d2LowerCamel(raw: string, fallback: string): string {
+  const joined = words(raw).map((part, index) => (index ? part[0].toUpperCase() : part[0].toLowerCase()) + part.slice(1)).join('');
+  if (!joined) return fallback;
+  return /^[0-9]/u.test(joined) ? `x${joined}` : joined;
+}
+/** PascalCase of a type name the answer wrote (d2_76). */
+export function d2PascalCase(raw: string, fallback: string): string {
+  const joined = words(raw).map(part => part[0].toUpperCase() + part.slice(1)).join('');
+  if (!joined) return fallback;
+  return /^[0-9]/u.test(joined) ? `T${joined}` : joined;
+}
+
+/**
+ * Tool format of the answer (not a design gate). d2_76: everything the code can fix is normalized before any check
+ * (case of names and ids, identical duplicates, references that follow a renamed id or key); what the strict schema
+ * already guarantees is an internal assertion (`D2_BFF_ASSERT`, no repair cycle); only content the code cannot derive
+ * is refused (`D2_BFF_FORMAT`).
+ */
 export function buildD2BffDesign(value: unknown): D2BffDesign {
+  const assert = (path: string, what: string): never => { throw new Error(`D2_BFF_ASSERT: ${path}: ${what}`); };
   const fail = (path: string, what: string): never => { throw new Error(`D2_BFF_FORMAT: ${path}: ${what}`); };
-  const root = record(value) ?? fail('design', 'not an object');
-  if (!Array.isArray(root.types) || !Array.isArray(root.endpoints)) fail('design', 'types and endpoints are lists');
-  const types: D2BffType[] = (root.types as unknown[]).map((raw, index) => {
-    const row = record(raw) ?? fail(`types.${index}`, 'not an object');
-    const name = typeof row.name === 'string' ? row.name : '';
-    if (!TYPE_NAME.test(name)) fail(`types.${index}.name`, `${JSON.stringify(row.name)} is not a PascalCase name`);
-    if (!Array.isArray(row.fields) || !row.fields.length) fail(`types.${name}.fields`, 'a named type has at least one field');
-    return { name, description: typeof row.description === 'string' ? row.description.trim() : '', fields: row.fields as D2BffLeaf[] };
+  const root = record(value) ?? assert('design', 'not an object');
+  if (!Array.isArray(root.types) || !Array.isArray(root.endpoints)) assert('design', 'types and endpoints are lists');
+
+  const typeNames = new Map<string, string>();
+  const rawTypes: Array<{ name: string; description: string; fields: unknown[] }> = [];
+  (root.types as unknown[]).forEach((raw, index) => {
+    const row = record(raw) ?? assert(`types.${index}`, 'not an object');
+    const written = typeof row.name === 'string' ? row.name : '';
+    const name = d2PascalCase(written, `Type${index + 1}`);
+    if (!Array.isArray(row.fields)) assert(`types.${name}.fields`, 'not a list');
+    if (!(row.fields as unknown[]).length) fail(`types.${name}.fields`, 'a named type has at least one field');
+    const type = { name, description: typeof row.description === 'string' ? row.description.trim() : '', fields: row.fields as unknown[] };
+    const same = rawTypes.find(item => item.name === name);
+    if (same && JSON.stringify(same) !== JSON.stringify(type)) fail(`types.${name}`, 'declared twice with different fields');
+    if (written) typeNames.set(written, name);
+    typeNames.set(name, name);
+    if (!same) rawTypes.push(type);
   });
-  const names = new Set<string>();
-  for (const type of types) {
-    if (names.has(type.name)) fail(`types.${type.name}`, 'declared twice');
-    names.add(type.name);
-  }
-  const leaves = (rows: unknown, path: string): D2BffLeaf[] => {
-    if (!Array.isArray(rows)) fail(path, 'not a list');
-    const seen = new Set<string>();
-    return (rows as unknown[]).map((raw, index) => {
-      const row = record(raw) ?? fail(`${path}.${index}`, 'not an object');
-      const name = typeof row.name === 'string' ? row.name : '';
-      if (!IDENTIFIER.test(name)) fail(`${path}.${index}.name`, `${JSON.stringify(row.name)} is not a lowerCamel name`);
-      if (seen.has(name)) fail(`${path}.${name}`, 'declared twice');
-      seen.add(name);
-      const type = typeof row.type === 'string' ? row.type.trim() : '';
-      const ref = parseD2BffType(type) ?? fail(`${path}.${name}.type`, `${JSON.stringify(row.type)} is not string, number, boolean, a named type or a union of literals, with [] for a list`);
-      if (ref.base === 'ref' && !names.has(ref.ref)) fail(`${path}.${name}.type`, `named type ${ref.ref} is not declared in types`);
+  const typeOf = (ref: string): string | undefined => typeNames.get(ref) ?? typeNames.get(d2PascalCase(ref, ''));
+
+  const leaves = (rows: unknown, path: string, renamed?: Map<string, string>): D2BffLeaf[] => {
+    if (!Array.isArray(rows)) assert(path, 'not a list');
+    const out: D2BffLeaf[] = [];
+    (rows as unknown[]).forEach((raw, index) => {
+      const row = record(raw) ?? assert(`${path}.${index}`, 'not an object');
+      const written = typeof row.name === 'string' ? row.name : '';
+      const name = d2LowerCamel(written, `field${index + 1}`);
+      const parsed = parseD2BffType(typeof row.type === 'string' ? row.type : '') ?? assert(`${path}.${name}.type`, `${JSON.stringify(row.type)} is not string, number, boolean, a named type or a union of literals, with [] for a list`);
+      let ref = parsed;
+      if (parsed.base === 'ref') {
+        const target = typeOf(parsed.ref) ?? fail(`${path}.${name}.type`, `named type ${parsed.ref} is not declared in types`);
+        ref = { ...parsed, ref: target };
+      }
       // A leaf that names a type has its origins in that type: whatever origin it carries is ignored (d2_74).
-      const origin = ref.base === 'ref' || row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, fail);
-      if (ref.base !== 'ref' && !origin) fail(`${path}.${name}.origin`, 'a value leaf names its origin');
-      return { name, type: renderD2BffType(ref), ...(row.optional === true ? { optional: true } : {}), ...(ref.base !== 'ref' && origin ? { origin } : {}) };
+      const origin = ref.base === 'ref' || row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, assert, fail);
+      if (ref.base !== 'ref' && !origin) assert(`${path}.${name}.origin`, 'a value leaf names its origin');
+      const leaf: D2BffLeaf = { name, type: renderD2BffType(ref), ...(row.optional === true ? { optional: true } : {}), ...(ref.base !== 'ref' && origin ? { origin } : {}) };
+      if (written && written !== name) renamed?.set(written, name);
+      const same = out.find(item => item.name === name);
+      if (same && JSON.stringify(same) !== JSON.stringify(leaf)) fail(`${path}.${name}`, 'declared twice with different types or origins');
+      if (!same) out.push(leaf);
     });
+    return out;
   };
-  for (const type of types) type.fields = leaves(type.fields, `types.${type.name}.fields`);
-  const ids = new Set<string>();
-  const endpoints: D2BffEndpoint[] = (root.endpoints as unknown[]).map((raw, index) => {
-    const row = record(raw) ?? fail(`endpoints.${index}`, 'not an object');
-    const id = typeof row.id === 'string' ? row.id : '';
-    if (!IDENTIFIER.test(id)) fail(`endpoints.${index}.id`, `${JSON.stringify(row.id)} is not a lowerCamel id`);
-    if (ids.has(id)) fail(`endpoints.${id}`, 'declared twice');
-    ids.add(id);
-    if (row.kind !== 'qry' && row.kind !== 'cmd') fail(`endpoints.${id}.kind`, 'qry or cmd');
+  const types: D2BffType[] = rawTypes.map(type => ({ name: type.name, description: type.description, fields: leaves(type.fields, `types.${type.name}.fields`) }));
+
+  const endpointIds = new Map<string, string>();
+  const outputKeys = new Map<string, Map<string, string>>();
+  const endpoints: D2BffEndpoint[] = [];
+  (root.endpoints as unknown[]).forEach((raw, index) => {
+    const row = record(raw) ?? assert(`endpoints.${index}`, 'not an object');
+    const written = typeof row.id === 'string' ? row.id : '';
+    const id = d2LowerCamel(written, `endpoint${index + 1}`);
+    if (row.kind !== 'qry' && row.kind !== 'cmd') assert(`endpoints.${id}.kind`, 'qry or cmd');
     const when = typeof row.when === 'string' ? row.when.trim() : '';
-    if (!when) fail(`endpoints.${id}.when`, 'onLoad, interaction or a submit intent id');
+    if (!when) assert(`endpoints.${id}.when`, 'onLoad, interaction or a submit intent id');
     // A query writes nothing: a write the host filled in is dropped, never refused (d2_74). A command keeps it for B.2/B.4.
     const writes = row.kind === 'cmd' && typeof row.writes === 'string' ? row.writes.trim() : '';
     if (row.kind === 'cmd' && !writes) fail(`endpoints.${id}.writes`, 'a command names its write');
-    const doc = record(row.jsdoc) ?? fail(`endpoints.${id}.jsdoc`, 'not an object');
+    const doc = record(row.jsdoc) ?? assert(`endpoints.${id}.jsdoc`, 'not an object');
     const jsdoc = {} as D2BffJsdoc;
     for (const key of ['purpose', 'input', 'processing', 'output'] as const) {
       const text = typeof doc[key] === 'string' ? (doc[key] as string).trim() : '';
       if (!text) fail(`endpoints.${id}.jsdoc.${key}`, 'empty');
       jsdoc[key] = text;
     }
-    if (!Array.isArray(row.rules) || !row.rules.every(item => typeof item === 'string')) fail(`endpoints.${id}.rules`, 'a list of rule ids');
-    return {
+    if (!Array.isArray(row.rules) || !row.rules.every(item => typeof item === 'string')) assert(`endpoints.${id}.rules`, 'a list of rule ids');
+    const renamed = new Map<string, string>();
+    const endpoint: D2BffEndpoint = {
       id, kind: row.kind as 'qry' | 'cmd', when, ...(writes ? { writes } : {}),
-      input: leaves(row.input, `endpoints.${id}.input`), output: leaves(row.output, `endpoints.${id}.output`),
+      input: leaves(row.input, `endpoints.${id}.input`), output: leaves(row.output, `endpoints.${id}.output`, renamed),
       rules: [...new Set(row.rules as string[])], jsdoc,
     };
+    const same = endpoints.find(item => item.id === id);
+    if (same && JSON.stringify(same) !== JSON.stringify(endpoint)) fail(`endpoints.${id}`, 'declared twice with different content');
+    if (written) endpointIds.set(written, id);
+    endpointIds.set(id, id);
+    outputKeys.set(id, new Map([...(outputKeys.get(id) ?? []), ...renamed]));
+    if (!same) endpoints.push(endpoint);
   });
-  return { types, endpoints, bindings: parseBindings(root.bindings, fail) };
+
+  // References follow a renamed endpoint id or output key; an unknown one stays as written for B to name.
+  const endpointRef = (value: string): string => endpointIds.get(value) ?? endpointIds.get(d2LowerCamel(value, value)) ?? value;
+  const keyRef = (value: string): string => {
+    const dot = value.indexOf('.');
+    if (dot <= 0) return value;
+    const id = endpointRef(value.slice(0, dot));
+    const key = value.slice(dot + 1);
+    return `${id}.${outputKeys.get(id)?.get(key) ?? (endpoints.find(item => item.id === id)?.output.some(leaf => leaf.name === key) ? key : d2LowerCamel(key, key))}`;
+  };
+  const bindings = parseBindings(root.bindings, assert);
+  return {
+    types, endpoints,
+    bindings: {
+      organisms: bindings.organisms.map(row => ({ ...row, reads: keyRef(row.reads) })),
+      commands: bindings.commands.map(row => ({ endpoint: endpointRef(row.endpoint), refreshes: row.refreshes.map(endpointRef) })),
+      selections: bindings.selections.map(row => ({ ...row, via: 'query' in row.via ? { query: endpointRef(row.via.query) } : { list: keyRef(row.via.list) } })),
+      journeys: bindings.journeys.map(row => ({ ...row, endpoints: row.endpoints.map(endpointRef) })),
+    },
+  };
 }
 
 function parseBindings(value: unknown, fail: (path: string, what: string) => never): D2BffBindings {
@@ -190,7 +248,19 @@ function parseBindings(value: unknown, fail: (path: string, what: string) => nev
  * the answer's choice is overwritten, never refused. Two leaves of one list that derive the same name keep the root
  * entity's leaf as is and prefix the others with their entity. Bindings follow the renamed output keys.
  */
-export function normalizeD2BffDesign(design: D2BffDesign, entities: Record<string, Ns5OntologyAnyEntity>): D2BffDesign {
+export function normalizeD2BffDesign(raw: D2BffDesign, entities: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = ''): D2BffDesign {
+  // The contract interface of the page owns its name: a type that took it is renamed, with its references (d2_76).
+  let design = raw;
+  if (reservedTypeName && raw.types.some(type => type.name === reservedTypeName)) {
+    let to = `${reservedTypeName}Shape`;
+    while (raw.types.some(type => type.name === to)) to = `${to}X`;
+    const retype = (leaf: D2BffLeaf): D2BffLeaf => { const ref = parseD2BffType(leaf.type); return ref?.base === 'ref' && ref.ref === reservedTypeName ? { ...leaf, type: renderD2BffType({ ...ref, ref: to }) } : leaf; };
+    design = {
+      ...raw,
+      types: raw.types.map(type => ({ ...type, name: type.name === reservedTypeName ? to : type.name, fields: type.fields.map(retype) })),
+      endpoints: raw.endpoints.map(endpoint => ({ ...endpoint, input: endpoint.input.map(retype), output: endpoint.output.map(retype) })),
+    };
+  }
   const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = ''): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
     const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
     const root = rows.map(field).find(path => path.split('.').length === 2 && path.endsWith('.id'))?.split('.')[0] ?? fallbackRoot;
@@ -210,12 +280,14 @@ export function normalizeD2BffDesign(design: D2BffDesign, entities: Record<strin
       if (next.name !== leaf.name) renamed.set(leaf.name, next.name);
       return next;
     });
-    const seen = new Set<string>();
+    // The same field twice is one leaf (d2_76); two different leaves under one name cannot be told apart.
+    const unique: D2BffLeaf[] = [];
     for (const leaf of out) {
-      if (seen.has(leaf.name)) throw new Error(`D2_BFF_FORMAT: ${at}.${leaf.name}: two leaves carry the same name after the ontology names were applied.`);
-      seen.add(leaf.name);
+      const same = unique.find(item => item.name === leaf.name);
+      if (!same) { unique.push(leaf); continue; }
+      if (JSON.stringify(same.origin) !== JSON.stringify(leaf.origin)) throw new Error(`D2_BFF_FORMAT: ${at}.${leaf.name}: two leaves with different origins carry the same name after the ontology names were applied.`);
     }
-    return { rows: out, renamed };
+    return { rows: unique, renamed };
   };
   const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`).rows }));
   const outputs = new Map<string, Map<string, string>>();
@@ -264,6 +336,9 @@ export function d2BffTypeRoot(name: string, design: Pick<D2BffDesign, 'types'>):
 }
 
 /** The journey steps of the page: steps of the journeys the menu links to it, as the needs list them. */
+/** The name of the contract interface of a page (`renderD2ContractV2`). */
+export function d2ContractsTypeName(pageId: string): string { return `${pageId[0].toUpperCase()}${pageId.slice(1)}Contracts`; }
+
 export function d2PageJourneySteps(need: D2NeedPage, menu: D2Menu): string[] {
   const linked = new Set(Object.entries(menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(need.pageId)).map(([id]) => id));
   const steps = need.reads.flatMap(read => read.from.filter(item => item.startsWith('journey:')).map(item => item.slice('journey:'.length)));
@@ -277,11 +352,11 @@ export function d2MenuPages(menu: D2Menu): string[] {
   return ids;
 }
 
-function parseOrigin(value: unknown, path: string, fail: (path: string, what: string) => never): D2BffOrigin {
-  const row = record(value) ?? fail(path, 'not an object');
-  if (row.kind !== 'field' && row.kind !== 'aggregate' && row.kind !== 'context') fail(`${path}.kind`, 'field, aggregate or context');
+function parseOrigin(value: unknown, path: string, assert: (path: string, what: string) => never, fail: (path: string, what: string) => never): D2BffOrigin {
+  const row = record(value) ?? assert(path, 'not an object');
+  if (row.kind !== 'field' && row.kind !== 'aggregate' && row.kind !== 'context') assert(`${path}.kind`, 'field, aggregate or context');
   const paths = Array.isArray(row.paths) ? row.paths : [];
-  if (!paths.every(item => typeof item === 'string' && PATH.test(item))) fail(`${path}.paths`, 'each path is Entity.path');
+  if (!paths.every(item => typeof item === 'string' && PATH.test(item))) assert(`${path}.paths`, 'each path is Entity.path');
   if (row.kind === 'field' && paths.length !== 1) fail(`${path}.paths`, 'a field origin names exactly one Entity.path');
   if (row.kind === 'aggregate' && !paths.length) fail(`${path}.paths`, 'an aggregate names the Entity.path values it uses');
   return { kind: row.kind as D2BffOriginKind, paths: row.kind === 'context' ? [] : [...new Set(paths as string[])] };
@@ -421,9 +496,6 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
     for (const rule of endpoint.rules) if (!(rule in context.rules)) add('D2_BFF_RULE_UNKNOWN', `endpoints.${endpoint.id}.rules`, `rule ${rule} does not exist in the L4 rules.`);
   }
   issues.push(...checkD2BffBindings(design, context));
-  // The contract interface of the page owns this name.
-  const reserved = `${context.need.pageId[0].toUpperCase()}${context.need.pageId.slice(1)}Contracts`;
-  if (design.types.some(type => type.name === reserved)) add('D2_BFF_TYPE_NAME', `types.${reserved}`, `${reserved} is the contract interface of the page; name the type otherwise.`);
   return issues;
 }
 

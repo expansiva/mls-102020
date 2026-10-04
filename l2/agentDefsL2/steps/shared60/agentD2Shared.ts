@@ -16,19 +16,16 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
   const identity = parsed ? { project: parsed.project, module: parsed.module } : null;
   try {
     const port = typeof argsOrPort === 'object' ? argsOrPort : await productionSharedPort(identity!);
-    const result = await executeD2Shared(port);
-    if (result.refused.length) {
-      const diagnostic = `D2_SHARED_PAGES_REFUSED: ${result.refused.map(row => `${row.pageId}: ${row.diagnostic}`).join(' || ')}`;
-      if (identity) await markD2StepFailed(identity, 'shared60', diagnostic);
-      return [updateD2Status(context, parentStep, step, hookSequential, 'failed', diagnostic)];
-    }
+    const result = await executeD2Shared(port, identity ?? undefined);
+    // d2_76: a refused page does not stop the others; finalize80 fails the pipeline once, listing it.
+    const refusedNote = result.refused.length ? ` D2_SHARED_PAGES_REFUSED: ${result.refused.map(row => `${row.pageId}: ${row.diagnostic}`).join(' || ')}` : '';
     const pages = [...result.wrote, ...result.reused].sort();
     if (identity) {
       const snapshot = await readD2Input(identity);
       if (snapshot && await readD2Pipeline(identity)) await markD2StepApproved(identity, 'shared60', pages.map(pageId => `l2/${identity.module}/pipeline/agentDefsL2/shared60/${pageId}.json`), snapshot.snapshotHash);
     }
-    return [addD2Step(context, parentStep.stepId, d2Result('Shared ready', JSON.stringify({ ...(identity ?? {}), completedStep: 'shared60', nextStep: 'contracts70', wrote: result.wrote, reused: result.reused }), 'shared60-done')),
-      updateD2Status(context, parentStep, step, hookSequential, 'completed', `shared60 derived ${result.wrote.length} and reused ${result.reused.length}, without a prompt.`)];
+    return [addD2Step(context, parentStep.stepId, d2Result('Shared ready', JSON.stringify({ ...(identity ?? {}), completedStep: 'shared60', nextStep: 'contracts70', wrote: result.wrote, reused: result.reused, refused: [...result.skipped, ...result.refused.map(row => row.pageId)] }), 'shared60-done')),
+      updateD2Status(context, parentStep, step, hookSequential, 'completed', `shared60 derived ${result.wrote.length}, reused ${result.reused.length} and skipped ${result.skipped.length} refused upstream, without a prompt.${refusedNote}`)];
   } catch (error) {
     const diagnostic = error instanceof Error ? error.message : String(error);
     if (identity) await markD2StepFailed(identity, 'shared60', diagnostic);

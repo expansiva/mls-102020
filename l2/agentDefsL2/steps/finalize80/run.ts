@@ -6,8 +6,9 @@ import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_10
 import { markD2Complete, markD2FinalizeBlocked, readD2Pipeline, type D2RunIdentity, type D2Scope } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import { readD2PagesReceipt, sourceInfo } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
-import { draftFile, readD2SharedReceipt, sharedInfo, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
-import { contractInfo, contractReceiptInfo, type D2Contracts70Receipt } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
+import { draftFile, readD2SharedReceipt, readD2SharedRefusal, sharedInfo, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import { contractInfo, contractReceiptInfo, readD2ContractsRefusal, type D2Contracts70Receipt } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
 import { compileD2FinalSources, type D2FinalSource } from '/_102020_/l2/agentDefsL2/steps/finalize60/compile.js';
 import type { D2CompileProof } from '/_102020_/l2/agentDefsL2/steps/finalize60/contracts.js';
 
@@ -46,6 +47,8 @@ export interface D2PagesFinalizePort {
   markComplete?: typeof markD2Complete;
   markBlocked?: typeof markD2FinalizeBlocked;
   compile?: typeof compileD2FinalSources;
+  /** The refusal a stage recorded for the page in this flow (d2_76), or null. */
+  readRefusal?: (identity: D2RunIdentity, pageId: string) => Promise<{ stage: string; diagnostic: string } | null>;
   indexed?: (info: Ns5FileInfo) => boolean;
 }
 
@@ -59,6 +62,21 @@ async function readOptionalSource(port: D2PagesFinalizePort, info: Ns5FileInfo):
     if (message.includes('file not found') || message.includes('local content unavailable')) return { source: null, missing: true };
     throw error;
   }
+}
+
+async function readStageRefusal(identity: D2RunIdentity, pageId: string): Promise<{ stage: string; diagnostic: string } | null> {
+  const bff = await readD2BffRefusal(identity, pageId);
+  if (bff) return { stage: 'bff55', diagnostic: bff.diagnostic };
+  const shared = await readD2SharedRefusal(identity, pageId);
+  if (shared !== null) return { stage: 'shared60', diagnostic: shared };
+  const contract = await readD2ContractsRefusal(identity, pageId);
+  return contract !== null ? { stage: 'contracts70', diagnostic: contract } : null;
+}
+
+/** The code that names the cause: the one under a repair limit when there is one. */
+function refusalCode(diagnostic: string): string {
+  const codes = diagnostic.match(/\b[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+\b/gu) ?? [];
+  return codes.find(code => !code.endsWith('_REPAIR_LIMIT')) ?? codes[0] ?? 'D2_REFUSED';
 }
 
 function file(identity: D2RunIdentity, shortName: string): Ns5FileInfo {
@@ -101,6 +119,9 @@ export async function finalizeD2Pages(identity: D2RunIdentity & { scope?: D2Scop
       artifacts.push({ pageId, kind: device === 'desktop' ? 'desktopPage' : 'mobilePage', path, sha256: hash });
     }
     if (scope !== 'all') continue;
+    // d2_76: a page refused in bff55, shared60 or contracts70 has no shared or contract to check; it is listed once.
+    const refusal = await (port.readRefusal || readStageRefusal)(identity, pageId);
+    if (refusal) { pending.push(`${pageId}: ${refusal.stage}: ${refusalCode(refusal.diagnostic)}`); continue; }
     const sharedReceipt = await (port.readSharedReceipt || readD2SharedReceipt)(identity, pageId);
     const contractReceipt = await (port.readContractReceipt || ((id, page) => readJson<D2Contracts70Receipt>(contractReceiptInfo(id, page))))(identity, pageId);
     const sharedPath = displayPath(sharedInfo(identity, pageId));
@@ -139,7 +160,8 @@ export async function finalizeD2Pages(identity: D2RunIdentity & { scope?: D2Scop
   }
   await (port.assertStable || assertD2InputSourcesStable)(bundle);
   let compilation: D2CompileProof[] = [];
-  if (!pending.length) {
+  // What was generated is compiled even when another page was refused (d2_76); the report stays blocked while anything is pending.
+  if (sources.length) {
     compilation = await (port.compile || compileD2FinalSources)(identity, sources, new Map(artifacts.map(item => [item.path, item.sha256])));
     if (compilation.length !== sources.length || sources.some(source => compilation.filter(proof => proof.path === source.path && proof.sha256 === artifacts.find(item => item.path === source.path)?.sha256 && proof.status === 'passed').length !== 1)) {
       pending.push('D2_FINALIZE_STUDIO_COMPILE_INCOMPLETE');

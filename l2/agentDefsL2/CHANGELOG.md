@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-04 — d2_76 (experiment branch)
+
+- Format the code can fix is normalized before any check (case of names and ids, identical duplicates, references, the
+  reserved type name); what the strict schema guarantees is `D2_BFF_ASSERT` (no repair cycle).
+- A refused page does not stop the others in bff55, shared60 or contracts70; finalize80 compiles what was generated and
+  fails the pipeline once, listing `pageId: stage: code`.
+
 ## 2026-10-04 — d2_74/d2_75 BFF per page, r3 (experiment branch)
 
 - d2_74: the tool schemas say what the parsers require; a query write the host filled in is dropped, not refused.

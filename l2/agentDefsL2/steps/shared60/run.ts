@@ -10,10 +10,11 @@ import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2
 import { d2BffAccess, type D2Grant, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { renderD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { d2SharedDeriveIssues, deriveD2Shared, type D2SharedDeriveInput } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
-import { readApprovedD2Bff } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 
 /** d2_75: the shared is derived by code from the approved BFF; no LLM call. */
 export const D2_SHARED_VERSION = '2026-10-04-agent-defs-l2-shared-v4' as const;
+export const D2_SHARED_REFUSAL_VERSION = '2026-10-04-agent-defs-l2-shared-refusal-v2' as const;
 
 export interface D2SharedReceipt {
   schemaVersion: typeof D2_SHARED_VERSION;
@@ -86,23 +87,39 @@ export async function approveD2SharedPage(page: D2SharedPage, existing: D2Shared
 
 export interface D2SharedPort {
   pageIds(): Promise<string[]>;
+  /** The refusal an earlier stage recorded for the page, which then has no shared to derive (d2_76). */
+  upstreamRefusal(pageId: string): Promise<string | null>;
   load(pageId: string): Promise<D2SharedPage>;
   readExisting(pageId: string): Promise<D2SharedExisting>;
   writer: D2SharedWriter;
 }
 
-/** Every page is derived; a refused page does not stop its siblings (d2_64), and the stage names every refusal. */
-export async function executeD2Shared(port: D2SharedPort): Promise<{ wrote: string[]; reused: string[]; refused: Array<{ pageId: string; diagnostic: string }> }> {
+/**
+ * Every page goes alone (d2_76): a page refused upstream is skipped, a page this stage refuses records its diagnostic
+ * where its receipt lives, and the others are derived. finalize80 fails the pipeline once, listing the refused pages.
+ */
+export async function executeD2Shared(port: D2SharedPort, identity?: D2RunIdentity): Promise<{ wrote: string[]; reused: string[]; skipped: string[]; refused: Array<{ pageId: string; diagnostic: string }> }> {
   const wrote: string[] = [];
   const reused: string[] = [];
+  const skipped: string[] = [];
   const refused: Array<{ pageId: string; diagnostic: string }> = [];
   for (const pageId of await port.pageIds()) {
+    if (await port.upstreamRefusal(pageId)) { skipped.push(pageId); continue; }
     try {
       const result = await approveD2SharedPage(await port.load(pageId), await port.readExisting(pageId), port.writer);
       (result.wrote ? wrote : reused).push(pageId);
-    } catch (error) { refused.push({ pageId, diagnostic: error instanceof Error ? error.message : String(error) }); }
+    } catch (error) {
+      const diagnostic = error instanceof Error ? error.message : String(error);
+      refused.push({ pageId, diagnostic });
+      if (identity) await port.writer.writeJson(receiptInfo(identity, pageId), { schemaVersion: D2_SHARED_REFUSAL_VERSION, ...identity, pageId, diagnostic });
+    }
   }
-  return { wrote, reused, refused };
+  return { wrote, reused, skipped, refused };
+}
+
+export async function readD2SharedRefusal(identity: D2RunIdentity, pageId: string): Promise<string | null> {
+  const value = await readJson<{ schemaVersion?: string; diagnostic?: string }>(receiptInfo(identity, pageId));
+  return value?.schemaVersion === D2_SHARED_REFUSAL_VERSION ? value.diagnostic ?? '' : null;
 }
 
 /** The pure part: the page pair, the approved BFF, the access it implies and the siblings that navigate here. */
@@ -150,6 +167,7 @@ export async function productionSharedPort(identity: D2RunIdentity): Promise<D2S
   const pairOf = async (pageId: string) => { if (!pairs.has(pageId)) pairs.set(pageId, await readPair(identity, pageId)); return pairs.get(pageId)!; };
   return {
     pageIds: async () => ids,
+    upstreamRefusal: async pageId => (await readD2BffRefusal(identity, pageId))?.diagnostic ?? null,
     load: async pageId => {
       const design = await readApprovedD2Bff(identity, pageId);
       if (!design) throw new Error(`D2_SHARED_BFF_MISSING: ${pageId} has no approved BFF design; bff55 runs first.`);

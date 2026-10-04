@@ -98,7 +98,8 @@ export async function afterPromptStep(_agent: IAgentMeta, context: mls.msg.Execu
       try { await recordD2LlmVerdict(recorded.info, recorded.record, diagnostic); }
       catch (recordError) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', recordError instanceof Error ? recordError.message : String(recordError))]; }
     }
-    if (args.attempt === 1) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
+    // An internal assertion (what the strict schema guarantees) has no repair cycle (d2_76).
+    if (args.attempt === 1 && !diagnostic.startsWith('D2_BFF_ASSERT')) return [next(context, parentStep, { ...args, attempt: 2, diagnostic, previous: response }),
       updateD2Status(context, parentStep, step, hookSequential, 'completed', `One repair scheduled for ${args.pageId}: ${diagnostic}`)];
     return refuse(context, parentStep, step, hookSequential, args, `D2_BFF_REPAIR_LIMIT: ${diagnostic}`);
   }
@@ -118,11 +119,12 @@ async function finish(context: mls.msg.ExecutionContext, parentStep: mls.msg.AIA
   try {
     const settlement = await settleD2Pages(context.task?.PK || '', port ?? settlePort(identity), 'D2_BFF_INPUT_MISSING');
     if (settlement.state === 'pending') return [updateD2Status(context, parentStep, step, hookSequential, 'completed', trace)];
-    if (settlement.state === 'refused') return [updateD2Status(context, parentStep, step, hookSequential, 'failed', d2PagesRefusedMessage('D2_BFF_PAGES_REFUSED', settlement.refusals))];
+    // d2_76: the pages that passed go on; the refused ones are listed here and fail the pipeline once, in finalize80.
+    const refused = settlement.state === 'refused' ? settlement.refusals : [];
     const snapshot = await readD2Input(identity);
     if (snapshot && await readD2Pipeline(identity)) await markD2StepApproved(identity, 'bff55', settlement.pageIds.map(pageId => `l2/${identity.module}/pipeline/agentDefsL2/bff/${pageId}.json`), snapshot.snapshotHash);
-    return [addD2Step(context, parentStep.stepId, d2Result('BFF ready', JSON.stringify({ ...identity, completedStep: 'bff55', nextStep: 'shared60', pages: settlement.pageIds.length }), 'bff55-done')),
-      updateD2Status(context, parentStep, step, hookSequential, 'completed', `${trace} All ${settlement.pageIds.length} pages ready.`)];
+    return [addD2Step(context, parentStep.stepId, d2Result('BFF ready', JSON.stringify({ ...identity, completedStep: 'bff55', nextStep: 'shared60', pages: settlement.pageIds.length, refused: refused.map(row => row.pageId) }), 'bff55-done')),
+      updateD2Status(context, parentStep, step, hookSequential, 'completed', `${trace} ${settlement.pageIds.length} page(s) ready.${refused.length ? ` ${d2PagesRefusedMessage('D2_BFF_PAGES_REFUSED', refused)}` : ''}`)];
   } catch (error) { return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))]; }
 }
 

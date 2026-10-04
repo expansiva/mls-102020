@@ -9,10 +9,11 @@ import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { d2BffAccess, type D2BffDesign, type D2Grant, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2ContractFromBff, renderD2ContractWithJsdoc } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
 import { parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
-import { readApprovedD2Bff } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
-import { readD2SharedReceipt, sharedInfo, D2_SHARED_VERSION, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import { readD2SharedReceipt, readD2SharedRefusal, sharedInfo, D2_SHARED_VERSION, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 
 export const D2_CONTRACTS70_VERSION = '2026-10-04-agent-defs-l2-contracts-v3' as const;
+export const D2_CONTRACTS70_REFUSAL_VERSION = '2026-10-04-agent-defs-l2-contracts-refusal' as const;
 
 export interface D2Contracts70Receipt {
   schemaVersion: typeof D2_CONTRACTS70_VERSION;
@@ -103,19 +104,36 @@ export async function approveD2Contracts70(page: D2Contracts70Page, existing: D2
 
 export interface D2Contracts70Port {
   pageIds(): Promise<string[]>;
+  /** The refusal an earlier stage recorded for the page, which then has no contract to render (d2_76). */
+  upstreamRefusal?(pageId: string): Promise<string | null>;
   load(pageId: string): Promise<D2Contracts70Page>;
   readExisting(pageId: string): Promise<D2Contracts70Existing>;
   writer: D2Contracts70Writer;
 }
 
-export async function executeD2Contracts70(port: D2Contracts70Port): Promise<{ wrote: string[]; reused: string[] }> {
+/** Every page goes alone (d2_76): refused upstream is skipped, refused here is recorded, the others are rendered. */
+export async function executeD2Contracts70(port: D2Contracts70Port, identity?: D2RunIdentity): Promise<{ wrote: string[]; reused: string[]; skipped: string[]; refused: Array<{ pageId: string; diagnostic: string }> }> {
   const wrote: string[] = [];
   const reused: string[] = [];
+  const skipped: string[] = [];
+  const refused: Array<{ pageId: string; diagnostic: string }> = [];
   for (const pageId of await port.pageIds()) {
-    const result = await approveD2Contracts70(await port.load(pageId), await port.readExisting(pageId), port.writer);
-    (result.wrote ? wrote : reused).push(pageId);
+    if (await port.upstreamRefusal?.(pageId)) { skipped.push(pageId); continue; }
+    try {
+      const result = await approveD2Contracts70(await port.load(pageId), await port.readExisting(pageId), port.writer);
+      (result.wrote ? wrote : reused).push(pageId);
+    } catch (error) {
+      const diagnostic = error instanceof Error ? error.message : String(error);
+      refused.push({ pageId, diagnostic });
+      if (identity) await port.writer.writeJson(contractReceiptInfo(identity, pageId), { schemaVersion: D2_CONTRACTS70_REFUSAL_VERSION, ...identity, pageId, diagnostic });
+    }
   }
-  return { wrote, reused };
+  return { wrote, reused, skipped, refused };
+}
+
+export async function readD2ContractsRefusal(identity: D2RunIdentity, pageId: string): Promise<string | null> {
+  const value = await readJson<{ schemaVersion?: string; diagnostic?: string }>(contractReceiptInfo(identity, pageId));
+  return value?.schemaVersion === D2_CONTRACTS70_REFUSAL_VERSION ? value.diagnostic ?? '' : null;
 }
 
 export async function loadD2ContractsPage(identity: D2RunIdentity, pageId: string): Promise<D2Contracts70Page> {
@@ -146,6 +164,7 @@ export async function productionContractsPort(identity: D2RunIdentity): Promise<
   const ids = [...snapshot.selection.writePageIds].sort();
   return {
     pageIds: async () => ids,
+    upstreamRefusal: async pageId => (await readD2BffRefusal(identity, pageId))?.diagnostic ?? await readD2SharedRefusal(identity, pageId),
     load: pageId => loadD2ContractsPage(identity, pageId),
     readExisting: async pageId => ({
       source: fileExists(contractInfo(identity, pageId)) ? await readSourceText(contractInfo(identity, pageId)) || null : null,
