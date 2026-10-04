@@ -1,0 +1,180 @@
+{
+  "entry": [
+    {
+      "name": "comandaId",
+      "type": "string",
+      "sources": [
+        "url",
+        "localStorage"
+      ],
+      "effect": "select:detalheComanda",
+      "persist": true
+    }
+  ],
+  "forms": [
+    {
+      "submit": "lancarItem",
+      "organism": "formularioLancamento"
+    }
+  ],
+  "states": [
+    {
+      "id": "mesas",
+      "source": "load.mesas",
+      "description": "Mesas do salão com a disponibilidade, para escolher onde abrir a comanda."
+    },
+    {
+      "id": "comandasAbertas",
+      "source": "load.comandasAbertas",
+      "description": "Comandas abertas com mesa e subtotal, para retomar o atendimento."
+    },
+    {
+      "id": "comandaSelecionadaId",
+      "source": "entry.params.comandaId",
+      "description": "Comanda escolhida, mantida na URL."
+    },
+    {
+      "id": "comanda",
+      "source": "carregarComanda.comanda",
+      "description": "Comanda em atendimento com itens e subtotal; também recebe a saída de abrir, lançar e cancelar."
+    },
+    {
+      "id": "itensEncontrados",
+      "source": "buscarItemCardapio.itens",
+      "description": "Itens do cardápio achados pelo nome digitado."
+    },
+    {
+      "id": "lancamento",
+      "source": "lancarItem.input",
+      "description": "Pedido em preparo: item, quantidade e observação."
+    }
+  ],
+  "functions": [
+    {
+      "id": "iniciar",
+      "description": "Carrega mesas e comandas abertas ao abrir a página.",
+      "calls": "load",
+      "updates": [
+        "mesas",
+        "comandasAbertas"
+      ]
+    },
+    {
+      "id": "selecionarComanda",
+      "description": "Carrega a comanda escolhida com itens e subtotal.",
+      "calls": "carregarComanda",
+      "sets": "comanda"
+    },
+    {
+      "id": "buscarItem",
+      "description": "Busca itens do cardápio pelo nome enquanto o garçom digita.",
+      "calls": "buscarItemCardapio",
+      "sets": "itensEncontrados"
+    },
+    {
+      "id": "abrirComanda",
+      "description": "Abre a comanda da mesa escolhida e passa a mostrá-la.",
+      "calls": "abrirComanda",
+      "sets": "comanda",
+      "updates": [
+        "mesas",
+        "comandasAbertas"
+      ]
+    },
+    {
+      "id": "lancarItem",
+      "description": "Lança o item informado e redesenha a comanda com o subtotal novo.",
+      "calls": "lancarItem",
+      "sets": "comanda",
+      "updates": [
+        "lancamento",
+        "comandasAbertas"
+      ]
+    },
+    {
+      "id": "cancelarItem",
+      "description": "Cancela o item escolhido e redesenha a comanda.",
+      "calls": "cancelarItem",
+      "sets": "comanda",
+      "updates": [
+        "comandasAbertas"
+      ]
+    }
+  ],
+  "journeys": [
+    {
+      "step": "abrirComanda/localizarMesaDisponivel",
+      "organisms": [
+        "lookupAtendimento"
+      ],
+      "functions": [
+        "iniciar"
+      ]
+    },
+    {
+      "step": "abrirComanda/criarComanda",
+      "organisms": [
+        "acoesAtendimento"
+      ],
+      "functions": [
+        "abrirComanda"
+      ]
+    },
+    {
+      "step": "lancarItemComanda/localizarComandaAberta",
+      "organisms": [
+        "lookupAtendimento"
+      ],
+      "functions": [
+        "iniciar",
+        "selecionarComanda"
+      ]
+    },
+    {
+      "step": "lancarItemComanda/consultarItemCardapio",
+      "organisms": [
+        "formularioLancamento"
+      ],
+      "functions": [
+        "buscarItem"
+      ]
+    },
+    {
+      "step": "lancarItemComanda/adicionarItemComanda",
+      "organisms": [
+        "formularioLancamento",
+        "acoesAtendimento"
+      ],
+      "functions": [
+        "lancarItem"
+      ]
+    },
+    {
+      "step": "cancelarItemComanda/localizarComandaParaCorrecao",
+      "organisms": [
+        "lookupAtendimento"
+      ],
+      "functions": [
+        "selecionarComanda"
+      ]
+    },
+    {
+      "step": "cancelarItemComanda/conferirItemLancado",
+      "organisms": [
+        "detalheComanda"
+      ],
+      "functions": [
+        "selecionarComanda"
+      ]
+    },
+    {
+      "step": "cancelarItemComanda/cancelarItemErrado",
+      "organisms": [
+        "acoesAtendimento"
+      ],
+      "functions": [
+        "cancelarItem"
+      ]
+    }
+  ]
+}

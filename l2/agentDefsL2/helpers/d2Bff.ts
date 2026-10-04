@@ -1,0 +1,381 @@
+/// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2Bff.ts" enhancement="_blank"/>
+
+import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
+import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
+import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
+import { d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
+
+/**
+ * d2_73: the BFF of one page, designed by the LLM (bff55 A) and checked by code (bff55 B). The code checks facts only:
+ * coverage of what the organisms read, the input each submit's write asks for, origins, rules and enums that exist in
+ * L4 and are visible to the page actors, and nothing outside the plan. How many endpoints, their shape, paging, filters
+ * and names are the design's (P8). Origins stay in the pipeline; the contract never carries them.
+ */
+
+export interface D2NeedRead { entity: string; derived: string[]; from: string[]; family?: string; scope?: string }
+export interface D2NeedWrite { entity: string; operation: string; transitionRef?: string }
+export interface D2NeedPage { pageId: string; actors: string[]; reads: D2NeedRead[]; writes: D2NeedWrite[] }
+export interface D2MenuNode { id: string; kind: string; children?: D2MenuNode[] }
+export interface D2Menu {
+  tree: D2MenuNode[];
+  authorities: Record<string, string[]>;
+  meta?: { journeys?: Record<string, string[]> };
+  userLanguage?: string;
+}
+export interface D2Grant {
+  grantId: string;
+  actorRef: string;
+  entityRefs: string[];
+  dataScope?: { mode: string };
+  disclosure: { mode: string; allowedFields?: string[]; deniedFields?: string[] };
+}
+
+export type D2BffOriginKind = 'field' | 'aggregate' | 'context';
+export interface D2BffOrigin { kind: D2BffOriginKind; paths: string[] }
+export interface D2BffLeaf { name: string; type: string; optional?: boolean; origin?: D2BffOrigin }
+export interface D2BffType { name: string; description: string; fields: D2BffLeaf[] }
+export interface D2BffJsdoc { purpose: string; input: string; processing: string; output: string }
+export interface D2BffEndpoint {
+  id: string;
+  kind: 'qry' | 'cmd';
+  /** `onLoad`, `interaction`, or the id of the submit intent a command serves. */
+  when: string;
+  /** The write key (`Entity.<transitionRef>` for a transition), only on a command. */
+  writes?: string;
+  input: D2BffLeaf[];
+  output: D2BffLeaf[];
+  rules: string[];
+  jsdoc: D2BffJsdoc;
+}
+export interface D2BffDesign { types: D2BffType[]; endpoints: D2BffEndpoint[] }
+export interface D2BffIssue { code: string; path: string; message: string }
+
+export interface D2BffTypeRef { base: 'string' | 'number' | 'boolean' | 'enum' | 'ref'; values: string[]; ref: string; list: boolean }
+
+const IDENTIFIER = /^[a-z][A-Za-z0-9]*$/u;
+const TYPE_NAME = /^[A-Z][A-Za-z0-9]*$/u;
+const PATH = /^[A-Z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+$/u;
+const TYPE = /^(?:(string|number|boolean)|([A-Z][A-Za-z0-9]*)|('[^'\\]+'(?:\s*\|\s*'[^'\\]+')*))(\[\])?$/u;
+/** The type grammar of a leaf, for the tool schema: a scalar, a named type or a union of literals, `[]` for a list. */
+export const D2_BFF_TYPE_PATTERN = TYPE.source;
+
+export function parseD2BffType(type: string): D2BffTypeRef | null {
+  const match = TYPE.exec(type.trim());
+  if (!match) return null;
+  const list = Boolean(match[4]);
+  if (match[1]) return { base: match[1] as 'string' | 'number' | 'boolean', values: [], ref: '', list };
+  if (match[2]) return { base: 'ref', values: [], ref: match[2], list };
+  const values = [...match[3].matchAll(/'([^'\\]+)'/gu)].map(item => item[1]);
+  return { base: 'enum', values, ref: '', list };
+}
+
+export function renderD2BffType(ref: D2BffTypeRef): string {
+  const one = ref.base === 'enum' ? ref.values.map(value => `'${value}'`).join(' | ') : ref.base === 'ref' ? ref.ref : ref.base;
+  if (!ref.list) return one;
+  return ref.base === 'enum' && ref.values.length > 1 ? `Array<${one}>` : `${one}[]`;
+}
+
+/** Tool format of the answer (not a design gate): ids, type grammar, named types that exist, one origin per value leaf. */
+export function buildD2BffDesign(value: unknown): D2BffDesign {
+  const fail = (path: string, what: string): never => { throw new Error(`D2_BFF_FORMAT: ${path}: ${what}`); };
+  const root = record(value) ?? fail('design', 'not an object');
+  if (!Array.isArray(root.types) || !Array.isArray(root.endpoints)) fail('design', 'types and endpoints are lists');
+  const types: D2BffType[] = (root.types as unknown[]).map((raw, index) => {
+    const row = record(raw) ?? fail(`types.${index}`, 'not an object');
+    const name = typeof row.name === 'string' ? row.name : '';
+    if (!TYPE_NAME.test(name)) fail(`types.${index}.name`, `${JSON.stringify(row.name)} is not a PascalCase name`);
+    if (!Array.isArray(row.fields) || !row.fields.length) fail(`types.${name}.fields`, 'a named type has at least one field');
+    return { name, description: typeof row.description === 'string' ? row.description.trim() : '', fields: row.fields as D2BffLeaf[] };
+  });
+  const names = new Set<string>();
+  for (const type of types) {
+    if (names.has(type.name)) fail(`types.${type.name}`, 'declared twice');
+    names.add(type.name);
+  }
+  const leaves = (rows: unknown, path: string): D2BffLeaf[] => {
+    if (!Array.isArray(rows)) fail(path, 'not a list');
+    const seen = new Set<string>();
+    return (rows as unknown[]).map((raw, index) => {
+      const row = record(raw) ?? fail(`${path}.${index}`, 'not an object');
+      const name = typeof row.name === 'string' ? row.name : '';
+      if (!IDENTIFIER.test(name)) fail(`${path}.${index}.name`, `${JSON.stringify(row.name)} is not a lowerCamel name`);
+      if (seen.has(name)) fail(`${path}.${name}`, 'declared twice');
+      seen.add(name);
+      const type = typeof row.type === 'string' ? row.type.trim() : '';
+      const ref = parseD2BffType(type) ?? fail(`${path}.${name}.type`, `${JSON.stringify(row.type)} is not string, number, boolean, a named type or a union of literals, with [] for a list`);
+      if (ref.base === 'ref' && !names.has(ref.ref)) fail(`${path}.${name}.type`, `named type ${ref.ref} is not declared in types`);
+      const origin = row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, fail);
+      if (ref.base !== 'ref' && !origin) fail(`${path}.${name}.origin`, 'a value leaf names its origin');
+      return { name, type: renderD2BffType(ref), ...(row.optional === true ? { optional: true } : {}), ...(ref.base !== 'ref' && origin ? { origin } : {}) };
+    });
+  };
+  for (const type of types) type.fields = leaves(type.fields, `types.${type.name}.fields`);
+  const ids = new Set<string>();
+  const endpoints: D2BffEndpoint[] = (root.endpoints as unknown[]).map((raw, index) => {
+    const row = record(raw) ?? fail(`endpoints.${index}`, 'not an object');
+    const id = typeof row.id === 'string' ? row.id : '';
+    if (!IDENTIFIER.test(id)) fail(`endpoints.${index}.id`, `${JSON.stringify(row.id)} is not a lowerCamel id`);
+    if (ids.has(id)) fail(`endpoints.${id}`, 'declared twice');
+    ids.add(id);
+    if (row.kind !== 'qry' && row.kind !== 'cmd') fail(`endpoints.${id}.kind`, 'qry or cmd');
+    const when = typeof row.when === 'string' ? row.when.trim() : '';
+    if (!when) fail(`endpoints.${id}.when`, 'onLoad, interaction or a submit intent id');
+    const writes = typeof row.writes === 'string' ? row.writes.trim() : '';
+    if (row.kind === 'cmd' && !writes) fail(`endpoints.${id}.writes`, 'a command names its write');
+    if (row.kind === 'qry' && writes) fail(`endpoints.${id}.writes`, 'a query writes nothing');
+    const doc = record(row.jsdoc) ?? fail(`endpoints.${id}.jsdoc`, 'not an object');
+    const jsdoc = {} as D2BffJsdoc;
+    for (const key of ['purpose', 'input', 'processing', 'output'] as const) {
+      const text = typeof doc[key] === 'string' ? (doc[key] as string).trim() : '';
+      if (!text) fail(`endpoints.${id}.jsdoc.${key}`, 'empty');
+      jsdoc[key] = text;
+    }
+    if (!Array.isArray(row.rules) || !row.rules.every(item => typeof item === 'string')) fail(`endpoints.${id}.rules`, 'a list of rule ids');
+    return {
+      id, kind: row.kind as 'qry' | 'cmd', when, ...(writes ? { writes } : {}),
+      input: leaves(row.input, `endpoints.${id}.input`), output: leaves(row.output, `endpoints.${id}.output`),
+      rules: [...new Set(row.rules as string[])], jsdoc,
+    };
+  });
+  return { types, endpoints };
+}
+
+function parseOrigin(value: unknown, path: string, fail: (path: string, what: string) => never): D2BffOrigin {
+  const row = record(value) ?? fail(path, 'not an object');
+  if (row.kind !== 'field' && row.kind !== 'aggregate' && row.kind !== 'context') fail(`${path}.kind`, 'field, aggregate or context');
+  const paths = Array.isArray(row.paths) ? row.paths : [];
+  if (!paths.every(item => typeof item === 'string' && PATH.test(item))) fail(`${path}.paths`, 'each path is Entity.path');
+  if (row.kind === 'field' && paths.length !== 1) fail(`${path}.paths`, 'a field origin names exactly one Entity.path');
+  if (row.kind === 'aggregate' && !paths.length) fail(`${path}.paths`, 'an aggregate names the Entity.path values it uses');
+  return { kind: row.kind as D2BffOriginKind, paths: row.kind === 'context' ? [] : [...new Set(paths as string[])] };
+}
+
+/** Every value leaf under a list of leaves, through named types; `at` is the dotted leaf path for messages. */
+export function d2BffValueLeaves(rows: readonly D2BffLeaf[], design: Pick<D2BffDesign, 'types'>, at = '', seen: ReadonlySet<string> = new Set()): Array<{ at: string; leaf: D2BffLeaf }> {
+  const out: Array<{ at: string; leaf: D2BffLeaf }> = [];
+  for (const leaf of rows) {
+    const here = at ? `${at}.${leaf.name}` : leaf.name;
+    const ref = parseD2BffType(leaf.type);
+    if (ref?.base === 'ref') {
+      if (seen.has(ref.ref)) continue;
+      const type = design.types.find(item => item.name === ref.ref);
+      if (type) out.push(...d2BffValueLeaves(type.fields, design, here, new Set([...seen, ref.ref])));
+    } else out.push({ at: here, leaf });
+  }
+  return out;
+}
+
+const covers = (origin: string, target: string): boolean => target === origin || target.startsWith(`${origin}.`);
+const entityOf = (path: string): string => path.split('.')[0];
+const isIdentity = (path: string): boolean => { const [, field, extra] = path.split('.'); return !extra && (field === 'id' || field === 'version'); };
+
+export interface D2BffCheckContext {
+  page11: Record<D2Page11Device, D2Page11Definition>;
+  drafts: Record<D2Page11Device, D2Page11Needs>;
+  need: D2NeedPage;
+  entities: Record<string, Ns5OntologyAnyEntity>;
+  grants: readonly D2Grant[];
+  rules: Record<string, string>;
+}
+
+/** The submit intents of the page (desktop and mobile) with the write each one's draft binds. */
+export function d2PageSubmits(context: Pick<D2BffCheckContext, 'page11' | 'drafts'>): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const organism of Object.values(context.page11[device].organisms)) {
+      for (const intent of organism.intents) if (intent.kind === 'submit' && !out.has(intent.id)) out.set(intent.id, '');
+    }
+    for (const row of Object.values(context.drafts[device].organisms)) {
+      for (const submit of row.submits) if (!out.get(submit.intentId)) out.set(submit.intentId, submit.write);
+    }
+  }
+  return out;
+}
+
+/** What a write asks for, by origin (d2_72): transition payload, the page's edits plus required context ids on create, id/version otherwise. */
+export function d2WriteRequiredInput(write: D2NeedWrite, entities: Record<string, Ns5OntologyAnyEntity>, pageEdits: readonly string[]): string[] {
+  const entityId = write.entity;
+  const entity = entities[entityId];
+  const identity = [`${entityId}.id`, `${entityId}.version`];
+  const edits = pageEdits.filter(path => entityOf(path) === entityId);
+  if (write.operation === 'transition') return [...new Set([...d2TransitionPayload(entity, entityId, write.transitionRef ?? ''), ...identity])];
+  if (write.operation === 'update') return [...new Set([...edits, ...identity])];
+  if (write.operation !== 'create') return identity;
+  const relationships = (entity as { relationships?: Record<string, { via?: string; required?: unknown }> } | undefined)?.relationships ?? {};
+  const contextIds = Object.values(relationships)
+    .filter(rel => (rel.required === true || (typeof rel.required === 'string' && rel.required.trim().length > 0)) && (rel.via ?? '').startsWith(`${entityId}.`))
+    .map(rel => rel.via as string);
+  return [...new Set([...edits, ...contextIds])];
+}
+
+export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2BffIssue[] {
+  const issues: D2BffIssue[] = [];
+  const add = (code: string, path: string, message: string): void => { issues.push({ code, path, message: `${path}: ${message}` }); };
+  const actors = context.need.actors;
+  const outputOrigins = design.endpoints.flatMap(endpoint => d2BffValueLeaves(endpoint.output, design).flatMap(item => item.leaf.origin?.paths ?? []));
+
+  // B.1 coverage: what an organism reads leaves some endpoint as the origin of an output leaf, or inside an aggregate.
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const [organismId, row] of Object.entries(context.drafts[device].organisms)) {
+      for (const path of row.reads) {
+        if (outputOrigins.some(origin => covers(origin, path))) continue;
+        if (issues.some(item => item.code === 'D2_BFF_COVERAGE' && item.path === `organisms.${organismId}.reads.${path}`)) continue;
+        add('D2_BFF_COVERAGE', `organisms.${organismId}.reads.${path}`, `organism ${organismId} reads ${path}, and no output leaf of the page's endpoints names it as origin (field or aggregate).`);
+      }
+    }
+  }
+
+  // B.2 actions: one command per submit, with the page's write and the input that write asks for.
+  const submits = d2PageSubmits(context);
+  const pageEdits = [...new Set((['desktop', 'mobile'] as const).flatMap(device => Object.values(context.drafts[device].organisms).flatMap(row => row.edits)))];
+  for (const [intentId, write] of submits) {
+    const commands = design.endpoints.filter(endpoint => endpoint.kind === 'cmd' && endpoint.when === intentId);
+    if (commands.length !== 1) {
+      add('D2_BFF_SUBMIT_COMMAND', `submits.${intentId}`, `submit ${intentId} has ${commands.length} commands with when = ${intentId}; it needs exactly one.`);
+      continue;
+    }
+    const command = commands[0];
+    if (write && command.writes !== write) add('D2_BFF_SUBMIT_WRITE', `endpoints.${command.id}.writes`, `submit ${intentId} writes ${write} in the page draft, and its command writes ${command.writes}.`);
+    const pageWrite = d2WriteByKey(context.need.writes, command.writes ?? '');
+    if (!pageWrite) continue; // reported by B.4
+    const carried = d2BffValueLeaves(command.input, design).filter(item => item.leaf.origin?.kind === 'field').flatMap(item => item.leaf.origin!.paths);
+    const missing = d2WriteRequiredInput(pageWrite, context.entities, pageEdits).filter(path => !carried.some(origin => covers(origin, path)));
+    if (missing.length) add('D2_BFF_COMMAND_INPUT', `endpoints.${command.id}.input`, `command ${command.id} (${command.writes}) asks for ${missing.join(', ')}; each input leaf that fills a stored value names that Entity.path as a field origin.`);
+  }
+
+  // B.4 nothing beyond the plan: a command writes what the page may write and serves a submit of this page.
+  const allowed = new Set(context.need.writes.flatMap(write => { try { return [d2WriteKey(write)]; } catch { return []; } }));
+  for (const endpoint of design.endpoints) {
+    if (endpoint.kind === 'cmd') {
+      if (!allowed.has(endpoint.writes ?? '')) add('D2_BFF_WRITE_OUTSIDE', `endpoints.${endpoint.id}.writes`, `${endpoint.writes} is not a write of this page in the plan (${[...allowed].join(', ') || 'none'}).`);
+      if (!submits.has(endpoint.when)) add('D2_BFF_COMMAND_TRIGGER', `endpoints.${endpoint.id}.when`, `${endpoint.when} is not a submit intent of this page (${[...submits.keys()].join(', ') || 'none'}).`);
+    } else if (endpoint.when !== 'onLoad' && endpoint.when !== 'interaction') {
+      add('D2_BFF_QUERY_TRIGGER', `endpoints.${endpoint.id}.when`, `a query runs onLoad or on interaction, not ${endpoint.when}.`);
+    }
+  }
+
+  // B.3 facts of L4: origins exist and some page actor sees them; rules exist; enum literals are values of the field.
+  const leafSets = [
+    ...design.types.map(type => ({ at: `types.${type.name}`, rows: type.fields })),
+    ...design.endpoints.flatMap(endpoint => [{ at: `endpoints.${endpoint.id}.input`, rows: endpoint.input }, { at: `endpoints.${endpoint.id}.output`, rows: endpoint.output }]),
+  ];
+  for (const set of leafSets) {
+    for (const leaf of set.rows) {
+      const at = `${set.at}.${leaf.name}`;
+      for (const path of leaf.origin?.paths ?? []) {
+        const entity = context.entities[entityOf(path)];
+        if (!entity || !resolvableFieldPaths(entity).includes(path)) add('D2_BFF_ORIGIN_UNKNOWN', at, `origin ${path} is not a field of the L4 ontology.`);
+        else if (!isIdentity(path) && !granted(path, actors, context.grants)) add('D2_BFF_ORIGIN_GRANT', at, `origin ${path} is not visible to any actor of the page (${actors.join(', ')}) by its grants.`);
+      }
+      const ref = parseD2BffType(leaf.type);
+      if (ref?.base === 'enum' && leaf.origin?.kind === 'field') {
+        const field = fieldAt(context.entities[entityOf(leaf.origin.paths[0])], leaf.origin.paths[0]);
+        const values = field?.type === 'enum' ? (field.values ?? []).map(item => item.value) : null;
+        if (!values) add('D2_BFF_ENUM', at, `${leaf.origin.paths[0]} is not an enum in L4.`);
+        else {
+          const extra = ref.values.filter(item => !values.includes(item));
+          if (extra.length) add('D2_BFF_ENUM', at, `${extra.map(item => `'${item}'`).join(', ')} is not a value of ${leaf.origin.paths[0]} (${values.map(item => `'${item}'`).join(', ')}).`);
+        }
+      }
+    }
+  }
+  for (const endpoint of design.endpoints) {
+    for (const rule of endpoint.rules) if (!(rule in context.rules)) add('D2_BFF_RULE_UNKNOWN', `endpoints.${endpoint.id}.rules`, `rule ${rule} does not exist in the L4 rules.`);
+  }
+  // The contract interface of the page owns this name.
+  const reserved = `${context.need.pageId[0].toUpperCase()}${context.need.pageId.slice(1)}Contracts`;
+  if (design.types.some(type => type.name === reserved)) add('D2_BFF_TYPE_NAME', `types.${reserved}`, `${reserved} is the contract interface of the page; name the type otherwise.`);
+  return issues;
+}
+
+/** The page access, as the contract states it: page actors, their grants over the entities the endpoints touch, the scope. */
+export function d2BffAccess(design: D2BffDesign, need: D2NeedPage, grants: readonly D2Grant[]): { actors: string[]; grants: string[]; scope: string } {
+  const touched = new Set<string>();
+  for (const endpoint of design.endpoints) {
+    if (endpoint.writes) touched.add(entityOf(endpoint.writes));
+    for (const item of [...d2BffValueLeaves(endpoint.input, design), ...d2BffValueLeaves(endpoint.output, design)]) for (const path of item.leaf.origin?.paths ?? []) touched.add(entityOf(path));
+  }
+  const chosen = grants.filter(grant => need.actors.includes(grant.actorRef) && grant.entityRefs.some(id => touched.has(id)));
+  return { actors: need.actors, grants: [...new Set(chosen.map(item => item.grantId))], scope: chosen[0]?.dataScope?.mode || (need.reads[0]?.scope ?? 'organization') };
+}
+
+/** The entities a page touches (reads, writes, drafted paths), as the prompt of A reads them, and the rule texts that reach them. */
+export function d2BffL4Slice(entities: Record<string, Ns5OntologyAnyEntity>, rules: Record<string, string>, need: D2NeedPage, drafts: readonly D2Page11Needs[]): { entities: Record<string, unknown>; rules: Record<string, string> } {
+  const touched = new Set<string>([...need.reads.map(read => read.entity), ...need.writes.map(write => write.entity)]);
+  for (const draft of drafts) for (const row of Object.values(draft.organisms)) for (const path of [...row.reads, ...row.edits]) touched.add(entityOf(path));
+  const linkedBy = (entity: Ns5OntologyAnyEntity | undefined): string[] => {
+    const view = entity as { rules?: string[]; transitions?: Array<{ ruleRefs?: string[] }> } | undefined;
+    return [...(view?.rules ?? []), ...(view?.transitions ?? []).flatMap(item => item.ruleRefs ?? [])];
+  };
+  const linkedAnywhere = new Set(Object.values(entities).flatMap(linkedBy));
+  const reached = new Set<string>();
+  const out: Record<string, unknown> = {};
+  for (const entityId of [...touched].sort()) {
+    const entity = entities[entityId];
+    if (!entity) continue;
+    for (const rule of linkedBy(entity)) reached.add(rule);
+    const view = entity as {
+      title?: string; description?: string; displayField?: string;
+      capabilities?: Record<string, string>;
+      relationships?: Record<string, { to?: string; via?: string; cardinality?: string; required?: unknown }>;
+      transitions?: Array<{ transitionId?: string; from?: string[]; to?: string; by?: string[]; payload?: string[]; ruleRefs?: string[]; description?: string }>;
+      record?: { fields?: Record<string, SliceField> };
+      rules?: string[];
+    };
+    const fields: Array<Record<string, unknown>> = [];
+    const walk = (rows: Record<string, SliceField> | undefined, prefix: string): void => {
+      for (const [key, field] of Object.entries(rows ?? {})) {
+        const path = `${prefix}.${key}`;
+        if (field.fields) { walk(field.fields, path); continue; }
+        fields.push({
+          path, type: field.type ?? '', ...(field.required ? { required: true } : {}), ...(field.derived ? { derived: true } : {}),
+          ...(field.values?.length ? { values: field.values.map(item => item.value) } : {}),
+          ...(field.title ? { title: field.title } : {}), ...(field.description ? { description: field.description } : {}),
+        });
+      }
+    };
+    if (view.record?.fields) walk(view.record.fields, entityId);
+    else for (const path of resolvableFieldPaths(entity).slice(1)) fields.push({ path });
+    out[entityId] = {
+      title: view.title ?? '', description: view.description ?? '', displayField: view.displayField ?? '', fields,
+      transitions: (view.transitions ?? []).map(item => ({ transitionId: item.transitionId, from: item.from, to: item.to, by: item.by, payload: item.payload ?? [], ruleRefs: item.ruleRefs ?? [], description: item.description ?? '' })),
+      relationships: Object.values(view.relationships ?? {}).map(rel => ({ to: rel.to, via: rel.via, cardinality: rel.cardinality, required: Boolean(rel.required) })),
+      capabilities: view.capabilities ?? {},
+      rules: view.rules ?? [],
+    };
+  }
+  // A rule no entity links (a calculation, a registration rule) still binds what the page shows or writes.
+  for (const rule of Object.keys(rules)) if (!linkedAnywhere.has(rule)) reached.add(rule);
+  return { entities: out, rules: Object.fromEntries([...reached].filter(id => id in rules).sort().map(id => [id, rules[id]])) };
+}
+
+interface SliceField { type?: string; required?: boolean; derived?: boolean; title?: string; description?: string; values?: Array<{ value: string }>; fields?: Record<string, SliceField> }
+
+function fieldAt(entity: Ns5OntologyAnyEntity | undefined, path: string): SliceField | undefined {
+  let fields = (entity as { record?: { fields?: Record<string, SliceField> } } | undefined)?.record?.fields;
+  const parts = path.split('.').slice(1);
+  let field: SliceField | undefined;
+  for (const part of parts) {
+    field = fields?.[part];
+    if (!field) return undefined;
+    fields = field.fields;
+  }
+  return field;
+}
+
+function granted(path: string, actors: readonly string[], grants: readonly D2Grant[]): boolean {
+  const entity = entityOf(path);
+  return grants.some(grant => {
+    if (!actors.includes(grant.actorRef) || !grant.entityRefs.includes(entity)) return false;
+    if ((grant.disclosure.deniedFields ?? []).some(ref => covers(ref, path))) return false;
+    if (grant.disclosure.mode === 'fullRecord') return true;
+    if (grant.disclosure.mode === 'fieldsOnly') return (grant.disclosure.allowedFields ?? []).some(ref => covers(ref, path));
+    return false;
+  });
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}

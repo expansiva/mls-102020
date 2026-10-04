@@ -1,42 +1,32 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.ts" enhancement="_blank"/>
 
-export const skill = `# Describe the shared definition of one page
+export const skill = `# Write the shared definition of one page
 
-The code already decided entry parameters, requests, rule candidates, access and bound forms.
-Add only states, functions, journey rows, command return keys, the rules of each request,
-descriptions, and a form organism when a submit is marked ambiguous.
+The shared is the motor of the page: it links the page to its endpoints and turns what the endpoints return into
+states the organisms show. The endpoints (bff) are approved: each has an id, kind, when, input, output keys with
+their types, rules and a JSDoc with purpose, input, processing and output. Read the JSDoc to know what each endpoint
+does for the page.
 
-A state remembers something the page shows or edits. Its source is one token from
-validSources, the id of another state, or the id of a function whose sets is this state.
-Never prose, and never more than one token. A function sets exactly one state id. When it
-affects several states, list those ids in updates. A function calls an existing request or
-navigates to a page the same actor can open. Use only the journey
-steps the code lists. Each step names organisms from the page or a continuesIn page. Do not
-invent steps, requests, rules or actors.
+States. A state remembers something the page shows or edits. Feed each state from the endpoint output key that already
+has the shape the organism needs: a record with its lines, an indicator already computed, a list already filtered.
+Every field an organism reads must be held by some state whose source carries it. Do not borrow a state of another page
+and do not keep a state that nothing fills. When a command returns the updated record, the state that shows it takes the
+command output too (list it in updates of the function that calls the command).
 
-Command return keys are entities the page already reads. Every state a command sets or
-updates must be fed by a returned key of the same entity, so return each entity whose state
-changes. When the written entity feeds derived fields of another entity the page reads, the
-command returns that entity too and updates a state that holds it. A form choice is an existing form organism of that write's entity, and one form may
-serve several submits only when their writes differ (create and update of the same record).
+Functions. A function calls one endpoint and sets or updates the states its output feeds, or navigates to a page the same
+actor can open. Every submit intent has a function that calls its command; every navigation intent has a function.
+A query with when interaction has the function that the organism triggers (search, select, filter, next page).
+carries exist only on a navigate function, as <state>.<field> of a selected item.
 
-load returns the first page of each list. filter<List> reloads its list from the first page and
-loadMore<List> appends the next page; both call load<Key>, which returns only that list and its
-paging keys. The state of each list already exists (fixedStates): its source is load.<key>, both
-functions set it, and you only describe it. No other state takes load.<key> or load<Key> as source. Their params come from declared states, such as a state whose source is a filter
-entry param, never from carries. A state whose source is a select entry param holds the
-selected item, resolved by that id in the loaded list. carries exist only on a navigate
-function and read a field of a selected item; an id carry is named <entity>Id. A navigate
-function sets and updates nothing, and no state takes a navigation as source.
+Entry params. A value that comes from the URL or local storage (the selected record id, a filter that survives a
+reload) is an entry param with its type, its sources, its effect (select:<organism>, filter:<organism> or
+prefill:<organism>) and whether it persists. A state sourced from entry.params.<name> holds that value.
 
-ruleCandidates lists, per request, every rule of the entities it touches. Choose for each
-request only the rules that apply to it: what a command validates, what a query computes for
-display. A command keeps at least one rule of the entity it writes.
+Forms. Every organism that edits fields is the form of the submit that sends them: forms list submit and organism.
 
-Keep identifiers stable across identical inputs. Fixed English ids already chosen by the code
-stay as given: load, filter<List>, loadMore<List> and each command function already exist.
-Reuse them and only complete description, sets and updates. Another function that calls the
-same request is a duplicate. A function that sets a list state and has no calls does not
-replace filter<List>. carries values are <state>.<field> with an existing state, never the
-state id alone. Other ids follow the module language. Do not repeat organism prose. Do not
-prescribe layout, HTML, CSS or components. Do not add a rule that is not a candidate.`;
+Journeys. Use only the journey steps listed. Each step names the organisms that serve it and the functions it uses,
+or the page it continues in.
+
+Keep identifiers stable across identical inputs. Ids follow the module language. When approved is present, the page is
+being redone: keep what still fits and change only what the inputs changed. When repair is present, fix exactly the
+findings named in repair.diagnostic.`;

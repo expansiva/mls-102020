@@ -1,9 +1,10 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/e2eReplay.test.ts" enhancement="_blank"/>
 
 /**
- * d2_68: the L2 chain replayed end to end without an LLM. menu20 → needs30 → input20 → pages50 → d2PageRequests →
- * shared60 → contracts70 run with real gates and normalizers over three frozen modules (fixtures/e2e, README there);
- * the recorded answers are the ones the real runs had accepted. Every stage result is asserted per module.
+ * d2_68: the L2 chain replayed end to end without an LLM. menu20 → needs30 → input20 → pages50 → bff55 → shared60 →
+ * contracts70 run with real gates and normalizers over frozen modules (fixtures/e2e, README there). pages50 replays the
+ * answers the real runs accepted; bff55 and shared60 replay answers written by hand from the l4 exercise (d2_73).
+ * Every stage result is asserted per module.
  */
 
 import assert from 'node:assert/strict';
@@ -21,16 +22,18 @@ import { validateP2Menu } from '/_102020_/l2/agentPlannerL2/steps/menu20/gate.js
 import { parseP2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 import { buildP2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import { deriveD2Page11CategoryReference, deriveD2Page11Experience } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
-import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, type D2PagesContext, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { readApprovedPage11, reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2SharedUnit, buildD2SharedContext, type D2SharedLlmResponse } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
-import { parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
-import { buildD2ContractV2, gateD2ContractV2 } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
-import { sharedFromDerived } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
-import { deriveD2PageRequests, type D2DerivedPageRequests, type D2PageRequestsInput } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
+import { approveD2SharedUnit, buildD2SharedPrompt, d2SharedApproved, d2SharedContextFrom, sharedInfo, D2_SHARED_PROMPT_LIMIT_CHARS, type D2SharedContext, type D2SharedLlmResponse, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { sharedSchemaFor } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
+import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
+import { bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
+import type { D2BffDesign, D2Menu, D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { contractSourceFor } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
+import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
+import ts from 'typescript';
 import { d2NormalizeWriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type { PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
 
@@ -116,7 +119,35 @@ function pageContextOf(pack: ReturnType<typeof readPack>, snapshot: D2InputSnaps
   } };
 }
 
-async function replay(alias: string, derivedOut?: Record<string, D2DerivedPageRequests>): Promise<Outcome[]> {
+const BFF_PROMPT = readFileSync(path.join(HERE, '../steps/bff55/prompt.md'), 'utf8');
+const SHARED_PROMPT = readFileSync(path.join(HERE, '../steps/shared60/prompt.md'), 'utf8');
+
+interface ReplayPage { page11Text: { desktop: string; mobile: string }; drafts: { desktop: unknown; mobile: unknown } }
+interface ReplayOut { bff: Record<string, D2BffContext>; designs: Record<string, D2BffDesign>; shared: Record<string, D2SharedContext>; contracts: Record<string, string> }
+
+/** The bff55 context of one replayed page, as the worker builds it. */
+function bffContextOf(pack: ReturnType<typeof readPack>, artifacts: D2InputArtifacts, needs: unknown, pageId: string, page: ReplayPage): D2BffContext {
+  const need = (needs as { pages: D2NeedPage[] }).pages.find(item => item.pageId === pageId)!;
+  return {
+    ...d2BffContextFrom({
+      pageId, page11Text: page.page11Text, drafts: page.drafts, need, menu: artifacts.menu as D2Menu, module: artifacts.module,
+      entities: artifacts.entities as D2BffContext['entities'], access: artifacts.access, rules: artifacts.rules, journeys: artifacts.journeys,
+    }),
+    identity: { project: 102047, module: pack.moduleName }, inputHash: 'sha256:input', prompt: BFF_PROMPT, approved: null,
+  };
+}
+
+function sharedContextOf(bff: D2BffContext, artifacts: D2InputArtifacts, design: D2BffDesign): D2SharedContext {
+  return {
+    ...d2SharedContextFrom({
+      pageId: bff.pageId, page11Text: bff.page11Text, drafts: { desktop: JSON.parse(bff.draftText.desktop), mobile: JSON.parse(bff.draftText.mobile) },
+      need: bff.need, menu: artifacts.menu as D2Menu, module: artifacts.module, grants: bff.grants, design,
+    }),
+    identity: bff.identity, inputHash: bff.inputHash, skill: sharedSkill, prompt: SHARED_PROMPT, approved: null,
+  };
+}
+
+async function replay(alias: string, out?: ReplayOut): Promise<Outcome[]> {
   const pack = readPack(alias);
   const outcomes: Outcome[] = [];
   const access = pack.defs('l4/access.defs.ts');
@@ -155,7 +186,7 @@ async function replay(alias: string, derivedOut?: Record<string, D2DerivedPageRe
   }
 
   // pages50: each recorded page answer through the normalizer and the page gate.
-  const page11: Record<string, { desktop: string; mobile: string; draftDesktop: unknown; draftMobile: unknown }> = {};
+  const page11: Record<string, ReplayPage> = {};
   for (const name of pack.list('answers/pages50')) {
     const pageId = name.replace(/\.json$/u, '');
     const built = pageContextOf(pack, snapshot, artifacts, pageId);
@@ -169,63 +200,48 @@ async function replay(alias: string, derivedOut?: Record<string, D2DerivedPageRe
       });
       const at = (folder: string, shortName: string) => writes.get(`${pack.moduleName}/${folder}/${shortName}`);
       page11[pageId] = {
-        desktop: at('web/desktop/page11', pageId) as string, mobile: at('web/mobile/page11', pageId) as string,
-        draftDesktop: at('pipeline/agentDefsL2/page11Needs', `${pageId}Desktop`), draftMobile: at('pipeline/agentDefsL2/page11Needs', `${pageId}Mobile`),
+        page11Text: { desktop: at('web/desktop/page11', pageId) as string, mobile: at('web/mobile/page11', pageId) as string },
+        drafts: { desktop: at('pipeline/agentDefsL2/page11Needs', `${pageId}Desktop`), mobile: at('pipeline/agentDefsL2/page11Needs', `${pageId}Mobile`) },
       };
       outcomes.push({ stage: 'pages50', pageId, result: 'ok', codes: [] });
     } catch (error) { outcomes.push({ stage: 'pages50', pageId, result: 'refused', codes: codesOf(error) }); }
   }
 
-  // d2PageRequests + shared60 + contracts70 for the pages whose page11 passed.
-  const siblings: D2PageRequestsInput['siblings'] = Object.entries(page11).map(([pageId, row]) => ({
-    pageId, desktop: parseD2Page11Definition(row.desktop).definition, mobile: parseD2Page11Definition(row.mobile).definition,
-    draftDesktop: buildD2Page11Needs(row.draftDesktop), draftMobile: buildD2Page11Needs(row.draftMobile),
-  }));
-  const rules = artifacts.rules as D2PageRequestsInput['rules'];
-  if (derivedOut) {
-    for (const sibling of siblings) {
-      derivedOut[sibling.pageId] = deriveD2PageRequests({
-        module: pack.moduleName, pageId: sibling.pageId, desktop: sibling.desktop, mobile: sibling.mobile, draftDesktop: sibling.draftDesktop, draftMobile: sibling.draftMobile,
-        siblings, needsPages: (needs as { pages: D2PageRequestsInput['needsPages'] }).pages, menu: artifacts.menu as D2PageRequestsInput['menu'],
-        entities: artifacts.entities as D2PageRequestsInput['entities'], access: artifacts.access as D2PageRequestsInput['access'], rules,
-        categories: templateContext().categories as D2PageRequestsInput['categories'],
-      });
-    }
-  }
-  for (const name of pack.list('answers/shared60')) {
+  // bff55 (A answer + B), shared60 (C answer + D) and contracts70 (E) for the pages with a recorded design.
+  for (const name of pack.list('answers/bff55')) {
     const pageId = name.replace(/\.json$/u, '');
-    const sibling = siblings.find(item => item.pageId === pageId);
-    if (!sibling) { outcomes.push({ stage: 'shared60', pageId, result: 'refused', codes: ['D2_SHARED_PAGE11_MISSING'] }); continue; }
-    const input: D2PageRequestsInput = {
-      module: pack.moduleName, pageId, desktop: sibling.desktop, mobile: sibling.mobile, draftDesktop: sibling.draftDesktop, draftMobile: sibling.draftMobile,
-      siblings, needsPages: (needs as { pages: D2PageRequestsInput['needsPages'] }).pages, menu: artifacts.menu as D2PageRequestsInput['menu'],
-      entities: artifacts.entities as D2PageRequestsInput['entities'], access: artifacts.access as D2PageRequestsInput['access'], rules,
-      categories: templateContext().categories as D2PageRequestsInput['categories'],
-    };
-    let shared: string;
+    const page = page11[pageId];
+    if (!page) { outcomes.push({ stage: 'bff55', pageId, result: 'refused', codes: ['D2_BFF_PAGE11_MISSING'] }); continue; }
+    const bff = bffContextOf(pack, artifacts, needs, pageId, page);
+    let design: D2BffDesign;
     try {
-      const data = buildD2SharedContext(input, {
-        identity: { project: 102047, module: pack.moduleName }, inputHash: snapshot.snapshotHash,
-        page11: { desktop: sibling.desktop, mobile: sibling.mobile }, page11Text: { desktop: page11[pageId].desktop, mobile: page11[pageId].mobile },
-        drafts: { desktop: sibling.draftDesktop, mobile: sibling.draftMobile }, draftText: { desktop: JSON.stringify(page11[pageId].draftDesktop), mobile: JSON.stringify(page11[pageId].draftMobile) },
-        skill: '', prompt: '',
-      });
-      const writes = new Map<string, unknown>();
-      await approveD2SharedUnit(data, pack.json<D2SharedLlmResponse>(`answers/shared60/${name}`), 0, 0, {
+      design = d2BffApproved(bff, pack.json(`answers/bff55/${name}`));
+      outcomes.push({ stage: 'bff55', pageId, result: 'ok', codes: [] });
+    } catch (error) { outcomes.push({ stage: 'bff55', pageId, result: 'refused', codes: codesOf(error) }); continue; }
+    if (out) { out.bff[pageId] = bff; out.designs[pageId] = design; }
+    const shared = sharedContextOf(bff, artifacts, design);
+    if (out) out.shared[pageId] = shared;
+    const writes = new Map<string, unknown>();
+    let receipt: D2SharedReceipt;
+    try {
+      receipt = await approveD2SharedUnit(shared, pack.json<D2SharedLlmResponse>(`answers/shared60/${name}`), 0, 0, {
         writeSource: async (_info, source) => { writes.set('source', source); }, writeJson: async () => undefined,
       });
-      shared = writes.get('source') as string;
       outcomes.push({ stage: 'shared60', pageId, result: 'ok', codes: [] });
-      const definition = parseD2SharedV2(shared).definition;
-      const contract = buildD2ContractV2(data.derived, definition, data.input.entities);
-      const issues = gateD2ContractV2(contract, data.derived, definition, data.input.entities).map(item => item.code);
-      outcomes.push({ stage: 'contracts70', pageId, result: issues.length ? 'refused' : 'ok', codes: [...new Set(issues)].sort() });
-    } catch (error) { outcomes.push({ stage: 'shared60', pageId, result: 'refused', codes: codesOf(error) }); }
+    } catch (error) { outcomes.push({ stage: 'shared60', pageId, result: 'refused', codes: codesOf(error) }); continue; }
+    try {
+      const contract = await contractSourceFor({
+        identity: bff.identity, pageId, userLanguage: bff.userLanguage, design, access: shared.access,
+        entities: bff.entities, sharedSource: writes.get('source') as string, sharedReceipt: receipt,
+      });
+      if (out) out.contracts[pageId] = contract;
+      outcomes.push({ stage: 'contracts70', pageId, result: 'ok', codes: [] });
+    } catch (error) { outcomes.push({ stage: 'contracts70', pageId, result: 'refused', codes: codesOf(error) }); }
   }
   return outcomes;
 }
 
-void test('d2_68: three modules replay end to end with the state expected after the fixes, deterministically', async () => {
+void test('d2_68: modules replay end to end with the state expected after the fixes, deterministically', async () => {
   const first = { stock: await replay('stock'), clinic: await replay('clinic'), expense: await replay('expense') };
   const second = { stock: await replay('stock'), clinic: await replay('clinic'), expense: await replay('expense') };
   assert.deepEqual(second, first);
@@ -236,23 +252,17 @@ void test('d2_68: three modules replay end to end with the state expected after 
   assert.deepEqual(at(first.stock, 'needs30')?.codes, ['P2_NEEDS_MENU_RECORDS_MISSING']);
   assert.equal(at(first.stock, 'input20')?.result, 'ok');
   for (const pageId of ['produtos', 'movimentacoes']) assert.equal(at(first.stock, 'pages50', pageId)?.result, 'ok');
-  assert.equal(at(first.stock, 'shared60', 'produtos')?.result, 'ok');
-  assert.equal(at(first.stock, 'contracts70', 'produtos')?.result, 'ok');
-  // The recorded movimentacoes shared predates the fixed list state (d2_65): it is redone, not reused.
-  assert.deepEqual(at(first.stock, 'shared60', 'movimentacoes')?.codes, ['D2_SHARED_V2_DESCRIPTION_EMPTY', 'D2_SHARED_V2_STATE_DUPLICATE']);
 
-  // clinic: three actors, own-registration pages and snake_case page ids pass every stage (p2_30, d2_63, d2_65).
+  // clinic: three actors, own-registration pages and snake_case page ids pass every stage up to page11 (p2_30, d2_63).
   assert.ok(first.clinic.every(item => item.result === 'ok'), JSON.stringify(first.clinic.filter(item => item.result !== 'ok')));
-  assert.equal(first.clinic.filter(item => item.stage === 'contracts70').length, 6);
+  assert.equal(first.clinic.filter(item => item.stage === 'pages50').length, 6);
 
   // expense: the decide page now writes approve/reject (p2_32), so the page11 recorded without those submits is redone.
   assert.equal(at(first.expense, 'needs30')?.result, 'ok');
   assert.deepEqual(at(first.expense, 'pages50', 'despesas_da_equipe')?.codes, ['D2_PAGE11_WRITE_UNCOVERED']);
   for (const pageId of ['despesas_aprovadas', 'inicio']) assert.equal(at(first.expense, 'pages50', pageId)?.result, 'ok');
-  // expense inicio (hub: no read, no write): the recorded answer was refused for a load the code derived without its
-  // request (d2_70); now the shared has no load, is approved, and the page has no contract route.
-  assert.equal(at(first.expense, 'shared60', 'inicio')?.result, 'ok');
-  assert.deepEqual(at(first.expense, 'contracts70', 'inicio'), { stage: 'contracts70', pageId: 'inicio', result: 'ok', codes: [] });
+  // expense inicio (hub: no read, no write, one navigation): no endpoint, a shared with only its navigation, an empty contract.
+  for (const stage of ['bff55', 'shared60', 'contracts70']) assert.deepEqual(at(first.expense, stage, 'inicio'), { stage, pageId: 'inicio', result: 'ok', codes: [] });
 });
 
 void test('d2_68: measured defects without a recorded answer are cases too', async () => {
@@ -298,46 +308,185 @@ void test('d2_71: a real approved page11 survives catalog text changes and regen
   assert.ok(payload.regeneration.reason.some(item => item.startsWith('the page now writes Produto.update')), payload.regeneration.reason.join(' | '));
 });
 
-void test('d2_72: a write asks for its own input; without input it needs no form', async () => {
-  const entitiesOf = (alias: string) => {
-    const pack = readPack(alias);
-    return Object.fromEntries(pack.names('l4/ontology').map(name => [name.replace(/\.defs\.ts$/u, ''), pack.defs(`l4/ontology/${name}`)])) as D2PageRequestsInput['entities'];
-  };
-  const routeInput = (derived: D2DerivedPageRequests, entities: D2PageRequestsInput['entities'], id: string) =>
-    buildD2ContractV2(derived, sharedFromDerived(derived), entities).routes.find(item => item.route.endsWith(`.${id}`))?.input;
-
-  // dining atendimento: open a check (nothing to type), cancel an item (no payload), two selections of the same check.
-  const dining: Record<string, D2DerivedPageRequests> = {};
-  const diningOutcomes = await replay('dining', dining);
-  assert.ok(diningOutcomes.every(item => item.result === 'ok'), JSON.stringify(diningOutcomes.filter(item => item.result !== 'ok')));
-  const atendimento = dining.atendimento;
-  assert.deepEqual(atendimento.issues, []);
-  assert.equal(atendimento.requests.filter(item => item.id === 'loadComanda').length, 1);
-  assert.equal('abrirComanda' in atendimento.forms, false);
-  assert.equal('cancelarItem' in atendimento.forms, false);
-  const diningEntities = entitiesOf('dining');
-  assert.equal(routeInput(atendimento, diningEntities, 'abrirComanda'), '{ mesaId: string }');
-  assert.equal(routeInput(atendimento, diningEntities, 'cancelarItem'), '{ id: string; version: number }');
-
-  // expense: approve has no payload, reject asks for the reason; each takes only its own input.
-  const expense: Record<string, D2DerivedPageRequests> = {};
-  const expenseOutcomes = await replay('expenseR2', expense);
-  assert.ok(expenseOutcomes.every(item => item.result === 'ok'), JSON.stringify(expenseOutcomes));
-  const team = expense.despesas_da_equipe;
-  const expenseEntities = entitiesOf('expenseR2');
-  assert.equal(routeInput(team, expenseEntities, 'approveExpense'), '{ id: string; version: number }');
-  assert.match(routeInput(team, expenseEntities, 'rejectExpense') ?? '', /motivoRejeicao: string/u);
-  assert.doesNotMatch(routeInput(team, expenseEntities, 'approveExpense') ?? '', /motivoRejeicao/u);
-
-  // An input the L4 asks for and no organism edits is refused at the page gate, naming the field.
+void test('d2_72: an input the L4 asks for and no organism edits is refused at the page gate, naming the field', async () => {
   const pack = readPack('expenseR2');
   const artifacts = await artifactsOf(pack, pack.json('pool/needs.json'));
   const snapshot = await buildD2InputSnapshot({ project: 102047, module: pack.moduleName }, artifacts);
   const built = pageContextOf(pack, snapshot, artifacts, 'despesas_da_equipe')!;
+  await approveD2PagesUnit(built.context, built.answer, 0, 0, { writeSource: async () => undefined, writeJson: async () => undefined });
   const answer = structuredClone(built.answer);
   for (const device of ['desktop', 'mobile'] as const) {
     for (const unit of Object.values((answer[device].needs as { organisms: Record<string, { edits: string[] }> }).organisms)) unit.edits = unit.edits.filter(path => path !== 'Despesa.details.motivoRejeicao');
   }
   await assert.rejects(() => approveD2PagesUnit(built.context, answer, 0, 0, { writeSource: async () => undefined, writeJson: async () => undefined }),
     /D2_PAGE11_INPUT_NOT_EDITED: Submit rejectExpense \(Despesa\.rejeitarDespesa\) asks for Despesa\.details\.motivoRejeicao/u);
+});
+
+async function dining(): Promise<{ outcomes: Outcome[]; out: ReplayOut; pack: ReturnType<typeof readPack> }> {
+  const out: ReplayOut = { bff: {}, designs: {}, shared: {}, contracts: {} };
+  return { outcomes: await replay('dining', out), out, pack: readPack('dining') };
+}
+
+/** Diagnostics of the TypeScript in node_modules over one standalone source (the Studio compiles with 5.0.2 in finalize80). */
+function compileErrors(source: string): string[] {
+  const fileName = '/contract.ts';
+  const options: ts.CompilerOptions = { strict: true, noEmit: true, target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.ESNext, types: [] };
+  const host = ts.createCompilerHost(options);
+  const original = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, language, ...rest) => (name === fileName ? ts.createSourceFile(name, source, language) : original(name, language, ...rest));
+  return ts.getPreEmitDiagnostics(ts.createProgram([fileName], options, host)).map(item => ts.flattenDiagnosticMessageText(item.messageText, '\n'));
+}
+
+void test('d2_73: the hand-written A and C of atendimento and inicio pass B and D; the contract carries the JSDoc and compiles', async () => {
+  const { outcomes, out } = await dining();
+  assert.ok(outcomes.every(item => item.result === 'ok'), JSON.stringify(outcomes.filter(item => item.result !== 'ok')));
+  assert.deepEqual(outcomes.filter(item => item.stage === 'contracts70').map(item => item.pageId), ['atendimento', 'inicio']);
+
+  const atendimento = out.contracts.atendimento;
+  assert.match(atendimento, /export interface ComandaComItens \{\n[\s\S]*itens: ItemDaComanda\[\];/u);
+  assert.match(atendimento, /'comandaRestaurante\.atendimento\.abrirComanda': \{\n {4}kind: 'cmd';\n {4}writes: 'Comanda\.create';\n {4}input: \{ mesaId: string \};/u);
+  assert.match(atendimento, /input: \{ itemComandaId: string; version: number \};/u);
+  assert.match(atendimento, /input: \{ comandaId: string; itemCardapioId: string; quantidade: number; observacao\?: string \};/u);
+  // The JSDoc of A, with the labels of the module language, sits above every route.
+  for (const endpointId of ['load', 'carregarComanda', 'buscarItemCardapio', 'abrirComanda', 'lancarItem', 'cancelarItem']) {
+    assert.match(atendimento, new RegExp(`/\\*\\*\\n {3}\\* Finalidade: [^\\n]+\\n {3}\\* Entrada: [^\\n]+\\n {3}\\* Processamento: [^\\n]+\\n {3}\\* Saída: [^\\n]+\\n {3}\\*/\\n {2}'comandaRestaurante\\.atendimento\\.${endpointId}'`, 'u'));
+  }
+  assert.match(atendimento, /rules: \['itensSomenteEmComandaAberta', 'precoUnitarioRegistradoNoLancamento', 'valorTotalItemComandaCalculado', 'subtotalComandaCalculado'\]/u);
+  // Derived fields and aggregates are readonly.
+  assert.match(atendimento, /readonly subtotal: string;/u);
+  assert.match(out.contracts.inicio, /readonly totalEmAberto: string;/u);
+
+  // meta: an entity only for a key whose type carries one entity's fields; composite and aggregated keys are left out.
+  const parsed = parseD2ContractV2(atendimento);
+  const metaOf = (contract: string, id: string) => parseD2ContractV2(contract).routes.find(item => item.route.endsWith(`.${id}`))!.meta;
+  assert.deepEqual(metaOf(atendimento, 'load').output, { mesas: { entity: 'Mesa', many: true } });
+  assert.deepEqual(metaOf(atendimento, 'buscarItemCardapio').output, { itens: { entity: 'ItemCardapio', many: true } });
+  assert.deepEqual(metaOf(atendimento, 'lancarItem').output, {});
+  assert.deepEqual(metaOf(out.contracts.inicio, 'load').output, {});
+  assert.equal(parsed.routes.length, 6);
+  assert.equal(parsed.routes.find(item => item.route.endsWith('.load'))?.writes, undefined);
+
+  // The origins stay in the pipeline: none reaches the contract.
+  for (const contract of Object.values(out.contracts)) assert.doesNotMatch(contract, /origin|aggregate/u);
+  for (const [pageId, contract] of Object.entries(out.contracts)) assert.deepEqual(compileErrors(contract), [], pageId);
+  // The checker sees a broken contract (positive control).
+  assert.ok(compileErrors(out.contracts.atendimento.replace('itens: ItemDaComanda[];', 'itens: ItemSemTipo[];')).some(item => item.includes('ItemSemTipo')));
+});
+
+void test('d2_73: B refuses by fact, naming the exact path', async () => {
+  const { out } = await dining();
+  const bff = out.bff.atendimento;
+  const answer = () => readPack('dining').json<{ types: Array<{ name: string; fields: Array<Record<string, unknown>> }>; endpoints: Array<Record<string, unknown>> }>('answers/bff55/atendimento.json');
+
+  // B.1: a field an organism reads that no output carries.
+  const noObservation = answer();
+  const line = noObservation.types.find(item => item.name === 'ItemDaComanda')!;
+  line.fields = line.fields.filter(field => field.name !== 'observacao');
+  assert.throws(() => d2BffApproved(bff, noObservation), /D2_BFF_COVERAGE: organisms\.detalheComanda\.reads\.ItemComanda\.details\.observacao: organism detalheComanda reads ItemComanda\.details\.observacao/u);
+
+  // B.2: the transition asks for a payload the command does not carry.
+  const entities = structuredClone(bff.entities) as unknown as Record<string, { transitions: Array<{ transitionId: string; payload: string[] }> }>;
+  entities.ItemComanda.transitions.find(item => item.transitionId === 'cancelarItemComanda')!.payload = ['details.observacao'];
+  assert.throws(() => d2BffApproved({ ...bff, entities: entities as unknown as D2BffContext['entities'] }, answer()),
+    /D2_BFF_COMMAND_INPUT: endpoints\.cancelarItem\.input: command cancelarItem \(ItemComanda\.cancelarItemComanda\) asks for ItemComanda\.details\.observacao/u);
+
+  // B.3: an origin no actor of the page sees (the waiter does not see the payment method).
+  const payment = answer();
+  payment.types.find(item => item.name === 'ComandaAberta')!.fields.push({ name: 'formaPagamento', type: "'cash' | 'pix'", origin: { kind: 'field', paths: ['Comanda.details.paymentMethod'] } });
+  assert.throws(() => d2BffApproved(bff, payment), /D2_BFF_ORIGIN_GRANT: types\.ComandaAberta\.formaPagamento: origin Comanda\.details\.paymentMethod is not visible to any actor of the page \(garcom\)/u);
+
+  // B.3: an enum literal outside L4, an unknown rule, an unknown field.
+  const facts = answer();
+  facts.types.find(item => item.name === 'ComandaAberta')!.fields.find(field => field.name === 'status')!.type = "'aberta'";
+  facts.endpoints.find(item => item.id === 'load')!.rules = ['regraQueNaoExiste'];
+  facts.types.find(item => item.name === 'MesaDoSalao')!.fields.push({ name: 'lugares', type: 'number', origin: { kind: 'field', paths: ['Mesa.details.lugares'] } });
+  const codes = (() => { try { d2BffApproved(bff, facts); return ''; } catch (error) { return String(error); } })();
+  assert.match(codes, /D2_BFF_ENUM: types\.ComandaAberta\.status: 'aberta' is not a value of Comanda\.status/u);
+  assert.match(codes, /D2_BFF_RULE_UNKNOWN: endpoints\.load\.rules: rule regraQueNaoExiste/u);
+  assert.match(codes, /D2_BFF_ORIGIN_UNKNOWN: types\.MesaDoSalao\.lugares: origin Mesa\.details\.lugares/u);
+
+  // B.2 and B.4: a submit without its command, and a command that writes outside the plan.
+  const commands = answer();
+  commands.endpoints = commands.endpoints.filter(item => item.id !== 'abrirComanda');
+  commands.endpoints.find(item => item.id === 'cancelarItem')!.writes = 'Comanda.fecharComanda';
+  const plan = (() => { try { d2BffApproved(bff, commands); return ''; } catch (error) { return String(error); } })();
+  assert.match(plan, /D2_BFF_SUBMIT_COMMAND: submits\.abrirComanda: submit abrirComanda has 0 commands/u);
+  assert.match(plan, /D2_BFF_SUBMIT_WRITE: endpoints\.cancelarItem\.writes/u);
+  assert.match(plan, /D2_BFF_WRITE_OUTSIDE: endpoints\.cancelarItem\.writes: Comanda\.fecharComanda is not a write of this page/u);
+
+  // The tool format is not a design gate, but a leaf without origin cannot be checked.
+  const noOrigin = answer();
+  delete noOrigin.types[0].fields[0].origin;
+  assert.throws(() => d2BffApproved(bff, noOrigin), /D2_BFF_FORMAT: types\.ComandaComItens\.fields\.id\.origin: a value leaf names its origin/u);
+});
+
+void test('d2_73: B does not judge the design: another number of endpoints and other names pass', async () => {
+  const { out } = await dining();
+  const bff = out.bff.atendimento;
+  const design = structuredClone(out.designs.atendimento);
+  // One query fewer: the selected record comes in the opening call, under other names.
+  design.endpoints = design.endpoints.filter(item => item.id !== 'carregarComanda').map(item => item.id === 'load' ? { ...item, id: 'abrirTela', output: [...item.output, { name: 'comandaEmFoco', type: 'ComandaComItens' }] } : item);
+  assert.doesNotThrow(() => d2BffApproved(bff, design));
+});
+
+void test('d2_73: D refuses an unfed organism, a call to a missing endpoint and a submit without function', async () => {
+  const { out, pack } = await dining();
+  const shared = out.shared.atendimento;
+  const answer = () => pack.json<D2SharedLlmResponse>('answers/shared60/atendimento.json');
+  assert.doesNotThrow(() => d2SharedApproved(shared, answer()));
+
+  const unfed = answer();
+  unfed.states = unfed.states.filter(item => item.id !== 'itensEncontrados');
+  unfed.functions = unfed.functions.map(item => item.id === 'buscarItem' ? { ...item, sets: undefined } : item);
+  assert.throws(() => d2SharedApproved(shared, unfed), /D2_SHARED_V2_ORGANISM_UNFED: Organism (lookupAtendimento|formularioLancamento) reads ItemCardapio\.details\.precoVigente, and no state holds it/u);
+
+  const broken = answer();
+  broken.functions = broken.functions.filter(item => item.id !== 'cancelarItem').map(item => item.id === 'buscarItem' ? { ...item, calls: 'buscarPrato' } : item);
+  broken.journeys = broken.journeys.map(item => ({ ...item, functions: item.functions.filter(fn => fn !== 'cancelarItem') }));
+  broken.states.push({ id: 'emprestado', source: 'fechamento.comanda', description: 'state of another page' });
+  const codes = (() => { try { d2SharedApproved(shared, broken); return ''; } catch (error) { return String(error); } })();
+  assert.match(codes, /D2_SHARED_V2_FUNCTION_CALL: Function buscarItem calls buscarPrato, which is not an endpoint of the page/u);
+  assert.match(codes, /D2_SHARED_V2_SUBMIT_FUNCTION: Submit cancelarItem has no function that calls its command cancelarItem/u);
+  assert.match(codes, /D2_SHARED_V2_STATE_SOURCE: State emprestado source "fechamento\.comanda"/u);
+
+  // requests, rules and access are copied from A, never chosen by C.
+  const definition = d2SharedApproved(shared, answer());
+  assert.deepEqual(Object.keys(definition.requests), out.designs.atendimento.endpoints.map(item => item.id));
+  assert.deepEqual(definition.requests.lancarItem, { kind: 'cmd', trigger: 'lancarItem', writes: 'ItemComanda.create', returns: ['comanda'] });
+  assert.deepEqual(definition.requests.buscarItemCardapio.trigger, 'buscarItemCardapio');
+  assert.deepEqual(definition.rules.cancelarItem, ['itemComandaOperacaoSomenteComandaAberta', 'subtotalComandaCalculado']);
+  assert.deepEqual(definition.access, { actors: ['garcom'], grants: ['garcomAtendimentoComandas'] });
+  assert.equal(sharedInfo(shared.identity, 'atendimento').folder, 'comandaRestaurante/web/shared');
+});
+
+void test('d2_73: prompts of A and C stay inside the limit, carry the rule texts and the schemas pass the tool lint', async (t) => {
+  const { out } = await dining();
+  const pack = readPack('dining');
+  const artifacts = await artifactsOf(pack, pack.json('pool/needs.json'));
+  const snapshot = await buildD2InputSnapshot({ project: 102047, module: pack.moduleName }, artifacts);
+  const sizes: string[] = [];
+  for (const name of pack.list('answers/pages50')) {
+    const pageId = name.replace(/\.json$/u, '');
+    const built = pageContextOf(pack, snapshot, artifacts, pageId)!;
+    const writes = new Map<string, unknown>();
+    await approveD2PagesUnit(built.context, built.answer, 0, 0, { writeSource: async (info, source) => { writes.set(info.shortName + info.folder, source); }, writeJson: async (info, value) => { writes.set(info.shortName + info.folder, value); } });
+    const at = (folder: string, shortName: string) => writes.get(shortName + `${pack.moduleName}/${folder}`);
+    const bff = bffContextOf(pack, artifacts, pack.json('pool/needs.json'), pageId, {
+      page11Text: { desktop: at('web/desktop/page11', pageId) as string, mobile: at('web/mobile/page11', pageId) as string },
+      drafts: { desktop: at('pipeline/agentDefsL2/page11Needs', `${pageId}Desktop`), mobile: at('pipeline/agentDefsL2/page11Needs', `${pageId}Mobile`) },
+    });
+    const prompt = buildD2BffPrompt(bff);
+    assert.ok(prompt.chars < D2_BFF_PROMPT_LIMIT_CHARS);
+    assert.deepEqual(lintToolSchema(JSON.stringify(bffSchemaFor(bff))), null, pageId);
+    const c = out.shared[pageId] ? buildD2SharedPrompt(out.shared[pageId]).chars : 0;
+    if (out.shared[pageId]) {
+      assert.ok(c < D2_SHARED_PROMPT_LIMIT_CHARS);
+      assert.deepEqual(lintToolSchema(JSON.stringify(sharedSchemaFor(out.shared[pageId]))), null, pageId);
+      assert.doesNotMatch(buildD2SharedPrompt(out.shared[pageId]).humanPrompt, /"origin"/u);
+    }
+    sizes.push(`${pageId}: A=${prompt.chars}${c ? ` C=${c}` : ''}`);
+  }
+  t.diagnostic(`prompt chars: ${sizes.join('; ')}`);
+  // A rule no entity links (a calculation) still reaches the prompt of the page that shows the value.
+  assert.match(buildD2BffPrompt(out.bff.atendimento).humanPrompt, /precoUnitarioRegistradoNoLancamento/u);
 });

@@ -1,44 +1,20 @@
 {
- "states": [
-  {
-   "id": "atendimento",
-   "source": "load.atendimento",
-   "description": "Mesas e respectivas condições de disponibilidade."
-  },
-  {
-   "id": "fechamento",
-   "source": "load.fechamento",
-   "description": "Comandas e subtotais para acompanhamento operacional."
-  },
-  {
-   "id": "itemComanda",
-   "source": "load.itemComanda",
-   "description": "Itens lançados e valores totais das comandas."
-  }
- ],
- "functions": [
-  {
-   "id": "load",
-   "description": "Carrega os dados operacionais de mesas, comandas e itens.",
-   "calls": "load",
-   "sets": "atendimento",
-   "updates": [
-    "fechamento",
-    "itemComanda"
-   ]
-  }
- ],
- "journeys": [],
- "commandReturns": [],
- "requestRules": [
-  {
-   "requestId": "load",
-   "rules": [
-    "mesaDisponivelParaAbrirComanda",
-    "umaComandaAbertaPorMesa",
-    "fechamentoLiberaMesa"
-   ]
-  }
- ],
- "formChoices": []
+  "entry": [],
+  "forms": [],
+  "states": [
+    {
+      "id": "indicadores",
+      "source": "load.indicadores",
+      "description": "Indicadores do salão prontos para exibir."
+    }
+  ],
+  "functions": [
+    {
+      "id": "iniciar",
+      "description": "Carrega os indicadores ao abrir a página.",
+      "calls": "load",
+      "sets": "indicadores"
+    }
+  ],
+  "journeys": []
 }

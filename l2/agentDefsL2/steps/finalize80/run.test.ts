@@ -113,6 +113,7 @@ void test('full finalize compiles four artifacts per page and names a hand-edite
   const pipeline = { project: identity.project, module: identity.module, steps: {
     entry10: { status: 'approved' }, input20: { status: 'approved' },
     pages50: { status: 'approved', snapshotHash: snapshot.snapshotHash },
+    bff55: { status: 'approved', snapshotHash: snapshot.snapshotHash },
     shared60: { status: 'approved', snapshotHash: snapshot.snapshotHash },
     contracts70: { status: 'approved', snapshotHash: snapshot.snapshotHash },
   } } as D2PipelineState;

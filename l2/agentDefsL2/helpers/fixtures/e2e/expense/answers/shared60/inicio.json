@@ -1,18 +1,13 @@
 {
- "states": [],
- "functions": [
-  {
-   "id": "load",
-   "description": "Carrega os dados da página."
-  },
-  {
-   "id": "abrirDespesasDaEquipe",
-   "description": "Abre as despesas da equipe.",
-   "navigate": "despesas_da_equipe"
-  }
- ],
- "journeys": [],
- "commandReturns": [],
- "requestRules": [],
- "formChoices": []
+  "entry": [],
+  "forms": [],
+  "states": [],
+  "functions": [
+    {
+      "id": "abrirDespesasDaEquipe",
+      "description": "Leva o gestor às despesas da equipe que esperam análise.",
+      "navigate": "despesas_da_equipe"
+    }
+  ],
+  "journeys": []
 }

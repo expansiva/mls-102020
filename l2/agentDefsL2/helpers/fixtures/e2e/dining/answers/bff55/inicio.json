@@ -1,0 +1,76 @@
+{
+  "types": [
+    {
+      "name": "IndicadoresDoSalao",
+      "description": "Indicadores do salão calculados no endpoint.",
+      "fields": [
+        {
+          "name": "mesasLivres",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Mesa.details.disponivel"
+            ]
+          }
+        },
+        {
+          "name": "mesasOcupadas",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Mesa.details.disponivel"
+            ]
+          }
+        },
+        {
+          "name": "comandasAbertas",
+          "type": "number",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Comanda.status"
+            ]
+          }
+        },
+        {
+          "name": "totalEmAberto",
+          "type": "string",
+          "origin": {
+            "kind": "aggregate",
+            "paths": [
+              "Comanda.status",
+              "Comanda.details.subtotal",
+              "ItemComanda.details.valorTotal"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "load",
+      "kind": "qry",
+      "when": "onLoad",
+      "input": [],
+      "output": [
+        {
+          "name": "indicadores",
+          "type": "IndicadoresDoSalao"
+        }
+      ],
+      "rules": [
+        "valorTotalItemComandaCalculado",
+        "subtotalComandaCalculado"
+      ],
+      "jsdoc": {
+        "purpose": "Indicadores do salão para o caixa e o garçom decidirem entre atender e fechar.",
+        "input": "Nenhuma.",
+        "processing": "Conta as mesas disponíveis e as ocupadas; conta as comandas com status open e soma o subtotal delas, que é a soma do valor total dos itens não cancelados (subtotalComandaCalculado, valorTotalItemComandaCalculado). Tudo calculado no endpoint; nenhuma lista sai.",
+        "output": "indicadores: mesasLivres, mesasOcupadas, comandasAbertas, totalEmAberto."
+      }
+    }
+  ]
+}

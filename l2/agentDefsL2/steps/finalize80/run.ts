@@ -80,7 +80,8 @@ export async function finalizeD2Pages(identity: D2RunIdentity & { scope?: D2Scop
   const pending: string[] = [];
   if (!pipeline || pipeline.steps.entry10?.status !== 'approved' || pipeline.steps.input20?.status !== 'approved'
     || pipeline.steps.pages50?.status !== 'approved' || pipeline.steps.pages50.snapshotHash !== snapshot.snapshotHash
-    || (scope === 'all' && (pipeline.steps.shared60?.status !== 'approved' || pipeline.steps.shared60.snapshotHash !== snapshot.snapshotHash
+    || (scope === 'all' && (pipeline.steps.bff55?.status !== 'approved' || pipeline.steps.bff55.snapshotHash !== snapshot.snapshotHash
+      || pipeline.steps.shared60?.status !== 'approved' || pipeline.steps.shared60.snapshotHash !== snapshot.snapshotHash
       || pipeline.steps.contracts70?.status !== 'approved' || pipeline.steps.contracts70.snapshotHash !== snapshot.snapshotHash))) pending.push('D2_FINALIZE_PIPELINE_INCOMPLETE');
   const pageIds = [...snapshot.selection.writePageIds].sort();
   const sources: D2FinalSource[] = [];
