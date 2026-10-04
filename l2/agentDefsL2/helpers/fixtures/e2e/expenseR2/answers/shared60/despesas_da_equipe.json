@@ -1,0 +1,138 @@
+{
+ "states": [
+  {
+   "id": "despesasDaEquipe",
+   "source": "load.despesasDaEquipe",
+   "description": "Despesas pendentes da equipe"
+  },
+  {
+   "id": "colaborador",
+   "source": "load.colaborador",
+   "description": "Colaborador da despesa selecionada"
+  },
+  {
+   "id": "despesaSelecionada",
+   "source": "entry.params.despesaId",
+   "description": "Despesa selecionada para análise"
+  },
+  {
+   "id": "colaboradorId",
+   "source": "entry.params.colaboradorId",
+   "description": "Filtro de colaborador"
+  },
+  {
+   "id": "page",
+   "source": "entry.params.page",
+   "description": "Página da lista de despesas"
+  }
+ ],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega despesas pendentes da equipe e colaborador da despesa selecionada",
+   "calls": "load",
+   "sets": "despesasDaEquipe",
+   "updates": [
+    "colaborador"
+   ]
+  },
+  {
+   "id": "filterPendingTeamExpenses",
+   "description": "Filtra despesas pendentes da equipe",
+   "calls": "loadDespesasDaEquipe",
+   "sets": "despesasDaEquipe"
+  },
+  {
+   "id": "loadMorePendingTeamExpenses",
+   "description": "Carrega mais despesas pendentes da equipe",
+   "calls": "loadDespesasDaEquipe",
+   "sets": "despesasDaEquipe"
+  },
+  {
+   "id": "approveExpense",
+   "description": "Aprova a despesa selecionada",
+   "calls": "approveExpense",
+   "sets": "despesasDaEquipe",
+   "updates": [
+    "despesaSelecionada"
+   ]
+  },
+  {
+   "id": "rejectExpense",
+   "description": "Rejeita a despesa selecionada",
+   "calls": "rejectExpense",
+   "sets": "despesasDaEquipe",
+   "updates": [
+    "despesaSelecionada"
+   ]
+  }
+ ],
+ "journeys": [
+  {
+   "step": "analisarDecidirDespesa/localizarDespesasPendentes",
+   "organisms": [
+    "pendingTeamExpenses"
+   ],
+   "functions": [
+    "load",
+    "filterPendingTeamExpenses",
+    "loadMorePendingTeamExpenses"
+   ],
+   "continuesIn": "despesas_da_equipe"
+  },
+  {
+   "step": "analisarDecidirDespesa/analisarDespesa",
+   "organisms": [
+    "expenseReview",
+    "approvalDecision"
+   ],
+   "functions": [
+    "approveExpense",
+    "rejectExpense"
+   ],
+   "continuesIn": "despesas_da_equipe"
+  }
+ ],
+ "commandReturns": [
+  {
+   "requestId": "approveExpense",
+   "returns": [
+    "despesa"
+   ]
+  },
+  {
+   "requestId": "rejectExpense",
+   "returns": [
+    "despesa"
+   ]
+  }
+ ],
+ "requestRules": [
+  {
+   "requestId": "load",
+   "rules": [
+    "managerTeamExpenseAccess"
+   ]
+  },
+  {
+   "requestId": "loadDespesasDaEquipe",
+   "rules": [
+    "managerTeamExpenseAccess"
+   ]
+  },
+  {
+   "requestId": "approveExpense",
+   "rules": [
+    "managerTeamExpenseAccess"
+   ]
+  },
+  {
+   "requestId": "rejectExpense",
+   "rules": [
+    "managerTeamExpenseAccess",
+    "rejectionReasonRequired"
+   ]
+  }
+ ],
+ "formChoices": []
+}

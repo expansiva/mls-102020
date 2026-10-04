@@ -29,7 +29,8 @@ import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/mol
 import { approveD2SharedUnit, buildD2SharedContext, type D2SharedLlmResponse } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 import { parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { buildD2ContractV2, gateD2ContractV2 } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
-import type { D2PageRequestsInput } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
+import { sharedFromDerived } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { deriveD2PageRequests, type D2DerivedPageRequests, type D2PageRequestsInput } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import { d2NormalizeWriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type { PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
 
@@ -115,7 +116,7 @@ function pageContextOf(pack: ReturnType<typeof readPack>, snapshot: D2InputSnaps
   } };
 }
 
-async function replay(alias: string): Promise<Outcome[]> {
+async function replay(alias: string, derivedOut?: Record<string, D2DerivedPageRequests>): Promise<Outcome[]> {
   const pack = readPack(alias);
   const outcomes: Outcome[] = [];
   const access = pack.defs('l4/access.defs.ts');
@@ -181,6 +182,16 @@ async function replay(alias: string): Promise<Outcome[]> {
     draftDesktop: buildD2Page11Needs(row.draftDesktop), draftMobile: buildD2Page11Needs(row.draftMobile),
   }));
   const rules = artifacts.rules as D2PageRequestsInput['rules'];
+  if (derivedOut) {
+    for (const sibling of siblings) {
+      derivedOut[sibling.pageId] = deriveD2PageRequests({
+        module: pack.moduleName, pageId: sibling.pageId, desktop: sibling.desktop, mobile: sibling.mobile, draftDesktop: sibling.draftDesktop, draftMobile: sibling.draftMobile,
+        siblings, needsPages: (needs as { pages: D2PageRequestsInput['needsPages'] }).pages, menu: artifacts.menu as D2PageRequestsInput['menu'],
+        entities: artifacts.entities as D2PageRequestsInput['entities'], access: artifacts.access as D2PageRequestsInput['access'], rules,
+        categories: templateContext().categories as D2PageRequestsInput['categories'],
+      });
+    }
+  }
   for (const name of pack.list('answers/shared60')) {
     const pageId = name.replace(/\.json$/u, '');
     const sibling = siblings.find(item => item.pageId === pageId);
@@ -285,4 +296,48 @@ void test('d2_71: a real approved page11 survives catalog text changes and regen
   const payload = JSON.parse(buildD2PagesDecisionPrompt(context, undefined, approved).prompt) as { approved: unknown; regeneration: { reason: string[] } };
   assert.ok(payload.approved);
   assert.ok(payload.regeneration.reason.some(item => item.startsWith('the page now writes Produto.update')), payload.regeneration.reason.join(' | '));
+});
+
+void test('d2_72: a write asks for its own input; without input it needs no form', async () => {
+  const entitiesOf = (alias: string) => {
+    const pack = readPack(alias);
+    return Object.fromEntries(pack.names('l4/ontology').map(name => [name.replace(/\.defs\.ts$/u, ''), pack.defs(`l4/ontology/${name}`)])) as D2PageRequestsInput['entities'];
+  };
+  const routeInput = (derived: D2DerivedPageRequests, entities: D2PageRequestsInput['entities'], id: string) =>
+    buildD2ContractV2(derived, sharedFromDerived(derived), entities).routes.find(item => item.route.endsWith(`.${id}`))?.input;
+
+  // dining atendimento: open a check (nothing to type), cancel an item (no payload), two selections of the same check.
+  const dining: Record<string, D2DerivedPageRequests> = {};
+  const diningOutcomes = await replay('dining', dining);
+  assert.ok(diningOutcomes.every(item => item.result === 'ok'), JSON.stringify(diningOutcomes.filter(item => item.result !== 'ok')));
+  const atendimento = dining.atendimento;
+  assert.deepEqual(atendimento.issues, []);
+  assert.equal(atendimento.requests.filter(item => item.id === 'loadComanda').length, 1);
+  assert.equal('abrirComanda' in atendimento.forms, false);
+  assert.equal('cancelarItem' in atendimento.forms, false);
+  const diningEntities = entitiesOf('dining');
+  assert.equal(routeInput(atendimento, diningEntities, 'abrirComanda'), '{ mesaId: string }');
+  assert.equal(routeInput(atendimento, diningEntities, 'cancelarItem'), '{ id: string; version: number }');
+
+  // expense: approve has no payload, reject asks for the reason; each takes only its own input.
+  const expense: Record<string, D2DerivedPageRequests> = {};
+  const expenseOutcomes = await replay('expenseR2', expense);
+  assert.ok(expenseOutcomes.every(item => item.result === 'ok'), JSON.stringify(expenseOutcomes));
+  const team = expense.despesas_da_equipe;
+  const expenseEntities = entitiesOf('expenseR2');
+  assert.equal(routeInput(team, expenseEntities, 'approveExpense'), '{ id: string; version: number }');
+  assert.match(routeInput(team, expenseEntities, 'rejectExpense') ?? '', /motivoRejeicao: string/u);
+  assert.doesNotMatch(routeInput(team, expenseEntities, 'approveExpense') ?? '', /motivoRejeicao/u);
+
+  // An input the L4 asks for and no organism edits is refused at the page gate, naming the field.
+  const pack = readPack('expenseR2');
+  const artifacts = await artifactsOf(pack, pack.json('pool/needs.json'));
+  const snapshot = await buildD2InputSnapshot({ project: 102047, module: pack.moduleName }, artifacts);
+  const built = pageContextOf(pack, snapshot, artifacts, 'despesas_da_equipe')!;
+  const answer = structuredClone(built.answer);
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const unit of Object.values((answer[device].needs as { organisms: Record<string, { edits: string[] }> }).organisms)) unit.edits = unit.edits.filter(path => path !== 'Despesa.details.motivoRejeicao');
+  }
+  await assert.rejects(() => approveD2PagesUnit(built.context, answer, 0, 0, { writeSource: async () => undefined, writeJson: async () => undefined }),
+    /D2_PAGE11_INPUT_NOT_EDITED: Submit rejectExpense \(Despesa\.rejeitarDespesa\) asks for Despesa\.details\.motivoRejeicao/u);
 });

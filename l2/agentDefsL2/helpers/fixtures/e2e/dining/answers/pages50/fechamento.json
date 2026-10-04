@@ -1,0 +1,1005 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "posWorkbench"
+    },
+    "intent": "O caixa localiza a comanda aberta, confere os itens e os totais, registra desconto e pagamento e fecha a comanda para liberar a mesa.",
+    "sections": [
+     {
+      "id": "locateSection",
+      "priority": "primary",
+      "purpose": "Dar ao caixa um ponto de partida para achar a comanda aberta pelo número ou pela mesa.",
+      "organisms": [
+       "openComandaList"
+      ]
+     },
+     {
+      "id": "reviewSection",
+      "priority": "main",
+      "purpose": "Exibir os itens válidos e os totais calculados para o caixa conferir a cobrança antes de receber.",
+      "organisms": [
+       "comandaReview"
+      ]
+     },
+     {
+      "id": "settleSection",
+      "priority": "secondary",
+      "purpose": "Capturar o desconto opcional e a forma de pagamento e concluir o fechamento que libera a mesa.",
+      "organisms": [
+       "paymentForm",
+       "closeComandaActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "openComandaList": {
+      "kind": "list",
+      "text": "Lista as comandas abertas com número, mesa e situação para o caixa localizar a conta que vai encerrar.",
+      "intents": []
+     },
+     "comandaReview": {
+      "kind": "detail",
+      "text": "Mostra os itens lançados válidos, o subtotal e o total da comanda escolhida para o caixa conferir a cobrança antes de receber.",
+      "intents": []
+     },
+     "paymentForm": {
+      "kind": "form",
+      "text": "Recebe o desconto opcional e a forma de pagamento obrigatória para o caixa registrar como a conta será quitada.",
+      "intents": []
+     },
+     "closeComandaActions": {
+      "kind": "actions",
+      "text": "Dispara o fechamento da comanda paga e comunica que a mesa foi liberada para um novo atendimento.",
+      "intents": [
+       {
+        "id": "fecharComandaPaga",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "openComandaList": [
+      {
+       "role": "query",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "pick",
+       "preferred": "groupselectone--ml-listbox-sidebar-select",
+       "alternative": "groupselectone--ml-select-one-autocomplete"
+      },
+      {
+       "role": "browse",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "comandaReview": [
+      {
+       "role": "totals",
+       "preferred": "groupviewmetric--ml-metric-card",
+       "alternative": "groupviewmetric--ml-metric-big-number"
+      },
+      {
+       "role": "items",
+       "preferred": "groupviewtable--ml-data-table",
+       "alternative": "groupviewtable--ml-view-table"
+      }
+     ],
+     "paymentForm": [
+      {
+       "role": "discount",
+       "preferred": "groupentermoney--ml-enter-money-br",
+       "alternative": "groupentermoney--ml-currency-input"
+      },
+      {
+       "role": "paymentMethod",
+       "preferred": "groupselectone--ml-radio-group",
+       "alternative": "groupselectone--ml-select"
+      }
+     ],
+     "closeComandaActions": [
+      {
+       "role": "submit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-split-button"
+      },
+      {
+       "role": "feedback",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "openComandaList": {
+      "reads": [
+       "Comanda.number",
+       "Comanda.status",
+       "Comanda.mesaId",
+       "Comanda.details.totalComanda",
+       "Mesa.code"
+      ],
+      "edits": [],
+      "selects": "comandaReview",
+      "submits": []
+     },
+     "comandaReview": {
+      "reads": [
+       "Comanda.number",
+       "Comanda.status",
+       "Comanda.details.subtotal",
+       "Comanda.details.totalComanda",
+       "ItemComanda.status",
+       "ItemComanda.itemCardapioId",
+       "ItemComanda.details.quantidade",
+       "ItemComanda.details.observacao",
+       "ItemComanda.details.precoUnitario",
+       "ItemComanda.details.valorTotal",
+       "ItemCardapio.name"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "paymentForm": {
+      "reads": [
+       "Comanda.details.subtotal",
+       "Comanda.details.totalComanda",
+       "Comanda.details.discountAmount",
+       "Comanda.details.paymentMethod"
+      ],
+      "edits": [
+       "Comanda.details.discountAmount",
+       "Comanda.details.paymentMethod"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "closeComandaActions": {
+      "reads": [
+       "Comanda.status",
+       "Mesa.details.disponivel"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "fecharComandaPaga",
+        "write": "Comanda.fecharComanda"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "posWorkbench"
+    },
+    "intent": "Em conteúdo estreito e fluido em torno de 390px, também usável em 360px e 430px, o caixa localiza a comanda, confere a cobrança, registra o pagamento e fecha para liberar a mesa.",
+    "sections": [
+     {
+      "id": "locateSection",
+      "priority": "secondary",
+      "purpose": "Empilhar no fluxo estreito a busca da comanda aberta para o caixa achar o atendimento a fechar em cerca de 390px.",
+      "organisms": [
+       "openComandaList"
+      ]
+     },
+     {
+      "id": "reviewSection",
+      "priority": "main",
+      "purpose": "Mostrar em coluna fluida os itens e os totais da comanda escolhida para conferência rápida da cobrança.",
+      "organisms": [
+       "comandaReview"
+      ]
+     },
+     {
+      "id": "settleSection",
+      "priority": "primary",
+      "purpose": "Concentrar desconto, forma de pagamento e o fechamento no trecho mais acessível da coluna estreita, usável em 360px e 430px.",
+      "organisms": [
+       "paymentForm",
+       "closeComandaActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "openComandaList": {
+      "kind": "list",
+      "text": "Lista as comandas abertas com número, mesa e situação para o caixa localizar a conta que vai encerrar.",
+      "intents": []
+     },
+     "comandaReview": {
+      "kind": "detail",
+      "text": "Mostra os itens lançados válidos, o subtotal e o total da comanda escolhida para o caixa conferir a cobrança antes de receber.",
+      "intents": []
+     },
+     "paymentForm": {
+      "kind": "form",
+      "text": "Recebe o desconto opcional e a forma de pagamento obrigatória para o caixa registrar como a conta será quitada.",
+      "intents": []
+     },
+     "closeComandaActions": {
+      "kind": "actions",
+      "text": "Dispara o fechamento da comanda paga e comunica que a mesa foi liberada para um novo atendimento.",
+      "intents": [
+       {
+        "id": "fecharComandaPaga",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "openComandaList": [
+      {
+       "role": "query",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "pick",
+       "preferred": "groupselectone--ml-select-one-autocomplete",
+       "alternative": "groupselectone--ml-combobox"
+      },
+      {
+       "role": "browse",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "comandaReview": [
+      {
+       "role": "totals",
+       "preferred": "groupviewmetric--ml-metric-big-number",
+       "alternative": "groupviewmetric--ml-metric-card"
+      },
+      {
+       "role": "items",
+       "preferred": "groupviewtable--ml-responsive-table",
+       "alternative": "groupviewtable--ml-responsive-data-table"
+      }
+     ],
+     "paymentForm": [
+      {
+       "role": "discount",
+       "preferred": "groupentermoney--ml-enter-money-br",
+       "alternative": "groupentermoney--ml-currency-input"
+      },
+      {
+       "role": "paymentMethod",
+       "preferred": "groupselectone--ml-radio-group",
+       "alternative": "groupselectone--ml-select-dropdown"
+      }
+     ],
+     "closeComandaActions": [
+      {
+       "role": "submit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      },
+      {
+       "role": "feedback",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-notify-banner"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "openComandaList": {
+      "reads": [
+       "Comanda.number",
+       "Comanda.status",
+       "Comanda.mesaId",
+       "Comanda.details.totalComanda",
+       "Mesa.code"
+      ],
+      "edits": [],
+      "selects": "comandaReview",
+      "submits": []
+     },
+     "comandaReview": {
+      "reads": [
+       "Comanda.number",
+       "Comanda.status",
+       "Comanda.details.subtotal",
+       "Comanda.details.totalComanda",
+       "ItemComanda.status",
+       "ItemComanda.itemCardapioId",
+       "ItemComanda.details.quantidade",
+       "ItemComanda.details.observacao",
+       "ItemComanda.details.precoUnitario",
+       "ItemComanda.details.valorTotal",
+       "ItemCardapio.name"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "paymentForm": {
+      "reads": [
+       "Comanda.details.subtotal",
+       "Comanda.details.totalComanda",
+       "Comanda.details.discountAmount",
+       "Comanda.details.paymentMethod"
+      ],
+      "edits": [
+       "Comanda.details.discountAmount",
+       "Comanda.details.paymentMethod"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "closeComandaActions": {
+      "reads": [
+       "Comanda.status",
+       "Mesa.details.disponivel"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "fecharComandaPaga",
+        "write": "Comanda.fecharComanda"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A página é o balcão de caixa: localizar a comanda, conferir itens e totais, aplicar desconto, registrar pagamento e encerrar a conta, o que corresponde a posWorkbench e não a cadastro, fila ou extrato financeiro."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Localizar uma comanda não requer decisão verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há filtro ou registro por data descrito."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas para informar."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a informar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A localização da comanda não exige valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não foi solicitado informar número ou quantidade."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a definir."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A busca textual especializada cobre a localização; não há outro texto livre a registrar."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "A tarefa é localizar uma comanda, não expandir conteúdo."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não envolve endereço, mapa ou geolocalização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há troca de seções no mesmo contexto."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há fluxo sequencial de etapas a navegar."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não foi descrito resultado ou status que exija notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há áudio ou vídeo a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a avaliar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A localização não menciona leitura por câmera de código."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": true,
+     "reason": "Permite localizar a comanda por busca textual e sugestões."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a selecionar ou enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "A tarefa não requer escolher múltiplas comandas."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "Permite escolher exatamente uma comanda dentre os resultados localizados."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação de duração relevante descrita."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "A ação principal é pesquisar e selecionar, já cobertas pelos controles próprios."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "A apresentação como cartões não é necessária para localizar a lista."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos a visualizar graficamente."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Exibe a coleção de comandas encontradas em layout adaptativo."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Comandas não foram descritas como estrutura hierárquica."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador destacado a acompanhar nesta lista."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "A coleção pode ser exibida pelo visualizador adaptativo; não há necessidade explícita de colunas tabulares."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A conferência é visual; não há decisão booleanamente registrada."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar ou editar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a informar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Subtotal e total são conferidos como dados exibidos, não inseridos."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há número a informar ou ajustar."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a definir."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há texto a registrar."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi indicada necessidade de revelar conteúdo recolhido."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não envolve localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções a alternar descritas."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há navegação por etapas neste detalhe."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "A tarefa é conferir dados, sem evento de notificação descrito."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação de item."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura de código por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "A comanda já foi localizada; este organismo apenas apresenta seu detalhe."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há múltiplas opções a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha exclusiva a fazer durante a conferência."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há processamento com progresso a indicar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "Nenhum comando é descrito no detalhe de conferência."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "A visualização em cartão não é necessária para itens e totais estruturados."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há análise gráfica de dados."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Os itens e valores pedem estrutura tabular, não uma coleção adaptativa genérica."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Os dados não possuem relação hierárquica descrita."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": true,
+     "reason": "Destaca subtotal e total como indicadores financeiros principais."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Apresenta os itens da comanda em linhas e colunas para conferência."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "O registro de desconto e pagamento não requer valor verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a registrar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": true,
+     "reason": "Permite informar valores monetários do desconto e do pagamento com formatação de moeda."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "O desconto e o pagamento foram descritos como valores financeiros, atendidos pela entrada monetária."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a informar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não foi solicitado comentário, identificação ou outro texto livre."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há conteúdo adicional a expandir no formulário."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não envolve endereço ou geolocalização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há troca de seções descrita."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há processo em múltiplas etapas a navegar."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Nenhum resultado de registro ou mensagem ao usuário foi descrito."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a avaliar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há leitura de código por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O formulário não requer localizar conteúdo por busca."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há múltiplas opções a escolher."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "Permite selecionar uma única forma de pagamento dentre alternativas mutuamente exclusivas."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação com duração a acompanhar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite enviar e registrar os valores de desconto e pagamento informados."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O foco é entrada de dados, não apresentação de item em cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados a representar graficamente."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção de registros para exibir."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há dados hierárquicos."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não foi solicitado indicador visual; o objetivo é registrar dados."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há dados estruturados em coleção para tabela."
+    }
+   ]
+  },
+  {
+   "organismId": "organism4",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Fechar e liberar são comandos, não uma decisão booleana a informar."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou hora a registrar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O pagamento já foi registrado; este organismo executa o fechamento."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico a inserir."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a definir."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há texto livre a registrar."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há conteúdo expansível necessário à ação."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Liberar a mesa não exige localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há troca de seções descrita."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não há sequência de passos navegável."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "Informa o resultado do fechamento da comanda e da liberação da mesa."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura de código."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "A comanda já está em contexto; não é preciso buscar conteúdo."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a selecionar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há múltiplas opções a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha exclusiva descrita antes da execução."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "O fechamento não foi descrito como operação com progresso visual."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite executar o comando de fechar a comanda paga e liberar a mesa."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não há necessidade descrita de apresentar um cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados gráficos."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção de dados a exibir."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura hierárquica."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador destacado solicitado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há coleção estruturada para apresentar em tabela."
+    }
+   ]
+  }
+ ]
+}

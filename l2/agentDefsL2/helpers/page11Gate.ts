@@ -4,7 +4,8 @@ import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
+import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
+import { d2CreateRequiredInput, d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
 export interface D2Page11Category { categoryId: string; experiences?: { page11?: string; page21?: string } }
 export interface D2Page11MenuNode { id: string; kind: string; organisms?: Array<{ kind: string; text: string }>; children?: D2Page11MenuNode[] }
@@ -141,6 +142,7 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
     }
   }
   issues.push(...d2Page11WriteDuplicates(draft));
+  issues.push(...d2Page11InputNotEdited(draft, currentNeeds?.writes ?? [], sources.entities));
   for (const write of pageWrites) if (!coveredWrites.has(write)) add('D2_PAGE11_WRITE_UNCOVERED', 'page11Needs.writes', `Write ${write} needs a submit or accessible navigate target declaring the write.`);
   for (const [id, choices] of Object.entries(definition.molecules)) {
     if (!definition.organisms[id]) add('D2_PAGE11_MOLECULE_ORGANISM', `molecules.${id}`, `Molecule target ${id} is absent.`);
@@ -149,6 +151,28 @@ export function gateD2Page11(value: unknown, draftValue: unknown, sources: D2Pag
     }
   }
   if (sources.promptTokens !== undefined && (!Number.isSafeInteger(sources.promptTokens) || sources.promptTokens > 160000)) add('D2_PAGE11_PROMPT_LIMIT', 'promptTokens', `Decision prompt uses ${sources.promptTokens} tokens; maximum is 160000.`);
+  return issues;
+}
+
+/**
+ * A write that asks for typed input needs an organism that edits it (d2_72): a transition payload, or the required
+ * fields of a create when nothing on the page edits the entity. Refused here, where the page11 can still be repaired.
+ */
+export function d2Page11InputNotEdited(draft: D2Page11Needs, writes: readonly D2Page11Write[], entities: Record<string, Ns5OntologyAnyEntity>): D2Page11Issue[] {
+  const edited = new Set(Object.values(draft.organisms).flatMap(unit => unit.edits));
+  const issues: D2Page11Issue[] = [];
+  for (const [organismId, unit] of Object.entries(draft.organisms)) {
+    for (const binding of unit.submits) {
+      const write = d2WriteByKey(writes, binding.write);
+      if (!write) continue;
+      const entity = entities[write.entity];
+      const asked = write.operation === 'transition' ? d2TransitionPayload(entity, write.entity, write.transitionRef ?? '')
+        : write.operation === 'create' && ![...edited].some(path => path.split('.')[0] === write.entity) ? d2CreateRequiredInput(entity, write.entity) : [];
+      const missing = asked.filter(path => !edited.has(path));
+      if (missing.length) issues.push({ code: 'D2_PAGE11_INPUT_NOT_EDITED', path: `page11Needs.organisms.${organismId}.submits.${binding.intentId}`,
+        message: `Submit ${binding.intentId} (${binding.write}) asks for ${missing.join(', ')}; add them to the edits of the form that serves it.` });
+    }
+  }
   return issues;
 }
 

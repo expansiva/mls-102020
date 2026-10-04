@@ -1,0 +1,86 @@
+{
+ "states": [
+  {
+   "id": "cardapio",
+   "source": "load.cardapio",
+   "description": "Itens do cardápio carregados."
+  },
+  {
+   "id": "itemCardapio",
+   "source": "entry.params.itemCardapioId",
+   "description": "Item do cardápio selecionado para edição."
+  }
+ ],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega a primeira página de itens do cardápio.",
+   "calls": "load",
+   "sets": "cardapio"
+  },
+  {
+   "id": "filterListaItensCardapio",
+   "description": "Recarrega a lista de itens do cardápio a partir da primeira página.",
+   "calls": "loadCardapio",
+   "sets": "cardapio"
+  },
+  {
+   "id": "loadMoreListaItensCardapio",
+   "description": "Adiciona a próxima página de itens à lista do cardápio.",
+   "calls": "loadCardapio",
+   "sets": "cardapio"
+  },
+  {
+   "id": "cadastrarItemCardapio",
+   "description": "Cadastra um item do cardápio.",
+   "calls": "cadastrarItemCardapio",
+   "sets": "itemCardapio",
+   "updates": [
+    "cardapio"
+   ]
+  },
+  {
+   "id": "atualizarItemCardapio",
+   "description": "Atualiza o item selecionado do cardápio.",
+   "calls": "atualizarItemCardapio",
+   "sets": "itemCardapio",
+   "updates": [
+    "cardapio"
+   ]
+  }
+ ],
+ "journeys": [],
+ "commandReturns": [
+  {
+   "requestId": "cadastrarItemCardapio",
+   "returns": [
+    "itemCardapio"
+   ]
+  },
+  {
+   "requestId": "atualizarItemCardapio",
+   "returns": [
+    "itemCardapio"
+   ]
+  }
+ ],
+ "requestRules": [
+  {
+   "requestId": "load",
+   "rules": []
+  },
+  {
+   "requestId": "loadCardapio",
+   "rules": []
+  },
+  {
+   "requestId": "cadastrarItemCardapio",
+   "rules": []
+  },
+  {
+   "requestId": "atualizarItemCardapio",
+   "rules": []
+  }
+ ],
+ "formChoices": []
+}

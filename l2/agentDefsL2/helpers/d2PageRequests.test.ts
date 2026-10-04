@@ -198,7 +198,8 @@ void test('synthetic fixture covers version, unbound submit and grant refusal', 
   draft.organisms[Object.keys(draft.organisms)[0]].submits = [{ intentId: 'orphanSubmit', write: `${Object.keys(base.entities)[0]}.create` }];
   desktop.organisms[Object.keys(desktop.organisms)[0]].intents = [{ id: 'orphanSubmit', kind: 'submit' }];
   const unbound = deriveD2PageRequests({ ...base, desktop, draftDesktop: draft });
-  assert.ok(unbound.issues.some(item => item.code === 'D2_REQUESTS_SUBMIT_UNBOUND'));
+  // d2_72: a create that asks for typed fields and has no form editing its entity names the fields.
+  assert.ok(unbound.issues.some(item => item.code === 'D2_REQUESTS_INPUT_NOT_EDITED' && / asks for .+, which no organism of the page edits\./u.test(item.message)), JSON.stringify(unbound.issues));
   const denied = deriveD2PageRequests({ ...base, access: { grants: [] } });
   assert.ok(denied.issues.some(item => item.code === 'D2_REQUESTS_PATH_GRANT'));
   const derivedField = Object.values(pack.needs.pages[0].reads.find(item => item.derived.length)?.derived ?? [])[0];

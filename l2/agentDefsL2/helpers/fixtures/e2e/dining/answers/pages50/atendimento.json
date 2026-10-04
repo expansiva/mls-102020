@@ -1,0 +1,1063 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "posWorkbench"
+    },
+    "intent": "Permitir ao garçom conduzir o atendimento: localizar mesa disponível, comanda aberta ou item do cardápio, conferir os lançamentos e o subtotal da comanda, informar o pedido e confirmar a abertura, o lançamento ou o cancelamento.",
+    "sections": [
+     {
+      "id": "localizacao",
+      "priority": "primary",
+      "purpose": "Reunir mesas disponíveis, comandas abertas e itens do cardápio para o garçom achar o contexto do atendimento.",
+      "organisms": [
+       "lookupAtendimento"
+      ]
+     },
+     {
+      "id": "conferencia",
+      "priority": "main",
+      "purpose": "Mostrar a comanda escolhida, os itens lançados e o subtotal para conferência antes de agir.",
+      "organisms": [
+       "detalheComanda"
+      ]
+     },
+     {
+      "id": "operacao",
+      "priority": "secondary",
+      "purpose": "Concentrar a entrada do pedido e as confirmações de abrir a comanda, lançar o item e cancelar o item indevido.",
+      "organisms": [
+       "formularioLancamento",
+       "acoesAtendimento"
+      ]
+     }
+    ],
+    "organisms": {
+     "lookupAtendimento": {
+      "kind": "list",
+      "text": "Mostra mesas disponíveis, comandas abertas e itens do cardápio para o garçom localizar o contexto do atendimento e escolher mesa, comanda ou item.",
+      "intents": []
+     },
+     "detalheComanda": {
+      "kind": "detail",
+      "text": "Apresenta a comanda selecionada, os itens lançados com quantidade e situação, e o subtotal, para o garçom conferir o pedido antes de lançar ou cancelar.",
+      "intents": []
+     },
+     "formularioLancamento": {
+      "kind": "form",
+      "text": "Permite informar o item do cardápio, a quantidade e a observação do pedido para preparar o lançamento na comanda aberta.",
+      "intents": []
+     },
+     "acoesAtendimento": {
+      "kind": "actions",
+      "text": "Reúne as confirmações para abrir a comanda da mesa disponível, lançar o item informado e cancelar o item lançado por engano, com retorno imediato ao garçom.",
+      "intents": [
+       {
+        "id": "abrirComanda",
+        "kind": "submit"
+       },
+       {
+        "id": "lancarItem",
+        "kind": "submit"
+       },
+       {
+        "id": "cancelarItem",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "lookupAtendimento": [
+      {
+       "role": "navegacao",
+       "preferred": "groupnavigatesection--ml-navigate-pills",
+       "alternative": "groupnavigatesection--ml-tabs"
+      },
+      {
+       "role": "busca",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "colecao",
+       "preferred": "groupviewdata--ml-card-grid",
+       "alternative": "groupviewdata--ml-vertical-record-list"
+      }
+     ],
+     "detalheComanda": [
+      {
+       "role": "metrica",
+       "preferred": "groupviewmetric--ml-metric-card",
+       "alternative": "groupviewmetric--ml-metric-big-number"
+      },
+      {
+       "role": "tabela",
+       "preferred": "groupviewtable--ml-data-table",
+       "alternative": "groupviewtable--ml-view-table"
+      }
+     ],
+     "formularioLancamento": [
+      {
+       "role": "selecao",
+       "preferred": "groupselectone--ml-select-one-autocomplete",
+       "alternative": "groupselectone--ml-combobox"
+      },
+      {
+       "role": "numero",
+       "preferred": "groupenternumber--ml-number-stepper",
+       "alternative": "groupenternumber--ml-number-input"
+      },
+      {
+       "role": "texto",
+       "preferred": "groupentertext--ml-multiline-text",
+       "alternative": "groupentertext--ml-enter-text"
+      }
+     ],
+     "acoesAtendimento": [
+      {
+       "role": "acao",
+       "preferred": "grouptriggeraction--ml-button-group",
+       "alternative": "grouptriggeraction--ml-button-standard"
+      },
+      {
+       "role": "notificacao",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "lookupAtendimento": {
+      "reads": [
+       "Mesa.code",
+       "Mesa.details.disponivel",
+       "Comanda.number",
+       "Comanda.mesaId",
+       "Comanda.status",
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente"
+      ],
+      "edits": [],
+      "selects": "detalheComanda",
+      "submits": []
+     },
+     "detalheComanda": {
+      "reads": [
+       "Comanda.number",
+       "Comanda.mesaId",
+       "Comanda.status",
+       "Comanda.details.subtotal",
+       "Mesa.code",
+       "ItemComanda.comandaId",
+       "ItemComanda.itemCardapioId",
+       "ItemComanda.status",
+       "ItemComanda.details.quantidade",
+       "ItemComanda.details.observacao",
+       "ItemComanda.details.precoUnitario",
+       "ItemComanda.details.valorTotal",
+       "ItemCardapio.name"
+      ],
+      "edits": [],
+      "selects": "acoesAtendimento",
+      "submits": []
+     },
+     "formularioLancamento": {
+      "reads": [
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente",
+       "Comanda.number",
+       "Comanda.status"
+      ],
+      "edits": [
+       "ItemComanda.itemCardapioId",
+       "ItemComanda.details.quantidade",
+       "ItemComanda.details.observacao"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "acoesAtendimento": {
+      "reads": [
+       "Comanda.number",
+       "Comanda.mesaId",
+       "Comanda.status",
+       "ItemComanda.status",
+       "ItemComanda.itemCardapioId"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "abrirComanda",
+        "write": "Comanda.create"
+       },
+       {
+        "intentId": "lancarItem",
+        "write": "ItemComanda.create"
+       },
+       {
+        "intentId": "cancelarItem",
+        "write": "ItemComanda.cancelarItemComanda"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "posWorkbench"
+    },
+    "intent": "Em conteúdo estreito e fluido em torno de 390px, ainda usável em 360px e 430px, o garçom vê a comanda em atendimento, informa item, quantidade e observação, e confirma abertura, lançamento ou cancelamento em sequência vertical, sem grade fixa.",
+    "sections": [
+     {
+      "id": "conferencia",
+      "priority": "primary",
+      "purpose": "No topo da faixa estreita, destacar a comanda, os itens e o subtotal para o garçom conferir o atendimento em curso.",
+      "organisms": [
+       "detalheComanda"
+      ]
+     },
+     {
+      "id": "operacao",
+      "priority": "main",
+      "purpose": "Em seguida, oferecer o formulário de lançamento e as ações de confirmar, em empilhamento fluido legível em 360px a 430px.",
+      "organisms": [
+       "formularioLancamento",
+       "acoesAtendimento"
+      ]
+     },
+     {
+      "id": "localizacao",
+      "priority": "secondary",
+      "purpose": "Abaixo, manter a busca de mesas, comandas e cardápio quando o garçom precisa trocar de contexto nesta faixa estreita.",
+      "organisms": [
+       "lookupAtendimento"
+      ]
+     }
+    ],
+    "organisms": {
+     "lookupAtendimento": {
+      "kind": "list",
+      "text": "Mostra mesas disponíveis, comandas abertas e itens do cardápio para o garçom localizar o contexto do atendimento e escolher mesa, comanda ou item.",
+      "intents": []
+     },
+     "detalheComanda": {
+      "kind": "detail",
+      "text": "Apresenta a comanda selecionada, os itens lançados com quantidade e situação, e o subtotal, para o garçom conferir o pedido antes de lançar ou cancelar.",
+      "intents": []
+     },
+     "formularioLancamento": {
+      "kind": "form",
+      "text": "Permite informar o item do cardápio, a quantidade e a observação do pedido para preparar o lançamento na comanda aberta.",
+      "intents": []
+     },
+     "acoesAtendimento": {
+      "kind": "actions",
+      "text": "Reúne as confirmações para abrir a comanda da mesa disponível, lançar o item informado e cancelar o item lançado por engano, com retorno imediato ao garçom.",
+      "intents": [
+       {
+        "id": "abrirComanda",
+        "kind": "submit"
+       },
+       {
+        "id": "lancarItem",
+        "kind": "submit"
+       },
+       {
+        "id": "cancelarItem",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "lookupAtendimento": [
+      {
+       "role": "navegacao",
+       "preferred": "groupnavigatesection--ml-navigate-pills",
+       "alternative": "groupnavigatesection--ml-tabs"
+      },
+      {
+       "role": "busca",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "colecao",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "detalheComanda": [
+      {
+       "role": "metrica",
+       "preferred": "groupviewmetric--ml-metric-big-number",
+       "alternative": "groupviewmetric--ml-metric-card"
+      },
+      {
+       "role": "tabela",
+       "preferred": "groupviewtable--ml-responsive-table",
+       "alternative": "groupviewtable--ml-responsive-data-table"
+      }
+     ],
+     "formularioLancamento": [
+      {
+       "role": "selecao",
+       "preferred": "groupselectone--ml-combobox",
+       "alternative": "groupselectone--ml-select-one-autocomplete"
+      },
+      {
+       "role": "numero",
+       "preferred": "groupenternumber--ml-number-stepper",
+       "alternative": "groupenternumber--ml-number-input"
+      },
+      {
+       "role": "texto",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-multiline-text"
+      }
+     ],
+     "acoesAtendimento": [
+      {
+       "role": "acao",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      },
+      {
+       "role": "notificacao",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "lookupAtendimento": {
+      "reads": [
+       "Mesa.code",
+       "Mesa.details.disponivel",
+       "Comanda.number",
+       "Comanda.mesaId",
+       "Comanda.status",
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente"
+      ],
+      "edits": [],
+      "selects": "detalheComanda",
+      "submits": []
+     },
+     "detalheComanda": {
+      "reads": [
+       "Comanda.number",
+       "Comanda.mesaId",
+       "Comanda.status",
+       "Comanda.details.subtotal",
+       "Mesa.code",
+       "ItemComanda.comandaId",
+       "ItemComanda.itemCardapioId",
+       "ItemComanda.status",
+       "ItemComanda.details.quantidade",
+       "ItemComanda.details.observacao",
+       "ItemComanda.details.precoUnitario",
+       "ItemComanda.details.valorTotal",
+       "ItemCardapio.name"
+      ],
+      "edits": [],
+      "selects": "acoesAtendimento",
+      "submits": []
+     },
+     "formularioLancamento": {
+      "reads": [
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente",
+       "Comanda.number",
+       "Comanda.status"
+      ],
+      "edits": [
+       "ItemComanda.itemCardapioId",
+       "ItemComanda.details.quantidade",
+       "ItemComanda.details.observacao"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "acoesAtendimento": {
+      "reads": [
+       "Comanda.number",
+       "Comanda.mesaId",
+       "Comanda.status",
+       "ItemComanda.status",
+       "ItemComanda.itemCardapioId"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "abrirComanda",
+        "write": "Comanda.create"
+       },
+       {
+        "intentId": "lancarItem",
+        "write": "ItemComanda.create"
+       },
+       {
+        "intentId": "cancelarItem",
+        "write": "ItemComanda.cancelarItemComanda"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A página é a bancada operacional do garçom para abrir comanda, lançar itens do cardápio e cancelar lançamentos no ritmo do atendimento — típico de posWorkbench, e não de cadastro, fila de cozinha ou fechamento financeiro."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A consulta de mesas, comandas e cardápio não requer decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar ou filtrar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas na localização solicitada."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a informar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A lista não solicita inserção de valores monetários."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico a preencher."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a definir."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há dado textual de formulário a informar."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a preencher."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há faixa de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O enunciado não indica conteúdo adicional expansível."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Mesas são localizadas no restaurante, não por endereço ou posição geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": true,
+     "reason": "Permite alternar no mesmo contexto entre as seções de mesas disponíveis, comandas abertas e cardápio."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A consulta não é um processo sequencial em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento ou resultado de ação que exija notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação de item."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura por QR code, código de barras ou câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": true,
+     "reason": "Permite encontrar rapidamente uma mesa, comanda ou item específico do cardápio por texto."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há seleção ou envio de arquivos."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "A localização não pede seleção múltipla de opções."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "A finalidade é visualizar e localizar coleções, não escolher uma única opção de um conjunto mutuamente exclusivo."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação de duração a acompanhar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O organismo descreve consulta de dados, não comando a executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não é necessária a apresentação de cada registro como unidade visual independente; a coleção é o foco."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dado analítico a representar graficamente."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Exibe as coleções de mesas, comandas abertas e itens do cardápio em layout adaptável."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Os dados descritos não possuem relação pai-filho a explorar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador destacado solicitado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "O enunciado pede coleções de naturezas distintas; a visualização adaptável de dados é mais adequada que uma grade tabular estruturada."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A visualização da comanda não requer decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a preencher."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Subtotal e total são exibidos, não valores monetários a serem digitados."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há número a informar."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há texto de formulário a preencher."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O detalhe solicitado não indica seções recolhíveis."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não foram definidas seções internas para alternância."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A visualização de detalhes não segue etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há resultado de ação para comunicar."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia para reprodução."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação ou pontuação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura de código ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O contexto já é uma comanda específica; não é uma interface de busca."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivos a selecionar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há opções para seleção múltipla."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há decisão entre opções mutuamente exclusivas."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há processamento com progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "Este organismo é de detalhe e não descreve comando executável."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "A necessidade principal é detalhar itens e totais, não compor um cartão independente."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há análise gráfica solicitada."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "A coleção de itens possui campos estruturados e é melhor apresentada em tabela."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura hierárquica."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": true,
+     "reason": "Destaca visualmente o subtotal e o total da comanda como indicadores."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Apresenta os itens lançados da comanda em linhas e colunas estruturadas."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "O lançamento não pede escolha verdadeira/falsa."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a preencher."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O preço pertence ao item do cardápio e não é um valor informado no lançamento."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": true,
+     "reason": "Permite informar a quantidade do item a lançar na comanda."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "É necessária uma quantidade única, não uma faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": true,
+     "reason": "Permite registrar a observação livre associada ao item."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O formulário não requer conteúdo expansível."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Não há endereço ou posição geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "O lançamento não foi descrito com seções alternáveis."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não foi descrito processo em múltiplas etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "A finalidade deste organismo é coleta de dados; o retorno da operação cabe ao organismo de ações."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação de item."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "O item é informado a partir do cardápio, sem captura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O requisito pede informar o item, e a seleção de uma opção do cardápio atende diretamente a esse dado."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a anexar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Cada lançamento refere-se a um item do cardápio, não a múltiplos itens simultaneamente."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "Permite escolher exatamente um item do cardápio para o lançamento atual."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação longa a acompanhar durante o preenchimento."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite confirmar e executar o lançamento preenchido na comanda."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não há necessidade de exibir uma unidade visual independente."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados para gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "O organismo é de formulário para um lançamento, não de exibição de coleção."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há relação hierárquica a mostrar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador destacado solicitado."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há coleção tabular a exibir."
+    }
+   ]
+  },
+  {
+   "organismId": "organism4",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "As ações não requerem decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a informar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Nenhuma das ações pede entrada de valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Nenhuma ação pede número neste organismo."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não há texto a preencher para executar os comandos descritos."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não há conteúdo recolhível necessário para os comandos."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Abrir uma comanda de mesa não envolve posição geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções internas a alternar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "As ações são comandos independentes, não um fluxo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "Comunica sucesso ou erro ao abrir a comanda, lançar item ou cancelar um lançamento."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia para reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Nenhuma ação requer leitura por câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Este organismo executa comandos; a localização de mesas, comandas e itens pertence à listagem."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a selecionar ou enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Os comandos não pedem seleção múltipla."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "A escolha de mesa ou item é fornecida pelo contexto dos organismos de lista e formulário, não por este conjunto de ações."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não foi indicada ação assíncrona longa que necessite indicador de progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Fornece os comandos para abrir a comanda da mesa, lançar um item e cancelar o item lançado por engano."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Não há requisito de visualização de item em cartão."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos para gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "O organismo é de execução de ações, não de apresentação de coleção."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura pai-filho a exibir."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há métrica a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há dados estruturados a apresentar em tabela."
+    }
+   ]
+  }
+ ]
+}

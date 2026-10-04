@@ -1,0 +1,99 @@
+{
+ "states": [
+  {
+   "id": "mesas",
+   "source": "load.mesas",
+   "description": "Mesas carregadas para consulta e seleção."
+  },
+  {
+   "id": "mesaSelecionada",
+   "source": "entry.params.mesaId",
+   "description": "Mesa selecionada para edição no formulário."
+  },
+  {
+   "id": "pagina",
+   "source": "entry.params.page",
+   "description": "Página atual da lista de mesas."
+  }
+ ],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega a lista inicial de mesas.",
+   "calls": "load",
+   "sets": "mesas"
+  },
+  {
+   "id": "filterMesasList",
+   "description": "Recarrega a lista de mesas conforme os filtros e a página atual.",
+   "calls": "loadMesas",
+   "sets": "mesas"
+  },
+  {
+   "id": "loadMoreMesasList",
+   "description": "Carrega a próxima página da lista de mesas.",
+   "calls": "loadMesas",
+   "sets": "mesas"
+  },
+  {
+   "id": "createMesa",
+   "description": "Cria uma mesa a partir dos dados do formulário.",
+   "calls": "createMesa",
+   "sets": "mesaSelecionada",
+   "updates": [
+    "mesas"
+   ]
+  },
+  {
+   "id": "updateMesa",
+   "description": "Atualiza a mesa selecionada com os dados do formulário.",
+   "calls": "updateMesa",
+   "sets": "mesaSelecionada",
+   "updates": [
+    "mesas"
+   ]
+  }
+ ],
+ "journeys": [],
+ "commandReturns": [
+  {
+   "requestId": "createMesa",
+   "returns": [
+    "mesa"
+   ]
+  },
+  {
+   "requestId": "updateMesa",
+   "returns": [
+    "mesa"
+   ]
+  }
+ ],
+ "requestRules": [
+  {
+   "requestId": "load",
+   "rules": [
+    "mesaDisponivelParaAbrirComanda"
+   ]
+  },
+  {
+   "requestId": "loadMesas",
+   "rules": [
+    "mesaDisponivelParaAbrirComanda"
+   ]
+  },
+  {
+   "requestId": "createMesa",
+   "rules": [
+    "mesaDisponivelParaAbrirComanda"
+   ]
+  },
+  {
+   "requestId": "updateMesa",
+   "rules": [
+    "mesaDisponivelParaAbrirComanda"
+   ]
+  }
+ ],
+ "formChoices": []
+}

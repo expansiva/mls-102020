@@ -5,6 +5,7 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { buildD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2WriteByKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
+import { d2CreateRequiredInput, d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
 export interface D2PageRequestsIssue { code: string; path: string; message: string }
 
@@ -156,7 +157,7 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
 
   const selectTargets = new Set(organisms.map(item => item.selects).filter(Boolean));
   const listUnits = organisms.filter(item => item.kind === 'list');
-  const forms = bindForms(organisms, add);
+  const forms = bindForms(organisms, input.entities, input.needsPages.find(item => item.pageId === input.pageId)?.writes ?? [], add);
   const commands = commandRequests(organisms, forms, input.entities, input.needsPages.find(item => item.pageId === input.pageId)?.writes ?? [], add);
   const loadUnits = organisms.filter(item => !selectTargets.has(item.id));
   const loadEntities = unique(loadUnits.flatMap(item => item.reads.map(path => path.split('.')[0])).filter(Boolean));
@@ -217,6 +218,9 @@ export function deriveD2PageRequests(input: D2PageRequestsInput): D2DerivedPageR
     if (detailEntities.every(entityId => originEntities.has(entityId))) continue;
     const entityId = primaryEntity(detail.reads);
     const key = camel(entityId);
+    // One detail request per entity: several selection targets of it share it (d2_72).
+    const existing = detailRequests.find(item => item.id === `load${entityId}`);
+    if (existing) { existing.organisms = unique([...existing.organisms, detail.id]); continue; }
     detailRequests.push({
       id: `load${entityId}`, kind: 'qry', trigger: `load${entityId}`, returns: [key], returnEntities: { [key]: entityId },
       inputPaths: [`${entityId}.id`], organisms: [detail.id], params: ['id'], lists: [],
@@ -274,27 +278,59 @@ function units(definition: D2Page11Definition, draft: D2Page11Needs): OrganismUn
   });
 }
 
-function bindForms(organisms: OrganismUnit[], add: (code: string, path: string, message: string) => void): Record<string, D2DerivedForm> {
+/** The input a submit's write asks for and the form that edits it (d2_72). A write without input needs no form. */
+interface SubmitInput { pageWrite: D2PageRequestsNeedWrite; entityId: string; payload: string[]; required: string[] }
+
+function submitInput(submit: { intentId: string; write: string }, unitId: string, entities: Record<string, Ns5OntologyAnyEntity>, pageWrites: D2PageRequestsNeedWrite[], add: (code: string, path: string, message: string) => void): SubmitInput | null {
+  const pageWrite = d2WriteByKey(pageWrites, submit.write);
+  if (!pageWrite) {
+    add('D2_REQUESTS_WRITE_UNKNOWN', `organisms.${unitId}.submits.${submit.intentId}`, `Submit ${submit.intentId} writes ${submit.write}, which is not a write of the page needs.`);
+    return null;
+  }
+  const entityId = pageWrite.entity;
+  const entity = entities[entityId];
+  return {
+    pageWrite, entityId,
+    payload: pageWrite.operation === 'transition' ? d2TransitionPayload(entity, entityId, pageWrite.transitionRef ?? '') : [],
+    required: pageWrite.operation === 'create' ? d2CreateRequiredInput(entity, entityId) : [],
+  };
+}
+
+function bindForms(organisms: OrganismUnit[], entities: Record<string, Ns5OntologyAnyEntity>, pageWrites: D2PageRequestsNeedWrite[], add: (code: string, path: string, message: string) => void): Record<string, D2DerivedForm> {
   const forms: Record<string, D2DerivedForm> = {};
-  const formUnits = organisms.filter(item => item.kind === 'form' || item.edits.length);
   for (const unit of organisms) {
     for (const submit of unit.submits) {
-      const entity = submit.write.split('.')[0];
-      const sameSection = unit.section
-        ? formUnits.filter(item => item.section === unit.section && item.id !== unit.id && editsEntity(item, entity))
-        : [];
-      const uniqueForm = formUnits.filter(item => editsEntity(item, entity));
-      const chosen = sameSection.length === 1 ? sameSection[0] : uniqueForm.length === 1 ? uniqueForm[0] : undefined;
-      if (!chosen) {
-        if (uniqueForm.length > 1) {
-          forms[submit.intentId] = { organism: '', submit: submit.intentId, section: unit.section, entity, ambiguous: true };
-        } else {
-          add('D2_REQUESTS_SUBMIT_UNBOUND', `organisms.${unit.id}.submits.${submit.intentId}`, `Submit ${submit.intentId} has no bindable form after section and entity matching.`);
+      const input = submitInput(submit, unit.id, entities, pageWrites, add);
+      if (!input) continue;
+      const { entityId, pageWrite, payload, required } = input;
+      const editors = organisms.filter(item => item.edits.some(path => path.split('.')[0] === entityId));
+      const where = `organisms.${unit.id}.submits.${submit.intentId}`;
+      let candidates: OrganismUnit[];
+      if (pageWrite.operation === 'transition') {
+        if (!payload.length) continue; // a transition without payload is an action: no form
+        candidates = editors.filter(item => payload.every(path => item.edits.includes(path)));
+        if (!candidates.length) {
+          const edited = new Set(organisms.flatMap(item => item.edits));
+          const missing = payload.filter(path => !edited.has(path));
+          add('D2_REQUESTS_INPUT_NOT_EDITED', where, missing.length
+            ? `Submit ${submit.intentId} (${submit.write}) asks for ${missing.join(', ')}, which no organism of the page edits.`
+            : `Submit ${submit.intentId} (${submit.write}) asks for ${payload.join(', ')}, and no single form edits all of them.`);
+          continue;
         }
-        continue;
+      } else {
+        if (!editors.length) {
+          // A create with nothing to type (ids from context, system fields) or an update without fields: no form.
+          if (required.length) add('D2_REQUESTS_INPUT_NOT_EDITED', where, `Submit ${submit.intentId} (${submit.write}) asks for ${required.join(', ')}, which no organism of the page edits.`);
+          continue;
+        }
+        candidates = editors;
       }
+      const sameSection = unit.section ? candidates.filter(item => item.section === unit.section && item.id !== unit.id) : [];
+      const chosen = sameSection.length === 1 ? sameSection[0] : candidates.length === 1 ? candidates[0] : undefined;
       // Keyed by submit: one form may serve several submits (create and update of the same record).
-      forms[submit.intentId] = { organism: chosen.id, submit: submit.intentId, section: chosen.section, entity, ambiguous: false };
+      forms[submit.intentId] = chosen
+        ? { organism: chosen.id, submit: submit.intentId, section: chosen.section, entity: entityId, ambiguous: false }
+        : { organism: '', submit: submit.intentId, section: unit.section, entity: entityId, ambiguous: true };
     }
   }
   return forms;
@@ -308,37 +344,38 @@ function commandRequests(
   add: (code: string, path: string, message: string) => void,
 ): D2DerivedRequest[] {
   const out: D2DerivedRequest[] = [];
+  const silent = (): void => undefined; // bindForms already reported the write
   for (const unit of organisms) {
     for (const submit of unit.submits) {
+      const input = submitInput(submit, unit.id, entities, pageWrites, silent);
+      if (!input) continue;
+      const { entityId, pageWrite, payload, required } = input;
+      const operation = pageWrite.operation;
       const form = forms[submit.intentId];
-      if (!form) continue; // bindForms already reported D2_REQUESTS_SUBMIT_UNBOUND
-      const formUnit = form.organism ? organisms.find(item => item.id === form.organism) : undefined;
-      if (form.organism && !formUnit) {
+      const editors = organisms.some(item => item.edits.some(path => path.split('.')[0] === entityId));
+      // bindForms refused it (D2_REQUESTS_INPUT_NOT_EDITED): input asked and no form edits it.
+      if (!form && ((operation === 'transition' && payload.length) || (operation === 'create' && required.length && !editors))) continue;
+      const formUnit = form?.organism ? organisms.find(item => item.id === form.organism) : undefined;
+      if (form?.organism && !formUnit) {
         add('D2_REQUESTS_FORM_MISSING', `organisms.${unit.id}.submits.${submit.intentId}`, `Submit ${submit.intentId} is bound to form ${form.organism}, which is not an organism of the page.`);
         continue;
       }
-      const entityId = submit.write.split('.')[0];
       const entity = entities[entityId];
       const caps = capabilities(entity);
-      // The key of a transition is its transitionRef; the operation comes from the page write, never from the key text.
-      const pageWrite = d2WriteByKey(pageWrites, submit.write);
-      if (!pageWrite) {
-        add('D2_REQUESTS_WRITE_UNKNOWN', `organisms.${unit.id}.submits.${submit.intentId}`, `Submit ${submit.intentId} writes ${submit.write}, which is not a write of the page needs.`);
-        continue;
-      }
-      const operation = pageWrite.operation;
       if (operation === 'create' && entity && !caps.has('create') && !caps.has('register.createOrAttach') && ![...caps].some(item => item.endsWith(`.${operation}`) || item === operation)) {
         add('D2_REQUESTS_CAPABILITY_MISSING', `organisms.${unit.id}.submits.${submit.intentId}`, `Write ${submit.write} has no matching ontology capability.`);
       }
-      const edits = formUnit?.edits ?? [];
-      const contextIds = requiredContextIds(entityId, entity, edits);
+      // The command carries the write's input only, never the rest of the form.
+      const formEdits = (formUnit?.edits ?? []).filter(path => path.split('.')[0] === entityId);
+      const typed = operation === 'transition' ? payload : formEdits;
+      const contextIds = operation === 'create' ? requiredContextIds(entityId, entity, typed) : [];
       const identity = operation === 'update' || operation === 'transition' ? [`${entityId}.id`, `${entityId}.version`] : [];
       const key = camel(entityId);
       out.push({
         id: submit.intentId, kind: 'cmd', trigger: submit.intentId, writes: submit.write, operation,
         returns: [key], returnEntities: { [key]: entityId },
-        inputPaths: unique([...edits, ...contextIds, ...identity]),
-        organisms: [form.organism, unit.id].filter(Boolean), params: [], lists: [],
+        inputPaths: unique([...typed, ...contextIds, ...identity]),
+        organisms: [form?.organism ?? '', unit.id].filter(Boolean), params: [], lists: [],
       });
     }
   }
@@ -430,10 +467,6 @@ function entryParams(
   return params;
 }
 
-function editsEntity(unit: OrganismUnit, entity: string): boolean {
-  if (unit.kind === 'form' && (!unit.edits.length || unit.edits.every(path => path.split('.')[0] === entity))) return unit.edits.length ? true : unit.kind === 'form';
-  return unit.edits.some(path => path.split('.')[0] === entity);
-}
 function capabilities(entity: Ns5OntologyAnyEntity | undefined): Set<string> {
   const raw = (entity as { capabilities?: Record<string, string> } | undefined)?.capabilities ?? {};
   return new Set(Object.keys(raw));
