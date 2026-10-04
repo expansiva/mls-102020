@@ -1,0 +1,380 @@
+{
+  "types": [
+    {
+      "name": "ProdutoEstoque",
+      "description": "Produto com o saldo atual e a situação frente à quantidade mínima.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.id"
+            ]
+          }
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.identification.name"
+            ]
+          }
+        },
+        {
+          "name": "status",
+          "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.identification.status"
+            ]
+          }
+        },
+        {
+          "name": "unitOfMeasure",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.product.unitOfMeasure"
+            ]
+          }
+        },
+        {
+          "name": "quantidadeMinima",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.controleEstoque.quantidadeMinima"
+            ]
+          }
+        },
+        {
+          "name": "saldoAtual",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.controleEstoque.saldoAtual"
+            ]
+          }
+        },
+        {
+          "name": "saldoAbaixoDoMinimo",
+          "type": "boolean",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.controleEstoque.saldoAbaixoDoMinimo"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "listarProdutos",
+      "kind": "qry",
+      "when": "onLoad",
+      "writes": "",
+      "input": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.identification.name"
+            ]
+          },
+          "optional": true
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "produtos",
+          "type": "ProdutoEstoque[]",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "hasMoreProdutos",
+          "type": "boolean",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "rules": [
+        "saldoAtualProduto",
+        "avisoSaldoMinimoProduto"
+      ],
+      "jsdoc": {
+        "purpose": "Listar os produtos com o saldo calculado para o estoquista acompanhar e localizar.",
+        "input": "name para busca, page e pageSize.",
+        "processing": "Produtos da organização filtrados pelo nome, ordenados pelo nome, com saldo atual calculado (saldoAtualProduto) e aviso de saldo baixo (avisoSaldoMinimoProduto).",
+        "output": "produtos e hasMoreProdutos."
+      }
+    },
+    {
+      "id": "listarAlertas",
+      "kind": "qry",
+      "when": "onLoad",
+      "writes": "",
+      "input": [],
+      "output": [
+        {
+          "name": "alertas",
+          "type": "ProdutoEstoque[]",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "rules": [
+        "avisoSaldoMinimoProduto"
+      ],
+      "jsdoc": {
+        "purpose": "Destacar os produtos abaixo da quantidade mínima.",
+        "input": "Nenhuma.",
+        "processing": "Só os produtos com saldo abaixo do mínimo (avisoSaldoMinimoProduto), do menor saldo relativo para o maior.",
+        "output": "alertas."
+      }
+    },
+    {
+      "id": "abrirProduto",
+      "kind": "qry",
+      "when": "interaction",
+      "writes": "",
+      "input": [
+        {
+          "name": "id",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.id"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "produto",
+          "type": "ProdutoEstoque",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "rules": [
+        "saldoAtualProduto"
+      ],
+      "jsdoc": {
+        "purpose": "Mostrar o produto escolhido para o estoquista confirmar a situação.",
+        "input": "id do produto.",
+        "processing": "O produto com saldo atual calculado (saldoAtualProduto).",
+        "output": "produto."
+      }
+    },
+    {
+      "id": "cadastrarProduto",
+      "kind": "cmd",
+      "when": "cadastrarProduto",
+      "writes": "Produto.create",
+      "input": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.identification.name"
+            ]
+          }
+        },
+        {
+          "name": "unitOfMeasure",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.product.unitOfMeasure"
+            ]
+          }
+        },
+        {
+          "name": "quantidadeMinima",
+          "type": "number",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.controleEstoque.quantidadeMinima"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "produto",
+          "type": "ProdutoEstoque",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "rules": [
+        "quantidadeMinimaValida"
+      ],
+      "jsdoc": {
+        "purpose": "Cadastrar um produto para acompanhar o estoque.",
+        "input": "name, unitOfMeasure e quantidadeMinima.",
+        "processing": "Recusa quantidade mínima negativa (quantidadeMinimaValida); o produto nasce com saldo zero.",
+        "output": "produto cadastrado."
+      }
+    }
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "saldosResumo",
+        "reads": "listarProdutos.produtos"
+      },
+      {
+        "organism": "alertasSaldoBaixo",
+        "reads": "listarAlertas.alertas"
+      },
+      {
+        "organism": "listaProdutos",
+        "reads": "listarProdutos.produtos"
+      },
+      {
+        "organism": "detalheProduto",
+        "reads": "abrirProduto.produto"
+      }
+    ],
+    "commands": [
+      {
+        "endpoint": "cadastrarProduto",
+        "refreshes": [
+          "listarProdutos"
+        ]
+      }
+    ],
+    "selections": [
+      {
+        "organism": "alertasSaldoBaixo",
+        "via": {
+          "kind": "query",
+          "ref": "abrirProduto"
+        }
+      },
+      {
+        "organism": "listaProdutos",
+        "via": {
+          "kind": "query",
+          "ref": "abrirProduto"
+        }
+      }
+    ],
+    "journeys": [
+      {
+        "step": "acompanharSaldos/consultarSaldos",
+        "organisms": [
+          "saldosResumo"
+        ],
+        "endpoints": [
+          "listarProdutos"
+        ],
+        "continuesIn": ""
+      },
+      {
+        "step": "acompanharSaldos/localizarProdutos",
+        "organisms": [
+          "listaProdutos"
+        ],
+        "endpoints": [
+          "listarProdutos"
+        ],
+        "continuesIn": ""
+      },
+      {
+        "step": "cadastrarProduto/informarProduto",
+        "organisms": [
+          "formularioCadastro",
+          "acoesCadastro"
+        ],
+        "endpoints": [
+          "cadastrarProduto"
+        ],
+        "continuesIn": ""
+      },
+      {
+        "step": "registrarMovimentacaoEstoque/consultarSaldo",
+        "organisms": [
+          "detalheProduto"
+        ],
+        "endpoints": [
+          "abrirProduto"
+        ],
+        "continuesIn": ""
+      },
+      {
+        "step": "registrarMovimentacaoEstoque/localizarProduto",
+        "organisms": [
+          "listaProdutos"
+        ],
+        "endpoints": [
+          "listarProdutos"
+        ],
+        "continuesIn": ""
+      },
+      {
+        "step": "registrarMovimentacaoEstoque/registrarMovimentacao",
+        "organisms": [],
+        "endpoints": [],
+        "continuesIn": "movimentacoes"
+      },
+      {
+        "step": "tratarAvisoSaldoBaixo/consultarProdutoAvisado",
+        "organisms": [
+          "alertasSaldoBaixo",
+          "detalheProduto"
+        ],
+        "endpoints": [
+          "listarAlertas",
+          "abrirProduto"
+        ],
+        "continuesIn": ""
+      }
+    ]
+  }
+}

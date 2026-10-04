@@ -3,14 +3,13 @@
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import type { D2ContractV2Definition, D2ContractV2Location, D2ContractV2Meta, D2ContractV2Projection, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
-import { parseD2BffType, type D2BffDesign, type D2BffJsdoc, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { d2BffTypeRoot, parseD2BffType, type D2BffDesign, type D2BffEndpoint, type D2BffJsdoc, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 
 export type { D2ContractV2Definition, D2ContractV2Projection, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
 
 /**
  * E (d2_73): the contract keeps today's form. Interfaces are the named types of the approved BFF, one route per endpoint,
- * and the JSDoc of A sits above each route. meta.output names an entity only for a key whose named type carries one
- * entity's fields; a composite or aggregated key is left out of meta (the parser accepts any subset of output keys).
+ * and the JSDoc of A sits above each route. Names and types of field leaves already come from the ontology (d2_75).
  */
 export function buildD2ContractFromBff(input: {
   module: string;
@@ -22,7 +21,7 @@ export function buildD2ContractFromBff(input: {
   const { design, entities } = input;
   const projections: D2ContractV2Projection[] = design.types.map(type => ({
     name: type.name,
-    entityId: typeEntity(type.name, design),
+    entityId: d2BffTypeRoot(type.name, design),
     requestIds: design.endpoints.filter(endpoint => endpoint.output.some(leaf => references(leaf, type.name, design))).map(endpoint => endpoint.id),
     body: type.fields.map(leaf => `  ${readonly(leaf, entities)}${leaf.name}${leaf.optional ? '?' : ''}: ${leaf.type};`).join('\n'),
   }));
@@ -32,7 +31,7 @@ export function buildD2ContractFromBff(input: {
     ...(endpoint.writes ? { writes: endpoint.writes } : {}),
     input: inline(endpoint.input, entities, false),
     output: inline(endpoint.output, entities, true),
-    meta: meta(endpoint.output, design),
+    meta: meta(endpoint, design),
     rules: endpoint.rules,
     access: input.access,
   }));
@@ -109,23 +108,40 @@ function references(leaf: D2BffLeaf, name: string, design: D2BffDesign, seen = n
   return Boolean(type?.fields.some(child => references(child, name, design, new Set([...seen, ref.ref]))));
 }
 
-/** The one entity whose fields a named type carries directly; '' when composite or aggregated. */
-function typeEntity(name: string, design: D2BffDesign): string {
-  const type = design.types.find(item => item.name === name);
-  if (!type) return '';
-  const direct = type.fields.filter(leaf => parseD2BffType(leaf.type)?.base !== 'ref');
-  if (direct.some(leaf => leaf.origin?.kind === 'aggregate')) return '';
-  const entities = new Set(direct.flatMap(leaf => (leaf.origin?.kind === 'field' ? leaf.origin.paths : []).map(path => path.split('.')[0])));
-  return entities.size === 1 ? [...entities][0] : '';
-}
-
-function meta(output: readonly D2BffLeaf[], design: D2BffDesign): D2ContractV2Meta {
-  const rows: D2ContractV2Meta['output'] = {};
-  for (const leaf of output) {
+/**
+ * meta from the origins (d2_75), in the form the parser and the L1 of main read (d2_61). output: each key whose named
+ * type has a root entity (its `Entity.id` leaf, else its single entity). lists and params: a query that takes page and
+ * pageSize and returns a hasMore flag pages its lists; an input that carries a field filters the key of that entity.
+ * A key with only aggregates has no entity and stays out: the L1 reads meta.output[key].entity as a table.
+ */
+function meta(endpoint: D2BffEndpoint, design: D2BffDesign): D2ContractV2Meta {
+  const output: D2ContractV2Meta['output'] = {};
+  for (const leaf of endpoint.output) {
     const ref = parseD2BffType(leaf.type);
     if (ref?.base !== 'ref') continue;
-    const entity = typeEntity(ref.ref, design);
-    if (entity) rows[leaf.name] = { entity, many: ref.list };
+    const entity = d2BffTypeRoot(ref.ref, design);
+    if (entity) output[leaf.name] = { entity, many: ref.list };
   }
-  return { output: rows, lists: {}, params: {} };
+  const lists: D2ContractV2Meta['lists'] = {};
+  const params: D2ContractV2Meta['params'] = {};
+  if (endpoint.kind !== 'qry') return { output, lists, params };
+  const names = new Set(endpoint.input.map(leaf => leaf.name));
+  const hasMore = endpoint.output.find(leaf => leaf.type === 'boolean' && leaf.name.startsWith('hasMore'))?.name;
+  const listKeys = Object.entries(output).filter(([, row]) => row.many).map(([key]) => key);
+  if (names.has('page') && names.has('pageSize') && hasMore) {
+    for (const key of listKeys) {
+      const organisms = design.bindings.organisms.filter(row => row.reads === `${endpoint.id}.${key}`).map(row => row.organism);
+      for (const organism of organisms.length ? organisms : [key]) lists[organism] = { key, page: 'page', pageSize: 'pageSize', hasMore };
+    }
+  }
+  const firstList = Object.keys(lists)[0];
+  for (const leaf of endpoint.input) {
+    if ((leaf.name === 'page' || leaf.name === 'pageSize') && firstList) { params[leaf.name] = { pages: firstList }; continue; }
+    const path = leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '';
+    if (!path) continue;
+    const entity = path.split('.')[0];
+    const key = [...listKeys, ...Object.keys(output)].find(item => output[item].entity === entity);
+    if (key) params[leaf.name] = { filters: key, field: path.slice(entity.length + 1) };
+  }
+  return { output, lists, params };
 }

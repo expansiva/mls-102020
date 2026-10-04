@@ -32,6 +32,7 @@ const design: D2BffDesign = {
     { id: 'saveRow', kind: 'cmd', when: 'saveRow', writes: 'Item.create', input: [{ name: 'label', type: 'string', origin: { kind: 'field', paths: ['Item.label'] } }],
       output: [{ name: 'row', type: 'Row' }], rules: ['labelRequired'], jsdoc: { purpose: 'Add a row.', input: 'label.', processing: 'Refuses an empty label (labelRequired).', output: 'the new row.' } },
   ],
+  bindings: { organisms: [{ organism: 'rowList', reads: 'load.rows' }], commands: [{ endpoint: 'saveRow', refreshes: ['load'] }], selections: [], journeys: [] },
 };
 
 function sharedOf(endpoints: D2BffDesign['endpoints']): D2SharedV2Definition {
@@ -85,7 +86,7 @@ void test('d2_73: a shared approved over another design, other requests or no re
 });
 
 void test('d2_73: a page without endpoints has the empty contract', async () => {
-  const page = await pageOf({ types: [], endpoints: [] }, 'hub');
+  const page = await pageOf({ types: [], endpoints: [], bindings: { organisms: [], commands: [], selections: [], journeys: [] } }, 'hub');
   assert.equal(await contractSourceFor(page), renderEmptyD2Contract(identity, 'hub'));
 });
 
@@ -106,15 +107,14 @@ void test('the contracts step completes without a prompt', async () => {
   assert.equal(typeof sink.writes.get(`${identity.module}/web/contracts/${page.pageId}.defs.ts`), 'string');
 });
 
-void test('hard-code guard keeps fixture names out of the d2_73 sources', () => {
+void test('hard-code guard keeps fixture names out of the d2_73/d2_75 sources', () => {
   const root = join(here, '../..');
   const files = [
     ...['bff55', 'shared60', 'contracts70'].flatMap(step => readdirSync(join(root, 'steps', step)).map(name => join(root, 'steps', step, name))),
-    ...['d2Bff.ts', 'd2SharedV2.ts', 'd2ContractV2.ts', 'd2PageSettle.ts'].map(name => join(root, 'helpers', name)),
-    join(root, 'skills/genD2SharedDefinition.ts'),
+    ...['d2Bff.ts', 'd2SharedV2.ts', 'd2SharedDerive.ts', 'd2ContractV2.ts', 'd2PageSettle.ts'].map(name => join(root, 'helpers', name)),
   ].filter(path => (path.endsWith('.ts') || path.endsWith('.md')) && !path.endsWith('.test.ts'));
   const names = /comanda|cardapio|atendimento|garcom|caixa|mesa\b|controleEstoque|produto|movimenta|estoque|despesa|reembolso/iu;
   assert.deepEqual(files.filter(path => names.test(readFileSync(path, 'utf8'))), []);
-  assert.ok(files.length >= 12);
+  assert.ok(files.length >= 10);
   assert.ok(names.test(readFileSync(join(root, 'helpers/fixtures/e2e/dining/answers/bff55/atendimento.json'), 'utf8')));
 });

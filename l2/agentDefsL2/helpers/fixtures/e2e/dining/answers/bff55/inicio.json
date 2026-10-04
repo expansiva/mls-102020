@@ -51,14 +51,19 @@
   ],
   "endpoints": [
     {
-      "id": "load",
+      "id": "carregarIndicadores",
       "kind": "qry",
       "when": "onLoad",
+      "writes": "",
       "input": [],
       "output": [
         {
           "name": "indicadores",
-          "type": "IndicadoresDoSalao"
+          "type": "IndicadoresDoSalao",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
         }
       ],
       "rules": [
@@ -68,9 +73,20 @@
       "jsdoc": {
         "purpose": "Indicadores do salão para o caixa e o garçom decidirem entre atender e fechar.",
         "input": "Nenhuma.",
-        "processing": "Conta as mesas disponíveis e as ocupadas; conta as comandas com status open e soma o subtotal delas, que é a soma do valor total dos itens não cancelados (subtotalComandaCalculado, valorTotalItemComandaCalculado). Tudo calculado no endpoint; nenhuma lista sai.",
-        "output": "indicadores: mesasLivres, mesasOcupadas, comandasAbertas, totalEmAberto."
+        "processing": "Conta as mesas disponíveis e as ocupadas; conta as comandas com status open e soma o subtotal calculado delas (subtotalComandaCalculado, valorTotalItemComandaCalculado). Tudo calculado no endpoint; nenhuma lista sai.",
+        "output": "indicadores."
       }
     }
-  ]
+  ],
+  "bindings": {
+    "organisms": [
+      {
+        "organism": "resumoOperacional",
+        "reads": "carregarIndicadores.indicadores"
+      }
+    ],
+    "commands": [],
+    "selections": [],
+    "journeys": []
+  }
 }

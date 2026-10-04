@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-04 — d2_74/d2_75 BFF per page, r3 (experiment branch)
+
+- d2_74: the tool schemas say what the parsers require; a query write the host filled in is dropped, not refused.
+- d2_75: A also designs the page bindings; field leaves take the ontology name and type; the shared is derived by code
+  (the LLM call of shared60 is gone); contract meta comes from the origins.
+
 ## 2026-10-04 — d2_73 BFF per page (experiment branch)
 
 - New `bff55`: one LLM call per page designs the endpoints (types, input, output with origins, rules, JSDoc); code checks facts only (B.1–B.4).

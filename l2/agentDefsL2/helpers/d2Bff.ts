@@ -49,7 +49,17 @@ export interface D2BffEndpoint {
   rules: string[];
   jsdoc: D2BffJsdoc;
 }
-export interface D2BffDesign { types: D2BffType[]; endpoints: D2BffEndpoint[] }
+/**
+ * The links of the page, designed by A (d2_75): where each organism that reads is fed (`<endpointId>.<key>`), which
+ * queries a command reloads, how a selection resolves, and which organisms and endpoints serve each journey step.
+ */
+export interface D2BffBindings {
+  organisms: Array<{ organism: string; reads: string }>;
+  commands: Array<{ endpoint: string; refreshes: string[] }>;
+  selections: Array<{ organism: string; via: { query: string } | { list: string } }>;
+  journeys: Array<{ step: string; organisms: string[]; endpoints: string[]; continuesIn?: string }>;
+}
+export interface D2BffDesign { types: D2BffType[]; endpoints: D2BffEndpoint[]; bindings: D2BffBindings }
 export interface D2BffIssue { code: string; path: string; message: string }
 
 export interface D2BffTypeRef { base: 'string' | 'number' | 'boolean' | 'enum' | 'ref'; values: string[]; ref: string; list: boolean }
@@ -140,7 +150,131 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
       rules: [...new Set(row.rules as string[])], jsdoc,
     };
   });
-  return { types, endpoints };
+  return { types, endpoints, bindings: parseBindings(root.bindings, fail) };
+}
+
+function parseBindings(value: unknown, fail: (path: string, what: string) => never): D2BffBindings {
+  const root = record(value) ?? fail('bindings', 'not an object');
+  const list = (key: string): Record<string, unknown>[] => {
+    if (!Array.isArray(root[key])) fail(`bindings.${key}`, 'not a list');
+    return (root[key] as unknown[]).map((raw, index) => record(raw) ?? fail(`bindings.${key}.${index}`, 'not an object'));
+  };
+  const text = (row: Record<string, unknown>, key: string, at: string): string => {
+    if (typeof row[key] !== 'string') fail(`${at}.${key}`, 'not a string');
+    return (row[key] as string).trim();
+  };
+  const texts = (row: Record<string, unknown>, key: string, at: string): string[] => {
+    if (!Array.isArray(row[key]) || !(row[key] as unknown[]).every(item => typeof item === 'string')) fail(`${at}.${key}`, 'a list of strings');
+    return [...new Set((row[key] as string[]).map(item => item.trim()).filter(Boolean))];
+  };
+  return {
+    organisms: list('organisms').map((row, index) => ({ organism: text(row, 'organism', `bindings.organisms.${index}`), reads: text(row, 'reads', `bindings.organisms.${index}`) })),
+    commands: list('commands').map((row, index) => ({ endpoint: text(row, 'endpoint', `bindings.commands.${index}`), refreshes: texts(row, 'refreshes', `bindings.commands.${index}`) })),
+    selections: list('selections').map((row, index) => {
+      const at = `bindings.selections.${index}`;
+      const via = record(row.via) ?? fail(`${at}.via`, 'not an object');
+      const ref = text(via, 'ref', `${at}.via`);
+      if (via.kind !== 'query' && via.kind !== 'list') fail(`${at}.via.kind`, 'query or list');
+      return { organism: text(row, 'organism', at), via: via.kind === 'query' ? { query: ref } : { list: ref } };
+    }),
+    journeys: list('journeys').map((row, index) => {
+      const at = `bindings.journeys.${index}`;
+      const continuesIn = typeof row.continuesIn === 'string' ? row.continuesIn.trim() : '';
+      return { step: text(row, 'step', at), organisms: texts(row, 'organisms', at), endpoints: texts(row, 'endpoints', at), ...(continuesIn ? { continuesIn } : {}) };
+    }),
+  };
+}
+
+/**
+ * A leaf that carries one field takes the field's key as its name and the type the contract gives that field (d2_75):
+ * the answer's choice is overwritten, never refused. Two leaves of one list that derive the same name keep the root
+ * entity's leaf as is and prefix the others with their entity. Bindings follow the renamed output keys.
+ */
+export function normalizeD2BffDesign(design: D2BffDesign, entities: Record<string, Ns5OntologyAnyEntity>): D2BffDesign {
+  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = ''): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
+    const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
+    const root = rows.map(field).find(path => path.split('.').length === 2 && path.endsWith('.id'))?.split('.')[0] ?? fallbackRoot;
+    const derivedName = (leaf: D2BffLeaf): string => { const path = field(leaf); return path ? path.split('.').slice(-1)[0] : leaf.name; };
+    const counts = new Map<string, number>();
+    for (const leaf of rows) counts.set(derivedName(leaf), (counts.get(derivedName(leaf)) ?? 0) + 1);
+    const renamed = new Map<string, string>();
+    const out = rows.map(leaf => {
+      const path = field(leaf);
+      if (!path) return leaf;
+      const entity = entityOf(path);
+      let name = derivedName(leaf);
+      if ((counts.get(name) ?? 0) > 1 && entity !== root) name = `${entity[0].toLowerCase()}${entity.slice(1)}${name[0].toUpperCase()}${name.slice(1)}`;
+      const type = d2OntologyLeafType(entities[entity], path);
+      const ref = parseD2BffType(leaf.type);
+      const next = { ...leaf, name, type: type && ref ? renderD2BffType({ ...type, list: ref.list }) : leaf.type };
+      if (next.name !== leaf.name) renamed.set(leaf.name, next.name);
+      return next;
+    });
+    const seen = new Set<string>();
+    for (const leaf of out) {
+      if (seen.has(leaf.name)) throw new Error(`D2_BFF_FORMAT: ${at}.${leaf.name}: two leaves carry the same name after the ontology names were applied.`);
+      seen.add(leaf.name);
+    }
+    return { rows: out, renamed };
+  };
+  const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`).rows }));
+  const outputs = new Map<string, Map<string, string>>();
+  const endpoints = design.endpoints.map(endpoint => {
+    const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`);
+    outputs.set(endpoint.id, output.renamed);
+    return { ...endpoint, input: fix(endpoint.input, `endpoints.${endpoint.id}.input`, endpoint.writes ? entityOf(endpoint.writes) : '').rows, output: output.rows };
+  });
+  const ref = (value: string): string => {
+    const dot = value.indexOf('.');
+    if (dot <= 0) return value;
+    const key = value.slice(dot + 1);
+    return `${value.slice(0, dot)}.${outputs.get(value.slice(0, dot))?.get(key) ?? key}`;
+  };
+  const bindings = design.bindings;
+  return {
+    types, endpoints,
+    bindings: {
+      ...bindings,
+      organisms: bindings.organisms.map(row => ({ ...row, reads: ref(row.reads) })),
+      selections: bindings.selections.map(row => ('list' in row.via ? { ...row, via: { list: ref(row.via.list) } } : row)),
+    },
+  };
+}
+
+/** The contract type of one ontology field, as the v2 contract of main renders it; null for a branch. */
+export function d2OntologyLeafType(entity: Ns5OntologyAnyEntity | undefined, path: string): D2BffTypeRef | null {
+  const field = fieldAt(entity, path);
+  if (!field || field.fields) return null;
+  if (field.type === 'enum' && field.values?.length) return { base: 'enum', values: field.values.map(item => item.value), ref: '', list: false };
+  if (field.type === 'boolean') return { base: 'boolean', values: [], ref: '', list: false };
+  if (field.type === 'integer' || field.type === 'number' || field.type === 'decimal') return { base: 'number', values: [], ref: '', list: false };
+  return { base: 'string', values: [], ref: '', list: false };
+}
+
+/** The root entity of a named type: the one of its `Entity.id` leaf, else the single entity of its field leaves. */
+export function d2BffTypeRoot(name: string, design: Pick<D2BffDesign, 'types'>): string {
+  const type = design.types.find(item => item.name === name);
+  if (!type) return '';
+  const paths = type.fields.flatMap(leaf => (leaf.origin?.kind === 'field' ? leaf.origin.paths : []));
+  const id = paths.find(path => path.split('.').length === 2 && path.endsWith('.id'));
+  if (id) return entityOf(id);
+  if (type.fields.some(leaf => leaf.origin?.kind === 'aggregate')) return '';
+  const entities = new Set(paths.map(entityOf));
+  return entities.size === 1 ? [...entities][0] : '';
+}
+
+/** The journey steps of the page: steps of the journeys the menu links to it, as the needs list them. */
+export function d2PageJourneySteps(need: D2NeedPage, menu: D2Menu): string[] {
+  const linked = new Set(Object.entries(menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(need.pageId)).map(([id]) => id));
+  const steps = need.reads.flatMap(read => read.from.filter(item => item.startsWith('journey:')).map(item => item.slice('journey:'.length)));
+  return [...new Set(steps.filter(step => linked.has(step.split('/')[0])))];
+}
+
+export function d2MenuPages(menu: D2Menu): string[] {
+  const ids: string[] = [];
+  const walk = (nodes: D2Menu['tree']): void => { for (const node of nodes) { if (node.kind === 'page') ids.push(node.id); walk(node.children ?? []); } };
+  walk(menu.tree);
+  return ids;
 }
 
 function parseOrigin(value: unknown, path: string, fail: (path: string, what: string) => never): D2BffOrigin {
@@ -176,6 +310,7 @@ export interface D2BffCheckContext {
   page11: Record<D2Page11Device, D2Page11Definition>;
   drafts: Record<D2Page11Device, D2Page11Needs>;
   need: D2NeedPage;
+  menu: D2Menu;
   entities: Record<string, Ns5OntologyAnyEntity>;
   grants: readonly D2Grant[];
   rules: Record<string, string>;
@@ -285,6 +420,7 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
   for (const endpoint of design.endpoints) {
     for (const rule of endpoint.rules) if (!(rule in context.rules)) add('D2_BFF_RULE_UNKNOWN', `endpoints.${endpoint.id}.rules`, `rule ${rule} does not exist in the L4 rules.`);
   }
+  issues.push(...checkD2BffBindings(design, context));
   // The contract interface of the page owns this name.
   const reserved = `${context.need.pageId[0].toUpperCase()}${context.need.pageId.slice(1)}Contracts`;
   if (design.types.some(type => type.name === reserved)) add('D2_BFF_TYPE_NAME', `types.${reserved}`, `${reserved} is the contract interface of the page; name the type otherwise.`);
@@ -379,4 +515,63 @@ function granted(path: string, actors: readonly string[], grants: readonly D2Gra
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+/** B over the links (d2_75): only facts. Whether a reload or a link is the best one is the design's. */
+function checkD2BffBindings(design: D2BffDesign, context: D2BffCheckContext): D2BffIssue[] {
+  const issues: D2BffIssue[] = [];
+  const add = (code: string, path: string, message: string): void => { issues.push({ code, path, message: `${path}: ${message}` }); };
+  const organisms = new Set((['desktop', 'mobile'] as const).flatMap(device => Object.keys(context.page11[device].organisms)));
+  const readers = new Set<string>();
+  const selectors = new Set<string>();
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const [id, row] of Object.entries(context.drafts[device].organisms)) {
+      if (row.reads.length) readers.add(id);
+      if (row.selects) selectors.add(id);
+    }
+  }
+  const endpoint = (id: string) => design.endpoints.find(item => item.id === id);
+  const outputRef = (value: string, at: string): void => {
+    const dot = value.indexOf('.');
+    const found = dot > 0 ? endpoint(value.slice(0, dot)) : undefined;
+    if (!found || !found.output.some(leaf => leaf.name === value.slice(dot + 1))) add('D2_BFF_BINDING_REF', at, `${value} is not <endpointId>.<output key> of an endpoint of the page.`);
+  };
+  const query = (id: string, at: string): void => {
+    if (endpoint(id)?.kind !== 'qry') add('D2_BFF_BINDING_QUERY', at, `${id} is not a query of the page.`);
+  };
+  const bound = new Map<string, number>();
+  design.bindings.organisms.forEach((row, index) => {
+    const at = `bindings.organisms.${index}`;
+    if (!organisms.has(row.organism)) add('D2_BFF_BINDING_ORGANISM', at, `organism ${row.organism} is not on the page.`);
+    bound.set(row.organism, (bound.get(row.organism) ?? 0) + 1);
+    outputRef(row.reads, `${at}.reads`);
+  });
+  for (const id of readers) {
+    const count = bound.get(id) ?? 0;
+    if (count !== 1) add('D2_BFF_BINDING_ORGANISM', `bindings.organisms.${id}`, `organism ${id} reads and has ${count} sources in bindings.organisms; it needs exactly one.`);
+  }
+  design.bindings.commands.forEach((row, index) => {
+    const at = `bindings.commands.${index}`;
+    if (endpoint(row.endpoint)?.kind !== 'cmd') add('D2_BFF_BINDING_COMMAND', at, `${row.endpoint} is not a command of the page.`);
+    row.refreshes.forEach((id, position) => query(id, `${at}.refreshes.${position}`));
+  });
+  const selecting = new Set<string>();
+  design.bindings.selections.forEach((row, index) => {
+    const at = `bindings.selections.${index}`;
+    selecting.add(row.organism);
+    if (!organisms.has(row.organism)) add('D2_BFF_BINDING_ORGANISM', at, `organism ${row.organism} is not on the page.`);
+    if ('query' in row.via) query(row.via.query, `${at}.via`);
+    else outputRef(row.via.list, `${at}.via`);
+  });
+  for (const id of selectors) if (!selecting.has(id)) add('D2_BFF_BINDING_SELECTION', `bindings.selections.${id}`, `organism ${id} selects and has no row in bindings.selections.`);
+  const steps = new Set(d2PageJourneySteps(context.need, context.menu));
+  const pages = new Set(d2MenuPages(context.menu));
+  design.bindings.journeys.forEach((row, index) => {
+    const at = `bindings.journeys.${index}`;
+    if (!steps.has(row.step)) add('D2_BFF_BINDING_STEP', at, `${row.step} is not a journey step of this page (${[...steps].join(', ') || 'none'}).`);
+    for (const id of row.organisms) if (!organisms.has(id)) add('D2_BFF_BINDING_ORGANISM', `${at}.organisms`, `organism ${id} is not on the page.`);
+    for (const id of row.endpoints) if (!endpoint(id)) add('D2_BFF_BINDING_REF', `${at}.endpoints`, `${id} is not an endpoint of the page.`);
+    if (row.continuesIn && !pages.has(row.continuesIn)) add('D2_BFF_BINDING_PAGE', `${at}.continuesIn`, `${row.continuesIn} is not a page of the menu.`);
+  });
+  return issues;
 }

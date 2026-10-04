@@ -75,6 +75,7 @@ void test('d2_73: a JSDoc above each route, with kind:, writes: and rules: in it
       { id: 'saveWidget', kind: 'cmd' as const, when: 'saveWidget', writes: 'Widget.create', input: [{ name: 'code', type: 'string', origin: { kind: 'field' as const, paths: ['Widget.code'] } }],
         output: [{ name: 'widget', type: 'WidgetRow' }], rules: ['keep'], jsdoc: { purpose: prose, input: prose, processing: prose, output: prose } },
     ],
+    bindings: { organisms: [], commands: [], selections: [], journeys: [] },
   };
   const definition = buildD2ContractFromBff({ module: 'alpha', pageId: 'rows', design, access: { actors: ['clerk'], grants: ['manage'], scope: 'organization' }, entities: {} });
   const location = { project: 1, module: 'alpha', pageId: 'rows' };

@@ -9,12 +9,13 @@ import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import {
-  buildD2BffDesign, checkD2Bff, d2BffL4Slice, d2PageSubmits, D2_BFF_TYPE_PATTERN,
+  buildD2BffDesign, checkD2Bff, d2BffAccess, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN,
   type D2BffDesign, type D2Grant, type D2Menu, type D2NeedPage,
 } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import type { D2PageRefusal } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
+import { d2SharedDeriveIssues, deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
 
-export const D2_BFF_VERSION = '2026-10-04-agent-defs-l2-bff-v1' as const;
+export const D2_BFF_VERSION = '2026-10-04-agent-defs-l2-bff-v2' as const;
 export const D2_BFF_REFUSAL_VERSION = '2026-10-04-agent-defs-l2-bff-refusal' as const;
 export const D2_BFF_PROMPT_LIMIT_CHARS = 640_000;
 export const D2_BFF_SYSTEM_PREFIX = `<!-- modelType: reasoning -->
@@ -31,6 +32,7 @@ export interface D2BffContext {
   drafts: Record<D2Page11Device, D2Page11Needs>;
   draftText: Record<D2Page11Device, string>;
   need: D2NeedPage;
+  menu: D2Menu;
   entities: Record<string, Ns5OntologyAnyEntity>;
   grants: D2Grant[];
   rules: Record<string, string>;
@@ -99,6 +101,8 @@ function unitInput(context: D2BffContext): Record<string, unknown> {
     submits: [...d2PageSubmits(context)].map(([intent, write]) => ({ intent, write })),
     l4: d2BffL4Slice(context.entities, context.rules, context.need, [context.drafts.desktop, context.drafts.mobile]),
     journeys: context.journeys,
+    journeySteps: d2PageJourneySteps(context.need, context.menu),
+    menuPages: d2MenuPages(context.menu),
     grants: pageGrants(context),
   };
 }
@@ -129,7 +133,17 @@ export function bffSchemaFor(context: D2BffContext): Record<string, unknown> {
   const origin = row(['kind', 'paths'], { kind: { type: 'string', enum: ['field', 'aggregate', 'context'] }, paths: { type: 'array', items: enumOf([...paths, ...branches]) } });
   const leaf = row(['name', 'type', 'origin'], { name: { type: 'string' }, type: { type: 'string', pattern: D2_BFF_TYPE_PATTERN }, optional: { type: 'boolean' }, origin });
   const submits = [...d2PageSubmits(context).keys()];
-  return row(['types', 'endpoints'], {
+  const organisms = [...new Set([...Object.keys(context.page11.desktop.organisms), ...Object.keys(context.page11.mobile.organisms)])];
+  const bindings = row(['organisms', 'commands', 'selections', 'journeys'], {
+    organisms: { type: 'array', items: row(['organism', 'reads'], { organism: enumOf(organisms), reads: { type: 'string', pattern: '^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$' } }) },
+    commands: { type: 'array', items: row(['endpoint', 'refreshes'], { endpoint: { type: 'string' }, refreshes: { type: 'array', items: { type: 'string' } } }) },
+    selections: { type: 'array', items: row(['organism', 'via'], { organism: enumOf(organisms), via: row(['kind', 'ref'], { kind: { type: 'string', enum: ['query', 'list'] }, ref: { type: 'string' } }) }) },
+    journeys: { type: 'array', items: row(['step', 'organisms', 'endpoints'], {
+      step: enumOf(d2PageJourneySteps(context.need, context.menu)), organisms: { type: 'array', items: enumOf(organisms) },
+      endpoints: { type: 'array', items: { type: 'string' } }, continuesIn: optionalEnum(d2MenuPages(context.menu)),
+    }) },
+  });
+  return row(['types', 'endpoints', 'bindings'], {
     types: { type: 'array', items: row(['name', 'fields'], { name: { type: 'string' }, description: { type: 'string' }, fields: { type: 'array', items: leaf } }) },
     endpoints: { type: 'array', items: row(['id', 'kind', 'when', 'input', 'output', 'rules', 'jsdoc'], {
       id: { type: 'string' },
@@ -141,6 +155,7 @@ export function bffSchemaFor(context: D2BffContext): Record<string, unknown> {
       rules: { type: 'array', items: enumOf(Object.keys(slice.rules)) },
       jsdoc: row(['purpose', 'input', 'processing', 'output'], { purpose: { type: 'string' }, input: { type: 'string' }, processing: { type: 'string' }, output: { type: 'string' } }),
     }) },
+    bindings,
   });
 }
 
@@ -149,10 +164,19 @@ const row = (required: string[], properties: Record<string, unknown>) => ({ type
 export interface D2BffWriter { writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown> }
 const productionWriter: D2BffWriter = { writeJson };
 
-/** B: the answer passes the tool format and the fact checks, or the whole list of findings is the refusal. */
+/**
+ * B: the answer passes the tool format (field leaves take the ontology name and type) and the fact checks, and the
+ * shared code derives from it passes D (d2_75): a binding that leaves an organism unfed goes back to A. Otherwise the
+ * whole list of findings is the refusal.
+ */
 export function d2BffApproved(context: D2BffContext, raw: unknown): D2BffDesign {
-  const design = buildD2BffDesign(raw);
+  const design = normalizeD2BffDesign(buildD2BffDesign(raw), context.entities);
   const issues = checkD2Bff(design, context);
+  if (!issues.length) {
+    const access = d2BffAccess(design, context.need, context.grants);
+    const input = { ...context, design, access: { actors: access.actors, grants: access.grants }, siblings: [] };
+    issues.push(...d2SharedDeriveIssues(input, deriveD2Shared(input)));
+  }
   if (issues.length) throw new Error(issues.map(issue => `${issue.code}: ${issue.message}`).join(' | '));
   return design;
 }
@@ -239,6 +263,7 @@ export function d2BffContextFrom(input: {
     drafts: { desktop: buildD2Page11Needs(input.drafts.desktop), mobile: buildD2Page11Needs(input.drafts.mobile) },
     draftText: { desktop: JSON.stringify(input.drafts.desktop), mobile: JSON.stringify(input.drafts.mobile) },
     need: input.need,
+    menu: input.menu,
     entities: input.entities,
     grants: ((input.access as { grants?: D2Grant[] } | null)?.grants ?? []),
     rules: ((input.rules as { rules?: Record<string, string> } | null)?.rules ?? {}),

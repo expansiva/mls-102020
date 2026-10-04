@@ -25,12 +25,15 @@ import { deriveD2Page11CategoryReference, deriveD2Page11Experience } from '/_102
 import { approveD2PagesUnit, buildD2PagesDecisionPrompt, type D2PagesContext, type D2PagesResponse } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { readApprovedPage11, reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2SharedUnit, buildD2SharedPrompt, d2SharedApproved, d2SharedContextFrom, sharedInfo, D2_SHARED_PROMPT_LIMIT_CHARS, type D2SharedContext, type D2SharedLlmResponse, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
-import { sharedSchemaFor } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
-import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
+import { approveD2SharedPage, d2SharedPageFrom, d2SharedSourceFor, executeD2Shared, type D2SharedPage, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
+import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
+import { parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
-import type { D2BffDesign, D2Menu, D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { buildD2BffDesign, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { d2ToolPayload } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
+import { d2BffAccess } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { contractSourceFor } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
 import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
@@ -121,10 +124,10 @@ function pageContextOf(pack: ReturnType<typeof readPack>, snapshot: D2InputSnaps
 }
 
 const BFF_PROMPT = readFileSync(path.join(HERE, '../steps/bff55/prompt.md'), 'utf8');
-const SHARED_PROMPT = readFileSync(path.join(HERE, '../steps/shared60/prompt.md'), 'utf8');
 
 interface ReplayPage { page11Text: { desktop: string; mobile: string }; drafts: { desktop: unknown; mobile: unknown } }
-interface ReplayOut { bff: Record<string, D2BffContext>; designs: Record<string, D2BffDesign>; shared: Record<string, D2SharedContext>; contracts: Record<string, string> }
+interface ReplayOut { bff: Record<string, D2BffContext>; designs: Record<string, D2BffDesign>; shared: Record<string, D2SharedPage>; sharedDefs: Record<string, D2SharedV2Definition>; contracts: Record<string, string> }
+const emptyOut = (): ReplayOut => ({ bff: {}, designs: {}, shared: {}, sharedDefs: {}, contracts: {} });
 
 /** The bff55 context of one replayed page, as the worker builds it. */
 function bffContextOf(pack: ReturnType<typeof readPack>, artifacts: D2InputArtifacts, needs: unknown, pageId: string, page: ReplayPage): D2BffContext {
@@ -138,14 +141,16 @@ function bffContextOf(pack: ReturnType<typeof readPack>, artifacts: D2InputArtif
   };
 }
 
-function sharedContextOf(bff: D2BffContext, artifacts: D2InputArtifacts, design: D2BffDesign): D2SharedContext {
-  return {
-    ...d2SharedContextFrom({
-      pageId: bff.pageId, page11Text: bff.page11Text, drafts: { desktop: JSON.parse(bff.draftText.desktop), mobile: JSON.parse(bff.draftText.mobile) },
-      need: bff.need, menu: artifacts.menu as D2Menu, module: artifacts.module, grants: bff.grants, design,
-    }),
-    identity: bff.identity, inputHash: bff.inputHash, skill: sharedSkill, prompt: SHARED_PROMPT, approved: null,
-  };
+/** The shared60 page of one replayed page: its approved design and the other pages that passed pages50. */
+function sharedPageOf(bff: D2BffContext, design: D2BffDesign, page11: Record<string, ReplayPage>): D2SharedPage {
+  const siblings = Object.entries(page11).filter(([id]) => id !== bff.pageId).map(([id, row]) => ({
+    pageId: id, page11: parseD2Page11Definition(row.page11Text.desktop).definition, drafts: [buildD2Page11Needs(row.drafts.desktop), buildD2Page11Needs(row.drafts.mobile)],
+  }));
+  const own = page11[bff.pageId];
+  return d2SharedPageFrom({
+    identity: bff.identity, inputHash: bff.inputHash, pageId: bff.pageId, page11Text: own.page11Text, drafts: own.drafts, need: bff.need, menu: bff.menu,
+    grants: bff.grants, entities: bff.entities, design, siblings,
+  });
 }
 
 async function replay(alias: string, out?: ReplayOut): Promise<Outcome[]> {
@@ -208,31 +213,33 @@ async function replay(alias: string, out?: ReplayOut): Promise<Outcome[]> {
     } catch (error) { outcomes.push({ stage: 'pages50', pageId, result: 'refused', codes: codesOf(error) }); }
   }
 
-  // bff55 (A answer + B), shared60 (C answer + D) and contracts70 (E) for the pages with a recorded design.
+  // bff55 (A answer + B, with D over the shared the code derives), shared60 and contracts70 (code only).
+  const approved: Array<{ bff: D2BffContext; design: D2BffDesign }> = [];
   for (const name of pack.list('answers/bff55')) {
     const pageId = name.replace(/\.json$/u, '');
     const page = page11[pageId];
     if (!page) { outcomes.push({ stage: 'bff55', pageId, result: 'refused', codes: ['D2_BFF_PAGE11_MISSING'] }); continue; }
     const bff = bffContextOf(pack, artifacts, needs, pageId, page);
-    let design: D2BffDesign;
     try {
-      design = d2BffApproved(bff, pack.json(`answers/bff55/${name}`));
+      approved.push({ bff, design: d2BffApproved(bff, pack.json(`answers/bff55/${name}`)) });
       outcomes.push({ stage: 'bff55', pageId, result: 'ok', codes: [] });
-    } catch (error) { outcomes.push({ stage: 'bff55', pageId, result: 'refused', codes: codesOf(error) }); continue; }
-    if (out) { out.bff[pageId] = bff; out.designs[pageId] = design; }
-    const shared = sharedContextOf(bff, artifacts, design);
-    if (out) out.shared[pageId] = shared;
+    } catch (error) { outcomes.push({ stage: 'bff55', pageId, result: 'refused', codes: codesOf(error) }); }
+  }
+  for (const { bff, design } of approved) {
+    const pageId = bff.pageId;
+    const shared = sharedPageOf(bff, design, page11);
     const writes = new Map<string, unknown>();
-    let receipt: D2SharedReceipt;
+    let receipt;
     try {
-      receipt = await approveD2SharedUnit(shared, pack.json<D2SharedLlmResponse>(`answers/shared60/${name}`), 0, 0, {
+      receipt = (await approveD2SharedPage(shared, { source: null, receipt: null }, {
         writeSource: async (_info, source) => { writes.set('source', source); }, writeJson: async () => undefined,
-      });
+      })).receipt;
       outcomes.push({ stage: 'shared60', pageId, result: 'ok', codes: [] });
     } catch (error) { outcomes.push({ stage: 'shared60', pageId, result: 'refused', codes: codesOf(error) }); continue; }
+    if (out) { out.bff[pageId] = bff; out.designs[pageId] = design; out.shared[pageId] = shared; out.sharedDefs[pageId] = parseD2SharedV2(writes.get('source') as string).definition; }
     try {
       const contract = await contractSourceFor({
-        identity: bff.identity, pageId, userLanguage: bff.userLanguage, design, access: shared.access,
+        identity: bff.identity, pageId, userLanguage: bff.userLanguage, design, access: d2BffAccess(design, bff.need, bff.grants),
         entities: bff.entities, sharedSource: writes.get('source') as string, sharedReceipt: receipt,
       });
       if (out) out.contracts[pageId] = contract;
@@ -262,8 +269,12 @@ void test('d2_68: modules replay end to end with the state expected after the fi
   assert.equal(at(first.expense, 'needs30')?.result, 'ok');
   assert.deepEqual(at(first.expense, 'pages50', 'despesas_da_equipe')?.codes, ['D2_PAGE11_WRITE_UNCOVERED']);
   for (const pageId of ['despesas_aprovadas', 'inicio']) assert.equal(at(first.expense, 'pages50', pageId)?.result, 'ok');
-  // expense inicio (hub: no read, no write, one navigation): no endpoint, a shared with only its navigation, an empty contract.
-  for (const stage of ['bff55', 'shared60', 'contracts70']) assert.deepEqual(at(first.expense, stage, 'inicio'), { stage, pageId: 'inicio', result: 'ok', codes: [] });
+
+  // d2_75: the same code, unchanged, takes a recorded design of each module through bff55, shared60 and contracts70.
+  // expense inicio is the hub: no endpoint, a shared with only its navigation, an empty contract.
+  for (const [rows, pageId] of [[first.stock, 'produtos'], [first.expense, 'despesas_aprovadas'], [first.expense, 'inicio']] as const) {
+    for (const stage of ['bff55', 'shared60', 'contracts70']) assert.deepEqual(at(rows, stage, pageId), { stage, pageId, result: 'ok', codes: [] }, `${pageId} ${stage}`);
+  }
 });
 
 void test('d2_68: measured defects without a recorded answer are cases too', async () => {
@@ -324,7 +335,7 @@ void test('d2_72: an input the L4 asks for and no organism edits is refused at t
 });
 
 async function dining(): Promise<{ outcomes: Outcome[]; out: ReplayOut; pack: ReturnType<typeof readPack> }> {
-  const out: ReplayOut = { bff: {}, designs: {}, shared: {}, contracts: {} };
+  const out = emptyOut();
   return { outcomes: await replay('dining', out), out, pack: readPack('dining') };
 }
 
@@ -353,157 +364,161 @@ async function diningBffContext(pageId: string): Promise<D2BffContext> {
   });
 }
 
+type RawDesign = { types: Array<{ name: string; fields: Array<Record<string, unknown>> }>; endpoints: Array<Record<string, unknown> & { output: Array<Record<string, unknown>> }>; bindings: { organisms: Array<{ organism: string; reads: string }>; commands: Array<{ endpoint: string; refreshes: string[] }>; selections: unknown[]; journeys: unknown[] } };
+const atendimentoAnswer = (): RawDesign => readPack('dining').json<RawDesign>('answers/bff55/atendimento.json');
+const refusalOf = (run: () => unknown): string => { try { run(); return ''; } catch (error) { return String(error); } };
+
 void test('d2_74: the schema says what the parser requires; a query write the host filled in is dropped, not refused', async () => {
-  // The answer p4_29 recorded for mesas (refused then with "a query writes nothing"): every property filled by the host.
-  const recorded = readPack('dining').json<{ raw: unknown }>('recorded/bff55/mesas-2.json').raw;
+  // The answer p4_29 recorded for mesas (refused then with "a query writes nothing"), plus the bindings A now writes.
+  const recorded = d2ToolPayload(readPack('dining').json<{ raw: unknown }>('recorded/bff55/mesas-2.json').raw, 'submitD2Bff', 'D2_BFF') as Record<string, unknown>;
+  const withBindings = () => ({ ...structuredClone(recorded), bindings: {
+    organisms: [{ organism: 'mesasList', reads: 'listarMesas.pagina' }, { organism: 'mesaForm', reads: 'listarMesas.pagina' }],
+    commands: [{ endpoint: 'criarMesa', refreshes: ['listarMesas'] }], selections: [{ organism: 'mesasList', via: { kind: 'list', ref: 'listarMesas.pagina' } }], journeys: [],
+  } }) as unknown as RawDesign;
   const mesas = await diningBffContext('mesas');
-  const design = d2BffApproved(mesas, d2ToolPayload(recorded, 'submitD2Bff', 'D2_BFF'));
+  const design = d2BffApproved(mesas, withBindings());
   assert.ok(design.endpoints.filter(item => item.kind === 'qry').length >= 2);
   assert.ok(design.endpoints.every(item => item.kind === 'cmd' ? item.writes : item.writes === undefined));
 
   // A command without a write of the plan is still refused.
-  const raw = structuredClone(d2ToolPayload(recorded, 'submitD2Bff', 'D2_BFF')) as { endpoints: Array<{ kind: string; writes?: string }> };
+  const raw = withBindings();
   raw.endpoints.find(item => item.kind === 'cmd')!.writes = '';
-  assert.throws(() => d2BffApproved(mesas, raw), /D2_BFF_FORMAT: endpoints\.\w+\.writes: a command names its write/u);
+  assert.match(refusalOf(() => d2BffApproved(mesas, raw)), /D2_BFF_FORMAT: endpoints\.\w+\.writes: a command names its write/u);
 
   // origin is required on every leaf; on a leaf that names a type it is ignored, whatever its shape.
-  const schema = bffSchemaFor(mesas) as { properties: { endpoints: { items: { properties: { writes: { enum: string[] }; output: { items: { required: string[] } } } } } } };
+  const schema = bffSchemaFor(mesas) as { required: string[]; properties: { endpoints: { items: { properties: { writes: { enum: string[] }; output: { items: { required: string[] } } } } } } };
   assert.deepEqual(schema.properties.endpoints.items.properties.output.items.required, ['name', 'type', 'origin']);
+  assert.deepEqual(schema.required, ['types', 'endpoints', 'bindings']);
   assert.equal(schema.properties.endpoints.items.properties.writes.enum[0], '');
-  const odd = structuredClone(d2ToolPayload(recorded, 'submitD2Bff', 'D2_BFF')) as { endpoints: Array<{ output: Array<{ type: string; origin?: unknown }> }> };
-  for (const endpoint of odd.endpoints) for (const leaf of endpoint.output) if (/^[A-Z]/u.test(leaf.type)) leaf.origin = { kind: 'field', paths: [] };
+  const odd = withBindings();
+  for (const endpoint of odd.endpoints) for (const leaf of endpoint.output) if (/^[A-Z]/u.test(String(leaf.type))) leaf.origin = { kind: 'field', paths: [] };
   assert.doesNotThrow(() => d2BffApproved(mesas, odd));
 
   // A page without writes gets the neutral enum [''], never a free string.
-  const inicio = await diningBffContext('inicio');
-  const inicioSchema = bffSchemaFor(inicio) as typeof schema;
+  const inicioSchema = bffSchemaFor(await diningBffContext('inicio')) as typeof schema;
   assert.deepEqual(inicioSchema.properties.endpoints.items.properties.writes.enum, ['']);
 });
 
-void test('d2_73: the hand-written A and C of atendimento and inicio pass B and D; the contract carries the JSDoc and compiles', async () => {
+void test('d2_75: the shared comes from the design by code: entry params, refreshes, selection, no function as source, JSDoc text', async () => {
   const { outcomes, out } = await dining();
   assert.ok(outcomes.every(item => item.result === 'ok'), JSON.stringify(outcomes.filter(item => item.result !== 'ok')));
-  assert.deepEqual(outcomes.filter(item => item.stage === 'contracts70').map(item => item.pageId), ['atendimento', 'inicio']);
-
-  const atendimento = out.contracts.atendimento;
-  assert.match(atendimento, /export interface ComandaComItens \{\n[\s\S]*itens: ItemDaComanda\[\];/u);
-  assert.match(atendimento, /'comandaRestaurante\.atendimento\.abrirComanda': \{\n {4}kind: 'cmd';\n {4}writes: 'Comanda\.create';\n {4}input: \{ mesaId: string \};/u);
-  assert.match(atendimento, /input: \{ itemComandaId: string; version: number \};/u);
-  assert.match(atendimento, /input: \{ comandaId: string; itemCardapioId: string; quantidade: number; observacao\?: string \};/u);
-  // The JSDoc of A, with the labels of the module language, sits above every route.
-  for (const endpointId of ['load', 'carregarComanda', 'buscarItemCardapio', 'abrirComanda', 'lancarItem', 'cancelarItem']) {
-    assert.match(atendimento, new RegExp(`/\\*\\*\\n {3}\\* Finalidade: [^\\n]+\\n {3}\\* Entrada: [^\\n]+\\n {3}\\* Processamento: [^\\n]+\\n {3}\\* Saída: [^\\n]+\\n {3}\\*/\\n {2}'comandaRestaurante\\.atendimento\\.${endpointId}'`, 'u'));
+  const shared = out.sharedDefs.atendimento;
+  const design = out.designs.atendimento;
+  // rule 8: the selected record survives a reload, from the URL then local storage.
+  assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url', 'localStorage'], effect: 'select:detalheComanda', persist: true });
+  assert.deepEqual(shared.states.selectedComanda, { source: 'entry.params.comandaId', description: 'Comanda pronta para a tela do garçom: cabeçalho, itens e subtotal.' });
+  // One function per endpoint, same id; a command redraws with its output and reloads what A declared.
+  assert.deepEqual(Object.keys(shared.functions).sort(), design.endpoints.map(item => item.id).sort());
+  assert.deepEqual(shared.functions.abrirComanda, { calls: 'abrirComanda', description: 'Abrir uma comanda para a mesa escolhida.', sets: 'comanda', updates: ['mesas'] });
+  // The selection calls the detail query A declared, which sets the detail state.
+  assert.deepEqual([shared.functions.carregarComanda.calls, shared.functions.carregarComanda.sets], ['carregarComanda', 'comanda']);
+  // No state takes a function as source; no description is an identifier.
+  for (const [id, state] of Object.entries(shared.states)) {
+    assert.ok(state.source.startsWith('entry.params.') || design.endpoints.some(item => state.source.startsWith(`${item.id}.`)), id);
+    assert.doesNotMatch(state.description, /^[a-z][A-Za-z0-9]*$/u, id);
   }
-  assert.match(atendimento, /rules: \['itensSomenteEmComandaAberta', 'precoUnitarioRegistradoNoLancamento', 'valorTotalItemComandaCalculado', 'subtotalComandaCalculado'\]/u);
-  // Derived fields and aggregates are readonly.
-  assert.match(atendimento, /readonly subtotal: string;/u);
-  assert.match(out.contracts.inicio, /readonly totalEmAberto: string;/u);
-
-  // meta: an entity only for a key whose type carries one entity's fields; composite and aggregated keys are left out.
-  const parsed = parseD2ContractV2(atendimento);
-  const metaOf = (contract: string, id: string) => parseD2ContractV2(contract).routes.find(item => item.route.endsWith(`.${id}`))!.meta;
-  assert.deepEqual(metaOf(atendimento, 'load').output, { mesas: { entity: 'Mesa', many: true } });
-  assert.deepEqual(metaOf(atendimento, 'buscarItemCardapio').output, { itens: { entity: 'ItemCardapio', many: true } });
-  assert.deepEqual(metaOf(atendimento, 'lancarItem').output, {});
-  assert.deepEqual(metaOf(out.contracts.inicio, 'load').output, {});
-  assert.equal(parsed.routes.length, 6);
-  assert.equal(parsed.routes.find(item => item.route.endsWith('.load'))?.writes, undefined);
-
-  // The origins stay in the pipeline: none reaches the contract.
-  for (const contract of Object.values(out.contracts)) assert.doesNotMatch(contract, /origin|aggregate/u);
-  for (const [pageId, contract] of Object.entries(out.contracts)) assert.deepEqual(compileErrors(contract), [], pageId);
-  // The checker sees a broken contract (positive control).
-  assert.ok(compileErrors(out.contracts.atendimento.replace('itens: ItemDaComanda[];', 'itens: ItemSemTipo[];')).some(item => item.includes('ItemSemTipo')));
+  for (const [id, fn] of Object.entries(shared.functions)) assert.equal(fn.description, design.endpoints.find(item => item.id === id)?.jsdoc.purpose, id);
+  // Form from the input of the write (d2_72): only the create that asks for typed input has one.
+  assert.deepEqual(shared.forms, { lancarItem: { organism: 'formularioLancamento', submit: 'lancarItem' } });
+  // requests, rules and access are A's.
+  assert.deepEqual(shared.requests.lancarItem, { kind: 'cmd', trigger: 'lancarItem', writes: 'ItemComanda.create', returns: ['comanda'] });
+  assert.deepEqual(shared.access, { actors: ['garcom'], grants: ['garcomAtendimentoComandas'] });
+  assert.equal(shared.journeys.length, 8);
 });
 
-void test('d2_73: B refuses by fact, naming the exact path', async () => {
+void test('d2_75: the contract takes names and types from the ontology and meta from the origins; JSDoc and compilation hold', async () => {
   const { out } = await dining();
-  const bff = out.bff.atendimento;
-  const answer = () => readPack('dining').json<{ types: Array<{ name: string; fields: Array<Record<string, unknown>> }>; endpoints: Array<Record<string, unknown>> }>('answers/bff55/atendimento.json');
+  const atendimento = out.contracts.atendimento;
+  assert.match(atendimento, /export interface ComandaComItens \{\n {2}id: string;\n {2}number: number;\n {2}mesaId: string;\n {2}code: string;\n {2}status: 'open' \| 'closed';\n {2}readonly subtotal: string;\n {2}itens: ItemDaComanda\[\];\n\}/u);
+  // Two leaves of one type that derive the same name: the root entity keeps it, the other is prefixed.
+  assert.match(atendimento, /export interface MesaDoSalao \{\n {2}id: string;\n[\s\S]*?\n {2}comandaId\?: string;/u);
+  assert.match(atendimento, /'comandaRestaurante\.atendimento\.cancelarItem': \{\n {4}kind: 'cmd';\n {4}writes: 'ItemComanda\.cancelarItemComanda';\n {4}input: \{ id: string; version: number \};/u);
+  for (const endpointId of ['carregarAtendimento', 'carregarComanda', 'buscarItemCardapio', 'abrirComanda', 'lancarItem', 'cancelarItem']) {
+    assert.match(atendimento, new RegExp(`/\\*\\*\\n {3}\\* Finalidade: [^\\n]+\\n {3}\\* Entrada: [^\\n]+\\n {3}\\* Processamento: [^\\n]+\\n {3}\\* Saída: [^\\n]+\\n {3}\\*/\\n {2}'comandaRestaurante\\.atendimento\\.${endpointId}'`, 'u'));
+  }
+  const metaOf = (contract: string, id: string) => parseD2ContractV2(contract).routes.find(item => item.route.endsWith(`.${id}`))!.meta;
+  assert.deepEqual(metaOf(atendimento, 'carregarAtendimento').output, { mesas: { entity: 'Mesa', many: true } });
+  for (const id of ['carregarComanda', 'abrirComanda', 'lancarItem', 'cancelarItem']) assert.deepEqual(metaOf(atendimento, id).output, { comanda: { entity: 'Comanda', many: false } }, id);
+  assert.deepEqual(metaOf(atendimento, 'carregarComanda').params, { id: { filters: 'comanda', field: 'id' } });
+  assert.deepEqual(metaOf(atendimento, 'buscarItemCardapio').params, { name: { filters: 'itens', field: 'name' } });
+  // A key with only aggregates has no entity for the L1 to read: it stays out of meta.
+  assert.deepEqual(metaOf(out.contracts.inicio, 'carregarIndicadores').output, {});
+  for (const contract of Object.values(out.contracts)) assert.doesNotMatch(contract, /origin|aggregate/u);
+  for (const [pageId, contract] of Object.entries(out.contracts)) assert.deepEqual(compileErrors(contract), [], pageId);
+  assert.ok(compileErrors(atendimento.replace('itens: ItemDaComanda[];', 'itens: ItemSemTipo[];')).some(item => item.includes('ItemSemTipo')));
+
+  // A paged and filtered query: meta lists and params, in the form of main.
+  const stock = emptyOut();
+  await replay('stock', stock);
+  const produtos = parseD2ContractV2(stock.contracts.produtos).routes.find(item => item.route.endsWith('.listarProdutos'))!.meta;
+  assert.deepEqual(produtos.lists.listaProdutos, { key: 'produtos', page: 'page', pageSize: 'pageSize', hasMore: 'hasMoreProdutos' });
+  assert.deepEqual(produtos.params, { name: { filters: 'produtos', field: 'details.identification.name' }, page: { pages: 'saldosResumo' }, pageSize: { pages: 'saldosResumo' } });
+  assert.match(stock.contracts.produtos, /saldoAtual: number;/u);
+});
+
+void test('d2_75: a field leaf takes the ontology name and type, without refusal', async () => {
+  const bff = (await dining()).out.bff.atendimento;
+  const answer = atendimentoAnswer();
+  const mesa = answer.types.find(item => item.name === 'MesaDoSalao')!;
+  mesa.fields.find(field => field.name === 'code')!.name = 'codigo';
+  mesa.fields.find(field => field.name === 'subtotal')!.type = 'number';
+  const design = d2BffApproved(bff, answer);
+  const fields = design.types.find(item => item.name === 'MesaDoSalao')!.fields;
+  assert.deepEqual(fields.find(field => field.origin?.paths[0] === 'Mesa.code'), { name: 'code', type: 'string', origin: { kind: 'field', paths: ['Mesa.code'] } });
+  assert.equal(fields.find(field => field.origin?.paths[0] === 'Comanda.details.subtotal')?.type, 'string');
+  // Bindings follow a renamed output key.
+  const renamed = atendimentoAnswer();
+  renamed.endpoints.find(item => item.id === 'buscarItemCardapio')!.output.push({ name: 'nomeBuscado', type: 'string', origin: { kind: 'field', paths: ['ItemCardapio.name'] } });
+  renamed.bindings.organisms = renamed.bindings.organisms.map(row => row.organism === 'formularioLancamento' ? { ...row, reads: 'buscarItemCardapio.nomeBuscado' } : row);
+  assert.equal(normalizeD2BffDesign(buildD2BffDesign(renamed), bff.entities).bindings.organisms.find(row => row.organism === 'formularioLancamento')?.reads, 'buscarItemCardapio.name');
+});
+
+void test('d2_75: B refuses by fact, naming the exact path; D goes back to A', async () => {
+  const bff = (await dining()).out.bff.atendimento;
 
   // B.1: a field an organism reads that no output carries.
-  const noObservation = answer();
+  const noObservation = atendimentoAnswer();
   const line = noObservation.types.find(item => item.name === 'ItemDaComanda')!;
   line.fields = line.fields.filter(field => field.name !== 'observacao');
-  assert.throws(() => d2BffApproved(bff, noObservation), /D2_BFF_COVERAGE: organisms\.detalheComanda\.reads\.ItemComanda\.details\.observacao: organism detalheComanda reads ItemComanda\.details\.observacao/u);
+  assert.match(refusalOf(() => d2BffApproved(bff, noObservation)), /D2_BFF_COVERAGE: organisms\.detalheComanda\.reads\.ItemComanda\.details\.observacao/u);
 
   // B.2: the transition asks for a payload the command does not carry.
   const entities = structuredClone(bff.entities) as unknown as Record<string, { transitions: Array<{ transitionId: string; payload: string[] }> }>;
   entities.ItemComanda.transitions.find(item => item.transitionId === 'cancelarItemComanda')!.payload = ['details.observacao'];
-  assert.throws(() => d2BffApproved({ ...bff, entities: entities as unknown as D2BffContext['entities'] }, answer()),
+  assert.match(refusalOf(() => d2BffApproved({ ...bff, entities: entities as unknown as D2BffContext['entities'] }, atendimentoAnswer())),
     /D2_BFF_COMMAND_INPUT: endpoints\.cancelarItem\.input: command cancelarItem \(ItemComanda\.cancelarItemComanda\) asks for ItemComanda\.details\.observacao/u);
 
-  // B.3: an origin no actor of the page sees (the waiter does not see the payment method).
-  const payment = answer();
-  payment.types.find(item => item.name === 'ComandaAberta')!.fields.push({ name: 'formaPagamento', type: "'cash' | 'pix'", origin: { kind: 'field', paths: ['Comanda.details.paymentMethod'] } });
-  assert.throws(() => d2BffApproved(bff, payment), /D2_BFF_ORIGIN_GRANT: types\.ComandaAberta\.formaPagamento: origin Comanda\.details\.paymentMethod is not visible to any actor of the page \(garcom\)/u);
-
-  // B.3: an enum literal outside L4, an unknown rule, an unknown field.
-  const facts = answer();
-  facts.types.find(item => item.name === 'ComandaAberta')!.fields.find(field => field.name === 'status')!.type = "'aberta'";
-  facts.endpoints.find(item => item.id === 'load')!.rules = ['regraQueNaoExiste'];
-  facts.types.find(item => item.name === 'MesaDoSalao')!.fields.push({ name: 'lugares', type: 'number', origin: { kind: 'field', paths: ['Mesa.details.lugares'] } });
-  const codes = (() => { try { d2BffApproved(bff, facts); return ''; } catch (error) { return String(error); } })();
-  assert.match(codes, /D2_BFF_ENUM: types\.ComandaAberta\.status: 'aberta' is not a value of Comanda\.status/u);
-  assert.match(codes, /D2_BFF_RULE_UNKNOWN: endpoints\.load\.rules: rule regraQueNaoExiste/u);
+  // B.3: an origin no actor of the page sees, an unknown rule, an unknown field.
+  const facts = atendimentoAnswer();
+  facts.types.find(item => item.name === 'MesaDoSalao')!.fields.push({ name: 'paymentMethod', type: 'string', origin: { kind: 'field', paths: ['Comanda.details.paymentMethod'] } }, { name: 'lugares', type: 'number', origin: { kind: 'field', paths: ['Mesa.details.lugares'] } });
+  facts.endpoints.find(item => item.id === 'carregarAtendimento')!.rules = ['regraQueNaoExiste'];
+  const codes = refusalOf(() => d2BffApproved(bff, facts));
+  assert.match(codes, /D2_BFF_ORIGIN_GRANT: types\.MesaDoSalao\.paymentMethod: origin Comanda\.details\.paymentMethod is not visible to any actor of the page \(garcom\)/u);
+  assert.match(codes, /D2_BFF_RULE_UNKNOWN: endpoints\.carregarAtendimento\.rules: rule regraQueNaoExiste/u);
   assert.match(codes, /D2_BFF_ORIGIN_UNKNOWN: types\.MesaDoSalao\.lugares: origin Mesa\.details\.lugares/u);
 
-  // B.2 and B.4: a submit without its command, and a command that writes outside the plan.
-  const commands = answer();
-  commands.endpoints = commands.endpoints.filter(item => item.id !== 'abrirComanda');
-  commands.endpoints.find(item => item.id === 'cancelarItem')!.writes = 'Comanda.fecharComanda';
-  const plan = (() => { try { d2BffApproved(bff, commands); return ''; } catch (error) { return String(error); } })();
-  assert.match(plan, /D2_BFF_SUBMIT_COMMAND: submits\.abrirComanda: submit abrirComanda has 0 commands/u);
-  assert.match(plan, /D2_BFF_SUBMIT_WRITE: endpoints\.cancelarItem\.writes/u);
-  assert.match(plan, /D2_BFF_WRITE_OUTSIDE: endpoints\.cancelarItem\.writes: Comanda\.fecharComanda is not a write of this page/u);
+  // bindings: an organism that reads without a source, a reload of a query that does not exist.
+  const links = atendimentoAnswer();
+  links.bindings.organisms = links.bindings.organisms.filter(row => row.organism !== 'formularioLancamento');
+  links.bindings.commands[0].refreshes = ['consultaQueNaoExiste'];
+  const linkCodes = refusalOf(() => d2BffApproved(bff, links));
+  assert.match(linkCodes, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.formularioLancamento: organism formularioLancamento reads and has 0 sources/u);
+  assert.match(linkCodes, /D2_BFF_BINDING_QUERY: bindings\.commands\.0\.refreshes\.0: consultaQueNaoExiste is not a query of the page/u);
 
-  // The tool format is not a design gate, but a leaf without origin cannot be checked.
-  const noOrigin = answer();
-  delete noOrigin.types[0].fields[0].origin;
-  assert.throws(() => d2BffApproved(bff, noOrigin), /D2_BFF_FORMAT: types\.ComandaComItens\.fields\.id\.origin: a value leaf names its origin/u);
+  // D over the derived shared goes back to A: a source that leaves a read field unheld.
+  const unfed = atendimentoAnswer();
+  unfed.bindings.organisms = unfed.bindings.organisms.map(row => row.organism === 'formularioLancamento' ? { ...row, reads: 'carregarComanda.comanda' } : row);
+  assert.match(refusalOf(() => d2BffApproved(bff, unfed)), /D2_SHARED_V2_ORGANISM_UNFED: Organism \w+ reads ItemCardapio\.details\.precoVigente, and no state holds it/u);
 });
 
-void test('d2_73: B does not judge the design: another number of endpoints and other names pass', async () => {
-  const { out } = await dining();
-  const bff = out.bff.atendimento;
-  const design = structuredClone(out.designs.atendimento);
-  // One query fewer: the selected record comes in the opening call, under other names.
-  design.endpoints = design.endpoints.filter(item => item.id !== 'carregarComanda').map(item => item.id === 'load' ? { ...item, id: 'abrirTela', output: [...item.output, { name: 'comandaEmFoco', type: 'ComandaComItens' }] } : item);
-  assert.doesNotThrow(() => d2BffApproved(bff, design));
+void test('d2_75: B does not judge the design: other reloads and other names pass', async () => {
+  const bff = (await dining()).out.bff.atendimento;
+  const other = JSON.parse(JSON.stringify(atendimentoAnswer()).replace(/buscarItemCardapio/gu, 'procurarPrato')) as RawDesign;
+  other.bindings.commands = [];
+  assert.doesNotThrow(() => d2BffApproved(bff, other));
 });
 
-void test('d2_73: D refuses an unfed organism, a call to a missing endpoint and a submit without function', async () => {
-  const { out, pack } = await dining();
-  const shared = out.shared.atendimento;
-  const answer = () => pack.json<D2SharedLlmResponse>('answers/shared60/atendimento.json');
-  assert.doesNotThrow(() => d2SharedApproved(shared, answer()));
-
-  const unfed = answer();
-  unfed.states = unfed.states.filter(item => item.id !== 'itensEncontrados');
-  unfed.functions = unfed.functions.map(item => item.id === 'buscarItem' ? { ...item, sets: undefined } : item);
-  assert.throws(() => d2SharedApproved(shared, unfed), /D2_SHARED_V2_ORGANISM_UNFED: Organism (lookupAtendimento|formularioLancamento) reads ItemCardapio\.details\.precoVigente, and no state holds it/u);
-
-  const broken = answer();
-  broken.functions = broken.functions.filter(item => item.id !== 'cancelarItem').map(item => item.id === 'buscarItem' ? { ...item, calls: 'buscarPrato' } : item);
-  broken.journeys = broken.journeys.map(item => ({ ...item, functions: item.functions.filter(fn => fn !== 'cancelarItem') }));
-  broken.states.push({ id: 'emprestado', source: 'fechamento.comanda', description: 'state of another page' });
-  const codes = (() => { try { d2SharedApproved(shared, broken); return ''; } catch (error) { return String(error); } })();
-  assert.match(codes, /D2_SHARED_V2_FUNCTION_CALL: Function buscarItem calls buscarPrato, which is not an endpoint of the page/u);
-  assert.match(codes, /D2_SHARED_V2_SUBMIT_FUNCTION: Submit cancelarItem has no function that calls its command cancelarItem/u);
-  assert.match(codes, /D2_SHARED_V2_STATE_SOURCE: State emprestado source "fechamento\.comanda"/u);
-
-  // requests, rules and access are copied from A, never chosen by C.
-  const definition = d2SharedApproved(shared, answer());
-  assert.deepEqual(Object.keys(definition.requests), out.designs.atendimento.endpoints.map(item => item.id));
-  assert.deepEqual(definition.requests.lancarItem, { kind: 'cmd', trigger: 'lancarItem', writes: 'ItemComanda.create', returns: ['comanda'] });
-  assert.deepEqual(definition.requests.buscarItemCardapio.trigger, 'buscarItemCardapio');
-  assert.deepEqual(definition.rules.cancelarItem, ['itemComandaOperacaoSomenteComandaAberta', 'subtotalComandaCalculado']);
-  assert.deepEqual(definition.access, { actors: ['garcom'], grants: ['garcomAtendimentoComandas'] });
-  assert.equal(sharedInfo(shared.identity, 'atendimento').folder, 'comandaRestaurante/web/shared');
-});
-
-void test('d2_73: prompts of A and C stay inside the limit, carry the rule texts and the schemas pass the tool lint', async (t) => {
-  const { out } = await dining();
+void test('d2_75: one LLM call per page; the prompt of A stays inside the limit, carries the rule texts and the schema passes the tool lint', async (t) => {
   const pack = readPack('dining');
   const sizes: string[] = [];
   for (const name of pack.list('answers/pages50')) {
@@ -512,15 +527,70 @@ void test('d2_73: prompts of A and C stay inside the limit, carry the rule texts
     const prompt = buildD2BffPrompt(bff);
     assert.ok(prompt.chars < D2_BFF_PROMPT_LIMIT_CHARS);
     assert.deepEqual(lintToolSchema(JSON.stringify(bffSchemaFor(bff))), null, pageId);
-    const c = out.shared[pageId] ? buildD2SharedPrompt(out.shared[pageId]).chars : 0;
-    if (out.shared[pageId]) {
-      assert.ok(c < D2_SHARED_PROMPT_LIMIT_CHARS);
-      assert.deepEqual(lintToolSchema(JSON.stringify(sharedSchemaFor(out.shared[pageId]))), null, pageId);
-      assert.doesNotMatch(buildD2SharedPrompt(out.shared[pageId]).humanPrompt, /"origin"/u);
-    }
-    sizes.push(`${pageId}: A=${prompt.chars}${c ? ` C=${c}` : ''}`);
+    sizes.push(`${pageId}: A=${prompt.chars}`);
   }
   t.diagnostic(`prompt chars: ${sizes.join('; ')}`);
-  // A rule no entity links (a calculation) still reaches the prompt of the page that shows the value.
-  assert.match(buildD2BffPrompt(out.bff.atendimento).humanPrompt, /precoUnitarioRegistradoNoLancamento/u);
+  const atendimento = await diningBffContext('atendimento');
+  assert.match(buildD2BffPrompt(atendimento).humanPrompt, /precoUnitarioRegistradoNoLancamento/u);
+  assert.match(buildD2BffPrompt(atendimento).humanPrompt, /"journeySteps":\["abrirComanda\/criarComanda"/u);
+});
+
+void test('d2_75: no id of a fixture module, entity, page or endpoint in the agent sources or prompts', () => {
+  const terms = new Set<string>();
+  for (const alias of readdirSync(ROOT).filter(name => !name.includes('.'))) {
+    const pack = readPack(alias);
+    terms.add(pack.moduleName);
+    for (const name of pack.names('l4/ontology')) terms.add(name.replace(/\.defs\.ts$/u, ''));
+    for (const name of pack.list('answers/pages50')) terms.add(name.replace(/\.json$/u, ''));
+    for (const name of pack.list('answers/bff55')) for (const endpoint of pack.json<RawDesign>(`answers/bff55/${name}`).endpoints) terms.add(String(endpoint.id));
+  }
+  const pattern = new RegExp(`\\b(${[...terms].join('|')})\\b`, 'u');
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, name.name);
+      if (name.isDirectory()) { if (name.name !== 'fixtures') walk(full); continue; }
+      if ((name.name.endsWith('.ts') && !name.name.endsWith('.test.ts')) || name.name === 'prompt.md') files.push(full);
+    }
+  };
+  walk(path.join(HERE, '..'));
+  const hits = files.flatMap(file => { const found = pattern.exec(readFileSync(file, 'utf8')); return found ? [`${path.relative(path.join(HERE, '..'), file)}: ${found[1]}`] : []; });
+  assert.deepEqual(hits, []);
+  // Positive control: the same pattern finds the terms where they live.
+  assert.ok(terms.size > 20);
+  assert.ok(pattern.test(readFileSync(path.join(ROOT, 'dining/answers/bff55/atendimento.json'), 'utf8')));
+});
+
+
+void test('d2_75: shared60 runs without a prompt; a refused page does not stop the others; the same inputs write nothing', async () => {
+  const { out } = await dining();
+  const writes = new Map<string, unknown>();
+  const writer = { writeSource: async (info: { folder: string; shortName: string }, source: string) => { writes.set(`${info.folder}/${info.shortName}`, source); }, writeJson: async (info: { folder: string; shortName: string }, value: unknown) => { writes.set(`${info.folder}/${info.shortName}.json`, value); } };
+  const broken = { ...out.shared.inicio, derive: { ...out.shared.inicio.derive, design: { ...out.shared.inicio.derive.design, bindings: { ...out.shared.inicio.derive.design.bindings, organisms: [] } } } };
+  const existing = new Map<string, { source: string | null; receipt: D2SharedReceipt | null }>();
+  const port = {
+    pageIds: async () => ['atendimento', 'inicio'],
+    load: async (pageId: string) => (pageId === 'inicio' ? broken : out.shared[pageId]),
+    readExisting: async (pageId: string) => existing.get(pageId) ?? { source: null, receipt: null },
+    writer,
+  };
+  const step = { type: 'agent', stepId: 2, interaction: null, stepTitle: 'shared', status: 'waiting_human_input', nextSteps: [], agentName: 'agentD2Shared', prompt: '', rags: [],
+    planning: { planId: 'shared60', dependsOn: [], executionMode: 'sequential', executionHost: 'client' } } as mls.msg.AIAgentStep;
+  const execution = { message: { orderAt: 'm', threadId: 't' }, task: { PK: 'task' }, isTest: true } as mls.msg.ExecutionContext;
+  const failed = await sharedStep({ agentName: 'agentD2Shared' } as Parameters<typeof sharedStep>[0], execution, { ...step, stepId: 1 } as mls.msg.AIAgentStep, step, 1, port);
+  assert.equal(failed.some(item => item.type === 'prompt_ready'), false);
+  const status = failed.find(item => item.type === 'update-status') as { status: string; traceMsg: string };
+  assert.equal(status.status, 'failed');
+  assert.match(status.traceMsg, /^D2_SHARED_PAGES_REFUSED: inicio: D2_SHARED_SELF_CHECK: D2_SHARED_V2_ORGANISM_UNFED/u);
+  assert.equal(typeof writes.get('comandaRestaurante/web/shared/atendimento'), 'string');
+
+  // Fixed, it passes; a second run over the same inputs writes nothing.
+  port.load = async (pageId: string) => out.shared[pageId];
+  const first = await executeD2Shared(port);
+  assert.deepEqual(first, { wrote: ['atendimento', 'inicio'], reused: [], refused: [] });
+  for (const pageId of ['atendimento', 'inicio']) existing.set(pageId, { source: writes.get(`comandaRestaurante/web/shared/${pageId}`) as string, receipt: writes.get(`comandaRestaurante/pipeline/agentDefsL2/shared60/${pageId}.json`) as D2SharedReceipt });
+  writes.clear();
+  assert.deepEqual(await executeD2Shared(port), { wrote: [], reused: ['atendimento', 'inicio'], refused: [] });
+  assert.equal(writes.size, 0);
+  assert.equal(d2SharedSourceFor(out.shared.atendimento), existing.get('atendimento')?.source);
 });

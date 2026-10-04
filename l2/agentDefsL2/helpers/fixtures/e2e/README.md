@@ -12,15 +12,16 @@ Frozen, renamed copies of three runtime modules; `helpers/e2eReplay.test.ts` rep
 
 Each pack has `l4/` (only what is read), `pool/` (menu, needs, backend, effort as the runs delivered them) and `answers/`.
 The `pages50` answers are the ones the real runs accepted, rebuilt from the approved artifacts (page11 + drafts + pages50
-receipt). Since d2_73 the `bff55` (A) and `shared60` (C) answers are written by hand from the l4 exercise
-(`exercicio-shared-e-contrato-a-partir-do-page11.md`): dining `atendimento` and `inicio`, and the expense hub `inicio`;
-the shared answers of the earlier derivation were removed with it. The run traces do not keep the raw LLM answers (step status uses `cleaner: input_output`), so a refused
+receipt). Since d2_73 the `bff55` (A) answers are written by hand from the l4 exercise (`exercicio-shared-e-contrato-a-partir-do-page11.md`); since
+d2_75 they carry the page bindings and the shared is derived by code (no shared answer): dining `atendimento` and `inicio`,
+stock `produtos`, expense `despesas_aprovadas` and the expense hub `inicio`. `dining/recorded/` keeps a raw answer of a
+live run (p4_29) for its regression test. The run traces do not keep the raw LLM answers (step status uses `cleaner: input_output`), so a refused
 answer exists only as its refusal text; such cases are encoded from their deterministic cause.
 
 ## Adding a case from a new run (d2_69)
 
 Since d2_69 every LLM call keeps its raw answer, with the gate verdict, before validation:
-- defs L2: `l2/<module>/pipeline/agentDefsL2/{pages50,bff55,shared60}/responses/<pageId>-<attempt>.json` (pages50 attempts are
+- defs L2: `l2/<module>/pipeline/agentDefsL2/{pages50,bff55}/responses/<pageId>-<attempt>.json` (pages50 attempts are
   `groups-<n>` and `decision-<n>`);
 - planner L2: `l4/<module>/pool/l2/responses/menu20/menu-<attempt>.json` (planning writes only in the pool).
 

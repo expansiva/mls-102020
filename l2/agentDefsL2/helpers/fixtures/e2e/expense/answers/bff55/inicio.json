@@ -1,4 +1,10 @@
 {
   "types": [],
-  "endpoints": []
+  "endpoints": [],
+  "bindings": {
+    "organisms": [],
+    "commands": [],
+    "selections": [],
+    "journeys": []
+  }
 }

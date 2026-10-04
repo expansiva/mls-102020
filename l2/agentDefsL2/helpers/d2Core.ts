@@ -11,7 +11,6 @@ export const D2_CONTRACTS_AGENT_NAME = 'agentD2Contracts' as const;
 export const D2_BFF_AGENT_NAME = 'agentD2Bff' as const;
 export const D2_BFF_PAGE_AGENT_NAME = 'agentD2BffPage' as const;
 export const D2_SHARED_AGENT_NAME = 'agentD2Shared' as const;
-export const D2_SHARED_PAGE_AGENT_NAME = 'agentD2SharedPage' as const;
 export const D2_PAGES_AGENT_NAME = 'agentD2Pages' as const;
 export const D2_PAGES_PAGE_AGENT_NAME = 'agentD2PagesPage' as const;
 export const D2_FINALIZE_AGENT_NAME = 'agentD2Finalize' as const;
