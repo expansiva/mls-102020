@@ -45,7 +45,8 @@ export function sharedFromDerived(derived: D2DerivedPageRequests, extras?: Parti
     };
   }
   const functions: D2SharedV2Definition['functions'] = { ...(extras?.functions ?? {}) };
-  functions.load = functions.load ?? { calls: 'load', description: extras?.functions?.load?.description ?? '' };
+  // A fixed function exists only for a derived request: a page without requests has only navigations (d2_70).
+  if (derived.requests.some(request => request.id === 'load')) functions.load = functions.load ?? { calls: 'load', description: extras?.functions?.load?.description ?? '' };
   // The list state is shape: one state per list key, fed by load and replaced or extended by filter/loadMore.
   const states: D2SharedV2Definition['states'] = {};
   for (const request of derived.requests) {
@@ -57,7 +58,8 @@ export function sharedFromDerived(derived: D2DerivedPageRequests, extras?: Parti
     }
   }
   for (const request of derived.requests.filter(item => item.kind === 'cmd')) {
-    functions[request.id] = functions[request.id] ?? { calls: request.id, updates: request.returns, description: '' };
+    // Which states a command refreshes is the answer's choice; return keys are not state ids.
+    functions[request.id] = functions[request.id] ?? { calls: request.id, description: '' };
   }
   const forms: D2SharedV2Definition['forms'] = {};
   for (const [id, form] of Object.entries(derived.forms)) forms[id] = { organism: form.organism, submit: form.submit };

@@ -37,8 +37,6 @@ import {
   drainWaitingSiblings,
   updateStatus,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
-import type { P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
-import type { P2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
 import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/steps/requests50/agentP2Requests.js';
 import {
   buildP2EffortFile,
@@ -47,16 +45,20 @@ import {
   parseP2L4DiffFile,
   p2EntityRulesMap,
   type P2BuildEffortCandidate,
-  type P2EffortFile,
-  type P2EffortUnattributed,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import {
   formatP2EffortGate,
   validateP2Effort,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/gate.js';
+import type {
+  PoolEffortFile,
+  PoolEffortUnattributed,
+  PoolMenuFile,
+  PoolNeedsFile,
+} from '/_102035_/l2/solution/poolPlan.js';
 
 export interface P2DeliverEffortResult {
-  effort: P2EffortFile;
+  effort: PoolEffortFile;
   effortPath: string;
   message: PoolMessage;
   messagePath: string;
@@ -66,7 +68,7 @@ interface P2EffortCheckpoint {
   thread: string;
   round: number;
   inputFile: string;
-  effort: P2EffortFile;
+  effort: PoolEffortFile;
 }
 
 export async function executeP2Effort(moduleName: string, now: Date): Promise<P2DeliverEffortResult> {
@@ -82,14 +84,14 @@ export async function executeP2Effort(moduleName: string, now: Date): Promise<P2
     && checkpoint.inputFile === displayPath(receivedFile)
     ? checkpoint
     : null;
-  let effort: P2EffortFile;
+  let effort: PoolEffortFile;
   let message: PoolMessage;
   let messageInfo: ReturnType<typeof p2EffortFile>;
   let effortPath: string;
   if (existing) {
     const device = pipeline.device || P2_MENU_DEVICE;
     const effortInfo = p2EffortFile(moduleName, device);
-    const persisted = await readJson<P2EffortFile>(effortInfo);
+    const persisted = await readJson<PoolEffortFile>(effortInfo);
     if (!persisted) throw new Error('pool/l2 effort.json is missing for the existing response; input remains pending.');
     effort = persisted;
     message = existing.message;
@@ -103,7 +105,7 @@ export async function executeP2Effort(moduleName: string, now: Date): Promise<P2
     messageInfo = await writePoolMessage(moduleName, message, now);
   } else {
     const device = pipeline.device || P2_MENU_DEVICE;
-    const menu = await readJson<P2MenuFile>(p2MenuFile(moduleName, device));
+    const menu = await readJson<PoolMenuFile>(p2MenuFile(moduleName, device));
     if (!menu) throw new Error(`pool/l2/${device}/menu.json is missing; the menu flow must run first.`);
     const rawBackend = await readJson<unknown>(p2BackendFile(moduleName, device));
     if (rawBackend === null) throw new Error(`pool/l2/${device}/backend.json is missing; the l1 plan must run first.`);
@@ -183,7 +185,7 @@ async function requirePipeline(moduleName: string): Promise<P2PipelineState> {
 async function writeApproved(
   moduleName: string,
   artifactPaths: string[],
-  unattributed: readonly P2EffortUnattributed[],
+  unattributed: readonly PoolEffortUnattributed[],
 ): Promise<void> {
   const pipeline = await requirePipeline(moduleName);
   const extra = unattributed.map(item => `unattributed ${item.changeId}: ${item.reason}`);
@@ -200,9 +202,9 @@ async function loadCandidateEffort(moduleName: string, device: typeof P2_MENU_DE
   if (!isP2CandidateRoot(moduleName)) return undefined;
   const rawDiff = await readJson<unknown>(p2L4DiffFile(moduleName, device));
   if (rawDiff === null) throw new Error(`pool/l2/${device}/l4diff.json is missing; the l4 candidate diff must run first.`);
-  const needs = await readJson<P2NeedsFile>(p2NeedsFile(moduleName, device));
+  const needs = await readJson<PoolNeedsFile>(p2NeedsFile(moduleName, device));
   if (!needs) throw new Error(`pool/l1/${device}/needs.json is missing; the menu flow must run first.`);
-  const canonicalMenu = await readJson<P2MenuFile>(p2CanonicalMenuFile(moduleName, device));
+  const canonicalMenu = await readJson<PoolMenuFile>(p2CanonicalMenuFile(moduleName, device));
   const entityRules = await loadEntityRules(moduleName);
   return {
     canonicalMenu,

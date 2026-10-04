@@ -17,9 +17,9 @@ import {
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/agentP2Effort.js';
 import {
   P2_EFFORT_SCHEMA_VERSION,
-  type P2EffortFile,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import { poolStamp, readPoolTraceAt, type PoolMessage } from '/_102035_/l2/solution/pool.js';
+import type { PoolEffortFile } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
@@ -199,7 +199,7 @@ void test('execute writes effort.json and response, traces processed+delivered, 
   const host = installHost();
   seedReady(host);
   const result = await executeP2Effort(MODULE, AT);
-  const written = JSON.parse(host.files[keyOf(p2EffortFile(MODULE))].content) as P2EffortFile;
+  const written = JSON.parse(host.files[keyOf(p2EffortFile(MODULE))].content) as PoolEffortFile;
   assert.equal(written.schemaVersion, P2_EFFORT_SCHEMA_VERSION);
   assert.deepEqual(written.unattributed, []);
   assert.equal(result.effortPath, `l4/${MODULE}/pool/l2/web/effort.json`);
@@ -317,7 +317,7 @@ void test('candidate effort attributes declared rules and warns on orphans', asy
   setModuleRoot(MODULE, CANDIDATE);
   try {
     const result = await executeP2Effort(MODULE, AT);
-    const written = JSON.parse(host.files[keyOf(p2EffortFile(MODULE))].content) as P2EffortFile;
+    const written = JSON.parse(host.files[keyOf(p2EffortFile(MODULE))].content) as PoolEffortFile;
     assert.equal(result.effort.unattributed.length, 1);
     assert.equal(written.unattributed[0].changeId, 'rule:alunoBloqueadoPorDuasMensalidadesVencidas');
     const payments = written.screens.find(screen => screen.pageId === 'mensalidades_pagamentos');

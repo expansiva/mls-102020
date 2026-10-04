@@ -6,21 +6,20 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import type { P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import {
   buildP2EffortFile,
   parseP2BackendFile,
-  type P2EffortFile,
 } from '/_102020_/l2/agentPlannerL2/steps/effort40/contracts.js';
 import { validateP2Effort } from '/_102020_/l2/agentPlannerL2/steps/effort40/gate.js';
+import type { PoolEffortFile, PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MENU_PATH = path.join(HERE, '../needs30/fixtures/menu.json');
 const BACKEND_PATH = path.join(HERE, 'fixtures/backend.mensalidadesAcademia.v1.2.json');
 const AT = new Date(Date.UTC(2026, 8, 21, 12, 0, 0));
 
-function sample(): { menu: P2MenuFile; file: P2EffortFile } {
-  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as P2MenuFile;
+function sample(): { menu: PoolMenuFile; file: PoolEffortFile } {
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8')) as PoolMenuFile;
   const backend = parseP2BackendFile(JSON.parse(readFileSync(BACKEND_PATH, 'utf8')));
   return { menu, file: buildP2EffortFile({ menu, backend, now: AT }) };
 }

@@ -8,14 +8,13 @@ import {
   isMechanicalEffectTask,
   isMenuNodeKind,
   isMenuOrganismKind,
-  type MenuNode,
   type MenuOrganismKind,
-  type MenuPageNode,
   type MenuV2,
   type P2ActorMustSeeDerived,
   type P2GrantView,
   type P2ProcessView,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
+import type { MenuNode, MenuPageNode } from '/_102035_/l2/solution/poolPlan.js';
 
 const ACTOR_KEY = /^actor:([a-z][A-Za-z0-9]*)$/;
 

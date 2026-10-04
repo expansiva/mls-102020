@@ -1,0 +1,18 @@
+{
+ "states": [],
+ "functions": [
+  {
+   "id": "load",
+   "description": "Carrega os dados da página."
+  },
+  {
+   "id": "abrirDespesasDaEquipe",
+   "description": "Abre as despesas da equipe.",
+   "navigate": "despesas_da_equipe"
+  }
+ ],
+ "journeys": [],
+ "commandReturns": [],
+ "requestRules": [],
+ "formChoices": []
+}

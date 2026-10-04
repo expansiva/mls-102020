@@ -45,7 +45,6 @@ import {
   parseP2Processes,
   type MenuV2,
   type P2GrantView,
-  type P2MenuFile,
   type P2ProcessView,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import {
@@ -53,6 +52,7 @@ import {
   formatP2MenuWarnings,
   validateP2Menu,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/gate.js';
+import type { PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
 
 const MAX_REPAIRS = 2;
 const MAX_TRANSPORT_RETRIES = 1;
@@ -80,7 +80,7 @@ export function buildP2MenuHumanPrompt(input: {
   menuSources: P2MenuSources;
   gateFeedback?: string;
   previousDraft?: unknown;
-  canonicalMenu?: P2MenuFile | null;
+  canonicalMenu?: PoolMenuFile | null;
 }): string {
   const { sources, grants, processes } = input.menuSources;
   const candidates = menuCandidates(sources, grants, processes);
@@ -184,7 +184,7 @@ export async function beforeP2MenuPromptStep(
       readJson<Record<string, unknown>>(p2AgentFile('schemas', 'menu.schema', '.json')),
       moduleName ? readJson(p2DraftFile(moduleName, 'menu20')) : Promise.resolve(null),
       moduleName && isP2CandidateRoot(moduleName)
-        ? readJson<P2MenuFile>(p2CanonicalMenuFile(moduleName, P2_MENU_DEVICE))
+        ? readJson<PoolMenuFile>(p2CanonicalMenuFile(moduleName, P2_MENU_DEVICE))
         : Promise.resolve(null),
     ]);
     if (!schema) throw new Error('menu.schema.json is missing.');
@@ -395,7 +395,7 @@ function doneAnchor(
   context: mls.msg.ExecutionContext,
   parentStep: mls.msg.AIAgentStep,
   moduleName: string,
-  artifact: P2MenuFile,
+  artifact: PoolMenuFile,
   menuPath: string,
   sourceMessages: string[],
 ): mls.msg.AgentIntentAddStep {

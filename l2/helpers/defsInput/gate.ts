@@ -6,13 +6,27 @@ import {
   D2InputValidationError,
   type D2AncestorContext,
   type D2Destination,
-  type D2EffortStatus,
   type D2InputArtifacts,
   type D2InputProblem,
   type D2InputSnapshot,
   type D2RunIdentity,
   type D2SelectedPage,
 } from '/_102020_/l2/helpers/defsInput/contracts.js';
+import type {
+  PoolBackendEndpoint,
+  PoolBackendFile,
+  PoolBackendUsecase,
+  PoolEffortEndpoint,
+  PoolEffortFile,
+  PoolEffortScreen,
+  PoolEffortTable,
+  PoolEffortUsecase,
+  PoolMenuFile,
+  PoolNeedsFile,
+  PoolNeedsPage,
+  PoolPlanStatus,
+  PoolRaw,
+} from '/_102035_/l2/solution/poolPlan.js';
 
 const SUPPORTED = {
   module: '2026-09-10-ns5-module-v2',
@@ -53,10 +67,10 @@ export async function buildD2InputSnapshot(
   const workflows = rec(artifacts.workflows);
   const access = rec(artifacts.access);
   const integration = rec(artifacts.integration);
-  const menu = rec(artifacts.menu);
-  const needs = rec(artifacts.needs);
-  const backend = rec(artifacts.backend);
-  const effort = rec(artifacts.effort);
+  const menu = rec(artifacts.menu) as PoolRaw<PoolMenuFile>;
+  const needs = rec(artifacts.needs) as PoolRaw<PoolNeedsFile>;
+  const backend = rec(artifacts.backend) as PoolRaw<PoolBackendFile>;
+  const effort = rec(artifacts.effort) as PoolRaw<PoolEffortFile>;
 
   checkVersion(state, module, SUPPORTED.module, 'l4/module.defs.ts');
   checkVersion(state, journeyIndex, SUPPORTED.journey, 'l4/journeys/index.defs.ts');
@@ -97,13 +111,13 @@ export async function buildD2InputSnapshot(
   const menuScan = scanMenu(state, menu);
   const authority = expandAuthorities(state, menu, menuScan);
   const journeyRefsByPage = menuJourneys(state, menu, journeyIds, menuScan.pages);
-  const needRows = indexedRows(state, rows(needs.pages), 'pageId', 'pool/l1/web/needs.json');
-  const effortScreens = indexedRows(state, rows(effort.screens), 'pageId', 'pool/l2/web/effort.json');
-  const backendEndpoints = indexedRows(state, rows(backend.endpoints), 'route', 'pool/l2/web/backend.json');
-  const backendUsecases = indexedRows(state, rows(backend.usecases), 'usecaseId', 'pool/l2/web/backend.json');
-  const effortEndpoints = indexedRows(state, rows(effort.endpoints), 'route', 'pool/l2/web/effort.json');
-  const effortUsecases = indexedRows(state, rows(effort.usecases), 'usecaseId', 'pool/l2/web/effort.json');
-  const effortTables = indexedRows(state, rows(effort.tables), 'tableId', 'pool/l2/web/effort.json');
+  const needRows = indexedRows(state, rows(needs.pages) as PoolRaw<PoolNeedsPage>[], 'pageId', 'pool/l1/web/needs.json');
+  const effortScreens = indexedRows(state, rows(effort.screens) as PoolRaw<PoolEffortScreen>[], 'pageId', 'pool/l2/web/effort.json');
+  const backendEndpoints = indexedRows(state, rows(backend.endpoints) as PoolRaw<PoolBackendEndpoint>[], 'route', 'pool/l2/web/backend.json');
+  const backendUsecases = indexedRows(state, rows(backend.usecases) as PoolRaw<PoolBackendUsecase>[], 'usecaseId', 'pool/l2/web/backend.json');
+  const effortEndpoints = indexedRows(state, rows(effort.endpoints) as PoolRaw<PoolEffortEndpoint>[], 'route', 'pool/l2/web/effort.json');
+  const effortUsecases = indexedRows(state, rows(effort.usecases) as PoolRaw<PoolEffortUsecase>[], 'usecaseId', 'pool/l2/web/effort.json');
+  const effortTables = indexedRows(state, rows(effort.tables) as PoolRaw<PoolEffortTable>[], 'tableId', 'pool/l2/web/effort.json');
 
   validatePageSets(state, menuScan.pages, needRows, effortScreens);
   validateNeeds(state, needRows, entityIds, journeyIds, journeyRefsByPage);
@@ -412,7 +426,7 @@ function validateEffort(state: GateState, effort: Record<string, unknown>, scree
 }
 
 function checkTotals(state: GateState, totals: Record<string, unknown>, items: Record<string, unknown>[], file: string): void {
-  for (const status of ['toCreate', 'toUpdate', 'toRemove', 'done'] as D2EffortStatus[]) {
+  for (const status of ['toCreate', 'toUpdate', 'toRemove', 'done'] as PoolPlanStatus[]) {
     const actual = items.filter(item => text(item.status) === status).length;
     if (Number(totals[status]) !== actual) error(state, 'TOTALS_MISMATCH', file, `${status} is ${String(totals[status])}, expected ${actual}`);
   }
@@ -539,8 +553,8 @@ function uniqueIds(state: GateState, values: Record<string, unknown>[], key: str
   return [...indexedRows(state, values, key, file).keys()];
 }
 
-function indexedRows(state: GateState, values: Record<string, unknown>[], key: string, file: string): Map<string, Record<string, unknown>> {
-  const result = new Map<string, Record<string, unknown>>();
+function indexedRows<T extends Record<string, unknown>>(state: GateState, values: T[], key: string, file: string): Map<string, T> {
+  const result = new Map<string, T>();
   for (const value of values) {
     const id = text(value[key]);
     if (!id) { error(state, 'ID_MISSING', file, `${key} is missing`); continue; }
@@ -550,7 +564,7 @@ function indexedRows(state: GateState, values: Record<string, unknown>[], key: s
   return result;
 }
 
-function effortStatus(state: GateState, value: unknown, pageId: string): D2EffortStatus {
+function effortStatus(state: GateState, value: unknown, pageId: string): PoolPlanStatus {
   const status = text(value);
   if (status === 'toCreate' || status === 'toUpdate' || status === 'toRemove' || status === 'done') return status;
   error(state, 'EFFORT_STATUS_INVALID', 'pool/l2/web/effort.json', `invalid status '${status}'`, pageId);

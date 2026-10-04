@@ -14,7 +14,7 @@ import { beforePromptStep, reusableD2Shared, sharedSchemaFor } from '/_102020_/l
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { skill as sharedSkill } from '/_102020_/l2/agentDefsL2/skills/genD2SharedDefinition.js';
 import {
-  approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, d2SharedRefusal, d2SharedRefusedMessage, d2SharedValidSources,
+  approveD2SharedUnit, applyD2SharedLlm, buildD2SharedContext, buildD2SharedPrompt, d2SharedRefusal, d2SharedRefusedMessage, d2SharedShapeIssues, d2SharedValidSources,
   settleD2Shared, sharedUnitInputHash,
   type D2SharedContext, type D2SharedLlmResponse, type D2SharedRefusal, type D2SharedWriter,
 } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
@@ -688,6 +688,48 @@ void test('d2_67: request ids, targets, steps, organisms, return keys and rules 
   // An answer inside the enums still passes the gate.
   const need = data.input.needsPages.find(item => item.pageId === data.input.pageId)!;
   assert.deepEqual(gateD2SharedV2(applyD2SharedLlm(data, answer(data)), { page11: data.page11.desktop, draft: data.drafts.desktop, needs: need, menu: data.input.menu, derived: data.derived }), []);
+});
+
+void test('d2_70: the derived shape passes its own gate on every fixture page; a hub page has no load', () => {
+  const renamedPack = renameDeep(loadPack('controleEstoque')) as ReturnType<typeof loadPack>;
+  const packs: Array<[ReturnType<typeof loadPack>, string]> = [
+    [loadPack('controleEstoque'), (JSON.parse(readFileSync(join(fixtureRoot, 'controleEstoque/menu.json'), 'utf8')) as { moduleName: string }).moduleName],
+    [renamedPack, 'alphaWarehouse'],
+    [loadPack('clinic'), (JSON.parse(readFileSync(join(fixtureRoot, 'clinic/menu.json'), 'utf8')) as { moduleName: string }).moduleName],
+  ];
+  let pages = 0;
+  for (const [pack, moduleName] of packs) {
+    for (const sibling of pack.siblings) {
+      // buildD2SharedContext already refuses a failing shape; the explicit call names the page if it ever does.
+      assert.deepEqual(d2SharedShapeIssues(contextFrom(pack, sibling.pageId, moduleName)), [], `${moduleName}/${sibling.pageId}`);
+      pages += 1;
+    }
+  }
+  assert.equal(pages, 10);
+
+  // Synthetic hub: no read, no write, one navigation.
+  const pack = loadPack('controleEstoque');
+  const moduleName = (JSON.parse(readFileSync(join(fixtureRoot, 'controleEstoque/menu.json'), 'utf8')) as { moduleName: string }).moduleName;
+  const base = contextFrom(pack, 'produtos', moduleName);
+  const hub = structuredClone(base.page11.desktop);
+  const target = Object.values(base.page11.desktop.organisms).flatMap(item => item.intents).find(item => item.kind === 'navigate')!.to!;
+  hub.sections = [{ id: 'entry', priority: 'primary', purpose: 'entry', organisms: ['shortcuts'] }];
+  hub.organisms = { shortcuts: { kind: 'actions', text: 'shortcuts', intents: [{ id: 'openTarget', kind: 'navigate', to: target }] } };
+  hub.molecules = {};
+  const hubDraft: D2Page11Needs = { organisms: { shortcuts: { reads: [], edits: [], selects: '', submits: [] } } };
+  const hubData = buildD2SharedContext({
+    ...base.input, desktop: hub, mobile: hub, draftDesktop: hubDraft, draftMobile: hubDraft,
+    siblings: base.input.siblings.map(item => item.pageId === base.input.pageId ? { ...item, desktop: hub, mobile: hub, draftDesktop: hubDraft, draftMobile: hubDraft } : item),
+  }, { ...base, page11: { desktop: hub, mobile: hub }, drafts: { desktop: hubDraft, mobile: hubDraft } });
+  assert.deepEqual(hubData.derived.requests, []);
+  const hubShared = sharedFromDerived(hubData.derived);
+  assert.equal('load' in hubShared.functions, false);
+  assert.deepEqual(d2SharedShapeIssues(hubData), []);
+  // An answer with only descriptions and the navigation is approved.
+  const approved = applyD2SharedLlm(hubData, { states: [], functions: [{ id: 'openTarget', navigate: target, description: 'Open the target page.' }], journeys: [], commandReturns: [], requestRules: [] });
+  const hubNeed = hubData.input.needsPages.find(item => item.pageId === hubData.input.pageId)!;
+  const codes = gateD2SharedV2(approved, { page11: hub, draft: hubDraft, needs: hubNeed, menu: hubData.input.menu, derived: hubData.derived }).map(item => item.code);
+  assert.equal(codes.some(code => code === 'D2_SHARED_V2_FUNCTION_CALL' || code === 'D2_SHARED_V2_FUNCTION_MISSING'), false, codes.join(','));
 });
 
 void test('agent sources do not name the fixture module', () => {

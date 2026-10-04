@@ -10,10 +10,7 @@ import {
   actorAuthorityKey,
   collectBeyondJourneys,
   type MenuOrganismKind,
-  type MenuStampedNode,
-  type MenuStampedPageNode,
   type P2GrantView,
-  type P2MenuFile,
   type P2ProcessView,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { journeyStepOf } from '/_102020_/l2/agentPlannerL2/steps/requests50/contracts.js';
@@ -25,6 +22,15 @@ import {
   type P2OntologyEntityView,
   type P2Workspace,
 } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
+import type {
+  MenuStampedNode,
+  MenuStampedPageNode,
+  PoolMenuFile,
+  PoolNeedsFile,
+  PoolNeedsPage,
+  PoolNeedsRead,
+  PoolNeedsWrite,
+} from '/_102035_/l2/solution/poolPlan.js';
 
 export const P2_NEEDS_SCHEMA_VERSION = '2026-09-21-p2-needs-v1' as const;
 export const P2_NEEDS_OPERATIONS = ['create', 'update', 'transition', 'delete'] as const;
@@ -39,39 +45,8 @@ const HOME_ID = /^inicio_/;
 const READ_STEP_KINDS = new Set(['locate', 'inspect']);
 const SCOPE_RANK: Record<P2NeedsScope, number> = { own: 0, related: 1, organization: 2 };
 
-export interface P2NeedsRead {
-  entity: string;
-  family: P2NeedsFamily;
-  scope: P2NeedsScope;
-  derived: string[];
-  from: string[];
-}
-
-export interface P2NeedsWrite {
-  entity: string;
-  operation: P2NeedsOperation;
-  transitionRef: string;
-  from: string[];
-}
-
-export interface P2NeedsPage {
-  pageId: string;
-  actors: string[];
-  reads: P2NeedsRead[];
-  writes: P2NeedsWrite[];
-}
-
-export interface P2NeedsFile {
-  schemaVersion: typeof P2_NEEDS_SCHEMA_VERSION;
-  moduleName: string;
-  device: P2MenuDevice;
-  menuSchema: typeof P2_MENU_SCHEMA_VERSION;
-  pages: P2NeedsPage[];
-  meta: { sourceMenu: string; generatedAt: string };
-}
-
 export interface P2BuildNeedsInput {
-  menu: P2MenuFile;
+  menu: PoolMenuFile;
   sources: P2L4Sources;
   grants: readonly P2GrantView[];
   processes: readonly P2ProcessView[];
@@ -115,11 +90,11 @@ export function p2NeedsSubject(moduleName: string, device: P2MenuDevice = P2_MEN
   return `needs of ${moduleName} (${device})`;
 }
 
-export function p2NeedsBody(file: P2NeedsFile): string {
+export function p2NeedsBody(file: PoolNeedsFile): string {
   return file.pages.map(page => `${page.pageId}: ${page.reads.length} reads / ${page.writes.length} writes`).join('\n');
 }
 
-export function buildP2NeedsFile(input: P2BuildNeedsInput): P2NeedsFile {
+export function buildP2NeedsFile(input: P2BuildNeedsInput): PoolNeedsFile {
   const pages = collectP2NeedsPages(input);
   return {
     schemaVersion: P2_NEEDS_SCHEMA_VERSION,
@@ -135,7 +110,7 @@ export function buildP2NeedsFile(input: P2BuildNeedsInput): P2NeedsFile {
 }
 
 export function buildP2NeedsMessage(input: {
-  file: P2NeedsFile;
+  file: PoolNeedsFile;
   received: Pick<PoolMessage, 'thread' | 'round' | 'mode'>;
 }): PoolMessage {
   return {
@@ -150,7 +125,7 @@ export function buildP2NeedsMessage(input: {
   };
 }
 
-export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
+export function collectP2NeedsPages(input: P2BuildNeedsInput): PoolNeedsPage[] {
   const { menu, sources, grants, processes } = input;
   const issues: string[] = [];
   const pages = stampedPages(menu.tree);
@@ -165,7 +140,7 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
   const homeIds = homePageIds(menu, pages, journeysOfPage);
   const processById = new Map(processes.map(process => [process.processId, process]));
 
-  const out: P2NeedsPage[] = [];
+  const out: PoolNeedsPage[] = [];
   for (const page of pages) {
     const actors = actorsOfPage.get(page.id) || [];
     if (homeIds.has(page.id)) {
@@ -173,8 +148,8 @@ export function collectP2NeedsPages(input: P2BuildNeedsInput): P2NeedsPage[] {
       continue;
     }
 
-    const reads = new Map<string, P2NeedsRead>();
-    const writes = new Map<string, P2NeedsWrite>();
+    const reads = new Map<string, PoolNeedsRead>();
+    const writes = new Map<string, PoolNeedsWrite>();
     const addRead = (entityId: string, from: string) => {
       pushRead(reads, entityId, from, entityById, grants, actors, sources);
     };
@@ -276,8 +251,8 @@ function homeReads(
   entityById: Map<string, P2OntologyEntityView>,
   grants: readonly P2GrantView[],
   sources: P2L4Sources,
-): P2NeedsRead[] {
-  const reads = new Map<string, P2NeedsRead>();
+): PoolNeedsRead[] {
+  const reads = new Map<string, PoolNeedsRead>();
   const see = beyond.filter(row => actors.includes(row.actorRef));
   const add = (entityId: string, from: string) => {
     pushRead(reads, entityId, from, entityById, grants, actors, sources);
@@ -308,7 +283,7 @@ function homeReads(
 }
 
 function pushRead(
-  reads: Map<string, P2NeedsRead>,
+  reads: Map<string, PoolNeedsRead>,
   entityId: string,
   from: string,
   entityById: Map<string, P2OntologyEntityView>,
@@ -453,7 +428,7 @@ function normalizeTokens(value: string): string[] {
 }
 
 function pushWrite(
-  writes: Map<string, P2NeedsWrite>,
+  writes: Map<string, PoolNeedsWrite>,
   entityId: string,
   operation: P2NeedsOperation,
   transitionRef: string,
@@ -471,9 +446,9 @@ function pushWrite(
 function finishPage(
   pageId: string,
   actors: readonly string[],
-  reads: P2NeedsRead[],
-  writes: P2NeedsWrite[],
-): P2NeedsPage {
+  reads: PoolNeedsRead[],
+  writes: PoolNeedsWrite[],
+): PoolNeedsPage {
   return {
     pageId,
     actors: [...actors].sort((left, right) => left.localeCompare(right)),
@@ -543,7 +518,7 @@ function ddmGrantedTo(
 }
 
 function homePageIds(
-  menu: P2MenuFile,
+  menu: PoolMenuFile,
   pages: readonly MenuStampedPageNode[],
   journeysOfPage: Map<string, string[]>,
 ): Set<string> {
@@ -561,7 +536,7 @@ function homePageIds(
   return homes;
 }
 
-function firstVisiblePage(menu: P2MenuFile, actorRef: string, pageIds: Set<string>): string {
+function firstVisiblePage(menu: PoolMenuFile, actorRef: string, pageIds: Set<string>): string {
   const listed = menu.authorities[actorAuthorityKey(actorRef)] || [];
   const byId = indexTree(menu.tree);
   for (const id of listed) {
@@ -583,7 +558,7 @@ function firstPageFrom(node: MenuStampedNode | undefined, pageIds: Set<string>):
   return '';
 }
 
-function pageActors(menu: P2MenuFile, pages: readonly MenuStampedPageNode[]): Map<string, string[]> {
+function pageActors(menu: PoolMenuFile, pages: readonly MenuStampedPageNode[]): Map<string, string[]> {
   const pageIds = new Set(pages.map(page => page.id));
   const out = new Map<string, string[]>();
   for (const page of pages) out.set(page.id, []);

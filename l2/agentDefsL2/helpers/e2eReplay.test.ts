@@ -16,7 +16,7 @@ import { parseNs4ClassicDefsSource } from '/_102035_/l2/solution/helpers/ns4Clas
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { buildD2InputSnapshot } from '/_102020_/l2/helpers/defsInput/gate.js';
 import type { D2InputArtifacts, D2InputSnapshot } from '/_102020_/l2/helpers/defsInput/contracts.js';
-import { parseP2Grants, parseP2Processes, parsePreviousMenuTree, type MenuV2, type P2MenuFile } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
+import { parseP2Grants, parseP2Processes, parsePreviousMenuTree, type MenuV2 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
 import { validateP2Menu } from '/_102020_/l2/agentPlannerL2/steps/menu20/gate.js';
 import { parseP2L4Sources } from '/_102020_/l2/agentPlannerL2/steps/workspaces20/contracts.js';
 import { buildP2NeedsFile } from '/_102020_/l2/agentPlannerL2/steps/needs30/contracts.js';
@@ -30,6 +30,7 @@ import { parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js'
 import { buildD2ContractV2, gateD2ContractV2 } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
 import type { D2PageRequestsInput } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
 import { d2NormalizeWriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
+import type { PoolMenuFile } from '/_102035_/l2/solution/poolPlan.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, 'fixtures/e2e');
@@ -110,7 +111,7 @@ async function replay(alias: string): Promise<Outcome[]> {
   });
   const grants = parseP2Grants(access);
   const processes = parseP2Processes(pack.defs('l4/workflows.defs.ts'));
-  const menu = pack.json<P2MenuFile>('pool/menu.json');
+  const menu = pack.json<PoolMenuFile>('pool/menu.json');
 
   // menu20: the recorded menu is the answer; its gate decides.
   if (!menu.meta.records) outcomes.push({ stage: 'menu20', result: 'refused', codes: ['P2_MENU_RECORDS_MISSING'] });
@@ -229,6 +230,10 @@ void test('d2_68: three modules replay end to end with the state expected after 
   assert.equal(at(first.expense, 'needs30')?.result, 'ok');
   assert.deepEqual(at(first.expense, 'pages50', 'despesas_da_equipe')?.codes, ['D2_PAGE11_WRITE_UNCOVERED']);
   for (const pageId of ['despesas_aprovadas', 'inicio']) assert.equal(at(first.expense, 'pages50', pageId)?.result, 'ok');
+  // expense inicio (hub: no read, no write): the recorded answer was refused for a load the code derived without its
+  // request (d2_70); now the shared has no load, is approved, and the page has no contract route.
+  assert.equal(at(first.expense, 'shared60', 'inicio')?.result, 'ok');
+  assert.deepEqual(at(first.expense, 'contracts70', 'inicio'), { stage: 'contracts70', pageId: 'inicio', result: 'ok', codes: [] });
 });
 
 void test('d2_68: measured defects without a recorded answer are cases too', async () => {
@@ -241,7 +246,7 @@ void test('d2_68: measured defects without a recorded answer are cases too', asy
   // expense minhas_despesas: the run wrote Despesa.transition for two transitions; the normalizer refuses naming the keys.
   const expense = readPack('expense');
   const needs = buildP2NeedsFile({
-    menu: expense.json<P2MenuFile>('pool/menu.json'),
+    menu: expense.json<PoolMenuFile>('pool/menu.json'),
     sources: parseP2L4Sources({ moduleName: expense.moduleName, userLanguage: expense.module.userLanguage, journeyIndex: expense.defs('l4/journeys/index.defs.ts'),
       journeys: expense.names('l4/journeys').map(name => expense.defs(`l4/journeys/${name}`)), access: expense.defs('l4/access.defs.ts'),
       ontologyIndex: expense.defs('l4/ontology/index.defs.ts'), ontologyEntities: expense.names('l4/ontology').map(name => expense.defs(`l4/ontology/${name}`)) }),
