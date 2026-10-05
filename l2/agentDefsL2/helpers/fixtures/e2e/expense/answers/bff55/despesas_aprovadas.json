@@ -293,6 +293,13 @@
         ],
         "continuesIn": ""
       }
+    ],
+    "updates": [
+      {
+        "endpoint": "registrarPagamento",
+        "state": "abrirDespesa.despesa",
+        "mode": "replace"
+      }
     ]
   }
 }

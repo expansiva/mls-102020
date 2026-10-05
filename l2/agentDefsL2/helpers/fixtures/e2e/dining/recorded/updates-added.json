@@ -1,0 +1,149 @@
+{
+  "_comment": "d2_78: the recorded answers predate bindings.updates; these are the declarations added by hand (REVIEW of d2_78). Every other recorded answer gets [].",
+  "bff55-r3/atendimento-2.json": [
+    {
+      "endpoint": "pesquisarAtendimento",
+      "state": "carregarAtendimento.lookup",
+      "mode": "replace"
+    },
+    {
+      "endpoint": "lancarItem",
+      "state": "obterComandaAtendimento.comanda",
+      "mode": "replace"
+    },
+    {
+      "endpoint": "cancelarItem",
+      "state": "obterComandaAtendimento.comanda",
+      "mode": "replace"
+    }
+  ],
+  "bff55-r3/cardapio-1.json": [
+    {
+      "endpoint": "carregarPaginaCardapio",
+      "state": "carregarCardapio.catalogo",
+      "mode": "append"
+    }
+  ],
+  "bff55-r4/atendimento-1.json": [
+    {
+      "endpoint": "buscarContextosAtendimento",
+      "state": "carregarAtendimento.lookup",
+      "mode": "replace"
+    },
+    {
+      "endpoint": "lancarItem",
+      "state": "obterComandaAtendimento.comanda",
+      "mode": "replace"
+    },
+    {
+      "endpoint": "cancelarItem",
+      "state": "obterComandaAtendimento.comanda",
+      "mode": "replace"
+    }
+  ],
+  "bff55-r4/atendimento-2.json": [
+    {
+      "endpoint": "buscarContextosAtendimento",
+      "state": "carregarAtendimento.lookup",
+      "mode": "replace"
+    },
+    {
+      "endpoint": "lancarItem",
+      "state": "obterComandaAtendimento.comanda",
+      "mode": "replace"
+    },
+    {
+      "endpoint": "cancelarItem",
+      "state": "obterComandaAtendimento.comanda",
+      "mode": "replace"
+    }
+  ],
+  "bff55-r4/cardapio-1.json": [
+    {
+      "endpoint": "carregarMaisItensCardapio",
+      "state": "carregarItensCardapio.pagina",
+      "mode": "append"
+    }
+  ],
+  "bff55-r4/fechamento-1.json": [
+    {
+      "endpoint": "buscarComandasAbertas",
+      "state": "carregarFechamento.openComandas",
+      "mode": "replace"
+    }
+  ],
+  "bff55-r4/fechamento-2.json": [
+    {
+      "endpoint": "buscarComandasAbertas",
+      "state": "carregarFechamento.openComandas",
+      "mode": "replace"
+    }
+  ],
+  "bff55-r4/mesas-1.json": [
+    {
+      "endpoint": "criarMesa",
+      "state": "carregarMesas.mesas",
+      "mode": "upsert"
+    },
+    {
+      "endpoint": "atualizarMesa",
+      "state": "carregarMesas.mesas",
+      "mode": "upsert"
+    }
+  ],
+  "bff55-r4/mesas-2.json": [
+    {
+      "endpoint": "criarMesa",
+      "state": "carregarMesas.mesas",
+      "mode": "upsert"
+    },
+    {
+      "endpoint": "atualizarMesa",
+      "state": "carregarMesas.mesas",
+      "mode": "upsert"
+    }
+  ],
+  "bff55-r5/atendimento-1.json": [
+    {
+      "endpoint": "atualizarLocalizacaoAtendimento",
+      "state": "carregarAtendimento.contextoAtendimento",
+      "mode": "replace"
+    },
+    {
+      "endpoint": "lancarItem",
+      "state": "obterComandaAtendimento.comanda",
+      "mode": "replace"
+    },
+    {
+      "endpoint": "cancelarItem",
+      "state": "obterComandaAtendimento.comanda",
+      "mode": "replace"
+    }
+  ],
+  "bff55-r5/cardapio-1.json": [
+    {
+      "endpoint": "carregarMaisItensCardapio",
+      "state": "carregarItensCardapio.pagina",
+      "mode": "append"
+    }
+  ],
+  "bff55-r5/fechamento-1.json": [
+    {
+      "endpoint": "buscarComandasAbertas",
+      "state": "carregarFechamento.openComandas",
+      "mode": "replace"
+    }
+  ],
+  "bff55-r5/mesas-1.json": [
+    {
+      "endpoint": "criarMesa",
+      "state": "carregarMesas.mesas",
+      "mode": "upsert"
+    },
+    {
+      "endpoint": "atualizarMesa",
+      "state": "carregarMesas.mesas",
+      "mode": "upsert"
+    }
+  ]
+}

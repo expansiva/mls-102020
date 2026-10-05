@@ -9,7 +9,7 @@ import { d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import {
-  buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN,
+  buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN, D2_BFF_UPDATE_MODES,
   type D2BffDesign, type D2Grant, type D2Menu, type D2NeedPage,
 } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import type { D2PageRefusal } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
@@ -135,7 +135,8 @@ export function bffSchemaFor(context: D2BffContext): Record<string, unknown> {
   const leaf = row(['name', 'type', 'origin'], { name: { type: 'string' }, type: { type: 'string', pattern: D2_BFF_TYPE_PATTERN }, optional: { type: 'boolean' }, origin });
   const submits = [...d2PageSubmits(context).keys()];
   const organisms = [...new Set([...Object.keys(context.page11.desktop.organisms), ...Object.keys(context.page11.mobile.organisms)])];
-  const bindings = row(['organisms', 'commands', 'selections', 'journeys'], {
+  const bindings = row(['organisms', 'commands', 'selections', 'journeys', 'updates'], {
+    updates: { type: 'array', items: row(['endpoint', 'state', 'mode'], { endpoint: { type: 'string' }, state: { type: 'string', pattern: '^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$' }, mode: { type: 'string', enum: [...D2_BFF_UPDATE_MODES] } }) },
     organisms: { type: 'array', items: row(['organism', 'reads'], { organism: enumOf(organisms), reads: { type: 'string', pattern: '^[a-z][A-Za-z0-9]*\\.[a-z][A-Za-z0-9]*$' } }) },
     commands: { type: 'array', items: row(['endpoint', 'refreshes'], { endpoint: { type: 'string' }, refreshes: { type: 'array', items: { type: 'string' } } }) },
     selections: { type: 'array', items: row(['organism', 'via'], { organism: enumOf(organisms), via: row(['kind', 'ref'], { kind: { type: 'string', enum: ['query', 'list'] }, ref: { type: 'string' } }) }) },

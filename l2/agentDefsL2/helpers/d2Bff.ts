@@ -58,7 +58,11 @@ export interface D2BffBindings {
   commands: Array<{ endpoint: string; refreshes: string[] }>;
   selections: Array<{ organism: string; via: { query: string } | { list: string } }>;
   journeys: Array<{ step: string; organisms: string[]; endpoints: string[]; continuesIn?: string }>;
+  /** Where each endpoint's output lands (d2_78): a source cited in organisms, and how it changes it. */
+  updates: Array<{ endpoint: string; state: string; mode: D2BffUpdateMode }>;
 }
+export type D2BffUpdateMode = 'replace' | 'append' | 'upsert' | 'remove';
+export const D2_BFF_UPDATE_MODES: readonly D2BffUpdateMode[] = ['replace', 'append', 'upsert', 'remove'];
 export interface D2BffDesign { types: D2BffType[]; endpoints: D2BffEndpoint[]; bindings: D2BffBindings }
 export interface D2BffIssue { code: string; path: string; message: string }
 
@@ -207,6 +211,7 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
       commands: bindings.commands.map(row => ({ endpoint: endpointRef(row.endpoint), refreshes: row.refreshes.map(endpointRef) })),
       selections: bindings.selections.map(row => ({ ...row, via: 'query' in row.via ? { query: endpointRef(row.via.query) } : { list: keyRef(row.via.list) } })),
       journeys: bindings.journeys.map(row => ({ ...row, endpoints: row.endpoints.map(endpointRef) })),
+      updates: bindings.updates.map(row => ({ ...row, endpoint: endpointRef(row.endpoint), state: keyRef(row.state) })),
     },
   };
 }
@@ -239,6 +244,11 @@ function parseBindings(value: unknown, fail: (path: string, what: string) => nev
       const at = `bindings.journeys.${index}`;
       const continuesIn = typeof row.continuesIn === 'string' ? row.continuesIn.trim() : '';
       return { step: text(row, 'step', at), organisms: texts(row, 'organisms', at), endpoints: texts(row, 'endpoints', at), ...(continuesIn ? { continuesIn } : {}) };
+    }),
+    updates: list('updates').map((row, index) => {
+      const at = `bindings.updates.${index}`;
+      if (!D2_BFF_UPDATE_MODES.includes(row.mode as D2BffUpdateMode)) fail(`${at}.mode`, D2_BFF_UPDATE_MODES.join(', '));
+      return { endpoint: text(row, 'endpoint', at), state: text(row, 'state', at), mode: row.mode as D2BffUpdateMode };
     }),
   };
 }
@@ -309,6 +319,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entities: Record<string, 
       ...bindings,
       organisms: bindings.organisms.map(row => ({ ...row, reads: ref(row.reads) })),
       selections: bindings.selections.map(row => ('list' in row.via ? { ...row, via: { list: ref(row.via.list) } } : row)),
+      updates: bindings.updates.map(row => ({ ...row, state: ref(row.state) })),
     },
   };
 }
@@ -655,5 +666,20 @@ function checkD2BffBindings(design: D2BffDesign, context: D2BffCheckContext): D2
     for (const id of row.endpoints) if (!endpoint(id)) add('D2_BFF_BINDING_REF', `${at}.endpoints`, `${id} is not an endpoint of the page.`);
     if (row.continuesIn && !pages.has(row.continuesIn)) add('D2_BFF_BINDING_PAGE', `${at}.continuesIn`, `${row.continuesIn} is not a page of the menu.`);
   });
+  // d2_78: every endpoint has a destination, declared, never deduced by key or type.
+  const sources = new Set(design.bindings.organisms.map(row => row.reads));
+  design.bindings.updates.forEach((row, index) => {
+    const at = `bindings.updates.${index}`;
+    if (!endpoint(row.endpoint)) add('D2_BFF_BINDING_REF', `${at}.endpoint`, `${row.endpoint} is not an endpoint of the page.`);
+    if (!sources.has(row.state)) add('D2_BFF_BINDING_UPDATE', `${at}.state`, `${row.state} is not a source in bindings.organisms; an update lands in a state an organism reads.`);
+  });
+  const updated = new Set(design.bindings.updates.map(row => row.endpoint));
+  const refreshing = new Set(design.bindings.commands.filter(row => row.refreshes.length).map(row => row.endpoint));
+  for (const item of design.endpoints) {
+    // A query whose own output an organism reads already lands in that state.
+    const bound = [...sources].some(ref => ref.split('.')[0] === item.id);
+    if (item.kind === 'cmd' && !updated.has(item.id) && !refreshing.has(item.id)) add('D2_BFF_DESTINATION', `endpoints.${item.id}`, `command ${item.id} has no destination: declare where its output lands (bindings.updates) or what it reloads (bindings.commands.refreshes).`);
+    if (item.kind === 'qry' && item.when === 'interaction' && !updated.has(item.id) && !bound) add('D2_BFF_DESTINATION', `endpoints.${item.id}`, `query ${item.id} has no destination: declare the state it changes (bindings.updates) or bind an organism to its output.`);
+  }
   return issues;
 }

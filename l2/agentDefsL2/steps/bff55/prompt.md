@@ -49,6 +49,10 @@ bindings link the page to its endpoints; the shared and the contract are written
   not reload it; list a query only for what the output does not bring back.
 - selections: for every organism that selects, how the selected record is resolved: kind query with the endpoint that
   loads it by id, or kind list with the <endpointId>.<output key> that already holds it.
+- updates: where an endpoint's output lands, as a source already listed in organisms, with the mode: replace (a search
+  replaces the list), append (the next page is added), upsert (a saved record is inserted or updated in place) or remove.
+  Every command and every interaction query has a destination: an update, a reload (commands) or an organism that reads
+  its own output.
 - journeys: for each journey step of the page (journeySteps), the organisms and the endpoints that serve it, or the page
   it continues in (menuPages).
 

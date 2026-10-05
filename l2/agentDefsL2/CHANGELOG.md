@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-04 — d2_78 (experiment branch)
+
+- The contract has no meta; `parseD2ContractV2` reads routes without meta and exposes the JSDoc of each route and
+  interface and the readonly fields.
+- A declares where each endpoint's output lands (`bindings.updates`, replace/append/upsert/remove); the shared transcribes
+  it, without deducing by key or type. select: wins over filter:, and a query nobody reads gives no filter.
+
 ## 2026-10-04 — d2_77 (experiment branch)
 
 - The approved BFF design is reread as written (hash of the receipt), never parsed again; a missing, unreadable or

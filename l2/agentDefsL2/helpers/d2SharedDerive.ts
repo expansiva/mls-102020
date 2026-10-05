@@ -57,38 +57,40 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
   }
 
   // Selections: the selected id lives in an entry param; the state of the selection is the item that id resolves.
-  const params: D2SharedV2Definition['entry']['params'] = {};
+  // Precedence of entry params (d2_78): a filter, then a navigation, and a selection's select: wins over both.
+  const params: D2SharedV2Definition['entry']['params'] = { ...filterParams(input), ...navigationParams(input) };
+  const selected = new Set<string>();
   const selectionState = new Map<string, string>();
   for (const row of design.bindings.selections) {
     const entity = selectionEntity(row.via, design);
     if (!entity) continue;
     const param = `${camel(entity)}Id`;
     const target = organisms.get(row.organism)?.selects || row.organism;
-    params[param] = params[param] ?? { type: 'string', sources: SOURCES, effect: `select:${target}`, persist: true };
+    if (!selected.has(param)) params[param] = { type: 'string', sources: SOURCES, effect: `select:${target}`, persist: true };
+    selected.add(param);
     const stateId = `selected${entity}`;
     const typeName = 'query' in row.via ? outputType(endpoint(row.via.query), design) : listItemType(row.via.list, design);
     states[stateId] = { source: `entry.params.${param}`, description: design.types.find(type => type.name === typeName)?.description || leafDescription(endpoint(('query' in row.via ? row.via.query : row.via.list).split('.')[0]), '', design) };
     // The selecting organism and the one it opens both know the selected record (a navigation from either carries it).
     for (const id of [row.organism, target]) if (!selectionState.has(id)) selectionState.set(id, stateId);
   }
-  Object.assign(params, navigationParams(input), filterParams(input));
-
-  // Functions: one per endpoint, with the endpoint's id; a command updates what its own output redraws and what it reloads.
+  // Functions: one per endpoint, with the endpoint's id. Destinations are only what A declared (d2_78): the state its own
+  // output feeds, the updates (replace → sets; append, upsert, remove → updates, named in the description) and the
+  // states of the queries a command reloads.
   const functions: D2SharedV2Definition['functions'] = {};
   const fedBy = (endpointId: string): string[] => [...stateOf].filter(([ref]) => ref.split('.')[0] === endpointId).map(([, id]) => id);
   for (const item of design.endpoints) {
-    let targets: string[];
-    if (item.kind === 'qry') targets = fedBy(item.id);
-    else {
-      const redrawn = [...stateOf].filter(([ref]) => {
-        const [sourceId, key] = ref.split('.');
-        const source = endpoint(sourceId)?.output.find(leaf => leaf.name === key);
-        return item.output.some(leaf => leaf.name === key && leaf.type === source?.type);
-      }).map(([, id]) => id);
-      const reloads = design.bindings.commands.filter(row => row.endpoint === item.id).flatMap(row => row.refreshes).flatMap(fedBy);
-      targets = [...new Set([...redrawn, ...reloads])];
-    }
-    functions[item.id] = { calls: item.id, description: item.jsdoc.purpose, ...(targets.length ? { sets: targets[0] } : {}), ...(targets.length > 1 ? { updates: targets.slice(1) } : {}) };
+    const declared = design.bindings.updates.filter(row => row.endpoint === item.id && stateOf.has(row.state));
+    const replaced = [...(item.kind === 'qry' ? fedBy(item.id) : []), ...declared.filter(row => row.mode === 'replace').map(row => stateOf.get(row.state)!)];
+    const changed = declared.filter(row => row.mode !== 'replace').map(row => stateOf.get(row.state)!);
+    const reloads = design.bindings.commands.filter(row => row.endpoint === item.id).flatMap(row => row.refreshes).flatMap(fedBy);
+    const targets = [...new Set([...replaced, ...changed, ...reloads])];
+    const modes = declared.filter(row => row.mode !== 'replace').map(row => `${stateOf.get(row.state)}: ${row.mode}`);
+    functions[item.id] = {
+      calls: item.id, description: modes.length ? `${item.jsdoc.purpose} (${modes.join('; ')})` : item.jsdoc.purpose,
+      ...(replaced.length ? { sets: replaced[0] } : {}),
+      ...(targets.filter(id => id !== replaced[0]).length ? { updates: targets.filter(id => id !== replaced[0]) } : {}),
+    };
   }
   for (const [organismId, row] of organisms) {
     for (const intent of row.intents) {
@@ -201,8 +203,12 @@ function navigationParams(input: D2SharedDeriveInput): D2SharedV2Definition['ent
 /** The inputs of the page queries that filter or page what the page shows survive a reload (rule 8). */
 function filterParams(input: D2SharedDeriveInput): D2SharedV2Definition['entry']['params'] {
   const params: D2SharedV2Definition['entry']['params'] = {};
+  const readerOf = (ref: string): string | undefined => input.design.bindings.organisms.find(row => row.reads === ref)?.organism;
   for (const item of input.design.endpoints.filter(row => row.kind === 'qry')) {
-    const target = input.design.bindings.organisms.find(row => row.reads.split('.')[0] === item.id)?.organism ?? item.id;
+    // The organism that reads what the query brings: its own output, or the state it updates. No reader, no filter.
+    const target = input.design.bindings.organisms.find(row => row.reads.split('.')[0] === item.id)?.organism
+      ?? input.design.bindings.updates.filter(row => row.endpoint === item.id).map(row => readerOf(row.state)).find(Boolean);
+    if (!target) continue;
     for (const leaf of item.input) {
       const path = leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '';
       if (path.split('.').length === 2 && path.endsWith('.id')) continue; // the selected id is the selection's param

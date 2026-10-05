@@ -702,6 +702,23 @@
         ],
         "continuesIn": ""
       }
+    ],
+    "updates": [
+      {
+        "endpoint": "abrirComanda",
+        "state": "carregarComanda.comanda",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "lancarItem",
+        "state": "carregarComanda.comanda",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "cancelarItem",
+        "state": "carregarComanda.comanda",
+        "mode": "replace"
+      }
     ]
   }
 }

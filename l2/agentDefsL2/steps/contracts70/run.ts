@@ -5,9 +5,9 @@ import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
 import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
-import { parseD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
+import { parseD2ContractV2, renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
 import { d2BffAccess, type D2BffDesign, type D2Grant, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
-import { buildD2ContractFromBff, renderD2ContractWithJsdoc } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
+import { buildD2ContractFromBff } from '/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js';
 import { parseD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { readD2SharedReceipt, readD2SharedRefusal, sharedInfo, D2_SHARED_VERSION, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
@@ -78,8 +78,8 @@ export async function contractSourceFor(page: D2Contracts70Page): Promise<string
   if (requestIds.join('\n') !== endpointIds.join('\n')) throw new Error('D2_CONTRACTS_SHARED_REQUESTS: the shared requests are not the endpoints of the approved BFF.');
   if (!endpointIds.length) return renderEmptyD2Contract(page.identity, page.pageId);
   const location = { project: page.identity.project, module: page.identity.module, pageId: page.pageId };
-  const definition = buildD2ContractFromBff({ module: page.identity.module, pageId: page.pageId, design: page.design, access: page.access, entities: page.entities });
-  const source = renderD2ContractWithJsdoc(location, definition, page.design, page.userLanguage);
+  const definition = buildD2ContractFromBff({ module: page.identity.module, pageId: page.pageId, design: page.design, access: page.access, entities: page.entities, userLanguage: page.userLanguage });
+  const source = renderD2ContractV2(location, definition);
   // The JSDoc must not change what the parser reads. access is left out: its actors regex is greedy on any contract.
   const readable = (routes: typeof definition.routes) => JSON.stringify(routes.map(({ access: _access, ...route }) => route));
   if (readable(parseD2ContractV2(source).routes) !== readable(definition.routes)) throw new Error('D2_CONTRACTS_PARSE: the contract parser does not read back the rendered routes.');

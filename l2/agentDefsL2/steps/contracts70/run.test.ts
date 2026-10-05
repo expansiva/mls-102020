@@ -32,7 +32,7 @@ const design: D2BffDesign = {
     { id: 'saveRow', kind: 'cmd', when: 'saveRow', writes: 'Item.create', input: [{ name: 'label', type: 'string', origin: { kind: 'field', paths: ['Item.label'] } }],
       output: [{ name: 'row', type: 'Row' }], rules: ['labelRequired'], jsdoc: { purpose: 'Add a row.', input: 'label.', processing: 'Refuses an empty label (labelRequired).', output: 'the new row.' } },
   ],
-  bindings: { organisms: [{ organism: 'rowList', reads: 'load.rows' }], commands: [{ endpoint: 'saveRow', refreshes: ['load'] }], selections: [], journeys: [] },
+  bindings: { organisms: [{ organism: 'rowList', reads: 'load.rows' }], commands: [{ endpoint: 'saveRow', refreshes: ['load'] }], selections: [], journeys: [], updates: [] },
 };
 
 function sharedOf(endpoints: D2BffDesign['endpoints']): D2SharedV2Definition {
@@ -64,7 +64,7 @@ void test('d2_73: the contract has one route per endpoint with the JSDoc of A, a
   const source = await contractSourceFor(page);
   assert.match(source, /\/\*\* One row of the list\. \*\/\nexport interface Row \{\n {2}id: string;\n {2}label: string;\n\}/u);
   assert.match(source, / {2}\/\*\*\n {3}\* Purpose: Add a row\.\n {3}\* Input: label\.\n {3}\* Processing: Refuses an empty label \(labelRequired\)\.\n {3}\* Output: the new row\.\n {3}\*\/\n {2}'alphaModule\.rows\.saveRow': \{/u);
-  assert.match(source, /meta: \{ output: \{ rows: \{ entity: 'Item'; many: true \} \}; lists: \{\}; params: \{\} \};/u);
+  assert.doesNotMatch(source, /\bmeta:/u);
   const sink = memory();
   const first = await approveD2Contracts70(page, none, sink.writer);
   assert.equal(first.wrote, true);
@@ -86,7 +86,7 @@ void test('d2_73: a shared approved over another design, other requests or no re
 });
 
 void test('d2_73: a page without endpoints has the empty contract', async () => {
-  const page = await pageOf({ types: [], endpoints: [], bindings: { organisms: [], commands: [], selections: [], journeys: [] } }, 'hub');
+  const page = await pageOf({ types: [], endpoints: [], bindings: { organisms: [], commands: [], selections: [], journeys: [], updates: [] } }, 'hub');
   assert.equal(await contractSourceFor(page), renderEmptyD2Contract(identity, 'hub'));
 });
 

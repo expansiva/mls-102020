@@ -142,6 +142,113 @@
       }
     },
     {
+      "id": "buscarProdutos",
+      "kind": "qry",
+      "when": "interaction",
+      "writes": "",
+      "input": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.identification.name"
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "produtos",
+          "type": "ProdutoEstoque[]",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "hasMoreProdutos",
+          "type": "boolean",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "rules": [
+        "saldoAtualProduto"
+      ],
+      "jsdoc": {
+        "purpose": "Buscar produtos pelo nome digitado.",
+        "input": "name, parte do nome.",
+        "processing": "Produtos cujo nome contém o termo, ordenados pelo nome, com saldo atual calculado (saldoAtualProduto); a primeira página.",
+        "output": "produtos e hasMoreProdutos."
+      }
+    },
+    {
+      "id": "carregarMaisProdutos",
+      "kind": "qry",
+      "when": "interaction",
+      "writes": "",
+      "input": [
+        {
+          "name": "name",
+          "type": "string",
+          "origin": {
+            "kind": "field",
+            "paths": [
+              "Produto.details.identification.name"
+            ]
+          },
+          "optional": true
+        },
+        {
+          "name": "page",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "pageSize",
+          "type": "number",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "output": [
+        {
+          "name": "produtos",
+          "type": "ProdutoEstoque[]",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        },
+        {
+          "name": "hasMoreProdutos",
+          "type": "boolean",
+          "origin": {
+            "kind": "context",
+            "paths": []
+          }
+        }
+      ],
+      "rules": [
+        "saldoAtualProduto"
+      ],
+      "jsdoc": {
+        "purpose": "Trazer a página seguinte da lista de produtos.",
+        "input": "name da busca atual, page e pageSize.",
+        "processing": "A página seguinte com o mesmo filtro e a mesma ordem, com saldo atual calculado (saldoAtualProduto).",
+        "output": "produtos da página seguinte e hasMoreProdutos."
+      }
+    },
+    {
       "id": "listarAlertas",
       "kind": "qry",
       "when": "onLoad",
@@ -281,14 +388,7 @@
         "reads": "abrirProduto.produto"
       }
     ],
-    "commands": [
-      {
-        "endpoint": "cadastrarProduto",
-        "refreshes": [
-          "listarProdutos"
-        ]
-      }
-    ],
+    "commands": [],
     "selections": [
       {
         "organism": "alertasSaldoBaixo",
@@ -374,6 +474,28 @@
           "abrirProduto"
         ],
         "continuesIn": ""
+      }
+    ],
+    "updates": [
+      {
+        "endpoint": "buscarProdutos",
+        "state": "listarProdutos.produtos",
+        "mode": "replace"
+      },
+      {
+        "endpoint": "carregarMaisProdutos",
+        "state": "listarProdutos.produtos",
+        "mode": "append"
+      },
+      {
+        "endpoint": "cadastrarProduto",
+        "state": "listarProdutos.produtos",
+        "mode": "upsert"
+      },
+      {
+        "endpoint": "cadastrarProduto",
+        "state": "abrirProduto.produto",
+        "mode": "replace"
       }
     ]
   }
