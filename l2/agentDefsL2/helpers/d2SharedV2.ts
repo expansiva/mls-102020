@@ -120,10 +120,10 @@ export interface D2SharedGateContext {
 }
 
 /**
- * D (d2_73): facts of the shared over the approved BFF, never its shape. Every organism is fed (what it reads is held by
- * a state whose source carries it, what it edits is a form), every function calls an endpoint that exists, every
- * intent has a function, every state is filled by a source, a function or a form; references, navigation targets and
- * journey steps exist.
+ * D (d2_73): facts of the shared over the approved BFF, never its shape. Every organism is fed (an organism that reads is
+ * listed in the organisms of some state (d2_80), what it reads is held by a state whose source carries it, what it edits
+ * is a form), every function calls an endpoint that exists, every intent has a function, every state is filled by a
+ * source, a function or a form; references, navigation targets and journey steps exist.
  */
 export function gateD2SharedV2(value: unknown, context: D2SharedGateContext): D2SharedV2Issue[] {
   const issues: D2SharedV2Issue[] = [];
@@ -147,10 +147,12 @@ export function gateD2SharedV2(value: unknown, context: D2SharedGateContext): D2
     if (!validStateSource(id, state.source, definition)) add('D2_SHARED_V2_STATE_SOURCE', `states.${id}`, `State ${id} source ${JSON.stringify(state.source)} is not <endpoint>.<output key>, <command>.input, entry.params.<name>, another state id, or a function whose sets is this state.`);
   }
 
-  // D.1: what an organism reads is held by a state; what it edits belongs to a form.
+  // D.1: an organism that reads is listed by a state; what it reads is held by a state; what it edits belongs to a form.
   const held = new Map(Object.keys(definition.states).map(id => [id, heldPaths(id, definition, context.design)]));
   const formOrganisms = new Set(Object.values(definition.forms).map(form => form.organism));
+  const listed = new Set(Object.values(definition.states).flatMap(state => state.organisms));
   for (const [id, row] of organisms) {
+    if (row.reads.size && !listed.has(id)) add('D2_SHARED_V2_ORGANISM_UNFED', `organisms.${id}`, `Organism ${id} reads, and no state lists it in organisms.`);
     for (const path of row.reads) {
       if ([...held.values()].some(paths => paths.some(origin => path === origin || path.startsWith(`${origin}.`)))) continue;
       add('D2_SHARED_V2_ORGANISM_UNFED', `organisms.${id}`, `Organism ${id} reads ${path}, and no state holds it: no state's source is an endpoint output that carries it.`);

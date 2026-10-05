@@ -31,7 +31,8 @@ import { finalizeD2Pages } from '/_102020_/l2/agentDefsL2/steps/finalize80/run.j
 import { sourceInfo as pagesSourceInfo, type D2PagesReceipt } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { displayPath, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
-import { buildD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { buildD2SharedV2, gateD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
 import { approveD2BffUnit, bffDesignInfo, bffReceiptInfo, bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, readApprovedD2Bff, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { buildD2BffDesign, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
@@ -567,6 +568,45 @@ void test('d2_80 s2: every state of the shared lists the organisms it feeds, eac
   const shared = structuredClone(out.sharedDefs.atendimento) as unknown as { states: Record<string, Record<string, unknown>> };
   delete Object.values(shared.states)[0].organisms;
   assert.throws(() => buildD2SharedV2(shared), /D2_SHARED_V2_STATE: \w+: missing field organisms/u);
+});
+
+void test('d2_80 s3: gate D reads the map: every organism that reads is listed by a state; two sources, two states; an unlisted one is refused', async () => {
+  // The class: for every page of the e2e fixtures, every organism that reads is in the organisms of some state.
+  for (const alias of ['dining', 'expense', 'stock']) {
+    const out = emptyOut();
+    await replay(alias, out);
+    let readers = 0;
+    for (const [pageId, shared] of Object.entries(out.sharedDefs)) {
+      const { page11, drafts } = out.shared[pageId].derive;
+      const listed = new Set(Object.values(shared.states).flatMap(state => state.organisms));
+      for (const device of ['desktop', 'mobile'] as const) {
+        for (const id of Object.keys(page11[device].organisms)) {
+          if (!drafts[device].organisms[id]?.reads.length) continue;
+          readers += 1;
+          assert.ok(listed.has(id), `${alias} ${pageId} ${device}: ${id} reads and no state lists it`);
+        }
+      }
+    }
+    assert.ok(readers > 0, `${alias}: no organism reads`);
+  }
+
+  // An organism with two sources appears in the two source states.
+  const { out } = await dining();
+  const derive = out.shared.atendimento.derive;
+  const sourceListing = (definition: D2SharedV2Definition, organism: string) => Object.values(definition.states).filter(state => !state.source.startsWith('entry.params.') && state.organisms.includes(organism)).map(state => state.source).sort();
+  assert.deepEqual(sourceListing(out.sharedDefs.atendimento, 'lookupAtendimento'), ['carregarAtendimento.mesas']);
+  const answer = atendimentoAnswer();
+  answer.bindings.organisms.push({ organism: 'lookupAtendimento', reads: 'carregarComanda.comanda' });
+  const design = d2BffApproved(out.bff.atendimento, answer);
+  assert.deepEqual(sourceListing(deriveD2Shared({ ...derive, design }), 'lookupAtendimento'), ['carregarAtendimento.mesas', 'carregarComanda.comanda']);
+
+  // Removing an organism from every organisms list is refused, naming it; the sources stay, so only the map check speaks.
+  const context = { page11: derive.page11, drafts: derive.drafts, need: derive.need, menu: derive.menu, design: derive.design };
+  assert.deepEqual(gateD2SharedV2(out.sharedDefs.atendimento, context).filter(issue => issue.code === 'D2_SHARED_V2_ORGANISM_UNFED'), []);
+  const unlisted = structuredClone(out.sharedDefs.atendimento) as D2SharedV2Definition;
+  for (const state of Object.values(unlisted.states)) state.organisms = state.organisms.filter(id => id !== 'lookupAtendimento');
+  const unfed = gateD2SharedV2(unlisted, context).filter(issue => issue.code === 'D2_SHARED_V2_ORGANISM_UNFED');
+  assert.deepEqual(unfed.map(issue => [issue.path, issue.message]), [['organisms.lookupAtendimento', 'Organism lookupAtendimento reads, and no state lists it in organisms.']]);
 });
 
 void test('d2_75: B does not judge the design: other reloads and other names pass', async () => {
