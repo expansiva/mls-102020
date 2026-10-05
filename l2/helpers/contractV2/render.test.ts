@@ -94,3 +94,26 @@ void test('d2_78: routes without meta and a JSDoc with kind:, writes:, rules: an
   const free = parseD2ContractV2(source.replace('   * Purpose: Save', '   * Why: Save'));
   assert.deepEqual(Object.keys(free.routes[1].jsdoc ?? {}), ['raw']);
 });
+
+void test('fromSupervisorL1: a contract cut short throws, at any cut, instead of parsing as a valid route', async () => {
+  const { buildD2ContractFromBff } = await import('/_102020_/l2/agentDefsL2/helpers/d2ContractV2.js');
+  const design = {
+    types: [{ name: 'WidgetRow', description: 'One widget.', fields: [{ name: 'id', type: 'string', origin: { kind: 'field' as const, paths: ['Widget.id'] } }] }],
+    endpoints: [
+      { id: 'load', kind: 'qry' as const, when: 'onLoad', input: [], output: [{ name: 'widgets', type: 'WidgetRow[]' }], rules: [], jsdoc: { purpose: 'Open.', input: 'None.', processing: 'All.', output: 'widgets.' } },
+      { id: 'saveWidget', kind: 'cmd' as const, when: 'saveWidget', writes: 'Widget.create', input: [{ name: 'code', type: 'string', origin: { kind: 'field' as const, paths: ['Widget.code'] } }],
+        output: [{ name: 'widget', type: 'WidgetRow' }], rules: ['keep'], jsdoc: { purpose: 'Save.', input: 'code.', processing: 'Keep.', output: 'the widget.' } },
+    ],
+    bindings: { organisms: [], commands: [], selections: [], journeys: [], updates: [] },
+  };
+  const source = renderD2ContractV2({ project: 1, module: 'alpha', pageId: 'rows' }, buildD2ContractFromBff({ module: 'alpha', pageId: 'rows', design, access: { actors: ['clerk'], grants: ['manage'], scope: 'organization' }, entities: {}, userLanguage: 'en' }));
+  assert.equal(parseD2ContractV2(source).routes.length, 2);
+  // Every cut from the page interface onwards throws (the cut in half of the L1 test is one of them).
+  const start = source.indexOf('export interface RowsContracts {');
+  for (let end = start; end < source.length; end += 1) {
+    assert.throws(() => parseD2ContractV2(source.slice(0, end)), /D2_CONTRACT_V2_SOURCE_SHAPE/u, `cut at ${end}`);
+  }
+  assert.throws(() => parseD2ContractV2(source.slice(0, Math.floor(source.length / 2))), /D2_CONTRACT_V2_SOURCE_SHAPE/u);
+  // The empty contract of a page without endpoints is not a cut one.
+  assert.deepEqual(parseD2ContractV2('/// <mls fileReference="_1_/l2/alpha/web/contracts/hub.defs.ts" enhancement="_blank"/>\n\nexport {};\n').routes, []);
+});

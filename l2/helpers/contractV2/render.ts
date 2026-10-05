@@ -39,6 +39,11 @@ export function parseD2ContractV2(source: string): D2ContractV2Definition {
   const iface = /export interface ([A-Z][A-Za-z0-9]*) \{([\s\S]*?)\n\}\n/ug;
   let match: RegExpExecArray | null;
   const contractsName = `${pascal(pageId)}Contracts`;
+  // A cut contract is not a contract: the page interface is present and closed, or nothing is read (fromSupervisorL1).
+  // A page without endpoints has the empty contract (`export {};`): valid, no route.
+  if (source.slice(loc[0].length) === 'export {};\n') return { module: moduleName, pageId, projections: [], routes: [] };
+  // The name of that interface is not checked here (a renamed copy keeps a valid body); its presence and closing are.
+  if (!/\nexport interface [A-Z][A-Za-z0-9_]*Contracts \{\n/u.test(source) || !source.endsWith('\n}\n')) throw new Error('D2_CONTRACT_V2_SOURCE_SHAPE');
   while ((match = iface.exec(source))) {
     if (match[1] === contractsName) continue;
     const body = match[2].replace(/^\n/u, '').replace(/\n$/u, '');
@@ -60,7 +65,8 @@ export function parseD2ContractV2(source: string): D2ContractV2Definition {
     const body = chunks[(i + 1) / 2] ?? '';
     const jsdoc = docs[(i - 1) / 2];
     const kind = /kind: '(qry|cmd)'/u.exec(body)?.[1] as 'qry' | 'cmd' | undefined;
-    if (!kind) continue;
+    // Each route block has its kind, its rules and its access, and closes; a block cut short throws.
+    if (!kind || !/\n    rules: \[[^\n]*\];\n/u.test(body) || !/\n    access: \{ actors: \[[^\n]*\]; grants: \[[^\n]*\]; scope: '[^']+' \};\n  \};\n/u.test(body)) throw new Error('D2_CONTRACT_V2_SOURCE_SHAPE');
     const writes = /writes: '([^']+)'/u.exec(body)?.[1];
     const input = /input: ([\s\S]*?);\n    output:/u.exec(body)?.[1]?.trim() ?? '{}';
     const output = /output: ([\s\S]*?);\n    (?:meta|rules):/u.exec(body)?.[1]?.trim() ?? '{}';
