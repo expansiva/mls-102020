@@ -1,0 +1,555 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "productCatalog"
+    },
+    "intent": "O caixa consulta os itens do cardápio da casa e cadastra ou atualiza nome e preço vigente para manter o que a operação usa no lançamento das comandas.",
+    "sections": [
+     {
+      "id": "secaoCatalogo",
+      "priority": "primary",
+      "purpose": "Mostra o cardápio vigente para o caixa conferir o que está à venda e escolher o item que precisa de manutenção.",
+      "organisms": [
+       "listaItensCardapio"
+      ]
+     },
+     {
+      "id": "secaoManutencao",
+      "priority": "main",
+      "purpose": "Concentra o cadastro de um item novo e a atualização de nome e preço vigente do item selecionado.",
+      "organisms": [
+       "formularioItemCardapio"
+      ]
+     }
+    ],
+    "organisms": {
+     "listaItensCardapio": {
+      "kind": "list",
+      "text": "Mostra os itens cadastrados no cardápio, com o nome apresentado à equipe e o preço vigente, para o caixa conferir o que está disponível na operação e escolher o registro a atualizar.",
+      "intents": []
+     },
+     "formularioItemCardapio": {
+      "kind": "form",
+      "text": "Permite cadastrar um item novo ou atualizar nome e preço vigente de um item existente, para manter o cardápio usado no lançamento das comandas.",
+      "intents": [
+       {
+        "id": "cadastrarItemCardapio",
+        "kind": "submit"
+       },
+       {
+        "id": "atualizarItemCardapio",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "listaItensCardapio": [
+      {
+       "role": "collection",
+       "preferred": "groupviewdata--ml-card-grid",
+       "alternative": "groupviewdata--ml-vertical-record-list"
+      }
+     ],
+     "formularioItemCardapio": [
+      {
+       "role": "enterText",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "enterMoney",
+       "preferred": "groupentermoney--ml-enter-money-br",
+       "alternative": "groupentermoney--ml-currency-input"
+      },
+      {
+       "role": "triggerAction",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      },
+      {
+       "role": "notifyUser",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "listaItensCardapio": {
+      "reads": [
+       "ItemCardapio.id",
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente"
+      ],
+      "edits": [],
+      "selects": "formularioItemCardapio",
+      "submits": []
+     },
+     "formularioItemCardapio": {
+      "reads": [
+       "ItemCardapio.id",
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente"
+      ],
+      "edits": [
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "cadastrarItemCardapio",
+        "write": "ItemCardapio.create"
+       },
+       {
+        "intentId": "atualizarItemCardapio",
+        "write": "ItemCardapio.update"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "productCatalog"
+    },
+    "intent": "Em conteúdo estreito e fluido em torno de 390px, também usável em 360px e 430px, o caixa percorre o cardápio e cadastra ou atualiza nome e preço vigente dos itens da operação.",
+    "sections": [
+     {
+      "id": "secaoManutencao",
+      "priority": "primary",
+      "purpose": "Em faixa estreita, o caixa informa ou corrige nome e preço vigente e grava o item sem depender de uma grade fixa.",
+      "organisms": [
+       "formularioItemCardapio"
+      ]
+     },
+     {
+      "id": "secaoCatalogo",
+      "priority": "main",
+      "purpose": "Empilha os itens do cardápio em leitura contínua para conferir nomes e preços e selecionar o registro a atualizar.",
+      "organisms": [
+       "listaItensCardapio"
+      ]
+     }
+    ],
+    "organisms": {
+     "listaItensCardapio": {
+      "kind": "list",
+      "text": "Mostra os itens cadastrados no cardápio, com o nome apresentado à equipe e o preço vigente, para o caixa conferir o que está disponível na operação e escolher o registro a atualizar.",
+      "intents": []
+     },
+     "formularioItemCardapio": {
+      "kind": "form",
+      "text": "Permite cadastrar um item novo ou atualizar nome e preço vigente de um item existente, para manter o cardápio usado no lançamento das comandas.",
+      "intents": [
+       {
+        "id": "cadastrarItemCardapio",
+        "kind": "submit"
+       },
+       {
+        "id": "atualizarItemCardapio",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "listaItensCardapio": [
+      {
+       "role": "collection",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "formularioItemCardapio": [
+      {
+       "role": "enterText",
+       "preferred": "groupentertext--ml-floating-text-input",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "enterMoney",
+       "preferred": "groupentermoney--ml-enter-money-br",
+       "alternative": "groupentermoney--ml-currency-input"
+      },
+      {
+       "role": "triggerAction",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      },
+      {
+       "role": "notifyUser",
+       "preferred": "groupnotifyuser--ml-contextual-feedback",
+       "alternative": "groupnotifyuser--ml-toast-notification"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "listaItensCardapio": {
+      "reads": [
+       "ItemCardapio.id",
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente"
+      ],
+      "edits": [],
+      "selects": "formularioItemCardapio",
+      "submits": []
+     },
+     "formularioItemCardapio": {
+      "reads": [
+       "ItemCardapio.id",
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente"
+      ],
+      "edits": [
+       "ItemCardapio.name",
+       "ItemCardapio.details.precoVigente"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "cadastrarItemCardapio",
+        "write": "ItemCardapio.create"
+       },
+       {
+        "intentId": "atualizarItemCardapio",
+        "write": "ItemCardapio.update"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A página lista e mantém ItemCardapio com nome identificador e preço cobrado, o papel clássico de productCatalog para itens vendáveis do cardápio, e não de estoque, pedidos ou cadastro mestre genérico."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A visualização dos itens não exige que o usuário informe uma decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de informar datas ao consultar o cardápio."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "A consulta aos itens não envolve um intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há agendamento nem informação de data e hora na visualização do cardápio."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "A consulta não requer período com início e fim em data e hora."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O usuário apenas vê os itens; não foi declarada entrada ou edição de preços."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico que o usuário precise informar para visualizar o cardápio."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não foi solicitado filtro ou entrada de faixa numérica."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A visualização simples não declara preenchimento de texto pelo usuário."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a ser informado na consulta dos itens."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há configuração ou filtro de intervalo de horários."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi indicada necessidade de expandir ou recolher detalhes dos itens."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "A visualização de itens do cardápio não depende de localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não foram declaradas seções internas entre as quais o usuário deva alternar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Consultar o cardápio não é um processo sequencial em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "A intenção não descreve evento ou resultado de ação que necessite notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "O usuário não foi descrito como avaliando itens do cardápio."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A consulta não requer captura de QR code, código de barras ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "A intenção declara visualizar itens, sem necessidade explícita de procurar conteúdo por texto."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Visualizar o cardápio não envolve selecionar arquivos para envio."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção de múltiplas opções na consulta declarada."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há decisão única que o usuário precise tomar para ver os itens."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não foi descrita operação de duração relevante cujo progresso deva ser exibido."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "A intenção é somente visualizar, sem comando explícito a executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Cada item do cardápio pode ser apresentado como unidade visual independente, com nome, descrição, preço e eventuais ações."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Itens de cardápio são registros, não dados que precisem de representação gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "O cardápio é uma coleção de itens com campos definidos e conteúdo rico, adequada à exibição adaptativa de múltiplos registros."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não foi declarada estrutura pai-filho de categorias e subcategorias a navegar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "A intenção não requer destacar indicador ou métrica agregada."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Embora itens possam ser tabulados, a intenção não exige apresentação tabular estruturada; a visualização adaptativa de itens é mais diretamente aplicável."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": true,
+     "reason": "O cadastro e a atualização podem exigir definir um atributo binário operacional do item, como ativo ou indisponível."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não foi declarado que os itens do cardápio possuam data a informar ou atualizar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "O cadastro de itens não declara vigência ou qualquer intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há agendamento ou data/hora associada ao cadastro de itens informada."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não foi declarado período com início e fim em data e hora para os itens."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": true,
+     "reason": "Itens de cardápio usados na operação normalmente demandam cadastrar e atualizar seu preço monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": true,
+     "reason": "O cadastro operacional pode exigir valores numéricos do item, como quantidade, porção ou tempo de preparo."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não foi indicada necessidade de cadastrar ou filtrar uma faixa numérica mínima e máxima."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": true,
+     "reason": "Cadastrar e atualizar itens requer texto livre para informações como nome e descrição."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não foi declarado horário diário a ser configurado para cada item."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há configuração de janela de horários ou intervalo operacional por item declarada."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O cadastro e atualização não exigem explicitamente ocultar ou revelar seções de detalhes."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Itens do cardápio não requerem endereço, geolocalização ou mapa."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não foram declaradas seções internas necessárias para alternância no contexto de manutenção."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Não foi descrito um fluxo sequencial de múltiplas etapas para o cadastro."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": true,
+     "reason": "Após cadastrar ou atualizar um item, é necessário informar o sucesso ou falha do resultado da operação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há necessidade declarada de reproduzir áudio ou vídeo durante a manutenção dos itens."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "O usuário mantém itens operacionais; não foi solicitado atribuir avaliação ou nota."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não foi declarada captura por câmera de código de barras, QR code ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": true,
+     "reason": "Permite localizar rapidamente um item existente antes de atualizá-lo."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não foi declarado que o cadastro de item inclua envio de imagem ou outro arquivo."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não foi declarada associação de múltiplas opções, como vários ingredientes ou categorias, ao item."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não foi declarado um atributo de escolha única, como categoria, a ser selecionado no cadastro."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Salvar um cadastro ou atualização não foi descrito como processo de duração que exija progresso."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "É necessário executar comandos como salvar o cadastro, confirmar alterações ou iniciar a edição de um item."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "A intenção de manutenção exige principalmente localizar e editar registros; não foi declarada necessidade de cartões individuais."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos ou séries que precisem ser visualizados em gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "A manutenção se beneficia de exibir a coleção de itens existentes para escolher quais cadastrar ou atualizar, em layout adaptativo."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não foi declarada uma estrutura hierárquica de itens a administrar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Cadastro e atualização de itens não requerem a exibição de uma métrica destacada."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Uma tabela apresenta os itens operacionais com campos estruturados e facilita selecionar, revisar e editar registros."
+    }
+   ]
+  }
+ ]
+}

@@ -1,39 +1,20 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/shared60/run.ts" enhancement="_blank"/>
 
-import { readJson, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { fileExists, readJson, readSourceText, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
-import { buildD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
+import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_102020_/l2/helpers/defsInput/io.js';
+import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { deriveD2PageRequests, type D2DerivedPageRequests, type D2PageRequestsInput, type D2PageRequestsMenu, type D2PageRequestsNeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
-import { gateD2SharedV2, renderD2SharedV2, sharedFromDerived, type D2SharedV2Definition, type D2SharedV2Issue } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { d2BffAccess, type D2Grant, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { renderD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { d2SharedDeriveIssues, deriveD2Shared, type D2SharedDeriveInput } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
+import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 
-export const D2_SHARED_VERSION = '2026-10-01-agent-defs-l2-shared-v2.1' as const;
-export const D2_SHARED_PROMPT_LIMIT_CHARS = 640_000;
-
-export const D2_SHARED_SYSTEM_PREFIX = `<!-- modelType: reasoning -->
-<!-- reasoningEffort: high -->
-<!-- x-tool-strict: true -->`;
-
-export interface D2SharedStateInput { id: string; source: string; description: string }
-export interface D2SharedFunctionInput {
-  id: string;
-  calls?: string;
-  sets?: string;
-  updates?: string[];
-  navigate?: string;
-  carries?: Record<string, string>;
-  description: string;
-}
-export interface D2SharedJourneyInput { step: string; organisms: string[]; functions: string[]; continuesIn?: string }
-export interface D2SharedLlmResponse {
-  states: D2SharedStateInput[];
-  functions: D2SharedFunctionInput[];
-  journeys: D2SharedJourneyInput[];
-  commandReturns: Array<{ requestId: string; returns: string[] }>;
-  requestRules: Array<{ requestId: string; rules: string[] }>;
-  formChoices?: Array<{ submit: string; organism: string }>;
-}
+/** d2_75: the shared is derived by code from the approved BFF; no LLM call. */
+export const D2_SHARED_VERSION = '2026-10-04-agent-defs-l2-shared-v4' as const;
+export const D2_SHARED_REFUSAL_VERSION = '2026-10-04-agent-defs-l2-shared-refusal-v2' as const;
 
 export interface D2SharedReceipt {
   schemaVersion: typeof D2_SHARED_VERSION;
@@ -41,212 +22,24 @@ export interface D2SharedReceipt {
   module: string;
   pageId: string;
   inputHash: string;
-  unitInputHash: string;
   page11Hashes: Record<D2Page11Device, string>;
   draftHashes: Record<D2Page11Device, string>;
-  skillHash: string;
-  promptHash: string;
-  promptChars: number;
-  repairPromptChars: number;
+  designHash: string;
+  siblingsHash: string;
   sourceHash: string;
 }
 
-export interface D2SharedContext {
+export interface D2SharedPage {
   identity: D2RunIdentity;
   inputHash: string;
-  input: D2PageRequestsInput;
-  derived: D2DerivedPageRequests;
-  page11: Record<D2Page11Device, D2Page11Definition>;
   page11Text: Record<D2Page11Device, string>;
-  drafts: Record<D2Page11Device, D2Page11Needs>;
   draftText: Record<D2Page11Device, string>;
-  skill: string;
-  prompt: string;
+  derive: D2SharedDeriveInput;
 }
 
-export function d2SharedValidSources(derived: D2DerivedPageRequests): string[] {
-  const tokens: string[] = [];
-  for (const request of derived.requests) {
-    // load<Key> feeds the list state sourced from load, so its returns are not a state source.
-    if (request.id !== 'load' && request.lists.length > 0) continue;
-    for (const key of request.returns) tokens.push(`${request.id}.${key}`);
-    if (request.kind === 'cmd') tokens.push(`${request.id}.input`);
-  }
-  for (const name of Object.keys(derived.entry.params)) tokens.push(`entry.params.${name}`);
-  return tokens;
-}
-
-export function d2SharedJourneySteps(needs: D2PageRequestsNeedPage, menu: D2PageRequestsMenu): string[] {
-  const linked = new Set(Object.entries(menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(needs.pageId)).map(([id]) => id));
-  const steps = (needs.reads ?? []).flatMap(read => read.from.filter(item => item.startsWith('journey:')).map(item => item.slice('journey:'.length)));
-  return [...new Set(steps.filter(step => linked.has(step.split('/')[0])))];
-}
-
-export function buildD2SharedContext(input: D2PageRequestsInput, extra: Omit<D2SharedContext, 'input' | 'derived'>): D2SharedContext {
-  const derived = deriveD2PageRequests(input);
-  if (derived.issues.length) throw new Error(derived.issues.map(issue => `${issue.code}: ${issue.message}`).join(' | '));
-  const context = { ...extra, input, derived };
-  const shape = d2SharedShapeIssues(context);
-  if (shape.length) throw new Error(`D2_SHARED_SHAPE_SELF_CHECK: ${shape.map(issue => `${issue.code}: ${issue.message}`).join(' | ')}`);
-  return context;
-}
-
-/** Gate codes about shape (what the code derives); the others judge what only the answer can say. */
-export const D2_SHARED_V2_SHAPE_CODES = [
-  'D2_SHARED_V2_FORMAT', 'D2_SHARED_V2_FUNCTION_CALL', 'D2_SHARED_V2_FUNCTION_SET', 'D2_SHARED_V2_FUNCTION_UPDATE',
-  'D2_SHARED_V2_STATE_SOURCE', 'D2_SHARED_V2_STATE_FIXED', 'D2_SHARED_V2_STATE_DUPLICATE', 'D2_SHARED_V2_LIST_STATE',
-  'D2_SHARED_V2_FUNCTION_DUPLICATE', 'D2_SHARED_V2_RULE_REQUEST', 'D2_SHARED_V2_RULE_OUTSIDE', 'D2_SHARED_V2_NAVIGATE_SETS',
-  'D2_SHARED_V2_CARRIES_OUTSIDE', 'D2_SHARED_V2_CARRIES_PATH', 'D2_SHARED_V2_CARRIES_TYPE', 'D2_SHARED_V2_STATE_NAVIGATE',
-] as const;
-
-/**
- * Self-consistency (d2_70): the derived shared, with only descriptions written, must pass the shared gate on every shape
- * code. A shape the code creates and its own gate refuses is a test failure and a refusal before any LLM call.
- */
-export function d2SharedShapeIssues(context: Pick<D2SharedContext, 'derived' | 'page11' | 'drafts' | 'input'>): D2SharedV2Issue[] {
-  const base = sharedFromDerived(context.derived);
-  const described = {
-    ...base,
-    states: Object.fromEntries(Object.entries(base.states).map(([id, state]) => [id, { ...state, description: 'derived' }])),
-    functions: Object.fromEntries(Object.entries(base.functions).map(([id, fn]) => [id, { ...fn, description: 'derived' }])),
-  };
-  const need = context.input.needsPages.find(item => item.pageId === context.input.pageId) ?? { pageId: context.input.pageId, actors: [], reads: [], writes: [] };
-  const shape = new Set<string>(D2_SHARED_V2_SHAPE_CODES);
-  return gateD2SharedV2(described, { page11: context.page11.desktop, draft: context.drafts.desktop, needs: need, menu: context.input.menu, derived: context.derived })
-    .filter(issue => shape.has(issue.code));
-}
-
-export function buildD2SharedPrompt(context: D2SharedContext, repair?: { diagnostic: string; previous: unknown }): { systemPrompt: string; humanPrompt: string; chars: number } {
-  const need = context.input.needsPages.find(item => item.pageId === context.input.pageId);
-  if (!need) throw new Error('D2_SHARED_NEEDS_PAGE');
-  const draftOf = (device: D2Page11Device) => Object.fromEntries(Object.entries(context.drafts[device].organisms).map(([id, row]) => [id, {
-    reads: row.reads, edits: row.edits, selects: row.selects, submits: row.submits,
-  }]));
-  const pageOf = (device: D2Page11Device) => ({
-    sections: context.page11[device].sections.map(section => ({ id: section.id, organisms: section.organisms })),
-    organisms: Object.fromEntries(Object.entries(context.page11[device].organisms).map(([id, row]) => [id, { kind: row.kind, intents: row.intents }])),
-  });
-  const human = {
-    pageId: context.input.pageId,
-    entry: context.derived.entry,
-    forms: context.derived.forms,
-    requests: context.derived.requests.map(request => ({ id: request.id, kind: request.kind, trigger: request.trigger, writes: request.writes, returns: request.returns,
-      returnEntities: request.returnEntities, lists: request.lists.map(list => ({ key: list.key, filter: list.filter, loadMore: list.loadMore, organismId: list.organismId })),
-      organisms: request.organisms })),
-    ruleCandidates: context.derived.rules,
-    ruleTexts: Object.fromEntries([...new Set(Object.values(context.derived.rules).flat())].map(id => [id, context.input.rules.rules[id] ?? ''])),
-    access: { actors: context.derived.access.actors, grants: context.derived.access.grants },
-    validSources: d2SharedValidSources(context.derived),
-    commandReturnKeys: [...new Set(need.reads.map(read => read.entity[0].toLowerCase() + read.entity.slice(1)))],
-    fixedFunctions: Object.entries(sharedFromDerived(context.derived).functions).map(([id, fn]) => ({ id, ...(fn.calls ? { calls: fn.calls } : {}), ...(fn.sets ? { sets: fn.sets } : {}) })),
-    fixedStates: Object.entries(sharedFromDerived(context.derived).states).map(([id, state]) => ({ id, source: state.source })),
-    journeySteps: d2SharedJourneySteps(need, context.input.menu),
-    page11: { desktop: pageOf('desktop'), mobile: pageOf('mobile') },
-    readsAndEdits: { desktop: draftOf('desktop'), mobile: draftOf('mobile') },
-    repair: repair ?? null,
-  };
-  const humanPrompt = JSON.stringify(human);
-  const systemPrompt = `${D2_SHARED_SYSTEM_PREFIX}\n\n${context.prompt}\n${context.skill}`;
-  const chars = systemPrompt.length + humanPrompt.length;
-  if (chars > D2_SHARED_PROMPT_LIMIT_CHARS) throw new Error(`D2_SHARED_PROMPT_LIMIT: ${chars}`);
-  return { systemPrompt, humanPrompt, chars };
-}
-
-export function applyD2SharedLlm(context: D2SharedContext, raw: D2SharedLlmResponse): D2SharedV2Definition {
-  const response = normalizeLlm(raw);
-  const base = sharedFromDerived(context.derived);
-  const page = context.page11.desktop;
-  const draft = mergeDraft(context.drafts.desktop, context.drafts.mobile);
-  const forms: D2SharedV2Definition['forms'] = {};
-  // A form may serve several submits, but never two of the same write (two creates in one form).
-  const used = new Set<string>();
-  for (const form of Object.values(context.derived.forms)) {
-    const organismId = form.ambiguous ? choiceFor(response, form.submit, page, draft, form.entity) : form.organism;
-    const write = context.derived.requests.find(item => item.id === form.submit)?.writes ?? form.submit;
-    if (!organismId || used.has(`${organismId}:${write}`)) throw new Error(`D2_SHARED_FORM_REUSE: ${form.submit}`);
-    const organism = page.organisms[organismId];
-    if (!organism) throw new Error(`D2_SHARED_FORM_MISSING: ${organismId}`);
-    used.add(`${organismId}:${write}`);
-    forms[form.submit] = { organism: organismId, submit: form.submit };
-  }
-  const requests = { ...base.requests };
-  for (const row of response.commandReturns) {
-    const request = requests[row.requestId];
-    if (!request || request.kind !== 'cmd') throw new Error(`D2_SHARED_RETURNS_REQUEST: ${row.requestId}`);
-    requests[row.requestId] = { ...request, returns: row.returns };
-  }
-  const functions = { ...base.functions };
-  for (const row of response.functions) {
-    const current = functions[row.id];
-    const calls = current?.calls ?? row.calls;
-    const updates = row.updates ?? current?.updates;
-    // A fixed list function keeps the fixed list state; other functions take the answer's sets.
-    const sets = base.functions[row.id]?.sets ?? row.sets;
-    functions[row.id] = {
-      description: row.description,
-      ...(calls ? { calls } : {}),
-      ...(sets ? { sets } : {}),
-      ...(updates ? { updates } : {}),
-      ...(row.navigate ? { navigate: row.navigate } : {}),
-      ...(row.carries ? { carries: row.carries } : {}),
-    };
-  }
-  const rules: D2SharedV2Definition['rules'] = {};
-  for (const row of response.requestRules) {
-    if (!requests[row.requestId] || rules[row.requestId]) throw new Error(`D2_SHARED_RULES_REQUEST: ${row.requestId}`);
-    rules[row.requestId] = [...new Set(row.rules)];
-  }
-  const states: D2SharedV2Definition['states'] = { ...base.states };
-  const answered = new Set<string>();
-  for (const row of response.states) {
-    if (answered.has(row.id)) throw new Error(`D2_SHARED_STATE_ID: ${row.id}`);
-    answered.add(row.id);
-    const fixed = base.states[row.id];
-    if (fixed && row.source !== fixed.source) throw new Error(`D2_SHARED_STATE_FIXED: ${row.id} is the fixed list state with source ${fixed.source}; keep that source.`);
-    states[row.id] = { source: fixed?.source ?? row.source, description: row.description };
-  }
-  return { ...base, forms, requests, states, functions, rules, journeys: response.journeys.map(row => ({
-    step: row.step, organisms: row.organisms, functions: row.functions, ...(row.continuesIn ? { continuesIn: row.continuesIn } : {}),
-  })) };
-}
-
+export interface D2SharedExisting { source: string | null; receipt: D2SharedReceipt | null }
 export interface D2SharedWriter { writeSource(info: Ns5FileInfo, source: string): Promise<void>; writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown> }
 const productionWriter: D2SharedWriter = { writeSource: writeSourceText, writeJson };
-
-export async function approveD2SharedUnit(context: D2SharedContext, raw: D2SharedLlmResponse, promptChars: number, repairPromptChars = 0, writer: D2SharedWriter = productionWriter): Promise<D2SharedReceipt> {
-  const definition = applyD2SharedLlm(context, raw);
-  const need = context.input.needsPages.find(item => item.pageId === context.input.pageId);
-  if (!need) throw new Error('D2_SHARED_NEEDS_PAGE');
-  const issues = gateD2SharedV2(definition, {
-    page11: context.page11.desktop, draft: context.drafts.desktop, needs: need, menu: context.input.menu, derived: context.derived,
-  });
-  if (issues.length) throw new Error(issues.map(issue => `${issue.code}: ${issue.message}`).join(' | '));
-  const source = renderD2SharedV2({ ...context.identity, pageId: context.input.pageId }, definition);
-  const receipt: D2SharedReceipt = {
-    schemaVersion: D2_SHARED_VERSION, ...context.identity, pageId: context.input.pageId,
-    inputHash: context.inputHash, unitInputHash: await sharedUnitInputHash(context),
-    page11Hashes: { desktop: await sha256Text(context.page11Text.desktop), mobile: await sha256Text(context.page11Text.mobile) },
-    draftHashes: { desktop: await sha256Text(context.draftText.desktop), mobile: await sha256Text(context.draftText.mobile) },
-    skillHash: await sha256Text(context.skill), promptHash: await sha256Text(context.prompt),
-    promptChars, repairPromptChars, sourceHash: await sha256Text(source),
-  };
-  await writer.writeSource(sharedInfo(context.identity, context.input.pageId), source);
-  await writer.writeJson(receiptInfo(context.identity, context.input.pageId), receipt);
-  return receipt;
-}
-
-export async function sharedUnitInputHash(context: D2SharedContext): Promise<string> {
-  const need = context.input.needsPages.find(item => item.pageId === context.input.pageId) ?? null;
-  return sha256Text(JSON.stringify({
-    pageId: context.input.pageId,
-    derived: context.derived,
-    page11: context.page11Text,
-    drafts: context.draftText,
-    journeys: d2SharedJourneySteps(need ?? { pageId: context.input.pageId, actors: [], reads: [], writes: [] }, context.input.menu),
-    menuJourneys: context.input.menu.meta?.journeys ?? {},
-    userLanguage: context.input.menu.userLanguage ?? '',
-  }));
-}
 
 export function sharedInfo(identity: D2RunIdentity, pageId: string): Ns5FileInfo {
   return { project: identity.project, level: 2, folder: `${identity.module}/web/shared`, shortName: pageId, extension: '.defs.ts' };
@@ -262,75 +55,139 @@ export function draftFile(identity: D2RunIdentity, pageId: string, device: D2Pag
 }
 
 export async function readD2SharedReceipt(identity: D2RunIdentity, pageId: string): Promise<D2SharedReceipt | null> {
-  return readJson<D2SharedReceipt>(receiptInfo(identity, pageId));
+  const value = await readJson<D2SharedReceipt>(receiptInfo(identity, pageId));
+  return value?.schemaVersion === D2_SHARED_VERSION ? value : null;
 }
 
-/** A refused page is recorded where its receipt lives; it is never reusable. */
-export const D2_SHARED_REFUSAL_VERSION = '2026-10-02-agent-defs-l2-shared-refusal' as const;
-export interface D2SharedRefusal {
-  schemaVersion: typeof D2_SHARED_REFUSAL_VERSION;
-  project: number;
-  module: string;
-  pageId: string;
-  taskId: string;
-  diagnostic: string;
-}
-export function d2SharedRefusal(identity: D2RunIdentity, pageId: string, taskId: string, diagnostic: string): D2SharedRefusal {
-  return { schemaVersion: D2_SHARED_REFUSAL_VERSION, project: identity.project, module: identity.module, pageId, taskId, diagnostic };
-}
-export async function readD2SharedRefusal(identity: D2RunIdentity, pageId: string): Promise<D2SharedRefusal | null> {
-  const row = await readJson<D2SharedRefusal>(receiptInfo(identity, pageId));
-  return row?.schemaVersion === D2_SHARED_REFUSAL_VERSION ? row : null;
+/** The shared source of one page, or the named refusal when the code's own output fails its fact checks (d2_70). */
+export function d2SharedSourceFor(page: D2SharedPage): string {
+  const definition = deriveD2Shared(page.derive);
+  const issues = d2SharedDeriveIssues(page.derive, definition);
+  if (issues.length) throw new Error(`D2_SHARED_SELF_CHECK: ${issues.map(issue => `${issue.code}: ${issue.message}`).join(' | ')}`);
+  return renderD2SharedV2({ ...page.identity, pageId: page.derive.pageId }, definition);
 }
 
-export interface D2SharedSettlePort {
-  pageIds(): Promise<string[] | null>;
-  reusable(pageId: string): Promise<boolean>;
-  refusal(pageId: string): Promise<D2SharedRefusal | null>;
+/** Writes only when the derived bytes or their inputs changed; the same inputs reuse with no write. */
+export async function approveD2SharedPage(page: D2SharedPage, existing: D2SharedExisting, writer: D2SharedWriter = productionWriter): Promise<{ receipt: D2SharedReceipt; wrote: boolean }> {
+  const source = d2SharedSourceFor(page);
+  const receipt: D2SharedReceipt = {
+    schemaVersion: D2_SHARED_VERSION, ...page.identity, pageId: page.derive.pageId, inputHash: page.inputHash,
+    page11Hashes: { desktop: await sha256Text(page.page11Text.desktop), mobile: await sha256Text(page.page11Text.mobile) },
+    draftHashes: { desktop: await sha256Text(page.draftText.desktop), mobile: await sha256Text(page.draftText.mobile) },
+    designHash: await sha256Text(JSON.stringify(page.derive.design)),
+    siblingsHash: await sha256Text(JSON.stringify(page.derive.siblings)),
+    sourceHash: await sha256Text(source),
+  };
+  const same = existing.receipt && existing.source !== null && JSON.stringify(existing.receipt) === JSON.stringify(receipt) && await sha256Text(existing.source) === receipt.sourceHash;
+  if (same) return { receipt, wrote: false };
+  await writer.writeSource(sharedInfo(page.identity, page.derive.pageId), source);
+  await writer.writeJson(receiptInfo(page.identity, page.derive.pageId), receipt);
+  return { receipt, wrote: true };
 }
-export type D2SharedSettlement =
-  | { state: 'pending'; pending: string[] }
-  | { state: 'ready'; pageIds: string[] }
-  | { state: 'refused'; refusals: D2SharedRefusal[] };
 
-/** The stage ends only when every page of this task is accepted or refused; then it passes or fails once. */
-export async function settleD2Shared(taskId: string, port: D2SharedSettlePort): Promise<D2SharedSettlement> {
-  const ids = await port.pageIds();
-  if (!ids) throw new Error('D2_SHARED_INPUT_MISSING');
-  const refusals: D2SharedRefusal[] = [];
-  const pending: string[] = [];
-  for (const pageId of ids) {
-    if (await port.reusable(pageId)) continue;
-    const refusal = await port.refusal(pageId);
-    // A refusal left by an earlier task is not this run's answer: the page is being redone.
-    if (refusal && refusal.taskId === taskId) refusals.push(refusal);
-    else pending.push(pageId);
+export interface D2SharedPort {
+  pageIds(): Promise<string[]>;
+  /** The refusal an earlier stage recorded for the page, which then has no shared to derive (d2_76). */
+  upstreamRefusal(pageId: string): Promise<string | null>;
+  load(pageId: string): Promise<D2SharedPage>;
+  readExisting(pageId: string): Promise<D2SharedExisting>;
+  writer: D2SharedWriter;
+}
+
+/**
+ * Every page goes alone (d2_76): a page refused upstream is skipped, a page this stage refuses records its diagnostic
+ * where its receipt lives, and the others are derived. finalize80 fails the pipeline once, listing the refused pages.
+ */
+export async function executeD2Shared(port: D2SharedPort, identity?: D2RunIdentity): Promise<{ wrote: string[]; reused: string[]; skipped: string[]; refused: Array<{ pageId: string; diagnostic: string }> }> {
+  const wrote: string[] = [];
+  const reused: string[] = [];
+  const skipped: string[] = [];
+  const refused: Array<{ pageId: string; diagnostic: string }> = [];
+  for (const pageId of await port.pageIds()) {
+    if (await port.upstreamRefusal(pageId)) { skipped.push(pageId); continue; }
+    try {
+      const result = await approveD2SharedPage(await port.load(pageId), await port.readExisting(pageId), port.writer);
+      (result.wrote ? wrote : reused).push(pageId);
+    } catch (error) {
+      const diagnostic = error instanceof Error ? error.message : String(error);
+      refused.push({ pageId, diagnostic });
+      if (identity) await port.writer.writeJson(receiptInfo(identity, pageId), { schemaVersion: D2_SHARED_REFUSAL_VERSION, ...identity, pageId, diagnostic });
+    }
   }
-  if (pending.length) return { state: 'pending', pending };
-  if (refusals.length) return { state: 'refused', refusals };
-  return { state: 'ready', pageIds: ids };
+  return { wrote, reused, skipped, refused };
 }
 
-export function d2SharedRefusedMessage(refusals: readonly D2SharedRefusal[]): string {
-  return `D2_SHARED_PAGES_REFUSED: ${refusals.map(row => `${row.pageId}: ${row.diagnostic}`).join(' || ')}`;
+export async function readD2SharedRefusal(identity: D2RunIdentity, pageId: string): Promise<string | null> {
+  const value = await readJson<{ schemaVersion?: string; diagnostic?: string }>(receiptInfo(identity, pageId));
+  return value?.schemaVersion === D2_SHARED_REFUSAL_VERSION ? value.diagnostic ?? '' : null;
 }
 
-function choiceFor(response: D2SharedLlmResponse, submit: string, page: D2Page11Definition, draft: D2Page11Needs, entity: string): string {
-  const choices = (response.formChoices ?? []).filter(item => item.submit === submit);
-  if (choices.length !== 1) throw new Error(`D2_SHARED_FORM_CHOICE: ${submit}`);
-  const organismId = choices[0].organism;
-  const edits = draft.organisms[organismId]?.edits ?? [];
-  if (!page.organisms[organismId] || !edits.length || edits.some(path => path.split('.')[0] !== entity)) throw new Error(`D2_SHARED_FORM_ENTITY: ${submit}`);
-  return organismId;
+/** The pure part: the page pair, the approved BFF, the access it implies and the siblings that navigate here. */
+export function d2SharedPageFrom(input: {
+  identity: D2RunIdentity;
+  inputHash: string;
+  pageId: string;
+  page11Text: Record<D2Page11Device, string>;
+  drafts: Record<D2Page11Device, unknown>;
+  need: D2NeedPage;
+  menu: D2Menu;
+  grants: readonly D2Grant[];
+  entities: Record<string, Ns5OntologyAnyEntity>;
+  design: D2SharedDeriveInput['design'];
+  siblings: D2SharedDeriveInput['siblings'];
+}): D2SharedPage {
+  const page11: Record<D2Page11Device, D2Page11Definition> = { desktop: parseD2Page11Definition(input.page11Text.desktop).definition, mobile: parseD2Page11Definition(input.page11Text.mobile).definition };
+  const drafts: Record<D2Page11Device, D2Page11Needs> = { desktop: buildD2Page11Needs(input.drafts.desktop), mobile: buildD2Page11Needs(input.drafts.mobile) };
+  const access = d2BffAccess(input.design, input.need, input.grants);
+  return {
+    identity: input.identity, inputHash: input.inputHash, page11Text: input.page11Text,
+    draftText: { desktop: JSON.stringify(input.drafts.desktop), mobile: JSON.stringify(input.drafts.mobile) },
+    derive: {
+      pageId: input.pageId, page11, drafts, need: input.need, menu: input.menu, design: input.design,
+      access: { actors: access.actors, grants: access.grants }, entities: input.entities, siblings: input.siblings,
+    },
+  };
 }
 
-function mergeDraft(left: D2Page11Needs, right: D2Page11Needs): D2Page11Needs {
-  const organisms: D2Page11Needs['organisms'] = { ...left.organisms };
-  for (const [id, row] of Object.entries(right.organisms)) organisms[id] = organisms[id] ?? row;
-  return { organisms };
+async function readPair(identity: D2RunIdentity, pageId: string): Promise<{ texts: Record<D2Page11Device, string>; drafts: Record<D2Page11Device, unknown> }> {
+  const devices = ['desktop', 'mobile'] as const;
+  const texts = await Promise.all(devices.map(device => readSourceText(page11File(identity, pageId, device))));
+  const drafts = await Promise.all(devices.map(device => readJson<unknown>(draftFile(identity, pageId, device))));
+  if (texts.some(text => !text) || drafts.some(draft => !draft)) throw new Error(`D2_SHARED_PAGE11_MISSING: ${pageId}`);
+  return { texts: { desktop: texts[0], mobile: texts[1] }, drafts: { desktop: drafts[0], mobile: drafts[1] } };
 }
 
-function normalizeLlm(raw: D2SharedLlmResponse): D2SharedLlmResponse {
-  if (!raw || !Array.isArray(raw.states) || !Array.isArray(raw.functions) || !Array.isArray(raw.journeys) || !Array.isArray(raw.commandReturns) || !Array.isArray(raw.requestRules)) throw new Error('D2_SHARED_LLM_SHAPE');
-  return raw;
+export async function productionSharedPort(identity: D2RunIdentity): Promise<D2SharedPort> {
+  const snapshot = await readD2Input(identity);
+  if (!snapshot) throw new Error('D2_SHARED_INPUT_MISSING');
+  const bundle = await readD2InputBundle(identity);
+  await assertD2InputSourcesStable(bundle);
+  const ids = [...snapshot.selection.writePageIds].sort();
+  const pairs = new Map<string, Awaited<ReturnType<typeof readPair>>>();
+  const pairOf = async (pageId: string) => { if (!pairs.has(pageId)) pairs.set(pageId, await readPair(identity, pageId)); return pairs.get(pageId)!; };
+  return {
+    pageIds: async () => ids,
+    upstreamRefusal: async pageId => (await readD2BffRefusal(identity, pageId))?.diagnostic ?? null,
+    load: async pageId => {
+      const design = await readApprovedD2Bff(identity, pageId);
+      if (!design) throw new Error(`D2_SHARED_BFF_MISSING: ${pageId} has no approved BFF design; bff55 runs first.`);
+      const need = (bundle.artifacts.needs as { pages: D2NeedPage[] }).pages.find(item => item.pageId === pageId);
+      if (!need) throw new Error(`D2_SHARED_NEEDS_PAGE: ${pageId}`);
+      const own = await pairOf(pageId);
+      const siblings: D2SharedDeriveInput['siblings'] = [];
+      for (const id of ids.filter(item => item !== pageId)) {
+        const pair = await pairOf(id);
+        siblings.push({ pageId: id, page11: parseD2Page11Definition(pair.texts.desktop).definition, drafts: [buildD2Page11Needs(pair.drafts.desktop), buildD2Page11Needs(pair.drafts.mobile)] });
+      }
+      return d2SharedPageFrom({
+        identity, inputHash: snapshot.snapshotHash, pageId, page11Text: own.texts, drafts: own.drafts, need, menu: bundle.artifacts.menu as D2Menu,
+        grants: (bundle.artifacts.access as { grants?: D2Grant[] } | null)?.grants ?? [], entities: bundle.artifacts.entities as Record<string, Ns5OntologyAnyEntity>, design, siblings,
+      });
+    },
+    readExisting: async pageId => {
+      const source = fileExists(sharedInfo(identity, pageId)) ? await readSourceText(sharedInfo(identity, pageId)) || null : null;
+      return { source, receipt: await readD2SharedReceipt(identity, pageId) };
+    },
+    writer: productionWriter,
+  };
 }

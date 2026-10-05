@@ -8,12 +8,12 @@ import { parseD2Page11Definition, renderD2Page11Definition } from '/_102020_/l2/
 import { buildD2Page11WithExperience, d2Page11WriteDuplicates } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
-import { beforePromptStep, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { approvedPageSeed, beforePromptStep, readApprovedPage11, reusableD2Page, withPageEnums, withWriteEnum, type D2PagesReusePort } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 import { lintToolSchema } from '/_102025_/l2/toolSchemaLint.js';
 import { d2NormalizeWriteKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { gateD2Page11 } from '/_102020_/l2/agentDefsL2/helpers/page11Gate.js';
 import type { D2MoleculeGroup } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeContext.js';
-import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, d2PageWriteKeys, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
+import { approveD2PagesUnit, buildD2PagesDecisionPrompt, d2PageChoiceEnums, d2PageWriteKeys, d2RegenerationReason, pageUnitInputHash, D2_PAGES_VERSION, type D2PagesContext, type D2PagesResponse, type D2PagesWriter } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 
 const fixture = <T>(module: string, name: string): T => JSON.parse(readFileSync(new URL(`../../helpers/fixtures/${module}/${name}.json`, import.meta.url), 'utf8')) as T;
 const categories = (JSON.parse(readFileSync(new URL('../../../../l4/collabux/templates/categoryList.json', import.meta.url), 'utf8')) as { categories: D2PagesContext['template']['categories'] }).categories;
@@ -247,6 +247,67 @@ void test('a complete receipt reuses one page with zero writes; draft, context a
   writes.set(draftKey, repeated);
   const repeatedReceipt = { ...receipt, needsHashes: { ...receipt.needsHashes, desktop: await sha256Text(JSON.stringify(repeated)) } };
   assert.equal(await reusableD2Page(data.identity, data.page.pageId, { ...port, readReceipt: async () => repeatedReceipt }), false);
+});
+
+void test('d2_71: an approved page11 survives catalog text changes and is regenerated from itself', async () => {
+  const data = context('controleEstoque', 'produtos');
+  const group = (tags: string[]): D2MoleculeGroup => ({ groupId: 'g1', purpose: 'p', indexReference: '/g1/index', usageReference: '/g1/usage', tags, scenarios: [], indexSource: '', indexText: 'index text', usageSource: '', usageText: '' });
+  data.groups = [group(['grp--table', 'grp--metric'])];
+  data.selectedGroups = Object.fromEntries(data.page.organisms.map((_, index) => [`organism${index + 1}`, ['g1']]));
+  data.groupAssessments = data.page.organisms.map((_, index) => ({ organismId: `organism${index + 1}`, groups: [{ groupId: 'g1', relevant: true, reason: 'r' }] }));
+  const answer = product();
+  for (const device of ['desktop', 'mobile'] as const) {
+    (answer[device].definition as { molecules: unknown }).molecules = { lista: [{ role: 'list', preferred: 'grp--table' }], resumo: [{ role: 'metric', preferred: 'grp--metric' }] };
+  }
+  const writes = new Map<string, unknown>();
+  const key = (info: { folder: string; shortName: string; extension: string }) => `${info.folder}/${info.shortName}${info.extension}`;
+  const writer: D2PagesWriter = { writeSource: async (info, source) => { writes.set(key(info), source); }, writeJson: async (info, value) => { writes.set(key(info), value); } };
+  const receipt = await approveD2PagesUnit(data, answer, 1400, 0, writer);
+  const port: D2PagesReusePort = {
+    readReceipt: async () => receipt, context: async () => data,
+    readSource: async info => writes.get(key(info)) as string, readNeeds: async info => writes.get(key(info)),
+  };
+  assert.equal(await reusableD2Page(data.identity, 'produtos', port), true);
+  // A regeneration skips the group stage: the judged groups go straight to the decision.
+  assert.deepEqual((await approvedPageSeed(data.identity, 'produtos', port))?.selectedGroups, data.selectedGroups);
+
+  // Index and catalog text change without touching the chosen molecules: reused, no LLM.
+  data.inventory = { ...data.inventory, sourceHash: 'sha256:another-index' };
+  data.moleculeHashes = { '/g1/index': 'sha256:edited-text' };
+  data.template = { ...data.template, catalog: `${data.template.catalog}\n` };
+  assert.equal(await reusableD2Page(data.identity, 'produtos', port), true);
+
+  // A chosen molecule leaves the catalog: redone, and the reason names only the organisms that used it.
+  data.groups = [group(['grp--table'])];
+  assert.equal(await reusableD2Page(data.identity, 'produtos', port), false);
+  const approved = await readApprovedPage11(data.identity, 'produtos', port);
+  assert.ok(approved);
+  const removed = d2RegenerationReason(data, approved);
+  assert.ok(removed.some(item => item.includes('grp--metric') && item.endsWith('change it only in resumo')), removed.join(' | '));
+  assert.equal(removed.some(item => item.includes('grp--table')), false);
+  data.groups = [group(['grp--table', 'grp--metric'])];
+
+  // A new write: the prompt carries the approved page11 and the reason; an answer that only adds it is approved.
+  const update = { entity: 'Produto', operation: 'update', transitionRef: '', from: [] };
+  data.page.writes = [...data.page.writes, update];
+  const needsFile = data.artifacts.needs as { pages: Array<{ pageId: string; writes: unknown[] }> };
+  needsFile.pages = needsFile.pages.map(page => page.pageId === 'produtos' ? { ...page, writes: [...page.writes, update] } : page);
+  const reason = d2RegenerationReason(data, approved);
+  assert.ok(reason.some(item => item.startsWith('the page now writes Produto.update')), reason.join(' | '));
+  const payload = JSON.parse(buildD2PagesDecisionPrompt(data, undefined, approved).prompt) as { approved: { desktop: { definition: { sections: Array<{ id: string }> } } } | null; regeneration: { reason: string[] } | null };
+  assert.deepEqual(payload.approved?.desktop.definition.sections.map(item => item.id), ['principal']);
+  assert.deepEqual(payload.regeneration?.reason, reason);
+  const next = structuredClone(answer);
+  for (const device of ['desktop', 'mobile'] as const) {
+    const definition = next[device].definition as { organisms: Record<string, { intents: Array<{ id: string; kind: string; to: string }> }> };
+    definition.organisms.acoesCadastro.intents.push({ id: 'atualizarProduto', kind: 'submit', to: '' });
+    const needs = next[device].needs as { organisms: Record<string, { submits: Array<{ intentId: string; write: string }> }> };
+    needs.organisms.acoesCadastro.submits.push({ intentId: 'atualizarProduto', write: 'Produto.update' });
+  }
+  await approveD2PagesUnit(data, next, 1400, 0, writer);
+  const kept = await readApprovedPage11(data.identity, 'produtos', port);
+  assert.deepEqual(Object.keys(kept!.definitions.desktop.organisms), Object.keys(approved.definitions.desktop.organisms));
+  assert.equal(JSON.stringify(kept!.definitions.desktop.molecules), JSON.stringify(approved.definitions.desktop.molecules));
 });
 
 void test('d2_66: a transition is matched by its id; the schema limits write to the page keys', () => {

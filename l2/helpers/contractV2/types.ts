@@ -11,6 +11,19 @@ export interface D2ContractV2Projection {
   entityId: string;
   requestIds: string[];
   body: string;
+  /** The comment above the interface (d2_78). */
+  jsdoc?: string;
+  /** The fields of the body, one per line, with readonly exposed (d2_78). */
+  fields?: Array<{ name: string; type: string; optional: boolean; readonly: boolean }>;
+}
+
+/** The comment above a route (d2_78): the four sections when their labels are recognized, always the raw text. */
+export interface D2ContractV2Jsdoc {
+  raw: string;
+  purpose?: string;
+  input?: string;
+  processing?: string;
+  output?: string;
 }
 
 export interface D2ContractV2MetaOutput {
@@ -48,7 +61,12 @@ export interface D2ContractV2Route {
   writes?: string;
   input: string;
   output: string;
+  /**
+   * Empty in the contract of the BFF per page (d2_78): the contract says what the page needs, not where it comes from.
+   * An empty meta is not rendered, and a route without one parses as empty (the L1 readers keep compiling).
+   */
   meta: D2ContractV2Meta;
+  jsdoc?: D2ContractV2Jsdoc;
   rules: string[];
   access: { actors: string[]; grants: string[]; scope: string };
 }

@@ -4,7 +4,7 @@ import type { IAgentAsync, IAgentMeta } from '/_102027_/l2/aiAgentBase.js';
 import { readD2Input } from '/_102020_/l2/helpers/defsInput/io.js';
 import { D2_PAGES_AGENT_NAME, D2_PAGES_PAGE_AGENT_NAME, d2PagesNextStep, markD2StepApproved, markD2StepFailed, parseD2StepInvocation } from '/_102020_/l2/agentDefsL2/helpers/d2Core.js';
 import { addD2Step, d2Result, updateD2Status } from '/_102020_/l2/agentDefsL2/helpers/d2Intents.js';
-import { reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import { approvedPageSeed, reusableD2Page } from '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
 
 export function createAgent(): IAgentAsync { return { agentName: D2_PAGES_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2/steps/pages50', agentDescription: 'Dispatch one page11 v2 worker per selected page', visibility: 'private', beforePromptStep }; }
 
@@ -23,9 +23,14 @@ async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionCo
       return [addD2Step(context, parentStep.stepId, d2Result('Pages ready', JSON.stringify({ project: parsed.project, module: parsed.module, completedStep: 'pages50', nextStep: d2PagesNextStep(parsed.scope), pages: ids.length }), 'pages50-done')),
         updateD2Status(context, parentStep, step, hookSequential, 'completed', `pages50 reused ${ids.length} page11 unit(s).`)];
     }
+    // d2_71: an approved page is regenerated from itself: its judged groups go straight to the decision.
+    const seeds = new Map<string, Awaited<ReturnType<typeof approvedPageSeed>>>();
+    for (const pageId of pending) seeds.set(pageId, await approvedPageSeed(parsed, pageId));
     const workers = pending.map(pageId => addD2Step(context, parentStep.stepId, {
       type: 'agent', stepId: 0, interaction: null, stepTitle: `Page11 ${pageId}`, status: 'waiting_human_input', nextSteps: [],
-      agentName: D2_PAGES_PAGE_AGENT_NAME, prompt: JSON.stringify({ project: parsed.project, module: parsed.module, scope: parsed.scope, pageId, stage: 'groups', attempt: 1 }),
+      agentName: D2_PAGES_PAGE_AGENT_NAME, prompt: JSON.stringify(seeds.get(pageId)
+        ? { project: parsed.project, module: parsed.module, scope: parsed.scope, pageId, stage: 'decision', attempt: 1, ...seeds.get(pageId) }
+        : { project: parsed.project, module: parsed.module, scope: parsed.scope, pageId, stage: 'groups', attempt: 1 }),
       rags: [], planning: { planId: `pages50-${pageId}`, dependsOn: [], executionMode: 'parallel_dynamic', executionHost: 'client' },
     } as mls.msg.AIAgentStep));
     return [...workers, updateD2Status(context, parentStep, step, hookSequential, 'completed', `Dispatched ${workers.length} page11 v2 worker(s); ${reusable.size} reused.`)];

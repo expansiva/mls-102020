@@ -31,13 +31,15 @@ import type {
   PoolNeedsRead,
   PoolNeedsWrite,
 } from '/_102035_/l2/solution/poolPlan.js';
+import { POOL_NEEDS_FAMILIES, POOL_NEEDS_OPERATIONS, POOL_NEEDS_SCHEMA_VERSION, POOL_NEEDS_SCOPES } from '/_102035_/l2/solution/poolPlan.js';
 
-export const P2_NEEDS_SCHEMA_VERSION = '2026-09-21-p2-needs-v1' as const;
-export const P2_NEEDS_OPERATIONS = ['create', 'update', 'transition', 'delete'] as const;
+// Lists and version of needs.json come from the pool's one type (p2_34).
+export const P2_NEEDS_SCHEMA_VERSION = POOL_NEEDS_SCHEMA_VERSION;
+export const P2_NEEDS_OPERATIONS = POOL_NEEDS_OPERATIONS;
 export type P2NeedsOperation = typeof P2_NEEDS_OPERATIONS[number];
-export const P2_NEEDS_SCOPES = ['own', 'related', 'organization'] as const;
+export const P2_NEEDS_SCOPES = POOL_NEEDS_SCOPES;
 export type P2NeedsScope = typeof P2_NEEDS_SCOPES[number];
-export const P2_NEEDS_FAMILIES = ['mdm', 'ddm', 'tdm'] as const;
+export const P2_NEEDS_FAMILIES = POOL_NEEDS_FAMILIES;
 export type P2NeedsFamily = typeof P2_NEEDS_FAMILIES[number];
 export const P2_NEEDS_ARTIFACT = 'pool/l1/web/needs.json' as const;
 

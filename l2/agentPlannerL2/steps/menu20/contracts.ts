@@ -21,16 +21,21 @@ import type {
   PoolMenuFile,
   PoolMenuMeta,
 } from '/_102035_/l2/solution/poolPlan.js';
+import {
+  MENU_ACTIONS as POOL_MENU_ACTIONS,
+  MENU_NODE_KINDS as POOL_MENU_NODE_KINDS,
+  MENU_ORGANISM_KINDS as POOL_MENU_ORGANISM_KINDS,
+  MENU_SCHEMA_VERSION as POOL_MENU_SCHEMA_VERSION,
+} from '/_102035_/l2/solution/poolPlan.js';
 
-export const P2_MENU_SCHEMA_VERSION = '2026-09-20-p2-menu-v2.2' as const;
-export const MENU_NODE_KINDS = ['hub', 'page', 'group'] as const;
+// Lists and version of menu.json come from the pool's one type (p2_34).
+export const P2_MENU_SCHEMA_VERSION = POOL_MENU_SCHEMA_VERSION;
+export const MENU_NODE_KINDS = POOL_MENU_NODE_KINDS;
 export type MenuNodeKind = typeof MENU_NODE_KINDS[number];
-export const MENU_ORGANISM_KINDS = [
-  'list', 'detail', 'form', 'summary', 'highlights', 'timeline', 'actions', 'inbox', 'alerts',
-] as const;
+export const MENU_ORGANISM_KINDS = POOL_MENU_ORGANISM_KINDS;
 export type MenuOrganismKind = typeof MENU_ORGANISM_KINDS[number];
 export const MENU_MECHANICAL_EFFECTS = ['transition', 'create', 'update'] as const;
-export const MENU_ACTIONS = ['new', 'change', 'keep', 'remove'] as const;
+export const MENU_ACTIONS = POOL_MENU_ACTIONS;
 export type MenuAction = typeof MENU_ACTIONS[number];
 
 const NODE_ID = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;

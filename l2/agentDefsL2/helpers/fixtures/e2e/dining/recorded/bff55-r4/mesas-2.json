@@ -1,0 +1,241 @@
+{
+  "attempt": "2",
+  "model": "openai/gpt-5.6-terra-pro",
+  "promptChars": 14848,
+  "receivedAt": "2026-10-04T20:53:42.037Z",
+  "raw": {
+    "type": "flexible",
+    "result": {
+      "toolName": "submitD2Bff",
+      "arguments": {
+        "types": [
+          {
+            "name": "MesaResumo",
+            "description": "Dados de uma mesa necessários para a lista da casa, para a seleção no formulário e para o redesenho após o cadastro ou a atualização.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.version"
+                  ]
+                }
+              },
+              {
+                "name": "code",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.code"
+                  ]
+                }
+              },
+              {
+                "name": "disponivel",
+                "type": "boolean",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "id": "carregarMesas",
+            "kind": "qry",
+            "when": "onLoad",
+            "writes": "",
+            "input": [],
+            "output": [
+              {
+                "name": "mesas",
+                "type": "MesaResumo[]",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.id",
+                    "Mesa.version",
+                    "Mesa.code",
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Carrega o salão para o caixa consultar todas as mesas da casa e iniciar a seleção de uma mesa para manutenção.",
+              "input": "Não recebe parâmetros; a página sempre apresenta as mesas da casa no escopo autorizado do caixa.",
+              "processing": "Obtém as mesas visíveis ao caixa, ordenadas pelo código da mesa. Compõe cada registro com identificador, versão, código e disponibilidade; a disponibilidade é um campo derivado e é calculada a partir da existência de comanda aberta vinculada, sem ser gravada por esta consulta. A lista não é paginada porque representa o conjunto físico de mesas da casa, mostrado integralmente nesta página.",
+              "output": "Retorna mesas já no formato usado pela lista e pela seleção do formulário. A versão acompanha cada mesa para permitir uma atualização concorrente segura."
+            }
+          },
+          {
+            "id": "criarMesa",
+            "kind": "cmd",
+            "when": "createMesa",
+            "writes": "Mesa.create",
+            "input": [
+              {
+                "name": "code",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.code"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "mesa",
+                "type": "MesaResumo",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.id",
+                    "Mesa.version",
+                    "Mesa.code",
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Cadastra uma mesa para a operação e devolve o registro completo que a página precisa redesenhar.",
+              "input": "code é o código informado pelo caixa para identificar a nova mesa.",
+              "processing": "Cria a mesa com o código recebido, aplicando as validações de criação e a unicidade do código no repositório. Depois compõe a mesa criada com id, versão, código e disponibilidade derivada. A disponibilidade é calculada e não é gravada pelo comando.",
+              "output": "Retorna a mesa criada no mesmo formato da lista, para o formulário exibir o resultado e a lista inserir o novo registro sem uma segunda chamada."
+            }
+          },
+          {
+            "id": "atualizarMesa",
+            "kind": "cmd",
+            "when": "updateMesa",
+            "writes": "Mesa.update",
+            "input": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.version"
+                  ]
+                }
+              },
+              {
+                "name": "code",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.code"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "mesa",
+                "type": "MesaResumo",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.id",
+                    "Mesa.version",
+                    "Mesa.code",
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Atualiza o código de uma mesa selecionada e devolve seu estado completo para a página redesenhar a seleção e sua linha.",
+              "input": "id identifica a mesa selecionada, version protege a atualização contra alteração concorrente e code é o novo código informado pelo caixa.",
+              "processing": "Localiza a mesa por id, confere a versão recebida e atualiza seu código, aplicando as validações de manutenção e a unicidade do código. Em seguida compõe id, nova versão, código e disponibilidade derivada; disponibilidade não é armazenada por este comando.",
+              "output": "Retorna a mesa atualizada no formato da lista, permitindo substituir a linha e manter o formulário com a versão corrente sem nova consulta."
+            }
+          }
+        ],
+        "bindings": {
+          "organisms": [
+            {
+              "organism": "mesasList",
+              "reads": "carregarMesas.mesas"
+            },
+            {
+              "organism": "mesaForm",
+              "reads": "carregarMesas.mesas"
+            }
+          ],
+          "commands": [
+            {
+              "endpoint": "criarMesa",
+              "refreshes": []
+            },
+            {
+              "endpoint": "atualizarMesa",
+              "refreshes": []
+            }
+          ],
+          "selections": [
+            {
+              "organism": "mesasList",
+              "via": {
+                "kind": "list",
+                "ref": "carregarMesas.mesas"
+              }
+            }
+          ],
+          "journeys": []
+        }
+      }
+    },
+    "status": "completed",
+    "stepId": 17,
+    "interaction": null,
+    "nextSteps": null
+  },
+  "verdict": "accepted"
+}

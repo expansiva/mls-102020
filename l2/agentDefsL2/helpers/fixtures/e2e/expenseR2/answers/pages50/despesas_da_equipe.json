@@ -1,0 +1,779 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "approvalWorkflow"
+    },
+    "intent": "O gestor da equipe localiza as despesas pendentes, confere dados e comprovante e decide aprovar ou rejeitar com o motivo.",
+    "sections": [
+     {
+      "id": "pendingQueue",
+      "priority": "main",
+      "purpose": "Lista as despesas da equipe que aguardam decisão para o gestor escolher qual analisar.",
+      "organisms": [
+       "pendingTeamExpenses"
+      ]
+     },
+     {
+      "id": "review",
+      "priority": "primary",
+      "purpose": "Mostra os dados, o colaborador e o comprovante da despesa escolhida para conferência antes da decisão.",
+      "organisms": [
+       "expenseReview"
+      ]
+     },
+     {
+      "id": "decision",
+      "priority": "secondary",
+      "purpose": "Reúne a aprovação e a rejeição com motivo para concluir a análise da despesa.",
+      "organisms": [
+       "approvalDecision"
+      ]
+     }
+    ],
+    "organisms": {
+     "pendingTeamExpenses": {
+      "kind": "list",
+      "text": "Mostra as despesas da equipe que ainda aguardam decisão, com colaborador, data, categoria, valor e situação, para o gestor localizar o que precisa analisar.",
+      "intents": []
+     },
+     "expenseReview": {
+      "kind": "detail",
+      "text": "Apresenta os dados da despesa selecionada, o colaborador responsável e o comprovante, para o gestor conferir se o reembolso é devido.",
+      "intents": []
+     },
+     "approvalDecision": {
+      "kind": "actions",
+      "text": "Permite aprovar a despesa para pagamento ou rejeitá-la registrando o motivo, encerrando a análise da equipe.",
+      "intents": [
+       {
+        "id": "approveExpense",
+        "kind": "submit"
+       },
+       {
+        "id": "rejectExpense",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "pendingTeamExpenses": [
+      {
+       "role": "queue",
+       "preferred": "groupviewtable--ml-grouping-table",
+       "alternative": "groupviewtable--ml-data-table"
+      }
+     ],
+     "expenseReview": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-vertical-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "approvalDecision": [
+      {
+       "role": "rejectionReason",
+       "preferred": "groupentertext--ml-multiline-text",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "decision",
+       "preferred": "grouptriggeraction--ml-button-group",
+       "alternative": "grouptriggeraction--ml-button-standard"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "pendingTeamExpenses": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.colaboradorId",
+       "Despesa.status",
+       "Despesa.details.dataDespesa",
+       "Despesa.details.categoria",
+       "Despesa.details.valor",
+       "Despesa.details.reenvioRealizado",
+       "Colaborador.details.identification"
+      ],
+      "edits": [],
+      "selects": "expenseReview",
+      "submits": []
+     },
+     "expenseReview": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.colaboradorId",
+       "Despesa.status",
+       "Despesa.details.dataDespesa",
+       "Despesa.details.categoria",
+       "Despesa.details.valor",
+       "Despesa.details.descricao",
+       "Despesa.details.motivoRejeicao",
+       "Despesa.details.reenvioRealizado",
+       "Colaborador.id",
+       "Colaborador.details.identification"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "approvalDecision": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.status",
+       "Despesa.details.motivoRejeicao"
+      ],
+      "edits": [
+       "Despesa.details.motivoRejeicao"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "approveExpense",
+        "write": "Despesa.aprovarDespesa"
+       },
+       {
+        "intentId": "rejectExpense",
+        "write": "Despesa.rejeitarDespesa"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "approvalWorkflow"
+    },
+    "intent": "Em coluna estreita e fluida em torno de 390px, também usável em 360px e 430px, o gestor percorre as despesas pendentes da equipe, analisa a selecionada e decide aprovar ou rejeitar informando o motivo.",
+    "sections": [
+     {
+      "id": "pendingQueue",
+      "priority": "primary",
+      "purpose": "Empilha as despesas pendentes da equipe em faixa estreita para o gestor localizar qual analisar.",
+      "organisms": [
+       "pendingTeamExpenses"
+      ]
+     },
+     {
+      "id": "review",
+      "priority": "main",
+      "purpose": "Mostra em sequência os dados, o colaborador e o comprovante da despesa escolhida, cabendo em cerca de 390px.",
+      "organisms": [
+       "expenseReview"
+      ]
+     },
+     {
+      "id": "decision",
+      "priority": "secondary",
+      "purpose": "Mantém aprovação, rejeição e motivo ao alcance do polegar após a leitura da despesa.",
+      "organisms": [
+       "approvalDecision"
+      ]
+     }
+    ],
+    "organisms": {
+     "pendingTeamExpenses": {
+      "kind": "list",
+      "text": "Lista as despesas da equipe que aguardam decisão, com colaborador, data, categoria, valor e situação, para o gestor achar o próximo item em tela estreita.",
+      "intents": []
+     },
+     "expenseReview": {
+      "kind": "detail",
+      "text": "Exibe os dados da despesa selecionada, o colaborador e o comprovante em bloco vertical, para conferir o reembolso antes de decidir.",
+      "intents": []
+     },
+     "approvalDecision": {
+      "kind": "actions",
+      "text": "Oferece aprovar a despesa ou rejeitá-la com o motivo, para o gestor concluir a análise sem sair do fluxo estreito.",
+      "intents": [
+       {
+        "id": "approveExpense",
+        "kind": "submit"
+       },
+       {
+        "id": "rejectExpense",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "pendingTeamExpenses": [
+      {
+       "role": "queue",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewtable--ml-responsive-table"
+      }
+     ],
+     "expenseReview": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-vertical-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "approvalDecision": [
+      {
+       "role": "rejectionReason",
+       "preferred": "groupentertext--ml-multiline-text",
+       "alternative": "groupentertext--ml-enter-text"
+      },
+      {
+       "role": "decision",
+       "preferred": "grouptriggeraction--ml-button-group",
+       "alternative": "grouptriggeraction--ml-button-standard"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "pendingTeamExpenses": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.colaboradorId",
+       "Despesa.status",
+       "Despesa.details.dataDespesa",
+       "Despesa.details.categoria",
+       "Despesa.details.valor",
+       "Despesa.details.reenvioRealizado",
+       "Colaborador.details.identification"
+      ],
+      "edits": [],
+      "selects": "expenseReview",
+      "submits": []
+     },
+     "expenseReview": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.colaboradorId",
+       "Despesa.status",
+       "Despesa.details.dataDespesa",
+       "Despesa.details.categoria",
+       "Despesa.details.valor",
+       "Despesa.details.descricao",
+       "Despesa.details.motivoRejeicao",
+       "Despesa.details.reenvioRealizado",
+       "Colaborador.id",
+       "Colaborador.details.identification"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "approvalDecision": {
+      "reads": [
+       "Despesa.id",
+       "Despesa.status",
+       "Despesa.details.motivoRejeicao"
+      ],
+      "edits": [
+       "Despesa.details.motivoRejeicao"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "approveExpense",
+        "write": "Despesa.aprovarDespesa"
+       },
+       {
+        "intentId": "rejectExpense",
+        "write": "Despesa.rejeitarDespesa"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A página reúne revisão e decisão de despesas pendentes da equipe, com aprovação ou rejeição e motivo registrado, o que corresponde a um fluxo de aprovação."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "Localizar despesas pendentes não exige que o usuário informe uma decisão verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há solicitação para informar uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há necessidade explícita de definir um intervalo de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "A listagem de despesas pendentes não requer entrada de data ou horário."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora a ser informado."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A tarefa é localizar despesas existentes, não inserir um valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico a ser informado."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a ser definida."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A descrição não pede preenchimento de texto livre."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a ser informado."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a ser informado."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi indicada a necessidade de expandir ou recolher seções."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Localizar despesas da equipe não envolve localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há troca explícita entre seções do mesmo contexto."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A tarefa não descreve um fluxo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento ou resultado que precise ser comunicado ao usuário nesta listagem."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a ser avaliado ou pontuado."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A localização de despesas não pede captura por câmera, QR code, código de barras ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Embora possa ser complementar, a descrição não solicita busca textual de conteúdo."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a selecionar para envio."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há múltiplas opções que o usuário precise selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há uma escolha única a ser feita pelo usuário."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação ou processo com progresso a indicar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "A tarefa descreve consulta/listagem, sem comando explícito a executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O objetivo é apresentar a coleção de despesas pendentes, não uma despesa isolada como unidade visual independente."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados analíticos que precisem de representação gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "Permite apresentar a coleção de despesas pendentes da equipe em um layout adaptável."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "As despesas pendentes não foram descritas como uma estrutura hierárquica pai-filho."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há um indicador destacado específico a exibir."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Permite listar despesas pendentes em registros estruturados, com campos como colaborador, valor, data e status."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A análise da despesa não requer entrada de decisão verdadeiro/falso neste momento."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há solicitação para o usuário informar uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas a definir."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a ser informado."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora a informar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "O valor da despesa é analisado como dado existente, e não inserido pelo usuário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há número que o usuário deva preencher."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a ser informada."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "A etapa é de análise, sem pedido de comentário ou texto livre."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a ser informado."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a ser informado."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi especificada a necessidade de controlar expansão de seções."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "A análise de dados e comprovante não envolve endereço, mapa ou geolocalização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há necessidade explícita de alternar entre seções por navegação."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A análise não foi descrita como processo sequencial de múltiplas etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há mudança de status ou resultado a notificar nesta etapa de visualização."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Um comprovante não foi descrito como mídia de áudio ou vídeo a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação numérica ou pontuação a registrar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "O comprovante deve ser analisado como conteúdo já disponível, não capturado pela câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi solicitada busca textual dentro dos dados ou do comprovante."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a selecionar para upload; o comprovante já faz parte da despesa."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há opções múltiplas a selecionar."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Nenhuma escolha exclusiva é solicitada durante a análise."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação de duração variável cujo progresso deva ser mostrado."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "A etapa descreve análise de informações, sem uma ação de comando explícita."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Permite apresentar a despesa individual com seus dados, comprovante e áreas de conteúdo em uma unidade visual de detalhe."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "A análise de uma despesa e seu comprovante não exige gráfico."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "A etapa trata do detalhe de uma despesa, não de uma coleção de registros."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Os dados da despesa não foram descritos como hierarquia pai-filho."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador resumido específico a destacar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não foi solicitada apresentação de uma coleção estruturada em formato tabular."
+    }
+   ]
+  },
+  {
+   "organismId": "organism3",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": true,
+     "reason": "Aprovar ou rejeitar pode ser registrado como uma decisão binária verdadeiro/falso."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "A decisão de aprovação não requer informar uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas a informar."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário a ser preenchido."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora a informar."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A aprovação ou rejeição não pede inserção de valor monetário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Não há valor numérico a informar."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a definir."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": true,
+     "reason": "Permite informar em texto livre o motivo da rejeição da despesa."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a ser informado."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a ser informado."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "A ação não exige expandir ou recolher conteúdo."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Aprovar ou rejeitar uma despesa não envolve localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há necessidade explícita de alternar entre seções."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "A decisão não foi descrita como fluxo de etapas sequenciais."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "A descrição pede executar a decisão e informar o motivo, mas não especifica uma notificação de resultado ao usuário."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia para reprodução."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a ser pontuado ou avaliado numericamente."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A decisão não requer captura por câmera ou leitura de código/documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não há conteúdo a localizar por busca textual."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a selecionar para envio."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "A aprovação ou rejeição é uma decisão única, não uma seleção múltipla."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": true,
+     "reason": "Permite escolher exatamente uma das alternativas mutuamente exclusivas: aprovar ou rejeitar."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há processo com progresso a exibir."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "Permite executar o comando de aprovar ou rejeitar a despesa."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "Esta etapa é de decisão e execução, não de apresentação de um item como unidade visual."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "Não há dados a representar graficamente."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não há coleção de dados a apresentar nesta ação."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há estrutura hierárquica a visualizar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há indicador destacado a exibir."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "Não há coleção estruturada a exibir em tabela nesta etapa."
+    }
+   ]
+  }
+ ]
+}

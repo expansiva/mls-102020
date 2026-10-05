@@ -1,0 +1,263 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "dashboardCommandCenter"
+    },
+    "intent": "Acompanho em uma visão geral quais mesas estão disponíveis e os valores das comandas em aberto para orientar o atendimento ou o fechamento.",
+    "sections": [
+     {
+      "id": "visaoGeral",
+      "priority": "primary",
+      "purpose": "Reúne os indicadores operacionais que permitem ao caixa ou ao garçom entender rapidamente a disponibilidade das mesas e os valores em aberto.",
+      "organisms": [
+       "resumoOperacional"
+      ]
+     }
+    ],
+    "organisms": {
+     "resumoOperacional": {
+      "kind": "highlights",
+      "text": "Apresenta a disponibilidade das mesas e os valores das comandas em aberto, para apoiar a decisão imediata sobre atendimento e fechamento.",
+      "intents": []
+     }
+    },
+    "molecules": {
+     "resumoOperacional": [
+      {
+       "role": "indicadores operacionais",
+       "preferred": "groupviewmetric--ml-metric-card",
+       "alternative": "groupviewmetric--ml-metric-big-number"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "resumoOperacional": {
+      "reads": [
+       "Mesa.details.disponivel",
+       "Comanda.details.subtotal",
+       "ItemComanda.details.valorTotal"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "dashboardCommandCenter"
+    },
+    "intent": "Em conteúdo fluido para uma tela estreita de referência de 390 px, também utilizável entre 360 px e 430 px, acompanho a disponibilidade das mesas e os valores das comandas em aberto para agir rapidamente no atendimento ou no fechamento.",
+    "sections": [
+     {
+      "id": "visaoGeral",
+      "priority": "primary",
+      "purpose": "Mantém os indicadores operacionais prioritários em leitura direta para que o caixa ou o garçom confira a situação da casa em dispositivos móveis.",
+      "organisms": [
+       "resumoOperacional"
+      ]
+     }
+    ],
+    "organisms": {
+     "resumoOperacional": {
+      "kind": "highlights",
+      "text": "Mostra de forma compacta a disponibilidade das mesas e os valores das comandas em aberto, apoiando a consulta operacional rápida.",
+      "intents": []
+     }
+    },
+    "molecules": {
+     "resumoOperacional": [
+      {
+       "role": "indicadores operacionais",
+       "preferred": "groupviewmetric--ml-metric-card",
+       "alternative": "groupviewmetric--ml-metric-big-number"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "resumoOperacional": {
+      "reads": [
+       "Mesa.details.disponivel",
+       "Comanda.details.subtotal",
+       "ItemComanda.details.valorTotal"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "categoryReason": "A página é uma visão inicial de monitoramento operacional, centrada em indicadores agregados de disponibilidade de mesas e valores em aberto, sem edição ou fluxo de registro; por isso se enquadra em Dashboard Command Center."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A tela apenas consulta disponibilidade e totais; não há decisão booleana a informar."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há necessidade expressa de informar ou filtrar por uma data."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "A consulta não descreve filtro por período de datas."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há agendamento nem captura de data e horário."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não existe intervalo de data e hora a ser definido."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Os totais das comandas são exibidos, não inseridos pelo usuário."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "Nenhum valor numérico precisa ser informado pelo usuário."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a configurar ou filtrar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "O objetivo é visualização de mesas e comandas, sem entrada textual descrita."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há janela de horários a definir."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "Não foi indicado que detalhes de mesas ou comandas devam ser expandidos ou recolhidos."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Disponibilidade de mesas no restaurante não requer captura nem visualização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "A necessidade não especifica seções internas entre as quais navegar."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Consultar mesas e totais não é um processo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento, alteração de status ou resultado de ação que exija notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Áudio ou vídeo não contribui para consultar mesas e comandas."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há item a ser avaliado ou pontuado."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A consulta não menciona identificação de mesas ou comandas por QR code, código de barras ou câmera."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi solicitada busca textual de mesas ou comandas."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivos a selecionar ou enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção múltipla necessária para a visualização solicitada."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há escolha única necessária para apresentar os dados solicitados."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "A consulta não descreve operação de duração desconhecida ou progresso acompanhado."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O enunciado descreve uma visualização, sem comando explícito que o usuário deva executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Cada mesa disponível ou com comanda aberta pode ser apresentada como unidade visual independente, exibindo identificação, status e total."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "São necessários dados operacionais por mesa/comanda; não há pedido de análise gráfica."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "A tela precisa exibir uma coleção de mesas e comandas abertas com campos como mesa, disponibilidade e total, usando layout adaptativo."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Mesas e comandas não foram descritas como estrutura de relações pai-filho."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": true,
+     "reason": "Indicadores destacados podem resumir a quantidade de mesas disponíveis e o valor total das comandas em aberto."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Uma tabela permite consultar de forma estruturada as mesas, sua disponibilidade e os totais das comandas abertas."
+    }
+   ]
+  }
+ ]
+}

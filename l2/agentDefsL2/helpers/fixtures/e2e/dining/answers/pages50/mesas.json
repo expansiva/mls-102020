@@ -1,0 +1,533 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "masterDataManagement"
+    },
+    "intent": "O caixa consulta as mesas da casa, confere se cada uma está disponível e cadastra ou atualiza as mesas usadas na operação.",
+    "sections": [
+     {
+      "id": "houseOverview",
+      "priority": "primary",
+      "purpose": "Apresenta as mesas da casa para o caixa reconhecer o salão e ver quais estão disponíveis.",
+      "organisms": [
+       "mesasList"
+      ]
+     },
+     {
+      "id": "tableMaintenance",
+      "priority": "main",
+      "purpose": "Reúne o cadastro da mesa para o caixa criar uma mesa nova ou atualizar uma mesa já usada na operação.",
+      "organisms": [
+       "mesaForm"
+      ]
+     }
+    ],
+    "organisms": {
+     "mesasList": {
+      "kind": "list",
+      "text": "Lista as mesas da casa com o código e a disponibilidade, para o caixa localizar cada mesa e saber se ela pode receber atendimento.",
+      "intents": []
+     },
+     "mesaForm": {
+      "kind": "form",
+      "text": "Formulário para informar o código da mesa, cadastrar uma mesa nova ou atualizar uma mesa já usada na operação.",
+      "intents": [
+       {
+        "id": "createMesa",
+        "kind": "submit"
+       },
+       {
+        "id": "updateMesa",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "mesasList": [
+      {
+       "role": "records",
+       "preferred": "groupviewtable--ml-data-table",
+       "alternative": "groupviewtable--ml-view-table"
+      }
+     ],
+     "mesaForm": [
+      {
+       "role": "identification",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "actions",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "mesasList": {
+      "reads": [
+       "Mesa.id",
+       "Mesa.code",
+       "Mesa.details.disponivel"
+      ],
+      "edits": [],
+      "selects": "mesaForm",
+      "submits": []
+     },
+     "mesaForm": {
+      "reads": [
+       "Mesa.id",
+       "Mesa.code",
+       "Mesa.details.disponivel"
+      ],
+      "edits": [
+       "Mesa.code"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "createMesa",
+        "write": "Mesa.create"
+       },
+       {
+        "intentId": "updateMesa",
+        "write": "Mesa.update"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "masterDataManagement"
+    },
+    "intent": "Em conteúdo estreito e fluido em torno de 390px, também usável em 360px e 430px, o caixa percorre as mesas da casa, confere a disponibilidade e cadastra ou atualiza as mesas da operação.",
+    "sections": [
+     {
+      "id": "houseOverview",
+      "priority": "primary",
+      "purpose": "Empilha as mesas da casa em faixa estreita para o caixa varrer códigos e disponibilidade sem grade fixa.",
+      "organisms": [
+       "mesasList"
+      ]
+     },
+     {
+      "id": "tableMaintenance",
+      "priority": "main",
+      "purpose": "Mostra o formulário de cadastro em sequência fluida para o caixa informar o código e gravar a mesa na operação.",
+      "organisms": [
+       "mesaForm"
+      ]
+     }
+    ],
+    "organisms": {
+     "mesasList": {
+      "kind": "list",
+      "text": "Mostra cada mesa da casa com código e disponibilidade em leitura contínua, para o caixa localizar o salão no telefone ou no terminal estreito.",
+      "intents": []
+     },
+     "mesaForm": {
+      "kind": "form",
+      "text": "Formulário em faixa fluida para informar o código da mesa, cadastrar uma mesa nova ou atualizar uma mesa já usada na operação.",
+      "intents": [
+       {
+        "id": "createMesa",
+        "kind": "submit"
+       },
+       {
+        "id": "updateMesa",
+        "kind": "submit"
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "mesasList": [
+      {
+       "role": "records",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "mesaForm": [
+      {
+       "role": "identification",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "actions",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "mesasList": {
+      "reads": [
+       "Mesa.id",
+       "Mesa.code",
+       "Mesa.details.disponivel"
+      ],
+      "edits": [],
+      "selects": "mesaForm",
+      "submits": []
+     },
+     "mesaForm": {
+      "reads": [
+       "Mesa.id",
+       "Mesa.code",
+       "Mesa.details.disponivel"
+      ],
+      "edits": [
+       "Mesa.code"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "createMesa",
+        "write": "Mesa.create"
+       },
+       {
+        "intentId": "updateMesa",
+        "write": "Mesa.update"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A categoria masterDataManagement descreve o cadastro mestre das mesas, registros de apoio da operação listados e mantidos pelo caixa com criação e atualização do código, sem ser fila, pedido ou ativo com ciclo de manutenção."
+ },
+ "groupAssessments": [
+  {
+   "organismId": "organism1",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": false,
+     "reason": "A visualização de mesas e disponibilidade não requer que o usuário informe uma decisão booleana."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "Não há data a informar ou filtrar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de datas no propósito."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há agendamento nem data/hora a informar."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há reserva ou janela com início e fim precisos."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "A listagem de mesas não envolve valores monetários."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": false,
+     "reason": "O propósito é consultar mesas; não informa entrada de quantidade ou medida."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica a definir."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": false,
+     "reason": "Não foi solicitada entrada textual na consulta."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário a informar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de horários a informar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O propósito não exige expandir detalhes das mesas."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "Mesas da casa não requerem localização geográfica."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há seções de consulta descritas."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "Consultar mesas não é um processo sequencial de etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "Não há evento ou resultado de ação que exija notificação."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há conteúdo de áudio ou vídeo."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há avaliação de item."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "A consulta não requer captura por câmera de código ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "O texto não pede localizar mesas por busca textual."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivos para selecionar ou enviar."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção de múltiplas opções."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Não há decisão ou escolha única a ser feita pelo usuário."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há operação com progresso a indicar."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": false,
+     "reason": "O propósito descreve visualização, sem comando a executar."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": true,
+     "reason": "Cada mesa pode ser exibida como uma unidade visual independente, incluindo sua identificação e disponibilidade."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "A consulta pede mesas e seus estados, não uma representação gráfica agregada."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": true,
+     "reason": "É necessário apresentar uma coleção de registros de mesas com campos como identificação e disponibilidade em layout adaptável."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Mesas e disponibilidade não constituem uma estrutura pai-filho."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não foi pedido indicador destacado, mas a lista das mesas."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": true,
+     "reason": "Uma tabela estruturada permite listar cada mesa e sua disponibilidade em colunas."
+    }
+   ]
+  },
+  {
+   "organismId": "organism2",
+   "groups": [
+    {
+     "groupId": "groupEnterBoolean",
+     "relevant": true,
+     "reason": "O cadastro ou atualização pode registrar diretamente um estado binário da mesa, como disponível ou indisponível."
+    },
+    {
+     "groupId": "groupEnterDate",
+     "relevant": false,
+     "reason": "O cadastro de mesas não descreve uma data a informar."
+    },
+    {
+     "groupId": "groupEnterDateInterval",
+     "relevant": false,
+     "reason": "Não há período de datas a cadastrar."
+    },
+    {
+     "groupId": "groupEnterDatetime",
+     "relevant": false,
+     "reason": "Não há data ou horário associado ao cadastro descrito."
+    },
+    {
+     "groupId": "groupEnterDateTimeInterval",
+     "relevant": false,
+     "reason": "Não há intervalo de data e hora, como reserva ou manutenção, a definir."
+    },
+    {
+     "groupId": "groupEnterMoney",
+     "relevant": false,
+     "reason": "Não há preço, pagamento ou outro valor monetário no cadastro de mesas."
+    },
+    {
+     "groupId": "groupEnterNumber",
+     "relevant": true,
+     "reason": "O cadastro de mesas normalmente requer valores numéricos operacionais, como número ou capacidade da mesa."
+    },
+    {
+     "groupId": "groupEnterNumberInterval",
+     "relevant": false,
+     "reason": "Não há faixa numérica com limites inferior e superior a informar."
+    },
+    {
+     "groupId": "groupEnterText",
+     "relevant": true,
+     "reason": "Permite informar dados textuais da mesa, como nome, identificação complementar ou descrição."
+    },
+    {
+     "groupId": "groupEnterTime",
+     "relevant": false,
+     "reason": "Não há horário diário a cadastrar."
+    },
+    {
+     "groupId": "groupEnterTimeInterval",
+     "relevant": false,
+     "reason": "Não há janela de horários ou turno a configurar."
+    },
+    {
+     "groupId": "groupExpandContent",
+     "relevant": false,
+     "reason": "O propósito não exige seções expansíveis no formulário."
+    },
+    {
+     "groupId": "groupLocatePosition",
+     "relevant": false,
+     "reason": "O cadastro de mesas na operação não requer endereço, mapa ou geolocalização."
+    },
+    {
+     "groupId": "groupNavigateSection",
+     "relevant": false,
+     "reason": "Não há múltiplas seções do formulário explicitadas."
+    },
+    {
+     "groupId": "groupNavigateSteps",
+     "relevant": false,
+     "reason": "O cadastro e a atualização não foram descritos como fluxo em etapas."
+    },
+    {
+     "groupId": "groupNotifyUser",
+     "relevant": false,
+     "reason": "O propósito não solicita feedback de sucesso, erro ou mudança de estado."
+    },
+    {
+     "groupId": "groupPlayMedia",
+     "relevant": false,
+     "reason": "Não há mídia a reproduzir."
+    },
+    {
+     "groupId": "groupRateItem",
+     "relevant": false,
+     "reason": "Não há nota ou avaliação de mesa a informar."
+    },
+    {
+     "groupId": "groupScanCode",
+     "relevant": false,
+     "reason": "Não há captura de QR code, código de barras ou documento."
+    },
+    {
+     "groupId": "groupSearchContent",
+     "relevant": false,
+     "reason": "Não foi especificada busca textual de mesas para edição."
+    },
+    {
+     "groupId": "groupSelectFileForUpload",
+     "relevant": false,
+     "reason": "Não há arquivo a anexar ao cadastro."
+    },
+    {
+     "groupId": "groupSelectMany",
+     "relevant": false,
+     "reason": "Não há seleção de várias opções no cadastro descrito."
+    },
+    {
+     "groupId": "groupSelectOne",
+     "relevant": false,
+     "reason": "Nenhum campo de escolha mutuamente exclusiva foi especificado; disponibilidade pode ser registrada pelo controle booleano."
+    },
+    {
+     "groupId": "groupShowProgress",
+     "relevant": false,
+     "reason": "Não há processo de duração indeterminada ou percentual a exibir."
+    },
+    {
+     "groupId": "groupTriggerAction",
+     "relevant": true,
+     "reason": "O formulário precisa de um comando para salvar o cadastro ou aplicar a atualização da mesa."
+    },
+    {
+     "groupId": "groupViewCard",
+     "relevant": false,
+     "reason": "O objetivo é inserir e atualizar dados; não pede apresentação das mesas como cartões."
+    },
+    {
+     "groupId": "groupViewChart",
+     "relevant": false,
+     "reason": "O cadastro não requer gráficos."
+    },
+    {
+     "groupId": "groupViewData",
+     "relevant": false,
+     "reason": "Não foi solicitada exibição de uma coleção de registros; o foco é o formulário de cadastro e atualização."
+    },
+    {
+     "groupId": "groupViewHierarchy",
+     "relevant": false,
+     "reason": "Não há relações hierárquicas entre mesas a visualizar."
+    },
+    {
+     "groupId": "groupViewMetric",
+     "relevant": false,
+     "reason": "Não há métrica destacada a mostrar."
+    },
+    {
+     "groupId": "groupViewTable",
+     "relevant": false,
+     "reason": "O propósito não pede uma listagem tabular; pede um formulário para cadastrar e atualizar mesas."
+    }
+   ]
+  }
+ ]
+}

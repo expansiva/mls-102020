@@ -1,5 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentPlannerL2/helpers/p2Core.ts" enhancement="_blank"/>
 
+import { POOL_DEVICES } from '/_102035_/l2/solution/poolPlan.js';
 import {
   displayPath,
   moduleFile,
@@ -28,7 +29,7 @@ export const P2_AGENT_NAME = 'agentPlannerL2' as const;
 export const P2_PIPELINE_SCHEMA_VERSION = '2026-09-18-p2-pipeline-v2' as const;
 
 /** Devices that get a menu folder. Grows by spec, not by prompt. */
-export const P2_MENU_DEVICES = ['web'] as const;
+export const P2_MENU_DEVICES = POOL_DEVICES;
 export type P2MenuDevice = typeof P2_MENU_DEVICES[number];
 export const P2_MENU_DEVICE: P2MenuDevice = 'web';
 

@@ -16,7 +16,7 @@ export function createAgent(): IAgentAsync {
 export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.ExecutionContext, parentStep: mls.msg.AIAgentStep, step: mls.msg.AIAgentStep, hookSequential: number, argsOrPort?: string | D2Contracts70Port): Promise<mls.msg.AgentIntent[]> {
   try {
     const port = typeof argsOrPort === 'object' ? argsOrPort : await productionContractsPort(parsedIdentity(argsOrPort || step.prompt || ''));
-    const result = await executeD2Contracts70(port);
+    const result = await executeD2Contracts70(port, typeof argsOrPort === 'object' ? undefined : parsedIdentity(step.prompt || ''));
     if (typeof argsOrPort !== 'object') {
       const identity = parsedIdentity(step.prompt || '');
       const snapshot = await readD2Input(identity);
@@ -25,8 +25,9 @@ export async function beforePromptStep(_agent: IAgentMeta, context: mls.msg.Exec
       if (pipeline) await markD2StepApproved(identity, 'contracts70', [...result.wrote, ...result.reused].map(pageId => `l2/${identity.module}/web/contracts/${pageId}.defs.ts`), snapshot.snapshotHash);
     }
     return [
-      addD2Step(context, parentStep.stepId, d2Result('Contracts ready', JSON.stringify({ completedStep: 'contracts70', nextStep: 'finalize80', wrote: result.wrote, reused: result.reused }), 'contracts70-done')),
-      updateD2Status(context, parentStep, step, hookSequential, 'completed', `contracts70 wrote ${result.wrote.length} and reused ${result.reused.length}.`),
+      addD2Step(context, parentStep.stepId, d2Result('Contracts ready', JSON.stringify({ completedStep: 'contracts70', nextStep: 'finalize80', wrote: result.wrote, reused: result.reused, refused: [...result.skipped, ...result.refused.map(row => row.pageId)] }), 'contracts70-done')),
+      // d2_76: a refused page does not stop the others; finalize80 fails the pipeline once, listing it.
+      updateD2Status(context, parentStep, step, hookSequential, 'completed', `contracts70 wrote ${result.wrote.length}, reused ${result.reused.length} and skipped ${result.skipped.length} refused upstream.${result.refused.length ? ` D2_CONTRACTS_PAGES_REFUSED: ${result.refused.map(row => `${row.pageId}: ${row.diagnostic}`).join(' || ')}` : ''}`),
     ];
   } catch (error) {
     return [updateD2Status(context, parentStep, step, hookSequential, 'failed', error instanceof Error ? error.message : String(error))];

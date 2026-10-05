@@ -1,0 +1,97 @@
+{
+  "attempt": "1",
+  "model": "openai/gpt-5.6-terra-pro",
+  "promptChars": 19276,
+  "receivedAt": "2026-10-05T01:09:00.487Z",
+  "raw": {
+    "type": "flexible",
+    "result": {
+      "toolName": "submitD2Bff",
+      "arguments": {
+        "types": [
+          {
+            "name": "ResumoOperacional",
+            "description": "Indicadores consolidados da operação do restaurante para a visão geral.",
+            "fields": [
+              {
+                "name": "mesasDisponiveis",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              },
+              {
+                "name": "valorComandasAbertas",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Comanda.status",
+                    "Comanda.details.subtotal",
+                    "ItemComanda.details.valorTotal"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "writes": "",
+            "id": "carregarResumoOperacional",
+            "kind": "qry",
+            "when": "onLoad",
+            "input": [],
+            "output": [
+              {
+                "name": "resumoOperacional",
+                "type": "ResumoOperacional",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.details.disponivel",
+                    "Comanda.status",
+                    "Comanda.details.subtotal",
+                    "ItemComanda.details.valorTotal"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "subtotalComandaCalculado"
+            ],
+            "jsdoc": {
+              "purpose": "Carrega os indicadores consolidados que caixa e garçom usam para consultar rapidamente a disponibilidade das mesas e o valor ainda em atendimento.",
+              "input": "Não recebe parâmetros: o resumo considera toda a operação da organização acessível ao ator.",
+              "processing": "Conta as mesas cuja disponibilidade calculada é verdadeira. Filtra as comandas com situação aberta e calcula o valor das comandas em aberto pela soma de seus subtotais; cada subtotal é derivado apenas dos valores totais dos itens não cancelados, conforme a regra subtotalComandaCalculado. Retorna somente os indicadores, sem transferir listas de mesas, comandas ou itens.",
+              "output": "Retorna o resumo operacional já agregado para renderização direta dos destaques da página, com a quantidade de mesas disponíveis e o valor total das comandas abertas."
+            }
+          }
+        ],
+        "bindings": {
+          "updates": [],
+          "organisms": [
+            {
+              "organism": "resumoOperacional",
+              "reads": "carregarResumoOperacional.resumoOperacional"
+            }
+          ],
+          "commands": [],
+          "selections": [],
+          "journeys": []
+        }
+      }
+    },
+    "status": "completed",
+    "stepId": 18,
+    "interaction": null,
+    "nextSteps": null
+  },
+  "verdict": "accepted"
+}

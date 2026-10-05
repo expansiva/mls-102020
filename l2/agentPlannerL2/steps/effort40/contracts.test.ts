@@ -380,3 +380,17 @@ void test('effort message is l2→l4 with the effort artifact', () => {
   assert.deepEqual(message.artifacts, ['pool/l2/web/effort.json']);
   assert.match(message.body, /screens toCreate:6/);
 });
+
+void test('p2_34: backend removals and operations are read by the pool type', () => {
+  const source = JSON.parse(readFileSync(BACKEND_PATH, 'utf8')) as Record<string, unknown> & { removed: unknown[]; usecases: Array<Record<string, unknown>> };
+  const withPort = { ...source, removed: [...source.removed, { kind: 'port', id: 'PlanoRepository', status: 'toRemove', reason: 'no usecase uses it' }, { kind: 'table', id: 'planos_antigos', status: 'toRemove', reason: 'unused' }] };
+  const backend = parseP2BackendFile(withPort);
+  assert.deepEqual(backend.removed.map(item => item.kind), ['usecase', 'port', 'table']);
+  const menu = JSON.parse(readFileSync(MENU_PATH, 'utf8'));
+  const file = buildP2EffortFile({ menu, backend, now: new Date(Date.UTC(2026, 9, 4)) });
+  // effort.json has no kind for a removed port and counts no removal: the port is left out, the others stay.
+  assert.deepEqual(file.removed.map(item => `${item.kind}:${item.id}`), ['usecase:archivePlano', 'table:planos_antigos']);
+  assert.throws(() => parseP2BackendFile({ ...source, removed: [{ kind: 'screen', id: 'x', status: 'toRemove' }] }), /P2_EFFORT_BACKEND_REMOVED_KIND: .*usecase\|port\|table/u);
+  const usecases = source.usecases.map((item, index) => index === 0 ? { ...item, operation: 'archive' } : item);
+  assert.throws(() => parseP2BackendFile({ ...source, usecases }), /P2_EFFORT_BACKEND_OPERATION: backend\.json usecases\[0\]\.operation must be list\|get\|create\|update\|transition\|delete\|custom, not archive/u);
+});

@@ -1,0 +1,1312 @@
+{
+  "attempt": "1",
+  "model": "openai/gpt-5.6-terra-pro",
+  "promptChars": 26797,
+  "receivedAt": "2026-10-04T20:53:58.709Z",
+  "raw": {
+    "type": "flexible",
+    "result": {
+      "toolName": "submitD2Bff",
+      "arguments": {
+        "types": [
+          {
+            "name": "MesaDisponivel",
+            "description": "Mesa disponível para seleção na abertura de uma comanda.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.id"
+                  ]
+                }
+              },
+              {
+                "name": "code",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.code"
+                  ]
+                }
+              },
+              {
+                "name": "disponivel",
+                "type": "boolean",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ComandaAbertaResumo",
+            "description": "Identificação da comanda aberta disponível para localização e seleção.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.id"
+                  ]
+                }
+              },
+              {
+                "name": "number",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.number"
+                  ]
+                }
+              },
+              {
+                "name": "mesaId",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.mesaId"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'open' | 'closed'",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.status"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ItemCardapioResumo",
+            "description": "Item do cardápio disponível para seleção no lançamento.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.id"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.name"
+                  ]
+                }
+              },
+              {
+                "name": "precoVigente",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PaginaMesasDisponiveis",
+            "description": "Página de mesas que não possuem comanda aberta.",
+            "fields": [
+              {
+                "name": "items",
+                "type": "MesaDisponivel[]",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.id",
+                    "Mesa.code",
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              },
+              {
+                "name": "pagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "total",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.id",
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PaginaComandasAbertas",
+            "description": "Página de comandas atualmente abertas.",
+            "fields": [
+              {
+                "name": "items",
+                "type": "ComandaAbertaResumo[]",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Comanda.id",
+                    "Comanda.number",
+                    "Comanda.mesaId",
+                    "Comanda.status"
+                  ]
+                }
+              },
+              {
+                "name": "pagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "total",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Comanda.id",
+                    "Comanda.status"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PaginaItensCardapio",
+            "description": "Página de itens do cardápio para pesquisa e escolha.",
+            "fields": [
+              {
+                "name": "items",
+                "type": "ItemCardapioResumo[]",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              },
+              {
+                "name": "pagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "total",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.name"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ContextosAtendimento",
+            "description": "Conjunto paginado de contextos que o garçom usa para localizar o atendimento.",
+            "fields": [
+              {
+                "name": "mesasDisponiveis",
+                "type": "PaginaMesasDisponiveis",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.id",
+                    "Mesa.code",
+                    "Mesa.details.disponivel"
+                  ]
+                }
+              },
+              {
+                "name": "comandasAbertas",
+                "type": "PaginaComandasAbertas",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Comanda.id",
+                    "Comanda.number",
+                    "Comanda.mesaId",
+                    "Comanda.status"
+                  ]
+                }
+              },
+              {
+                "name": "itensCardapio",
+                "type": "PaginaItensCardapio",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ItemComandaAtendimento",
+            "description": "Linha da comanda, inclusive dados necessários para conferir ou cancelar o lançamento.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.version"
+                  ]
+                }
+              },
+              {
+                "name": "comandaId",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.comandaId"
+                  ]
+                }
+              },
+              {
+                "name": "itemCardapioId",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.itemCardapioId"
+                  ]
+                }
+              },
+              {
+                "name": "itemCardapioName",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.name"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'launched' | 'canceled'",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.status"
+                  ]
+                }
+              },
+              {
+                "name": "quantidade",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.details.quantidade"
+                  ]
+                }
+              },
+              {
+                "name": "observacao",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.details.observacao"
+                  ]
+                }
+              },
+              {
+                "name": "precoUnitario",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.details.precoUnitario"
+                  ]
+                }
+              },
+              {
+                "name": "valorTotal",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemComanda.details.quantidade",
+                    "ItemComanda.details.precoUnitario"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PaginaItensComanda",
+            "description": "Página dos lançamentos de uma comanda, inclusive os cancelados para conferência.",
+            "fields": [
+              {
+                "name": "items",
+                "type": "ItemComandaAtendimento[]",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemComanda.id",
+                    "ItemComanda.version",
+                    "ItemComanda.comandaId",
+                    "ItemComanda.itemCardapioId",
+                    "ItemComanda.status",
+                    "ItemComanda.details.quantidade",
+                    "ItemComanda.details.observacao",
+                    "ItemComanda.details.precoUnitario",
+                    "ItemComanda.details.valorTotal",
+                    "ItemCardapio.name"
+                  ]
+                }
+              },
+              {
+                "name": "pagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "total",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemComanda.id",
+                    "ItemComanda.comandaId"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ComandaAtendimento",
+            "description": "Cabeçalho, mesa, subtotal calculado e lançamentos da comanda em atendimento.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.version"
+                  ]
+                }
+              },
+              {
+                "name": "number",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.number"
+                  ]
+                }
+              },
+              {
+                "name": "mesaId",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.mesaId"
+                  ]
+                }
+              },
+              {
+                "name": "mesaCode",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Mesa.code"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'open' | 'closed'",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.status"
+                  ]
+                }
+              },
+              {
+                "name": "subtotal",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemComanda.status",
+                    "ItemComanda.details.valorTotal"
+                  ]
+                }
+              },
+              {
+                "name": "itens",
+                "type": "PaginaItensComanda",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemComanda.id",
+                    "ItemComanda.version",
+                    "ItemComanda.comandaId",
+                    "ItemComanda.itemCardapioId",
+                    "ItemComanda.status",
+                    "ItemComanda.details.quantidade",
+                    "ItemComanda.details.observacao",
+                    "ItemComanda.details.precoUnitario",
+                    "ItemComanda.details.valorTotal",
+                    "ItemCardapio.name"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "id": "carregarAtendimento",
+            "kind": "qry",
+            "when": "onLoad",
+            "writes": "",
+            "input": [
+              {
+                "name": "paginaMesas",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaMesas",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "paginaComandas",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaComandas",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "paginaCardapio",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaCardapio",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "lookup",
+                "type": "ContextosAtendimento",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.id",
+                    "Mesa.code",
+                    "Mesa.details.disponivel",
+                    "Comanda.id",
+                    "Comanda.number",
+                    "Comanda.mesaId",
+                    "Comanda.status",
+                    "ItemCardapio.id",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "mesaDisponivelParaAbrirComanda"
+            ],
+            "jsdoc": {
+              "purpose": "Carrega os contextos iniciais para o garçom localizar mesa, comanda aberta ou item do cardápio.",
+              "input": "As paginações independentes definem a faixa inicial de mesas, comandas e cardápio; na ausência delas são usados tamanhos adequados à tela.",
+              "processing": "Lista somente mesas cuja disponibilidade calculada é verdadeira, conforme mesaDisponivelParaAbrirComanda; lista somente comandas com situação open; e traz a primeira página ordenada do cardápio. Calcula os totais de cada resultado no servidor, sem transferir listas para a tela somar.",
+              "output": "Devolve as três listas paginadas já filtradas e com os dados de seleção e exibição necessários ao lookup e ao formulário."
+            }
+          },
+          {
+            "id": "buscarContextosAtendimento",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "termoMesa",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "numeroComanda",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "termoCardapio",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "paginaMesas",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaMesas",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "paginaComandas",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaComandas",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "paginaCardapio",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaCardapio",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "lookup",
+                "type": "ContextosAtendimento",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Mesa.id",
+                    "Mesa.code",
+                    "Mesa.details.disponivel",
+                    "Comanda.id",
+                    "Comanda.number",
+                    "Comanda.mesaId",
+                    "Comanda.status",
+                    "ItemCardapio.id",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "mesaDisponivelParaAbrirComanda"
+            ],
+            "jsdoc": {
+              "purpose": "Atualiza os contextos de localização conforme a busca ou a página escolhida pelo garçom.",
+              "input": "termoMesa filtra o código da mesa, numeroComanda localiza uma comanda aberta, termoCardapio pesquisa o nome do item; cada par de paginação controla somente sua lista.",
+              "processing": "Mantém o filtro de mesas disponíveis exigido por mesaDisponivelParaAbrirComanda e o filtro de comandas open. Aplica os termos recebidos nas capacidades indexadas ou textuais adequadas, pagina cada coleção separadamente e calcula seu total filtrado.",
+              "output": "Devolve o mesmo formato do carregamento inicial para substituir o lookup sem chamadas por entidade ou por organismo."
+            }
+          },
+          {
+            "id": "obterComandaAtendimento",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "comandaId",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "paginaItens",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaItens",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "comanda",
+                "type": "ComandaAtendimento",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Comanda.id",
+                    "Comanda.version",
+                    "Comanda.number",
+                    "Comanda.mesaId",
+                    "Comanda.status",
+                    "Comanda.details.subtotal",
+                    "Mesa.code",
+                    "ItemComanda.id",
+                    "ItemComanda.version",
+                    "ItemComanda.comandaId",
+                    "ItemComanda.itemCardapioId",
+                    "ItemComanda.status",
+                    "ItemComanda.details.quantidade",
+                    "ItemComanda.details.observacao",
+                    "ItemComanda.details.precoUnitario",
+                    "ItemComanda.details.valorTotal",
+                    "ItemCardapio.name"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "subtotalComandaCalculado",
+              "valorTotalItemComandaCalculado"
+            ],
+            "jsdoc": {
+              "purpose": "Carrega a comanda selecionada para conferência e para as ações de lançamento ou cancelamento.",
+              "input": "comandaId identifica a comanda escolhida no lookup; paginaItens e tamanhoPaginaItens delimitam os lançamentos exibidos.",
+              "processing": "Compõe o cabeçalho da comanda com o código da mesa e os itens ligados a ela, incluindo itens cancelados para conferência. Calcula valorTotalItemComandaCalculado para cada linha e subtotalComandaCalculado pela soma dos itens não cancelados; não grava campos derivados.",
+              "output": "Devolve uma comanda pronta para redesenhar o detalhe, com subtotal e página de itens, sem a tela consultar separadamente mesa, linhas ou cardápio."
+            }
+          },
+          {
+            "id": "abrirComanda",
+            "kind": "cmd",
+            "when": "abrirComanda",
+            "writes": "Comanda.create",
+            "input": [
+              {
+                "name": "mesaId",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Comanda.mesaId"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "comanda",
+                "type": "ComandaAtendimento",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Comanda.id",
+                    "Comanda.version",
+                    "Comanda.number",
+                    "Comanda.mesaId",
+                    "Comanda.status",
+                    "Comanda.details.subtotal",
+                    "Mesa.code",
+                    "ItemComanda.id",
+                    "ItemComanda.version",
+                    "ItemComanda.comandaId",
+                    "ItemComanda.itemCardapioId",
+                    "ItemComanda.status",
+                    "ItemComanda.details.quantidade",
+                    "ItemComanda.details.observacao",
+                    "ItemComanda.details.precoUnitario",
+                    "ItemComanda.details.valorTotal",
+                    "ItemCardapio.name"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "mesaDisponivelParaAbrirComanda",
+              "umaComandaAbertaPorMesa",
+              "subtotalComandaCalculado"
+            ],
+            "jsdoc": {
+              "purpose": "Abre uma comanda na mesa escolhida e devolve imediatamente o novo atendimento para conferência.",
+              "input": "mesaId é a mesa selecionada e preenche o vínculo obrigatório Comanda.mesaId da nova comanda.",
+              "processing": "Cria a comanda aberta em transação, emitindo seu número sequencial. Recusa a operação se mesaDisponivelParaAbrirComanda não for satisfeita ou se umaComandaAbertaPorMesa já existir. Calcula o subtotal inicial conforme subtotalComandaCalculado, que é zero sem itens.",
+              "output": "Devolve a nova comanda com mesa, subtotal e página vazia de itens para o detalhe ser redesenhado sem nova consulta."
+            }
+          },
+          {
+            "id": "lancarItem",
+            "kind": "cmd",
+            "when": "lancarItem",
+            "writes": "ItemComanda.create",
+            "input": [
+              {
+                "name": "comandaId",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.comandaId"
+                  ]
+                }
+              },
+              {
+                "name": "itemCardapioId",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.itemCardapioId"
+                  ]
+                }
+              },
+              {
+                "name": "quantidade",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.details.quantidade"
+                  ]
+                }
+              },
+              {
+                "name": "observacao",
+                "type": "string",
+                "optional": true,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.details.observacao"
+                  ]
+                }
+              },
+              {
+                "name": "paginaItens",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaItens",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "comanda",
+                "type": "ComandaAtendimento",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Comanda.id",
+                    "Comanda.version",
+                    "Comanda.number",
+                    "Comanda.mesaId",
+                    "Comanda.status",
+                    "Comanda.details.subtotal",
+                    "Mesa.code",
+                    "ItemComanda.id",
+                    "ItemComanda.version",
+                    "ItemComanda.comandaId",
+                    "ItemComanda.itemCardapioId",
+                    "ItemComanda.status",
+                    "ItemComanda.details.quantidade",
+                    "ItemComanda.details.observacao",
+                    "ItemComanda.details.precoUnitario",
+                    "ItemComanda.details.valorTotal",
+                    "ItemCardapio.name"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "itensSomenteEmComandaAberta",
+              "precoUnitarioRegistradoNoLancamento",
+              "valorTotalItemComandaCalculado",
+              "subtotalComandaCalculado"
+            ],
+            "jsdoc": {
+              "purpose": "Lança o item pedido na comanda aberta e retorna a comanda já recalculada.",
+              "input": "comandaId vincula o lançamento ao atendimento; itemCardapioId identifica o item escolhido; quantidade e observacao registram o pedido. A paginação preserva a faixa de itens exibida após a operação.",
+              "processing": "Recusa o lançamento quando itensSomenteEmComandaAberta não permitir a comanda. Obtém o preço vigente do item e o registra como preço unitário conforme precoUnitarioRegistradoNoLancamento; calcula valorTotalItemComandaCalculado e recalcula o subtotal por subtotalComandaCalculado.",
+              "output": "Devolve o cabeçalho e os itens da comanda, com a linha lançada e o subtotal atualizado, para redesenho imediato."
+            }
+          },
+          {
+            "id": "cancelarItem",
+            "kind": "cmd",
+            "when": "cancelarItem",
+            "writes": "ItemComanda.cancelarItemComanda",
+            "input": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemComanda.version"
+                  ]
+                }
+              },
+              {
+                "name": "paginaItens",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "tamanhoPaginaItens",
+                "type": "number",
+                "optional": true,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "comanda",
+                "type": "ComandaAtendimento",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Comanda.id",
+                    "Comanda.version",
+                    "Comanda.number",
+                    "Comanda.mesaId",
+                    "Comanda.status",
+                    "Comanda.details.subtotal",
+                    "Mesa.code",
+                    "ItemComanda.id",
+                    "ItemComanda.version",
+                    "ItemComanda.comandaId",
+                    "ItemComanda.itemCardapioId",
+                    "ItemComanda.status",
+                    "ItemComanda.details.quantidade",
+                    "ItemComanda.details.observacao",
+                    "ItemComanda.details.precoUnitario",
+                    "ItemComanda.details.valorTotal",
+                    "ItemCardapio.name"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "itemComandaOperacaoSomenteComandaAberta",
+              "valorTotalItemComandaCalculado",
+              "subtotalComandaCalculado"
+            ],
+            "jsdoc": {
+              "purpose": "Cancela um lançamento incorreto e devolve a comanda com a situação e o subtotal atualizados.",
+              "input": "id e version identificam a linha selecionada e protegem a transição contra atualização concorrente; a paginação preserva a faixa visível de lançamentos.",
+              "processing": "Executa a transição cancelarItemComanda somente para item launched cuja comanda ainda esteja aberta, conforme itemComandaOperacaoSomenteComandaAberta. Mantém o valor da linha calculado por valorTotalItemComandaCalculado e recompõe o subtotal excluindo o item cancelado, conforme subtotalComandaCalculado.",
+              "output": "Devolve a comanda com o item marcado como canceled e o subtotal recalculado, evitando uma segunda chamada para conferência."
+            }
+          }
+        ],
+        "bindings": {
+          "organisms": [
+            {
+              "organism": "lookupAtendimento",
+              "reads": "carregarAtendimento.lookup"
+            },
+            {
+              "organism": "detalheComanda",
+              "reads": "obterComandaAtendimento.comanda"
+            },
+            {
+              "organism": "formularioLancamento",
+              "reads": "carregarAtendimento.lookup"
+            },
+            {
+              "organism": "acoesAtendimento",
+              "reads": "obterComandaAtendimento.comanda"
+            }
+          ],
+          "commands": [
+            {
+              "endpoint": "abrirComanda",
+              "refreshes": [
+                "carregarAtendimento"
+              ]
+            },
+            {
+              "endpoint": "lancarItem",
+              "refreshes": []
+            },
+            {
+              "endpoint": "cancelarItem",
+              "refreshes": []
+            }
+          ],
+          "selections": [
+            {
+              "organism": "lookupAtendimento",
+              "via": {
+                "kind": "query",
+                "ref": "obterComandaAtendimento"
+              }
+            },
+            {
+              "organism": "detalheComanda",
+              "via": {
+                "kind": "list",
+                "ref": "obterComandaAtendimento.comanda"
+              }
+            }
+          ],
+          "journeys": [
+            {
+              "step": "abrirComanda/localizarMesaDisponivel",
+              "organisms": [
+                "lookupAtendimento"
+              ],
+              "endpoints": [
+                "carregarAtendimento",
+                "buscarContextosAtendimento"
+              ],
+              "continuesIn": ""
+            },
+            {
+              "step": "abrirComanda/criarComanda",
+              "organisms": [
+                "acoesAtendimento",
+                "detalheComanda"
+              ],
+              "endpoints": [
+                "abrirComanda"
+              ],
+              "continuesIn": "atendimento"
+            },
+            {
+              "step": "cancelarItemComanda/localizarComandaParaCorrecao",
+              "organisms": [
+                "lookupAtendimento",
+                "detalheComanda"
+              ],
+              "endpoints": [
+                "buscarContextosAtendimento",
+                "obterComandaAtendimento"
+              ],
+              "continuesIn": ""
+            },
+            {
+              "step": "cancelarItemComanda/conferirItemLancado",
+              "organisms": [
+                "detalheComanda"
+              ],
+              "endpoints": [
+                "obterComandaAtendimento"
+              ],
+              "continuesIn": ""
+            },
+            {
+              "step": "cancelarItemComanda/cancelarItemErrado",
+              "organisms": [
+                "detalheComanda",
+                "acoesAtendimento"
+              ],
+              "endpoints": [
+                "cancelarItem"
+              ],
+              "continuesIn": "atendimento"
+            },
+            {
+              "step": "lancarItemComanda/localizarComandaAberta",
+              "organisms": [
+                "lookupAtendimento",
+                "detalheComanda"
+              ],
+              "endpoints": [
+                "buscarContextosAtendimento",
+                "obterComandaAtendimento"
+              ],
+              "continuesIn": ""
+            },
+            {
+              "step": "lancarItemComanda/consultarItemCardapio",
+              "organisms": [
+                "lookupAtendimento",
+                "formularioLancamento"
+              ],
+              "endpoints": [
+                "carregarAtendimento",
+                "buscarContextosAtendimento"
+              ],
+              "continuesIn": ""
+            },
+            {
+              "step": "lancarItemComanda/adicionarItemComanda",
+              "organisms": [
+                "formularioLancamento",
+                "acoesAtendimento",
+                "detalheComanda"
+              ],
+              "endpoints": [
+                "lancarItem"
+              ],
+              "continuesIn": "atendimento"
+            }
+          ]
+        }
+      }
+    },
+    "status": "completed",
+    "stepId": 17,
+    "interaction": null,
+    "nextSteps": null
+  },
+  "verdict": "D2_BFF_COVERAGE: organisms.detalheComanda.reads.Comanda.details.subtotal: organism detalheComanda reads Comanda.details.subtotal, and no output leaf of the page's endpoints names it as origin (field or aggregate)."
+}
