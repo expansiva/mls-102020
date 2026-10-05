@@ -31,7 +31,7 @@ import { finalizeD2Pages } from '/_102020_/l2/agentDefsL2/steps/finalize80/run.j
 import { sourceInfo as pagesSourceInfo, type D2PagesReceipt } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { displayPath, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
-import { parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { buildD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { approveD2BffUnit, bffDesignInfo, bffReceiptInfo, bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, readApprovedD2Bff, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { buildD2BffDesign, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
@@ -420,7 +420,7 @@ void test('d2_75: the shared comes from the design by code: entry params, refres
   const design = out.designs.atendimento;
   // rule 8: the selected record survives a reload, from the URL then local storage.
   assert.deepEqual(shared.entry.params.comandaId, { type: 'string', sources: ['url', 'localStorage'], effect: 'select:detalheComanda', persist: true });
-  assert.deepEqual(shared.states.selectedComanda, { source: 'entry.params.comandaId', description: 'Comanda pronta para a tela do garçom: cabeçalho, itens e subtotal.' });
+  assert.deepEqual(shared.states.selectedComanda, { source: 'entry.params.comandaId', description: 'Comanda pronta para a tela do garçom: cabeçalho, itens e subtotal.', organisms: ['acoesAtendimento', 'detalheComanda', 'lookupAtendimento'] });
   // One function per endpoint, same id; a command redraws with its output and reloads what A declared.
   assert.deepEqual(Object.keys(shared.functions).sort(), design.endpoints.map(item => item.id).sort());
   assert.deepEqual(shared.functions.abrirComanda, { calls: 'abrirComanda', description: 'Abrir uma comanda para a mesa escolhida.', sets: 'comanda', updates: ['mesas'] });
@@ -537,6 +537,36 @@ void test('d2_80 s1: an organism that reads and has no source is refused with D2
   const answer = atendimentoAnswer();
   answer.bindings.organisms = answer.bindings.organisms.filter(row => row.organism !== 'lookupAtendimento');
   assert.match(refusalOf(() => d2BffApproved(bff, answer)), /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.lookupAtendimento: organism lookupAtendimento reads and has no source in bindings\.organisms/u);
+});
+
+void test('d2_80 s2: every state of the shared lists the organisms it feeds, each one an organism of the page', async () => {
+  for (const alias of ['dining', 'expense', 'stock']) {
+    const out = emptyOut();
+    await replay(alias, out);
+    const pages = Object.entries(out.sharedDefs);
+    assert.ok(pages.length > 0, `${alias}: no shared reached`);
+    let listed = 0;
+    for (const [pageId, shared] of pages) {
+      const page11 = out.shared[pageId].derive.page11;
+      const onPage = new Set([...Object.keys(page11.desktop.organisms), ...Object.keys(page11.mobile.organisms)]);
+      for (const [id, state] of Object.entries(shared.states)) {
+        assert.deepEqual(Object.keys(state), ['source', 'description', 'organisms'], `${alias} ${pageId} ${id}`);
+        assert.deepEqual(state.organisms, [...new Set(state.organisms)].sort(), `${alias} ${pageId} ${id}: sorted, no repeats`);
+        for (const organism of state.organisms) assert.ok(onPage.has(organism), `${alias} ${pageId} ${id}: ${organism} is not on the page`);
+        if (state.organisms.length) listed += 1;
+      }
+    }
+    assert.ok(listed > 0, `${alias}: no state lists an organism`);
+  }
+  // A source state lists every organism that reads it; a parse without organisms is refused.
+  const { out } = await dining();
+  const design = out.designs.atendimento;
+  for (const state of Object.values(out.sharedDefs.atendimento.states).filter(item => !item.source.startsWith('entry.params.'))) {
+    assert.deepEqual(state.organisms, [...new Set(design.bindings.organisms.filter(row => row.reads === state.source).map(row => row.organism))].sort(), state.source);
+  }
+  const shared = structuredClone(out.sharedDefs.atendimento) as unknown as { states: Record<string, Record<string, unknown>> };
+  delete Object.values(shared.states)[0].organisms;
+  assert.throws(() => buildD2SharedV2(shared), /D2_SHARED_V2_STATE: \w+: missing field organisms/u);
 });
 
 void test('d2_75: B does not judge the design: other reloads and other names pass', async () => {

@@ -30,6 +30,7 @@ export interface D2SharedDeriveInput {
 const camel = (value: string): string => (value ? value[0].toLowerCase() + value.slice(1) : value);
 const pascal = (value: string): string => (value ? value[0].toUpperCase() + value.slice(1) : value);
 const SOURCES: Array<'url' | 'localStorage'> = ['url', 'localStorage'];
+const sortedUnique = (ids: string[]): string[] => [...new Set(ids)].sort();
 
 export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition {
   const { design } = input;
@@ -53,7 +54,9 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
     const [endpointId, key] = ref.split('.');
     const id = (keyCount.get(key) ?? 0) > 1 ? `${endpointId}${pascal(key)}` : key;
     stateOf.set(ref, id);
-    states[id] = { source: ref, description: leafDescription(endpoint(endpointId), key, design) };
+    // d2_80: the state lists every organism that reads its source.
+    const readers = design.bindings.organisms.filter(row => row.reads === ref).map(row => row.organism);
+    states[id] = { source: ref, description: leafDescription(endpoint(endpointId), key, design), organisms: sortedUnique(readers) };
   }
 
   // Selections: the selected id lives in an entry param; the state of the selection is the item that id resolves.
@@ -70,7 +73,9 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
     selected.add(param);
     const stateId = `selected${entity}`;
     const typeName = 'query' in row.via ? outputType(endpoint(row.via.query), design) : listItemType(row.via.list, design);
-    states[stateId] = { source: `entry.params.${param}`, description: design.types.find(type => type.name === typeName)?.description || leafDescription(endpoint(('query' in row.via ? row.via.query : row.via.list).split('.')[0]), '', design) };
+    // d2_80: the selecting organism and its target, over every selection that lands in this state.
+    const feeds = sortedUnique([...(states[stateId]?.organisms ?? []), row.organism, target]);
+    states[stateId] = { source: `entry.params.${param}`, description: design.types.find(type => type.name === typeName)?.description || leafDescription(endpoint(('query' in row.via ? row.via.query : row.via.list).split('.')[0]), '', design), organisms: feeds };
     // The selecting organism and the one it opens both know the selected record (a navigation from either carries it).
     for (const id of [row.organism, target]) if (!selectionState.has(id)) selectionState.set(id, stateId);
   }

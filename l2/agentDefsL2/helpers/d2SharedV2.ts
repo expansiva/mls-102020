@@ -10,7 +10,7 @@ export interface D2SharedV2Request {
   writes?: string;
   returns: string[];
 }
-export interface D2SharedV2State { source: string; description: string }
+export interface D2SharedV2State { source: string; description: string; organisms: string[] }
 export interface D2SharedV2Function {
   calls?: string;
   sets?: string;
@@ -60,9 +60,10 @@ export function buildD2SharedV2(value: unknown): D2SharedV2Definition {
   }
   const states: D2SharedV2Definition['states'] = {};
   for (const [id, raw] of Object.entries(object(root.states, 'D2_SHARED_V2_STATES'))) {
-    const row = exact(raw, ['source', 'description'], `D2_SHARED_V2_STATE: ${id}`);
+    const row = exact(raw, ['source', 'description', 'organisms'], `D2_SHARED_V2_STATE: ${id}`);
     if (typeof row.source !== 'string' || typeof row.description !== 'string') throw new Error(`D2_SHARED_V2_STATE: ${id}`);
-    states[id] = { source: row.source, description: row.description };
+    if (!Array.isArray(row.organisms) || !row.organisms.every(item => typeof item === 'string')) throw new Error(`D2_SHARED_V2_STATE_ORGANISMS: ${id}`);
+    states[id] = { source: row.source, description: row.description, organisms: row.organisms as string[] };
   }
   const functions: D2SharedV2Definition['functions'] = {};
   for (const [id, raw] of Object.entries(object(root.functions, 'D2_SHARED_V2_FUNCTIONS'))) {
