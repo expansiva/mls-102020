@@ -1,413 +1,93 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2ContractV2.ts" enhancement="_blank"/>
 
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
-import { renderD2ContractV2 } from '/_102020_/l2/helpers/contractV2/render.js';
-import type {
-  D2ContractV2Definition, D2ContractV2Meta, D2ContractV2MetaParam, D2ContractV2Projection, D2ContractV2Route,
-} from '/_102020_/l2/helpers/contractV2/types.js';
-import type { D2DerivedPageRequests, D2DerivedProjection, D2DerivedRequest } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
-import type { D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import type { D2ContractV2Definition, D2ContractV2Projection, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
+import { d2BffTypeRoot, parseD2BffType, type D2BffDesign, type D2BffJsdoc, type D2BffLeaf } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 
 export type { D2ContractV2Definition, D2ContractV2Projection, D2ContractV2Route } from '/_102020_/l2/helpers/contractV2/types.js';
 
-export interface D2ContractV2Issue { code: string; path: string; message: string }
-
-export function buildD2ContractV2(derived: D2DerivedPageRequests, shared: D2SharedV2Definition, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2Definition {
-  const projections: D2ContractV2Projection[] = [];
-  for (const row of derived.projections) {
-    const body = renderFields(entities[row.entityId], row, 1);
-    const existing = projections.find(item => item.body === body);
-    if (existing) {
-      if (!existing.requestIds.includes(row.requestId)) existing.requestIds.push(row.requestId);
-    } else {
-      projections.push({ name: `${row.entityId}${pascal(row.requestId)}`, entityId: row.entityId, requestIds: [row.requestId], body });
-    }
-  }
-  const routes: D2ContractV2Route[] = derived.requests.map(derivedRequest => {
-    const request = effectiveRequest(derivedRequest, shared, entities);
-    const outputParts = request.returns.map(name => {
-      const entityId = request.returnEntities[name];
-      const proj = projections.find(item => item.requestIds.includes(request.id) && item.entityId === entityId)
-        ?? projections.find(item => item.entityId === entityId);
-      return `${name}: ${proj?.name ?? 'never'}${many(request) ? '[]' : ''}`;
-    });
-    for (const list of request.lists) {
-      const stem = pascal(list.organismId);
-      outputParts.push(`page${stem}: number`, `pageSize${stem}: number`, `hasMore${stem}: boolean`);
-    }
-    const input = request.kind === 'cmd' ? renderInput(entities, request.writes ?? '', request.operation ?? '', request.inputPaths) : renderQueryInput(request.params);
-    return {
-      route: `${derived.module}.${derived.pageId}.${request.id}`,
-      kind: request.kind,
-      ...(request.writes ? { writes: request.writes } : {}),
-      input,
-      output: `{ ${outputParts.join('; ')} }`,
-      meta: contractMeta(request, entities),
-      rules: shared.rules[request.id] ?? [],
-      access: derived.access,
-    };
-  });
-  return { module: derived.module, pageId: derived.pageId, projections, routes };
+/**
+ * E (d2_73): the contract keeps today's form. Interfaces are the named types of the approved BFF, one route per endpoint,
+ * and the JSDoc of A sits above each route. Names and types of field leaves already come from the ontology (d2_75).
+ * d2_78: no meta. The contract says what the page needs; where it comes from is the L1's (the origins stay in the BFF).
+ */
+export function buildD2ContractFromBff(input: {
+  module: string;
+  pageId: string;
+  design: D2BffDesign;
+  access: { actors: string[]; grants: string[]; scope: string };
+  entities: Record<string, Ns5OntologyAnyEntity>;
+  userLanguage: string;
+}): D2ContractV2Definition {
+  const { design, entities } = input;
+  const labels = d2JsdocLabels(input.userLanguage);
+  const keys: Array<keyof D2BffJsdoc> = ['purpose', 'input', 'processing', 'output'];
+  const projections: D2ContractV2Projection[] = design.types.map(type => ({
+    name: type.name,
+    entityId: d2BffTypeRoot(type.name, design),
+    requestIds: design.endpoints.filter(endpoint => endpoint.output.some(leaf => references(leaf, type.name, design))).map(endpoint => endpoint.id),
+    body: type.fields.map(leaf => `  ${readonly(leaf, entities)}${leaf.name}${leaf.optional ? '?' : ''}: ${leaf.type};`).join('\n'),
+    ...(type.description ? { jsdoc: d2JsdocText(type.description) } : {}),
+  }));
+  const routes: D2ContractV2Route[] = design.endpoints.map(endpoint => ({
+    route: `${input.module}.${input.pageId}.${endpoint.id}`,
+    kind: endpoint.kind,
+    ...(endpoint.writes ? { writes: endpoint.writes } : {}),
+    input: inline(endpoint.input, entities, false),
+    output: inline(endpoint.output, entities, true),
+    meta: { output: {}, lists: {}, params: {} },
+    rules: endpoint.rules,
+    access: input.access,
+    jsdoc: { raw: keys.map((key, index) => `${labels[index]}: ${d2JsdocText(endpoint.jsdoc[key])}`).join('\n'), ...Object.fromEntries(keys.map(key => [key, d2JsdocText(endpoint.jsdoc[key])])) },
+  }));
+  return { module: input.module, pageId: input.pageId, projections, routes };
 }
 
-export function gateD2ContractV2(
-  definition: D2ContractV2Definition,
-  derived: D2DerivedPageRequests,
-  shared: D2SharedV2Definition,
-  entities: Record<string, Ns5OntologyAnyEntity>,
-): D2ContractV2Issue[] {
-  const issues: D2ContractV2Issue[] = [];
-  for (const id of Object.keys(shared.requests)) {
-    if (!definition.routes.some(route => route.route.endsWith(`.${id}`))) issues.push({ code: 'D2_CONTRACT_V2_REQUEST_TYPE', path: id, message: `Shared request ${id} has no contract type.` });
-  }
-  const covered = new Set<string>();
-  for (const proj of definition.projections) {
-    const rows = derived.projections.filter(row => row.entityId === proj.entityId && proj.requestIds.includes(row.requestId));
-    if (!rows.length) {
-      issues.push({ code: 'D2_CONTRACT_V2_PROJECTION_UNKNOWN', path: proj.name, message: `Projection ${proj.name} matches no derived row.` });
-    } else {
-      const leaves = leavesOf(proj.body);
-      const seen = new Set<string>();
-      for (const leaf of leaves) {
-        if (seen.has(leaf.path)) issues.push({ code: 'D2_CONTRACT_V2_FIELD_DUPLICATE', path: `${proj.name}.${leaf.path}`, message: `Projection ${proj.name} declares ${leaf.path} more than once.` });
-        seen.add(leaf.path);
-      }
-      const rendered = new Set(leaves.map(item => item.path));
-      const derivedSet = derivedPaths(entities[proj.entityId]);
-      for (const leaf of leaves) {
-        if (leaf.path !== 'id' && leaf.path !== 'version' && derivedSet.has(leaf.path) && !leaf.readonly) {
-          issues.push({ code: 'D2_CONTRACT_V2_DERIVED', path: `${proj.name}.${leaf.path}`, message: `Derived path ${leaf.path} must be readonly.` });
-        }
-      }
-      for (const row of rows) {
-        covered.add(`${row.requestId}:${row.entityId}`);
-        const expected = new Set(row.paths);
-        if (!sameSet(rendered, expected)) {
-          issues.push({ code: 'D2_CONTRACT_V2_FIELD_OUTSIDE', path: proj.name, message: `Projection ${proj.name} fields are not the derived path set for ${row.requestId}.` });
-        }
-        const hasVersion = rendered.has('version');
-        if (hasVersion !== row.includeVersion) {
-          issues.push({ code: 'D2_CONTRACT_V2_VERSION', path: proj.name, message: hasVersion ? 'version is present without update or transition.' : 'version is required for update or transition.' });
-        }
-      }
-    }
-  }
-  for (const row of derived.projections) {
-    if (!covered.has(`${row.requestId}:${row.entityId}`)) {
-      issues.push({ code: 'D2_CONTRACT_V2_PROJECTION_UNKNOWN', path: `${row.requestId}:${row.entityId}`, message: `Derived projection ${row.requestId}:${row.entityId} has no contract projection.` });
-    }
-  }
-  for (const route of definition.routes) {
-    if (route.kind === 'cmd' && route.writes) {
-    const requestId = route.route.split('.').slice(2).join('.');
-    const request = derived.requests.find(item => item.id === requestId);
-    const entityId = route.writes.split('.')[0] ?? '';
-    // The key of a transition is its transitionRef; the operation is the request's.
-    const operation = request?.operation ?? '';
-    const derivedSet = derivedPaths(entities[entityId]);
-    const actual = leavesOf(route.input).map(item => item.path);
-    for (const path of actual) {
-      if (path !== 'id' && path !== 'version' && derivedSet.has(path)) issues.push({ code: 'D2_CONTRACT_V2_DERIVED', path: route.route, message: `Derived path ${path} is in the command input.` });
-    }
-    const expected = (request?.inputPaths ?? [])
-      .filter(path => path.startsWith(`${entityId}.`))
-      .map(path => path.slice(entityId.length + 1))
-      .filter(path => operation !== 'create' || (path !== 'id' && path !== 'version'));
-    if (!request || !sameSet(new Set(actual), new Set(expected))) {
-      issues.push({ code: 'D2_CONTRACT_V2_INPUT', path: route.route, message: `Command input leaves are not the request input paths.` });
-    }
-    }
-  }
-  for (const route of definition.routes) {
-    const requestId = route.route.split('.').slice(2).join('.');
-    const derivedRequest = derived.requests.find(item => item.id === requestId);
-    if (!derivedRequest) continue;
-    const request = effectiveRequest(derivedRequest, shared, entities);
-    if (!sameJson(route.rules, shared.rules[requestId] ?? [])) {
-      issues.push({ code: 'D2_CONTRACT_V2_RULES', path: route.route, message: 'Route rules are not the rules the shared chose for this request.' });
-    }
-    const expected = contractMeta(request, entities);
-    if (!sameJson(route.meta.output, expected.output)) {
-      issues.push({ code: 'D2_CONTRACT_V2_META_OUTPUT', path: route.route, message: 'Entity output keys are missing from meta or disagree with returnEntities.' });
-    }
-    if (!sameJson(route.meta.lists, expected.lists)) {
-      issues.push({ code: 'D2_CONTRACT_V2_META_LIST', path: route.route, message: 'A derived list is missing from meta or points at the wrong output key.' });
-    }
-    if (request.kind === 'qry' && !sameJson(route.meta.params, expected.params)) {
-      issues.push({ code: 'D2_CONTRACT_V2_META_PARAM', path: route.route, message: 'A query param is missing from meta or filters the wrong field.' });
-    }
-    if (danglingMetaRef(route, request, entities)) {
-      issues.push({ code: 'D2_CONTRACT_V2_META_REF', path: route.route, message: 'meta names an output key, list, or entity that does not exist.' });
-    }
-  }
-  const renderedGate = renderD2ContractV2({ project: 1, module: definition.module, pageId: definition.pageId }, definition);
-  if (renderedGate.includes('Pick<') || renderedGate.includes('Partial<')) {
-    issues.push({ code: 'D2_CONTRACT_V2_LITERAL', path: 'source', message: 'Contract must use literal types only.' });
-  }
-  return issues;
+const LABELS: Record<string, [string, string, string, string]> = {
+  en: ['Purpose', 'Input', 'Processing', 'Output'],
+  pt: ['Finalidade', 'Entrada', 'Processamento', 'Saída'],
+  es: ['Finalidad', 'Entrada', 'Procesamiento', 'Salida'],
+};
+
+export function d2JsdocLabels(userLanguage: string): [string, string, string, string] {
+  return LABELS[userLanguage.toLowerCase().split(/[-_]/u)[0]] ?? LABELS.en;
 }
 
-/** Returns come from the shared: a command may return more entities the page reads. */
-function effectiveRequest(request: D2DerivedRequest, shared: D2SharedV2Definition, entities: Record<string, Ns5OntologyAnyEntity>): D2DerivedRequest {
-  const returns = shared.requests[request.id]?.returns ?? request.returns;
-  const returnEntities: Record<string, string> = {};
-  for (const name of returns) {
-    const entityId = request.returnEntities[name] ?? (request.kind === 'cmd' ? Object.keys(entities).find(id => camel(id) === name) : undefined);
-    if (entityId) returnEntities[name] = entityId;
-  }
-  return { ...request, returns, returnEntities };
+/**
+ * The comment is text for a model; the parser cuts it from the field regexes (d2_78). It stays on one line per label,
+ * without a closing comment marker, a quote or a run of spaces, so it never reads as a route line either.
+ */
+export function d2JsdocText(text: string): string {
+  return text.replace(/\s+/gu, ' ').replace(/\*\//gu, '* /').replace(/'/gu, '’').trim();
 }
 
-function many(request: D2DerivedRequest): boolean {
-  return request.kind === 'qry' && (request.id === 'load' || request.lists.length > 0);
+function inline(rows: readonly D2BffLeaf[], entities: Record<string, Ns5OntologyAnyEntity>, output: boolean): string {
+  if (!rows.length) return '{}';
+  return `{ ${rows.map(leaf => `${output ? readonly(leaf, entities) : ''}${leaf.name}${leaf.optional ? '?' : ''}: ${leaf.type}`).join('; ')} }`;
 }
 
-function contractMeta(request: D2DerivedRequest, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2Meta {
-  const output: D2ContractV2Meta['output'] = {};
-  for (const [key, entityId] of Object.entries(request.returnEntities)) {
-    output[key] = { entity: entityId, many: many(request) };
-  }
-  const lists: D2ContractV2Meta['lists'] = {};
-  for (const list of request.lists) {
-    const stem = pascal(list.organismId);
-    lists[list.organismId] = {
-      key: list.key,
-      page: `page${stem}`,
-      pageSize: `pageSize${stem}`,
-      hasMore: `hasMore${stem}`,
-    };
-  }
-  const params: D2ContractV2Meta['params'] = {};
-  if (request.kind === 'qry') {
-    for (const name of request.params) params[name] = paramMeta(request, name, entities);
-  }
-  return { output, lists, params };
-}
-
-function paramMeta(request: D2DerivedRequest, name: string, entities: Record<string, Ns5OntologyAnyEntity>): D2ContractV2MetaParam {
-  if (name === 'page' || name === 'pageSize') {
-    const list = request.lists.find(item => item.params.includes(name));
-    return { pages: list?.organismId ?? '' };
-  }
-  const list = request.lists.find(item => item.params.includes(name));
-  const key = list ? list.key : Object.keys(request.returnEntities)[0] ?? '';
-  const entityId = request.returnEntities[key] ?? '';
-  const field = name === 'id' && request.id !== 'load' ? 'id' : filterField(entities[entityId], entityId, name);
-  return { filters: key, field };
-}
-
-function filterField(entity: Ns5OntologyAnyEntity | undefined, entityId: string, param: string): string {
-  const view = entity as {
-    displayField?: string;
-    capabilities?: Record<string, string>;
-    relationships?: Record<string, { via?: string }>;
-    record?: { fields?: Record<string, Field> };
-  } | undefined;
-  const caps = new Set(Object.keys(view?.capabilities ?? {}));
-  if (param === 'search' && caps.has('locate.byName')) return stripEntity(view?.displayField ?? '', entityId);
-  if (caps.has('listByForeignKey')) {
-    for (const rel of Object.values(view?.relationships ?? {})) {
-      const via = stripEntity(rel.via ?? '', entityId);
-      if (via === param || via.endsWith(`.${param}`)) return via;
-    }
-  }
-  if (caps.has('locate.byColumn')) {
-    const indexed = indexedPaths(view?.record?.fields);
-    const found = indexed.find(path => path === param || path.endsWith(`.${param}`));
-    if (found) return found;
-  }
-  return '';
-}
-
-function indexedPaths(fields: Record<string, Field> | undefined, prefix = ''): string[] {
-  const out: string[] = [];
-  for (const [key, field] of Object.entries(fields ?? {})) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (field.indexed && !field.fields) out.push(path);
-    if (field.fields) out.push(...indexedPaths(field.fields, path));
-  }
-  return out;
-}
-
-function stripEntity(path: string, entityId: string): string {
-  const prefix = `${entityId}.`;
-  return path.startsWith(prefix) ? path.slice(prefix.length) : path;
-}
-
-function danglingMetaRef(route: D2ContractV2Route, request: D2DerivedRequest, entities: Record<string, Ns5OntologyAnyEntity>): boolean {
-  for (const [key, row] of Object.entries(route.meta.output)) {
-    if (!(key in request.returnEntities) || !entities[row.entity]) return true;
-  }
-  for (const [id, row] of Object.entries(route.meta.lists)) {
-    if (!request.lists.some(list => list.organismId === id)) return true;
-    if (!(row.key in route.meta.output)) return true;
-    const stem = pascal(id);
-    if (row.page !== `page${stem}` || row.pageSize !== `pageSize${stem}` || row.hasMore !== `hasMore${stem}`) return true;
-  }
-  for (const row of Object.values(route.meta.params)) {
-    if ('filters' in row && !(row.filters in route.meta.output)) return true;
-    if ('pages' in row && !(row.pages in route.meta.lists)) return true;
-  }
-  return false;
-}
-
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function sameSet(left: Set<string>, right: Set<string>): boolean {
-  if (left.size !== right.size) return false;
-  for (const item of left) if (!right.has(item)) return false;
-  return true;
-}
-
-function leavesOf(source: string): Array<{ path: string; readonly: boolean }> {
-  const out: Array<{ path: string; readonly: boolean }> = [];
-  const stack: string[] = [];
-  let i = 0;
-  while (i < source.length) {
-    while (i < source.length && /[\s{};,]/.test(source[i])) {
-      if (source[i] === '}') stack.pop();
-      i += 1;
-    }
-    if (i >= source.length) break;
-    const readonly = source.startsWith('readonly ', i);
-    if (readonly) i += 'readonly '.length;
-    const name = /^[A-Za-z][A-Za-z0-9]*/u.exec(source.slice(i))?.[0];
-    if (!name) { i += 1; continue; }
-    i += name.length;
-    while (source[i] === ' ' || source[i] === '?') i += 1;
-    if (source[i] !== ':') continue;
-    i += 1;
-    while (source[i] === ' ') i += 1;
-    if (source[i] === '{') { stack.push(name); i += 1; continue; }
-    out.push({ path: [...stack, name].join('.'), readonly });
-    let quote = '';
-    while (i < source.length) {
-      const ch = source[i];
-      if (quote) { if (ch === quote) quote = ''; i += 1; continue; }
-      if (ch === '\'' || ch === '"') { quote = ch; i += 1; continue; }
-      if (ch === ';') { i += 1; break; }
-      if (ch === '}') break;
-      i += 1;
-    }
-  }
-  return out;
-}
-
-function renderFields(entity: Ns5OntologyAnyEntity | undefined, row: D2DerivedProjection, depth: number): string {
-  const indent = '  '.repeat(depth);
-  const derivedSet = derivedPaths(entity);
-  // id and version have one line each above; the field tree never repeats them.
-  const tree = treeFromPaths(row.paths.filter(path => path !== 'id' && path !== 'version'));
-  const lines = [`${indent}id: string;`];
-  if (row.includeVersion) lines.push(`${indent}readonly version: number;`);
-  if (Object.keys(tree).length) lines.push(renderTree(tree, entity, derivedSet, row.entityId, depth));
-  return lines.filter(Boolean).join('\n');
-}
-
-interface Node { children: Record<string, Node>; leaf?: string }
-
-function treeFromPaths(paths: string[]): Record<string, Node> {
-  const root: Record<string, Node> = {};
-  for (const path of paths) {
-    const parts = path.split('.');
-    let cursor = root;
-    for (let i = 0; i < parts.length; i += 1) {
-      const part = parts[i];
-      cursor[part] = cursor[part] ?? { children: {} };
-      if (i === parts.length - 1) cursor[part].leaf = path;
-      cursor = cursor[part].children;
-    }
-  }
-  return root;
-}
-
-function renderTree(tree: Record<string, Node>, entity: Ns5OntologyAnyEntity | undefined, derivedSet: Set<string>, prefix: string, depth: number): string {
-  const indent = '  '.repeat(depth);
-  const lines: string[] = [];
-  for (const [key, node] of Object.entries(tree)) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    const fieldPath = path.startsWith(`${(entity as { entityId?: string })?.entityId}.`) ? path.slice(((entity as { entityId?: string }).entityId?.length ?? 0) + 1) : key;
-    const readonly = derivedSet.has(path) || derivedSet.has(fieldPath) ? 'readonly ' : '';
-    if (node.leaf && !Object.keys(node.children).length) {
-      lines.push(`${indent}${readonly}${key}: ${tsType(entity, node.leaf)};`);
-    } else {
-      lines.push(`${indent}${key}: {`);
-      lines.push(renderTree(node.children, entity, derivedSet, path, depth + 1));
-      lines.push(`${indent}};`);
-    }
-  }
-  return lines.join('\n');
-}
-
-function tsType(entity: Ns5OntologyAnyEntity | undefined, path: string): string {
+/** A value the page cannot write: a derived field or an aggregate. */
+function readonly(leaf: D2BffLeaf, entities: Record<string, Ns5OntologyAnyEntity>): string {
+  if (leaf.origin?.kind === 'aggregate') return 'readonly ';
+  if (leaf.origin?.kind !== 'field') return '';
+  const path = leaf.origin.paths[0];
   const parts = path.split('.');
-  let fields = (entity as { record?: { fields?: Record<string, Field> } } | undefined)?.record?.fields;
-  for (const part of parts) {
+  let fields = (entities[parts[0]] as { record?: { fields?: Record<string, { derived?: boolean; fields?: Record<string, unknown> }> } } | undefined)?.record?.fields;
+  let derived = false;
+  for (const part of parts.slice(1)) {
     const field = fields?.[part];
-    if (!field) return 'string';
-    if (part === parts[parts.length - 1]) return leafType(field);
-    fields = field.fields;
+    if (!field) return '';
+    derived = Boolean(field.derived);
+    fields = field.fields as typeof fields;
   }
-  return 'string';
+  const identity = parts.length === 2 && (parts[1] === 'id' || parts[1] === 'version');
+  return derived && !identity ? 'readonly ' : '';
 }
 
-interface Field {
-  type?: string;
-  derived?: boolean;
-  indexed?: boolean;
-  values?: Array<{ value: string }>;
-  fields?: Record<string, Field>;
+function references(leaf: D2BffLeaf, name: string, design: D2BffDesign, seen = new Set<string>()): boolean {
+  const ref = parseD2BffType(leaf.type);
+  if (ref?.base !== 'ref' || seen.has(ref.ref)) return false;
+  if (ref.ref === name) return true;
+  const type = design.types.find(item => item.name === ref.ref);
+  return Boolean(type?.fields.some(child => references(child, name, design, new Set([...seen, ref.ref]))));
 }
-
-function leafType(field: Field): string {
-  if (field.type === 'enum' && field.values?.length) return field.values.map(item => `'${item.value}'`).join(' | ');
-  if (field.type === 'boolean') return 'boolean';
-  if (field.type === 'integer' || field.type === 'number' || field.type === 'decimal') return 'number';
-  return 'string';
-}
-
-function derivedPaths(entity: Ns5OntologyAnyEntity | undefined): Set<string> {
-  const out = new Set<string>();
-  const walk = (fields: Record<string, Field> | undefined, prefix: string): void => {
-    for (const [key, field] of Object.entries(fields ?? {})) {
-      const path = prefix ? `${prefix}.${key}` : key;
-      if (field.derived) out.add(path);
-      if (field.fields) walk(field.fields, path);
-    }
-  };
-  walk((entity as { record?: { fields?: Record<string, Field> } } | undefined)?.record?.fields, '');
-  return out;
-}
-
-function renderInput(entities: Record<string, Ns5OntologyAnyEntity>, writes: string, operation: string, paths: string[]): string {
-  const entityId = writes.split('.')[0] ?? '';
-  const keepIdentity = operation === 'update' || operation === 'transition';
-  const prefix = `${entityId}.`;
-  const fields = paths
-    .filter(path => path.startsWith(prefix))
-    .map(path => path.slice(prefix.length))
-    .filter(path => keepIdentity || (path !== 'id' && path !== 'version'));
-  if (!fields.length) return '{}';
-  return renderInline(treeFromPaths(fields), entities[entityId], '');
-}
-
-function renderInline(tree: Record<string, Node>, entity: Ns5OntologyAnyEntity | undefined, prefix: string): string {
-  const parts: string[] = [];
-  for (const [key, node] of Object.entries(tree)) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (node.leaf && !Object.keys(node.children).length) parts.push(`${key}: ${tsType(entity, node.leaf)}`);
-    else parts.push(`${key}: ${renderInline(node.children, entity, path)}`);
-  }
-  return `{ ${parts.join('; ')} }`;
-}
-
-function renderQueryInput(params: string[]): string {
-  if (!params.length) return '{}';
-  const types: Record<string, string> = { page: 'number', pageSize: 'number' };
-  return `{ ${params.map(item => `${item}?: ${types[item] ?? 'string'}`).join('; ')} }`;
-}
-
-function pascal(value: string): string { return value ? value[0].toUpperCase() + value.slice(1) : value; }
-function camel(value: string): string { return value ? value[0].toLowerCase() + value.slice(1) : value; }

@@ -1,6 +1,6 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2Core.ts" enhancement="_blank"/>
 
-// Full flow is entry10 through finalize80. /pages stops after page11. Legacy contracts30 imports the identity helpers.
+// Full flow is entry10 through finalize80 (d2_73: bff55 designs each page's BFF before shared60). /pages stops after page11. Legacy contracts30 imports the identity helpers.
 
 import { readJson, writeJson, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 
@@ -8,20 +8,22 @@ export const D2_AGENT_NAME = 'agentDefsL2' as const;
 export const D2_ENTRY_AGENT_NAME = 'agentD2Entry' as const;
 export const D2_INPUT_AGENT_NAME = 'agentD2Input' as const;
 export const D2_CONTRACTS_AGENT_NAME = 'agentD2Contracts' as const;
+export const D2_BFF_AGENT_NAME = 'agentD2Bff' as const;
+export const D2_BFF_PAGE_AGENT_NAME = 'agentD2BffPage' as const;
 export const D2_SHARED_AGENT_NAME = 'agentD2Shared' as const;
-export const D2_SHARED_PAGE_AGENT_NAME = 'agentD2SharedPage' as const;
 export const D2_PAGES_AGENT_NAME = 'agentD2Pages' as const;
 export const D2_PAGES_PAGE_AGENT_NAME = 'agentD2PagesPage' as const;
 export const D2_FINALIZE_AGENT_NAME = 'agentD2Finalize' as const;
 export const D2_CONTRACTS70_AGENT_NAME = 'agentD2Contracts70' as const;
 export const D2_FLOW_ID = 'agentDefsL2' as const;
-export const D2_FLOW_VERSION = '2026-09-30-agent-defs-l2-flow-v2' as const;
+export const D2_FLOW_VERSION = '2026-10-04-agent-defs-l2-flow-v3' as const;
 export const D2_PIPELINE_VERSION = '2026-09-30-agent-defs-l2-pipeline-v2' as const;
 
 export const D2_FLOW_STEP_IDS = [
   'entry10',
   'input20',
   'pages50',
+  'bff55',
   'shared60',
   'contracts70',
   'finalize80',
@@ -36,7 +38,8 @@ export const D2_STEP_DEPENDS_ON: Record<Exclude<D2StepId, 'finalize80'>, readonl
   entry10: [],
   input20: ['entry10-done'],
   pages50: ['input20-done'],
-  shared60: ['pages50-done'],
+  bff55: ['pages50-done'],
+  shared60: ['bff55-done'],
   contracts70: ['shared60-done'],
 };
 
@@ -44,13 +47,14 @@ export const D2_STEP_TITLES: Record<D2StepId, string> = {
   entry10: 'Start L2 definitions',
   input20: 'Validate inputs',
   pages50: 'Describe desktop and mobile pages',
+  bff55: 'Design page endpoints',
   shared60: 'Define shared behavior',
   contracts70: 'Render page contracts',
   finalize80: 'Validate definitions',
 };
 
-export function d2PagesNextStep(scope: D2Scope): 'shared60' | 'finalize80' {
-  return scope === 'all' ? 'shared60' : 'finalize80';
+export function d2PagesNextStep(scope: D2Scope): 'bff55' | 'finalize80' {
+  return scope === 'all' ? 'bff55' : 'finalize80';
 }
 
 export interface D2RunIdentity {
@@ -180,6 +184,7 @@ export function createD2AgentStep(stepId: D2StepId, identity: D2RunIdentity & { 
     agentName: stepId === 'entry10' ? D2_ENTRY_AGENT_NAME
       : stepId === 'input20' ? D2_INPUT_AGENT_NAME
       : stepId === 'pages50' ? D2_PAGES_AGENT_NAME
+      : stepId === 'bff55' ? D2_BFF_AGENT_NAME
       : stepId === 'shared60' ? D2_SHARED_AGENT_NAME
       : stepId === 'contracts70' ? D2_CONTRACTS70_AGENT_NAME
       : stepId === 'finalize80' ? D2_FINALIZE_AGENT_NAME
@@ -327,6 +332,6 @@ export async function markD2FinalizeBlocked(identity: D2RunIdentity, diagnostic:
 export const D2_HELP = [
   'Usage: @@agentDefsL2 <lowerCamel> [/pages]',
   'The module is explicit and the project comes from the current context.',
-  'Without a flag the flow is entry10, input20, pages50, shared60, contracts70 and finalize80.',
+  'Without a flag the flow is entry10, input20, pages50, bff55, shared60, contracts70 and finalize80.',
   '/pages stops at page11: entry10, input20, pages50 and finalize80.',
 ].join('\n');

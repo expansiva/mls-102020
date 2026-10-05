@@ -1,9 +1,8 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2SharedV2.ts" enhancement="_blank"/>
 
-import { buildD2Page11Definition, type D2Page11Location } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import type { D2DerivedPageRequests } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
+import type { D2Page11Definition, D2Page11Device, D2Page11Location } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import type { D2PageRequestsMenu, D2PageRequestsNeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2PageRequests.js';
+import { d2BffValueLeaves, d2PageSubmits, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 
 export interface D2SharedV2Request {
   kind: 'qry' | 'cmd';
@@ -33,47 +32,6 @@ export interface D2SharedV2Definition {
 }
 
 export interface D2SharedV2Issue { code: string; path: string; message: string }
-
-export function sharedFromDerived(derived: D2DerivedPageRequests, extras?: Partial<D2SharedV2Definition>): D2SharedV2Definition {
-  const requests: D2SharedV2Definition['requests'] = {};
-  for (const request of derived.requests) {
-    requests[request.id] = {
-      kind: request.kind,
-      trigger: request.trigger,
-      ...(request.writes ? { writes: request.writes } : {}),
-      returns: request.returns,
-    };
-  }
-  const functions: D2SharedV2Definition['functions'] = { ...(extras?.functions ?? {}) };
-  // A fixed function exists only for a derived request: a page without requests has only navigations (d2_70).
-  if (derived.requests.some(request => request.id === 'load')) functions.load = functions.load ?? { calls: 'load', description: extras?.functions?.load?.description ?? '' };
-  // The list state is shape: one state per list key, fed by load and replaced or extended by filter/loadMore.
-  const states: D2SharedV2Definition['states'] = {};
-  for (const request of derived.requests) {
-    if (request.id === 'load') continue;
-    for (const list of request.lists) {
-      states[list.key] = { source: `load.${list.key}`, description: extras?.states?.[list.key]?.description ?? '' };
-      functions[list.filter] = functions[list.filter] ?? { calls: request.id, sets: list.key, description: '' };
-      functions[list.loadMore] = functions[list.loadMore] ?? { calls: request.id, sets: list.key, description: '' };
-    }
-  }
-  for (const request of derived.requests.filter(item => item.kind === 'cmd')) {
-    // Which states a command refreshes is the answer's choice; return keys are not state ids.
-    functions[request.id] = functions[request.id] ?? { calls: request.id, description: '' };
-  }
-  const forms: D2SharedV2Definition['forms'] = {};
-  for (const [id, form] of Object.entries(derived.forms)) forms[id] = { organism: form.organism, submit: form.submit };
-  return {
-    entry: derived.entry,
-    forms,
-    requests,
-    states: { ...(extras?.states ?? {}), ...states },
-    functions,
-    journeys: extras?.journeys ?? [],
-    rules: derived.rules,
-    access: { actors: derived.access.actors, grants: derived.access.grants },
-  };
-}
 
 export function buildD2SharedV2(value: unknown): D2SharedV2Definition {
   const root = exact(value, ['entry', 'forms', 'requests', 'states', 'functions', 'journeys', 'rules', 'access'], 'D2_SHARED_V2_KEYS');
@@ -152,268 +110,113 @@ export function parseD2SharedV2(source: string): { location: Omit<D2Page11Locati
   return { location: { project: Number(match[1]), module: match[2], pageId: match[3] }, definition: buildD2SharedV2(parsed) };
 }
 
-export function gateD2SharedV2(
-  value: unknown,
-  context: { page11: unknown; draft: D2Page11Needs; needs: D2PageRequestsNeedPage; menu: D2PageRequestsMenu; derived: D2DerivedPageRequests },
-): D2SharedV2Issue[] {
+export interface D2SharedGateContext {
+  page11: Record<D2Page11Device, D2Page11Definition>;
+  drafts: Record<D2Page11Device, D2Page11Needs>;
+  need: D2NeedPage;
+  menu: D2Menu;
+  design: D2BffDesign;
+}
+
+/**
+ * D (d2_73): facts of the shared over the approved BFF, never its shape. Every organism is fed (what it reads is held by
+ * a state whose source carries it, what it edits is a form), every function calls an endpoint that exists, every
+ * intent has a function, every state is filled by a source, a function or a form; references, navigation targets and
+ * journey steps exist.
+ */
+export function gateD2SharedV2(value: unknown, context: D2SharedGateContext): D2SharedV2Issue[] {
   const issues: D2SharedV2Issue[] = [];
   let definition: D2SharedV2Definition;
   try { definition = buildD2SharedV2(value); } catch (error) { return [{ code: 'D2_SHARED_V2_FORMAT', path: 'definition', message: String(error) }]; }
-  const page = buildD2Page11Definition(context.page11);
-  const journeySteps = new Set((context.needs.reads ?? []).flatMap(read => read.from.filter(item => item.startsWith('journey:')).map(item => item.slice('journey:'.length))));
-  const menuJourneys = context.menu.meta?.journeys ?? {};
-  const pageJourneys = new Set(Object.entries(menuJourneys).filter(([, pages]) => pages.includes(context.needs.pageId)).map(([id]) => id));
+  const add = (code: string, path: string, message: string): void => { issues.push({ code, path, message }); };
+  const organisms = new Map<string, { reads: Set<string>; edits: Set<string>; intents: Array<{ id: string; kind: string; to?: string }> }>();
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const [id, organism] of Object.entries(context.page11[device].organisms)) {
+      const row = organisms.get(id) ?? { reads: new Set<string>(), edits: new Set<string>(), intents: [] };
+      for (const intent of organism.intents) if (!row.intents.some(item => item.id === intent.id)) row.intents.push(intent);
+      const draft = context.drafts[device].organisms[id];
+      for (const path of draft?.reads ?? []) row.reads.add(path);
+      for (const path of draft?.edits ?? []) row.edits.add(path);
+      organisms.set(id, row);
+    }
+  }
+
+  // D.4: every state is filled by a source, a function or a form.
+  for (const [id, state] of Object.entries(definition.states)) {
+    if (!validStateSource(id, state.source, definition)) add('D2_SHARED_V2_STATE_SOURCE', `states.${id}`, `State ${id} source ${JSON.stringify(state.source)} is not <endpoint>.<output key>, <command>.input, entry.params.<name>, another state id, or a function whose sets is this state.`);
+  }
+
+  // D.1: what an organism reads is held by a state; what it edits belongs to a form.
+  const held = new Map(Object.keys(definition.states).map(id => [id, heldPaths(id, definition, context.design)]));
+  const formOrganisms = new Set(Object.values(definition.forms).map(form => form.organism));
+  for (const [id, row] of organisms) {
+    for (const path of row.reads) {
+      if ([...held.values()].some(paths => paths.some(origin => path === origin || path.startsWith(`${origin}.`)))) continue;
+      add('D2_SHARED_V2_ORGANISM_UNFED', `organisms.${id}`, `Organism ${id} reads ${path}, and no state holds it: no state's source is an endpoint output that carries it.`);
+    }
+    if (row.edits.size && !formOrganisms.has(id)) add('D2_SHARED_V2_FORM_UNBOUND', `organisms.${id}`, `Organism ${id} edits ${[...row.edits].join(', ')} and is the organism of no form.`);
+  }
+
+  // Forms bind an organism of the page to one of its submits.
+  const submits = d2PageSubmits(context);
+  for (const [id, form] of Object.entries(definition.forms)) {
+    if (!organisms.has(form.organism)) add('D2_SHARED_V2_FORM', `forms.${id}`, `Form ${id} names organism ${form.organism}, which is not on the page.`);
+    if (!submits.has(form.submit)) add('D2_SHARED_V2_FORM', `forms.${id}`, `Form ${id} submits ${form.submit}, which is not a submit intent of the page.`);
+  }
+
+  // D.2: functions call endpoints that exist and touch states that exist; a navigation reaches a page the actors open.
+  const pageActors = new Set(context.need.actors);
+  for (const [id, fn] of Object.entries(definition.functions)) {
+    if (fn.calls && !definition.requests[fn.calls]) add('D2_SHARED_V2_FUNCTION_CALL', `functions.${id}`, `Function ${id} calls ${fn.calls}, which is not an endpoint of the page.`);
+    if (fn.sets && !definition.states[fn.sets]) add('D2_SHARED_V2_FUNCTION_SET', `functions.${id}`, `Function ${id} sets ${JSON.stringify(fn.sets)}, which is not one state id.`);
+    for (const target of fn.updates ?? []) if (!definition.states[target]) add('D2_SHARED_V2_FUNCTION_UPDATE', `functions.${id}.updates`, `Function ${id} updates ${target}, which is not a state.`);
+    if (fn.navigate && !canNavigate(context.menu, fn.navigate, pageActors)) add('D2_SHARED_V2_FUNCTION_NAVIGATE', `functions.${id}`, `Function ${id} navigates to ${fn.navigate}, which the page actors cannot open.`);
+    for (const [key, ref] of Object.entries(fn.carries ?? {})) {
+      const stateId = ref.split('.')[0];
+      if (!definition.states[stateId]) add('D2_SHARED_V2_CARRIES_PATH', `functions.${id}.carries.${key}`, `Carry ${key} reads ${JSON.stringify(ref)}, and ${stateId} is not a state.`);
+    }
+  }
+
+  // D.3: every submit has a function that calls its command; every navigation intent has its function.
+  for (const [organismId, row] of organisms) {
+    for (const intent of row.intents) {
+      if (intent.kind === 'submit') {
+        const command = context.design.endpoints.find(endpoint => endpoint.kind === 'cmd' && endpoint.when === intent.id);
+        if (!command || !Object.values(definition.functions).some(fn => fn.calls === command.id)) add('D2_SHARED_V2_SUBMIT_FUNCTION', `organisms.${organismId}.intents.${intent.id}`, `Submit ${intent.id} has no function that calls its command${command ? ` ${command.id}` : ''}.`);
+      } else if (!definition.functions[intent.id] && !Object.values(definition.functions).some(fn => fn.navigate === intent.to)) {
+        add('D2_SHARED_V2_FUNCTION_MISSING', `organisms.${organismId}.intents.${intent.id}`, `Intent ${intent.id} has no function.`);
+      }
+    }
+  }
+
+  // Journeys: only the real steps of the page, each served by an organism or a continuation; references exist.
+  const journeySteps = new Set(context.need.reads.flatMap(read => read.from.filter(item => item.startsWith('journey:')).map(item => item.slice('journey:'.length))));
+  const pageJourneys = new Set(Object.entries(context.menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(context.need.pageId)).map(([id]) => id));
   for (const step of journeySteps) {
-    const journeyId = step.split('/')[0];
-    if (!pageJourneys.has(journeyId)) issues.push({ code: 'D2_SHARED_V2_JOURNEY_OUTSIDE', path: 'journeys', message: `Step ${step} is not linked to this page in the menu.` });
-    const hit = definition.journeys.some(item => item.step === step && (item.organisms.length || item.continuesIn));
-    if (!hit) issues.push({ code: 'D2_SHARED_V2_JOURNEY_UNSERVED', path: 'journeys', message: `Needs step ${step} is not served by an organism or continuesIn.` });
+    if (!pageJourneys.has(step.split('/')[0])) add('D2_SHARED_V2_JOURNEY_OUTSIDE', 'journeys', `Step ${step} is not linked to this page in the menu.`);
+    if (!definition.journeys.some(item => item.step === step && (item.organisms.length || item.continuesIn))) add('D2_SHARED_V2_JOURNEY_UNSERVED', 'journeys', `Needs step ${step} is not served by an organism or continuesIn.`);
   }
   for (const row of definition.journeys) {
-    if (!journeySteps.has(row.step)) issues.push({ code: 'D2_SHARED_V2_JOURNEY_INVENTED', path: `journeys.${row.step}`, message: `Journey step ${row.step} is not a real step for this page.` });
-  }
-  for (const [id, organism] of Object.entries(page.organisms)) {
-    const draft = context.draft.organisms[id];
-    if (draft && (draft.reads.length || draft.edits.length) && !organismBound(id, context.draft, definition, context.derived)) {
-      issues.push({ code: 'D2_SHARED_V2_ORGANISM_UNBOUND', path: `organisms.${id}`, message: `Organism ${id} reads or edits and is not bound to a state.` });
-    }
-    for (const intent of organism.intents) {
-      if (!definition.functions[intent.id] && !Object.values(definition.forms).some(form => form.submit === intent.id)) {
-        issues.push({ code: 'D2_SHARED_V2_FUNCTION_MISSING', path: `functions.${intent.id}`, message: `Page intent ${intent.id} has no function.` });
-      }
-    }
-  }
-  const listRequests = context.derived.requests.filter(item => item.id !== 'load' && item.lists.length > 0);
-  for (const request of listRequests) {
-    for (const list of request.lists) {
-      for (const fnId of [list.filter, list.loadMore]) {
-        const target = definition.functions[fnId]?.sets;
-        if (!target || rootSource(target, definition) !== `load.${list.key}`) {
-          issues.push({ code: 'D2_SHARED_V2_LIST_STATE', path: `functions.${fnId}`, message: `${fnId} must set the state whose source is load.${list.key}: ${request.id} replaces or appends to the list that load opened, never a second state.` });
-        }
-      }
-    }
-  }
-  const fixedStates = sharedFromDerived(context.derived).states;
-  for (const [id, fixedState] of Object.entries(fixedStates)) {
-    const state = definition.states[id];
-    if (!state || state.source !== fixedState.source) {
-      issues.push({ code: 'D2_SHARED_V2_STATE_FIXED', path: `states.${id}`, message: `State ${id} is the fixed list state with source ${fixedState.source}; keep its id and source and only write its description.` });
-    } else if (!state.description.trim()) {
-      issues.push({ code: 'D2_SHARED_V2_DESCRIPTION_EMPTY', path: `states.${id}`, message: `Fixed list state ${id} already exists and needs a description.` });
-    }
-  }
-  for (const [id, state] of Object.entries(definition.states)) {
-    const repeated = Object.entries(fixedStates).find(([fixedId, fixedState]) => fixedId !== id && fixedState.source === state.source);
-    if (repeated) {
-      issues.push({ code: 'D2_SHARED_V2_STATE_DUPLICATE', path: `states.${id}`, message: `State ${id} repeats the fixed list state ${repeated[0]} (source ${state.source}). Use ${repeated[0]} instead of another state.` });
-      continue;
-    }
-    if (listRequests.some(request => state.source.startsWith(`${request.id}.`))) {
-      issues.push({ code: 'D2_SHARED_V2_LIST_STATE', path: `states.${id}`, message: `State ${id} has ${state.source} as source. A list request only feeds the state sourced from load; drop ${id}.` });
-      continue;
-    }
-    if (definition.functions[state.source]?.navigate) {
-      issues.push({ code: 'D2_SHARED_V2_STATE_NAVIGATE', path: `states.${id}`, message: `State ${id} has navigation ${state.source} as source. A navigation leaves the page and feeds no state; drop the state or source it from validSources.` });
-      continue;
-    }
-    if (!validStateSource(id, state.source, definition)) issues.push({ code: 'D2_SHARED_V2_STATE_SOURCE', path: `states.${id}`, message: `State ${id} source ${JSON.stringify(state.source)} is not in validSources, is not another state id, and is not the id of a function whose sets is this state.` });
-  }
-  const pageActors = new Set(context.needs.actors);
-  for (const [id, fn] of Object.entries(definition.functions)) {
-    if (fn.calls && !definition.requests[fn.calls]) issues.push({ code: 'D2_SHARED_V2_FUNCTION_CALL', path: `functions.${id}`, message: `Function ${id} calls unknown request ${fn.calls}.` });
-    if (fn.sets && !definition.states[fn.sets]) issues.push({ code: 'D2_SHARED_V2_FUNCTION_SET', path: `functions.${id}`, message: `Function ${id} sets ${JSON.stringify(fn.sets)}, which is not one state id. Put one state id in sets, or list several states in updates. See validSources.` });
-    for (const target of fn.updates ?? []) {
-      if (!definition.states[target]) issues.push({ code: 'D2_SHARED_V2_FUNCTION_UPDATE', path: `functions.${id}.updates`, message: `Function ${id} updates unknown state ${target}.` });
-    }
-    if (fn.navigate && !canNavigate(context.menu, fn.navigate, pageActors)) issues.push({ code: 'D2_SHARED_V2_FUNCTION_NAVIGATE', path: `functions.${id}`, message: `Function ${id} navigates to a page the page actors cannot access.` });
-    if (fn.navigate && (fn.sets || fn.updates?.length)) issues.push({ code: 'D2_SHARED_V2_NAVIGATE_SETS', path: `functions.${id}`, message: `Function ${id} navigates and also sets or updates a state. A navigation only carries values to the next page.` });
-    if (fn.carries && !fn.navigate) issues.push({ code: 'D2_SHARED_V2_CARRIES_OUTSIDE', path: `functions.${id}.carries`, message: `Function ${id} has carries without navigate. carries only exist on a navigation; list and filter params come from declared states.` });
-    const request = fn.calls ? definition.requests[fn.calls] : undefined;
-    if (request?.kind === 'cmd') {
-      const returned = new Set(request.returns.map(name => returnEntity(fn.calls!, name, definition, context)).filter(Boolean));
-      for (const target of [...(fn.sets ? [fn.sets] : []), ...(fn.updates ?? [])]) {
-        if (!definition.states[target]) continue;
-        const entity = stateType(target, definition, context).entity;
-        if (!entity || !returned.has(entity)) issues.push({ code: 'D2_SHARED_V2_UPDATES_RETURNS', path: `functions.${id}.updates`, message: `Command ${fn.calls} feeds state ${target}, but its returns have no key of entity ${entity || '(none: the state holds no entity)'}. Add that entity's key to the command returns, or drop the state.` });
-      }
-      // A write changes the derived fields of every read entity derived through a relationship with it.
-      const written = request.writes?.split('.')[0] ?? '';
-      const fed = new Set([...(fn.sets ? [fn.sets] : []), ...(fn.updates ?? [])].filter(target => definition.states[target]).map(target => stateType(target, definition, context).entity));
-      for (const read of context.needs.reads) {
-        if (read.entity === written || !read.derived.length || !read.from.some(ref => ref.startsWith(`relationship:${written}/`))) continue;
-        const holders = Object.keys(definition.states).filter(stateId => stateType(stateId, definition, context).entity === read.entity);
-        if (!returned.has(read.entity) || (holders.length && !fed.has(read.entity))) {
-          issues.push({ code: 'D2_SHARED_V2_RETURNS_DERIVED', path: `functions.${id}`, message: `Command ${fn.calls} writes ${written}, which changes the derived fields of ${read.entity} (${read.derived.join(', ')}). Return ${camel(read.entity)} and update a state that holds ${read.entity}.` });
-        }
-      }
-    }
-  }
-  const fixed = sharedFromDerived(context.derived).functions;
-  const fixedCalls = new Set(Object.values(fixed).map(item => item.calls).filter((calls): calls is string => Boolean(calls)));
-  for (const [id, fn] of Object.entries(definition.functions)) {
-    if (fixed[id]) {
-      if (!fn.description.trim()) issues.push({ code: 'D2_SHARED_V2_DESCRIPTION_EMPTY', path: `functions.${id}`, message: `Fixed function ${id} already exists and needs a description. Reuse it instead of adding another function.` });
-    } else if (fn.calls && fixedCalls.has(fn.calls)) {
-      issues.push({ code: 'D2_SHARED_V2_FUNCTION_DUPLICATE', path: `functions.${id}`, message: `Function ${id} calls ${fn.calls}, which a fixed function already calls. Reuse that function and complete its description, sets and updates.` });
-    } else if (!fn.calls && fn.sets && sourcesList(definition.states[fn.sets]?.source, context.derived)) {
-      issues.push({ code: 'D2_SHARED_V2_FUNCTION_DUPLICATE', path: `functions.${id}`, message: `Function ${id} sets a list state and has no calls, so it does not replace filter<List>. Reuse the fixed filter function.` });
-    }
-    for (const [key, value] of Object.entries(fn.carries ?? {})) {
-      const dot = value.indexOf('.');
-      const stateId = dot > 0 ? value.slice(0, dot) : '';
-      const field = dot > 0 ? value.slice(dot + 1) : '';
-      if (!stateId || !field || field.includes('.') || !definition.states[stateId]) {
-        issues.push({ code: 'D2_SHARED_V2_CARRIES_PATH', path: `functions.${id}.carries.${key}`, message: `Carry ${key} must be <state>.<field> for an existing state, not ${JSON.stringify(value)}.` });
-        continue;
-      }
-      const type = stateType(stateId, definition, context);
-      const readable = field === 'id' || Object.values(context.draft.organisms).some(row => [...row.reads, ...row.edits].some(path => path === `${type.entity}.${field}` || path.startsWith(`${type.entity}.${field}.`)));
-      if (type.kind === 'item' && !type.entity) {
-        const selectParam = Object.entries(definition.entry.params).find(([, param]) => param.effect.startsWith('select:'))?.[0];
-        const fix = selectParam ? `Source ${stateId} from entry.params.${selectParam}.` : `Drop the carry ${key}.`;
-        issues.push({ code: 'D2_SHARED_V2_CARRIES_TYPE', path: `functions.${id}.carries.${key}`, message: `Carry ${key} reads ${value}, but the entity of ${stateId} is unknown: the page selects no single entity. ${fix}` });
-        continue;
-      }
-      if (type.kind !== 'item' || !readable || (field === 'id' && key !== `${camel(type.entity)}Id`)) {
-        issues.push({ code: 'D2_SHARED_V2_CARRIES_TYPE', path: `functions.${id}.carries.${key}`, message: `Carry ${key} reads ${value}, but ${stateId} holds ${type.kind === 'item' ? `one ${type.entity}` : `a ${type.kind}`}. Carry a field of a selected item; an id carry is named <entity>Id.` });
-      }
-    }
-  }
-  const readEntities = new Set(context.needs.reads.map(item => camel(item.entity)));
-  for (const [id, request] of Object.entries(definition.requests)) {
-    if (request.kind !== 'cmd') continue;
-    for (const name of request.returns) {
-      if (!readEntities.has(name)) issues.push({ code: 'D2_SHARED_V2_RETURNS', path: `requests.${id}.returns`, message: `Command ${id} returns ${name}, which the page does not read.` });
-    }
-  }
-  for (const id of Object.keys(definition.requests)) {
-    if (!definition.rules[id]) issues.push({ code: 'D2_SHARED_V2_RULE_REQUEST', path: `rules.${id}`, message: `Request ${id} has no rule choice. List the pertinent rules from ruleCandidates, or none.` });
-  }
-  for (const [id, chosen] of Object.entries(definition.rules)) {
-    const candidates = context.derived.rules[id];
-    if (!definition.requests[id] || !candidates) {
-      issues.push({ code: 'D2_SHARED_V2_RULE_REQUEST', path: `rules.${id}`, message: `Rules name request ${id}, which does not exist.` });
-      continue;
-    }
-    for (const rule of chosen) {
-      if (!candidates.includes(rule)) issues.push({ code: 'D2_SHARED_V2_RULE_OUTSIDE', path: `rules.${id}`, message: `Rule ${rule} is not a rule of the entities request ${id} touches. Choose only from ruleCandidates.${id}.` });
-    }
-    const request = definition.requests[id];
-    if (request.kind !== 'cmd') continue;
-    const own = (context.derived.entityRules[request.writes?.split('.')[0] ?? ''] ?? []).filter(rule => candidates.includes(rule));
-    if (own.length && !chosen.some(rule => own.includes(rule))) {
-      issues.push({ code: 'D2_SHARED_V2_RULE_COMMAND', path: `rules.${id}`, message: `Command ${id} keeps no rule of the entity it writes. Keep at least one of ${own.join(', ')}.` });
-    }
+    if (!journeySteps.has(row.step)) add('D2_SHARED_V2_JOURNEY_INVENTED', `journeys.${row.step}`, `Journey step ${row.step} is not a real step for this page.`);
+    for (const organism of row.organisms) if (!organisms.has(organism)) add('D2_SHARED_V2_JOURNEY_REF', `journeys.${row.step}`, `Journey step ${row.step} names organism ${organism}, which is not on the page.`);
+    for (const fn of row.functions) if (!definition.functions[fn]) add('D2_SHARED_V2_JOURNEY_REF', `journeys.${row.step}`, `Journey step ${row.step} names function ${fn}, which does not exist.`);
   }
   return issues;
 }
 
-type SharedGateContext = Parameters<typeof gateD2SharedV2>[1];
-
-function returnEntity(requestId: string, name: string, definition: D2SharedV2Definition, context: SharedGateContext): string {
-  const derived = context.derived.requests.find(item => item.id === requestId)?.returnEntities[name];
-  if (derived) return derived;
-  if (definition.requests[requestId]?.kind !== 'cmd') return '';
-  return context.needs.reads.map(item => item.entity).find(entity => camel(entity) === name) ?? '';
-}
-
-/** What a state holds: a list or one item of an entity, a scalar param, or unknown. */
-function stateType(stateId: string, definition: D2SharedV2Definition, context: SharedGateContext, seen = new Set<string>()): { kind: 'list' | 'item' | 'scalar' | 'unknown'; entity: string } {
-  const source = definition.states[stateId]?.source ?? '';
-  if (seen.has(stateId)) return { kind: 'unknown', entity: '' };
+/** The L4 paths a state holds, through its source: an endpoint output key or a command input, by their leaf origins. */
+function heldPaths(stateId: string, definition: D2SharedV2Definition, design: D2BffDesign, seen = new Set<string>()): string[] {
+  if (seen.has(stateId)) return [];
   seen.add(stateId);
-  const paramName = entryParamName(source);
-  if (paramName !== null) {
-    const effect = definition.entry.params[paramName]?.effect ?? '';
-    if (!effect.startsWith('select:')) return { kind: 'scalar', entity: '' };
-    // A select param holds the id in the URL; the state is the item resolved by that id.
-    const target = effect.slice('select:'.length);
-    const reads = context.draft.organisms[target]?.reads ?? [];
-    const entity = reads[0]?.split('.')[0] ?? (context.needs.reads.some(item => item.entity === target) ? target : '');
-    return { kind: 'item', entity };
-  }
+  const source = definition.states[stateId]?.source ?? '';
+  if (definition.states[source]) return heldPaths(source, definition, design, seen);
   const dot = source.indexOf('.');
-  if (dot > 0) {
-    const requestId = source.slice(0, dot);
-    const tail = source.slice(dot + 1);
-    const request = definition.requests[requestId];
-    if (!request) return { kind: 'unknown', entity: '' };
-    if (tail === 'input') return { kind: 'item', entity: request.writes?.split('.')[0] ?? '' };
-    const derivedRequest = context.derived.requests.find(item => item.id === requestId);
-    const many = request.kind === 'qry' && (requestId === 'load' || Boolean(derivedRequest?.lists.length));
-    return { kind: many ? 'list' : 'item', entity: returnEntity(requestId, tail, definition, context) };
-  }
-  if (definition.states[source]) return stateType(source, definition, context, seen);
-  const fn = definition.functions[source];
-  if (fn && !fn.calls && !fn.navigate) {
-    // A selection: the item belongs to the one entity the page's select targets read.
-    const targets = new Set(Object.values(context.draft.organisms).map(row => row.selects).filter(Boolean));
-    const entities = new Set([...targets].map(target => context.draft.organisms[target]?.reads[0]?.split('.')[0] ?? '').filter(Boolean));
-    return { kind: 'item', entity: entities.size === 1 ? [...entities][0] : '' };
-  }
-  return { kind: 'unknown', entity: '' };
-}
-
-function camel(value: string): string { return value ? value[0].toLowerCase() + value.slice(1) : value; }
-
-function rootSource(stateId: string, definition: D2SharedV2Definition): string {
-  const seen = new Set<string>();
-  let current = stateId;
-  while (definition.states[current] && !seen.has(current)) {
-    seen.add(current);
-    const source = definition.states[current].source;
-    if (!definition.states[source]) return source;
-    current = source;
-  }
-  return '';
-}
-
-function organismBound(organismId: string, draft: D2Page11Needs, definition: D2SharedV2Definition, derived: D2DerivedPageRequests): boolean {
-  const unit = draft.organisms[organismId];
-  if (!unit) return false;
-  const readEntities = new Set(unit.reads.map(path => path.split('.')[0]));
-  const selectTarget = Object.values(draft.organisms).some(row => row.selects === organismId);
-  const formSubmits = new Set([...Object.values(definition.forms), ...Object.values(derived.forms)]
-    .filter(item => item.organism === organismId).map(item => item.submit));
-  const bound = new Set<string>();
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const [stateId, state] of Object.entries(definition.states)) {
-      if (bound.has(stateId)) continue;
-      if (!stateBindsOrganism(stateId, state.source)) continue;
-      bound.add(stateId);
-      grew = true;
-    }
-  }
-  return bound.size > 0;
-
-  function stateBindsOrganism(stateId: string, source: string): boolean {
-    if (selectTarget && Object.values(definition.functions).some(item => item.sets === stateId)) return true;
-    const paramName = entryParamName(source);
-    if (paramName !== null) {
-      const effect = definition.entry.params[paramName]?.effect ?? '';
-      return effect === `select:${organismId}` || effect === `filter:${organismId}`;
-    }
-    const dot = source.indexOf('.');
-    if (dot > 0) {
-      const requestId = source.slice(0, dot);
-      const tail = source.slice(dot + 1);
-      const request = definition.requests[requestId];
-      const derivedRequest = derived.requests.find(item => item.id === requestId);
-      if (request?.kind === 'cmd' && tail === 'input' && formSubmits.has(requestId)) return true;
-      const entity = derivedRequest?.returnEntities[tail];
-      return Boolean(request && derivedRequest?.organisms.includes(organismId) && request.returns.includes(tail) && entity && readEntities.has(entity));
-    }
-    return bound.has(source);
-  }
-}
-
-/** A state fed by a filtered or paginated list; only then does filter<List> exist to replace. */
-function sourcesList(source: string | undefined, derived: D2DerivedPageRequests): boolean {
-  if (!source) return false;
-  return derived.requests.some(request => request.lists.some(list => source === `${request.id}.${list.key}` || source === list.key));
+  if (dot <= 0 || source.startsWith('entry.')) return [];
+  const endpoint = design.endpoints.find(item => item.id === source.slice(0, dot));
+  const tail = source.slice(dot + 1);
+  if (!endpoint) return [];
+  const rows = tail === 'input' ? endpoint.input : endpoint.output.filter(leaf => leaf.name === tail);
+  return d2BffValueLeaves(rows, design).flatMap(item => item.leaf.origin?.paths ?? []);
 }
 
 function entryParamName(source: string): string | null {
@@ -436,19 +239,19 @@ function validStateSource(stateId: string, source: string, definition: D2SharedV
     if (tail === 'input') return request.kind === 'cmd';
     return request.returns.includes(tail);
   }
-  if (definition.states[source]) return true;
+  if (definition.states[source]) return source !== stateId;
   return definition.functions[source]?.sets === stateId;
 }
 
 /** Menu pages the page actors can open: the navigate targets a shared function may name. */
-export function d2SharedNavigablePages(menu: D2PageRequestsMenu, actors: readonly string[]): string[] {
+export function d2SharedNavigablePages(menu: D2Menu, actors: readonly string[]): string[] {
   const ids: string[] = [];
-  const walk = (nodes: D2PageRequestsMenu['tree']): void => { for (const node of nodes) { if (node.kind === 'page') ids.push(node.id); walk(node.children ?? []); } };
+  const walk = (nodes: D2Menu['tree']): void => { for (const node of nodes) { if (node.kind === 'page') ids.push(node.id); walk(node.children ?? []); } };
   walk(menu.tree);
   return ids.filter(pageId => canNavigate(menu, pageId, new Set(actors)));
 }
 
-function canNavigate(menu: D2PageRequestsMenu, pageId: string, pageActors: Set<string>): boolean {
+function canNavigate(menu: D2Menu, pageId: string, pageActors: Set<string>): boolean {
   const path = menuPath(menu.tree, pageId, []);
   if (!path) return false;
   for (const [actor, refs] of Object.entries(menu.authorities ?? {})) {
@@ -458,7 +261,7 @@ function canNavigate(menu: D2PageRequestsMenu, pageId: string, pageActors: Set<s
   return false;
 }
 
-function menuPath(nodes: D2PageRequestsMenu['tree'], pageId: string, ancestors: string[]): string[] | null {
+function menuPath(nodes: D2Menu['tree'], pageId: string, ancestors: string[]): string[] | null {
   for (const node of nodes) {
     const path = [...ancestors, node.id];
     if (node.kind === 'page' && node.id === pageId) return path;

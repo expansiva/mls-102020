@@ -45,6 +45,7 @@ void test('finalize compiles page11 only, preserves existing shared/contracts an
       return files.map(file => ({ path: file.path, sha256: hashes.get(file.path)!, status: available ? 'passed' as const : 'failed' as const, diagnostics: available ? [] : ['Studio unavailable'] }));
     },
     markComplete: async () => { completed += 1; },
+    readRefusal: async () => null,
     markBlocked: async () => undefined,
   };
   const first = await finalizeD2Pages(identity, port);
@@ -99,6 +100,7 @@ void test('missing shared and contract files are named pending, not a raw read e
     readContractReceipt: async () => null,
     writeJson: async () => '',
     compile: async () => [],
+    readRefusal: async () => null,
     markBlocked: async () => undefined,
   });
   const pending = report.report.pending.join('; ');
@@ -113,6 +115,7 @@ void test('full finalize compiles four artifacts per page and names a hand-edite
   const pipeline = { project: identity.project, module: identity.module, steps: {
     entry10: { status: 'approved' }, input20: { status: 'approved' },
     pages50: { status: 'approved', snapshotHash: snapshot.snapshotHash },
+    bff55: { status: 'approved', snapshotHash: snapshot.snapshotHash },
     shared60: { status: 'approved', snapshotHash: snapshot.snapshotHash },
     contracts70: { status: 'approved', snapshotHash: snapshot.snapshotHash },
   } } as D2PipelineState;
@@ -158,6 +161,7 @@ void test('full finalize compiles four artifacts per page and names a hand-edite
     writeJson: async () => '',
     compile: async (_identity, files) => files.map(file => ({ path: file.path, sha256: hashes.get(file.path)!, status: 'passed' as const, diagnostics: [] })),
     markComplete: async () => { completed += 1; },
+    readRefusal: async () => null,
     markBlocked: async () => undefined,
   };
   const ready = await finalizeD2Pages(identity, port);

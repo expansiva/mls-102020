@@ -7,13 +7,14 @@ import '/_102020_/l2/agentDefsL2/steps/entry10/agentD2Entry.js';
 import '/_102020_/l2/agentDefsL2/steps/input20/agentD2Input.js';
 import '/_102020_/l2/agentDefsL2/steps/pages50/agentD2Pages.js';
 import '/_102020_/l2/agentDefsL2/steps/pages50/agentD2PagesPage.js';
+import '/_102020_/l2/agentDefsL2/steps/bff55/agentD2Bff.js';
+import '/_102020_/l2/agentDefsL2/steps/bff55/agentD2BffPage.js';
 import '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
-import '/_102020_/l2/agentDefsL2/steps/shared60/agentD2SharedPage.js';
 import '/_102020_/l2/agentDefsL2/steps/contracts70/agentD2Contracts70.js';
 import '/_102020_/l2/agentDefsL2/steps/finalize80/agentD2Finalize.js';
 
 export function createAgent(): IAgentAsync {
-  return { agentName: D2_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2', agentDescription: 'Generate L2 page11, shared behavior and page contracts', visibility: 'public', beforePromptImplicit, beforePromptStep };
+  return { agentName: D2_AGENT_NAME, agentProject: 102020, agentFolder: 'agentDefsL2', agentDescription: 'Generate L2 page11, page BFF designs, shared behavior and page contracts', visibility: 'public', beforePromptImplicit, beforePromptStep };
 }
 
 async function beforePromptImplicit(agent: IAgentMeta, context: mls.msg.ExecutionContext, userPrompt: string): Promise<mls.msg.AgentIntent[]> {

@@ -1,0 +1,425 @@
+{
+  "attempt": "1",
+  "model": "openai/gpt-5.6-terra-pro",
+  "promptChars": 11161,
+  "receivedAt": "2026-10-04T15:47:46.014Z",
+  "raw": {
+    "type": "flexible",
+    "result": {
+      "toolName": "submitD2Bff",
+      "arguments": {
+        "types": [
+          {
+            "name": "ItemCardapioLista",
+            "description": "Dados de um item apresentados na lista do cardápio vigente.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.id"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.name"
+                  ]
+                }
+              },
+              {
+                "name": "precoVigente",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "CatalogoPaginado",
+            "description": "Página do catálogo vigente, pronta para a lista exibir e continuar carregando quando houver mais itens.",
+            "fields": [
+              {
+                "name": "itens",
+                "type": "ItemCardapioLista[]",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              },
+              {
+                "name": "pagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              },
+              {
+                "name": "temProximaPagina",
+                "type": "boolean",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ItemCardapioEdicao",
+            "description": "Dados completos de um item para preencher e redesenhar o formulário de manutenção.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.version"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.name"
+                  ]
+                }
+              },
+              {
+                "name": "precoVigente",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "id": "carregarCardapio",
+            "kind": "qry",
+            "when": "onLoad",
+            "writes": "",
+            "input": [],
+            "output": [
+              {
+                "name": "catalogo",
+                "type": "CatalogoPaginado",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Carrega a primeira página do cardápio vigente para o caixa conferir os itens disponíveis ao abrir a página.",
+              "input": "Não recebe parâmetros; inicia a consulta na primeira página.",
+              "processing": "Consulta os itens de ItemCardapio autorizados para a organização do caixa, ordenados por nome, limita o resultado a uma página de tamanho adequado à tela e calcula temProximaPagina pela existência de itens além desse limite.",
+              "output": "Retorna a página já formatada para a lista, com id, nome, preço vigente e a indicação calculada de continuidade."
+            }
+          },
+          {
+            "id": "carregarPaginaCardapio",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "pagina",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": []
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "catalogo",
+                "type": "CatalogoPaginado",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Busca sob demanda outra página do cardápio quando o caixa continua a leitura da lista.",
+              "input": "pagina identifica a página solicitada pela navegação da lista.",
+              "processing": "Consulta a página solicitada de ItemCardapio no escopo organizacional autorizado, ordenada por nome, com o mesmo tamanho da carga inicial, e calcula temProximaPagina pela existência de registros posteriores.",
+              "output": "Retorna somente a página solicitada, pronta para substituir ou acrescentar itens na lista sem recarregar o formulário."
+            }
+          },
+          {
+            "id": "obterItemCardapioParaEdicao",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "ItemCardapio.id"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "item",
+                "type": "ItemCardapioEdicao",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.version",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Carrega o item que o caixa selecionou para preencher o formulário de atualização.",
+              "input": "id é o identificador do item escolhido na lista.",
+              "processing": "Localiza um ItemCardapio pelo id dentro do escopo organizacional autorizado e compõe os campos editáveis com sua versão atual para controle de concorrência.",
+              "output": "Retorna o item completo para edição, incluindo version, necessária para a atualização segura."
+            }
+          },
+          {
+            "id": "cadastrarItemCardapio",
+            "kind": "cmd",
+            "when": "cadastrarItemCardapio",
+            "writes": "ItemCardapio.create",
+            "input": [
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.name"
+                  ]
+                }
+              },
+              {
+                "name": "precoVigente",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "item",
+                "type": "ItemCardapioEdicao",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.version",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Cadastra um novo item com o nome e o preço vigente que o caixa informou.",
+              "input": "name preenche o nome apresentado no cardápio; precoVigente preenche o preço atualmente cobrado pelo item.",
+              "processing": "Valida os campos obrigatórios do cadastro e cria ItemCardapio no escopo organizacional autorizado. Não aplica regras de cálculo de comanda, pois elas tratam do lançamento de ItemComanda, não da manutenção do cardápio.",
+              "output": "Retorna o item recém-criado com id e version, além dos dados gravados, para o formulário já refletir o registro criado."
+            }
+          },
+          {
+            "id": "atualizarItemCardapio",
+            "kind": "cmd",
+            "when": "atualizarItemCardapio",
+            "writes": "ItemCardapio.update",
+            "input": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.version"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.name"
+                  ]
+                }
+              },
+              {
+                "name": "precoVigente",
+                "type": "number",
+                "optional": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "item",
+                "type": "ItemCardapioEdicao",
+                "optional": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "ItemCardapio.id",
+                    "ItemCardapio.version",
+                    "ItemCardapio.name",
+                    "ItemCardapio.details.precoVigente"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Atualiza o nome e/ou o preço vigente do item selecionado pelo caixa.",
+              "input": "id identifica o item; version protege contra edição concorrente; name e precoVigente são os valores que serão gravados.",
+              "processing": "Localiza ItemCardapio autorizado pelo id, confere a version recebida e atualiza parcialmente nome e preço vigente. Recusa versão desatualizada. Não registra preço em ItemComanda nem recalcula comandas, pois as regras de lançamento e totalização não se aplicam a esta alteração cadastral.",
+              "output": "Retorna o registro atualizado, com a nova version, para o formulário redesenhar imediatamente o estado persistido."
+            }
+          }
+        ],
+        "bindings": {
+          "organisms": [
+            {
+              "organism": "listaItensCardapio",
+              "reads": "carregarCardapio.catalogo"
+            },
+            {
+              "organism": "formularioItemCardapio",
+              "reads": "obterItemCardapioParaEdicao.item"
+            }
+          ],
+          "commands": [
+            {
+              "endpoint": "cadastrarItemCardapio",
+              "refreshes": [
+                "carregarCardapio"
+              ]
+            },
+            {
+              "endpoint": "atualizarItemCardapio",
+              "refreshes": [
+                "carregarCardapio"
+              ]
+            }
+          ],
+          "selections": [
+            {
+              "organism": "listaItensCardapio",
+              "via": {
+                "kind": "query",
+                "ref": "obterItemCardapioParaEdicao"
+              }
+            }
+          ],
+          "journeys": []
+        }
+      }
+    },
+    "status": "completed",
+    "stepId": 17,
+    "interaction": null,
+    "nextSteps": null
+  },
+  "verdict": "accepted"
+}
