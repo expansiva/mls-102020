@@ -46,8 +46,8 @@ jsdoc is written for the person and the model that implement the endpoint, in us
 - output: what comes back and why the page needs it.
 
 bindings link the page to its endpoints; the shared and the contract are written from them by code:
-- organisms: for every organism that reads, exactly one source, as <endpointId>.<output key>; the key carries what the
-  organism shows.
+- organisms: for every organism that reads, one or more sources, one for each output key it shows, each as
+  <endpointId>.<output key>.
 - commands: for each command, the queries the page reloads after it. A command whose output already redraws a state does
   not reload it; list a query only for what the output does not bring back.
 - selections: for every organism that selects, how the selected record is resolved: kind query with the endpoint that

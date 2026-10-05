@@ -692,16 +692,16 @@ function checkD2BffBindings(design: D2BffDesign, context: D2BffCheckContext): D2
   const query = (id: string, at: string): void => {
     if (endpoint(id)?.kind !== 'qry') add('D2_BFF_BINDING_QUERY', at, `${id} is not a query of the page.`);
   };
-  const bound = new Map<string, number>();
+  // d2_80: an organism may have one or more sources; two identical rows count once.
+  const bound = new Map<string, Set<string>>();
   design.bindings.organisms.forEach((row, index) => {
     const at = `bindings.organisms.${index}`;
     if (!organisms.has(row.organism)) add('D2_BFF_BINDING_ORGANISM', at, `organism ${row.organism} is not on the page.`);
-    bound.set(row.organism, (bound.get(row.organism) ?? 0) + 1);
+    bound.set(row.organism, (bound.get(row.organism) ?? new Set<string>()).add(row.reads));
     outputRef(row.reads, `${at}.reads`);
   });
   for (const id of readers) {
-    const count = bound.get(id) ?? 0;
-    if (count !== 1) add('D2_BFF_BINDING_ORGANISM', `bindings.organisms.${id}`, `organism ${id} reads and has ${count} sources in bindings.organisms; it needs exactly one.`);
+    if (!bound.get(id)?.size) add('D2_BFF_BINDING_ORGANISM', `bindings.organisms.${id}`, `organism ${id} reads and has no source in bindings.organisms.`);
   }
   design.bindings.commands.forEach((row, index) => {
     const at = `bindings.commands.${index}`;

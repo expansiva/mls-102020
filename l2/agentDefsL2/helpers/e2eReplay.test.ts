@@ -514,7 +514,7 @@ void test('d2_75: B refuses by fact, naming the exact path; D goes back to A', a
   links.bindings.organisms = links.bindings.organisms.filter(row => row.organism !== 'formularioLancamento');
   links.bindings.commands[0].refreshes = ['consultaQueNaoExiste'];
   const linkCodes = refusalOf(() => d2BffApproved(bff, links));
-  assert.match(linkCodes, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.formularioLancamento: organism formularioLancamento reads and has 0 sources/u);
+  assert.match(linkCodes, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.formularioLancamento: organism formularioLancamento reads and has no source in bindings\.organisms/u);
   assert.match(linkCodes, /D2_BFF_BINDING_QUERY: bindings\.commands\.0\.refreshes\.0: consultaQueNaoExiste is not a query of the page/u);
 
   // D over the derived shared goes back to A: a source that leaves a read field unheld.
@@ -522,6 +522,21 @@ void test('d2_75: B refuses by fact, naming the exact path; D goes back to A', a
   unfed.bindings.organisms = unfed.bindings.organisms.map(row => row.organism === 'formularioLancamento' ? { ...row, reads: 'carregarComanda.comanda' } : row);
   (unfed.bindings as unknown as { updates: unknown[] }).updates.push({ endpoint: 'buscarItemCardapio', state: 'carregarComanda.comanda', mode: 'replace' });
   assert.match(refusalOf(() => d2BffApproved(bff, unfed)), /D2_SHARED_V2_ORGANISM_UNFED: Organism \w+ reads ItemCardapio\.details\.precoVigente, and no state holds it/u);
+});
+
+void test('d2_80 s1: an organism with two sources passes B', async () => {
+  const bff = (await dining()).out.bff.atendimento;
+  const answer = atendimentoAnswer();
+  answer.bindings.organisms.push({ organism: 'lookupAtendimento', reads: 'carregarComanda.comanda' }, { organism: 'lookupAtendimento', reads: 'carregarComanda.comanda' });
+  const design = d2BffApproved(bff, answer);
+  assert.deepEqual(design.bindings.organisms.filter(row => row.organism === 'lookupAtendimento').map(row => row.reads).sort(), ['carregarAtendimento.mesas', 'carregarComanda.comanda', 'carregarComanda.comanda']);
+});
+
+void test('d2_80 s1: an organism that reads and has no source is refused with D2_BFF_BINDING_ORGANISM', async () => {
+  const bff = (await dining()).out.bff.atendimento;
+  const answer = atendimentoAnswer();
+  answer.bindings.organisms = answer.bindings.organisms.filter(row => row.organism !== 'lookupAtendimento');
+  assert.match(refusalOf(() => d2BffApproved(bff, answer)), /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.lookupAtendimento: organism lookupAtendimento reads and has no source in bindings\.organisms/u);
 });
 
 void test('d2_75: B does not judge the design: other reloads and other names pass', async () => {
