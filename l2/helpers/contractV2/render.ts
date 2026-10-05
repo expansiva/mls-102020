@@ -112,11 +112,20 @@ function parseJsdoc(raw: string): D2ContractV2Jsdoc {
   return { raw };
 }
 
+/** The leaves of an interface body, nested ones by their dotted path (`details.subtotal`, d2_79). */
 function bodyFields(body: string): D2ContractV2Projection['fields'] {
-  return body.split('\n').flatMap(line => {
-    const found = /^  (readonly )?([A-Za-z][A-Za-z0-9]*)(\?)?: (.+);$/u.exec(line);
-    return found ? [{ name: found[2], type: found[4], optional: Boolean(found[3]), readonly: Boolean(found[1]) }] : [];
-  });
+  const out: NonNullable<D2ContractV2Projection['fields']> = [];
+  const path: string[] = [];
+  for (const line of body.split('\n')) {
+    const open = /^( *)([A-Za-z][A-Za-z0-9]*)\??: \{$/u.exec(line);
+    if (open) { path.length = open[1].length / 2 - 1; path.push(open[2]); continue; }
+    if (/^ *\};$/u.test(line)) { path.pop(); continue; }
+    const found = /^( *)(readonly )?([A-Za-z][A-Za-z0-9]*)(\?)?: (.+);$/u.exec(line);
+    if (!found) continue;
+    path.length = found[1].length / 2 - 1;
+    out.push({ name: [...path, found[3]].join('.'), type: found[5], optional: Boolean(found[4]), readonly: Boolean(found[2]) });
+  }
+  return out;
 }
 
 function renderMeta(meta: D2ContractV2Meta): string {

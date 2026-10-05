@@ -85,7 +85,9 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
     const changed = declared.filter(row => row.mode !== 'replace').map(row => stateOf.get(row.state)!);
     const reloads = design.bindings.commands.filter(row => row.endpoint === item.id).flatMap(row => row.refreshes).flatMap(fedBy);
     const targets = [...new Set([...replaced, ...changed, ...reloads])];
-    const modes = declared.filter(row => row.mode !== 'replace').map(row => `${stateOf.get(row.state)}: ${row.mode}`);
+    // On a paged list the change lands in its items (d2_79).
+    const paged = (ref: string): boolean => { const [sourceId, key] = ref.split('.'); return Boolean(endpoint(sourceId)?.output.find(leaf => leaf.name === key)?.paginated); };
+    const modes = declared.filter(row => row.mode !== 'replace').map(row => `${stateOf.get(row.state)}${paged(row.state) ? '.items' : ''}: ${row.mode}`);
     functions[item.id] = {
       calls: item.id, description: modes.length ? `${item.jsdoc.purpose} (${modes.join('; ')})` : item.jsdoc.purpose,
       ...(replaced.length ? { sets: replaced[0] } : {}),
@@ -212,9 +214,11 @@ function filterParams(input: D2SharedDeriveInput): D2SharedV2Definition['entry']
     for (const leaf of item.input) {
       const path = leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '';
       if (path.split('.').length === 2 && path.endsWith('.id')) continue; // the selected id is the selection's param
-      if (leaf.name === 'pageSize' || params[leaf.name]) continue;
+      // An entry param is one URL name: the last segment of a nested input (d2_79).
+      const name = leaf.name.split('.').slice(-1)[0];
+      if (name === 'pageSize' || params[name]) continue;
       const ref = parseD2BffType(leaf.type);
-      params[leaf.name] = { type: ref?.base === 'number' || ref?.base === 'boolean' ? ref.base : 'string', sources: SOURCES, effect: `filter:${target}`, persist: true };
+      params[name] = { type: ref?.base === 'number' || ref?.base === 'boolean' ? ref.base : 'string', sources: SOURCES, effect: `filter:${target}`, persist: true };
     }
   }
   return params;

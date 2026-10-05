@@ -34,7 +34,15 @@ export interface D2Grant {
 
 export type D2BffOriginKind = 'field' | 'aggregate' | 'context';
 export interface D2BffOrigin { kind: D2BffOriginKind; paths: string[] }
-export interface D2BffLeaf { name: string; type: string; optional?: boolean; origin?: D2BffOrigin }
+export interface D2BffLeaf {
+  /** For a field leaf of a type or an input, the path in the ontology relative to the root entity (`details.total`, `customer.name`), d2_79. */
+  name: string;
+  type: string;
+  optional?: boolean;
+  origin?: D2BffOrigin;
+  /** A list the page pages: the contract renders `{ items: T[]; page; pageSize; hasMore }` (d2_79). */
+  paginated?: boolean;
+}
 export interface D2BffType { name: string; description: string; fields: D2BffLeaf[] }
 export interface D2BffJsdoc { purpose: string; input: string; processing: string; output: string }
 export interface D2BffEndpoint {
@@ -149,7 +157,7 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
       // A leaf that names a type has its origins in that type: whatever origin it carries is ignored (d2_74).
       const origin = ref.base === 'ref' || row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, assert, fail);
       if (ref.base !== 'ref' && !origin) assert(`${path}.${name}.origin`, 'a value leaf names its origin');
-      const leaf: D2BffLeaf = { name, type: renderD2BffType(ref), ...(row.optional === true ? { optional: true } : {}), ...(ref.base !== 'ref' && origin ? { origin } : {}) };
+      const leaf: D2BffLeaf = { name, type: renderD2BffType(ref), ...(row.optional === true ? { optional: true } : {}), ...(ref.base !== 'ref' && origin ? { origin } : {}), ...(row.paginated === true && ref.list ? { paginated: true } : {}) };
       if (written && written !== name) renamed?.set(written, name);
       const same = out.find(item => item.name === name);
       if (same && JSON.stringify(same) !== JSON.stringify(leaf)) fail(`${path}.${name}`, 'declared twice with different types or origins');
@@ -258,7 +266,7 @@ function parseBindings(value: unknown, fail: (path: string, what: string) => nev
  * the answer's choice is overwritten, never refused. Two leaves of one list that derive the same name keep the root
  * entity's leaf as is and prefix the others with their entity. Bindings follow the renamed output keys.
  */
-export function normalizeD2BffDesign(raw: D2BffDesign, entities: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = ''): D2BffDesign {
+export function normalizeD2BffDesign(raw: D2BffDesign, entitiesOf: Record<string, Ns5OntologyAnyEntity>, reservedTypeName = ''): D2BffDesign {
   // The contract interface of the page owns its name: a type that took it is renamed, with its references (d2_76).
   let design = raw;
   if (reservedTypeName && raw.types.some(type => type.name === reservedTypeName)) {
@@ -271,10 +279,20 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entities: Record<string, 
       endpoints: raw.endpoints.map(endpoint => ({ ...endpoint, input: endpoint.input.map(retype), output: endpoint.output.map(retype) })),
     };
   }
-  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = ''): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
+  design = paginateD2BffDesign(design);
+  // A field leaf of a type or an input keeps its path in the ontology (d2_79): relative to the root entity, or under the
+  // other entity's name when it is a join. An output key stays one name (bindings and states point at it).
+  const fix = (rows: D2BffLeaf[], at: string, fallbackRoot = '', nested = true): { rows: D2BffLeaf[]; renamed: Map<string, string> } => {
     const field = (leaf: D2BffLeaf): string => (leaf.origin?.kind === 'field' ? leaf.origin.paths[0] : '');
-    const root = rows.map(field).find(path => path.split('.').length === 2 && path.endsWith('.id'))?.split('.')[0] ?? fallbackRoot;
-    const derivedName = (leaf: D2BffLeaf): string => { const path = field(leaf); return path ? path.split('.').slice(-1)[0] : leaf.name; };
+    // The root: the entity of the `Entity.id` leaf, the written entity of a command input, else the entity most fields
+    // come from (a line without its id still belongs to its own entity; the others are joins).
+    const counted = new Map<string, number>();
+    for (const path of rows.map(field).filter(Boolean)) counted.set(entityOf(path), (counted.get(entityOf(path)) ?? 0) + 1);
+    const majority = [...counted].sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+    const root = rows.map(field).find(path => path.split('.').length === 2 && path.endsWith('.id'))?.split('.')[0] ?? (fallbackRoot || majority);
+    const lowerFirst = (value: string): string => `${value[0].toLowerCase()}${value.slice(1)}`;
+    const pathName = (path: string): string => { const entity = entityOf(path); const rel = path.slice(entity.length + 1); return entity === root ? rel : `${lowerFirst(entity)}.${rel}`; };
+    const derivedName = (leaf: D2BffLeaf): string => { const path = field(leaf); return path ? (nested ? pathName(path) : path.split('.').slice(-1)[0]) : leaf.name; };
     const counts = new Map<string, number>();
     for (const leaf of rows) counts.set(derivedName(leaf), (counts.get(derivedName(leaf)) ?? 0) + 1);
     const renamed = new Map<string, string>();
@@ -283,8 +301,8 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entities: Record<string, 
       if (!path) return leaf;
       const entity = entityOf(path);
       let name = derivedName(leaf);
-      if ((counts.get(name) ?? 0) > 1 && entity !== root) name = `${entity[0].toLowerCase()}${entity.slice(1)}${name[0].toUpperCase()}${name.slice(1)}`;
-      const type = d2OntologyLeafType(entities[entity], path);
+      if (!nested && (counts.get(name) ?? 0) > 1 && entity !== root) name = `${lowerFirst(entity)}${name[0].toUpperCase()}${name.slice(1)}`;
+      const type = d2OntologyLeafType(entitiesOf[entity], path);
       const ref = parseD2BffType(leaf.type);
       const next = { ...leaf, name, type: type && ref ? renderD2BffType({ ...type, list: ref.list }) : leaf.type };
       if (next.name !== leaf.name) renamed.set(leaf.name, next.name);
@@ -302,7 +320,7 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entities: Record<string, 
   const types = design.types.map(type => ({ ...type, fields: fix(type.fields, `types.${type.name}.fields`).rows }));
   const outputs = new Map<string, Map<string, string>>();
   const endpoints = design.endpoints.map(endpoint => {
-    const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`);
+    const output = fix(endpoint.output, `endpoints.${endpoint.id}.output`, '', false);
     outputs.set(endpoint.id, output.renamed);
     return { ...endpoint, input: fix(endpoint.input, `endpoints.${endpoint.id}.input`, endpoint.writes ? entityOf(endpoint.writes) : '').rows, output: output.rows };
   });
@@ -322,6 +340,48 @@ export function normalizeD2BffDesign(raw: D2BffDesign, entities: Record<string, 
       updates: bindings.updates.map(row => ({ ...row, state: ref(row.state) })),
     },
   };
+}
+
+/** Leaves that only page a list, whatever name the answer gave them (d2_79). */
+const PAGING = /^(page|pagina|pageNumber|pageSize|tamanhoPagina|total|totalItems|totalItens|totalCount|hasMore\w*|temMais\w*|cursor\w*|next\w*|proxim\w*)$/iu;
+const PAGING_INPUT = /(^page$|^pagina|Page$|^pageSize$|PageSize$|cursor|^offset$|^limit$)/iu;
+const pagingLeaf = (leaf: D2BffLeaf): boolean => leaf.origin?.kind !== 'field' && PAGING.test(leaf.name) && !parseD2BffType(leaf.type)?.list && parseD2BffType(leaf.type)?.base !== 'ref';
+
+/**
+ * One form of paged list (d2_79): `{ items: T[]; page; pageSize; hasMore }` out, `page` and `pageSize` in. A list A marks
+ * as paginated, a type that only wraps one list with paging leaves, or a list with paging siblings becomes that form;
+ * the variants are normalized, never refused. A list that is not paged stays `T[]`.
+ */
+export function paginateD2BffDesign(design: D2BffDesign): D2BffDesign {
+  const envelopes = new Map<string, string>();
+  for (const type of design.types) {
+    const lists = type.fields.filter(leaf => parseD2BffType(leaf.type)?.list);
+    if (lists.length === 1 && type.fields.length > 1 && type.fields.every(leaf => leaf === lists[0] || pagingLeaf(leaf))) envelopes.set(type.name, lists[0].type);
+  }
+  const fold = (rows: D2BffLeaf[]): D2BffLeaf[] => {
+    const unwrapped = rows.map(leaf => {
+      const ref = parseD2BffType(leaf.type);
+      return ref?.base === 'ref' && !ref.list && envelopes.has(ref.ref) ? { ...leaf, type: envelopes.get(ref.ref)!, paginated: true } : leaf;
+    });
+    const lists = unwrapped.filter(leaf => parseD2BffType(leaf.type)?.list);
+    const siblings = unwrapped.filter(pagingLeaf);
+    if (lists.length !== 1 || !siblings.length) return unwrapped;
+    return unwrapped.filter(leaf => !siblings.includes(leaf)).map(leaf => (leaf === lists[0] ? { ...leaf, paginated: true } : leaf));
+  };
+  const types = design.types.filter(type => !envelopes.has(type.name)).map(type => ({ ...type, fields: fold(type.fields) }));
+  const pagedType = (name: string, seen = new Set<string>()): boolean => {
+    if (seen.has(name)) return false;
+    const type = types.find(item => item.name === name);
+    return Boolean(type?.fields.some(leaf => leaf.paginated || (parseD2BffType(leaf.type)?.base === 'ref' && pagedType(parseD2BffType(leaf.type)!.ref, new Set([...seen, name])))));
+  };
+  const context = (name: string): D2BffLeaf => ({ name, type: 'number', origin: { kind: 'context', paths: [] } });
+  const endpoints = design.endpoints.map(endpoint => {
+    const output = fold(endpoint.output);
+    const paged = output.some(leaf => leaf.paginated || (parseD2BffType(leaf.type)?.base === 'ref' && pagedType(parseD2BffType(leaf.type)!.ref)));
+    const input = endpoint.input.filter(leaf => leaf.origin?.kind === 'field' || !PAGING_INPUT.test(leaf.name));
+    return { ...endpoint, output, input: paged ? [...input, context('page'), context('pageSize')] : input };
+  });
+  return { ...design, types, endpoints };
 }
 
 /** The contract type of one ontology field, as the v2 contract of main renders it; null for a branch. */

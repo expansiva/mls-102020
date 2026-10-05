@@ -132,7 +132,7 @@ export function bffSchemaFor(context: D2BffContext): Record<string, unknown> {
   const enumOf = (values: readonly string[]) => (values.length ? { type: 'string', enum: [...new Set(values)] } : { type: 'string' });
   const optionalEnum = (values: readonly string[]) => ({ type: 'string', enum: ['', ...new Set(values)] });
   const origin = row(['kind', 'paths'], { kind: { type: 'string', enum: ['field', 'aggregate', 'context'] }, paths: { type: 'array', items: enumOf([...paths, ...branches]) } });
-  const leaf = row(['name', 'type', 'origin'], { name: { type: 'string' }, type: { type: 'string', pattern: D2_BFF_TYPE_PATTERN }, optional: { type: 'boolean' }, origin });
+  const leaf = row(['name', 'type', 'origin'], { name: { type: 'string' }, type: { type: 'string', pattern: D2_BFF_TYPE_PATTERN }, optional: { type: 'boolean' }, paginated: { type: 'boolean' }, origin });
   const submits = [...d2PageSubmits(context).keys()];
   const organisms = [...new Set([...Object.keys(context.page11.desktop.organisms), ...Object.keys(context.page11.mobile.organisms)])];
   const bindings = row(['organisms', 'commands', 'selections', 'journeys', 'updates'], {

@@ -21,9 +21,12 @@ Types and origins:
 - types are named shapes reused by several endpoints, such as a record with its lines. A field is a leaf: string,
   number, boolean, a union of literals ('a' | 'b'), or the name of another type; add [] for a list. Nested shapes are
   always a named type.
-- A leaf with a field origin is named with the field's key in the ontology (the last segment of its Entity.path) and
-  keeps the field's type; two such leaves of one shape from different entities prefix the one outside the root entity
-  with that entity's name, in lowerCamel (entity name first, then the field key with a capital).
+- A leaf with a field origin keeps the field's place in the ontology: in a shape, the path relative to the shape's
+  root entity, nested as the ontology nests it; a field of another entity in the same shape sits under that entity's
+  name in lowerCamel. The code writes those names from the origin, and the field keeps its ontology type.
+- A list the page pages is marked paginated: the contract gives it as { items, page, pageSize, hasMore } and the
+  query takes page and pageSize, plus the filters and the search it needs. Do not invent another paging shape (no
+  total, no cursor). A list that is not paged stays a plain list.
 - Every value leaf names its origin: field with the one Entity.path it carries; aggregate with every Entity.path the
   value is computed from; context for a value that comes from the URL or a selection and fills no stored field.
 - A cmd input leaf that fills a stored field uses field with that field's Entity.path, never context.

@@ -26,7 +26,7 @@ export function buildD2ContractFromBff(input: {
     name: type.name,
     entityId: d2BffTypeRoot(type.name, design),
     requestIds: design.endpoints.filter(endpoint => endpoint.output.some(leaf => references(leaf, type.name, design))).map(endpoint => endpoint.id),
-    body: type.fields.map(leaf => `  ${readonly(leaf, entities)}${leaf.name}${leaf.optional ? '?' : ''}: ${leaf.type};`).join('\n'),
+    body: bodyLines(type.fields, entities, 1).join('\n'),
     ...(type.description ? { jsdoc: d2JsdocText(type.description) } : {}),
   }));
   const routes: D2ContractV2Route[] = design.endpoints.map(endpoint => ({
@@ -61,9 +61,40 @@ export function d2JsdocText(text: string): string {
   return text.replace(/\s+/gu, ' ').replace(/\*\//gu, '* /').replace(/'/gu, '’').trim();
 }
 
-function inline(rows: readonly D2BffLeaf[], entities: Record<string, Ns5OntologyAnyEntity>, output: boolean): string {
-  if (!rows.length) return '{}';
-  return `{ ${rows.map(leaf => `${output ? readonly(leaf, entities) : ''}${leaf.name}${leaf.optional ? '?' : ''}: ${leaf.type}`).join('; ')} }`;
+/** The type text of a leaf: a paged list is the one form of d2_79. */
+function leafType(leaf: D2BffLeaf): string {
+  return leaf.paginated ? `{ items: ${leaf.type}; page: number; pageSize: number; hasMore: boolean }` : leaf.type;
+}
+
+/** Leaves whose names are ontology paths (`details.total`, `customer.name`) nest as the ontology does (d2_79). */
+interface LeafNode { leaf?: D2BffLeaf; children: Map<string, LeafNode> }
+function leafTree(rows: readonly D2BffLeaf[]): Map<string, LeafNode> {
+  const root = new Map<string, LeafNode>();
+  for (const leaf of rows) {
+    const parts = leaf.name.split('.');
+    let level = root;
+    parts.forEach((part, index) => {
+      const node = level.get(part) ?? { children: new Map<string, LeafNode>() };
+      if (index === parts.length - 1) node.leaf = leaf;
+      level.set(part, node);
+      level = node.children;
+    });
+  }
+  return root;
+}
+
+function bodyLines(rows: readonly D2BffLeaf[], entities: Record<string, Ns5OntologyAnyEntity>, depth: number, tree = leafTree(rows)): string[] {
+  const indent = '  '.repeat(depth);
+  return [...tree].flatMap(([key, node]) => node.children.size
+    ? [`${indent}${key}: {`, ...bodyLines([], entities, depth + 1, node.children), `${indent}};`]
+    : [`${indent}${readonly(node.leaf!, entities)}${key}${node.leaf!.optional ? '?' : ''}: ${leafType(node.leaf!)};`]);
+}
+
+function inline(rows: readonly D2BffLeaf[], entities: Record<string, Ns5OntologyAnyEntity>, output: boolean, tree = leafTree(rows)): string {
+  if (!tree.size) return '{}';
+  return `{ ${[...tree].map(([key, node]) => node.children.size
+    ? `${key}: ${inline([], entities, output, node.children)}`
+    : `${output ? readonly(node.leaf!, entities) : ''}${key}${node.leaf!.optional ? '?' : ''}: ${leafType(node.leaf!)}`).join('; ')} }`;
 }
 
 /** A value the page cannot write: a derived field or an aggregate. */

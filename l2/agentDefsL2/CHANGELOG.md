@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-05 — d2_79
+
+- A field leaf of a type or an input keeps its ontology path, nested (`details: { … }`), with a join under the other
+  entity's name; corrects the last-segment naming of d2_75.
+- One form of paged list: `{ items: T[]; page; pageSize; hasMore }` out, `page`/`pageSize` in; the variants are
+  normalized. `load more` appends to `items`.
+
 ## 2026-10-04 — d2_78 (experiment branch)
 
 - The contract has no meta; `parseD2ContractV2` reads routes without meta and exposes the JSDoc of each route and

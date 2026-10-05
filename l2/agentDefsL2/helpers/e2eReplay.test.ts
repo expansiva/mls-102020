@@ -373,7 +373,7 @@ function recordedAnswer(rel: string): unknown {
   const pack = readPack('dining');
   const raw = structuredClone(pack.json<{ raw: unknown }>(`recorded/${rel}`).raw) as { result?: { arguments: { bindings?: Record<string, unknown> } } };
   const args = (raw.result?.arguments ?? raw) as { bindings?: Record<string, unknown> };
-  if (args.bindings) args.bindings.updates = pack.json<Record<string, unknown>>('recorded/updates-added.json')[rel] ?? [];
+  if (args.bindings && !Array.isArray(args.bindings.updates)) args.bindings.updates = pack.json<Record<string, unknown>>('recorded/updates-added.json')[rel] ?? [];
   return raw;
 }
 
@@ -443,9 +443,10 @@ void test('d2_75: the shared comes from the design by code: entry params, refres
 void test('d2_75/d2_78: the contract takes names and types from the ontology, has no meta, and its JSDoc is parsed back', async () => {
   const { out } = await dining();
   const atendimento = out.contracts.atendimento;
-  assert.match(atendimento, /export interface ComandaComItens \{\n {2}id: string;\n {2}number: number;\n {2}mesaId: string;\n {2}code: string;\n {2}status: 'open' \| 'closed';\n {2}readonly subtotal: string;\n {2}itens: ItemDaComanda\[\];\n\}/u);
-  // Two leaves of one type that derive the same name: the root entity keeps it, the other is prefixed.
-  assert.match(atendimento, /export interface MesaDoSalao \{\n {2}id: string;\n[\s\S]*?\n {2}comandaId\?: string;/u);
+  // d2_79: a field leaf keeps its path in the ontology; a field of another entity sits under that entity's name.
+  assert.match(atendimento, /export interface ComandaComItens \{\n {2}id: string;\n {2}number: number;\n {2}mesaId: string;\n {2}mesa: \{\n {4}code: string;\n {2}\};\n {2}status: 'open' \| 'closed';\n {2}details: \{\n {4}readonly subtotal: string;\n {2}\};\n {2}itens: ItemDaComanda\[\];\n\}/u);
+  assert.match(atendimento, /export interface MesaDoSalao \{\n {2}id: string;\n {2}code: string;\n {2}details: \{\n {4}readonly disponivel: boolean;\n {2}\};\n {2}comanda: \{\n {4}id\?: string;/u);
+  assert.match(atendimento, /input: \{ comandaId: string; itemCardapioId: string; details: \{ quantidade: number; observacao\?: string \} \};/u);
   assert.match(atendimento, /'comandaRestaurante\.atendimento\.cancelarItem': \{\n {4}kind: 'cmd';\n {4}writes: 'ItemComanda\.cancelarItemComanda';\n {4}input: \{ id: string; version: number \};/u);
   for (const endpointId of ['carregarAtendimento', 'carregarComanda', 'buscarItemCardapio', 'abrirComanda', 'lancarItem', 'cancelarItem']) {
     assert.match(atendimento, new RegExp(`/\\*\\*\\n {3}\\* Finalidade: [^\\n]+\\n {3}\\* Entrada: [^\\n]+\\n {3}\\* Processamento: [^\\n]+\\n {3}\\* Saída: [^\\n]+\\n {3}\\*/\\n {2}'comandaRestaurante\\.atendimento\\.${endpointId}'`, 'u'));
@@ -459,7 +460,8 @@ void test('d2_75/d2_78: the contract takes names and types from the ontology, ha
   assert.match(lancar.jsdoc?.processing ?? '', /^Recusa se a comanda não estiver open \(itensSomenteEmComandaAberta\)/u);
   const comanda = parsed.projections.find(item => item.name === 'ComandaComItens')!;
   assert.equal(comanda.jsdoc, 'Comanda pronta para a tela do garçom: cabeçalho, itens e subtotal.');
-  assert.deepEqual(comanda.fields?.find(field => field.name === 'subtotal'), { name: 'subtotal', type: 'string', optional: false, readonly: true });
+  assert.deepEqual(comanda.fields?.find(field => field.name === 'details.subtotal'), { name: 'details.subtotal', type: 'string', optional: false, readonly: true });
+  assert.deepEqual(comanda.fields?.find(field => field.name === 'mesa.code'), { name: 'mesa.code', type: 'string', optional: false, readonly: false });
   assert.deepEqual(comanda.fields?.find(field => field.name === 'id'), { name: 'id', type: 'string', optional: false, readonly: false });
   for (const contract of Object.values(out.contracts)) assert.doesNotMatch(contract, /origin|aggregate/u);
   for (const [pageId, contract] of Object.entries(out.contracts)) assert.deepEqual(compileErrors(contract), [], pageId);
@@ -503,9 +505,9 @@ void test('d2_75: B refuses by fact, naming the exact path; D goes back to A', a
   facts.types.find(item => item.name === 'MesaDoSalao')!.fields.push({ name: 'paymentMethod', type: 'string', origin: { kind: 'field', paths: ['Comanda.details.paymentMethod'] } }, { name: 'lugares', type: 'number', origin: { kind: 'field', paths: ['Mesa.details.lugares'] } });
   facts.endpoints.find(item => item.id === 'carregarAtendimento')!.rules = ['regraQueNaoExiste'];
   const codes = refusalOf(() => d2BffApproved(bff, facts));
-  assert.match(codes, /D2_BFF_ORIGIN_GRANT: types\.MesaDoSalao\.paymentMethod: origin Comanda\.details\.paymentMethod is not visible to any actor of the page \(garcom\)/u);
+  assert.match(codes, /D2_BFF_ORIGIN_GRANT: types\.MesaDoSalao\.comanda\.details\.paymentMethod: origin Comanda\.details\.paymentMethod is not visible to any actor of the page \(garcom\)/u);
   assert.match(codes, /D2_BFF_RULE_UNKNOWN: endpoints\.carregarAtendimento\.rules: rule regraQueNaoExiste/u);
-  assert.match(codes, /D2_BFF_ORIGIN_UNKNOWN: types\.MesaDoSalao\.lugares: origin Mesa\.details\.lugares/u);
+  assert.match(codes, /D2_BFF_ORIGIN_UNKNOWN: types\.MesaDoSalao\.details\.lugares: origin Mesa\.details\.lugares/u);
 
   // bindings: an organism that reads without a source, a reload of a query that does not exist.
   const links = atendimentoAnswer();
@@ -783,8 +785,9 @@ void test('d2_78: every endpoint has the destination A declared, transcribed by 
   const shared = stock.sharedDefs.produtos;
   // search replaces the list, load more appends to it, saving upserts it and replaces the detail.
   assert.deepEqual(shared.functions.buscarProdutos, { calls: 'buscarProdutos', description: 'Buscar produtos pelo nome digitado.', sets: 'produtos' });
-  assert.deepEqual(shared.functions.carregarMaisProdutos, { calls: 'carregarMaisProdutos', description: 'Trazer a página seguinte da lista de produtos. (produtos: append)', updates: ['produtos'] });
-  assert.deepEqual(shared.functions.cadastrarProduto, { calls: 'cadastrarProduto', description: 'Cadastrar um produto para acompanhar o estoque. (produtos: upsert)', sets: 'produto', updates: ['produtos'] });
+  // d2_79: produtos is a paged list (its hasMore sibling folds into the one form), so load more appends to its items.
+  assert.deepEqual(shared.functions.carregarMaisProdutos, { calls: 'carregarMaisProdutos', description: 'Trazer a página seguinte da lista de produtos. (produtos.items: append)', updates: ['produtos'] });
+  assert.deepEqual(shared.functions.cadastrarProduto, { calls: 'cadastrarProduto', description: 'Cadastrar um produto para acompanhar o estoque. (produtos.items: upsert)', sets: 'produto', updates: ['produtos'] });
   for (const fn of Object.values(shared.functions)) if (fn.calls) assert.ok(fn.sets || fn.updates?.length, JSON.stringify(fn));
   // The selected record keeps select: even with a filter of the same page; filters come only from queries an organism reads.
   assert.equal(shared.entry.params.produtoId.effect, 'select:detalheProduto');
@@ -826,4 +829,53 @@ void test('d2_78: offline replay of r5 — five pages reach the contract without
     const shared = parseD2SharedV2(source.shared).definition;
     for (const [id, fn] of Object.entries(shared.functions)) if (fn.calls) assert.ok(fn.sets || fn.updates?.length, `${pageId}.${id}`);
   }
+});
+
+const deepFieldLeaves = (design: D2BffDesign): Array<{ type: string; name: string; path: string }> => design.types.flatMap(type => type.fields
+  .filter(leaf => leaf.origin?.kind === 'field' && leaf.origin.paths[0].split('.').length > 2)
+  .map(leaf => ({ type: type.name, name: leaf.name, path: leaf.origin!.paths[0] })));
+
+void test('d2_79: field leaves keep their ontology path (recorded r6); every paging variant of r5 becomes the one form', async (t) => {
+  const pack = readPack('dining');
+  // r6: the round the L1 measured (T0); its five accepted designs, through the whole stage.
+  const r6: Record<string, unknown[]> = {};
+  for (const name of pack.list('recorded/bff55-r6')) {
+    const [pageId, attempt] = name.replace(/\.json$/u, '').split('-');
+    (r6[pageId] = r6[pageId] ?? [])[Number(attempt) - 1] = recordedAnswer(`bff55-r6/${name}`);
+  }
+  const six = await runDiningStage(r6);
+  assert.deepEqual([...six.refusals.keys()], []);
+  const deep = Object.values(six.designs).flatMap(deepFieldLeaves);
+  t.diagnostic(`r6 field leaves under details: ${deep.map(row => `${row.type}.${row.name} <- ${row.path}`).join('; ')}`);
+  assert.ok(deep.length >= 14);
+  for (const row of deep) {
+    const [entity, ...rest] = row.path.split('.');
+    assert.ok(row.name === rest.join('.') || row.name === `${entity[0].toLowerCase()}${entity.slice(1)}.${rest.join('.')}`, `${row.type}.${row.name} <- ${row.path}`);
+  }
+  for (const [pageId, design] of Object.entries(six.designs)) if (deepFieldLeaves(design).length) assert.match(six.sources[pageId].contract ?? '', /details: \{\n/u, pageId);
+
+  // r5: { items, total, page, pageSize }, totalItems, the <x>Page inputs and the cursor { itens, hasMore }.
+  const r5: Record<string, unknown[]> = {};
+  for (const name of pack.list('recorded/bff55-r5')) r5[name.split('-')[0]] = [recordedAnswer(`bff55-r5/${name}`)];
+  const five = await runDiningStage(r5);
+  assert.deepEqual([...five.refusals.keys()], []);
+  for (const [pageId, source] of Object.entries(five.sources)) {
+    const contract = source.contract ?? '';
+    assert.doesNotMatch(contract, /\b(total|totalItems|totalItens|cursor)\??: /u, pageId);
+    assert.doesNotMatch(contract, /\b\w+Page\??: number/u, pageId);
+    for (const found of contract.matchAll(/\{ items: [A-Z]\w*\[\]; ([^}]*) \}/gu)) assert.equal(found[1], 'page: number; pageSize: number; hasMore: boolean', pageId);
+  }
+  assert.match(five.sources.atendimento.contract ?? '', /\{ items: MesaDisponivel\[\]; page: number; pageSize: number; hasMore: boolean \}/u);
+  assert.match(five.sources.fechamento.contract ?? '', /openComandas: \{ items: OpenComanda\[\]; page: number; pageSize: number; hasMore: boolean \}/u);
+  assert.match(five.sources.cardapio.contract ?? '', /pagina: \{ items: ItemCardapioResumo\[\]; page: number; pageSize: number; hasMore: boolean \}/u);
+  // Every query that pages takes page and pageSize; the envelope types are gone.
+  for (const design of Object.values(five.designs)) {
+    for (const type of design.types) assert.ok(!type.fields.some(leaf => /^(total|totalItems)$/u.test(leaf.name)), type.name);
+    for (const endpoint of design.endpoints) {
+      const paged = JSON.stringify(endpoint.output).includes('"paginated":true') || endpoint.output.some(leaf => design.types.some(type => leaf.type.startsWith(type.name) && type.fields.some(field => field.paginated)));
+      if (paged) assert.deepEqual(endpoint.input.filter(leaf => /^page(Size)?$/u.test(leaf.name)).map(leaf => leaf.name), ['page', 'pageSize'], endpoint.id);
+    }
+  }
+  // "Load more" appends to the items of the paged list.
+  assert.match(parseD2SharedV2(five.sources.cardapio.shared).definition.functions.carregarMaisItensCardapio.description, /\.items: append\)$/u);
 });
