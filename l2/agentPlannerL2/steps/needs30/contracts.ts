@@ -13,7 +13,6 @@ import {
   type P2GrantView,
   type P2ProcessView,
 } from '/_102020_/l2/agentPlannerL2/steps/menu20/contracts.js';
-import { journeyStepOf } from '/_102020_/l2/agentPlannerL2/steps/requests50/contracts.js';
 import { transitionAllowedFor, transitionGroups } from '/_102020_/l2/agentPlannerL2/helpers/p2Transitions.js';
 import {
   isDdmEntity,
@@ -53,6 +52,21 @@ export interface P2BuildNeedsInput {
   grants: readonly P2GrantView[];
   processes: readonly P2ProcessView[];
   now: Date;
+}
+
+export function journeyStepOf(
+  stepRef: string,
+  workspace: P2Workspace | undefined,
+  sources: P2L4Sources,
+): { journeyId: string; stepId: string } {
+  const journeyRefs = workspace?.journeyRefs || [];
+  for (const journeyId of journeyRefs) {
+    const journey = sources.journeys.find(item => item.journeyId === journeyId);
+    if (journey?.steps.some(step => step.stepId === stepRef)) {
+      return { journeyId, stepId: stepRef };
+    }
+  }
+  return { journeyId: journeyRefs[0] || '', stepId: stepRef };
 }
 
 export function isP2NeedsOperation(value: string): value is P2NeedsOperation {

@@ -37,7 +37,7 @@ import {
   drainWaitingSiblings,
   updateStatus,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
-import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/steps/requests50/agentP2Requests.js';
+import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
   buildP2EffortFile,
   buildP2EffortMessage,

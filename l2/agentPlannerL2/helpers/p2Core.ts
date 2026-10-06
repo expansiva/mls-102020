@@ -365,6 +365,12 @@ export function isP2PoolMessageFile(shortName: string): boolean {
   return POOL_MESSAGE_SHORT.test(shortName);
 }
 
+export function receivedPoolFile(moduleName: string, messageFile: string): Ns5FileInfo {
+  const found = listPoolBox(moduleName, 'l2').find(file => displayPath(file) === messageFile);
+  if (!found) throw new Error(`pool/l2 message not found: ${messageFile}`);
+  return found;
+}
+
 function poolMessageFileName(file: Ns5FileInfo): string {
   return `${file.shortName}${file.extension}`;
 }
