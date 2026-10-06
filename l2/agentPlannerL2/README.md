@@ -12,8 +12,7 @@ statuses into `l4/<mod>/pool/l2/web/effort.json` and one `l2→l4` message.
 One reasoning call (menu). Lives in `mls-102020` next
 to `agentMaterializeL2`. Unique name `agentPlannerL2`.
 
-`workspaces20`, `contracts30`, `shared40` and `requests50` stay on disk, out of
-`flow.json`. The pool is not deleted. Nothing is written to `l2/<mod>/web/`.
+`workspaces20` stays on disk, out of `flow.json`. The pool is not deleted. Nothing is written to `l2/<mod>/web/`.
 
 ## Invocation
 

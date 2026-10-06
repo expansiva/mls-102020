@@ -36,10 +36,7 @@
     "effort": "l4/{module}/pool/l2/web/effort.json"
   },
   "parkedSteps": [
-    "workspaces20",
-    "contracts30",
-    "shared40",
-    "requests50"
+    "workspaces20"
   ],
   "steps": [
     {

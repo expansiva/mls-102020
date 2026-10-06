@@ -28,9 +28,6 @@ void test('every declared step is hooked', () => {
   assert.ok(P2_STEP_HOOKS.needs30?.beforePromptStep, 'needs30 hook must be registered');
   assert.ok(P2_STEP_HOOKS.effort40?.beforePromptStep, 'effort40 hook must be registered');
   assert.ok(P2_STEP_HOOKS.workspaces20?.beforePromptStep, 'parked workspaces20 hook stays registered');
-  assert.ok(P2_STEP_HOOKS.contracts30?.beforePromptStep, 'parked contracts30 hook stays registered');
-  assert.ok(P2_STEP_HOOKS.shared40?.beforePromptStep, 'parked shared40 hook stays registered');
-  assert.ok(P2_STEP_HOOKS.requests50?.beforePromptStep, 'parked requests50 hook stays registered');
 });
 
 void test('hooksFor routes an L4 prompt with no planId to entry10', () => {
@@ -48,9 +45,6 @@ void test('notImplemented drain leaves hooked siblings running', () => {
   const steps = [
     numberedStep(10, 'entry10', 'completed'),
     numberedStep(20, 'workspaces20', 'waiting_human_input'),
-    numberedStep(30, 'contracts30', 'waiting_dependency'),
-    numberedStep(40, 'shared40', 'waiting_dependency'),
-    numberedStep(50, 'requests50', 'waiting_dependency'),
   ];
   const root: mls.msg.AIAgentStep = {
     type: 'agent',

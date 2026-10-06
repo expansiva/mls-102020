@@ -26,9 +26,6 @@ import '/_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.js';
 import '/_102020_/l2/agentPlannerL2/steps/needs30/agentP2Needs.js';
 import '/_102020_/l2/agentPlannerL2/steps/effort40/agentP2Effort.js';
 import '/_102020_/l2/agentPlannerL2/steps/workspaces20/agentP2Workspaces.js';
-import '/_102020_/l2/agentPlannerL2/steps/contracts30/agentP2Contracts.js';
-import '/_102020_/l2/agentPlannerL2/steps/shared40/agentP2Shared.js';
-import '/_102020_/l2/agentPlannerL2/steps/requests50/agentP2Requests.js';
 
 export function createAgent(): IAgentAsync {
   return {
