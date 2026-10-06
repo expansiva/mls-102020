@@ -25,7 +25,7 @@ import {
   updateStatus,
 } from '/_102020_/l2/agentPlannerL2/helpers/p2Dispatch.js';
 import { loadP2MenuSources } from '/_102020_/l2/agentPlannerL2/steps/menu20/agentP2Menu.js';
-import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/steps/requests50/agentP2Requests.js';
+import { receivedPoolFile } from '/_102020_/l2/agentPlannerL2/helpers/p2Core.js';
 import {
   buildP2NeedsFile,
   buildP2NeedsMessage,

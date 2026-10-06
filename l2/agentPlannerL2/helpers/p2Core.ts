@@ -43,9 +43,6 @@ export const P2_FLOW_STEP_IDS = ['entry10', 'menu20', 'needs30', 'effort40'] as 
 /** Parked: code stays, flow.json v4 does not list them. */
 export const P2_PARKED_STEP_IDS = [
   'workspaces20',
-  'contracts30',
-  'shared40',
-  'requests50',
 ] as const;
 
 export const P2_STEP_IDS = [...P2_FLOW_STEP_IDS, ...P2_PARKED_STEP_IDS] as const;
@@ -70,9 +67,6 @@ export const P2_STEP_TITLES: Record<P2StepId, string> = {
   needs30: 'Needs',
   effort40: 'Effort',
   workspaces20: 'Workspaces',
-  contracts30: 'Contracts',
-  shared40: 'Shared',
-  requests50: 'Requests',
 };
 
 export const P2_STEP_DEPENDS_ON: Record<P2StepId, readonly string[]> = {
@@ -81,9 +75,6 @@ export const P2_STEP_DEPENDS_ON: Record<P2StepId, readonly string[]> = {
   needs30: ['menu20-done'],
   effort40: ['entry10-done'],
   workspaces20: ['entry10-done'],
-  contracts30: ['workspaces20-done'],
-  shared40: ['contracts30-done'],
-  requests50: ['shared40-done'],
 };
 
 /** Pool message file: `<stamp>_<thread>_<round>`. `menu.json` does not match. */
@@ -363,6 +354,12 @@ export function buildP2PlannedSteps(
 
 export function isP2PoolMessageFile(shortName: string): boolean {
   return POOL_MESSAGE_SHORT.test(shortName);
+}
+
+export function receivedPoolFile(moduleName: string, messageFile: string): Ns5FileInfo {
+  const found = listPoolBox(moduleName, 'l2').find(file => displayPath(file) === messageFile);
+  if (!found) throw new Error(`pool/l2 message not found: ${messageFile}`);
+  return found;
 }
 
 function poolMessageFileName(file: Ns5FileInfo): string {
