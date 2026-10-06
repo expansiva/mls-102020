@@ -37,7 +37,7 @@ import { MoleculeAuraElement } from '/_102033_/l2/moleculeBase.js';
 
 @customElement('groupviewtable--ml-data-table')
 export class MlDataTableMolecule extends MoleculeAuraElement {
-  slotTags = ['Caption'];
+  slotTags = ['TableCaption'];
 }
 `;
 

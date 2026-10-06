@@ -20,7 +20,7 @@ function change(over: Partial<ImDefinitionChange> = {}): ImDefinitionChange {
 }
 
 // O vocabulário do grupo, na forma em que uma skill o carrega (crases escapadas).
-const GROUP_SKILL = '| \\`Label\\` | \\`Icon\\` | \\`Footer\\` | \\`Caption\\` | \\`size\\` | \\`action\\` | \\`change\\` |';
+const GROUP_SKILL = '| \\`Label\\` | \\`Icon\\` | \\`Footer\\` | \\`TableCaption\\` | \\`size\\` | \\`action\\` | \\`change\\` |';
 
 function inputs(over: Partial<ImDefinitionGateInputs> = {}): ImDefinitionGateInputs {
   return {
@@ -59,13 +59,13 @@ test('REMOVING something the molecule does not declare is refused, and the messa
 });
 
 test('a rename needs the previous name, and it must exist and differ', () => {
-  const missing = runImDefinitionGate(inputs({ answer: { changes: [change({ op: 'rename', name: 'Caption' })], reason: 'x' } }));
+  const missing = runImDefinitionGate(inputs({ answer: { changes: [change({ op: 'rename', name: 'TableCaption' })], reason: 'x' } }));
   assert.ok(missing.errors.some(e => /^previous_missing: /.test(e)));
 
   const noop = runImDefinitionGate(inputs({ answer: { changes: [change({ op: 'rename', name: 'Label', previousName: 'Label' })], reason: 'x' } }));
   assert.ok(noop.errors.some(e => /^rename_noop: /.test(e)));
 
-  const ok = runImDefinitionGate(inputs({ answer: { changes: [change({ op: 'rename', name: 'Caption', previousName: 'Label' })], reason: 'x' } }));
+  const ok = runImDefinitionGate(inputs({ answer: { changes: [change({ op: 'rename', name: 'TableCaption', previousName: 'Label' })], reason: 'x' } }));
   assert.equal(ok.ok, true);
 });
 

@@ -7,7 +7,7 @@ import { diffSurface, readEvents, readProperties, readSurface, renderSurface } f
 // Verbatim shapes from mls-102040/l2/molecules/groupviewtable/ml-data-table.ts.
 const REAL = `
 export class MlDataTableMolecule extends MoleculeAuraElement {
-  slotTags = ['Caption','TableHeader','TableCell'];
+  slotTags = ['TableCaption','TableHeader','TableCell'];
 
   /** Comma-separated selected row indices, e.g."0,2,5" */
   @propertyDataSource({ type: String })
@@ -57,7 +57,7 @@ test('a repeated event is listed once', () => {
 test('the whole surface comes out of a real molecule', () => {
   const surface = readSurface(REAL);
   assert.equal(surface.className, 'MlDataTableMolecule');
-  assert.deepEqual(surface.slots, ['Caption', 'TableHeader', 'TableCell']);
+  assert.deepEqual(surface.slots, ['TableCaption', 'TableHeader', 'TableCell']);
   assert.equal(surface.properties.length, 3);
   assert.deepEqual(surface.events, ['sort', 'change']);
 });
@@ -78,8 +78,8 @@ test('a .less-only edit leaves the surface untouched — i5 must be a no-op', ()
 
 test('an added slot is what makes the playground stale', () => {
   // The 2026-08-05 incident in one assertion: Detail was added and the demo never showed it.
-  const before = readSurface(`slotTags = ['Caption'];`);
-  const after = readSurface(`slotTags = ['Caption', 'Detail'];`);
+  const before = readSurface(`slotTags = ['TableCaption'];`);
+  const after = readSurface(`slotTags = ['TableCaption', 'Detail'];`);
   const diff = diffSurface(before, after);
   assert.deepEqual(diff.addedSlots, ['Detail']);
   assert.equal(diff.changed, true);

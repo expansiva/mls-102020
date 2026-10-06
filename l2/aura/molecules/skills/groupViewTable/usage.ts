@@ -12,7 +12,7 @@ export const skill = `
 
 | Tag | Description |
 |-----|-------------|
-| \`Caption\` | Table caption/title |
+| \`TableCaption\` | Table caption/title (never \`Caption\`: the HTML parser drops \`<caption>\` outside a \`<table>\`) |
 | \`TableHeader\` | Header section container |
 | \`TableBody\` | Body section container |
 | \`TableRow\` | A table row. Optional \`key\` — row identity, **key not index**, changes when sorted |
@@ -134,7 +134,7 @@ back. **Never invent a name in this vocabulary.**
 
 \`\`\`html
 <groupviewtable--ml-data-table>
-  <Caption>Order List</Caption>
+  <TableCaption>Order List</TableCaption>
   <TableHeader>
     <TableRow>
       <TableHead key="id" sortable>ID</TableHead>

@@ -19,7 +19,7 @@ const NO_DIFF: ImSurfaceDiff = {
 const PAGE = `<div class="p-6">
   <aura--molecules--playground--widget-playground-state-102020 state='playgroundDinamicState'></aura--molecules--playground--widget-playground-state-102020>
   <groupviewtable--ml-data-table>
-    <Caption>Customers</Caption>
+    <TableCaption>Customers</TableCaption>
   </groupviewtable--ml-data-table>
 </div>`;
 
@@ -152,7 +152,7 @@ test('página vazia, e a razão é uma só', () => {
 });
 
 test('slot como atributo conta como quebrada — renderiza vazio', () => {
-  const page = PAGE.replace('<Caption>Customers</Caption>', '<div slot="Caption">Customers</div>');
+  const page = PAGE.replace('<TableCaption>Customers</TableCaption>', '<div slot="TableCaption">Customers</div>');
   assert.ok(playgroundIntegrityIssues(page, 'groupviewtable--ml-data-table').some(i => /renders empty/.test(i)));
 });
 

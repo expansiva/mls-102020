@@ -14,23 +14,23 @@ import {
 } from '/_102020_/l2/aura/molecules/agentImproveMolecule2/helpers/imCoherence.js';
 
 const GROUP_SKILL = `
-slotTags = ['Caption', 'TableHeader', 'TableBody', 'TableRow', 'TableHead', 'TableCell', 'Empty', 'Loading', 'Detail'];
+slotTags = ['TableCaption', 'TableHeader', 'TableBody', 'TableRow', 'TableHead', 'TableCell', 'Empty', 'Loading', 'Detail'];
 `;
 
 test('slotTags and the slots actually read are extracted separately', () => {
   const ts = `
-    slotTags = ['Caption', 'Detail'];
-    render() { return html\`\${this.renderLiveSlot('Caption')}\`; }
+    slotTags = ['TableCaption', 'Detail'];
+    render() { return html\`\${this.renderLiveSlot('TableCaption')}\`; }
   `;
-  assert.deepEqual(readSlotTags(ts), ['Caption', 'Detail']);
-  assert.deepEqual(readSlotsUsed(ts), ['Caption']);
+  assert.deepEqual(readSlotTags(ts), ['TableCaption', 'Detail']);
+  assert.deepEqual(readSlotsUsed(ts), ['TableCaption']);
 });
 
 test('GATE 1: a slot the code declares and the defs never mentions is reported', () => {
   // ml-lazy-record-detail-table, 2026-08-05: the defs omitted `Detail`, and because the playground
   // slot list is generated from the defs, the demo opened with an empty detail area.
-  const ts = `slotTags = ['Caption', 'Detail'];`;
-  const defs = `Supports only the groupViewTable content areas: Caption.`;
+  const ts = `slotTags = ['TableCaption', 'Detail'];`;
+  const defs = `Supports only the groupViewTable content areas: TableCaption.`;
   const findings = gateDefsCoherence(defs, ts, GROUP_SKILL, 'ml-lazy-record-detail-table.ts');
   assert.equal(findings.length, 1);
   assert.match(findings[0].message, /Detail/);
@@ -38,23 +38,23 @@ test('GATE 1: a slot the code declares and the defs never mentions is reported',
 });
 
 test('GATE 1: a slot outside the group contract is reported', () => {
-  const ts = `slotTags = ['Caption', 'Invented'];`;
-  const defs = `Caption and Invented.`;
+  const ts = `slotTags = ['TableCaption', 'Invented'];`;
+  const defs = `TableCaption and Invented.`;
   const findings = gateDefsCoherence(defs, ts, GROUP_SKILL, 'ml-x.ts');
   assert.ok(findings.some((f) => /not in the group contract/.test(f.message)));
 });
 
 test('GATE 1: the self-contradiction is reported as its own finding', () => {
   // The line that hid the other two: the defs claimed conformance while violating it.
-  const ts = `slotTags = ['Caption', 'Invented'];`;
-  const defs = `Caption and Invented. Does not introduce slots, properties, or events beyond the groupViewTable contract.`;
+  const ts = `slotTags = ['TableCaption', 'Invented'];`;
+  const defs = `TableCaption and Invented. Does not introduce slots, properties, or events beyond the groupViewTable contract.`;
   const findings = gateDefsCoherence(defs, ts, GROUP_SKILL, 'ml-x.ts');
   assert.ok(findings.some((f) => /the claim is false as written/.test(f.message)));
 });
 
 test('GATE 1: a coherent molecule produces no findings', () => {
-  const ts = `slotTags = ['Caption', 'Detail'];`;
-  const defs = `Supports Caption and Detail, one Detail per body record.`;
+  const ts = `slotTags = ['TableCaption', 'Detail'];`;
+  const defs = `Supports TableCaption and Detail, one Detail per body record.`;
   assert.deepEqual(gateDefsCoherence(defs, ts, GROUP_SKILL, 'ml-ok.ts'), []);
 });
 
