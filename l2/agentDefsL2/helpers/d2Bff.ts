@@ -3,7 +3,7 @@
 import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
@@ -406,20 +406,31 @@ export function d2BffTypeRoot(name: string, design: Pick<D2BffDesign, 'types'>):
   return entities.size === 1 ? [...entities][0] : '';
 }
 
-/** The journey steps of the page: steps of the journeys the menu links to it, as the needs list them. */
 /**
- * The coverage A owes (d2_77): every Entity.path an organism reads, from the page drafts, with the derived fields marked
- * and the organisms that read each one. B.1 refuses by the same list; the prompt states it so the design starts complete.
+ * Reads the backend must feed (d2_82). A create-only form lists its edits in `reads`; those paths are not loaded.
+ * An update or a transition still asks for every read, because the current value comes from the backend.
+ */
+export function d2FedReads(row: D2Page11OrganismNeeds): string[] {
+  const createOnly = row.submits.length > 0 && row.submits.every(submit => /^[A-Za-z]\w*\.create$/u.test(submit.write));
+  if (!createOnly) return row.reads;
+  const edits = new Set(row.edits);
+  return row.reads.filter(path => !edits.has(path));
+}
+
+/**
+ * The coverage A owes (d2_77): every Entity.path an organism reads and the backend feeds, from the page drafts, with the
+ * derived fields marked and the organisms that read each one. B.1 refuses by the same list; the prompt states it so the design starts complete.
  */
 export function d2CoverageObligation(drafts: readonly D2Page11Needs[], entities: Record<string, Ns5OntologyAnyEntity>): Array<{ path: string; derived: boolean; organisms: string[] }> {
   const rows = new Map<string, Set<string>>();
-  for (const draft of drafts) for (const [id, row] of Object.entries(draft.organisms)) for (const path of row.reads) rows.set(path, (rows.get(path) ?? new Set()).add(id));
+  for (const draft of drafts) for (const [id, row] of Object.entries(draft.organisms)) for (const path of d2FedReads(row)) rows.set(path, (rows.get(path) ?? new Set()).add(id));
   return [...rows].sort(([a], [b]) => a.localeCompare(b)).map(([path, organisms]) => ({ path, derived: Boolean(fieldAt(entities[entityOf(path)], path)?.derived), organisms: [...organisms].sort() }));
 }
 
 /** The name of the contract interface of a page (`renderD2ContractV2`). */
 export function d2ContractsTypeName(pageId: string): string { return `${pageId[0].toUpperCase()}${pageId.slice(1)}Contracts`; }
 
+/** The journey steps of the page: steps of the journeys the menu links to it, as the needs list them. */
 export function d2PageJourneySteps(need: D2NeedPage, menu: D2Menu): string[] {
   const linked = new Set(Object.entries(menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(need.pageId)).map(([id]) => id));
   const steps = need.reads.flatMap(read => read.from.filter(item => item.startsWith('journey:')).map(item => item.slice('journey:'.length)));
@@ -511,7 +522,7 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
   // B.1 coverage: what an organism reads leaves some endpoint as the origin of an output leaf, or inside an aggregate.
   for (const device of ['desktop', 'mobile'] as const) {
     for (const [organismId, row] of Object.entries(context.drafts[device].organisms)) {
-      for (const path of row.reads) {
+      for (const path of d2FedReads(row)) {
         if (outputOrigins.some(origin => covers(origin, path))) continue;
         if (issues.some(item => item.code === 'D2_BFF_COVERAGE' && item.path === `organisms.${organismId}.reads.${path}`)) continue;
         add('D2_BFF_COVERAGE', `organisms.${organismId}.reads.${path}`, `organism ${organismId} reads ${path}, and no output leaf of the page's endpoints names it as origin (field or aggregate).`);
@@ -679,7 +690,7 @@ function checkD2BffBindings(design: D2BffDesign, context: D2BffCheckContext): D2
   const selectors = new Set<string>();
   for (const device of ['desktop', 'mobile'] as const) {
     for (const [id, row] of Object.entries(context.drafts[device].organisms)) {
-      if (row.reads.length) readers.add(id);
+      if (d2FedReads(row).length) readers.add(id);
       if (row.selects) selectors.add(id);
     }
   }

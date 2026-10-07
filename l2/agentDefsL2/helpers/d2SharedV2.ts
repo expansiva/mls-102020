@@ -2,7 +2,7 @@
 
 import type { D2Page11Definition, D2Page11Device, D2Page11Location } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { d2BffValueLeaves, d2PageSubmits, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { d2BffValueLeaves, d2FedReads, d2PageSubmits, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 
 export interface D2SharedV2Request {
   kind: 'qry' | 'cmd';
@@ -136,7 +136,7 @@ export function gateD2SharedV2(value: unknown, context: D2SharedGateContext): D2
       const row = organisms.get(id) ?? { reads: new Set<string>(), edits: new Set<string>(), intents: [] };
       for (const intent of organism.intents) if (!row.intents.some(item => item.id === intent.id)) row.intents.push(intent);
       const draft = context.drafts[device].organisms[id];
-      for (const path of draft?.reads ?? []) row.reads.add(path);
+      for (const path of draft ? d2FedReads(draft) : []) row.reads.add(path);
       for (const path of draft?.edits ?? []) row.edits.add(path);
       organisms.set(id, row);
     }

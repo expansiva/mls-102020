@@ -34,7 +34,7 @@ import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/s
 import { buildD2SharedV2, gateD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
 import { approveD2BffUnit, bffDesignInfo, bffReceiptInfo, bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, readApprovedD2Bff, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
-import { buildD2BffDesign, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { buildD2BffDesign, d2CoverageObligation, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { d2ToolPayload } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
@@ -999,4 +999,24 @@ void test('d2_82: agenda_diaria approves; pacientes-1 refuses format and binding
   const second = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-2.json')));
   assert.match(second, /D2_BFF_BINDING_UPDATE/u);
   assert.doesNotMatch(second, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
+});
+
+void test('d2_82 s3: a create-only form does not ask the backend to feed the fields it edits', async () => {
+  const pacientes = await clinicR2Bff('pacientes');
+  const second = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-2.json')));
+  assert.doesNotMatch(second, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
+  const obligation = d2CoverageObligation([pacientes.drafts.desktop, pacientes.drafts.mobile], pacientes.entities);
+  assert.ok(!obligation.some(row => row.organisms.includes('patientForm')));
+
+  const asUpdate = (write: string): string => write === 'Paciente.create' ? 'Paciente.update' : write;
+  const drafts = {
+    desktop: { organisms: { ...pacientes.drafts.desktop.organisms } },
+    mobile: { organisms: { ...pacientes.drafts.mobile.organisms } },
+  };
+  for (const device of ['desktop', 'mobile'] as const) {
+    const row = drafts[device].organisms.patientForm;
+    if (row) drafts[device].organisms.patientForm = { ...row, submits: row.submits.map(submit => ({ ...submit, write: asUpdate(submit.write) })) };
+  }
+  const control = refusalOf(() => d2BffApproved({ ...pacientes, drafts }, clinicR2Answer('pacientes-2.json')));
+  assert.match(control, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
 });
