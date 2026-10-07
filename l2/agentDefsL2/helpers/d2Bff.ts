@@ -3,7 +3,7 @@
 import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
-import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
@@ -118,9 +118,14 @@ export function d2PascalCase(raw: string, fallback: string): string {
  * already guarantees is an internal assertion (`D2_BFF_ASSERT`, no repair cycle); only content the code cannot derive
  * is refused (`D2_BFF_FORMAT`).
  */
-export function buildD2BffDesign(value: unknown): D2BffDesign {
+export function buildD2BffDesign(value: unknown, collected?: D2BffIssue[]): D2BffDesign {
   const assert = (path: string, what: string): never => { throw new Error(`D2_BFF_ASSERT: ${path}: ${what}`); };
   const fail = (path: string, what: string): never => { throw new Error(`D2_BFF_FORMAT: ${path}: ${what}`); };
+  // Rules that still leave a design (d2_82): collected, they join the verdict; otherwise they throw as before.
+  const note = (path: string, what: string): void => {
+    if (!collected) fail(path, what);
+    else collected.push({ code: 'D2_BFF_FORMAT', path, message: `${path}: ${what}` });
+  };
   const root = record(value) ?? assert('design', 'not an object');
   if (!Array.isArray(root.types) || !Array.isArray(root.endpoints)) assert('design', 'types and endpoints are lists');
 
@@ -131,7 +136,7 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
     const written = typeof row.name === 'string' ? row.name : '';
     const name = d2PascalCase(written, `Type${index + 1}`);
     if (!Array.isArray(row.fields)) assert(`types.${name}.fields`, 'not a list');
-    if (!(row.fields as unknown[]).length) fail(`types.${name}.fields`, 'a named type has at least one field');
+    if (!(row.fields as unknown[]).length) note(`types.${name}.fields`, 'a named type has at least one field');
     const type = { name, description: typeof row.description === 'string' ? row.description.trim() : '', fields: row.fields as unknown[] };
     const same = rawTypes.find(item => item.name === name);
     if (same && JSON.stringify(same) !== JSON.stringify(type)) fail(`types.${name}`, 'declared twice with different fields');
@@ -155,7 +160,7 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
         ref = { ...parsed, ref: target };
       }
       // A leaf that names a type has its origins in that type: whatever origin it carries is ignored (d2_74).
-      const origin = ref.base === 'ref' || row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, assert, fail);
+      const origin = ref.base === 'ref' || row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, assert, note);
       if (ref.base !== 'ref' && !origin) assert(`${path}.${name}.origin`, 'a value leaf names its origin');
       const leaf: D2BffLeaf = { name, type: renderD2BffType(ref), ...(row.optional === true ? { optional: true } : {}), ...(ref.base !== 'ref' && origin ? { origin } : {}), ...(row.paginated === true && ref.list ? { paginated: true } : {}) };
       if (written && written !== name) renamed?.set(written, name);
@@ -179,12 +184,12 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
     if (!when) assert(`endpoints.${id}.when`, 'onLoad, interaction or a submit intent id');
     // A query writes nothing: a write the host filled in is dropped, never refused (d2_74). A command keeps it for B.2/B.4.
     const writes = row.kind === 'cmd' && typeof row.writes === 'string' ? row.writes.trim() : '';
-    if (row.kind === 'cmd' && !writes) fail(`endpoints.${id}.writes`, 'a command names its write');
+    if (row.kind === 'cmd' && !writes) note(`endpoints.${id}.writes`, 'a command names its write');
     const doc = record(row.jsdoc) ?? assert(`endpoints.${id}.jsdoc`, 'not an object');
     const jsdoc = {} as D2BffJsdoc;
     for (const key of ['purpose', 'input', 'processing', 'output'] as const) {
       const text = typeof doc[key] === 'string' ? (doc[key] as string).trim() : '';
-      if (!text) fail(`endpoints.${id}.jsdoc.${key}`, 'empty');
+      if (!text) note(`endpoints.${id}.jsdoc.${key}`, 'empty');
       jsdoc[key] = text;
     }
     if (!Array.isArray(row.rules) || !row.rules.every(item => typeof item === 'string')) assert(`endpoints.${id}.rules`, 'a list of rule ids');
@@ -406,20 +411,31 @@ export function d2BffTypeRoot(name: string, design: Pick<D2BffDesign, 'types'>):
   return entities.size === 1 ? [...entities][0] : '';
 }
 
-/** The journey steps of the page: steps of the journeys the menu links to it, as the needs list them. */
 /**
- * The coverage A owes (d2_77): every Entity.path an organism reads, from the page drafts, with the derived fields marked
- * and the organisms that read each one. B.1 refuses by the same list; the prompt states it so the design starts complete.
+ * Reads the backend must feed (d2_82). A create-only form lists its edits in `reads`; those paths are not loaded.
+ * An update or a transition still asks for every read, because the current value comes from the backend.
+ */
+export function d2FedReads(row: D2Page11OrganismNeeds): string[] {
+  const createOnly = row.submits.length > 0 && row.submits.every(submit => /^[A-Za-z]\w*\.create$/u.test(submit.write));
+  if (!createOnly) return row.reads;
+  const edits = new Set(row.edits);
+  return row.reads.filter(path => !edits.has(path));
+}
+
+/**
+ * The coverage A owes (d2_77): every Entity.path an organism reads and the backend feeds, from the page drafts, with the
+ * derived fields marked and the organisms that read each one. B.1 refuses by the same list; the prompt states it so the design starts complete.
  */
 export function d2CoverageObligation(drafts: readonly D2Page11Needs[], entities: Record<string, Ns5OntologyAnyEntity>): Array<{ path: string; derived: boolean; organisms: string[] }> {
   const rows = new Map<string, Set<string>>();
-  for (const draft of drafts) for (const [id, row] of Object.entries(draft.organisms)) for (const path of row.reads) rows.set(path, (rows.get(path) ?? new Set()).add(id));
+  for (const draft of drafts) for (const [id, row] of Object.entries(draft.organisms)) for (const path of d2FedReads(row)) rows.set(path, (rows.get(path) ?? new Set()).add(id));
   return [...rows].sort(([a], [b]) => a.localeCompare(b)).map(([path, organisms]) => ({ path, derived: Boolean(fieldAt(entities[entityOf(path)], path)?.derived), organisms: [...organisms].sort() }));
 }
 
 /** The name of the contract interface of a page (`renderD2ContractV2`). */
 export function d2ContractsTypeName(pageId: string): string { return `${pageId[0].toUpperCase()}${pageId.slice(1)}Contracts`; }
 
+/** The journey steps of the page: steps of the journeys the menu links to it, as the needs list them. */
 export function d2PageJourneySteps(need: D2NeedPage, menu: D2Menu): string[] {
   const linked = new Set(Object.entries(menu.meta?.journeys ?? {}).filter(([, pages]) => pages.includes(need.pageId)).map(([id]) => id));
   const steps = need.reads.flatMap(read => read.from.filter(item => item.startsWith('journey:')).map(item => item.slice('journey:'.length)));
@@ -433,7 +449,7 @@ export function d2MenuPages(menu: D2Menu): string[] {
   return ids;
 }
 
-function parseOrigin(value: unknown, path: string, assert: (path: string, what: string) => never, fail: (path: string, what: string) => never): D2BffOrigin {
+function parseOrigin(value: unknown, path: string, assert: (path: string, what: string) => never, fail: (path: string, what: string) => void): D2BffOrigin {
   const row = record(value) ?? assert(path, 'not an object');
   if (row.kind !== 'field' && row.kind !== 'aggregate' && row.kind !== 'context') assert(`${path}.kind`, 'field, aggregate or context');
   const paths = Array.isArray(row.paths) ? row.paths : [];
@@ -511,10 +527,16 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
   // B.1 coverage: what an organism reads leaves some endpoint as the origin of an output leaf, or inside an aggregate.
   for (const device of ['desktop', 'mobile'] as const) {
     for (const [organismId, row] of Object.entries(context.drafts[device].organisms)) {
-      for (const path of row.reads) {
-        if (outputOrigins.some(origin => covers(origin, path))) continue;
+      for (const path of d2FedReads(row)) {
+        if (d2ReadCovered(path, outputOrigins, context.entities)) continue;
         if (issues.some(item => item.code === 'D2_BFF_COVERAGE' && item.path === `organisms.${organismId}.reads.${path}`)) continue;
-        add('D2_BFF_COVERAGE', `organisms.${organismId}.reads.${path}`, `organism ${organismId} reads ${path}, and no output leaf of the page's endpoints names it as origin (field or aggregate).`);
+        const leaves = ontologyLeaves(context.entities[entityOf(path)], path);
+        const missing = leaves?.filter(leaf => !outputOrigins.some(origin => covers(origin, leaf))) ?? [];
+        const delivered = (leaves?.length ?? 0) - missing.length;
+        const message = leaves && delivered > 0
+          ? `organism ${organismId} reads ${path}, and the page delivers ${delivered} of ${leaves.length} leaves of ${path}; missing: ${missing.map(leaf => leaf.slice(path.length + 1)).join(', ')}.`
+          : `organism ${organismId} reads ${path}, and no output leaf of the page's endpoints names it as origin (field or aggregate).`;
+        add('D2_BFF_COVERAGE', `organisms.${organismId}.reads.${path}`, message);
       }
     }
   }
@@ -643,6 +665,32 @@ export function d2BffL4Slice(entities: Record<string, Ns5OntologyAnyEntity>, rul
 
 interface SliceField { type?: string; required?: boolean; derived?: boolean; title?: string; description?: string; values?: Array<{ value: string }>; fields?: Record<string, SliceField> }
 
+/** Scalar paths the ontology lists under an object node, at any depth. Undefined when `path` is not an object node. */
+function ontologyLeaves(entity: Ns5OntologyAnyEntity | undefined, path: string): string[] | undefined {
+  const field = fieldAt(entity, path);
+  if (!field?.fields) return undefined;
+  const out: string[] = [];
+  const walk = (prefix: string, fields: Record<string, SliceField>): void => {
+    for (const [name, child] of Object.entries(fields)) {
+      const childPath = `${prefix}.${name}`;
+      if (child.fields) walk(childPath, child.fields);
+      else out.push(childPath);
+    }
+  };
+  walk(path, field.fields);
+  return out;
+}
+
+/**
+ * A read is covered when some origin covers the path, or when the path is an ontology object node and every leaf under
+ * it (derived included) is covered. One leaf never covers its parent.
+ */
+export function d2ReadCovered(path: string, origins: readonly string[], entities: Record<string, Ns5OntologyAnyEntity>): boolean {
+  if (origins.some(origin => covers(origin, path))) return true;
+  const leaves = ontologyLeaves(entities[entityOf(path)], path);
+  return !!leaves?.length && leaves.every(leaf => origins.some(origin => covers(origin, leaf)));
+}
+
 function fieldAt(entity: Ns5OntologyAnyEntity | undefined, path: string): SliceField | undefined {
   let fields = (entity as { record?: { fields?: Record<string, SliceField> } } | undefined)?.record?.fields;
   const parts = path.split('.').slice(1);
@@ -679,7 +727,7 @@ function checkD2BffBindings(design: D2BffDesign, context: D2BffCheckContext): D2
   const selectors = new Set<string>();
   for (const device of ['desktop', 'mobile'] as const) {
     for (const [id, row] of Object.entries(context.drafts[device].organisms)) {
-      if (row.reads.length) readers.add(id);
+      if (d2FedReads(row).length) readers.add(id);
       if (row.selects) selectors.add(id);
     }
   }

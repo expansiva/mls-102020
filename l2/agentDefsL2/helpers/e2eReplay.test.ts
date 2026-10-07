@@ -34,7 +34,7 @@ import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/s
 import { buildD2SharedV2, gateD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
 import { deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
 import { approveD2BffUnit, bffDesignInfo, bffReceiptInfo, bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, readApprovedD2Bff, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
-import { buildD2BffDesign, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { buildD2BffDesign, d2CoverageObligation, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import { buildD2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { parseD2Page11Definition } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { d2ToolPayload } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
@@ -601,7 +601,7 @@ void test('d2_80 s3: gate D reads the map: every organism that reads is listed b
   assert.deepEqual(sourceListing(deriveD2Shared({ ...derive, design }), 'lookupAtendimento'), ['carregarAtendimento.mesas', 'carregarComanda.comanda']);
 
   // Removing an organism from every organisms list is refused, naming it; the sources stay, so only the map check speaks.
-  const context = { page11: derive.page11, drafts: derive.drafts, need: derive.need, menu: derive.menu, design: derive.design };
+  const context = { page11: derive.page11, drafts: derive.drafts, need: derive.need, menu: derive.menu, design: derive.design, entities: derive.entities };
   assert.deepEqual(gateD2SharedV2(out.sharedDefs.atendimento, context).filter(issue => issue.code === 'D2_SHARED_V2_ORGANISM_UNFED'), []);
   const unlisted = structuredClone(out.sharedDefs.atendimento) as D2SharedV2Definition;
   for (const state of Object.values(unlisted.states)) state.organisms = state.organisms.filter(id => id !== 'lookupAtendimento');
@@ -963,4 +963,80 @@ void test('d2_79: field leaves keep their ontology path (recorded r6); every pag
   }
   // "Load more" appends to the items of the paged list.
   assert.match(parseD2SharedV2(five.sources.cardapio.shared).definition.functions.carregarMaisItensCardapio.description, /\.items: append\)$/u);
+});
+
+/** bff55 context of one clinicR2 page, from the accepted pages50 answer of the p4_32 run. */
+async function clinicR2Bff(pageId: string): Promise<D2BffContext> {
+  const pack = readPack('clinicR2');
+  const needs = pack.json('pool/needs.json');
+  const artifacts = await artifactsOf(pack, needs);
+  const snapshot = await buildD2InputSnapshot({ project: 102047, module: pack.moduleName }, artifacts);
+  const built = pageContextOf(pack, snapshot, artifacts, pageId)!;
+  const writes = new Map<string, unknown>();
+  await approveD2PagesUnit(built.context, built.answer, 0, 0, {
+    writeSource: async (info, source) => { writes.set(info.shortName + info.folder, source); },
+    writeJson: async (info, value) => { writes.set(info.shortName + info.folder, value); },
+  });
+  const at = (folder: string, shortName: string) => writes.get(shortName + `${pack.moduleName}/${folder}`);
+  return bffContextOf(pack, artifacts, needs, pageId, {
+    page11Text: { desktop: at('web/desktop/page11', pageId) as string, mobile: at('web/mobile/page11', pageId) as string },
+    drafts: { desktop: at('pipeline/agentDefsL2/page11Needs', `${pageId}Desktop`), mobile: at('pipeline/agentDefsL2/page11Needs', `${pageId}Mobile`) },
+  });
+}
+
+const clinicR2Answer = (name: string): RawDesign => d2ToolPayload(readPack('clinicR2').json<{ raw: unknown }>(`recorded/bff55/${name}`).raw, 'submitD2Bff', 'D2_BFF') as RawDesign;
+
+void test('d2_82: agenda_diaria refuses only the missing countryCode; pacientes-1 refuses format and bindings together; pacientes-2 refuses only the binding update', async () => {
+  const agenda = await clinicR2Bff('agenda_diaria');
+  for (const name of ['agenda_diaria-1.json', 'agenda_diaria-2.json']) {
+    const refusal = refusalOf(() => d2BffApproved(agenda, clinicR2Answer(name)));
+    assert.match(refusal, /D2_BFF_COVERAGE: organisms\.\w+\.reads\.Profissional\.details\.identification/u);
+    assert.match(refusal, /missing: countryCode/u);
+    assert.doesNotMatch(refusal, /Paciente\.details\.identification/u);
+    assert.doesNotMatch(refusal, /D2_BFF_(?!COVERAGE)/u);
+  }
+
+  const pacientes = await clinicR2Bff('pacientes');
+  const first = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-1.json')));
+  assert.match(first, /D2_BFF_FORMAT: types\.PatientContacts\.fields/u);
+  assert.match(first, /D2_BFF_BINDING_UPDATE/u);
+
+  const second = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-2.json')));
+  assert.match(second, /D2_BFF_BINDING_UPDATE/u);
+  assert.doesNotMatch(second, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
+});
+
+void test('d2_82 s2: an object node is covered only when every ontology leaf is delivered', async () => {
+  const agenda = await clinicR2Bff('agenda_diaria');
+  const withCountry = clinicR2Answer('agenda_diaria-2.json');
+  withCountry.types.find(item => item.name === 'IdentificacaoProfissional')!.fields.push({ name: 'countryCode', type: 'string', origin: { kind: 'field', paths: ['Profissional.details.identification.countryCode'] } });
+  assert.doesNotThrow(() => d2BffApproved(agenda, withCountry));
+
+  const withoutDocId = clinicR2Answer('agenda_diaria-2.json');
+  withoutDocId.types.find(item => item.name === 'IdentificacaoProfissional')!.fields.push({ name: 'countryCode', type: 'string', origin: { kind: 'field', paths: ['Profissional.details.identification.countryCode'] } });
+  const paciente = withoutDocId.types.find(item => item.name === 'IdentificacaoPaciente')!;
+  paciente.fields = paciente.fields.filter(field => field.name !== 'docId');
+  const refusal = refusalOf(() => d2BffApproved(agenda, withoutDocId));
+  assert.match(refusal, /D2_BFF_COVERAGE: organisms\.\w+\.reads\.Paciente\.details\.identification/u);
+  assert.match(refusal, /missing: docId/u);
+});
+
+void test('d2_82 s3: a create-only form does not ask the backend to feed the fields it edits', async () => {
+  const pacientes = await clinicR2Bff('pacientes');
+  const second = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-2.json')));
+  assert.doesNotMatch(second, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
+  const obligation = d2CoverageObligation([pacientes.drafts.desktop, pacientes.drafts.mobile], pacientes.entities);
+  assert.ok(!obligation.some(row => row.organisms.includes('patientForm')));
+
+  const asUpdate = (write: string): string => write === 'Paciente.create' ? 'Paciente.update' : write;
+  const drafts = {
+    desktop: { organisms: { ...pacientes.drafts.desktop.organisms } },
+    mobile: { organisms: { ...pacientes.drafts.mobile.organisms } },
+  };
+  for (const device of ['desktop', 'mobile'] as const) {
+    const row = drafts[device].organisms.patientForm;
+    if (row) drafts[device].organisms.patientForm = { ...row, submits: row.submits.map(submit => ({ ...submit, write: asUpdate(submit.write) })) };
+  }
+  const control = refusalOf(() => d2BffApproved({ ...pacientes, drafts }, clinicR2Answer('pacientes-2.json')));
+  assert.match(control, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
 });

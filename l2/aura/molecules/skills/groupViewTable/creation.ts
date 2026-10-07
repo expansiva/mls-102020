@@ -22,7 +22,7 @@ export const skill = `
 
 | Tag | Required | Description |
 |-----|:--------:|-------------|
-| \`Caption\` | No | Table caption/title |
+| \`TableCaption\` | No | Table caption/title |
 | \`TableHeader\` | Yes | Header section container |
 | \`TableBody\` | Yes | Body section container |
 | \`TableRow\` | Yes | A table row (inside TableHeader/TableBody/TableFooter). Optional \`key\`: row identity for edit/save/cancel/delete — **key, not index**; missing key falls back to position |
@@ -36,18 +36,23 @@ export const skill = `
 | \`RowAction\` | No | One action; inside \`RowActions\`, or direct child of \`TableFooter\` (new-record) |
 | \`NewRecordRow\` | No | Draft row for creating a record, one at a time |
 
+**Never name it \`Caption\`.** The HTML parser treats \`<caption>\` as a table tag: outside a \`<table>\`
+(any child of a custom element) it drops the open and close tags and keeps only the loose text, so
+the slot never reaches the molecule. The output element stays a native \`<caption>\` inside the
+molecule's own \`<table>\`; only the input slot is \`TableCaption\`.
+
 \`RowActions\`/\`RowAction\`/\`NewRecordRow\` are detailed in **Row Actions & Draft Row** below.
 
 \`\`\`typescript
 // Drop 'Detail'/'RowActions'/'RowAction'/'NewRecordRow' when the molecule lacks that feature.
-slotTags = ['Caption', 'TableHeader', 'TableBody', 'TableRow', 'TableHead', 'TableCell', 'TableFooter', 'Empty', 'Loading', 'Detail', 'RowActions', 'RowAction', 'NewRecordRow'];
+slotTags = ['TableCaption', 'TableHeader', 'TableBody', 'TableRow', 'TableHead', 'TableCell', 'TableFooter', 'Empty', 'Loading', 'Detail', 'RowActions', 'RowAction', 'NewRecordRow'];
 \`\`\`
 
 ### Slot Hierarchy
 
 \`\`\`
 component (root)
-├── <Caption>
+├── <TableCaption>
 ├── <TableHeader>
 │   └── <TableRow>
 │       └── <TableHead key="..." sortable>
@@ -148,7 +153,7 @@ nested tables, and those must keep working.
 | slot | path | how to render |
 |---|---|---|
 | \`TableCell\`, \`TableHead\`, \`RowAction\` | **LIVE, by ELEMENT** | \`\\\${this.renderLiveSlotFrom(cell)}\` — N per row, so a tag-name anchor cannot address them |
-| \`Caption\`, \`Empty\`, \`Loading\` | **LIVE** | \`\\\${this.renderLiveSlot('Caption')}\` |
+| \`TableCaption\`, \`Empty\`, \`Loading\` | **LIVE** | \`\\\${this.renderLiveSlot('TableCaption')}\` |
 | \`Detail\` | **LIVE, by ELEMENT** | \`\\\${this.renderLiveSlotFrom(row.detailEl)}\` — see Detail Slot |
 | \`TableHeader\`, \`TableBody\`, \`TableFooter\`, \`TableRow\`, \`RowActions\`, \`NewRecordRow\` | structure | \`getLiveSlot(tag)\` / \`querySelectorAll\`, never projected |
 

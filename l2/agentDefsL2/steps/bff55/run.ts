@@ -10,7 +10,7 @@ import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device }
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import {
   buildD2BffDesign, checkD2Bff, d2BffAccess, d2ContractsTypeName, d2CoverageObligation, d2BffL4Slice, d2MenuPages, d2PageJourneySteps, d2PageSubmits, normalizeD2BffDesign, D2_BFF_TYPE_PATTERN, D2_BFF_UPDATE_MODES,
-  type D2BffDesign, type D2Grant, type D2Menu, type D2NeedPage,
+  type D2BffDesign, type D2BffIssue, type D2Grant, type D2Menu, type D2NeedPage,
 } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 import type { D2PageRefusal } from '/_102020_/l2/agentDefsL2/helpers/d2PageSettle.js';
 import { d2SharedDeriveIssues, deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
@@ -172,8 +172,9 @@ const productionWriter: D2BffWriter = { writeJson };
  * whole list of findings is the refusal.
  */
 export function d2BffApproved(context: D2BffContext, raw: unknown): D2BffDesign {
-  const design = normalizeD2BffDesign(buildD2BffDesign(raw), context.entities, d2ContractsTypeName(context.pageId));
-  const issues = checkD2Bff(design, context);
+  const format: D2BffIssue[] = [];
+  const design = normalizeD2BffDesign(buildD2BffDesign(raw, format), context.entities, d2ContractsTypeName(context.pageId));
+  const issues = [...format, ...checkD2Bff(design, context)];
   if (!issues.length) {
     const access = d2BffAccess(design, context.need, context.grants);
     const input = { ...context, design, access: { actors: access.actors, grants: access.grants }, siblings: [] };

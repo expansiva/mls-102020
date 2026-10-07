@@ -14,7 +14,7 @@ export const skill = `
 | Tag | Required | Description |
 |-----|:--------:|-------------|
 | \`Columns\` | ✓ | Container for column definitions |
-| \`Column\` | ✓ (min. 1) | Defines a column — attributes: \`field\`, \`header\`, \`width\`, \`align\`, \`hidden\` |
+| \`Column\` | ✓ (min. 1) | Defines a column — attributes: \`field\`, \`header\`, \`width\`, \`align\`, \`hidden\`. \`field\` and \`header\` are plain attributes (\`header=\${…}\`, not \`.header\`) and must not be empty: \`ml-vertical-record-list\` refuses a column without them. A column with no visible title (actions) still names what it holds (\`header="Actions"\`) |
 | \`Rows\` | ✓ | Container for data rows |
 | \`Row\` | ✓ (min. 1) | A data row — attributes: \`selected\`, \`disabled\` |
 | \`Cell\` | ✓ | A data cell — accepts any content; attribute: \`colspan\` |
@@ -111,7 +111,7 @@ export const skill = `
   <Columns>
     <Column field="user" header="User" />
     <Column field="role" header="Role" align="center" />
-    <Column field="actions" header="" width="100px" align="right" />
+    <Column field="actions" header="Actions" width="100px" align="right" />
   </Columns>
   <Rows>
     <Row>

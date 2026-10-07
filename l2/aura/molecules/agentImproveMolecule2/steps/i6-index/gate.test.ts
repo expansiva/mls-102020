@@ -22,7 +22,7 @@ export class GroupViewTableIndex extends StateLitElement {
   render() {
     return html\`
       <groupviewtable--ml-data-table>
-        <Caption>Customers</Caption>
+        <TableCaption>Customers</TableCaption>
       </groupviewtable--ml-data-table>\`;
   }
 }
@@ -76,7 +76,7 @@ test('a slot the showcase does not exercise is what needs the model', () => {
 test('a slot the showcase already exercises needs nothing', () => {
   const plan = planIndexWork({
     indexSource: INDEX, project: 102040, groupFolder: 'groupviewtable', shortName: 'ml-data-table',
-    tag: 'groupviewtable--ml-data-table', addedSlots: ['Caption'], playgroundChanged: true,
+    tag: 'groupviewtable--ml-data-table', addedSlots: ['TableCaption'], playgroundChanged: true,
   });
   assert.deepEqual(plan.missingSlots, []);
   assert.equal(plan.needsModel, false);

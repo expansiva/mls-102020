@@ -1,0 +1,327 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "customerManagement"
+    },
+    "intent": "A recepcionista encontra o paciente certo pelo nome, confere a identificação e cadastra quem ainda não existe, para então seguir ao agendamento da consulta.",
+    "sections": [
+     {
+      "id": "patientDirectory",
+      "priority": "primary",
+      "purpose": "Prioriza a busca e a lista de pacientes para a recepcionista achar rapidamente quem precisa de consulta.",
+      "organisms": [
+       "patientList"
+      ]
+     },
+     {
+      "id": "patientIdentity",
+      "priority": "main",
+      "purpose": "Apresenta a ficha de identificação do paciente escolhido para conferência antes de cadastrar ou agendar.",
+      "organisms": [
+       "patientDetail"
+      ]
+     },
+     {
+      "id": "patientRegistration",
+      "priority": "secondary",
+      "purpose": "Reúne o formulário e a ação de cadastrar um paciente novo quando ele ainda não existe na clínica.",
+      "organisms": [
+       "patientForm",
+       "patientActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "patientList": {
+      "kind": "list",
+      "text": "Lista os pacientes da clínica e permite localizar pelo nome quem vai receber a consulta, para a recepcionista seguir ao agendamento.",
+      "intents": [
+       {
+        "id": "scheduleForPatient",
+        "kind": "navigate",
+        "to": "consultas"
+       }
+      ]
+     },
+     "patientDetail": {
+      "kind": "detail",
+      "text": "Mostra nome, documento e situação do paciente selecionado, para a recepcionista confirmar que é a pessoa certa.",
+      "intents": []
+     },
+     "patientForm": {
+      "kind": "form",
+      "text": "Captura nome e documento de um paciente ainda não cadastrado, para registrá-lo e deixá-lo disponível para consultas.",
+      "intents": [
+       {
+        "id": "submitNewPatient",
+        "kind": "submit",
+        "to": ""
+       }
+      ]
+     },
+     "patientActions": {
+      "kind": "actions",
+      "text": "Confirma o cadastro do novo paciente para que ele passe a aparecer na busca e possa receber consultas.",
+      "intents": []
+     }
+    },
+    "molecules": {
+     "patientList": [
+      {
+       "role": "search",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "records",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "patientDetail": [
+      {
+       "role": "profile",
+       "preferred": "groupviewcard--ml-profile-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "patientForm": [
+      {
+       "role": "name",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "document",
+       "preferred": "groupentertext--ml-cpf-input",
+       "alternative": "groupentertext--ml-enter-text"
+      }
+     ],
+     "patientActions": [
+      {
+       "role": "submit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "patientList": {
+      "reads": [
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status"
+      ],
+      "edits": [],
+      "selects": "patientDetail",
+      "submits": []
+     },
+     "patientDetail": {
+      "reads": [
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.base.contacts"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "patientForm": {
+      "reads": [
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId"
+      ],
+      "edits": [
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "submitNewPatient",
+        "write": "Paciente.create"
+       }
+      ]
+     },
+     "patientActions": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "customerManagement"
+    },
+    "intent": "Em uma coluna estreita e fluida em torno de 390px, também utilizável em 360px e 430px, a recepcionista localiza o paciente pelo nome, confere a identificação e cadastra um paciente novo para poder agendar a consulta.",
+    "sections": [
+     {
+      "id": "patientDirectory",
+      "priority": "primary",
+      "purpose": "Em faixa estreita e fluida cerca de 390px, também usável em 360px e 430px, a busca e a lista ficam no topo para localizar o paciente sem grade fixa.",
+      "organisms": [
+       "patientList"
+      ]
+     },
+     {
+      "id": "patientIdentity",
+      "priority": "main",
+      "purpose": "A ficha do paciente selecionado segue em sequência, em conteúdo fluido que cabe na largura estreita do telefone.",
+      "organisms": [
+       "patientDetail"
+      ]
+     },
+     {
+      "id": "patientRegistration",
+      "priority": "secondary",
+      "purpose": "O cadastro novo e o botão de confirmar empilham abaixo na mesma coluna estreita, para registrar o paciente no mesmo fluxo.",
+      "organisms": [
+       "patientForm",
+       "patientActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "patientList": {
+      "kind": "list",
+      "text": "Lista os pacientes da clínica e permite localizar pelo nome quem vai receber a consulta, para a recepcionista seguir ao agendamento.",
+      "intents": [
+       {
+        "id": "scheduleForPatient",
+        "kind": "navigate",
+        "to": "consultas"
+       }
+      ]
+     },
+     "patientDetail": {
+      "kind": "detail",
+      "text": "Mostra nome, documento e situação do paciente selecionado, para a recepcionista confirmar que é a pessoa certa.",
+      "intents": []
+     },
+     "patientForm": {
+      "kind": "form",
+      "text": "Captura nome e documento de um paciente ainda não cadastrado, para registrá-lo e deixá-lo disponível para consultas.",
+      "intents": [
+       {
+        "id": "submitNewPatient",
+        "kind": "submit",
+        "to": ""
+       }
+      ]
+     },
+     "patientActions": {
+      "kind": "actions",
+      "text": "Confirma o cadastro do novo paciente para que ele passe a aparecer na busca e possa receber consultas.",
+      "intents": []
+     }
+    },
+    "molecules": {
+     "patientList": [
+      {
+       "role": "search",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "records",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-card-grid"
+      }
+     ],
+     "patientDetail": [
+      {
+       "role": "profile",
+       "preferred": "groupviewcard--ml-profile-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "patientForm": [
+      {
+       "role": "name",
+       "preferred": "groupentertext--ml-enter-text",
+       "alternative": "groupentertext--ml-floating-text-input"
+      },
+      {
+       "role": "document",
+       "preferred": "groupentertext--ml-cpf-input",
+       "alternative": "groupentertext--ml-enter-text"
+      }
+     ],
+     "patientActions": [
+      {
+       "role": "submit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "patientList": {
+      "reads": [
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status"
+      ],
+      "edits": [],
+      "selects": "patientDetail",
+      "submits": []
+     },
+     "patientDetail": {
+      "reads": [
+       "Paciente.id",
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.status",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId",
+       "Paciente.details.base.contacts"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "patientForm": {
+      "reads": [
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId"
+      ],
+      "edits": [
+       "Paciente.details.identification.name",
+       "Paciente.details.identification.docType",
+       "Paciente.details.identification.docId"
+      ],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "submitNewPatient",
+        "write": "Paciente.create"
+       }
+      ]
+     },
+     "patientActions": {
+      "reads": [],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     }
+    }
+   }
+  },
+  "categoryReason": "A página é um diretório de pacientes com busca, ficha de identificação e cadastro de novos registros, o que corresponde à gestão de clientes e contatos da clínica."
+ }
+}

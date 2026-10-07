@@ -1,0 +1,716 @@
+{
+  "attempt": "2",
+  "model": "openai/gpt-5.6-terra-pro",
+  "promptChars": 39178,
+  "receivedAt": "2026-10-07T07:32:44.796Z",
+  "raw": {
+    "type": "flexible",
+    "result": {
+      "toolName": "submitD2Bff",
+      "arguments": {
+        "types": [
+          {
+            "name": "PatientListItem",
+            "description": "Linha compacta de paciente apto ao agendamento, usada na lista de localização.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              },
+              {
+                "name": "details",
+                "type": "PatientListDetails",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.details"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientListDetails",
+            "description": "Dados de identificação necessários na linha de busca do paciente.",
+            "fields": [
+              {
+                "name": "identification",
+                "type": "PatientListIdentification",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.details.identification"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientListIdentification",
+            "description": "Identificação resumida apresentada na lista de pacientes.",
+            "fields": [
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.status"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientDetail",
+            "description": "Ficha de identificação completa que a recepcionista confere antes de seguir ao agendamento.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              },
+              {
+                "name": "details",
+                "type": "PatientDetailDetails",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.details"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientDetailDetails",
+            "description": "Grupos de dados exibidos na ficha de identificação do paciente.",
+            "fields": [
+              {
+                "name": "identification",
+                "type": "PatientDetailIdentification",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.details.identification"
+                  ]
+                }
+              },
+              {
+                "name": "base",
+                "type": "PatientDetailBase",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.details.base"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientDetailIdentification",
+            "description": "Dados de identificação e documento mostrados para conferência.",
+            "fields": [
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.status"
+                  ]
+                }
+              },
+              {
+                "name": "docType",
+                "type": "'SSN' | 'EIN' | 'Passport' | 'DriversLicense' | 'NationalId' | 'CPF' | 'CNPJ' | 'VAT' | 'Other'",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.docType"
+                  ]
+                }
+              },
+              {
+                "name": "docId",
+                "type": "string",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.docId"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientDetailBase",
+            "description": "Dados-base do paciente mostrados na ficha.",
+            "fields": [
+              {
+                "name": "contacts",
+                "type": "PatientContacts",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.base.contacts"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientContacts",
+            "description": "Resumo derivado dos canais de contato vinculados ao paciente.",
+            "fields": [
+              {
+                "name": "summary",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.details.base.contacts"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientRegistrationDetails",
+            "description": "Dados do paciente editados no cadastro.",
+            "fields": [
+              {
+                "name": "identification",
+                "type": "PatientRegistrationIdentification",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.details.identification"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PatientRegistrationIdentification",
+            "description": "Nome e documento informados para cadastrar o paciente.",
+            "fields": [
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "docType",
+                "type": "'SSN' | 'EIN' | 'Passport' | 'DriversLicense' | 'NationalId' | 'CPF' | 'CNPJ' | 'VAT' | 'Other'",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.docType"
+                  ]
+                }
+              },
+              {
+                "name": "docId",
+                "type": "string",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.docId"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "id": "loadPatientDirectory",
+            "kind": "qry",
+            "when": "onLoad",
+            "writes": "",
+            "input": [
+              {
+                "name": "page",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              },
+              {
+                "name": "pageSize",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "patients",
+                "type": "PatientListItem[]",
+                "optional": false,
+                "paginated": true,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.id",
+                    "Paciente.details.identification.name",
+                    "Paciente.details.identification.status"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Carrega a primeira página do diretório de pacientes disponíveis para a recepcionista iniciar a localização de quem receberá uma consulta.",
+              "input": "page e pageSize definem a página inicial e a quantidade de linhas exibida por vez.",
+              "processing": "Localiza pacientes da organização pelo índice de pessoas, ordenados para localização por nome, e restringe o resultado a cadastros com situação Active, que podem receber consulta. Retorna somente a linha compacta necessária à lista; a situação é lida do cadastro mestre, não calculada pelo cliente.",
+              "output": "Retorna patients no contrato paginado { items, page, pageSize, hasMore }, com id, nome e situação para preencher a lista inicial sem carregar fichas completas."
+            }
+          },
+          {
+            "id": "searchPatients",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "nameQuery",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "page",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              },
+              {
+                "name": "pageSize",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "patients",
+                "type": "PatientListItem[]",
+                "optional": false,
+                "paginated": true,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.id",
+                    "Paciente.details.identification.name",
+                    "Paciente.details.identification.status"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Substitui a lista do diretório pelos pacientes cujo nome corresponde à busca da recepcionista.",
+              "input": "nameQuery é o trecho de nome informado; page e pageSize definem a primeira página do resultado da busca.",
+              "processing": "Pesquisa o índice de pacientes da organização por nameQuery, mantém apenas registros Active aptos ao agendamento e ordena os resultados para localização pelo nome. A consulta devolve linhas compactas, sem buscar documento ou contatos.",
+              "output": "Retorna patients paginado para substituir a lista visível com id, nome e situação de cada paciente encontrado."
+            }
+          },
+          {
+            "id": "loadMorePatients",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "nameQuery",
+                "type": "string",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "page",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              },
+              {
+                "name": "pageSize",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "patients",
+                "type": "PatientListItem[]",
+                "optional": false,
+                "paginated": true,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.id",
+                    "Paciente.details.identification.name",
+                    "Paciente.details.identification.status"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Busca a próxima página do diretório ou da busca atual sem recarregar as linhas já exibidas.",
+              "input": "nameQuery, quando presente, preserva o filtro de nome em uso; page e pageSize identificam a próxima página solicitada.",
+              "processing": "Repete a localização de pacientes Active da organização usando o filtro de nome atual, quando houver, e retorna somente a página solicitada, na mesma ordenação da lista.",
+              "output": "Retorna patients paginado para acrescentar seus items à lista existente e informar se ainda há mais resultados."
+            }
+          },
+          {
+            "id": "getPatientDetail",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "patientId",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "patient",
+                "type": "PatientDetail",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.id",
+                    "Paciente.details.identification.name",
+                    "Paciente.details.identification.status",
+                    "Paciente.details.identification.docType",
+                    "Paciente.details.identification.docId",
+                    "Paciente.details.base.contacts"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Carrega a ficha do paciente escolhido na lista para a recepcionista confirmar sua identificação antes de seguir ao agendamento.",
+              "input": "patientId é o identificador do paciente selecionado na lista.",
+              "processing": "Lê o cadastro mestre do paciente selecionado e compõe a ficha com identificação, documento e resumo derivado de contatos. A situação atual é sempre retornada para a conferência; os contatos são derivados pelo servidor a partir dos vínculos de canais.",
+              "output": "Retorna patient com os dados completos usados pela ficha de identificação, evitando transferi-los para todas as linhas da lista."
+            }
+          },
+          {
+            "id": "registerPatient",
+            "kind": "cmd",
+            "when": "submitNewPatient",
+            "writes": "Paciente.create",
+            "input": [
+              {
+                "name": "details",
+                "type": "PatientRegistrationDetails",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.details"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "patient",
+                "type": "PatientDetail",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.id",
+                    "Paciente.details.identification.name",
+                    "Paciente.details.identification.status",
+                    "Paciente.details.identification.docType",
+                    "Paciente.details.identification.docId",
+                    "Paciente.details.base.contacts"
+                  ]
+                }
+              },
+              {
+                "name": "patientListItem",
+                "type": "PatientListItem",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.id",
+                    "Paciente.details.identification.name",
+                    "Paciente.details.identification.status"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Registra o novo paciente informado pela recepcionista e o deixa pronto para conferência e agendamento.",
+              "input": "details.identification.name é o nome obrigatório; details.identification.docType e details.identification.docId são o tipo e o número do documento quando informados.",
+              "processing": "Executa o cadastro de paciente por createOrAttach: localiza o registro mestre pelo documento quando ele foi informado e cria ou associa o papel de paciente somente quando necessário. Valida o formato do documento conforme a plataforma e retorna o cadastro efetivo com sua situação e o resumo derivado de contatos.",
+              "output": "Retorna patient para redesenhar a ficha do recém-cadastrado e patientListItem para inseri-lo ou atualizá-lo na lista, sem exigir nova consulta."
+            }
+          }
+        ],
+        "bindings": {
+          "updates": [
+            {
+              "endpoint": "loadPatientDirectory",
+              "state": "patientList.patients",
+              "mode": "replace"
+            },
+            {
+              "endpoint": "searchPatients",
+              "state": "patientList.patients",
+              "mode": "replace"
+            },
+            {
+              "endpoint": "loadMorePatients",
+              "state": "patientList.patients",
+              "mode": "append"
+            },
+            {
+              "endpoint": "getPatientDetail",
+              "state": "patientDetail.patient",
+              "mode": "replace"
+            },
+            {
+              "endpoint": "registerPatient",
+              "state": "patientDetail.patient",
+              "mode": "replace"
+            },
+            {
+              "endpoint": "registerPatient",
+              "state": "patientList.patientListItem",
+              "mode": "upsert"
+            }
+          ],
+          "organisms": [
+            {
+              "organism": "patientList",
+              "reads": "loadPatientDirectory.patients"
+            },
+            {
+              "organism": "patientList",
+              "reads": "searchPatients.patients"
+            },
+            {
+              "organism": "patientList",
+              "reads": "loadMorePatients.patients"
+            },
+            {
+              "organism": "patientList",
+              "reads": "registerPatient.patientListItem"
+            },
+            {
+              "organism": "patientDetail",
+              "reads": "getPatientDetail.patient"
+            },
+            {
+              "organism": "patientDetail",
+              "reads": "registerPatient.patient"
+            }
+          ],
+          "commands": [
+            {
+              "endpoint": "registerPatient",
+              "refreshes": []
+            }
+          ],
+          "selections": [
+            {
+              "organism": "patientList",
+              "via": {
+                "kind": "query",
+                "ref": "getPatientDetail"
+              }
+            }
+          ],
+          "journeys": [
+            {
+              "step": "agendarConsulta/localizarPaciente",
+              "organisms": [
+                "patientList",
+                "patientDetail"
+              ],
+              "endpoints": [
+                "loadPatientDirectory",
+                "searchPatients",
+                "loadMorePatients",
+                "getPatientDetail"
+              ],
+              "continuesIn": "consultas"
+            },
+            {
+              "step": "agendarConsulta/registrarConsulta",
+              "organisms": [],
+              "endpoints": [],
+              "continuesIn": "consultas"
+            },
+            {
+              "step": "cadastrarPaciente/registrarPaciente",
+              "organisms": [
+                "patientList",
+                "patientDetail",
+                "patientForm",
+                "patientActions"
+              ],
+              "endpoints": [
+                "registerPatient"
+              ],
+              "continuesIn": ""
+            }
+          ]
+        }
+      }
+    },
+    "status": "completed",
+    "stepId": 15,
+    "interaction": null,
+    "nextSteps": null
+  },
+  "verdict": "D2_BFF_BINDING_ORGANISM: bindings.organisms.patientForm: organism patientForm reads and has no source in bindings.organisms. | D2_BFF_BINDING_UPDATE: bindings.updates.0.state: patientList.patients is not a source in bindings.organisms; an update lands in a state an organism reads. | D2_BFF_BINDING_UPDATE: bindings.updates.1.state: patientList.patients is not a source in bindings.organisms; an update lands in a state an organism reads. | D2_BFF_BINDING_UPDATE: bindings.updates.2.state: patientList.patients is not a source in bindings.organisms; an update lands in a state an organism reads. | D2_BFF_BINDING_UPDATE: bindings.updates.3.state: patientDetail.patient is not a source in bindings.organisms; an update lands in a state an organism reads. | D2_BFF_BINDING_UPDATE: bindings.updates.4.state: patientDetail.patient is not a source in bindings.organisms; an update lands in a state an organism reads. | D2_BFF_BINDING_UPDATE: bindings.updates.5.state: patientList.patientListItem is not a source in bindings.organisms; an update lands in a state an organism reads."
+}

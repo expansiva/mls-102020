@@ -1,3 +1,9 @@
+## 2026-10-06 — groupViewData: `<Column header>` não pode ser vazio
+
+O exemplo "Rich cell content" do `usage.ts` ensinava `<Column field="actions" header="" …>` numa `ml-vertical-record-list`, e essa molécula recusa coluna sem `header` (`missingColumnHeader`). A página de atendimento do comandaRestaurante, gerada pelo agentMaterializeL2v4, copiou o padrão em duas colunas e quebrou a busca.
+O exemplo agora usa `header="Actions"`. A tabela de slots diz que `field` e `header` são atributos simples, sem `.header`, e não podem ser vazios.
+Das moléculas do grupo, só a `ml-vertical-record-list` valida; as outras aceitam vazio. O exemplo com texto funciona para todas.
+
 ## 2026-09-11 — `adopt.ts`: a segunda metade escrita à mão de cada grupo
 
 O `usage.ts` já tinha estabelecido que a metade escrita à mão do catálogo mora aqui, e não nos

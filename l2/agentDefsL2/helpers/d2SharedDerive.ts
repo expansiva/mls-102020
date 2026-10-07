@@ -131,7 +131,7 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
 
 /** D over the derived shared (d2_70): the code's own output passes its own fact checks. */
 export function d2SharedDeriveIssues(input: D2SharedDeriveInput, definition: D2SharedV2Definition): D2SharedV2Issue[] {
-  return gateD2SharedV2(definition, { page11: input.page11, drafts: input.drafts, need: input.need, menu: input.menu, design: input.design });
+  return gateD2SharedV2(definition, { page11: input.page11, drafts: input.drafts, need: input.need, menu: input.menu, design: input.design, entities: input.entities });
 }
 
 interface OrganismRow { kind: string; text: string; section: string; intents: Array<{ id: string; kind: string; to?: string }>; reads: string[]; edits: string[]; selects: string; submits: Array<{ intentId: string; write: string }> }

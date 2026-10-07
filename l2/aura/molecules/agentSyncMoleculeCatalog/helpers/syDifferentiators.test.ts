@@ -12,7 +12,7 @@ import {
 const PLAIN = `
 @customElement('grp--ml-plain')
 export class Plain extends MoleculeAuraElement {
-  slotTags = ['Caption', 'TableBody'];
+  slotTags = ['TableCaption', 'TableBody'];
   @propertyDataSource({ type: String }) value = '';
   private go() { this.dispatchEvent(new CustomEvent('change', { detail: {} })); }
 }`;
@@ -21,7 +21,7 @@ export class Plain extends MoleculeAuraElement {
 const RICH = `
 @customElement('grp--ml-rich')
 export class Rich extends MoleculeAuraElement {
-  slotTags = ['Caption', 'TableBody', 'Detail'];
+  slotTags = ['TableCaption', 'TableBody', 'Detail'];
   protected usesLiveSlots = true;
   @propertyDataSource({ type: String }) value = '';
   @propertyDataSource({ type: Boolean }) showRowTotal = false;
@@ -43,7 +43,7 @@ const DEFS = 'export const skill = `# Metadata\n\n# Objective\nDoes the rich thi
 void test('facts come from the molecule file, including the dynamic emit helper', () => {
   const f = syExtractMoleculeFacts({ shortName: 'ml-rich', ts: RICH, less: LESS_WINDOW, defs: DEFS });
   assert.equal(f.tag, 'grp--ml-rich');
-  assert.deepEqual(f.slots, ['Caption', 'Detail', 'TableBody']);
+  assert.deepEqual(f.slots, ['Detail', 'TableBody', 'TableCaption']);
   assert.deepEqual(f.props, ['showRowTotal', 'value']);
   // `groupChange` only exists through emitRowEvent(name, …) — a CustomEvent-only scan loses it.
   assert.deepEqual(f.events, ['change', 'groupChange']);
@@ -60,7 +60,7 @@ void test('a container query is told apart from a viewport one — a narrow card
 });
 
 void test('universal switches are not differentiators', () => {
-  const ts = `slotTags = ['Caption'];\nthis.hasAttribute('is-editing'); this.hasAttribute('editing-rows'); this.hasAttribute('sortable');`;
+  const ts = `slotTags = ['TableCaption'];\nthis.hasAttribute('is-editing'); this.hasAttribute('editing-rows'); this.hasAttribute('sortable');`;
   assert.deepEqual(syExtractMoleculeFacts({ shortName: 'a', ts }).switches, ['sortable']);
 });
 
@@ -76,9 +76,9 @@ void test('exclusive = what at least one sibling lacks; a shared item explains n
   ]);
   const rich = g.molecules.find(m => m.shortName === 'ml-rich')!;
   const plain = g.molecules.find(m => m.shortName === 'ml-plain')!;
-  // `change`, `Caption`, `TableBody` and `.value` are in both, so they cannot separate them.
+  // `change`, `TableCaption`, `TableBody` and `.value` are in both, so they cannot separate them.
   assert.ok(!rich.exclusive.includes('@change'));
-  assert.ok(!rich.exclusive.includes('slot:Caption'));
+  assert.ok(!rich.exclusive.includes('slot:TableCaption'));
   assert.deepEqual(rich.exclusive.sort(), ['.showRowTotal', '@groupChange', 'slot:Detail'].sort());
   assert.deepEqual(plain.exclusive, []);
   assert.deepEqual(g.withoutExclusiveApi, ['ml-plain']);
