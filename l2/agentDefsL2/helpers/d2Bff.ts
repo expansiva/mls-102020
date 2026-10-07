@@ -118,9 +118,14 @@ export function d2PascalCase(raw: string, fallback: string): string {
  * already guarantees is an internal assertion (`D2_BFF_ASSERT`, no repair cycle); only content the code cannot derive
  * is refused (`D2_BFF_FORMAT`).
  */
-export function buildD2BffDesign(value: unknown): D2BffDesign {
+export function buildD2BffDesign(value: unknown, collected?: D2BffIssue[]): D2BffDesign {
   const assert = (path: string, what: string): never => { throw new Error(`D2_BFF_ASSERT: ${path}: ${what}`); };
   const fail = (path: string, what: string): never => { throw new Error(`D2_BFF_FORMAT: ${path}: ${what}`); };
+  // Rules that still leave a design (d2_82): collected, they join the verdict; otherwise they throw as before.
+  const note = (path: string, what: string): void => {
+    if (!collected) fail(path, what);
+    else collected.push({ code: 'D2_BFF_FORMAT', path, message: `${path}: ${what}` });
+  };
   const root = record(value) ?? assert('design', 'not an object');
   if (!Array.isArray(root.types) || !Array.isArray(root.endpoints)) assert('design', 'types and endpoints are lists');
 
@@ -131,7 +136,7 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
     const written = typeof row.name === 'string' ? row.name : '';
     const name = d2PascalCase(written, `Type${index + 1}`);
     if (!Array.isArray(row.fields)) assert(`types.${name}.fields`, 'not a list');
-    if (!(row.fields as unknown[]).length) fail(`types.${name}.fields`, 'a named type has at least one field');
+    if (!(row.fields as unknown[]).length) note(`types.${name}.fields`, 'a named type has at least one field');
     const type = { name, description: typeof row.description === 'string' ? row.description.trim() : '', fields: row.fields as unknown[] };
     const same = rawTypes.find(item => item.name === name);
     if (same && JSON.stringify(same) !== JSON.stringify(type)) fail(`types.${name}`, 'declared twice with different fields');
@@ -155,7 +160,7 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
         ref = { ...parsed, ref: target };
       }
       // A leaf that names a type has its origins in that type: whatever origin it carries is ignored (d2_74).
-      const origin = ref.base === 'ref' || row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, assert, fail);
+      const origin = ref.base === 'ref' || row.origin === undefined || row.origin === null ? undefined : parseOrigin(row.origin, `${path}.${name}.origin`, assert, note);
       if (ref.base !== 'ref' && !origin) assert(`${path}.${name}.origin`, 'a value leaf names its origin');
       const leaf: D2BffLeaf = { name, type: renderD2BffType(ref), ...(row.optional === true ? { optional: true } : {}), ...(ref.base !== 'ref' && origin ? { origin } : {}), ...(row.paginated === true && ref.list ? { paginated: true } : {}) };
       if (written && written !== name) renamed?.set(written, name);
@@ -179,12 +184,12 @@ export function buildD2BffDesign(value: unknown): D2BffDesign {
     if (!when) assert(`endpoints.${id}.when`, 'onLoad, interaction or a submit intent id');
     // A query writes nothing: a write the host filled in is dropped, never refused (d2_74). A command keeps it for B.2/B.4.
     const writes = row.kind === 'cmd' && typeof row.writes === 'string' ? row.writes.trim() : '';
-    if (row.kind === 'cmd' && !writes) fail(`endpoints.${id}.writes`, 'a command names its write');
+    if (row.kind === 'cmd' && !writes) note(`endpoints.${id}.writes`, 'a command names its write');
     const doc = record(row.jsdoc) ?? assert(`endpoints.${id}.jsdoc`, 'not an object');
     const jsdoc = {} as D2BffJsdoc;
     for (const key of ['purpose', 'input', 'processing', 'output'] as const) {
       const text = typeof doc[key] === 'string' ? (doc[key] as string).trim() : '';
-      if (!text) fail(`endpoints.${id}.jsdoc.${key}`, 'empty');
+      if (!text) note(`endpoints.${id}.jsdoc.${key}`, 'empty');
       jsdoc[key] = text;
     }
     if (!Array.isArray(row.rules) || !row.rules.every(item => typeof item === 'string')) assert(`endpoints.${id}.rules`, 'a list of rule ids');
@@ -444,7 +449,7 @@ export function d2MenuPages(menu: D2Menu): string[] {
   return ids;
 }
 
-function parseOrigin(value: unknown, path: string, assert: (path: string, what: string) => never, fail: (path: string, what: string) => never): D2BffOrigin {
+function parseOrigin(value: unknown, path: string, assert: (path: string, what: string) => never, fail: (path: string, what: string) => void): D2BffOrigin {
   const row = record(value) ?? assert(path, 'not an object');
   if (row.kind !== 'field' && row.kind !== 'aggregate' && row.kind !== 'context') assert(`${path}.kind`, 'field, aggregate or context');
   const paths = Array.isArray(row.paths) ? row.paths : [];
