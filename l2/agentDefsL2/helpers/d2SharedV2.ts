@@ -1,8 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/helpers/d2SharedV2.ts" enhancement="_blank"/>
 
+import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import type { D2Page11Definition, D2Page11Device, D2Page11Location } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
-import { d2BffValueLeaves, d2FedReads, d2PageSubmits, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
+import { d2BffValueLeaves, d2FedReads, d2PageSubmits, d2ReadCovered, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
 
 export interface D2SharedV2Request {
   kind: 'qry' | 'cmd';
@@ -117,6 +118,7 @@ export interface D2SharedGateContext {
   need: D2NeedPage;
   menu: D2Menu;
   design: D2BffDesign;
+  entities: Record<string, Ns5OntologyAnyEntity>;
 }
 
 /**
@@ -154,7 +156,7 @@ export function gateD2SharedV2(value: unknown, context: D2SharedGateContext): D2
   for (const [id, row] of organisms) {
     if (row.reads.size && !listed.has(id)) add('D2_SHARED_V2_ORGANISM_UNFED', `organisms.${id}`, `Organism ${id} reads, and no state lists it in organisms.`);
     for (const path of row.reads) {
-      if ([...held.values()].some(paths => paths.some(origin => path === origin || path.startsWith(`${origin}.`)))) continue;
+      if ([...held.values()].some(origins => d2ReadCovered(path, origins, context.entities))) continue;
       add('D2_SHARED_V2_ORGANISM_UNFED', `organisms.${id}`, `Organism ${id} reads ${path}, and no state holds it: no state's source is an endpoint output that carries it.`);
     }
     if (row.edits.size && !formOrganisms.has(id)) add('D2_SHARED_V2_FORM_UNBOUND', `organisms.${id}`, `Organism ${id} edits ${[...row.edits].join(', ')} and is the organism of no form.`);

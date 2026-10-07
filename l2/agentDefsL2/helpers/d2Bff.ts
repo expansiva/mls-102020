@@ -528,9 +528,15 @@ export function checkD2Bff(design: D2BffDesign, context: D2BffCheckContext): D2B
   for (const device of ['desktop', 'mobile'] as const) {
     for (const [organismId, row] of Object.entries(context.drafts[device].organisms)) {
       for (const path of d2FedReads(row)) {
-        if (outputOrigins.some(origin => covers(origin, path))) continue;
+        if (d2ReadCovered(path, outputOrigins, context.entities)) continue;
         if (issues.some(item => item.code === 'D2_BFF_COVERAGE' && item.path === `organisms.${organismId}.reads.${path}`)) continue;
-        add('D2_BFF_COVERAGE', `organisms.${organismId}.reads.${path}`, `organism ${organismId} reads ${path}, and no output leaf of the page's endpoints names it as origin (field or aggregate).`);
+        const leaves = ontologyLeaves(context.entities[entityOf(path)], path);
+        const missing = leaves?.filter(leaf => !outputOrigins.some(origin => covers(origin, leaf))) ?? [];
+        const delivered = (leaves?.length ?? 0) - missing.length;
+        const message = leaves && delivered > 0
+          ? `organism ${organismId} reads ${path}, and the page delivers ${delivered} of ${leaves.length} leaves of ${path}; missing: ${missing.map(leaf => leaf.slice(path.length + 1)).join(', ')}.`
+          : `organism ${organismId} reads ${path}, and no output leaf of the page's endpoints names it as origin (field or aggregate).`;
+        add('D2_BFF_COVERAGE', `organisms.${organismId}.reads.${path}`, message);
       }
     }
   }
@@ -658,6 +664,32 @@ export function d2BffL4Slice(entities: Record<string, Ns5OntologyAnyEntity>, rul
 }
 
 interface SliceField { type?: string; required?: boolean; derived?: boolean; title?: string; description?: string; values?: Array<{ value: string }>; fields?: Record<string, SliceField> }
+
+/** Scalar paths the ontology lists under an object node, at any depth. Undefined when `path` is not an object node. */
+function ontologyLeaves(entity: Ns5OntologyAnyEntity | undefined, path: string): string[] | undefined {
+  const field = fieldAt(entity, path);
+  if (!field?.fields) return undefined;
+  const out: string[] = [];
+  const walk = (prefix: string, fields: Record<string, SliceField>): void => {
+    for (const [name, child] of Object.entries(fields)) {
+      const childPath = `${prefix}.${name}`;
+      if (child.fields) walk(childPath, child.fields);
+      else out.push(childPath);
+    }
+  };
+  walk(path, field.fields);
+  return out;
+}
+
+/**
+ * A read is covered when some origin covers the path, or when the path is an ontology object node and every leaf under
+ * it (derived included) is covered. One leaf never covers its parent.
+ */
+export function d2ReadCovered(path: string, origins: readonly string[], entities: Record<string, Ns5OntologyAnyEntity>): boolean {
+  if (origins.some(origin => covers(origin, path))) return true;
+  const leaves = ontologyLeaves(entities[entityOf(path)], path);
+  return !!leaves?.length && leaves.every(leaf => origins.some(origin => covers(origin, leaf)));
+}
 
 function fieldAt(entity: Ns5OntologyAnyEntity | undefined, path: string): SliceField | undefined {
   let fields = (entity as { record?: { fields?: Record<string, SliceField> } } | undefined)?.record?.fields;

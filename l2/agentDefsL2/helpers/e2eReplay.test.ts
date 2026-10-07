@@ -601,7 +601,7 @@ void test('d2_80 s3: gate D reads the map: every organism that reads is listed b
   assert.deepEqual(sourceListing(deriveD2Shared({ ...derive, design }), 'lookupAtendimento'), ['carregarAtendimento.mesas', 'carregarComanda.comanda']);
 
   // Removing an organism from every organisms list is refused, naming it; the sources stay, so only the map check speaks.
-  const context = { page11: derive.page11, drafts: derive.drafts, need: derive.need, menu: derive.menu, design: derive.design };
+  const context = { page11: derive.page11, drafts: derive.drafts, need: derive.need, menu: derive.menu, design: derive.design, entities: derive.entities };
   assert.deepEqual(gateD2SharedV2(out.sharedDefs.atendimento, context).filter(issue => issue.code === 'D2_SHARED_V2_ORGANISM_UNFED'), []);
   const unlisted = structuredClone(out.sharedDefs.atendimento) as D2SharedV2Definition;
   for (const state of Object.values(unlisted.states)) state.organisms = state.organisms.filter(id => id !== 'lookupAtendimento');
@@ -986,10 +986,15 @@ async function clinicR2Bff(pageId: string): Promise<D2BffContext> {
 
 const clinicR2Answer = (name: string): RawDesign => d2ToolPayload(readPack('clinicR2').json<{ raw: unknown }>(`recorded/bff55/${name}`).raw, 'submitD2Bff', 'D2_BFF') as RawDesign;
 
-void test('d2_82: agenda_diaria approves; pacientes-1 refuses format and bindings together; pacientes-2 refuses only the binding update', async () => {
+void test('d2_82: agenda_diaria refuses only the missing countryCode; pacientes-1 refuses format and bindings together; pacientes-2 refuses only the binding update', async () => {
   const agenda = await clinicR2Bff('agenda_diaria');
-  assert.doesNotThrow(() => d2BffApproved(agenda, clinicR2Answer('agenda_diaria-1.json')));
-  assert.doesNotThrow(() => d2BffApproved(agenda, clinicR2Answer('agenda_diaria-2.json')));
+  for (const name of ['agenda_diaria-1.json', 'agenda_diaria-2.json']) {
+    const refusal = refusalOf(() => d2BffApproved(agenda, clinicR2Answer(name)));
+    assert.match(refusal, /D2_BFF_COVERAGE: organisms\.\w+\.reads\.Profissional\.details\.identification/u);
+    assert.match(refusal, /missing: countryCode/u);
+    assert.doesNotMatch(refusal, /Paciente\.details\.identification/u);
+    assert.doesNotMatch(refusal, /D2_BFF_(?!COVERAGE)/u);
+  }
 
   const pacientes = await clinicR2Bff('pacientes');
   const first = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-1.json')));
@@ -999,6 +1004,21 @@ void test('d2_82: agenda_diaria approves; pacientes-1 refuses format and binding
   const second = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-2.json')));
   assert.match(second, /D2_BFF_BINDING_UPDATE/u);
   assert.doesNotMatch(second, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
+});
+
+void test('d2_82 s2: an object node is covered only when every ontology leaf is delivered', async () => {
+  const agenda = await clinicR2Bff('agenda_diaria');
+  const withCountry = clinicR2Answer('agenda_diaria-2.json');
+  withCountry.types.find(item => item.name === 'IdentificacaoProfissional')!.fields.push({ name: 'countryCode', type: 'string', origin: { kind: 'field', paths: ['Profissional.details.identification.countryCode'] } });
+  assert.doesNotThrow(() => d2BffApproved(agenda, withCountry));
+
+  const withoutDocId = clinicR2Answer('agenda_diaria-2.json');
+  withoutDocId.types.find(item => item.name === 'IdentificacaoProfissional')!.fields.push({ name: 'countryCode', type: 'string', origin: { kind: 'field', paths: ['Profissional.details.identification.countryCode'] } });
+  const paciente = withoutDocId.types.find(item => item.name === 'IdentificacaoPaciente')!;
+  paciente.fields = paciente.fields.filter(field => field.name !== 'docId');
+  const refusal = refusalOf(() => d2BffApproved(agenda, withoutDocId));
+  assert.match(refusal, /D2_BFF_COVERAGE: organisms\.\w+\.reads\.Paciente\.details\.identification/u);
+  assert.match(refusal, /missing: docId/u);
 });
 
 void test('d2_82 s3: a create-only form does not ask the backend to feed the fields it edits', async () => {
