@@ -1,0 +1,833 @@
+{
+  "attempt": "1",
+  "model": "openai/gpt-5.6-terra-pro",
+  "promptChars": 27839,
+  "receivedAt": "2026-10-07T07:29:18.994Z",
+  "raw": {
+    "type": "flexible",
+    "result": {
+      "toolName": "submitD2Bff",
+      "arguments": {
+        "types": [
+          {
+            "name": "IdentificacaoPaciente",
+            "description": "Identificação do paciente autorizada para exibição na agenda própria do profissional.",
+            "fields": [
+              {
+                "name": "subtype",
+                "type": "'Person'",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.subtype"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.status"
+                  ]
+                }
+              },
+              {
+                "name": "docType",
+                "type": "'SSN' | 'EIN' | 'Passport' | 'DriversLicense' | 'NationalId' | 'CPF' | 'CNPJ' | 'VAT' | 'Other'",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.docType"
+                  ]
+                }
+              },
+              {
+                "name": "docId",
+                "type": "string",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification.docId"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "PacienteDaConsulta",
+            "description": "Paciente relacionado à consulta, na forma permitida ao profissional responsável.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.id"
+                  ]
+                }
+              },
+              {
+                "name": "identification",
+                "type": "IdentificacaoPaciente",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Paciente.details.identification"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "IdentificacaoProfissional",
+            "description": "Identificação do profissional responsável exibida no detalhe da própria consulta.",
+            "fields": [
+              {
+                "name": "subtype",
+                "type": "'Person'",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Profissional.details.identification.subtype"
+                  ]
+                }
+              },
+              {
+                "name": "name",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Profissional.details.identification.name"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'Active' | 'Inactive' | 'Merged' | 'Blocked'",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Profissional.details.identification.status"
+                  ]
+                }
+              },
+              {
+                "name": "docType",
+                "type": "'CPF' | 'Passport' | 'NationalId' | 'Other'",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Profissional.details.identification.docType"
+                  ]
+                }
+              },
+              {
+                "name": "docId",
+                "type": "string",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Profissional.details.identification.docId"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ProfissionalDaConsulta",
+            "description": "Profissional responsável relacionado à consulta.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Profissional.id"
+                  ]
+                }
+              },
+              {
+                "name": "identification",
+                "type": "IdentificacaoProfissional",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Profissional.details.identification"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "DetalhesAtendimento",
+            "description": "Dados de atendimento da consulta que podem ser lidos e preenchidos pelo profissional.",
+            "fields": [
+              {
+                "name": "attendanceNote",
+                "type": "string",
+                "optional": true,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.details.attendanceNote"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ConsultaResumoDoDia",
+            "description": "Linha da agenda diária, já restrita ao profissional autenticado e ao dia corrente.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.id"
+                  ]
+                }
+              },
+              {
+                "name": "scheduledAt",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.scheduledAt"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'scheduled' | 'confirmed' | 'noShow' | 'attended'",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.status"
+                  ]
+                }
+              },
+              {
+                "name": "pacienteId",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.pacienteId"
+                  ]
+                }
+              },
+              {
+                "name": "profissionalId",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.profissionalId"
+                  ]
+                }
+              },
+              {
+                "name": "paciente",
+                "type": "PacienteDaConsulta",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.id",
+                    "Paciente.details.identification"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "ConsultaDoDia",
+            "description": "Consulta aberta pelo profissional, com as relações e a anotação necessárias para conferência e registro.",
+            "fields": [
+              {
+                "name": "id",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.version"
+                  ]
+                }
+              },
+              {
+                "name": "scheduledAt",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.scheduledAt"
+                  ]
+                }
+              },
+              {
+                "name": "status",
+                "type": "'scheduled' | 'confirmed' | 'noShow' | 'attended'",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.status"
+                  ]
+                }
+              },
+              {
+                "name": "pacienteId",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.pacienteId"
+                  ]
+                }
+              },
+              {
+                "name": "profissionalId",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.profissionalId"
+                  ]
+                }
+              },
+              {
+                "name": "details",
+                "type": "DetalhesAtendimento",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.details"
+                  ]
+                }
+              },
+              {
+                "name": "paciente",
+                "type": "PacienteDaConsulta",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Paciente.id",
+                    "Paciente.details.identification"
+                  ]
+                }
+              },
+              {
+                "name": "profissional",
+                "type": "ProfissionalDaConsulta",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Profissional.id",
+                    "Profissional.details.identification"
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "name": "RegistroAtendimentoPayload",
+            "description": "Carga da transição que registra o atendimento realizado.",
+            "fields": [
+              {
+                "name": "attendanceNote",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.details.attendanceNote"
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "id": "carregarAgendaDoDia",
+            "kind": "qry",
+            "when": "onLoad",
+            "writes": "",
+            "input": [
+              {
+                "name": "page",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Consulta.scheduledAt"
+                  ]
+                }
+              },
+              {
+                "name": "pageSize",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Consulta.id"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "consultas",
+                "type": "ConsultaResumoDoDia[]",
+                "optional": false,
+                "paginated": true,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Consulta.id",
+                    "Consulta.scheduledAt",
+                    "Consulta.status",
+                    "Consulta.pacienteId",
+                    "Consulta.profissionalId",
+                    "Paciente.id",
+                    "Paciente.details.identification"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Carrega a agenda de hoje que o profissional autenticado pode percorrer ao abrir a página.",
+              "input": "page e pageSize definem a faixa da lista paginada solicitada pela tela.",
+              "processing": "Obtém a identidade do profissional autenticado, fixa o dia corrente e localiza somente consultas cujo profissional e horário previsto pertençam a esse contexto. Ordena pelo horário previsto, resolve a identificação permitida de cada paciente e entrega somente a página solicitada.",
+              "output": "Retorna as linhas da agenda diária já filtradas, com horário, situação e paciente, para a lista consultasDoDia."
+            }
+          },
+          {
+            "id": "carregarMaisConsultasDoDia",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "page",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Consulta.scheduledAt"
+                  ]
+                }
+              },
+              {
+                "name": "pageSize",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Consulta.id"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "consultas",
+                "type": "ConsultaResumoDoDia[]",
+                "optional": false,
+                "paginated": true,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Consulta.id",
+                    "Consulta.scheduledAt",
+                    "Consulta.status",
+                    "Consulta.pacienteId",
+                    "Consulta.profissionalId",
+                    "Paciente.id",
+                    "Paciente.details.identification"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Busca a próxima faixa da agenda de hoje quando o profissional pede mais consultas.",
+              "input": "page é a página seguinte e pageSize é a quantidade de linhas por página.",
+              "processing": "Aplica exatamente o escopo protegido da agenda do profissional autenticado no dia corrente, ordena por horário previsto, resolve o paciente de cada linha e retorna apenas a página pedida.",
+              "output": "Retorna mais linhas compatíveis com consultasDoDia para serem acrescentadas à lista já carregada."
+            }
+          },
+          {
+            "id": "consultarConsultaDoDia",
+            "kind": "qry",
+            "when": "interaction",
+            "writes": "",
+            "input": [
+              {
+                "name": "consultaId",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "context",
+                  "paths": [
+                    "Consulta.id"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "consulta",
+                "type": "ConsultaDoDia",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Consulta.id",
+                    "Consulta.version",
+                    "Consulta.pacienteId",
+                    "Consulta.profissionalId",
+                    "Consulta.scheduledAt",
+                    "Consulta.status",
+                    "Consulta.details.attendanceNote",
+                    "Paciente.id",
+                    "Paciente.details.identification",
+                    "Profissional.id",
+                    "Profissional.details.identification"
+                  ]
+                }
+              }
+            ],
+            "rules": [],
+            "jsdoc": {
+              "purpose": "Abre uma consulta escolhida na agenda do dia para conferência e preparação do registro de atendimento.",
+              "input": "consultaId identifica a linha selecionada pelo profissional na própria lista.",
+              "processing": "Lê a consulta pelo identificador somente se ela pertencer ao profissional autenticado e estiver prevista para o dia corrente. Compõe a consulta com a identificação autorizada do paciente e do profissional responsável, incluindo versão e anotação atual.",
+              "output": "Retorna a consulta completa na forma usada pelo detalhe, formulário e ações, inclusive os dados necessários para concorrência otimista."
+            }
+          },
+          {
+            "id": "registrarAtendimento",
+            "kind": "cmd",
+            "when": "registrarAtendimento",
+            "writes": "Consulta.registrarAtendimento",
+            "input": [
+              {
+                "name": "consultaId",
+                "type": "string",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.id"
+                  ]
+                }
+              },
+              {
+                "name": "version",
+                "type": "number",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.version"
+                  ]
+                }
+              },
+              {
+                "name": "details",
+                "type": "RegistroAtendimentoPayload",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "field",
+                  "paths": [
+                    "Consulta.details"
+                  ]
+                }
+              }
+            ],
+            "output": [
+              {
+                "name": "consulta",
+                "type": "ConsultaDoDia",
+                "optional": false,
+                "paginated": false,
+                "origin": {
+                  "kind": "aggregate",
+                  "paths": [
+                    "Consulta.id",
+                    "Consulta.version",
+                    "Consulta.pacienteId",
+                    "Consulta.profissionalId",
+                    "Consulta.scheduledAt",
+                    "Consulta.status",
+                    "Consulta.details.attendanceNote",
+                    "Paciente.id",
+                    "Paciente.details.identification",
+                    "Profissional.id",
+                    "Profissional.details.identification"
+                  ]
+                }
+              }
+            ],
+            "rules": [
+              "transicaoConsultaValida",
+              "anotacaoObrigatoriaNoAtendimento"
+            ],
+            "jsdoc": {
+              "purpose": "Registra como atendida a consulta aberta pelo profissional e preserva sua anotação clínica.",
+              "input": "consultaId e version identificam a consulta e protegem contra edição concorrente; details.attendanceNote é a anotação obrigatória exigida pela transição.",
+              "processing": "Confirma que a consulta pertence ao profissional autenticado, aplica a transição registrarAtendimento e grava a anotação no payload. Recusa a operação se transicaoConsultaValida não permitir a situação atual ou se anotacaoObrigatoriaNoAtendimento não receber anotação; em caso de sucesso recompõe o registro atualizado com suas relações autorizadas.",
+              "output": "Retorna a consulta já atendida, com versão e anotação atualizadas, para redesenhar o detalhe e atualizar a linha existente na agenda sem nova consulta."
+            }
+          }
+        ],
+        "bindings": {
+          "updates": [
+            {
+              "endpoint": "carregarAgendaDoDia",
+              "state": "carregarAgendaDoDia.consultas",
+              "mode": "replace"
+            },
+            {
+              "endpoint": "carregarMaisConsultasDoDia",
+              "state": "carregarAgendaDoDia.consultas",
+              "mode": "append"
+            },
+            {
+              "endpoint": "consultarConsultaDoDia",
+              "state": "consultarConsultaDoDia.consulta",
+              "mode": "replace"
+            },
+            {
+              "endpoint": "registrarAtendimento",
+              "state": "consultarConsultaDoDia.consulta",
+              "mode": "upsert"
+            },
+            {
+              "endpoint": "registrarAtendimento",
+              "state": "carregarAgendaDoDia.consultas",
+              "mode": "upsert"
+            }
+          ],
+          "organisms": [
+            {
+              "organism": "consultasDoDia",
+              "reads": "carregarAgendaDoDia.consultas"
+            },
+            {
+              "organism": "consultaDoDia",
+              "reads": "consultarConsultaDoDia.consulta"
+            },
+            {
+              "organism": "consultaDoDia",
+              "reads": "registrarAtendimento.consulta"
+            },
+            {
+              "organism": "registroAtendimento",
+              "reads": "consultarConsultaDoDia.consulta"
+            },
+            {
+              "organism": "registroAtendimento",
+              "reads": "registrarAtendimento.consulta"
+            },
+            {
+              "organism": "acoesAtendimento",
+              "reads": "consultarConsultaDoDia.consulta"
+            },
+            {
+              "organism": "acoesAtendimento",
+              "reads": "registrarAtendimento.consulta"
+            }
+          ],
+          "commands": [
+            {
+              "endpoint": "registrarAtendimento",
+              "refreshes": []
+            }
+          ],
+          "selections": [
+            {
+              "organism": "consultasDoDia",
+              "via": {
+                "kind": "list",
+                "ref": "carregarAgendaDoDia.consultas"
+              }
+            },
+            {
+              "organism": "consultaDoDia",
+              "via": {
+                "kind": "query",
+                "ref": "consultarConsultaDoDia"
+              }
+            },
+            {
+              "organism": "registroAtendimento",
+              "via": {
+                "kind": "query",
+                "ref": "consultarConsultaDoDia"
+              }
+            }
+          ],
+          "journeys": [
+            {
+              "step": "consultarAgendaDiaria/localizarAgendaDoDia",
+              "organisms": [
+                "consultasDoDia"
+              ],
+              "endpoints": [
+                "carregarAgendaDoDia",
+                "carregarMaisConsultasDoDia"
+              ],
+              "continuesIn": ""
+            },
+            {
+              "step": "consultarAgendaDiaria/consultarConsultasDoDia",
+              "organisms": [
+                "consultasDoDia",
+                "consultaDoDia"
+              ],
+              "endpoints": [
+                "carregarAgendaDoDia",
+                "carregarMaisConsultasDoDia",
+                "consultarConsultaDoDia"
+              ],
+              "continuesIn": ""
+            },
+            {
+              "step": "registrarAtendimento/localizarConsultaDoDia",
+              "organisms": [
+                "consultasDoDia",
+                "consultaDoDia",
+                "registroAtendimento"
+              ],
+              "endpoints": [
+                "carregarAgendaDoDia",
+                "carregarMaisConsultasDoDia",
+                "consultarConsultaDoDia"
+              ],
+              "continuesIn": ""
+            },
+            {
+              "step": "registrarAtendimento/registrarAtendimentoRealizado",
+              "organisms": [
+                "consultaDoDia",
+                "registroAtendimento",
+                "acoesAtendimento"
+              ],
+              "endpoints": [
+                "registrarAtendimento"
+              ],
+              "continuesIn": ""
+            }
+          ]
+        }
+      }
+    },
+    "status": "completed",
+    "stepId": 15,
+    "interaction": null,
+    "nextSteps": null
+  },
+  "verdict": "D2_BFF_COVERAGE: organisms.consultasDoDia.reads.Paciente.details.identification: organism consultasDoDia reads Paciente.details.identification, and no output leaf of the page's endpoints names it as origin (field or aggregate). | D2_BFF_COVERAGE: organisms.consultaDoDia.reads.Paciente.details.identification: organism consultaDoDia reads Paciente.details.identification, and no output leaf of the page's endpoints names it as origin (field or aggregate). | D2_BFF_COVERAGE: organisms.consultaDoDia.reads.Profissional.details.identification: organism consultaDoDia reads Profissional.details.identification, and no output leaf of the page's endpoints names it as origin (field or aggregate)."
+}

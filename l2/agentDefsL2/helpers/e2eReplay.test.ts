@@ -964,3 +964,39 @@ void test('d2_79: field leaves keep their ontology path (recorded r6); every pag
   // "Load more" appends to the items of the paged list.
   assert.match(parseD2SharedV2(five.sources.cardapio.shared).definition.functions.carregarMaisItensCardapio.description, /\.items: append\)$/u);
 });
+
+/** bff55 context of one clinicR2 page, from the accepted pages50 answer of the p4_32 run. */
+async function clinicR2Bff(pageId: string): Promise<D2BffContext> {
+  const pack = readPack('clinicR2');
+  const needs = pack.json('pool/needs.json');
+  const artifacts = await artifactsOf(pack, needs);
+  const snapshot = await buildD2InputSnapshot({ project: 102047, module: pack.moduleName }, artifacts);
+  const built = pageContextOf(pack, snapshot, artifacts, pageId)!;
+  const writes = new Map<string, unknown>();
+  await approveD2PagesUnit(built.context, built.answer, 0, 0, {
+    writeSource: async (info, source) => { writes.set(info.shortName + info.folder, source); },
+    writeJson: async (info, value) => { writes.set(info.shortName + info.folder, value); },
+  });
+  const at = (folder: string, shortName: string) => writes.get(shortName + `${pack.moduleName}/${folder}`);
+  return bffContextOf(pack, artifacts, needs, pageId, {
+    page11Text: { desktop: at('web/desktop/page11', pageId) as string, mobile: at('web/mobile/page11', pageId) as string },
+    drafts: { desktop: at('pipeline/agentDefsL2/page11Needs', `${pageId}Desktop`), mobile: at('pipeline/agentDefsL2/page11Needs', `${pageId}Mobile`) },
+  });
+}
+
+const clinicR2Answer = (name: string): RawDesign => d2ToolPayload(readPack('clinicR2').json<{ raw: unknown }>(`recorded/bff55/${name}`).raw, 'submitD2Bff', 'D2_BFF') as RawDesign;
+
+void test('d2_82: agenda_diaria approves; pacientes-1 refuses format and bindings together; pacientes-2 refuses only the binding update', async () => {
+  const agenda = await clinicR2Bff('agenda_diaria');
+  assert.doesNotThrow(() => d2BffApproved(agenda, clinicR2Answer('agenda_diaria-1.json')));
+  assert.doesNotThrow(() => d2BffApproved(agenda, clinicR2Answer('agenda_diaria-2.json')));
+
+  const pacientes = await clinicR2Bff('pacientes');
+  const first = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-1.json')));
+  assert.match(first, /D2_BFF_FORMAT: types\.PatientContacts\.fields/u);
+  assert.match(first, /D2_BFF_BINDING_UPDATE/u);
+
+  const second = refusalOf(() => d2BffApproved(pacientes, clinicR2Answer('pacientes-2.json')));
+  assert.match(second, /D2_BFF_BINDING_UPDATE/u);
+  assert.doesNotMatch(second, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
+});

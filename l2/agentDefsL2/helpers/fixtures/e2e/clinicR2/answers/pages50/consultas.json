@@ -1,0 +1,413 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "calendarScheduling"
+    },
+    "intent": "A recepcionista acompanha a agenda da clínica, localiza a consulta, confere paciente, profissional, data e horário, e agenda um horário disponível, confirma o agendamento por telefone ou registra a falta do paciente.",
+    "sections": [
+     {
+      "id": "clinicAgenda",
+      "priority": "primary",
+      "purpose": "Dar à recepcionista a visão da agenda da clínica para localizar consultas por profissional, data, horário e situação.",
+      "organisms": [
+       "agendaList"
+      ]
+     },
+     {
+      "id": "appointmentContext",
+      "priority": "main",
+      "purpose": "Mostrar os dados da consulta selecionada e o formulário de agendamento para conferir e marcar paciente, profissional e horário disponível.",
+      "organisms": [
+       "consultaDetail",
+       "consultaForm"
+      ]
+     },
+     {
+      "id": "receptionActions",
+      "priority": "secondary",
+      "purpose": "Disponibilizar as ações de agendar consulta, confirmar o agendamento telefônico e registrar a falta do paciente.",
+      "organisms": [
+       "consultaActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "agendaList": {
+      "kind": "list",
+      "text": "Comunica a agenda da clínica — data, horário, situação, paciente e profissional — para a recepcionista localizar a consulta em que precisa atuar.",
+      "intents": []
+     },
+     "consultaDetail": {
+      "kind": "detail",
+      "text": "Comunica paciente, profissional, data, horário e situação da consulta escolhida para a recepcionista conferir antes de confirmar por telefone ou registrar falta.",
+      "intents": []
+     },
+     "consultaForm": {
+      "kind": "form",
+      "text": "Comunica a escolha de paciente, profissional e data/horário disponíveis para marcar a consulta, e devolve o resultado do agendamento, da confirmação ou da falta.",
+      "intents": []
+     },
+     "consultaActions": {
+      "kind": "actions",
+      "text": "Comunica as ações autorizadas da recepção: agendar consulta, confirmar o agendamento telefônico e registrar a falta do paciente.",
+      "intents": [
+       {
+        "id": "agendarConsulta",
+        "kind": "submit",
+        "to": ""
+       },
+       {
+        "id": "confirmarConsulta",
+        "kind": "submit",
+        "to": ""
+       },
+       {
+        "id": "registrarFalta",
+        "kind": "submit",
+        "to": ""
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "agendaList": [
+      {
+       "role": "search",
+       "preferred": "groupsearchcontent--ml-search-filters",
+       "alternative": "groupsearchcontent--ml-search-bar"
+      },
+      {
+       "role": "schedule",
+       "preferred": "groupviewdata--ml-calendar-view",
+       "alternative": "groupviewdata--ml-timeline-view"
+      }
+     ],
+     "consultaDetail": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-view-card-horizontal",
+       "alternative": "groupviewcard--ml-vertical-card"
+      }
+     ],
+     "consultaForm": [
+      {
+       "role": "datetime",
+       "preferred": "groupenterdatetime--ml-datetime-picker",
+       "alternative": "groupenterdatetime--ml-enter-datetime-masked-input"
+      },
+      {
+       "role": "patientSelect",
+       "preferred": "groupselectone--ml-select-one-autocomplete",
+       "alternative": "groupselectone--ml-combobox"
+      },
+      {
+       "role": "professionalSelect",
+       "preferred": "groupselectone--ml-select",
+       "alternative": "groupselectone--ml-select-dropdown"
+      },
+      {
+       "role": "feedback",
+       "preferred": "groupnotifyuser--ml-toast-notification",
+       "alternative": "groupnotifyuser--ml-contextual-feedback"
+      }
+     ],
+     "consultaActions": [
+      {
+       "role": "commands",
+       "preferred": "grouptriggeraction--ml-button-group",
+       "alternative": "grouptriggeraction--ml-button-standard"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "agendaList": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Paciente.details.identification",
+       "Profissional.details.identification"
+      ],
+      "edits": [],
+      "selects": "consultaDetail",
+      "submits": []
+     },
+     "consultaDetail": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Paciente.id",
+       "Paciente.details.identification",
+       "Paciente.details.base",
+       "Profissional.id",
+       "Profissional.details.identification",
+       "Profissional.details.agendaClinica"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "consultaForm": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Paciente.id",
+       "Paciente.details.identification",
+       "Profissional.id",
+       "Profissional.details.identification",
+       "Profissional.details.agendaClinica"
+      ],
+      "edits": [
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Consulta.scheduledAt"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "consultaActions": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.status"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "agendarConsulta",
+        "write": "Consulta.create"
+       },
+       {
+        "intentId": "confirmarConsulta",
+        "write": "Consulta.confirmarConsulta"
+       },
+       {
+        "intentId": "registrarFalta",
+        "write": "Consulta.registrarFalta"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "calendarScheduling"
+    },
+    "intent": "Em conteúdo estreito e fluido em torno de 390px, também usável em 360px e 430px, a recepcionista percorre a agenda em coluna, confere a consulta escolhida e agenda, confirma ou registra falta sem layout rígido.",
+    "sections": [
+     {
+      "id": "clinicAgenda",
+      "priority": "primary",
+      "purpose": "Empilhar a agenda em coluna estreita e fluida em torno de 390px, usável em 360px e 430px, para a recepcionista localizar a consulta sem grade fixa.",
+      "organisms": [
+       "agendaList"
+      ]
+     },
+     {
+      "id": "appointmentContext",
+      "priority": "main",
+      "purpose": "Exibir o resumo da consulta e o formulário em fluxo vertical estreito para conferir dados e preencher paciente, profissional e horário.",
+      "organisms": [
+       "consultaDetail",
+       "consultaForm"
+      ]
+     },
+     {
+      "id": "receptionActions",
+      "priority": "secondary",
+      "purpose": "Manter agendar, confirmar e registrar falta acessíveis no fim do fluxo estreito, usáveis com o polegar entre 360px e 430px.",
+      "organisms": [
+       "consultaActions"
+      ]
+     }
+    ],
+    "organisms": {
+     "agendaList": {
+      "kind": "list",
+      "text": "Comunica a agenda da clínica — data, horário, situação, paciente e profissional — para a recepcionista localizar a consulta em que precisa atuar.",
+      "intents": []
+     },
+     "consultaDetail": {
+      "kind": "detail",
+      "text": "Comunica paciente, profissional, data, horário e situação da consulta escolhida para a recepcionista conferir antes de confirmar por telefone ou registrar falta.",
+      "intents": []
+     },
+     "consultaForm": {
+      "kind": "form",
+      "text": "Comunica a escolha de paciente, profissional e data/horário disponíveis para marcar a consulta, e devolve o resultado do agendamento, da confirmação ou da falta.",
+      "intents": []
+     },
+     "consultaActions": {
+      "kind": "actions",
+      "text": "Comunica as ações autorizadas da recepção: agendar consulta, confirmar o agendamento telefônico e registrar a falta do paciente.",
+      "intents": [
+       {
+        "id": "agendarConsulta",
+        "kind": "submit",
+        "to": ""
+       },
+       {
+        "id": "confirmarConsulta",
+        "kind": "submit",
+        "to": ""
+       },
+       {
+        "id": "registrarFalta",
+        "kind": "submit",
+        "to": ""
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "agendaList": [
+      {
+       "role": "search",
+       "preferred": "groupsearchcontent--ml-search-bar",
+       "alternative": "groupsearchcontent--ml-search-filters"
+      },
+      {
+       "role": "schedule",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-timeline-view"
+      }
+     ],
+     "consultaDetail": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-vertical-card",
+       "alternative": "groupviewcard--ml-view-card-horizontal"
+      }
+     ],
+     "consultaForm": [
+      {
+       "role": "datetime",
+       "preferred": "groupenterdatetime--ml-datetime-picker",
+       "alternative": "groupenterdatetime--ml-enter-datetime-masked-input"
+      },
+      {
+       "role": "patientSelect",
+       "preferred": "groupselectone--ml-combobox",
+       "alternative": "groupselectone--ml-select-one-autocomplete"
+      },
+      {
+       "role": "professionalSelect",
+       "preferred": "groupselectone--ml-select-dropdown",
+       "alternative": "groupselectone--ml-select"
+      },
+      {
+       "role": "feedback",
+       "preferred": "groupnotifyuser--ml-contextual-feedback",
+       "alternative": "groupnotifyuser--ml-toast-notification"
+      }
+     ],
+     "consultaActions": [
+      {
+       "role": "commands",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-button-group"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "agendaList": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Paciente.details.identification",
+       "Profissional.details.identification"
+      ],
+      "edits": [],
+      "selects": "consultaDetail",
+      "submits": []
+     },
+     "consultaDetail": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Paciente.id",
+       "Paciente.details.identification",
+       "Paciente.details.base",
+       "Profissional.id",
+       "Profissional.details.identification",
+       "Profissional.details.agendaClinica"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": []
+     },
+     "consultaForm": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Paciente.id",
+       "Paciente.details.identification",
+       "Profissional.id",
+       "Profissional.details.identification",
+       "Profissional.details.agendaClinica"
+      ],
+      "edits": [
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Consulta.scheduledAt"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "consultaActions": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.status"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "agendarConsulta",
+        "write": "Consulta.create"
+       },
+       {
+        "intentId": "confirmarConsulta",
+        "write": "Consulta.confirmarConsulta"
+       },
+       {
+        "intentId": "registrarFalta",
+        "write": "Consulta.registrarFalta"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A p\\u00e1gina opera a agenda de consultas da cl\\u00ednica: localizar hor\\u00e1rios, criar agendamento, confirmar e registrar falta \\u2014 o encaixe de calendarScheduling."
+ }
+}

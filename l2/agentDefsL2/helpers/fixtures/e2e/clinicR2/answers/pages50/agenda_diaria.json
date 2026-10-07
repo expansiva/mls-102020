@@ -1,0 +1,319 @@
+{
+ "answer": {
+  "desktop": {
+   "definition": {
+    "template": {
+     "category": "calendarScheduling"
+    },
+    "intent": "Permitir que o profissional veja somente as próprias consultas previstas para hoje, abra uma consulta para conferir paciente e horário, anote o atendimento e o registre como realizado.",
+    "sections": [
+     {
+      "id": "hoje",
+      "priority": "primary",
+      "purpose": "Mostrar a agenda do dia do profissional autenticado para ele localizar, no tempo, as consultas que lhe pertencem.",
+      "organisms": [
+       "consultasDoDia"
+      ]
+     },
+     {
+      "id": "detalhe",
+      "priority": "main",
+      "purpose": "Exibir a consulta escolhida com paciente e horário para o profissional confirmar quem e quando vai atender.",
+      "organisms": [
+       "consultaDoDia"
+      ]
+     },
+     {
+      "id": "atendimento",
+      "priority": "secondary",
+      "purpose": "Capturar a anotação do atendimento e confirmar o registro que marca a consulta como atendida.",
+      "organisms": [
+       "registroAtendimento",
+       "acoesAtendimento"
+      ]
+     }
+    ],
+    "organisms": {
+     "consultasDoDia": {
+      "kind": "list",
+      "text": "Lista só as consultas do profissional autenticado previstas para hoje, com horário, paciente e situação, para ele localizar o atendimento da vez sem ver a agenda de outros.",
+      "intents": []
+     },
+     "consultaDoDia": {
+      "kind": "detail",
+      "text": "Mostra a consulta do dia selecionada com o paciente e o horário, para o profissional conferir o compromisso antes de registrar o atendimento.",
+      "intents": []
+     },
+     "registroAtendimento": {
+      "kind": "form",
+      "text": "Recebe a anotação obrigatória do atendimento realizado na consulta aberta, para o profissional descrever o que foi feito antes de marcar como atendida.",
+      "intents": []
+     },
+     "acoesAtendimento": {
+      "kind": "actions",
+      "text": "Registra o atendimento da consulta aberta, marcando-a como atendida com a anotação informada pelo profissional.",
+      "intents": [
+       {
+        "id": "registrarAtendimento",
+        "kind": "submit",
+        "to": ""
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "consultasDoDia": [
+      {
+       "role": "collection",
+       "preferred": "groupviewdata--ml-calendar-view",
+       "alternative": "groupviewdata--ml-timeline-view"
+      }
+     ],
+     "consultaDoDia": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-view-card-horizontal",
+       "alternative": "groupviewcard--ml-profile-card"
+      }
+     ],
+     "registroAtendimento": [
+      {
+       "role": "note",
+       "preferred": "groupentertext--ml-multiline-text",
+       "alternative": "groupentertext--ml-enter-text"
+      }
+     ],
+     "acoesAtendimento": [
+      {
+       "role": "submit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-split-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "consultasDoDia": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Paciente.id",
+       "Paciente.details.identification"
+      ],
+      "edits": [],
+      "selects": "consultaDoDia",
+      "submits": []
+     },
+     "consultaDoDia": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Consulta.details.attendanceNote",
+       "Paciente.id",
+       "Paciente.details.identification",
+       "Profissional.id",
+       "Profissional.details.identification"
+      ],
+      "edits": [],
+      "selects": "registroAtendimento",
+      "submits": []
+     },
+     "registroAtendimento": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.status",
+       "Consulta.details.attendanceNote"
+      ],
+      "edits": [
+       "Consulta.details.attendanceNote"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "acoesAtendimento": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.status",
+       "Consulta.details.attendanceNote"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "registrarAtendimento",
+        "write": "Consulta.registrarAtendimento"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "mobile": {
+   "definition": {
+    "template": {
+     "category": "calendarScheduling"
+    },
+    "intent": "Em conteúdo estreito e fluido em torno de 390px, ainda utilizável em 360px e 430px, o profissional percorre só as próprias consultas de hoje, abre uma para ver paciente e horário, anota o atendimento e o registra.",
+    "sections": [
+     {
+      "id": "hoje",
+      "priority": "primary",
+      "purpose": "Empilhar a agenda do dia em faixa estreita para o profissional percorrer com o polegar os horários das próprias consultas de hoje.",
+      "organisms": [
+       "consultasDoDia"
+      ]
+     },
+     {
+      "id": "detalhe",
+      "priority": "main",
+      "purpose": "Mostrar em sequência o paciente e o horário da consulta aberta, para conferência rápida antes de anotar o atendimento.",
+      "organisms": [
+       "consultaDoDia"
+      ]
+     },
+     {
+      "id": "atendimento",
+      "priority": "secondary",
+      "purpose": "Oferecer a anotação e a ação de registrar o atendimento em bloco contínuo na largura estreita, sem sair da consulta aberta.",
+      "organisms": [
+       "registroAtendimento",
+       "acoesAtendimento"
+      ]
+     }
+    ],
+    "organisms": {
+     "consultasDoDia": {
+      "kind": "list",
+      "text": "Lista só as consultas do profissional autenticado previstas para hoje, com horário, paciente e situação, para ele localizar o atendimento da vez sem ver a agenda de outros.",
+      "intents": []
+     },
+     "consultaDoDia": {
+      "kind": "detail",
+      "text": "Mostra a consulta do dia selecionada com o paciente e o horário, para o profissional conferir o compromisso antes de registrar o atendimento.",
+      "intents": []
+     },
+     "registroAtendimento": {
+      "kind": "form",
+      "text": "Recebe a anotação obrigatória do atendimento realizado na consulta aberta, para o profissional descrever o que foi feito antes de marcar como atendida.",
+      "intents": []
+     },
+     "acoesAtendimento": {
+      "kind": "actions",
+      "text": "Registra o atendimento da consulta aberta, marcando-a como atendida com a anotação informada pelo profissional.",
+      "intents": [
+       {
+        "id": "registrarAtendimento",
+        "kind": "submit",
+        "to": ""
+       }
+      ]
+     }
+    },
+    "molecules": {
+     "consultasDoDia": [
+      {
+       "role": "collection",
+       "preferred": "groupviewdata--ml-vertical-record-list",
+       "alternative": "groupviewdata--ml-timeline-view"
+      }
+     ],
+     "consultaDoDia": [
+      {
+       "role": "summary",
+       "preferred": "groupviewcard--ml-vertical-card",
+       "alternative": "groupviewcard--ml-profile-card"
+      }
+     ],
+     "registroAtendimento": [
+      {
+       "role": "note",
+       "preferred": "groupentertext--ml-multiline-text",
+       "alternative": "groupentertext--ml-enter-text"
+      }
+     ],
+     "acoesAtendimento": [
+      {
+       "role": "submit",
+       "preferred": "grouptriggeraction--ml-button-standard",
+       "alternative": "grouptriggeraction--ml-icon-button"
+      }
+     ]
+    }
+   },
+   "needs": {
+    "organisms": {
+     "consultasDoDia": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Paciente.id",
+       "Paciente.details.identification"
+      ],
+      "edits": [],
+      "selects": "consultaDoDia",
+      "submits": []
+     },
+     "consultaDoDia": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.scheduledAt",
+       "Consulta.status",
+       "Consulta.pacienteId",
+       "Consulta.profissionalId",
+       "Consulta.details.attendanceNote",
+       "Paciente.id",
+       "Paciente.details.identification",
+       "Profissional.id",
+       "Profissional.details.identification"
+      ],
+      "edits": [],
+      "selects": "registroAtendimento",
+      "submits": []
+     },
+     "registroAtendimento": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.status",
+       "Consulta.details.attendanceNote"
+      ],
+      "edits": [
+       "Consulta.details.attendanceNote"
+      ],
+      "selects": "",
+      "submits": []
+     },
+     "acoesAtendimento": {
+      "reads": [
+       "Consulta.id",
+       "Consulta.version",
+       "Consulta.status",
+       "Consulta.details.attendanceNote"
+      ],
+      "edits": [],
+      "selects": "",
+      "submits": [
+       {
+        "intentId": "registrarAtendimento",
+        "write": "Consulta.registrarAtendimento"
+       }
+      ]
+     }
+    }
+   }
+  },
+  "categoryReason": "A página é a agenda diária do profissional: consultas próprias no tempo, detalhe do compromisso e registro do atendimento, o que corresponde a calendarScheduling."
+ }
+}
