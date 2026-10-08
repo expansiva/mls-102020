@@ -58,28 +58,92 @@ function moduleDefsFileInfo(project: number, moduleName: string): FileInfo {
     return { project, level: 4, folder: moduleName, shortName: 'module', extension: '.defs.ts' };
 }
 
-export async function readModuleLanguages(project: number, moduleName: string): Promise<string[]> {
+/** NS5 v2: `[defaultLanguage, ...productLanguages]` with no repeats. `null` when neither key is present. */
+export function moduleLanguagesOf(source: string): string[] | null {
+    const parsed = parseDefsSource(source);
+    if (!parsed) return null;
+    const { data } = parsed;
+    const hasDefault = typeof data.defaultLanguage === 'string';
+    const hasProduct = Array.isArray(data.productLanguages);
+    if (!hasDefault && !hasProduct) return null;
+
+    const out: string[] = [];
+    const push = (value: unknown) => {
+        if (typeof value !== 'string') return;
+        const code = value.trim();
+        if (code && !out.includes(code)) out.push(code);
+    };
+    if (hasDefault) push(data.defaultLanguage);
+    if (hasProduct) for (const code of data.productLanguages as unknown[]) push(code);
+    return out;
+}
+
+/**
+ * Replace only `productLanguages`, keeping the rest of the file. NS5 requires `defaultLanguage`
+ * to be one of `productLanguages`.
+ */
+export function withModuleLanguages(source: string, languages: string[]): string {
+    const parsed = parseDefsSource(source);
+    if (!parsed) throw new Error('[withModuleLanguages] invalid module.defs.ts source');
+
+    const next = languages.map(l => (typeof l === 'string' ? l.trim() : '')).filter(Boolean);
+    if (next.length === 0) throw new Error('[withModuleLanguages] productLanguages must not be empty');
+
+    const defaultLanguage = typeof parsed.data.defaultLanguage === 'string' ? parsed.data.defaultLanguage.trim() : '';
+    if (!defaultLanguage || !next.includes(defaultLanguage)) {
+        throw new Error(`[withModuleLanguages] productLanguages must include defaultLanguage '${defaultLanguage || '(missing)'}'`);
+    }
+
+    const replaced = replaceDefsValue(source, { ...parsed.data, productLanguages: next });
+    if (!replaced) throw new Error('[withModuleLanguages] could not replace productLanguages');
+    return replaced;
+}
+
+/** The module's `defaultLanguage`, or `null` when the file or the key is missing. */
+export async function readModuleDefaultLanguage(project: number, moduleName: string): Promise<string | null> {
     try {
         const file = mls.stor.files[mls.stor.getKeyToFile(moduleDefsFileInfo(project, moduleName) as mls.stor.IFileInfo)];
-        if (file) {
-            const parsed = parseDefsSource(String(await file.getContent()));
-            const moduleData = parsed && isRecord(parsed.data.module) ? parsed.data.module : parsed?.data;
-            const languages = moduleData && Array.isArray(moduleData.languages)
-                ? moduleData.languages.filter((l): l is string => typeof l === 'string' && !!l.trim())
-                : [];
-            if (languages.length > 0) return [...languages];
-        }
-    } catch { /* fall through to legacy fallback */ }
+        if (!file) return null;
+        const parsed = parseDefsSource(String(await file.getContent()));
+        const value = parsed?.data.defaultLanguage;
+        if (typeof value !== 'string') return null;
+        const code = value.trim();
+        return code || null;
+    } catch (e) {
+        console.warn(`[readModuleDefaultLanguage] failed to read module.defs.ts for '${moduleName}' (project ${project}): ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+    }
+}
 
-    // Legacy module (no `languages` field): fall back to project.json config.languages.
+export async function readModuleLanguages(project: number, moduleName: string): Promise<string[]> {
+    let reason = `module.defs.ts for '${moduleName}' (project ${project}) has no productLanguages/defaultLanguage`;
+    try {
+        const file = mls.stor.files[mls.stor.getKeyToFile(moduleDefsFileInfo(project, moduleName) as mls.stor.IFileInfo)];
+        if (!file) {
+            reason = `module.defs.ts not found for module '${moduleName}' (project ${project})`;
+        } else {
+            const languages = moduleLanguagesOf(String(await file.getContent()));
+            if (languages && languages.length > 0) return languages;
+            if (languages === null) {
+                reason = `module.defs.ts for '${moduleName}' (project ${project}) has neither productLanguages nor defaultLanguage`;
+            }
+        }
+    } catch (e) {
+        reason = `failed to read module.defs.ts for '${moduleName}' (project ${project}): ${e instanceof Error ? e.message : String(e)}`;
+    }
+
     try {
         const config = await getConfigProject(project);
         const legacy: string[] = ((config as any)?.languages ?? [])
             .map((i: any) => i?.language)
             .filter((l: any): l is string => typeof l === 'string' && !!l.trim());
-        if (legacy.length > 0) return legacy;
-    } catch { /* ignore */ }
+        if (legacy.length > 0) {
+            console.warn(`[readModuleLanguages] ${reason}; falling back to project config.languages`);
+            return legacy;
+        }
+    } catch { /* fall through to ['en'] */ }
 
+    console.warn(`[readModuleLanguages] ${reason}; falling back to ['en']`);
     return ['en'];
 }
 
@@ -89,16 +153,7 @@ export async function writeModuleLanguages(project: number, moduleName: string, 
     const storFile = mls.stor.files[key];
     if (!storFile) throw new Error(`[writeModuleLanguages] module.defs.ts not found for module '${moduleName}' (project ${project})`);
 
-    const parsed = parseDefsSource(String(await storFile.getContent()));
-    if (!parsed) throw new Error(`[writeModuleLanguages] invalid module.defs.ts source for module '${moduleName}' (project ${project})`);
-
-    const moduleData = isRecord(parsed.data.module) ? parsed.data.module : {};
-    parsed.data.module = { ...moduleData, languages: [...languages] };
-
-    // Re-serialize the whole file (same pattern as cfeCreateShared.saveConstDefault):
-    // the body is pure JSON inside the export, safe to re-emit.
-    const header = `/// <mls fileReference="_${project}_/l4/${moduleName}/module.defs.ts" enhancement="_blank"/>\n\n`;
-    const source = `${header}export const ${parsed.exportName} = ${JSON.stringify(parsed.data, null, 2)} as const;\n\nexport default ${parsed.exportName};\n`;
+    const source = withModuleLanguages(String(await storFile.getContent()), languages);
 
     // l4 defs is not an editor file — write through localStor.setContent, not getOrCreateModel.
     if (storFile.status !== 'renamed' && storFile.status !== 'new') storFile.status = 'changed';

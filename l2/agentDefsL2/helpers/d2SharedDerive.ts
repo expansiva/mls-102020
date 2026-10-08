@@ -6,7 +6,8 @@ import type { D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs
 import { d2WriteByKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 import { d2BffTypeRoot, d2PageSubmits, parseD2BffType, type D2BffDesign, type D2BffEndpoint, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
-import { gateD2SharedV2, type D2SharedV2Definition, type D2SharedV2Issue } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { gateD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import type { D2SharedV2Definition, D2SharedV2Issue } from '/_102020_/l2/helpers/sharedV2/format.js';
 
 /**
  * d2_75: the shared is written by code. It transcribes the design of A (endpoints and bindings) and derives only facts:
@@ -126,7 +127,19 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
     journeys: design.bindings.journeys.map(row => ({ step: row.step, organisms: row.organisms, functions: row.endpoints, ...(row.continuesIn ? { continuesIn: row.continuesIn } : {}) })),
     rules,
     access: input.access,
+    fields: fieldsOf(organisms),
   };
+}
+
+/** Ontology path → organisms that read or edit it, keys and ids sorted, from the drafts as written. */
+function fieldsOf(organisms: Map<string, OrganismRow>): Record<string, string[]> {
+  const byPath = new Map<string, string[]>();
+  for (const [id, row] of organisms) {
+    for (const path of [...row.reads, ...row.edits]) byPath.set(path, [...(byPath.get(path) ?? []), id]);
+  }
+  const fields: Record<string, string[]> = {};
+  for (const path of [...byPath.keys()].sort()) fields[path] = sortedUnique(byPath.get(path) ?? []);
+  return fields;
 }
 
 /** D over the derived shared (d2_70): the code's own output passes its own fact checks. */

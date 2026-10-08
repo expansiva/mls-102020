@@ -31,7 +31,8 @@ import { finalizeD2Pages } from '/_102020_/l2/agentDefsL2/steps/finalize80/run.j
 import { sourceInfo as pagesSourceInfo, type D2PagesReceipt } from '/_102020_/l2/agentDefsL2/steps/pages50/run.js';
 import { displayPath, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
 import { beforePromptStep as sharedStep } from '/_102020_/l2/agentDefsL2/steps/shared60/agentD2Shared.js';
-import { buildD2SharedV2, gateD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { gateD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { buildD2SharedV2, parseD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/helpers/sharedV2/format.js';
 import { deriveD2Shared } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
 import { approveD2BffUnit, bffDesignInfo, bffReceiptInfo, bffSchemaFor, buildD2BffPrompt, d2BffApproved, d2BffContextFrom, readApprovedD2Bff, D2_BFF_PROMPT_LIMIT_CHARS, type D2BffContext } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 import { buildD2BffDesign, d2CoverageObligation, normalizeD2BffDesign, type D2BffDesign, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
@@ -1039,4 +1040,64 @@ void test('d2_82 s3: a create-only form does not ask the backend to feed the fie
   }
   const control = refusalOf(() => d2BffApproved({ ...pacientes, drafts }, clinicR2Answer('pacientes-2.json')));
   assert.match(control, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
+});
+
+void test('d2_84 s1: derived shared indexes organisms that read or edit each ontology path', async () => {
+  const agendaCtx = await clinicR2Bff('agenda_diaria');
+  const agendaAnswer = clinicR2Answer('agenda_diaria-2.json');
+  agendaAnswer.types.find(item => item.name === 'IdentificacaoProfissional')!.fields.push({ name: 'countryCode', type: 'string', origin: { kind: 'field', paths: ['Profissional.details.identification.countryCode'] } });
+  const agenda = deriveD2Shared(sharedPageOf(agendaCtx, d2BffApproved(agendaCtx, agendaAnswer), {
+    agenda_diaria: { page11Text: agendaCtx.page11Text, drafts: agendaCtx.drafts },
+  }).derive);
+  const identification = agenda.fields['Paciente.details.identification'];
+  assert.ok(identification?.includes('consultaDoDia'), JSON.stringify(agenda.fields));
+  assert.deepEqual(identification, [...new Set(identification)].sort());
+  assert.deepEqual(Object.keys(agenda.fields), Object.keys(agenda.fields).sort());
+
+  const pacientesCtx = await clinicR2Bff('pacientes');
+  const pacientes = deriveD2Shared(sharedPageOf(pacientesCtx, buildD2BffDesign(clinicR2Answer('pacientes-2.json')), {
+    pacientes: { page11Text: pacientesCtx.page11Text, drafts: pacientesCtx.drafts },
+  }).derive);
+  assert.ok(pacientes.fields['Paciente.details.identification.name']?.includes('patientForm'), JSON.stringify(pacientes.fields));
+});
+
+/** d2_84 s2: fields is exactly the organisms that read or edit each draft path. */
+function assertFieldIndex(label: string, derive: D2SharedPage['derive'], fields: Record<string, string[]>): void {
+  const expected = new Map<string, Set<string>>();
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const [id, row] of Object.entries(derive.drafts[device].organisms)) {
+      for (const path of [...row.reads, ...row.edits]) {
+        const ids = expected.get(path) ?? new Set<string>();
+        ids.add(id);
+        expected.set(path, ids);
+      }
+    }
+  }
+  for (const [path, ids] of expected) {
+    for (const id of ids) assert.ok(fields[path]?.includes(id), `${label} ${path} missing ${id}`);
+  }
+  for (const [path, ids] of Object.entries(fields)) {
+    const have = expected.get(path);
+    assert.ok(have, `${label} ${path} has no reader or editor`);
+    for (const id of ids) assert.ok(have.has(id), `${label} ${path} lists ${id} without a read or edit`);
+  }
+}
+
+void test('d2_84 s2: every read or edit is in fields, and fields has nothing else', async () => {
+  for (const alias of ['dining', 'stock', 'clinic', 'clinicR2', 'expense', 'expenseR2']) {
+    const out = emptyOut();
+    await replay(alias, out);
+    for (const [pageId, definition] of Object.entries(out.sharedDefs)) {
+      assertFieldIndex(`${alias}/${pageId}`, out.shared[pageId].derive, definition.fields);
+    }
+    if (alias === 'dining' || alias === 'stock' || alias === 'expense') assert.ok(Object.keys(out.sharedDefs).length > 0, alias);
+  }
+
+  for (const [pageId, answerName] of [['agenda_diaria', 'agenda_diaria-2.json'], ['pacientes', 'pacientes-2.json']] as const) {
+    const ctx = await clinicR2Bff(pageId);
+    const page = sharedPageOf(ctx, buildD2BffDesign(clinicR2Answer(answerName)), {
+      [pageId]: { page11Text: ctx.page11Text, drafts: ctx.drafts },
+    });
+    assertFieldIndex(`clinicR2/${pageId}`, page.derive, deriveD2Shared(page.derive).fields);
+  }
 });
