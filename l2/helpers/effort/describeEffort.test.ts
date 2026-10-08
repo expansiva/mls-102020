@@ -92,3 +92,18 @@ void test('describeEffort abends without reading files when the project is unres
     mls.actualProject = previous;
   }
 });
+
+void test('describeEffort imports only helpers and the solution types, and does not write or fetch', () => {
+  const text = readFileSync(new URL('./describeEffort.ts', import.meta.url), 'utf8');
+  const allowed = ['/_102020_/l2/helpers/', '/_102035_/l2/solution/'];
+  const specs = [
+    ...text.matchAll(/\bfrom\s+['"]([^'"]+)['"]/g),
+    ...text.matchAll(/^\s*import\s+['"]([^'"]+)['"]/gm),
+    ...text.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]/g),
+  ].map(match => match[1]);
+  assert.ok(specs.length > 0);
+  for (const spec of specs) assert.ok(allowed.some(prefix => spec.startsWith(prefix)), spec);
+  for (const name of ['writeFile', 'writeJson', 'writeText', 'saveFile', 'fetch']) {
+    assert.equal(new RegExp(`\\b${name}\\b`).test(text), false, name);
+  }
+});
