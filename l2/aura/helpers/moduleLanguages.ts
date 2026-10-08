@@ -99,6 +99,22 @@ export function withModuleLanguages(source: string, languages: string[]): string
     return replaced;
 }
 
+/** The module's `defaultLanguage`, or `null` when the file or the key is missing. */
+export async function readModuleDefaultLanguage(project: number, moduleName: string): Promise<string | null> {
+    try {
+        const file = mls.stor.files[mls.stor.getKeyToFile(moduleDefsFileInfo(project, moduleName) as mls.stor.IFileInfo)];
+        if (!file) return null;
+        const parsed = parseDefsSource(String(await file.getContent()));
+        const value = parsed?.data.defaultLanguage;
+        if (typeof value !== 'string') return null;
+        const code = value.trim();
+        return code || null;
+    } catch (e) {
+        console.warn(`[readModuleDefaultLanguage] failed to read module.defs.ts for '${moduleName}' (project ${project}): ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+    }
+}
+
 export async function readModuleLanguages(project: number, moduleName: string): Promise<string[]> {
     let reason = `module.defs.ts for '${moduleName}' (project ${project}) has no productLanguages/defaultLanguage`;
     try {

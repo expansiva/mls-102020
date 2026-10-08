@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { moduleLanguagesOf, withModuleLanguages } from './moduleLanguages.js';
+import { moduleLanguagesOf, readModuleDefaultLanguage, withModuleLanguages } from './moduleLanguages.js';
 
 const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fixtures/agendaClinica-module.defs.txt'), 'utf8');
 
@@ -29,6 +29,22 @@ test('withModuleLanguages replaces only productLanguages', () => {
 
 test('withModuleLanguages refuses a list without the default language', () => {
     assert.throws(() => withModuleLanguages(src, ['en']), /defaultLanguage/);
+});
+
+test('readModuleDefaultLanguage reads defaultLanguage from the agendaClinica fixture', async () => {
+    const g = globalThis as { mls?: unknown };
+    const prev = g.mls;
+    g.mls = {
+        stor: {
+            getKeyToFile: () => 'agendaClinica',
+            files: { agendaClinica: { getContent: async () => src } },
+        },
+    };
+    try {
+        assert.equal(await readModuleDefaultLanguage(102047, 'agendaClinica'), 'pt-BR');
+    } finally {
+        g.mls = prev;
+    }
 });
 
 test('moduleLanguagesOf ignores the legacy languages key', () => {
