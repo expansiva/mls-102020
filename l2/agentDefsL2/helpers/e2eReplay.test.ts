@@ -1059,3 +1059,44 @@ void test('d2_84 s1: derived shared indexes organisms that read or edit each ont
   }).derive);
   assert.ok(pacientes.fields['Paciente.details.identification.name']?.includes('patientForm'), JSON.stringify(pacientes.fields));
 });
+
+/** d2_84 s2: fields is exactly the organisms that read or edit each draft path. */
+function assertFieldIndex(label: string, derive: D2SharedPage['derive'], fields: Record<string, string[]>): void {
+  const expected = new Map<string, Set<string>>();
+  for (const device of ['desktop', 'mobile'] as const) {
+    for (const [id, row] of Object.entries(derive.drafts[device].organisms)) {
+      for (const path of [...row.reads, ...row.edits]) {
+        const ids = expected.get(path) ?? new Set<string>();
+        ids.add(id);
+        expected.set(path, ids);
+      }
+    }
+  }
+  for (const [path, ids] of expected) {
+    for (const id of ids) assert.ok(fields[path]?.includes(id), `${label} ${path} missing ${id}`);
+  }
+  for (const [path, ids] of Object.entries(fields)) {
+    const have = expected.get(path);
+    assert.ok(have, `${label} ${path} has no reader or editor`);
+    for (const id of ids) assert.ok(have.has(id), `${label} ${path} lists ${id} without a read or edit`);
+  }
+}
+
+void test('d2_84 s2: every read or edit is in fields, and fields has nothing else', async () => {
+  for (const alias of ['dining', 'stock', 'clinic', 'clinicR2', 'expense', 'expenseR2']) {
+    const out = emptyOut();
+    await replay(alias, out);
+    for (const [pageId, definition] of Object.entries(out.sharedDefs)) {
+      assertFieldIndex(`${alias}/${pageId}`, out.shared[pageId].derive, definition.fields);
+    }
+    if (alias === 'dining' || alias === 'stock' || alias === 'expense') assert.ok(Object.keys(out.sharedDefs).length > 0, alias);
+  }
+
+  for (const [pageId, answerName] of [['agenda_diaria', 'agenda_diaria-2.json'], ['pacientes', 'pacientes-2.json']] as const) {
+    const ctx = await clinicR2Bff(pageId);
+    const page = sharedPageOf(ctx, buildD2BffDesign(clinicR2Answer(answerName)), {
+      [pageId]: { page11Text: ctx.page11Text, drafts: ctx.drafts },
+    });
+    assertFieldIndex(`clinicR2/${pageId}`, page.derive, deriveD2Shared(page.derive).fields);
+  }
+});
