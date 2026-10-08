@@ -126,7 +126,19 @@ export function deriveD2Shared(input: D2SharedDeriveInput): D2SharedV2Definition
     journeys: design.bindings.journeys.map(row => ({ step: row.step, organisms: row.organisms, functions: row.endpoints, ...(row.continuesIn ? { continuesIn: row.continuesIn } : {}) })),
     rules,
     access: input.access,
+    fields: fieldsOf(organisms),
   };
+}
+
+/** Ontology path → organisms that read or edit it, keys and ids sorted, from the drafts as written. */
+function fieldsOf(organisms: Map<string, OrganismRow>): Record<string, string[]> {
+  const byPath = new Map<string, string[]>();
+  for (const [id, row] of organisms) {
+    for (const path of [...row.reads, ...row.edits]) byPath.set(path, [...(byPath.get(path) ?? []), id]);
+  }
+  const fields: Record<string, string[]> = {};
+  for (const path of [...byPath.keys()].sort()) fields[path] = sortedUnique(byPath.get(path) ?? []);
+  return fields;
 }
 
 /** D over the derived shared (d2_70): the code's own output passes its own fact checks. */

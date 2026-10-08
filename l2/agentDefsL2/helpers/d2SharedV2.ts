@@ -30,12 +30,14 @@ export interface D2SharedV2Definition {
   journeys: D2SharedV2Journey[];
   rules: Record<string, string[]>;
   access: { actors: string[]; grants: string[] };
+  /** Entity.path → organism ids that read or edit it. */
+  fields: Record<string, string[]>;
 }
 
 export interface D2SharedV2Issue { code: string; path: string; message: string }
 
 export function buildD2SharedV2(value: unknown): D2SharedV2Definition {
-  const root = exact(value, ['entry', 'forms', 'requests', 'states', 'functions', 'journeys', 'rules', 'access'], 'D2_SHARED_V2_KEYS');
+  const root = exact(value, ['entry', 'forms', 'requests', 'states', 'functions', 'journeys', 'rules', 'access', 'fields'], 'D2_SHARED_V2_KEYS');
   const entryRow = exact(root.entry, ['params'], 'D2_SHARED_V2_ENTRY');
   const paramsRaw = object(entryRow.params, 'D2_SHARED_V2_PARAMS');
   const params: D2SharedV2Definition['entry']['params'] = {};
@@ -92,7 +94,13 @@ export function buildD2SharedV2(value: unknown): D2SharedV2Definition {
   }
   const access = exact(root.access, ['actors', 'grants'], 'D2_SHARED_V2_ACCESS');
   if (!Array.isArray(access.actors) || !Array.isArray(access.grants)) throw new Error('D2_SHARED_V2_ACCESS');
-  return { entry: { params }, forms, requests, states, functions, journeys, rules, access: { actors: access.actors as string[], grants: access.grants as string[] } };
+  const fields: Record<string, string[]> = {};
+  for (const [id, raw] of Object.entries(object(root.fields, 'D2_SHARED_V2_FIELDS'))) {
+    if (!/^[A-Z][A-Za-z0-9]*\.[A-Za-z][A-Za-z0-9.]*$/u.test(id)) throw new Error(`D2_SHARED_V2_FIELDS: ${id}`);
+    if (!Array.isArray(raw) || raw.length === 0 || !raw.every(item => typeof item === 'string' && item.length > 0)) throw new Error(`D2_SHARED_V2_FIELDS: ${id}`);
+    fields[id] = raw as string[];
+  }
+  return { entry: { params }, forms, requests, states, functions, journeys, rules, access: { actors: access.actors as string[], grants: access.grants as string[] }, fields };
 }
 
 export function d2SharedV2Path(location: Omit<D2Page11Location, 'device'>): string {

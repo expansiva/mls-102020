@@ -1040,3 +1040,22 @@ void test('d2_82 s3: a create-only form does not ask the backend to feed the fie
   const control = refusalOf(() => d2BffApproved({ ...pacientes, drafts }, clinicR2Answer('pacientes-2.json')));
   assert.match(control, /D2_BFF_BINDING_ORGANISM: bindings\.organisms\.patientForm/u);
 });
+
+void test('d2_84 s1: derived shared indexes organisms that read or edit each ontology path', async () => {
+  const agendaCtx = await clinicR2Bff('agenda_diaria');
+  const agendaAnswer = clinicR2Answer('agenda_diaria-2.json');
+  agendaAnswer.types.find(item => item.name === 'IdentificacaoProfissional')!.fields.push({ name: 'countryCode', type: 'string', origin: { kind: 'field', paths: ['Profissional.details.identification.countryCode'] } });
+  const agenda = deriveD2Shared(sharedPageOf(agendaCtx, d2BffApproved(agendaCtx, agendaAnswer), {
+    agenda_diaria: { page11Text: agendaCtx.page11Text, drafts: agendaCtx.drafts },
+  }).derive);
+  const identification = agenda.fields['Paciente.details.identification'];
+  assert.ok(identification?.includes('consultaDoDia'), JSON.stringify(agenda.fields));
+  assert.deepEqual(identification, [...new Set(identification)].sort());
+  assert.deepEqual(Object.keys(agenda.fields), Object.keys(agenda.fields).sort());
+
+  const pacientesCtx = await clinicR2Bff('pacientes');
+  const pacientes = deriveD2Shared(sharedPageOf(pacientesCtx, buildD2BffDesign(clinicR2Answer('pacientes-2.json')), {
+    pacientes: { page11Text: pacientesCtx.page11Text, drafts: pacientesCtx.drafts },
+  }).derive);
+  assert.ok(pacientes.fields['Paciente.details.identification.name']?.includes('patientForm'), JSON.stringify(pacientes.fields));
+});

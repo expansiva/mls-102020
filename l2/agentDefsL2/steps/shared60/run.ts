@@ -13,7 +13,7 @@ import { d2SharedDeriveIssues, deriveD2Shared, type D2SharedDeriveInput } from '
 import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 
 /** d2_75: the shared is derived by code from the approved BFF; no LLM call. */
-export const D2_SHARED_VERSION = '2026-10-04-agent-defs-l2-shared-v4' as const;
+export const D2_SHARED_VERSION = '2026-10-08-agent-defs-l2-shared-v5' as const;
 export const D2_SHARED_REFUSAL_VERSION = '2026-10-04-agent-defs-l2-shared-refusal-v2' as const;
 
 export interface D2SharedReceipt {
