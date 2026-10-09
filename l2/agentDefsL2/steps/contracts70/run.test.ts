@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import type { D2BffDesign } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
-import { renderD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { renderD2SharedV2, type D2SharedV2Definition } from '/_102020_/l2/helpers/sharedV2/format.js';
 import { D2_SHARED_VERSION, type D2SharedReceipt } from '/_102020_/l2/agentDefsL2/steps/shared60/run.js';
 import { beforePromptStep } from '/_102020_/l2/agentDefsL2/steps/contracts70/agentD2Contracts70.js';
 import { approveD2Contracts70, contractSourceFor, renderEmptyD2Contract, type D2Contracts70Existing, type D2Contracts70Page, type D2Contracts70Writer } from '/_102020_/l2/agentDefsL2/steps/contracts70/run.js';
@@ -40,6 +40,7 @@ function sharedOf(endpoints: D2BffDesign['endpoints']): D2SharedV2Definition {
     entry: { params: {} }, forms: {},
     requests: Object.fromEntries(endpoints.map(item => [item.id, { kind: item.kind, trigger: item.when, ...(item.writes ? { writes: item.writes } : {}), returns: item.output.map(leaf => leaf.name) }])),
     states: {}, functions: {}, journeys: [], rules: Object.fromEntries(endpoints.map(item => [item.id, item.rules])), access: { actors: ['clerk'], grants: ['manage'] },
+    fields: {},
   };
 }
 

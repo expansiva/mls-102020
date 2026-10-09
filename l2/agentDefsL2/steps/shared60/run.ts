@@ -8,12 +8,12 @@ import { readD2Input, readD2InputBundle, assertD2InputSourcesStable } from '/_10
 import { parseD2Page11Definition, type D2Page11Definition, type D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2BffAccess, type D2Grant, type D2Menu, type D2NeedPage } from '/_102020_/l2/agentDefsL2/helpers/d2Bff.js';
-import { renderD2SharedV2 } from '/_102020_/l2/agentDefsL2/helpers/d2SharedV2.js';
+import { renderD2SharedV2 } from '/_102020_/l2/helpers/sharedV2/format.js';
 import { d2SharedDeriveIssues, deriveD2Shared, type D2SharedDeriveInput } from '/_102020_/l2/agentDefsL2/helpers/d2SharedDerive.js';
 import { readApprovedD2Bff, readD2BffRefusal } from '/_102020_/l2/agentDefsL2/steps/bff55/run.js';
 
 /** d2_75: the shared is derived by code from the approved BFF; no LLM call. */
-export const D2_SHARED_VERSION = '2026-10-04-agent-defs-l2-shared-v4' as const;
+export const D2_SHARED_VERSION = '2026-10-08-agent-defs-l2-shared-v5' as const;
 export const D2_SHARED_REFUSAL_VERSION = '2026-10-04-agent-defs-l2-shared-refusal-v2' as const;
 
 export interface D2SharedReceipt {

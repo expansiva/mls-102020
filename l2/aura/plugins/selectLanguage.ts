@@ -4,7 +4,7 @@ import { html } from 'lit';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { readModuleLanguages, writeModuleLanguages } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
+import { readModuleDefaultLanguage, readModuleLanguages, writeModuleLanguages } from '/_102020_/l2/aura/helpers/moduleLanguages.js';
 import { languages as allLanguages, findLanguageByCode, ICollabLanguage } from '/_102027_/l2/collabLanguages.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
@@ -203,6 +203,10 @@ export class PluginSelectLanguage extends StateLitElement {
         setTask(taskKey, { status: 'running', startedAt: Date.now() });
 
         try {
+            const defaultLanguage = await readModuleDefaultLanguage(this.selectedProject.project, this.selectedModule);
+            if (defaultLanguage && lang === defaultLanguage) {
+                throw new Error(`Cannot remove the default language '${lang}'`);
+            }
             await this.executeAgent('agentRemoveLanguage', prompt);
             if (this.selectedProject && this.selectedModule) {
                 const updated = this._languages.filter(l => l !== lang);
