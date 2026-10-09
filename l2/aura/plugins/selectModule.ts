@@ -396,7 +396,8 @@ export class PluginSelectModule extends StateLitElement {
         try {
             if (v.status === 'materialize') {
                 // Defs already written — only the rendered .ts pages are missing.
-                await this._executeAgent('agentMaterializeL2', '{}', trackTask);
+                // agentMaterializeL2 (the former v4) takes '<module> [--page …] [--device …] [--force] [--review]'.
+                await this._executeAgent('agentMaterializeL2', module.name, trackTask);
             } else {
                 const pages = v.pages
                     .filter(p => p.status === 'generation' || p.status === 'stale')
@@ -413,7 +414,7 @@ export class PluginSelectModule extends StateLitElement {
                 await this._executeAgent('agentImplementGenome', prompt, trackTask);
                 // Unpause before materialize so the .ts writes repaint the preview.
                 setState('preview.pausePreview', prevPause ?? false);
-                await this._executeAgent('agentMaterializeL2', '{}');
+                await this._executeAgent('agentMaterializeL2', module.name);
             }
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {

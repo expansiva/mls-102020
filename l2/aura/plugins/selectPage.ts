@@ -4,7 +4,7 @@ import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
 import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
-import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2v4/helpers/cfeMaterializeStudio.js';
+import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 import { pageDsCheckByDefs, restampPage, layoutHasRules, type PageDsCheck } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
 import { createThread, getUserId } from '/_102025_/l2/collabMessagesHelper.js';
@@ -637,7 +637,8 @@ export class PluginSelectPage extends StateLitElement {
             //    so the .ts write repaints the preview with the new result.
             if (materialize) {
                 setState('preview.pausePreview', prevPause ?? false);
-                await this._executeAgent('agentMaterializeL2', '{}');
+                // agentMaterializeL2 (the former v4): this page only, regenerated even when its defs did not change.
+                await this._executeAgent('agentMaterializeL2', `${this._moduleName ?? module} --page ${pageShort} --force`);
             }
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {

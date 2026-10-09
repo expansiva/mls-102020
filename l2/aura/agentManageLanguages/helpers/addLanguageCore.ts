@@ -11,7 +11,7 @@
  * imported from there on purpose: two copies of the same literal would drift the moment one side changed.
  */
 
-import { I18N_UNTRANSLATED_MARKER, untranslatedLocales } from '/_102020_/l2/agentMaterializeL2v4/helpers/cfePageSkeleton.js';
+import { I18N_UNTRANSLATED_MARKER, untranslatedLocales } from '/_102020_/l2/agentMaterializeL2/helpers/cfePageSkeleton.js';
 
 export { I18N_UNTRANSLATED_MARKER };
 

@@ -21,7 +21,7 @@ import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
 import { getState, setState } from '/_102029_/l2/collabState.js';
 import { AuraInitState, getAuraState, moduleScopeTitle } from '/_102020_/l2/aura/helpers/auraState.js';
-import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2v4/helpers/cfeMaterializeStudio.js';
+import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 import {
   groupByAction,
   type IScenarioActionBlock,
