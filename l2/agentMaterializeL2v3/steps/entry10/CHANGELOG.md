@@ -1,2 +1,0 @@
-- 01/10/2026: criado (m3_02).
-- 01/10/2026: m3_03 — só o fake do port de falha ganha `readRun`.

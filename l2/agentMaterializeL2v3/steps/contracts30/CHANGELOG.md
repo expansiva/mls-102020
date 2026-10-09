@@ -1,2 +1,0 @@
-- 01/10/2026: criado (m3_02).
-- 01/10/2026: m3_03 — D-011: `writeTs` passa a `saveArtifactTextByMlsPath` (sem modelo de editor, sem compile); corrige o `M3_CONTRACT_COMPILE_FAILED: Studio storage differs from approved source bytes` da A-Studio da m3_02; trace ganha o estado `unchanged`; os ports de falha ganham `readRun`.
