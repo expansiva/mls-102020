@@ -1,0 +1,427 @@
+/// <mls fileReference="_102020_/l2/agentMaterializeL2v4/nodejsSaveConfigJson.test.ts" enhancement="_blank"/>
+
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+
+import {
+  composeFrontendRuntimeConfig,
+  FrontendConfigComposeError,
+} from '/_102020_/l2/agentMaterializeL2v4/nodejsSaveConfigJson.js';
+
+const CLIENT_ID = '109001';
+
+function defs(body: Record<string, unknown>): string {
+  return `export const value = ${JSON.stringify(body, null, 2)} as const;\n`;
+}
+
+function writeFile(file: string, content: string): void {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content);
+}
+
+function materializePage(clientRoot: string, moduleName: string, pageId: string, title: string): void {
+  writeFile(path.join(clientRoot, 'l4', moduleName, 'workspaces', `${pageId}.defs.ts`), defs({
+    workspaceId: pageId,
+    title,
+    actors: ['user'],
+    kind: 'landing',
+  }));
+  writeFile(path.join(clientRoot, 'l4', moduleName, 'actors.defs.ts'), defs({
+    actors: [{ actorId: 'user' }],
+  }));
+  writeFile(path.join(clientRoot, 'l4', moduleName, 'siteMap.defs.ts'), defs({
+    landings: [{ actorId: 'user', workspaceId: pageId }],
+  }));
+  writeFile(path.join(clientRoot, 'l2', moduleName, 'web', 'shared', `${pageId}.ts`), `export const ${pageId} = true;\n`);
+  writeFile(path.join(clientRoot, 'l2', moduleName, 'web', 'contracts', `${pageId}.ts`), `export const ${pageId}Contract = true;\n`);
+  writeFile(path.join(clientRoot, 'l2', moduleName, 'web', 'desktop', 'page11', `${pageId}.ts`), `export const ${pageId}Page = true;\n`);
+}
+
+function writeProjectJson(clientRoot: string, moduleNames: string[]): void {
+  writeFile(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify({
+    masters: {
+      frontend: { runtimeProject: 102033 },
+      backend: { runtimeProject: 102034 },
+    },
+    languages: [{ language: 'en' }],
+    modules: moduleNames.map(moduleName => ({ moduleName })),
+  }, null, 2)}\n`);
+}
+
+function writeDesignSystem(clientRoot: string): void {
+  writeFile(path.join(clientRoot, 'l2', 'designSystem.ts'), `export const ds = { themeName: 'localDesignSystem' };\n`);
+}
+
+function withRoot(run: (root: string, clientRoot: string) => void): void {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-config-multi-'));
+  try {
+    const clientRoot = path.join(root, `mls-${CLIENT_ID}`);
+    fs.mkdirSync(path.join(clientRoot, 'l5'), { recursive: true });
+    run(root, clientRoot);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function readConfig(clientRoot: string): Record<string, unknown> {
+  return JSON.parse(fs.readFileSync(path.join(clientRoot, 'l5', 'config.json'), 'utf8')) as Record<string, unknown>;
+}
+
+function clientRecord(config: Record<string, unknown>): Record<string, unknown> {
+  const projects = config.projects as Record<string, Record<string, unknown>>;
+  return projects[CLIENT_ID];
+}
+
+function modulesOf(config: Record<string, unknown>): Record<string, unknown>[] {
+  return (clientRecord(config).modules as Record<string, unknown>[]) || [];
+}
+
+function pageIdsOf(mod: Record<string, unknown>): string[] {
+  const frontend = mod.frontend as { pages?: { pageId: string }[] } | undefined;
+  return (frontend?.pages || []).map(page => page.pageId);
+}
+
+function materializeL2Page(clientRoot: string, pageId: string, title: string, pageTs = true): void {
+  const web = path.join(clientRoot, 'l2', 'studioVisits', 'web');
+  for (const device of ['desktop', 'mobile']) {
+    const defPath = `l2/studioVisits/web/${device}/page11/${pageId}.defs.ts`;
+    writeFile(path.join(clientRoot, defPath), `export const definition = ${JSON.stringify(`Page: ${title} (${pageId}).\n\nActors: clinician.`)} as const;\nexport const pipeline = ${JSON.stringify([{ type: 'l2_page', defPath, outputPath: defPath.replace('.defs.ts', '.ts') }])} as const;\n`);
+    if (pageTs) writeFile(path.join(web, device, 'page11', `${pageId}.ts`), 'export {};\n');
+  }
+  writeFile(path.join(web, 'shared', `${pageId}.ts`), 'export {};\n');
+  writeFile(path.join(web, 'shared', `${pageId}.defs.ts`), defs({ pageId, states: [{ source: 'routeParam', dtoPath: 'visitId' }] }));
+  writeFile(path.join(web, 'contracts', `${pageId}.defs.ts`), defs({ pageId }));
+}
+
+test('renamed L2 page11 fallback discovers three pages with defs-only contracts and metadata', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['studioVisits']);
+    writeDesignSystem(clientRoot);
+    for (const [id, title] of [['scheduleBoard', 'Schedule'], ['visitLedger', 'Visits'], ['clientDirectory', 'Clients']]) materializeL2Page(clientRoot, id, title);
+    writeFile(path.join(clientRoot, 'l4', 'studioVisits', 'siteMap.defs.ts'), defs({ landings: [{ actorId: 'clinician', workspaceId: 'scheduleBoard' }] }));
+    const result = composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.equal(result.skipped.length, 0);
+    const mod = modulesOf(readConfig(clientRoot))[0];
+    assert.deepEqual(pageIdsOf(mod), ['clientDirectory', 'scheduleBoard', 'visitLedger']);
+    const pages = (mod.frontend as { pages: Record<string, unknown>[] }).pages;
+    const board = pages.find(page => page.pageId === 'scheduleBoard')!;
+    assert.equal(board.title, 'Schedule');
+    assert.deepEqual(board.actors, ['clinician']);
+    assert.equal(board.route, '/studioVisits/scheduleBoard/:visitId?');
+    assert.equal(board.public, true);
+  });
+});
+
+test('renamed L4 owners retain precedence over L2 fallback and canonical defs contract is accepted', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['studioVisits']);
+    writeDesignSystem(clientRoot);
+    materializeL2Page(clientRoot, 'scheduleBoard', 'L2 schedule');
+    materializeL2Page(clientRoot, 'visitLedger', 'L2 visits');
+    writeFile(path.join(clientRoot, 'l4', 'studioVisits', 'workspaces', 'scheduleBoard.defs.ts'), defs({ workspaceId: 'scheduleBoard', title: 'Approved workspace', actors: ['owner'] }));
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const mod = modulesOf(readConfig(clientRoot))[0];
+    assert.deepEqual(pageIdsOf(mod), ['scheduleBoard']);
+    assert.equal((mod.frontend as { pages: Record<string, unknown>[] }).pages[0].title, 'Approved workspace');
+  });
+});
+
+test('renamed fallback rejects malformed page metadata and requires page TS plus shared and contract', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['studioVisits']);
+    writeDesignSystem(clientRoot);
+    materializeL2Page(clientRoot, 'unfinishedBoard', 'Unfinished', false);
+    materializeL2Page(clientRoot, 'badBoard', 'Bad');
+    for (const device of ['desktop', 'mobile']) writeFile(path.join(clientRoot, 'l2', 'studioVisits', 'web', device, 'page11', 'badBoard.defs.ts'), 'export const definition = "Page: Bad (otherId)." as const;\nexport const pipeline = [] as const;\n');
+    materializeL2Page(clientRoot, 'noShared', 'No shared');
+    fs.unlinkSync(path.join(clientRoot, 'l2', 'studioVisits', 'web', 'shared', 'noShared.ts'));
+    materializeL2Page(clientRoot, 'noContract', 'No contract');
+    fs.unlinkSync(path.join(clientRoot, 'l2', 'studioVisits', 'web', 'contracts', 'noContract.defs.ts'));
+    const result = composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.equal(result.composed.length, 0);
+    assert.equal(result.skipped[0].reason, 'no discovered page is materialized in l2');
+  });
+});
+
+test('T3 multi-module: todo + listaAssinatura each keep their own pages', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo', 'listaAssinatura']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+    materializePage(clientRoot, 'listaAssinatura', 'petitionLanding', 'Petição');
+
+    const result = composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.deepEqual(result.composed.map(item => item.moduleName), ['todo', 'listaAssinatura']);
+    assert.equal(result.skipped.length, 0);
+
+    const mods = modulesOf(readConfig(clientRoot));
+    assert.deepEqual(mods.map(mod => mod.moduleId), ['todo', 'listaAssinatura']);
+    assert.deepEqual(pageIdsOf(mods[0]), ['taskCatalogue']);
+    assert.deepEqual(pageIdsOf(mods[1]), ['petitionLanding']);
+    assert.equal((mods[0].frontend as { pages: { source: string }[] }).pages[0].source, 'l2/todo/web/desktop/page11/taskCatalogue.ts');
+    assert.equal((mods[1].frontend as { pages: { source: string }[] }).pages[0].source, 'l2/listaAssinatura/web/desktop/page11/petitionLanding.ts');
+    assert.deepEqual(mods[0].designSystems, ['localDesignSystem']);
+    assert.deepEqual(mods[1].designSystems, ['localDesignSystem']);
+  });
+});
+
+test('T3 module without l2: the others compose and the missing entry is preserved', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo', 'listaAssinatura']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      defaultProjectId: CLIENT_ID,
+      projects: {
+        [CLIENT_ID]: {
+          root: '.',
+          type: 'client',
+          modules: [
+            {
+              moduleId: 'listaAssinatura',
+              basePath: '/listaAssinatura',
+              shellMode: 'spa',
+              backendControllers: './_109001_/l1/listaAssinatura/layer_1_external/adapters/http/controllers',
+              frontend: {
+                layer: 'l2',
+                pages: [{
+                  pageId: 'signatureCatalogue',
+                  route: '/listaAssinatura/signatureCatalogue',
+                  source: 'l2/listaAssinatura/web/desktop/page11/signatureCatalogue.ts',
+                  componentTag: 'lista-assinatura--web--desktop--page11--signature-catalogue-109001',
+                  title: 'Assinatura',
+                }],
+              },
+            },
+          ],
+        },
+      },
+    }, null, 2)}\n`);
+
+    const result = composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.deepEqual(result.composed.map(item => item.moduleName), ['todo']);
+    assert.equal(result.skipped[0]?.moduleName, 'listaAssinatura');
+
+    const mods = modulesOf(readConfig(clientRoot));
+    const lista = mods.find(mod => mod.moduleId === 'listaAssinatura');
+    const todo = mods.find(mod => mod.moduleId === 'todo');
+    assert.ok(lista);
+    assert.ok(todo);
+    assert.deepEqual(pageIdsOf(lista), ['signatureCatalogue']);
+    assert.equal(lista.backendControllers, './_109001_/l1/listaAssinatura/layer_1_external/adapters/http/controllers');
+    assert.deepEqual(pageIdsOf(todo), ['taskCatalogue']);
+  });
+});
+
+test('T3 one-module: same pages shape as the previous single-module composer, idempotent', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const first = fs.readFileSync(path.join(clientRoot, 'l5', 'config.json'), 'utf8');
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const second = fs.readFileSync(path.join(clientRoot, 'l5', 'config.json'), 'utf8');
+    assert.equal(second, first);
+
+    const todo = modulesOf(JSON.parse(first) as Record<string, unknown>)[0];
+    assert.equal(todo.moduleId, 'todo');
+    assert.equal(todo.basePath, '/todo');
+    assert.equal(todo.shellMode, 'spa');
+    assert.deepEqual(todo.languages, ['en']);
+    assert.deepEqual(todo.designSystems, ['localDesignSystem']);
+    assert.deepEqual(pageIdsOf(todo), ['taskCatalogue']);
+    const page = (todo.frontend as { pages: Record<string, unknown>[] }).pages[0];
+    assert.equal(page.route, '/todo/taskCatalogue');
+    assert.equal(page.source, 'l2/todo/web/desktop/page11/taskCatalogue.ts');
+    assert.equal(page.definition, 'l2/todo/web/desktop/page11/taskCatalogue.defs.ts');
+    assert.equal(page.componentTag, 'todo--web--desktop--page11--task-catalogue-109001');
+    assert.equal(page.title, 'Tarefa');
+    assert.deepEqual(page.actors, ['user']);
+    assert.equal(page.public, true);
+    assert.deepEqual(todo.navigation, [{
+      id: 'taskCatalogue',
+      label: 'Tarefa',
+      href: '/todo/taskCatalogue',
+      description: 'Tarefa',
+      actors: ['user'],
+      landing: true,
+    }]);
+    assert.deepEqual(todo.landings, [{ actorId: 'user', pageId: 'taskCatalogue', route: '/todo/taskCatalogue' }]);
+  });
+});
+
+test('composer strips leftover publication from an old config.json', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      defaultProjectId: CLIENT_ID,
+      publication: { defaultTarget: 'web', targets: { web: { minify: true } } },
+    }, null, 2)}\n`);
+
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const config = readConfig(clientRoot);
+    assert.equal('publication' in config, false);
+  });
+});
+
+test('T3 CF pass keeps backendControllers and persistenceModules written by the CB', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      defaultProjectId: CLIENT_ID,
+      projects: {
+        [CLIENT_ID]: {
+          root: '.',
+          type: 'client',
+          modules: [{
+            moduleId: 'todo',
+            basePath: '/todo',
+            shellMode: 'spa',
+            backendControllers: './_109001_/l1/todo/layer_1_external/adapters/http/controllers',
+            headerLinks: [{ id: 'keep-me', href: '/todo/taskCatalogue' }],
+          }],
+          persistenceModules: [{
+            moduleId: 'todo',
+            tableDefsDir: './_109001_/l1/todo/layer_1_external/adapters/persistence',
+          }],
+        },
+        '102034': { root: '../mls-102034', type: 'master backend', modules: [{ moduleId: 'mdm' }] },
+      },
+    }, null, 2)}\n`);
+
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const client = clientRecord(readConfig(clientRoot));
+    const todo = (client.modules as Record<string, unknown>[])[0];
+    assert.equal(todo.backendControllers, './_109001_/l1/todo/layer_1_external/adapters/http/controllers');
+    assert.deepEqual(todo.headerLinks, [{ id: 'keep-me', href: '/todo/taskCatalogue' }]);
+    assert.deepEqual(client.persistenceModules, [{
+      moduleId: 'todo',
+      tableDefsDir: './_109001_/l1/todo/layer_1_external/adapters/persistence',
+    }]);
+    assert.deepEqual(pageIdsOf(todo), ['taskCatalogue']);
+    const projects = readConfig(clientRoot).projects as Record<string, Record<string, unknown>>;
+    assert.deepEqual(projects['102034'].modules, [{ moduleId: 'mdm' }]);
+  });
+});
+
+test('phase-l4 project with zero materialized pages writes the base Studio/backend config', () => {
+  withRoot((root, clientRoot) => {
+    writeFile(path.join(clientRoot, 'l5', 'project.json'), `${JSON.stringify({
+      projectId: CLIENT_ID,
+      domain: 'localhost',
+      port: 2047,
+      environment: 'development',
+      studioEnabled: true,
+      masters: {
+        frontend: { runtimeProject: 102033 },
+        backend: { runtimeProject: 102034 },
+      },
+      modules: [{ moduleName: 'todo' }, { moduleName: 'listaAssinatura' }],
+    }, null, 2)}\n`);
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      projects: {
+        [CLIENT_ID]: {
+          root: '.',
+          type: 'client',
+          modules: [{
+            moduleId: 'todo',
+            backendControllers: './_109001_/l1/todo/layer_1_external/adapters/http/controllers',
+          }],
+          persistenceModules: [{
+            moduleId: 'todo',
+            tableDefsDir: './_109001_/l1/todo/layer_1_external/adapters/persistence',
+          }],
+        },
+      },
+    }, null, 2)}\n`);
+
+    const result = composeFrontendRuntimeConfig(root, CLIENT_ID);
+
+    assert.deepEqual(result.composed, []);
+    assert.deepEqual(result.skipped.map(item => item.moduleName), ['todo', 'listaAssinatura']);
+    const config = readConfig(clientRoot);
+    const projects = config.projects as Record<string, Record<string, unknown>>;
+    assert.equal(config.defaultProjectId, CLIENT_ID);
+    assert.ok(config.shellTemplates);
+    assert.ok(config.clientShell);
+    assert.equal(projects['102033'].type, 'master frontend');
+    assert.equal(projects['102034'].type, 'master backend');
+    assert.equal(projects['102029'].type, 'lib');
+    assert.deepEqual(projects[CLIENT_ID].runtime, {
+      projectId: CLIENT_ID,
+      domain: 'localhost',
+      port: 2047,
+      environment: 'development',
+      studioEnabled: true,
+    });
+    const todo = (projects[CLIENT_ID].modules as Record<string, unknown>[])[0];
+    assert.equal(todo.backendControllers, './_109001_/l1/todo/layer_1_external/adapters/http/controllers');
+    assert.deepEqual(projects[CLIENT_ID].persistenceModules, [{
+      moduleId: 'todo',
+      tableDefsDir: './_109001_/l1/todo/layer_1_external/adapters/persistence',
+    }]);
+    assert.equal(fs.existsSync(path.join(clientRoot, 'mlsDep.json')), true);
+  });
+});
+
+test('invalid l5 schema remains a hard compose error', () => {
+  withRoot((root, clientRoot) => {
+    writeFile(path.join(clientRoot, 'l5', 'project.json'), '{ invalid json');
+    assert.throws(
+      () => composeFrontendRuntimeConfig(root, CLIENT_ID),
+      (error: unknown) => error instanceof FrontendConfigComposeError && /cannot read/.test(error.message),
+    );
+    assert.equal(fs.existsSync(path.join(clientRoot, 'l5', 'config.json')), false);
+  });
+});
+
+test('filesystem errors while composing a module remain hard errors', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeFile(path.join(clientRoot, 'l4', 'todo', 'workspaces', 'taskCatalogue.defs.ts'), defs({
+      workspaceId: 'taskCatalogue',
+      title: 'Tarefa',
+    }));
+    writeFile(path.join(clientRoot, 'l2', 'todo', 'web', 'shared', 'taskCatalogue.ts'), 'export {};\n');
+    writeFile(path.join(clientRoot, 'l2', 'todo', 'web', 'contracts', 'taskCatalogue.ts'), 'export {};\n');
+    writeFile(path.join(clientRoot, 'l2', 'todo', 'web', 'desktop'), 'not a directory\n');
+
+    assert.throws(
+      () => composeFrontendRuntimeConfig(root, CLIENT_ID),
+      (error: unknown) => error instanceof FrontendConfigComposeError
+        && /module 'todo' could not be composed/.test(error.message),
+    );
+    assert.equal(fs.existsSync(path.join(clientRoot, 'l5', 'config.json')), false);
+  });
+});
+
+test('mlsDep.json is the l5 list union both runtimeProject masters, and a second compose is a no-op', () => {
+  withRoot((root, clientRoot) => {
+    writeProjectJson(clientRoot, ['todo']);
+    writeDesignSystem(clientRoot);
+    materializePage(clientRoot, 'todo', 'taskCatalogue', 'Tarefa');
+    writeFile(path.join(clientRoot, 'l5', 'config.json'), `${JSON.stringify({
+      workspaceDependencies: [CLIENT_ID, '102020', '102021', '102027', '102029', '102036', '102025'],
+    }, null, 2)}\n`);
+
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    const dest = path.join(clientRoot, 'mlsDep.json');
+    const first = fs.readFileSync(dest, 'utf8');
+    const parsed = JSON.parse(first) as { workspaceDependencies: string[] };
+    assert.ok(parsed.workspaceDependencies.includes('102033'));
+    assert.ok(parsed.workspaceDependencies.includes('102034'));
+    assert.ok(parsed.workspaceDependencies.includes(CLIENT_ID));
+    assert.ok(parsed.workspaceDependencies.includes('102020'));
+    composeFrontendRuntimeConfig(root, CLIENT_ID);
+    assert.equal(fs.readFileSync(dest, 'utf8'), first);
+  });
+});
