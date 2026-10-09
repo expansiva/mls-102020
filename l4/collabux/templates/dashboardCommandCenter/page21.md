@@ -77,6 +77,33 @@ it, don't let it fall into a generic empty state. Never hide the page or auto-re
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+Everything above holds: the concept, the hierarchy, the loops, the good-news state, feedback and
+disciplines. On a phone the triage matters even more: the person decides between two other tasks.
+Where this section and the layout described above differ, this section wins on mobile.
+
+- **One column, in triage order**: the triage headline first, then the lanes stacked worst kind
+  first, worst item first; the health strip after the lanes; the browse links last.
+- **A lane shows only its first few rows** (the worst ones) and one "see all N" control that
+  expands it in place; never a lane that pushes the next one off several screens.
+- **Each exception row** stays identity + decisive fact + drill-down, laid out on one or two
+  lines: the identity on the left, the decisive fact right-aligned and readable. The whole row is
+  the tap target.
+- **The health strip wraps** into rows of small value+label pairs; still small, still below the
+  lanes, still no cards or charts.
+- **The good-news state** is the same calm sentence at the top, with the strip below.
+- **Touch**: every row and control is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the triage headline, 2. the worst lane, 3. the other lanes,
+4. the health strip.
+
+Forbidden on mobile:
+- a grid of tiles, a carousel, or anything that scrolls sideways;
+- the health strip or any aggregate above the lanes;
+- truncating the decisive fact to fit the identity.
+
 ## Forbidden
 
 - KPI tiles or charts occupying the top — that is the `overviewBoard` experience, not
