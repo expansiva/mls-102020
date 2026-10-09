@@ -16,7 +16,7 @@ export const skill = `
 | \`Columns\` | ✓ | Container for column definitions |
 | \`Column\` | ✓ (min. 1) | Defines a column — attributes: \`field\`, \`header\`, \`width\`, \`align\`, \`hidden\`. \`field\` and \`header\` are plain attributes (\`header=\${…}\`, not \`.header\`) and must not be empty: \`ml-vertical-record-list\` refuses a column without them. A column with no visible title (actions) still names what it holds (\`header="Actions"\`) |
 | \`Rows\` | ✓ | Container for data rows |
-| \`Row\` | ✓ (min. 1) | A data row — attributes: \`selected\`, \`disabled\` |
+| \`Row\` | ✓ (min. 1) | A data row — attributes: \`selected\`, \`disabled\`. Bind them as booleans (\`?selected=\${…}\`). \`ml-calendar-view\` also reads \`date\` (ISO 8601, required to place the row) and \`title\` (chip text) — see *Calendar* |
 | \`Cell\` | ✓ | A data cell — accepts any content; attribute: \`colspan\` |
 | \`Empty\` | No | Content shown when there are no rows |
 | \`Loading\` | No | Content shown when \`loading\` is true |
@@ -28,7 +28,7 @@ export const skill = `
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | \`loading\` | \`boolean\` | \`false\` | Shows loading state |
-| \`selectable\` | \`boolean\` | \`false\` | Enables row/item selection |
+| \`selectable\` | \`boolean\` | \`false\` | **Multiple** selection kept by the molecule: each activation toggles the item in its own set and \`selection-change\` reports all selected indices. Once the person clicks, that set wins over the \`Row\` \`selected\` attributes. Not for "the record the page has open" — see *One selected record* |
 | \`hoverable\` | \`boolean\` | \`true\` | Highlights row/item on hover |
 
 ---
@@ -73,7 +73,32 @@ export const skill = `
 </groupviewdata--ml-vertical-record-list>
 \`\`\`
 
-### Selectable rows
+### One selected record (the one the page has open)
+
+The page owns the selection: it handles \`row-click\` and marks the current row with \`?selected\`. Leave
+\`selectable\` off — with it on, every earlier click stays highlighted.
+
+\`\`\`html
+<groupviewdata--ml-card-grid
+  @row-click=\${(e) => this.selectRecord(this.records[e.detail.index].id)}>
+  <Columns>
+    <Column field="title" header="Title" />
+    <Column field="status" header="Status" />
+  </Columns>
+  <Rows>
+    \${this.records.map(record => html\`
+      <Row ?selected=\${record.id === this.selectedRecordId}>
+        <Cell>\${record.title}</Cell>
+        <Cell>\${record.status}</Cell>
+      </Row>\`)}
+  </Rows>
+</groupviewdata--ml-card-grid>
+\`\`\`
+
+### Several selected rows (\`selectable\`)
+
+The molecule keeps the set; the page reads it from \`selection-change\`. \`Row selected\` only sets the
+initial state.
 
 \`\`\`html
 <groupviewdata--ml-vertical-record-list
@@ -147,6 +172,37 @@ export const skill = `
   </Loading>
 </groupviewdata--ml-vertical-record-list>
 \`\`\`
+
+### Calendar — every Row says when it happens
+
+\`ml-calendar-view\` places each Row on the day (and, in the week view, the hour) given by its \`date\` attribute, never by
+the text of its cells. \`date\` is ISO 8601: a date-time (\`2026-10-07T20:00:00.000Z\`, the instant the record holds,
+shown on its local day and hour) or a date only (\`2026-10-07\`, an all-day event). Pass the record's own value as is;
+format only what the cells show.
+
+The chip text is the Row \`title\` attribute, else the text of its cells joined by " · ". \`row-click\` gives the
+index of the Row; a click on an empty day or hour gives \`index: -1\` (with the date in \`data\`), so guard it.
+
+\`\`\`html
+<groupviewdata--ml-calendar-view
+  @row-click=\${(e) => { const record = this.records[e.detail.index]; if (record) this.selectRecord(record.id); }}>
+  <Columns>
+    <Column field="time" header="Time" />
+    <Column field="patient" header="Patient" />
+  </Columns>
+  <Rows>
+    \${this.records.map(record => html\`
+      <Row date=\${record.scheduledAt} title=\${\`\${record.patientName} — \${formatTime(record.scheduledAt)}\`}
+        ?selected=\${record.id === this.selectedRecordId}>
+        <Cell>\${formatTime(record.scheduledAt)}</Cell>
+        <Cell>\${record.patientName}</Cell>
+      </Row>\`)}
+  </Rows>
+</groupviewdata--ml-calendar-view>
+\`\`\`
+
+A Row without \`date\` is still found by an ISO date (\`2026-10-07\`) written in one of its cells; that is legacy behavior,
+kept only for pages written before the attribute existed.
 
 ### Card grid — same contract, different component
 

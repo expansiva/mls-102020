@@ -1,0 +1,44 @@
+# shared40 — CHANGELOG
+
+- 2026-10-05: created for agentMaterializeL2 (phase B), from the generic shared40 of agentMaterializeL2v2 (refactor of 05/10).
+  - **Prompt** rewritten from the briefing of 05/10: intent and commitments, nothing computed in the browser, declared modes, the selection as the item, route purpose in each method JSDoc, `readonly` and `version`, the hub page, the L4 as business context.
+  - **L4** in the prompt: the page slice, rebuilt from the ids of `input.json`.
+  - **Findings (V5)**: `submitSharedTs` requires `findings`, and the receipt and the step trace keep them for the L2 planner.
+  - **Gate**: `M4_SHARED_ANY` and `M4_SHARED_NON_NULL` are new; everything else is the generic gate of the v2.
+  - Receipt `shared-v1` (v4).
+- 2026-10-05: changes from the first Studio run (fechamento passed at attempt 3, with `findings: []` even though it had added a draft and a selection).
+  - **Findings across repairs:** the LLM's findings travel in the worker args. A repair does not see them, so they used to be lost.
+  - **Deterministic findings:** `m4AddedMemberFindings` reports `MEMBER_ADDED` for every public member of the compiled declaration that the defs do not declare. The known set is the defs ids, the resolved methods, the request status members, the scene state and the lifecycle.
+  - **Gate:** the new `M4_SHARED_PUBLISH` requires `publish(member: M, value: this[M])`. The run had `value: unknown`.
+  - **Prompt:** every JSDoc is in English, and a state a command leaves stale is reported as `STATE_LEFT_STALE`. In fechamento, a paid comanda stays in `openComandas`, because the defs only update `comanda`.
+  - Same day: fechamento hit the repair limit on `...(this.mesaCode ? {} : { mesaCode: this.mesaCode })` (inverted, so null was sent to `mesaCode?: string`), inside a whole method written on one line. The prompt now asks for one statement per line and says an optional input member is omitted, never null. The repair catalogue has that TS2345/TS2322.
+- 2026-10-05: **one chain per page** (Guilherme: a page must not wait for every shared, nor a review for every page).
+  - An approved shared adds that page's desktop and mobile workers at once. An approved page adds its review when `--review` is set (`chain.ts`).
+  - `shared40-done` waits until every chain in scope is settled. pages50 and review55 become sweepers that dispatch only what a chain left behind.
+  - `--force` is applied once, at the start of the chains.
+- 2026-10-06: **a fresh visit on every entry** (Guilherme: leaving the page and coming back must reset it).
+  - collabState lives as long as the app, and connectedCallback used to hydrate every key, so the error, the success message, the scene and the half-filled draft of the previous visit came back.
+  - The prompt now splits the members. Data members are hydrated. Transient ones (every request status and error, pageStatus, scenary, the drafts) are published again with their initial value on each entry.
+  - The new gate check `M4_SHARED_VISIT_RESET`: connectedCallback, directly or through a method it calls, must touch every `<request>Status`, every `<request>Error` and `scenary`. The reference fixture was updated.
+- 2026-10-07: **Gate:** new `M4_SHARED_CONTEXT_INPUT`. For each `contextInputs` entry from input20, the method that submits the form must read `this.<state>` in its reachable body (its own body or a method it calls). The repair receives the member, the route and the state.
+  - Case: comandaRestaurante/atendimento, `lancarItem` validated `draft.comandaId`, which nobody filled.
+  - The prompt and the repair prompt receive the same fact through the input20 note `M4_INPUT_CONTEXT_INPUT` ("Notes on the defs").
+- 2026-10-07: **state JSDoc filled from the defs** (`m4FillStateJsdoc`, called in `approveM4Shared` before the gate).
+  - A state field with no one-line JSDoc right above it gets `/** state <id> — <description>; source <source>[; organisms …] */`.
+  - A field that already has its JSDoc is not changed.
+  - Case: agendaClinica/consultas. Attempt 1 had every JSDoc and was refused for a real bug: `for…of` over the `STATE_MEMBER_BY_KEY` object in `resetVisit`. The repair fixed that bug, but dropped the seven state JSDocs, and the page hit the repair limit on `M4_SHARED_JSDOC` alone, even though the prompt already says to keep every comment.
+  - `M4_SHARED_JSDOC` stays in the gate for the case the filler cannot fix: a JSDoc in the wrong place.
+- 2026-10-09: **the run is grouped by page** (Guilherme: the flat list of shareds, pages, repairs and reviews of every page was hard to read).
+  - The shared40 dispatcher adds one **group step per page** with pending work (`agentM4ChainPage`, titled with the pageId), instead of adding the workers next to it.
+  - The group adds the page's first units under itself and stays `in_progress`. The engine completes it after its last child (`setStepCompletedIfChildrenCompleted`), the same pattern as the phase step of `agentMaterializeL2/steps/materialize/agentCfeMaterializePhase.ts`.
+  - The chain itself did not change: each unit already added the next one under its own parent, which is now the group.
+  - Inside a group the titles are short: `Shared`, `Page desktop`, `Page mobile (repair 1)`, `Review desktop`.
+  - The workers that the pages50 and review55 sweepers dispatch stay outside the groups and keep the page in their title.
+  - `m4ChainStart` also returns the units grouped by page (`chains`).
+  - The done-anchor `shared40-done` is now added under the group of the last unit to finish. pages50 and review55 depend on it by `planId`.
+  - **Not verified in the Studio yet.** Check that the tree renders by page, that each group completes after its last child, and that `shared40-done` still unlocks pages50 and review55.
+- 2026-10-09: **command results reset within the visit** (Guilherme: an old "Item lançado" or an old error stayed on screen while the person edited the next item, picked another record or changed scene).
+  - **Prompt:** every public method the page calls without asking the backend resets every command's `<request>Status` to `'idle'` and `<request>Error` to `null`. These are the form setters, the selections and `setScenario`; a private `resetCommandResults()` is fine. Inside a command, the status is published last, and the draft is reset with `publish`, never through a public setter.
+  - **Gate:** new `M4_SHARED_RESULT_RESET`. `m4SharedUiMethods` lists the class methods that are not `private`, `protected` or `static` (with or without `public`). It leaves out the lifecycle, module functions and every function of the definition that calls a request or navigates. Each method in the list must reach the members of every command.
+  - **Fixture:** the reference `produtosShared.json` now resets through `resetCommandResults()`.
+  - **On the current shareds:** all eight that have a command are refused (only inicio has none). All of them will regenerate, and the `prompt.md` change also changes their `promptHash`.

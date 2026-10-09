@@ -80,6 +80,44 @@ page or losing the grid.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+Everything above holds: the concept, the modes, the loops, feedback and disciplines. Only the
+shape changes, because the grid and the panel can no longer sit side by side. Where this section
+and the layout described above differ, this section wins on mobile.
+
+- **Side by side becomes a sequence**: list → item → mode. Each is a view of its own, with back.
+  The list is the home view, and the item opens in read mode on selection.
+- **The grid becomes a list of rows**, one product per row: identity first, then the current
+  balance with its unit, which is the loudest element of the row. Minimum level and status are
+  secondary in the row. Low stock still marks the balance number, never the whole row. No table
+  and no horizontal scroll.
+- **The filter bar stays quiet**: the search field at the top of the list, and the low-stock
+  filter as one toggle next to it. Filters and scroll survive a round trip to an item and back.
+- **The item view keeps the panel's modes** (read, edit, movement) as views of their own, switched
+  by explicit controls. Only one mode is on screen, never two stacked. The current balance stays
+  visible at the top of every mode, so the operator sees what a movement lands on.
+- **Movement on a phone**: the direction is a large two-option control (in / out), and the
+  quantity uses a numeric keyboard and is always positive. The commit button names the outcome
+  and sits where the thumb reaches it, at the bottom of the view.
+- **Creating an item** is its own view, opened by one clear action from the list. After it
+  commits, the new item opens in read mode.
+- **After any commit**, return to the item in read mode with the new balance. Back returns to
+  the list, at the same place, with the row updated.
+- **The danger zone** stays at the foot of the read mode, below everything else.
+- **Touch**: every target is at least 44px high, and the primary action of a view is one tap
+  away. Nothing depends on hover.
+
+Mobile attention hierarchy: 1. the content of the current view, 2. its primary action,
+3. the way back.
+
+Forbidden on mobile:
+- wide tables or any horizontal scroll;
+- a side panel or drawer that covers part of the list to show the item;
+- multi-column forms;
+- a list, an item and a form stacked on one long screen.
+
 ## Forbidden
 
 - Opening the page as a replenishment queue of low-stock items with the catalog demoted —

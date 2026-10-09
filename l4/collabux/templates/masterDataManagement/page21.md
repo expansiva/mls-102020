@@ -74,6 +74,36 @@ is a reading surface with occasional, careful edits: the table itself is never e
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+Everything above holds: the concept, the loops, feedback and disciplines. Only the shape changes,
+because the side panel can no longer open beside the table. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **The table becomes a list of rows**, one record per row: its identity first, large, then at
+  most one or two facts (usage, status) small. A deactivated record stays in the list, muted. No
+  table and no horizontal scroll.
+- **The side panel becomes a view of its own**, with back: tapping a row opens it filled; the
+  create button opens it empty. One field per line, pickers for selections, Save at the bottom
+  where the thumb reaches.
+- **After Save**, return to the list at the same place, with the row updated and briefly marked.
+  Back with unsaved changes still asks one plain confirmation.
+- **Search** (only when the contract declares it) sits at the top of the list; the create button
+  next to it or at the foot of the list, always reachable.
+- **Merge and deactivate** live at the foot of the record view, quiet, each with its plain-words
+  confirmation; merge still picks the surviving record from a picker.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the content of the current view, 2. its primary action,
+3. the way back.
+
+Forbidden on mobile:
+- wide tables or any horizontal scroll;
+- a drawer or modal that covers part of the list to edit a record;
+- multi-column forms;
+- the list and the record form stacked on one long screen.
+
 ## Forbidden
 
 - Editable cells, click-to-type, or an add-row at the bottom of the grid — that is the

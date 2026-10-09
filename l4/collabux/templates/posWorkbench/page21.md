@@ -81,6 +81,39 @@ total never out of sight.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+Everything above holds: the concept, the loops, feedback and disciplines. Only the shape changes,
+because the catalog and the cart can no longer sit side by side. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **The cart never disappears; it becomes a bar.** A bar fixed at the bottom of the screen always
+  shows the number of lines and the **grand total, still the biggest number on screen**. Tapping
+  it opens the cart as a view of its own, with back. This bar is how "the cart is always visible"
+  holds on a phone.
+- **The catalog is the home view**: search at the top, the declared category chips under it in
+  one horizontal row of chips (the only thing that may scroll sideways), then the tiles in one or
+  two columns, large enough to tap without aiming. Tapping a tile still adds one unit at once;
+  the bar answers (count and total change) — no dialog, no navigation.
+- **The cart view** lists the lines (item, quantity with +/- when the contract provides them,
+  line total), then the money summary and the total, then the payment action at the bottom,
+  where the thumb reaches it. Payment inputs open in place in this view, the total still above
+  them; committing completes the sale and returns to the catalog with an empty bar.
+- **A failed add** speaks in the bar or near the tile, briefly; a failed payment speaks in the
+  cart view above its button.
+- **Cancel sale** lives in the cart view, at its foot, quiet, with one plain confirmation.
+- **Touch**: every target is at least 44px high, tiles more; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the total in the bar, 2. the tiles (or the lines, in the cart
+view), 3. the payment action, 4. the way back.
+
+Forbidden on mobile:
+- a cart that has no visible total while the catalog is on screen;
+- catalog and cart squeezed side by side, or stacked on one long screen;
+- payment as a separate page or a sequence of steps;
+- horizontal scroll of anything but the category chips.
+
 ## Forbidden
 
 - A single dominant scan/search action with the cart as a compact strip and checkout as

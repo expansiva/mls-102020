@@ -79,6 +79,38 @@ after another without ever losing the place in the list.
   never rendered as visible text, heading or label — if a region has no business name, it
   has no heading.
 
+## On mobile
+
+Same experience, translated to a narrow fluid column (about 390px, still usable at 360px and 430px).
+Everything above holds: the concept, the loops, feedback and disciplines. Only the shape changes,
+because the list and the panel can no longer sit side by side. Where this section and the layout
+described above differ, this section wins on mobile.
+
+- **Side by side becomes a sequence on the same page**: list → item. The item is a view of its
+  own with back, inside this page — never another page. "Both on stage" becomes "the list is one
+  tap away, exactly where it was".
+- **The list is the home view**: one item per row, identity first, then the one or two
+  distinguishing facts, numbers right-aligned. Search at the top when the contract declares it;
+  more pages load at the end of the list. No table, no horizontal scroll.
+- **The item view keeps the panel's modes**: it opens in read mode, in labeled blocks in one
+  column; **Edit is still an explicit switch** into the update form, one field per line, Save and
+  Cancel at the bottom where the thumb reaches. Only one mode is on screen.
+- **Creating an item** is its own view, opened by one clear action from the list. After it
+  commits, the new item opens in read mode and becomes the selection.
+- **After Save**, the item returns to read mode with the saved values. Back returns to the list,
+  at the same page, scroll and filters, with the row updated.
+- **Lifecycle and delete actions** stay at the foot of the read mode, subdued and confirmed.
+- **Touch**: every target is at least 44px high; nothing depends on hover.
+
+Mobile attention hierarchy: 1. the content of the current view, 2. its primary action,
+3. the way back.
+
+Forbidden on mobile:
+- a drawer or sheet that covers part of the list to show the item;
+- multi-column forms, or the read blocks and the form on screen together;
+- a list, an item and a form stacked on one long screen;
+- losing the list's place (page, scroll, filters) after visiting an item.
+
 ## Forbidden
 
 - A grid of media-led cards with maintenance in a modal over it — that is the

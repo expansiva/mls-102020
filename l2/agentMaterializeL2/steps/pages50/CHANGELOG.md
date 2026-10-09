@@ -1,0 +1,45 @@
+# pages50 — CHANGELOG
+
+- 2026-10-05: created for agentMaterializeL2 (phase C), from the generic pages50 of agentMaterializeL2v2 (refactor of 05/10). It keeps the v2 features:
+  - free design under a minimal contract;
+  - the template, with its `## On mobile` section;
+  - the scene host with the bubble guard;
+  - no `any`, Row types, and intents through `methods`.
+  - **L4 in the prompt:** the page slice. Field and entity titles become the labels, rules become hints and plain-words errors, journeys give the flow between views, and the actors say who uses the page.
+  - **Briefing of 05/10:** the page shows what the contract delivers and computes nothing: no sum, count, filter or status derivation. A `readonly` field is shown, never offered as an input. The JSDoc of the shared declaration says what each method is for.
+  - Languages are the product languages of the L4 module (V4). The receipt is `page-v1` (v4).
+- 2026-10-05: **leaner contract.** From mesas/desktop, where "Mesas da casa" showed three times: in the Scene `title` (which the host renders as the visible h2 of the view), in an h2 of the page, and in the table `Caption` (which the molecule renders visibly).
+  - The prompt never said that the Scene title is a visible heading. Its fixed example (`title=${this.msg['scene.lista']}`, the ids, the `scene.*` keys) also read like an order to copy.
+  - The contract keeps only what keeps the app working. It now explains how the host works: the title *is* the heading of the view in `scenary` mode, and the tab label in `tabs` mode.
+  - A short "Titles: one per thing" section: a molecule's title slot renders visibly, so use it only when its region has no other heading.
+  - The prompt drops from 11.1k to 9.6k characters, and the gate is unchanged.
+- 2026-10-05: **ml-scenary rules simplified** (Guilherme: the molecule stays as it is, so only the materializer side changes).
+  - Still refused even with the gate off: hand-made view switching (`M4_PAGE_SCENARY_CUSTOM`) and the unguarded `change` (`M4_PAGE_SCENARY_BUBBLE`). The second is needed while the molecule emits a bubbling `change`.
+  - Gone: "one host per page", the required `mode`, and the observations `M4_PAGE_SCENARY_SINGLE` and `M4_PAGE_TASK_SCENE`. Where a task form lives, and whether there is one view or many, is the design LLM's choice (and the review step's, when there is one).
+  - The prompt shrinks to one item: views switch through the host when the page has them, plus three facts (the binding, the guard, the title shown as heading).
+- 2026-10-05: mesas/desktop hit the repair limit twice with TS7053 on `pageMessages[this.getMessageKey(pageMessages)]`.
+  - The lean contract had dropped the type of the map (`const pageMessages`), and `getMessageKey` returns a `string`.
+  - The prompt now gives `const pageMessages: Record<string, PageMessageType> = { … }` with the reason, and the repair catalogue has this TS7053.
+- 2026-10-06: **molecule skill in the prompt.** Next to the group usage contract, each recommended tag now sends its own skill (the `skill` of its `.defs.ts`) as `## Molecule — <tag>`.
+  - Source: atendimento. Desktop and mobile guessed differently what `ml-search-bar` emits when its text is cleared, because the group contract only says what the siblings share.
+- 2026-10-09: **Gate:** new `M4_PAGE_EVENT_UNKNOWN`, which refuses even while the gate is off.
+  - **The rule:** each `@event` bound on a molecule must be an event that molecule dispatches. Listening to only some of its events is fine.
+  - **The cases:** agendaClinica/consultas. `@search` on `ml-combobox` (it emits `input`), and `@input` on `ml-select-one-autocomplete` (it stops the native `input`). Both compiled and did nothing, so the patient and professional lists never loaded.
+  - **Where the events come from:** the molecule `.ts` (`m4MoleculeEvents`), not its description:
+    - the literal names of `new CustomEvent('…')` and `new Event('…')`;
+    - when the name is a variable, also the literal arguments of its emit/dispatch helpers.
+    - A molecule whose `.ts` cannot be read is not checked.
+  - **Native events:** click, key and pointer events, `focusin`/`focusout` and `submit` always pass. Value events (`input`, `change`) and `focus`/`blur` count only when the molecule dispatches them.
+  - **Implementation:** `run.ts` builds `target.moleculeEvents` for the page's molecules and the scene host (`m4PageMoleculeEvents`). `m4BoundEvents` reads the opening tag past its `${…}` expressions and quoted values.
+  - **On the current pages:** in the 18 pages of agendaClinica and comandaRestaurante it found only `mobile/consultas` (`@input` on the autocomplete). That page was corrected by hand.
+- 2026-10-09: **Gate:** new `M4_PAGE_JOURNEY_UNCALLED`, which refuses even while the gate is off.
+  - **The rule:** every journey function that only the page can start must be called by the page (`this.<fn>(`).
+  - **Which functions those are** (`m4PageJourneyFunctions`):
+    - every function in `journeys[].functions` that the shared declares;
+    - minus the request of an `onLoad` trigger;
+    - minus any function the shared `.ts` itself calls (`this.<fn>(`).
+  - **The case:** agendaClinica/consultas. Its scheduling journey lists the patient and professional searches, and no control of the page called them, so the lists stayed empty.
+  - **Implementation:** `run.ts` reads the shared `.ts` and fills `target.journeyFunctions`.
+  - **On the current pages:** the 18 pages of agendaClinica and comandaRestaurante show real gaps only, all of them load-more functions:
+    - consultas (desktop and mobile): `carregarMaisAgenda`, `carregarMaisPacientesParaAgendamento`, `carregarMaisProfissionaisParaAgendamento`;
+    - fechamento mobile: `carregarMaisComandasAbertas`.

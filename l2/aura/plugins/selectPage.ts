@@ -3,7 +3,7 @@
 import { html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { StateLitElement } from '/_102029_/l2/stateLitElement.js';
-import { getAuraEdit, getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
+import { getAuraState } from '/_102020_/l2/aura/helpers/auraState.js';
 import { getContentByMlsPath } from '/_102020_/l2/agentMaterializeL2/helpers/cfeMaterializeStudio.js';
 import { pageDsCheckByDefs, restampPage, layoutHasRules, type PageDsCheck } from '/_102020_/l2/aura/helpers/dsMatch/dsVersion.js';
 import { executeBeforePromptStream, loadAgent } from '/_102027_/l2/aiAgentOrchestration.js';
@@ -13,9 +13,7 @@ import { getTemporaryContext } from '/_102027_/l2/aiAgentHelper.js';
 import { openElementInServiceDetails } from '/_102027_/l2/libCommom.js';
 import { setTask, getTask, subscribeTaskManager } from '/_102020_/l2/aura/helpers/taskManager.js';
 import { getState, setState } from '/_102029_/l2/collabState.js';
-import { parseExportValue } from '/_102020_/l2/aura/helpers/dsMatch/pageAdjustments.js';
 import '/_102020_/l2/aura/plugins/navHeader.js';
-import '/_102020_/l2/aura/plugins/pageVisualEdit.js';
 
 // ─── i18n ─────────────────────────────────────────────────────────────
 /// **collab_i18n_start**
@@ -52,21 +50,6 @@ const message_en = {
     missingVariation: 'This page has not been generated for the current layout / design system yet.',
     generatePage: 'Generate page',
     notGenerated: 'Not generated',
-    editPage: 'Edit page (visual)',
-    editPlaceholder: 'Describe a visual change (e.g. hide the phone field)…',
-    editImagePlaceholder: 'Reference image URL (optional)',
-    editApply: 'Apply edit',
-    editing: 'Editing…',
-    editDone: 'Edit applied',
-    editReview: 'Review change',
-    editSelected: 'selected on screen:',
-    editPlanning: 'Analyzing…',
-    editPlanTitle: 'Confirm the change',
-    editPlanApply: 'Apply',
-    editPlanCancel: 'Cancel',
-    editImageRef: 'Reference image',
-    editWhatChanged: 'What changed',
-    editNoPlan: 'No actionable change was produced from the request.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -104,21 +87,6 @@ const messages: Record<string, MessageType> = {
         missingVariation: 'Esta página ainda não foi gerada para o layout / design system atual.',
         generatePage: 'Gerar página',
         notGenerated: 'Não gerada',
-        editPage: 'Editar página (visual)',
-        editPlaceholder: 'Descreva uma mudança visual (ex.: esconda o campo telefone)…',
-        editImagePlaceholder: 'URL de imagem de referência (opcional)',
-        editApply: 'Aplicar edição',
-        editing: 'Editando…',
-        editDone: 'Edição aplicada',
-        editReview: 'Revisar mudança',
-        editSelected: 'selecionado na tela:',
-        editPlanning: 'Analisando…',
-        editPlanTitle: 'Confirme a mudança',
-        editPlanApply: 'Aplicar',
-        editPlanCancel: 'Cancelar',
-        editImageRef: 'Imagem de referência',
-        editWhatChanged: 'O que mudou',
-        editNoPlan: 'Nenhuma mudança aplicável foi produzida a partir do pedido.',
     },
     es: {
         title: 'Páginas',
@@ -153,21 +121,6 @@ const messages: Record<string, MessageType> = {
         missingVariation: 'Esta página aún no fue generada para el layout / design system actual.',
         generatePage: 'Generar página',
         notGenerated: 'No generada',
-        editPage: 'Editar página (visual)',
-        editPlaceholder: 'Describe un cambio visual (p. ej. oculta el campo teléfono)…',
-        editImagePlaceholder: 'URL de imagen de referencia (opcional)',
-        editApply: 'Aplicar edición',
-        editing: 'Editando…',
-        editDone: 'Edición aplicada',
-        editReview: 'Revisar cambio',
-        editSelected: 'seleccionado en pantalla:',
-        editPlanning: 'Analizando…',
-        editPlanTitle: 'Confirme el cambio',
-        editPlanApply: 'Aplicar',
-        editPlanCancel: 'Cancelar',
-        editImageRef: 'Imagen de referencia',
-        editWhatChanged: 'Qué cambió',
-        editNoPlan: 'No se produjo ningún cambio aplicable a partir de la solicitud.',
     },
 };
 /// **collab_i18n_end**
@@ -218,21 +171,11 @@ export class PluginSelectPage extends StateLitElement {
     @state() private _pagesNotCreated: boolean = false;
     // page name → DS-version check: status ('stale' | 'review' | 'fresh') + what changed / why.
     @state() private _checkByName: Record<string, PageDsCheck> = {};
-    // 'pipeline' = defs with no layout tree (current generator) -> agentManagePage2 panel.
-    @state() private _shapeByName: Record<string, 'genome' | 'pipeline'> = {};
     // page currently being re-stamped (disables its button).
     @state() private _busyPage: string | null = null;
 
     private _threadCache = new Map<string, Promise<any>>();
     private _taskInfoByName = new Map<string, { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }>();
-    // Edit-page drafts per page (non-reactive: typing must not trigger a re-render that wipes input).
-    private _editDraft = new Map<string, string>();
-    private _editImg = new Map<string, string>();
-    // Confirm-before-apply (TASK-102020-edit-2). Maps mutated with requestUpdate() (like the drafts):
-    private _editPlan = new Map<string, { operations: Array<{ kind: string; target: string; description: string }>; request: string; imageUrl?: string }>(); // gate plan awaiting confirmation
-    private _planning = new Set<string>();            // plan phase (gate) in flight
-    private _planError = new Map<string, string>();   // gate rejection / plan error
-    private _editNotes = new Map<string, string>();   // applied edit's one-line note (done state)
     private _unsubTasks: (() => void) | undefined;
 
     connectedCallback() {
@@ -372,45 +315,6 @@ export class PluginSelectPage extends StateLitElement {
         this.requestUpdate();
         this._autoSelectActivePage();
         this._loadPageStatus();
-        this._loadPageShapes();
-    }
-
-    /**
-     * Which edit flow each page belongs to. A defs that carries `definition.layout.sections` is a
-     * genome defs and keeps the structural flow below (agentManagePage). The defs the current
-     * frontend pipeline produces has no layout tree at all, so its visual edits are patches on the
-     * rendered `.ts` — that is agentManagePage2, hosted by the pageVisualEdit panel.
-     */
-    private async _loadPageShapes(): Promise<void> {
-        this._shapeByName = {};
-        const module = this._modulePath;
-        const project = getAuraState().actualProject;
-        const layout = getAuraState().actualLayout ?? 1;
-        const ds = getAuraState().actualDesignSystem ?? 1;
-        if (!module || !project) return;
-
-        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
-        const results = await Promise.all(this._pages.filter(p => p.exists).map(async (p) => {
-            const shortName = p.file?.shortName ?? p.name;
-            const ref = `_${project}_/l2/${module}/web/${device}/page${layout}${ds}/${shortName}.defs.ts`;
-            try {
-                const src = await getContentByMlsPath(ref);
-                if (!src) {
-                    // No defs to classify: offer no edit panel rather than the wrong one.
-                    console.warn(`[selectPage] defs not found, edit panel disabled for ${shortName}: ${ref}`);
-                    return [p.name, null] as const;
-                }
-                const definition = parseExportValue(src, 'definition');
-                return [p.name, definition?.layout?.sections ? 'genome' : 'pipeline'] as const;
-            } catch (error) {
-                console.warn(`[selectPage] could not classify ${shortName}:`, error);
-                return [p.name, null] as const;
-            }
-        }));
-        const map: Record<string, 'genome' | 'pipeline'> = {};
-        for (const [name, shape] of results) if (shape) map[name] = shape;
-        this._shapeByName = map;
-        this.requestUpdate();
     }
 
     /** Fallback page source: scan the stor for {module}/web/{device}/page11/*.ts pages and
@@ -591,232 +495,8 @@ export class PluginSelectPage extends StateLitElement {
                     `)}
                 </div>
             </div>
-            ${page.exists ? html`${this._renderDsVersionPanel(page)}${this._renderEditPanel(page)}` : this._renderMissingPanel(page)}
+            ${page.exists ? this._renderDsVersionPanel(page) : this._renderMissingPanel(page)}
         `;
-    }
-
-    // Pointed VISUAL edit of an existing page (agentManagePage). The gate rejects out-of-scope
-    // requests (backend/new data/new state); accepted edits update the defs + pageAdjustments and
-    // the page is re-materialized in delta mode.
-    private _renderEditPanel(page: IPageEntry) {
-        // Pages of the current frontend pipeline have no layout tree in their defs: their visual edit
-        // is a patch on the rendered .ts (agentManagePage2), not an edit of a structural definition.
-        // The panel below stays for genome defs.
-        //
-        // Until the shape is known, NO panel is offered. Defaulting to either flow means offering the
-        // wrong agent: the genome one writes `visualStyle` into the definition, which on a pipeline
-        // page is junk the renderer never reads.
-        const shape = this._shapeByName[page.name];
-        if (!shape) return nothing;
-        if (shape === 'pipeline') {
-            const layout = getAuraState().actualLayout ?? 1;
-            const ds = getAuraState().actualDesignSystem ?? 1;
-            const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
-            return html`
-                <aura--plugins--page-visual-edit-102020
-                    .module=${this._modulePath ?? ''}
-                    .page=${page.file?.shortName ?? page.name}
-                    .layout=${layout}
-                    .ds=${ds}
-                    .device=${device}
-                ></aura--plugins--page-visual-edit-102020>
-            `;
-        }
-
-        const plan = this._editPlan.get(page.name);
-        // Confirmation panel — the gate's interpreted operations awaiting the user's approval.
-        if (plan) return this._renderEditConfirm(page, plan);
-
-        const task = getTask(`edit:${page.name}`);
-        const running = task?.status === 'running';
-        const planning = this._planning.has(page.name);
-        const busy = running || planning;
-        const note = this._editNotes.get(page.name);
-        const planErr = this._planError.get(page.name);
-        const inputCls = 'w-full text-xs px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:focus:ring-indigo-600';
-        return html`
-            <div class="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2.5 flex flex-col gap-2">
-                <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">${this.msg.editPage}</span>
-                ${this._renderSelectedElement()}
-                <textarea
-                    rows="2"
-                    class="${inputCls} resize-y"
-                    placeholder=${this.msg.editPlaceholder}
-                    .value=${this._editDraft.get(page.name) ?? ''}
-                    @input=${(e: Event) => this._editDraft.set(page.name, (e.target as HTMLTextAreaElement).value)}
-                ></textarea>
-                <input
-                    type="text"
-                    class="${inputCls}"
-                    placeholder=${this.msg.editImagePlaceholder}
-                    .value=${this._editImg.get(page.name) ?? ''}
-                    @input=${(e: Event) => this._editImg.set(page.name, (e.target as HTMLInputElement).value)}
-                />
-                <button
-                    class="self-start text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                    ?disabled=${busy}
-                    @click=${() => this._onPlanEdit(page)}
-                >${planning ? this.msg.editPlanning : running ? this.msg.editing : this.msg.editReview}</button>
-                ${running || task?.status === 'done' ? html`
-                    <div class="flex items-center gap-2 text-xs">
-                        ${running ? html`<span class="text-indigo-500 dark:text-indigo-400 italic">${this.msg.editing}</span>` : nothing}
-                        ${task?.status === 'done' ? html`<span class="text-emerald-600 dark:text-emerald-400">✓ ${this.msg.editDone}</span>` : nothing}
-                        ${this._taskInfoByName.get(page.name)?.task ? html`
-                            <button class="ml-auto text-indigo-500 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap"
-                                @click=${() => this._openTask(page.name)}>${this.msg.followTask}</button>
-                        ` : nothing}
-                    </div>
-                ` : nothing}
-                ${note ? html`
-                    <div class="text-xs text-emerald-700 dark:text-emerald-300 rounded bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1.5">
-                        <span class="font-semibold">${this.msg.editWhatChanged}:</span> ${note}
-                    </div>
-                ` : nothing}
-                ${planErr ? html`
-                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${planErr}</div>
-                ` : nothing}
-                ${task?.status === 'error' && task.message ? html`
-                    <div class="text-xs text-red-600 dark:text-red-400 whitespace-pre-wrap wrap-break-word rounded bg-red-50 dark:bg-red-900/20 px-2 py-1.5">${task.message}</div>
-                ` : nothing}
-            </div>
-        `;
-    }
-
-    // The gate's plan, shown for confirmation before anything is written (TASK-102020-edit-2).
-    private _renderEditConfirm(page: IPageEntry, plan: { operations: Array<{ kind: string; target: string; description: string }>; request: string; imageUrl?: string }) {
-        return html`
-            <div class="rounded-lg border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-3 py-2.5 flex flex-col gap-2">
-                <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">${this.msg.editPlanTitle}</span>
-                <div class="flex flex-col gap-1">
-                    ${plan.operations.map(op => html`
-                        <div class="flex items-baseline gap-1.5 text-xs text-gray-700 dark:text-gray-200">
-                            <span class="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${op.kind === 'structural'
-                                ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
-                                : 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'}">${op.kind}</span>
-                            ${op.target ? html`<span class="font-mono text-[10px] text-gray-400 dark:text-gray-500 shrink-0">@${op.target}</span>` : nothing}
-                            <span class="leading-snug">${op.description}</span>
-                        </div>
-                    `)}
-                </div>
-                ${plan.imageUrl ? html`<span class="text-[10px] text-gray-400 dark:text-gray-500 truncate">${this.msg.editImageRef}: ${plan.imageUrl}</span>` : nothing}
-                <div class="flex items-center gap-2">
-                    <button
-                        class="text-sm px-3 py-1.5 rounded-md bg-indigo-500 dark:bg-indigo-600 text-white hover:bg-indigo-600 dark:hover:bg-indigo-500 transition-colors cursor-pointer"
-                        @click=${() => this._onApplyPlan(page)}
-                    >${this.msg.editPlanApply}</button>
-                    <button
-                        class="text-sm px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-400 dark:hover:border-gray-600 transition-colors cursor-pointer"
-                        @click=${() => this._onCancelPlan(page)}
-                    >${this.msg.editPlanCancel}</button>
-                </div>
-            </div>
-        `;
-    }
-
-    /**
-     * What the in-place editor has selected in the running app, when it has anything.
-     *
-     * The editor publishes it on `aura.edit.selection` (auraState) and this is the first thing to
-     * read it. Display only, on purpose: the request that reaches the agent is still exactly what the
-     * user typed. Feeding the selection INTO the prompt is a change to what the LLM sees, and it
-     * deserves its own decision — this line is what makes it obvious that the information is there.
-     */
-    private _renderSelectedElement() {
-        const selection = getAuraEdit().selection;
-        if (!selection) return nothing;
-        return html`
-            <span class="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1.5 min-w-0">
-                <span>${this.msg.editSelected}</span>
-                <code class="font-mono text-indigo-600 dark:text-indigo-400">&lt;${selection.tag}&gt;</code>
-                <span class="truncate opacity-70" title=${selection.literal}>${selection.literal}</span>
-            </span>
-        `;
-    }
-
-    // Phase A — PLAN: run only the gate (planOnly) and show the interpreted operations for the user
-    // to confirm before anything is written. A gate rejection surfaces inline (no defs touched).
-    private async _onPlanEdit(page: IPageEntry) {
-        const module = this._modulePath;
-        const layout = getAuraState().actualLayout;
-        const ds = getAuraState().actualDesignSystem;
-        if (!module || layout == null || ds == null) return;
-        const request = (this._editDraft.get(page.name) ?? '').trim();
-        if (!request) return;
-        const imageUrl = (this._editImg.get(page.name) ?? '').trim();
-        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
-        const pageShort = page.file?.shortName ?? page.name;
-
-        if (this._planning.has(page.name) || getTask(`edit:${page.name}`)?.status === 'running') return;
-        this._planError.delete(page.name);
-        this._editNotes.delete(page.name);
-        this._planning.add(page.name);
-        this.requestUpdate();
-
-        const prompt = JSON.stringify({ module, page: pageShort, layout, ds, device, request, imageUrl: imageUrl || undefined, planOnly: true });
-        try {
-            const res = await this._executeAgent('agentManagePage', prompt, (data) => {
-                this._taskInfoByName.set(page.name, data);
-                this.requestUpdate();
-            });
-            if (res.failure) this._planError.set(page.name, res.failure);
-            else if (res.plan?.length) this._editPlan.set(page.name, { operations: res.plan as any, request, imageUrl: imageUrl || undefined });
-            else this._planError.set(page.name, this.msg.editNoPlan);
-        } catch (e: any) {
-            this._planError.set(page.name, e?.message ?? 'error');
-        } finally {
-            this._planning.delete(page.name);
-            this.requestUpdate();
-        }
-    }
-
-    // Phase B — APPLY: send the approved operations (skips the gate), edit the defs + re-render.
-    private async _onApplyPlan(page: IPageEntry) {
-        const plan = this._editPlan.get(page.name);
-        if (!plan) return;
-        const module = this._modulePath;
-        const layout = getAuraState().actualLayout;
-        const ds = getAuraState().actualDesignSystem;
-        if (!module || layout == null || ds == null) return;
-        const device = (getAuraState().actualDevice ?? 'web/desktop').replace(/^web\//, '') || 'desktop';
-        const pageShort = page.file?.shortName ?? page.name;
-
-        const taskKey = `edit:${page.name}`;
-        if (getTask(taskKey)?.status === 'running') return;
-
-        const prompt = JSON.stringify({ module, page: pageShort, layout, ds, device, request: plan.request, imageUrl: plan.imageUrl, operations: plan.operations });
-        const prevPause = getState('preview.pausePreview');
-        setState('preview.pausePreview', true);
-        setTask(taskKey, { status: 'running', startedAt: Date.now() });
-        this._editPlan.delete(page.name);   // leave the confirm panel; show progress on the input panel
-        this.requestUpdate();
-        try {
-            // Edit applied AND the page .ts re-rendered by agentManagePage's own render step
-            // (agentRenderEdit, delta-aware). Preview repaints on the .ts write.
-            const res = await this._executeAgent('agentManagePage', prompt, (data) => {
-                this._taskInfoByName.set(page.name, data);
-                this.requestUpdate();
-            });
-            if (res.failure) {
-                setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: res.failure });
-                return;
-            }
-            setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
-            if (res.notes) this._editNotes.set(page.name, res.notes);
-            this._editDraft.delete(page.name);
-            this._editImg.delete(page.name);
-        } catch (e: any) {
-            setTask(taskKey, { ...getTask(taskKey)!, status: 'error', message: e?.message });
-        } finally {
-            setState('preview.pausePreview', prevPause ?? false);
-            await this._loadPages();
-        }
-    }
-
-    // Cancel the pending plan → back to the request input (draft preserved so it can be refined).
-    private _onCancelPlan(page: IPageEntry) {
-        this._editPlan.delete(page.name);
-        this._planError.delete(page.name);
-        this.requestUpdate();
     }
 
     // Page listed from the source (page11) but absent in the current layout/DS
@@ -957,7 +637,8 @@ export class PluginSelectPage extends StateLitElement {
             //    so the .ts write repaints the preview with the new result.
             if (materialize) {
                 setState('preview.pausePreview', prevPause ?? false);
-                await this._executeAgent('agentMaterializeL2', '{}');
+                // agentMaterializeL2 (the former v4): this page only, regenerated even when its defs did not change.
+                await this._executeAgent('agentMaterializeL2', `${this._moduleName ?? module} --page ${pageShort} --force`);
             }
             setTask(taskKey, { ...getTask(taskKey)!, status: 'done' });
         } catch (e: any) {
@@ -972,7 +653,7 @@ export class PluginSelectPage extends StateLitElement {
         agentName: string,
         prompt: string,
         onTaskCreated?: (data: { taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message }) => void,
-    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string; plan?: any[]; notes?: string }> {
+    ): Promise<{ taskId: string; task?: mls.msg.TaskData; message?: mls.msg.Message; failure?: string }> {
         // Thread host: selectPage lives in serviceGenome since the knob move (D4).
         const fullName = '_102020_/l2/serviceGenome';
         let threadPromise = this._threadCache.get(fullName);
@@ -997,13 +678,9 @@ export class PluginSelectPage extends StateLitElement {
         let task: mls.msg.TaskData | undefined;
         let message: mls.msg.Message | undefined;
         // The stream drives the WHOLE flow (hooks + intents), not just task creation. Capture the
-        // last step failure (mkFail → update-status 'failed' + traceMsg, e.g. the gate's rejection
-        // reason) or a stream error, so callers can surface it instead of silently swallowing it.
+        // last step failure (mkFail → update-status 'failed' + traceMsg) or a stream error, so callers
+        // can surface it instead of silently swallowing it.
         let failure: string | undefined;
-        // PLAN phase surfaces the gate's operations via a completed step's `PLAN:<json>` traceMsg;
-        // the edit step surfaces its one-line note via `NOTES:<text>`. Both ride the same channel.
-        let plan: any[] | undefined;
-        let notes: string | undefined;
         for await (const event of executeBeforePromptStream(moduleAgent, context)) {
             if (event.type === 'task-created') {
                 taskId = event.taskId; task = event.task; message = event.message;
@@ -1013,16 +690,12 @@ export class PluginSelectPage extends StateLitElement {
                     const i = intent as any;
                     if (i?.type !== 'update-status') continue;
                     if (i.status === 'failed' && i.traceMsg) failure = String(i.traceMsg);
-                    else if (i.status === 'completed' && typeof i.traceMsg === 'string') {
-                        if (i.traceMsg.startsWith('PLAN:')) { try { plan = JSON.parse(i.traceMsg.slice(5)); } catch { /* ignore */ } }
-                        else if (i.traceMsg.startsWith('NOTES:')) notes = i.traceMsg.slice(6);
-                    }
                 }
             } else if (event.type === 'error') {
                 failure = String(event.error);
             }
         }
-        return { taskId, task, message, failure, plan, notes };
+        return { taskId, task, message, failure };
     }
 
     private async _openTask(pageName: string) {

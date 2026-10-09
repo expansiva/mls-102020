@@ -1,0 +1,149 @@
+{
+  "flowId": "agentMaterializeL2",
+  "schemaVersion": "2026-10-05-materialize-l2-v4-flow-v1",
+  "status": "phaseC",
+  "description": "Materializes the frontend of a module from the L2 defs by their intent and commitments, with the L4 of the module as context. Self-contained: every helper lives in helpers/.",
+  "canonicalReferences": [
+    "mls-base/tasks/planned/TASK-102020-agent-materialize-l2-v4.md",
+    "mls-base/mls-102047/materializadorL2.md",
+    "mls-base/skills/agentCodeIsPrivate.md",
+    "mls-base/skills/monitorTests.md",
+    "mls-base/skills/modelTypes.md"
+  ],
+  "principles": [
+    "The defs carry intent and commitments, not a script (Wagner, 05/10/2026). Commitments are checked deterministically; intent goes to the LLMs; nothing is inferred from a name.",
+    "No rule keyed to a module, a page, a category or a function name. The input refuses only what makes generation impossible; names resolve generically (function, request, trigger).",
+    "Reads the public L2 defs (web/contracts, web/shared, web/<device>/page11), the agentDefsL2 pipeline status, and the L4 of the module (module, ontology, rules, journeys, access), sliced per page.",
+    "Order is contract, then shared, then pages, then test cases.",
+    "Nothing is computed in the browser: the contract output is already shaped for the page.",
+    "Style is Tailwind in the page .ts (V3); languages are the product languages of the L4 module (V4).",
+    "Runs in the browser (Studio). Proof is Studio compilation. No Node, disk or child process.",
+    "Self-contained (V2): no import from l2/helpers or from another agent; copies are marked as such."
+  ],
+  "decisions": {
+    "V1": "New agent; agentMaterializeL2v2 stayed untouched until it was removed on 08/10/2026.",
+    "V2": "Everything inside agentMaterializeL2/helpers; copies, not imports.",
+    "V3": "Tailwind in the .ts, no .less.",
+    "V4": "Only the product languages of the L4 module, default first.",
+    "V5": "A gap in the shared defs: complete the minimum for the page to work and record a named finding for the L2 planner.",
+    "V6": "L4 context to the LLMs: ontology, rules, journeys, module and access.",
+    "V7": "No rule by name or by module; behavior is verified by generated test cases."
+  },
+  "invocation": {
+    "run": "@@agentMaterializeL2 <module> [--page <pageId>[,<pageId>…]] [--device desktop|mobile] [--force] [--review]",
+    "help": "@@agentMaterializeL2 --help",
+    "options": {
+      "--page": "shared40 and pages50 work only on these pages (input20 always gates the whole module; an unknown or refused page fails input20 with the accepted list)",
+      "--device": "pages50 generates only this device; the shared is common to both and stays in scope only for its reuse",
+      "--force": "the receipts of the units in scope are invalidated, so they regenerate even when nothing changed; with --device, only that device pages are forced (not the shared)",
+      "--review": "adds review55: a second LLM reviews each page in scope against its template and intent (report only; off by default)"
+    },
+    "scope": "travels as { pages?, device?, force? } in every step args and is recorded in pipeline.json; the done-anchors wait only for the units in scope"
+  },
+  "owned": "l2/<module>/pipeline/agentMaterializeL2/{pipeline,input}.json",
+  "steps": [
+    {
+      "planId": "entry10",
+      "agent": "agentM4Entry",
+      "status": "implemented",
+      "kind": "deterministic",
+      "dependsOn": [],
+      "goal": "Parse the invocation and start a fresh pipeline.json.",
+      "doneAnchor": "entry10-done"
+    },
+    {
+      "planId": "input20",
+      "agent": "agentM4Input",
+      "status": "implemented",
+      "kind": "deterministic",
+      "dependsOn": [
+        "entry10-done"
+      ],
+      "goal": "Discover the pages, gate the four defs of each page, resolve intent and submit names to methods, read and slice the L4, fingerprint the units of each accepted page and persist input.json.",
+      "outputs": [
+        "l2/<module>/pipeline/agentMaterializeL2/input.json"
+      ],
+      "gate": "steps/input20/gate.ts",
+      "doneAnchor": "input20-done",
+      "failsWhen": "every page is refused; the report is kept in the step trace and in input.json."
+    },
+    {
+      "planId": "shared40",
+      "agent": "agentM4Shared",
+      "worker": "agentM4SharedPage",
+      "status": "implemented",
+      "kind": "llm-fanout",
+      "dependsOn": [
+        "input20-done"
+      ],
+      "tool": "submitSharedTs { source, findings }",
+      "prompt": "steps/shared40/prompt.md",
+      "repairPrompt": "steps/shared40/promptRepair.md",
+      "gate": "steps/shared40/gate.ts",
+      "goal": "One shared class per accepted page, by intent and commitments with the L4 slice, compiled in the Studio, with its declaration; the gaps it completed are findings in the receipt (V5).",
+      "outputs": [
+        "l2/<module>/web/shared/<pageId>.ts",
+        "l2/<module>/web/shared/<pageId>Dts.txt",
+        "l2/<module>/pipeline/agentMaterializeL2/shared40/<pageId>.json"
+      ],
+      "doneAnchor": "shared40-done"
+    },
+    {
+      "planId": "pages50",
+      "agent": "agentM4Pages",
+      "worker": "agentM4PagesPage",
+      "status": "implemented",
+      "kind": "llm-fanout",
+      "dependsOn": [
+        "shared40-done"
+      ],
+      "tool": "submitPageTs { design, source }",
+      "prompt": "steps/pages50/prompt.md",
+      "repairPrompt": "steps/pages50/promptRepair.md",
+      "gate": "steps/pages50/gate.ts",
+      "goal": "Desktop and mobile page per accepted page, from the shared declaration, the Row types, page11, template and the L4 slice; compiled in the Studio.",
+      "outputs": [
+        "l2/<module>/web/<device>/page11/<pageId>.ts",
+        "l2/<module>/pipeline/agentMaterializeL2/pages50/<pageId><Device>.json"
+      ],
+      "doneAnchor": "pages50-done"
+    },
+    {
+      "planId": "review55",
+      "agent": "agentM4Review",
+      "worker": "agentM4ReviewPage",
+      "status": "implemented",
+      "plannedWhen": "--review",
+      "kind": "llm-fanout",
+      "dependsOn": [
+        "pages50-done"
+      ],
+      "tool": "submitPageReview { summary, findings }",
+      "prompt": "steps/review55/prompt.md",
+      "goal": "Review each generated page against its template and intent; findings with severity and quoted basis; report only.",
+      "outputs": [
+        "l2/<module>/pipeline/agentMaterializeL2/review55/<pageId><Device>.json"
+      ],
+      "doneAnchor": "review55-done"
+    },
+    {
+      "planId": "tests60",
+      "status": "planned",
+      "kind": "llm-fanout",
+      "dependsOn": [
+        "pages50-done"
+      ],
+      "goal": "Page test cases in the monitor format; red is a named finding."
+    },
+    {
+      "planId": "finalize70",
+      "status": "planned",
+      "kind": "deterministic",
+      "dependsOn": [
+        "tests60-done"
+      ],
+      "goal": "Module report: pages, findings for the L2 planner, design notes."
+    }
+  ],
+  "chain": "One chain per page (05/10/2026): shared40 dispatches each page shared; an approved shared adds that page desktop/mobile workers at once; an approved page adds its review (with --review). shared40-done is emitted when every chain in scope is settled. pages50 and review55 stay planned as sweepers: they dispatch only what a chain left behind (a resumed run) and never re-apply --force."
+}
