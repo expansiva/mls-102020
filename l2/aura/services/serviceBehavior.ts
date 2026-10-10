@@ -195,12 +195,14 @@ export class ServiceBehavior102020 extends ServiceBase {
     }
 
     private _onTobeUpdated = async (event: Event) => {
-        const detail = (event as CustomEvent<{ project?: number; moduleName?: string }>).detail;
+        const detail = (event as CustomEvent<{ project?: number; moduleName?: string; version?: NewReleaseVersion }>).detail;
         const currentModule = this._module;
         if (!currentModule || detail?.project !== this._project || detail?.moduleName !== currentModule.name) return;
         const selected = currentModule.name;
-        await this._loadModules(selected, ++this._loadToken, 'tobe');
-        if (this._module?.name !== selected) return;
+        const project = this._project;
+        const token = ++this._loadToken;
+        await this._loadModules(selected, token, detail.version === 'asis' ? 'asis' : 'tobe');
+        if (token !== this._loadToken || this._project !== project || this._module?.name !== selected) return;
         this._announceContext();
     };
 
