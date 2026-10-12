@@ -6,6 +6,7 @@ import { buildD2Page11Definition, type D2Page11Definition } from '/_102020_/l2/a
 import { buildD2Page11Needs, type D2Page11Needs } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2CreateRequiredInput, d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
+import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
 
 export interface D2Page11Category { categoryId: string; experiences?: { page11?: string; page21?: string } }
 export interface D2Page11MenuNode { id: string; kind: string; organisms?: Array<{ kind: string; text: string }>; children?: D2Page11MenuNode[] }
@@ -220,10 +221,6 @@ function granted(path: string, actor: string, grants: D2Page11AccessGrant[]): bo
   const entity = path.split('.')[0];
   return grants.some(grant => {
     if (grant.actorRef !== actor || !grant.entityRefs.includes(entity)) return false;
-    const disclosure = grant.disclosure;
-    if ((disclosure.deniedFields ?? []).some(ref => path === ref || path.startsWith(`${ref}.`))) return false;
-    if (disclosure.mode === 'fullRecord') return true;
-    if (disclosure.mode === 'fieldsOnly') return (disclosure.allowedFields ?? []).some(ref => path === ref || path.startsWith(`${ref}.`));
-    return false;
+    return grantShowsPath(grant.disclosure, path);
   });
 }
