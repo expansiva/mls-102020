@@ -1,8 +1,11 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.test.ts" enhancement="_blank"/>
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
-import { d2MoleculeCatalogPort } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
+import { fileURLToPath } from 'node:url';
+import { d2MoleculeCatalogPort, d2SkillText } from '/_102020_/l2/agentDefsL2/steps/pages50/moleculeCatalog.js';
 
 for (const loaderAvailable of [true, false]) {
   void test(`molecular catalog discovers only direct dependencies when loader is ${loaderAvailable ? 'present' : 'absent'}`, async () => {
@@ -46,3 +49,14 @@ for (const loaderAvailable of [true, false]) {
     }
   });
 }
+
+void test('d2SkillText reads the groupViewChart skill when the backtick is on the next line', () => {
+  const usage = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../../aura/molecules/skills/groupViewChart/usage.ts');
+  const skill = d2SkillText(fs.readFileSync(usage, 'utf8'));
+  assert.ok(skill.length > 0);
+  assert.ok(skill.startsWith('# view + chart'));
+});
+
+void test('d2SkillText reads a skill when the backtick is on the same line', () => {
+  assert.equal(d2SkillText('export const skill = `# same line\n`;\n'), '# same line\n');
+});

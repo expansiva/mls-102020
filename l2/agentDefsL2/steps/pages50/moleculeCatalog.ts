@@ -21,7 +21,13 @@ function exportedArray(text: string, name: string): string[] {
 }
 function field(line: string, key: string): string { return new RegExp(`${key}:\\s*(['"])(.*?)\\1`, 'u').exec(line)?.[2] ?? ''; }
 function quotedExport(text: string, key: string): string { return new RegExp(`export const ${key}\\s*=\\s*(['"])(.*?)\\1`, 'u').exec(text)?.[2] ?? ''; }
-function skill(text: string): string { const marker = 'export const skill = `'; const start = text.indexOf(marker); const end = text.lastIndexOf('`'); return start >= 0 && end > start ? text.slice(start + marker.length, end) : ''; }
+export function d2SkillText(text: string): string {
+  const match = /export const skill\s*=\s*/u.exec(text);
+  if (!match) return '';
+  const start = match.index + match[0].length;
+  const end = text.lastIndexOf('`');
+  return text[start] === '`' && end > start ? text.slice(start + 1, end) : '';
+}
 
 export const d2MoleculeCatalogPort: D2MoleculeCatalogPort = {
   async discover(project) {
@@ -35,7 +41,7 @@ export const d2MoleculeCatalogPort: D2MoleculeCatalogPort = {
     if (!candidates.length) return { catalogProject: null, selectedBy: null, directDependencies, groups: [], source: '' };
     const catalogProject = candidates[0];
     const catalogSource = await source(`_${catalogProject}_/l2/molecules/skill.ts`);
-    const descriptions = new Map([...skill(catalogSource).matchAll(/^###\s+(\S+)\s+\(\d+ molecules\)\s*\n+([^\n]+)/gmu)].map(match => [match[1], match[2].trim()]));
+    const descriptions = new Map([...d2SkillText(catalogSource).matchAll(/^###\s+(\S+)\s+\(\d+ molecules\)\s*\n+([^\n]+)/gmu)].map(match => [match[1], match[2].trim()]));
     const groups = exportedArray(catalogSource, 'groups').map(line => ({ groupId: field(line, 'name'), indexReference: field(line, 'indexDefs'), count: Number(/molecules:\s*(\d+)/u.exec(line)?.[1] ?? 0) })).filter(row => row.groupId && row.indexReference).map(row => ({ ...row, purpose: descriptions.get(row.groupId) ?? '' }));
     for (const group of groups) if (!group.purpose) throw new Error(`D2_MOLECULE_PURPOSE_MISSING: ${group.groupId}`);
     return { catalogProject, selectedBy: catalogProject === project ? 'local' : 'dependency', directDependencies, groups, source: catalogSource };
@@ -54,8 +60,8 @@ export const d2MoleculeCatalogPort: D2MoleculeCatalogPort = {
     }).filter(row => row.scenario);
     if (!tags.length) throw new Error(`D2_MOLECULE_INDEX_EMPTY: ${summary.groupId}`);
     const usageSource = await source(usageReference);
-    const usageText = skill(usageSource);
+    const usageText = d2SkillText(usageSource);
     return { groupId, purpose: summary.purpose, indexReference: summary.indexReference, usageReference,
-      tags, scenarios, indexSource: indexText, indexText: skill(indexText), usageSource, usageText };
+      tags, scenarios, indexSource: indexText, indexText: d2SkillText(indexText), usageSource, usageText };
   },
 };
