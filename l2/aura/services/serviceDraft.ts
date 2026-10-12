@@ -3,14 +3,19 @@
 import { html, nothing } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { ServiceBase, IService, IToolbarContent, IServiceMenu } from '/_102027_/l2/serviceBase.js';
+import { saveL5File } from '/_102033_/l2/cbe/l5Save.js';
 import { isVmDriver, readDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
 import {
     branchForSlug,
     collectEditedFiles,
     discard,
+    experimentDraft,
     loadPanel,
     publish,
+    saveDefaultDraft,
     saveToDraft,
+    slugForBranch,
+    viewDiff,
     type FetchImpl,
     type IDraftWaitResult,
     type IListedDraft,
@@ -41,6 +46,17 @@ const message_en = {
     emptyComment: 'A message is required.',
     noProject: 'No project is open.',
     noReleaseHelper: 'The release watcher is not available.',
+    others: 'Other drafts',
+    noOthers: 'No other drafts.',
+    view: 'View',
+    experiment: 'Try',
+    experimentDisabled: 'This draft cannot be tried: its address does not round-trip.',
+    bring: 'Bring',
+    bringDisabled: 'Bringing another draft is not available yet.',
+    makeDefault: 'Project default',
+    defaultSaved: 'Saved as the project default.',
+    configMissing: 'The project config could not be read.',
+    noDiff: 'No differences.',
 };
 type MessageType = typeof message_en;
 const messages: Record<string, MessageType> = {
@@ -69,6 +85,17 @@ const messages: Record<string, MessageType> = {
         emptyComment: 'A mensagem é obrigatória.',
         noProject: 'Nenhum projeto aberto.',
         noReleaseHelper: 'O observador da release não está disponível.',
+        others: 'Outros rascunhos',
+        noOthers: 'Nenhum outro rascunho.',
+        view: 'Ver',
+        experiment: 'Experimentar',
+        experimentDisabled: 'Este rascunho não pode ser experimentado: o endereço não faz ida e volta.',
+        bring: 'Trazer',
+        bringDisabled: 'Trazer outro rascunho ainda não está disponível.',
+        makeDefault: 'Padrão do projeto',
+        defaultSaved: 'Gravado como padrão do projeto.',
+        configMissing: 'Não foi possível ler o config do projeto.',
+        noDiff: 'Sem diferenças.',
     },
     es: {
         svcTitle: 'Borrador',
@@ -94,6 +121,17 @@ const messages: Record<string, MessageType> = {
         emptyComment: 'El mensaje es obligatorio.',
         noProject: 'No hay un proyecto abierto.',
         noReleaseHelper: 'El observador de la release no está disponible.',
+        others: 'Otros borradores',
+        noOthers: 'Ningún otro borrador.',
+        view: 'Ver',
+        experiment: 'Probar',
+        experimentDisabled: 'Este borrador no se puede probar: la dirección no hace ida y vuelta.',
+        bring: 'Traer',
+        bringDisabled: 'Traer otro borrador todavía no está disponible.',
+        makeDefault: 'Predeterminado del proyecto',
+        defaultSaved: 'Guardado como predeterminado del proyecto.',
+        configMissing: 'No se pudo leer la config del proyecto.',
+        noDiff: 'Sin diferencias.',
     },
 };
 /// **collab_i18n_end**
@@ -105,7 +143,7 @@ interface IDriverView {
 
 /** Fields `collabRelease()` may report while a promote is in flight. */
 interface IDraftPing {
-    promoting?: boolean;
+    promoting?: unknown;
     rebuilding?: boolean;
 }
 
@@ -121,7 +159,7 @@ function collabReleaseApi(): ICollabRelease | undefined {
 }
 
 function readPing(ping: IDraftPing): IDraftPing {
-    return { promoting: ping.promoting === true, rebuilding: ping.rebuilding === true };
+    return { promoting: !!ping.promoting, rebuilding: ping.rebuilding === true };
 }
 
 function driverText(driver: IDriverView | null, unknownLabel: string): string {
@@ -167,10 +205,14 @@ export class ServiceDraft102020 extends ServiceBase {
     @state() private _slug = '';
     @state() private _branch: string | null = null;
     @state() private _current: IListedDraft | null = null;
+    @state() private _others: IListedDraft[] = [];
     @state() private _blocked: mls.stor.IFileInfo[] = [];
     @state() private _error = '';
     @state() private _errorFiles: string[] = [];
+    @state() private _note = '';
     @state() private _ping: IDraftPing | null = null;
+    @state() private _diffBranch = '';
+    @state() private _diffText: string | null = null;
 
     private _projectId: number | undefined;
     private _pingTimer = 0;
@@ -236,6 +278,48 @@ export class ServiceDraft102020 extends ServiceBase {
                 <button ?disabled=${busy} @click=${() => { void this._onSave(); }}>${this.msg.save}</button>
                 <button ?disabled=${busy} @click=${() => { void this._onPublish(); }}>${this.msg.publish}</button>
                 <button ?disabled=${busy} @click=${() => { void this._onDiscard(); }}>${this.msg.discard}</button>
+                <button ?disabled=${busy} @click=${() => { void this._onSetDefault(); }}>${this.msg.makeDefault}</button>
+            </div>
+            ${this._note ? html`<p class="note">${this._note}</p>` : nothing}
+            ${this._renderOthers(busy)}
+        `;
+    }
+
+    private _renderOthers(busy: boolean) {
+        return html`
+            <div class="others">
+                <div class="row"><span class="label">${this.msg.others}</span></div>
+                ${this._others.length === 0
+                    ? html`<p class="no-files">${this.msg.noOthers}</p>`
+                    : this._others.map((item) => this._renderOther(item, busy))}
+            </div>
+        `;
+    }
+
+    private _renderOther(item: IListedDraft, busy: boolean) {
+        const slug = slugForBranch(item.branch);
+        const files = item.files ?? [];
+        return html`
+            <div class="other">
+                <div class="row"><span class="label">${this.msg.branch}</span><span>${item.branch}</span></div>
+                <div class="row"><span class="label">${this.msg.ahead}</span><span>${item.ahead}</span></div>
+                <div class="row"><span class="label">${this.msg.behind}</span><span>${item.behind}</span></div>
+                <div class="row"><span class="label">${this.msg.touched}</span></div>
+                ${files.length
+                    ? html`<ul class="files">${files.map((file) => html`<li>${file}</li>`)}</ul>`
+                    : html`<p class="no-files">${this.msg.noFiles}</p>`}
+                <div class="actions">
+                    <button ?disabled=${busy} @click=${() => { void this._onView(item.branch); }}>${this.msg.view}</button>
+                    <button
+                        ?disabled=${busy || slug === null}
+                        title=${slug === null ? this.msg.experimentDisabled : nothing}
+                        @click=${() => { if (slug) this._onExperiment(slug); }}
+                    >${this.msg.experiment}</button>
+                    <button disabled title=${this.msg.bringDisabled}>${this.msg.bring}</button>
+                </div>
+                ${this._diffBranch === item.branch && this._diffText !== null
+                    ? html`<pre class="diff">${this._diffText || this.msg.noDiff}</pre>`
+                    : nothing}
             </div>
         `;
     }
@@ -262,6 +346,9 @@ export class ServiceDraft102020 extends ServiceBase {
         if (!keepBlocked) this._blocked = [];
         this._error = '';
         this._errorFiles = [];
+        this._note = '';
+        this._diffText = null;
+        this._diffBranch = '';
         this._phase = 'loading';
         const project = this._project();
         if (!project) return;
@@ -294,6 +381,7 @@ export class ServiceDraft102020 extends ServiceBase {
         try {
             const panel = await loadPanel(fetchImpl, project, slug);
             this._current = panel.current;
+            this._others = panel.others;
             if (!panel.current) console.warn('[serviceDraft] listDrafts has no row for', slug);
         } catch (err) {
             console.error('[serviceDraft] loadPanel failed:', err);
@@ -389,6 +477,76 @@ export class ServiceDraft102020 extends ServiceBase {
             this._phase = 'error';
         } finally {
             this._stopPing();
+        }
+    }
+
+    private async _onView(branch: string): Promise<void> {
+        const project = this._projectId;
+        if (!project || !isVmDriver(this._driver)) return;
+        try {
+            const text = await viewDiff(fetchImpl, project, branch);
+            this._diffBranch = branch;
+            this._diffText = text;
+            this._error = '';
+            this._errorFiles = [];
+            if (this._phase === 'error') this._phase = 'idle';
+        } catch (err) {
+            console.error('[serviceDraft] draftDiff failed:', err);
+            this._diffText = null;
+            this._error = err instanceof Error ? err.message : String(err);
+            this._phase = 'error';
+        }
+    }
+
+    private _onExperiment(slug: string): void {
+        if (!isVmDriver(this._driver)) return;
+        try {
+            experimentDraft({
+                setCookie: (cookie) => { document.cookie = cookie; },
+                reload: () => location.reload(),
+            }, slug, location.protocol === 'https:');
+        } catch (err) {
+            console.error('[serviceDraft] experiment failed:', err);
+            this._error = err instanceof Error ? err.message : String(err);
+            this._phase = 'error';
+        }
+    }
+
+    private async _readConfigJson(project: number): Promise<string> {
+        const key = mls.stor.getKeyToFile({ project, level: 5, shortName: 'config', folder: '', extension: '.json' });
+        const file = mls.stor.files[key];
+        if (!file) {
+            console.error('[serviceDraft] l5/config.json is not in stor:', key);
+            throw new Error(this.msg.configMissing);
+        }
+        const content = await file.getContent();
+        if (typeof content !== 'string') {
+            console.error('[serviceDraft] l5/config.json content is not text');
+            throw new Error(this.msg.configMissing);
+        }
+        return content;
+    }
+
+    private async _onSetDefault(): Promise<void> {
+        const project = this._projectId;
+        if (!project || !this._slug || !isVmDriver(this._driver)) return;
+        this._note = '';
+        try {
+            const current = await this._readConfigJson(project);
+            await saveDefaultDraft(
+                current,
+                project,
+                this._slug,
+                'studio.defaultDraft',
+                (id, shortName, content, comment) => saveL5File(id, shortName, content, comment),
+            );
+            this._note = this.msg.defaultSaved;
+            this._error = '';
+            if (this._phase === 'error') this._phase = 'idle';
+        } catch (err) {
+            console.error('[serviceDraft] default draft save failed:', err);
+            this._error = err instanceof Error ? err.message : String(err);
+            this._phase = 'error';
         }
     }
 

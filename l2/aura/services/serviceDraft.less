@@ -12,7 +12,8 @@ aura--services--service-draft-102020 {
   .error,
   .ping,
   .no-files,
-  .blocked {
+  .blocked,
+  .note {
     margin: 0;
   }
 
@@ -38,8 +39,29 @@ aura--services--service-draft-102020 {
 
   .actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 8px;
+  }
+
+  .others,
+  .other {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .others {
+    margin-top: 8px;
+  }
+
+  pre.diff {
+    margin: 0;
+    max-height: 16rem;
+    overflow: auto;
+    white-space: pre;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
   }
 
   button:disabled {

@@ -52,6 +52,22 @@ test('en, pt and es declare the same keys', () => {
     }
 });
 
+test('bring stays disabled with a tooltip and does not call mergeDraft', () => {
+    assert.match(DRAFT, /<button disabled title=\$\{this\.msg\.bringDisabled\}>/);
+    assert.match(DRAFT, /experimentDisabled/);
+    assert.match(DRAFT, /slug === null \? this\.msg\.experimentDisabled/);
+    assert.match(DRAFT, /!!ping\.promoting/);
+    assert.doesNotMatch(DRAFT, /mergeDraft/);
+});
+
+test('view, try and the project default go through the core', () => {
+    assert.match(DRAFT, /viewDiff\(/);
+    assert.match(DRAFT, /experimentDraft\(/);
+    assert.match(DRAFT, /saveDefaultDraft\(/);
+    assert.match(DRAFT, /<pre class="diff">/);
+    assert.doesNotMatch(DRAFT, /['"]\/exec['"]/);
+});
+
 test('serviceDraft is on l5ServicesLeft before serviceSave', () => {
     const draftAt = PLUGIN.indexOf("widget: '_102020_/l2/aura/services/serviceDraft'");
     const saveAt = PLUGIN.indexOf("widget: '_100554_serviceSave'");

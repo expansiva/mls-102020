@@ -1,10 +1,13 @@
 /// <mls fileReference="_102020_/l2/aura/helpers/draftPanelCore.ts" enhancement="_blank" />
 // Pure decisions for the Studio draft panel. No Lit, and no read of window, document, or mls:
-// fetch, the release wait, reload, setContents, and the stor snapshot all come in as arguments.
-// `listLocalFiles` is the caller's injection — its return value is `storFiles` here.
+// fetch, the release wait, reload, the cookie write, setContents, saveL5File, and the stor
+// snapshot all come in as arguments. `listLocalFiles` is the caller's injection — its return
+// value is `storFiles` here.
 //
 // Branch slugs mirror the server (cbeDraft.parseDraftSlug). The first `_` of a user slug is `@`
 // and the remaining `_` are `.`, so an email with `.` or `_` in the local part does not round-trip.
+
+import { buildDraftCookie } from '/_102033_/l2/cbe/studioDraft.js';
 
 const SLUG_RE = /^(team|user)-([a-z0-9_.-]{1,64})$/;
 const SLUG_BODY = /^[a-z0-9_.-]{1,64}$/;
@@ -70,6 +73,8 @@ export interface IExecSuccess {
   ref?: string;
   release?: string;
   msg?: string;
+  /** Body of a `draftDiff` response (`status: 'diff'`). */
+  text?: string;
   drafts?: IListedDraft[];
 }
 
@@ -90,6 +95,19 @@ export interface IDiscardEffects {
   fetchImpl: FetchImpl;
   reload: () => void;
 }
+
+export interface IExperimentEffects {
+  setCookie: (cookie: string) => void;
+  reload: () => void;
+}
+
+/** Same signature as `saveL5File` in mls-102033. Injected so this file does not import mls. */
+export type SaveL5File = (
+  project: number,
+  shortName: string,
+  content: string,
+  comment: string,
+) => Promise<boolean>;
 
 function fail(message: string): never {
   console.error('[draftPanel]', message);
@@ -188,6 +206,7 @@ export async function callExec(
   if (typeof parsed.ref === 'string') success.ref = parsed.ref;
   if (typeof parsed.release === 'string') success.release = parsed.release;
   if (typeof parsed.msg === 'string') success.msg = parsed.msg;
+  if (typeof parsed.text === 'string') success.text = parsed.text;
   if (Array.isArray(parsed.drafts)) success.drafts = parsed.drafts as IListedDraft[];
   return success;
 }
@@ -249,6 +268,62 @@ export async function publish(
   if (!wait.changed) return fail(wait.reason);
   effects.reload();
   return { outcome: 'merged' };
+}
+
+/** Whole-branch diff. `draft` is the slug from `slugForBranch`, never the raw branch. */
+export async function viewDiff(
+  fetchImpl: FetchImpl,
+  project: number,
+  branch: string,
+): Promise<string> {
+  const slug = slugForBranch(branch);
+  if (!slug) return fail(`branch has no draft slug: ${branch}`);
+  const result = await callExec(fetchImpl, 'draftDiff', { project, draft: slug });
+  if (!result.ok) return fail(result.code);
+  if (result.status !== 'diff') return fail(result.status ?? 'draftDiff failed');
+  if (typeof result.text !== 'string') return fail('draftDiff response has no text');
+  return result.text;
+}
+
+/** Writes the `collab-draft` cookie for `slug`, then reloads. Invalid slug does neither. */
+export function experimentDraft(
+  effects: IExperimentEffects,
+  slug: string,
+  secure: boolean,
+): void {
+  if (!SLUG_RE.test(slug)) return fail(`cannot experiment an invalid draft slug: ${slug}`);
+  effects.setCookie(buildDraftCookie(slug, secure));
+  effects.reload();
+}
+
+/**
+ * Changes only `studio.defaultDraft` in the current `l5/config.json` text and writes it back
+ * through `saveL5File` (`shortName` `config`). Every other field stays.
+ */
+export async function saveDefaultDraft(
+  currentJson: string,
+  project: number,
+  slug: string,
+  comment: string,
+  saveL5File: SaveL5File,
+): Promise<void> {
+  if (!SLUG_RE.test(slug)) return fail(`default draft slug is invalid: ${slug}`);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(currentJson);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return fail(`l5/config.json is not JSON: ${message}`);
+  }
+  if (!isRecord(parsed)) return fail('l5/config.json is not an object');
+  if (parsed.studio !== undefined && !isRecord(parsed.studio)) {
+    return fail('l5/config.json studio is not an object');
+  }
+  const studio = isRecord(parsed.studio) ? { ...parsed.studio } : {};
+  studio.defaultDraft = slug;
+  const content = JSON.stringify({ ...parsed, studio });
+  const saved = await saveL5File(project, 'config', content, comment);
+  if (!saved) return fail('saveL5File refused l5/config.json');
 }
 
 export async function discard(

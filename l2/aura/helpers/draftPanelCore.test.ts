@@ -6,10 +6,13 @@ import {
   callExec,
   collectEditedFiles,
   discard,
+  experimentDraft,
   loadPanel,
   publish,
+  saveDefaultDraft,
   saveToDraft,
   slugForBranch,
+  viewDiff,
   type FetchImpl,
   type IDraftWaitResult,
   type IListedDraft,
@@ -235,6 +238,88 @@ test('saveToDraft sends a deleted file even when it has an error, and skips setC
   );
   assert.equal(called, false);
   assert.equal(blocked.blocked.length, 1);
+});
+
+test('viewDiff requests draftDiff with the slug of the branch', async () => {
+  const fetchImpl: FetchImpl = async (input, init) => {
+    assert.equal(input, '/exec');
+    assert.equal(init.credentials, 'same-origin');
+    const body = JSON.parse(init.body) as { action: string; project: number; draft: string };
+    assert.equal(body.action, 'draftDiff');
+    assert.equal(body.project, 102047);
+    assert.equal(body.draft, 'user-ada_example_com');
+    return jsonResponse({ statusCode: 200, status: 'diff', text: 'diff --git a/l2/b.ts' });
+  };
+  assert.equal(await viewDiff(fetchImpl, 102047, 'user/ada@example.com'), 'diff --git a/l2/b.ts');
+
+  let called = false;
+  const refused: FetchImpl = async () => {
+    called = true;
+    return jsonResponse({ statusCode: 200, status: 'diff', text: '' });
+  };
+  await assert.rejects(() => viewDiff(refused, 102047, 'user/a.b@c.com'), /no draft slug/);
+  assert.equal(called, false);
+});
+
+test('experimentDraft writes the draft cookie and then reloads', () => {
+  const calls: string[] = [];
+  experimentDraft({
+    setCookie: (cookie) => { calls.push(cookie); },
+    reload: () => { calls.push('reload'); },
+  }, 'team-102047', true);
+  assert.deepEqual(calls, [
+    'collab-draft=team-102047; Path=/; SameSite=Lax; Secure',
+    'reload',
+  ]);
+
+  const skipped: string[] = [];
+  assert.throws(
+    () => experimentDraft({
+      setCookie: (cookie) => { skipped.push(cookie); },
+      reload: () => { skipped.push('reload'); },
+    }, 'not a slug', false),
+    /invalid draft slug/,
+  );
+  assert.deepEqual(skipped, []);
+});
+
+test('saveDefaultDraft writes studio.defaultDraft and leaves the rest of l5/config.json', async () => {
+  const current = JSON.stringify({
+    name: 'app',
+    n: 1,
+    studio: { theme: 'plain', defaultDraft: 'team-1' },
+  });
+  const writes: { project: number; shortName: string; content: string; comment: string }[] = [];
+  await saveDefaultDraft(current, 102047, 'user-ada_example_com', 'set default', async (project, shortName, content, comment) => {
+    writes.push({ project, shortName, content, comment });
+    return true;
+  });
+  const saved = writes[0];
+  assert.ok(saved);
+  assert.equal(saved.project, 102047);
+  assert.equal(saved.shortName, 'config');
+  assert.equal(saved.comment, 'set default');
+  assert.deepEqual(JSON.parse(saved.content), {
+    name: 'app',
+    n: 1,
+    studio: { theme: 'plain', defaultDraft: 'user-ada_example_com' },
+  });
+
+  let called = false;
+  await assert.rejects(
+    () => saveDefaultDraft(current, 102047, 'nope', 'x', async () => { called = true; return true; }),
+    /invalid/,
+  );
+  assert.equal(called, false);
+
+  await assert.rejects(
+    () => saveDefaultDraft('{', 102047, 'team-102047', 'x', async () => true),
+    /not JSON/,
+  );
+  await assert.rejects(
+    () => saveDefaultDraft(current, 102047, 'team-102047', 'x', async () => false),
+    /refused/,
+  );
 });
 
 test('saveToDraft throws when setContents reports a refusal', async () => {
