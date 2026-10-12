@@ -1,0 +1,49 @@
+/// <mls fileReference="_102020_/l2/aura/services/serviceDraft.less" enhancement="enhancementStyle"/>
+
+aura--services--service-draft-102020 {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  font-size: 13px;
+
+  .not-vm,
+  .loading,
+  .error,
+  .ping,
+  .no-files,
+  .blocked {
+    margin: 0;
+  }
+
+  .error,
+  .blocked {
+    color: #a40000;
+  }
+
+  .row {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .label {
+    min-width: 7rem;
+  }
+
+  ul.files {
+    margin: 0;
+    padding-left: 1.2rem;
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  button:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}

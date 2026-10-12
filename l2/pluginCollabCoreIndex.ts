@@ -109,6 +109,13 @@ export class PluginCollabCoreIndex extends PluginBaseIndex {
                 scope: ['l5ServicesLeft'],
                 priority: 1,
                 auth: ['*'],
+                widget: '_102020_/l2/aura/services/serviceDraft'
+            },
+            {
+                category: 'Services',
+                scope: ['l5ServicesLeft'],
+                priority: 1,
+                auth: ['*'],
                 widget: '_100554_serviceSave'
             },
 
