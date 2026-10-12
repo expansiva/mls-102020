@@ -1,7 +1,9 @@
 /// <mls fileReference="_102020_/l2/agentDefsL2/steps/pages50/run.ts" enhancement="_blank"/>
 
 import { readJson, writeJson, writeSourceText, type Ns5FileInfo } from '/_102035_/l2/solution/fs.js';
+import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
+import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
 import { sha256Text } from '/_102020_/l2/helpers/hash.js';
 import { d2NormalizeWriteKey, d2WriteKey, type D2Write } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import type { D2InputSnapshot, D2InputArtifacts, D2SelectedPage, D2RunIdentity } from '/_102020_/l2/helpers/defsInput/contracts.js';
@@ -175,7 +177,7 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
     }) },
     ontology: Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))),
     // Disclosure is checked against the page actors' grants only.
-    access: { grants: ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => page.actors.includes(text(record(raw).actorRef))) },
+    access: pageAccess(page, artifacts),
     categories: context.template.categories,
     moleculeResearch: JSON.parse(moleculeDecisionContext(context.selectedGroups, context.groups)),
     // d2_71: a regeneration starts from the approved page11 and changes only what the reason asks.
@@ -186,6 +188,31 @@ export function buildD2PagesDecisionPrompt(context: D2PagesContext, repair?: { d
   const prompt = JSON.stringify(payload);
   if (prompt.length > D2_PAGES_PROMPT_LIMIT_CHARS) throw new Error(`D2_PAGE11_PROMPT_LIMIT: ${prompt.length} > ${D2_PAGES_PROMPT_LIMIT_CHARS}`);
   return { prompt, chars: prompt.length };
+}
+
+/** Paths every page actor sees. An entity everyone sees whole is omitted; one nobody-sees is `[]`. */
+function pageAccess(page: D2PagesContext['page'], artifacts: D2PagesContext['artifacts']): { grants: unknown[]; visibleToAllActors: Record<string, string[]> } {
+  const actors = page.actors;
+  const ontology = Object.fromEntries(Object.entries(artifacts.entities).filter(([id]) => JSON.stringify([page.reads, page.writes, page.organisms]).includes(id))) as Record<string, Ns5OntologyAnyEntity>;
+  const grants = ((record(artifacts.access).grants as unknown[] | undefined) ?? []).filter(raw => actors.includes(text(record(raw).actorRef)));
+  const visibleToAllActors: Record<string, string[]> = {};
+  for (const [entityId, entity] of Object.entries(ontology)) {
+    const paths = resolvableFieldPaths(entity).filter(path => path !== entityId);
+    const visible = paths.filter(path => actors.every(actor => grants.some(raw => {
+      const grant = record(raw);
+      if (text(grant.actorRef) !== actor) return false;
+      if (!((grant.entityRefs as unknown[] | undefined) ?? []).some(id => text(id) === entityId)) return false;
+      const disclosure = record(grant.disclosure);
+      return grantShowsPath({
+        mode: text(disclosure.mode),
+        ...(Array.isArray(disclosure.allowedFields) ? { allowedFields: disclosure.allowedFields.map(text) } : {}),
+        ...(Array.isArray(disclosure.deniedFields) ? { deniedFields: disclosure.deniedFields.map(text) } : {}),
+      }, path);
+    })));
+    if (visible.length === paths.length) continue;
+    visibleToAllActors[entityId] = visible;
+  }
+  return { grants, visibleToAllActors };
 }
 
 export interface D2PagesWriter { writeSource(info: Ns5FileInfo, source: string): Promise<void>; writeJson(info: Ns5FileInfo, value: unknown): Promise<unknown> }

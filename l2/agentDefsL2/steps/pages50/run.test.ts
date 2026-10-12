@@ -405,6 +405,29 @@ void test('four real reembolsoDespesas pages include the nine minhas_despesas or
   console.log(`reembolsoDespesas fixture maximum decision prompt: ${maximum} chars`);
 });
 
+void test('d2_88: visibleToAllActors is the field intersection and omits an entity both actors see whole', () => {
+  const data = context('controleEstoque', 'produtos');
+  data.page.actors = ['full', 'limited'];
+  data.page.reads = [{ entity: 'X' }, { entity: 'Y' }];
+  data.page.writes = [];
+  data.page.organisms = [];
+  data.artifacts.entities = {
+    X: { entityId: 'X', fields: [{ fieldId: 'a' }, { fieldId: 'b' }] },
+    Y: { entityId: 'Y', fields: [{ fieldId: 'c' }] },
+  } as D2PagesContext['artifacts']['entities'];
+  data.artifacts.access = { grants: [
+    { actorRef: 'full', entityRefs: ['X', 'Y'], disclosure: { mode: 'fullRecord' } },
+    { actorRef: 'limited', entityRefs: ['X'], disclosure: { mode: 'fieldsOnly', allowedFields: ['X.a'] } },
+    { actorRef: 'limited', entityRefs: ['Y'], disclosure: { mode: 'fullRecord' } },
+    { actorRef: 'outsider', entityRefs: ['X'], disclosure: { mode: 'fullRecord' } },
+  ] } as D2PagesContext['artifacts']['access'];
+  const payload = JSON.parse(buildD2PagesDecisionPrompt(data).prompt) as { access: { grants: Array<{ actorRef: string }>; visibleToAllActors: Record<string, string[]> } };
+  assert.deepEqual(payload.access.visibleToAllActors.X, ['X.a']);
+  assert.equal(payload.access.visibleToAllActors.X.includes('X.b'), false);
+  assert.equal('Y' in payload.access.visibleToAllActors, false);
+  assert.equal(payload.access.grants.some(grant => grant.actorRef === 'outsider'), false);
+});
+
 void test('controleEstoque/produtos molecular context omits repeated indexes with margin below the prompt ceiling', () => {
   const data = context('controleEstoque', 'produtos');
   const groupIds = ['groupNotifyUser', 'groupSearchContent', 'groupShowProgress', 'groupViewCard',
