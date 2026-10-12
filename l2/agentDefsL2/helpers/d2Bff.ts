@@ -4,6 +4,7 @@ import { resolvableFieldPaths } from '/_102035_/l2/solution/ontologyPaths.js';
 import type { Ns5OntologyAnyEntity } from '/_102035_/l2/solution/types.js';
 import type { D2Page11Definition, D2Page11Device } from '/_102020_/l2/agentDefsL2/helpers/page11.js';
 import type { D2Page11Needs, D2Page11OrganismNeeds } from '/_102020_/l2/agentDefsL2/helpers/page11Needs.js';
+import { grantShowsPath } from '/_102020_/l2/helpers/defsInput/grantDisclosure.js';
 import { d2WriteByKey, d2WriteKey } from '/_102020_/l2/helpers/defsInput/writeKey.js';
 import { d2TransitionPayload } from '/_102020_/l2/agentDefsL2/helpers/d2WriteInput.js';
 
@@ -705,13 +706,8 @@ function fieldAt(entity: Ns5OntologyAnyEntity | undefined, path: string): SliceF
 
 function granted(path: string, actors: readonly string[], grants: readonly D2Grant[]): boolean {
   const entity = entityOf(path);
-  return grants.some(grant => {
-    if (!actors.includes(grant.actorRef) || !grant.entityRefs.includes(entity)) return false;
-    if ((grant.disclosure.deniedFields ?? []).some(ref => covers(ref, path))) return false;
-    if (grant.disclosure.mode === 'fullRecord') return true;
-    if (grant.disclosure.mode === 'fieldsOnly') return (grant.disclosure.allowedFields ?? []).some(ref => covers(ref, path));
-    return false;
-  });
+  return grants.some(grant =>
+    actors.includes(grant.actorRef) && grant.entityRefs.includes(entity) && grantShowsPath(grant.disclosure, path));
 }
 
 function record(value: unknown): Record<string, unknown> | null {
