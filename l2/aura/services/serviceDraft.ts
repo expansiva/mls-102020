@@ -576,7 +576,12 @@ export class ServiceDraft102020 extends ServiceBase {
             return;
         }
         try {
-            const saved = await saveToDraft(files, comment, (clean, text) => mls.stor.setContents(clean, text));
+            const saved = await saveToDraft(
+                files,
+                comment,
+                (clean, text) => mls.stor.setContents(clean, text),
+                (file) => mls.stor.localStor.setContent(file, { content: null }),
+            );
             this._blocked = saved.blocked;
             if (saved.blocked.length > 0) {
                 console.warn('[serviceDraft] blocked files:', saved.blocked.map(fileLabel));

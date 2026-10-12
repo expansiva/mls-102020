@@ -196,7 +196,7 @@ test('discard reloads only after discardDraft succeeds', async () => {
 
 test('collectEditedFiles keeps the project dirty files; saveToDraft writes only the clean ones', async () => {
   const cleanA = { project: 102047, inLocalStorage: true, shortName: 'a' };
-  const cleanB = { project: 102047, status: 'deleted' as const, shortName: 'b' };
+  const cleanB = { project: 102047, status: 'deleted' as const, shortName: 'b', inLocalStorage: undefined as boolean | undefined };
   const broken = { project: 102047, inLocalStorage: true, hasError: true, shortName: 'c' };
   const other = { project: 102099, inLocalStorage: true, shortName: 'd' };
   const untouched = { project: 102047, shortName: 'e' };
@@ -214,33 +214,47 @@ test('collectEditedFiles keeps the project dirty files; saveToDraft writes only 
   assert.deepEqual(edited.map((file) => file.shortName), ['a', 'b', 'c']);
 
   let written: IPanelStorFile[] | null = null;
+  const cleared: string[] = [];
   const saved = await saveToDraft(edited, 'draft comment', async (clean, comment) => {
     assert.equal(comment, 'draft comment');
+    assert.equal(cleanA.inLocalStorage, false);
+    assert.equal(cleanB.inLocalStorage, false);
     written = clean;
     return clean.map(() => ({ result: true }));
+  }, async (file) => {
+    cleared.push(file.shortName ?? '');
   });
   assert.deepEqual(written, [cleanA, cleanB]);
+  assert.deepEqual(cleared, ['a', 'b']);
   assert.deepEqual(saved.blocked, [broken]);
 });
 
 test('saveToDraft sends a deleted file even when it has an error, and skips setContents when nothing is clean', async () => {
-  const deleted = { project: 102047, status: 'deleted' as const, hasError: true, shortName: 'gone' };
+  const deleted = { project: 102047, status: 'deleted' as const, hasError: true, shortName: 'gone', inLocalStorage: undefined as boolean | undefined };
   let count = 0;
+  const cleared: string[] = [];
   const saved = await saveToDraft([deleted], 'remove', async (clean) => {
     count += 1;
+    assert.equal(deleted.inLocalStorage, false);
     assert.deepEqual(clean, [deleted]);
     return [{ result: true }];
+  }, async (file) => {
+    cleared.push(file.shortName ?? '');
   });
   assert.equal(count, 1);
+  assert.deepEqual(cleared, ['gone']);
   assert.deepEqual(saved.blocked, []);
 
   let called = false;
+  let clearedBlocked = false;
   const blocked = await saveToDraft(
     [{ project: 102047, inLocalStorage: true, hasError: true }],
     'nope',
     async () => { called = true; return [{ result: true }]; },
+    async () => { clearedBlocked = true; },
   );
   assert.equal(called, false);
+  assert.equal(clearedBlocked, false);
   assert.equal(blocked.blocked.length, 1);
 });
 
@@ -327,14 +341,41 @@ test('saveDefaultDraft writes studio.defaultDraft and leaves the rest of l5/conf
 });
 
 test('saveToDraft throws when setContents reports a refusal', async () => {
+  const file = { project: 102047, inLocalStorage: true as boolean | undefined };
+  let cleared = 0;
   await assert.rejects(
     () => saveToDraft(
-      [{ project: 102047, inLocalStorage: true }],
+      [file],
       'x',
-      async () => [{ result: false }],
+      async (clean) => {
+        assert.equal(clean[0]?.inLocalStorage, false);
+        return [{ result: false }];
+      },
+      async () => { cleared += 1; },
     ),
     /setContents refused the draft save/,
   );
+  assert.equal(file.inLocalStorage, true);
+  assert.equal(cleared, 0);
+});
+
+test('saveToDraft restores inLocalStorage when setContents throws and does not clear', async () => {
+  const file = { project: 102047, inLocalStorage: true as boolean | undefined };
+  let cleared = 0;
+  await assert.rejects(
+    () => saveToDraft(
+      [file],
+      'x',
+      async (clean) => {
+        assert.equal(clean[0]?.inLocalStorage, false);
+        throw new Error('network down');
+      },
+      async () => { cleared += 1; },
+    ),
+    /network down/,
+  );
+  assert.equal(file.inLocalStorage, true);
+  assert.equal(cleared, 0);
 });
 
 test('localEdits is empty, one file, or many, and a deletion counts', () => {

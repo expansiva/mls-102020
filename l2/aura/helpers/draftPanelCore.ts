@@ -451,11 +451,14 @@ export function panelModel(input: IPanelModelInput): IPanelModel {
 /**
  * Files with `hasError` stay out of the write unless they are deletions (the server must see
  * the delete). `setContents` is called only with the clean files, and only when there is one.
+ * Each clean file is sent with `inLocalStorage` false so the write hits the server driver.
+ * Success calls `clearLocal` once per clean file; a throw or a refused `result` restores the flag.
  */
 export async function saveToDraft<T extends IPanelStorFile>(
   files: readonly T[],
   comment: string,
   setContents: (clean: T[], comment: string) => Promise<readonly ISetContentsResult[]>,
+  clearLocal: (file: T) => unknown,
 ): Promise<{ blocked: T[] }> {
   const blocked: T[] = [];
   const clean: T[] = [];
@@ -464,7 +467,24 @@ export async function saveToDraft<T extends IPanelStorFile>(
     else clean.push(file);
   }
   if (clean.length === 0) return { blocked };
-  const results = await setContents(clean, comment);
-  if (results.some((row) => !row.result)) return fail('setContents refused the draft save');
+  const flags = clean.map((file) => file.inLocalStorage);
+  const restoreFlags = (): void => {
+    clean.forEach((file, index) => {
+      file.inLocalStorage = flags[index];
+    });
+  };
+  for (const file of clean) file.inLocalStorage = false;
+  let results: readonly ISetContentsResult[];
+  try {
+    results = await setContents(clean, comment);
+  } catch (err) {
+    restoreFlags();
+    throw err;
+  }
+  if (results.some((row) => !row.result)) {
+    restoreFlags();
+    return fail('setContents refused the draft save');
+  }
+  for (const file of clean) await clearLocal(file);
   return { blocked };
 }
