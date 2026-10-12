@@ -29,6 +29,23 @@ export interface IPanelStorFile {
   inLocalStorage?: boolean;
   status?: string;
   hasError?: boolean;
+  /** Optional path parts. Together they build `l<level>/<folder/>shortName<extension>`. */
+  level?: number;
+  folder?: string;
+  shortName?: string;
+  extension?: string;
+}
+
+/** One file sitting in the browser, not yet saved to the draft. */
+export interface ILocalEdit {
+  shortPath: string;
+  hasError: boolean;
+}
+
+/** What `publish` asks the caller to store after a merge. The key itself stays in the service. */
+export interface IPublishedRecord {
+  files: string[];
+  at: number;
 }
 
 export interface ISetContentsResult {
@@ -89,6 +106,8 @@ export interface IPublishEffects {
   fetchImpl: FetchImpl;
   waitForNew: () => Promise<IDraftWaitResult>;
   reload: () => void;
+  /** Called only after a merge has landed and before `reload`. Absent → nothing is stored. */
+  rememberPublished?: (record: IPublishedRecord) => void;
 }
 
 export interface IDiscardEffects {
@@ -247,6 +266,7 @@ export async function publish(
   project: number,
   slug: string,
   comment: string,
+  files: readonly string[] = [],
 ): Promise<PublishResult> {
   const result = await callExec(effects.fetchImpl, 'promote', {
     project,
@@ -266,8 +286,32 @@ export async function publish(
 
   const wait = await effects.waitForNew();
   if (!wait.changed) return fail(wait.reason);
+  effects.rememberPublished?.({ files: [...files], at: Date.now() });
   effects.reload();
   return { outcome: 'merged' };
+}
+
+/** Parses the published-record text the service stored. Invalid JSON or a wrong shape → null. */
+export function readPublished(raw: string | null): IPublishedRecord | null {
+  if (raw === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[draftPanel]', `published record is not JSON: ${message}`);
+    return null;
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.files) || typeof parsed.at !== 'number' || !Number.isFinite(parsed.at)) {
+    console.error('[draftPanel]', 'published record has no files array or at');
+    return null;
+  }
+  const files = stringList(parsed.files);
+  if (files === undefined || files.length !== parsed.files.length) {
+    console.error('[draftPanel]', 'published record files are not all strings');
+    return null;
+  }
+  return { files, at: parsed.at };
 }
 
 /** Whole-branch diff. `draft` is the slug from `slugForBranch`, never the raw branch. */
@@ -353,6 +397,55 @@ export function collectEditedFiles<T extends IPanelStorFile>(
     edited.push(file);
   }
   return edited;
+}
+
+/** `l<level>/<folder/>shortName<extension>`. With no level, folder, or extension, the short name. */
+function shortPathOf(file: IPanelStorFile): string {
+  const name = file.shortName ?? '';
+  const folder = file.folder ?? '';
+  const extension = file.extension ?? '';
+  if (file.level === undefined && folder === '' && extension === '') return name;
+  const levelPart = file.level === undefined ? '' : `l${file.level}/`;
+  const folderPart = folder === '' ? '' : `${folder}/`;
+  return `${levelPart}${folderPart}${name}${extension}`;
+}
+
+/** Browser edits of one project: same files as `collectEditedFiles`, as short path + error mark. */
+export function localEdits(
+  storFiles: Readonly<Record<string, IPanelStorFile | null | undefined>>,
+  project: number,
+): ILocalEdit[] {
+  return collectEditedFiles(storFiles, project).map((file) => ({
+    shortPath: shortPathOf(file),
+    hasError: file.hasError === true,
+  }));
+}
+
+export interface IPanelModelInput {
+  local: readonly ILocalEdit[];
+  /** `current.files` of the open draft. `null` when `loadPanel` has no current draft. */
+  draft: readonly string[] | null;
+  published: IPublishedRecord | null;
+  /** Id from the release ping, or null when the ping has none. */
+  release: string | null;
+}
+
+export interface IPanelModel {
+  local: { count: number; files: ILocalEdit[] };
+  draft: { count: number; files: string[] };
+  published: { count: number; files: string[]; release: string | null };
+}
+
+/** The three blocks, in order: browser, this draft, published. Counts come from the lists. */
+export function panelModel(input: IPanelModelInput): IPanelModel {
+  const localFiles = input.local.map((file) => ({ shortPath: file.shortPath, hasError: file.hasError }));
+  const draftFiles = input.draft === null ? [] : [...input.draft];
+  const publishedFiles = input.published === null ? [] : [...input.published.files];
+  return {
+    local: { count: localFiles.length, files: localFiles },
+    draft: { count: draftFiles.length, files: draftFiles },
+    published: { count: publishedFiles.length, files: publishedFiles, release: input.release },
+  };
 }
 
 /**

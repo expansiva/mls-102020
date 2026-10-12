@@ -8,7 +8,10 @@ import {
   discard,
   experimentDraft,
   loadPanel,
+  localEdits,
+  panelModel,
   publish,
+  readPublished,
   saveDefaultDraft,
   saveToDraft,
   slugForBranch,
@@ -17,6 +20,7 @@ import {
   type IDraftWaitResult,
   type IListedDraft,
   type IPanelStorFile,
+  type IPublishEffects,
   type ListLocalFiles,
 } from '/_102020_/l2/aura/helpers/draftPanelCore.js';
 
@@ -331,4 +335,169 @@ test('saveToDraft throws when setContents reports a refusal', async () => {
     ),
     /setContents refused the draft save/,
   );
+});
+
+test('localEdits is empty, one file, or many, and a deletion counts', () => {
+  assert.deepEqual(localEdits({}, 102047), []);
+  assert.deepEqual(localEdits({
+    untouched: { project: 102047, shortName: 'e' },
+    other: { project: 102099, inLocalStorage: true, shortName: 'd' },
+  }, 102047), []);
+
+  assert.deepEqual(localEdits({
+    a: { project: 102047, inLocalStorage: true, shortName: 'a' },
+  }, 102047), [{ shortPath: 'a', hasError: false }]);
+
+  assert.deepEqual(localEdits({
+    a: {
+      project: 102047,
+      inLocalStorage: true,
+      level: 2,
+      folder: 'aura',
+      shortName: 'a',
+      extension: '.ts',
+    },
+    gone: { project: 102047, status: 'deleted', shortName: 'gone' },
+    broken: {
+      project: 102047,
+      inLocalStorage: true,
+      hasError: true,
+      level: 1,
+      shortName: 'c',
+      extension: '.less',
+    },
+  }, 102047), [
+    { shortPath: 'l2/aura/a.ts', hasError: false },
+    { shortPath: 'gone', hasError: false },
+    { shortPath: 'l1/c.less', hasError: true },
+  ]);
+});
+
+test('publish merged remembers the files after the wait and before reload', async () => {
+  const calls: string[] = [];
+  let recorded: { files: string[]; at: number } | undefined;
+  const files = ['l2/a.ts', 'l2/b.ts'];
+  const before = Date.now();
+  const result = await publish({
+    fetchImpl: async () => {
+      calls.push('promote');
+      return jsonResponse({ statusCode: 200, status: 'merged' });
+    },
+    waitForNew: async () => {
+      calls.push('waitForNew');
+      return { changed: true, reason: 'released' };
+    },
+    rememberPublished: (record) => {
+      calls.push('remember');
+      recorded = record;
+    },
+    reload: () => { calls.push('reload'); },
+  }, 102047, 'team-102047', 'ship it', files);
+  const after = Date.now();
+  assert.deepEqual(result, { outcome: 'merged' });
+  assert.deepEqual(calls, ['promote', 'waitForNew', 'remember', 'reload']);
+  assert.deepEqual(recorded?.files, files);
+  assert.ok(recorded !== undefined && recorded.at >= before && recorded.at <= after);
+  files.push('l2/c.ts');
+  assert.deepEqual(recorded?.files, ['l2/a.ts', 'l2/b.ts']);
+});
+
+test('publish does not remember on nothing, conflict, or failure', async () => {
+  const remembered: string[] = [];
+  const effects = (fetchImpl: FetchImpl): IPublishEffects => ({
+    fetchImpl,
+    waitForNew: async () => { throw new Error('wait should not run'); },
+    rememberPublished: () => { remembered.push('remember'); },
+    reload: () => { throw new Error('reload should not run'); },
+  });
+
+  const nothing = await publish(
+    effects(async () => jsonResponse({ statusCode: 200, status: 'nothing_to_promote' })),
+    102047,
+    'team-102047',
+    '',
+    ['l2/a.ts'],
+  );
+  assert.deepEqual(nothing, { outcome: 'nothing' });
+
+  const conflict = await publish(
+    effects(async () => jsonResponse({ statusCode: 409, code: 'DRAFT_CONFLICT', files: ['l2/a.ts'] }, 409)),
+    102047,
+    'team-102047',
+    'ship',
+    ['l2/a.ts'],
+  );
+  assert.deepEqual(conflict, { outcome: 'conflict', files: ['l2/a.ts'] });
+
+  await assert.rejects(
+    () => publish(
+      effects(async () => jsonResponse({ statusCode: 409, code: 'MAIN_DIRTY' }, 409)),
+      102047,
+      'team-102047',
+      '',
+      ['l2/a.ts'],
+    ),
+    /MAIN_DIRTY/,
+  );
+
+  await assert.rejects(
+    () => publish({
+      fetchImpl: async () => jsonResponse({ statusCode: 200, status: 'merged' }),
+      waitForNew: async () => ({ changed: false, reason: 'timeout' }),
+      rememberPublished: () => { remembered.push('remember'); },
+      reload: () => { throw new Error('reload should not run'); },
+    }, 102047, 'team-102047', '', ['l2/a.ts']),
+    /timeout/,
+  );
+  assert.deepEqual(remembered, []);
+});
+
+test('readPublished returns the record, and invalid JSON is null', () => {
+  assert.equal(readPublished(null), null);
+  assert.equal(readPublished('not json'), null);
+  assert.equal(readPublished('{"files":"no","at":1}'), null);
+  assert.deepEqual(readPublished('{"files":["l2/a.ts"],"at":10,"extra":true}'), {
+    files: ['l2/a.ts'],
+    at: 10,
+  });
+});
+
+test('panelModel: draft block is current.files, empty when current is null; published needs a record', () => {
+  const current = draft('team/102047', ['l2/a.ts', 'l2/b.ts']);
+  const empty = panelModel({
+    local: [],
+    draft: null,
+    published: null,
+    release: 'rel-1',
+  });
+  assert.deepEqual(empty.local, { count: 0, files: [] });
+  assert.deepEqual(empty.draft, { count: 0, files: [] });
+  assert.deepEqual(empty.published, { count: 0, files: [], release: 'rel-1' });
+
+  const full = panelModel({
+    local: [
+      { shortPath: 'l2/a.ts', hasError: false },
+      { shortPath: 'l1/c.less', hasError: true },
+    ],
+    draft: current.files,
+    published: { files: ['l2/a.ts'], at: 10 },
+    release: 'rel-9',
+  });
+  assert.deepEqual(full.local, {
+    count: 2,
+    files: [
+      { shortPath: 'l2/a.ts', hasError: false },
+      { shortPath: 'l1/c.less', hasError: true },
+    ],
+  });
+  assert.deepEqual(full.draft, { count: 2, files: current.files });
+  assert.deepEqual(full.published, { count: 1, files: ['l2/a.ts'], release: 'rel-9' });
+
+  const noRelease = panelModel({
+    local: [],
+    draft: [],
+    published: { files: ['l2/a.ts'], at: 10 },
+    release: null,
+  });
+  assert.deepEqual(noRelease.published, { count: 1, files: ['l2/a.ts'], release: null });
 });
